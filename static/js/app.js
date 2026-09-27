@@ -40,7 +40,16 @@ function initials(name) {
   const p = String(name || '').split(/\s+/);
   return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase();
 }
-function todayISO() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+/* «Сегодня» — по часам объекта (APP_TZ на сервере), а не по часовому поясу телефона.
+   serverShiftMs: насколько локальное время объекта опережает UTC-часы устройства
+   (учитывает и часовой пояс, и сбитые часы телефона). Обновляется из /api/health и /status. */
+let serverShiftMs = -new Date().getTimezoneOffset() * 60000;   // до первого ответа — пояс устройства
+function syncServerClock(localIso) {
+  if (!localIso) return;
+  const asUtc = Date.parse(String(localIso).slice(0, 19) + 'Z');
+  if (!Number.isNaN(asUtc)) serverShiftMs = asUtc - Date.now();
+}
+function todayISO() { return new Date(Date.now() + serverShiftMs).toISOString().slice(0, 10); }
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
                 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -58,7 +67,11 @@ function toast(message, type = 'ok', warnings = []) {
   setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 4600);
   setTimeout(() => el.remove(), 5100);
 }
-function loading(on) { $('#loading').classList.toggle('hidden', !on); }
+let pendingLoads = 0;   // спиннер скрывается только когда завершились ВСЕ видимые запросы
+function loading(on) {
+  pendingLoads = Math.max(0, pendingLoads + (on ? 1 : -1));
+  $('#loading').classList.toggle('hidden', pendingLoads === 0);
+}
 
 /* ───────────────────────────── API ───────────────────────────── */
 async function api(path, opts = {}) {
@@ -67,9 +80,20 @@ async function api(path, opts = {}) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(opts.body);
   }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeout || 20000);
+  init.signal = ctrl.signal;
   if (!opts.silent) loading(true);
   try {
-    const res = await fetch(path, init);
+    let res;
+    try {
+      res = await fetch(path, init);
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Сервер не ответил вовремя — проверьте связь и повторите');
+      throw new Error(navigator.onLine === false
+        ? 'Нет подключения к интернету — действие не выполнено'
+        : 'Не удалось связаться с сервером — проверьте связь и повторите');
+    }
     if (res.status === 401 && !opts.allow401) { showLogin(); throw new Error('Требуется вход'); }
     const text = await res.text();
     let data = null;
@@ -80,6 +104,7 @@ async function api(path, opts = {}) {
     }
     return data;
   } finally {
+    clearTimeout(timer);
     if (!opts.silent) loading(false);
   }
 }
@@ -212,7 +237,25 @@ window.addEventListener('unhandledrejection', e => {
   toast('Ошибка интерфейса: ' + (e.reason?.message || e.reason || 'неизвестная') +
         ' — обновите страницу (Cmd/Ctrl+Shift+R)', 'err');
 });
-function clearTimers() { state.timers.forEach(t => clearInterval(t)); state.timers = []; }
+function clearTimers() {
+  state.timers.forEach(t => clearInterval(t)); state.timers = [];
+  pollers.length = 0;
+}
+/* Периодическое обновление раздела. Создавать ОДИН раз при открытии раздела (не в render/fetch —
+   иначе каждый тик добавляет новый интервал и их число удваивается). В фоне не опрашиваем. */
+const pollers = [];
+function poll(view, fn, ms = 30000) {
+  if (pollers.some(x => x.view === view)) return;   // повторный вызов loadX() не плодит интервалы
+  const tick = () => { if (state.view === view && !document.hidden) fn(); };
+  state.timers.push(setInterval(tick, ms));
+  pollers.push({ view, fn });
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  // вернулись в приложение — сразу освежаем текущий раздел, не дожидаясь тика
+  const p = pollers.filter(x => x.view === state.view).pop();
+  if (p) p.fn();
+});
 
 /* ───────────────────────────── вход ───────────────────────────── */
 
@@ -1073,10 +1116,11 @@ async function loadAttendance() {
   $('#a-today').onclick = () => { state.attDate = todayISO(); $('#a-date').value = state.attDate; fetchAttendance(); };
   $('#a-date').onchange = e => { state.attDate = e.target.value; fetchAttendance(); };
   await fetchAttendance();
+  poll('attendance', () => { if (state.attDate === todayISO()) fetchAttendance(true); });
 }
 
-async function fetchAttendance() {
-  const data = await api(`/api/punches/attendance?date=${state.attDate}`);
+async function fetchAttendance(silent) {
+  const data = await api(`/api/punches/attendance?date=${state.attDate}`, { silent: !!silent });
   /* отметки дня с id — для менеджерской кнопки «✕ отменить отметку» */
   let dayPunches = [];
   try { dayPunches = await api(`/api/punches?date=${state.attDate}`, { silent: true }); } catch {}
@@ -1149,9 +1193,6 @@ async function fetchAttendance() {
         } catch (e) { toast(e.message, 'err'); }
       }, 'Отменить отметку'));
 
-  state.timers.push(setInterval(() => {
-    if (state.view === 'attendance' && state.attDate === todayISO()) fetchAttendance();
-  }, 30000));
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1170,9 +1211,7 @@ async function loadOnwork() {
     <div id="ow-body"><div class="empty">Загрузка…</div></div>`;
   $('#ow-refresh').onclick = () => fetchOnwork();
   await fetchOnwork();
-  state.timers.push(setInterval(() => {
-    if (state.view === 'onwork') fetchOnwork(true);
-  }, 30000));
+  poll('onwork', () => fetchOnwork(true));
 }
 
 async function fetchOnwork(silent) {
@@ -1459,7 +1498,9 @@ async function loadMe() {
   try {
     const [status, me] = await Promise.all([api('/api/punches/status'), api('/api/auth/me')]);
     state.status = status;
+    syncServerClock(status.now);
     renderMe(status, me);
+    poll('me', loadMeSilently);
   } catch (e) {
     $('#view-me').innerHTML = `<div class="me-wrap"><div class="panel"><h3 class="panel-title">Мои отметки</h3>
       <p style="color:var(--muted);font-size:14px">К вашей учётной записи не привязан сотрудник — отметки недоступны.<br><br>${esc(e.message)}</p></div></div>`;
@@ -1540,23 +1581,30 @@ function renderMe(s, me) {
   const btn = $('#punch-btn');
   if (btn && !btn.disabled) btn.onclick = doPunch;
   loadMyHistory();
-  state.timers.push(setInterval(() => { if (state.view === 'me') loadMeSilently(); }, 30000));
 }
 
 async function loadMeSilently() {
   try {
-    const s = await api('/api/punches/status', { silent: true });
+    if (punchInFlight) return;   // не перерисовываем кнопку, пока отметка отправляется
+    const [s, me] = await Promise.all([api('/api/punches/status', { silent: true }),
+                                       api('/api/auth/me', { silent: true })]);
     state.status = s;
-    const me = await api('/api/auth/me', { silent: true });
-    if (state.view === 'me') renderMe(s, me);
+    syncServerClock(s.now);
+    if (state.view === 'me' && !punchInFlight) renderMe(s, me);
   } catch { /* тихо */ }
 }
 
+let punchInFlight = false;
 async function doPunch() {
+  if (punchInFlight) return;               // двойной тап
+  punchInFlight = true;
   const btn = $('#punch-btn');
   if (btn) btn.disabled = true;
+  // направление — по тому, что видит пользователь на кнопке, а не «auto» на сервере:
+  // иначе второй тап превращается в «Ушёл» через секунду после «Пришёл»
+  const kind = state.status?.on_shift ? 'out' : 'in';
   try {
-    const res = await api('/api/punches', { method: 'POST', body: { kind: 'auto' } });
+    const res = await api('/api/punches', { method: 'POST', body: { kind } });
     let msg = res.message;
     if (res.day && res.day.fact_hours) {
       msg += ` · зачтено ${hours(res.day.fact_hours)} ч из ${hours(res.day.planned_hours)}`;
@@ -1565,6 +1613,7 @@ async function doPunch() {
     toast(msg, 'ok', res.warnings || []);
     state.status = res.status;
     const me = await api('/api/auth/me', { silent: true });
+    punchInFlight = false;
     renderMe(res.status, me);
     if (res.punch?.kind === 'OUT' && res.day?.ot_hours > 0) {
       openOtNoteModal(res.punch.id, '', res.day.ot_hours);
@@ -1572,6 +1621,8 @@ async function doPunch() {
   } catch (e) {
     toast(e.message, 'err');
     if (btn) btn.disabled = false;
+  } finally {
+    punchInFlight = false;
   }
 }
 
@@ -2836,7 +2887,7 @@ $('#change-pass-btn').onclick = () => openModal({
     m.querySelector('[data-save]').onclick = async () => {
       const nw = $('#cp-new').value, nw2 = $('#cp-new2').value;
       if (!$('#cp-old').value) return toast('Введите старый пароль', 'warn');
-      if (nw.length < 4) return toast('Новый пароль слишком короткий', 'warn');
+      if (nw.length < 8) return toast('Новый пароль слишком короткий (минимум 8 символов)', 'warn');
       if (nw !== nw2) return toast('Новый пароль и подтверждение не совпадают', 'warn');
       try {
         await api('/api/auth/change-password', { method: 'POST',
@@ -2854,7 +2905,23 @@ $('#stop-impersonation').onclick = async () => {
 };
 
 
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'
+    || location.hostname === '127.0.0.1')) {
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      nw?.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          toast('Доступна новая версия приложения — обновите страницу', 'ok');
+        }
+      });
+    });
+  }).catch(e => console.warn('SW:', e));
+}
+
 (async function boot() {
+  api('/api/health', { silent: true, allow401: true })
+    .then(h => syncServerClock(h?.server_time_local)).catch(() => {});
   try {
     const me = await api('/api/auth/me', { silent: true, allow401: true });
     if (me?.user) { state.user = me.user; await enterApp(); return; }

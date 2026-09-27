@@ -20,6 +20,17 @@ from ..timesheet import load_rules, shift_window
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+_DUMMY_HASH = hash_password("dummy-password-for-timing")
+MIN_PASSWORD_LEN = 8
+
+
+def _token(user: User, emp_id, imp: bool = False) -> str:
+    body = {"uid": user.id, "emp_id": emp_id, "tv": int(user.token_version or 0)}
+    if imp:
+        body["imp"] = True
+    return create_token(body)
+
+
 class LoginIn(BaseModel):
     username: str
     password: str
@@ -37,12 +48,14 @@ def _set_cookie(response: Response, token: str) -> None:
 @router.post("/login")
 def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.username == payload.username.strip().lower()))
-    if not user or not verify_password(payload.password, user.password_hash):
+    # для несуществующего логина тоже считаем хеш — по времени ответа логин не угадать
+    stored = user.password_hash if user else _DUMMY_HASH
+    if not verify_password(payload.password, stored) or not user:
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Учётная запись отключена")
     employee = db.get(Employee, user.employee_id) if user.employee_id else None
-    token = create_token({"uid": user.id, "emp_id": employee.id if employee else None})
+    token = _token(user, employee.id if employee else None)
     _set_cookie(response, token)
     audit(db, Principal(user, employee), "login", f"user:{user.username}")
     db.commit()
@@ -95,16 +108,22 @@ class ChangePasswordIn(BaseModel):
 
 
 @router.post("/change-password")
-def change_password(payload: ChangePasswordIn, principal: Principal = Depends(current_principal),
+def change_password(payload: ChangePasswordIn, response: Response, principal: Principal = Depends(current_principal),
                     db: Session = Depends(get_db)):
     """Смена своего пароля: старый пароль для проверки + новый (подтверждение проверяет клиент)."""
     if not verify_password(payload.old_password, principal.user.password_hash):
         raise HTTPException(status_code=400, detail="Неверный текущий пароль")
-    if len(payload.new_password) < 4:
-        raise HTTPException(status_code=400, detail="Новый пароль слишком короткий (минимум 4 символа)")
-    principal.user.password_hash = hash_password(payload.new_password)
-    audit(db, principal, "password_change", f"user:{principal.user.username}")
+    if len(payload.new_password) < MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400,
+                            detail=f"Новый пароль слишком короткий (минимум {MIN_PASSWORD_LEN} символов)")
+    user = principal.user
+    user.password_hash = hash_password(payload.new_password)
+    # все прежние сессии (другие устройства, украденные cookie) становятся недействительными
+    user.token_version = int(user.token_version or 0) + 1
+    audit(db, principal, "password_change", f"user:{user.username}")
     db.commit()
+    emp_id = principal.employee.id if principal.employee else None
+    _set_cookie(response, _token(user, emp_id, principal.impersonated))
     return {"ok": True}
 
 
@@ -121,7 +140,7 @@ def impersonate(payload: ImpersonateIn, response: Response,
     emp = db.get(Employee, payload.employee_id)
     if not emp or not emp.active:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    token = create_token({"uid": principal.user.id, "emp_id": emp.id, "imp": True})
+    token = _token(principal.user, emp.id, imp=True)
     _set_cookie(response, token)
     audit(db, principal, "impersonate", f"employee:{emp.id}", {"employee": emp.full_name})
     db.commit()
@@ -134,7 +153,7 @@ def stop_impersonate(response: Response, principal: Principal = Depends(current_
     if not principal.impersonated:
         raise HTTPException(status_code=400, detail="Вы не в режиме просмотра от имени сотрудника")
     emp = db.get(Employee, principal.user.employee_id) if principal.user.employee_id else None
-    token = create_token({"uid": principal.user.id, "emp_id": emp.id if emp else None})
+    token = _token(principal.user, emp.id if emp else None)
     _set_cookie(response, token)
     audit(db, principal, "impersonate_stop", "")
     db.commit()

@@ -6,7 +6,8 @@ from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -86,6 +87,9 @@ def migrate_db() -> None:
         "block_assignments": [
             ("pattern_json", "TEXT DEFAULT ''"),
         ],
+        "users": [
+            ("token_version", "INTEGER DEFAULT 0"),
+        ],
     }
     with engine.begin() as con:
         for table, cols in additions.items():
@@ -98,6 +102,9 @@ def migrate_db() -> None:
 
         if insp.has_table("users"):
             con.execute(text("UPDATE users SET role='supervisor' WHERE role='senior'"))
+        if insp.has_table("punches"):
+            # основной фильтр всех запросов по отметкам: employee_id = ? AND ts >= ?
+            con.execute(text("CREATE INDEX IF NOT EXISTS ix_punches_emp_ts ON punches (employee_id, ts)"))
 
         # «Администрация» → «Пятидневка» (название блока уточнили по смыслу)
         if insp.has_table("employees"):
@@ -319,6 +326,21 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, version="0.1.0", docs_url="/api/docs",
               openapi_url="/api/openapi.json", lifespan=lifespan)
 
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "same-origin")
+    if request.url.path.startswith("/api/") and "cache-control" not in h:
+        h["Cache-Control"] = "no-store"   # персональные данные не должны оседать в кэшах
+    return response
+
+
 app.include_router(auth_routes.router)
 app.include_router(employees.router)
 app.include_router(schedule.router)
@@ -379,6 +401,19 @@ def health():
     return {"ok": True, "app": settings.app_name, "tz": settings.app_tz,
             "server_time_local": now_local().isoformat(timespec="seconds"),
             "server_time_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    """Service Worker отдаётся с корня (scope = «/») и без кэша — иначе обновления не доедут."""
+    return FileResponse(str(STATIC_DIR / "sw.js"), media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifest():
+    return FileResponse(str(STATIC_DIR / "manifest.webmanifest"), media_type="application/manifest+json",
+                        headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

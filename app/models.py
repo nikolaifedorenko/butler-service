@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -245,6 +246,7 @@ class User(Base):
     employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
 
     employee: Mapped[Optional[Employee]] = relationship(back_populates="user")
 
@@ -355,6 +357,7 @@ class Punch(Base):
     """Сырое событие: нажал «Пришёл на работу» / «Ушёл с работы»."""
 
     __tablename__ = "punches"
+    __table_args__ = (Index("ix_punches_emp_ts", "employee_id", "ts"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)

@@ -84,7 +84,7 @@ class TestPunchFlags(unittest.TestCase):
         self.assertEqual(r.json()["punch"]["kind"], "IN")
         TestPunchFlags.punch_ids.append(r.json()["punch"]["id"])
 
-        r = emp.post("/api/punches", json={"kind": "auto"})   # → OUT, запрещён
+        r = emp.post("/api/punches", json={"kind": "out"})    # → OUT, запрещён
         self.assertEqual(r.status_code, 409)
         self.assertIn("Ушёл", r.json()["detail"])
 

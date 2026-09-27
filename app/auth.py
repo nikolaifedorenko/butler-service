@@ -22,15 +22,16 @@ class Principal:
 
     @property
     def role(self) -> str:
-        return self.user.role
+        # в режиме «смотрю как сотрудник» права — ровно как у сотрудника
+        return ROLE_EMPLOYEE if self.impersonated else self.user.role
 
     @property
     def is_manager(self) -> bool:
-        return self.user.role in (ROLE_ADMIN, ROLE_MANAGER, ROLE_SUPERVISOR)
+        return self.role in (ROLE_ADMIN, ROLE_MANAGER, ROLE_SUPERVISOR)
 
     @property
     def is_admin(self) -> bool:
-        return self.user.role == ROLE_ADMIN
+        return self.role == ROLE_ADMIN
 
     @property
     def name(self) -> str:
@@ -42,7 +43,7 @@ class Principal:
         return {
             "id": self.user.id,
             "username": self.user.username,
-            "role": self.user.role,
+            "role": self.role,
             "name": self.name,
             "employee_id": self.employee.id if self.employee else None,
             "impersonated": self.impersonated,
@@ -62,6 +63,9 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
         raise _unauthorized()
     user = db.get(User, payload.get("uid"))
     if not user or not user.is_active:
+        raise _unauthorized()
+    # смена пароля увеличивает token_version → старые cookie (в т.ч. украденные) перестают работать
+    if int(payload.get("tv", 0)) != int(user.token_version or 0):
         raise _unauthorized()
     employee = None
     emp_id = payload.get("emp_id")

@@ -104,7 +104,12 @@ class TestApi(unittest.TestCase):
         if r.status_code == 409:
             self.skipTest("нет открытой смены по демо-данным")
         self.assertEqual(r.status_code, 200, r.text)
-        after = client.post("/api/punches", json={"kind": "auto"})
+        # «auto» сразу после прихода — это двойной тап: сервер отклоняет его как дубль
+        dup = client.post("/api/punches", json={"kind": "auto"})
+        self.assertEqual(dup.status_code, 409, dup.text)
+        # повторный явный IN при открытой смене тоже отклоняется
+        self.assertEqual(client.post("/api/punches", json={"kind": "IN"}).status_code, 409)
+        after = client.post("/api/punches", json={"kind": "OUT"})
         self.assertEqual(after.status_code, 200, after.text)
         self.assertTrue(after.json()["status"] is not None)
         self.assertIn("message", after.json())
@@ -260,6 +265,11 @@ class TestApi(unittest.TestCase):
 
     def test_16b_change_password_flow(self):
         # верный старый пароль → смена; неверный старый → 400; вход с новым паролем работает
+        from app.db import SessionLocal
+        from app.models import User
+        old_session = TestClient(app)
+        self.assertEqual(old_session.post("/api/auth/login",
+                                          json={"username": "ivanov", "password": "demo1234"}).status_code, 200)
         r = self.emp_client.post("/api/auth/change-password",
                                  json={"old_password": "demo1234", "new_password": "temp-pass-1"})
         self.assertEqual(r.status_code, 200, r.text)
@@ -271,9 +281,20 @@ class TestApi(unittest.TestCase):
         ok = TestClient(app)
         self.assertEqual(ok.post("/api/auth/login", json={"username": "ivanov", "password": "temp-pass-1"}).status_code, 200)
         # возвращаем демо-пароль, чтобы не влиять на остальные тесты
+        # сессия, открытая до смены пароля, больше не действует; текущая — переоформлена
+        self.assertEqual(old_session.get("/api/auth/me").status_code, 401)
+        self.assertEqual(self.emp_client.get("/api/auth/me").status_code, 200)
         r = self.emp_client.post("/api/auth/change-password",
                                  json={"old_password": "temp-pass-1", "new_password": "demo1234"})
         self.assertEqual(r.status_code, 200)
+        # тестовая уборка: возвращаем версию токена, чтобы сессии ivanov в других тест-модулях жили
+        db = SessionLocal()
+        try:
+            u = db.query(User).filter_by(username="ivanov").one()
+            u.token_version = 0
+            db.commit()
+        finally:
+            db.close()
 
     def test_15b_employee_card_actions(self):
         today = local_date()
@@ -596,3 +617,20 @@ class TestApi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestImpersonationRights(unittest.TestCase):
+    def test_impersonated_manager_has_employee_rights(self):
+        mgr = TestClient(app)
+        self.assertEqual(mgr.post("/api/auth/login", json={"username": "gromova", "password": "demo1234"}).status_code, 200)
+        emps = mgr.get("/api/employees").json()
+        target = next(e for e in emps if e["full_name"].startswith("Иванов"))
+        r = mgr.post("/api/auth/impersonate", json={"employee_id": target["id"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["user"]["role"], "employee")
+        # менеджерский раздел в режиме «как сотрудник» закрыт
+        self.assertEqual(mgr.get("/api/punches/attendance").status_code, 403)
+        r = mgr.post("/api/auth/impersonate/stop")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotEqual(r.json()["user"]["role"], "employee")
+        self.assertEqual(mgr.get("/api/punches/attendance").status_code, 200)

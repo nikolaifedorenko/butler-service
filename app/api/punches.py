@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import threading
+from collections import defaultdict
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +21,18 @@ from ..timesheet import (WINDOW_AFTER_H, WINDOW_BEFORE_H, bank_as_of, entry_shif
                          recalc_day, shift_window)
 
 router = APIRouter(prefix="/api/punches", tags=["punches"])
+
+# повторное нажатие той же кнопки в этот промежуток — дубль (двойной тап, повтор запроса)
+DUPLICATE_WINDOW = dt.timedelta(seconds=60)
+# сериализация отметок одного сотрудника внутри процесса: два одновременных запроса
+# не должны оба увидеть «смена не открыта» и записать два IN
+_emp_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
+_emp_locks_guard = threading.Lock()
+
+
+def _lock_for(emp_id: int) -> threading.Lock:
+    with _emp_locks_guard:
+        return _emp_locks[emp_id]
 
 
 class PunchIn(BaseModel):
@@ -170,6 +184,11 @@ def my_status(principal: Principal = Depends(current_principal), db: Session = D
 def punch(payload: PunchIn, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     """Кнопки «Пришёл на работу» / «Ушёл с работы»."""
     emp = _resolve_employee(principal, payload.employee_id, db)
+    with _lock_for(emp.id):
+        return _punch_locked(payload, principal, db, emp)
+
+
+def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Employee):
     rules = load_rules(db)
     now = now_local()
     backfill = False
@@ -209,6 +228,19 @@ def punch(payload: PunchIn, principal: Principal = Depends(current_principal), d
     if kind == "OUT" and not open_in:
         if not backfill:
             raise HTTPException(status_code=409, detail="Нет открытой смены: сначала нажмите «Пришёл на работу»")
+    if not backfill:
+        if kind == "IN" and open_in:
+            raise HTTPException(status_code=409,
+                                detail=f"Вы уже на смене с {open_in.ts:%H:%M} — повторная отметка прихода не нужна")
+        # «auto» сам выбирает направление, поэтому двойной тап превратился бы в IN+OUT за секунду;
+        # явные in/out от дублей уже защищены проверками выше
+        last = db.scalar(select(Punch).where(Punch.employee_id == emp.id)
+                         .order_by(Punch.ts.desc()).limit(1)) if payload.kind == "auto" else None
+        if last and abs(now - last.ts) < DUPLICATE_WINDOW:
+            what = "приход" if last.kind == "IN" else "уход"
+            raise HTTPException(status_code=409,
+                                detail=f"Отметка уже принята: {what} в {last.ts:%H:%M}. "
+                                       "Следующую можно поставить через минуту")
     if backfill:
         # при корректировке задним числом пара IN/OUT определяется по уже имеющимся отметкам дня
         day_punches = db.scalars(select(Punch).where(
@@ -334,7 +366,8 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
                  employee_id: Optional[int] = None, principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Журнал отметок. Сотрудник видит только свои, менеджер — всех."""
-    stmt = select(Punch).order_by(Punch.ts.desc())
+    stmt = select(Punch).order_by(Punch.ts.desc())   # employee подгружается JOIN'ом (lazy="joined")
+    limit = 2000
     if not principal.is_manager:
         if not principal.employee:
             raise HTTPException(status_code=403, detail="Нет привязанного сотрудника")
@@ -350,9 +383,9 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
         hi = dt.date(year + 1, 1, 1) if month == 12 else dt.date(year, month + 1, 1)
         stmt = stmt.where(Punch.ts >= lo, Punch.ts < dt.datetime(hi.year, hi.month, hi.day))
     else:
-        stmt = stmt.limit(500)
+        limit = 500   # без фильтра по дате — только последние отметки
 
-    punches = db.scalars(stmt.limit(2000)).all()
+    punches = db.scalars(stmt.limit(limit)).all()
     return [{
         "id": p.id, "employee_id": p.employee_id,
         "employee": p.employee.display_name if p.employee else "",
