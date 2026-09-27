@@ -19,6 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+from .deps import now_local
 
 # ───────────────────────────────────────── роли ─────────────────────────────────────────
 ROLE_ADMIN = "admin"          # полный доступ; сам в график не встаёт и не работает
@@ -420,6 +421,262 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(String(255), default="")
     description: Mapped[str] = mapped_column(String(255), default="")
+
+
+# ═══════════════════════ НОЧНОЙ ОТЧЁТ + ЭЛЕКТРОКАРЫ ═══════════════════════
+# Времена событий (created_at/taken_at/…) хранятся в ЛОКАЛЬНОМ времени объекта
+# (Europe/Moscow, naive) — как Punch.ts. Для этого нужен now_local(), а не utcnow().
+
+
+class NightArea(Base):
+    """Справочник областей ночной проверки (виллы, спа, бассейн, ресепшн…).
+
+    name       — отображаемое название («Вилла VEG 4001», «Спа»);
+    category   — категория области («VEG», «VPS», «Офис»): пункты чек-листа
+                 привязаны к категории, поэтому у всех вилл одной категории
+                 список пунктов одинаковый;
+    active     — выключенные области не попадают в новые ночные отчёты
+                 (созданные ранее отчёты не меняются: там лежит снимок).
+    """
+
+    __tablename__ = "night_areas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), unique=True)
+    category: Mapped[str] = mapped_column(String(80), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+
+class ChecklistItem(Base):
+    """Пункт чек-листа области (ведётся админом/менеджером). Привязан к категории."""
+
+    __tablename__ = "checklist_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    area_id: Mapped[int] = mapped_column(ForeignKey("night_areas.id"), index=True)
+    text: Mapped[str] = mapped_column(String(300))
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+    area: Mapped[NightArea] = relationship()
+
+
+class NightReport(Base):
+    """Ночной отчёт за смену 20:00–08:00. Создаётся автоматически на каждую ночь
+    (или задним числом при старте сервера), автозакрывается в 08:00.
+
+    date — дата НАЧАЛА смены (вечер); shift_label — человекочитаемая подпись смены.
+    """
+
+    __tablename__ = "night_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[dt.date] = mapped_column(Date, unique=True, index=True)
+    shift_label: Mapped[str] = mapped_column(String(80), default="Ночная смена 20:00–08:00")
+    status: Mapped[str] = mapped_column(String(16), default="open")   # open | closed
+    closed_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    close_reason: Mapped[str] = mapped_column(String(16), default="")  # auto | manual
+    result: Mapped[str] = mapped_column(String(16), default="")        # full | partial ('' пока открыт)
+    cars_step_done: Mapped[bool] = mapped_column(Boolean, default=False)  # шаг «Проверка электрокаров» завершён
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+
+    areas: Mapped[list["NightAreaSection"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan", order_by="NightAreaSection.sort_order")
+
+
+class NightAreaSection(Base):
+    """Область внутри ночного отчёта — снимок справочника на момент создания отчёта.
+
+    snapshot_json — [{"id": <item_id>, "text": "..."}]: правки справочников после
+    создания отчёта его не ломают.
+    """
+
+    __tablename__ = "night_area_sections"
+    __table_args__ = (UniqueConstraint("report_id", "area_id", name="uq_night_section_area"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("night_reports.id"), index=True)
+    area_id: Mapped[Optional[int]] = mapped_column(ForeignKey("night_areas.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(160))
+    category: Mapped[str] = mapped_column(String(80), default="")
+    snapshot_json: Mapped[str] = mapped_column(Text, default="[]")
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    # кто ведёт проверку области сейчас
+    taken_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    taken_by_name: Mapped[str] = mapped_column(String(120), default="")
+    taken_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="free")   # free | taken | done
+    closed_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    closed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+    report: Mapped[NightReport] = relationship(back_populates="areas")
+    items: Mapped[list["NightCheckItem"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan", order_by="NightCheckItem.sort_order")
+
+
+class NightCheckItem(Base):
+    """Пункт чек-листа области в конкретном отчёте (снимок + ответ батлера)."""
+
+    __tablename__ = "night_check_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    section_id: Mapped[int] = mapped_column(ForeignKey("night_area_sections.id"), index=True)
+    item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("checklist_items.id"), nullable=True)
+    text: Mapped[str] = mapped_column(String(300))
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    answer: Mapped[str] = mapped_column(String(8), default="")   # '' (не отмечено) | ok | bad
+    comment: Mapped[str] = mapped_column(Text, default="")
+    answered_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    answered_by_name: Mapped[str] = mapped_column(String(120), default="")
+    answered_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+
+    section: Mapped[NightAreaSection] = relationship(back_populates="items")
+
+
+class NightInterception(Base):
+    """История перехватов областей: второй батлер забрал область, которая была в работе."""
+
+    __tablename__ = "night_interceptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("night_reports.id"), index=True)
+    section_id: Mapped[int] = mapped_column(ForeignKey("night_area_sections.id"), index=True)
+    from_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    from_user_name: Mapped[str] = mapped_column(String(120), default="")
+    to_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    to_user_name: Mapped[str] = mapped_column(String(120), default="")
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+
+
+class CarLocation(Base):
+    """Справочник мест парковки/стоянки электрокаров (предустановлены + свои)."""
+
+    __tablename__ = "car_locations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+
+
+class Car(Base):
+    """Электрокар. Номер — строка (бывают нечисловые и уникальные имена).
+
+    status: free | busy | charging | maintenance | disabled
+      free        — свободен, можно взять;
+      busy        — занят (держатель едет/использует);
+      charging    — на зарядке (отдельный статус: кар могут поставить заряжаться
+                    специально, и он может понадобиться владельцу);
+      maintenance — на обслуживании (есть замечания по возврату или завели вручную);
+      disabled    — отключён (списан/из ремонта вне учёта) — в обход ночи не попадает.
+    assigned_to — закрепление (рекомендательное): ставится в КАРТОЧКЕ СОТРУДНИКА,
+                  в карточке кара только отображается.
+    """
+
+    __tablename__ = "cars"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="free")
+    location: Mapped[str] = mapped_column(String(160), default="")   # текст места (справочник или «своё»)
+    charge: Mapped[str] = mapped_column(String(16), default="")      # full | half | empty | ''
+    on_charge: Mapped[bool] = mapped_column(Boolean, default=False)  # стоит ли на зарядке (факт)
+    canopy: Mapped[bool] = mapped_column(Boolean, default=True)      # тент: отсутствие — просто факт
+    condition: Mapped[str] = mapped_column(String(16), default="ok")  # ok | bad
+    trash: Mapped[bool] = mapped_column(Boolean, default=False)
+    clean: Mapped[bool] = mapped_column(Boolean, default=True)
+    has_key: Mapped[bool] = mapped_column(Boolean, default=True)     # ключ у держателя / на месте
+    holder_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    holder_name: Mapped[str] = mapped_column(String(120), default="")  # если держатель внешний — имя текстом
+    assigned_to: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True)
+    note: Mapped[str] = mapped_column(String(255), default="")
+    last_checked_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    last_taken_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+    assigned_employee: Mapped[Optional[Employee]] = relationship()
+
+
+class CarHistory(Base):
+    """История электрокара: журнал событий. Не редактируется и не удаляется —
+    только добавляются новые записи (action: take|give|handover_return|return|
+    check|status|assign|create|intercept)."""
+
+    __tablename__ = "car_history"
+    __table_args__ = (Index("ix_car_history_car_ts", "car_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    car_id: Mapped[int] = mapped_column(ForeignKey("cars.id"), index=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    action: Mapped[str] = mapped_column(String(24))
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    actor_name: Mapped[str] = mapped_column(String(120), default="")
+    person: Mapped[str] = mapped_column(String(120), default="")   # кому отдали / кто вернул
+    with_key: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    location: Mapped[str] = mapped_column(String(160), default="")
+    details_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    car: Mapped[Car] = relationship()
+
+
+class CarNightCheck(Base):
+    """Отметка электрокара внутри шага «Проверка электрокаров» ночного отчёта.
+
+    found=False — «кар не найден» (идёт в замечания супервайзеру);
+    checked_at фиксируется фактическое время проверки, поэтому супервайзер видит,
+    если кар взяли ПОСЛЕ проверки (car.last_taken_at > checked_at).
+    """
+
+    __tablename__ = "car_night_checks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("night_reports.id"), index=True)
+    car_id: Mapped[int] = mapped_column(ForeignKey("cars.id"), index=True)
+    car_number: Mapped[str] = mapped_column(String(40), default="")
+    checker_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    checker_name: Mapped[str] = mapped_column(String(120), default="")
+    checked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    found: Mapped[bool] = mapped_column(Boolean, default=True)
+    location: Mapped[str] = mapped_column(String(160), default="")
+    canopy: Mapped[bool] = mapped_column(Boolean, default=True)
+    charge: Mapped[str] = mapped_column(String(16), default="")     # full | half | empty
+    on_charge: Mapped[bool] = mapped_column(Boolean, default=False)
+    condition: Mapped[str] = mapped_column(String(8), default="ok")  # ok | bad
+    trash: Mapped[bool] = mapped_column(Boolean, default=False)
+    clean: Mapped[bool] = mapped_column(Boolean, default=True)
+    comment: Mapped[str] = mapped_column(Text, default="")
+
+    report: Mapped[NightReport] = relationship()
+
+
+class Photo(Base):
+    """Фотографии (комментарии к «Не ОК», замечания по возврату кара).
+
+    Храним оригиналы на диске в data/uploads/YYYY/MM/, путь относительно BASE_DIR.
+    Срок хранения настраивается (photo_retention_days): старые файлы удаляет
+    cleanup_photos() при старте сервера; запись остаётся (url пустой, missing=True).
+    """
+
+    __tablename__ = "photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)   # night_item | car_return | car_check
+    ref_id: Mapped[int] = mapped_column(Integer, index=True)    # id связанной записи
+    filename: Mapped[str] = mapped_column(String(255), default="")
+    path: Mapped[str] = mapped_column(String(400), default="")  # относительный путь от корня проекта
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    uploaded_by_name: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
 
 
 class AuditLog(Base):

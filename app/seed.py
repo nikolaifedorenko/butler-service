@@ -318,5 +318,69 @@ def seed_if_empty(db: Session) -> bool:
 
     # ───────────────────── пересчёт табеля ─────────────────────
     recalc_range(db, today - dt.timedelta(days=40), today + dt.timedelta(days=40), commit=False)
+
+    # ───────────────────── ночной отчёт: справочник областей и чек-листы ─────────────────────
+    _seed_night_dirs(db)
+    # ───────────────────── электрокары: места парковки и парк ─────────────────────
+    _seed_cars(db, {e.full_name.split()[0]: e for e, _, _ in employees})
+
     db.commit()
     return True
+
+
+NIGHT_AREAS = [
+    ("Лобби", "общие зоны", ["Чистота пола и стоек ресепшн", "Освещение: все лампы горят",
+                             "Мебель расставлена по схеме", "Нет посторонних запахов"]),
+    ("Ресторан", "общие зоны", ["Столы сервированы на завтраки", "Посуда убрана в шкаф",
+                                "Проверка холодильного оборудования (температура)",
+                                "Мусор вынесен, пакеты сменены"]),
+    ("Зона SPA", "общие зоны", ["Бассейн: уровень воды и химия в норме", "Шезлонги протёрты",
+                                 "Полотенца пополнены"]),
+    ("Кухня", "служебные", ["Оборудование выключено", "Продукты подписаны и убраны",
+                            "Вытяжка проверена", "Уборка завершена"]),
+    ("Кладовая белья", "служебные", ["Учёт по журналу сходится", "Дверь закрыта на навесной замок"]),
+]
+
+CAR_LOCATIONS = ["Парковка у главного входа", "Навес у служебного входа", "Место с зарядкой у корпуса B"]
+CARS_DEMO = [("1", "free", "Парковка у главного входа", ""), ("2", "busy", "Навес у служебного входа", "Иванов"),
+             ("3", "charging", "Место с зарядкой у корпуса B", ""), ("4", "free", "Навес у служебного входа", ""),
+             ("5", "maintenance", "Гараж", "")]
+
+
+def _seed_night_dirs(db: Session) -> None:
+    from .models import ChecklistItem, NightArea
+
+    for name, cat, items in NIGHT_AREAS:
+        area = NightArea(name=name, category=cat)
+        db.add(area)
+        db.flush()
+        for i, text in enumerate(items, start=10):
+            db.add(ChecklistItem(area_id=area.id, text=text, sort_order=i))
+    db.flush()
+
+
+def _seed_cars(db: Session, by_name: dict) -> None:
+    from .cars import create_car
+    from .models import CarLocation, User
+
+    admin = db.scalar(select(User).where(User.username == "admin"))
+    principal = None
+    if admin is not None:
+        from .auth import Principal
+        principal = Principal(user=admin, employee=None)
+    for i, loc_name in enumerate(CAR_LOCATIONS, start=10):
+        db.add(CarLocation(name=loc_name, sort_order=i, builtin=True))
+    db.flush()
+    for number, status, location, holder_key in CARS_DEMO:
+        car = create_car(db, principal, number, location)
+        car.status = status
+        if status == "charging":
+            car.on_charge, car.charge = True, "empty"
+        if holder_key:
+            emp = by_name.get(holder_key)
+            if emp is not None and emp.user is not None:
+                car.holder_user_id = emp.user.id
+                car.holder_name = emp.display_name
+                if number == "1":
+                    car.assigned_to = emp.id
+    db.flush()

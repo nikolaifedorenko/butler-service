@@ -36,6 +36,7 @@ DEFAULT_RULES = {
     "night_end": "06:00",
     "late_by_raw_time": "0",
     "timeoff_default_hours": "8",
+    "photo_retention_days": "180",
 }
 
 RULE_DESCRIPTIONS = {
@@ -51,10 +52,11 @@ RULE_DESCRIPTIONS = {
     "late_by_raw_time": "Опоздание/ранний уход: 0 — по округлённому времени (как в табеле), 1 — по точной отметке",
     "timeoff_default_hours": "Сколько часов списывать из банка за «выходной за часы», "
                              "если смена сотрудника не определена (обычно 8 или 12)",
+    "photo_retention_days": "Хранение фото ночных отчётов и электрокаров в днях (0 — хранить всегда)",
 }
 
 BOOL_RULES = {"count_early_arrival", "count_late_departure", "auto_close_missing_out", "late_by_raw_time"}
-INT_RULES = {"round_step_min", "min_session_min", "grace_minutes"}
+INT_RULES = {"round_step_min", "min_session_min", "grace_minutes", "photo_retention_days"}
 
 # окно приёма отметок вокруг смены (техническая константа, не настраивается)
 WINDOW_BEFORE_H = 4

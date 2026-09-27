@@ -100,13 +100,45 @@ async function api(path, opts = {}) {
     try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
-      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      if (msg && typeof msg === 'object') {
+        // структурированная ошибка: 409-предупреждения (перехват области, «всё равно закрыть?»)
+        const e = new Error(msg.message || JSON.stringify(msg));
+        e.payload = msg; e.status = res.status;
+        throw e;
+      }
+      throw new Error(String(msg));
     }
     return data;
   } finally {
     clearTimeout(timer);
     if (!opts.silent) loading(false);
   }
+}
+
+/* multipart (фото): api() умеет только JSON — загрузка фото идёт через fetch напрямую */
+async function multipartApi(path, formData, { timeout = 60000 } = {}) {
+  loading(true);
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeout);
+    let res;
+    try {
+      res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: formData, signal: ctrl.signal });
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Загрузка не завершилась вовремя — проверьте связь');
+      throw new Error('Не удалось связаться с сервером — проверьте связь и повторите');
+    } finally { clearTimeout(timer); }
+    if (res.status === 401) { showLogin(); throw new Error('Требуется вход'); }
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
+    if (!res.ok) {
+      let msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
+      if (msg && typeof msg === 'object') msg = msg.message || JSON.stringify(msg);
+      throw new Error(String(msg));
+    }
+    return data;
+  } finally { loading(false); }
 }
 
 /* ───────────────────────────── состояние ───────────────────────────── */
@@ -167,6 +199,7 @@ const POSITION_COLORS = [
 ];
 
 /* ───────────────────────────── вкладки ───────────────────────────── */
+/* ───────────────────────────── вкладки ───────────────────────────── */
 const ICONS = {
   schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   attendance: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
@@ -174,6 +207,8 @@ const ICONS = {
   timesheet: '<svg viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   employees: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 20c.9-3.3 3.2-5 6-5s5.1 1.7 6 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   me: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>',
+  night: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>',
+  cars: '<svg viewBox="0 0 24 24"><path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/></svg>',
   settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
 };
 
@@ -186,6 +221,8 @@ function visibleTabs() {
   if (manager) tabs.push({ id: 'timesheet', title: 'Табель' });
   if (manager) tabs.push({ id: 'employees', title: 'Сотрудники' });
   tabs.push({ id: 'me', title: 'Мои отметки' });
+  tabs.push({ id: 'night', title: 'Ночной отчёт' });   // смена 20:00–08:00: доступен всем
+  tabs.push({ id: 'cars', title: 'Электрокары' });     // парк каров: доступен всем
   if (manager) tabs.push({ id: 'settings', title: 'Настройки' });
   return tabs;
 }
@@ -206,6 +243,17 @@ function renderNav() {
     `<button data-view="${t.id}" class="${state.view === t.id ? 'active' : ''}">${ICONS[t.id]}<span>${esc(t.title)}</span></button>`
   ).join('');
   $$('#tabbar button').forEach(b => b.onclick = () => navigate(b.dataset.view));
+  if (tabs.length > 5) {
+    const more = document.createElement('button');
+    more.className = 'nav-item' + (tabs.slice(5).some(t => t.id === state.view) ? ' active' : '');
+    more.innerHTML = `${ICONS.settings}<span>Ещё</span>`;
+    more.onclick = () => openModal({
+      title: 'Разделы',
+      body: tabs.slice(5).map(t => `<button class="btn btn-block" style="justify-content:flex-start;margin-bottom:8px" data-more="${t.id}">${ICONS[t.id] || ''} ${esc(t.title)}</button>`).join(''),
+      onMount(m) { $$('[data-more]', m).forEach(b => b.onclick = () => { closeModal(); navigate(b.dataset.more); }); },
+    });
+    $('#sidenav').insertBefore(more, foot);
+  }
   foot.innerHTML = `Учёт кратен часу<br>ДН 22:00–06:00 · ДЯ 06:00–22:00<br>Ночная смена относится к дате начала`;
 }
 
@@ -219,6 +267,7 @@ function navigate(view) {
   clearTimers();
   const loaders = { schedule: loadSchedule, onwork: loadOnwork, attendance: loadAttendance,
                     timesheet: loadTimesheet, employees: loadEmployees, me: loadMe,
+                    night: loadNight, cars: loadCars,
                     settings: loadSettings };
   const run = loaders[view] || (() => Promise.resolve());
   Promise.resolve().then(run).catch(err => {
@@ -1573,6 +1622,8 @@ function renderMe(s, me) {
       <div id="me-history"><div class="empty">Загрузка…</div></div>
     </div>
 
+    ${carStripHtml()}
+
     ${state.user.impersonated ? `<div class="panel" style="margin-top:16px;border-color:#f0d9a8;background:#fffdf6">
       <p style="margin:0;font-size:13.5px;color:#8a5300">Демо-режим: вы смотрите интерфейс сотрудника
       <b>${esc(state.user.name)}</b>. Отметки, нажатые здесь, попадут в его табель.</p></div>` : ''}
@@ -1581,6 +1632,69 @@ function renderMe(s, me) {
   const btn = $('#punch-btn');
   if (btn && !btn.disabled) btn.onclick = doPunch;
   loadMyHistory();
+  bindCarStrip();
+}
+
+/* ── полоска «Мой электрокар» в «Моих отметках»: держу / закреплён / взять свободный ── */
+function carStripHtml() {
+  return `<div class="panel" id="car-strip"><h3 class="panel-title">Электрокар</h3>
+    <div class="empty" style="padding:12px">Загрузка…</div></div>`;
+}
+
+async function bindCarStrip() {
+  const host = $('#car-strip');
+  if (!host) return;
+  try {
+    const data = await api('/api/cars', { silent: true });
+    const cars = data.cars || [];
+    const me = data.me || {};
+    const held = cars.find(c => c.id === me.held);
+    const assigned = cars.find(c => c.id === me.assigned);
+    const freeRec = cars.find(c => c.id === me.free_recommended);
+    let inner;
+    if (held) {
+      inner = `<div class="rule-row"><div>
+          <div class="lbl">Вы держите кар №${esc(held.number)} <span class="badge ${CAR_BADGE[held.status] || 'muted'}">${esc(held.status_title)}</span></div>
+          <div class="desc">место: ${esc(held.location || '—')} · заряд: ${esc(held.charge_title)}${held.has_key ? ' · ключ у вас' : ''}</div>
+        </div><div class="rule-input" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="cs-return">Вернул</button>
+          <button class="btn btn-sm btn-ghost" id="cs-handover">Передать</button>
+        </div></div>`;
+    } else if (freeRec) {
+      inner = `<div class="rule-row"><div>
+          <div class="lbl">Свободный кар: №${esc(freeRec.number)} · ${esc(freeRec.location || 'место не указано')}</div>
+          <div class="desc">${assigned ? `Закреплён за вами: №${esc(assigned.number)}. ` : ''}Взять кар можно, даже если он на зарядке.</div>
+        </div><div class="rule-input"><button class="btn btn-sm btn-accent" id="cs-take">Взял кар №${esc(freeRec.number)}</button></div></div>`;
+    } else {
+      inner = `<div class="hint" style="margin:0">Свободных каров нет — вы ничего не держите. Актуальный парк: раздел «Электрокары».</div>`;
+    }
+    if (assigned && assigned.id !== me.held) {
+      inner += `<div class="hint">Закреплённый за вами кар №${esc(assigned.number)} сейчас ${assigned.status === 'busy' ? `у ${esc(assigned.holder_name || 'другого')}` : assigned.status_title.toLowerCase()}</div>`;
+    }
+    host.innerHTML = `<h3 class="panel-title">Электрокар</h3>${inner}`;
+    const take = $('#cs-take'), ret = $('#cs-return'), ho = $('#cs-handover');
+    if (take) take.onclick = async () => {
+      try {
+        await api(`/api/cars/${freeRec.id}/take`, { method: 'POST', body: { ack_assigned: false } });
+        toast(`Кар №${freeRec.number} взят — ключ по умолчанию у вас`, 'ok');
+        loadMe();
+      } catch (e) {
+        if (e.payload?.interception) {
+          confirmDialog('Кар закреплён за другим', e.payload.message, async () => {
+            try {
+              await api(`/api/cars/${freeRec.id}/take`, { method: 'POST', body: { ack_assigned: true } });
+              toast(`Кар №${freeRec.number} взят, факт записан в историю`, 'ok');
+              loadMe();
+            } catch (e2) { toast(e2.message, 'err'); }
+          }, 'Всё равно взять', false);
+        } else toast(e.message, 'err');
+      }
+    };
+    if (ret) ret.onclick = () => carReturnModal(held, () => loadMe());
+    if (ho) ho.onclick = () => carHandoverModal(held, () => loadMe());
+  } catch {
+    host.innerHTML = `<h3 class="panel-title">Электрокар</h3><div class="hint" style="margin:0">Раздел недоступен</div>`;
+  }
 }
 
 async function loadMeSilently() {
