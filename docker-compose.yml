@@ -1,0 +1,20 @@
+# Запуск: docker compose up -d --build
+# Данные (SQLite) лежат в томе tt_data; для PostgreSQL замените DATABASE_URL и добавьте сервис db.
+services:
+  timetrack:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./data/timetrack.db
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      APP_TZ: ${APP_TZ:-Europe/Moscow}
+      TZ: ${APP_TZ:-Europe/Moscow}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+    volumes:
+      - tt_data:/srv/timetrack/data
+      - tt_templates:/srv/timetrack/templates   # фирменные бланки заявлений переживают пересборку
+volumes:
+  tt_data:
+  tt_templates:

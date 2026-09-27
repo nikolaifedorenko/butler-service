@@ -1,0 +1,14 @@
+# ── Ядро (обязательно) ────────────────────────────────────────────────────
+fastapi>=0.115
+uvicorn[standard]>=0.30
+SQLAlchemy>=2.0
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+openpyxl>=3.1
+python-docx>=1.1
+python-multipart>=0.0.9
+# bcrypt — для новых хешей паролей; если не соберётся, приложение работает
+# на pbkdf2-sha256 (см. app/security.py), поэтому ставим отдельно в run.sh
+#
+# PDF-движок (reportlab) НЕ обязателен: см. requirements-pdf.txt

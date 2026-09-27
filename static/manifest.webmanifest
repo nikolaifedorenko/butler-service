@@ -1,0 +1,19 @@
+{
+  "name": "Батлер Сервис — учёт рабочего времени",
+  "short_name": "Батлер Сервис",
+  "description": "Графики смен, отметки прихода/ухода и табель рабочего времени",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1520",
+  "theme_color": "#0f1520",
+  "lang": "ru",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%234f8cff'/%3E%3Cpath d='M256 128v128l96 64' stroke='white' stroke-width='42' fill='none' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
