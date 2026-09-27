@@ -20,7 +20,7 @@ from ..groups import GROUP_META, group_choices as group_choices_list, normalize_
 from ..names import suggest_genitive
 from ..models import (
     ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR, BankAdjustment, BlockAssignment,
-    Department, EmergencyContact, Employee, PositionHistory, ShiftType, Subdivision, User, utcnow,
+    Car, Department, EmergencyContact, Employee, PositionHistory, ShiftType, Subdivision, User, utcnow,
 )
 from ..security import hash_password
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
@@ -57,7 +57,20 @@ def _emp_dict(e: Employee, with_user: bool = False) -> dict:
     if with_user:
         data["username"] = e.user.username if e.user else None
         data["role"] = e.user.role if e.user else None
+    # закреплённый электрокар (для карточки сотрудника)
+    car = db_car_of(e.id)
+    data["assigned_car_id"] = car[0] if car else None
+    data["assigned_car_number"] = car[1] if car else ""
     return data
+
+
+def db_car_of(employee_id: int):
+    """(id, number) кара, закреплённого за сотрудником — без связи в ORM."""
+    from ..db import SessionLocal
+
+    with SessionLocal() as s:
+        c = s.scalar(select(Car).where(Car.assigned_to == employee_id))
+        return (c.id, c.number) if c else None
 
 
 def _guard_supervisor(principal: Principal, new_role: str, target_user: Optional[User]) -> None:
@@ -447,6 +460,10 @@ def dismiss_employee(employee_id: int, payload: DatedAction,
     emp.active = False
     if emp.user:
         emp.user.is_active = False
+    # При увольнении все закрепления электрокаров снимаются автоматически (ТЗ, ч.3)
+    for car in db.scalars(select(Car).where(Car.assigned_to == emp.id)):
+        car.assigned_to = None
+        car.note = (car.note + "; " if car.note else "") + "закрепление снято: увольнение"
     close_period(db, emp, until=since, note="увольнение")
     audit(db, principal, "employee_dismiss", f"employee:{emp.id}",
           {"since": since.isoformat(), "note": "дата считается последним рабочим днём"})

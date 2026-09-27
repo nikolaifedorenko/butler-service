@@ -93,6 +93,14 @@ def require_admin(principal: Principal = Depends(current_principal)) -> Principa
     return principal
 
 
+def require_supervisor(principal: Principal = Depends(current_principal)) -> Principal:
+    """Супервайзер и выше (supervisor / manager / admin) — закрытие и переоткрытие смен,
+    закрепление электрокаров, ручные операции над чужими карами."""
+    if principal.role not in (ROLE_ADMIN, ROLE_MANAGER, ROLE_SUPERVISOR):
+        raise HTTPException(status_code=403, detail="Недостаточно прав: раздел для супервайзера и старших")
+    return principal
+
+
 def audit(db: Session, principal: Optional[Principal], action: str, target: str = "", payload: Optional[dict] = None) -> None:
     """Запись в журнал аудита (без commit — вызывающий код сам коммитит)."""
     import json

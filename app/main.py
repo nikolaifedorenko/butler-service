@@ -11,8 +11,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import (auth_routes, docs_api, doublepay, employees, punches, schedule,
-                  settings_api, timesheet)
+from .api import (auth_routes, cars_api, docs_api, doublepay, employees, night_api,
+                  punches, schedule, settings_api, timesheet)
 from .config import settings
 from .db import Base, engine, SessionLocal
 from .deps import now_local
@@ -299,6 +299,41 @@ def _seed_statement_kinds() -> None:
         db.close()
 
 
+def _migrate_night_cars() -> None:
+    """Старым локальным БД докладываем таблицы ночных отчётов и электрокаров.
+
+    Новые таблицы создаёт Base.metadata.create_all, но в SQLite у create_all нет
+    if-not-exists для индексов на уже существующих таблицах — поэтому всё делаем
+    аккуратно, по inspect. Полноту схемы проверяет /api/selfcheck."""
+    from sqlalchemy import inspect as sa_inspect, text
+
+    insp = sa_inspect(engine)
+    with engine.begin() as con:
+        for idx in (
+            "CREATE INDEX IF NOT EXISTS ix_night_sections_report ON night_area_sections (report_id)",
+            "CREATE INDEX IF NOT EXISTS ix_night_items_section ON night_check_items (section_id)",
+            "CREATE INDEX IF NOT EXISTS ix_car_history_car_ts ON car_history (car_id, ts)",
+            "CREATE INDEX IF NOT EXISTS ix_photos_kind_ref ON photos (kind, ref_id)",
+        ):
+            try:
+                con.execute(text(idx))
+            except Exception:   # таблица ещё не создана — create_all разберётся сам
+                pass
+    # шаг «Проверка электрокаров» для старых открытых смен, где его не было
+    if insp.has_table("night_reports") and insp.has_table("night_area_sections"):
+        from .night import CAR_AREA_NAME
+
+        with engine.begin() as con:
+            con.execute(text("""
+                INSERT INTO night_area_sections (report_id, area_id, name, category, snapshot_json,
+                                                sort_order, status)
+                SELECT r.id, NULL, :name, 'cars', '[]', 900, 'free'
+                FROM night_reports r
+                WHERE NOT EXISTS (SELECT 1 FROM night_area_sections s
+                                  WHERE s.report_id = r.id AND s.category = 'cars')
+            """), {"name": CAR_AREA_NAME})
+
+
 def init_db() -> None:
     """Создать таблицы, прогнать миграцию и заполнить демо-данными при первом запуске."""
     Base.metadata.create_all(bind=engine)
@@ -307,6 +342,17 @@ def init_db() -> None:
     db = SessionLocal()
     try:
         seed_if_empty(db)
+    finally:
+        db.close()
+    _migrate_night_cars()
+    # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
+    from .night import sync_reports
+    from .photos import cleanup_photos
+
+    db = SessionLocal()
+    try:
+        sync_reports(db)
+        cleanup_photos(db)
     finally:
         db.close()
 
@@ -349,6 +395,8 @@ app.include_router(timesheet.router)
 app.include_router(settings_api.router)
 app.include_router(docs_api.router)
 app.include_router(doublepay.router)
+app.include_router(night_api.router)
+app.include_router(cars_api.router)
 
 
 @app.get("/api/selfcheck")
@@ -375,7 +423,10 @@ def selfcheck():
     tables = set(insp.get_table_names())
     for table in ("block_assignments", "position_history", "emergency_contacts",
                   "employment_periods", "bank_adjustments", "shift_revisions",
-                  "double_pay_days", "vip_double_pay"):
+                  "double_pay_days", "vip_double_pay",
+                  "night_areas", "checklist_items", "night_reports", "night_area_sections",
+                  "night_check_items", "night_interceptions", "car_locations", "cars",
+                  "car_history", "car_night_checks", "photos"):
         if table not in tables:
             missing.append(f"таблица {table}")
     for table, cols in required.items():

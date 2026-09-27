@@ -1,17 +1,7 @@
-# окружение и секреты
-.venv/
-.env
+# Compiled and build artifacts
 __pycache__/
 *.pyc
-.pytest_cache/
 
-# данные и логи
-timetrack.db
-timetrack.db-*
-server.log
-venv_build.log
-
-# артефакты инструментов
-tools/screens/
-timetrack.db.bak-*
-_backup/
+# Environment
+.env
+.env.local
