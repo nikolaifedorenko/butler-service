@@ -49,7 +49,7 @@ def init_db() -> None:
 
     db = SessionLocal()
     try:
-        sync_reports(db)
+        sync_reports(db, force=True)   # при старте — без троттлинга
         cleanup_photos(db)
     finally:
         db.close()

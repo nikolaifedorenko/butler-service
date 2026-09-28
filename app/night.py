@@ -94,9 +94,25 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
     return report
 
 
-def sync_reports(db: Session) -> dict:
+# sync_reports() дёргается на каждый запрос раздела (в т.ч. на каждый тик поллинга),
+# а работа у него «разовая»: досоздать пропущенные смены и закрыть наступившие.
+# Поэтому внутри процесса повторяем не чаще раза в интервал — иначе каждый запрос
+# платит за несколько выборок и, на SQLite, конкурирует за блокировку с отметками.
+SYNC_INTERVAL_SECONDS = 120
+_last_sync: dict[str, float] = {"ts": 0.0}
+
+
+def sync_reports(db: Session, *, force: bool = False) -> dict:
     """Обслуживание отчётов при обращении к разделу / при старте сервера:
-    досоздать пропущенные смены (сервер был выключен) и закрыть наступившие."""
+    досоздать пропущенные смены (сервер был выключен) и закрыть наступившие.
+
+    Повторные вызовы чаще SYNC_INTERVAL_SECONDS пропускаются (force=True — пропустить
+    ограничение: используется при старте сервера и в тестах)."""
+    import time
+
+    now_ts = time.monotonic()
+    if not force and now_ts - _last_sync["ts"] < SYNC_INTERVAL_SECONDS:
+        return {"created": [], "closed": [], "skipped": True}
     created: list[str] = []
     closed: list[str] = []
     today = current_shift_date()
@@ -117,6 +133,7 @@ def sync_reports(db: Session) -> dict:
             closed.append(rep.date.isoformat())
     if created or closed:
         db.commit()
+    _last_sync["ts"] = now_ts
     return {"created": created, "closed": closed}
 
 

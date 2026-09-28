@@ -106,7 +106,7 @@ def test_sync_reports_zakryvaet_nastupivshii_dedlain(freeze, db):
 
         with freeze(UTC_AFTER_DEADLINE):
             before = {d for (d,) in db.execute(select(NightReport.date))}
-            sync_reports(db)
+            sync_reports(db, force=True)   # force: в тестах троттлинг не нужен
             after = {d for (d,) in db.execute(select(NightReport.date))}
             created.update(after - before)
 
@@ -156,6 +156,7 @@ def test_today_report_dostupen_vo_vremya_smeny(freeze, manager_client, db):
     try:
         with freeze(UTC_DURING_SHIFT):
             today_shift = current_shift_date()
+            sync_reports(db, force=True)   # маршрут троттлит sync_reports — создаём смену сами
             r = manager_client.get("/api/night/today")
             assert r.status_code == 200, r.text
             data = r.json()

@@ -128,7 +128,14 @@ async function main() {
     const t0 = Date.now();
     let threw = null;
     try { window.navigate(v); } catch (e) { threw = e; }
-    await sleep(2500);
+    /* ждём фактической отрисовки: раздел считается готовым, когда в нём появился текст
+       и исчез плейсхолдер «Загрузка…» (фиксированная пауза давала ложные срабатывания,
+       если предыдущий раздел держал сервер занятым) */
+    for (let i = 0; i < 60; i++) {
+      await sleep(200);
+      const t = ($(`#view-${v}`)?.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t && !t.includes('Загрузка…')) break;
+    }
     const el = $(`#view-${v}`);
     const visText = n => [...n.querySelectorAll('*')].filter(e => !e.closest('.hidden') && !e.classList.contains('hidden'))
       .map(e => e.childNodes.length && [...e.childNodes].some(c => c.nodeType === 3 && c.textContent.trim()) ? c0(e) : '').join(' ');
@@ -139,7 +146,8 @@ async function main() {
     if (threw) { failed++; console.log(`  ${v.padEnd(11)} ❌ navigate выбросил: ${threw.message}`); continue; }
     if (!body) empty++;
     console.log(`  ${v.padEnd(11)} ${String(body.length).padStart(5)} симв | узлов ${String(el?.querySelectorAll('*').length || 0).padStart(4)} | кнопок ${String(btnVisible).padStart(3)} | active=${el?.classList.contains('active')} | ${Date.now() - t0} мс${body ? '' : '   ← ПУСТО'}`);
-    if (body) console.log(`              текст: ${body.slice(0, 140)}`);
+    if (body) console.log(`              текст: ${body.slice(0, process.env.UI_TEXT || 140)}`);
+    if (process.env.UI_HTML) console.log(`              html: ${(el?.innerHTML || '').replace(/\s+/g,' ').slice(0, 700)}`);
     newErrs.slice(0, 4).forEach(e => console.log(`              ⚠ ${e.slice(0, 200)}`));
   }
 
