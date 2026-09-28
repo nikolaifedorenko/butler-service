@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ..auth import Principal, audit, current_principal, require_manager
+from ..auth import Principal, audit, can_manage_user, current_principal, require_manager
 from ..base_schedule import dump_pattern, validate_pattern
 from ..db import get_db
 from ..deps import local_date, slugify_username
@@ -80,15 +80,12 @@ def cars_by_employee(db: Session, employee_ids: list[int]) -> dict[int, Car]:
 
 
 def _guard_supervisor(principal: Principal, new_role: str, target_user: Optional[User]) -> None:
-    """Супервайзер может управлять только обычными пользователями (employee)."""
-    if principal.role != ROLE_SUPERVISOR:
-        return
-    if target_user is not None and target_user.role != ROLE_EMPLOYEE:
-        raise HTTPException(status_code=403,
-                            detail="Супервайзер не может изменять или удалять supervisor, manager и admin")
-    if new_role != ROLE_EMPLOYEE:
-        raise HTTPException(status_code=403,
-                            detail="Супервайзер может создавать пользователей только с ролью «employee»")
+    """Супервайзер может управлять только обычными пользователями (employee).
+
+    Правило одно на всё приложение и живёт в app/auth.py:can_manage_user —
+    здесь лишь тонкая обёртка, чтобы не переписывать все места вызова.
+    """
+    can_manage_user(principal, target_user, new_role)
 
 
 class ContactIn(BaseModel):

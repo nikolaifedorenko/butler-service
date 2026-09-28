@@ -2692,9 +2692,31 @@ async function loadSettings() {
     } catch (e) { toast(e.message, 'err'); }
   };
   $('#s-recalc').onclick = async () => {
+    /* Тяжёлый пересчёт запускаем в фоне и опрашиваем статус: иначе на большом штате
+       запрос висит секундами и упирается в таймаут прокси. */
+    const btn = $('#s-recalc');
     try {
-      const r = await api('/api/settings/recalc-all', { method: 'POST' });
-      toast(`Пересчитано ${r.recalculated_days} ${plural(r.recalculated_days, 'день', 'дня', 'дней')}`, 'ok');
+      const r = await api('/api/settings/recalc-all?background=1', { method: 'POST' });
+      if (!r.started) { toast(r.detail || 'Пересчёт уже запущен', 'warn'); return; }
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = 'Пересчёт…';
+      toast('Пересчёт табеля запущен в фоне', 'ok');
+      const tick = setInterval(async () => {
+        try {
+          const st = await api('/api/settings/recalc-status', { silent: true });
+          if (st.running) { btn.textContent = 'Пересчёт…'; return; }
+          clearInterval(tick);
+          btn.disabled = false; btn.textContent = label;
+          const job = st.current || (st.jobs || [])[0];
+          if (job?.status === 'done') {
+            toast(`Пересчитано ${job.days} ${plural(job.days, 'день', 'дня', 'дней')}`, 'ok');
+            if (state.view === 'timesheet') loadTimesheet();
+          } else if (job?.status === 'error') {
+            toast('Пересчёт завершился ошибкой: ' + (job.error || 'неизвестно'), 'err');
+          }
+        } catch { clearInterval(tick); btn.disabled = false; btn.textContent = label; }
+      }, 1500);
     } catch (e) { toast(e.message, 'err'); }
   };
   $('#s-add-shift').onclick = () => shiftModal(null);

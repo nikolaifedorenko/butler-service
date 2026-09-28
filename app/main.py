@@ -402,45 +402,33 @@ app.include_router(photos_api.router)
 
 @app.get("/api/selfcheck")
 def selfcheck():
-    """Самодиагностика: хватает ли схеме БД колонок/таблиц текущей версии кода."""
+    """Самодиагностика: соответствует ли схема БД моделям текущего кода.
+
+    Список таблиц и колонок берётся из Base.metadata (models.py) — единственного
+    источника правды. Раньше здесь был второй рукописный список, который уже
+    разошёлся с migrate_db(): шесть добавленных колонок (включая users.token_version)
+    не проверялись, и selfcheck не мог заметить отставание схемы.
+    """
     from sqlalchemy import inspect
 
-    from .models import Base  # noqa: F401
+    from .models import Base
 
     insp = inspect(engine)
+    db_tables = set(insp.get_table_names())
     missing: list[str] = []
-    required = {
-        "employees": ["telegram", "email", "dismissed_at", "tab_number", "hired_at",
-                      "schedule_group", "group_color", "deleted_at", "schedule_pattern",
-                      "nationality", "subdivision", "full_name_genitive"],
-        "timesheet_rows": ["pay_ot_day", "pay_ot_night", "late_hours", "early_hours", "ot_note",
-                           "gap_hours", "auth_hours", "pay_ot_day2", "pay_ot_night2",
-                           "double_reason"],
-        "shift_types": ["deduct_from_bank", "doc_type", "archived_at"],
-        "schedule_entries": ["partial_shift_id", "from_time", "until_time"],
-        "block_assignments": ["pattern_json"],
-        "users": ["role"],
-    }
-    tables = set(insp.get_table_names())
-    for table in ("block_assignments", "position_history", "emergency_contacts",
-                  "employment_periods", "bank_adjustments", "shift_revisions",
-                  "double_pay_days", "vip_double_pay",
-                  "night_areas", "checklist_items", "night_reports", "night_area_sections",
-                  "night_check_items", "night_interceptions", "car_locations", "cars",
-                  "car_history", "car_night_checks", "photos"):
-        if table not in tables:
-            missing.append(f"таблица {table}")
-    for table, cols in required.items():
-        if table not in tables:
-            missing.append(f"таблица {table}")
+    for table in Base.metadata.sorted_tables:
+        if table.name not in db_tables:
+            missing.append(f"таблица {table.name}")
             continue
-        have = {c["name"] for c in insp.get_columns(table)}
-        for col in cols:
-            if col not in have:
-                missing.append(f"{table}.{col}")
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for column in table.columns:
+            if column.name not in have:
+                missing.append(f"{table.name}.{column.name}")
     return {
         "ok": not missing,
         "missing": missing,
+        "tables_expected": len(Base.metadata.sorted_tables),
+        "tables_found": len(db_tables & {t.name for t in Base.metadata.sorted_tables}),
         "app": settings.app_name,
         "hint": "" if not missing else
                 "Схема БД старее кода: остановите сервер и запустите снова (миграция применится при старте). "

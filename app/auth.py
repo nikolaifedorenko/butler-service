@@ -101,6 +101,29 @@ def require_supervisor(principal: Principal = Depends(current_principal)) -> Pri
     return principal
 
 
+def can_manage_user(principal: Principal, target_user: Optional[User], new_role: Optional[str] = None) -> None:
+    """Правило управления учётными записями: супервайзер работает только с сотрудниками.
+
+    Живёт в слое доступа (а не в одном из API-модулей), чтобы любое новое место,
+    где создаются или правятся пользователи, применяло одно и то же правило:
+      * admin / manager — без ограничений;
+      * supervisor — не создаёт/изменяет/удаляет supervisor, manager, admin;
+      * employee — не управляет учётными записями вовсе.
+
+    Бросает HTTPException(403); возвращает None, если операция разрешена.
+    """
+    if principal.is_admin or principal.role == ROLE_MANAGER:
+        return
+    if principal.role != ROLE_SUPERVISOR:
+        raise HTTPException(status_code=403, detail="Недостаточно прав: управление учётными записями")
+    if target_user is not None and target_user.role != ROLE_EMPLOYEE:
+        raise HTTPException(status_code=403,
+                            detail="Супервайзер не может изменять или удалять supervisor, manager и admin")
+    if new_role is not None and new_role != ROLE_EMPLOYEE:
+        raise HTTPException(status_code=403,
+                            detail="Супервайзер может создавать пользователей только с ролью «employee»")
+
+
 def audit(db: Session, principal: Optional[Principal], action: str, target: str = "", payload: Optional[dict] = None) -> None:
     """Запись в журнал аудита (без commit — вызывающий код сам коммитит)."""
     import json
