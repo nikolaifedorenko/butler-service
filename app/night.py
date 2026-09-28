@@ -22,8 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .deps import now_local
-from .models import (Car, ChecklistItem, NightArea, NightAreaSection, NightCheckItem,
-                     NightInterception, NightReport)
+from .models import Car, ChecklistItem, NightArea, NightAreaSection, NightCheckItem, NightInterception, NightReport
 
 SHIFT_START = dt.time(20, 0)   # начало ночной смены
 SHIFT_END = dt.time(8, 0)      # автозакрытие
@@ -177,7 +176,7 @@ def section_dict(sec: NightAreaSection, *, with_items: bool = True) -> dict:
 
 def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
     """Снимок обхода электрокаров за смену + перехваты (нужны и API, и выгрузке DOCX)."""
-    from .models import CarNightCheck   # локально — не раздуваем импорт модуля
+    from .models import CarNightCheck  # локально — не раздуваем импорт модуля
 
     out = []
     checks = list(db.scalars(select(CarNightCheck).where(CarNightCheck.report_id == rep.id)

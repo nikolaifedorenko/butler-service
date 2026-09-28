@@ -19,9 +19,8 @@ from sqlalchemy.orm import Session
 
 from .base_schedule import effective_entry_shift, partial_window
 from .deps import local_date
-from .models import (BankAdjustment, Employee, Punch, ScheduleEntry, Setting, ShiftType,
-                     TimesheetRow, utcnow)
-from .shiftrev import ShiftCatalog, ShiftView, view_at
+from .models import BankAdjustment, Employee, Punch, ScheduleEntry, Setting, ShiftType, TimesheetRow, utcnow
+from .shiftrev import ShiftCatalog, view_at
 
 # ──────────────────────────── правила расчёта ────────────────────────────
 DEFAULT_RULES = {
@@ -372,7 +371,6 @@ def day_pieces(db: Session, emp: Employee, date: dt.date, rules: dict,
     for sess in sessions:
         raw_in = sess["in"].ts
         raw_out = sess["out"].ts if sess["out"] else None
-        raw_out_orig = raw_out
         auto_closed = False
         if raw_out is None:
             host_day = None
@@ -386,7 +384,6 @@ def day_pieces(db: Session, emp: Employee, date: dt.date, rules: dict,
             host_we = host_segs[-1][1] if host_segs else plans.get(host_day, {}).get("we")
             if host_we and rules["auto_close_missing_out"]:
                 raw_out = max(host_we, raw_in)
-                raw_out_orig = None
                 auto_closed = True
                 warnings.append(f"Нет отметки «Ушёл с работы» — смена закрыта плановым временем {raw_out:%H:%M}")
             else:
@@ -632,7 +629,7 @@ def compute_day(employee: Employee, date: dt.date, entry: Optional[ScheduleEntry
             if seg[1] - cov[-1][1] > grace:
                 early_h += (seg[1] - cov[-1][1]).total_seconds() / 3600.0
                 early_ref = early_ref or (cov[-1][1], seg[1])
-            for (a1, b1), (a2, _) in zip(cov, cov[1:]):
+            for (_, b1), (a2, _) in zip(cov, cov[1:], strict=False):
                 if a2 - b1 > min_gap:
                     inner_gaps.append((b1, a2))
 

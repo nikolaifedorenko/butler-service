@@ -8,23 +8,33 @@
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
-from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, require_manager, require_supervisor, current_principal
+from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
 from ..db import get_db
-from ..deps import local_date, now_local
-from ..models import (ChecklistItem, NightArea, NightAreaSection, NightCheckItem,
-                      NightInterception, NightReport, Setting, User)
-from ..night import (CAR_AREA_NAME, close_deadline, current_shift_date, ensure_report,
-                     finalize_report, report_dict, section_dict, sync_reports)
+from ..deps import now_local
+from ..models import (
+    ChecklistItem,
+    NightArea,
+    NightAreaSection,
+    NightCheckItem,
+    NightInterception,
+    NightReport,
+    Setting,
+)
+from ..night import (
+    current_shift_date,
+    finalize_report,
+    report_dict,
+    section_dict,
+    sync_reports,
+)
 from ..photos import photos_of, save_photo
 
 router = APIRouter(prefix="/api/night", tags=["night"])

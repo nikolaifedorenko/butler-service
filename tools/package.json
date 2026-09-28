@@ -1,0 +1,13 @@
+{
+  "name": "butler-service-ui-smoke",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Смоук интерфейса в jsdom: tools/ui_harness.mjs (без браузера, для CI)",
+  "type": "module",
+  "scripts": {
+    "smoke": "./run_ui_check.sh"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

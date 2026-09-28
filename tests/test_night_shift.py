@@ -13,8 +13,15 @@ from __future__ import annotations
 import datetime as dt
 
 from app.deps import now_local
-from app.night import (SHIFT_END, SHIFT_START, close_deadline, current_shift_date,
-                       ensure_report, finalize_report, sync_reports)
+from app.night import (
+    SHIFT_END,
+    SHIFT_START,
+    close_deadline,
+    current_shift_date,
+    ensure_report,
+    finalize_report,
+    sync_reports,
+)
 
 # смена, на которой проверяем: заведомо вне окна автобэкапа sync_reports (31 день),
 # чтобы тесты не пересекались с демо-данными текущего месяца
@@ -37,8 +44,8 @@ def _cleanup(db, dates: set[dt.date]) -> None:
 
 def test_shift_boundaries_are_consistent():
     """12:00 ночи принадлежит смене, начавшейся накануне в 20:00."""
-    assert SHIFT_START == dt.time(20, 0)
-    assert SHIFT_END == dt.time(8, 0)
+    assert dt.time(20, 0) == SHIFT_START
+    assert dt.time(8, 0) == SHIFT_END
     assert close_deadline(SHIFT_DATE) == dt.datetime(2026, 5, 11, 8, 0)
 
 

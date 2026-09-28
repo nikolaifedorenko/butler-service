@@ -11,12 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_admin, require_manager
+from ..auth import Principal, audit, require_manager
+from ..base_schedule import DEFAULT_BASE, load_base_config, save_base_config
 from ..db import SessionLocal, get_db
 from ..deps import local_date, now_local
-from ..models import Employee, Punch, ScheduleEntry, TimesheetRow, Setting, User
-from ..base_schedule import DEFAULT_BASE, load_base_config, save_base_config
 from ..doc_templates import load_doc_templates, save_doc_templates
+from ..models import Employee, Punch, ScheduleEntry, Setting, TimesheetRow, User
 from ..timesheet import DEFAULT_RULES, load_rules, rule_options
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])

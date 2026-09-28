@@ -6,8 +6,8 @@ from pathlib import Path
 
 import httpx
 from docx import Document
-from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt
 from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:8000"

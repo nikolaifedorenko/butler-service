@@ -17,23 +17,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager
-from ..base_schedule import (BlockIndex, base_shift, load_base_config, parse_pattern,
-                             validate_pattern)
+from ..base_schedule import BlockIndex, base_shift, load_base_config, parse_pattern, validate_pattern
 from ..db import get_db
 from ..deps import WD_SHORT, month_name, now_local
 from ..doublepay import SCOPE_TITLES, calendar_map
-from ..employment import (employed_on, employed_ranges, ensure_periods, is_employed,
-                          periods_of, ranges_from_periods)
-from ..shiftrev import ShiftCatalog
+from ..employment import employed_on, ensure_periods, is_employed, periods_of, ranges_from_periods
 from ..factview import build_fact_map
 from ..groups import group_index, normalize_group, sorted_groups
-from ..models import (BlockAssignment, Employee, EmploymentPeriod, ScheduleEntry, ShiftType,
-                      TimesheetRow, utcnow)
+from ..models import BlockAssignment, Employee, EmploymentPeriod, ScheduleEntry, ShiftType, TimesheetRow, utcnow
 from ..names import suggest_genitive
 from ..schedule_patterns import pattern_days, pattern_list
-from ..shiftrev import ShiftView
-from ..timesheet import (entry_shift, gap_hours, load_rules, recalc_day, recalc_range,
-                         shift_window)
+from ..shiftrev import ShiftCatalog, ShiftView
+from ..timesheet import entry_shift, gap_hours, load_rules, recalc_day, recalc_range, shift_window
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 

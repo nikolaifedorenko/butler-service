@@ -125,6 +125,7 @@ api.close()
 
 # жёсткая уборка тестовой смены из архива
 import sqlite3
+
 con = sqlite3.connect("timetrack.db")
 con.execute("DELETE FROM shift_revisions WHERE shift_type_id=?", (shift_id,))
 con.execute("DELETE FROM shift_types WHERE id=?", (shift_id,))

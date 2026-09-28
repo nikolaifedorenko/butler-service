@@ -1,0 +1,108 @@
+name: CI
+
+# Минимальный CI: линтер, тесты, смоук интерфейса, сверка контракта фронт↔бэк,
+# согласованность версий статики и лок-файла, сборка Docker-образа.
+#
+# Почему это важно именно здесь: в проекте долгое время не было ни git-истории,
+# ни проверок — регрессия (отсутствующие loadNight/loadCars) уехала в main и
+# оставила интерфейс пустым. Все проверки ниже ловят такой класс ошибок.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Python ${{ matrix.python-version }}: ruff + pytest
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install ruff
+
+      - name: Линтер (ruff)
+        run: python -m ruff check .
+
+      - name: Тесты
+        run: python -m pytest tests/ -q
+
+      - name: Версии статики согласованы (index.html ↔ sw.js)
+        run: python tools/bump_version.py --check
+
+      - name: Контракт фронтенд ↔ API
+        run: python tools/check_api_contract.py
+
+      - name: Лок-файл зависимостей не разошёлся
+        if: matrix.python-version == '3.11'
+        run: python tools/freeze_requirements.py --check
+
+      - name: Самодиагностика схемы (/api/selfcheck)
+        run: |
+          DATABASE_URL="sqlite:///./ci_selfcheck.db" SECRET_KEY="ci-only-not-a-secret" \
+          python -c "
+          from fastapi.testclient import TestClient
+          from app.main import app, init_db
+          init_db()
+          data = TestClient(app).get('/api/selfcheck').json()
+          assert data['ok'], data['missing']
+          print('selfcheck ok:', data['tables_found'], 'таблиц из', data['tables_expected'])
+          "
+
+  frontend:
+    name: JavaScript: синтаксис + смоук интерфейса
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Синтаксис всех скриптов интерфейса
+        run: |
+          for f in static/js/*.js static/sw.js; do
+            echo "node --check $f"; node --check "$f";
+          done
+
+      - name: Зависимости (python + jsdom)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          cd tools && npm install --no-audit --no-fund jsdom
+
+      - name: Смоук интерфейса (все разделы, две роли)
+        run: |
+          ./tools/run_ui_check.sh 8199 gromova
+          ./tools/run_ui_check.sh 8198 ivanov
+
+  docker:
+    name: Docker-образ собирается
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка
+        run: docker build -t butler-service:ci .

@@ -15,10 +15,9 @@ from sqlalchemy.orm import Session
 from ..auth import Principal, audit, current_principal, require_manager
 from ..db import get_db
 from ..deps import local_date, now_local
-from ..models import Employee, Punch, ScheduleEntry, ShiftType, TimesheetRow, utcnow
 from ..employment import employed_on, ensure_periods, periods_of
-from ..timesheet import (WINDOW_AFTER_H, WINDOW_BEFORE_H, bank_as_of, entry_shift, load_rules,
-                         recalc_day, shift_window)
+from ..models import Employee, Punch, ScheduleEntry, ShiftType, TimesheetRow
+from ..timesheet import WINDOW_AFTER_H, WINDOW_BEFORE_H, bank_as_of, entry_shift, load_rules, recalc_day, shift_window
 
 router = APIRouter(prefix="/api/punches", tags=["punches"])
 
@@ -335,7 +334,6 @@ def onwork(principal: Principal = Depends(current_principal), db: Session = Depe
     employees = db.scalars(select(Employee).where(
         Employee.deleted_at.is_(None), Employee.active.is_(True))).all()
     emp_ids = [e.id for e in employees]
-    by_id = {e.id: e for e in employees}
 
     punches = db.scalars(select(Punch).where(
         Punch.employee_id.in_(emp_ids), Punch.ts >= since).order_by(Punch.ts)).all() if emp_ids else []
@@ -516,7 +514,6 @@ def attendance(date: Optional[dt.date] = None, principal: Principal = Depends(re
         if y_shift is None:
             y_shift = base_shift(db, emp, day - dt.timedelta(days=1), base_cfg)
         y_start, y_end = shift_window(y_shift, day - dt.timedelta(days=1), rules) if y_shift else (None, None)
-        y_row = ts_rows.get((emp.id, day - dt.timedelta(days=1)))
         night_ongoing = bool(y_start and y_end and y_end > now and y_shift and y_shift.overnight
                              and (not p_start or now < p_start))
 

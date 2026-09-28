@@ -13,8 +13,6 @@
 """
 from __future__ import annotations
 
-import pytest
-
 RETURN_FORM = {"by_name": "", "location": "Парковка у главного входа", "charge": "half",
                "canopy": "true", "condition": "ok", "trash": "false", "clean": "true",
                "on_charge": "false", "comment": ""}

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import settings

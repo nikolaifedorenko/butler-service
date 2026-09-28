@@ -19,14 +19,22 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, require_manager
 from ..db import get_db
-from ..doc_templates import load_doc_templates
 from ..doc_render import (
-    CODE_RE, PLACEHOLDER_HELP, build_sample_docx, build_values, delete_template,
-    hours_text, pdf_available, pdf_status, render_docx, save_template,
-    scan_placeholders, template_path,
+    CODE_RE,
+    PLACEHOLDER_HELP,
+    build_sample_docx,
+    build_values,
+    delete_template,
+    pdf_available,
+    pdf_status,
+    render_docx,
+    save_template,
+    scan_placeholders,
+    template_path,
 )
-from ..pdf_render import docx_to_pdf
+from ..doc_templates import load_doc_templates
 from ..models import Employee, ShiftType, StatementKind
+from ..pdf_render import docx_to_pdf
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 

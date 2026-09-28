@@ -18,8 +18,8 @@ if "DATABASE_URL" not in os.environ:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.main import app, init_db  # noqa: E402
 from app.deps import local_date  # noqa: E402
+from app.main import app, init_db  # noqa: E402
 from app.timesheet import settle_overtime  # noqa: E402
 
 init_db()
@@ -181,7 +181,7 @@ class TestDoublePay(unittest.TestCase):
         self.assertEqual(t["debit"], 4.0)
         # 4 ч оплаты съедают 2 ч ДЯ2: осталось 6 ч ДЯ2 (= 12 одинарных)
         self.assertEqual((t["pay_dya2"], t["pay_total"]), (6.0, 12.0))
-        log_double = [l for l in row["log"] if l["from"] == "ДЯ2"]
+        log_double = [x for x in row["log"] if x["from"] == "ДЯ2"]
         self.assertTrue(log_double)
         self.assertEqual(log_double[0]["hours"], 4.0)          # снято оплаты (одинарных)
         self.assertEqual(log_double[0]["credit_hours"], 2.0)   # снято часов кода ДЯ2
@@ -201,7 +201,7 @@ class TestDoublePay(unittest.TestCase):
         self.assertEqual(t["debit"], 4.0)
         # списание 4 ч полностью легло на обычные ДЯ раннего дня (1=1); двойные не тронуты
         self.assertEqual((t["pay_dya"], t["pay_dya2"], t["pay_total"]), (0.0, 2.0, 4.0))
-        log_reg = [l for l in row["log"] if l["from"] == "ДЯ"]
+        log_reg = [x for x in row["log"] if x["from"] == "ДЯ"]
         self.assertTrue(log_reg)
         self.assertEqual(log_reg[0]["credit_hours"], 4.0)      # 1=1
         self.assertEqual(log_reg[0]["credit_date"], reg.isoformat())
@@ -278,7 +278,7 @@ class TestDoublePay(unittest.TestCase):
         self.assertEqual(totals["debt_out"], 0.0)
         self.assertEqual(totals["pay_dya2"], 4.0)     # долг 4 ч оплаты снял 2 ч ДЯ2
         self.assertEqual(totals["pay_total"], 8.0)
-        dbl_log = [l for l in log if l["from"] == "ДЯ2"]
+        dbl_log = [x for x in log if x["from"] == "ДЯ2"]
         self.assertEqual((dbl_log[0]["hours"], dbl_log[0]["credit_hours"]), (4.0, 2.0))
 
     # ── 8. юнит: порядок списания — обычные часы раньше двойных ──
@@ -301,7 +301,7 @@ class TestDoublePay(unittest.TestCase):
         text = r.content.decode("utf-8-sig")
         self.assertIn("ДЯ2", text.splitlines()[0])
         self.assertIn("Двойнов Дбл Двойнович", text)
-        line = [l for l in text.splitlines() if l.startswith("Двойнов")][0]
+        line = [x for x in text.splitlines() if x.startswith("Двойнов")][0]
         self.assertIn("ДЯ2 6", line)
 
 

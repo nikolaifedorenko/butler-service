@@ -81,7 +81,7 @@ class DoubleContext:
         self._vip = vip_by_emp
 
     @classmethod
-    def load(cls, db: Session, start: dt.date, end: dt.date) -> "DoubleContext":
+    def load(cls, db: Session, start: dt.date, end: dt.date) -> DoubleContext:
         cal = {d.date: (d.scope or SCOPE_ALL) for d in db.scalars(select(DoublePayDay).where(
             DoublePayDay.date >= start, DoublePayDay.date <= end))}
         vip_by_emp: dict[int, list[VipDoublePay]] = {}

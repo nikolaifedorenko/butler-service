@@ -108,7 +108,7 @@ class ShiftCatalog:
             items.sort(key=lambda r: r.valid_from)
 
     @classmethod
-    def load(cls, db: Session) -> "ShiftCatalog":
+    def load(cls, db: Session) -> ShiftCatalog:
         return cls(list(db.scalars(select(ShiftType))), list(db.scalars(select(ShiftRevision))))
 
     def by_code(self, code: str) -> Optional[ShiftType]:

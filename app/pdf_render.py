@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import shutil
@@ -61,9 +62,9 @@ def _register_fonts() -> tuple[bool, str]:
     if _font_ready:
         return True, ""
     try:
+        from reportlab.lib.fonts import addMapping
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.lib.fonts import addMapping
     except ImportError:
         _font_error = ("Не установлен PDF-движок. Поставьте LibreOffice (brew install --cask libreoffice) "
                        "или выполните: pip install -r requirements-pdf.txt. "
@@ -176,10 +177,8 @@ def _para_markup(p, default_size: float) -> tuple[str, float, str, bool]:
         bold = bool(run.bold)
         italic = bool(run.italic)
         if run.font and run.font.size is not None:
-            try:
+            with contextlib.suppress(Exception):
                 size = float(run.font.size.pt)
-            except Exception:
-                pass
         if run.underline:
             chunk = f"<u>{chunk}</u>"
         if bold and italic:
@@ -215,10 +214,8 @@ def _run_look(p, default_size: float = 9.0) -> tuple[float, bool, str | None]:
         if font is None:
             continue
         if size is None and font.size is not None:
-            try:
+            with contextlib.suppress(Exception):
                 size = max(4.0, min(20.0, float(font.size.pt)))
-            except Exception:
-                pass
         if not bold and font.bold:
             bold = True
         if color is None:
@@ -252,9 +249,16 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph,
-                                        SimpleDocTemplate, Spacer, Table as RLTable,
-                                        TableStyle)
+        from reportlab.platypus import (
+            BaseDocTemplate,
+            Frame,
+            PageTemplate,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            TableStyle,
+        )
+        from reportlab.platypus import Table as RLTable
     except ImportError:
         return None
 
@@ -330,11 +334,9 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
                         shd = tc_pr.find(qn("w:shd"))
                         fill = shd.get(qn("w:fill")) if shd is not None else None
                         if fill and fill.lower() not in ("auto", "ffffff"):
-                            try:
+                            with contextlib.suppress(Exception):
                                 cell_styles.append(("BACKGROUND", (c_i, r_i), (c_i, r_i),
                                                     colors.HexColor("#" + fill)))
-                            except Exception:
-                                pass
                 rows.append(cells)
             if not rows:
                 continue

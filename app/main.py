@@ -1,20 +1,31 @@
 """Точка входа FastAPI: роутеры API + раздача веб-интерфейса (SPA/PWA)."""
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
-from pathlib import Path
-
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import (auth_routes, cars_api, docs_api, doublepay, employees, night_api,
-                  photos_api, punches, schedule, settings_api, timesheet)
+from .api import (
+    auth_routes,
+    cars_api,
+    docs_api,
+    doublepay,
+    employees,
+    night_api,
+    photos_api,
+    punches,
+    schedule,
+    settings_api,
+    timesheet,
+)
 from .config import settings
-from .db import Base, engine, SessionLocal
+from .db import Base, SessionLocal, engine
 from .deps import now_local
 from .seed import seed_if_empty
 
@@ -37,7 +48,6 @@ def migrate_db() -> None:
       * дни двойной оплаты (производственный календарь) и периоды ВИП-гостей:
         таблицы double_pay_days / vip_double_pay и колонки ДЯ2/ДН2 в табеле.
     """
-    import json
 
     from sqlalchemy import inspect, text
 
@@ -305,7 +315,8 @@ def _migrate_night_cars() -> None:
     Новые таблицы создаёт Base.metadata.create_all, но в SQLite у create_all нет
     if-not-exists для индексов на уже существующих таблицах — поэтому всё делаем
     аккуратно, по inspect. Полноту схемы проверяет /api/selfcheck."""
-    from sqlalchemy import inspect as sa_inspect, text
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
 
     insp = sa_inspect(engine)
     with engine.begin() as con:
@@ -315,10 +326,9 @@ def _migrate_night_cars() -> None:
             "CREATE INDEX IF NOT EXISTS ix_car_history_car_ts ON car_history (car_id, ts)",
             "CREATE INDEX IF NOT EXISTS ix_photos_kind_ref ON photos (kind, ref_id)",
         ):
-            try:
+            # таблица ещё не создана — create_all разберётся сам
+            with contextlib.suppress(Exception):
                 con.execute(text(idx))
-            except Exception:   # таблица ещё не создана — create_all разберётся сам
-                pass
     # шаг «Проверка электрокаров» для старых открытых смен, где его не было
     if insp.has_table("night_reports") and insp.has_table("night_area_sections"):
         from .night import CAR_AREA_NAME

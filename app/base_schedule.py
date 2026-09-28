@@ -138,7 +138,7 @@ class BlockIndex:
         self._by_emp = by_emp
 
     @classmethod
-    def load(cls, db: Session, emp_ids: Optional[list[int]] = None) -> "BlockIndex":
+    def load(cls, db: Session, emp_ids: Optional[list[int]] = None) -> BlockIndex:
         if emp_ids is not None and not emp_ids:
             return cls({})
         stmt = select(BlockAssignment)
@@ -147,7 +147,7 @@ class BlockIndex:
         return cls.from_assignments(db.scalars(stmt))
 
     @classmethod
-    def from_assignments(cls, assignments) -> "BlockIndex":
+    def from_assignments(cls, assignments) -> BlockIndex:
         by_emp: dict[int, list[BlockAssignment]] = {}
         for a in assignments:
             by_emp.setdefault(a.employee_id, []).append(a)

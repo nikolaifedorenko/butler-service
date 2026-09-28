@@ -19,12 +19,28 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
-from ..cars import (ACTION_TITLES, CarInterceptAssigned, CarOpError, STATUS_TITLES,
-                    add_location, assign_employee, car_dict, create_car, edit_car,
-                    find_free_car, get_car, give_car, handover_car, list_locations,
-                    return_car, set_status, take_car, update_location)
+from ..cars import (
+    ACTION_TITLES,
+    STATUS_TITLES,
+    CarInterceptAssigned,
+    CarOpError,
+    add_location,
+    assign_employee,
+    car_dict,
+    create_car,
+    edit_car,
+    find_free_car,
+    get_car,
+    give_car,
+    handover_car,
+    list_locations,
+    return_car,
+    set_status,
+    take_car,
+    update_location,
+)
 from ..db import get_db
-from ..models import CarHistory, Employee
+from ..models import CarHistory
 from ..photos import photos_of
 
 router = APIRouter(prefix="/api/cars", tags=["cars"])

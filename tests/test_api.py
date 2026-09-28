@@ -102,7 +102,6 @@ class TestApi(unittest.TestCase):
         self.assertGreaterEqual(r.json()["changed"], 0)
 
     def test_07_punch_flow_for_manager_herself(self):
-        before = client.get("/api/punches/status").json()
         r = client.post("/api/punches", json={"kind": "IN"})
         if r.status_code == 409:
             self.skipTest("нет открытой смены по демо-данным")
@@ -218,6 +217,7 @@ class TestApi(unittest.TestCase):
         self.assertIn("spreadsheetml", xlsx_resp.headers["content-type"])
         self.assertTrue(xlsx_resp.content[:2] == b"PK")   # это zip-контейнер xlsx
         import io as _io
+
         from openpyxl import load_workbook
         wb = load_workbook(_io.BytesIO(xlsx_resp.content))
         self.assertIn("В учёт зарплаты", wb.sheetnames)     # сетка нетто-переработок для внешней системы
@@ -480,7 +480,6 @@ class TestApi(unittest.TestCase):
             d = (first + dt.timedelta(days=i)).isoformat()
             ref2_kind = ref2["cells"][d]["shift"]["kind"] if ref2["cells"][d]["shift"] else None
             ref1_kind = ref1["cells"][d]["shift"]["kind"] if ref1["cells"][d]["shift"] else None
-            moved_in_s2 = None
             # строка Фазового в блоке Смена 2: ищем через blocks
             self.assertTrue(any(b["group"] == "Смена 2" for b in moved["blocks"]))
             # ячейки до перевода в его строке должны совпадать с фазой Смены 2
@@ -513,7 +512,7 @@ class TestApi(unittest.TestCase):
         hist = client.get(f"/api/employees/{eid}/history").json()["blocks"]
         # нет пересечений и ровно один открытый период
         self.assertEqual(sum(1 for h in hist if h["end"] is None), 1)
-        for a, b in zip(hist, hist[1:]):
+        for a, b in zip(hist, hist[1:], strict=False):
             self.assertIsNotNone(a["end"])
             self.assertEqual(dt.date.fromisoformat(a["end"]) + dt.timedelta(days=1),
                              dt.date.fromisoformat(b["start"]))
@@ -532,6 +531,7 @@ class TestApi(unittest.TestCase):
     def test_15i_docx_templates(self):
         """Корпоративные шаблоны .docx: загрузка, плейсхолдеры (в т.ч. разбитые на runs), рендер."""
         import io
+
         from docx import Document
 
         # шаблон: плейсхолдер разбит Word на два run + плейсхолдер в таблице

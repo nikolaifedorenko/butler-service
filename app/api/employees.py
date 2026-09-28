@@ -16,12 +16,25 @@ from ..base_schedule import dump_pattern, validate_pattern
 from ..db import get_db
 from ..deps import local_date, slugify_username
 from ..employment import close_period, open_period, periods_of
-from ..groups import GROUP_META, group_choices as group_choices_list, normalize_group
-from ..names import suggest_genitive
+from ..groups import GROUP_META, normalize_group
+from ..groups import group_choices as group_choices_list
 from ..models import (
-    ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR, BankAdjustment, BlockAssignment,
-    Car, Department, EmergencyContact, Employee, PositionHistory, ShiftType, Subdivision, User, utcnow,
+    ROLE_ADMIN,
+    ROLE_EMPLOYEE,
+    ROLE_MANAGER,
+    BankAdjustment,
+    BlockAssignment,
+    Car,
+    Department,
+    EmergencyContact,
+    Employee,
+    PositionHistory,
+    ShiftType,
+    Subdivision,
+    User,
+    utcnow,
 )
+from ..names import suggest_genitive
 from ..security import hash_password
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
 from ..timesheet import bank_as_of, recalc_range

@@ -107,4 +107,4 @@ def suggest_genitive(full_name: str) -> str:
     female = _looks_female(tokens)
     kinds = ["last", "first", "middle"][:len(tokens)]
     kinds += ["other"] * max(0, len(tokens) - 3)
-    return " ".join(_decline(t, k, female) for t, k in zip(tokens, kinds))
+    return " ".join(_decline(t, k, female) for t, k in zip(tokens, kinds, strict=False))

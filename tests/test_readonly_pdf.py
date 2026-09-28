@@ -18,8 +18,8 @@ if "DATABASE_URL" not in os.environ:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.main import app, init_db  # noqa: E402
 from app.deps import local_date  # noqa: E402
+from app.main import app, init_db  # noqa: E402
 from app.pdf_render import pdf_mode  # noqa: E402
 
 init_db()
@@ -118,8 +118,9 @@ class TestReadonlySchedule(unittest.TestCase):
         r = emp_client.get("/api/schedule/pdf", params={"year": YEAR, "month": MONTH})
         if r.status_code != 200:
             self.skipTest("нет PDF-движка")
-        from pypdf import PdfReader
         import io as _io
+
+        from pypdf import PdfReader
         text = " ".join(p.extract_text() or "" for p in PdfReader(_io.BytesIO(r.content)).pages)
         self.assertIn("График сменности", text)
 

@@ -4,12 +4,19 @@ from __future__ import annotations
 import datetime as dt
 import unittest
 
-from app.models import Employee, Punch, ScheduleEntry, ShiftType
 from app.deps import local_date
+from app.models import Employee, Punch, ScheduleEntry, ShiftType
 from app.schedule_patterns import parse_custom_cycle, pattern_days
 from app.timesheet import (
-    DEFAULT_RULES, _subtract, coerce_rules, compute_day, pair_sessions,
-    round_dt, shift_window, split_day_night, settle_overtime,
+    DEFAULT_RULES,
+    _subtract,
+    coerce_rules,
+    compute_day,
+    pair_sessions,
+    round_dt,
+    settle_overtime,
+    shift_window,
+    split_day_night,
 )
 
 
@@ -226,7 +233,6 @@ class TestNightAndCalendarContour(unittest.TestCase):
 
     def test_night_tail_lands_on_next_calendar_day(self):
         """Хвост ночной смены даёт начисления следующего календарного дня (ДН 6, ДЯ 2)."""
-        entry = ScheduleEntry(employee_id=1, date=self.date, shift_type=self.night)
         nxt = self.date + dt.timedelta(days=1)
         off = make_shift("OFF", "Выходной", "", "", kind="absence", tzh="В", is_default_off=True)
         entry_next = ScheduleEntry(employee_id=1, date=nxt, shift_type=off)
@@ -329,7 +335,7 @@ class TestSettleWithDebt(unittest.TestCase):
         log, remain, totals = settle_overtime(credits, debits)
         self.assertEqual(totals["pay_dya"], 1.0)          # сентябрьский долг съел 2 ч октябрьской переработки
         self.assertEqual(totals["debt_out"], 0.0)
-        self.assertTrue(any(l["kind"] == "Долг" for l in log))
+        self.assertTrue(any(x["kind"] == "Долг" for x in log))
 
     def test_extended_night_day_day(self):
         """День+ночь+день: начисления 01.09 ДЯ2 ДН2 и 02.09 ДЯ2 ДН6, списаний нет."""

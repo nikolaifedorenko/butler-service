@@ -15,7 +15,6 @@
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 from typing import Optional
 
@@ -23,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .deps import now_local
-from .models import Car, CarHistory, CarLocation, Employee, Photo, User
+from .models import Car, CarHistory, CarLocation, Employee
 
 STATUS_TITLES = {
     "free": "свободен",
@@ -401,9 +400,9 @@ def create_car(db: Session, principal, number: str, location: str = "") -> Car:
 def list_locations(db: Session) -> list[dict]:
     """Справочник мест стоянки: активные + все (для админки)."""
     out = []
-    for l in db.scalars(select(CarLocation).order_by(CarLocation.sort_order, CarLocation.id)):
-        out.append({"id": l.id, "name": l.name, "sort_order": l.sort_order,
-                    "active": bool(l.active), "builtin": bool(l.builtin)})
+    for loc in db.scalars(select(CarLocation).order_by(CarLocation.sort_order, CarLocation.id)):
+        out.append({"id": loc.id, "name": loc.name, "sort_order": loc.sort_order,
+                    "active": bool(loc.active), "builtin": bool(loc.builtin)})
     return out
 
 

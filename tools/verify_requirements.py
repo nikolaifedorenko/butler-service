@@ -145,6 +145,7 @@ check(8, "Выгрузка Excel-табеля сеткой ФИО × дни", ok
 
 # ── 9. ночь = официальный день: день+ночь в одну дату ──
 import unittest  # noqa: E402
+
 from tests.test_engine import TestShiftDateAttribution  # noqa: E402
 
 suite = unittest.TestSuite()

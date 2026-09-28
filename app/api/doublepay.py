@@ -26,8 +26,7 @@ from sqlalchemy.orm import Session
 from ..auth import Principal, audit, require_manager
 from ..db import get_db
 from ..deps import WD_SHORT
-from ..doublepay import (REASON_TITLES, SCOPE_ALL, SCOPE_SHIFT, SCOPE_TITLES, SCOPE_WEEK5,
-                         SCOPES, recalc_double_rows)
+from ..doublepay import REASON_TITLES, SCOPE_ALL, SCOPE_TITLES, SCOPES, recalc_double_rows
 from ..models import ROLE_ADMIN, ROLE_MANAGER, DoublePayDay, Employee, VipDoublePay, utcnow
 
 router = APIRouter(prefix="/api/doublepay", tags=["doublepay"])
