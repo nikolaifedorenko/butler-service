@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Батлер Сервис">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f8cff'/%3E%3Cpath d='M16 8v8l6 4' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/css/app.css?v=2026-09-28a">
+  <link rel="stylesheet" href="/static/css/app.css?v=2026-09-28b">
 </head>
 <body>
 
@@ -110,10 +110,12 @@
 <div id="toast-host" class="toast-host"></div>
 <div id="loading" class="loading hidden"><div class="spinner"></div></div>
 
-<script src="/static/js/app.js?v=2026-09-28a"></script>
+<!-- Ядро (утилиты, api, состояние, модалки) подключается раньше разделов -->
+<script src="/static/js/core.js?v=2026-09-28b"></script>
+<script src="/static/js/app.js?v=2026-09-28b"></script>
 <!-- Разделы, добавленные позже основного интерфейса: парк электрокаров и ночной отчёт.
      Порядок важен: section_night.js использует CAR_BADGE/CHARGE_OPTS/photoThumb из section_cars.js -->
-<script src="/static/js/section_cars.js?v=2026-09-28a"></script>
-<script src="/static/js/section_night.js?v=2026-09-28a"></script>
+<script src="/static/js/section_cars.js?v=2026-09-28b"></script>
+<script src="/static/js/section_night.js?v=2026-09-28b"></script>
 </body>
 </html>

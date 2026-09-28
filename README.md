@@ -354,10 +354,13 @@ API: http://127.0.0.1:8000/api/docs (Swagger).
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest tests/ -q                    # 153 проверки (~40 с)
-python -m ruff check .                        # линтер (конфиг в pyproject.toml)
+python -m ruff check .                        # линтер Python (конфиг в pyproject.toml)
+npm install                                   # jsdom + eslint (инструменты фронтенда)
+npm run lint                                  # линтер JS: no-undef ловит отсутствующие функции
+npm run globals:check                         # список глобальных имён JS актуален
 python tools/check_api_contract.py --verbose  # фронтенд не зовёт несуществующие маршруты
 python tools/bump_version.py --check          # версии статики согласованы
-./tools/run_ui_check.sh 8199 gromova          # смоук интерфейса (нужен jsdom: cd tools && npm i jsdom)
+./tools/run_ui_check.sh 8199 gromova          # смоук интерфейса (npm install в корне)
 ./tools/run_ui_check.sh 8198 ivanov           # то же под ролью сотрудника
 ```
 

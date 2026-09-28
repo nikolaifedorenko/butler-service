@@ -100,11 +100,17 @@ jobs:
             echo "node --check $f"; node --check "$f";
           done
 
-      - name: Зависимости (python + jsdom)
+      - name: Зависимости (python + jsdom + eslint)
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          cd tools && npm install --no-audit --no-fund jsdom
+          npm install --no-audit --no-fund
+
+      - name: Линтер JavaScript (no-undef ловит отсутствующие функции разделов)
+        run: npx eslint static/js static/sw.js
+
+      - name: Список глобальных имён JS не разошёлся с кодом
+        run: python tools/gen_js_globals.py --check
 
       - name: Смоук интерфейса (все разделы, две роли)
         run: |
