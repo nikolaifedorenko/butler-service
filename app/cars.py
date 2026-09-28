@@ -15,7 +15,6 @@
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 from typing import Optional
 
@@ -23,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .deps import now_local
-from .models import Car, CarHistory, CarLocation, Employee, Photo, User
+from .models import Car, CarHistory, CarLocation, Employee
 
 STATUS_TITLES = {
     "free": "свободен",
@@ -113,8 +112,16 @@ def resolve_person(db: Session, *, employee_id: Optional[int], name: str) -> tup
 
 
 def history_dict(h: CarHistory, photos: dict[int, list[dict]]) -> dict:
+    """Запись истории для API.
+
+    `photos` — КАРТА {history_id: [фото…]} (обычно результат photos.photos_of()).
+    Список фото конкретной записи функция достаёт сама; передавать сюда уже
+    раскрытый список нельзя (см. регрессию в tests/test_cars.py).
+    """
     try:
         details = json.loads(h.details_json or "{}")
+        if not isinstance(details, dict):
+            details = {"value": details}
     except Exception:
         details = {}
     return {
@@ -273,8 +280,11 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
             pass
     if on_charge and charge not in ("empty", "half"):
         raise CarOpError("На зарядке оставляют разряженный или полуразряженный кар — уточните заряд")
+    # было `(by_employee_id or name)`: несуществующая переменная `name` давала NameError
+    # при ЛЮБОМ возврате кара без явного employee_id (обычный случай — сотрудник
+    # возвращает свой кар), то есть операция падала в 500.
     by_uid, by_label = resolve_person(db, employee_id=by_employee_id, name=by_name) \
-        if (by_employee_id or name) else (None, principal.name)
+        if (by_employee_id or by_name) else (None, principal.name)
     was_handover = bool(db.scalar(select(CarHistory).where(
         CarHistory.car_id == car.id, CarHistory.action == "handover")
         .order_by(CarHistory.id.desc()).limit(1))
@@ -390,9 +400,9 @@ def create_car(db: Session, principal, number: str, location: str = "") -> Car:
 def list_locations(db: Session) -> list[dict]:
     """Справочник мест стоянки: активные + все (для админки)."""
     out = []
-    for l in db.scalars(select(CarLocation).order_by(CarLocation.sort_order, CarLocation.id)):
-        out.append({"id": l.id, "name": l.name, "sort_order": l.sort_order,
-                    "active": bool(l.active), "builtin": bool(l.builtin)})
+    for loc in db.scalars(select(CarLocation).order_by(CarLocation.sort_order, CarLocation.id)):
+        out.append({"id": loc.id, "name": loc.name, "sort_order": loc.sort_order,
+                    "active": bool(loc.active), "builtin": bool(loc.builtin)})
     return out
 
 

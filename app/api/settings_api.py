@@ -1,6 +1,9 @@
 """Правила расчёта (настройки) + служебные эндпоинты: health, сид, статистика."""
 from __future__ import annotations
 
+import json
+import threading
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,12 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_admin, require_manager
-from ..db import get_db
-from ..deps import local_date
-from ..models import Employee, Punch, ScheduleEntry, TimesheetRow, Setting, User
+from ..auth import Principal, audit, require_manager
 from ..base_schedule import DEFAULT_BASE, load_base_config, save_base_config
+from ..db import SessionLocal, get_db
+from ..deps import local_date, now_local
 from ..doc_templates import load_doc_templates, save_doc_templates
+from ..models import Employee, Punch, ScheduleEntry, Setting, TimesheetRow, User
 from ..timesheet import DEFAULT_RULES, load_rules, rule_options
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -112,17 +115,101 @@ def update_settings(payload: list[RuleIn], principal: Principal = Depends(requir
     return {"ok": True, "rules": load_rules(db)}
 
 
+# ─────────────── фоновый пересчёт табеля ───────────────
+# Пересчёт месяца на большом штате — тысячи строк: держать для этого HTTP-запрос
+# открытым нельзя (таймаут обратного прокси, занятый воркер). Поэтому background=1
+# запускает работу в отдельном потоке со своей сессией, а клиент опрашивает статус.
+_JOBS_LOCK = threading.Lock()
+_RECALC_JOBS: list[dict] = []
+MAX_JOBS_KEPT = 10
+
+
+def _register_job(job: dict) -> None:
+    with _JOBS_LOCK:
+        _RECALC_JOBS.insert(0, job)
+        del _RECALC_JOBS[MAX_JOBS_KEPT:]
+
+
+def _update_job(job_id: str, **fields) -> None:
+    with _JOBS_LOCK:
+        for job in _RECALC_JOBS:
+            if job["id"] == job_id:
+                job.update(fields)
+                return
+
+
+def running_job() -> Optional[dict]:
+    with _JOBS_LOCK:
+        return next((j for j in _RECALC_JOBS if j["status"] == "running"), None)
+
+
+def _recalc_worker(job_id: str, year: int, month: int, actor_id: Optional[int],
+                   actor_name: str) -> None:
+    """Поток пересчёта: собственная сессия, аудит и статус пишем сами."""
+    from ..models import AuditLog, utcnow
+    from ..timesheet import month_bounds, recalc_range
+
+    db = SessionLocal()
+    try:
+        first, last = month_bounds(year, month)
+        count = recalc_range(db, first, last)
+        db.add(AuditLog(actor_id=actor_id, actor_name=actor_name, action="recalc_all",
+                        target=f"{year}-{month:02d}",
+                        payload_json=json.dumps({"rows": count, "background": True}),
+                        ts=utcnow()))
+        db.commit()
+        _update_job(job_id, status="done", days=count,
+                    finished_at=now_local().isoformat(timespec="seconds"))
+    except Exception as exc:                       # noqa: BLE001 — статус виден клиенту
+        db.rollback()
+        _update_job(job_id, status="error", error=str(exc)[:500],
+                    finished_at=now_local().isoformat(timespec="seconds"))
+    finally:
+        db.close()
+
+
 @router.post("/recalc-all")
-def recalc_all(year: Optional[int] = None, month: Optional[int] = None,
+def recalc_all(year: Optional[int] = None, month: Optional[int] = None, background: bool = False,
                principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
-    """Полный пересчёт табеля (нужен после изменения правил округления/ночных)."""
+    """Полный пересчёт табеля (нужен после изменения правил округления/ночных).
+
+    background=1 — запустить в фоне и вернуть job_id (клиент опрашивает
+    /api/settings/recalc-status). По умолчанию пересчёт синхронный: так его
+    вызывают тесты и небольшие базы.
+    """
     from ..timesheet import month_bounds, recalc_range
 
     today = local_date()
     year = year or today.year
     month = month or today.month
+
+    if background:
+        busy = running_job()
+        if busy is not None:
+            return {"ok": False, "started": False, "job_id": busy["id"],
+                    "detail": "Пересчёт уже запущен — дождитесь завершения"}
+        job_id = uuid.uuid4().hex[:12]
+        _register_job({"id": job_id, "year": year, "month": month, "status": "running",
+                       "days": None, "error": None, "actor_name": principal.name,
+                       "started_at": now_local().isoformat(timespec="seconds"),
+                       "finished_at": None})
+        threading.Thread(target=_recalc_worker, args=(job_id, year, month,
+                                                      principal.user.id, principal.name),
+                         name=f"recalc-{job_id}", daemon=True).start()
+        return {"ok": True, "started": True, "job_id": job_id, "year": year, "month": month}
+
     first, last = month_bounds(year, month)
     count = recalc_range(db, first, last)
     audit(db, principal, "recalc_all", f"{year}-{month:02d}", {"rows": count})
     db.commit()
     return {"ok": True, "recalculated_days": count}
+
+
+@router.get("/recalc-status")
+def recalc_status(principal: Principal = Depends(require_manager)):
+    """Состояние фонового пересчёта: текущая задача и последние завершённые."""
+    with _JOBS_LOCK:
+        jobs = [dict(j) for j in _RECALC_JOBS]
+    return {"running": any(j["status"] == "running" for j in jobs),
+            "current": next((j for j in jobs if j["status"] == "running"), None),
+            "jobs": jobs}

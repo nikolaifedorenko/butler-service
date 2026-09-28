@@ -265,11 +265,21 @@ function navigate(view) {
   if (el) el.classList.add('active');
   renderNav();
   clearTimers();
-  const loaders = { schedule: loadSchedule, onwork: loadOnwork, attendance: loadAttendance,
-                    timesheet: loadTimesheet, employees: loadEmployees, me: loadMe,
-                    night: loadNight, cars: loadCars,
-                    settings: loadSettings };
-  const run = loaders[view] || (() => Promise.resolve());
+  /* Загрузчики разделов ищем по имени в глобальной области, а не прямыми ссылками:
+     если функция раздела не загрузилась (старый кэш, ошибка в файле раздела), интерфейс
+     не падает целиком — показывается внятная заглушка вместо пустого экрана. */
+  const LOADER_NAMES = { schedule: 'loadSchedule', onwork: 'loadOnwork', attendance: 'loadAttendance',
+                         timesheet: 'loadTimesheet', employees: 'loadEmployees', me: 'loadMe',
+                         night: 'loadNight', cars: 'loadCars', settings: 'loadSettings' };
+  const fnName = LOADER_NAMES[view];
+  const fn = fnName ? window[fnName] : null;
+  const run = typeof fn === 'function' ? fn : () => {
+    if (!el) return;
+    el.innerHTML = `<div class="panel"><h3 class="panel-title">Раздел не загрузился</h3>
+      <p class="hint">Функция раздела <code>${esc(fnName || view)}</code> не найдена. Обновите страницу
+      с очисткой кэша (Cmd/Ctrl+Shift+R). Если не помогло — перезапустите сервер и проверьте,
+      что в <code>static/index.html</code> подключены все скрипты разделов.</p></div>`;
+  };
   Promise.resolve().then(run).catch(err => {
     console.error(err);
     if (el) el.innerHTML = `<div class="panel"><h3 class="panel-title">Раздел не загрузился</h3>
@@ -2682,9 +2692,31 @@ async function loadSettings() {
     } catch (e) { toast(e.message, 'err'); }
   };
   $('#s-recalc').onclick = async () => {
+    /* Тяжёлый пересчёт запускаем в фоне и опрашиваем статус: иначе на большом штате
+       запрос висит секундами и упирается в таймаут прокси. */
+    const btn = $('#s-recalc');
     try {
-      const r = await api('/api/settings/recalc-all', { method: 'POST' });
-      toast(`Пересчитано ${r.recalculated_days} ${plural(r.recalculated_days, 'день', 'дня', 'дней')}`, 'ok');
+      const r = await api('/api/settings/recalc-all?background=1', { method: 'POST' });
+      if (!r.started) { toast(r.detail || 'Пересчёт уже запущен', 'warn'); return; }
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = 'Пересчёт…';
+      toast('Пересчёт табеля запущен в фоне', 'ok');
+      const tick = setInterval(async () => {
+        try {
+          const st = await api('/api/settings/recalc-status', { silent: true });
+          if (st.running) { btn.textContent = 'Пересчёт…'; return; }
+          clearInterval(tick);
+          btn.disabled = false; btn.textContent = label;
+          const job = st.current || (st.jobs || [])[0];
+          if (job?.status === 'done') {
+            toast(`Пересчитано ${job.days} ${plural(job.days, 'день', 'дня', 'дней')}`, 'ok');
+            if (state.view === 'timesheet') loadTimesheet();
+          } else if (job?.status === 'error') {
+            toast('Пересчёт завершился ошибкой: ' + (job.error || 'неизвестно'), 'err');
+          }
+        } catch { clearInterval(tick); btn.disabled = false; btn.textContent = label; }
+      }, 1500);
     } catch (e) { toast(e.message, 'err'); }
   };
   $('#s-add-shift').onclick = () => shiftModal(null);

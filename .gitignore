@@ -1,7 +1,29 @@
-# Compiled and build artifacts
+# Компилированные артефакты
 __pycache__/
 *.pyc
+*.pyo
 
-# Environment
+# Окружение и секреты
 .env
 .env.local
+.venv/
+venv/
+
+# Локальные данные (БД, загруженные бланки и фото) — в репозиторий не попадают
+*.db
+*.db-wal
+*.db-shm
+timetrack.db*
+data/
+templates/
+
+# Логи и служебные файлы
+server.log
+*.log
+.DS_Store
+
+# node (jsdom-харнесс интерфейса)
+node_modules/
+
+# сгенерированные снимки интерфейса
+ui-snapshot.html

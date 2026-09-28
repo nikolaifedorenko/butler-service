@@ -19,12 +19,28 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
-from ..cars import (ACTION_TITLES, CarInterceptAssigned, CarOpError, STATUS_TITLES,
-                    add_location, assign_employee, car_dict, create_car, edit_car,
-                    find_free_car, get_car, give_car, handover_car, list_locations,
-                    return_car, set_status, take_car, update_location)
+from ..cars import (
+    ACTION_TITLES,
+    STATUS_TITLES,
+    CarInterceptAssigned,
+    CarOpError,
+    add_location,
+    assign_employee,
+    car_dict,
+    create_car,
+    edit_car,
+    find_free_car,
+    get_car,
+    give_car,
+    handover_car,
+    list_locations,
+    return_car,
+    set_status,
+    take_car,
+    update_location,
+)
 from ..db import get_db
-from ..models import CarHistory, Employee
+from ..models import CarHistory
 from ..photos import photos_of
 
 router = APIRouter(prefix="/api/cars", tags=["cars"])
@@ -188,8 +204,11 @@ def car_history(car_id: int, limit: int = 200, db: Session = Depends(get_db),
     rows = list(db.scalars(select(CarHistory).where(CarHistory.car_id == car_id)
                            .order_by(CarHistory.id.desc()).limit(min(limit, 500))))
     from ..cars import history_dict
+    # history_dict() принимает КАРТУ фото {ref_id: [...]} и сам достаёт нужные:
+    # раньше сюда передавался уже раскрытый список (pmap.get(h.id, [])), из-за чего
+    # любой запрос истории кара падал в AttributeError → 500.
     pmap = photos_of(db, "car_return", [h.id for h in rows])
-    return {"history": [history_dict(h, pmap.get(h.id, [])) for h in rows]}
+    return {"history": [history_dict(h, pmap) for h in rows]}
 
 
 @router.post("/{car_id}/take")

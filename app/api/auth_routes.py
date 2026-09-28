@@ -1,9 +1,6 @@
 """Аутентификация, профиль, «войти как сотрудник» для демонстрации."""
 from __future__ import annotations
 
-import datetime as dt
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -12,9 +9,9 @@ from sqlalchemy.orm import Session
 from ..auth import Principal, audit, current_principal, require_manager
 from ..config import settings
 from ..db import get_db
-from ..models import ROLE_ADMIN, ROLE_EMPLOYEE, Employee, ScheduleEntry, User
+from ..deps import local_date
+from ..models import Employee, ScheduleEntry, User
 from ..security import create_token, hash_password, verify_password
-from ..deps import local_date, now_local
 from ..timesheet import load_rules, shift_window
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

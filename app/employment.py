@@ -43,16 +43,26 @@ def is_employed(db: Session, emp: Employee, date: dt.date) -> bool:
     return employed_on(periods_of(db, emp.id), date)
 
 
-def employed_ranges(db: Session, emp_id: int, first: dt.date, last: dt.date) -> list[dict]:
-    """Периоды работы, обрезанные по границам месяца (для «неактивных» ячеек графика)."""
+def ranges_from_periods(periods: Iterable[EmploymentPeriod], first: dt.date,
+                        last: dt.date) -> list[dict]:
+    """То же, что employed_ranges, но по уже загруженным периодам (без запроса).
+
+    Нужен в сборке сетки месяца: периоды всех сотрудников выбираются одним запросом,
+    поэтому запрашивать их заново для каждой строки не нужно.
+    """
     out = []
-    for p in periods_of(db, emp_id):
+    for p in periods:
         s = max(p.start_date, first)
         e = min(p.end_date, last) if p.end_date else last
         if s <= e:
             out.append({"start": s.isoformat(), "end": e.isoformat(),
                         "open": p.end_date is None, "note": p.note or ""})
     return out
+
+
+def employed_ranges(db: Session, emp_id: int, first: dt.date, last: dt.date) -> list[dict]:
+    """Периоды работы, обрезанные по границам месяца (для «неактивных» ячеек графика)."""
+    return ranges_from_periods(periods_of(db, emp_id), first, last)
 
 
 def open_period(db: Session, emp: Employee, since: dt.date, note: str = "",

@@ -20,8 +20,8 @@ if "DATABASE_URL" not in os.environ:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.main import app, init_db  # noqa: E402
 from app.deps import local_date  # noqa: E402
+from app.main import app, init_db  # noqa: E402
 
 init_db()
 client = TestClient(app)          # администратор
@@ -137,7 +137,7 @@ class TestNewFeatures(unittest.TestCase):
         # все назначенные дни были рабочими по базовому циклу (2/2)
         g = _grid(start.year, start.month)
         row = _row(g, emp["id"])
-        for iso, cell in row["cells"].items():
+        for _iso, cell in row["cells"].items():
             if cell["shift"] and cell["shift"]["code"] == "TIMEOFF_HOURS":
                 self.assertNotEqual(cell["auto"], None)
         self.assertIsNotNone(day12)

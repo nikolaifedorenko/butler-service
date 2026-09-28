@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .deps import WD_SHORT
 from .night import report_dict
-from .photos import BASE_DIR, photo_url
+from .photos import BASE_DIR
 
 
 def _fmt_ts(iso: Optional[str]) -> str:
@@ -51,7 +51,7 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
                    else "Закрыт автоматически в 08:00" if data["close_reason"] == "auto"
                    else f"Открыт · закроется {_fmt_ts(data['deadline'])}")
     p = doc.add_paragraph()
-    p.add_run(f"Итог: ").bold = True
+    p.add_run("Итог: ").bold = True
     p.add_run(f"{data['result_title'] if data['status'] == 'closed' else 'не подведён (смена идёт)'}"
               f" · {status_line} · областей закрыто {data['progress']['done']} из {data['progress']['total']}"
               f" · проверка электрокаров: {'выполнена' if data['cars_step_done'] else 'не завершена'}")

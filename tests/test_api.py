@@ -69,8 +69,11 @@ class TestApi(unittest.TestCase):
         self.assertEqual(edit.status_code, 403)
 
     def test_05_set_cell_and_see_it_in_grid(self):
-        today = local_date()
-        date = (today + dt.timedelta(days=3)).isoformat()
+        # Целевая дата — «сегодня + 3 дня», а сетку нужно запрашивать за МЕСЯЦ ЦЕЛЕВОЙ
+        # ДАТЫ: раньше месяц брали от today, и в последние дни месяца (29–31) тест
+        # падал с KeyError, потому что ячейка уезжала в следующий месяц.
+        target = local_date() + dt.timedelta(days=3)
+        date = target.isoformat()
         types = client.get("/api/shift-types").json()
         sick = next(t for t in types if t["code"] == "SICK")
         emps = client.get("/api/employees").json()
@@ -78,7 +81,7 @@ class TestApi(unittest.TestCase):
         r = client.put("/api/schedule/cell", json={
             "employee_id": emp["id"], "date": date, "shift_type_id": sick["id"], "note": "тест"})
         self.assertEqual(r.status_code, 200, r.text)
-        grid = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
+        grid = client.get("/api/schedule", params={"year": target.year, "month": target.month}).json()
         row = next(x for x in grid["rows"] if x["employee"]["id"] == emp["id"])
         self.assertEqual(row["cells"][date]["shift"]["code"], "SICK")
         self.assertEqual(row["cells"][date]["note"], "тест")
@@ -99,7 +102,6 @@ class TestApi(unittest.TestCase):
         self.assertGreaterEqual(r.json()["changed"], 0)
 
     def test_07_punch_flow_for_manager_herself(self):
-        before = client.get("/api/punches/status").json()
         r = client.post("/api/punches", json={"kind": "IN"})
         if r.status_code == 409:
             self.skipTest("нет открытой смены по демо-данным")
@@ -215,6 +217,7 @@ class TestApi(unittest.TestCase):
         self.assertIn("spreadsheetml", xlsx_resp.headers["content-type"])
         self.assertTrue(xlsx_resp.content[:2] == b"PK")   # это zip-контейнер xlsx
         import io as _io
+
         from openpyxl import load_workbook
         wb = load_workbook(_io.BytesIO(xlsx_resp.content))
         self.assertIn("В учёт зарплаты", wb.sheetnames)     # сетка нетто-переработок для внешней системы
@@ -477,7 +480,6 @@ class TestApi(unittest.TestCase):
             d = (first + dt.timedelta(days=i)).isoformat()
             ref2_kind = ref2["cells"][d]["shift"]["kind"] if ref2["cells"][d]["shift"] else None
             ref1_kind = ref1["cells"][d]["shift"]["kind"] if ref1["cells"][d]["shift"] else None
-            moved_in_s2 = None
             # строка Фазового в блоке Смена 2: ищем через blocks
             self.assertTrue(any(b["group"] == "Смена 2" for b in moved["blocks"]))
             # ячейки до перевода в его строке должны совпадать с фазой Смены 2
@@ -510,7 +512,7 @@ class TestApi(unittest.TestCase):
         hist = client.get(f"/api/employees/{eid}/history").json()["blocks"]
         # нет пересечений и ровно один открытый период
         self.assertEqual(sum(1 for h in hist if h["end"] is None), 1)
-        for a, b in zip(hist, hist[1:]):
+        for a, b in zip(hist, hist[1:], strict=False):
             self.assertIsNotNone(a["end"])
             self.assertEqual(dt.date.fromisoformat(a["end"]) + dt.timedelta(days=1),
                              dt.date.fromisoformat(b["start"]))
@@ -529,6 +531,7 @@ class TestApi(unittest.TestCase):
     def test_15i_docx_templates(self):
         """Корпоративные шаблоны .docx: загрузка, плейсхолдеры (в т.ч. разбитые на runs), рендер."""
         import io
+
         from docx import Document
 
         # шаблон: плейсхолдер разбит Word на два run + плейсхолдер в таблице

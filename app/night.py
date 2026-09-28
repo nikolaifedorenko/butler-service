@@ -22,8 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .deps import now_local
-from .models import (Car, ChecklistItem, NightArea, NightAreaSection, NightCheckItem,
-                     NightInterception, NightReport)
+from .models import Car, ChecklistItem, NightArea, NightAreaSection, NightCheckItem, NightInterception, NightReport
 
 SHIFT_START = dt.time(20, 0)   # начало ночной смены
 SHIFT_END = dt.time(8, 0)      # автозакрытие
@@ -58,8 +57,11 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
     report = db.scalar(select(NightReport).where(NightReport.date == shift_d))
     if report:
         return report
-    # не создаём задним числом будущую смену раньше её начала
-    if shift_d > current_shift_date() or (shift_d == current_shift_date() and now_local().time() < SHIFT_START):
+    # Будущую смену раньше её начала не создаём. Сравниваем именно с моментом старта
+    # смены (20:00 даты shift_d), а не с «сегодняшней» датой: иначе смена, идущая
+    # сейчас (например 02:00 ночи), осталась бы без отчёта при старте сервера
+    # после 20:00 — ночная бригада видела бы пустой раздел до самого закрытия.
+    if now_local() < dt.datetime.combine(shift_d, SHIFT_START):
         return None
 
     report = NightReport(date=shift_d)
@@ -92,9 +94,25 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
     return report
 
 
-def sync_reports(db: Session) -> dict:
+# sync_reports() дёргается на каждый запрос раздела (в т.ч. на каждый тик поллинга),
+# а работа у него «разовая»: досоздать пропущенные смены и закрыть наступившие.
+# Поэтому внутри процесса повторяем не чаще раза в интервал — иначе каждый запрос
+# платит за несколько выборок и, на SQLite, конкурирует за блокировку с отметками.
+SYNC_INTERVAL_SECONDS = 120
+_last_sync: dict[str, float] = {"ts": 0.0}
+
+
+def sync_reports(db: Session, *, force: bool = False) -> dict:
     """Обслуживание отчётов при обращении к разделу / при старте сервера:
-    досоздать пропущенные смены (сервер был выключен) и закрыть наступившие."""
+    досоздать пропущенные смены (сервер был выключен) и закрыть наступившие.
+
+    Повторные вызовы чаще SYNC_INTERVAL_SECONDS пропускаются (force=True — пропустить
+    ограничение: используется при старте сервера и в тестах)."""
+    import time
+
+    now_ts = time.monotonic()
+    if not force and now_ts - _last_sync["ts"] < SYNC_INTERVAL_SECONDS:
+        return {"created": [], "closed": [], "skipped": True}
     created: list[str] = []
     closed: list[str] = []
     today = current_shift_date()
@@ -115,6 +133,7 @@ def sync_reports(db: Session) -> dict:
             closed.append(rep.date.isoformat())
     if created or closed:
         db.commit()
+    _last_sync["ts"] = now_ts
     return {"created": created, "closed": closed}
 
 
@@ -174,7 +193,7 @@ def section_dict(sec: NightAreaSection, *, with_items: bool = True) -> dict:
 
 def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
     """Снимок обхода электрокаров за смену + перехваты (нужны и API, и выгрузке DOCX)."""
-    from .models import CarNightCheck, NightInterception   # локально — не раздуваем импорт модуля
+    from .models import CarNightCheck  # локально — не раздуваем импорт модуля
 
     out = []
     checks = list(db.scalars(select(CarNightCheck).where(CarNightCheck.report_id == rep.id)

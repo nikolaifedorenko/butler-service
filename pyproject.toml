@@ -1,0 +1,36 @@
+# Конфигурация инструментов (пакетом проект не публикуется — зависимости в requirements*.txt).
+[tool.ruff]
+line-length = 118
+target-version = "py310"
+# tools/ — разовые dev-скрипты (смоуки, скриншоты, исторические патч-скрипты):
+# линтеру там нечего делать, а шум мешает видеть проблемы в app/ и tests/.
+extend-exclude = ["tools/"]
+
+[tool.ruff.lint]
+# E/W — pycodestyle, F — pyflakes, I — сортировка импортов, B — багберы,
+# UP — устаревшие конструкции, SIM — упрощения, RET — возвраты, RUF — прочее
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RET"]
+ignore = [
+    "E501",   # длина строки: много русских строк и docstring'ов
+    "E702",   # однострочники через «;» — компактная стилизация ячеек в XLSX/DOCX
+    "E731",   # lambda в переменной: в генераторах отчётов это короче def
+    "SIM102", # вложенные if часто читаемее (разные ветки бизнес-правил)
+    "B008",   # Depends() в аргументах по умолчанию — идиома FastAPI
+    "B904",   # raise ... from e: массовое изменение обработчиков ошибок не в этом батче
+    "SIM108", # тернарник не всегда читаемее if/else
+    "RET504", # «лишнее» присваивание перед return часто намеренное
+    "UP006",  # Optional[...] → [... | None]: проект сознательно на typing.Optional
+    "UP035",  # то же: импорт Optional из typing не считаем устаревшим
+    "UP045",  # то же
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"app/seed.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning:starlette.*"]

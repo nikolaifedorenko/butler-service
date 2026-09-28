@@ -11,9 +11,6 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
-import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -375,7 +372,8 @@ def pdf_mode() -> str:
 
 
 def pdf_status() -> dict:
-    from .pdf_render import native_error, pdf_mode as _mode
+    from .pdf_render import native_error
+    from .pdf_render import pdf_mode as _mode
     mode = _mode()
     return {"mode": mode,
             "title": {"libreoffice": "LibreOffice (точный вид бланка)",

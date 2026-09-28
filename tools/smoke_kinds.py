@@ -121,8 +121,9 @@ with sync_playwright() as p:
     d = dl.value
     body = d.path().read_bytes()
     check("DOCX скачался", body[:2] == b"PK", str(body[:8]))
-    from docx import Document
     import io
+
+    from docx import Document
     doctext = "\n".join(p_.text for p_ in Document(io.BytesIO(body)).paragraphs)
     check("в документе — текст своего вида", "материальную помощь" in doctext)
     check("плейсхолдеры подставлены", "{full_name_genitive}" not in doctext)
@@ -157,6 +158,7 @@ api.close()
 
 # жёсткая уборка тестовой смены из архива (dev-база не должна зарастать мусором)
 import sqlite3
+
 con = sqlite3.connect("timetrack.db")
 con.execute("DELETE FROM shift_revisions WHERE shift_type_id IN "
             "(SELECT id FROM shift_types WHERE code=?)", (SHIFT_CODE,))

@@ -33,6 +33,18 @@ TODAY = local_date()
 CODE = "NOPUNCH_TEST"
 
 
+def _clear_today_punches() -> None:
+    """Удалить отметки сотрудника за сегодня.
+
+    Демо-сид создаёт отметки «по текущему часу»: после начала дневной смены у сотрудника
+    появляется открытый IN, и `kind: auto` превращается в OUT — тест, рассчитывавший на
+    приход, получал 409. То есть результат зависел от времени суток запуска.
+    """
+    rows = admin.get("/api/punches", params={"date": TODAY.isoformat(), "employee_id": EMP_ID}).json()
+    for row in rows:
+        admin.delete(f"/api/punches/{row['id']}")
+
+
 class TestPunchFlags(unittest.TestCase):
     shift_id = None
     punch_ids: list[int] = []
@@ -79,7 +91,8 @@ class TestPunchFlags(unittest.TestCase):
         self.assertTrue(s["punch_in_allowed"])
         self.assertFalse(s["punch_out_allowed"])
 
-        r = emp.post("/api/punches", json={"kind": "auto"})   # → IN
+        _clear_today_punches()   # иначе «auto» может превратиться в OUT из-за демо-отметки дня
+        r = emp.post("/api/punches", json={"kind": "in"})   # явный приход: override его разрешает
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["punch"]["kind"], "IN")
         TestPunchFlags.punch_ids.append(r.json()["punch"]["id"])

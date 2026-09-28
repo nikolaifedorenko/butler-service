@@ -8,15 +8,25 @@ import random
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .base_schedule import save_base_config
 from .deps import local_date, now_local
 from .models import (
-    ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR,
-    BlockAssignment, Department, Employee, EmploymentPeriod, PositionHistory, Punch,
-    ScheduleEntry, Setting, ShiftType, User, utcnow,
+    ROLE_ADMIN,
+    ROLE_EMPLOYEE,
+    ROLE_MANAGER,
+    ROLE_SUPERVISOR,
+    BlockAssignment,
+    Department,
+    Employee,
+    EmploymentPeriod,
+    PositionHistory,
+    Punch,
+    ScheduleEntry,
+    Setting,
+    ShiftType,
+    User,
 )
-from .schedule_patterns import pattern_days
 from .security import hash_password
-from .base_schedule import save_base_config
 from .timesheet import DEFAULT_RULES, RULE_DESCRIPTIONS, recalc_range
 
 DEFAULT_PASSWORD = "demo1234"
@@ -184,9 +194,6 @@ def seed_if_empty(db: Session) -> bool:
     prev_month = (today.replace(day=1) - dt.timedelta(days=1))
     nxt = today.replace(day=1)
     nxt = dt.date(nxt.year + (nxt.month == 12), nxt.month % 12 + 1, 1)
-    periods = [(prev_month.replace(day=1), prev_month.replace(day=1) + dt.timedelta(days=31)),
-               (today.replace(day=1), nxt - dt.timedelta(days=1)),
-               (nxt, nxt + dt.timedelta(days=30))]
 
     # ───────────────────── базовый цикл объекта: на все месяцы вперёд и назад ─────────────────────
     anchor = prev_month.replace(day=1)

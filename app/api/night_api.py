@@ -8,23 +8,33 @@
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
-from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, require_manager, require_supervisor, current_principal
+from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
 from ..db import get_db
-from ..deps import local_date, now_local
-from ..models import (ChecklistItem, NightArea, NightAreaSection, NightCheckItem,
-                      NightInterception, NightReport, Setting, User)
-from ..night import (CAR_AREA_NAME, close_deadline, current_shift_date, ensure_report,
-                     finalize_report, report_dict, section_dict, sync_reports)
+from ..deps import now_local
+from ..models import (
+    ChecklistItem,
+    NightArea,
+    NightAreaSection,
+    NightCheckItem,
+    NightInterception,
+    NightReport,
+    Setting,
+)
+from ..night import (
+    current_shift_date,
+    finalize_report,
+    report_dict,
+    section_dict,
+    sync_reports,
+)
 from ..photos import photos_of, save_photo
 
 router = APIRouter(prefix="/api/night", tags=["night"])
@@ -287,8 +297,10 @@ def today_report(principal: Principal = Depends(current_principal), db: Session 
     shift_d = current_shift_date()
     rep = db.scalar(select(NightReport).where(NightReport.date == shift_d))
     if rep is None:
+        # после исправления ensure_report это возможно только до начала смены (до 20:00)
         return {"available": False, "shift_date": shift_d.isoformat(),
-                "note": "Ночная смена ещё не началась — отчёт появится в 20:00"}
+                "note": f"Ночная смена {shift_d.strftime('%d.%m.%Y')} ещё не началась — "
+                        f"отчёт появится в 20:00. Прошлые смены — в «Архиве»."}
     return {"available": True, "report": _report_payload(db, rep)}
 
 
@@ -451,24 +463,18 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
 
 # ─────────────────────────── отдача файлов фото ───────────────────────────
 
-@router.api_route("/photos/{photo_id}/file", methods=["GET", "HEAD"])
+@router.get("/photos/{photo_id}/file", operation_id="photo_file_night_get")
+@router.head("/photos/{photo_id}/file", operation_id="photo_file_night_head",
+             include_in_schema=False)
 def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
                db: Session = Depends(get_db)):
-    """Отдача оригинала фото (ночные пункты и возвраты каров). Только авторизованным.
+    """Отдача оригинала фото — алиас канонического `/api/photos/{id}/file`.
 
-    HEAD используется интерфейсом для проверки доступности превью."""
-    from fastapi.responses import FileResponse
+    Маршрут сохранён для совместимости со старыми ссылками; реализация общая
+    (см. app/api/photos_api.py), чтобы поведение не могло разъехаться."""
+    from .photos_api import photo_file as _photo_file
 
-    from ..photos import get_photo_file
-
-    p, path, mime = get_photo_file(db, photo_id)
-    if p is None:
-        raise HTTPException(status_code=404, detail="Фото не найдено")
-    if path is None:
-        raise HTTPException(status_code=410, detail="Файл удалён по сроку хранения")
-    return FileResponse(str(path), media_type=mime or "application/octet-stream",
-                        filename=p.filename or None,
-                        headers={"Cache-Control": "private, max-age=86400"})
+    return _photo_file(photo_id, principal, db)
 
 
 # ─────────────────────────── шаг «Проверка электрокаров» ───────────────────────────
@@ -604,20 +610,10 @@ def reopen_report(report_id: int, principal: Principal = Depends(require_supervi
 @router.delete("/photos/{photo_id}")
 def delete_photo(photo_id: int, principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
-    """Удалить своё фото (например ошибочное). Чужие — только менеджеру и выше."""
-    from ..models import Photo
-    from ..photos import _unlink
+    """Удалить фото — алиас канонического `DELETE /api/photos/{id}`."""
+    from .photos_api import photo_delete
 
-    p = db.get(Photo, photo_id)
-    if p is None:
-        raise HTTPException(status_code=404, detail="Фото не найдено")
-    if p.uploaded_by != principal.user.id and not principal.is_manager:
-        raise HTTPException(status_code=403, detail="Можно удалять только свои фото")
-    _unlink(p)
-    db.delete(p)
-    audit(db, principal, "photo_delete", f"photo:{photo_id}", {"kind": p.kind})
-    db.commit()
-    return {"ok": True}
+    return photo_delete(photo_id, principal, db)
 
 
 # ─────────────────────────── выгрузка ───────────────────────────

@@ -16,8 +16,8 @@ from ..auth import Principal, audit, require_manager
 from ..db import get_db
 from ..deps import WD_SHORT, month_name, now_local
 from ..doublepay import double_map_for
-from ..models import Employee, ScheduleEntry, TimesheetRow
-from ..timesheet import bank_as_of, load_rules, month_bounds, recalc_range, settle_overtime
+from ..models import Employee, TimesheetRow
+from ..timesheet import bank_as_of, month_bounds, recalc_range, settle_overtime
 
 router = APIRouter(prefix="/api/timesheet", tags=["timesheet"])
 
@@ -204,6 +204,7 @@ def export_csv(year: int, month: int, mode: str = "internal",
 
 def _payroll_csv(db: Session, year: int, month: int):
     import csv as _csv
+
     from ..deps import month_name  # noqa: F401  (name месяца не нужен, оставлено для совместимости)
 
     ot = _overtime_data(db, year, month)
@@ -488,7 +489,8 @@ def _overtime_data(db: Session, year: int, month: int) -> dict:
             "employee": {"id": emp.id, "full_name": emp.full_name,
                          "short_name": emp.display_name, "position": emp.position},
             "credits": month_credits, "debits": month_debits,
-            "log": [l for l in log if l["debit_date"] != "долг прошлых периодов" or True],
+            # фильтр был «… or True», то есть не отфильтровывал ничего: отдаём журнал целиком
+            "log": list(log),
             "remain": remain_month,
             "carry_in": carry_in, "carry_out": totals["debt_out"],
             "totals": {
@@ -525,5 +527,6 @@ def audit_log(limit: int = 100, principal: Principal = Depends(require_manager),
     from ..models import AuditLog
 
     logs = db.scalars(select(AuditLog).order_by(AuditLog.ts.desc()).limit(min(limit, 500))).all()
-    return [{"id": l.id, "ts": l.ts.isoformat(timespec="minutes"), "actor": l.actor_name,
-             "action": l.action, "target": l.target, "payload": l.payload_json} for l in logs]
+    return [{"id": row.id, "ts": row.ts.isoformat(timespec="minutes"), "actor": row.actor_name,
+             "action": row.action, "target": row.target, "payload": row.payload_json}
+            for row in logs]

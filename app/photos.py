@@ -108,11 +108,16 @@ def delete_photo_files(db: Session, kind: str, ref_ids: list[int]) -> None:
     if not ref_ids:
         return
     for p in db.scalars(select(Photo).where(Photo.kind == kind, Photo.ref_id.in_(ref_ids))):
-        _unlink(p)
+        unlink_photo(p)
         db.delete(p)
 
 
-def _unlink(p: Photo) -> None:
+def unlink_photo(p: Photo) -> None:
+    """Удалить файл фото с диска (запись в БД не трогает).
+
+    Путь обязан остаться внутри UPLOAD_ROOT — иначе файл не удаляется (защита от
+    подмены path в записи). Публичное имя: используется api/photos_api.py и api/night_api.py.
+    """
     try:
         if p.path:
             target = (BASE_DIR / p.path).resolve()
@@ -154,7 +159,7 @@ def cleanup_photos(db: Session, days: Optional[int] = None) -> int:
     removed = 0
     for p in db.scalars(select(Photo).where(Photo.created_at < cutoff)):
         if p.path and (BASE_DIR / p.path).is_file():
-            _unlink(p)
+            unlink_photo(p)
             removed += 1
             p.path = ""      # запись остаётся: файл удалён по сроку хранения
     if removed:

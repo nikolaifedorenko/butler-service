@@ -81,10 +81,69 @@ class ShiftView:
         return f"<ShiftView {self.code} {self.start_time}-{self.end_time}{' (историческая)' if self.is_revision else ''}>"
 
 
-def view_at(db: Session, shift: Optional[ShiftType], date: dt.date) -> Optional[ShiftView]:
-    """Смена такой, какой она была в дату `date` (по ревизиям словаря)."""
+class ShiftCatalog:
+    """Словарь смен и их ревизии, загруженные ДВУМЯ запросами на весь обработчик.
+
+    Зачем: точечные find_by_code()/view_at() внутри циклов по ячейкам графика дают
+    ~3 SQL-запроса на ячейку (N сотрудников × 31 день = тысячи запросов на одну сетку
+    месяца). Каталог загружает shift_types и shift_revisions целиком и отвечает из
+    памяти; правило выбора ревизии («последняя с valid_from <= date») не меняется.
+
+    Каталог необязателен: все функции принимают catalog=None и работают по БД.
+    """
+
+    def __init__(self, shifts: list[ShiftType], revisions: list[ShiftRevision]):
+        self._by_code: dict[str, ShiftType] = {}
+        self._by_id: dict[int, ShiftType] = {}
+        self._default_off: Optional[ShiftType] = None
+        for sh in shifts:
+            self._by_code.setdefault(sh.code, sh)
+            self._by_id[sh.id] = sh
+            if sh.is_default_off and self._default_off is None:
+                self._default_off = sh
+        self._rev: dict[int, list[ShiftRevision]] = {}
+        for r in revisions:
+            self._rev.setdefault(r.shift_type_id, []).append(r)
+        for items in self._rev.values():
+            items.sort(key=lambda r: r.valid_from)
+
+    @classmethod
+    def load(cls, db: Session) -> ShiftCatalog:
+        return cls(list(db.scalars(select(ShiftType))), list(db.scalars(select(ShiftRevision))))
+
+    def by_code(self, code: str) -> Optional[ShiftType]:
+        return self._by_code.get(code) if code else None
+
+    def by_id(self, shift_id: Optional[int]) -> Optional[ShiftType]:
+        return self._by_id.get(shift_id) if shift_id is not None else None
+
+    def default_off(self) -> Optional[ShiftType]:
+        return self._default_off
+
+    def view_at(self, shift: Optional[ShiftType], date: dt.date) -> Optional[ShiftView]:
+        if shift is None:
+            return None
+        rev = None
+        for r in self._rev.get(shift.id, ()):      # список отсортирован по valid_from
+            if r.valid_from <= date:
+                rev = r
+            else:
+                break
+        if rev is None:
+            return ShiftView(shift)
+        return ShiftView(shift, {f: getattr(rev, f) for f in REV_FIELDS},
+                         revision_from=rev.valid_from)
+
+
+def view_at(db: Session, shift: Optional[ShiftType], date: dt.date,
+            catalog: Optional[ShiftCatalog] = None) -> Optional[ShiftView]:
+    """Смена такой, какой она была в дату `date` (по ревизиям словаря).
+
+    `catalog` — предзагруженный словарь (см. ShiftCatalog): без запроса к БД."""
     if shift is None:
         return None
+    if catalog is not None:
+        return catalog.view_at(shift, date)
     rev = db.scalar(select(ShiftRevision).where(
         ShiftRevision.shift_type_id == shift.id,
         ShiftRevision.valid_from <= date).order_by(ShiftRevision.valid_from.desc()).limit(1))
@@ -114,10 +173,12 @@ def add_revision(db: Session, shift: ShiftType, effective_from: dt.date) -> Shif
     return rev
 
 
-def find_by_code(db: Session, code: str) -> Optional[ShiftType]:
+def find_by_code(db: Session, code: str, catalog: Optional[ShiftCatalog] = None) -> Optional[ShiftType]:
     """Поиск смены по коду — включая архивные (нужны для прошлых графиков)."""
     if not code:
         return None
+    if catalog is not None:
+        return catalog.by_code(code)
     return db.scalar(select(ShiftType).where(ShiftType.code == code))
 
 
