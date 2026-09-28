@@ -34,9 +34,17 @@ jobs:
           cache: pip
 
       - name: Зависимости
+        # На 3.11 ставим ТОЧНО из лок-файла (воспроизводимость), на 3.10/3.12 —
+        # из свободных требований: так ловим и регрессии, и несовместимость с новыми
+        # версиями библиотек. Без пинов установка уже ломалась: свежий starlette
+        # требует httpx2, а pip без лока выдавал ResolutionImpossible.
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+            pip install -r requirements.lock.txt
+          else
+            pip install -r requirements.txt -r requirements-dev.txt
+          fi
           pip install ruff
 
       - name: Линтер (ruff)
