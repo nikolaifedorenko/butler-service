@@ -15,6 +15,9 @@
   (Ubuntu + systemd + nginx + HTTPS + PostgreSQL), Docker, бэкапы, обновление.
 * [`docs/CHANGES-2026-09-28.md`](docs/CHANGES-2026-09-28.md) — что исправлено и добавлено
   в последнем батче (интерфейс ночных отчётов и электрокаров, производительность, CI).
+* [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — архитектурный
+  разбор: слои и модули, модель данных, ключевые потоки, замеры производительности,
+  риски и план эволюции, маршрут онбординга (4 схемы в `docs/architecture/diagrams/`).
 * [`docs/AUTH.md`](docs/AUTH.md) — аутентификация и безопасность: пароли PBKDF2, подписанные
   cookie-сессии, роли, impersonation, аудит, чек-лист боевого запуска.
 * [`docs/SPEC.md`](docs/SPEC.md) — полная спецификация: модель данных, API, движок расчёта,
