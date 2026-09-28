@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import (auth_routes, cars_api, docs_api, doublepay, employees, night_api,
-                  punches, schedule, settings_api, timesheet)
+                  photos_api, punches, schedule, settings_api, timesheet)
 from .config import settings
 from .db import Base, engine, SessionLocal
 from .deps import now_local
@@ -397,6 +397,7 @@ app.include_router(docs_api.router)
 app.include_router(doublepay.router)
 app.include_router(night_api.router)
 app.include_router(cars_api.router)
+app.include_router(photos_api.router)
 
 
 @app.get("/api/selfcheck")

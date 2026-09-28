@@ -58,8 +58,11 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
     report = db.scalar(select(NightReport).where(NightReport.date == shift_d))
     if report:
         return report
-    # не создаём задним числом будущую смену раньше её начала
-    if shift_d > current_shift_date() or (shift_d == current_shift_date() and now_local().time() < SHIFT_START):
+    # Будущую смену раньше её начала не создаём. Сравниваем именно с моментом старта
+    # смены (20:00 даты shift_d), а не с «сегодняшней» датой: иначе смена, идущая
+    # сейчас (например 02:00 ночи), осталась бы без отчёта при старте сервера
+    # после 20:00 — ночная бригада видела бы пустой раздел до самого закрытия.
+    if now_local() < dt.datetime.combine(shift_d, SHIFT_START):
         return None
 
     report = NightReport(date=shift_d)

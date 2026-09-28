@@ -265,11 +265,21 @@ function navigate(view) {
   if (el) el.classList.add('active');
   renderNav();
   clearTimers();
-  const loaders = { schedule: loadSchedule, onwork: loadOnwork, attendance: loadAttendance,
-                    timesheet: loadTimesheet, employees: loadEmployees, me: loadMe,
-                    night: loadNight, cars: loadCars,
-                    settings: loadSettings };
-  const run = loaders[view] || (() => Promise.resolve());
+  /* Загрузчики разделов ищем по имени в глобальной области, а не прямыми ссылками:
+     если функция раздела не загрузилась (старый кэш, ошибка в файле раздела), интерфейс
+     не падает целиком — показывается внятная заглушка вместо пустого экрана. */
+  const LOADER_NAMES = { schedule: 'loadSchedule', onwork: 'loadOnwork', attendance: 'loadAttendance',
+                         timesheet: 'loadTimesheet', employees: 'loadEmployees', me: 'loadMe',
+                         night: 'loadNight', cars: 'loadCars', settings: 'loadSettings' };
+  const fnName = LOADER_NAMES[view];
+  const fn = fnName ? window[fnName] : null;
+  const run = typeof fn === 'function' ? fn : () => {
+    if (!el) return;
+    el.innerHTML = `<div class="panel"><h3 class="panel-title">Раздел не загрузился</h3>
+      <p class="hint">Функция раздела <code>${esc(fnName || view)}</code> не найдена. Обновите страницу
+      с очисткой кэша (Cmd/Ctrl+Shift+R). Если не помогло — перезапустите сервер и проверьте,
+      что в <code>static/index.html</code> подключены все скрипты разделов.</p></div>`;
+  };
   Promise.resolve().then(run).catch(err => {
     console.error(err);
     if (el) el.innerHTML = `<div class="panel"><h3 class="panel-title">Раздел не загрузился</h3>
