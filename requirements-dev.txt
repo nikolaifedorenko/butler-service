@@ -3,3 +3,4 @@ pytest>=8.0         # тесты: ./.venv/bin/python -m pytest tests/ -q
 httpx>=0.27        # для fastapi TestClient
 playwright>=1.44   # скриншоты интерфейса (tools/screens.py)
 pypdf>=4.0         # проверка содержимого PDF в тестах
+freezegun>=1.4     # фиксация времени: тесты границы полуночи и ночной смены

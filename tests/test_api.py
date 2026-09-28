@@ -69,8 +69,11 @@ class TestApi(unittest.TestCase):
         self.assertEqual(edit.status_code, 403)
 
     def test_05_set_cell_and_see_it_in_grid(self):
-        today = local_date()
-        date = (today + dt.timedelta(days=3)).isoformat()
+        # Целевая дата — «сегодня + 3 дня», а сетку нужно запрашивать за МЕСЯЦ ЦЕЛЕВОЙ
+        # ДАТЫ: раньше месяц брали от today, и в последние дни месяца (29–31) тест
+        # падал с KeyError, потому что ячейка уезжала в следующий месяц.
+        target = local_date() + dt.timedelta(days=3)
+        date = target.isoformat()
         types = client.get("/api/shift-types").json()
         sick = next(t for t in types if t["code"] == "SICK")
         emps = client.get("/api/employees").json()
@@ -78,7 +81,7 @@ class TestApi(unittest.TestCase):
         r = client.put("/api/schedule/cell", json={
             "employee_id": emp["id"], "date": date, "shift_type_id": sick["id"], "note": "тест"})
         self.assertEqual(r.status_code, 200, r.text)
-        grid = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
+        grid = client.get("/api/schedule", params={"year": target.year, "month": target.month}).json()
         row = next(x for x in grid["rows"] if x["employee"]["id"] == emp["id"])
         self.assertEqual(row["cells"][date]["shift"]["code"], "SICK")
         self.assertEqual(row["cells"][date]["note"], "тест")
