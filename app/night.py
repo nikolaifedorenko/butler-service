@@ -177,7 +177,7 @@ def section_dict(sec: NightAreaSection, *, with_items: bool = True) -> dict:
 
 def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
     """Снимок обхода электрокаров за смену + перехваты (нужны и API, и выгрузке DOCX)."""
-    from .models import CarNightCheck, NightInterception   # локально — не раздуваем импорт модуля
+    from .models import CarNightCheck   # локально — не раздуваем импорт модуля
 
     out = []
     checks = list(db.scalars(select(CarNightCheck).where(CarNightCheck.report_id == rep.id)

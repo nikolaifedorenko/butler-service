@@ -1,0 +1,28 @@
+# Конфигурация инструментов (пакетом проект не публикуется — зависимости в requirements*.txt).
+[tool.ruff]
+line-length = 118
+target-version = "py310"
+extend-exclude = ["tools/patch_doublepay_js.py", "tools/patch_readonly_pdf_js.py"]
+
+[tool.ruff.lint]
+# E/W — pycodestyle, F — pyflakes, I — сортировка импортов, B — багберы,
+# UP — устаревшие конструкции, SIM — упрощения, RET — возвраты, RUF — прочее
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RET"]
+ignore = [
+    "E501",   # длина строки: в проекте много русских строк и docstring'ов
+    "B008",   # Depends() в аргументах по умолчанию — идиома FastAPI
+    "SIM108", # тернарник не всегда читаемее if/else
+    "RET504", # «лишнее» присваивание перед return часто намеренное
+    "UP038",  # X | Y в isinstance: медленнее на 3.10, оставляем кортежи
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"app/seed.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning:starlette.*"]

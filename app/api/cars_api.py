@@ -188,8 +188,11 @@ def car_history(car_id: int, limit: int = 200, db: Session = Depends(get_db),
     rows = list(db.scalars(select(CarHistory).where(CarHistory.car_id == car_id)
                            .order_by(CarHistory.id.desc()).limit(min(limit, 500))))
     from ..cars import history_dict
+    # history_dict() принимает КАРТУ фото {ref_id: [...]} и сам достаёт нужные:
+    # раньше сюда передавался уже раскрытый список (pmap.get(h.id, [])), из-за чего
+    # любой запрос истории кара падал в AttributeError → 500.
     pmap = photos_of(db, "car_return", [h.id for h in rows])
-    return {"history": [history_dict(h, pmap.get(h.id, [])) for h in rows]}
+    return {"history": [history_dict(h, pmap) for h in rows]}
 
 
 @router.post("/{car_id}/take")

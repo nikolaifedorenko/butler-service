@@ -304,13 +304,22 @@ def effective_entry_shift(db: Session, emp_id: int, date: dt.date, emp: Optional
                             index=index, catalog=catalog)
 
 
-def partial_window(entry: Optional[ScheduleEntry]) -> Optional[tuple[str, str, Optional[ShiftType]]]:
-    """Согласованное окно частичного отсутствия в ячейке: (с, по, причина)."""
+def partial_window(entry: Optional[ScheduleEntry],
+                   db: Optional[Session] = None) -> Optional[tuple[str, str, Optional[ShiftType]]]:
+    """Согласованное окно частичного отсутствия в ячейке: (с, по, причина).
+
+    `db` нужен только как запасной путь, если связь partial_shift не подгружена
+    (или запись словаря удалена). Раньше здесь использовалась переменная `db`,
+    которой в сигнатуре не было, — NameError на любой ячейке с partial_shift_id
+    и незагруженной связью.
+    """
     if entry is None:
         return None
     if not (entry.from_time and entry.until_time):
         return None
     reason = None
     if entry.partial_shift_id:
-        reason = entry.partial_shift or db.get(ShiftType, entry.partial_shift_id)
+        reason = entry.partial_shift
+        if reason is None and db is not None:
+            reason = db.get(ShiftType, entry.partial_shift_id)
     return entry.from_time, entry.until_time, reason
