@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Python ${{ matrix.python-version }}: ruff + pytest
+    name: "Python ${{ matrix.python-version }}: ruff + pytest"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -43,7 +43,11 @@ jobs:
           if [ "${{ matrix.python-version }}" = "3.11" ]; then
             pip install -r requirements.lock.txt
           else
-            pip install -r requirements.txt -r requirements-dev.txt
+            # не тянем playwright: он нужен только tools/screens.py, а для тестов
+            # достаточно pytest/httpx/httpx2/freezegun/pypdf. Совместная установка
+            # requirements-dev.txt целиком на «свежем» резолвере давала
+            # ResolutionImpossible, из-за чего матрица 3.10/3.12 не стартовала.
+            pip install -r requirements.txt pytest httpx httpx2 freezegun pypdf
           fi
           pip install ruff
 
@@ -76,7 +80,7 @@ jobs:
           "
 
   frontend:
-    name: JavaScript: синтаксис + смоук интерфейса
+    name: "JavaScript: синтаксис + смоук интерфейса"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
