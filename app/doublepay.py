@@ -46,29 +46,74 @@ REASON_TITLES = {
 }
 
 
-def employee_list_kind(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = None) -> str:
-    """Какой список календаря применяется к сотруднику в дату: 'week5' или 'shift'."""
-    pat = pattern_for_date(db, emp, date, cfg)
+def employee_list_kind(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = None,
+                       index=None) -> str:
+    """Какой список календаря применяется к сотруднику в дату: 'week5' или 'shift'.
+
+    `index` — предзагруженные записи блоков (base_schedule.BlockIndex): без него
+    в циклах по дням на каждую дату уходит запрос к block_assignments.
+    """
+    pat = pattern_for_date(db, emp, date, cfg, index=index)
     return "week5" if pat.get("kind") == "week5" else "shift"
 
 
 def scope_applies(db: Session, emp: Employee, date: dt.date, scope: str,
-                  cfg: Optional[dict] = None) -> bool:
+                  cfg: Optional[dict] = None, index=None) -> bool:
     """Действует ли день календаря с этим scope на сотрудника в эту дату."""
     if scope == SCOPE_ALL:
         return True
     if scope not in (SCOPE_SHIFT, SCOPE_WEEK5):
         return False
-    kind = employee_list_kind(db, emp, date, cfg)
+    kind = employee_list_kind(db, emp, date, cfg, index=index)   # cfg обязателен в циклах
     return (kind == "week5") if scope == SCOPE_WEEK5 else (kind == "shift")
 
 
-def reason_for(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = None) -> str:
+class DoubleContext:
+    """Календарь двойной оплаты и ВИП-периоды, загруженные ДВУМЯ запросами на диапазон.
+
+    Зачем: reason_for() вызывается для каждого дня каждого сотрудника и без контекста
+    делает два точечных запроса (ВИП-период + день календаря). На пересчёте месяца
+    для 50 сотрудников это ~3 тысячи запросов.
+    """
+
+    def __init__(self, cal: dict[dt.date, str], vip_by_emp: dict[int, list[VipDoublePay]]):
+        self._cal = cal
+        self._vip = vip_by_emp
+
+    @classmethod
+    def load(cls, db: Session, start: dt.date, end: dt.date) -> "DoubleContext":
+        cal = {d.date: (d.scope or SCOPE_ALL) for d in db.scalars(select(DoublePayDay).where(
+            DoublePayDay.date >= start, DoublePayDay.date <= end))}
+        vip_by_emp: dict[int, list[VipDoublePay]] = {}
+        for v in db.scalars(select(VipDoublePay).where(
+                VipDoublePay.start_date <= end, VipDoublePay.end_date >= start)):
+            vip_by_emp.setdefault(v.employee_id, []).append(v)
+        return cls(cal, vip_by_emp)
+
+    def has_vip(self, emp_id: int, date: dt.date) -> bool:
+        return any(v.start_date <= date <= v.end_date for v in self._vip.get(emp_id, ()))
+
+    def day_scope(self, date: dt.date) -> Optional[str]:
+        return self._cal.get(date)
+
+
+def reason_for(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = None,
+               index=None, ctx: Optional[DoubleContext] = None) -> str:
     """'' | 'vip' | 'calendar' — почему переработки этого дня оплачиваются вдвое.
 
     ВИП-период важнее календаря только для подписи: на тариф не влияет —
     день в любом случае двойной (×2), а не ×4.
+
+    `ctx` — предзагруженный календарь/ВИП-периоды (см. DoubleContext), `index` —
+    предзагруженные блоки: оба нужны в циклах по дням, чтобы не ходить в БД.
     """
+    if ctx is not None:
+        if ctx.has_vip(emp.id, date):
+            return REASON_VIP
+        scope = ctx.day_scope(date)
+        if scope is not None and scope_applies(db, emp, date, scope, cfg, index=index):
+            return REASON_CALENDAR
+        return ""
     vip = db.scalar(select(VipDoublePay).where(
         VipDoublePay.employee_id == emp.id,
         VipDoublePay.start_date <= date,
@@ -76,7 +121,7 @@ def reason_for(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = 
     if vip is not None:
         return REASON_VIP
     day = db.scalar(select(DoublePayDay).where(DoublePayDay.date == date))
-    if day is not None and scope_applies(db, emp, date, day.scope, cfg):
+    if day is not None and scope_applies(db, emp, date, day.scope, cfg, index=index):
         return REASON_CALENDAR
     return ""
 

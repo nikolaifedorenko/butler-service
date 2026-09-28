@@ -17,11 +17,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager
-from ..base_schedule import base_shift, load_base_config, parse_pattern, validate_pattern
+from ..base_schedule import (BlockIndex, base_shift, load_base_config, parse_pattern,
+                             validate_pattern)
 from ..db import get_db
 from ..deps import WD_SHORT, month_name, now_local
 from ..doublepay import SCOPE_TITLES, calendar_map
-from ..employment import employed_on, employed_ranges, ensure_periods, is_employed, periods_of
+from ..employment import (employed_on, employed_ranges, ensure_periods, is_employed,
+                          periods_of, ranges_from_periods)
+from ..shiftrev import ShiftCatalog
 from ..factview import build_fact_map
 from ..groups import group_index, normalize_group, sorted_groups
 from ..models import (BlockAssignment, Employee, EmploymentPeriod, ScheduleEntry, ShiftType,
@@ -185,6 +188,10 @@ def get_grid(year: int, month: int, principal: Principal = Depends(current_princ
 
     today = now_local().date()
     dbl_cal = calendar_map(db, first, last)   # дни двойной оплаты — маркер ×2 в шапке сетки
+    # справочники и записи блоков — ОДНИМ запросом на всю сетку: без этого каждая
+    # ячейка (N сотрудников × 31 день) делала три точечных запроса к БД
+    catalog = ShiftCatalog.load(db)
+    block_index = BlockIndex.from_assignments(blocks)
     rows = []
     for emp in employees:
         periods = per_emp_periods.get(emp.id) or []
@@ -195,10 +202,11 @@ def get_grid(year: int, month: int, principal: Principal = Depends(current_princ
         for d in days:
             employed = employed_on(periods, d) if periods else True
             entry = emap.get((emp.id, d))
-            shift = entry_shift(db, entry) if entry else None
+            shift = entry_shift(db, entry, catalog=catalog) if entry else None
             auto = False
             if shift is None:
-                shift = base_shift(db, emp, d, base_cfg, employed=employed)
+                shift = base_shift(db, emp, d, base_cfg, employed=employed,
+                                   index=block_index, catalog=catalog)
                 auto = shift is not None
             planned = shift.planned_hours if (shift and employed) else 0.0
             planned_total += planned
@@ -243,7 +251,7 @@ def get_grid(year: int, month: int, principal: Principal = Depends(current_princ
                 "dismissed_at": emp.dismissed_at.isoformat() if emp.dismissed_at else None,
             },
             "blocks": emp_blocks,
-            "employed_ranges": employed_ranges(db, emp.id, first, last),
+            "employed_ranges": ranges_from_periods(periods, first, last),
             "cells": cells,
             "totals": {"planned_hours": round(planned_total, 2), "work_days": work_days,
                        "fact_hours": round(fact_total, 2)},

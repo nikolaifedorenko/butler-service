@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..auth import Principal, audit, current_principal, require_manager
 from ..base_schedule import dump_pattern, validate_pattern
@@ -31,7 +31,10 @@ router = APIRouter(prefix="/api", tags=["directory"])
 DEFAULT_PASSWORD = "demo1234"
 
 
-def _emp_dict(e: Employee, with_user: bool = False) -> dict:
+_CAR_UNSET = object()      # «кар не предзагружен» — отличается от «кара нет» (None)
+
+
+def _emp_dict(e: Employee, with_user: bool = False, car=_CAR_UNSET) -> dict:
     data = {
         "id": e.id, "full_name": e.full_name, "short_name": e.short_name or e.display_name,
         "full_name_genitive": e.full_name_genitive or "",
@@ -57,20 +60,23 @@ def _emp_dict(e: Employee, with_user: bool = False) -> dict:
     if with_user:
         data["username"] = e.user.username if e.user else None
         data["role"] = e.user.role if e.user else None
-    # закреплённый электрокар (для карточки сотрудника)
-    car = db_car_of(e.id)
-    data["assigned_car_id"] = car[0] if car else None
-    data["assigned_car_number"] = car[1] if car else ""
+    # закреплённый электрокар (для карточки сотрудника): берём из предзагруженной
+    # карты (список сотрудников) или через ORM-связь — в сессии текущего запроса.
+    # Раньше здесь открывалась ОТДЕЛЬНАЯ SessionLocal на каждого сотрудника:
+    # чтение вне транзакции запроса + лишнее соединение на каждой строке списка.
+    if car is _CAR_UNSET:
+        car = e.assigned_car
+    data["assigned_car_id"] = car.id if car else None
+    data["assigned_car_number"] = car.number if car else ""
     return data
 
 
-def db_car_of(employee_id: int):
-    """(id, number) кара, закреплённого за сотрудником — без связи в ORM."""
-    from ..db import SessionLocal
-
-    with SessionLocal() as s:
-        c = s.scalar(select(Car).where(Car.assigned_to == employee_id))
-        return (c.id, c.number) if c else None
+def cars_by_employee(db: Session, employee_ids: list[int]) -> dict[int, Car]:
+    """Закреплённые кары одним запросом: {employee_id: Car}."""
+    if not employee_ids:
+        return {}
+    return {c.assigned_to: c for c in db.scalars(
+        select(Car).where(Car.assigned_to.in_(employee_ids)))}
 
 
 def _guard_supervisor(principal: Principal, new_role: str, target_user: Optional[User]) -> None:
@@ -239,11 +245,15 @@ def _touch_block(db: Session, emp: Employee, new_group: str, since: dt.date,
 @router.get("/employees")
 def list_employees(include_deleted: bool = False, principal: Principal = Depends(require_manager),
                    db: Session = Depends(get_db)):
-    stmt = select(Employee).order_by(Employee.active.desc(), Employee.schedule_group, Employee.full_name)
+    stmt = (select(Employee)
+            .options(joinedload(Employee.department), joinedload(Employee.user),
+                     selectinload(Employee.contacts))
+            .order_by(Employee.active.desc(), Employee.schedule_group, Employee.full_name))
     if not include_deleted:
         stmt = stmt.where(Employee.deleted_at.is_(None))
     emps = db.scalars(stmt).all()
-    return [_emp_dict(e, with_user=True) for e in emps]
+    cars = cars_by_employee(db, [e.id for e in emps])
+    return [_emp_dict(e, with_user=True, car=cars.get(e.id)) for e in emps]
 
 
 @router.get("/group-choices")

@@ -59,25 +59,42 @@ def _resolve_employee(principal: Principal, employee_id: Optional[int], db: Sess
     raise HTTPException(status_code=403, detail="К вашей учётной записи не привязан сотрудник")
 
 
-def _plan_for_date(db: Session, emp_id: int, today: dt.date, rules: dict, at_ts: Optional[dt.datetime] = None):
+def _plan_for_date(db: Session, emp_id: int, today: dt.date, rules: dict,
+                   at_ts: Optional[dt.datetime] = None, *, emp: Optional[Employee] = None,
+                   entries: Optional[dict] = None, index=None, catalog=None,
+                   cfg: Optional[dict] = None, employed: Optional[bool] = None):
     """План на «сегодня» (ручная ячейка или базовый цикл); если сейчас раннее утро —
-    смотрим и вчерашнюю ночную смену."""
+    смотрим и вчерашнюю ночную смену.
+
+    entries/index/catalog/cfg — предзагруженные данные: нужны в «Кто на работе»,
+    где план спрашивается для каждого сотрудника (иначе ~5 запросов на человека
+    каждые 30 секунд у каждого открытого клиента).
+    """
     from ..base_schedule import base_shift
 
-    emp = db.get(Employee, emp_id)
-    entry = db.scalar(select(ScheduleEntry).where(
-        ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == today))
+    if emp is None:
+        emp = db.get(Employee, emp_id)
+    yesterday = today - dt.timedelta(days=1)
+    if entries is not None:
+        entry = entries.get((emp_id, today))
+        y_entry = entries.get((emp_id, yesterday))
+    else:
+        entry = db.scalar(select(ScheduleEntry).where(
+            ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == today))
+        y_entry = db.scalar(select(ScheduleEntry).where(
+            ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == yesterday))
+    # семантика прежняя: план «на сегодня» берётся из текущей строки словаря
+    # (entry.shift_type подгружен JOIN'ом при пакетной выборке — запроса нет)
     shift = entry.shift_type if entry else None
     if shift is None and emp is not None:
-        shift = base_shift(db, emp, today)
+        shift = base_shift(db, emp, today, cfg=cfg, employed=employed,
+                           index=index, catalog=catalog)
     p_start, p_end = shift_window(shift, today, rules)
 
-    yesterday = today - dt.timedelta(days=1)
-    y_entry = db.scalar(select(ScheduleEntry).where(
-        ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == yesterday))
     y_shift = y_entry.shift_type if y_entry else None
     if y_shift is None and emp is not None:
-        y_shift = base_shift(db, emp, yesterday)
+        y_shift = base_shift(db, emp, yesterday, cfg=cfg, employed=employed,
+                             index=index, catalog=catalog)
     y_start, y_end = shift_window(y_shift, yesterday, rules)
 
     now = at_ts or now_local()
@@ -307,11 +324,13 @@ def onwork(principal: Principal = Depends(current_principal), db: Session = Depe
 
     Раздел доступен ВСЕМ ролям, включая рядовых сотрудников: каждый может увидеть,
     кто сейчас на смене (например, чтобы понять, кому передать смену)."""
-    from ..base_schedule import base_shift
+    from ..base_schedule import BlockIndex, base_shift, load_base_config
+    from ..shiftrev import ShiftCatalog
 
     rules = load_rules(db)
     now = now_local()
     today = now.date()
+    yesterday = today - dt.timedelta(days=1)
     since = now - dt.timedelta(hours=36)     # хвост ночной смены переходит полночь
     employees = db.scalars(select(Employee).where(
         Employee.deleted_at.is_(None), Employee.active.is_(True))).all()
@@ -324,18 +343,43 @@ def onwork(principal: Principal = Depends(current_principal), db: Session = Depe
     for p in punches:
         last_in[p.employee_id] = p if p.kind == "IN" else None
 
+    # справочники и ячейки графика — ОДИН раз на запрос (раздел опрашивается каждые 30 с)
+    catalog = ShiftCatalog.load(db)
+    index = BlockIndex.load(db, emp_ids)
+    cfg = load_base_config(db)
+    entries: dict[tuple[int, dt.date], ScheduleEntry] = {}
+    if emp_ids:
+        for en in db.scalars(select(ScheduleEntry).where(
+                ScheduleEntry.employee_id.in_(emp_ids),
+                ScheduleEntry.date.in_([today, yesterday]))):
+            entries[(en.employee_id, en.date)] = en
+    # периоды работы — одним запросом: иначе is_employed() спрашивает БД на каждого
+    from ..employment import employed_on
+    from ..models import EmploymentPeriod
+    periods_by_emp: dict[int, list] = {}
+    if emp_ids:
+        for per in db.scalars(select(EmploymentPeriod).where(
+                EmploymentPeriod.employee_id.in_(emp_ids))):
+            periods_by_emp.setdefault(per.employee_id, []).append(per)
+
     items = []
     planned_today = 0
     for emp in employees:
-        entry = db.scalar(select(ScheduleEntry).where(
-            ScheduleEntry.employee_id == emp.id, ScheduleEntry.date == today))
-        planned = entry_shift(db, entry) if entry else base_shift(db, emp, today)
+        entry = entries.get((emp.id, today))
+        # периоды уже выбраны одним запросом; при их отсутствии сохраняем прежнее
+        # поведение is_employed() (False), но не ходим в БД на каждого сотрудника
+        emp_periods = periods_by_emp.get(emp.id) or []
+        employed = employed_on(emp_periods, today)
+        planned = entry_shift(db, entry, catalog=catalog) if entry else \
+            base_shift(db, emp, today, cfg=cfg, employed=employed, index=index, catalog=catalog)
         if planned and planned.kind == "work":
             planned_today += 1
         p = last_in.get(emp.id)
         if p is None:
             continue
-        _, shift, p_start, p_end, plan_date = _plan_for_date(db, emp.id, today, rules, at_ts=now)
+        _, shift, p_start, p_end, plan_date = _plan_for_date(
+            db, emp.id, today, rules, at_ts=now, emp=emp, entries=entries,
+            index=index, catalog=catalog, cfg=cfg, employed=employed)
         is_late = bool(p_start and p.ts > p_start + dt.timedelta(minutes=rules["grace_minutes"]))
         items.append({
             "employee_id": emp.id,

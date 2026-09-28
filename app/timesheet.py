@@ -21,7 +21,7 @@ from .base_schedule import effective_entry_shift, partial_window
 from .deps import local_date
 from .models import (BankAdjustment, Employee, Punch, ScheduleEntry, Setting, ShiftType,
                      TimesheetRow, utcnow)
-from .shiftrev import ShiftView, view_at
+from .shiftrev import ShiftCatalog, ShiftView, view_at
 
 # ──────────────────────────── правила расчёта ────────────────────────────
 DEFAULT_RULES = {
@@ -170,18 +170,24 @@ def official_window(shift: Optional[ShiftType], date: dt.date) -> tuple[Optional
     return start, start + dt.timedelta(hours=shift.planned_hours)
 
 
-def entry_shift(db: Session, entry: Optional[ScheduleEntry]):
+def entry_shift(db: Session, entry: Optional[ScheduleEntry],
+                catalog: Optional[ShiftCatalog] = None):
     """Смена ячейки — такой, какой она была в дату ячейки.
 
     Если словарь смен потом изменили (другие часы, другое название), отработанные
     дни считаются по прежним значениям: их хранит история ревизий (ShiftRevision).
+
+    `catalog` — предзагруженный словарь смен и ревизий: в циклах по ячейкам
+    (сетка месяца, пересчёт диапазона) убирает запрос на каждую ячейку.
     """
     if entry is None:
         return None
-    rel = entry.shift_type
-    if rel is None or rel.id != entry.shift_type_id:
-        rel = db.get(ShiftType, entry.shift_type_id)
-    return view_at(db, rel, entry.date)
+    rel = catalog.by_id(entry.shift_type_id) if catalog is not None else None
+    if rel is None:
+        rel = entry.shift_type
+        if rel is None or rel.id != entry.shift_type_id:
+            rel = db.get(ShiftType, entry.shift_type_id)
+    return view_at(db, rel, entry.date, catalog=catalog)
 
 
 # ──────────────────── частичное отсутствие (отпросился на пару часов) ────────────────────
@@ -320,7 +326,10 @@ def _subtract(intervals, hole):
     return out
 
 
-def day_pieces(db: Session, emp: Employee, date: dt.date, rules: dict) -> dict:
+def day_pieces(db: Session, emp: Employee, date: dt.date, rules: dict,
+               index=None, catalog: Optional[ShiftCatalog] = None,
+               entry_map: Optional[dict] = None, punches_by_day: Optional[dict] = None,
+               cfg: Optional[dict] = None, employed: Optional[bool] = None) -> dict:
     """
     Куски отработанного времени, относящиеся к дню date:
       pieces      — для факта/банка: плановые куски своего дня + «свободный» остаток сессии,
@@ -331,17 +340,27 @@ def day_pieces(db: Session, emp: Employee, date: dt.date, rules: dict) -> dict:
     plans = {}
     for off in (-1, 0, 1):
         d = date + dt.timedelta(days=off)
-        entry, shift = effective_entry_shift(db, emp.id, d, emp)
+        entry, shift = effective_entry_shift(db, emp.id, d, emp, index=index,
+                                             catalog=catalog, entry_map=entry_map,
+                                             cfg=cfg, employed=employed)
         ws, we = shift_window(shift, d, rules) if shift and shift.kind == "work" else (None, None)
         plans[d] = {"entry": entry, "shift": shift, "ws": ws, "we": we,
                     "segments": plan_segments(shift, d, entry, rules),
                     "gap": authorized_gap(entry, d), "auth_hours": gap_hours(entry, d),
                     "partial": partial_window(entry)}
 
-    lo = dt.datetime(date.year, date.month, date.day) - dt.timedelta(days=1)
-    hi = dt.datetime(date.year, date.month, date.day) + dt.timedelta(days=2)
-    punches = list(db.scalars(select(Punch).where(
-        Punch.employee_id == emp.id, Punch.ts >= lo, Punch.ts < hi).order_by(Punch.ts)))
+    if punches_by_day is not None:
+        # отметки уже выбраны одним запросом на диапазон: собираем окно date-1..date+1
+        mine = punches_by_day.get(emp.id) or {}
+        punches = []
+        for off in (-1, 0, 1):
+            punches.extend(mine.get(date + dt.timedelta(days=off), ()))
+        punches.sort(key=lambda x: x.ts)
+    else:
+        lo = dt.datetime(date.year, date.month, date.day) - dt.timedelta(days=1)
+        hi = dt.datetime(date.year, date.month, date.day) + dt.timedelta(days=2)
+        punches = list(db.scalars(select(Punch).where(
+            Punch.employee_id == emp.id, Punch.ts >= lo, Punch.ts < hi).order_by(Punch.ts)))
     sessions, warnings = pair_sessions(punches, rules)
 
     pieces: list[dict] = []
@@ -708,28 +727,48 @@ def compute_day(employee: Employee, date: dt.date, entry: Optional[ScheduleEntry
 
 # ──────────────────────────── пересчёт ────────────────────────────
 def recalc_day(db: Session, employee: Employee, date: dt.date, rules: Optional[dict] = None,
-               entry: Optional[ScheduleEntry] = None, commit: bool = True) -> TimesheetRow:
+               entry: Optional[ScheduleEntry] = None, commit: bool = True,
+               index=None, catalog: Optional[ShiftCatalog] = None,
+               entry_map: Optional[dict] = None, punches_by_day: Optional[dict] = None,
+               double_ctx=None, row_map: Optional[dict] = None,
+               base_cfg: Optional[dict] = None, employed: Optional[bool] = None) -> TimesheetRow:
+    """Пересчитать и сохранить строку дня.
+
+    Параметры index/catalog/entry_map/punches_by_day/double_ctx/row_map —
+    предзагруженные данные: обязательны в циклах (recalc_range), иначе на каждый
+    день уходит около десяти точечных запросов.
+    """
     rules = coerce_rules(rules or load_rules(db))
-    data = day_pieces(db, employee, date, rules)
+    data = day_pieces(db, employee, date, rules, index=index, catalog=catalog,
+                      entry_map=entry_map, punches_by_day=punches_by_day,
+                      cfg=base_cfg, employed=employed)
     # день двойной оплаты (календарь/ВИП) — переработки пойдут кодами ДЯ2/ДН2
     from .doublepay import reason_for
-    data["double_reason"] = reason_for(db, employee, date)
+    data["double_reason"] = reason_for(db, employee, date, cfg=base_cfg, index=index,
+                                       ctx=double_ctx)
     if entry is None:
         entry = data["plans"][date]["entry"]
-    shift = entry_shift(db, entry) if entry else data["plans"][date]["shift"]
+    shift = entry_shift(db, entry, catalog=catalog) if entry else data["plans"][date]["shift"]
     if shift is not None and shift.code == "TIMEOFF_HOURS":
         # «выходной за часы» списывает столько, сколько длилась бы смена по графику
         from .base_schedule import base_shift
-        virtual = base_shift(db, employee, date)
+        virtual = base_shift(db, employee, date, cfg=base_cfg, employed=employed,
+                             index=index, catalog=catalog)
         if virtual is not None and virtual.kind == "work":
             data["timeoff_default"] = round(virtual.planned_hours, 2)
     computed = compute_day(employee, date, entry, data, rules, shift=shift)
 
-    row = db.scalar(select(TimesheetRow).where(
-        TimesheetRow.employee_id == employee.id, TimesheetRow.date == date))
+    key = (employee.id, date)
+    if row_map is not None:
+        row = row_map.get(key)
+    else:
+        row = db.scalar(select(TimesheetRow).where(
+            TimesheetRow.employee_id == employee.id, TimesheetRow.date == date))
     if row is None:
         row = TimesheetRow(employee_id=employee.id, date=date)
         db.add(row)
+        if row_map is not None:
+            row_map[key] = row
     for k, v in computed.items():
         setattr(row, k, v)
     row.updated_at = utcnow()
@@ -741,26 +780,76 @@ def recalc_day(db: Session, employee: Employee, date: dt.date, rules: Optional[d
 
 def recalc_range(db: Session, start: dt.date, end: dt.date, employee_ids: Optional[list[int]] = None,
                  commit: bool = True) -> int:
-    from .base_schedule import base_shift, load_base_config
+    """Пересчитать диапазон.
+
+    Все справочники и сырые данные грузятся ОДИН раз на диапазон: без этого на
+    каждую пару «сотрудник × день» уходило ~10 точечных запросов (месяц на 50
+    сотрудниках — около 12 тысяч запросов и 5 секунд).
+    """
+    from .base_schedule import BlockIndex, base_shift, load_base_config
+    from .doublepay import DoubleContext
 
     rules = load_rules(db)
     cfg = load_base_config(db)
     emps = db.scalars(select(Employee).where(Employee.deleted_at.is_(None))).all()
     if employee_ids:
-        emps = [e for e in emps if e.id in set(employee_ids)]
+        wanted = set(employee_ids)
+        emps = [e for e in emps if e.id in wanted]
+    if not emps:
+        return 0
+    emp_ids = [e.id for e in emps]
+
+    from .employment import employed_on, periods_of
+
+    catalog = ShiftCatalog.load(db)
+    index = BlockIndex.load(db, emp_ids)
+    double_ctx = DoubleContext.load(db, start, end)
+    # периоды работы — одним запросом на всех: иначе is_employed() ходит в БД на каждый день
+    periods_by_emp: dict[int, list] = {}
+    if len(emp_ids) == 1:
+        periods_by_emp[emp_ids[0]] = periods_of(db, emp_ids[0])
+    else:
+        from .models import EmploymentPeriod
+        for p in db.scalars(select(EmploymentPeriod).where(
+                EmploymentPeriod.employee_id.in_(emp_ids))):
+            periods_by_emp.setdefault(p.employee_id, []).append(p)
+    # окно на день шире в обе стороны: план и отметки соседних дней участвуют в разрезе сессий
+    lo, hi = start - dt.timedelta(days=1), end + dt.timedelta(days=1)
+    entry_map: dict[tuple[int, dt.date], ScheduleEntry] = {}
+    for e in db.scalars(select(ScheduleEntry).where(
+            ScheduleEntry.employee_id.in_(emp_ids),
+            ScheduleEntry.date >= lo, ScheduleEntry.date <= hi)):
+        entry_map[(e.employee_id, e.date)] = e
+    punches_by_day: dict[int, dict[dt.date, list[Punch]]] = {}
+    for p in db.scalars(select(Punch).where(
+            Punch.employee_id.in_(emp_ids),
+            Punch.ts >= dt.datetime(lo.year, lo.month, lo.day),
+            Punch.ts < dt.datetime(hi.year, hi.month, hi.day) + dt.timedelta(days=1))):
+        punches_by_day.setdefault(p.employee_id, {}).setdefault(p.ts.date(), []).append(p)
+    for mine in punches_by_day.values():
+        for items in mine.values():
+            items.sort(key=lambda x: x.ts)
+    row_map: dict[tuple[int, dt.date], TimesheetRow] = {
+        (r.employee_id, r.date): r for r in db.scalars(select(TimesheetRow).where(
+            TimesheetRow.employee_id.in_(emp_ids),
+            TimesheetRow.date >= start, TimesheetRow.date <= end))}
+
     count = 0
     day = start
     while day <= end:
         for emp in emps:
-            has_entry = db.scalar(select(ScheduleEntry).where(
-                ScheduleEntry.employee_id == emp.id, ScheduleEntry.date == day))
-            has_punch = db.scalar(select(Punch).where(
-                Punch.employee_id == emp.id,
-                Punch.ts >= dt.datetime(day.year, day.month, day.day),
-                Punch.ts < dt.datetime(day.year, day.month, day.day) + dt.timedelta(days=1)).limit(1))
-            if has_entry is None and has_punch is None and base_shift(db, emp, day, cfg) is None:
+            has_entry = (emp.id, day) in entry_map
+            has_punch = bool(punches_by_day.get(emp.id, {}).get(day))
+            employed = employed_on(periods_by_emp.get(emp.id, ()), day) \
+                if periods_by_emp.get(emp.id) else None
+            if (not has_entry and not has_punch
+                    and base_shift(db, emp, day, cfg, employed=employed,
+                                   index=index, catalog=catalog) is None):
                 continue
-            recalc_day(db, emp, day, rules=rules, commit=False)
+            recalc_day(db, emp, day, rules=rules, commit=False, index=index, catalog=catalog,
+                       entry_map=entry_map, punches_by_day=punches_by_day,
+                       double_ctx=double_ctx, row_map=row_map,
+                       base_cfg=cfg, employed=employed)
             count += 1
         day += dt.timedelta(days=1)
     if commit:

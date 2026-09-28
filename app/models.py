@@ -111,6 +111,10 @@ class Employee(Base):
     user: Mapped[Optional["User"]] = relationship(back_populates="employee", uselist=False)
     contacts: Mapped[list["EmergencyContact"]] = relationship(
         cascade="all, delete-orphan", order_by="EmergencyContact.id")
+    # закреплённый электрокар (рекомендательное закрепление): связь нужна, чтобы
+    # карточка сотрудника не открывала отдельную сессию на каждого (см. api/employees.py)
+    assigned_car: Mapped[Optional["Car"]] = relationship(
+        back_populates="assigned_employee", uselist=False, foreign_keys="Car.assigned_to")
 
     @property
     def display_name(self) -> str:
@@ -603,7 +607,8 @@ class Car(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
 
-    assigned_employee: Mapped[Optional[Employee]] = relationship()
+    assigned_employee: Mapped[Optional[Employee]] = relationship(
+        back_populates="assigned_car", foreign_keys=[assigned_to])
 
 
 class CarHistory(Base):
