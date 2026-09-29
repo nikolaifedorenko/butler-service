@@ -1,0 +1,20 @@
+{
+  "name": "butler-service-frontend-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Инструменты фронтенда: линтер, смоук интерфейса в jsdom, снимки разделов",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint static/js static/sw.js",
+    "globals": "python3 tools/gen_js_globals.py",
+    "globals:check": "python3 tools/gen_js_globals.py --check",
+    "smoke": "./tools/run_ui_check.sh",
+    "smoke:employee": "./tools/run_ui_check.sh 8198 ivanov",
+    "snapshot": "./tools/run_snapshot.sh"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "jsdom": "^25.0.0"
+  }
+}
