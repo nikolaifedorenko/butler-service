@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f1520">
+  <meta name="theme-color" content="#141a25">
   <title>Батлер Сервис — учёт рабочего времени</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
@@ -11,8 +11,8 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Батлер Сервис">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f8cff'/%3E%3Cpath d='M16 8v8l6 4' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/css/app.css?v=2026-09-28b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23141a25'/%3E%3Ccircle cx='16' cy='16' r='9.2' stroke='%23cbb05b' stroke-width='1.4' fill='none'/%3E%3Cpath d='M16 10.4V16l4 2.6' stroke='%23cbb05b' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='16' r='1.1' fill='%23cbb05b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/css/app.css?v=2026-10-03a">
 </head>
 <body>
 
@@ -20,13 +20,15 @@
 <div id="login-screen" class="login-screen hidden">
   <div class="login-card">
     <div class="login-logo">
-      <svg viewBox="0 0 32 32" width="44" height="44" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="#4f8cff"/>
-        <path d="M16 8v8l6 4" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      <svg viewBox="0 0 32 32" width="46" height="46" aria-hidden="true">
+        <rect width="32" height="32" rx="6" fill="#141a25"/>
+        <circle cx="16" cy="16" r="9.2" stroke="#cbb05b" stroke-width="1.3" fill="none"/>
+        <path d="M16 10.4V16l4 2.6" stroke="#cbb05b" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="16" cy="16" r="1.1" fill="#cbb05b"/>
       </svg>
       <div>
         <h1>Батлер Сервис</h1>
-        <p>Учёт рабочего времени, графики и табель</p>
+        <p>Учёт рабочего времени · графики · табель</p>
       </div>
     </div>
 
@@ -54,8 +56,10 @@
     </button>
     <div class="brand">
       <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="#2f6fed"/>
-        <path d="M16 8v8l6 4" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <rect width="32" height="32" rx="6" fill="#0d1119" stroke="#cbb05b" stroke-width="1"/>
+        <circle cx="16" cy="16" r="9.2" stroke="#cbb05b" stroke-width="1.3" fill="none"/>
+        <path d="M16 10.4V16l4 2.6" stroke="#cbb05b" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="16" cy="16" r="1.1" fill="#cbb05b"/>
       </svg>
       <span>Батлер Сервис</span>
     </div>
@@ -111,11 +115,11 @@
 <div id="loading" class="loading hidden"><div class="spinner"></div></div>
 
 <!-- Ядро (утилиты, api, состояние, модалки) подключается раньше разделов -->
-<script src="/static/js/core.js?v=2026-09-28b"></script>
-<script src="/static/js/app.js?v=2026-09-28b"></script>
+<script src="/static/js/core.js?v=2026-10-03a"></script>
+<script src="/static/js/app.js?v=2026-10-03a"></script>
 <!-- Разделы, добавленные позже основного интерфейса: парк электрокаров и ночной отчёт.
      Порядок важен: section_night.js использует CAR_BADGE/CHARGE_OPTS/photoThumb из section_cars.js -->
-<script src="/static/js/section_cars.js?v=2026-09-28b"></script>
-<script src="/static/js/section_night.js?v=2026-09-28b"></script>
+<script src="/static/js/section_cars.js?v=2026-10-03a"></script>
+<script src="/static/js/section_night.js?v=2026-10-03a"></script>
 </body>
 </html>
