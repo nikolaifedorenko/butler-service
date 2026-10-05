@@ -1,14 +1,14 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-09-28b';
+const VERSION = 'tt-2026-10-03a';
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-09-28b',
-  '/static/js/app.js?v=2026-09-28b',
-  '/static/js/core.js?v=2026-09-28b',
-  '/static/js/section_cars.js?v=2026-09-28b',
-  '/static/js/section_night.js?v=2026-09-28b',
+  '/static/css/app.css?v=2026-10-03a',
+  '/static/js/app.js?v=2026-10-03a',
+  '/static/js/core.js?v=2026-10-03a',
+  '/static/js/section_cars.js?v=2026-10-03a',
+  '/static/js/section_night.js?v=2026-10-03a',
   '/manifest.webmanifest',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
