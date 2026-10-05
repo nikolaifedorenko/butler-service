@@ -13,8 +13,10 @@
 ## Документация
 * [`docs/INSTALL.md`](docs/INSTALL.md) — установка: локально (Win/macOS/Linux), сервер
   (Ubuntu + systemd + nginx + HTTPS + PostgreSQL), Docker, бэкапы, обновление.
+* [`docs/CHANGES-2026-10-03.md`](docs/CHANGES-2026-10-03.md) — оформление интерфейса в
+  фирменном стиле курорта «Мрия» (палитра, шрифты, иконки).
 * [`docs/CHANGES-2026-09-28.md`](docs/CHANGES-2026-09-28.md) — что исправлено и добавлено
-  в последнем батче (интерфейс ночных отчётов и электрокаров, производительность, CI).
+  в предыдущем батче (интерфейс ночных отчётов и электрокаров, производительность, CI).
 * [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — архитектурный
   разбор: слои и модули, модель данных, ключевые потоки, замеры производительности,
   риски и план эволюции, маршрут онбординга (4 схемы в `docs/architecture/diagrams/`).
@@ -311,6 +313,7 @@ butler-service/
 │   ├── js/section_night.js # раздел «Ночной отчёт»
 │   ├── js/section_cars.js  # раздел «Электрокары»
 │   ├── css/app.css  sw.js  manifest.webmanifest  icons/
+│   └── fonts/                # Manrope + Playfair Display (woff2, OFL) — фирменная типографика
 ├── tests/                  # 153 теста: движок, API, ночная смена, кары, бюджет запросов,
 │                           #   схема/миграции, заявления, словари, родительный падеж
 ├── tools/
