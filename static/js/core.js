@@ -156,6 +156,7 @@ async function multipartApi(path, formData, { timeout = 60000 } = {}) {
 const now0 = new Date();
 const state = {
   user: null,
+  perms: [],          // права пользователя (роль + группы + индивидуальные), см. /api/auth/me
   employees: [],
   shiftTypes: [],
   departments: [],
@@ -192,6 +193,14 @@ const STATUS_META = {
   absence:      { t: 'Отсутствие', c: 'muted' },
   off:          { t: 'Выходной', c: 'muted' },
   planned:      { t: 'Смена впереди', c: 'muted' },
+  // флаги движка v4 (evaluate_flags)
+  LATE:                     { t: 'Опоздание', c: 'warn' },
+  EARLY_DEPARTURE:          { t: 'Ранний уход', c: 'warn' },
+  ABSENCE_GAP:              { t: 'Отлучился (согласовано)', c: 'muted' },
+  MISSED_DAY:               { t: 'Не пришёл', c: 'danger' },
+  OFF_SHIFT_ATTENDANCE:     { t: 'Работа вне Графика', c: 'info' },
+  ACTIVITY_REQUIRES_REVIEW: { t: 'Отметка в день отсутствия — проверить', c: 'warn' },
+  SESSION_OPEN:             { t: 'Смена не закрыта', c: 'danger' },
   '':           { t: '—', c: 'muted' },
 };
 function statusBadge(st) {

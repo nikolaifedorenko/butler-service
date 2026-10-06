@@ -11,8 +11,8 @@ from ..config import settings
 from ..db import get_db
 from ..deps import local_date
 from ..models import Employee, ScheduleEntry, User
+from ..schedule_helpers import shift_window
 from ..security import create_token, hash_password, verify_password
-from ..timesheet import load_rules, shift_window
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -71,14 +71,17 @@ def logout(response: Response, principal: Principal = Depends(current_principal)
 def me(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     """Текущий пользователь + его план на сегодня (для личного кабинета)."""
     emp = principal.employee
-    data = {"user": principal.to_dict(), "today": None}
+    from ..permissions import principal_permissions
+
+    data = {"user": principal.to_dict(), "today": None,
+            "permissions": sorted(principal_permissions(db, principal))}
     if emp:
         today = local_date()
         from ..base_schedule import base_shift
 
         entry = db.scalar(select(ScheduleEntry).where(
             ScheduleEntry.employee_id == emp.id, ScheduleEntry.date == today))
-        rules = load_rules(db)
+        rules = None
         shift = entry.shift_type if entry else None
         if shift is None:
             shift = base_shift(db, emp, today)

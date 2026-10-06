@@ -26,8 +26,8 @@ from .models import (
     ShiftType,
     User,
 )
+from .schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
 from .security import hash_password
-from .timesheet import DEFAULT_RULES, RULE_DESCRIPTIONS, recalc_range
 
 DEFAULT_PASSWORD = "demo1234"
 
@@ -323,8 +323,9 @@ def seed_if_empty(db: Session) -> bool:
 
     db.flush()
 
-    # ───────────────────── пересчёт табеля ─────────────────────
-    recalc_range(db, today - dt.timedelta(days=40), today + dt.timedelta(days=40), commit=False)
+    # ───────────────────── Табель v4: первичное заполнение из Графика ─────────────────────
+    from .engine_bootstrap import bootstrap_engine
+    bootstrap_engine(db, today - dt.timedelta(days=70), today + dt.timedelta(days=40))
 
     # ───────────────────── ночной отчёт: справочник областей и чек-листы ─────────────────────
     _seed_night_dirs(db)

@@ -3,9 +3,9 @@
 Правила компании:
   * стоимость рабочего дня одинаковая всегда; вдвое оплачиваются ТОЛЬКО переработки;
   * в «двойной» день часы сверх официального окна идут к оплате кодами ДЯ2/ДН2 (×2);
-  * списания (опоздания, ранние уходы, отгулы), ложащиеся на двойные часы, снимают их
-    ВПОЛОВИНУ: 8 одинарных часов оплаты = 4 часа ДЯ2 (см. settle_overtime в timesheet.py);
-    если же списание гасится часами обычных дней — оно считается 1=1;
+  * в движке v4 день двойной оплаты — модификатор Т4 «Двойные переработки = Да»
+    (адаптер app/engine/adapters/sql_settings.py); недостача гасится кодом по весу:
+    1 ч ДЯ 2 гасит 2 ч недостачи (спец. 4.1);
   * календарь двойных дней задаётся вручную (данные из производственного календаря /
     писем C&B) — сразу на год вперёд, с возможностью правки в середине года;
     отдельно для сменных графиков (2/2, 3/3…) и для пятидневки (или «для всех»);
@@ -22,11 +22,11 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .base_schedule import pattern_for_date
-from .models import DoublePayDay, Employee, TimesheetRow, VipDoublePay
+from .models import DoublePayDay, Employee, VipDoublePay
 
 SCOPE_SHIFT = "shift"     # сменные графики (2/2, 3/3, сутки через трое…)
 SCOPE_WEEK5 = "week5"     # пятидневка
@@ -162,29 +162,9 @@ def double_map_for(db: Session, emp_ids, start: dt.date, end: dt.date,
 
 def recalc_double_rows(db: Session, start: dt.date, end: dt.date,
                        employee_ids: Optional[list[int]] = None, commit: bool = True) -> int:
-    """Точечный пересчёт после правки календаря/ВИП-периодов.
-
-    Пересчитываются только строки табеля, которые могли измениться: где есть
-    (или были) часы к выплате либо отметка «день двойной». Дни без переработок
-    правка календаря не затрагивает — их не трогаем (быстро даже на целом годе).
-    """
-    from .timesheet import recalc_day
-
-    q = select(TimesheetRow).where(
-        TimesheetRow.date >= start, TimesheetRow.date <= end,
-        or_(TimesheetRow.pay_ot_day != 0, TimesheetRow.pay_ot_night != 0,
-            TimesheetRow.pay_ot_day2 != 0, TimesheetRow.pay_ot_night2 != 0,
-            TimesheetRow.double_reason != ""))
-    if employee_ids:
-        q = q.where(TimesheetRow.employee_id.in_(set(employee_ids)))
-    rows = db.scalars(q).all()
-    count = 0
-    for r in rows:
-        emp = db.get(Employee, r.employee_id)
-        if emp is None:
-            continue
-        recalc_day(db, emp, r.date, commit=False)
-        count += 1
+    """Совместимость: движок v4 считает УТ при чтении (view), хранимых строк табеля нет —
+    правка календаря сразу отражается в расчёте. Закрытые периоды не меняются (пересчёт —
+    только явный, для последнего закрытого периода)."""
     if commit:
         db.commit()
-    return count
+    return 0

@@ -49,7 +49,7 @@ jobs:
             # ResolutionImpossible, из-за чего матрица 3.10/3.12 не стартовала.
             pip install -r requirements.txt pytest httpx httpx2 freezegun pypdf
           fi
-          pip install ruff
+          pip install ruff hypothesis pytest-cov
 
       - name: Линтер (ruff)
         run: python -m ruff check .

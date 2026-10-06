@@ -11,17 +11,22 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import (
+    access_api,
+    audit_api,
     auth_routes,
     cars_api,
     docs_api,
     doublepay,
     employees,
+    engine_settings_api,
+    mgmt_api,
     night_api,
     photos_api,
+    presence_api,
     punches,
     schedule,
     settings_api,
-    timesheet,
+    tabel_api,
 )
 from .config import settings
 from .db import Base, SessionLocal, engine
@@ -40,6 +45,9 @@ def init_db() -> None:
     db = SessionLocal()
     try:
         seed_if_empty(db)
+        from .engine_bootstrap import bootstrap_engine
+        bootstrap_engine(db)
+        db.commit()
     finally:
         db.close()
     migrate_night_cars()
@@ -89,7 +97,12 @@ app.include_router(auth_routes.router)
 app.include_router(employees.router)
 app.include_router(schedule.router)
 app.include_router(punches.router)
-app.include_router(timesheet.router)
+app.include_router(tabel_api.router)
+app.include_router(mgmt_api.router)
+app.include_router(presence_api.router)
+app.include_router(access_api.router)
+app.include_router(audit_api.router)
+app.include_router(engine_settings_api.router)
 app.include_router(settings_api.router)
 app.include_router(docs_api.router)
 app.include_router(doublepay.router)

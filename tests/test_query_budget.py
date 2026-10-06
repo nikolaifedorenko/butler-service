@@ -18,6 +18,7 @@ from app.deps import local_date
 SCHEDULE_BUDGET = 40        # фактически ~13
 ONWORK_BUDGET = 30          # фактически ~11
 EMPLOYEES_BUDGET = 25       # фактически ~5
+MGMT_BUDGET = 60            # пакетная загрузка + состояния закрытий
 
 
 def _month(client) -> dict:
@@ -36,7 +37,7 @@ def test_schedule_grid_query_budget(manager_client, sql_counter):
 
 def test_onwork_query_budget(manager_client, sql_counter):
     with sql_counter() as c:
-        r = manager_client.get("/api/punches/onwork")
+        r = manager_client.get("/api/presence/board")
     assert r.status_code == 200, r.text
     assert c["total"] <= ONWORK_BUDGET, (
         f"«Кто на работе» сделал {c['total']} запросов (бюджет {ONWORK_BUDGET}); "
@@ -91,19 +92,11 @@ def test_schedule_grid_does_not_scale_with_headcount(admin_client, db, sql_count
         db.commit()
 
 
-def test_recalc_month_query_budget(admin_client, sql_counter):
-    """Пересчёт месяца: раньше ~12 000 операторов на 50 сотрудниках, теперь сотни.
-
-    Порог сознательно считается от числа сотрудников: пересчёт legitimately делает
-    по одному чтению строки табеля на пару «сотрудник × день», но НЕ по 10 запросов.
-    """
-    emps = admin_client.get("/api/employees").json()
-    days = 31
-    budget = 60 + len(emps) * days * 2      # запас: не более 2 операторов на ячейку
-    params = _month(admin_client)
+def test_mgmt_view_query_budget(admin_client, sql_counter):
+    """УТ месяца (view по всем сотрудникам) — пакетная загрузка: число запросов не зависит от штата."""
     with sql_counter() as c:
-        r = admin_client.post("/api/settings/recalc-all", params=params)
+        r = admin_client.get("/api/mgmt", params=_month(admin_client))
     assert r.status_code == 200, r.text
-    assert c["total"] <= budget, (
-        f"пересчёт месяца сделал {c['total']} операторов при бюджете {budget} — "
-        "похоже, в цикл вернулись точечные запросы")
+    assert c["total"] <= MGMT_BUDGET, (
+        f"УТ месяца сделал {c['total']} запросов (бюджет {MGMT_BUDGET}); "
+        f"топ: {sorted(c['by_statement'].items(), key=lambda x: -x[1])[:3]}")

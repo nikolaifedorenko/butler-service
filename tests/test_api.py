@@ -141,16 +141,20 @@ class TestApi(unittest.TestCase):
                                                  "ts": ts.isoformat(timespec="minutes")})
             self.assertEqual(r.status_code, 200, r.text)
             self.assertTrue(r.json()["backfill"])
-        ts = client.get("/api/timesheet", params={"year": day.year, "month": day.month,
-                                                  "employee_id": target["id"]}).json()
-        row = next(r for r in ts["rows"] if r["employee"]["id"] == target["id"])
-        day_row = next(d for d in row["days"] if d["date"] == day.isoformat())
-        self.assertEqual(day_row["planned_hours"], 12.0)   # без перерывов: 08:00–20:00 = 12 ч
-        # 08:05 → 08:00, 21:10 → 21:00 ⇒ 13 ч, переработка 1 ч
-        self.assertEqual(day_row["fact_hours"], 13.0)
-        self.assertEqual(day_row["ot_hours"], 1.0)
-        self.assertEqual(day_row["fact_in"][11:], "08:05")
-        self.assertEqual(day_row["fact_out"][11:], "21:10")
+        # Табель независим от Графика (спец. 4.8): день остаётся «В», пока его не поправят в Табеле
+        detail = client.get(f"/api/mgmt/employee/{target['id']}",
+                            params={"year": day.year, "month": day.month}).json()
+        card = next(c for c in detail["cards"] if c["day"] == day.isoformat())
+        self.assertEqual((card["value"], card["plan"], card["fact"], card["ot"]), ("В", 0, 13, 13))
+        r = client.put("/api/tabel/cell", json={"employee_id": target["id"], "date": day.isoformat(),
+                                                "code": "Я", "hours": 12})
+        self.assertEqual(r.status_code, 200, r.text)
+        detail = client.get(f"/api/mgmt/employee/{target['id']}",
+                            params={"year": day.year, "month": day.month}).json()
+        card = next(c for c in detail["cards"] if c["day"] == day.isoformat())
+        # 08:05 → 08:00, 21:10 → 21:00 ⇒ факт 13 ч, рабочее 12, переработка 1 ч ДЯ
+        self.assertEqual((card["plan"], card["fact"], card["work"], card["ot"]), (12, 13, 12, 1))
+        self.assertEqual(detail["ut"][day.isoformat()], {"ДЯ": 1})
 
     def test_08b_employee_cannot_backfill(self):
         today = local_date()
@@ -159,12 +163,13 @@ class TestApi(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
 
     def test_09_attendance(self):
-        r = client.get("/api/punches/attendance")
+        r = client.get("/api/presence/board")
         self.assertEqual(r.status_code, 200)
         data = r.json()
-        self.assertIn("on_shift", data)
-        self.assertIn("items", data)
-        self.assertTrue(all("fact_in" in i for i in data["items"]))
+        self.assertEqual(set(data["counts"]), {"present", "planned_today"})
+        for key in ("present", "stepped_out", "expected"):
+            self.assertIn(key, data)
+        self.assertEqual(data["counts"]["present"], len(data["present"]))
 
     def test_09b_fill_custom_cycle(self):
         today = local_date()
@@ -198,53 +203,37 @@ class TestApi(unittest.TestCase):
             "pattern": "5/2", "off_weekdays": [0, 1]})     # выходные пн и вт
         self.assertEqual(r.status_code, 200, r.text)
 
-    def test_10_timesheet_totals_and_csv(self):
+    def test_10_mgmt_view_and_xlsx(self):
         today = local_date()
-        r = client.get("/api/timesheet", params={"year": today.year, "month": today.month})
-        self.assertEqual(r.status_code, 200)
-        data = r.json()
-        self.assertIn("grand", data)
-        for row in data["rows"]:
-            self.assertIn("totals", row)
-            self.assertIn("balance", row["totals"])
-        csv_resp = client.get("/api/timesheet/csv", params={"year": today.year, "month": today.month})
-        self.assertEqual(csv_resp.status_code, 200)
-        head = csv_resp.text.splitlines()[0]
-        self.assertIn("ФИО", head)
-        self.assertIn(";01.", head)          # сетка: ФИО;01.09;02.09;…
-        xlsx_resp = client.get("/api/timesheet/xlsx", params={"year": today.year, "month": today.month})
-        self.assertEqual(xlsx_resp.status_code, 200)
-        self.assertIn("spreadsheetml", xlsx_resp.headers["content-type"])
-        self.assertTrue(xlsx_resp.content[:2] == b"PK")   # это zip-контейнер xlsx
-        import io as _io
-
-        from openpyxl import load_workbook
-        wb = load_workbook(_io.BytesIO(xlsx_resp.content))
-        self.assertIn("В учёт зарплаты", wb.sheetnames)     # сетка нетто-переработок для внешней системы
-        self.assertIn("Зачёт переработок", wb.sheetnames)
-        pay = client.get("/api/timesheet/csv",
-                         params={"year": today.year, "month": today.month, "mode": "payroll"})
-        self.assertEqual(pay.status_code, 200)
-        self.assertIn("Всего к выплате", pay.text.splitlines()[0])
-
-    def test_11_recalc(self):
-        today = local_date()
-        r = client.post("/api/timesheet/recalc", json={"year": today.year, "month": today.month})
+        r = client.get("/api/mgmt", params={"year": today.year, "month": today.month, "mode": "view"})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertGreater(r.json()["recalculated_days"], 0)
+        data = r.json()
+        self.assertTrue(data["rows"])
+        for row in data["rows"]:
+            if not row["error"]:
+                self.assertIn("bank", row)
+                self.assertIn("ut", row)
+        xlsx_resp = client.get("/api/mgmt/xlsx", params={"year": today.year, "month": today.month})
+        self.assertEqual(xlsx_resp.status_code, 200)
+        self.assertTrue(xlsx_resp.content[:2] == b"PK")
+
+    def test_11_tabel_view(self):
+        today = local_date()
+        r = client.get("/api/tabel", params={"year": today.year, "month": today.month})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(any(row["cells"] for row in r.json()["rows"]))
 
     def test_12_settings(self):
         r = client.get("/api/settings")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.json()["rules"]["round_mode"], "nearest")
-        upd = self.admin.put("/api/settings", json=[{"key": "round_mode", "value": "floor"}])
+        self.assertNotIn("round_mode", r.json()["rules"])          # правила старого движка удалены
+        upd = self.admin.put("/api/settings", json=[{"key": "photo_retention_days", "value": "90"}])
         self.assertEqual(upd.status_code, 200, upd.text)
-        self.assertEqual(upd.json()["rules"]["round_mode"], "floor")
-        # manager/supervisor теперь тоже могут менять правила (права как у admin)
-        self.assertEqual(client.put("/api/settings", json=[{"key": "round_mode", "value": "nearest"}]).status_code, 200)
-        self.assertEqual(self.admin.put("/api/settings", json=[{"key": "round_mode", "value": "nearest"}]).status_code, 200)
-        # сотрудник — не может
-        self.assertEqual(self.emp_client.put("/api/settings", json=[{"key": "round_mode", "value": "nearest"}]).status_code, 403)
+        self.assertEqual(upd.json()["rules"]["photo_retention_days"], 90)
+        self.assertEqual(self.admin.put("/api/settings", json=[{"key": "photo_retention_days", "value": "180"}]).status_code, 200)
+        self.assertEqual(self.emp_client.put("/api/settings", json=[{"key": "photo_retention_days", "value": "1"}]).status_code, 403)
+        eng = self.admin.get("/api/engine-settings").json()
+        self.assertEqual(eng["active"]["payload"]["step_minutes"], 60)
 
     def test_13_impersonation(self):
         emps = client.get("/api/auth/employees-for-demo").json()
@@ -256,9 +245,9 @@ class TestApi(unittest.TestCase):
         self.assertEqual(client.post("/api/auth/impersonate/stop").status_code, 200)
 
     def test_14_audit_log(self):
-        r = client.get("/api/timesheet/audit", params={"limit": 20})
+        r = client.get("/api/audit", params={"limit": 50})
         self.assertEqual(r.status_code, 200)
-        actions = {item["action"] for item in r.json()}
+        actions = {item["action"] for item in r.json()["items"]}
         self.assertTrue(actions & {"schedule_set", "schedule_update", "settings_update", "punch_in"})
 
     def test_15_unauthorized(self):
@@ -330,16 +319,15 @@ class TestApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         alive = [e for e in client.get("/api/employees").json() if e["id"] == eid]
         self.assertEqual(alive, [])                      # скрыт из активных списков
-        with_hist = client.get("/api/timesheet", params={"year": today.year, "month": today.month}).json()
+        with_hist = client.get("/api/tabel", params={"year": today.year, "month": today.month}).json()
         self.assertTrue(all(r["employee"]["id"] != eid for r in with_hist["rows"]) or True)
 
     def test_15c_overtime_and_shift_short_code(self):
         today = local_date()
-        r = client.get("/api/timesheet/overtime", params={"year": today.year, "month": today.month})
+        r = client.get("/api/mgmt", params={"year": today.year, "month": today.month})
         self.assertEqual(r.status_code, 200)
         row = r.json()["rows"][0]
         self.assertIn("totals", row)
-        self.assertIn("pay_dya", row["totals"])
         st = self.admin.post("/api/shift-types", json={
             "code": "TEST7_16", "name": "07:00–16:00 (9 ч)", "short_code": "07–16",
             "kind": "work", "start_time": "07:00", "end_time": "16:00", "color": "#2bb673"})
@@ -632,8 +620,8 @@ class TestImpersonationRights(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["user"]["role"], "employee")
         # менеджерский раздел в режиме «как сотрудник» закрыт
-        self.assertEqual(mgr.get("/api/punches/attendance").status_code, 403)
+        self.assertEqual(mgr.get("/api/mgmt", params={"year": 2026, "month": 10}).status_code, 403)
         r = mgr.post("/api/auth/impersonate/stop")
         self.assertEqual(r.status_code, 200)
         self.assertNotEqual(r.json()["user"]["role"], "employee")
-        self.assertEqual(mgr.get("/api/punches/attendance").status_code, 200)
+        self.assertEqual(mgr.get("/api/mgmt", params={"year": 2026, "month": 10}).status_code, 200)
