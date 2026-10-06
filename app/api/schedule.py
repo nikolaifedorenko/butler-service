@@ -26,10 +26,10 @@ from ..factview import build_fact_map
 from ..groups import group_index, normalize_group, sorted_groups
 from ..models import BlockAssignment, Employee, EmploymentPeriod, ScheduleEntry, ShiftType, utcnow
 from ..names import suggest_genitive
-from ..schedule_patterns import pattern_days, pattern_list
-from ..shiftrev import ShiftCatalog, ShiftView
 from ..permissions import require_perm
 from ..schedule_helpers import entry_shift, gap_hours, shift_window
+from ..schedule_patterns import pattern_days, pattern_list
+from ..shiftrev import ShiftCatalog, ShiftView
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 

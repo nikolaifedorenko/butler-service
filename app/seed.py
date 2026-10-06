@@ -26,8 +26,8 @@ from .models import (
     ShiftType,
     User,
 )
-from .security import hash_password
 from .schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
+from .security import hash_password
 
 DEFAULT_PASSWORD = "demo1234"
 

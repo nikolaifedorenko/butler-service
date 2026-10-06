@@ -5,12 +5,33 @@ from dataclasses import replace
 
 import pytest
 
-from app.engine.domain.settings.types import Window, PlacementPolicy
+from app.engine.domain.settings.types import PlacementPolicy, Window
 from app.engine.domain.settings.validate import validate_settings
-from app.engine.domain.types.errors import ConfigError, IncompletePeriodError
+from app.engine.domain.types.errors import ConfigError, IncompletePeriodError, UnknownDayCodeError
 
-from .helpers import (EMP, H, IN, OUT, Adjustment, DeferredBlock, Period, absence, at, close_now, d, day,
-                      double, flags, not_in_ut, pef, run, settings, shift, unpaid, ut)
+from .helpers import (
+    EMP,
+    IN,
+    OUT,
+    Adjustment,
+    DeferredBlock,
+    H,
+    Period,
+    absence,
+    at,
+    close_now,
+    d,
+    day,
+    double,
+    flags,
+    not_in_ut,
+    pef,
+    run,
+    settings,
+    shift,
+    unpaid,
+    ut,
+)
 
 
 def card(r, n, month=10):
@@ -187,7 +208,7 @@ def test_f12_new_tabel_value_is_settings_row():
     codes = {k: v for k, v in st0.day_codes.items() if k != "Н"}
     windows = {k: v for k, v in st0.windows.items() if not k.startswith("Н ")}
     bare = replace(st0, day_codes=codes, windows=windows)
-    with pytest.raises(Exception):
+    with pytest.raises(UnknownDayCodeError):
         run([day(1, "Н 4")], st=bare)
     st = replace(bare, day_codes=st0.day_codes, windows={**windows, "Н 4": st0.windows["Н 4"],
                                                           "Н 8": st0.windows["Н 8"]})

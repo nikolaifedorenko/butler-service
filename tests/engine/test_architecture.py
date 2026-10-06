@@ -63,7 +63,7 @@ def test_no_business_literals_in_domain_comparisons():
 
 def test_settle_does_not_import_flags():
     text = (DOMAIN / "pipeline" / "settle.py").read_text()
-    assert "flags" not in "".join(l for l in text.splitlines() if l.startswith(("from", "import")))
+    assert "flags" not in "".join(ln for ln in text.splitlines() if ln.startswith(("from", "import")))
 
 
 def test_one_public_function_per_file():

@@ -86,7 +86,8 @@ def test_pay_with_bank():
 
 def test_schedule_changes_only_flags():
     from app.engine.domain.flags.evaluate_flags import evaluate_flags
-    from .helpers import shift, absence, period_of, close_now
+
+    from .helpers import absence, close_now, period_of, shift
     days = [day(1, "Я 12")]
     r = run(days, [IN(1, 9), OUT(1, 20)])
     a = evaluate_flags(period_of(days), days, r.cards, [IN(1, 9), OUT(1, 20)], None, [shift(1, 8, 1, 20)], [],

@@ -1,6 +1,5 @@
-from typing import Mapping, Sequence
-
 import datetime as dt
+from typing import Mapping, Sequence
 
 from ..day_card.receiver_ok import receiver_ok
 from ..settings.types import Settings

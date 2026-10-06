@@ -4,7 +4,9 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import replace
 
-from hypothesis import HealthCheck, given, settings as hsettings, strategies as s
+from hypothesis import HealthCheck, given
+from hypothesis import settings as hsettings
+from hypothesis import strategies as s
 
 from app.engine.domain.flags.evaluate_flags import evaluate_flags
 from app.engine.domain.pipeline.settle import settle
@@ -26,9 +28,9 @@ def scenario(draw):
     first_kind = draw(s.sampled_from(["in", "out"]))
     base = dt.datetime(2026, 10, 1, tzinfo=TZ).astimezone(UTC)
     kinds = [("in", "out")[(i + (first_kind == "out")) % 2] for i in range(len(minutes))]
-    marks = [Mark(EMP, base + dt.timedelta(minutes=m), k) for m, k in zip(minutes, kinds)]
+    marks = [Mark(EMP, base + dt.timedelta(minutes=m), k) for m, k in zip(minutes, kinds, strict=True)]
     mods = [f(i + 1) for i in range(N) for f, on in zip((double, unpaid, not_in_ut),
-                                                       draw(s.lists(s.booleans(), min_size=3, max_size=3))) if on]
+                                                       draw(s.lists(s.booleans(), min_size=3, max_size=3)), strict=True) if on]
     deferred = [DeferredBlock(dt.date(2026, 9, 28), t, draw(s.integers(1, 8)) * step, "NO_RECEIVER")
                 for t in draw(s.lists(s.sampled_from(TARIFFS), max_size=2, unique=True))]
     bank = draw(s.integers(-20, 20)) * 60

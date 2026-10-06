@@ -1,6 +1,5 @@
-from typing import Mapping, Sequence
-
 import datetime as dt
+from typing import Mapping, Sequence
 
 from ..codes_registry.reason_codes import PLAN_EQUALS_FACT
 from ..day_card.plan_of_day import plan_of_day

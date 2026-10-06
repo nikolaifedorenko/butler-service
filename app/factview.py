@@ -10,8 +10,8 @@ import datetime as dt
 from sqlalchemy.orm import Session
 
 from .engine.adapters.bulk import build_bulk_ports
-from .engine.application.load_inputs import load_inputs
 from .engine.application.compute import compute
+from .engine.application.load_inputs import load_inputs
 from .engine.application.periods import month_period
 from .engine.domain.presence.presence_intervals import presence_intervals
 from .engine.domain.presence.sort_marks import sort_marks

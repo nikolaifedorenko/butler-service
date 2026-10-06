@@ -15,7 +15,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ...groups import GROUP_FIVEDAY, GROUP_OTHER, GROUP_SHIFT1, GROUP_SHIFT2
-from ...models import DayModifier, DoublePayDay, EngineSettingsVersion, Employee, VipDoublePay
+from ...models import DayModifier, DoublePayDay, Employee, EngineSettingsVersion, VipDoublePay
 from ..domain.settings.defaults import default_settings
 from ..domain.settings.types import AUTO, MOD_DOUBLE, Modifier, Settings  # noqa: F401
 from ..domain.settings.validate import validate_settings

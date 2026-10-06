@@ -11,7 +11,7 @@ from ..settings.types import Settings
 from ..time.to_calc_mark import to_calc_mark
 from ..time.to_raw_mark import to_raw_mark
 from ..time.today_of import today_of
-from ..types.entities import Absence, Day, KIND_IN, Mark, Period, Shift
+from ..types.entities import KIND_IN, Absence, Day, Mark, Period, Shift
 from ..types.results import DayCard, FlagsResult
 from .day_flags import day_flags
 from .merge_absences import merge_absences

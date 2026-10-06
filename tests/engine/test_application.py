@@ -1,18 +1,17 @@
 """Application-слой (13.14): выборка 7.4, атомарность закрытия, повторное закрытие, пересчёт."""
 from __future__ import annotations
 
-import datetime as dt
 from dataclasses import dataclass, field
 
 import pytest
 
+from app.engine.adapters.clock import FixedClock
 from app.engine.application.close_period import close_period
 from app.engine.application.context import EnginePorts
 from app.engine.application.errors import PeriodAlreadyClosedError, RecalculationForbiddenError
 from app.engine.application.periods import month_period, next_period
 from app.engine.application.recalculate import recalculate
 from app.engine.application.view_period import view_period
-from app.engine.adapters.clock import FixedClock
 from app.engine.ports.settlement_store import ClosingInputs, PeriodState
 
 from .helpers import EMP, IN, OUT, DeferredBlock, at, d, day, settings

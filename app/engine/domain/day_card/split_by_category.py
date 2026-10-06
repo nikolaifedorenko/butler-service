@@ -8,7 +8,7 @@ def split_by_category(interval: Interval, st: Settings) -> dict[str, int]:
     """Минуты интервала по категориям Т3."""
     cuts = category_cuts(interval, st)
     out: dict[str, int] = {}
-    for a, b in zip(cuts, cuts[1:]):
+    for a, b in zip(cuts, cuts[1:], strict=False):
         name = category_of(a, st).name
         out[name] = out.get(name, 0) + (b - a)
     return out

@@ -22,9 +22,9 @@ from .api import (
     mgmt_api,
     night_api,
     photos_api,
+    presence_api,
     punches,
     schedule,
-    presence_api,
     settings_api,
     tabel_api,
 )

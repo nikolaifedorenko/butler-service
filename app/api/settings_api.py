@@ -1,7 +1,6 @@
 """Прочие правила объекта + служебные эндпоинты. Правила расчёта часов — /api/engine-settings."""
 from __future__ import annotations
 
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select

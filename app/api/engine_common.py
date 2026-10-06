@@ -8,10 +8,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..employment import employed_on
+from ..engine.application.errors import ApplicationError
+from ..engine.domain.types.errors import (
+    ConfigError,
+    IncompletePeriodError,
+    InvariantViolationError,
+    UnknownDayCodeError,
+)
 from ..groups import group_index, normalize_group
 from ..models import Employee, EmploymentPeriod
-from ..engine.application.errors import ApplicationError
-from ..engine.domain.types.errors import ConfigError, IncompletePeriodError, InvariantViolationError, UnknownDayCodeError
 
 ERROR_TEXTS = {
     "PERIOD_ALREADY_CLOSED": "Период уже закрыт",

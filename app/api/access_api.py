@@ -9,8 +9,15 @@ from sqlalchemy.orm import Session
 from ..auth import Principal, audit
 from ..db import get_db
 from ..models import AccessGrant, AccessGroup, AccessGroupMember, User
-from ..permissions import (ALL_KEYS, PERMISSIONS, ROLE_DEFAULTS, ROLE_TITLES, effective_permissions,
-                           require_perm, role_permissions)
+from ..permissions import (
+    ALL_KEYS,
+    PERMISSIONS,
+    ROLE_DEFAULTS,
+    ROLE_TITLES,
+    effective_permissions,
+    require_perm,
+    role_permissions,
+)
 
 router = APIRouter(prefix="/api/access", tags=["access"])
 EFFECTS = ("allow", "deny")
