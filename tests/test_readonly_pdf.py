@@ -124,7 +124,8 @@ class TestReadonlySchedule(unittest.TestCase):
 
         from pypdf import PdfReader
         text = " ".join(p.extract_text() or "" for p in PdfReader(_io.BytesIO(r.content)).pages)
-        self.assertIn("График сменности", text)
+        # pypdf при извлечении может терять пробелы между словами — сравниваем без них
+        self.assertIn("Графиксменности", "".join(text.split()))
 
     def test_employee_reads_shift_dictionary(self):
         r = emp_client.get("/api/shift-types")
