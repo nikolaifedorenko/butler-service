@@ -15,22 +15,31 @@ const ICONS = {
   me: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>',
   night: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>',
   cars: '<svg viewBox="0 0 24 24"><path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/></svg>',
+  mgmt: '<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15.5 16.5l1.5 1.5 3-3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  access: '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><circle cx="12" cy="11" r="2.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 13.2V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  audit: '<svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M9 11h7M9 15h7M9 7h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
 };
 
+/* Права приходят с сервера (/api/auth/me → permissions): роль + группы + индивидуальные. */
+function can(perm) { return (state.perms || []).includes(perm); }
+
 function visibleTabs() {
-  const manager = state.user?.role !== 'employee';
-  const tabs = [];
-  tabs.push({ id: 'schedule', title: 'График' });   // план видят все; батлеры — только просмотр
-  tabs.push({ id: 'onwork', title: 'Кто на работе' });   // реально check-in сейчас — доступно всем
-  if (manager) tabs.push({ id: 'attendance', title: 'Посещения' });
-  if (manager) tabs.push({ id: 'timesheet', title: 'Табель' });
-  if (manager) tabs.push({ id: 'employees', title: 'Сотрудники' });
-  tabs.push({ id: 'me', title: 'Мои отметки' });
-  tabs.push({ id: 'night', title: 'Ночной отчёт' });   // смена 20:00–08:00: доступен всем
-  tabs.push({ id: 'cars', title: 'Электрокары' });     // парк каров: доступен всем
-  if (manager) tabs.push({ id: 'settings', title: 'Настройки' });
-  return tabs;
+  const all = [
+    { id: 'schedule', title: 'График', perm: 'schedule.view' },
+    { id: 'onwork', title: 'Кто на работе', perm: 'presence.view' },
+    { id: 'attendance', title: 'Посещения', perm: 'presence.view' },
+    { id: 'timesheet', title: 'Табель', perm: 'tabel.view' },
+    { id: 'mgmt', title: 'Управленческий табель', perm: 'mgmt.view' },
+    { id: 'employees', title: 'Сотрудники', perm: 'employees.view' },
+    { id: 'me', title: 'Мои отметки', perm: 'me.punch' },
+    { id: 'night', title: 'Ночной отчёт', perm: 'night.view' },
+    { id: 'cars', title: 'Электрокары', perm: 'cars.view' },
+    { id: 'access', title: 'Права доступа', perm: 'access.manage' },
+    { id: 'audit', title: 'Журнал аудита', perm: 'audit.view' },
+    { id: 'settings', title: 'Настройки', perm: 'settings.view' },
+  ];
+  return all.filter(t => can(t.perm));
 }
 
 function renderNav() {
@@ -60,7 +69,7 @@ function renderNav() {
     });
     $('#sidenav').insertBefore(more, foot);
   }
-  foot.innerHTML = `Учёт кратен часу<br>ДН 22:00–06:00 · ДЯ 06:00–22:00<br>Ночная смена относится к дате начала`;
+  foot.innerHTML = `Учёт кратен шагу (по умолчанию 1 ч)<br>ДН 22:00–06:00 · ДЯ 06:00–22:00<br>Часы — по календарным дням`;
 }
 
 function navigate(view) {
@@ -82,8 +91,9 @@ function navigate(view) {
      раньше здесь был `window[fnName]`, и потерянный loadNight не видел ни один
      инструмент — интерфейс просто молча пустел. */
   const LOADERS = {
-    schedule: () => loadSchedule(), onwork: () => loadOnwork(),
-    attendance: () => loadAttendance(), timesheet: () => loadTimesheet(),
+    schedule: () => loadSchedule(), onwork: () => loadPresence('onwork'),
+    attendance: () => loadPresence('attendance'), timesheet: () => loadTabel(),
+    mgmt: () => loadMgmt(), access: () => loadAccess(), audit: () => loadAudit(),
     employees: () => loadEmployees(), me: () => loadMe(),
     night: () => loadNight(), cars: () => loadCars(),
     settings: () => loadSettings(),
@@ -139,9 +149,22 @@ function showLogin() {
   $('#login-screen').classList.remove('hidden');
 }
 
+async function loadPerms() {
+  try {
+    const me = await api('/api/auth/me', { silent: true });
+    state.perms = me.permissions || [];
+  } catch { state.perms = []; }
+}
+
+function startView() {
+  const tabs = visibleTabs().map(t => t.id);
+  return ['schedule', 'onwork', 'me'].find(v => tabs.includes(v)) || tabs[0] || 'me';
+}
+
 async function enterApp() {
   $('#login-screen').classList.add('hidden');
   $('#app').classList.remove('hidden');
+  await loadPerms();
   renderUserChip();
   try {
     const chk = await api('/api/selfcheck', { silent: true, allow401: true });
@@ -158,7 +181,7 @@ async function enterApp() {
             ' — откройте Console/Network и пришлите ошибку', 'err');
     }
   }
-  navigate(state.user.role !== 'employee' ? 'schedule' : 'me');
+  navigate(startView());
 }
 
 function renderUserChip() {
@@ -201,7 +224,7 @@ async function loadSchedule() {
 }
 
 function scheduleShell() {
-  const ro = state.user?.role === 'employee';   // батлеры: график только на просмотр
+  const ro = !can('schedule.edit');   // без права «Редактирование графика» — только просмотр
   return `
   <div class="page-head">
     <div>
@@ -253,7 +276,7 @@ function bindScheduleToolbar() {
   $('#m-prev').onclick = () => shiftMonth(-1);
   $('#m-next').onclick = () => shiftMonth(1);
   $('#m-today').onclick = () => { const d = new Date(); state.year = d.getFullYear(); state.month = d.getMonth() + 1; loadSchedule(); };
-  const ro = state.user?.role === 'employee';
+  const ro = !can('schedule.edit');
   if (ro) state.gridMode = 'plan';   // «Факт» — данные менеджера, у батлера их нет в ответе
   $('#btn-print').onclick = printGrid;
   $('#btn-pdf').onclick = () => downloadBlob(`/api/schedule/pdf?year=${state.year}&month=${state.month}`, 'grafik.pdf');
@@ -530,22 +553,6 @@ function printGrid() {
   printWindow(`График сменности ${MONTHS[g.month - 1]} ${g.year}`,
     `<h1>График сменности, ${MONTHS[g.month - 1]} ${g.year} г. (весь месяц)</h1>
      <table><thead>${head}</thead><tbody>${body}</tbody></table>`);
-}
-
-function printTimesheet() {
-  const d = state.timesheet;
-  if (!d) return;
-  const rowsHtml = d.rows.map(r => `<tr>
-    <td class="name">${esc(r.employee.full_name)}<br><span class="muted">${esc(r.employee.position || '')}</span></td>
-    <td>${hours(r.totals.planned)}</td><td><b>${hours(r.totals.fact)}</b></td>
-    <td>${hours(r.totals.day)}</td><td>${hours(r.totals.night)}</td>
-    <td>${hours(r.totals.ot)}</td><td>${hours(r.totals.deficit)}</td><td>${hours(r.totals.timeoff)}</td>
-    <td><b>${r.totals.balance >= 0 ? '+' : ''}${hours(r.totals.balance)}</b></td></tr>`).join('');
-  printWindow(`Табель ${MONTHS[d.month - 1]} ${d.year}`,
-    `<h1>Табель учёта рабочего времени, ${MONTHS[d.month - 1]} ${d.year} г.</h1>
-     <table><thead><tr><th class="name">Сотрудник</th><th>План</th><th>Факт</th><th>ДЯ</th><th>ДН</th>
-     <th>Перераб.</th><th>Недораб.</th><th>Отгулы</th><th>Банк</th></tr></thead><tbody>${rowsHtml}</tbody></table>
-     <p class="muted">Учёт кратен часу. ДН — ночные часы 22:00–06:00. Детализация по дням — в разделе «Табель» или в выгрузке Excel.</p>`);
 }
 
 /* ── заявление на отпуск: печать по редактируемому шаблону, период подхватывается целиком ── */
@@ -907,404 +914,9 @@ async function saveCell(empId, dateISO, shiftId, note, clearing, partial, overri
   } catch (e) { toast(e.message, 'err'); }
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   ПОСЕЩЕНИЯ
-   ══════════════════════════════════════════════════════════════════ */
-async function loadAttendance() {
-  $('#view-attendance').innerHTML = `
-    <div class="page-head">
-      <div><h2>Посещения</h2><div class="sub">Точное время прихода и ухода + кто сейчас на смене</div></div>
-      <div class="spacer"></div>
-      <div class="month-nav">
-        <button id="a-prev">‹</button><div class="label" id="a-label">—</div><button id="a-next">›</button>
-      </div>
-      <input type="date" id="a-date" value="${state.attDate}" style="max-width:170px">
-      <button class="btn btn-sm" id="a-today">Сегодня</button>
-    </div>
-    <div id="a-body"><div class="empty">Загрузка…</div></div>`;
+/* Разделы «Кто на работе», «Посещения», «Табель», «Управленческий табель», «Права доступа»
+   и «Журнал аудита» — в section_v4.js (движок v4). */
 
-  const shiftDay = (iso, delta) => {
-    const x = new Date(iso + 'T12:00:00');
-    x.setDate(x.getDate() + delta);
-    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-  };
-  $('#a-prev').onclick = () => { state.attDate = shiftDay(state.attDate, -1); $('#a-date').value = state.attDate; fetchAttendance(); };
-  $('#a-next').onclick = () => { state.attDate = shiftDay(state.attDate, 1); $('#a-date').value = state.attDate; fetchAttendance(); };
-  $('#a-today').onclick = () => { state.attDate = todayISO(); $('#a-date').value = state.attDate; fetchAttendance(); };
-  $('#a-date').onchange = e => { state.attDate = e.target.value; fetchAttendance(); };
-  await fetchAttendance();
-  poll('attendance', () => { if (state.attDate === todayISO()) fetchAttendance(true); });
-}
-
-async function fetchAttendance(silent) {
-  const data = await api(`/api/punches/attendance?date=${state.attDate}`, { silent: !!silent });
-  /* отметки дня с id — для менеджерской кнопки «✕ отменить отметку» */
-  let dayPunches = [];
-  try { dayPunches = await api(`/api/punches?date=${state.attDate}`, { silent: true }); } catch {}
-  const punchIdFor = (empId, isoTs) => {
-    if (!isoTs) return null;
-    const p = dayPunches.find(x => x.employee_id === empId && x.ts.slice(0, 16) === isoTs.slice(0, 16));
-    return p ? p.id : null;
-  };
-  const delBtn = (empId, isoTs) => {
-    const id = punchIdFor(empId, isoTs);
-    return id ? ` <button class="icon-btn" data-pdel="${id}" style="color:var(--danger);font-size:12px;padding:2px 4px" title="Отменить отметку (пересчёт табеля + аудит)">✕</button>` : '';
-  };
-  const d = new Date(state.attDate + 'T00:00:00');
-  $('#a-label').textContent = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}, ${WD[d.getDay()]}`;
-
-  const live = data.on_shift || [];
-  const rows = data.items.map(i => {
-    const st = STATUS_META[i.status] || { t: i.status, c: 'muted' };
-    const inCls = i.is_late ? 'time-late' : 'time-exact';
-    return `<tr>
-      <td class="who" data-label="Сотрудник">${esc(i.employee.short_name)}<small>${esc(i.employee.position || '')}</small></td>
-      <td data-label="По графику">${i.shift && i.shift.kind === 'work'
-        ? `<span class="shift-pill" style="background:${withAlpha(i.shift.color, .9)};color:${textOn(i.shift.color)}">${esc(i.shift.start)}–${esc(i.shift.end)}</span>`
-        : (i.shift ? `<span class="badge muted">${esc(i.shift.name)}</span>` : '<span class="badge muted">не задан</span>')}</td>
-      <td data-label="Пришёл" class="num ${inCls}">${i.fact_in ? hhmm(i.fact_in) : '—'}${delBtn(i.employee.id, i.fact_in)}</td>
-      <td data-label="Ушёл" class="num ${i.status === 'early' || i.status === 'late_early' ? 'time-early' : ''}">${i.on_shift_now ? '<span class="pulse"></span>на смене' : (i.fact_out ? hhmm(i.fact_out) : '—')}${delBtn(i.employee.id, i.fact_out)}</td>
-      <td data-label="Часов" class="num">${i.fact_hours ? hours(i.fact_hours) : '—'}</td>
-      <td data-label="Перераб." class="num">${i.ot_hours ? `<b style="color:var(--warn)">${hours(i.ot_hours)}</b>` : '—'}</td>
-      <td data-label="Статус">${i.on_shift_now
-        ? `<span class="badge ok"><span class="pulse" style="margin:0"></span>на смене ${i.elapsed_hours != null ? hours(i.elapsed_hours) + ' ч' : ''}</span>`
-        : `<span class="badge ${st.c}">${esc(st.t)}</span>`}</td>
-      <td data-label="Примечание" style="max-width:220px;color:var(--muted);font-size:12.5px">${esc(i.note || '')}</td>
-    </tr>`;
-  }).join('');
-
-  $('#a-body').innerHTML = `
-    <div class="stat-grid">
-      <div class="stat accent"><div class="k">Сейчас на смене</div><div class="v">${live.length}</div></div>
-      <div class="stat"><div class="k">По графику сегодня</div><div class="v">${data.items.filter(i => i.shift && i.shift.kind === 'work').length}</div></div>
-      <div class="stat warn"><div class="k">Опоздания</div><div class="v">${data.items.filter(i => i.is_late).length}</div></div>
-      <div class="stat danger"><div class="k">Требуют внимания</div><div class="v">${data.items.filter(i => ['no_punch', 'unclosed', 'work_no_plan', 'work_off'].includes(i.status)).length}</div></div>
-    </div>
-
-    ${live.length ? `<div class="panel"><h3 class="panel-title">На смене прямо сейчас · ${esc(hhmm(data.now))}</h3>
-      <div class="presence-grid">${live.map(i => `
-        <div class="presence-card ${i.is_late ? 'late' : ''}">
-          <div class="nm"><span class="pulse"></span>${esc(i.employee.short_name)}</div>
-          <div class="pos">${esc(i.employee.position || '')} · ${esc(i.shift?.name || '')}</div>
-          <div class="row"><span style="color:var(--muted)">Пришёл</span><b>${hhmm(i.fact_in)}</b></div>
-          <div class="row"><span style="color:var(--muted)">Уже на смене</span><b>${i.elapsed_hours != null ? hours(i.elapsed_hours) + ' ч' : '—'}</b></div>
-          <div class="row"><span style="color:var(--muted)">План до</span><b>${i.planned_end ? hhmm(i.planned_end) : '—'}</b></div>
-        </div>`).join('')}</div></div>` : ''}
-
-    <div class="table-wrap">
-      <table class="data responsive">
-        <thead><tr><th>Сотрудник</th><th>По графику</th><th>Пришёл</th><th>Ушёл</th><th>Часов</th><th>Перераб.</th><th>Статус</th><th>Примечание</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="8" class="empty">Нет данных</td></tr>`}</tbody>
-      </table>
-    </div>
-    <p class="hint">Система показывает точное время отметок, а в табель часы попадают кратно часу (округление к ближайшему).</p>`;
-
-  $$('#a-body [data-pdel]').forEach(b => b.onclick = () =>
-    confirmDialog('Отменить отметку?',
-      'Отметка будет удалена, день табеля пересчитан. Действие попадёт в журнал аудита.',
-      async () => {
-        try {
-          await api(`/api/punches/${b.dataset.pdel}`, { method: 'DELETE' });
-          toast('Отметка отменена, табель пересчитан', 'ok');
-          fetchAttendance();
-        } catch (e) { toast(e.message, 'err'); }
-      }, 'Отменить отметку'));
-
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   КТО НА РАБОТЕ: реальный check-in прямо сейчас (видно всем ролям)
-   ══════════════════════════════════════════════════════════════════ */
-async function loadOnwork() {
-  $('#view-onwork').innerHTML = `
-    <div class="page-head">
-      <div><h2>Кто на работе</h2>
-        <div class="sub">Сотрудники, которые нажали «Пришёл на работу» и ещё не отметили уход.
-          Обновляется автоматически каждые 30 секунд</div></div>
-      <div class="spacer"></div>
-      <span class="badge ok" id="ow-now" style="font-size:13px;padding:7px 12px">—</span>
-      <button class="btn btn-sm" id="ow-refresh">Обновить</button>
-    </div>
-    <div id="ow-body"><div class="empty">Загрузка…</div></div>`;
-  $('#ow-refresh').onclick = () => fetchOnwork();
-  await fetchOnwork();
-  poll('onwork', () => fetchOnwork(true));
-}
-
-async function fetchOnwork(silent) {
-  let d;
-  try {
-    d = await api('/api/punches/onwork', { silent: !!silent });
-  } catch (e) {
-    const body0 = $('#ow-body');
-    if (body0) body0.innerHTML = `<div class="panel"><div class="empty">${esc(e.message || e)}</div></div>`;
-    return;
-  }
-  const nowEl = $('#ow-now');
-  if (nowEl) nowEl.textContent = `Сейчас ${d.now.slice(11, 16)} · на работе ${d.count}`;
-  const body = $('#ow-body');
-  if (!body) return;
-  const cards = d.items.map(i => {
-    const tel = String(i.phone || '').trim();
-    const tg = String(i.telegram || '').trim().replace(/^@+/, '');
-    const telHref = tel.replace(/[^0-9+]/g, '');
-    const tgHref = tg.replace(/[^A-Za-z0-9_]/g, '');
-    return `
-    <div class="presence-card ${i.is_late ? 'late' : ''}">
-      <div class="nm"><span class="pulse"></span>${esc(i.short_name)}</div>
-      <div class="pos">${esc(i.position || '—')}${i.schedule_group ? ' · ' + esc(i.schedule_group) : ''}</div>
-      ${tel || tg ? `<div class="contacts">${tel ? `<a href="tel:${esc(telHref)}" title="Позвонить">📞 ${esc(tel)}</a>` : ''}${tg ? `<a href="https://t.me/${esc(tgHref)}" target="_blank" rel="noopener" title="Написать в Telegram">✈️ @${esc(tg)}</a>` : ''}</div>` : ''}
-      <div class="row"><span style="color:var(--muted)">На смене с</span><b>${esc(i.session_start.slice(11, 16))}</b></div>
-      <div class="row"><span style="color:var(--muted)">Уже работает</span><b>${i.elapsed_hours != null ? hours(i.elapsed_hours) + ' ч' : '—'}</b></div>
-      <div class="row"><span style="color:var(--muted)">По графику</span><b>${i.shift && i.shift.kind === 'work'
-        ? esc(`${i.shift.start}–${i.shift.end}`) : (i.shift ? esc(i.shift.name) : '—')}</b></div>
-      <div class="row"><span style="color:var(--muted)">План до</span><b>${i.planned_end ? esc(i.planned_end.slice(11, 16)) : '—'}</b></div>
-      ${i.is_late ? '<div class="row"><span style="color:var(--muted)">Статус</span><b style="color:var(--warn)">пришёл позже начала смены</b></div>' : ''}
-    </div>`;
-  }).join('');
-  body.innerHTML = `
-    <div class="stat-grid">
-      <div class="stat accent"><div class="k">Сейчас на работе</div><div class="v">${d.count}</div></div>
-      <div class="stat"><div class="k">По графику сегодня</div><div class="v">${d.planned_today}</div></div>
-    </div>
-    ${d.count
-      ? `<div class="panel"><h3 class="panel-title">На смене прямо сейчас</h3><div class="presence-grid">${cards}</div></div>`
-      : `<div class="panel"><div class="empty">Сейчас никто не отмечен на работе.
-         Сотрудники нажимают кнопку «Пришёл на работу» в разделе «Мои отметки».</div></div>`}`;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   ТАБЕЛЬ
-   ══════════════════════════════════════════════════════════════════ */
-async function loadTimesheet() {
-  $('#view-timesheet').innerHTML = `
-    <div class="page-head">
-      <div><h2>Табель учёта рабочего времени</h2>
-        <div class="sub">План / факт, дневные (ДЯ) и ночные (ДН) часы, переработки и банк часов</div></div>
-      <div class="spacer"></div>
-      <div class="month-nav">
-        <button id="t-prev">‹</button><div class="label" id="t-label">—</div><button id="t-next">›</button>
-      </div>
-      <button class="btn btn-sm" id="t-recalc">Пересчитать</button>
-      <button class="btn btn-sm btn-ghost" id="t-print">Печать</button>
-      <button class="btn btn-sm btn-ghost" id="t-pdf" title="Скачать PDF: файл собирает сервер">PDF</button>
-      <button class="btn btn-sm" id="t-csv">CSV (внутр.)</button>
-      <button class="btn btn-sm" id="t-csv-pay">CSV (в учёт з/п)</button>
-      <button class="btn btn-sm btn-primary" id="t-xlsx">Скачать Excel</button>
-    </div>
-    <div id="t-body"><div class="empty">Загрузка…</div></div>`;
-
-  const shiftMonth = delta => {
-    let m = state.month + delta, y = state.year;
-    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
-    state.month = m; state.year = y; loadTimesheet();
-  };
-  $('#t-prev').onclick = () => shiftMonth(-1);
-  $('#t-next').onclick = () => shiftMonth(1);
-  $('#t-print').onclick = printTimesheet;
-  $('#t-pdf').onclick = () => downloadBlob(`/api/timesheet/pdf?year=${state.year}&month=${state.month}`, 'tabel.pdf');
-  $('#t-csv').onclick = () => downloadBlob(`/api/timesheet/csv?year=${state.year}&month=${state.month}`, 'tabel.csv');
-  $('#t-csv-pay').onclick = () => downloadBlob(`/api/timesheet/csv?year=${state.year}&month=${state.month}&mode=payroll`, 'vyplata.csv');
-  $('#t-xlsx').onclick = () => downloadBlob(`/api/timesheet/xlsx?year=${state.year}&month=${state.month}`, 'tabel.xlsx');
-  $('#t-recalc').onclick = async () => {
-    try {
-      const r = await api('/api/timesheet/recalc', { method: 'POST', body: { year: state.year, month: state.month } });
-      toast(`Пересчитано ${r.recalculated_days} ${plural(r.recalculated_days, 'день', 'дня', 'дней')}`, 'ok');
-      loadTimesheet();
-    } catch (e) { toast(e.message, 'err'); }
-  };
-
-  const [data, ot] = await Promise.all([
-    api(`/api/timesheet?year=${state.year}&month=${state.month}`),
-    api(`/api/timesheet/overtime?year=${state.year}&month=${state.month}`),
-  ]);
-  state.timesheet = data;
-  state.overtime = ot;
-  renderTimesheet();
-}
-
-function renderTimesheet() {
-  const d = state.timesheet;
-  $('#t-label').textContent = `${MONTHS[d.month - 1]} ${d.year}`;
-  const g = d.grand;
-
-  const problems = [];
-  d.rows.forEach(r => r.days.forEach(day => {
-    if (day.is_future || day.status === 'planned') return;
-    if (['late', 'early', 'late_early', 'no_punch', 'unclosed', 'work_no_plan', 'work_off'].includes(day.status)) {
-      problems.push({ emp: r.employee, day });
-    }
-  }));
-
-  const rows = d.rows.map(r => {
-    const t = r.totals;
-    const open = state.expanded.has(r.employee.id);
-    const accent = r.employee.group_color || '#8a94a6';
-    return `
-    <tr class="ts-row" data-emp="${r.employee.id}">
-      <td class="who" data-label="Сотрудник" style="box-shadow: inset 3px 0 0 ${accent}">${esc(r.employee.short_name)}
-        <small>${esc(r.employee.position || '')}${r.employee.schedule_group ? ' · ' + esc(r.employee.schedule_group) : ''}</small></td>
-      <td class="num" data-label="План">${hours(t.planned)}</td>
-      <td class="num" data-label="Факт"><b>${hours(t.fact)}</b></td>
-      <td class="num" data-label="ДЯ">${hours(t.day)}</td>
-      <td class="num" data-label="ДН" style="color:#3d55c8">${t.night ? hours(t.night) : '—'}</td>
-      <td class="num" data-label="Перераб.">${t.ot ? `<b style="color:var(--warn)">${hours(t.ot)}</b>` : '—'}</td>
-      <td class="num" data-label="Недораб.">${t.deficit ? `<span style="color:#c0392b">${hours(t.deficit)}</span>` : '—'}</td>
-      <td class="num" data-label="Отгулы">${t.timeoff ? hours(t.timeoff) : '—'}</td>
-      <td class="num" data-label="Банк часов"><span class="${t.balance >= 0 ? 'balance-pos' : 'balance-neg'}">${t.balance >= 0 ? '+' : ''}${hours(t.balance)}</span></td>
-      <td class="num" data-label="Проблемы">${t.issues ? `<span class="badge danger">${t.issues}</span>` : '<span class="badge ok">нет</span>'}</td>
-    </tr>
-    ${open ? `<tr class="ts-detail"><td colspan="10"><div class="ts-detail-inner">
-      <div class="day-chips">${r.days.map(day => dayChip(day)).join('')}</div>
-    </div></td></tr>` : ''}`;
-  }).join('');
-
-  $('#t-body').innerHTML = `
-    <div class="stat-grid">
-      <div class="stat"><div class="k">План, часов</div><div class="v">${hours(g.planned)}</div></div>
-      <div class="stat accent"><div class="k">Факт, часов</div><div class="v">${hours(g.fact)}</div></div>
-      <div class="stat info"><div class="k">Ночные (ДН)</div><div class="v">${hours(g.night)}</div></div>
-      <div class="stat warn"><div class="k">Переработка</div><div class="v">${hours(g.ot)}</div></div>
-      <div class="stat danger"><div class="k">Дней с отклонениями</div><div class="v">${problems.length}</div></div>
-    </div>
-
-    <div class="table-wrap">
-      <table class="data responsive">
-        <thead><tr><th>Сотрудник</th><th>План</th><th>Факт</th><th>ДЯ</th><th>ДН</th><th>Перераб.</th><th>Недораб.</th><th>Отгулы</th><th>Банк часов</th><th>Проблемы</th></tr></thead>
-        <tbody>${rows || `<tr><td class="empty" colspan="10">Нет данных</td></tr>`}</tbody>
-      </table>
-    </div>
-    <p class="hint">Нажмите на строку сотрудника, чтобы увидеть расшифровку по дням. Банк часов = стартовый баланс + переработка − отгулы − недоработка. Выгрузка Excel содержит сетку «ФИО × дни» с ячейками «ДЯ n ДН m».</p>
-
-    ${state.overtime ? `
-    <div class="panel" style="margin-top:18px">
-      <h3 class="panel-title">Переработки к выплате за месяц</h3>
-      <p class="hint" style="margin:-6px 0 10px">Начислено: ранние приходы, поздние уходы, работа в выходной (ДЯ/ДН).
-      В дни двойной оплаты (производственный календарь, ВИП-гости) переработки идут кодами <b class="dbl">ДЯ2/ДН2</b> — двойной тариф.
-      Списано: опоздания, ранние уходы, выходные за часы — вычитаются сначала из дневных часов ранних дней, затем из ночных;
-      из двойных часов списание снимается вполовину (8 часов оплаты = 4 часа ДЯ2).
-      «Всего» — в одинарных часах: час ДЯ2/ДН2 считается как два. Итог — это то, что вносится в систему учёта зарплаты:
-      кнопка «CSV (в учёт з/п)» или лист «В учёт зарплаты» в Excel; журнал зачёта — кнопка «зачёт».</p>
-      <div class="table-wrap" style="max-height:none">
-        <table class="data responsive"><thead><tr>
-          <th>Сотрудник</th><th>Начислено</th><th>Списано</th>
-          <th>К выплате</th><th title="ДЯ2/ДН2 учтены по двойному тарифу">Всего</th><th></th>
-        </tr></thead><tbody>
-        ${state.overtime.rows.filter(r => r.totals.credit_dya || r.totals.credit_dn || r.totals.credit_dya2 || r.totals.credit_dn2 || r.totals.debit).map(r => `<tr>
-          <td class="who" data-label="Сотрудник">${esc(r.employee.short_name)}</td>
-          <td class="num" data-label="Начислено">${payCodes(r.totals, 'credit_')}</td>
-          <td class="num" data-label="Списано" style="color:#c0392b">${r.totals.debit ? '−' + hours(r.totals.debit) : '—'}</td>
-          <td class="num" data-label="К выплате">${payCodes(r.totals, 'pay_')}</td>
-          <td class="num" data-label="Всего"><b>${hours(r.totals.pay_total)}</b>${(r.totals.pay_dya2 || r.totals.pay_dn2) ? `<div class="dbl-hint">в т.ч. ×2: ${hours((r.totals.pay_dya2 || 0) + (r.totals.pay_dn2 || 0))} ч</div>` : ''}</td>
-          <td class="num"><button class="btn btn-sm btn-ghost" data-ot="${r.employee.id}">зачёт</button></td>
-        </tr>`).join('') || '<tr><td colspan="6" class="empty">За месяц не было переработок и списаний</td></tr>'}
-        </tbody></table>
-      </div>
-    </div>` : ''}
-
-    ${problems.length ? `
-    <div class="panel" style="margin-top:18px">
-      <h3 class="panel-title">Требует внимания · ${problems.length}</h3>
-      <div class="table-wrap" style="max-height:280px">
-        <table class="data responsive"><thead><tr><th>Дата</th><th>Сотрудник</th><th>Смена</th><th>Отметки</th><th>Часы</th><th>Что случилось</th></tr></thead>
-        <tbody>${problems.map(p => `<tr>
-          <td data-label="Дата">${dateRu(p.day.date)}</td>
-          <td class="who" data-label="Сотрудник">${esc(p.emp.short_name)}</td>
-          <td data-label="Смена">${esc(p.day.shift_name || '—')}</td>
-          <td class="num" data-label="Отметки">${p.day.fact_in ? hhmm(p.day.fact_in) : '—'} → ${p.day.fact_out ? hhmm(p.day.fact_out) : '—'}</td>
-          <td class="num" data-label="Часы">${hours(p.day.fact_hours)} / ${hours(p.day.planned_hours)}</td>
-          <td data-label="Статус">${statusBadge(p.day.status)}${p.day.warnings?.length ? `<div style="color:var(--muted);font-size:12px;margin-top:4px">${p.day.warnings.map(esc).join('<br>')}</div>` : ''}</td>
-        </tr>`).join('')}</tbody></table>
-      </div>
-    </div>` : ''}`;
-
-  $$('.ts-row').forEach(tr => tr.onclick = () => {
-    const id = +tr.dataset.emp;
-    state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id);
-    renderTimesheet();
-  });
-  $$('[data-ot]').forEach(b => b.onclick = e => {
-    e.stopPropagation();
-    const r = state.overtime.rows.find(x => x.employee.id === +b.dataset.ot);
-    openModal({
-      title: 'Зачёт переработок: ' + r.employee.full_name,
-      subtitle: `${MONTHS[state.overtime.month - 1]} ${state.overtime.year}`,
-      wide: true,
-      body: `
-        <div class="opt-group-title">Начислено (брутто)</div>
-        ${r.credits.map(c => `<div style="font-size:13px;padding:2px 0">${dateRu(c.date)}${(c.dya2 || c.dn2) ? ' <span class="badge warn" title="День двойной оплаты: переработки по двойному тарифу">×2</span>' : ''}: ${creditLine(c)}</div>`).join('') || '<div class="hint">нет</div>'}
-        <div class="opt-group-title">Списано</div>
-        ${r.debits.map(dd => `<div style="font-size:13px;padding:2px 0">${dateRu(dd.date)}: ${esc(dd.kind)} −${hours(dd.hours)} ч</div>`).join('') || '<div class="hint">нет</div>'}
-        <div class="opt-group-title">Как зачлось (сначала дневные часы ранних дней; из двойных ДЯ2/ДН2 — вполовину)</div>
-        ${r.log.map(l => `<div style="font-size:13px;padding:2px 0">${esc(l.kind)} ${String(l.debit_date || '').includes('-') ? dateRu(l.debit_date) : esc(l.debit_date || '—')}
-          → ${l.credit_date ? dateRu(l.credit_date) + ' (' + l.from + ')' : 'не покрыто переработками'}:
-          ${l.credit_date && String(l.from || '').endsWith('2')
-            ? `−${hours(l.credit_hours)} ч ${esc(l.from)} <span class="dbl-hint">(= ${hours(l.hours)} ч оплаты)</span>`
-            : hours(l.hours) + ' ч'}</div>`).join('') || '<div class="hint">списаний не было</div>'}
-        <div class="opt-group-title">К выплате</div>
-        ${r.remain.map(c => `<div style="font-size:13px;padding:2px 0">${dateRu(c.date)}${(c.dya2 || c.dn2) ? ' <span class="badge warn">×2</span>' : ''}: ${creditLine(c)}</div>`).join('') || '<div class="hint">всё покрыто списаниями</div>'}
-        <div class="status-line" style="margin-top:10px"><span class="k">Итого к подаче</span>
-          <span class="v">${settleTotalLine(r.totals)}</span></div>`,
-      footer: `<button class="btn btn-primary" data-close>Закрыть</button>`,
-      onMount(m) { m.querySelector('[data-close]').onclick = closeModal; },
-    });
-  });
-}
-
-/* Коды часов к выплате: ДЯ/ДН — одинарный тариф, ДЯ2/ДН2 — двойной
-   (производственный календарь / ВИП-гости). prefix: 'credit_' | 'pay_' */
-function payCodes(t, p) {
-  const out = [];
-  if (t[p + 'dya']) out.push(`<b>ДЯ ${hours(t[p + 'dya'])}</b>`);
-  if (t[p + 'dn']) out.push(`<b style="color:#3d55c8">ДН ${hours(t[p + 'dn'])}</b>`);
-  if (t[p + 'dya2']) out.push(`<b class="dbl">ДЯ2 ${hours(t[p + 'dya2'])}</b>`);
-  if (t[p + 'dn2']) out.push(`<b class="dbl">ДН2 ${hours(t[p + 'dn2'])}</b>`);
-  return out.join(' · ') || '—';
-}
-function creditLine(c) {
-  const bits = [];
-  if (c.dya) bits.push(`<b>ДЯ ${hours(c.dya)}</b>`);
-  if (c.dn) bits.push(`<b style="color:#3d55c8">ДН ${hours(c.dn)}</b>`);
-  if (c.dya2) bits.push(`<b class="dbl">ДЯ2 ${hours(c.dya2)}</b>`);
-  if (c.dn2) bits.push(`<b class="dbl">ДН2 ${hours(c.dn2)}</b>`);
-  return bits.join(', ') || '—';
-}
-function settleTotalLine(t) {
-  const bits = [];
-  if (t.pay_dya) bits.push(`ДЯ ${hours(t.pay_dya)}`);
-  if (t.pay_dn) bits.push(`ДН ${hours(t.pay_dn)}`);
-  if (t.pay_dya2) bits.push(`ДЯ2 ${hours(t.pay_dya2)}`);
-  if (t.pay_dn2) bits.push(`ДН2 ${hours(t.pay_dn2)}`);
-  const dbl = (t.pay_dya2 || 0) + (t.pay_dn2 || 0);
-  return `${bits.join(' + ') || '0'} = ${hours(t.pay_total)} ч к оплате`
-    + (dbl ? ' · ДЯ2/ДН2 учтены по двойному тарифу' : '');
-}
-
-function dayChip(day) {
-  const issue = ['late', 'early', 'late_early'].includes(day.status) && !day.is_future;
-  const bad = ['no_punch', 'unclosed', 'work_no_plan'].includes(day.status);
-  const off = day.kind !== 'work' || day.is_future;
-  const cls = ['day-chip', bad ? 'bad' : '', issue ? 'issue' : '', off ? 'off' : '',
-    day.status === 'work_off' ? 'issue' : '', day.is_double ? 'double' : ''].filter(Boolean).join(' ');
-  const parts = [];
-  if (day.fact_in || day.fact_out) parts.push(`${hhmm(day.fact_in) || '?'} → ${hhmm(day.fact_out) || '?'}`);
-  if (day.planned_hours || day.fact_hours) parts.push(`${hours(day.fact_hours)} / ${hours(day.planned_hours)} ч`);
-  if (day.day_hours) parts.push(`ДЯ ${hours(day.day_hours)}`);
-  if (day.night_hours) parts.push(`ДН ${hours(day.night_hours)}`);
-  if (day.ot_hours) parts.push(`перераб. ${hours(day.ot_hours)}`);
-  if (day.deficit_hours) parts.push(`недораб. ${hours(day.deficit_hours)}`);
-  if (day.timeoff_hours) parts.push(`списано ${hours(day.timeoff_hours)} ч`);
-  if (day.is_double) parts.push(`×2 ${day.double_reason === 'vip' ? 'ВИП-гость' : 'двойная оплата'}`);
-  return `<div class="${cls}" title="${esc(day.shift_name || '')}">
-    <div class="d"><span>${day.day} ${esc(day.weekday)}</span>
-      <span class="dot" style="background:${day.color}"></span></div>
-    <div class="h">${esc(day.shift_name || 'не заполнено')}</div>
-    <div class="h">${parts.map(esc).join(' · ') || statusTitle(day.status)}</div>
-    ${day.ot_note ? `<div class="otn">★ ${esc(day.ot_note)}</div>` : ''}
-    ${day.warnings?.length ? `<div class="w">${day.warnings.map(esc).join('<br>')}</div>` : ''}
-    ${day.note ? `<div class="w" style="color:var(--muted)">${esc(day.note)}</div>` : ''}
-  </div>`;
-}
 function statusTitle(st) { return (STATUS_META[st] || { t: st || '—' }).t; }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1647,7 +1259,7 @@ async function employeeCard(emp) {
       m.querySelector('[data-imp]').onclick = async () => {
         await api('/api/auth/impersonate', { method: 'POST', body: { employee_id: emp.id } });
         const me = await api('/api/auth/me');
-        state.user = me.user; renderUserChip(); closeModal(); navigate('me');
+        state.user = me.user; state.perms = me.permissions || []; renderUserChip(); closeModal(); navigate('me');
         toast('Вы смотрите интерфейс глазами сотрудника', 'warn');
       };
       m.querySelector('[data-pos]').onclick = () => { closeModal(); datedActionModal(emp, 'position'); };
@@ -2228,7 +1840,7 @@ function openKindModal(kind) {
 async function loadSettings() {
   const host = $('#view-settings');
   host.innerHTML = '<div class="empty">Загрузка…</div>';
-  const [data, audit] = await Promise.all([api('/api/settings'), api('/api/timesheet/audit?limit=40')]);
+  const data = await api('/api/settings');
   let docsInfo = null;
   try {
     docsInfo = await api('/api/docs/kinds', { silent: true });
@@ -2367,13 +1979,15 @@ async function loadSettings() {
     </div>
 
     <div class="panel">
-      <h3 class="panel-title">Правила расчёта</h3>
+      <h3 class="panel-title">Прочие правила объекта</h3>
       ${data.items.map(i => `<div class="rule-row">
         <div><div class="lbl">${esc(i.description || i.key)}</div><div class="desc"><code>${esc(i.key)}</code> · по умолчанию: ${esc(i.default)}</div></div>
         <div class="rule-input">${input(i)}${String(i.value) !== String(i.default) ? `<span class="badge warn" title="по умолчанию ${esc(i.default)}">изменено</span>` : ''}</div>
       </div>`).join('')}
-      <p class="hint">После изменения правил нажмите «Пересчитать» в табеле. Перерывы и денежные расчёты в системе не ведутся — только часы.</p>
+      <p class="hint">Правила расчёта часов, переработок и банка — в панели «Справочники движка» ниже.</p>
     </div>
+
+    <div class="panel" id="engine-settings-panel"><div class="empty">Загрузка справочников движка…</div></div>
 
     <div class="panel">
       <h3 class="panel-title">Данные системы</h3>
@@ -2382,18 +1996,13 @@ async function loadSettings() {
         <div class="stat"><div class="k">Учётных записей</div><div class="v">${data.counts.users}</div></div>
         <div class="stat"><div class="k">Ячеек графика</div><div class="v">${data.counts.schedule_entries}</div></div>
         <div class="stat"><div class="k">Отметок</div><div class="v">${data.counts.punches}</div></div>
-        <div class="stat"><div class="k">Строк табеля</div><div class="v">${data.counts.timesheet_rows}</div></div>
+        <div class="stat"><div class="k">Ячеек Табеля</div><div class="v">${data.counts.tabel_days}</div></div>
+        <div class="stat"><div class="k">Закрытий периодов</div><div class="v">${data.counts.period_closings}</div></div>
       </div>
-      <button class="btn btn-sm" id="s-recalc">Пересчитать весь текущий месяц</button>
-    </div>
-
-    <div class="panel">
-      <h3 class="panel-title">Журнал изменений (аудит)</h3>
-      ${audit.map(a => `<div class="audit-item">
-        <span class="ts">${esc(a.ts.replace('T', ' '))}</span>
-        <span class="ac">${esc(a.action)}</span>
-        <span style="color:var(--muted)">${esc(a.actor)} · ${esc(a.target)}</span></div>`).join('') || '<div class="empty">Пусто</div>'}
+      <p class="hint">Пересчёт «всего месяца» больше не нужен: управленческий табель считается при открытии (view),
+        закрытые периоды меняются только явным пересчётом последнего закрытого. Журнал изменений — во вкладке «Журнал аудита».</p>
     </div>`;
+  renderEngineSettings($('#engine-settings-panel'));
 
   $('#s-doc-save').onclick = async () => {
     try {
@@ -2445,36 +2054,8 @@ async function loadSettings() {
     });
     try {
       await api('/api/settings', { method: 'PUT', body: payload });
-      toast('Правила сохранены. Не забудьте пересчитать табель.', 'ok');
+      toast('Правила сохранены', 'ok');
       loadSettings();
-    } catch (e) { toast(e.message, 'err'); }
-  };
-  $('#s-recalc').onclick = async () => {
-    /* Тяжёлый пересчёт запускаем в фоне и опрашиваем статус: иначе на большом штате
-       запрос висит секундами и упирается в таймаут прокси. */
-    const btn = $('#s-recalc');
-    try {
-      const r = await api('/api/settings/recalc-all?background=1', { method: 'POST' });
-      if (!r.started) { toast(r.detail || 'Пересчёт уже запущен', 'warn'); return; }
-      btn.disabled = true;
-      const label = btn.textContent;
-      btn.textContent = 'Пересчёт…';
-      toast('Пересчёт табеля запущен в фоне', 'ok');
-      const tick = setInterval(async () => {
-        try {
-          const st = await api('/api/settings/recalc-status', { silent: true });
-          if (st.running) { btn.textContent = 'Пересчёт…'; return; }
-          clearInterval(tick);
-          btn.disabled = false; btn.textContent = label;
-          const job = st.current || (st.jobs || [])[0];
-          if (job?.status === 'done') {
-            toast(`Пересчитано ${job.days} ${plural(job.days, 'день', 'дня', 'дней')}`, 'ok');
-            if (state.view === 'timesheet') loadTimesheet();
-          } else if (job?.status === 'error') {
-            toast('Пересчёт завершился ошибкой: ' + (job.error || 'неизвестно'), 'err');
-          }
-        } catch { clearInterval(tick); btn.disabled = false; btn.textContent = label; }
-      }, 1500);
     } catch (e) { toast(e.message, 'err'); }
   };
   $('#s-add-shift').onclick = () => shiftModal(null);
@@ -2804,7 +2385,7 @@ $('#change-pass-btn').onclick = () => openModal({
 });
 $('#stop-impersonation').onclick = async () => {
   const r = await api('/api/auth/impersonate/stop', { method: 'POST' });
-  state.user = r.user; renderUserChip(); navigate(state.user.role === 'employee' ? 'me' : 'schedule');
+  state.user = r.user; renderUserChip(); await loadPerms(); navigate(startView());
   toast('Вы вернулись в свой интерфейс', 'ok');
 };
 

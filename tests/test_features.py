@@ -164,14 +164,14 @@ class TestNewFeatures(unittest.TestCase):
         row = _row(g, emp["id"])
         fact = row["cells"][day.isoformat()]["fact"]
         self.assertIsNotNone(fact)
-        self.assertFalse(fact["attention"], f"факт требует внимания: {fact}")
-        self.assertEqual(fact["late_hours"], 0.0)
-        self.assertEqual(fact["early_hours"], 0.0)
-        self.assertEqual(fact["gap_hours"], 0.0)         # согласованное окно — не «перерыв»
-        self.assertEqual(fact["counted_hours"], 10.0)    # 12 − 2 часа отсутствия
-        # 2 часа списаны с банка (deduct_from_bank у AWAY_HOURS)
-        r = client.get(f"/api/employees/{emp['id']}/bank-adjustments")
-        self.assertEqual(r.json()["bank_now"], -2.0)
+        self.assertFalse(fact["attention"], f"факт требует внимания: {fact}")   # согласовано — не флаг
+        # Табель: «Я 12» (План — из Табеля; согласованное отсутствие План не меняет, спец. Р26)
+        client.put("/api/tabel/cell", json={"employee_id": emp["id"], "date": day.isoformat(),
+                                            "code": "Я", "hours": 12})
+        fact = _row(_grid(day.year, day.month), emp["id"])["cells"][day.isoformat()]["fact"]
+        self.assertEqual(fact["counted_hours"], 10.0)    # 08–14 + 16–20
+        self.assertEqual(fact["deficit_hours"], 2.0)     # недостача 2 ч → гасится банком/каскадом при закрытии
+        self.assertEqual([f["code"] for f in fact["flags"]], ["ABSENCE_GAP"])
 
         # частичное отсутствие нельзя поставить на день без рабочей смены
         off_day = None
@@ -266,12 +266,12 @@ class TestNewFeatures(unittest.TestCase):
 
     # ── 7. «Кто на работе» доступен всем ролям ──
     def test_07_onwork(self):
-        r = emp_client.get("/api/punches/onwork")
+        r = emp_client.get("/api/presence/board")
         self.assertEqual(r.status_code, 200, r.text)
         data = r.json()
-        self.assertIn("items", data)
-        self.assertIn("count", data)
-        r = client.get("/api/punches/onwork")
+        self.assertIn("present", data)
+        self.assertIn("planned_today", data["counts"])
+        r = client.get("/api/presence/board")
         self.assertEqual(r.status_code, 200)
 
     # ── 8. словарь смен: архив вместо удаления, ревизии не ломают прошлое ──
@@ -430,24 +430,13 @@ class TestNewFeatures(unittest.TestCase):
         self.assertIsNotNone(fact)
         self.assertTrue(fact["intervals"], "в ячейке должны быть интервалы работы")
         self.assertEqual(fact["intervals"][0][0], "06:00")
-        self.assertEqual(fact["gap_hours"], 1.0)         # несогласованный перерыв 12–13
-        self.assertTrue(fact["attention"])               # день требует внимания
-        # по умолчанию часы ДО начала смены не засчитываются (count_early_arrival = 0):
-        # 08:00–12:00 = 4 ч и 13:00–20:00 = 7 ч ⇒ 11 ч, хотя интервалы показаны целиком
-        self.assertEqual(fact["counted_hours"], 11.0)
         self.assertEqual([i for i in fact["intervals"]], [["06:00", "12:00"], ["13:00", "20:00"]])
-
-        # включили «засчитывать ранний приход» — ранние 2 ч добавились к факту и банку
-        self.assertEqual(client.put("/api/settings", json=[
-            {"key": "count_early_arrival", "value": "1"}]).status_code, 200)
-        self.assertEqual(client.post("/api/settings/recalc-all", params={
-            "year": day.year, "month": day.month}).status_code, 200)
+        # v4: всё присутствие — факт (нет переключателя «засчитывать ранний приход»):
+        # при Табеле «Я 12» факт 13 ч, рабочее 11 ч, переработка 06–08 = 2 ч, недостача 1 ч
+        client.put("/api/tabel/cell", json={"employee_id": emp["id"], "date": day.isoformat(),
+                                            "code": "Я", "hours": 12})
         fact = _row(_grid(day.year, day.month), emp["id"])["cells"][day.isoformat()]["fact"]
-        self.assertEqual(fact["counted_hours"], 13.0)
-
-        # возвращаем настройку обратно, чтобы не влиять на другие тесты
-        client.put("/api/settings", json=[{"key": "count_early_arrival", "value": "0"}])
-        client.post("/api/settings/recalc-all", params={"year": day.year, "month": day.month})
+        self.assertEqual((fact["counted_hours"], fact["ot_hours"], fact["deficit_hours"]), (13.0, 2.0, 1.0))
 
     # ── 11. карточка: гражданство/служба попадают в документ ──
     def test_11_doc_values(self):

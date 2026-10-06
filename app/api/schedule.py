@@ -24,11 +24,12 @@ from ..doublepay import SCOPE_TITLES, calendar_map
 from ..employment import employed_on, ensure_periods, is_employed, periods_of, ranges_from_periods
 from ..factview import build_fact_map
 from ..groups import group_index, normalize_group, sorted_groups
-from ..models import BlockAssignment, Employee, EmploymentPeriod, ScheduleEntry, ShiftType, TimesheetRow, utcnow
+from ..models import BlockAssignment, Employee, EmploymentPeriod, ScheduleEntry, ShiftType, utcnow
 from ..names import suggest_genitive
 from ..schedule_patterns import pattern_days, pattern_list
 from ..shiftrev import ShiftCatalog, ShiftView
-from ..timesheet import entry_shift, gap_hours, load_rules, recalc_day, recalc_range, shift_window
+from ..permissions import require_perm
+from ..schedule_helpers import entry_shift, gap_hours, shift_window
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 
@@ -144,10 +145,6 @@ def get_grid(year: int, month: int, principal: Principal = Depends(current_princ
         ScheduleEntry.employee_id.in_(emp_ids))).all() if emp_ids else []
     emap = {(e.employee_id, e.date): e for e in entries}
 
-    ts_rows = db.scalars(select(TimesheetRow).where(
-        TimesheetRow.date >= first, TimesheetRow.date <= last,
-        TimesheetRow.employee_id.in_(emp_ids))).all() if emp_ids else []
-    fmap = {(t.employee_id, t.date): t for t in ts_rows}
     fact_map = build_fact_map(db, emp_ids, first, last)
     base_cfg = load_base_config(db)
 
@@ -206,11 +203,10 @@ def get_grid(year: int, month: int, principal: Principal = Depends(current_princ
             planned = shift.planned_hours if (shift and employed) else 0.0
             planned_total += planned
             work_days += 1 if (shift and shift.kind == "work" and employed) else 0
-            trow = fmap.get((emp.id, d))
-            fact_hours_v = trow.fact_hours if trow else 0.0
+            fact = fact_map.get((emp.id, d.isoformat()))
+            fact_hours_v = fact["counted_hours"] if fact else 0.0
             fact_total += fact_hours_v
             worked_off = bool(fact_hours_v) and employed and (shift is None or shift.kind != "work")
-            fact = fact_map.get((emp.id, d.isoformat()))
             if fact is not None:
                 fact = {k: v for k, v in fact.items() if k not in ("raw", "plan_segments")}
             cells[d.isoformat()] = {
@@ -350,7 +346,6 @@ def _apply_cell(db: Session, principal: Principal, payload: CellIn) -> Optional[
             db.delete(entry)
             audit(db, principal, "schedule_clear", f"employee:{emp.id}:{payload.date}")
             db.flush()
-            recalc_day(db, emp, payload.date, commit=False)
         return None
 
     if entry is None:
@@ -382,15 +377,14 @@ def _apply_cell(db: Session, principal: Principal, payload: CellIn) -> Optional[
         audit(db, principal, "schedule_partial", f"employee:{emp.id}:{payload.date}",
               {"window": f"{ft}-{ut}", "reason": partial_shift.code if partial_shift else "",
                "hours": gap_hours(entry, payload.date)})
-    db.flush()
-    recalc_day(db, emp, payload.date, commit=False)
+    db.flush()     # График влияет только на флаги; движок v4 читает его при расчёте
     return entry
 
 
 def _cell_response(db: Session, emp_id: int, date: dt.date,
                    entry: Optional[ScheduleEntry]) -> dict:
     shift = entry_shift(db, entry) if entry else None
-    rules = load_rules(db)
+    rules = None
     p_start, p_end = shift_window(shift, date, rules) if shift else (None, None)
     return {
         "employee_id": emp_id,
@@ -407,7 +401,7 @@ def _cell_response(db: Session, emp_id: int, date: dt.date,
 
 
 @router.put("/cell")
-def set_cell(payload: CellIn, principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def set_cell(payload: CellIn, principal: Principal = Depends(require_perm("schedule.edit")), db: Session = Depends(get_db)):
     entry = _apply_cell(db, principal, payload)
     db.commit()
     return {"ok": True, "cell": _cell_response(db, payload.employee_id, payload.date, entry)}
@@ -424,7 +418,7 @@ class BulkCellIn(BaseModel):
 
 
 @router.post("/bulk")
-def set_bulk(payload: list[BulkCellIn], principal: Principal = Depends(require_manager),
+def set_bulk(payload: list[BulkCellIn], principal: Principal = Depends(require_perm("schedule.edit")),
              db: Session = Depends(get_db)):
     for item in payload:
         _apply_cell(db, principal, CellIn(**item.model_dump()))
@@ -447,7 +441,7 @@ class RangeAbsenceIn(BaseModel):
 
 
 @router.post("/range-absence")
-def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(require_manager),
+def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(require_perm("schedule.edit")),
                   db: Session = Depends(get_db)):
     """Назначить отсутствие сразу на период — в т.ч. через границы месяцев.
 
@@ -505,7 +499,6 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
           {"employees": payload.employee_ids, "updated": updated,
            "only_work_days": payload.only_work_days, "months": months})
     db.flush()
-    recalc_range(db, payload.start, payload.end, employee_ids=payload.employee_ids, commit=False)
     db.commit()
     return {"ok": True, "updated": updated,
             "skipped_inactive": skipped_inactive, "skipped_off": skipped_off,
@@ -570,7 +563,7 @@ class PatternIn(BaseModel):
 
 
 @router.post("/fill-pattern")
-def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_manager),
+def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_perm("schedule.edit")),
                  db: Session = Depends(get_db)):
     """Заполнить период циклом (2/2, 4/3, 5/2 с выбором выходных, произвольная строка).
     Для блоков «Смена 1»/«Смена 2» включена инверсия фазы: пересечений не будет.
@@ -652,7 +645,6 @@ def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_mana
           f"{payload.pattern}:{payload.start_date}..{payload.end_date}",
           {"employees": payload.employee_ids, "changed": changed, "sync_blocks": payload.sync_blocks})
     db.flush()
-    recalc_range(db, payload.start_date, payload.end_date, employee_ids=payload.employee_ids, commit=False)
     db.commit()
     return {"ok": True, "changed": changed}
 
@@ -665,7 +657,7 @@ class ContinueIn(BaseModel):
 
 
 @router.post("/continue")
-def continue_schedule(payload: ContinueIn, principal: Principal = Depends(require_manager),
+def continue_schedule(payload: ContinueIn, principal: Principal = Depends(require_perm("schedule.edit")),
                       db: Session = Depends(get_db)):
     """Продолжить график на месяц НЕ копированием, а продолжением цикла каждого сотрудника
     (2/2, 5/2, custom…) от его точки отсчёта — фазы смен 1/2 сохраняются."""
@@ -734,7 +726,6 @@ def continue_schedule(payload: ContinueIn, principal: Principal = Depends(requir
                 changed += 1
     audit(db, principal, "schedule_continue", f"{payload.year}-{payload.month:02d}", {"changed": changed})
     db.flush()
-    recalc_range(db, first, last, commit=False)
     db.commit()
     return {"ok": True, "changed": changed}
 
@@ -745,7 +736,7 @@ class ClearMonthIn(BaseModel):
 
 
 @router.post("/clear-month")
-def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_manager),
+def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_perm("schedule.edit")),
                 db: Session = Depends(get_db)):
     """Обнулить график на указанный месяц (ячейки удаляются, табель пересчитывается)."""
     first, last = _month_bounds(payload.year, payload.month)
@@ -756,7 +747,6 @@ def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_ma
         db.delete(e)
     audit(db, principal, "schedule_clear_month", f"{payload.year}-{payload.month:02d}", {"deleted": n})
     db.flush()
-    recalc_range(db, first, last, commit=False)
     db.commit()
     return {"ok": True, "deleted": n}
 
@@ -770,7 +760,7 @@ class CopyIn(BaseModel):
 
 
 @router.post("/copy")
-def copy_period(payload: CopyIn, principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def copy_period(payload: CopyIn, principal: Principal = Depends(require_perm("schedule.edit")), db: Session = Depends(get_db)):
     """Прямое копирование периода (для особых случаев); основное средство — «Продолжить график»."""
     src_len = (payload.src_end - payload.src_start).days + 1
     if src_len <= 0:
@@ -812,8 +802,6 @@ def copy_period(payload: CopyIn, principal: Principal = Depends(require_manager)
     audit(db, principal, "schedule_copy",
           f"{payload.src_start}..{payload.src_end} → {payload.dst_start}", {"changed": changed})
     db.flush()
-    recalc_range(db, payload.dst_start, payload.dst_start + dt.timedelta(days=src_len - 1),
-                 employee_ids=payload.employee_ids, commit=False)
     db.commit()
     return {"ok": True, "changed": changed}
 
@@ -827,7 +815,7 @@ def get_patterns(principal: Principal = Depends(require_manager)):
 def today_board(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
     today = now_local().date()
     entries = db.scalars(select(ScheduleEntry).where(ScheduleEntry.date == today)).all()
-    rules = load_rules(db)
+    rules = None
     result = []
     for e in entries:
         s = entry_shift(db, e)          # смена такой, какой она была в эту дату (история словаря)

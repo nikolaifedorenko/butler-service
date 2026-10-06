@@ -294,7 +294,7 @@ def effective_entry_shift(db: Session, emp_id: int, date: dt.date, emp: Optional
         entry = db.scalar(select(ScheduleEntry).where(
             ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == date))
     if entry is not None:
-        from .timesheet import entry_shift
+        from .schedule_helpers import entry_shift
         return entry, entry_shift(db, entry, catalog=catalog)
     if emp is None:
         emp = db.get(Employee, emp_id)

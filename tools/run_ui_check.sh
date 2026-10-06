@@ -7,7 +7,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 PORT="${1:-8141}"
 LOGIN="${2:-gromova}"
-VIEWS="${3:-schedule,onwork,attendance,timesheet,employees,me,night,cars,settings}"
+VIEWS="${3:-schedule,onwork,attendance,timesheet,mgmt,employees,me,night,cars,access,audit,settings}"
 DB="/tmp/ui_harness.db"
 rm -f "$DB" "$DB-wal" "$DB-shm" /tmp/ui_server.log
 

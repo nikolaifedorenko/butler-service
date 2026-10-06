@@ -37,7 +37,7 @@ from ..models import (
 from ..names import suggest_genitive
 from ..security import hash_password
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
-from ..timesheet import bank_as_of, recalc_range
+from .engine_common import bank_now as bank_as_of
 
 router = APIRouter(prefix="/api", tags=["directory"])
 
@@ -548,10 +548,6 @@ def rehire_employee(employee_id: int, payload: RehireIn,
         _touch_block(db, emp, normalize_group(emp.schedule_group) or "Смена 1", since)
 
     audit(db, principal, "employee_rehire", f"employee:{emp.id}", {"since": since.isoformat()})
-    db.flush()
-    today = local_date()
-    if since <= today:
-        recalc_range(db, since, today, employee_ids=[emp.id], commit=False)
     db.commit()
     return _emp_dict(emp, with_user=True)
 
@@ -961,10 +957,7 @@ def update_shift_type(type_id: int, payload: ShiftTypeIn,
         audit(db, principal, "shift_type_update", st.code,
               {"changes": {k: [str(a), str(b)] for k, (a, b) in changes.items()},
                "effective_from": eff.isoformat()})
-        db.flush()
-        if eff <= local_date():
-            # дни от даты вступления до сегодня пересчитываем по новым значениям
-            recalc_range(db, eff, local_date(), commit=False)
+        db.flush()   # график читается по ревизиям; УТ движок v4 считает при чтении
     else:
         for k, v in data.items():
             setattr(st, k, v)

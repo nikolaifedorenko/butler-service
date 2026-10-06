@@ -110,7 +110,9 @@ class TestReadonlySchedule(unittest.TestCase):
         # PDF графика батлеру доступен — но только его же план (200), либо 501 без движка
         self.assertIn(emp_client.get("/api/schedule/pdf",
                                      params={"year": YEAR, "month": MONTH}).status_code, (200, 501))
-        self.assertEqual(emp_client.get("/api/timesheet",
+        self.assertEqual(emp_client.get("/api/tabel",
+                                        params={"year": YEAR, "month": MONTH}).status_code, 403)
+        self.assertEqual(emp_client.get("/api/mgmt",
                                         params={"year": YEAR, "month": MONTH}).status_code, 403)
         self.assertEqual(emp_client.get("/api/settings").status_code, 403)
 
@@ -150,18 +152,12 @@ class TestPdfExport(unittest.TestCase):
         self._assert_pdf(client.get("/api/schedule/pdf",
                                     params={"year": YEAR, "month": MONTH}), "grafik_")
 
-    def test_timesheet_pdf(self):
-        self._assert_pdf(client.get("/api/timesheet/pdf",
-                                    params={"year": YEAR, "month": MONTH}), "tabel_")
-
     def test_docx_builds_without_engine(self):
         # DOCX-макеты собираются даже там, где PDF-движка нет (python-docx — ядро)
-        from app.grid_docx import schedule_docx, timesheet_docx
+        from app.grid_docx import schedule_docx
 
         grid = client.get("/api/schedule", params={"year": YEAR, "month": MONTH}).json()
         self.assertTrue(schedule_docx(grid).startswith(b"PK"))
-        ts = client.get("/api/timesheet", params={"year": YEAR, "month": MONTH}).json()
-        self.assertTrue(timesheet_docx(ts).startswith(b"PK"))
 
 
 class TestPdfHint(unittest.TestCase):

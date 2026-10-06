@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import threading
 from collections import defaultdict
 from typing import Optional
@@ -16,8 +15,25 @@ from ..auth import Principal, audit, current_principal, require_manager
 from ..db import get_db
 from ..deps import local_date, now_local
 from ..employment import employed_on, ensure_periods, periods_of
-from ..models import Employee, Punch, ScheduleEntry, ShiftType, TimesheetRow
-from ..timesheet import WINDOW_AFTER_H, WINDOW_BEFORE_H, bank_as_of, entry_shift, load_rules, recalc_day, shift_window
+from ..models import Employee, Punch, ScheduleEntry
+from ..schedule_helpers import shift_window
+from .engine_common import bank_now, day_summary
+
+# окно поиска открытой смены вокруг плана (интерфейс отметок; на расчёт часов не влияет)
+WINDOW_BEFORE_H = 4
+WINDOW_AFTER_H = 6
+GRACE_MINUTES = 5
+
+
+def load_rules(db: Session) -> dict:
+    """Лимит опоздания для подсветки на экранах — из настроек движка (Т7)."""
+    from ..engine.adapters.sql_settings import SqlSettingsAdapter
+    from ..engine.application.periods import month_period
+    today = local_date()
+    try:
+        return {"grace_minutes": SqlSettingsAdapter(db).load(month_period(today.year, today.month)).late_limit_minutes}
+    except Exception:  # noqa: BLE001 — экран отметок не должен падать из-за настроек
+        return {"grace_minutes": GRACE_MINUTES}
 
 router = APIRouter(prefix="/api/punches", tags=["punches"])
 
@@ -107,25 +123,6 @@ def _plan_for(db: Session, emp_id: int, today: dt.date, rules: dict):
     return _plan_for_date(db, emp_id, today, rules)
 
 
-def _punch_flags(entry: Optional[ScheduleEntry], shift: Optional[ShiftType]) -> tuple[bool, bool]:
-    """Можно ли жать «Пришёл»/«Ушёл» при текущем плане: сначала флаги вида смены
-    из словаря, затем явный override отдельной ячейки (None — как в словаре)."""
-    in_ok = True if shift is None else bool(shift.punch_in_allowed)
-    out_ok = True if shift is None else bool(shift.punch_out_allowed)
-    if entry is not None:
-        if entry.punch_in_override is not None:
-            in_ok = bool(entry.punch_in_override)
-        if entry.punch_out_override is not None:
-            out_ok = bool(entry.punch_out_override)
-    return in_ok, out_ok
-
-
-def _punch_denied(shift: Optional[ShiftType], kind_name: str) -> str:
-    name = shift.name if shift else "отсутствие"
-    return (f'Сейчас статус: «{name}» — нажимать «{kind_name}» при этом виде смены нельзя. '
-            "При необходимости менеджер может разрешить отметки в ячейке графика.")
-
-
 def _open_session(db: Session, emp_id: int, since: dt.datetime) -> Optional[Punch]:
     """Последний IN, после которого нет OUT."""
     punches = db.scalars(select(Punch).where(
@@ -153,9 +150,10 @@ def _status_payload(db: Session, emp: Employee) -> dict:
     elapsed = round((now - open_in.ts).total_seconds() / 3600.0, 1) if open_in else None
     is_late = bool(p_start and open_in and open_in.ts > p_start + dt.timedelta(minutes=rules["grace_minutes"]))
 
-    ts_row = db.scalar(select(TimesheetRow).where(
-        TimesheetRow.employee_id == emp.id, TimesheetRow.date == plan_date))
-    in_ok, out_ok = _punch_flags(entry, shift)
+    summary = day_summary(db, emp, plan_date)
+    # ворот отметок нет (спец. v4, Р5): отмечаться можно всегда, а отметки в днях отсутствия
+    # получают информационный флаг «Активность требует проверки»
+    in_ok, out_ok = True, True
 
     return {
         "now": now.isoformat(timespec="seconds"),
@@ -179,13 +177,8 @@ def _status_payload(db: Session, emp: Employee) -> dict:
         "last_punch": None if not last_punch else {
             "kind": last_punch.kind, "ts": last_punch.ts.isoformat(timespec="minutes"),
             "source": last_punch.source},
-        "today_fact": {
-            "fact_hours": ts_row.fact_hours if ts_row else 0.0,
-            "night_hours": ts_row.night_hours if ts_row else 0.0,
-            "ot_hours": ts_row.ot_hours if ts_row else 0.0,
-            "status": ts_row.status if ts_row else "",
-        },
-        "balance_hours": bank_as_of(db, emp, now_local().date()),
+        "today_fact": {k: summary[k] for k in ("fact_hours", "night_hours", "ot_hours", "status", "value")},
+        "balance_hours": bank_now(db, emp, now_local().date()),
     }
 
 
@@ -267,16 +260,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
             kind = "OUT" if any(p.kind == "IN" for p in day_punches) and not any(
                 p.kind == "OUT" for p in day_punches) else "IN"
 
-    # можно ли отмечаться — решают флаги вида смены/отсутствия (override — в ячейке графика).
-    # менеджера при ручной корректировке и отметках задним числом не блокируем
-    in_ok, out_ok = _punch_flags(entry, shift)
-    acting_for_other = bool(payload.employee_id) and payload.employee_id != (
-        principal.employee.id if principal.employee else None)
-    if not (principal.is_manager and (backfill or acting_for_other)):
-        if kind == "IN" and not in_ok:
-            raise HTTPException(status_code=409, detail=_punch_denied(shift, "Пришёл"))
-        if kind == "OUT" and not out_ok:
-            raise HTTPException(status_code=409, detail=_punch_denied(shift, "Ушёл"))
+    # Ворот отметок нет (спец. v4, Р5, раздел 17): все реальные отметки участвуют в расчёте.
 
     source = "manual" if backfill or (principal.is_manager and payload.employee_id and payload.employee_id != (
         principal.employee.id if principal.employee else None)) else "web"
@@ -285,24 +269,19 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
     db.add(p)
     audit(db, principal, "punch_" + kind.lower() + ("_backfill" if backfill else ""), f"employee:{emp.id}",
           {"ts": ts.isoformat(timespec="minutes"), "source": source})
-    db.flush()
-    row = recalc_day(db, emp, plan_date, rules=rules, entry=entry, commit=False)
     db.commit()
+    row = day_summary(db, emp, plan_date)
 
     warnings = []
     if backfill:
         warnings.append("Отметка добавлена задним числом — действие записано в журнал аудита")
     if not shift or shift.kind != "work":
-        warnings.append("По графику в этот день рабочей смены нет — отметка сохранена, часы в табель не попадут")
-    else:
-        # предупреждения берём из пересчитанной строки табеля: они уже учитывают округление до часа
-        try:
-            detail = json.loads(row.detail_json or "{}")
-            warnings.extend(detail.get("warnings", []))
-        except (TypeError, ValueError):
-            pass
-        if row.ot_hours:
-            warnings.append(f"Переработка {row.ot_hours:g} ч учтена в табеле")
+        warnings.append("По графику в этот день смены нет — отметка сохранена; работа без плана "
+                        "учитывается как переработка (коды ДЯ/ДН), руководитель увидит флаг")
+    if "ACTIVITY_REQUIRES_REVIEW" in row["flags"]:
+        warnings.append(f"В Табеле день «{row['value']}» — отметка помечена для проверки руководителем")
+    if row["ot_hours"]:
+        warnings.append(f"Переработка {row['ot_hours']:g} ч учтена в управленческом табеле")
 
     status = _status_payload(db, emp)
     day_prefix = "" if ts.date() == now.date() else f"{ts:%d.%m} "
@@ -311,96 +290,9 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
     return {"ok": True, "message": message, "backfill": backfill, "plan_date": plan_date.isoformat(),
             "punch": {"id": p.id, "kind": p.kind, "ts": p.ts.isoformat(timespec="minutes"),
                       "source": p.source, "rounded_to_hour": True},
-            "day": {"planned_hours": row.planned_hours, "fact_hours": row.fact_hours,
-                    "night_hours": row.night_hours, "ot_hours": row.ot_hours,
-                    "deficit_hours": row.deficit_hours, "status": row.status},
+            "day": {k: row[k] for k in ("planned_hours", "fact_hours", "night_hours", "ot_hours",
+                                        "deficit_hours", "status")},
             "warnings": warnings, "status": status}
-
-
-@router.get("/onwork")
-def onwork(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
-    """«Кто на работе» прямо сейчас: нажал «Пришёл» и ещё не нажал «Ушёл».
-
-    Раздел доступен ВСЕМ ролям, включая рядовых сотрудников: каждый может увидеть,
-    кто сейчас на смене (например, чтобы понять, кому передать смену)."""
-    from ..base_schedule import BlockIndex, base_shift, load_base_config
-    from ..shiftrev import ShiftCatalog
-
-    rules = load_rules(db)
-    now = now_local()
-    today = now.date()
-    yesterday = today - dt.timedelta(days=1)
-    since = now - dt.timedelta(hours=36)     # хвост ночной смены переходит полночь
-    employees = db.scalars(select(Employee).where(
-        Employee.deleted_at.is_(None), Employee.active.is_(True))).all()
-    emp_ids = [e.id for e in employees]
-
-    punches = db.scalars(select(Punch).where(
-        Punch.employee_id.in_(emp_ids), Punch.ts >= since).order_by(Punch.ts)).all() if emp_ids else []
-    last_in: dict[int, Optional[Punch]] = {}
-    for p in punches:
-        last_in[p.employee_id] = p if p.kind == "IN" else None
-
-    # справочники и ячейки графика — ОДИН раз на запрос (раздел опрашивается каждые 30 с)
-    catalog = ShiftCatalog.load(db)
-    index = BlockIndex.load(db, emp_ids)
-    cfg = load_base_config(db)
-    entries: dict[tuple[int, dt.date], ScheduleEntry] = {}
-    if emp_ids:
-        for en in db.scalars(select(ScheduleEntry).where(
-                ScheduleEntry.employee_id.in_(emp_ids),
-                ScheduleEntry.date.in_([today, yesterday]))):
-            entries[(en.employee_id, en.date)] = en
-    # периоды работы — одним запросом: иначе is_employed() спрашивает БД на каждого
-    from ..employment import employed_on
-    from ..models import EmploymentPeriod
-    periods_by_emp: dict[int, list] = {}
-    if emp_ids:
-        for per in db.scalars(select(EmploymentPeriod).where(
-                EmploymentPeriod.employee_id.in_(emp_ids))):
-            periods_by_emp.setdefault(per.employee_id, []).append(per)
-
-    items = []
-    planned_today = 0
-    for emp in employees:
-        entry = entries.get((emp.id, today))
-        # периоды уже выбраны одним запросом; при их отсутствии сохраняем прежнее
-        # поведение is_employed() (False), но не ходим в БД на каждого сотрудника
-        emp_periods = periods_by_emp.get(emp.id) or []
-        employed = employed_on(emp_periods, today)
-        planned = entry_shift(db, entry, catalog=catalog) if entry else \
-            base_shift(db, emp, today, cfg=cfg, employed=employed, index=index, catalog=catalog)
-        if planned and planned.kind == "work":
-            planned_today += 1
-        p = last_in.get(emp.id)
-        if p is None:
-            continue
-        _, shift, p_start, p_end, plan_date = _plan_for_date(
-            db, emp.id, today, rules, at_ts=now, emp=emp, entries=entries,
-            index=index, catalog=catalog, cfg=cfg, employed=employed)
-        is_late = bool(p_start and p.ts > p_start + dt.timedelta(minutes=rules["grace_minutes"]))
-        items.append({
-            "employee_id": emp.id,
-            "short_name": emp.display_name,
-            "full_name": emp.full_name,
-            "position": emp.position or "",
-            "phone": emp.phone or "",
-            "telegram": emp.telegram or "",
-            "schedule_group": emp.schedule_group or "",
-            "session_start": p.ts.isoformat(timespec="minutes"),
-            "elapsed_hours": round((now - p.ts).total_seconds() / 3600.0, 1),
-            "is_late": is_late,
-            "shift": None if not shift else {
-                "code": shift.code, "name": shift.name, "kind": shift.kind, "color": shift.color,
-                "start": shift.start_time, "end": shift.end_time, "overnight": shift.overnight,
-            },
-            "plan_date": plan_date.isoformat(),
-            "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
-            "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
-        })
-    items.sort(key=lambda x: x["session_start"])
-    return {"now": now.isoformat(timespec="seconds"), "today": today.isoformat(),
-            "count": len(items), "planned_today": planned_today, "items": items}
 
 
 @router.get("")
@@ -444,17 +336,11 @@ def delete_punch(punch_id: int, principal: Principal = Depends(require_manager),
     p = db.get(Punch, punch_id)
     if not p:
         raise HTTPException(status_code=404, detail="Отметка не найдена")
-    emp = db.get(Employee, p.employee_id)
     ts, emp_id = p.ts, p.employee_id
     audit(db, principal, "punch_delete", f"punch:{punch_id}",
           {"employee_id": emp_id, "ts": ts.isoformat(timespec="minutes"), "kind": p.kind})
     db.delete(p)
-    db.flush()
-    if emp:
-        rules = load_rules(db)
-        for d in {ts.date(), ts.date() - dt.timedelta(days=1)}:
-            recalc_day(db, emp, d, rules=rules, commit=False)
-    db.commit()
+    db.commit()   # пересчёт не нужен: движок считает Табель/УТ при чтении
     return {"ok": True}
 
 
@@ -473,90 +359,5 @@ def set_punch_note(punch_id: int, payload: NoteIn,
         raise HTTPException(status_code=403, detail="Можно комментировать только свои отметки")
     p.note = payload.note.strip()[:500]
     audit(db, principal, "punch_note", f"punch:{punch_id}", {"note": p.note})
-    db.flush()
-    emp = db.get(Employee, p.employee_id)
-    if emp:
-        recalc_day(db, emp, p.ts.date(), commit=False)
-        recalc_day(db, emp, p.ts.date() - dt.timedelta(days=1), commit=False)
     db.commit()
     return {"ok": True, "note": p.note}
-
-
-@router.get("/attendance")
-def attendance(date: Optional[dt.date] = None, principal: Principal = Depends(require_manager),
-               db: Session = Depends(get_db)):
-    """Посещения за день: кто сейчас на смене + точное время прихода/ухода по каждому."""
-    from ..base_schedule import base_shift, load_base_config
-
-    day = date or local_date()
-    rules = load_rules(db)
-    base_cfg = load_base_config(db)
-    employees = db.scalars(select(Employee).where(Employee.active.is_(True))
-                           .order_by(Employee.full_name)).all()
-    entries = {(e.employee_id, e.date): e for e in db.scalars(select(ScheduleEntry).where(
-        ScheduleEntry.date.in_([day, day - dt.timedelta(days=1)])))}
-    ts_rows = {(t.employee_id, t.date): t for t in db.scalars(select(TimesheetRow).where(
-        TimesheetRow.date.in_([day, day - dt.timedelta(days=1)])))}
-    now = now_local()
-
-    on_shift, items = [], []
-    for emp in employees:
-        entry = entries.get((emp.id, day))
-        shift = entry.shift_type if entry else None
-        if shift is None:
-            shift = base_shift(db, emp, day, base_cfg)
-        p_start, p_end = shift_window(shift, day, rules) if shift else (None, None)
-        row = ts_rows.get((emp.id, day))
-
-        # ночная смена, начавшаяся вчера и ещё идущая
-        y_entry = entries.get((emp.id, day - dt.timedelta(days=1)))
-        y_shift = y_entry.shift_type if y_entry else None
-        if y_shift is None:
-            y_shift = base_shift(db, emp, day - dt.timedelta(days=1), base_cfg)
-        y_start, y_end = shift_window(y_shift, day - dt.timedelta(days=1), rules) if y_shift else (None, None)
-        night_ongoing = bool(y_start and y_end and y_end > now and y_shift and y_shift.overnight
-                             and (not p_start or now < p_start))
-
-        open_in = _open_session(db, emp.id, (y_start or p_start or dt.datetime(now.year, now.month, now.day))
-                                - dt.timedelta(hours=WINDOW_BEFORE_H))
-        currently = bool(open_in and (night_ongoing or (p_start and p_end)))
-
-        detail = None
-        if row and (row.fact_in or row.status not in ("off", "absence", "")):
-            detail = {
-                "fact_hours": row.fact_hours, "night_hours": row.night_hours,
-                "day_hours": row.day_hours, "ot_hours": row.ot_hours,
-                "deficit_hours": row.deficit_hours, "status": row.status,
-                "fact_in": row.fact_in.isoformat(timespec="minutes") if row.fact_in else None,
-                "fact_out": row.fact_out.isoformat(timespec="minutes") if row.fact_out else None,
-            }
-        item = {
-            "employee": {"id": emp.id, "short_name": emp.display_name, "full_name": emp.full_name,
-                         "position": emp.position},
-            "shift": None if not shift else {"code": shift.code, "name": shift.name, "color": shift.color,
-                                             "display_code": shift.display_code, "kind": shift.kind,
-                                             "start": shift.start_time, "end": shift.end_time},
-            "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
-            "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
-            "planned_hours": shift.planned_hours if shift else 0.0,
-            "fact_in": detail["fact_in"] if detail else None,
-            "fact_out": detail["fact_out"] if detail else None,
-            "fact_hours": detail["fact_hours"] if detail else 0.0,
-            "ot_hours": detail["ot_hours"] if detail else 0.0,
-            "status": row.status if row else ("off" if (not shift or shift.kind != "work") else "no_punch"),
-            "on_shift_now": currently,
-            "night_from_yesterday": night_ongoing,
-            "elapsed_hours": round((now - open_in.ts).total_seconds() / 3600.0, 1) if open_in else None,
-            "is_late": bool(detail and detail["status"] in ("late", "late_early")) or
-                       bool(open_in and p_start and open_in.ts > p_start + dt.timedelta(minutes=rules["grace_minutes"])),
-            "note": entry.note if entry else "",
-        }
-        items.append(item)
-        if currently:
-            on_shift.append(item)
-
-    order = {"unclosed": 0, "late": 1, "late_early": 1, "no_punch": 2, "early": 3, "ok": 4,
-             "work_no_plan": 2, "absence": 8, "off": 9}
-    items.sort(key=lambda x: (order.get(x["status"], 5), x["employee"]["short_name"]))
-    return {"date": day.isoformat(), "now": now.isoformat(timespec="minutes"),
-            "on_shift": on_shift, "on_shift_count": len(on_shift), "items": items}
