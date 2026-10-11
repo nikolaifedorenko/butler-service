@@ -1,29 +1,25 @@
+"""presence_intervals — расчётный путь (4.3, 4.5, 6.3 стадия 4): сопряжение округлённых
+отметок в исходном порядке → обрезка по горизонту H → нарезка по дням → Interval (на сетке)."""
+from __future__ import annotations
+
 import datetime as dt
-from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from ..types.entities import OPEN, CalcMark, Interval
-from .day_intervals import day_intervals
-from .end_minute_of_day import end_minute_of_day
-from .marks_of_day import marks_of_day
-from .state_before import state_before
+from ..sessions.pair_marks import pair_marks
+from ..settings.types import Settings
+from ..time.calc_horizon import calc_horizon
+from ..time.local_minute import local_minute
+from ..types.entities import CalcMark, Interval, Period
+from .split_by_day import split_by_day
 
 
-@dataclass(frozen=True)
-class Presence:
-    intervals: Mapping[dt.date, tuple[Interval, ...]]
-    open_at_start: Mapping[dt.date, bool]
-    open_at_end: Mapping[dt.date, bool]
-
-
-def presence_intervals(days: Sequence[dt.date], marks: Sequence[CalcMark], now_moment: dt.datetime,
-                       today: dt.date, tz: str) -> Presence:
-    """Композиция 4.3 по всем дням периода с переносом состояния через полночь."""
-    state = state_before(marks, days[0]) if days else "closed"
-    intervals, starts, ends = {}, {}, {}
-    for day in days:
-        starts[day] = state == OPEN
-        end = end_minute_of_day(day, today, now_moment, tz)
-        intervals[day], state = day_intervals(marks_of_day(marks, day), state, day, end, tz)
-        ends[day] = state == OPEN
-    return Presence(intervals, starts, ends)
+def presence_intervals(period: Period, calc_marks: Sequence[CalcMark],
+                       opening_mark: CalcMark | None, now_calc: dt.datetime,
+                       st: Settings) -> Mapping[dt.date, tuple[Interval, ...]]:
+    horizon = calc_horizon(period, now_calc, st)
+    sessions = pair_marks(calc_marks, opening_mark, horizon=horizon)
+    out: dict[dt.date, list[Interval]] = {}
+    for day, start, end in split_by_day(sessions, period, st):
+        out.setdefault(day, []).append(
+            Interval(day, local_minute(start, day, st), local_minute(end, day, st)))
+    return {day: tuple(items) for day, items in out.items()}

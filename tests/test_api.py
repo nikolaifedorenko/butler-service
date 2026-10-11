@@ -32,6 +32,15 @@ class TestApi(unittest.TestCase):
         cls.emp_client = TestClient(app)
         r = cls.emp_client.post("/api/auth/login", json={"username": "ivanov", "password": "demo1234"})
         assert r.status_code == 200, r.text
+        # демо-цепочка: последовательно закрыть месяцы от старта учёта до прошлого
+        # (RUL-SEQUENTIAL-CLOSING) — иначе view/close текущего месяца отклоняются
+        from app.seed import accounting_start
+        today = local_date()
+        m = accounting_start(today)
+        while (m.year, m.month) < (today.year, today.month):
+            r = cls.admin.post("/api/mgmt/close", json={"year": m.year, "month": m.month})
+            assert r.status_code == 200, r.text
+            m = dt.date(m.year + (m.month == 12), m.month % 12 + 1, 1)
 
     def test_01_health_and_login(self):
         self.assertTrue(client.get("/api/health").json()["ok"])
@@ -64,27 +73,41 @@ class TestApi(unittest.TestCase):
         r = self.emp_client.get("/api/schedule", params={"year": today.year, "month": today.month})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertTrue(r.json()["readonly"])
-        edit = self.emp_client.put("/api/schedule/cell", json={
-            "employee_id": 1, "date": today.isoformat(), "shift_type_id": None, "note": ""})
+        edit = self.emp_client.put("/api/schedule/shift", json={
+            "employee_id": 1, "date": today.isoformat(),
+            "shifts": [{"start": "09:00", "end": "18:00"}]})
+        self.assertEqual(edit.status_code, 403)
+        edit = self.emp_client.put("/api/tabel/cell", json={
+            "employee_id": 1, "date": today.isoformat(), "code": "Я", "hours": 12})
         self.assertEqual(edit.status_code, 403)
 
     def test_05_set_cell_and_see_it_in_grid(self):
-        # Целевая дата — «сегодня + 3 дня», а сетку нужно запрашивать за МЕСЯЦ ЦЕЛЕВОЙ
-        # ДАТЫ: раньше месяц брали от today, и в последние дни месяца (29–31) тест
-        # падал с KeyError, потому что ячейка уезжала в следующий месяц.
+        # Целевая дата — «сегодня + 3 дня»; сетка запрашивается за МЕСЯЦ целевой даты.
         target = local_date() + dt.timedelta(days=3)
         date = target.isoformat()
-        types = client.get("/api/shift-types").json()
-        sick = next(t for t in types if t["code"] == "SICK")
         emps = client.get("/api/employees").json()
-        emp = emps[0]
-        r = client.put("/api/schedule/cell", json={
-            "employee_id": emp["id"], "date": date, "shift_type_id": sick["id"], "note": "тест"})
+        emp = next(e for e in emps if e["full_name"].startswith("Иванов"))
+        r = client.put("/api/tabel/cell", json={
+            "employee_id": emp["id"], "date": date, "code": "Я", "hours": 12, "note": "тест"})
         self.assertEqual(r.status_code, 200, r.text)
         grid = client.get("/api/schedule", params={"year": target.year, "month": target.month}).json()
         row = next(x for x in grid["rows"] if x["employee"]["id"] == emp["id"])
-        self.assertEqual(row["cells"][date]["shift"]["code"], "SICK")
-        self.assertEqual(row["cells"][date]["note"], "тест")
+        cell = row["cells"][date]
+        self.assertEqual(cell["tabel"]["code"], "Я")
+        self.assertEqual(cell["tabel"]["value"], "Я 12")
+        self.assertEqual(cell["tabel"]["note"], "тест")
+        # График генерируется из Табеля по окну CFG-WINDOWS (16.3)
+        gen = [x for x in cell["shifts"] if x["source"] == "generated"]
+        self.assertTrue(gen, "смена должна быть сгенерирована из Табеля")
+        self.assertIn(("08:00", "20:00"), [(x["start_hm"], x["end_hm"]) for x in gen])
+        # больничный: код без часов — смены нет
+        r = client.put("/api/tabel/cell", json={
+            "employee_id": emp["id"], "date": date, "code": "Б"})
+        self.assertEqual(r.status_code, 200, r.text)
+        grid = client.get("/api/schedule", params={"year": target.year, "month": target.month}).json()
+        row = next(x for x in grid["rows"] if x["employee"]["id"] == emp["id"])
+        self.assertEqual(row["cells"][date]["tabel"]["code"], "Б")
+        self.assertEqual(row["cells"][date]["shifts"], [])
 
     def test_06_fill_pattern(self):
         today = local_date()
@@ -99,7 +122,8 @@ class TestApi(unittest.TestCase):
             "end_date": end.isoformat(), "work_shift_id": day12["id"],
             "off_shift_id": off["id"], "pattern": "2/2", "offset": 0})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertGreaterEqual(r.json()["changed"], 0)
+        self.assertGreaterEqual(r.json()["written"], 0)
+        self.assertIn("skipped", r.json())
 
     def test_07_punch_flow_for_manager_herself(self):
         r = client.post("/api/punches", json={"kind": "IN"})
@@ -118,22 +142,19 @@ class TestApi(unittest.TestCase):
 
     def test_08_manual_punch_for_employee_and_recalc(self):
         today = local_date()
-        types = client.get("/api/shift-types").json()
-        day12 = next(t for t in types if t["code"] == "DAY12")
         emps = client.get("/api/employees").json()
         target = next(e for e in emps if e["full_name"].startswith("Иванов"))
-        # берём прошедший день, где у сотрудника НЕ было рабочей смены (и потому нет демо-отметок)
+        # прошедший выходной день без отметок (демо-отметки ставятся только на рабочие)
         grid = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
         row = next(x for x in grid["rows"] if x["employee"]["id"] == target["id"])
+        punches = client.get("/api/punches", params={"employee_id": target["id"],
+                                                     "year": today.year, "month": today.month}).json()
+        punched = {p["ts"][:10] for p in punches}
         candidates = [d for d in grid["days"]
-                      if d["date"] < today.isoformat()
-                      and (not row["cells"][d["date"]]["shift"]
-                           or row["cells"][d["date"]]["shift"]["kind"] != "work")]
-        assert candidates, "нет свободного прошедшего дня для теста"
+                      if d["date"] < today.isoformat() and d["date"] not in punched
+                      and (row["cells"][d["date"]]["tabel"] or {}).get("code") == "В"]
+        assert candidates, "нет свободного прошедшего выходного для теста"
         day = dt.date.fromisoformat(candidates[-1]["date"])
-        # ставим смену и две отметки: 08:05 → 21:10
-        client.put("/api/schedule/cell", json={"employee_id": target["id"], "date": day.isoformat(),
-                                               "shift_type_id": day12["id"], "note": ""})
         morning = dt.datetime(day.year, day.month, day.day, 8, 5)
         evening = dt.datetime(day.year, day.month, day.day, 21, 10)
         for ts, kind in ((morning, "IN"), (evening, "OUT")):
@@ -141,20 +162,28 @@ class TestApi(unittest.TestCase):
                                                  "ts": ts.isoformat(timespec="minutes")})
             self.assertEqual(r.status_code, 200, r.text)
             self.assertTrue(r.json()["backfill"])
-        # Табель независим от Графика (спец. 4.8): день остаётся «В», пока его не поправят в Табеле
-        detail = client.get(f"/api/mgmt/employee/{target['id']}",
-                            params={"year": day.year, "month": day.month}).json()
-        card = next(c for c in detail["cards"] if c["day"] == day.isoformat())
-        self.assertEqual((card["value"], card["plan"], card["fact"], card["ot"]), ("В", 0, 13, 13))
-        r = client.put("/api/tabel/cell", json={"employee_id": target["id"], "date": day.isoformat(),
-                                                "code": "Я", "hours": 12})
+
+        def card():
+            data = client.get("/api/mgmt", params={"year": day.year, "month": day.month,
+                                                   "employee_id": target["id"],
+                                                   "detail": "true"}).json()
+            r0 = data["rows"][0]
+            assert r0["error"] is None, r0["error"]
+            return next(c for c in r0["days"] if c["day"] == day.isoformat()), r0
+
+        # Табель независим от Графика (4.8): день остаётся «В», пока его не поправят
+        c, _ = card()
+        self.assertEqual(c["timesheet_value"], "В")
+        self.assertEqual((c["plan_minutes"], c["work_minutes"], c["overtime_minutes"]),
+                         (0, 0, 780))       # 08:05→08:00, 21:10→21:00: 13 ч, всё переработка
+        r = client.put("/api/tabel/cell", json={"employee_id": target["id"],
+                                                "date": day.isoformat(), "code": "Я", "hours": 12})
         self.assertEqual(r.status_code, 200, r.text)
-        detail = client.get(f"/api/mgmt/employee/{target['id']}",
-                            params={"year": day.year, "month": day.month}).json()
-        card = next(c for c in detail["cards"] if c["day"] == day.isoformat())
-        # 08:05 → 08:00, 21:10 → 21:00 ⇒ факт 13 ч, рабочее 12, переработка 1 ч ДЯ
-        self.assertEqual((card["plan"], card["fact"], card["work"], card["ot"]), (12, 13, 12, 1))
-        self.assertEqual(detail["ut"][day.isoformat()], {"ДЯ": 1})
+        c, row0 = card()
+        # окно 08:00–20:00: рабочее 12 ч, переработка 20:00–21:00 = 1 ч ДЯ
+        self.assertEqual((c["plan_minutes"], c["fact_minutes"], c["work_minutes"],
+                          c["overtime_minutes"]), (720, 780, 720, 60))
+        self.assertEqual(row0["ut"][day.isoformat()].get("ДЯ"), 60)
 
     def test_08b_employee_cannot_backfill(self):
         today = local_date()
@@ -166,10 +195,9 @@ class TestApi(unittest.TestCase):
         r = client.get("/api/presence/board")
         self.assertEqual(r.status_code, 200)
         data = r.json()
-        self.assertEqual(set(data["counts"]), {"present", "planned_today"})
-        for key in ("present", "stepped_out", "expected"):
-            self.assertIn(key, data)
-        self.assertEqual(data["counts"]["present"], len(data["present"]))
+        self.assertEqual(data["at_work_now"], len(data["open_session_cards"]))
+        self.assertIn("expected_now", data)
+        self.assertIn("yet_to_come", data)
 
     def test_09b_fill_custom_cycle(self):
         today = local_date()
@@ -184,10 +212,18 @@ class TestApi(unittest.TestCase):
             "end_date": end.isoformat(), "work_shift_id": day12["id"], "off_shift_id": off["id"],
             "pattern": "custom", "cycle": "ВВРРРРВВ"})
         self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("written", r.json())
         grid = client.get("/api/schedule", params={"year": start.year, "month": start.month}).json()
         row = next(x for x in grid["rows"] if x["employee"]["id"] == emps[0]["id"])
-        codes = [row["cells"][(start + dt.timedelta(days=i)).isoformat()]["shift"]["code"] for i in range(8)]
-        self.assertEqual(codes, ["OFF", "OFF", "DAY12", "DAY12", "DAY12", "DAY12", "OFF", "OFF"])
+        codes = [(row["cells"][(start + dt.timedelta(days=i)).isoformat()]["tabel"] or {}).get("code")
+                 for i in range(8)]
+        # день 0 — «утро» суточной смены 30.09 из прежнего цикла сотрудника (часть дня
+        # от смены с якорем накануне, 4.7): «С»; далее — чистый цикл «ВВРРРРВВ»
+        self.assertEqual(codes[1:], ["В", "Я", "Я", "Я", "Я", "В", "В"])
+        # График перегенерирован из Табеля: в рабочие дни смена 08:00–20:00
+        work_cell = row["cells"][(start + dt.timedelta(days=2)).isoformat()]
+        self.assertTrue(work_cell["shifts"])
+        self.assertEqual(work_cell["shifts"][0]["start_hm"], "08:00")
 
     def test_09c_fill_52_custom_weekends(self):
         today = local_date()
@@ -202,6 +238,13 @@ class TestApi(unittest.TestCase):
             "end_date": end.isoformat(), "work_shift_id": day9["id"], "off_shift_id": off["id"],
             "pattern": "5/2", "off_weekdays": [0, 1]})     # выходные пн и вт
         self.assertEqual(r.status_code, 200, r.text)
+        grid = client.get("/api/schedule", params={"year": start.year, "month": start.month}).json()
+        row = next(x for x in grid["rows"] if x["employee"]["id"] == emps[1]["id"])
+        for i in range(7):
+            d = start + dt.timedelta(days=i)
+            code = (row["cells"][d.isoformat()]["tabel"] or {}).get("code")
+            expect = "В" if d.weekday() in (0, 1) else "Я"
+            self.assertEqual(code, expect, f"{d} weekday={d.weekday()}")
 
     def test_10_mgmt_view_and_xlsx(self):
         today = local_date()
@@ -344,47 +387,58 @@ class TestApi(unittest.TestCase):
             "vacation": st["doc"]["vacation"], "vacation_unpaid": st["doc"]["vacation_unpaid"]})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(client.get("/api/settings").json()["doc"]["company"], "ООО «Ромашка»")
-        # отпуск периодом разом: 5 дней одной операцией
+        # отпуск периодом разом: 5 дней одной операцией (коды Табеля — первичный документ)
         types = client.get("/api/shift-types").json()
         vac = next(t for t in types if t["code"] == "VACATION")
         emps = client.get("/api/employees").json()
         target = next(e for e in emps if e["full_name"].startswith("Иванов"))
         d1 = today.replace(day=1)
-        cells = [{"employee_id": target["id"], "date": (d1 + dt.timedelta(days=i)).isoformat(),
-                  "shift_type_id": vac["id"], "note": "приказ №1"} for i in range(5)]
-        r = client.post("/api/schedule/bulk", json=cells)
+        r = client.post("/api/schedule/range-absence", json={
+            "employee_ids": [target["id"]], "first": d1.isoformat(),
+            "last": (d1 + dt.timedelta(days=4)).isoformat(),
+            "shift_type_id": vac["id"], "note": "приказ №1"})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["updated"], 5)
+        self.assertEqual(r.json()["written"], 5)
         grid = client.get("/api/schedule", params={"year": d1.year, "month": d1.month}).json()
         row = next(x for x in grid["rows"] if x["employee"]["id"] == target["id"])
-        codes = [row["cells"][(d1 + dt.timedelta(days=i)).isoformat()]["shift"]["code"] for i in range(5)]
-        self.assertEqual(codes, ["VACATION"] * 5)
+        codes = [row["cells"][(d1 + dt.timedelta(days=i)).isoformat()]["tabel"]["code"]
+                 for i in range(5)]
+        self.assertEqual(codes, ["ОТ"] * 5)
+        # смен в эти дни нет: График перегенерирован из Табеля
+        shifts = [row["cells"][(d1 + dt.timedelta(days=i)).isoformat()]["shifts"]
+                  for i in range(5)]
+        self.assertEqual(shifts, [[]] * 5)
+        # период для печати заявления находится целиком
+        p = client.get("/api/schedule/absence-period",
+                       params={"employee_id": target["id"],
+                               "date": (d1 + dt.timedelta(days=2)).isoformat()}).json()
+        self.assertEqual(p["days"], 5)
+        self.assertEqual(p["shift"]["doc_type"], "vacation_paid")
 
     def test_15e_base_cycle_and_inactive_guard(self):
         today = local_date()
         if today.day < 12:
             self.skipTest("нужен день месяца >= 12 для проверки неактивных дней")
-        # базовый цикл: у сотрудника Смены 1 есть виртуальные рабочие дни без ручных ячеек
         emps = client.get("/api/employees").json()
         ivan = next(e for e in emps if e["full_name"].startswith("Иванов"))
         grid = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
         row = next(x for x in grid["rows"] if x["employee"]["id"] == ivan["id"])
-        auto_days = [d for d, c in row["cells"].items() if c.get("auto") and c["shift"] and c["shift"]["kind"] == "work"]
-        self.assertGreater(len(auto_days), 5)
-        # сотрудник, принятый в середине месяца: дни до приёма неактивны (409)
-        types = client.get("/api/shift-types").json()
-        day12 = next(t for t in types if t["code"] == "DAY12")
+        work_days = [d for d, c in row["cells"].items()
+                     if c.get("tabel") and c["tabel"]["code"] == "Я" and c["shifts"]]
+        self.assertGreater(len(work_days), 3)
+        # сотрудник, принятый в середине месяца: дни до приёма — вне трудоустройства (409)
         hired = today - dt.timedelta(days=10)
         created = client.post("/api/employees", json={
             "full_name": "Блочный Тест Тестович", "schedule_group": "Смена 2",
             "hired_at": hired.isoformat()}).json()
-        r = client.put("/api/schedule/cell", json={
-            "employee_id": created["id"], "date": grid["days"][0]["date"], "shift_type_id": day12["id"]})
+        r = client.put("/api/tabel/cell", json={
+            "employee_id": created["id"], "date": grid["days"][0]["date"],
+            "code": "В"})
         self.assertEqual(r.status_code, 409)
-        r = client.put("/api/schedule/cell", json={
-            "employee_id": created["id"], "date": hired.isoformat(), "shift_type_id": day12["id"]})
+        r = client.put("/api/tabel/cell", json={
+            "employee_id": created["id"], "date": hired.isoformat(), "code": "В"})
         self.assertEqual(r.status_code, 200, r.text)
-        # перевод задним числом: сотрудник виден в двух блоках, «чужие» дни неактивны
+        # перевод задним числом: сотрудник виден в двух блоках
         r = client.post(f"/api/employees/{created['id']}/block-change",
                         json={"group": "Смена 1", "date": (today - dt.timedelta(days=5)).isoformat()})
         self.assertEqual(r.status_code, 200, r.text)
@@ -400,47 +454,39 @@ class TestApi(unittest.TestCase):
         r = client.put("/api/settings/base", json={
             "cycle": "2/2", "anchor": (today + dt.timedelta(days=40)).isoformat(),
             "groups": {"Смена 1": {"shift_code": "DAY12", "invert": False},
-                       "Смена 2": {"shift_code": "NIGHT12", "invert": True},
-                       "Администрация": {"shift_code": "DAY9", "pattern": "5/2", "off_weekdays": [5, 6]}}})
+                       "Смена 2": {"shift_code": "SUTKI", "invert": True},
+                       "Администрация": {"shift_code": "DAY9", "pattern": "5/2",
+                                         "off_weekdays": [5, 6]}}})
         self.assertEqual(r.status_code, 200, r.text)
         g = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
         self.assertGreater(len(g["rows"]), 0)
         # невалидная опорная дата отклоняется
-        bad = client.put("/api/settings/base", json={"cycle": "2/2", "anchor": "не-дата", "groups": {}})
+        bad = client.put("/api/settings/base", json={"cycle": "2/2", "anchor": "не-дата",
+                                                     "groups": {}})
         self.assertEqual(bad.status_code, 422)
-        # противофаза сохраняется
-        anchor = (today + dt.timedelta(days=40)).isoformat()
-        client.put("/api/settings/base", json={
-            "cycle": "2/2", "anchor": anchor,
-            "groups": {"Смена 1": {"shift_code": "DAY12", "invert": False},
-                       "Смена 2": {"shift_code": "NIGHT12", "invert": True},
-                       "Администрация": {"shift_code": "DAY9", "pattern": "5/2", "off_weekdays": [5, 6]}}})
-        g = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
-        r1 = next(x for x in g["rows"] if x["employee"]["full_name"].startswith("Громова"))
-        r2 = next(x for x in g["rows"] if x["employee"]["full_name"].startswith("Петров"))
+        # обнуление месяца: ручной код Табеля исчезает вместе с генерацией Графика
+        emp_id = g["rows"][0]["employee"]["id"]
         day = next(d for d in g["days"] if not d["is_weekend"])["date"]
-        k1 = r1["cells"][day]["shift"]["kind"] if r1["cells"][day]["shift"] else None
-        k2 = r2["cells"][day]["shift"]["kind"] if r2["cells"][day]["shift"] else None
-        self.assertTrue((k1 == "work") != (k2 == "work") or k1 is None or k2 is None)
-        # обнуление месяца возвращает к базовому циклу: ручная ячейка исчезает, auto возвращается
-        types = client.get("/api/shift-types").json()
-        vac = next(t for t in types if t["code"] == "VACATION")
-        emp_id = r1["employee"]["id"]
-        pr = client.put("/api/schedule/cell", json={"employee_id": emp_id, "date": day,
-                                                    "shift_type_id": vac["id"], "note": ""})
+        pr = client.put("/api/tabel/cell", json={"employee_id": emp_id, "date": day,
+                                                 "code": "ОТ", "note": ""})
         self.assertEqual(pr.status_code, 200, pr.text)
         g2 = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
         row2 = next(x for x in g2["rows"] if x["employee"]["id"] == emp_id)
-        if row2["cells"][day]["shift"]["code"] != "VACATION":
-            print("DEBUG emp_id", emp_id, "day", day, "cell", row2["cells"][day], "put", pr.status_code, pr.text[:200])
-        self.assertEqual(row2["cells"][day]["shift"]["code"], "VACATION")
-        cr = client.post("/api/schedule/clear-month", json={"year": today.year, "month": today.month})
+        self.assertEqual(row2["cells"][day]["tabel"]["code"], "ОТ")
+        cr = client.post("/api/schedule/clear-month", json={
+            "year": today.year, "month": today.month, "manual_too": True})
         self.assertEqual(cr.status_code, 200, cr.text)
+        self.assertGreater(cr.json()["cleared"], 0)
         g3 = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
         row3 = next(x for x in g3["rows"] if x["employee"]["id"] == emp_id)
         cell = row3["cells"][day]
-        self.assertTrue(cell.get("auto") or cell["shift"] is None)   # вернулось к базовому циклу
-        self.assertNotEqual(cell["shift"]["code"] if cell["shift"] else None, "VACATION")
+        self.assertIsNone(cell["tabel"])
+        self.assertEqual(cell["shifts"], [])
+        # восстановим Табель месяца из циклов — остальные тесты полагаются на покрытие
+        rf = client.post("/api/tabel/fill-from-cycles", json={
+            "year": today.year, "month": today.month, "overwrite": True})
+        self.assertEqual(rf.status_code, 200, rf.text)
+        self.assertGreater(rf.json()["written"], 0)
 
     def test_15g_transfer_keeps_old_block_phase(self):
         """После перевода сотрудник в старом блоке стоит в ФАЗЕ СТАРОГО БЛОКА, в новом — в фазе нового."""

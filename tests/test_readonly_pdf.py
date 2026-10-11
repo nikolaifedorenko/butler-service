@@ -28,7 +28,7 @@ emp_client = TestClient(app)      # батлер (роль employee)
 
 TODAY = local_date()
 YEAR, MONTH = TODAY.year, TODAY.month
-SECRET_FACT_KEYS = ("fact", "partial", "note", "fact_hours", "worked_off")
+MANAGER_ONLY_KEYS = ("note", "id")
 
 
 def _login(c: TestClient, username: str) -> None:
@@ -79,15 +79,20 @@ class TestReadonlySchedule(unittest.TestCase):
         self.assertTrue(data["rows"], "в демо-базе должен быть хотя бы один сотрудник")
         for row in data["rows"]:
             self.assertNotIn("balance_hours", row["employee"])
-            self.assertEqual(row["totals"].get("fact_hours", 0.0), 0.0)
             for cell in row["cells"].values():
-                self.assertIsNone(cell["fact"])
-                self.assertIsNone(cell["partial"])
-                self.assertEqual(cell["note"], "")
-                self.assertFalse(cell["worked_off"])
-                self.assertEqual(cell["fact_hours"], 0.0)
-            # план смен на месте — ради него всё и затевалось
-            self.assertTrue(any(c.get("shift") for c in row["cells"].values()))
+                # тяжёлый конвейер — только УТ: ни факта, ни отклонений в сетке нет (16.1 п.2)
+                self.assertNotIn("fact", cell)
+                if cell.get("tabel"):
+                    self.assertNotIn("note", cell["tabel"])
+                for a in cell["absences"]:
+                    self.assertNotIn("id", a)
+                    self.assertNotIn("note", a)
+                for sh in cell["shifts"]:
+                    self.assertNotIn("note", sh)
+                    self.assertNotIn("id", sh)
+        # план смен на месте — ради него всё и затевалось (хотя бы у одного сотрудника)
+        self.assertTrue(any(c.get("shifts") for row in data["rows"]
+                            for c in row["cells"].values()))
 
     def test_manager_gets_full_grid(self):
         r = client.get("/api/schedule", params={"year": YEAR, "month": MONTH})
@@ -95,14 +100,20 @@ class TestReadonlySchedule(unittest.TestCase):
         data = r.json()
         self.assertFalse(data["readonly"])
         row = data["rows"][0]
-        self.assertIn("balance_hours", row["employee"])
-        self.assertIn("fact_hours", row["totals"])
-        self.assertTrue(all(k in next(iter(row["cells"].values())) for k in SECRET_FACT_KEYS))
+        self.assertIn("planned_hours", row["totals"])
+        cell = next(iter(row["cells"].values()))
+        self.assertTrue({"tabel", "shifts", "absences", "employed", "editable"} <= set(cell))
 
     def test_employee_cannot_edit_or_export(self):
-        cell = {"employee_id": EMP["id"], "date": TODAY.replace(day=15).isoformat(),
-                "shift_type_id": None, "note": "хак"}
-        self.assertEqual(emp_client.put("/api/schedule/cell", json=cell).status_code, 403)
+        shift = {"employee_id": EMP["id"], "date": TODAY.replace(day=15).isoformat(),
+                 "shifts": [{"start": "09:00", "end": "18:00"}]}
+        self.assertEqual(emp_client.put("/api/schedule/shift", json=shift).status_code, 403)
+        self.assertEqual(emp_client.put("/api/tabel/cell", json={
+            "employee_id": EMP["id"], "date": TODAY.replace(day=15).isoformat(),
+            "code": "Я", "hours": 12}).status_code, 403)
+        self.assertEqual(emp_client.post("/api/schedule/absence", json={
+            "employee_id": EMP["id"], "date": TODAY.replace(day=15).isoformat(),
+            "from_time": "14:00", "until_time": "16:00"}).status_code, 403)
         self.assertEqual(emp_client.post("/api/schedule/clear-month",
                                          json={"year": YEAR, "month": MONTH}).status_code, 403)
         self.assertEqual(emp_client.get("/api/schedule/xlsx",

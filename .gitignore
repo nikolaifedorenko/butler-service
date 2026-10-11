@@ -27,3 +27,5 @@ node_modules/
 
 # сгенерированные снимки интерфейса
 ui-snapshot.html
+.coverage
+htmlcov/

@@ -51,10 +51,12 @@ class SettingsIn(BaseModel):
 @router.put("")
 def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("settings.edit")),
                  db: Session = Depends(get_db)):
-    if data.valid_from.day != 1:
-        raise HTTPException(status_code=422, detail="Шаг расчёта и справочники меняются только с начала периода (1-е число)")
+    if data.valid_from.day not in (1, 16):
+        raise HTTPException(status_code=422,
+                            detail="Шаг расчёта и справочники меняются только с границы периода "
+                                   "(1-е или 16-е число — по гранулярности, RUL-PERIOD-GRANULARITY)")
     try:
-        validate_settings(from_payload(data.payload, "draft"))
+        validate_settings(from_payload(data.payload))
     except ConfigError as exc:
         raise HTTPException(status_code=422, detail=domain_error_text(exc))
     except (KeyError, ValueError, TypeError) as exc:

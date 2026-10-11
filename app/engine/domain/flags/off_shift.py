@@ -1,19 +1,25 @@
+"""off_shift_flag — OFF_SHIFT_ATTENDANCE (6.6): ожидаемых подинтервалов нет (смены нет
+или она полностью покрыта отсутствием) ∧ в дне есть исходное присутствие. Смена Графика,
+накрывающая день с кодом-отсутствием, флаг снимает (подинтервалы существуют).
+first_presence_at — начало первого исходного интервала дня (для сессии через полночь —
+синтетическая граница 00:00; синтетические границы флаги, привязанные к отметкам, не порождают)."""
+from __future__ import annotations
+
 from typing import Sequence
 
 from ..codes_registry.flag_codes import OFF_SHIFT_ATTENDANCE
-from ..settings.types import Settings
-from ..types.entities import Interval
+from ..schedule.shift_segments import Segment
+from ..types.entities import Day, RawInterval
 from ..types.results import Flag
-from ._moment import moment_of
 
 
-def off_shift_flag(subs: Sequence[Interval], intervals: Sequence[Interval], segments: Sequence[Interval],
-                   absences: Sequence[tuple[int, int]], st: Settings) -> Flag | None:
-    """Ожидаемых подинтервалов нет, но исходное присутствие в дне есть."""
-    if subs or not intervals:
+def off_shift_flag(subintervals: Sequence[Segment], intervals: Sequence[RawInterval],
+                   segments: Sequence[Segment], absences: Sequence[Segment],
+                   day: Day) -> Flag | None:
+    if subintervals or not intervals:
         return None
-    first = intervals[0]
-    return Flag(first.day, OFF_SHIFT_ATTENDANCE, {
-        "first_presence_at": moment_of(first.day, first.start_minute, st.tz),
-        "shift_segments": tuple((s.start_minute, s.end_minute) for s in segments),
+    return Flag(day.day, OFF_SHIFT_ATTENDANCE, {
+        "first_presence_at": min(iv.start_utc for iv in intervals),
+        "day_code": day.code,
+        "shift_segments": tuple(segments),
         "absence_intervals": tuple(absences)})

@@ -37,7 +37,7 @@ from ..models import (
 from ..names import suggest_genitive
 from ..security import hash_password
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
-from .engine_common import bank_now as bank_as_of
+from .engine_common import domain_error_text, engine_ports, last_closed_bank, now_utc
 
 router = APIRouter(prefix="/api", tags=["directory"])
 
@@ -568,13 +568,22 @@ def _author_name(principal: Principal) -> str:
 def _adjustment_dict(a: BankAdjustment) -> dict:
     return {"id": a.id, "hours": a.hours, "date": a.effective_date.isoformat(),
             "note": a.note or "", "author": a.author_name or "",
+            "reason_code": a.reason_code or "",
             "created_at": a.created_at.isoformat(timespec="minutes") if a.created_at else ""}
+
+
+def bank_as_of(db, emp, _day=None) -> float:
+    """Банк = итог последнего ЗАКРЫТОГО периода (чтение из хранилища без домена,
+    RUL-CLOSED-PERIOD-IMMUTABLE); «живой» предварительный банк — в Управленческом табеле."""
+    hours, _period = last_closed_bank(db, emp.id)
+    return hours if hours is not None else 0.0
 
 
 class BankAdjustIn(BaseModel):
     hours: float                   # со знаком: +4 добавить, -8 списать
     date: Optional[str] = None     # с какой даты учитывается (по умолчанию сегодня)
     note: str = ""                 # «почему» — обязательное пояснение
+    reason_code: str = "manual"    # "OPENING_SEED" — посев начального банка (v7.1/R37)
 
 
 @router.post("/employees/{employee_id}/bank-adjust")
@@ -586,14 +595,26 @@ def bank_adjust(employee_id: int, payload: BankAdjustIn,
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
     hours = round(payload.hours, 2)
-    if hours == 0:
+    seed = (payload.reason_code or "manual").strip() == "OPENING_SEED"
+    if hours == 0 and not seed:
         raise HTTPException(status_code=422, detail="Часы корректировки не могут быть нулевыми")
     if not payload.note.strip():
         raise HTTPException(status_code=422,
                             detail="Укажите причину корректировки — она попадёт в историю")
     eff = _parse_date(payload.date) or local_date()
+    # точка ввода корректировок (7.2, v7.1/R37): посев — только первый период;
+    # закрытый период — только через пересчёт
+    from ..engine.application import bank_adjustment
+    from ..engine.application.errors import ApplicationError
+    try:
+        bank_adjustment.validate_adjustment_entry(str(emp.id), eff,
+                                                  payload.reason_code or "manual",
+                                                  engine_ports(db, principal, now_utc()))
+    except ApplicationError as exc:
+        raise HTTPException(status_code=409, detail=domain_error_text(exc))
     adj = BankAdjustment(employee_id=emp.id, hours=hours, effective_date=eff,
-                         note=payload.note.strip(), author_id=principal.user.id,
+                         note=payload.note.strip(), reason_code=(payload.reason_code or "manual"),
+                         author_id=principal.user.id,
                          author_name=_author_name(principal), created_at=utcnow())
     db.add(adj)
     audit(db, principal, "bank_adjust", f"employee:{emp.id}",

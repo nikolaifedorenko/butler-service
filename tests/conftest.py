@@ -53,12 +53,20 @@ def _drop_db() -> None:
 # свежая база на каждый прогон: сид создаётся при первом init_db()
 _drop_db()
 
-from fastapi.testclient import TestClient  # noqa: E402
+@pytest.fixture(scope="session")
+def app_stack():
+    """Ленивая инициализация приложения.
 
-from app.db import SessionLocal  # noqa: E402
-from app.main import app, init_db  # noqa: E402
+    Приёмочные тесты движка (tests/engine/) проверяют чистый домен и не должны
+    поднимать FastAPI/БД; до импорта `app.main` дело доходит только здесь.
+    """
+    from fastapi.testclient import TestClient  # noqa: F401
 
-init_db()
+    from app.db import SessionLocal
+    from app.main import app, init_db
+
+    init_db()
+    return {"app": app, "SessionLocal": SessionLocal}
 
 
 @pytest.fixture(scope="session")
@@ -67,12 +75,16 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture()
-def client() -> TestClient:
+def client(app_stack):
     """Неаутентифицированный клиент (проверка прав доступа)."""
-    return TestClient(app)
+    from fastapi.testclient import TestClient
+
+    return TestClient(app_stack["app"])
 
 
-def _login(username: str) -> TestClient:
+def _login(app, username: str):
+    from fastapi.testclient import TestClient
+
     c = TestClient(app)
     r = c.post("/api/auth/login", json={"username": username, "password": DEMO_PASSWORD})
     assert r.status_code == 200, f"не удалось войти как {username}: {r.text}"
@@ -80,24 +92,24 @@ def _login(username: str) -> TestClient:
 
 
 @pytest.fixture()
-def manager_client() -> TestClient:
+def manager_client(app_stack):
     """Старший батлер (supervisor): менеджерские разделы, но не админские."""
-    return _login("gromova")
+    return _login(app_stack["app"], "gromova")
 
 
 @pytest.fixture()
-def admin_client() -> TestClient:
-    return _login("admin")
+def admin_client(app_stack):
+    return _login(app_stack["app"], "admin")
 
 
 @pytest.fixture()
-def employee_client() -> TestClient:
-    return _login("ivanov")
+def employee_client(app_stack):
+    return _login(app_stack["app"], "ivanov")
 
 
 @pytest.fixture()
-def db():
-    session = SessionLocal()
+def db(app_stack):
+    session = app_stack["SessionLocal"]()
     try:
         yield session
     finally:

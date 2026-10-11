@@ -182,10 +182,11 @@ def schedule_docx(data: dict) -> bytes:
     year = data["year"]
     days = data["days"]
     ndays = max(1, len(days))
-    doc = _new_doc(f"График сменности · {data['month_name']} {year} · «Батлер Сервис»")
-    _title(doc, f"График сменности, {data['month_name']} {year} г.",
-           "План по блокам. «—» — день другой смены или вне периода работы; "
-           "×2 в шапке — день двойной оплаты; РАБ — работа в свой выходной.")
+    month_name = data.get("month_name", "")
+    doc = _new_doc(f"График сменности · {month_name} {year} · «Батлер Сервис»")
+    _title(doc, f"График сменности, {month_name} {year} г.",
+           "План по блокам: значение Табеля и интервалы смен. «—» — вне периода работы; "
+           "×2 в шапке — день двойной оплаты; * — согласованное отсутствие.")
 
     name_w, hours_w = 29.0, 11.0
     day_w = (USABLE_MM - name_w - hours_w) / ndays
@@ -232,24 +233,27 @@ def schedule_docx(data: dict) -> bytes:
                 c = tr.cells[i + 1]
                 out = bool(ranges) and not any(
                     rg["start"] <= iso and (not rg["end"] or iso <= rg["end"]) for rg in ranges)
-                sh = cell.get("shift")
+                t = cell.get("tabel") or {}
+                shifts = cell.get("shifts") or []
                 if not cell.get("employed", True):
                     _cell_text(c, "—", size=6, color=MUTED)
                     _shade(c, INACTIVE_FILL)
                 elif out:
                     _cell_text(c, "—", size=6, color=MUTED)
                     _shade(c, OUT_FILL)
-                elif cell.get("worked_off"):
-                    _cell_text(c, f"РАБ {_fmt_hours(cell.get('fact_hours'))}", size=5.8, bold=True)
-                    _shade(c, _tint(WORKED_OFF, 0.32))
-                elif sh:
-                    text = (sh.get("display_code") or sh.get("name") or "").replace("\u2013", "-")
+                elif t or shifts:
+                    text = (t.get("value") or t.get("code") or "").replace("\u2013", "-")
                     size = 5.6
-                    if cell.get("partial"):
-                        text += "*"
-                        size = 5.2   # иначе метка не влезает и переносится в 31-дневных месяцах
-                    _cell_text(c, text, size=size, bold=sh.get("kind") == "work")
-                    _shade(c, _tint(sh.get("color"), 0.28))
+                    if shifts:
+                        spans = " ".join(f"{sh.get('start_hm', '')}–{sh.get('end_hm', '')}"
+                                         for sh in shifts)
+                        text = f"{text}\n{spans}".strip()
+                        size = 5.2
+                    if cell.get("absences"):
+                        text += "*"      # логический разрез: согласованное отсутствие (v7/R17)
+                    _cell_text(c, text, size=size, bold=bool(t.get("code") == "Я"))
+                    if d.get("is_weekend"):
+                        _shade(c, WEEKEND_FILL)
                 else:
                     _cell_text(c, "", size=6)
                     if d.get("is_weekend"):
@@ -258,24 +262,19 @@ def schedule_docx(data: dict) -> bytes:
 
     _fixed_widths(table, widths)
 
-    # расшифровка кодов — из смен, реально встречающихся в месяце
-    seen_codes: dict[str, dict] = {}
+    # расшифровка значений Табеля, встречающихся в месяце
+    seen_values: dict[str, None] = {}
     for row in data["rows"]:
         for cell in row["cells"].values():
-            sh = cell.get("shift")
-            if sh and sh.get("code") and sh["code"] not in seen_codes:
-                seen_codes[sh["code"]] = sh
-    if seen_codes:
-        parts = []
-        for sh in seen_codes.values():
-            code = sh.get("display_code") or sh.get("name") or sh.get("code")
-            if sh.get("kind") == "work":
-                parts.append(f"{code} = {sh.get('start', '')}–{sh.get('end', '')}")
-            else:
-                parts.append(f"{code} — {sh.get('name', '')}")
+            t = cell.get("tabel") or {}
+            value = t.get("value") or t.get("code")
+            if value:
+                seen_values.setdefault(value, None)
+    if seen_values:
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(6)
-        run = p.add_run("Коды: " + " · ".join(parts))
+        run = p.add_run("Значения Табеля: " + " · ".join(sorted(seen_values))
+                        + "  ·  * — согласованное отсутствие (логический разрез смены)")
         run.font.size = Pt(7)
         run.font.color.rgb = MUTED
 

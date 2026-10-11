@@ -1,13 +1,16 @@
-from typing import Sequence
+"""classify_overtime(parts, st) — суммы переработки по категориям (6.3, стадия 5)."""
+from __future__ import annotations
+
+from typing import Mapping, Sequence
 
 from ..settings.types import Settings
-from ..types.entities import Interval
+from ..types.entities import Interval, Minutes
 from .split_by_category import split_by_category
 
 
-def classify_overtime(parts: Sequence[Interval], st: Settings) -> dict[str, int]:
-    """Суммы переработки по категориям (без округления, Р10)."""
-    out: dict[str, int] = {}
-    for name, minutes in ((n, m) for p in parts for n, m in split_by_category(p, st).items()):
-        out[name] = out.get(name, 0) + minutes
-    return out
+def classify_overtime(parts: Sequence[Interval], st: Settings) -> Mapping[str, Minutes]:
+    totals: dict[str, Minutes] = {}
+    for part in parts:
+        for code, minutes in split_by_category(part, st):
+            totals[code] = totals.get(code, 0) + minutes
+    return totals

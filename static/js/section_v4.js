@@ -1,15 +1,17 @@
 /* ══════════════════════════════════════════════════════════════════════
-   Движок v4: «Кто на работе» / «Посещения», Табель, Управленческий табель,
-   Права доступа, Журнал аудита, справочники движка (в Настройках).
+   Движок v7.1: вкладки «Отметки» (доска 16.2), «Факт» (история сессий 16.4),
+   «Табель» (16.5), «Управленческий табель» (16.6), «Права доступа»,
+   «Журнал аудита», справочники движка (в Настройках).
    Зависит от core.js (api, state, $, esc, openModal, toast …) и app.js (can, poll).
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
 const V4_CODE_COLORS = {
-  'Я': '#34a862', 'Н': '#5b6bd6', 'К': '#2b8fb6', 'В': '#c3cdd9', 'ДО': '#d9822b', 'ОТ': '#f0a500',
-  'ОВ': '#9b59b6', 'Б': '#e05d4b', 'НБ': '#c0504d', 'НН': '#b03a48',
+  'Я': '#34a862', 'К': '#2b8fb6', 'С': '#7c5bd6', 'В': '#c3cdd9', 'ДО': '#d9822b',
+  'ОТ': '#f0a500', 'ОВ': '#9b59b6', 'НВ': '#17a2b8', 'Б': '#e05d4b', 'НБ': '#c0504d',
+  'НН': '#b03a48',
 };
-const V4_FLAG_CLASS = { danger: 'danger', warn: 'warn', info: 'info', muted: 'muted' };
+const V4_FLAG_CLASS = { LATE: 'warn', EARLY_DEPARTURE: 'warn', OFF_SHIFT_ATTENDANCE: 'info' };
 
 function v4MonthNav(prefix, onShift) {
   return `<div class="month-nav"><button id="${prefix}-prev">‹</button>
@@ -32,28 +34,6 @@ function v4DayHead(iso) {
   return `<th class="v4-day${weekend ? ' we' : ''}${iso === todayISO() ? ' today' : ''}">${d.getDate()}<small>${wd}</small></th>`;
 }
 function v4Hours(v) { return v ? hours(v) : ''; }
-
-/* ══════════════════════════════════════════════════════════════════
-   КТО НА РАБОТЕ / ПОСЕЩЕНИЯ — одинаковое содержание (по требованию):
-   счётчики «Сейчас на работе» и «По графику сегодня» + три списка
-   ══════════════════════════════════════════════════════════════════ */
-async function loadPresence(view) {
-  const host = $(`#view-${view}`);
-  const title = view === 'onwork' ? 'Кто на работе' : 'Посещения';
-  host.innerHTML = `
-    <div class="page-head">
-      <div><h2>${title}</h2>
-        <div class="sub">Присутствие по реальным отметкам и ожидания по Графику на сегодня. Обновляется каждые 30 секунд</div></div>
-      <div class="spacer"></div>
-      <span class="badge ok" id="${view}-now" style="font-size:13px;padding:7px 12px">—</span>
-      <button class="btn btn-sm" id="${view}-refresh">Обновить</button>
-    </div>
-    <div id="${view}-body"><div class="empty">Загрузка…</div></div>`;
-  $(`#${view}-refresh`).onclick = () => fetchPresence(view);
-  await fetchPresence(view);
-  poll(view, () => fetchPresence(view, true));
-}
-
 function v4Contacts(e) {
   const tel = String(e.phone || '').trim();
   const tg = String(e.telegram || '').trim().replace(/^@+/, '');
@@ -62,62 +42,174 @@ function v4Contacts(e) {
     tg ? `<a href="https://t.me/${esc(tg.replace(/[^A-Za-z0-9_]/g, ''))}" target="_blank" rel="noopener">✈️ @${esc(tg)}</a>` : ''}</div>`;
 }
 
-function v4PresenceCard(i, kind) {
-  const e = i.employee;
-  const row = (k, v, style = '') => `<div class="row"><span style="color:var(--muted)">${k}</span><b style="${style}">${v}</b></div>`;
-  const plan = i.plan.length ? i.plan.join(', ') : '—';
-  let rows = '';
-  if (kind === 'present') {
-    rows = row('На работе с', esc(i.since || '—')) + row('Уже работает', i.elapsed_hours != null ? hours(i.elapsed_hours) + ' ч' : '—')
-      + row('По графику сегодня', esc(plan));
-  } else if (kind === 'stepped_out') {
-    rows = row('Ушёл в', esc(i.left_at || '—')) + row('Ожидается', esc(i.expected_at || '—'), i.overdue ? 'color:var(--danger)' : '')
-      + row('По графику', esc(plan));
-  } else {
-    rows = row('Ожидается к', esc(i.expected_at || '—'), i.overdue ? 'color:var(--danger)' : '')
-      + row('До', esc(i.expected_until || '—')) + row('По графику', esc(plan));
-  }
-  const late = i.overdue ? `<div class="row"><span></span><b style="color:var(--danger)">${kind === 'expected' ? 'опаздывает' : 'не вернулся вовремя'}</b></div>` : '';
-  return `<div class="presence-card ${i.overdue ? 'late' : ''}">
-    <div class="nm">${kind === 'present' ? '<span class="pulse"></span>' : ''}${esc(e.short_name)}</div>
-    <div class="pos">${esc(e.position || '—')}${e.group ? ' · ' + esc(e.group) : ''}</div>
-    ${v4Contacts(e)}${rows}${late}</div>`;
+/* ══════════════════════════════════════════════════════════════════
+   ОТМЕТКИ — доска «прямо сейчас» (16.2):
+   (a) сколько на работе, (b) сколько ожидается по Графику,
+   (c) карточки открытых сессий, (d) кто ещё должен прийти (ближайший подинтервал)
+   ══════════════════════════════════════════════════════════════════ */
+async function loadMarks() {
+  const host = $('#view-marks');
+  host.innerHTML = `
+    <div class="page-head">
+      <div><h2>Отметки</h2>
+        <div class="sub">Кто сейчас на работе и кого ждём по Графику — по реальным отметкам.
+          Обновляется каждые 30 секунд. Забытый уход виден как есть: счётчик растёт</div></div>
+      <div class="spacer"></div>
+      <span class="badge ok" id="mk-now" style="font-size:13px;padding:7px 12px">—</span>
+      <button class="btn btn-sm" id="mk-refresh">Обновить</button>
+    </div>
+    <div id="mk-body"><div class="empty">Загрузка…</div></div>`;
+  $('#mk-refresh').onclick = () => fetchMarks();
+  await fetchMarks();
+  poll('marks', () => fetchMarks(true));
 }
 
-async function fetchPresence(view, silent) {
+async function fetchMarks(silent) {
   let d;
   try { d = await api('/api/presence/board', { silent: !!silent }); } catch (e) {
-    const b = $(`#${view}-body`); if (b) b.innerHTML = `<div class="panel"><div class="empty">${esc(e.message || e)}</div></div>`;
+    const b = $('#mk-body');
+    if (b) b.innerHTML = `<div class="panel"><div class="empty">${esc(e.message || e)}</div></div>`;
     return;
   }
-  const body = $(`#${view}-body`);
+  const body = $('#mk-body');
   if (!body) return;
-  $(`#${view}-now`).textContent = `Сейчас ${d.now.slice(11, 16)}`;
-  const section = (title, list, kind, empty) => `<div class="panel"><h3 class="panel-title">${title} · ${list.length}</h3>
-    ${list.length ? `<div class="presence-grid">${list.map(i => v4PresenceCard(i, kind)).join('')}</div>`
-                  : `<div class="empty">${empty}</div>`}</div>`;
+  const nowEl = $('#mk-now');
+  if (nowEl) nowEl.textContent = `Сейчас ${d.now.slice(11, 16)}`;
+  const card = c => {
+    const e = c.employee || {};
+    const shiftToday = (c.shift_today || []).map(([a, b]) =>
+      `${a.slice(11, 16)}–${b.slice(11, 16)}`).join(', ');
+    return `<div class="presence-card">
+      <div class="nm"><span class="pulse"></span>${esc(e.short_name || c.employee_id)}</div>
+      <div class="pos">${esc(e.position || '—')}${e.group ? ' · ' + esc(e.group) : ''}</div>
+      ${v4Contacts(e)}
+      <div class="row"><span style="color:var(--muted)">На работе с</span><b>${esc(c.open_since_hm)}</b></div>
+      <div class="row"><span style="color:var(--muted)">Уже работает</span><b>${esc(c.hours_open)} ч</b></div>
+      <div class="row"><span style="color:var(--muted)">По графику сегодня</span>
+        <b>${c.expected_today ? esc(shiftToday || 'ожидается') : 'не ожидался'}</b></div>
+    </div>`;
+  };
+  const arrival = a => {
+    const e = a.employee || {};
+    return `<div class="presence-card ${a.already_started ? 'late' : ''}">
+      <div class="nm">${esc(e.short_name || a.employee_id)}</div>
+      <div class="pos">${esc(e.position || '—')}${e.group ? ' · ' + esc(e.group) : ''}</div>
+      ${v4Contacts(e)}
+      <div class="row"><span style="color:var(--muted)">Ожидается к</span>
+        <b style="${a.already_started ? 'color:var(--danger)' : ''}">${esc(a.expected_at_hm)}</b></div>
+      ${a.already_started ? '<div class="row"><span></span><b style="color:var(--danger)">не пришёл вовремя</b></div>' : ''}
+    </div>`;
+  };
   body.innerHTML = `
     <div class="stat-grid">
-      <div class="stat accent"><div class="k">Сейчас на работе</div><div class="v">${d.counts.present}</div></div>
-      <div class="stat"><div class="k">По графику сегодня</div><div class="v">${d.counts.planned_today}</div></div>
+      <div class="stat accent"><div class="k">Сейчас на работе</div><div class="v">${d.at_work_now}</div></div>
+      <div class="stat"><div class="k">По графику в этот момент</div><div class="v">${d.expected_now}</div></div>
+      <div class="stat"><div class="k">Ещё должны прийти</div><div class="v">${d.yet_to_come.length}</div></div>
     </div>
-    ${section('Кто на работе прямо сейчас', d.present, 'present', 'Сейчас никто не отмечен на работе')}
-    ${section('Отлучились, но ожидаются', d.stepped_out, 'stepped_out', 'Никто не отлучался')}
-    ${section('Ожидаются к приходу сегодня', d.expected, 'expected', 'Больше никого сегодня не ждём')}`;
+    <div class="panel"><h3 class="panel-title">На работе прямо сейчас · ${d.open_session_cards.length}</h3>
+      ${d.open_session_cards.length
+        ? `<div class="presence-grid">${d.open_session_cards.map(card).join('')}</div>`
+        : '<div class="empty">Сейчас никто не отмечен на работе</div>'}</div>
+    <div class="panel"><h3 class="panel-title">Кто ещё должен прийти · ${d.yet_to_come.length}</h3>
+      ${d.yet_to_come.length
+        ? `<div class="presence-grid">${d.yet_to_come.map(arrival).join('')}</div>`
+        : '<div class="empty">Больше никого сегодня не ждём</div>'}</div>
+    <p class="hint">(a) и (b) — независимые счётчики: «на работе» может превышать «по графику»
+      (внеграфиковая работа) и наоборот (не пришли). Расхождение — не ошибка: Табель всегда прав.</p>`;
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   ТАБЕЛЬ — первичный документ: код дня + плановые часы (просмотр и правка)
+   ФАКТ — история сессий (16.4): сырые сессии без округления; визуализация — здесь,
+   бэкенд отдаёт только моменты. Три индексных запроса на диапазон.
+   ══════════════════════════════════════════════════════════════════ */
+state.factEmp = state.factEmp || null;
+state.factFrom = state.factFrom || null;
+
+async function loadFact() {
+  const host = $('#view-fact');
+  if (!state.factFrom) {
+    const t = new Date();
+    state.factFrom = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+  host.innerHTML = `
+    <div class="page-head">
+      <div><h2>Факт</h2>
+        <div class="sub">История сессий «пришёл — ушёл» за диапазон: полные реальные сессии,
+          пересекающие диапазон. Точные моменты, без округления</div></div>
+      <div class="spacer"></div>
+      <select id="fc-emp" style="max-width:240px"></select>
+      <label class="field" style="margin:0"><span>С</span><input type="date" id="fc-from" value="${esc(state.factFrom)}"></label>
+      <label class="field" style="margin:0"><span>По</span><input type="date" id="fc-to" value="${esc(state.factTo || todayISO())}"></label>
+      <button class="btn btn-sm btn-primary" id="fc-go">Показать</button>
+    </div>
+    <div id="fc-body"><div class="empty">Загрузка…</div></div>`;
+  let emps = (state.employees || []).filter(e => e.active !== false);
+  if (!emps.length && can('employees.view')) {
+    try { emps = await api('/api/employees', { silent: true }); state.employees = emps; } catch { emps = []; }
+  }
+  if (!emps.length && state.user.employee_id) {
+    emps = [{ id: state.user.employee_id, short_name: state.user.name || 'я' }];
+  }
+  if (!state.factEmp && emps.length) state.factEmp = emps[0].id;
+  $('#fc-emp').innerHTML = emps.map(e =>
+    `<option value="${e.id}" ${e.id === state.factEmp ? 'selected' : ''}>${esc(e.short_name || e.full_name)}</option>`).join('');
+  $('#fc-emp').onchange = () => { state.factEmp = +$('#fc-emp').value; };
+  $('#fc-go').onclick = () => { state.factFrom = $('#fc-from').value; state.factTo = $('#fc-to').value; fetchFact(); };
+  await fetchFact();
+}
+
+async function fetchFact() {
+  const body = $('#fc-body');
+  if (!state.factEmp) { body.innerHTML = '<div class="panel"><div class="empty">Выберите сотрудника</div></div>'; return; }
+  let d;
+  try {
+    d = await api(`/api/fact/sessions?employee_id=${state.factEmp}&first=${state.factFrom}&last=${state.factTo || todayISO()}`);
+  } catch (e) { body.innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  const byDay = {};
+  d.sessions.forEach(s => {
+    const key = s.start_local.slice(0, 10);
+    (byDay[key] = byDay[key] || []).push(s);
+  });
+  const hm = iso => iso ? iso.slice(11, 16) : '—';
+  const rows = Object.keys(byDay).sort().map(day => byDay[day].map(s => {
+    const dur = s.minutes != null ? `${hours(s.minutes / 60)} ч` : 'идёт сейчас';
+    const badges = [
+      s.started_before_range ? '<span class="badge muted" title="Сессия открыта отметкой до начала диапазона">начата до диапазона</span>' : '',
+      s.closed_after_range ? '<span class="badge muted" title="Уход — за правой границей диапазона">закрыта после диапазона</span>' : '',
+      s.open ? '<span class="badge warn" title="Сотрудник не отметил «Ушёл» — сессия открыта">открыта</span>' : '',
+    ].join(' ');
+    return `<tr>
+      <td data-label="День">${dateRu(day)}</td>
+      <td data-label="Пришёл">${hm(s.start_local)}</td>
+      <td data-label="Ушёл">${s.open ? '—' : hm(s.end_local)}</td>
+      <td data-label="Длительность">${dur}</td>
+      <td data-label="Примечания">${badges}</td></tr>`;
+  }).join('')).join('');
+  body.innerHTML = `
+    <div class="panel"><h3 class="panel-title">${esc(d.employee.short_name || d.employee.full_name || '')} ·
+      сессий: ${d.sessions.length}</h3>
+      <div class="table-wrap"><table class="data responsive">
+        <thead><tr><th>День</th><th>Пришёл</th><th>Ушёл</th><th>Длительность</th><th>Примечания</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="empty">Сессий в диапазоне нет</td></tr>'}</tbody>
+      </table></div>
+      <p class="hint">Моменты исходные (с секундами в источнике), без округления и дневной нарезки:
+        сессия может пересекать полночь. Расчётные часы — во вкладке «Управленческий табель».</p></div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ТАБЕЛЬ (16.5) — первичный документ: код дня + информационный план строки.
+   Циклы графика — инструмент заполнения Табеля (решение владельца).
    ══════════════════════════════════════════════════════════════════ */
 async function loadTabel() {
   const host = $('#view-timesheet');
   host.innerHTML = `
     <div class="page-head">
-      <div><h2>Табель</h2><div class="sub">Код дня и плановые часы — основа расчёта. Независим от Графика:
-        правка Графика меняет только флаги, правка Табеля — часы и УТ</div></div>
+      <div><h2>Табель</h2><div class="sub">Первичный документ: код дня и плановые часы.
+        Окно рабочего времени, недостача и план карточки считаются от значения Табеля
+        (CFG-WINDOWS); График генерируется из Табеля</div></div>
       <div class="spacer"></div>
       ${v4MonthNav('tb')}
-      <button class="btn btn-sm" id="tb-fill">Заполнить из Графика</button>
+      <button class="btn btn-sm" id="tb-fill">Заполнить из циклов</button>
     </div>
     <div id="tb-body"><div class="empty">Загрузка…</div></div>`;
   v4BindMonthNav('tb', loadTabel);
@@ -129,38 +221,46 @@ async function loadTabel() {
   $('#tb-fill').style.display = data.can_edit ? '' : 'none';
   $('#tb-fill').onclick = () => tabelFillModal(data);
   renderTabel();
+  if (state.pendingTabelCell) {
+    const { emp, date } = state.pendingTabelCell;
+    state.pendingTabelCell = null;
+    const row = data.rows.find(r => r.employee.id === emp);
+    if (row && data.days.includes(date)) tabelCellModal(emp, date);
+  }
 }
 
-function v4CellLabel(c) {
-  if (!c) return '';
-  return c.value.replace(' ', '');
-}
+function v4CellLabel(c) { return c ? c.value.replace(' ', '') : ''; }
 
 function renderTabel() {
   const d = state.tabel;
-  const lockBadge = l => l === 'locked' ? '<span class="badge muted" title="Период закрыт, следующий тоже закрыт — правка запрещена">закрыт</span>'
-    : (l === 'last_closed' ? '<span class="badge warn" title="Последний закрытый период: правка разрешена, затем — пересчёт в УТ">закрыт · можно править</span>' : '');
-  const empty = d.rows.reduce((n, r) => n + d.days.filter(x => !r.cells[x]).length, 0);
+  const lockBadge = l => l === 'locked'
+    ? '<span class="badge muted" title="Период закрыт, следующий тоже закрыт — правка запрещена">закрыт</span>'
+    : (l === 'last_closed'
+      ? '<span class="badge warn" title="Последний закрытый период: правка разрешена, затем — пересчёт в УТ">закрыт · можно править</span>' : '');
+  const missing = d.rows.reduce((n, r) => n + (r.missing_days || []).length, 0);
   const rows = d.rows.map(r => `<tr>
     <td class="who">${esc(r.employee.short_name)}<small>${esc(r.employee.group)} ${lockBadge(r.lock)}</small></td>
     ${d.days.map(day => {
       const c = r.cells[day];
       const color = c ? (V4_CODE_COLORS[c.code] || '#8a94a6') : 'transparent';
       const edit = d.can_edit && r.lock !== 'locked';
+      const src = c ? (c.source === 'cycle' ? ' · из циклов' : ' · вручную') : '';
       return `<td class="v4-cell${edit ? ' edit' : ''}${c ? '' : ' empty'}" ${edit ? `data-e="${r.employee.id}" data-d="${day}"` : ''}
-        title="${c ? esc(c.value + (c.source === 'schedule' ? ' · из Графика' : ' · вручную') + (c.note ? ' · ' + c.note : '')) : 'не заполнено (считается «' + d.empty_code + '»)'}"
+        title="${c ? esc(c.value + src + (c.note ? ' · ' + c.note : '')) : 'не заполнено — расчёт не запустится, пока Табель не покрывает период'}"
         style="${c ? `background:${withAlpha(color, .22)};border-left:3px solid ${color}` : ''}">${esc(v4CellLabel(c))}</td>`;
     }).join('')}
     <td class="num"><b>${hours(r.plan_hours)}</b></td></tr>`).join('');
   $('#tb-body').innerHTML = `
-    ${empty ? `<div class="panel" style="border-color:#ecd9ae;background:#fffaf0"><b>${empty}</b> ${plural(empty, 'ячейка', 'ячейки', 'ячеек')} Табеля не заполнены —
-      такие дни считаются «${esc(d.empty_code)}» (без плана, любая работа — переработка). Заполните их или нажмите «Заполнить из Графика».</div>` : ''}
+    ${missing ? `<div class="panel" style="border-color:#ecd9ae;background:#fffaf0"><b>${missing}</b> ${plural(missing, 'ячейка', 'ячейки', 'ячеек')} не заполнены.
+      Табель обязан покрывать период: ровно одна строка на каждый день трудоустройства
+      (RUL-TIMESHEET-COVERS-PERIOD) — иначе расчёт УТ не запустится. Заполните вручную или «Заполнить из циклов».</div>` : ''}
     <div class="table-wrap v4-grid-wrap"><table class="data v4-grid">
       <thead><tr><th class="who">Сотрудник</th>${d.days.map(v4DayHead).join('')}<th>План, ч</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${d.days.length + 2}" class="empty">Нет сотрудников</td></tr>`}</tbody>
     </table></div>
     <p class="hint">Коды: ${d.codes.map(c => `<span class="badge" style="background:${withAlpha(V4_CODE_COLORS[c.code] || '#8a94a6', .22)}" title="${esc(c.title)}">${esc(c.code)}</span> ${esc(c.title)}`).join(' · ')}.
-      Значения с часами: ${d.values.map(esc).join(', ')}.</p>`;
+      Значения с окнами (CFG-WINDOWS): ${d.values.map(esc).join(', ')}. План строки — информационный
+      (зарплатный) атрибут; план карточки УТ = длина окна.</p>`;
   $$('#tb-body td.v4-cell.edit').forEach(td => td.onclick = () => tabelCellModal(+td.dataset.e, td.dataset.d));
 }
 
@@ -173,24 +273,27 @@ function tabelCellModal(empId, day) {
     title: `Табель · ${row.employee.short_name}`,
     subtitle: `${dateRu(day)}${row.lock === 'last_closed' ? ' · период закрыт: после правки нужен пересчёт в УТ' : ''}`,
     body: `
-      <label class="field"><span>Код дня (Т1)</span><select id="tc-code">
+      <label class="field"><span>Код дня (CFG-DAY-CODES)</span><select id="tc-code">
         <option value="">— очистить ячейку —</option>
         ${d.codes.map(c => `<option value="${esc(c.code)}" data-h="${c.carries_hours ? 1 : 0}" ${cur && cur.code === c.code ? 'selected' : ''}>${esc(c.code)} — ${esc(c.title)}</option>`).join('')}
       </select></label>
-      <label class="field" id="tc-hours-f"><span>Плановые часы</span>
-        <input id="tc-hours" type="number" step="0.5" min="0" max="24" value="${cur ? cur.hours : 12}" list="tc-hours-list">
+      <label class="field" id="tc-hours-f"><span>Плановые часы (информационный план строки)</span>
+        <input id="tc-hours" type="number" step="0.25" min="0" max="24" value="${cur ? cur.hours : 12}" list="tc-hours-list">
         <datalist id="tc-hours-list"></datalist></label>
       <label class="field"><span>Применить по число месяца (включительно)</span>
         <input id="tc-until" type="number" min="${+day.slice(8)}" max="${+lastDay}" value="${+day.slice(8)}"></label>
       <label class="field"><span>Примечание</span><input type="text" id="tc-note" value="${esc(cur?.note || '')}"></label>
-      <p class="hint">Для кода с часами нужна строка окна в Т2 (${d.values.map(esc).join(', ')}).</p>`,
+      <p class="hint">План кратен 15 минутам; для значения с часами нужна строка окна
+        (${d.values.map(esc).join(', ')}). Информационный план может быть меньше длины окна
+        (например, обед в зарплатной норме) — расчёт идёт от окна.</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(m) {
       const sync = () => {
         const opt = $('#tc-code').selectedOptions[0];
         const withHours = opt && opt.dataset.h === '1';
         $('#tc-hours-f').style.display = withHours ? '' : 'none';
-        $('#tc-hours-list').innerHTML = d.values.filter(v => v.startsWith(opt.value + ' ')).map(v => `<option value="${v.split(' ')[1]}">`).join('');
+        $('#tc-hours-list').innerHTML = d.values.filter(v => v.startsWith(opt.value + ' '))
+          .map(v => `<option value="${v.split(' ')[1]}">`).join('');
       };
       $('#tc-code').onchange = sync; sync();
       m.querySelector('[data-cancel]').onclick = closeModal;
@@ -203,6 +306,7 @@ function tabelCellModal(empId, day) {
             const dates = d.days.filter(x => +x.slice(8) >= +day.slice(8) && +x.slice(8) <= until);
             res = await api('/api/tabel/bulk', { method: 'POST', body: { employee_ids: [empId], dates, code, hours: h } });
             (res.warnings || []).forEach(w => toast(w, 'warn'));
+            (res.errors || []).slice(0, 5).forEach(e => toast(`${e.date}: ${e.detail}`, 'err'));
           } else {
             res = await api('/api/tabel/cell', { method: 'PUT', body: { employee_id: empId, date: day, code, hours: h, note: $('#tc-note').value } });
             if (res.warning) toast(res.warning, 'warn');
@@ -216,14 +320,15 @@ function tabelCellModal(empId, day) {
 
 function tabelFillModal(d) {
   openModal({
-    title: 'Заполнить Табель из Графика',
+    title: 'Заполнить Табель из циклов',
     subtitle: `${MONTHS[d.month - 1]} ${d.year}`,
     body: `
-      <p>Плановые смены Графика раскладываются по календарным дням и подбираются по окнам Т2
-        («Я 12» = 08–20, «Н 4» = 20–24, «Н 8» = 00–08, «Н 12» = 00–08 + 20–24). Дни без работы получают код отсутствия.</p>
+      <p>Циклы блоков (2/2, 3/3, пятидневка, произвольный цикл) раскладываются по дням и
+        подбирают значение Табеля по окнам CFG-WINDOWS («Я 12» = 08:00–20:00). Ночная/суточная
+        смена дробится на два значения двух дней («С 16» + «С 8»). Дни без работы получают код
+        отсутствия из словаря. График будет перегенерирован из Табеля.</p>
       <label class="field"><span>Что перезаписывать</span><select id="tf-mode">
-        <option value="empty">Только пустые ячейки</option>
-        <option value="schedule">Пустые и ранее заполненные из Графика (ручные правки сохраняются)</option>
+        <option value="keep">Только пустые и заполненные из циклов (ручные правки сохраняются)</option>
         <option value="all">Все ячейки, включая ручные правки</option>
       </select></label>
       <p class="hint">Закрытые периоды (кроме последнего закрытого) не меняются.</p>`,
@@ -232,10 +337,11 @@ function tabelFillModal(d) {
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-save]').onclick = async () => {
         try {
-          const r = await api('/api/tabel/fill-from-schedule', { method: 'POST',
-            body: { year: d.year, month: d.month, overwrite: $('#tf-mode').value } });
+          const r = await api('/api/tabel/fill-from-cycles', { method: 'POST',
+            body: { year: d.year, month: d.month, overwrite: $('#tf-mode').value === 'all' } });
           closeModal();
-          toast(`Заполнено ячеек: ${r.written}, пропущено: ${r.skipped}`, r.warnings.length ? 'warn' : 'ok', r.warnings.slice(0, 8));
+          toast(`Заполнено ячеек: ${r.written}, пропущено: ${r.skipped}`,
+            r.warnings.length ? 'warn' : 'ok', (r.warnings || []).slice(0, 8));
           loadTabel();
         } catch (e) { toast(e.message, 'err'); }
       };
@@ -244,91 +350,121 @@ function tabelFillModal(d) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   УПРАВЛЕНЧЕСКИЙ ТАБЕЛЬ — режимы view (без изъятий) и close (каскад, сохранение)
+   УПРАВЛЕНЧЕСКИЙ ТАБЕЛЬ (16.6) — единственная вкладка тяжёлого конвейера.
+   Период: месяц либо половина месяца (настройка period_granularity, v7.1/R36).
+   Открытие: незакрытый → живой расчёт (view, ничего не сохраняется); закрытый →
+   сохранённые результат и снимок флагов без пересчёта. «Закрыть период» /
+   «Пересчитать» — атомарные операции.
    ══════════════════════════════════════════════════════════════════ */
-state.mgmtMode = state.mgmtMode || 'view';
+state.mgmtHalf = state.mgmtHalf || null;
+
+function v4PeriodNav(prefix) {
+  return `<div class="month-nav"><button id="${prefix}-prev">‹</button>
+    <div class="label" id="${prefix}-label">—</div>
+    <button id="${prefix}-next">›</button></div>`;
+}
 
 async function loadMgmt() {
   const host = $('#view-mgmt');
   host.innerHTML = `
     <div class="page-head">
-      <div><h2>Управленческий табель</h2><div class="sub">Коды УТ (ДЯ, ДН, ДЯ 2, ДН 2) по дням после размещения;
-        в режиме «Закрытие» — после погашения недостачи банком и каскадом</div></div>
+      <div><h2>Управленческий табель</h2><div class="sub">Коды УТ (ДЯ, ДН, ДЯ2, ДН2) по дням после
+        размещения; недостача гасится банком и каскадом при закрытии периода</div></div>
       <div class="spacer"></div>
-      ${v4MonthNav('ut')}
-      <div class="seg" id="ut-mode">
-        <button data-m="view" class="${state.mgmtMode === 'view' ? 'active' : ''}">Просмотр (view)</button>
-        <button data-m="close" class="${state.mgmtMode === 'close' ? 'active' : ''}">Закрытие (close)</button>
-      </div>
+      ${v4PeriodNav('ut')}
       <button class="btn btn-sm btn-primary" id="ut-close">Закрыть период</button>
       <button class="btn btn-sm" id="ut-recalc">Пересчитать</button>
       <button class="btn btn-sm btn-ghost" id="ut-xlsx">Excel</button>
     </div>
     <div id="ut-body"><div class="empty">Загрузка…</div></div>`;
-  v4BindMonthNav('ut', loadMgmt);
-  $$('#ut-mode button').forEach(b => b.onclick = () => { state.mgmtMode = b.dataset.m; loadMgmt(); });
-  $('#ut-xlsx').onclick = () => downloadBlob(`/api/mgmt/xlsx?year=${state.year}&month=${state.month}&mode=${state.mgmtMode}`, 'upr_tabel.xlsx');
-  let data;
-  try { data = await api(`/api/mgmt?year=${state.year}&month=${state.month}&mode=${state.mgmtMode}`); } catch (e) {
+  const qs = () => `year=${state.year}&month=${state.month}` +
+    (state.mgmtHalf ? `&half=${state.mgmtHalf}` : '');
+  const reload = () => loadMgmt();
+  const shiftPeriod = delta => {
+    if (state.mgmtHalf) {
+      if (delta > 0 && state.mgmtHalf === 1) { state.mgmtHalf = 2; return reload(); }
+      if (delta < 0 && state.mgmtHalf === 2) { state.mgmtHalf = 1; return reload(); }
+    }
+    let m = state.month + delta, y = state.year;
+    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+    state.month = m; state.year = y;
+    if (state.mgmtHalf) state.mgmtHalf = delta > 0 ? 1 : 2;
+    reload();
+  };
+  $('#ut-prev').onclick = () => shiftPeriod(-1);
+  $('#ut-next').onclick = () => shiftPeriod(1);
+  let d;
+  try { d = await api(`/api/mgmt?${qs()}`); } catch (e) {
     $('#ut-body').innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return;
   }
-  state.mgmt = data;
-  const anyOpen = data.rows.some(r => !r.closed && !r.error);
-  const anyClosed = data.rows.some(r => r.closed && !r.next_closed);
-  $('#ut-close').style.display = data.can_close && data.complete && anyOpen ? '' : 'none';
-  $('#ut-recalc').style.display = data.can_recalculate && anyClosed ? '' : 'none';
+  state.mgmt = d;
+  if (d.granularity === 'half_month' && !state.mgmtHalf) state.mgmtHalf = d.half || 1;
+  $('#ut-label').textContent = d.granularity === 'half_month'
+    ? `${MONTHS[d.month - 1]} ${d.year} · ${d.period.start.slice(8)}–${d.period.end.slice(8)}`
+    : `${MONTHS[d.month - 1]} ${d.year}`;
+  $('#ut-close').style.display = d.can_close ? '' : 'none';
+  $('#ut-recalc').style.display = d.can_recalculate ? '' : 'none';
   $('#ut-close').onclick = () => mgmtAction('close', null);
   $('#ut-recalc').onclick = () => mgmtAction('recalculate', null);
+  $('#ut-xlsx').onclick = () => downloadBlob(`/api/mgmt/xlsx?${qs()}`, 'upr_tabel.xlsx');
   renderMgmt();
 }
 
-function mgmtCell(codes) {
-  const items = Object.entries(codes || {});
-  if (!items.length) return '';
-  return items.map(([t, h]) => `<span class="v4-code ${t.includes('2') ? 'x2' : ''} ${t.startsWith('ДН') ? 'n' : 'd'}">${esc(t.replace(' ', ''))}&nbsp;${hours(h)}</span>`).join('');
+function mgmtCell(ut) {
+  return Object.entries(ut || {}).map(([t, m]) =>
+    `<span class="v4-code ${m >= 120 ? 'x2' : ''} ${t.startsWith('ДН') ? 'n' : 'd'}">${esc(t)}&nbsp;${hours(m / 60)}</span>`).join('');
 }
 
 function renderMgmt() {
   const d = state.mgmt;
-  const modeNote = d.mode === 'view'
-    ? 'Просмотр: недостача показана, коды не изымаются, банк — предварительный (входящий + корректировки + зачисленное). Ничего не сохраняется.'
-    : (d.complete ? 'Закрытие: недостача гасится банком, затем кодами по очереди Т6 целыми гранулами. Для незакрытых сотрудников показан предпросмотр — сохранится после «Закрыть период».'
-                  : `Период ещё не завершён — закрыть можно с 00:00 дня после ${dateRu(d.period.end)}. Закрытие пока недоступно.`);
-  const state_ = r => r.error ? `<span class="badge danger" title="${esc(r.error)}">ошибка</span>`
-    : (r.closed ? `<span class="badge ok" title="Закрыл ${esc(r.closed_by || '')}">закрыт${r.revision > 1 ? ' · пересчёт ' + (r.revision - 1) : ''}</span>`
-      : (r.source === 'preview' ? '<span class="badge warn">предпросмотр</span>' : '<span class="badge muted">view</span>'));
+  const modeNote = 'Просмотр: недостача показана, коды не изымаются, банк — предварительный ' +
+    '(входящий + корректировки + зачисленное). Ничего не сохраняется. Закрытие выполняет ' +
+    'погашение банком и каскадом и сохраняет результат, снимок флагов и переносы.';
+  const stateBadge = r => r.error ? `<span class="badge danger" title="${esc(r.error)}">ошибка</span>`
+    : (r.state?.closed ? '<span class="badge ok">закрыт</span>' : '<span class="badge muted">view</span>');
   const rows = d.rows.map(r => {
     if (r.error) {
       return `<tr><td class="who">${esc(r.employee.short_name)}<small>${esc(r.employee.group)}</small></td>
-        <td colspan="${d.days.length + d.tariffs.length + 3}" style="color:var(--danger)">${esc(r.error)}</td><td>${state_(r)}</td></tr>`;
+        <td colspan="${d.days.length + d.tariffs.length + 3}" style="color:var(--danger)">${esc(r.error)}</td>
+        <td>${stateBadge(r)}</td></tr>`;
     }
     const flagsByDay = {};
-    (r.flags || []).forEach(f => { (flagsByDay[f.day] = flagsByDay[f.day] || []).push(f); });
+    (r.days || []).forEach(dv => (dv.flags || []).forEach(f => {
+      (flagsByDay[dv.day] = flagsByDay[dv.day] || []).push(f);
+    }));
+    const cardByDay = {};
+    (r.days || []).forEach(dv => { cardByDay[dv.day] = dv; });
+    const outDays = new Set(r.out_of_staff_days || []);
     return `<tr data-emp="${r.employee.id}" class="v4-click">
       <td class="who">${esc(r.employee.short_name)}<small>${esc(r.employee.group)}</small></td>
       ${d.days.map(day => {
-        const card = r.cards.find(c => c.day === day);
+        if (outDays.has(day)) {
+          return `<td class="v4-ut" title="День вне интервала трудоустройства"><span class="badge muted">не в штате</span></td>`;
+        }
+        const dv = cardByDay[day];
         const fl = flagsByDay[day] || [];
-        const debt = card && card.debt ? `<span class="v4-debt" title="Недостача дня">−${hours(card.debt)}</span>` : '';
-        const flag = fl.length ? `<span class="v4-flag ${V4_FLAG_CLASS[fl[0].severity] || ''}" title="${esc(fl.map(f => f.text).join('\n'))}">●</span>` : '';
+        const debt = dv && dv.debt_minutes ? `<span class="v4-debt" title="Недостача дня (от окна)">−${hours(dv.debt_minutes / 60)}</span>` : '';
+        const flag = fl.length ? `<span class="v4-flag ${V4_FLAG_CLASS[fl[0].code] || ''}" title="${esc(fl.map(f => f.title).join('\n'))}">●</span>` : '';
         const future = day > todayISO() ? ' future' : '';
-        return `<td class="v4-ut${future}" title="${card ? esc(card.value) + (future ? ' · прогноз: недостача = план, если сотрудник не придёт' : '') : ''}">${mgmtCell(r.ut[day])}${debt}${flag}</td>`;
+        const pef = dv && dv.plan_equals_fact ? ' <span class="badge info" title="Применён «План=Факт»: день освобождён от недостачи">П=Ф</span>' : '';
+        return `<td class="v4-ut${future}" title="${dv ? esc(dv.timesheet_value) + (future ? ' · прогноз: недостача = окно, если сотрудник не придёт' : '') : ''}">${mgmtCell(r.ut[day])}${debt}${flag}${pef}</td>`;
       }).join('')}
-      ${d.tariffs.map(t => `<td class="num">${v4Hours(r.totals[t])}</td>`).join('')}
-      <td class="num" title="Общий долг / остаток после погашения">${hours(r.debt.total)}${d.mode === 'close' ? ` / ${hours(r.debt.residual)}` : ''}</td>
-      <td class="num"><b style="color:${r.bank.closed < 0 ? 'var(--danger)' : 'inherit'}">${r.bank.closed >= 0 ? '+' : ''}${hours(r.bank.closed)}</b></td>
+      ${d.tariffs.map(t => `<td class="num">${v4Hours((r.totals[t] || 0) / 60)}</td>`).join('')}
+      <td class="num" title="Общий долг / остаток после погашения">${hours(r.debt.total_h)}${r.state?.closed ? ` / ${hours(r.debt.residual_h)}` : ''}</td>
+      <td class="num"><b style="color:${r.bank.closed < 0 ? 'var(--danger)' : 'inherit'}">${r.bank.closed >= 0 ? '+' : ''}${hours(r.bank.closed_h)}</b></td>
       <td class="num">${r.deferred.length ? `<span class="badge warn" title="Отложено на следующий период">${r.deferred.length}</span>` : ''}</td>
-      <td>${state_(r)}</td></tr>`;
+      <td>${stateBadge(r)}</td></tr>`;
   }).join('');
   $('#ut-body').innerHTML = `
     <div class="panel" style="padding:12px 16px"><span class="hint" style="margin:0">${esc(modeNote)}</span></div>
     <div class="table-wrap v4-grid-wrap"><table class="data v4-grid">
       <thead><tr><th class="who">Сотрудник</th>${d.days.map(v4DayHead).join('')}
         ${d.tariffs.map(t => `<th>${esc(t)}</th>`).join('')}<th>Недостача</th><th>Банк</th><th title="Отложенные блоки">→</th><th>Статус</th></tr></thead>
-      <tbody>${rows || `<tr><td class="empty" colspan="99">Нет сотрудников</td></tr>`}</tbody>
+      <tbody>${rows || '<tr><td class="empty" colspan="99">Нет сотрудников, трудоустроенных в периоде</td></tr>'}</tbody>
     </table></div>
-    <p class="hint">Шаг расчёта ${d.step_minutes} мин · версии настроек: ${d.settings_versions.map(esc).join(', ')}.
-      Клик по строке — карточки дней, флаги, изъятия и трасса расчёта.</p>`;
+    <p class="hint">Период ${dateRu(d.period.start)} – ${dateRu(d.period.end)} · шаг расчёта
+      ${d.step_minutes} мин · версии настроек: ${d.settings_versions.map(esc).join(', ')}.
+      Клик по строке — карточки дней (расчётный и информационный планы), флаги, изъятия и трасса расчёта.</p>`;
   $$('#ut-body tr[data-emp]').forEach(tr => tr.onclick = () => mgmtDetail(+tr.dataset.emp));
 }
 
@@ -336,13 +472,15 @@ async function mgmtAction(kind, empId) {
   const d = state.mgmt;
   const title = kind === 'close' ? 'Закрыть период?' : 'Пересчитать закрытый период?';
   const text = kind === 'close'
-    ? `${MONTHS[d.month - 1]} ${d.year}: недостача будет погашена банком и кодами, результат, банк и отложенные блоки сохранятся. ` +
+    ? `${dateRu(d.period.start)} – ${dateRu(d.period.end)}: недостача будет погашена банком и кодами, ` +
+      'результат, снимок флагов, банк и отложенные блоки сохранятся одной атомарной операцией. ' +
       'Повторно закрыть нельзя; исправить можно только пересчётом последнего закрытого периода.'
-    : 'Расчёт повторится с исходных входящих остатков периода; результат, банк и переносы в следующий период будут заменены. ' +
-      'Доступно только для последнего закрытого периода.';
+    : 'Отметки, Табель и корректировки будут перечитаны свежими; расчёт повторится с исходных ' +
+      'входящих остатков периода (ClosingInputs заморожены). Результат, банк, переносы и снимок ' +
+      'флагов будут ЗАМЕНЕНЫ. Доступно только для последнего закрытого периода.';
   confirmDialog(title, text, async () => {
     try {
-      const body = { year: d.year, month: d.month };
+      const body = { year: d.year, month: d.month, half: d.half };
       if (empId) body.employee_ids = [empId];
       const r = await api(`/api/mgmt/${kind}`, { method: 'POST', body });
       closeModal();
@@ -357,44 +495,57 @@ async function mgmtAction(kind, empId) {
 async function mgmtDetail(empId) {
   const d = state.mgmt;
   let r;
-  try { r = await api(`/api/mgmt/employee/${empId}?year=${d.year}&month=${d.month}&mode=${d.mode}`); } catch (e) { toast(e.message, 'err'); return; }
-  if (r.error) { toast(r.error, 'err'); return; }
-  const flags = {};
-  r.flags.forEach(f => { (flags[f.day] = flags[f.day] || []).push(f); });
-  const cards = r.cards.map(c => `<tr>
-    <td>${dateRu(c.day).slice(0, 5)}</td><td>${esc(c.value)}${c.plan_equals_fact ? ' <span class="badge info">План=Факт</span>' : ''}</td>
-    <td class="num">${v4Hours(c.plan)}</td><td class="num">${v4Hours(c.fact)}</td><td class="num">${v4Hours(c.work)}</td>
-    <td class="num">${v4Hours(c.ot)}</td><td class="num" style="color:var(--danger)">${c.debt ? hours(c.debt) : ''}</td>
-    <td>${mgmtCell(c.codes)}${!c.pays_overtime && c.ot ? ' <span class="badge muted">в банк</span>' : ''}</td>
-    <td>${mgmtCell(r.ut[c.day])}</td>
-    <td>${(flags[c.day] || []).map(f => `<div class="v4-flagtext ${V4_FLAG_CLASS[f.severity] || ''}">● ${esc(f.text)}</div>`).join('')}</td></tr>`).join('');
+  try {
+    r = await api(`/api/mgmt?year=${d.year}&month=${d.month}${d.half ? `&half=${d.half}` : ''}&employee_id=${empId}&detail=true`);
+    r = (r.rows || [])[0];
+  } catch (e) { toast(e.message, 'err'); return; }
+  if (!r || r.error) { toast(r ? r.error : 'Нет данных', 'err'); return; }
   const b = r.bank;
-  const canRecalc = d.can_recalculate && r.closed && !r.next_closed;
-  const canClose = d.can_close && d.complete && !r.closed;
+  const cardRows = (r.days || []).map(dv => {
+    const flags = (dv.flags || []).map(f =>
+      `<div class="v4-flagtext ${V4_FLAG_CLASS[f.code] || ''}">● ${esc(f.title)}${f.hint ? ` <small>${esc(f.hint)}</small>` : ''}</div>`).join('');
+    return `<tr>
+      <td>${dateRu(dv.day).slice(0, 6)}</td>
+      <td>${esc(dv.timesheet_value)}${dv.plan_equals_fact ? ' <span class="badge info">План=Факт</span>' : ''}</td>
+      <td class="num" title="Расчётный план = длина окна (R34)">${v4Hours(dv.plan_hours)}</td>
+      <td class="num" title="Информационный (зарплатный) план строки Табеля">${v4Hours(dv.timesheet_plan_hours)}</td>
+      <td class="num">${v4Hours(dv.fact_minutes / 60)}</td>
+      <td class="num">${v4Hours(dv.work_minutes / 60)}</td>
+      <td class="num">${v4Hours(dv.overtime_minutes / 60)}</td>
+      <td class="num" style="color:var(--danger)">${dv.debt_minutes ? hours(dv.debt_minutes / 60) : ''}</td>
+      <td>${mgmtCell(dv.codes)}${!dv.pays_overtime && dv.overtime_minutes ? ' <span class="badge muted">в банк</span>' : ''}</td>
+      <td>${mgmtCell(r.ut[dv.day])}</td>
+      <td>${flags}</td></tr>`;
+  }).join('');
+  const canRecalc = d.can_recalculate && r.state?.can_recalculate;
+  const canClose = d.can_close && r.state?.can_close;
+  const outDays = (r.out_of_staff_days || []);
   openModal({
-    title: `${r.employee.full_name}`,
-    subtitle: `${MONTHS[d.month - 1]} ${d.year} · ${r.closed ? 'период закрыт' : (d.mode === 'close' ? 'предпросмотр закрытия' : 'просмотр (view)')}`,
+    title: r.employee.full_name,
+    subtitle: `${dateRu(d.period.start)} – ${dateRu(d.period.end)} · ${r.state?.closed ? 'период закрыт (сохранённые данные)' : 'просмотр (живой расчёт)'}`,
     wide: true,
     body: `
       <div class="stat-grid">
-        <div class="stat"><div class="k">План / факт</div><div class="v">${hours(r.plan_total)} / ${hours(r.fact_total)}</div></div>
-        <div class="stat warn"><div class="k">Недостача (всего)</div><div class="v">${hours(r.debt.total)}</div></div>
-        <div class="stat"><div class="k">Погашено банком / кодами</div><div class="v">${hours(b.paid)} / ${hours(r.debt.cut)}</div></div>
-        <div class="stat accent"><div class="k">Банк на закрытие</div><div class="v">${b.closed >= 0 ? '+' : ''}${hours(b.closed)}</div></div>
+        <div class="stat"><div class="k">Недостача всего</div><div class="v">${hours(r.debt.total_h)}</div></div>
+        <div class="stat"><div class="k">Погашено банком</div><div class="v">${hours(b.paid / 60)}</div></div>
+        <div class="stat warn"><div class="k">Остаток долга</div><div class="v">${hours(r.debt.residual_h)}</div></div>
+        <div class="stat accent"><div class="k">Банк на закрытие</div><div class="v">${b.closed >= 0 ? '+' : ''}${hours(b.closed_h)}</div></div>
       </div>
-      <p class="hint" style="margin-top:-6px">Банк: входящий ${hours(b.open)}${b.open_normalized !== b.open ? ` (нормализован ${hours(b.open_normalized)})` : ''}
-        + корректировки ${hours(b.adjustments)} + зачислено неоплачиваемых ${hours(b.credited)}.
-        ${r.open_session_since ? ' <b style="color:var(--danger)">Смена не закрыта (нет «Ушёл»).</b>' : ''}</p>
+      <p class="hint" style="margin-top:-6px">Банк: входящий ${hours(b.open_h)}${b.open_normalized !== b.open ? ` (нормализован к шагу: ${hours(b.open_normalized / 60)})` : ''}
+        + корректировки ${hours(b.adjustments_h)} + зачислено неоплачиваемых переработок ${hours(b.credited_h)}.
+        Остаток недостачи всегда переносится минусом банка.</p>
+      ${outDays.length ? `<p class="hint">Дни вне трудоустройства («не в штате»): ${outDays.map(x => dateRu(x).slice(0, 6)).join(', ')}</p>` : ''}
       <div class="table-wrap" style="max-height:46vh"><table class="data">
-        <thead><tr><th>День</th><th>Табель</th><th>План</th><th>Факт</th><th>Рабочее</th><th>Перераб.</th><th>Недост.</th>
-          <th>Коды дня</th><th>Итог УТ</th><th>Флаги</th></tr></thead><tbody>${cards}</tbody></table></div>
+        <thead><tr><th>День</th><th>Табель</th><th>План (окно)</th><th>План строки</th><th>Факт</th>
+          <th>Рабочее</th><th>Перераб.</th><th>Недост.</th><th>Коды дня</th><th>Итог УТ</th><th>Флаги</th></tr></thead>
+        <tbody>${cardRows}</tbody></table></div>
       ${r.deferred.length ? `<div class="panel" style="margin-top:12px"><h3 class="panel-title">Отложено на следующий период</h3>
         ${r.deferred.map(x => `<span class="badge warn">${esc(x.tariff)} ${hours(x.hours)} ч из ${dateRu(x.source_day)}</span>`).join(' ')}</div>` : ''}
       ${r.cuts && r.cuts.length ? `<div class="panel" style="margin-top:12px"><h3 class="panel-title">Изъятия каскадом</h3>
-        ${r.cuts.map(c => `<div>${esc(c.tariff)} ${hours(c.taken_hours)} ч (${dateRu(c.source_day)}${c.placed_day ? ' → ' + dateRu(c.placed_day) : ''}) — погашено ${hours(c.paid_hours)} ч</div>`).join('')}</div>` : ''}
-      ${r.exceptions.length ? `<div class="panel" style="margin-top:12px"><h3 class="panel-title">Исключения</h3>${r.exceptions.map(x => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
-      <details style="margin-top:12px"><summary>Трасса расчёта (${r.trace.length})</summary>
-        ${r.trace.map(t => `<div class="audit-item"><span class="ac">${esc(t.code)}</span> ${esc(t.text)}</div>`).join('') || '<div class="empty">Пусто</div>'}</details>`,
+        ${r.cuts.map(c => `<div>${esc(c.tariff)} ${hours(c.taken_minutes / 60)} ч (${dateRu(c.source_day)}${c.placed_day ? ' → ' + dateRu(c.placed_day) : ''}) — погашено ${hours(c.paid_minutes / 60)} ч</div>`).join('')}</div>` : ''}
+      ${r.exceptions.length ? `<div class="panel" style="margin-top:12px"><h3 class="panel-title">Исключения</h3>${r.exceptions.map(x => `<div>${esc(x.text)}</div>`).join('')}</div>` : ''}
+      <details style="margin-top:12px"><summary>Трасса расчёта (${(r.trace || []).length})</summary>
+        ${(r.trace || []).map(t => `<div class="audit-item"><span class="ac">${esc(t.step)} · ${esc(t.code)}</span> ${esc(t.text)}</div>`).join('') || '<div class="empty">Пусто</div>'}</details>`,
     footer: `${canClose ? '<button class="btn btn-primary" data-close>Закрыть период сотрудника</button>' : ''}
       ${canRecalc ? '<button class="btn" data-recalc>Пересчитать</button>' : ''}
       <button class="btn btn-ghost" data-cancel>Закрыть окно</button>`,
@@ -406,7 +557,6 @@ async function mgmtDetail(empId) {
     },
   });
 }
-
 /* ══════════════════════════════════════════════════════════════════
    ПРАВА ДОСТУПА — роли (базовые группы), группы доступа, индивидуальные права
    ══════════════════════════════════════════════════════════════════ */
@@ -619,9 +769,17 @@ async function loadAudit() {
   $('#au-next').onclick = () => { f.offset += AUDIT_PAGE; loadAudit(); };
 }
 
+
 /* ══════════════════════════════════════════════════════════════════
-   СПРАВОЧНИКИ ДВИЖКА (в разделе «Настройки»): Т1–Т7, Т9, Т-Группы + модификаторы Т4
+   СПРАВОЧНИКИ ДВИЖКА v7.1 (в разделе «Настройки»): CFG-DAY-CODES, CFG-WINDOWS,
+   CFG-CATEGORIES, CFG-WEIGHTS, CFG-CASCADE, CFG-PLACEMENT, CFG-GROUPS,
+   CFG-LIMITS, гранулярность периода + модификаторы CFG-MODIFIERS
    ══════════════════════════════════════════════════════════════════ */
+const V4_MOD_TITLES = {
+  double_overtime: 'Двойные переработки', pays_overtime: 'Оплачиваются ли переработки',
+  plan_equals_fact: 'План=Факт', counts_in_ut: 'Учитываются ли часы в УТ',
+};
+
 async function renderEngineSettings(host) {
   if (!host) return;
   let data, mods;
@@ -633,44 +791,56 @@ async function renderEngineSettings(host) {
   const edit = can('settings.edit');
   const first = `${state.year}-${String(state.month).padStart(2, '0')}-01`;
   const empName = id => (state.employees.find(e => e.id === id) || {}).short_name || `#${id}`;
+  const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const winList = Object.entries(p.windows || {})
+    .map(([k, w]) => `${esc(k)} = ${hm(w.start_minute)}–${hm(w.end_minute)}`).join('; ');
+  const groups = Array.isArray(p.groups) ? p.groups : Object.keys(p.groups || {});
   host.innerHTML = `
-    <h3 class="panel-title">Справочники движка (Т1–Т7, Т9, Т-Группы)</h3>
+    <h3 class="panel-title">Справочники движка v7.1 (CFG-*)</h3>
     <div class="stat-grid">
       <div class="stat"><div class="k">Шаг расчёта</div><div class="v">${p.step_minutes} мин</div></div>
       <div class="stat"><div class="k">Лимит опоздания</div><div class="v">${p.late_limit_minutes} мин</div></div>
-      <div class="stat"><div class="k">Лимит дня</div><div class="v">${p.day_limit_minutes / 60} ч</div></div>
+      <div class="stat"><div class="k">Период</div><div class="v" style="font-size:16px">${p.period_granularity === 'half_month' ? 'полмесяца' : 'месяц'}</div></div>
       <div class="stat"><div class="k">Действует с</div><div class="v" style="font-size:16px">${data.active.valid_from ? dateRu(data.active.valid_from) : 'по умолчанию'}</div></div>
     </div>
-    <p class="hint" style="margin-top:-6px">Каскад (Т6): банк → ${p.cascade_order.map(esc).join(' → ')}. Порядок размещения (Т9): ${p.placement_order.map(esc).join(' → ')}.
-      Окна Т2: ${p.windows.map(w => `${esc(w.code)} ${w.hours} = ${w.segments.map(s => s.join('–')).join(' + ')}`).join('; ')}.</p>
+    <p class="hint" style="margin-top:-6px">Каскад (CFG-CASCADE): банк → ${p.cascade_order.map(esc).join(' → ')}.
+      Порядок размещения (CFG-PLACEMENT): ${p.placement_order.map(esc).join(' → ')}.
+      Веса (CFG-WEIGHTS): ${Object.entries(p.weights).map(([k, w]) => `${esc(k)}=${w}`).join(', ')}.
+      Группы (CFG-GROUPS): ${groups.map(esc).join(', ')}.</p>
+    <p class="hint">Окна (CFG-WINDOWS): ${winList}. План карточки = длина окна; недостача и
+      ёмкость переносов — от окна. Информационный план строки Табеля может быть меньше
+      длины окна (зарплатная норма, например обед).</p>
     <details><summary>Редактировать справочники (JSON)</summary>
       <textarea id="es-json" style="width:100%;min-height:320px;font-family:monospace;font-size:12px" ${edit ? '' : 'readonly'}>${esc(JSON.stringify(p, null, 2))}</textarea>
       ${edit ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:8px">
-        <label class="field" style="margin:0"><span>Действует с (1-е число)</span><input type="date" id="es-from" value="${first}"></label>
+        <label class="field" style="margin:0"><span>Действует с (1 или 16 число)</span><input type="date" id="es-from" value="${first}"></label>
         <label class="field" style="margin:0;flex:1"><span>Комментарий</span><input type="text" id="es-note" placeholder="что и почему меняем"></label>
         <button class="btn btn-primary" id="es-save">Сохранить новую версию</button></div>
-        <p class="hint">Перед сохранением конфигурация проверяется правилами В1–В11, В-Гр; все нарушения выводятся разом.
-          Шаг меняется только с начала периода. Закрытые периоды не пересчитываются автоматически.</p>` : ''}
+        <p class="hint">Перед сохранением конфигурация проверяется правилами CHK-* уровня 1;
+          все нарушения выводятся разом. Шаг и гранулярность меняются только с границы периода.
+          Закрытые периоды не пересчитываются автоматически.</p>` : ''}
     </details>
     <details style="margin-top:8px"><summary>История версий (${data.versions.length})</summary>
       ${data.versions.map(v => `<div class="audit-item"><span class="ts">${dateRu(v.valid_from)}</span><span class="ac">#${v.id}</span>
         <span style="color:var(--muted)">${esc(v.created_by)} · ${esc(v.note)}</span></div>`).join('')}</details>
-    <h3 class="panel-title" style="margin-top:16px">Модификаторы дня (Т4) · ${MONTHS[state.month - 1]} ${state.year}</h3>
-    <p class="hint" style="margin-top:-6px">Дни двойной оплаты и ВИП-гости из блока ниже тоже действуют как «Двойные переработки».
-      Приоритет: сотрудник+день → сотрудник+период → группа+день → группа+период → все+день → все+период.</p>
+    <h3 class="panel-title" style="margin-top:16px">Модификаторы дня (CFG-MODIFIERS) · ${MONTHS[state.month - 1]} ${state.year}</h3>
+    <p class="hint" style="margin-top:-6px">Дни двойной оплаты и ВИП-гости тоже действуют как «Двойные переработки».
+      Приоритет: сотрудник+день → сотрудник+период → группа+день → группа+период → все+день → все+период → глобальный дефолт.
+      «План=Факт = Авто» разрешается в «Да» только колонкой кода (стартово — у «К»).
+      Две записи одного уровня на один день — конфликт конфигурации.</p>
     <div class="table-wrap"><table class="data"><thead><tr><th>Модификатор</th><th>Значение</th><th>Кому</th><th>Когда</th><th>Комментарий</th><th></th></tr></thead><tbody>
-      ${mods.map(m => `<tr><td>${esc(m.title)}</td><td>${m.value === '1' ? 'Да' : (m.value === '0' ? 'Нет' : 'Авто')}</td>
+      ${mods.map(m => `<tr><td>${esc(V4_MOD_TITLES[m.name] || m.name)}</td><td>${m.value === '1' ? 'Да' : (m.value === '0' ? 'Нет' : 'Авто')}</td>
         <td>${m.employee_id ? esc(empName(m.employee_id)) : (m.group ? 'группа «' + esc(m.group) + '»' : 'все')}</td>
-        <td>${m.date ? dateRu(m.date) : 'весь месяц'}</td><td>${esc(m.note)}</td>
+        <td>${m.date ? dateRu(m.date) : 'весь период'}</td><td>${esc(m.note)}</td>
         <td>${edit ? `<button class="btn btn-sm btn-ghost" data-mod-del="${m.id}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Нет модификаторов в этом месяце</td></tr>'}
     </tbody></table></div>
     ${edit ? `<div class="v4-filters" style="margin-top:8px">
       <label class="field"><span>Модификатор</span><select id="md-name">${data.modifier_names.map(n => `<option value="${n.name}">${esc(n.title)}</option>`).join('')}</select></label>
       <label class="field"><span>Значение</span><select id="md-value"><option value="1">Да</option><option value="0">Нет</option><option value="auto">Авто (План=Факт)</option></select></label>
       <label class="field"><span>Кому</span><select id="md-scope"><option value="all">все</option>
-        ${(p.groups || []).map(g => `<option value="g:${esc(g.name)}">группа «${esc(g.name)}»</option>`).join('')}
+        ${groups.map(g => `<option value="g:${esc(typeof g === 'string' ? g : g.name)}">группа «${esc(typeof g === 'string' ? g : g.name)}»</option>`).join('')}
         ${state.employees.map(e => `<option value="e:${e.id}">${esc(e.short_name)}</option>`).join('')}</select></label>
-      <label class="field"><span>День (пусто — весь месяц)</span><input type="date" id="md-date"></label>
+      <label class="field"><span>День (пусто — весь период)</span><input type="date" id="md-date"></label>
       <label class="field"><span>Комментарий</span><input type="text" id="md-note"></label>
       <button class="btn" id="md-add">Добавить</button></div>` : ''}`;
   if (edit) {

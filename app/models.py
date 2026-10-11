@@ -196,6 +196,9 @@ class BankAdjustment(Base):
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
     hours: Mapped[float] = mapped_column(Float, default=0.0)          # со знаком: +4 / -8
     effective_date: Mapped[dt.date] = mapped_column(Date)             # с какой даты учитывается
+    reason_code: Mapped[str] = mapped_column(String(32), default="")  # свободная строка;
+                                                                      # "OPENING_SEED" — посев
+                                                                      # начального банка (R37)
     note: Mapped[str] = mapped_column(String(255), default="")        # «почему»
     author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     author_name: Mapped[str] = mapped_column(String(120), default="")
@@ -330,32 +333,49 @@ class ShiftRevision(Base):
     shift_type: Mapped[ShiftType] = relationship()
 
 
-class ScheduleEntry(Base):
-    """Ячейка графика: сотрудник × дата."""
+class ScheduleShift(Base):
+    """Смена Графика (движок v7.1, 16.3): порождённая из Табеля по окнам CFG-WINDOWS
+    (source="generated") либо ручная (source="manual"). Моменты — naive UTC.
+    Смена может пересекать полночь; физически не режется — «разрез» логический,
+    через ScheduleAbsence (v7/R17). Якорь правки — день начала (date)."""
 
-    __tablename__ = "schedule_entries"
-    __table_args__ = (UniqueConstraint("employee_id", "date", name="uq_schedule_emp_date"),)
+    __tablename__ = "schedule_shifts"
+    __table_args__ = (Index("ix_sched_shifts_emp_date", "employee_id", "date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
-    date: Mapped[dt.date] = mapped_column(Date, index=True)
-    shift_type_id: Mapped[int] = mapped_column(ForeignKey("shift_types.id"))
-    note: Mapped[str] = mapped_column(Text, default="")
-    # частичное отсутствие внутри рабочей смены («отпросился с 14:00 до 16:00»):
-    # причина (вид отсутствия) + согласованное окно, в которое сотрудник не работает
-    partial_shift_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
-    from_time: Mapped[str] = mapped_column(String(5), default="")   # "14:00"
-    until_time: Mapped[str] = mapped_column(String(5), default="")  # "16:00"
-    # явный override флага «можно отмечаться» для этой ячейки:
-    # None — как в словаре вида смены/отсутствия, True/False — разрешить/запретить
-    punch_in_override: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=None)
-    punch_out_override: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=None)
+    date: Mapped[dt.date] = mapped_column(Date, index=True)        # день-якорь (день начала)
+    start_utc: Mapped[dt.datetime] = mapped_column(DateTime)       # naive UTC
+    end_utc: Mapped[dt.datetime] = mapped_column(DateTime)         # naive UTC
+    source: Mapped[str] = mapped_column(String(10), default="generated")  # generated | manual
+    shift_type_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
+    note: Mapped[str] = mapped_column(String(255), default="")
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
-    shift_type: Mapped[ShiftType] = relationship(lazy="joined", foreign_keys=[shift_type_id])
-    partial_shift: Mapped[Optional[ShiftType]] = relationship(lazy="joined", foreign_keys=[partial_shift_id])
     employee: Mapped[Employee] = relationship(lazy="joined")
+
+
+class ScheduleAbsence(Base):
+    """Согласованное отсутствие (движок v7.1, 5.1): UTC-интервал, может пересекать
+    полночь, длина ≤ 24 ч (CHK-ABSENCE-LENGTH). Используется только флагами и доской
+    (RUL-ABSENCE-ONLY-FLAGS). kind — тип отсутствия из словаря (заявление, режим отметок)."""
+
+    __tablename__ = "schedule_absences"
+    __table_args__ = (Index("ix_sched_abs_emp_start", "employee_id", "start_utc"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    start_utc: Mapped[dt.datetime] = mapped_column(DateTime)       # naive UTC
+    end_utc: Mapped[dt.datetime] = mapped_column(DateTime)         # naive UTC
+    kind_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
+    note: Mapped[str] = mapped_column(String(255), default="")
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+    kind: Mapped[Optional[ShiftType]] = relationship(lazy="joined")
+    employee: Mapped[Employee] = relationship(lazy="joined")
+
 
 
 class Punch(Base):
@@ -372,48 +392,6 @@ class Punch(Base):
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(255), default="")
 
-    employee: Mapped[Employee] = relationship(lazy="joined")
-
-
-class TimesheetRow(Base):
-    """Расчётная строка табеля за один день (пересчитывается движком)."""
-
-    __tablename__ = "timesheet_rows"
-    __table_args__ = (UniqueConstraint("employee_id", "date", name="uq_ts_emp_date"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
-    date: Mapped[dt.date] = mapped_column(Date, index=True)
-    shift_type_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
-    code: Mapped[str] = mapped_column(String(12), default="")       # код для табеля: Я / Н / Б / ОТ / ДО / В
-    planned_hours: Mapped[float] = mapped_column(Float, default=0.0)
-    fact_hours: Mapped[float] = mapped_column(Float, default=0.0)
-    day_hours: Mapped[float] = mapped_column(Float, default=0.0)    # ДЯ 06:00–22:00
-    night_hours: Mapped[float] = mapped_column(Float, default=0.0)  # ДН 22:00–06:00
-    ot_hours: Mapped[float] = mapped_column(Float, default=0.0)     # переработка всего (нетто, для банка)
-    ot_note: Mapped[str] = mapped_column(Text, default="")          # «с кем работал, что делал»
-    pay_ot_day: Mapped[float] = mapped_column(Float, default=0.0)   # брутто-переработка ДЯ (к выплате)
-    pay_ot_night: Mapped[float] = mapped_column(Float, default=0.0) # брутто-переработка ДН (к выплате)
-    pay_ot_day2: Mapped[float] = mapped_column(Float, default=0.0)  # то же, но в день двойной оплаты (код ДЯ2)
-    pay_ot_night2: Mapped[float] = mapped_column(Float, default=0.0) # код ДН2
-    double_reason: Mapped[str] = mapped_column(String(16), default="")  # '' | calendar | vip — почему день двойной
-    late_hours: Mapped[float] = mapped_column(Float, default=0.0)   # опоздания, ч (для банка/статусов)
-    early_hours: Mapped[float] = mapped_column(Float, default=0.0)  # ранние уходы, ч (для банка/статусов)
-    unused_hours: Mapped[float] = mapped_column(Float, default=0.0)  # часы официального окна, которые не отработаны
-    gap_hours: Mapped[float] = mapped_column(Float, default=0.0)     # несогласованные перерывы внутри смены
-    auth_hours: Mapped[float] = mapped_column(Float, default=0.0)    # согласованное отсутствие («отпросился»), ч
-    deficit_hours: Mapped[float] = mapped_column(Float, default=0.0)  # недоработка
-    timeoff_hours: Mapped[float] = mapped_column(Float, default=0.0)  # списано из банка часов
-    fact_in: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
-    fact_out: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
-    planned_start: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
-    planned_end: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
-    status: Mapped[str] = mapped_column(String(24), default="")     # ok|late|early|late_early|gap|no_punch|unclosed|off|absence|work_no_plan|work_off|planned
-    detail_json: Mapped[str] = mapped_column(Text, default="[]")    # сессии, клипы, предупреждения
-    note: Mapped[str] = mapped_column(Text, default="")
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
-
-    shift_type: Mapped[Optional[ShiftType]] = relationship(lazy="joined")
     employee: Mapped[Employee] = relationship(lazy="joined")
 
 
@@ -769,6 +747,7 @@ class PeriodClosing(Base):
     closing_bank_minutes: Mapped[int] = mapped_column(Integer, default=0)
     settings_versions: Mapped[str] = mapped_column(String(255), default="")
     result_json: Mapped[str] = mapped_column(Text, default="{}")
+    flags_json: Mapped[str] = mapped_column(Text, default="{}")   # снимок FlagsResult (7.2)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     closed_by_name: Mapped[str] = mapped_column(String(120), default="")
     closed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
@@ -785,7 +764,8 @@ class DeferredCarry(Base):
     source_day: Mapped[dt.date] = mapped_column(Date)
     tariff: Mapped[str] = mapped_column(String(12))
     minutes: Mapped[int] = mapped_column(Integer)
-    reason_code: Mapped[str] = mapped_column(String(32), default="NO_RECEIVER")
+    # v7/R1: у DeferredBlock нет reason_code — причина неразмещения запись NO_RECEIVER;
+    # колонка reason_code старой схемы не мапится (base 15 «Миграция прототипа»)
 
 
 class AccessGroup(Base):

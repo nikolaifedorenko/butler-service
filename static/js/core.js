@@ -173,41 +173,12 @@ const state = {
   filterDept: 'all',
   filterText: '',
   expanded: new Set(),
-  colorMode: localStorage.getItem('tt_color_mode') || 'shift',   // shift | position
-  gridMode: localStorage.getItem('tt_grid_mode') || 'plan',      // plan | fact — вид сетки графика
   showArchived: false,                                           // словарь смен: показывать ли архив
   dpYear: new Date().getFullYear(),                              // календарь двойной оплаты: просматриваемый год
   timers: [],
 };
 
 const ROLE_TITLES = { admin: 'Администратор', manager: 'Менеджер', supervisor: 'Супервайзер', employee: 'Сотрудник' };
-const STATUS_META = {
-  ok:           { t: 'Без отклонений', c: 'ok' },
-  late:         { t: 'Опоздание', c: 'warn' },
-  early:        { t: 'Ранний уход', c: 'warn' },
-  late_early:   { t: 'Опоздание + ранний уход', c: 'warn' },
-  no_punch:     { t: 'Нет отметок', c: 'danger' },
-  unclosed:     { t: 'Смена не закрыта', c: 'danger' },
-  work_no_plan: { t: 'Работа вне графика', c: 'danger' },
-  work_off:     { t: 'Работа в выходной', c: 'info' },
-  absence:      { t: 'Отсутствие', c: 'muted' },
-  off:          { t: 'Выходной', c: 'muted' },
-  planned:      { t: 'Смена впереди', c: 'muted' },
-  // флаги движка v4 (evaluate_flags)
-  LATE:                     { t: 'Опоздание', c: 'warn' },
-  EARLY_DEPARTURE:          { t: 'Ранний уход', c: 'warn' },
-  ABSENCE_GAP:              { t: 'Отлучился (согласовано)', c: 'muted' },
-  MISSED_DAY:               { t: 'Не пришёл', c: 'danger' },
-  OFF_SHIFT_ATTENDANCE:     { t: 'Работа вне Графика', c: 'info' },
-  ACTIVITY_REQUIRES_REVIEW: { t: 'Отметка в день отсутствия — проверить', c: 'warn' },
-  SESSION_OPEN:             { t: 'Смена не закрыта', c: 'danger' },
-  '':           { t: '—', c: 'muted' },
-};
-function statusBadge(st) {
-  const m = STATUS_META[st] || { t: st || '—', c: 'muted' };
-  return `<span class="badge ${m.c}">${esc(m.t)}</span>`;
-}
-
 /* палитра цветов должностей */
 const POSITION_COLORS = [
   { c: '#8a94a6', t: 'Батлер (серый)' },

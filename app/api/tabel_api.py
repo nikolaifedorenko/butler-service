@@ -1,7 +1,18 @@
-"""Табель: просмотр и редактирование кода дня и плановых часов (первичный документ, спец. 1.1)."""
+"""Вкладка «Табель» (16.5): первичный документ — код дня и информационный план строки.
+
+Запись валидируется ТЕМИ ЖЕ доменными проверочными функциями через application
+(save_timesheet_day, v7.1/F-16): код существует в CFG-DAY-CODES; carries_hours = Да ⇒
+план задан, > 0 и кратен 15; carries_hours = Нет ⇒ часы запрещены; для значения с часами
+есть строка CFG-WINDOWS. Редактируемость: незакрытый период — свободно; последний
+закрытый — с предупреждением «изменения попадут в результат только через пересчёт»;
+более ранние закрытые — только чтение. После сохранения дня D — перегенерация Графика
+дня D (16.3). Пересчёт часов не запускается (16.1 п.2).
+
+Циклы графика — инструмент заполнения Табеля (решение владельца 11.10.2026)."""
 from __future__ import annotations
 
 import datetime as dt
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,64 +22,88 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit
 from ..db import get_db
-from ..engine.adapters.sql_closings import SqlSettlementStore
-from ..engine.adapters.sql_settings import SqlSettingsAdapter
-from ..engine.adapters.sql_timesheet import EMPTY_DAY_CODE
-from ..engine.application.periods import month_period
-from ..engine.domain.day_card.hours_text import hours_text
-from ..engine.domain.types.errors import ConfigError
-from ..models import Employee, TabelDay, utcnow
+from ..engine.adapters.sql_settings import SqlSettingsAdapter, base_version
+from ..engine.application import timesheet_edit
+from ..engine.application.errors import ApplicationError
+from ..engine.application.months import half_month_period, month_period
+from ..engine.application.schedule_view import rebuild_generated_schedule
+from ..engine.domain.day_card.fmt_hours import fmt_hours
+from ..engine.domain.types.entities import Period
+from ..engine.domain.types.errors import ConfigError, DomainError
+from ..models import Employee, TabelDay
 from ..permissions import principal_permissions, require_perm
-from ..tabel_fill import fill_from_schedule
-from .engine_common import domain_error_text, emp_brief, period_employees
+from ..tabel_fill import fill_timesheet_from_cycles
+from .engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
 
 router = APIRouter(prefix="/api/tabel", tags=["tabel"])
 
 
-def _settings(db: Session, period):
+def _settings(db: Session, period: Period):
     try:
         return SqlSettingsAdapter(db).load(period)
     except ConfigError as exc:
         raise HTTPException(status_code=409, detail=domain_error_text(exc))
 
 
-def _lock_state(db: Session, emp_id: int, period) -> str:
-    """open — можно править; last_closed — можно, но нужен пересчёт; locked — более ранний закрытый."""
-    state = SqlSettlementStore(db).period_state(str(emp_id), period)
-    if not state.closed:
-        return "open"
-    return "locked" if state.next_closed else "last_closed"
+def _granularity(db: Session, period: Period) -> str:
+    return _settings(db, period).period_granularity
+
+
+def _code_titles(db: Session) -> dict[str, str]:
+    """Человеческие подписи кодов CFG-DAY-CODES — данные приложения в payload версии
+    (домен Settings их не знает, 8.4: тексты — слой interface/приложение)."""
+    version = base_version(db, dt.date.today())
+    payload = json.loads(version.payload_json) if version else {}
+    return {code: row.get("title", "") for code, row in payload.get("day_code_policy", {}).items()}
 
 
 @router.get("")
-def get_tabel(year: int, month: int, principal: Principal = Depends(require_perm("tabel.view")),
+def get_tabel(year: int, month: int, half: Optional[int] = None,
+              principal: Principal = Depends(require_perm("tabel.view")),
               db: Session = Depends(get_db)):
-    period = month_period(year, month)
+    granularity = _granularity(db, month_period(year, month))
+    period = (half_month_period(year, month, 2 if half == 2 else 1)
+              if granularity == "half_month" and half else month_period(year, month))
     st = _settings(db, period)
     emps = period_employees(db, period.start, period.end)
     rows = {(r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
         TabelDay.employee_id.in_([e.id for e in emps]), TabelDay.date >= period.start,
         TabelDay.date <= period.end))} if emps else {}
-    days = [period.start + dt.timedelta(days=i) for i in range((period.end - period.start).days + 1)]
+    days = [period.start + dt.timedelta(days=i)
+            for i in range((period.end - period.start).days + 1)]
+    titles = _code_titles(db)
+    p = ports(db, principal)
     out = []
     for e in emps:
-        cells, plan = {}, 0
+        cells, plan, missing = {}, 0, []
         for d in days:
             r = rows.get((e.id, d))
             if r:
-                cells[d.isoformat()] = {"code": r.code, "hours": r.plan_minutes / 60, "source": r.source,
-                                        "note": r.note, "value": f"{r.code} {hours_text(r.plan_minutes)}"
-                                        if st.day_codes.get(r.code) and st.day_codes[r.code].carries_hours else r.code}
+                policy = st.day_code_policy.get(r.code)
+                value = (f"{r.code} {fmt_hours(r.plan_minutes)}"
+                         if policy and policy.carries_hours else r.code)
+                cells[d.isoformat()] = {"code": r.code, "hours": r.plan_minutes / 60,
+                                        "source": r.source, "note": r.note, "value": value}
                 plan += r.plan_minutes
+            else:
+                missing.append(d.isoformat())
+        lock = timesheet_edit.lock_state(str(e.id), period.start, p)
         out.append({"employee": emp_brief(e), "cells": cells, "plan_hours": plan / 60,
-                    "lock": _lock_state(db, e.id, period)})
+                    "missing_days": missing, "lock": lock})
     perms = principal_permissions(db, principal)
-    return {"year": year, "month": month, "days": [d.isoformat() for d in days],
-            "codes": [{"code": p.code, "title": p.title, "carries_hours": p.carries_hours,
-                       "accepts_ut": p.accepts_ut, "counts_in_ut": p.counts_in_ut}
-                      for p in st.day_codes.values()],
-            "values": sorted(st.windows.keys()), "empty_code": EMPTY_DAY_CODE,
+    return {"year": year, "month": month, "half": half, "granularity": granularity,
+            "period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
+            "days": [d.isoformat() for d in days],
+            "codes": [{"code": code, "title": titles.get(code, ""),
+                       "carries_hours": p.carries_hours, "accepts_ut": p.accepts_ut,
+                       "counts_in_ut": p.counts_in_ut, "plan_equals_fact_auto": p.plan_equals_fact_auto}
+                      for code, p in st.day_code_policy.items()],
+            "values": sorted(st.windows.keys()),
             "can_edit": "tabel.edit" in perms, "rows": out}
+
+
+def ports(db: Session, principal: Optional[Principal]):
+    return engine_ports(db, principal, now_utc())
 
 
 class CellIn(BaseModel):
@@ -86,83 +121,89 @@ class BulkIn(BaseModel):
     hours: float = 0
 
 
-def _apply_cell(db: Session, principal: Principal, emp_id: int, day: dt.date, code: str, hours: float,
-                note: str, st) -> Optional[str]:
-    period = month_period(day.year, day.month)
-    lock = _lock_state(db, emp_id, period)
-    if lock == "locked":
-        raise HTTPException(status_code=409, detail=f"{day:%m.%Y}: период закрыт, и следующий уже закрыт — "
-                                                     "править можно только последний закрытый период")
-    code = code.strip()
-    if code and code not in st.day_codes:
-        raise HTTPException(status_code=422, detail=f"Код «{code}» отсутствует в справочнике Т1")
-    minutes = int(round(hours * 60)) if code and st.day_codes[code].carries_hours else 0
-    if code and st.day_codes[code].carries_hours and f"{code} {hours_text(minutes)}" not in st.windows:
-        raise HTTPException(status_code=422, detail=f"Для «{code} {hours_text(minutes)}» нет окна в Т2 — "
-                                                     "добавьте его в настройках движка")
+def _apply_cell(db: Session, principal: Principal, emp_id: int, day: dt.date, code: str,
+                hours: float, note: str) -> Optional[str]:
+    p = ports(db, principal)
+    minutes = int(round(hours * 60)) if code else None
+    try:
+        outcome = timesheet_edit.save_timesheet_day(str(emp_id), day, code.strip(), minutes, p)
+    except ApplicationError as exc:
+        raise HTTPException(status_code=409, detail=domain_error_text(exc))
+    except (DomainError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=domain_error_text(exc))
     row = db.scalar(select(TabelDay).where(TabelDay.employee_id == emp_id, TabelDay.date == day))
-    before = None if row is None else f"{row.code} {row.plan_minutes / 60:g}"
-    if not code:
-        if row is not None:
-            db.delete(row)
-    else:
-        if row is None:
-            row = TabelDay(employee_id=emp_id, date=day)
-            db.add(row)
-        row.code, row.plan_minutes, row.note, row.source = code, minutes, note[:255], "manual"
-        row.updated_by, row.updated_at = principal.user.id, utcnow()
+    if row is not None and note:
+        row.note = note[:255]
     audit(db, principal, "tabel_cell", f"employee:{emp_id}",
-          {"date": day.isoformat(), "before": before, "after": f"{code} {minutes / 60:g}" if code else None})
-    return "Период закрыт — после правки выполните пересчёт в управленческом табеле" if lock == "last_closed" else None
+          {"date": day.isoformat(), "after": f"{code} {hours:g}" if code else None,
+           "manual_dropped": [d_.isoformat() for d_ in outcome.manual_shifts_dropped]})
+    warning = None
+    if outcome.needs_recalculate:
+        warning = "Период закрыт — изменения попадут в результат только через пересчёт"
+    if outcome.manual_shifts_dropped:
+        warning = (warning + "; " if warning else "") + \
+            "Ручные смены удалены: код дня больше не принимает коды УТ"
+    return warning
 
 
 @router.put("/cell")
 def put_cell(payload: CellIn, principal: Principal = Depends(require_perm("tabel.edit")),
              db: Session = Depends(get_db)):
-    st = _settings(db, month_period(payload.date.year, payload.date.month))
-    warn = _apply_cell(db, principal, payload.employee_id, payload.date, payload.code, payload.hours, payload.note, st)
+    warning = _apply_cell(db, principal, payload.employee_id, payload.date, payload.code,
+                          payload.hours, payload.note)
     db.commit()
-    return {"ok": True, "warning": warn}
+    return {"ok": True, "warning": warning}
 
 
 @router.post("/bulk")
-def bulk(payload: BulkIn, principal: Principal = Depends(require_perm("tabel.edit")), db: Session = Depends(get_db)):
-    warns = set()
+def bulk(payload: BulkIn, principal: Principal = Depends(require_perm("tabel.edit")),
+         db: Session = Depends(get_db)):
+    warns, errors = set(), []
     for d in payload.dates:
-        st = _settings(db, month_period(d.year, d.month))
         for eid in payload.employee_ids:
-            w = _apply_cell(db, principal, eid, d, payload.code, payload.hours, "", st)
-            if w:
-                warns.add(w)
+            try:
+                w = _apply_cell(db, principal, eid, d, payload.code, payload.hours, "")
+                if w:
+                    warns.add(w)
+            except HTTPException as exc:
+                errors.append({"employee_id": eid, "date": d.isoformat(), "detail": exc.detail})
     db.commit()
-    return {"ok": True, "cells": len(payload.dates) * len(payload.employee_ids), "warnings": sorted(warns)}
+    return {"ok": not errors, "cells": len(payload.dates) * len(payload.employee_ids),
+            "warnings": sorted(warns), "errors": errors}
 
 
 class FillIn(BaseModel):
     year: int
     month: int
     employee_ids: Optional[list[int]] = None
-    overwrite: str = "empty"      # empty — только пустые; schedule — и заполненные из графика; all — все
+    overwrite: bool = False      # True — перезаписывать немарочные ячейки
 
 
-@router.post("/fill-from-schedule")
-def fill(payload: FillIn, principal: Principal = Depends(require_perm("tabel.edit")), db: Session = Depends(get_db)):
+@router.post("/fill-from-cycles")
+def fill(payload: FillIn, principal: Principal = Depends(require_perm("tabel.edit")),
+         db: Session = Depends(get_db)):
+    """Циклы графика заполняют Табель (инструмент ввода, решение владельца); График
+    перегенерируется из Табеля (16.3). Закрытые периоды не трогаются (16.5)."""
     period = month_period(payload.year, payload.month)
     st = _settings(db, period)
+    p = ports(db, principal)
     emps = [e for e in period_employees(db, period.start, period.end, payload.employee_ids)
-            if _lock_state(db, e.id, period) != "locked"]
-    mode = {"empty": False, "schedule": True, "all": "all"}.get(payload.overwrite, False)
-    res = fill_from_schedule(db, emps, period.start, period.end, st, mode, principal.user.id)
-    audit(db, principal, "tabel_fill_from_schedule", f"{payload.year}-{payload.month:02d}",
-          {"employees": [e.id for e in emps], "overwrite": payload.overwrite, **{k: res[k] for k in ("written", "skipped")}})
+            if timesheet_edit.lock_state(str(e.id), period.start, p) != "locked"]
+    res = fill_timesheet_from_cycles(db, emps, period.start, period.end, st,
+                                     payload.overwrite, principal.user.id)
+    for e in emps:
+        rebuild_generated_schedule(str(e.id), period, p)
+    audit(db, principal, "tabel_fill_from_cycles", f"{payload.year}-{payload.month:02d}",
+          {"employees": len(emps), "overwrite": payload.overwrite,
+           **{k: res[k] for k in ("written", "skipped")}})
     db.commit()
     return res
 
 
 def ensure_tabel_filled(db: Session, first: dt.date, last: dt.date) -> int:
-    """Первичное заполнение Табеля из Графика для пустых ячеек (миграция и демо-данные)."""
+    """Первичное заполнение Табеля из циклов (миграция и демо-данные)."""
     period = month_period(first.year, first.month)
     st = SqlSettingsAdapter(db).load(period)
     emps = list(db.scalars(select(Employee).where(Employee.deleted_at.is_(None))))
-    res = fill_from_schedule(db, emps, first, last, st, False, None)
+    res = fill_timesheet_from_cycles(db, emps, first, last, st, False, None)
     return res["written"]

@@ -336,3 +336,42 @@ def migrate_night_cars() -> None:
                 WHERE NOT EXISTS (SELECT 1 FROM night_area_sections s
                                   WHERE s.report_id = r.id AND s.category = 'cars')
             """), {"name": CAR_AREA_NAME})
+
+
+def migrate_engine_v7() -> None:
+    """Миграция на движок v7.1 (base 15 «Миграция прототипа» + решение владельца:
+    расчётные данные v4 были тестовыми — удаляются).
+
+    * новые таблицы schedule_shifts / schedule_absences создаёт create_all;
+    * bank_adjustments.reason_code — маркер OPENING_SEED (v7.1/R37);
+    * period_closings.flags_json — снимок флагов при закрытии (7.2);
+    * legacy-таблицы timesheet_rows и schedule_entries удаляются вместе со старым движком;
+    * расчётные данные (закрытия, переносы, версии справочников, модификаторы, Табель)
+      очищаются ОДИН раз (маркер в settings) — демо-база пересоздаётся сидом.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    existing = set(insp.get_table_names())
+    with engine.begin() as con:
+        cols = {c["name"] for c in insp.get_columns("bank_adjustments")} \
+            if "bank_adjustments" in existing else set()
+        if "reason_code" not in cols and "bank_adjustments" in existing:
+            con.execute(text("ALTER TABLE bank_adjustments ADD COLUMN reason_code VARCHAR(32) DEFAULT ''"))
+        cols = {c["name"] for c in insp.get_columns("period_closings")} \
+            if "period_closings" in existing else set()
+        if "flags_json" not in cols and "period_closings" in existing:
+            con.execute(text("ALTER TABLE period_closings ADD COLUMN flags_json TEXT DEFAULT '{}'"))
+        for legacy in ("timesheet_rows", "schedule_entries"):
+            if legacy in existing:
+                con.execute(text(f"DROP TABLE IF EXISTS {legacy}"))
+        marker = con.execute(text(
+            "SELECT value FROM settings WHERE key = 'engine_v7_reset'")).scalar()
+        if marker is None and "settings" in existing:
+            for table in ("period_closings", "deferred_carry", "engine_settings_versions",
+                          "day_modifiers", "tabel_days", "schedule_shifts", "schedule_absences"):
+                if table in existing or table in set(insp.get_table_names()):
+                    con.execute(text(f"DELETE FROM {table}"))
+            con.execute(text(
+                "INSERT INTO settings (key, value, description) VALUES "
+                "('engine_v7_reset', '1', 'Движок v7.1: расчётные данные v4 были тестовыми — очищены')"))

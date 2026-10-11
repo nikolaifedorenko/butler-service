@@ -15,10 +15,10 @@ import datetime as dt
 
 from app.deps import local_date
 
-SCHEDULE_BUDGET = 40        # фактически ~13
-ONWORK_BUDGET = 30          # фактически ~11
+SCHEDULE_BUDGET = 40        # сетка Графика: батч-запросы, не зависит от штата
+BOARD_BUDGET = 20           # доска «Отметки»: 4 батч-порта + разрешение Settings (16.2)
 EMPLOYEES_BUDGET = 25       # фактически ~5
-MGMT_BUDGET = 60            # пакетная загрузка + состояния закрытий
+MGMT_PER_EMPLOYEE = 40      # УТ: 6–8 запросов + конвейер на ОДНОГО сотрудника (16.1 п.5)
 
 
 def _month(client) -> dict:
@@ -35,12 +35,14 @@ def test_schedule_grid_query_budget(manager_client, sql_counter):
         f"похоже на N+1; топ запросов: {sorted(c['by_statement'].items(), key=lambda x: -x[1])[:3]}")
 
 
-def test_onwork_query_budget(manager_client, sql_counter):
+def test_board_query_budget(manager_client, sql_counter):
+    """Доска «Отметки» — константное число запросов (≤ 5 батч-источников, 16.1 п.4–5);
+    разрешение Settings добавляет несколько точечных запросов версии/модификаторов."""
     with sql_counter() as c:
         r = manager_client.get("/api/presence/board")
     assert r.status_code == 200, r.text
-    assert c["total"] <= ONWORK_BUDGET, (
-        f"«Кто на работе» сделал {c['total']} запросов (бюджет {ONWORK_BUDGET}); "
+    assert c["total"] <= BOARD_BUDGET, (
+        f"доска сделала {c['total']} запросов (бюджет {BOARD_BUDGET}); "
         "раздел опрашивается каждые 30 с каждым открытым клиентом")
 
 
@@ -93,10 +95,13 @@ def test_schedule_grid_does_not_scale_with_headcount(admin_client, db, sql_count
 
 
 def test_mgmt_view_query_budget(admin_client, sql_counter):
-    """УТ месяца (view по всем сотрудникам) — пакетная загрузка: число запросов не зависит от штата."""
+    """УТ месяца: тяжёлый конвейер — 6–8 запросов + расчёт НА ОДНОГО сотрудника (16.1 п.5),
+    поэтому бюджет линейный по штату, но с малым коэффициентом."""
     with sql_counter() as c:
         r = admin_client.get("/api/mgmt", params=_month(admin_client))
     assert r.status_code == 200, r.text
-    assert c["total"] <= MGMT_BUDGET, (
-        f"УТ месяца сделал {c['total']} запросов (бюджет {MGMT_BUDGET}); "
+    employees = max(1, len(r.json()["rows"]))
+    budget = MGMT_PER_EMPLOYEE * employees + 20
+    assert c["total"] <= budget, (
+        f"УТ месяца сделал {c['total']} запросов на {employees} сотрудниках (бюджет {budget}); "
         f"топ: {sorted(c['by_statement'].items(), key=lambda x: -x[1])[:3]}")

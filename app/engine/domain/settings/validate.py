@@ -1,31 +1,32 @@
+"""validate_settings — композиция проверок уровня 1 (5.3): все нарушения сообщаются
+разом (ConfigError). Вход — только Settings; проверки, требующие строк Табеля,
+здесь запрещены (12.21)."""
 from __future__ import annotations
 
 from ..types.errors import ConfigError
-from .checks.v1 import check_v1
-from .checks.v2 import check_v2
-from .checks.v3 import check_v3
-from .checks.v4 import check_v4
-from .checks.v5 import check_v5
-from .checks.v6 import check_v6
-from .checks.v7 import check_v7
-from .checks.v8 import check_v8
-from .checks.v9 import check_v9
-from .checks.v10 import check_v10
-from .checks.v11 import check_v11
-from .checks.v_gr import check_v_gr
+from .checks.cascade_full import check_cascade_full
+from .checks.categories_cover import check_categories_cover
+from .checks.codes_exist import check_codes_exist
+from .checks.defaults import check_defaults
+from .checks.grid import check_grid
+from .checks.modifier_conflict import check_modifier_conflict
+from .checks.modifier_scope import check_modifier_scope
+from .checks.modifier_type import check_modifier_type
+from .checks.placement_full import check_placement_full
+from .checks.step_divides_60 import check_step_divides_60
+from .checks.weights_positive import check_weights_positive
+from .checks.window_bounds import check_window_bounds
+from .checks.window_key import check_window_key
+from .checks.window_plan import check_window_plan
 from .types import Settings
 
-RULES = (check_v1, check_v2, check_v3, check_v4, check_v5, check_v6, check_v7,
-         check_v8, check_v9, check_v10, check_v11, check_v_gr)
+CHECKS = (check_window_plan, check_window_bounds, check_window_key, check_categories_cover,
+          check_codes_exist, check_cascade_full, check_weights_positive, check_step_divides_60,
+          check_grid, check_placement_full, check_defaults, check_modifier_scope,
+          check_modifier_type, check_modifier_conflict)
 
 
-def _collect(st: Settings) -> list:
-    return [v for rule in RULES for v in rule(st)]
-
-
-def validate_settings(st: Settings) -> Settings:
-    """Все нарушения В1–В11, В-Гр сообщаются разом (ConfigError)."""
-    violations = _collect(st)
+def validate_settings(st: Settings) -> None:
+    violations = [v for check in CHECKS for v in check(st)]
     if violations:
         raise ConfigError(violations)
-    return st

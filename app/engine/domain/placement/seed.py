@@ -1,3 +1,8 @@
+"""seed_codes(cards, days, st) — собственные коды дней в аккумулятор (6.3, стадия 6).
+Блок принимающего оплачиваемого дня получает placed_day = source_day (занимает ёмкость
+раньше переносов); иначе placed_day = None (5.2)."""
+from __future__ import annotations
+
 import datetime as dt
 from typing import Mapping, Sequence
 
@@ -9,7 +14,6 @@ from .codes import Codes
 
 
 def seed_codes(cards: Sequence[DayCard], days: Mapping[dt.date, Day], st: Settings) -> Codes:
-    """Собственные коды дней; у принимающего оплачиваемого дня placed_day = source_day."""
     codes = Codes()
     for card in cards:
         placed = card.day if receiver_ok(days[card.day], st) else None

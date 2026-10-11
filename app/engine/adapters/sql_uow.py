@@ -1,4 +1,4 @@
-"""UnitOfWork поверх сессии SQLAlchemy: commit при успехе, rollback при исключении."""
+"""UnitOfWork поверх сессии SQLAlchemy (7.3): commit при успехе, rollback при исключении."""
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ class SqlUnitOfWork:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        if exc_type is None:
-            self.db.commit()
-        else:
+        if exc_type is not None:
             self.db.rollback()
+            return
+        self.db.commit()
