@@ -11,7 +11,7 @@ from ..base_schedule import DEFAULT_BASE, load_base_config, save_base_config
 from ..db import get_db
 from ..deps import local_date
 from ..doc_templates import load_doc_templates, save_doc_templates
-from ..models import Employee, PeriodClosing, Punch, ScheduleEntry, Setting, TabelDay, User
+from ..models import Employee, PeriodClosing, Punch, ScheduleShift, Setting, TabelDay, User
 from ..schedule_helpers import DEFAULT_RULES, load_rules, rule_options
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -26,7 +26,7 @@ def get_settings_api(principal: Principal = Depends(require_manager), db: Sessio
     counts = {
         "employees": db.scalar(select(func.count(Employee.id)).where(Employee.active.is_(True))) or 0,
         "users": db.scalar(select(func.count(User.id))) or 0,
-        "schedule_entries": db.scalar(select(func.count(ScheduleEntry.id))) or 0,
+        "schedule_shifts": db.scalar(select(func.count(ScheduleShift.id))) or 0,
         "punches": db.scalar(select(func.count(Punch.id))) or 0,
         "tabel_days": db.scalar(select(func.count(TabelDay.id))) or 0,
         "period_closings": db.scalar(select(func.count(PeriodClosing.id))) or 0,

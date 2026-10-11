@@ -1,3 +1,8 @@
+"""TimesheetPort (2.6): ровно одна строка на каждый день периода; UTC-независимо.
+Вызывается ПОЛНЫМ запрошенным периодом даже при сужении до трудоустройства (v7/R27) —
+строки вне трудоустройства отбраковывает домен (CHK-DAYS-IN-PERIOD, EX-55 к.1)."""
+from __future__ import annotations
+
 from typing import Protocol, Sequence
 
 from ..domain.types.entities import Day, Period

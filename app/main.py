@@ -19,6 +19,7 @@ from .api import (
     doublepay,
     employees,
     engine_settings_api,
+    fact_api,
     mgmt_api,
     night_api,
     photos_api,
@@ -31,7 +32,7 @@ from .api import (
 from .config import settings
 from .db import Base, SessionLocal, engine
 from .deps import now_local
-from .migrations import migrate_db, migrate_night_cars, seed_statement_kinds
+from .migrations import migrate_db, migrate_engine_v7, migrate_night_cars, seed_statement_kinds
 from .seed import seed_if_empty
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -41,6 +42,7 @@ def init_db() -> None:
     """Создать таблицы, прогнать миграцию и заполнить демо-данными при первом запуске."""
     Base.metadata.create_all(bind=engine)
     migrate_db()
+    migrate_engine_v7()
     seed_statement_kinds()
     db = SessionLocal()
     try:
@@ -100,6 +102,7 @@ app.include_router(punches.router)
 app.include_router(tabel_api.router)
 app.include_router(mgmt_api.router)
 app.include_router(presence_api.router)
+app.include_router(fact_api.router)
 app.include_router(access_api.router)
 app.include_router(audit_api.router)
 app.include_router(engine_settings_api.router)

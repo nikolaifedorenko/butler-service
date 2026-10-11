@@ -14,7 +14,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const BASE = process.argv[2] || 'http://127.0.0.1:8141';
 const LOGIN = process.argv[3] || 'gromova';
-const VIEWS = (process.argv[4] || 'schedule,onwork,attendance,timesheet,employees,me,night,cars,settings').split(',');
+const VIEWS = (process.argv[4] || 'schedule,marks,fact,timesheet,mgmt,employees,me,night,cars,settings').split(',');
 
 const consoleErrors = [];
 const vc = new VirtualConsole();

@@ -11,8 +11,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import ScheduleEntry, Setting, ShiftType
-from .shiftrev import ShiftCatalog, view_at
+from .models import Setting, ShiftType
 
 # прочие правила объекта, не относящиеся к расчёту часов
 DEFAULT_RULES = {
@@ -70,39 +69,7 @@ def shift_window(shift: Optional[ShiftType], date: dt.date, rules: Optional[dict
     return start, at(date, shift.end_time, plus)
 
 
-def entry_shift(db: Session, entry: Optional[ScheduleEntry], catalog: Optional[ShiftCatalog] = None):
-    """Смена ячейки — такой, какой она была в дату ячейки (история словаря смен)."""
-    if entry is None:
-        return None
-    rel = catalog.by_id(entry.shift_type_id) if catalog is not None else None
-    if rel is None:
-        rel = entry.shift_type
-        if rel is None or rel.id != entry.shift_type_id:
-            rel = db.get(ShiftType, entry.shift_type_id)
-    return view_at(db, rel, entry.date, catalog=catalog)
 
-
-def authorized_gap(entry: Optional[ScheduleEntry], date: dt.date) -> Optional[tuple[dt.datetime, dt.datetime]]:
-    """Согласованное отсутствие внутри смены («отпросился с 14:00 до 16:00»); может переходить полночь."""
-    if entry is None:
-        return None
-    ft, ut = (entry.from_time or "").strip(), (entry.until_time or "").strip()
-    if not ft or not ut:
-        return None
-    try:
-        f_h, f_m = (int(x) for x in ft.split(":"))
-        u_h, u_m = (int(x) for x in ut.split(":"))
-    except ValueError:
-        return None
-    start = dt.datetime(date.year, date.month, date.day, f_h, f_m)
-    plus = 1 if (u_h * 60 + u_m) <= (f_h * 60 + f_m) else 0
-    end = dt.datetime(date.year, date.month, date.day, u_h, u_m) + dt.timedelta(days=plus)
-    return (start, end) if end > start else None
-
-
-def gap_hours(entry: Optional[ScheduleEntry], date: dt.date) -> float:
-    gap = authorized_gap(entry, date)
-    return round((gap[1] - gap[0]).total_seconds() / 3600.0, 2) if gap else 0.0
 
 
 def month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:

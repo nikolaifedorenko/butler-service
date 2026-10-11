@@ -1,10 +1,16 @@
-"""PunchPort поверх таблицы punches (Punch.ts — локальное naive-время объекта)."""
+"""PunchPort поверх таблицы punches (Punch.ts — локальное naive-время объекта).
+
+Обязанности адаптера (7.4): UTC-aware моменты; kind из источника; стабильный порядок
+(ts, id); все отметки одного сотрудника; отметок позже now нет; допустимое чередование —
+первая линия (санация источника: повторный «пришёл» отбрасывается, повторный «ушёл»
+заменяется предыдущим); тип по позиции не восстанавливается, синтетические отметки
+не подмешиваются. Вторая линия — ядро pair_marks (CHK-PUNCH-SEQUENCE)."""
 from __future__ import annotations
 
 import datetime as dt
 from typing import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Punch
@@ -17,18 +23,18 @@ def _mark(p: Punch) -> Mark:
 
 
 def sanitize(marks: Sequence[Mark], opening: Mark | None) -> list[Mark]:
-    """Обязанность адаптера (7.4): допустимое чередование. Повторный «пришёл» без «ушёл»
-    отбрасывается (держим первый приход), повторный «ушёл» заменяет предыдущий (держим последний)."""
+    """Первая линия контроля чередования (7.4 п.4): исправление данных — ответственность
+    адаптера и источника (1.3); домен последовательность не чинит (R31)."""
     out: list[Mark] = []
-    last_kind = opening.kind if opening else "out"
+    last_kind = opening.kind if opening is not None else "out"
     for m in marks:
         if m.kind == last_kind == "in":
-            continue
+            continue                      # повторный «пришёл» — держим первый
         if m.kind == last_kind == "out" and out:
-            out[-1] = m
+            out[-1] = m                   # повторный «ушёл» — держим последний
             continue
         if m.kind == last_kind == "out":
-            continue
+            continue                      # «ушёл» без открытой сессии
         out.append(m)
         last_kind = m.kind
     return out
@@ -39,18 +45,42 @@ class SqlPunchAdapter:
         self.db, self.now = db, now
 
     def _rows(self, employee_id: str, lo: dt.datetime | None, hi: dt.datetime) -> list[Punch]:
-        q = select(Punch).where(Punch.employee_id == emp_pk(employee_id), Punch.ts < utc_to_local_naive(hi))
+        q = select(Punch).where(Punch.employee_id == emp_pk(employee_id),
+                                Punch.ts < utc_to_local_naive(hi),
+                                Punch.ts <= utc_to_local_naive(self.now))
         if lo is not None:
             q = q.where(Punch.ts >= utc_to_local_naive(lo))
         return list(self.db.scalars(q.order_by(Punch.ts, Punch.id)))
 
-    def marks_between(self, employee_id: str, from_utc: dt.datetime, to_utc: dt.datetime) -> list[Mark]:
+    def marks_between(self, employee_id: str, from_utc: dt.datetime,
+                      to_utc: dt.datetime) -> list[Mark]:
+        """[from, to) — отметка ровно на границе попадает ровно в одну выборку (2.6, v7/R7)."""
         hi = min(to_utc, self.now + dt.timedelta(microseconds=1))
         marks = [_mark(p) for p in self._rows(employee_id, from_utc, hi)]
         return sanitize(marks, self.last_mark_before(employee_id, from_utc))
 
     def last_mark_before(self, employee_id: str, at_utc: dt.datetime) -> Mark | None:
-        p = self.db.scalar(select(Punch).where(Punch.employee_id == emp_pk(employee_id),
-                                               Punch.ts < utc_to_local_naive(at_utc))
-                           .order_by(Punch.ts.desc(), Punch.id.desc()).limit(1))
+        """Строго at < at_utc (2.6)."""
+        p = self.db.scalar(select(Punch).where(
+            Punch.employee_id == emp_pk(employee_id),
+            Punch.ts < utc_to_local_naive(at_utc),
+            Punch.ts <= utc_to_local_naive(self.now))
+            .order_by(Punch.ts.desc(), Punch.id.desc()).limit(1))
         return _mark(p) if p else None
+
+    def first_mark_after(self, employee_id: str, at_utc: dt.datetime) -> Mark | None:
+        """Первая отметка с at ≥ at_utc (2.6) — закрывает сессию за правой границей (16.4)."""
+        p = self.db.scalar(select(Punch).where(
+            Punch.employee_id == emp_pk(employee_id),
+            Punch.ts >= utc_to_local_naive(at_utc),
+            Punch.ts <= utc_to_local_naive(self.now))
+            .order_by(Punch.ts, Punch.id).limit(1))
+        return _mark(p) if p else None
+
+    def last_marks(self, at_utc: dt.datetime) -> list[Mark]:
+        """Батч (16.2): по одной последней отметке на сотрудника с at ≤ at_utc, один запрос."""
+        hi = utc_to_local_naive(min(at_utc, self.now))
+        latest = select(func.max(Punch.id)).where(Punch.ts <= hi).group_by(Punch.employee_id)
+        rows = self.db.scalars(select(Punch).where(Punch.id.in_(latest))
+                               .order_by(Punch.ts, Punch.id))
+        return [_mark(p) for p in rows]

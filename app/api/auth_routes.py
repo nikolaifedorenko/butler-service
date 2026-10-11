@@ -10,8 +10,7 @@ from ..auth import Principal, audit, current_principal, require_manager
 from ..config import settings
 from ..db import get_db
 from ..deps import local_date
-from ..models import Employee, ScheduleEntry, User
-from ..schedule_helpers import shift_window
+from ..models import Employee, User
 from ..security import create_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -76,28 +75,16 @@ def me(principal: Principal = Depends(current_principal), db: Session = Depends(
     data = {"user": principal.to_dict(), "today": None,
             "permissions": sorted(principal_permissions(db, principal))}
     if emp:
+        from .punches import _plan_for_date, _to_local
         today = local_date()
-        from ..base_schedule import base_shift
-
-        entry = db.scalar(select(ScheduleEntry).where(
-            ScheduleEntry.employee_id == emp.id, ScheduleEntry.date == today))
-        rules = None
-        shift = entry.shift_type if entry else None
-        if shift is None:
-            shift = base_shift(db, emp, today)
-        p_start, p_end = shift_window(shift, today, rules)
+        shift, p_start, p_end, _plan_date, subs = _plan_for_date(db, emp.id, today)
         data["today"] = {
             "date": today.isoformat(),
-            "shift": None if not shift else {
-                "id": shift.id, "code": shift.code, "name": shift.name, "kind": shift.kind,
-                "display_code": shift.display_code, "color": shift.color,
-                "start": shift.start_time, "end": shift.end_time,
-                "overnight": shift.overnight, "planned_hours": shift.planned_hours,
-                "is_default_off": shift.is_default_off,
-            },
-            "note": entry.note if entry else "",
+            "shift": shift,      # отрезок Графика (generated/manual) либо None
             "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
             "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
+            "expected": [[_to_local(a).strftime("%H:%M"), _to_local(b).strftime("%H:%M")]
+                         for a, b in subs],
         }
     return data
 

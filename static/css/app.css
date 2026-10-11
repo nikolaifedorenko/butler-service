@@ -410,6 +410,8 @@ td.cell.today { box-shadow: inset 0 0 0 2px rgba(203, 176, 91, .55); }
 .cellbtn.inactive, .cellbtn.inactive:hover { background: #ece7df; color: #a2968a; cursor: default; filter: none; }
 .cellbtn .partial-mark { position: absolute; top: 3px; left: 4px; font-size: 8.5px; font-weight: 800;
   color: var(--info); background: rgba(255, 255, 255, .85); border-radius: 3px; padding: 0 3px; }
+.cellbtn .manual-mark { position: absolute; top: 3px; right: 4px; font-size: 8.5px; font-weight: 800;
+  color: #4457c9; background: rgba(255, 255, 255, .85); border-radius: 3px; padding: 0 3px; }
 
 tr.emp-row:hover td.name-cell { background: #faf6f0; }
 

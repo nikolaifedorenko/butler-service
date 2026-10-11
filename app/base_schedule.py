@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .groups import GROUP_META, normalize_group
-from .models import BlockAssignment, Employee, ScheduleEntry, Setting, ShiftType
+from .models import BlockAssignment, Employee, Setting, ShiftType
 from .schedule_patterns import parse_custom_cycle
 from .shiftrev import ShiftCatalog, find_by_code, view_at
 
@@ -277,49 +277,4 @@ def base_shift(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = 
     return view_at(db, shift, date, catalog=catalog)
 
 
-def effective_entry_shift(db: Session, emp_id: int, date: dt.date, emp: Optional[Employee] = None,
-                          index: Optional[BlockIndex] = None, catalog: Optional[ShiftCatalog] = None,
-                          entry_map: Optional[dict] = None, cfg: Optional[dict] = None,
-                          employed: Optional[bool] = None):
-    """
-    Пара (ячейка графика, эффективная смена) для дня:
-    ручная ячейка (исключение) важнее базового цикла.
 
-    entry_map — предзагруженные ячейки {(employee_id, date): ScheduleEntry}: нужен
-    в циклах (сетка месяца, пересчёт диапазона), иначе на каждую ячейку уходит запрос.
-    """
-    if entry_map is not None:
-        entry = entry_map.get((emp_id, date))
-    else:
-        entry = db.scalar(select(ScheduleEntry).where(
-            ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == date))
-    if entry is not None:
-        from .schedule_helpers import entry_shift
-        return entry, entry_shift(db, entry, catalog=catalog)
-    if emp is None:
-        emp = db.get(Employee, emp_id)
-    if emp is None:
-        return None, None
-    return None, base_shift(db, emp, date, cfg=cfg, employed=employed,
-                            index=index, catalog=catalog)
-
-
-def partial_window(entry: Optional[ScheduleEntry],
-                   db: Optional[Session] = None) -> Optional[tuple[str, str, Optional[ShiftType]]]:
-    """Согласованное окно частичного отсутствия в ячейке: (с, по, причина).
-
-    `db` нужен только как запасной путь, если связь partial_shift не подгружена
-    (или запись словаря удалена). Раньше здесь использовалась переменная `db`,
-    которой в сигнатуре не было, — NameError на любой ячейке с partial_shift_id
-    и незагруженной связью.
-    """
-    if entry is None:
-        return None
-    if not (entry.from_time and entry.until_time):
-        return None
-    reason = None
-    if entry.partial_shift_id:
-        reason = entry.partial_shift
-        if reason is None and db is not None:
-            reason = db.get(ShiftType, entry.partial_shift_id)
-    return entry.from_time, entry.until_time, reason

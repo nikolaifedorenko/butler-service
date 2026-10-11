@@ -9,6 +9,8 @@
 const ICONS = {
   schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   attendance: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
+  marks: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="19" cy="6" r="2.4" fill="currentColor"/></svg>',
+  fact: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M3.5 9.5h3M17.5 14.5h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   onwork: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="12" cy="12" r="3.6" fill="currentColor"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   timesheet: '<svg viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   employees: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 20c.9-3.3 3.2-5 6-5s5.1 1.7 6 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
@@ -27,8 +29,8 @@ function can(perm) { return (state.perms || []).includes(perm); }
 function visibleTabs() {
   const all = [
     { id: 'schedule', title: 'График', perm: 'schedule.view' },
-    { id: 'onwork', title: 'Кто на работе', perm: 'presence.view' },
-    { id: 'attendance', title: 'Посещения', perm: 'presence.view' },
+    { id: 'marks', title: 'Отметки', perm: 'presence.view' },
+    { id: 'fact', title: 'Факт', perm: 'presence.view' },
     { id: 'timesheet', title: 'Табель', perm: 'tabel.view' },
     { id: 'mgmt', title: 'Управленческий табель', perm: 'mgmt.view' },
     { id: 'employees', title: 'Сотрудники', perm: 'employees.view' },
@@ -91,8 +93,8 @@ function navigate(view) {
      раньше здесь был `window[fnName]`, и потерянный loadNight не видел ни один
      инструмент — интерфейс просто молча пустел. */
   const LOADERS = {
-    schedule: () => loadSchedule(), onwork: () => loadPresence('onwork'),
-    attendance: () => loadPresence('attendance'), timesheet: () => loadTabel(),
+    schedule: () => loadSchedule(), marks: () => loadMarks(),
+    fact: () => loadFact(), timesheet: () => loadTabel(),
     mgmt: () => loadMgmt(), access: () => loadAccess(), audit: () => loadAudit(),
     employees: () => loadEmployees(), me: () => loadMe(),
     night: () => loadNight(), cars: () => loadCars(),
@@ -158,7 +160,7 @@ async function loadPerms() {
 
 function startView() {
   const tabs = visibleTabs().map(t => t.id);
-  return ['schedule', 'onwork', 'me'].find(v => tabs.includes(v)) || tabs[0] || 'me';
+  return ['schedule', 'marks', 'me'].find(v => tabs.includes(v)) || tabs[0] || 'me';
 }
 
 async function enterApp() {
@@ -228,11 +230,10 @@ function scheduleShell() {
   return `
   <div class="page-head">
     <div>
-      <h2>График смен</h2>
+      <h2>График</h2>
       <div class="sub">${ro
         ? 'План смен на месяц — так же, как его видит менеджер. Правки вносит менеджер'
-        : `Смены 1/2 считаются базовым циклом объекта (Настройки); у «Пятидневки» и «Других смен»
-        шаблон задаётся в карточке сотрудника. Вручную назначают только отсутствия и исключения`}</div>
+        : 'График генерируется из Табеля по окнам CFG-WINDOWS; ручная смена заменяет генерацию дня. «Пропуск/отлучка» — согласованное отсутствие: смена показывается разрезанной, на часы не влияет'}</div>
     </div>
     <div class="spacer"></div>
     <div class="month-nav">
@@ -247,14 +248,6 @@ function scheduleShell() {
 
   <div class="grid-tools">
     <input id="f-text" type="text" placeholder="Поиск по ФИО…" style="max-width:210px">
-    <div class="seg" id="color-mode" title="Чем красить рабочие ячейки">
-      <button data-mode="shift">Цвет смен</button>
-      <button data-mode="position">Цвет должностей</button>
-    </div>
-    ${ro ? '' : `<div class="seg" id="grid-mode" title="План — как по графику; Факт — реальное присутствие по отметкам">
-      <button data-mode="plan">План</button>
-      <button data-mode="fact">Факт</button>
-    </div>`}
     <div class="spacer" style="flex:1"></div>
     ${ro ? '' : `<button class="btn btn-sm" id="btn-range">Назначить отсутствие</button>
     <button class="btn btn-sm" id="btn-clear">Обнулить месяц</button>
@@ -276,44 +269,23 @@ function bindScheduleToolbar() {
   $('#m-prev').onclick = () => shiftMonth(-1);
   $('#m-next').onclick = () => shiftMonth(1);
   $('#m-today').onclick = () => { const d = new Date(); state.year = d.getFullYear(); state.month = d.getMonth() + 1; loadSchedule(); };
-  const ro = !can('schedule.edit');
-  if (ro) state.gridMode = 'plan';   // «Факт» — данные менеджера, у батлера их нет в ответе
   $('#btn-print').onclick = printGrid;
   $('#btn-pdf').onclick = () => downloadBlob(`/api/schedule/pdf?year=${state.year}&month=${state.month}`, 'grafik.pdf');
   if ($('#btn-xlsx')) $('#btn-xlsx').onclick = () => downloadBlob(`/api/schedule/xlsx?year=${state.year}&month=${state.month}`, 'grafik.xlsx');
   if ($('#btn-range')) $('#btn-range').onclick = openRangeModal;
   if ($('#btn-clear')) $('#btn-clear').onclick = () => confirmDialog(
     'Обнулить месяц?',
-    `Ручные правки за ${MONTHS[state.month - 1]} ${state.year} (отпуска, больничные, ночные, подмены) будут удалены,
-     месяц вернётся к базовому циклу объекта. История табеля по отметкам сохранится.`,
+    `Строки Табеля и сгенерированный График за ${MONTHS[state.month - 1]} ${state.year} будут удалены
+     (месяц вернётся к пустому Табелю; заполните его из циклов во вкладке «Табель»).
+     Закрытые периоды не трогаются.`,
     async () => {
       const r = await api('/api/schedule/clear-month', { method: 'POST', body: { year: state.year, month: state.month } });
-      toast(`График обнулён: удалено ${r.deleted} ячеек`, 'ok');
+      toast(`Очищено строк Табеля: ${r.cleared}`, 'ok');
       loadSchedule();
     });
 
   $('#f-text').value = state.filterText;
   $('#f-text').oninput = e => { state.filterText = e.target.value; renderGrid(); };
-
-  $$('#color-mode button').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === state.colorMode);
-    b.onclick = () => {
-      state.colorMode = b.dataset.mode;
-      localStorage.setItem('tt_color_mode', state.colorMode);
-      $$('#color-mode button').forEach(x => x.classList.toggle('active', x === b));
-      renderGrid();
-    };
-  });
-
-  $$('#grid-mode button').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === state.gridMode);
-    b.onclick = () => {
-      state.gridMode = b.dataset.mode;
-      localStorage.setItem('tt_grid_mode', state.gridMode);
-      $$('#grid-mode button').forEach(x => x.classList.toggle('active', x === b));
-      renderGrid();
-    };
-  });
 }
 
 const GROUP_ORDER_UI = ['Смена 1', 'Смена 2', 'Пятидневка', 'Другие смены'];
@@ -378,17 +350,18 @@ function renderGrid() {
     if (state.scrollToToday) { state.scrollToToday = false; scrollGridToToday(); }
   }
 
-  const shGroups = { work: [], absence: [] };
-  state.shiftTypes.forEach(sh => (shGroups[sh.kind] || shGroups.absence).push(sh));
-  $('#grid-legend').innerHTML = [...shGroups.work, ...shGroups.absence].map(sh =>
-    `<span class="chip" title="${esc(sh.name)}"><span class="swatch" style="background:${sh.color}"></span>
-      <b>${esc(sh.kind === 'work' ? `${sh.start_time}–${sh.end_time}` : sh.name)}</b>
-      ${sh.kind === 'work' ? `${hours(sh.planned_hours)} ч` : esc(sh.tzh_code)}</span>`).join('') +
-    `<span class="chip" title="Сотрудник вышел в свой выходной — часы начислены как переработка">
-      <span class="swatch" style="background:${state.grid?.colors?.worked_off || '#7c3aed'}"></span><b>работа в выходной</b></span>
-     <span class="chip" title="Дни относятся к другому блоку (переход между сменами)">
-      <span class="swatch" style="background:${state.grid?.colors?.out_of_block || '#d8d3e8'}"></span><b>дни другой смены</b></span>
-     <span class="chip" title="Производственный календарь / ВИП-гости: переработки в эти дни оплачиваются вдвое (коды ДЯ2/ДН2). Календарь — в разделе «Настройки»">
+  const usedCodes = {};
+  rows.forEach(r => Object.values(r.cells || {}).forEach(c => {
+    if (c.tabel && c.tabel.code) usedCodes[c.tabel.code] = c.tabel.value || c.tabel.code;
+  }));
+  $('#grid-legend').innerHTML = Object.keys(usedCodes).map(code =>
+    `<span class="chip"><span class="swatch" style="background:${V4_CODE_COLORS[code] || '#8a94a6'}"></span>
+      <b>${esc(code)}</b>${usedCodes[code] !== code ? ' ' + esc(usedCodes[code]) : ''}</span>`).join('') +
+    `<span class="chip" title="Согласованное отсутствие (логический разрез смены): на часы не влияет, видно во флагах и на доске">
+      <span class="swatch" style="background:#0e9aa7"></span><b>✂</b> пропуск/отлучка</span>
+     <span class="chip" title="Ручная смена заменяет сгенерированную из Табеля">
+      <span class="swatch" style="background:#5b6bd6"></span><b>Р</b> ручная смена</span>
+     <span class="chip" title="Производственный календарь / ВИП-гости: переработки в эти дни оплачиваются вдвое (коды ДЯ2/ДН2)">
       <span class="dbl-mark legend-x2">×2</span><b>день двойной оплаты</b></span>`;
 }
 
@@ -406,48 +379,28 @@ function scrollGridToToday() {
   });
 }
 
-/* Вид «Факт»: интервалы реальной работы в ячейке («08–12 15–24»), отклонения, отсутствия */
-function factCellTd(r, d, c, cls) {
-  const f = c.fact || {};
-  const btn = (extra, inner, title) =>
-    `<td class="${cls}"><button class="cellbtn ${extra}" data-emp="${r.employee.id}" data-date="${d.date}" title="${esc(title)}">${inner}</button></td>`;
-  const ivs = f.intervals || [];
-  const t = x => x === '24:00' ? '24' : (x.endsWith(':00') ? x.slice(0, 2) : x.slice(0, 5));
-  if (ivs.length) {
-    const iv = ivs.map(([a, b]) => `${t(a)}–${t(b)}`).join(' ');
-    const mk = [];
-    if (f.late_hours > 0) mk.push(`<span class="late" title="Опоздание ${hours(f.late_hours)} ч">Л${hours(f.late_hours)}</span>`);
-    if (f.early_hours > 0) mk.push(`<span class="early" title="Ранний уход ${hours(f.early_hours)} ч">РУ${hours(f.early_hours)}</span>`);
-    if (f.gap_hours > 0) mk.push(`<span class="gapm" title="Несогласованный перерыв внутри смены ${hours(f.gap_hours)} ч">ПР${hours(f.gap_hours)}</span>`);
-    if (f.ot_hours > 0) mk.push(`<span class="ot" title="Переработка ${hours(f.ot_hours)} ч">+${hours(f.ot_hours)}</span>`);
-    if (f.open_now) mk.push('<span title="Сотрудник ещё на работе — смена не закрыта">●сейчас</span>');
-    if (f.auto_closed) mk.push('<span class="gapm" title="Смена закрыта автоматически">авто</span>');
-    const klass = f.attention ? 'fact-att' : 'fact-ok';
-    const title = `${r.employee.short_name}, ${dateRu(d.date)}: работал ${iv} · учтено ${hours(f.counted_hours)} ч`
-      + (f.attention ? ` · требует внимания: ${statusTitle(f.status)}` : '')
-      + (f.from_prev ? ' · хвост вчерашней ночной смены' : '') + (f.to_next ? ' · продолжается в следующих сутках' : '')
-      + (c.partial ? ` · отпросился ${c.partial.from_time}–${c.partial.until_time}` : '');
-    return btn(`${klass}${f.open_now ? ' fact-open' : ''}`,
-      `<span class="iv">${esc(iv)}</span>${mk.length ? `<span class="mk">${mk.join('')}</span>` : ''}`
-      + (c.partial ? '<span class="partial-mark">отпр</span>' : ''), title);
-  }
-  const sh = c.shift;
-  if (f.absence_code) {
-    return btn('fact-abs', `<span class="t t-short">${esc(f.absence_code)}</span>`,
-      `${dateRu(d.date)}: ${statusTitle(f.status) || 'отсутствие'} · ${esc(sh ? sh.name : f.absence_code)}`);
-  }
-  if (sh && sh.kind === 'work') {
-    if (d.date > (state.grid?.today || '')) {
-      return btn('empty', `<span class="t t-short">${esc(sh.display_code || '')}</span>`,
-        'Смена впереди — факт появится после отметок');
-    }
-    return btn('fact-att', '<span class="t t-short">НН?</span>',
-      'По графику рабочая смена, но отметок нет. Откройте ячейку, чтобы зафиксировать неявку (НН) или причину');
-  }
-  if (!f.has_row) {
-    return btn('empty', '—', 'Нет данных');
-  }
-  return btn('fact-abs', '—', `${dateRu(d.date)}: ${statusTitle(f.status) || 'нет работы'}`);
+function cellTd(r, d, c, cls) {
+  const btn = (extra, inner, title, style) =>
+    `<td class="${cls}"><button class="cellbtn ${extra}" data-emp="${r.employee.id}" data-date="${d.date}" title="${esc(title)}"${style ? ` style="${style}"` : ''}>${inner}</button></td>`;
+  const t = c.tabel;
+  const shifts = c.shifts || [];
+  const absences = c.absences || [];
+  const code = t ? t.code : '';
+  const color = V4_CODE_COLORS[code] || '#8a94a6';
+  const parts = [];
+  if (t) parts.push(t.value || t.code);
+  if (shifts.length) parts.push(shifts.map(x => `${x.start_hm}–${x.end_hm}`).join(' '));
+  const manual = shifts.some(x => x.source === 'manual');
+  const title = `${r.employee.short_name}, ${dateRu(d.date)}: ` +
+    (t ? `Табель «${t.value || t.code}»${t.source === 'cycle' ? ' (из циклов)' : ' (вручную)'}` : 'Табель не заполнен') +
+    (shifts.length ? ` · смена ${shifts.map(x => `${x.start_hm}–${x.end_hm}${x.source === 'manual' ? ' (ручная)' : ''}`).join(', ')}` : ' · смены нет') +
+    (absences.length ? ` · согласованное отсутствие ${absences.map(a => `${a.start_hm}–${a.end_hm}${a.kind ? ' (' + a.kind.name + ')' : ''}`).join(', ')} — на часы не влияет` : '') +
+    (t && t.note ? ` · ${t.note}` : '');
+  const marks = [manual ? '<span class="manual-mark" title="Ручная смена">Р</span>' : '',
+    absences.length ? '<span class="partial-mark" title="Согласованное отсутствие: смена показана разрезанной">✂</span>' : ''].join('');
+  const inner = `${marks}<span class="t t-full">${esc(parts.join(' ') || '—')}</span><span class="t t-short">${esc(t ? (t.value || t.code).replace(' ', '') : '—')}</span>`;
+  const style = code ? `background:linear-gradient(165deg, ${withAlpha(color, .30)}, ${withAlpha(color, .16)});color:#2c3440` : '';
+  return btn(code ? '' : 'empty', inner, title, style);
 }
 
 function empRow(r, g, block) {
@@ -457,7 +410,6 @@ function empRow(r, g, block) {
     iso >= rg.start && (!rg.end || iso <= rg.end));
   const cells = g.days.map(d => {
     const c = r.cells[d.date] || {};
-    const sh = c.shift;
     const cls = ['cell', d.is_weekend ? 'weekend' : '', d.is_today ? 'today' : ''].join(' ');
     const outOfBlock = ranges.length && !inBlock(d.date);
     if (outOfBlock) {
@@ -467,32 +419,9 @@ function empRow(r, g, block) {
     }
     if (c.employed === false) {
       return `<td class="${cls}"><button class="cellbtn inactive" disabled
-        title="Неактивно: сотрудник не работал в эту дату (до приёма, после увольнения или между периодами работы)">—</button></td>`;
+        title="Не в штате: сотрудник не работал в эту дату (до приёма или после увольнения)">—</button></td>`;
     }
-    if (state.gridMode === 'fact') return factCellTd(r, d, c, cls);
-    if (!sh) {
-      return `<td class="${cls}"><button class="cellbtn empty" data-emp="${r.employee.id}" data-date="${d.date}" title="Не заполнено">—</button></td>`;
-    }
-    if (c.worked_off) {
-      return `<td class="${cls}"><button class="cellbtn" data-emp="${r.employee.id}" data-date="${d.date}"
-        title="Работа в выходной: ${hours(c.fact_hours)} ч начислено"
-        style="background:linear-gradient(165deg, ${withAlpha(g.colors.worked_off, .95)}, ${withAlpha(g.colors.worked_off, .75)});color:#fff">
-        <span class="t t-full">РАБ ${hours(c.fact_hours)}</span><span class="t t-short">Р${hours(c.fact_hours)}</span></button></td>`;
-    }
-    const baseColor = (state.colorMode === 'position' && sh.kind === 'work') ? accent : sh.color;
-    const mainFull = sh.kind === 'work' ? `${sh.start.slice(0, 5)}–${sh.end.slice(0, 5)}` : (sh.display_code || sh.name);
-    const mainShort = sh.kind === 'work' ? (sh.display_code || `${sh.start.slice(0, 2)}–${sh.end.slice(0, 2)}`) : (sh.display_code || sh.name);
-    const sub = sh.kind === 'work' ? (sh.overnight ? 'ночная' : `${hours(sh.planned_hours)} ч`) : '';
-    const style = `background:linear-gradient(165deg, ${withAlpha(baseColor, .96)}, ${withAlpha(baseColor, .78)});color:${textOn(baseColor)}`;
-    const pt = c.partial;
-    const ptTitle = pt ? ` · отпросился с ${pt.from_time} до ${pt.until_time} (${hours(pt.hours)} ч${pt.reason ? ', ' + pt.reason.name : ''})` : '';
-    const ptMark = pt ? `<span class="partial-mark" title="Согласованное отсутствие части смены">${pt.from_time.slice(0, 2)}–${pt.until_time.slice(0, 2)}</span>` : '';
-    return `<td class="${cls}">
-      <button class="cellbtn" style="${style}" data-emp="${r.employee.id}" data-date="${d.date}"
-              title="${esc(sh.name)}${c.auto ? ' · по базовому циклу' : ''}${ptTitle}${c.note ? ' · ' + esc(c.note) : ''}">
-        ${c.note ? '<span class="dot-note"></span>' : ''}${ptMark}
-        <span class="t t-full">${esc(mainFull)}</span><span class="t t-short">${esc(mainShort)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ''}
-      </button></td>`;
+    return cellTd(r, d, c, cls);
   }).join('');
   return `<tr class="emp-row">
     <td class="name-cell" style="box-shadow: inset 4px 0 0 ${accent}">
@@ -537,11 +466,13 @@ function printGrid() {
         const out = rgs.length && !rgs.some(rg => d.date >= rg.start && (!rg.end || d.date <= rg.end));
         if (c.employed === false) return `<td style="background:${g.colors.inactive || '#eceff4'};color:#98a2b3">—</td>`;
         if (out) return `<td style="background:${g.colors.out_of_block}">—</td>`;
-        if (c.worked_off) return `<td style="background:${g.colors.worked_off};color:#fff">РАБ ${hours(c.fact_hours)}</td>`;
-        if (!c.shift) return `<td class="muted"></td>`;
-        let txt = c.shift.kind === 'work' ? `${c.shift.start}–${c.shift.end}` : (c.shift.display_code || c.shift.name);
-        if (c.partial) txt += '*';
-        return `<td style="background:${withAlpha(c.shift.color, .25)}">${esc(txt)}</td>`;
+        const t = c.tabel;
+        const shifts = c.shifts || [];
+        let txt = t ? (t.value || t.code) : '';
+        if (shifts.length) txt += (txt ? '\n' : '') + shifts.map(x => `${x.start_hm}–${x.end_hm}`).join(' ');
+        if ((c.absences || []).length) txt += '*';
+        const color = t ? (V4_CODE_COLORS[t.code] || '#8a94a6') : null;
+        return `<td${color ? ` style="background:${withAlpha(color, .22)}"` : ' class="muted"'}>${esc(txt)}</td>`;
       }).join('');
       return `<tr><td class="name">${esc(r.employee.full_name)}<br><span class="muted">${esc(r.employee.position || '')}</span></td>${tds}
         <td><b>${hours(r.totals.planned_hours)}</b></td></tr>`;
@@ -552,6 +483,7 @@ function printGrid() {
     `<th>${d.day}<br><span class="muted">${esc(d.weekday)}</span></th>`).join('')}<th>Часов</th></tr>`;
   printWindow(`График сменности ${MONTHS[g.month - 1]} ${g.year}`,
     `<h1>График сменности, ${MONTHS[g.month - 1]} ${g.year} г. (весь месяц)</h1>
+     <p style="font-size:12px;color:#667">Значение Табеля и интервалы смен; * — согласованное отсутствие (логический разрез смены).</p>
      <table><thead>${head}</thead><tbody>${body}</tbody></table>`);
 }
 
@@ -675,11 +607,11 @@ async function printAbsenceRequest(empId, dateISO) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
-/* ── назначение периода разом (отпуск на месяц и т.п.) ── */
+/* ── назначение отсутствия на период: коды Табеля (первичный документ, 16.5) ── */
 function openRangeModal() {
   const g = state.grid;
   const first = g.days[0].date;      // конец периода берётся из формы модалки
-  const absences = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off);
+  const absences = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off && x.tzh_code);
   openModal({
     title: 'Назначить отсутствие',
     subtitle: 'Отпуск, больничный, отгул и т.п. на период сразу — в том числе через границы месяцев',
@@ -695,32 +627,19 @@ function openRangeModal() {
         <label class="field"><span>По (включительно)</span><input type="date" id="rg-to" value="${first}"></label>
       </div>
       <label class="field"><span>Вид отсутствия</span><select id="rg-shift">
-        ${absences.map(x => `<option value="${x.id}" ${x.code === 'VACATION' ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+        ${absences.map(x => `<option value="${x.id}" ${x.code === 'VACATION' ? 'selected' : ''}>${esc(x.name)} · код Табеля «${esc(x.tzh_code)}»</option>`).join('')}
       </select></label>
       <label class="field"><span>Примечание</span>
         <input type="text" id="rg-note" placeholder="Например: приказ №47 от 01.09.2026"></label>
       <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
         <input type="checkbox" id="rg-work-only" style="width:17px;height:17px;accent-color:var(--primary)">
-        Только на рабочие дни по графику (для «выходного за часы»: на плановые выходные не ставится)
+        Только на рабочие дни по Табелю (для «выходного за часы»: на плановые выходные не ставится)
       </label>
-      <div class="grid-2" style="margin-top:10px">
-        <label class="field"><span>Отметки «Пришёл» на период</span><select id="rg-punch-in">
-          <option value="">как в словаре вида отсутствия</option>
-          <option value="1">разрешить</option>
-          <option value="0">запретить</option>
-        </select></label>
-        <label class="field"><span>Отметки «Ушёл» на период</span><select id="rg-punch-out">
-          <option value="">как в словаре вида отсутствия</option>
-          <option value="1">разрешить</option>
-          <option value="0">запретить</option>
-        </select></label>
-      </div>
-      <p class="hint" style="margin-top:2px">Явный override флага вида отсутствия — сразу на все ячейки периода
-        (например, в командировке отмечаться можно, хотя по словарю вида — нельзя).</p>
-      <p class="hint">Период может выходить за пределы открытого месяца — например с 28 сентября по 5 октября.
-        График заполнится до конца периода, а экран переключится на его первый месяц.
-        Дни, когда сотрудник не работал (до приёма / после увольнения) или относился к другому блоку,
-        пропускаются автоматически. Рабочие смены назначать не нужно: их считает базовый цикл.</p>`,
+      <p class="hint">Отсутствие на весь день — код Табеля: смены в эти дни нет, сотрудник не
+        ожидается, флагов нет; часы и банк не меняются (недостача возникает только из отсутствия
+        присутствия в окне рабочего времени). Заявление печатается из карточки дня или из
+        «Документов». Период может выходить за границы открытого месяца. Дни до приёма и после
+        увольнения пропускаются автоматически.</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Назначить</button>`,
     onMount(m) {
@@ -731,19 +650,15 @@ function openRangeModal() {
         const from = $('#rg-from').value, to = $('#rg-to').value;
         if (!from || !to || from > to) return toast('Проверьте даты периода', 'warn');
         try {
-          const ov = sel => { const v = $(sel).value; return v === '' ? null : v === '1'; };
           const res = await api('/api/schedule/range-absence', { method: 'POST', body: {
-            employee_ids: ids, start: from, end: to,
+            employee_ids: ids, first: from, last: to,
             shift_type_id: +$('#rg-shift').value, note: $('#rg-note').value.trim(),
-            only_work_days: $('#rg-work-only').checked,
-            punch_in_override: ov('#rg-punch-in'), punch_out_override: ov('#rg-punch-out'),
+            workdays_only: $('#rg-work-only').checked,
           } });
           closeModal();
-          const skipped = (res.skipped_inactive || 0) + (res.skipped_off || 0);
-          toast(`Отсутствие назначено: ${res.updated} ${plural(res.updated, 'ячейка', 'ячейки', 'ячеек')}`
-            + (res.months?.length > 1 ? ` в ${res.months.length} месяцах` : '')
-            + (skipped ? `, пропущено ${skipped} (неактивные дни / выходные)` : ''), 'ok');
-          /* период начался в другом месяце — переключаем экран туда, чтобы результат было видно */
+          toast(`Отсутствие назначено: ${res.written} ${plural(res.written, 'ячейка', 'ячейки', 'ячеек')} Табеля`
+            + (res.skipped ? `, пропущено ${res.skipped}` : ''), (res.errors || []).length ? 'warn' : 'ok',
+            (res.errors || []).map(e => `${e.date}: ${e.error}`).slice(0, 6));
           const d0 = new Date(from + 'T12:00:00');
           if (d0.getFullYear() !== state.year || d0.getMonth() + 1 !== state.month) {
             state.year = d0.getFullYear();
@@ -756,168 +671,148 @@ function openRangeModal() {
   });
 }
 
-/* ── редактор ячейки графика ── */
+/* ── редактор ячейки Графика (16.3): ручная смена, согласованное отсутствие,
+      переход в Табель за кодом дня ── */
 function openCellModal(empId, dateISO) {
   const row = state.grid.rows.find(r => r.employee.id === empId);
   const cell = row?.cells?.[dateISO] || {};
-  const cur = cell.shift || null;
-  let selected = cur && !cur.archived ? cur.id : null;
-
   const d = new Date(dateISO + 'T00:00:00');
   const title = `${WD[d.getDay()]}, ${d.getDate()} ${MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}`;
-  const groups = { work: [], absence: [] };
-  state.shiftTypes.forEach(s => (groups[s.kind] || groups.absence).push(s));
-  const nnShift = state.shiftTypes.find(x => x.code === 'ABSENT_UNKNOWN');
-
-  const opt = s => `
-    <button type="button" class="shift-opt ${selected === s.id ? 'sel' : ''}" data-id="${s.id}">
-      <span class="swatch" style="background:${s.color}"></span>
-      <span><span class="nm">${esc(s.kind === 'work' ? `${s.start_time}–${s.end_time}` : s.name)}</span>
-      <span class="hh">${s.kind === 'work' ? `${hours(s.planned_hours)} ч${s.overnight ? ' · ночная' : ''}` : `код ${esc(s.tzh_code)}${s.deduct_from_bank ? ' · часы из банка' : ''}`}</span></span>
-    </button>`;
+  const workShifts = state.shiftTypes.filter(x => x.kind === 'work' && !x.archived_at);
+  const absenceKinds = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off);
+  const t = cell.tabel;
+  const shifts = cell.shifts || [];
+  const absences = cell.absences || [];
+  const editable = cell.editable !== false;
 
   openModal({
     title: row?.employee.full_name || 'Сотрудник',
     subtitle: `${title} · ${row?.employee.position || ''}`,
     body: `
-      <div class="opt-group-title">Рабочие смены (часы можно добавить в словаре: Настройки)</div>
-      <div class="shift-options">${groups.work.map(opt).join('')}</div>
-      <div class="opt-group-title">Отсутствие / выходные</div>
-      <div class="shift-options">${groups.absence.map(opt).join('')}</div>
-      ${cur && cur.archived ? `<p class="hint" style="color:var(--warn)">В ячейке смена из архива (${esc(cur.name)}) —
-        она считалась в прошлом, но для новых назначений недоступна.</p>` : ''}
-      <div id="partial-block" class="hidden" style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 8px;background:#f8fbfd">
-        <div class="opt-group-title" style="margin-top:0">Отпросился — отсутствие части смены</div>
-        <div class="grid-2">
-          <label class="field"><span>Отсутствовал с</span><input type="time" id="cell-from" value="${esc(cell.partial?.from_time || '')}"></label>
-          <label class="field"><span>Отсутствовал до</span><input type="time" id="cell-until" value="${esc(cell.partial?.until_time || '')}"></label>
-        </div>
-        <label class="field"><span>Причина отсутствия</span><select id="cell-partial-reason">
-          <option value="">— не указана —</option>
-          ${groups.absence.map(x => `<option value="${x.id}"
-            ${(cell.partial ? cell.partial.reason?.id === x.id : x.code === 'AWAY_HOURS') ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+      <div class="status-line"><span class="k">Табель (первичный документ)</span>
+        <span class="v">${t ? esc(t.value || t.code) + (t.source === 'cycle' ? ' · из циклов' : ' · вручную') : 'не заполнен'}</span></div>
+      <div style="display:flex;gap:8px;margin:8px 0 4px">
+        <button class="btn btn-sm" id="cell-tabel">Изменить код Табеля…</button>
+      </div>
+      <div class="opt-group-title">Смены дня (График генерируется из Табеля по окнам)</div>
+      ${shifts.length ? shifts.map(x => `<div class="status-line">
+          <span class="k">${esc(x.start_hm)}–${esc(x.end_hm)} ${x.source === 'manual' ? '· ручная' : '· из Табеля'}${x.note ? ' · ' + esc(x.note) : ''}</span>
+          <span class="v"></span></div>`).join('')
+        : '<p class="hint" style="margin:4px 0">Смен нет: значение Табеля без часов (выходной/отсутствие) либо Табель не заполнен.</p>'}
+      ${editable ? `
+      <div id="manual-block" style="margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 8px;background:#f8fbfd">
+        <div class="opt-group-title" style="margin-top:0">Ручная смена (заменяет генерацию дня целиком)</div>
+        <label class="field"><span>Пресет из словаря</span><select id="cell-preset">
+          <option value="">— задать время вручную —</option>
+          ${workShifts.map(x => `<option value="${x.start_time}|${x.end_time}|${x.overnight ? 1 : 0}">${esc(x.name)}</option>`).join('')}
         </select></label>
-        <p class="hint" style="margin:2px 0 6px">Отметки в согласованном окне не считаются опозданием или ранним уходом;
-          часы отсутствия списываются из банка часов. Чтобы убрать «отпросился» — очистите время.</p>
-      </div>
-      <div id="punch-override-block" class="hidden" style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 8px;background:#f8fbfd">
-        <div class="opt-group-title" style="margin-top:0">Отметки «Пришёл / Ушёл» во время этого отсутствия</div>
         <div class="grid-2">
-          <label class="field"><span>«Пришёл на работу»</span><select id="cell-punch-in">
-            <option value="">как в словаре</option>
-            <option value="1">разрешить</option>
-            <option value="0">запретить</option>
-          </select></label>
-          <label class="field"><span>«Ушёл с работы»</span><select id="cell-punch-out">
-            <option value="">как в словаре</option>
-            <option value="1">разрешить</option>
-            <option value="0">запретить</option>
-          </select></label>
+          <label class="field"><span>Начало</span><input type="time" id="cell-sh-from" value="09:00"></label>
+          <label class="field"><span>Конец</span><input type="time" id="cell-sh-until" value="18:00"></label>
         </div>
-        <p class="hint" style="margin:2px 0 6px">Переопределяет настройку вида отсутствия только для этой ячейки.</p>
+        <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
+          <input type="checkbox" id="cell-sh-next" style="width:17px;height:17px;accent-color:var(--primary)">
+          Заканчивается на следующие сутки (смена через полночь)
+        </label>
+        <div style="display:flex;gap:8px;margin:8px 0 6px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-primary" id="cell-sh-save">Сохранить ручную смену</button>
+          ${shifts.some(x => x.source === 'manual') ? '<button class="btn btn-sm btn-danger" id="cell-sh-drop">Вернуть к генерации из Табеля</button>' : ''}
+        </div>
+        <p class="hint" style="margin:2px 0 6px">День редактируем, если его код Табеля принимает коды УТ
+          (accepts_ut = Да). Ручная смена может пересекать полночь; на часы влияет только Табель —
+          правка Графика меняет флаги и доску, но не расчёт (RUL-SCHEDULE-ONLY-FLAGS).</p>
+      </div>` : '<p class="hint">Ручную смену в этот день поставить нельзя: код Табеля не принимает коды УТ (день-якорь).</p>'}
+      <div class="opt-group-title" style="margin-top:12px">Согласованные отсутствия (логический разрез смены)</div>
+      ${absences.map(a => `<div class="status-line">
+          <span class="k">✂ ${esc(a.start_hm)}–${esc(a.end_hm)}${a.kind ? ' · ' + esc(a.kind.name) : ''}${a.note ? ' · ' + esc(a.note) : ''}</span>
+          <span class="v"><button class="btn btn-sm btn-ghost" data-abs-del="${a.id}">Удалить</button></span></div>`).join('') || ''}
+      <div style="margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 8px;background:#f8fbfd">
+        <div class="opt-group-title" style="margin-top:0">Пропуск / отлучка</div>
+        <label class="field"><span>Вид отсутствия</span><select id="cell-abs-kind">
+          <option value="">— без вида —</option>
+          ${absenceKinds.map(x => `<option value="${x.id}" ${x.code === 'AWAY_HOURS' ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+        </select></label>
+        <div class="grid-2">
+          <label class="field"><span>Отсутствовал с</span><input type="time" id="cell-abs-from" value="14:00"></label>
+          <label class="field"><span>Отсутствовал до</span><input type="time" id="cell-abs-until" value="16:00"></label>
+        </div>
+        <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
+          <input type="checkbox" id="cell-abs-next" style="width:17px;height:17px;accent-color:var(--primary)">
+          До следующего дня (через полночь)
+        </label>
+        <label class="field"><span>Примечание</span><input type="text" id="cell-abs-note" placeholder="Например: заявление согласовано"></label>
+        <div style="display:flex;gap:8px;margin:4px 0 6px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="cell-abs-save">Добавить отсутствие</button>
+        </div>
+        <p class="hint" style="margin:2px 0 6px">Согласованное отсутствие НЕ влияет на план, часы и банк:
+          оно режет смену для флагов (опоздание/ранний уход в ожидaемое время) и для доски «Отметки».
+          Недостача возникает из отсутствия присутствия в окне и гасится банком/кодами по периоду.</p>
       </div>
-      <label class="field" style="margin-top:10px"><span>Примечание</span>
-        <textarea id="cell-note" placeholder="Например: замена Иванова, приказ №12">${esc(cell.note || '')}</textarea>
-      </label>
-      <div class="status-line"><span class="k">Текущее значение</span>
-        <span class="v">${cur ? esc(cur.name) : 'не заполнено'}${cur && cur.kind === 'work' ? ` · ${hours(cur.planned_hours)} ч` : ''}${cell.auto ? ' · по базовому циклу' : ''}${cell.partial ? ` · отпросился ${cell.partial.from_time}–${cell.partial.until_time}` : ''}</span></div>
-      <div id="doc-btns" class="hidden" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <div id="doc-btns" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" id="doc-print">Печать заявления</button>
         <button class="btn btn-sm" id="doc-docx">Заявление DOCX (шаблон компании)</button>
         <button class="btn btn-sm" id="doc-pdf">Заявление PDF (готов к печати)</button>
-      </div>
-      ${nnShift ? `<button class="btn btn-sm hidden" id="cell-nn" style="margin-top:8px">Отметить неявку (НН)</button>` : ''}`,
-    footer: `
-      <button class="btn btn-danger" data-clear>Очистить</button>
-      <div style="flex:1"></div>
-      <button class="btn btn-ghost" data-cancel>Отмена</button>
-      <button class="btn btn-primary" data-save>Сохранить</button>`,
+      </div>`,
+    footer: `<div style="flex:1"></div>
+      <button class="btn btn-ghost" data-cancel>Закрыть</button>`,
     onMount(m) {
-      const readPartial = () => ({
-        partial_shift_id: +(m.querySelector('#cell-partial-reason')?.value || 0) || null,
-        from_time: m.querySelector('#cell-from')?.value || '',
-        until_time: m.querySelector('#cell-until')?.value || '',
-      });
-      const effectiveShift = () => state.shiftTypes.find(x => x.id === selected) || cur;
-      const syncUI = () => {
-        const eff = effectiveShift();
-        const isWork = !!(eff && eff.kind === 'work');
-        const isAbsence = !!(eff && eff.kind === 'absence');
-        m.querySelector('#partial-block').classList.toggle('hidden', !isWork);
-        m.querySelector('#punch-override-block').classList.toggle('hidden', !isAbsence);
-        const reason = state.shiftTypes.find(x => x.id === +(m.querySelector('#cell-partial-reason')?.value || 0));
-        const hasDoc = !!((eff && eff.doc_type) || (isWork && reason && reason.doc_type));
-        m.querySelector('#doc-btns').classList.toggle('hidden', !hasDoc);
-        const nn = m.querySelector('#cell-nn');
-        if (nn) nn.classList.toggle('hidden', dateISO > todayISO());
-      };
-      $$('.shift-opt', m).forEach(b => b.onclick = () => {
-        selected = +b.dataset.id;
-        $$('.shift-opt', m).forEach(x => x.classList.toggle('sel', +x.dataset.id === selected));
-        syncUI();
-      });
-      ['#cell-from', '#cell-until', '#cell-partial-reason'].forEach(sel => {
-        const el = m.querySelector(sel);
-        if (el) { el.onchange = syncUI; el.oninput = syncUI; }
-      });
-      const setOv = (sel, v) => { m.querySelector(sel).value = v === true ? '1' : (v === false ? '0' : ''); };
-      setOv('#cell-punch-in', cell.punch_in_override ?? null);
-      setOv('#cell-punch-out', cell.punch_out_override ?? null);
-      syncUI();
-      m.querySelector('#doc-print').onclick = () => printAbsenceRequest(empId, dateISO);
-      m.querySelector('#doc-docx').onclick = () => downloadAbsenceDoc(empId, dateISO, 'docx');
-      m.querySelector('#doc-pdf').onclick = () => downloadAbsenceDoc(empId, dateISO, 'pdf');
-      const nnBtn = m.querySelector('#cell-nn');
-      if (nnBtn) nnBtn.onclick = () => {
-        saveCell(empId, dateISO, nnShift.id,
-          m.querySelector('#cell-note').value.trim() || 'Неявка по невыясненной причине', false);
-      };
       m.querySelector('[data-cancel]').onclick = closeModal;
-      m.querySelector('[data-clear]').onclick = () => saveCell(empId, dateISO, null, '', true);
-      const readOverrides = () => {
-        const v = sel => { const x = m.querySelector(sel).value; return x === '' ? null : x === '1'; };
-        return { in: v('#cell-punch-in'), out: v('#cell-punch-out') };
+      $('#cell-tabel').onclick = () => {
+        closeModal();
+        state.pendingTabelCell = { emp: empId, date: dateISO };
+        navigate('timesheet');
       };
-      m.querySelector('[data-save]').onclick = () =>
-        saveCell(empId, dateISO, selected, m.querySelector('#cell-note').value.trim(), false, readPartial(), readOverrides());
+      const preset = m.querySelector('#cell-preset');
+      if (preset) preset.onchange = () => {
+        if (!preset.value) return;
+        const [a, b, next] = preset.value.split('|');
+        $('#cell-sh-from').value = a; $('#cell-sh-until').value = b; $('#cell-sh-next').checked = next === '1';
+      };
+      const shSave = m.querySelector('#cell-sh-save');
+      if (shSave) shSave.onclick = async () => {
+        try {
+          await api('/api/schedule/shift', { method: 'PUT', body: {
+            employee_id: empId, date: dateISO,
+            shifts: [{ start: $('#cell-sh-from').value, end: $('#cell-sh-until').value,
+                       end_next_day: $('#cell-sh-next').checked }],
+          } });
+          closeModal(); toast('Ручная смена сохранена', 'ok'); loadSchedule();
+        } catch (e) { toast(e.message, 'err'); }
+      };
+      const shDrop = m.querySelector('#cell-sh-drop');
+      if (shDrop) shDrop.onclick = async () => {
+        try {
+          await api(`/api/schedule/shift?employee_id=${empId}&date=${dateISO}`, { method: 'DELETE' });
+          closeModal(); toast('День возвращён к генерации из Табеля', 'ok'); loadSchedule();
+        } catch (e) { toast(e.message, 'err'); }
+      };
+      $('#cell-abs-save').onclick = async () => {
+        try {
+          await api('/api/schedule/absence', { method: 'POST', body: {
+            employee_id: empId, date: dateISO,
+            from_time: $('#cell-abs-from').value, until_time: $('#cell-abs-until').value,
+            next_day: $('#cell-abs-next').checked,
+            kind_id: +$('#cell-abs-kind').value || null,
+            note: $('#cell-abs-note').value.trim(),
+          } });
+          closeModal(); toast('Согласованное отсутствие добавлено', 'ok'); loadSchedule();
+        } catch (e) { toast(e.message, 'err'); }
+      };
+      $$('[data-abs-del]', m).forEach(b => b.onclick = async () => {
+        try {
+          await api(`/api/schedule/absence/${b.dataset.absDel}`, { method: 'DELETE' });
+          closeModal(); toast('Отсутствие удалено — отображение смены восстановлено', 'ok'); loadSchedule();
+        } catch (e) { toast(e.message, 'err'); }
+      });
+      $('#doc-print').onclick = () => printAbsenceRequest(empId, dateISO);
+      $('#doc-docx').onclick = () => downloadAbsenceDoc(empId, dateISO, 'docx');
+      $('#doc-pdf').onclick = () => downloadAbsenceDoc(empId, dateISO, 'pdf');
     },
   });
 }
 
-async function saveCell(empId, dateISO, shiftId, note, clearing, partial, overrides) {
-  try {
-    const res = await api('/api/schedule/cell', {
-      method: 'PUT', body: {
-        employee_id: empId, date: dateISO, shift_type_id: shiftId, note,
-        partial_shift_id: partial?.partial_shift_id ?? null,
-        from_time: partial?.from_time || '',
-        until_time: partial?.until_time || '',
-        punch_in_override: overrides ? overrides.in : null,
-        punch_out_override: overrides ? overrides.out : null,
-      },
-    });
-    closeModal();
-    const c = res.cell;
-    const row = state.grid.rows.find(r => r.employee.id === empId);
-    if (row) {
-      row.cells[dateISO] = { ...(row.cells[dateISO] || {}), shift: c.shift, note: c.note,
-        partial: c.partial, planned_hours: c.planned_hours,
-        punch_in_override: c.punch_in_override, punch_out_override: c.punch_out_override,
-        is_today: dateISO === state.grid.today, is_future: dateISO > state.grid.today };
-      const tot = Object.values(row.cells).reduce((a, x) => a + (x.planned_hours || 0), 0);
-      const wd = Object.values(row.cells).filter(x => x.shift && x.shift.kind === 'work').length;
-      row.totals = { ...(row.totals || {}), planned_hours: Math.round(tot * 100) / 100, work_days: wd };
-    }
-    renderGrid();
-    const pt = c.partial ? `, отпросился ${c.partial.from_time}–${c.partial.until_time}` : '';
-    toast(clearing ? 'Ячейка очищена' : `Сохранено: ${c.shift ? c.shift.name : '—'} на ${dateRu(dateISO)}${pt}`, 'ok');
-  } catch (e) { toast(e.message, 'err'); }
-}
-
-/* Разделы «Кто на работе», «Посещения», «Табель», «Управленческий табель», «Права доступа»
-   и «Журнал аудита» — в section_v4.js (движок v4). */
-
-function statusTitle(st) { return (STATUS_META[st] || { t: st || '—' }).t; }
+/* Разделы «Отметки» (доска), «Факт» (история сессий), «Табель», «Управленческий табель»,
+   «Права доступа» и «Журнал аудита» — в section_v4.js (движок v7.1). */
 
 /* ══════════════════════════════════════════════════════════════════
    МОИ ОТМЕТКИ
@@ -939,63 +834,54 @@ async function loadMe() {
 function renderMe(s, me) {
   const d = new Date(s.today + 'T00:00:00');
   const shift = s.shift;
-  const isWork = shift && shift.kind === 'work';
-  const color = shift?.color || '#8a94a6';
   const nowD = new Date(s.now);
-
   const inOk = s.punch_in_allowed !== false;
   const outOk = s.punch_out_allowed !== false;
-  let mainBtn, punchBlocked = null;
+  const hint = s.punch_status_hint || 'согласованное отсутствие';
+
+  let mainBtn;
   if (s.on_shift && outOk) {
     mainBtn = `<button class="punch-btn out" id="punch-btn">Ушёл с работы
       <small>нажать в ${s.planned_end ? hhmm(s.planned_end) : '—'} · сейчас ${nowD.toTimeString().slice(0, 5)}</small></button>`;
   } else if (s.on_shift) {
-    punchBlocked = 'out';
     mainBtn = `<button class="punch-btn idle" id="punch-btn" disabled>Ушёл с работы
-      <small>сейчас статус: ${esc(shift?.name || 'absence')} — отмечать уход запрещено</small></button>`;
+      <small>${esc(hint)} — отмечать уход запрещено</small></button>`;
   } else if (!inOk) {
-    punchBlocked = 'in';
     mainBtn = `<button class="punch-btn idle" id="punch-btn" disabled>Пришёл на работу
-      <small>сейчас статус: ${esc(shift?.name || 'absence')} — отмечать приход запрещено</small></button>`;
-  } else if (isWork) {
+      <small>${esc(hint)} — отмечать приход запрещено</small></button>`;
+  } else if (shift) {
     mainBtn = `<button class="punch-btn in" id="punch-btn">Пришёл на работу
-      <small>смена ${shift.start}–${shift.end} · сейчас ${nowD.toTimeString().slice(0, 5)}</small></button>`;
+      <small>смена ${esc(shift.start_hm)}–${esc(shift.end_hm)} · сейчас ${nowD.toTimeString().slice(0, 5)}</small></button>`;
   } else {
     mainBtn = `<button class="punch-btn in" id="punch-btn">Пришёл на работу
-      <small>по графику ${esc(shift ? shift.name.toLowerCase() : 'смена не задана')} — часы будут учтены как работа в выходной</small></button>`;
+      <small>по Графику смены нет — часы будут учтены как переработка (коды ДЯ/ДН)</small></button>`;
   }
 
   $('#view-me').innerHTML = `
   <div class="me-wrap">
     <div class="me-date">${WD[d.getDay()]}, ${d.getDate()} ${MONTHS_GEN[d.getMonth()]} ${d.getFullYear()} · ${nowD.toTimeString().slice(0, 5)}</div>
 
-    <div class="me-shift" style="--accent:${color}">
-      <div class="code">${esc(shift?.tzh_code || '—')} · ${esc(shift ? (shift.kind === 'work' ? 'рабочая смена' : 'отсутствие') : 'нет данных')}</div>
-      <div class="title" style="color:${color}">${esc(isWork ? `${shift.start}–${shift.end}` : (shift?.name || '—'))}</div>
-      <div class="sub">${isWork
-        ? `${hours(shift.planned_hours)} ч к зачёту${shift.overnight ? ' · ночная смена: часы попадут в дату начала' : ''}`
-        : 'часы в табель не начисляются'}</div>
-      ${s.note ? `<div class="note">${esc(s.note)}</div>` : ''}
+    <div class="me-shift" style="--accent:#34a862">
+      <div class="code">${shift ? (shift.source === 'manual' ? 'ручная смена' : 'смена из Табеля') : 'График'}</div>
+      <div class="title">${shift ? `${esc(shift.start_hm)}–${esc(shift.end_hm)}` : 'смены нет'}</div>
+      <div class="sub">${(s.expected || []).length
+        ? 'ожидается: ' + s.expected.map(x => `${esc(x[0])}–${esc(x[1])}`).join(', ')
+        : (shift ? 'ожидается вся смена' : 'сегодня не ожидались')}</div>
     </div>
 
     <div class="punch-zone">${mainBtn}</div>
-
-    ${punchBlocked ? `<div class="status-line" style="border-color:#f0d9a8;background:#fffdf6">
-      <span class="k">Сейчас статус: ${esc(shift?.name || 'absence')}</span>
-      <span class="v" style="color:#8a5300">Отмечаться нельзя${punchBlocked === 'in' ? ' (приход)' : ' (уход)'}. Если это ошибка — обратитесь к менеджеру.</span>
-    </div>` : ''}
 
     ${s.on_shift ? `
     <div class="status-line"><span class="k"><span class="pulse"></span>Вы на смене с ${hhmm(s.session_start)}</span>
       <span class="v">${s.elapsed_hours != null ? hours(s.elapsed_hours) + ' ч' : '—'}</span></div>` : ''}
 
     <div class="me-stats">
-      <div class="me-stat"><div class="k">Отработано сегодня${s.on_shift ? ' (предв.)' : ''}</div><div class="v">${hours(s.today_fact.fact_hours)} ч</div></div>
-      <div class="me-stat"><div class="k">Ночные сегодня (ДН)</div><div class="v">${hours(s.today_fact.night_hours)} ч</div></div>
-      <div class="me-stat"><div class="k">Переработка сегодня</div><div class="v" style="color:var(--warn)">${hours(s.today_fact.ot_hours)} ч</div></div>
+      <div class="me-stat"><div class="k">Часы сегодня (по отметкам)</div><div class="v">${hours(s.today_hours || 0)} ч</div></div>
       <div class="me-stat"><div class="k">Банк часов</div>
         <div class="v ${s.balance_hours >= 0 ? 'balance-pos' : 'balance-neg'}">${s.balance_hours >= 0 ? '+' : ''}${hours(s.balance_hours)}</div></div>
     </div>
+    <p class="hint" style="margin-top:-4px">${esc(s.balance_note || '')}. Точные рабочее время,
+      переработки и недостача — во вкладке «Управленческий табель» у менеджера.</p>
 
     <div class="history">
       <h3 class="panel-title">Мои отметки</h3>
@@ -1099,18 +985,13 @@ async function doPunch() {
   const kind = state.status?.on_shift ? 'out' : 'in';
   try {
     const res = await api('/api/punches', { method: 'POST', body: { kind } });
-    let msg = res.message;
-    if (res.day && res.day.fact_hours) {
-      msg += ` · зачтено ${hours(res.day.fact_hours)} ч из ${hours(res.day.planned_hours)}`;
-      if (res.day.ot_hours) msg += `, переработка ${hours(res.day.ot_hours)} ч`;
-    }
-    toast(msg, 'ok', res.warnings || []);
+    toast(res.message, 'ok', res.warnings || []);
     state.status = res.status;
     const me = await api('/api/auth/me', { silent: true });
     punchInFlight = false;
     renderMe(res.status, me);
-    if (res.punch?.kind === 'OUT' && res.day?.ot_hours > 0) {
-      openOtNoteModal(res.punch.id, '', res.day.ot_hours);
+    if (res.punch?.kind === 'OUT') {
+      openOtNoteModal(res.punch.id, '', 0);
     }
   } catch (e) {
     toast(e.message, 'err');

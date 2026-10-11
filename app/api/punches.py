@@ -1,4 +1,14 @@
-"""Отметки прихода/ухода: кнопки сотрудника, журнал посещений, «кто сейчас на смене»."""
+"""Отметки прихода/ухода: кнопки сотрудника, журнал посещений, статус «я на смене».
+
+Экран отметок НЕ запускает тяжёлый конвейер (16.1 п.2): план на сегодня — из Графика
+(schedule_shifts, порождён из Табеля), ожидаемые подинтервалы — доменными функциями
+Графика (schedule/), «на работе с …» — по последней отметке; банк — последний закрытый
+период из хранилища (чтение без домена, RUL-CLOSED-PERIOD-IMMUTABLE). Точные часы,
+переработки и недостача «сегодня» — только во вкладке «Управленческий табель».
+
+Ввод отметок гарантирует чередование «пришёл»/«ушёл» на точке входа (первая линия
+контроля последовательности, 7.4 п.4): повторный «пришёл» отклоняется, «ушёл» без
+открытой смены — только корректировкой менеджера."""
 from __future__ import annotations
 
 import datetime as dt
@@ -13,27 +23,27 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager
 from ..db import get_db
-from ..deps import local_date, now_local
+from ..deps import TZ, local_date, now_local
 from ..employment import employed_on, ensure_periods, periods_of
-from ..models import Employee, Punch, ScheduleEntry
-from ..schedule_helpers import shift_window
-from .engine_common import bank_now, day_summary
+from ..models import Employee, Punch, ScheduleAbsence, ScheduleShift
+from .engine_common import last_closed_bank
 
 # окно поиска открытой смены вокруг плана (интерфейс отметок; на расчёт часов не влияет)
 WINDOW_BEFORE_H = 4
-WINDOW_AFTER_H = 6
 GRACE_MINUTES = 5
 
 
 def load_rules(db: Session) -> dict:
-    """Лимит опоздания для подсветки на экранах — из настроек движка (Т7)."""
+    """Лимит опоздания для подсветки на экранах — из настроек движка (CFG-LIMITS)."""
     from ..engine.adapters.sql_settings import SqlSettingsAdapter
-    from ..engine.application.periods import month_period
+    from ..engine.application.months import month_period
     today = local_date()
     try:
-        return {"grace_minutes": SqlSettingsAdapter(db).load(month_period(today.year, today.month)).late_limit_minutes}
+        st = SqlSettingsAdapter(db).load(month_period(today.year, today.month))
+        return {"grace_minutes": st.late_limit_minutes}
     except Exception:  # noqa: BLE001 — экран отметок не должен падать из-за настроек
         return {"grace_minutes": GRACE_MINUTES}
+
 
 router = APIRouter(prefix="/api/punches", tags=["punches"])
 
@@ -74,53 +84,77 @@ def _resolve_employee(principal: Principal, employee_id: Optional[int], db: Sess
     raise HTTPException(status_code=403, detail="К вашей учётной записи не привязан сотрудник")
 
 
-def _plan_for_date(db: Session, emp_id: int, today: dt.date, rules: dict,
-                   at_ts: Optional[dt.datetime] = None, *, emp: Optional[Employee] = None,
-                   entries: Optional[dict] = None, index=None, catalog=None,
-                   cfg: Optional[dict] = None, employed: Optional[bool] = None):
-    """План на «сегодня» (ручная ячейка или базовый цикл); если сейчас раннее утро —
-    смотрим и вчерашнюю ночную смену.
+def _to_local(value: dt.datetime) -> dt.datetime:
+    return value.replace(tzinfo=dt.timezone.utc).astimezone(TZ).replace(tzinfo=None)
 
-    entries/index/catalog/cfg — предзагруженные данные: нужны в «Кто на работе»,
-    где план спрашивается для каждого сотрудника (иначе ~5 запросов на человека
-    каждые 30 секунд у каждого открытого клиента).
-    """
-    from ..base_schedule import base_shift
 
-    if emp is None:
-        emp = db.get(Employee, emp_id)
+def _day_bounds_utc(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
+    lo = dt.datetime.combine(day, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    return lo, lo + dt.timedelta(days=1)
+
+
+def _plan_for_date(db: Session, emp_id: int, today: dt.date,
+                   at_ts: Optional[dt.datetime] = None):
+    """План на «сегодня» из Графика (generated/manual); ранним утром учитывается
+    вчерашняя смена через полночь. Возвращает (shift_brief | None, plan_start, plan_end,
+    plan_date, subintervals)."""
     yesterday = today - dt.timedelta(days=1)
-    if entries is not None:
-        entry = entries.get((emp_id, today))
-        y_entry = entries.get((emp_id, yesterday))
-    else:
-        entry = db.scalar(select(ScheduleEntry).where(
-            ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == today))
-        y_entry = db.scalar(select(ScheduleEntry).where(
-            ScheduleEntry.employee_id == emp_id, ScheduleEntry.date == yesterday))
-    # семантика прежняя: план «на сегодня» берётся из текущей строки словаря
-    # (entry.shift_type подгружен JOIN'ом при пакетной выборке — запроса нет)
-    shift = entry.shift_type if entry else None
-    if shift is None and emp is not None:
-        shift = base_shift(db, emp, today, cfg=cfg, employed=employed,
-                           index=index, catalog=catalog)
-    p_start, p_end = shift_window(shift, today, rules)
-
-    y_shift = y_entry.shift_type if y_entry else None
-    if y_shift is None and emp is not None:
-        y_shift = base_shift(db, emp, yesterday, cfg=cfg, employed=employed,
-                             index=index, catalog=catalog)
-    y_start, y_end = shift_window(y_shift, yesterday, rules)
-
+    lo, _ = _day_bounds_utc(yesterday)
+    _, hi = _day_bounds_utc(today)
+    rows = db.scalars(select(ScheduleShift).where(
+        ScheduleShift.employee_id == emp_id, ScheduleShift.start_utc < hi,
+        ScheduleShift.end_utc > lo).order_by(ScheduleShift.start_utc)).all()
     now = at_ts or now_local()
-    active_yesterday = bool(y_start and y_end and y_start <= now <= y_end + dt.timedelta(hours=WINDOW_AFTER_H))
-    if active_yesterday and (not p_start or now < p_start):
-        return y_entry, y_shift, y_start, y_end, yesterday
-    return entry, shift, p_start, p_end, today
+    today_rows, y_rows = [], []
+    for row in rows:
+        start, end = _to_local(row.start_utc), _to_local(row.end_utc)
+        item = {"id": row.id, "source": row.source, "start": start, "end": end,
+                "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
+                "date": row.date.isoformat()}
+        (y_rows if row.date == yesterday else today_rows).append(item)
+    active_yesterday = [r for r in y_rows if r["end"] >= now]
+    if active_yesterday and not today_rows:
+        row = active_yesterday[-1]
+        return row, row["start"], row["end"], yesterday, _subintervals(db, emp_id, yesterday)
+    if today_rows:
+        row = today_rows[0]
+        return row, row["start"], row["end"], today, _subintervals(db, emp_id, today)
+    if active_yesterday:
+        row = active_yesterday[-1]
+        return row, row["start"], row["end"], yesterday, _subintervals(db, emp_id, yesterday)
+    return None, None, None, today, ()
 
 
-def _plan_for(db: Session, emp_id: int, today: dt.date, rules: dict):
-    return _plan_for_date(db, emp_id, today, rules)
+def _subintervals(db: Session, emp_id: int, day: dt.date) -> tuple:
+    """Ожидаемые подинтервалы дня: отрезки смен минус согласованные отсутствия
+    (доменные функции Графика — лёгкий расчёт вкладки, не тяжёлый конвейер)."""
+    from ..engine.domain.schedule.expected_subintervals import expected_subintervals
+    from ..engine.domain.schedule.merge_absences import merge_absences
+    from ..engine.domain.schedule.shift_segments import merge_spans
+    lo, hi = _day_bounds_utc(day)
+    rows = db.scalars(select(ScheduleShift).where(
+        ScheduleShift.employee_id == emp_id, ScheduleShift.start_utc < hi,
+        ScheduleShift.end_utc > lo)).all()
+    spans = [(max(_start(r), lo), min(_end(r), hi)) for r in rows]
+    spans = [(a, b) for a, b in spans if a < b]
+    absences = db.scalars(select(ScheduleAbsence).where(
+        ScheduleAbsence.employee_id == emp_id, ScheduleAbsence.start_utc < hi,
+        ScheduleAbsence.end_utc > lo)).all()
+    merged_abs = merge_absences([_absence(a) for a in absences])
+    return expected_subintervals(merge_spans(spans), merged_abs, day)
+
+
+def _start(row: ScheduleShift) -> dt.datetime:
+    return row.start_utc.replace(tzinfo=dt.timezone.utc)
+
+
+def _end(row: ScheduleShift) -> dt.datetime:
+    return row.end_utc.replace(tzinfo=dt.timezone.utc)
+
+
+def _absence(row: ScheduleAbsence):
+    from ..engine.domain.types.entities import Absence
+    return Absence(str(row.employee_id), _start(row), _end(row))
 
 
 def _open_session(db: Session, emp_id: int, since: dt.datetime) -> Optional[Punch]:
@@ -136,24 +170,54 @@ def _open_session(db: Session, emp_id: int, since: dt.datetime) -> Optional[Punc
     return last_in
 
 
+def _punch_permissions(db: Session, emp_id: int, now: dt.datetime):
+    """Режим отметок во время согласованного отсутствия — из словаря типа отсутствия
+    (например, в отпуске отмечаться не нужно)."""
+    now_utc = now.replace(tzinfo=TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
+    row = db.scalar(select(ScheduleAbsence).where(
+        ScheduleAbsence.employee_id == emp_id, ScheduleAbsence.start_utc <= now_utc,
+        ScheduleAbsence.end_utc > now_utc, ScheduleAbsence.kind_id.is_not(None)).limit(1))
+    if row is None or row.kind is None:
+        return True, True, None
+    return bool(row.kind.punch_in_allowed), bool(row.kind.punch_out_allowed), row.kind
+
+
+def _today_punched_hours(db: Session, emp_id: int, day: dt.date) -> float:
+    """Часы «сегодня» по отметкам (спаренные IN/OUT внутри дня) — справочно для экрана;
+    точный расчёт — в Управленческом табеле (16.1 п.2)."""
+    lo = dt.datetime(day.year, day.month, day.day)
+    rows = db.scalars(select(Punch).where(Punch.employee_id == emp_id, Punch.ts >= lo,
+                                          Punch.ts < lo + dt.timedelta(days=1))
+                      .order_by(Punch.ts, Punch.id)).all()
+    total, open_since = 0.0, None
+    now = now_local()
+    for p in rows:
+        if p.kind == "IN":
+            open_since = p.ts
+        elif open_since is not None:
+            total += (p.ts - open_since).total_seconds() / 3600.0
+            open_since = None
+    if open_since is not None:
+        total += (now - open_since).total_seconds() / 3600.0
+    return round(total, 1)
+
+
 def _status_payload(db: Session, emp: Employee) -> dict:
     rules = load_rules(db)
     today = local_date()
-    entry, shift, p_start, p_end, plan_date = _plan_for(db, emp.id, today, rules)
+    shift, p_start, p_end, plan_date, subs = _plan_for_date(db, emp.id, today)
     since = (p_start - dt.timedelta(hours=WINDOW_BEFORE_H)) if p_start \
         else dt.datetime(today.year, today.month, today.day) - dt.timedelta(hours=12)
     open_in = _open_session(db, emp.id, since)
     now = now_local()
-
     last_punch = db.scalar(select(Punch).where(Punch.employee_id == emp.id)
                            .order_by(Punch.ts.desc()).limit(1))
     elapsed = round((now - open_in.ts).total_seconds() / 3600.0, 1) if open_in else None
-    is_late = bool(p_start and open_in and open_in.ts > p_start + dt.timedelta(minutes=rules["grace_minutes"]))
-
-    summary = day_summary(db, emp, plan_date)
-    # ворот отметок нет (спец. v4, Р5): отмечаться можно всегда, а отметки в днях отсутствия
-    # получают информационный флаг «Активность требует проверки»
-    in_ok, out_ok = True, True
+    first_expected = subs[0][0] if subs else None
+    is_late = bool(first_expected and not open_in
+                   and now > _to_local(first_expected) + dt.timedelta(minutes=rules["grace_minutes"]))
+    in_ok, out_ok, kind = _punch_permissions(db, emp.id, now)
+    bank_hours, bank_period = last_closed_bank(db, emp.id)
 
     return {
         "now": now.isoformat(timespec="seconds"),
@@ -161,15 +225,12 @@ def _status_payload(db: Session, emp: Employee) -> dict:
         "plan_date": plan_date.isoformat(),
         "punch_in_allowed": in_ok,
         "punch_out_allowed": out_ok,
-        "shift": None if not shift else {
-            "code": shift.code, "name": shift.name, "kind": shift.kind, "color": shift.color,
-            "display_code": shift.display_code, "start": shift.start_time, "end": shift.end_time,
-            "overnight": shift.overnight, "planned_hours": shift.planned_hours,
-            "is_default_off": shift.is_default_off, "tzh_code": shift.tzh_code,
-        },
-        "note": entry.note if entry else "",
+        "punch_status_hint": None if kind is None else f"сейчас статус: {kind.name}",
+        "shift": shift,
         "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
         "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
+        "expected": [[_to_local(a).strftime("%H:%M"), _to_local(b).strftime("%H:%M")]
+                     for a, b in subs],
         "on_shift": open_in is not None,
         "session_start": open_in.ts.isoformat(timespec="minutes") if open_in else None,
         "elapsed_hours": elapsed,
@@ -177,8 +238,11 @@ def _status_payload(db: Session, emp: Employee) -> dict:
         "last_punch": None if not last_punch else {
             "kind": last_punch.kind, "ts": last_punch.ts.isoformat(timespec="minutes"),
             "source": last_punch.source},
-        "today_fact": {k: summary[k] for k in ("fact_hours", "night_hours", "ot_hours", "status", "value")},
-        "balance_hours": bank_now(db, emp, now_local().date()),
+        "today_hours": _today_punched_hours(db, emp.id, today),
+        "balance_hours": bank_hours if bank_hours is not None else 0.0,
+        "balance_period": None if bank_period is None else
+        {"start": bank_period.start.isoformat(), "end": bank_period.end.isoformat()},
+        "balance_note": "банк последнего закрытого периода; живой итог — в «Управленческом табеле»",
     }
 
 
@@ -198,7 +262,6 @@ def punch(payload: PunchIn, principal: Principal = Depends(current_principal), d
 
 
 def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Employee):
-    rules = load_rules(db)
     now = now_local()
     backfill = False
     ts = now
@@ -219,7 +282,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
         backfill = True
 
     target_date = ts.date()
-    entry, shift, p_start, p_end, plan_date = _plan_for_date(db, emp.id, target_date, rules, at_ts=ts)
+    shift, p_start, _p_end, plan_date, _subs = _plan_for_date(db, emp.id, target_date, at_ts=ts)
     if not _employed_on(db, emp, plan_date):
         raise HTTPException(status_code=409,
                             detail="Отметку поставить нельзя: в эту дату сотрудник не работал в компании "
@@ -250,48 +313,45 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
             raise HTTPException(status_code=409,
                                 detail=f"Отметка уже принята: {what} в {last.ts:%H:%M}. "
                                        "Следующую можно поставить через минуту")
-    if backfill:
+    if backfill and payload.kind == "auto":
         # при корректировке задним числом пара IN/OUT определяется по уже имеющимся отметкам дня
         day_punches = db.scalars(select(Punch).where(
-            Punch.employee_id == emp.id, Punch.ts >= dt.datetime(target_date.year, target_date.month, target_date.day),
-            Punch.ts < dt.datetime(target_date.year, target_date.month, target_date.day) + dt.timedelta(days=2),
-        )).all()
-        if payload.kind == "auto":
-            kind = "OUT" if any(p.kind == "IN" for p in day_punches) and not any(
-                p.kind == "OUT" for p in day_punches) else "IN"
+            Punch.employee_id == emp.id,
+            Punch.ts >= dt.datetime(target_date.year, target_date.month, target_date.day),
+            Punch.ts < dt.datetime(target_date.year, target_date.month, target_date.day)
+            + dt.timedelta(days=2))).all()
+        kind = "OUT" if any(p.kind == "IN" for p in day_punches) and not any(
+            p.kind == "OUT" for p in day_punches) else "IN"
 
-    # Ворот отметок нет (спец. v4, Р5, раздел 17): все реальные отметки участвуют в расчёте.
+    # Ворот отметок нет (RUL-ALL-MARKS-COUNTED): все реальные отметки участвуют в расчёте.
 
-    source = "manual" if backfill or (principal.is_manager and payload.employee_id and payload.employee_id != (
-        principal.employee.id if principal.employee else None)) else "web"
+    source = "manual" if backfill or (principal.is_manager and payload.employee_id
+                                      and payload.employee_id !=
+                                      (principal.employee.id if principal.employee else None)) \
+        else "web"
     p = Punch(employee_id=emp.id, ts=ts, kind=kind, source=source,
-              created_by=principal.user.id, note=payload.note or ("корректировка менеджером" if backfill else ""))
+              created_by=principal.user.id,
+              note=payload.note or ("корректировка менеджером" if backfill else ""))
     db.add(p)
-    audit(db, principal, "punch_" + kind.lower() + ("_backfill" if backfill else ""), f"employee:{emp.id}",
-          {"ts": ts.isoformat(timespec="minutes"), "source": source})
+    audit(db, principal, "punch_" + kind.lower() + ("_backfill" if backfill else ""),
+          f"employee:{emp.id}", {"ts": ts.isoformat(timespec="minutes"), "source": source})
     db.commit()
-    row = day_summary(db, emp, plan_date)
 
     warnings = []
     if backfill:
         warnings.append("Отметка добавлена задним числом — действие записано в журнал аудита")
-    if not shift or shift.kind != "work":
-        warnings.append("По графику в этот день смены нет — отметка сохранена; работа без плана "
-                        "учитывается как переработка (коды ДЯ/ДН), руководитель увидит флаг")
-    if "ACTIVITY_REQUIRES_REVIEW" in row["flags"]:
-        warnings.append(f"В Табеле день «{row['value']}» — отметка помечена для проверки руководителем")
-    if row["ot_hours"]:
-        warnings.append(f"Переработка {row['ot_hours']:g} ч учтена в управленческом табеле")
-
+    if shift is None:
+        warnings.append("По Графику в этот день смены нет — отметка сохранена; работа без плана "
+                        "учитывается как переработка (коды ДЯ/ДН), руководитель увидит флаг "
+                        "«Работа вне Графика»")
     status = _status_payload(db, emp)
     day_prefix = "" if ts.date() == now.date() else f"{ts:%d.%m} "
     message = (f"Отмечен приход {day_prefix}в {ts:%H:%M}" if kind == "IN"
                else f"Отмечен уход {day_prefix}в {ts:%H:%M}")
-    return {"ok": True, "message": message, "backfill": backfill, "plan_date": plan_date.isoformat(),
+    return {"ok": True, "message": message, "backfill": backfill,
+            "plan_date": plan_date.isoformat(),
             "punch": {"id": p.id, "kind": p.kind, "ts": p.ts.isoformat(timespec="minutes"),
-                      "source": p.source, "rounded_to_hour": True},
-            "day": {k: row[k] for k in ("planned_hours", "fact_hours", "night_hours", "ot_hours",
-                                        "deficit_hours", "status")},
+                      "source": p.source},
             "warnings": warnings, "status": status}
 
 
@@ -332,7 +392,7 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
 
 @router.delete("/{punch_id}")
 def delete_punch(punch_id: int, principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
-    """Отменить ошибочную отметку (с пересчётом табеля и записью в аудит)."""
+    """Отменить ошибочную отметку (с записью в аудит)."""
     p = db.get(Punch, punch_id)
     if not p:
         raise HTTPException(status_code=404, detail="Отметка не найдена")

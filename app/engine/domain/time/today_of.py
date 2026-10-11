@@ -1,8 +1,10 @@
+"""today_of(now, st) — локальная дата исходного now (4.4: «сегодня» — по исходному now)."""
+from __future__ import annotations
+
 import datetime as dt
 
-from ._tz import zone
+from ..settings.types import Settings
 
 
-def today_of(now: dt.datetime, tz: str) -> dt.date:
-    """«Сегодня» — локальная дата исходного now."""
-    return now.astimezone(zone(tz)).date()
+def today_of(now: dt.datetime, st: Settings) -> dt.date:
+    return now.astimezone(st.tz).date()
