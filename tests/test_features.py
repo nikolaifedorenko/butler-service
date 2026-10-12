@@ -137,12 +137,22 @@ class TestNewFeatures(unittest.TestCase):
         data = r.json()
         self.assertGreater(data["written"], 0)
         self.assertEqual(data["written"] + data["skipped"], 10)
-        # все назначенные дни были рабочими по Табелю (код НВ заменил Я/С)
+        # норматив 12.10.2026: у вида «Выходной за часы» нет кода Табеля — отсутствие
+        # пишется в График (согласованное отсутствие), Табель остаётся явкой (EX-29)
+        self.assertEqual(data["mode"], "schedule_absence")
         g = _grid(start.year, start.month)
         row = _row(g, emp["id"])
         assigned = [iso for iso, cell in row["cells"].items()
-                    if cell["tabel"] and cell["tabel"]["code"] == "НВ"]
+                    if any(a["kind"] and a["kind"]["code"] == "TIMEOFF_HOURS"
+                           for a in cell["absences"])]
         self.assertTrue(assigned)
+        # Табель не переписан: в назначенные дни по-прежнему явка с часами
+        for iso in assigned:
+            cell = row["cells"][iso]
+            self.assertIsNotNone(cell["tabel"], iso)
+            self.assertIn(cell["tabel"]["code"], ("Я", "К"), iso)
+            self.assertGreater(cell["tabel"]["hours"], 0, iso)
+            self.assertEqual(cell["planned_hours"], cell["tabel"]["hours"], iso)
 
     # ── 3. «отпросился»: согласованное отсутствие — логический разрез Графика ──
     def test_03_partial_absence(self):
