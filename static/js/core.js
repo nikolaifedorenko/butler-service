@@ -181,7 +181,6 @@ const state = {
   filterDept: 'all',
   filterText: '',
   expanded: new Set(),
-  showArchived: false,                                           // словарь смен: показывать ли архив
   dpYear: new Date().getFullYear(),                              // календарь двойной оплаты: просматриваемый год
   timers: [],
 };
