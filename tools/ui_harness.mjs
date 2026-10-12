@@ -151,6 +151,40 @@ async function main() {
     newErrs.slice(0, 4).forEach(e => console.log(`              ⚠ ${e.slice(0, 200)}`));
   }
 
+  /* Под-экраны раздела «Настройки»: интерфейс настроек — область с под-разделами
+     (docs/SETTINGS-UI-PROPOSAL-2026-10-12.md), поэтому смоук обходит их ВСЕ — иначе
+     CI видел бы только «Обзор» и не заметил бы падение остальных экранов.
+     Внешние пункты (Права доступа, Журнал аудита) уводят из раздела — их пропускаем. */
+  if (views.includes('settings')) {
+    console.log('\n=== под-экраны настроек ===');
+    const items = [...window.document.querySelectorAll('#st-nav [data-st]')]
+      .filter(b => !b.textContent.includes('↗'));
+    if (!items.length) { failed++; console.log('  ❌ под-навигация настроек не отрисована'); }
+    for (const btn of items) {
+      const id = btn.dataset.st;
+      const before = consoleErrors.length;
+      btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      let body = '';
+      for (let i = 0; i < 80; i++) {
+        await sleep(200);
+        body = ($('#st-body')?.textContent || '').replace(/\s+/g, ' ').trim();
+        if (body && !body.includes('Загрузка…')) break;
+      }
+      const html = $('#st-body')?.innerHTML || '';
+      const junk = ['undefined', 'NaN', '[object Object]'].filter(w => body.includes(w) || html.includes(w));
+      const errs = consoleErrors.slice(before);
+      const ok = !!body && !body.includes('Загрузка…') && !junk.length && !errs.length;
+      if (!ok) failed++;
+      console.log(`  ${id.padEnd(10)} ${ok ? '✓' : '❌'} ${String(body.length).padStart(5)} симв |`
+        + ` узлов ${String($('#st-body')?.querySelectorAll('*').length || 0).padStart(4)} |`
+        + ` кнопок ${String($('#st-body')?.querySelectorAll('button').length || 0).padStart(3)} |`
+        + ` hash=${window.location.hash}${junk.length ? ' | МУСОР: ' + junk.join(', ') : ''}`);
+      if (body) console.log(`              текст: ${body.slice(0, process.env.UI_TEXT || 140)}`);
+      errs.slice(0, 3).forEach(e => console.log(`              ⚠ ${e.slice(0, 220)}`));
+      await sleep(120);
+    }
+  }
+
   console.log('\n=== уникальные ошибки консоли ===');
   const uniq = [...new Set(consoleErrors.map(e => e.slice(0, 240)))];
   uniq.length ? uniq.forEach(e => console.log('  ' + e)) : console.log('  нет');

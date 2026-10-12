@@ -107,10 +107,15 @@ function capture(page, label) {
 }
 
 const TITLES = {
-  schedule: 'График', onwork: 'Кто на работе', attendance: 'Посещения', timesheet: 'Табель',
-  employees: 'Сотрудники', me: 'Мои отметки', night: 'Ночной отчёт', cars: 'Электрокары',
-  settings: 'Настройки',
+  schedule: 'График', marks: 'Отметки', fact: 'Факт', timesheet: 'Табель',
+  mgmt: 'Управленческий табель', employees: 'Сотрудники', me: 'Мои отметки',
+  night: 'Ночной отчёт', cars: 'Электрокары', access: 'Права доступа',
+  audit: 'Журнал аудита', settings: 'Настройки',
 };
+/* Под-экраны раздела «Настройки» (новая область с под-разделами): снимаем каждый,
+   чтобы в галерее была видна структура, а не только «Обзор». */
+const SETTINGS_SCREENS = ['overview', 'calc', 'pay', 'codes', 'groups', 'calendar',
+                          'shifts', 'docs', 'system', 'expert'];
 
 const shots = [];
 async function main() {
@@ -119,10 +124,29 @@ async function main() {
   await login(desk, 'gromova');
   const who = desk.w.document.querySelector('#user-name').textContent;
   console.log('вход:', who);
-  for (const v of ['schedule', 'onwork', 'attendance', 'timesheet', 'employees', 'me', 'night', 'cars', 'settings']) {
+  /* Какие разделы снимать: SNAPSHOT_VIEWS=schedule,settings — быстрее при работе
+     только над одним разделом (полный прогон занимает ~15 минут). */
+  const viewsList = (process.env.SNAPSHOT_VIEWS
+    || 'schedule,marks,fact,timesheet,mgmt,employees,me,night,cars,settings').split(',');
+  for (const v of viewsList) {
     await goto(desk, v);
     shots.push({ ...capture(desk, `${TITLES[v]} · менеджер (десктоп 1440px)`), h: 900 });
     console.log('  снят раздел:', v);
+    if (v === 'settings') {
+      for (const s of SETTINGS_SCREENS) {
+        const btn = desk.w.document.querySelector(`#st-nav [data-st="${s}"]`);
+        if (!btn) { console.log('    ⚠ под-экран не найден:', s); continue; }
+        btn.dispatchEvent(new desk.w.MouseEvent('click', { bubbles: true }));
+        for (let i = 0; i < 60; i++) {
+          await sleep(200);
+          const t = (desk.w.document.querySelector('#st-body')?.textContent || '').trim();
+          if (t && !t.includes('Загрузка')) break;
+        }
+        await sleep(300);
+        shots.push({ ...capture(desk, `Настройки → ${s} · менеджер (десктоп 1440px)`), h: 900 });
+        console.log('    снят под-экран настроек:', s);
+      }
+    }
   }
   // модалка возврата кара
   await goto(desk, 'cars');
@@ -135,6 +159,9 @@ async function main() {
   if (arch) { arch.click(); await sleep(2000); shots.push({ ...capture(desk, 'Ночной отчёт → архив смен'), h: 900 }); console.log('  снята модалка: архив смен'); }
 
   // ── сотрудник (телефон) ──
+  if (process.env.SNAPSHOT_MOBILE === '0') {
+    console.log('мобильная часть пропущена (SNAPSHOT_MOBILE=0)');
+  } else await (async () => {
   const mob = await newPage({ width: 390, height: 844 }, true);
   mob.w.document.documentElement.classList.add('mobile-shot');
   await login(mob, 'ivanov');
@@ -144,6 +171,7 @@ async function main() {
     shots.push({ ...capture(mob, `${TITLES[v]} · сотрудник (телефон 390px)`), h: 844, mobile: true });
     console.log('  снят раздел (телефон):', v);
   }
+  })();
 
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const frames = shots.map((s, i) => `
@@ -188,8 +216,8 @@ body{font:15px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#10182
      с демо-данными, затем DOM сериализован вместе со штатными стилями <code>app.css</code>.</p>
   <p>Это не скриншоты и не макет: разметка и стили — те самые, что отдаёт сервер.
      Клики не работают (скрипты из снимка удалены), прокрутка внутри кадра — работает.</p>
-  <p>Снято: 9 разделов под менеджером (десктоп 1440px), 3 модалки, 4 раздела под сотрудником
-     (телефон 390px). Всего кадров: ${shots.length}.</p>
+  <p>Снято: разделы под менеджером (десктоп 1440px), все под-экраны «Настроек», модалки
+     и разделы под сотрудником (телефон 390px). Всего кадров: ${shots.length}.</p>
 </div>
 ${frames}
 </body></html>`;
