@@ -96,7 +96,10 @@ def period_employees(db: Session, first: dt.date, last: dt.date,
 
 def domain_error_text(exc: Exception) -> str:
     if isinstance(exc, ConfigError):
-        return "Ошибка настроек: " + "; ".join(f"{c} {dict(d)}" for c, d in exc.violations)
+        # человеческие тексты нарушений — в interface (2.4): домен возвращает код и контекст
+        from ..engine.interface.formatting import config_violation_text
+        texts = [f"{config_violation_text(c, dict(d))} [{c}]" for c, d in exc.violations]
+        return "Ошибка настроек: " + "; ".join(texts)
     if isinstance(exc, UnknownDayCodeError):
         return f"Код Табеля «{exc.code}» ({exc.day:%d.%m}) отсутствует в справочнике CFG-DAY-CODES"
     if isinstance(exc, UnknownTimesheetValueError):

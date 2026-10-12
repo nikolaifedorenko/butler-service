@@ -2,7 +2,7 @@
 один день, независимо от равенства значений (3.5, 5.3)."""
 from __future__ import annotations
 
-from ..types import Settings
+from ..types import ModifierEntry, Settings
 from ._violations import Violation
 from .modifier_scope import scope_level
 
@@ -30,5 +30,31 @@ def check_modifier_conflict(st: Settings) -> list[Violation]:
     for ai, (i, a, la) in enumerate(entries):
         for j, b, lb in entries[ai + 1:]:
             if la is not None and la == lb and a.name == b.name and _same_scope(a, b):
-                out.append((CHK_MODIFIER_CONFLICT, {"name": a.name, "level": la, "entries": (i, j)}))
+                out.append((CHK_MODIFIER_CONFLICT, {
+                    "name": a.name, "level": la, "entries": (i, j),
+                    # минимум контекста для человекочитаемого текста (interface/formatting):
+                    # область записей и дни, на которые они обе претендуют
+                    "scopes": (_brief(a), _brief(b)),
+                    "day": _common_day(a, b),
+                }))
     return out
+
+
+def _brief(entry: ModifierEntry) -> dict:
+    return {"employee_id": entry.employee_id, "group": entry.group,
+            "day": entry.day,
+            "period_start": None if entry.period is None else entry.period.start,
+            "period_end": None if entry.period is None else entry.period.end}
+
+
+def _common_day(a: ModifierEntry, b: ModifierEntry):
+    """День, на который претендуют обе записи: его достаточно, чтобы показать конфликт."""
+    if a.day is not None and b.day is not None:
+        return a.day
+    if a.day is not None and b.period is not None and b.period.start <= a.day <= b.period.end:
+        return a.day
+    if b.day is not None and a.period is not None and a.period.start <= b.day <= a.period.end:
+        return b.day
+    if a.period is not None and b.period is not None:
+        return max(a.period.start, b.period.start)
+    return None

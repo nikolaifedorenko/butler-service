@@ -19,7 +19,8 @@ DEFAULT_RULES = {
     "photo_retention_days": "180",
 }
 RULE_DESCRIPTIONS = {
-    "timeoff_default_hours": "Сколько часов по умолчанию предлагать для «выходного за часы» в Графике",
+    "timeoff_default_hours": "Часы «выходного за часы», если стандартное окно смен сотрудника не определилось "
+                             "(обычно берётся окно его смены из Табеля)",
     "photo_retention_days": "Хранение фото ночных отчётов и электрокаров в днях (0 — хранить всегда)",
 }
 INT_RULES = {"timeoff_default_hours", "photo_retention_days"}

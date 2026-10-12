@@ -17,9 +17,9 @@ from sqlalchemy.orm import Session
 from .deps import local_date
 from .models import ShiftRevision, ShiftType
 
-REV_FIELDS = ("code", "name", "display_code", "tzh_code", "kind", "start_time", "end_time",
-              "overnight", "color", "is_working", "counts_as_worked", "is_default_off",
-              "deduct_from_bank", "doc_type")
+REV_FIELDS = ("code", "name", "display_code", "tzh_code", "kind", "start_time",
+              "end_time", "overnight", "color", "is_working", "counts_as_worked",
+              "is_default_off", "deduct_from_bank", "doc_type")
 
 EPOCH = dt.date(2000, 1, 1)      # «значения действовали с начала времён»
 

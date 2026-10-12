@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,10 +16,11 @@ from ..db import get_db
 from ..deps import utc_to_local
 from ..engine.application.months import month_period
 from ..engine.application.presence_board import presence_board
+from ..engine.domain.types.errors import DomainError
 from ..engine.interface.views import board_dict
 from ..models import Employee
 from ..permissions import require_perm
-from .engine_common import emp_brief, engine_ports, now_utc
+from .engine_common import domain_error_text, emp_brief, engine_ports, now_utc
 
 router = APIRouter(prefix="/api/presence", tags=["presence"])
 
@@ -30,7 +31,12 @@ def board(principal: Principal = Depends(require_perm("presence.view")),
     now = now_utc()
     ports = engine_ports(db, principal, now)
     utc_today = now.astimezone(dt.timezone.utc).date()
-    st = ports.settings.load(month_period(utc_today.year, utc_today.month))
+    try:
+        st = ports.settings.load(month_period(utc_today.year, utc_today.month))
+    except (DomainError, ValueError) as exc:
+        raise HTTPException(status_code=409,
+                            detail=f"{domain_error_text(exc)}. Доска не соберётся, пока "
+                                   "конфигурация не исправлена в разделе «Настройки»") from exc
     result = presence_board(now, ports)
     payload = board_dict(result, str(st.tz))
     ids = [int(i) for i in ({c["employee_id"] for c in payload["open_session_cards"]}

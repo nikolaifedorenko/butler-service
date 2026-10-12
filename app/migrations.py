@@ -130,6 +130,7 @@ def migrate_db() -> None:
             con.execute(text("UPDATE shift_types SET deduct_from_bank=1 "
                              "WHERE code IN ('TIMEOFF_HOURS','AWAY_HOURS') "
                              "AND (deduct_from_bank IS NULL OR deduct_from_bank=0)"))
+            _apply_timesheet_code_normative(con)
 
         # сотрудники без записей блоков получают открытую запись от даты приёма
         if insp.has_table("employees") and insp.has_table("block_assignments"):
@@ -194,6 +195,26 @@ def _migrate_missing_shifts() -> None:
                    "default_off": int(bool(default_off)),
                    "deduct": int(bool(extra.get("deduct_from_bank", False))),
                    "doc_type": extra.get("doc_type", "")})
+
+
+def _apply_timesheet_code_normative(con) -> None:
+    """Норматив от 12.10.2026: коды Табеля «С» и «НВ» из справочника исключены.
+
+    * суточная смена (SUTKI) — графиковая смена: в Табеле обычная явка «Я», по факту
+      сотрудник работает через полночь, а часы вне окна расчёт относит к переработке;
+    * «выходной за ранее отработанные часы» (TIMEOFF_HOURS) — отсутствие в Графике:
+      в Табеле остаётся явка, недостачу гасит банк часов (паттерн EX-29).
+
+    Правим только словарь (shift_types), историю Табеля не переписываем: версии
+    справочников очищает engine_bootstrap.strip_removed_day_codes, и только если
+    в Табеле не осталось строк с этими кодами.
+    """
+    from sqlalchemy import text
+
+    con.execute(text("UPDATE shift_types SET tzh_code='Я' "
+                     "WHERE code='SUTKI' AND (tzh_code='С' OR tzh_code='' OR tzh_code IS NULL)"))
+    con.execute(text("UPDATE shift_types SET tzh_code='' "
+                     "WHERE code='TIMEOFF_HOURS' AND tzh_code='НВ'"))
 
 
 def _migrate_employment_periods() -> None:

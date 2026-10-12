@@ -108,3 +108,138 @@ def reason_text(code: str, data: dict) -> str:
         return (f"{title}: план {hours(data['plan_before'])} → {hours(data['plan_after'])} ч "
                 f"(источник: {data['policy']})")
     return title
+
+
+# ───────────────────── нарушения конфигурации (CHK-*) ─────────────────────
+# Тексты проверок уровня 1 (5.3): домен возвращает (код, минимальный контекст),
+# а человекочитаемое сообщение собирается только здесь (2.4, 12.13).
+CONFIG_TITLES = {
+    "CHK-WINDOW-PLAN": "Информационный план значения больше длины окна",
+    "CHK-WINDOW-BOUNDS": "Некорректные границы окна",
+    "CHK-WINDOW-KEY": "Некорректный ключ строки окон",
+    "CHK-CATEGORIES-COVER": "Категории времени не покрывают сутки",
+    "CHK-CODES-EXIST": "Нет кода УТ для категории и веса",
+    "CHK-CASCADE-FULL": "Порядок каскада неполный",
+    "CHK-PLACEMENT-FULL": "Порядок размещения неполный",
+    "CHK-WEIGHTS-POSITIVE": "Некорректный вес кода УТ",
+    "CHK-STEP-DIVIDES-60": "Шаг расчёта не делит час без остатка",
+    "CHK-GRID": "Граница не кратна шагу расчёта",
+    "CHK-DEFAULTS": "Не задан глобальный дефолт модификатора",
+    "CHK-MODIFIER-SCOPE": "Недопустимая область действия правила",
+    "CHK-MODIFIER-TYPE": "Тип значения не соответствует правилу",
+    "CHK-MODIFIER-CONFLICT": "Два правила одного уровня на один день",
+}
+MODIFIER_TITLES = {
+    "double_overtime": "Двойные переработки",
+    "pays_overtime": "Оплачиваются ли переработки",
+    "plan_equals_fact": "План=Факт",
+    "counts_in_ut": "Учитываются ли часы в УТ",
+    "late_limit_minutes": "Лимит опоздания",
+}
+SCOPE_FORMS = {
+    1: "сотрудник + день", 2: "сотрудник + период", 3: "группа + день",
+    4: "группа + период", 5: "все сотрудники + день", 6: "все сотрудники + период",
+    7: "глобальный дефолт",
+}
+WINDOW_KEY_REASONS = {
+    "non_canonical_format": "ключ неканоничен: нужен формат «код часы» через один пробел, "
+                            "дробь через запятую, не более двух знаков, без хвостовых нулей",
+    "unknown_day_code": "кода нет в справочнике кодов Табеля",
+    "code_carries_no_hours": "код не несёт плановых часов — окна у него быть не может",
+}
+
+
+def _date(value) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, str):
+        try:
+            value = dt.date.fromisoformat(value)
+        except ValueError:
+            return value
+    return f"{value:%d.%m.%Y}"
+
+
+def _scope_text(scope: dict) -> str:
+    """Область действия правила словами: «группа «Смена 1», 12.10.2026»."""
+    if not scope:
+        return "—"
+    who = (f"сотрудник #{scope['employee_id']}" if scope.get("employee_id")
+           else f"группа «{scope['group']}»" if scope.get("group") else "все сотрудники")
+    when = (_date(scope["day"]) if scope.get("day") else
+            f"{_date(scope.get('period_start'))} — {_date(scope.get('period_end'))}"
+            if scope.get("period_start") else "без привязки ко времени")
+    return f"{who}, {when}"
+
+
+def config_violation_text(code: str, data: dict | None = None) -> str:
+    """Одно нарушение конфигурации — одной фразой, с указание на что править."""
+    data = data or {}
+    title = CONFIG_TITLES.get(code, code)
+    if code == "CHK-MODIFIER-CONFLICT":
+        scopes = data.get("scopes") or ({}, {})
+        level = data.get("level")
+        names = MODIFIER_TITLES.get(data.get("name"), data.get("name", "правило"))
+        where = f" на {_date(data['day'])}" if data.get("day") else ""
+        return (f"{title}: «{names}»{where} — форма области «{SCOPE_FORMS.get(level, level)}». "
+                f"Записи: {_scope_text(scopes[0])} и {_scope_text(scopes[-1])}. "
+                "Оставьте одну из них либо сузьте область (например, до одного сотрудника)")
+    if code == "CHK-WINDOW-KEY":
+        return (f"{title}: значение «{data.get('value')}» — "
+                f"{WINDOW_KEY_REASONS.get(data.get('reason'), data.get('reason', ''))}")
+    if code == "CHK-WINDOW-PLAN":
+        return (f"{title}: «{data.get('value')}» — план {hours(data.get('plan_minutes', 0))} ч "
+                f"при окне {hours(data.get('window_length', 0))} ч. План строки Табеля не превышает "
+                "длину окна (зарплатная норма), а план карточки всегда равен окну")
+    if code == "CHK-WINDOW-BOUNDS":
+        return (f"{title}: «{data.get('value')}» — {hm(data.get('start_minute', 0))}–"
+                f"{hm(data.get('end_minute', 0))}. Начало должно быть раньше конца, окно не "
+                "пересекает полночь: смена через полночь оформляется одним значением в дне начала")
+    if code == "CHK-GRID":
+        kind = {"window": "граница окна", "category": "граница категории"}.get(
+            data.get("kind"), "граница")
+        return (f"{title}: {kind} «{data.get('value')}» — {hm(data.get('minute', 0))} "
+                "не кратна шагу расчёта")
+    if code == "CHK-CATEGORIES-COVER":
+        holes = ", ".join(hm(m) for m in (data.get("holes") or ())[:4])
+        overlaps = ", ".join(hm(m) for m in (data.get("overlaps") or ())[:4])
+        return (f"{title}: сутки должны быть покрыты без дыр и пересечений"
+                + (f"; не покрыто: {holes}" if holes else "")
+                + (f"; пересечение: {overlaps}" if overlaps else ""))
+    if code == "CHK-CODES-EXIST":
+        return (f"{title}: для категории «{data.get('category')}» и веса {data.get('weight')} "
+                f"нужен код «{data.get('expected_code')}» в таблице весов")
+    if code in ("CHK-CASCADE-FULL", "CHK-PLACEMENT-FULL"):
+        what = "каскада" if code == "CHK-CASCADE-FULL" else "размещения"
+        parts = []
+        if data.get("missing"):
+            parts.append("не хватает: " + ", ".join(map(str, data["missing"])))
+        if data.get("duplicates"):
+            parts.append("повторяются: " + ", ".join(map(str, data["duplicates"])))
+        if data.get("unknown"):
+            parts.append("нет в таблице весов: " + ", ".join(map(str, data["unknown"])))
+        return (f"{title}: порядок {what} обязан содержать все коды весов без повторов"
+                + (" — " + "; ".join(parts) if parts else ""))
+    if code == "CHK-WEIGHTS-POSITIVE":
+        return (f"{title}: «{data.get('code')}» = {data.get('weight')} — нужно целое "
+                "число больше нуля")
+    if code == "CHK-STEP-DIVIDES-60":
+        return (f"{title}: шаг {data.get('step_minutes')} мин — допустимы 1, 2, 3, 4, 5, 6, "
+                "10, 12, 15, 20, 30, 60")
+    if code == "CHK-DEFAULTS":
+        name = MODIFIER_TITLES.get(data.get("modifier"), data.get("modifier"))
+        extra = (f" (получено {data['value']!r})" if "value" in data else
+                 " — задайте глобальное значение: без него расчёт остановится")
+        return f"{title}: «{name}»{extra}"
+    if code == "CHK-MODIFIER-SCOPE":
+        reason = {"invalid_scope_form": "область действия не входит в шесть допустимых форм "
+                                       "(сотрудник/группа/все × день/период)",
+                  "unknown_group": "группы нет в справочнике групп"}.get(
+                      data.get("reason"), data.get("reason", ""))
+        entry = data.get("entry") or {}
+        return f"{title}: {reason}" + (f" — {_scope_text(entry)}" if entry else "")
+    if code == "CHK-MODIFIER-TYPE":
+        name = MODIFIER_TITLES.get(data.get("name"), data.get("name"))
+        allowed = ("«да»/«нет»/«авто»" if data.get("name") == "plan_equals_fact" else "«да»/«нет»")
+        return f"{title}: «{name}» = {data.get('value')!r}, допустимые значения {allowed}"
+    return title

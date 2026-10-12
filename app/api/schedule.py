@@ -414,24 +414,190 @@ class RangeAbsenceIn(BaseModel):
     first: dt.date
     last: dt.date
     shift_type_id: Optional[int] = None   # вид отсутствия из словаря (код — из его Т-13)
-    code: str = ""                        # либо код Табеля напрямую (ОТ/ДО/Б/ОВ/НВ/НН…)
+    code: str = ""                        # либо код Табеля напрямую (ОТ/ДО/Б/ОВ/НН…)
     note: str = ""
     workdays_only: bool = False           # только дни, где по Табелю была работа
+
+
+def standard_day_hours(db: Session, st, emp, day: dt.date) -> tuple[Optional[float], str]:
+    """Часы «выходного за ранее отработанные часы» — стандартное окно смен сотрудника.
+
+    Порядок вывода (норматив от 12.10.2026):
+
+    1. `window_of_day` — окно значения Табеля этого дня (или дня, который сотрудник
+       меняет на выходной): сколько часов он обычно работает, столько и стоит в
+       заявлении;
+    2. `timesheet_mode` — мода длин окон в Табеле сотрудника за последние 90 дней:
+       день ещё не заполнен, но норма сотрудника понятна;
+    3. `default` — глобальная настройка объекта (`timeoff_default_hours`).
+
+    Число информационное: код отсутствия не несёт плановых часов, согласованное
+    отсутствие не влияет на план, часы и банк (RUL-ABSENCE-ONLY-FLAGS), недостачу дня
+    гасит банк (EX-29).
+    """
+    from collections import Counter
+
+    from ..schedule_helpers import DEFAULT_RULES, load_rules
+
+    def window_hours(row) -> Optional[float]:
+        if row is None:
+            return None
+        policy = st.day_code_policy.get(row.code)
+        if policy is None or not policy.carries_hours or not row.plan_minutes:
+            return None
+        window = st.windows.get(f"{row.code} {fmt_hours(row.plan_minutes)}")
+        return None if window is None else window.length / 60
+
+    own = window_hours(db.scalar(select(TabelDay).where(TabelDay.employee_id == emp.id,
+                                                        TabelDay.date == day)))
+    if own is not None:
+        return own, "window_of_day"
+    # день, который меняют на выходной: ближайший предыдущий рабочий день сотрудника
+    for back in range(1, 15):
+        prev = window_hours(db.scalar(select(TabelDay).where(
+            TabelDay.employee_id == emp.id, TabelDay.date == day - dt.timedelta(days=back))))
+        if prev is not None:
+            return prev, "window_of_day"
+    since = day - dt.timedelta(days=90)
+    lengths = [window_hours(r) for r in db.scalars(select(TabelDay).where(
+        TabelDay.employee_id == emp.id, TabelDay.date >= since, TabelDay.date <= day))]
+    known = [v for v in lengths if v is not None]
+    if known:
+        return Counter(known).most_common(1)[0][0], "timesheet_mode"
+    rules = load_rules(db)
+    try:
+        return float(rules.get("timeoff_default_hours", DEFAULT_RULES["timeoff_default_hours"])), "default"
+    except (TypeError, ValueError):
+        return float(DEFAULT_RULES["timeoff_default_hours"]), "default"
+
+
+def st_day(db: Session, day: dt.date):
+    """Настройки периода, содержащего день (для вывода часов отсутствия)."""
+    return _settings(db, month_period(day.year, day.month))
+
+
+def _covers_whole_day(db: Session, st, employee_id: int, day: dt.date,
+                      start_local: dt.datetime, end_local: dt.datetime) -> bool:
+    """Отсутствие покрывает рабочую часть дня целиком.
+
+    Признак «дня за часы»: сравниваем с окном значения Табеля этого дня (12 часовая
+    смена 08:00–20:00 покрыта записью 08:00–20:00), а не с календарными сутками —
+    иначе заявление печаталось бы с длиной записи вместо нормы смены.
+    """
+    if (end_local - start_local) >= dt.timedelta(hours=23):
+        return True
+    row = db.scalar(select(TabelDay).where(TabelDay.employee_id == employee_id,
+                                           TabelDay.date == day))
+    if row is None:
+        return False
+    policy = st.day_code_policy.get(row.code)
+    if policy is None or not policy.carries_hours or not row.plan_minutes:
+        return False
+    window = st.windows.get(f"{row.code} {fmt_hours(row.plan_minutes)}")
+    if window is None:
+        return False
+    midnight = dt.datetime.combine(day, dt.time(0), TZ)
+    win_start = midnight + dt.timedelta(minutes=window.start_minute)
+    win_end = midnight + dt.timedelta(minutes=window.end_minute)
+    return start_local <= win_start and end_local >= win_end
+
+
+def _day_window_hhmm(db: Session, st, employee_id: int, day: dt.date) -> tuple[str, str, bool]:
+    """Интервал согласованного отсутствия на день: окно значения Табеля, иначе сутки.
+
+    Отсутствие покрывает смену целиком — так в Табеле остаётся явка, отсутствие снимает
+    ожидание и флаги, а недостачу гасит банк (паттерн EX-29).
+    """
+    row = db.scalar(select(TabelDay).where(TabelDay.employee_id == employee_id,
+                                           TabelDay.date == day))
+    if row is not None:
+        policy = st.day_code_policy.get(row.code)
+        if policy is not None and policy.carries_hours:
+            value = f"{row.code} {fmt_hours(row.plan_minutes)}" if row.plan_minutes else row.code
+            window = st.windows.get(value)
+            if window is not None:
+                return (f"{window.start_minute // 60:02d}:{window.start_minute % 60:02d}",
+                        f"{window.end_minute // 60:02d}:{window.end_minute % 60:02d}", False)
+    return "00:00", "00:00", True
+
+
+def _range_absence_as_schedule(payload: RangeAbsenceIn, kind: ShiftType, principal: Principal,
+                               db: Session) -> dict:
+    """Вид отсутствия БЕЗ кода Табеля: пишем согласованные отсутствия в График.
+
+    Норматив от 12.10.2026: «выходной за ранее отработанные часы» и «отпросился» —
+    данные Графика, а не код первичного документа. В Табеле остаётся явка («Я»/«К»),
+    отсутствие не меняет план (RUL-ABSENCE-ONLY-FLAGS), недостачу гасит банк часов —
+    то есть ранее накопленные переработки (EX-29).
+    """
+    st = _settings(db, month_period(payload.first.year, payload.first.month))
+    ports = engine_ports(db, principal, now_utc())
+    written, skipped, errors = 0, 0, []
+    for employee_id in payload.employee_ids:
+        periods = periods_of(db, employee_id)
+        day = payload.first
+        while day <= payload.last:
+            if not employed_on(periods, day):
+                skipped += 1
+                day += dt.timedelta(days=1)
+                continue
+            trow = db.scalar(select(TabelDay).where(TabelDay.employee_id == employee_id,
+                                                    TabelDay.date == day))
+            carries = bool(trow is not None and st.day_code_policy.get(trow.code)
+                           and st.day_code_policy[trow.code].carries_hours)
+            if payload.workdays_only and not carries:
+                skipped += 1
+                day += dt.timedelta(days=1)
+                continue
+            start_hhmm, end_hhmm, next_day = _day_window_hhmm(db, st, employee_id, day)
+            try:
+                absence_id = schedule_view.save_absence(str(employee_id), day, start_hhmm,
+                                                        end_hhmm, next_day, ports)
+            except (DomainError, ApplicationError) as exc:
+                errors.append({"employee_id": employee_id, "date": day.isoformat(),
+                               "error": domain_error_text(exc)})
+                day += dt.timedelta(days=1)
+                continue
+            row = db.get(ScheduleAbsence, absence_id)
+            if row is not None:
+                row.kind_id = kind.id
+                row.note = payload.note[:255]
+                row.created_by = principal.user.id
+            written += 1
+            day += dt.timedelta(days=1)
+    audit(db, principal, "schedule_range_absence", f"{payload.first}..{payload.last}",
+          {"employees": payload.employee_ids, "kind": kind.code, "written": written,
+           "mode": "schedule_absence"})
+    db.commit()
+    return {"ok": not errors, "written": written, "skipped": skipped, "errors": errors[:20],
+            "mode": "schedule_absence"}
 
 
 @router.post("/range-absence")
 def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(require_manager),
                   db: Session = Depends(get_db)):
-    """«Назначить отсутствие» на период: в новой модели отсутствие на весь день — код
-    Табеля (первичный документ); График дня перегенерируется (смены в эти дни нет →
-    сотрудник не ожидается, флагов нет). Период может пересекать границы месяцев."""
+    """«Назначить отсутствие» на период.
+
+    Два способа — по виду отсутствия из словаря:
+
+    * **есть код Табеля** (ОТ, ДО, Б, ОВ, НН…) — отсутствие на весь день это код
+      первичного документа; График дня перегенерируется (смены в эти дни нет →
+      сотрудник не ожидается, флагов нет);
+    * **кода Табеля нет** («Выходной за часы», «Отпросился») — пишется согласованное
+      отсутствие в График, Табель не трогается: явка остаётся, недостачу гасит банк
+      (норматив от 12.10.2026, паттерн EX-29).
+
+    Период может пересекать границы месяцев.
+    """
     from ..engine.application import timesheet_edit
     code = payload.code.strip()
-    if not code and payload.shift_type_id:
-        kind = db.get(ShiftType, payload.shift_type_id)
-        if kind is None:
-            raise HTTPException(status_code=422, detail="Вид отсутствия не найден")
+    kind = db.get(ShiftType, payload.shift_type_id) if payload.shift_type_id else None
+    if payload.shift_type_id and kind is None:
+        raise HTTPException(status_code=422, detail="Вид отсутствия не найден")
+    if not code and kind is not None:
         code = (kind.tzh_code or "").strip()
+    if not code and kind is not None:
+        return _range_absence_as_schedule(payload, kind, principal, db)
     st = _settings(db, month_period(payload.first.year, payload.first.month))
     policy = st.day_code_policy.get(code)
     if policy is None:
@@ -477,6 +643,24 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
     return {"ok": not errors, "written": written, "skipped": skipped, "errors": errors[:20]}
 
 
+@router.get("/timeoff-hours")
+def timeoff_hours(employee_id: int, date: dt.date,
+                  principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+    """Часы «выходного за ранее отработанные часы» для сотрудника и дня.
+
+    Значение выводится, а не задаётся константой (норматив от 12.10.2026):
+    стандартное окно смен сотрудника из Табеля → мода окон за 90 дней → глобальный
+    fallback. `hours_source` показывает, какое правило сработало.
+    """
+    emp = db.get(Employee, employee_id)
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+    st = _settings(db, month_period(date.year, date.month))
+    value, source = standard_day_hours(db, st, emp, date)
+    return {"employee_id": employee_id, "date": date.isoformat(), "hours": value,
+            "hours_source": source}
+
+
 @router.get("/absence-period")
 def absence_period(employee_id: int, date: dt.date,
                    principal: Principal = Depends(require_manager),
@@ -505,12 +689,23 @@ def absence_period(employee_id: int, date: dt.date,
         if kind is not None and kind.doc_type:
             start_local = partial.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
             end_local = partial.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+            day = start_local.date()
+            day_settings = st_day(db, day)
+            if _covers_whole_day(db, day_settings, employee_id, day, start_local, end_local):
+                # отсутствие на весь день («выходной за часы»): часов = стандартное окно
+                # смен сотрудника, а не длина записи (норматив 12.10.2026, EX-29)
+                hours_value, hours_source = standard_day_hours(db, day_settings, emp, day)
+            else:
+                hours_value = round((end_local - start_local).total_seconds() / 3600, 2)
+                hours_source = "absence_interval"
             return {"employee": employee_payload,
-                    "start": start_local.date().isoformat(),
+                    "start": day.isoformat(),
                     "end": (end_local - dt.timedelta(seconds=1)).date().isoformat(),
                     "days": 1, "shift": _kind_brief(kind), "note": partial.note or "",
+                    "hours": hours_value, "hours_source": hours_source,
                     "partial": {"from_time": start_local.strftime("%H:%M"),
                                 "until_time": end_local.strftime("%H:%M"),
+                                "hours": hours_value, "hours_source": hours_source,
                                 "kind": _kind_brief(kind)},
                     "notes": [partial.note] if partial.note else []}
     # 2) отсутствие на период — непрерывный диапазон одного кода Табеля
@@ -534,10 +729,13 @@ def absence_period(employee_id: int, date: dt.date,
     if kind is None:
         raise HTTPException(status_code=404,
                             detail=f"Для кода «{anchor.code}» не настроен тип заявления")
+    st = _settings(db, month_period(start.year, start.month))
+    hours_value, hours_source = standard_day_hours(db, st, emp, start)
     return {"employee": employee_payload,
             "start": start.isoformat(), "end": end.isoformat(),
             "days": (end - start).days + 1, "shift": _kind_brief(kind),
             "note": anchor.note or "", "partial": None,
+            "hours": hours_value, "hours_source": hours_source,
             "notes": sorted({r.note for d_, r in rows.items() if start <= d_ <= end and r.note})}
 
 

@@ -5,10 +5,16 @@
 CFG-WINDOWS (16.3), а не наоборот.
 
 Правила:
+* **смена через полночь оформляется ОДНИМ значением в дне-якоре** (норматив от
+  12.10.2026): суточная/ночная смена не дробится на два значения двух дней. В Табеле
+  стоит обычная явка, окно которой начинается вместе со сменой (суточные 08:00–08:00 →
+  окно 08:00–20:00). Присутствие режется локальными полуночами, поэтому работа после
+  полуночи попадает в карточку следующего дня: рабочее время = присутствие ∩ окно
+  своего дня, всё вне окна — переработка (4.7, RUL-WORK-AND-OVERTIME). «Утро» такой
+  смены в следующий день не переносится — день считается самостоятельно;
 * дневные части смен, накрывающие день (своя смена + «утро» ночной смены предыдущего
-  дня), сливаются; если получился один отрезок — значение Табеля ищется по точным
-  границам окон CFG-WINDOWS (код и план — из ключа окна); ночная смена через полночь
-  естественно дробится на два значения двух дней (4.7, паттерн EX-15);
+  дня, если у той нет явной нормы), сливаются; если получился один отрезок — значение
+  Табеля ищется по точным границам окон CFG-WINDOWS (код и план — из ключа окна);
 * день без рабочих частей → код отсутствия из словаря (если есть в CFG-DAY-CODES и не
   несёт часов), иначе «В»;
 * несколько несмежных отрезков в дне одним значением непредставимы (окно не пересекает
@@ -76,6 +82,50 @@ def _find_value(st: Settings, segment: Segment) -> Optional[str]:
     return None
 
 
+def _is_overnight(shift) -> bool:
+    """Смена пересекает полночь (сутки 08:00–08:00, ночная 20:00–08:00)."""
+    if shift is None or getattr(shift, "kind", "") != "work":
+        return False
+    start, end = shift.start_time or "", shift.end_time or ""
+    if not start or not end:
+        return False
+    return bool(getattr(shift, "overnight", False)) or _hm_minutes(end) <= _hm_minutes(start)
+
+
+def _anchor_value(st: Settings, shift, day: dt.date) -> tuple[Optional[str], int, str]:
+    """Значение Табеля для смены через полночь — целиком в дне-якоре.
+
+    Окно такой смены — стандартное рабочее окно, начинающееся вместе со сменой
+    (суточные 08:00–08:00 → окно 08:00–20:00): по нему считаются рабочее время,
+    недостача и план карточки, а часы вне окна расчёт относит к переработке дня.
+    Часов в смене через полночь больше, чем в окне, поэтому значение ищется по
+    **началу** окна, а не по его границам целиком.
+
+    Если одному началу соответствует несколько значений справочника (например «Я 12»
+    и «Я 10,75» при окне 08:00–20:00 — часы значения меньше длины окна), берётся первое
+    по порядку в справочнике окон: расчёт от этого не меняется, у обоих значений окно
+    одно. Точное значение при необходимости ставится в ячейку вручную — ручные строки
+    Табеля заполнение из циклов не перезаписывает.
+
+    Без подходящей строки CFG-WINDOWS значение не возвращается: расчёт остановился бы
+    на CHK-WINDOW-EXISTS, поэтому честнее предупредить при заполнении.
+    """
+    code = ((getattr(shift, "tzh_code", "") or "").strip())
+    policy = st.day_code_policy.get(code)
+    if policy is None or not policy.carries_hours:
+        return None, 0, (f"{day:%d.%m}: у смены через полночь не задан код Табеля, "
+                         "несущий часы, — укажите его в словаре смен")
+    start = _hm_minutes(shift.start_time)
+    candidates = [key for key, w in st.windows.items() if w.start_minute == start]
+    if not candidates:
+        return None, 0, (f"{day:%d.%m}: для смены через полночь нет строки CFG-WINDOWS "
+                         f"с началом {shift.start_time} — добавьте значение в настройках "
+                         "(паттерн EX-15)")
+    value = candidates[0]
+    hours = value.partition(" ")[2]
+    return code, int(round(float(hours.replace(",", ".")) * 60)), ""
+
+
 def _off_code(st: Settings, shift: Optional[ShiftType]) -> str:
     code = ((getattr(shift, "tzh_code", "") or "").strip() if shift is not None else "")
     policy = st.day_code_policy.get(code)
@@ -89,10 +139,14 @@ def value_for_day(db: Session, emp: Employee, day: dt.date, st: Settings,
     """(код, плановые минуты, предупреждение) для дня; код None — день не заполняется
     (вне трудоустройства / ручной режим / значение непредставимо)."""
     today_shift = base_shift(db, emp, day, cfg=cfg, index=index, catalog=catalog)
+    if _is_overnight(today_shift):
+        # смена через полночь: одно значение в дне-якоре, «утро» следующего дня не учитываем
+        return _anchor_value(st, today_shift, day)
     yesterday_shift = base_shift(db, emp, day - dt.timedelta(days=1), cfg=cfg, index=index,
                                  catalog=catalog)
-    parts = _merge(_shift_day_parts(today_shift, day, day)
-                   + _shift_day_parts(yesterday_shift, day, day - dt.timedelta(days=1)))
+    tail = [] if _is_overnight(yesterday_shift) else \
+        _shift_day_parts(yesterday_shift, day, day - dt.timedelta(days=1))
+    parts = _merge(_shift_day_parts(today_shift, day, day) + tail)
     if not parts:
         return _off_code(st, today_shift), 0, ""
     if len(parts) > 1:
