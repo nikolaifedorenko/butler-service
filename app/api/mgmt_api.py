@@ -77,9 +77,22 @@ def _effective_end(period: Period, employment: Employment) -> dt.date:
 
 def _context(db: Session, principal: Optional[Principal], year: int, month: int,
              half: Optional[int], ids: Optional[list[int]]):
+    """Контекст вкладки: порты, гранулярность, период, сотрудники.
+
+    Повреждённая конфигурация (ConfigError, уровень 1 валидации) — типизированный отказ
+    409 с человеческим текстом, а не 500: вкладка должна показать, что именно сломано
+    и где это чинить. Раньше исключение всплывало до обработчика и отдавало
+    «Internal Server Error» на весь период.
+    """
     now = now_utc()
     ports = engine_ports(db, principal, now)
-    granularity = ports.settings.load(month_period(year, month)).period_granularity
+    try:
+        granularity = ports.settings.load(month_period(year, month)).period_granularity
+    except (DomainError, ValueError) as exc:
+        raise HTTPException(status_code=409,
+                            detail=f"{domain_error_text(exc)}. Исправьте в разделе "
+                                   "«Настройки» — расчёт периода не запустится, "
+                                   "пока конфигурация невалидна") from exc
     period = _period(year, month, half, granularity)
     emps = period_employees(db, period.start, period.end, ids)
     return now, ports, granularity, period, emps
@@ -94,7 +107,10 @@ def get_mgmt(year: int, month: int, half: Optional[int] = None, employee_id: Opt
     if employee_id and not emps:
         raise HTTPException(status_code=404,
                             detail="Сотрудник не трудоустроен в этом периоде")
-    st = ports.settings.load(period)
+    try:
+        st = ports.settings.load(period)
+    except (DomainError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=domain_error_text(exc)) from exc
     rows = [_row(db, ports, e, period, now, detail or bool(employee_id)) for e in emps]
     perms = principal_permissions(db, principal)
     return {"year": year, "month": month, "half": half, "granularity": granularity,
@@ -160,9 +176,12 @@ def periods(principal: Principal = Depends(require_perm("mgmt.view")),
     now = now_utc()
     utc_today = now.astimezone(dt.timezone.utc).date()
     ports = engine_ports(db, principal, now)
-    st = ports.settings.load(month_period(utc_today.year, utc_today.month))
-    today = now.astimezone(st.tz).date()
-    st = ports.settings.load(month_period(today.year, today.month))
+    try:
+        st = ports.settings.load(month_period(utc_today.year, utc_today.month))
+        today = now.astimezone(st.tz).date()
+        st = ports.settings.load(month_period(today.year, today.month))
+    except (DomainError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=domain_error_text(exc)) from exc
     granularity = st.period_granularity
     current = period_containing(today, granularity)
     emps = period_employees(db, current.start, current.end)

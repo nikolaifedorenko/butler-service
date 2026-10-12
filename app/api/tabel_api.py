@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit
 from ..db import get_db
+from ..deps import local_date
 from ..engine.adapters.sql_settings import SqlSettingsAdapter, base_version
 from ..engine.application import timesheet_edit
 from ..engine.application.errors import ApplicationError
@@ -55,6 +56,24 @@ def _code_titles(db: Session) -> dict[str, str]:
     version = base_version(db, dt.date.today())
     payload = json.loads(version.payload_json) if version else {}
     return {code: row.get("title", "") for code, row in payload.get("day_code_policy", {}).items()}
+
+
+def _code_colors(db: Session) -> dict[str, str]:
+    """Цвета кодов Табеля — блок presentation версии справочников (данные приложения).
+
+    Домен подписей и цветов не знает (2.4): они лежат рядом со строкой CFG-DAY-CODES
+    и читаются только интерфейсом. Пустой словарь — фронтенд берёт свою подстраховку.
+    """
+    ver = base_version(db, local_date())
+    if ver is None:
+        return {}
+    try:
+        payload = json.loads(ver.payload_json)
+    except (ValueError, TypeError):
+        return {}
+    rows = payload.get("day_code_policy") or {}
+    return {code: row["color"] for code, row in rows.items()
+            if isinstance(row, dict) and row.get("color")}
 
 
 @router.get("")
@@ -94,6 +113,7 @@ def get_tabel(year: int, month: int, half: Optional[int] = None,
     return {"year": year, "month": month, "half": half, "granularity": granularity,
             "period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
             "days": [d.isoformat() for d in days],
+            "colors": _code_colors(db),
             "codes": [{"code": code, "title": titles.get(code, ""),
                        "carries_hours": p.carries_hours, "accepts_ut": p.accepts_ut,
                        "counts_in_ut": p.counts_in_ut, "plan_equals_fact_auto": p.plan_equals_fact_auto}

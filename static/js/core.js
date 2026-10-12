@@ -27,6 +27,14 @@ function esc(v) {
 function hhmm(iso) { return iso ? iso.slice(11, 16) : ''; }
 function dateRu(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; }
 function hours(v) { return (Math.round((Number(v) || 0) * 100) / 100).toString().replace('.', ','); }
+/* Длительность «человеческими» единицами: 1370 мин → «22 ч 50 мин», 90 → «1 ч 30 мин».
+   Для счётчиков на доске и в истории — там дробные сотые (22,83) не читаются. */
+function durationRu(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  const h = Math.floor(m / 60), rest = m % 60;
+  if (!h) return `${rest} ${plural(rest, 'минута', 'минуты', 'минут')}`;
+  return rest ? `${h} ч ${rest} мин` : `${h} ${plural(h, 'час', 'часа', 'часов')}`;
+}
 function plural(n, one, few, many) {
   const m10 = n % 10, m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;

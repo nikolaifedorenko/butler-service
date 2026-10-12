@@ -6,11 +6,19 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
+/* Цвета кодов Табеля — только подстраховка: основной источник — блок presentation
+   версии справочников (payload.day_code_policy[code].color), если он заполнен.
+   Кодов «С» и «НВ» здесь нет: из справочника Табеля они исключены (норматив
+   12.10.2026) — суточная смена это явка «Я 10,75» в дне-якоре, выходной за часы —
+   отсутствие в Графике. */
 const V4_CODE_COLORS = {
-  'Я': '#34a862', 'К': '#2b8fb6', 'С': '#7c5bd6', 'В': '#c3cdd9', 'ДО': '#d9822b',
-  'ОТ': '#f0a500', 'ОВ': '#9b59b6', 'НВ': '#17a2b8', 'Б': '#e05d4b', 'НБ': '#c0504d',
+  'Я': '#34a862', 'К': '#2b8fb6', 'В': '#c3cdd9', 'ДО': '#d9822b',
+  'ОТ': '#f0a500', 'ОВ': '#9b59b6', 'Б': '#e05d4b', 'НБ': '#c0504d',
   'НН': '#b03a48',
 };
+function v4CodeColor(code, fromPayload) {
+  return (fromPayload && fromPayload[code]) || V4_CODE_COLORS[code] || '#8a94a6';
+}
 const V4_FLAG_CLASS = { LATE: 'warn', EARLY_DEPARTURE: 'warn', OFF_SHIFT_ATTENDANCE: 'info' };
 
 function v4MonthNav(prefix, onShift) {
@@ -84,7 +92,7 @@ async function fetchMarks(silent) {
       <div class="pos">${esc(e.position || '—')}${e.group ? ' · ' + esc(e.group) : ''}</div>
       ${v4Contacts(e)}
       <div class="row"><span style="color:var(--muted)">На работе с</span><b>${esc(c.open_since_hm)}</b></div>
-      <div class="row"><span style="color:var(--muted)">Уже работает</span><b>${esc(c.hours_open)} ч</b></div>
+      <div class="row"><span style="color:var(--muted)">Уже работает</span><b>${esc(durationRu(c.minutes_open))}</b></div>
       <div class="row"><span style="color:var(--muted)">По графику сегодня</span>
         <b>${c.expected_today ? esc(shiftToday || 'ожидается') : 'не ожидался'}</b></div>
     </div>`;
@@ -242,7 +250,7 @@ function renderTabel() {
     <td class="who">${esc(r.employee.short_name)}<small>${esc(r.employee.group)} ${lockBadge(r.lock)}</small></td>
     ${d.days.map(day => {
       const c = r.cells[day];
-      const color = c ? (V4_CODE_COLORS[c.code] || '#8a94a6') : 'transparent';
+      const color = c ? v4CodeColor(c.code, d.colors) : 'transparent';
       const edit = d.can_edit && r.lock !== 'locked';
       const src = c ? (c.source === 'cycle' ? ' · из циклов' : ' · вручную') : '';
       return `<td class="v4-cell${edit ? ' edit' : ''}${c ? '' : ' empty'}" ${edit ? `data-e="${r.employee.id}" data-d="${day}"` : ''}
@@ -258,7 +266,7 @@ function renderTabel() {
       <thead><tr><th class="who">Сотрудник</th>${d.days.map(v4DayHead).join('')}<th>План, ч</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${d.days.length + 2}" class="empty">Нет сотрудников</td></tr>`}</tbody>
     </table></div>
-    <p class="hint">Коды: ${d.codes.map(c => `<span class="badge" style="background:${withAlpha(V4_CODE_COLORS[c.code] || '#8a94a6', .22)}" title="${esc(c.title)}">${esc(c.code)}</span> ${esc(c.title)}`).join(' · ')}.
+    <p class="hint">Коды: ${d.codes.map(c => `<span class="badge" style="background:${withAlpha(v4CodeColor(c.code, d.colors), .22)}" title="${esc(c.title)}">${esc(c.code)}</span> ${esc(c.title)}`).join(' · ')}.
       Значения с окнами (CFG-WINDOWS): ${d.values.map(esc).join(', ')}. План строки — информационный
       (зарплатный) атрибут; план карточки УТ = длина окна.</p>`;
   $$('#tb-body td.v4-cell.edit').forEach(td => td.onclick = () => tabelCellModal(+td.dataset.e, td.dataset.d));
@@ -324,9 +332,12 @@ function tabelFillModal(d) {
     subtitle: `${MONTHS[d.month - 1]} ${d.year}`,
     body: `
       <p>Циклы блоков (2/2, 3/3, пятидневка, произвольный цикл) раскладываются по дням и
-        подбирают значение Табеля по окнам CFG-WINDOWS («Я 12» = 08:00–20:00). Ночная/суточная
-        смена дробится на два значения двух дней («С 16» + «С 8»). Дни без работы получают код
-        отсутствия из словаря. График будет перегенерирован из Табеля.</p>
+        подбирают значение Табеля по окнам CFG-WINDOWS («Я 12» = 08:00–20:00). Смена через
+        полночь оформляется <b>одной строкой в дне начала</b>: суточные 08:00–08:00 дают явку
+        с окном 08:00–20:00, а присутствие после полуночи попадает в карточку следующего
+        дня — рабочее время считается по окну своего дня, часы вне окна идут в переработку.
+        Дни без работы получают код отсутствия из словаря. График будет перегенерирован
+        из Табеля.</p>
       <label class="field"><span>Что перезаписывать</span><select id="tf-mode">
         <option value="keep">Только пустые и заполненные из циклов (ручные правки сохраняются)</option>
         <option value="all">Все ячейки, включая ручные правки</option>
@@ -788,6 +799,8 @@ async function renderEngineSettings(host) {
       api(`/api/engine-settings/modifiers?year=${state.year}&month=${state.month}`)]);
   } catch (e) { host.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   const p = data.active.payload;
+  state.enginePayload = p;      // панель «Правила оплаты переработок» сохраняет новую версию отсюда
+
   const edit = can('settings.edit');
   const first = `${state.year}-${String(state.month).padStart(2, '0')}-01`;
   const empName = id => (state.employees.find(e => e.id === id) || {}).short_name || `#${id}`;
@@ -814,6 +827,8 @@ async function renderEngineSettings(host) {
       <textarea id="es-json" style="width:100%;min-height:320px;font-family:monospace;font-size:12px" ${edit ? '' : 'readonly'}>${esc(JSON.stringify(p, null, 2))}</textarea>
       ${edit ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:8px">
         <label class="field" style="margin:0"><span>Действует с (1 или 16 число)</span><input type="date" id="es-from" value="${first}"></label>
+        <!-- версия выбирается по дате НАЧАЛА периода: дата внутри месяца фактически
+             означает «с первого числа следующего» (base_version(period.start)) -->
         <label class="field" style="margin:0;flex:1"><span>Комментарий</span><input type="text" id="es-note" placeholder="что и почему меняем"></label>
         <button class="btn btn-primary" id="es-save">Сохранить новую версию</button></div>
         <p class="hint">Перед сохранением конфигурация проверяется правилами CHK-* уровня 1;

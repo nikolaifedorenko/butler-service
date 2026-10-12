@@ -539,7 +539,7 @@ async function downloadAbsenceDoc(empId, dateISO, fmt) {
       body: JSON.stringify({
         type, employee_id: empId, date_from: p.start, date_to: p.end, format: fmt,
         from_time: p.partial?.from_time || '', until_time: p.partial?.until_time || '',
-        hours: p.partial ? p.partial.hours : null,
+        hours: p.hours != null ? p.hours : null,
         reason: p.partial?.reason?.name || p.shift?.name || '',
         note: (p.notes || []).join('; '),
       }),
@@ -596,7 +596,9 @@ async function printAbsenceRequest(empId, dateISO) {
       group: e.subdivision || '',
       date_from: dateRu(p.start), date_to: dateRu(p.end), days: p.days,
       from_time: p.partial?.from_time || '', until_time: p.partial?.until_time || '',
-      hours: p.partial ? hours(p.partial.hours) : '',
+      /* Часы отсутствия: сервер считает их по стандартному окну смен сотрудника
+         (для «выходного за часы» — не длина записи, а норма его смены). */
+      hours: p.hours != null ? hours(p.hours) : '',
       period: p.end === p.start ? dateRu(p.start) : `с ${dateRu(p.start)} по ${dateRu(p.end)}`,
       reason: p.partial?.reason?.name || p.shift?.name || '',
       note: (p.notes || []).join('; '),
@@ -611,7 +613,11 @@ async function printAbsenceRequest(empId, dateISO) {
 function openRangeModal() {
   const g = state.grid;
   const first = g.days[0].date;      // конец периода берётся из формы модалки
-  const absences = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off && x.tzh_code);
+  /* Виды отсутствий делятся на два способа назначения (норматив 12.10.2026):
+     с кодом Табеля — отсутствие это код первичного документа (ОТ, ДО, Б…);
+     без кода — согласованное отсутствие в Графике, Табель остаётся явкой
+     («Выходной за часы»: недостачу гасит банк, EX-29). */
+  const absences = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off);
   openModal({
     title: 'Назначить отсутствие',
     subtitle: 'Отпуск, больничный, отгул и т.п. на период сразу — в том числе через границы месяцев',
@@ -627,15 +633,16 @@ function openRangeModal() {
         <label class="field"><span>По (включительно)</span><input type="date" id="rg-to" value="${first}"></label>
       </div>
       <label class="field"><span>Вид отсутствия</span><select id="rg-shift">
-        ${absences.map(x => `<option value="${x.id}" ${x.code === 'VACATION' ? 'selected' : ''}>${esc(x.name)} · код Табеля «${esc(x.tzh_code)}»</option>`).join('')}
-      </select></label>
+        ${absences.map(x => `<option value="${x.id}" data-mode="${x.tzh_code ? 'code' : 'absence'}" ${x.code === 'VACATION' ? 'selected' : ''}>${esc(x.name)}${x.tzh_code ? ` · код Табеля «${esc(x.tzh_code)}»` : ' · отсутствие в Графике'}</option>`).join('')}
+      </select>
+        <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></label>
       <label class="field"><span>Примечание</span>
         <input type="text" id="rg-note" placeholder="Например: приказ №47 от 01.09.2026"></label>
       <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
         <input type="checkbox" id="rg-work-only" style="width:17px;height:17px;accent-color:var(--primary)">
         Только на рабочие дни по Табелю (для «выходного за часы»: на плановые выходные не ставится)
       </label>
-      <p class="hint">Отсутствие на весь день — код Табеля: смены в эти дни нет, сотрудник не
+      <p class="hint">Отсутствие на весь день с кодом Табеля: смены в эти дни нет, сотрудник не
         ожидается, флагов нет; часы и банк не меняются (недостача возникает только из отсутствия
         присутствия в окне рабочего времени). Заявление печатается из карточки дня или из
         «Документов». Период может выходить за границы открытого месяца. Дни до приёма и после
@@ -643,6 +650,14 @@ function openRangeModal() {
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Назначить</button>`,
     onMount(m) {
+      const modeHint = () => {
+        const opt = $('#rg-shift').selectedOptions[0];
+        const isAbsence = opt && opt.dataset.mode === 'absence';
+        $('#rg-mode-hint').textContent = isAbsence
+          ? 'В Табеле останется явка («Я»/«К»): отсутствие пишется в График, снимает ожидание и флаги, а недостачу дня гасит банк часов — то есть ранее накопленные переработки.'
+          : 'В эти дни в Табель будет записан код отсутствия.';
+      };
+      $('#rg-shift').onchange = modeHint; modeHint();
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-ok]').onclick = async () => {
         const ids = $$('#rg-emps input:checked').map(i => +i.value);
@@ -656,7 +671,8 @@ function openRangeModal() {
             workdays_only: $('#rg-work-only').checked,
           } });
           closeModal();
-          toast(`Отсутствие назначено: ${res.written} ${plural(res.written, 'ячейка', 'ячейки', 'ячеек')} Табеля`
+          const what = res.mode === 'schedule_absence' ? 'дней в Графике' : 'ячеек Табеля';
+          toast(`Отсутствие назначено: ${res.written} ${plural(res.written, 'ячейка', 'ячейки', 'ячеек')} (${what})`
             + (res.skipped ? `, пропущено ${res.skipped}` : ''), (res.errors || []).length ? 'warn' : 'ok',
             (res.errors || []).map(e => `${e.date}: ${e.error}`).slice(0, 6));
           const d0 = new Date(from + 'T12:00:00');
@@ -730,7 +746,7 @@ function openCellModal(empId, dateISO) {
         <div class="opt-group-title" style="margin-top:0">Пропуск / отлучка</div>
         <label class="field"><span>Вид отсутствия</span><select id="cell-abs-kind">
           <option value="">— без вида —</option>
-          ${absenceKinds.map(x => `<option value="${x.id}" ${x.code === 'AWAY_HOURS' ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+          ${absenceKinds.map(x => `<option value="${x.id}" data-code="${esc(x.code)}" ${x.code === 'AWAY_HOURS' ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
         </select></label>
         <div class="grid-2">
           <label class="field"><span>Отсутствовал с</span><input type="time" id="cell-abs-from" value="14:00"></label>
@@ -743,10 +759,14 @@ function openCellModal(empId, dateISO) {
         <label class="field"><span>Примечание</span><input type="text" id="cell-abs-note" placeholder="Например: заявление согласовано"></label>
         <div style="display:flex;gap:8px;margin:4px 0 6px;flex-wrap:wrap">
           <button class="btn btn-sm" id="cell-abs-save">Добавить отсутствие</button>
+          <button class="btn btn-sm" id="cell-abs-shift" title="Отсутствие на всё окно смены: «выходной за часы»">На всю смену</button>
+          <span class="hint" id="cell-abs-hours" style="margin:0;align-self:center"></span>
         </div>
         <p class="hint" style="margin:2px 0 6px">Согласованное отсутствие НЕ влияет на план, часы и банк:
-          оно режет смену для флагов (опоздание/ранний уход в ожидaемое время) и для доски «Отметки».
-          Недостача возникает из отсутствия присутствия в окне и гасится банком/кодами по периоду.</p>
+          оно режет смену для флагов (опоздание/ранний уход в ожидаемое время) и для доски «Отметки».
+          Недостача возникает из отсутствия присутствия в окне и гасится банком/кодами по периоду —
+          так работает «выходной за ранее отработанные часы»: в Табеле остаётся явка, а день
+          оплачивается из накопленных часов (EX-29).</p>
       </div>
       <div id="doc-btns" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" id="doc-print">Печать заявления</button>
@@ -786,18 +806,56 @@ function openCellModal(empId, dateISO) {
           closeModal(); toast('День возвращён к генерации из Табеля', 'ok'); loadSchedule();
         } catch (e) { toast(e.message, 'err'); }
       };
-      $('#cell-abs-save').onclick = async () => {
+      const addAbsence = async (from, until, nextDay) => {
         try {
           await api('/api/schedule/absence', { method: 'POST', body: {
             employee_id: empId, date: dateISO,
-            from_time: $('#cell-abs-from').value, until_time: $('#cell-abs-until').value,
-            next_day: $('#cell-abs-next').checked,
+            from_time: from, until_time: until,
+            next_day: nextDay,
             kind_id: +$('#cell-abs-kind').value || null,
             note: $('#cell-abs-note').value.trim(),
           } });
           closeModal(); toast('Согласованное отсутствие добавлено', 'ok'); loadSchedule();
         } catch (e) { toast(e.message, 'err'); }
       };
+      $('#cell-abs-save').onclick = () => addAbsence($('#cell-abs-from').value,
+        $('#cell-abs-until').value, $('#cell-abs-next').checked);
+      /* «На всю смену» — границы берутся из смены дня (График), а не вводятся руками:
+         это типичный «выходной за часы» (EX-29). */
+      $('#cell-abs-shift').onclick = () => {
+        const sh = shifts[0];
+        if (!sh) return toast('В этот день нет смены — задайте время вручную', 'warn');
+        const untilNext = sh.end_hm <= sh.start_hm;
+        $('#cell-abs-from').value = sh.start_hm;
+        $('#cell-abs-until').value = sh.end_hm;
+        $('#cell-abs-next').checked = untilNext;
+        addAbsence(sh.start_hm, sh.end_hm, untilNext);
+      };
+      /* Часы «выходного за часы» — стандартное окно смен сотрудника (сервер выводит). */
+      const showTimeoffHours = async () => {
+        const hint = $('#cell-abs-hours');
+        if (!hint) return;
+        try {
+          const r = await api(`/api/schedule/timeoff-hours?employee_id=${empId}&date=${dateISO}`,
+                              { silent: true });
+          const src = { window_of_day: 'окно его смены', timesheet_mode: 'обычная смена за 90 дней',
+                        default: 'настройка объекта' }[r.hours_source] || r.hours_source;
+          hint.textContent = `«Выходной за часы»: ${hours(r.hours)} ч (${src})`;
+          hint.title = 'Сколько часов попадёт в заявление; в Табеле остаётся явка, день гасится банком';
+        } catch { hint.textContent = ''; }
+      };
+      $('#cell-abs-kind').onchange = () => {
+        const sel = $('#cell-abs-kind').selectedOptions[0];
+        $('#cell-abs-shift').style.display =
+          sel && sel.dataset.code === 'TIMEOFF_HOURS' ? '' : 'none';
+        if (sel && sel.dataset.code === 'TIMEOFF_HOURS') showTimeoffHours();
+        else $('#cell-abs-hours').textContent = '';
+      };
+      const absKind = $('#cell-abs-kind');
+      const initial = absKind.selectedOptions[0];
+      if (!(initial && initial.dataset.code === 'TIMEOFF_HOURS')) {
+        $('#cell-abs-shift').style.display = 'none';
+      } else { showTimeoffHours(); }
       $$('[data-abs-del]', m).forEach(b => b.onclick = async () => {
         try {
           await api(`/api/schedule/absence/${b.dataset.absDel}`, { method: 'DELETE' });
@@ -1063,7 +1121,7 @@ async function loadEmployees() {
       ${state.employees.map(e => `<tr data-card="${e.id}" style="cursor:pointer">
         <td class="who" data-label="Сотрудник">
           <span class="dot-pos" style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${e.group_color};margin-right:7px"></span>${esc(e.full_name)}
-          <small>${esc(e.position || '')}${e.telegram ? ' · tg: ' + esc(e.telegram) : ''}</small></td>
+          ${e.telegram ? `<small>tg: ${esc(e.telegram)}</small>` : ''}</td>
         <td data-label="Должность">${esc(e.position || '—')}</td>
         <td data-label="Блок">${esc(e.schedule_group || '—')}</td>
         <td data-label="Статус">${e.deleted ? '<span class="badge muted">удалён (в истории)</span>'
@@ -1083,7 +1141,7 @@ async function employeeCard(emp) {
   const history = await api(`/api/employees/${emp.id}/history`);
   const contacts = emp.contacts?.length ? emp.contacts
     : (emp.emergency_name ? [{ name: emp.emergency_name, phone: emp.emergency_phone, relation: '' }] : []);
-  const canBank = ['admin', 'manager'].includes(state.user?.role);
+  const canBank = can('employees.edit');   // право, а не роль: гранты и группы учитываются
   const bankNow = history.bank_now ?? emp.balance_hours;
   openModal({
     title: emp.full_name,
@@ -1718,6 +1776,13 @@ function openKindModal(kind) {
   });
 }
 
+const DEFAULT_TITLES = { pays_overtime: 'Оплачиваются ли переработки',
+                         double_overtime: 'Двойные переработки', plan_equals_fact: 'План=Факт' };
+function fmtGdValue(name, v) {
+  if (name === 'plan_equals_fact') return { yes: 'Да', no: 'Нет', auto: 'Авто' }[v] || String(v);
+  return (v === true || v === 'true' || v === 1) ? 'Да' : 'Нет';
+}
+
 async function loadSettings() {
   const host = $('#view-settings');
   host.innerHTML = '<div class="empty">Загрузка…</div>';
@@ -1860,6 +1925,44 @@ async function loadSettings() {
     </div>
 
     <div class="panel">
+      <h3 class="panel-title">Правила оплаты переработок</h3>
+      <p class="hint" style="margin:-6px 0 12px">Глобальные значения (уровень 7 приоритета): применяются
+        ко всем сотрудникам и дням, где нет более сильного правила — на группу, на сотрудника
+        или на конкретный день. Переопределения задаются в панели «Модификаторы дня» ниже;
+        дни производственного календаря и ВИП-периоды подмешиваются как «Двойные переработки»
+        автоматически.</p>
+      ${(data.engine_defaults?.modifiers || []).map(m => `<div class="rule-row">
+        <div><div class="lbl">${esc(m.title)}</div><div class="desc">${esc(m.hint || '')}</div></div>
+        <div class="rule-input">
+          ${m.name === 'plan_equals_fact'
+            ? `<select data-gd="${m.name}" style="max-width:180px">
+                 ${[['no', 'Нет'], ['yes', 'Да'], ['auto', 'Авто (по коду Табеля)']]
+                   .map(([v, t]) => `<option value="${v}" ${m.value === v ? 'selected' : ''}>${t}</option>`).join('')}
+               </select>`
+            : `<label class="switch"><input type="checkbox" data-gd="${m.name}" ${m.value ? 'checked' : ''}><span class="sl"></span></label>`}
+          <span class="badge muted" title="Глобальный дефолт — уровень 7">глобально</span>
+        </div>
+      </div>`).join('')}
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:12px">
+        <label class="field" style="margin:0"><span>Действует с</span>
+          <input type="date" id="gd-from" value="${state.gdFrom || ''}"></label>
+        <label class="field" style="margin:0;flex:1;min-width:220px"><span>Комментарий</span>
+          <input type="text" id="gd-note" placeholder="например: по письму C&amp;B от 12.10"></label>
+        <button class="btn btn-primary btn-sm" id="gd-save">Сохранить правила оплаты</button>
+      </div>
+      <p class="hint">Значения хранятся в версии справочников движка: сохранение создаёт новую версию,
+        которая применяется к периодам, начинающимся с указанной даты. Закрытые периоды не меняются —
+        для последнего закрытого доступен пересчёт в «Управленческом табеле».
+        ${data.engine_defaults?.version?.valid_from
+          ? `Сейчас действует версия #${data.engine_defaults.version.id} от ${dateRu(data.engine_defaults.version.valid_from)}.` : ''}
+        ${(data.engine_defaults?.upcoming_versions || []).length
+          ? `<br><b>Уже сохранено на будущее:</b> ${data.engine_defaults.upcoming_versions.map(v =>
+              `#${v.id} с ${dateRu(v.valid_from)}${v.note ? ` — «${esc(v.note)}»` : ''}`).join(', ')}.
+             Сегодня периоды считаются по прежним значениям.`
+          : ''}</p>
+    </div>
+
+    <div class="panel">
       <h3 class="panel-title">Прочие правила объекта</h3>
       ${data.items.map(i => `<div class="rule-row">
         <div><div class="lbl">${esc(i.description || i.key)}</div><div class="desc"><code>${esc(i.key)}</code> · по умолчанию: ${esc(i.default)}</div></div>
@@ -1875,7 +1978,7 @@ async function loadSettings() {
       <div class="stat-grid">
         <div class="stat"><div class="k">Сотрудников</div><div class="v">${data.counts.employees}</div></div>
         <div class="stat"><div class="k">Учётных записей</div><div class="v">${data.counts.users}</div></div>
-        <div class="stat"><div class="k">Ячеек графика</div><div class="v">${data.counts.schedule_entries}</div></div>
+        <div class="stat"><div class="k">Ячеек графика</div><div class="v">${data.counts.schedule_shifts ?? 0}</div></div>
         <div class="stat"><div class="k">Отметок</div><div class="v">${data.counts.punches}</div></div>
         <div class="stat"><div class="k">Ячеек Табеля</div><div class="v">${data.counts.tabel_days}</div></div>
         <div class="stat"><div class="k">Закрытий периодов</div><div class="v">${data.counts.period_closings}</div></div>
@@ -1925,6 +2028,58 @@ async function loadSettings() {
       loadSettings();
     } catch (e) { toast(e.message, 'err'); }
   };
+  /* Глобальные дефолты модификаторов (уровень 7) — новая версия справочников. */
+  const gdFrom = $('#gd-from');
+  if (gdFrom && !gdFrom.value) {
+    const d = new Date(Date.now() + serverShiftMs);
+    d.setDate(1);
+    if (d < new Date(Date.now() + serverShiftMs)) d.setMonth(d.getMonth() + 1);
+    gdFrom.value = d.toISOString().slice(0, 10);
+  }
+  const gdSave = $('#gd-save');
+  if (gdSave) gdSave.onclick = async () => {
+    const changes = {};
+    $$('[data-gd]').forEach(el => {
+      changes[el.dataset.gd] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    const engine = state.enginePayload;
+    if (!engine) return toast('Справочники движка ещё не загружены — попробуйте снова', 'warn');
+    const payload = JSON.parse(JSON.stringify(engine));
+    payload.global_defaults = { ...(payload.global_defaults || {}), ...changes };
+    const from = $('#gd-from').value;
+    if (!from) return toast('Укажите дату вступления', 'warn');
+    const diff = Object.entries(changes)
+      .filter(([k, v]) => String((engine.global_defaults || {})[k]) !== String(v))
+      .map(([k, v]) => `${(DEFAULT_TITLES[k] || k)}: ${fmtGdValue(k, (engine.global_defaults || {})[k])} → ${fmtGdValue(k, v)}`);
+    if (!diff.length) return toast('Значения не изменились', 'warn');
+    openModal({
+      title: 'Сохранить правила оплаты?',
+      body: `<div style="font-size:13.5px">
+          ${diff.map(x => `<div class="kv"><span class="k">${esc(x.split(':')[0])}</span>
+            <span class="v">${esc(x.split(':').slice(1).join(':').trim())}</span></div>`).join('')}
+        </div>
+        <p class="hint">Будет создана новая версия справочников, действует с <b>${dateRu(from)}</b>.
+        Она применяется к периодам, <b>начинающимся</b> с этой даты: период, внутри которого лежит
+        дата, продолжает считаться по прежней версии. Закрытые периоды не меняются — для последнего
+        закрытого доступен пересчёт в «Управленческом табеле».</p>`,
+      footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
+               <button class="btn btn-primary" data-ok>Сохранить</button>`,
+      onMount(mm) {
+        mm.querySelector('[data-cancel]').onclick = closeModal;
+        mm.querySelector('[data-ok]').onclick = async () => {
+          try {
+            await api('/api/engine-settings', { method: 'PUT', body: {
+              valid_from: from, payload, note: $('#gd-note').value.trim() || 'правила оплаты' } });
+            closeModal();
+            toast('Правила оплаты сохранены: создана новая версия справочников', 'ok');
+            state.enginePayload = null;
+            loadSettings();
+          } catch (e) { toast(e.message, 'err'); }
+        };
+      },
+    });
+  };
+
   $('#s-save').onclick = async () => {
     const payload = [];
     // только поля правил (у них есть data-k): класс .rule-row используется и в
@@ -1985,7 +2140,7 @@ async function refreshDoublePay() {
     body.innerHTML = `<div class="empty">Не загрузилось: ${esc(e.message || e)}</div>`;
     return;
   }
-  const canWrite = ['admin', 'manager'].includes(state.user?.role);
+  const canWrite = can('settings.edit');   // право, а не роль: гранты и группы учитываются
   const scopeShort = { shift: 'сменщики', week5: 'пятидневка', all: 'все' };
   const byMonth = {};
   data.days.forEach(d => { (byMonth[d.month] ||= []).push(d); });
