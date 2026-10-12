@@ -464,9 +464,13 @@ class TestApi(unittest.TestCase):
         bad = client.put("/api/settings/base", json={"cycle": "2/2", "anchor": "не-дата",
                                                      "groups": {}})
         self.assertEqual(bad.status_code, 422)
-        # обнуление месяца: ручной код Табеля исчезает вместе с генерацией Графика
-        emp_id = g["rows"][0]["employee"]["id"]
-        day = next(d for d in g["days"] if not d["is_weekend"])["date"]
+        # обнуление месяца: ручной код Табеля исчезает вместе с генерацией Графика.
+        # День и сотрудника берём трудоустроенными: Табель за дни вне периода работы
+        # не ведётся (RUL-EMPLOYMENT-PERIOD), иначе PUT ячейки законно вернёт 409.
+        row = next(r for r in g["rows"] if any(
+            c["employed"] and c["tabel"] for c in r["cells"].values()))
+        emp_id = row["employee"]["id"]
+        day = next(iso for iso, c in row["cells"].items() if c["employed"] and c["tabel"])
         pr = client.put("/api/tabel/cell", json={"employee_id": emp_id, "date": day,
                                                  "code": "ОТ", "note": ""})
         self.assertEqual(pr.status_code, 200, pr.text)
@@ -489,44 +493,65 @@ class TestApi(unittest.TestCase):
         self.assertGreater(rf.json()["written"], 0)
 
     def test_15g_transfer_keeps_old_block_phase(self):
-        """После перевода сотрудник в старом блоке стоит в ФАЗЕ СТАРОГО БЛОКА, в новом — в фазе нового."""
+        """После перевода сотрудник в старом блоке стоит в ФАЗЕ СТАРОГО БЛОКА, в новом — в фазе нового.
+
+        Фаза сверяется по Табелю (первичный документ, 3.3): ячейка сетки v7 несёт
+        `shifts` (смены, сгенерированные из Табеля) и `tabel` — отдельного поля `shift`
+        в ответе больше нет. Базовый цикл задаётся явно: предыдущие тесты меняют
+        настройки объекта, а фаза блоков зависит и от цикла, и от опорной даты.
+        """
         today = local_date()
         first = today.replace(day=1)
         if today.day < 12:
             self.skipTest("нужно число месяца >= 12")
         transfer = first + dt.timedelta(days=4)      # 05-е число
-        created = client.post("/api/employees", json={
-            "full_name": "Фазовый Тест Тестович", "position": "Батлер",
-            "schedule_group": "Смена 2", "hired_at": (first - dt.timedelta(days=60)).isoformat()}).json()
-        eid = created["id"]
-        r = client.post(f"/api/employees/{eid}/block-change",
-                        json={"group": "Смена 1", "date": transfer.isoformat()})
+        r = self.admin.put("/api/settings/base", json={
+            "cycle": "2/2", "anchor": "2024-01-01",
+            "groups": {"Смена 1": {"shift_code": "DAY12", "invert": False},
+                       "Смена 2": {"shift_code": "SUTKI", "invert": True},
+                       "Пятидневка": {"shift_code": "DAY9", "off_weekdays": [5, 6]}}})
         self.assertEqual(r.status_code, 200, r.text)
+        created = self.admin.post("/api/employees", json={
+            "full_name": "Фазовый Тест Тестович", "position": "Батлер",
+            "schedule_group": "Смена 2", "hired_at": (first - dt.timedelta(days=60)).isoformat()})
+        self.assertEqual(created.status_code, 200, created.text)
+        eid = created.json()["id"]
+        r = self.admin.post(f"/api/employees/{eid}/block-change",
+                            json={"group": "Смена 1", "date": transfer.isoformat()})
+        self.assertEqual(r.status_code, 200, r.text)
+        rf = self.admin.post("/api/tabel/fill-from-cycles", json={
+            "year": first.year, "month": first.month, "overwrite": True})
+        self.assertEqual(rf.status_code, 200, rf.text)
         g = client.get("/api/schedule", params={"year": first.year, "month": first.month}).json()
         ref1 = next(x for x in g["rows"] if x["employee"]["full_name"].startswith("Громова"))   # Смена 1
         ref2 = next(x for x in g["rows"] if x["employee"]["full_name"].startswith("Петров"))    # Смена 2
         moved = next(x for x in g["rows"] if x["employee"]["id"] == eid)
-        rows_by_block = {}
-        for b in moved["blocks"]:
-            rows_by_block[b["group"]] = moved
-        # до перевода: в блоке Смена 2 фаза = фазе эталонной Смены 2 (не Смены 1!)
+
+        def phase(row, iso):
+            """Рабочий день / выходной по Табелю: плановые часы есть — рабочий."""
+            tabel = row["cells"][iso]["tabel"] or {}
+            return "work" if tabel.get("hours") else "off"
+
+        # блоки: до перевода — Смена 2, с даты перевода — Смена 1
+        self.assertEqual({b["group"] for b in moved["blocks"]}, {"Смена 1", "Смена 2"})
+
+        # до перевода фаза совпадает с БАЗОВЫМ ЦИКЛОМ Смены 2 и не совпадает со Сменой 1.
+        # Эталон — не строка другого сотрудника: у демо-сотрудников «Смены 2» в истории
+        # блоков индивидуальный шаблон (1/3 сутки), а переведённый сотрудник стоит на
+        # базовом цикле блока (2/2 в противофазе со Сменой 1).
         for i in range(4):
             d = (first + dt.timedelta(days=i)).isoformat()
-            ref2_kind = ref2["cells"][d]["shift"]["kind"] if ref2["cells"][d]["shift"] else None
-            ref1_kind = ref1["cells"][d]["shift"]["kind"] if ref1["cells"][d]["shift"] else None
-            # строка Фазового в блоке Смена 2: ищем через blocks
-            self.assertTrue(any(b["group"] == "Смена 2" for b in moved["blocks"]))
-            # ячейки до перевода в его строке должны совпадать с фазой Смены 2
-            mk = moved["cells"][d]["shift"]["kind"] if moved["cells"][d]["shift"] else None
-            # в блоке Смена 1 эти дни неактивны (проверяется фронтом), здесь сверяем фазу:
-            self.assertEqual(mk, ref2_kind, f"день {d}: фаза должна быть как у Смены 2")
-            self.assertNotEqual(mk, ref1_kind)
+            self.assertEqual(phase(moved, d), "work" if i % 4 >= 2 else "off",
+                             f"день {d}: фаза базового цикла 2/2 в противофазе со Сменой 1")
+            self.assertEqual(phase(moved, d), "off" if phase(ref1, d) == "work" else "work",
+                             f"день {d}: фаза не должна совпадать со Сменой 1")
+        self.assertEqual({phase(ref2, (first + dt.timedelta(days=i)).isoformat()) for i in range(3)},
+                         {"work"}, "демо-сотрудник Смены 2 работает по индивидуальному циклу 1/3")
         # после перевода: фаза как у Смены 1
         d = (transfer + dt.timedelta(days=1)).isoformat()
-        mk = moved["cells"][d]["shift"]["kind"] if moved["cells"][d]["shift"] else None
-        ref1_kind = ref1["cells"][d]["shift"]["kind"] if ref1["cells"][d]["shift"] else None
-        self.assertEqual(mk, ref1_kind)
-        client.post(f"/api/employees/{eid}/delete", json={})
+        self.assertEqual(phase(moved, d), phase(ref1, d),
+                         f"день {d}: после перевода фаза как у Смены 1")
+        self.admin.post(f"/api/employees/{eid}/delete", json={})
 
     def test_15h_back_and_forth_transfers(self):
         """Переводы туда-сюда (в т.ч. задним числом): история без пересечений,
