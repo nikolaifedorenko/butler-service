@@ -1,0 +1,1446 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прототип · Настройки (butler-service) — предлагаемая структура</title>
+<style>
+/* Токены взяты из static/css/app.css (фирменный стиль «Мрии»), чтобы прототип
+   выглядел как часть приложения. Внешних ресурсов нет — файл самодостаточный. */
+:root{
+  --bg:#f4f0ed; --bg-soft:#faf8f5; --panel:#fff; --panel-2:#f4eeeb;
+  --line:#e2d9ce; --line-soft:#ece5dc;
+  --text:#141a25; --muted:#6e6459; --muted-2:#8d8073;
+  --primary:#94583a; --primary-dark:#683e29; --primary-soft:#9a7060;
+  --gold:#cbb05b; --navy:#141a25; --navy-2:#202530;
+  --accent:#3d7a52; --accent-dark:#2f6242; --danger:#b81818; --warn:#c96d00; --info:#1d7e94;
+  --r-lg:10px; --r-md:6px; --r-sm:4px;
+  --shadow:0 10px 28px rgba(20,26,37,.08);
+  --font-body:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PT Sans',Arial,sans-serif;
+  --font-display:'Playfair Display',Georgia,'Times New Roman',serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:var(--font-body);font-size:15px;line-height:1.45}
+code{background:#f4eeeb;padding:1px 6px;border-radius:4px;color:var(--primary);font-size:.92em}
+button,input,select,textarea{font:inherit;color:inherit}
+.hidden{display:none!important}
+
+/* ── прототипная рамка ── */
+.proto-note{background:var(--navy);color:#e8dcc6;padding:10px 18px;font-size:12.5px;
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.proto-note b{color:#fff}
+.proto-note .tag{background:rgba(203,176,91,.2);border:1px solid rgba(203,176,91,.45);
+  color:#f0dcb0;padding:2px 8px;border-radius:3px;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+
+/* ── топбар ── */
+.topbar{background:var(--navy);color:#f3ede2;display:flex;align-items:center;gap:12px;
+  padding:0 16px;height:60px;border-bottom:1px solid #0b0f16}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);
+  font-size:17px;letter-spacing:.02em}
+.topbar .spacer{flex:1}
+.searchbtn{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.07);
+  border:1px solid rgba(203,176,91,.28);color:#d9cfc0;border-radius:4px;
+  padding:7px 12px;font-size:13px;cursor:pointer;min-width:260px}
+.searchbtn kbd{margin-left:auto;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);
+  border-radius:3px;padding:1px 6px;font-size:11px;font-family:var(--font-body)}
+.icon-btn{background:transparent;border:1px solid transparent;color:#b7ab97;border-radius:var(--r-sm);
+  padding:6px;cursor:pointer;display:grid;place-items:center}
+.icon-btn:hover{color:#fff;background:rgba(255,255,255,.09);border-color:rgba(203,176,91,.35)}
+.user-chip{display:flex;align-items:center;gap:9px;padding:4px 12px 4px 4px;border-left:1px solid #2b3240}
+.avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
+  background:var(--gold);color:#1b1409;font-weight:800;font-size:12.5px}
+.user-meta{display:flex;flex-direction:column;line-height:1.2}
+.user-meta strong{font-size:13px}
+.user-meta span{font-size:10.5px;color:#b7ab97;text-transform:uppercase;letter-spacing:.08em}
+
+/* ── раскладка ── */
+.layout{display:flex;align-items:stretch;min-height:calc(100vh - 60px - 39px)}
+.sidenav{width:236px;flex:0 0 236px;background:var(--bg-soft);border-right:1px solid var(--line);
+  padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.nav-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted-2);
+  padding:14px 12px 6px;font-weight:700}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;
+  border:1px solid transparent;border-radius:var(--r-sm);padding:9px 12px;cursor:pointer;
+  color:var(--muted);font-size:13.5px;font-weight:600}
+.nav-item svg{width:18px;height:18px;flex:0 0 auto}
+.nav-item:hover{background:#efe8df;color:var(--text)}
+.nav-item.active{background:var(--panel);color:var(--primary-dark);border-color:#d9c4b4;
+  box-shadow:inset 3px 0 0 var(--primary)}
+.nav-item .cnt{margin-left:auto;font-size:11px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:99px;padding:1px 7px;color:var(--muted)}
+.nav-item.active .cnt{background:#f7ede4;border-color:#e0c8b6;color:var(--primary-dark)}
+.sidenav-foot{margin-top:auto;padding:12px;color:var(--muted-2);font-size:11.5px;line-height:1.6;
+  border-top:1px solid var(--line-soft)}
+.content{flex:1;min-width:0;padding:20px 22px 60px;overflow:auto}
+
+/* ── типовые блоки ── */
+.page-head{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.page-head h2{margin:0;font-family:var(--font-display);font-size:25px;font-weight:600}
+.page-head .sub{color:var(--muted);font-size:12.5px;margin-top:5px;max-width:820px}
+.page-head .spacer{flex:1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.panel-title{font-size:11.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);
+  font-weight:800;margin:0 0 12px}
+.hint{color:var(--muted-2);font-size:12.5px;margin:10px 0 0;line-height:1.55}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;
+  border:1px solid var(--line);background:#fff;border-radius:var(--r-sm);cursor:pointer;
+  font-size:13px;font-weight:600}
+.btn:hover{border-color:var(--primary-soft);background:#faf6f1}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700}
+.btn-primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+.btn-ghost{background:transparent}
+.btn-sm{padding:6px 11px;font-size:12.5px}
+.seg{display:inline-flex;background:#ece5db;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg button{background:none;border:none;color:var(--muted);padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:600}
+.seg button.active{background:var(--navy);color:#f3ede2;font-weight:700}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:3px;
+  font-size:11px;font-weight:700;border:1px solid var(--line);background:var(--panel-2);color:var(--muted)}
+.badge.ok{background:#e9f0e6;color:#3d6b45;border-color:#cddcc7}
+.badge.warn{background:#faf0dc;color:#8a5a10;border-color:#ecd9ae}
+.badge.danger{background:#f9ebea;color:#a02020;border-color:#eec8c5}
+.badge.info{background:#e4eef1;color:#1d6e80;border-color:#c3d9e0}
+.badge.gold{background:#faf3dd;color:#7d6415;border-color:#e6d69b}
+.stat-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px}
+.stat .k{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-weight:700}
+.stat .v{font-family:var(--font-display);font-size:26px;font-weight:600;margin-top:4px;color:var(--navy)}
+.stat .v small{font-family:var(--font-body);font-size:12.5px;color:var(--muted);font-weight:500}
+.stat.accent .v{color:var(--accent)} .stat.warn .v{color:var(--warn)} .stat.info .v{color:var(--info)}
+.field{display:block;margin-bottom:13px}
+.field>span{display:block;font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.08em}
+input[type=text],input[type=number],input[type=date],input[type=time],select,textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;font-size:13.5px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-soft);box-shadow:0 0 0 3px rgba(148,88,58,.14)}
+table.data{width:100%;border-collapse:collapse;font-size:13px}
+table.data th{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+  text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);background:var(--panel-2);white-space:nowrap}
+table.data td{padding:9px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+table.data tr:hover td{background:#faf7f2}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel)}
+.switch{position:relative;width:46px;height:26px;display:inline-block;flex:0 0 auto}
+.switch input{opacity:0;width:0;height:0}
+.switch .sl{position:absolute;inset:0;background:#d6cabb;border-radius:999px;cursor:pointer;transition:.2s}
+.switch .sl::before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;
+  border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(20,26,37,.3)}
+.switch input:checked+.sl{background:var(--primary)}
+.switch input:checked+.sl::before{transform:translateX(20px)}
+
+/* ── новые компоненты прототипа ── */
+.rule-card{border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;margin-bottom:10px;
+  background:linear-gradient(180deg,#fffdfb,#fff)}
+.rule-card .rc-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.rule-card h4{margin:0;font-size:15.5px;font-weight:800}
+.rule-card .rc-body{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.6}
+.rule-card .rc-meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted-2)}
+.rule-card .rc-meta b{color:var(--text)}
+.rule-card .spacer{flex:1}
+.val-picker{display:inline-flex;align-items:center;gap:8px;background:var(--panel-2);
+  border:1px solid var(--line);border-radius:99px;padding:4px 6px 4px 14px;font-size:12px;color:var(--muted);font-weight:700}
+.val-picker select{width:auto;padding:5px 30px 5px 10px;font-size:13px;font-weight:700;border-radius:99px}
+.level-badge{display:inline-grid;place-items:center;min-width:22px;height:22px;border-radius:4px;
+  background:var(--navy);color:#f0dcb0;font-size:11.5px;font-weight:800;padding:0 5px}
+.level-badge.l7{background:var(--panel-2);color:var(--muted);border:1px solid var(--line)}
+.chain{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chain .step{border:1px solid var(--line);border-radius:99px;padding:4px 11px;font-size:11.5px;
+  color:var(--muted);background:#fff;display:flex;gap:6px;align-items:center}
+.chain .step.hit{border-color:var(--primary);background:#f9efe7;color:var(--primary-dark);font-weight:800}
+.chain .arrow{color:var(--muted-2);font-size:11px}
+
+.health{border-left:4px solid var(--warn);background:#fffbf2;border-top:1px solid #ecd9ae;
+  border-right:1px solid #ecd9ae;border-bottom:1px solid #ecd9ae;border-radius:var(--r-md);
+  padding:12px 15px;margin-bottom:14px}
+.health.ok{border-left-color:var(--accent);background:#f6faf4;border-color:#cddcc7}
+.health b{font-size:13.5px}
+.health ul{margin:8px 0 0;padding-left:0;list-style:none}
+.health li{font-size:12.8px;color:var(--muted);padding:4px 0;display:flex;gap:8px;align-items:flex-start}
+.health li a{color:var(--primary);font-weight:700;text-decoration:none;margin-left:auto;white-space:nowrap}
+
+.timeline{position:relative;height:auto;border:1px solid var(--line);border-radius:var(--r-md);
+  background:#fffdfb;padding:10px 12px 6px;overflow:hidden}
+.tl-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--muted-2);
+  font-variant-numeric:tabular-nums;margin-bottom:6px}
+.tl-row{display:flex;align-items:center;gap:9px;margin-bottom:5px}
+.tl-row .lbl{width:52px;flex:0 0 52px;font-size:11.5px;font-weight:700;color:var(--muted);text-align:right}
+.tl-track{position:relative;flex:1;height:18px;background:repeating-linear-gradient(90deg,#f4f0ed,#f4f0ed 1px,transparent 1px,transparent 4.1667%);
+  border-radius:3px;border:1px solid var(--line-soft)}
+.tl-bar{position:absolute;top:1px;bottom:1px;border-radius:2px;display:flex;align-items:center;
+  justify-content:center;font-size:9.5px;font-weight:800;color:#fff;letter-spacing:.02em;overflow:hidden;white-space:nowrap}
+
+.order-list{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.order-list .item{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:6px 8px 6px 6px;font-size:12.5px;font-weight:700}
+.order-list .item .grip{color:var(--muted-2);cursor:grab;font-size:14px;line-height:1}
+.order-list .item .n{display:grid;place-items:center;width:18px;height:18px;border-radius:3px;
+  background:var(--panel-2);color:var(--muted);font-size:10.5px}
+.order-list .item.bank{border-color:#cddcc7;background:#f6faf4;color:#3d6b45}
+
+.kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:700;font-variant-numeric:tabular-nums}
+.code-dot{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px}
+.code-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:3px;font-weight:800;font-size:12px}
+
+/* календарь правил */
+.cal{width:100%;border-collapse:separate;border-spacing:2px;font-size:11px}
+.cal th{font-size:10px;color:var(--muted);font-weight:700;padding:3px 0;text-align:center}
+.cal td.rowlbl{text-align:right;padding-right:8px;font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.cal td.cell{height:26px;background:#f7f3ee;border:1px solid var(--line-soft);border-radius:3px;
+  text-align:center;color:var(--muted-2);cursor:pointer;font-weight:700}
+.cal td.cell:hover{border-color:var(--primary-soft);background:#faf3ec}
+.cal td.cell.we{background:#f1ebe3}
+.cal td.cell.dbl{background:#f6e3d8;color:#8c3a24;border-color:#e5c3b1}
+.cal td.cell.rule{background:#e7eef2;color:#2c5f70;border-color:#c3d9e0}
+.cal td.cell.vip{background:#efe7f5;color:#5d3a80;border-color:#d6c5e8}
+.cal td.cell.ver{background:#faf3dd;color:#7d6415;border-color:#e6d69b}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;flex-wrap:wrap}
+.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:9px 14px;
+  cursor:pointer;font-size:13px;font-weight:700;color:var(--muted)}
+.tabs button.active{color:var(--primary-dark);border-bottom-color:var(--primary)}
+.grid-2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.grid-3{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.modal-backdrop{position:fixed;inset:0;background:rgba(20,26,37,.45);display:grid;place-items:center;
+  padding:20px;z-index:50}
+.modal{background:var(--panel);border-radius:var(--r-lg);box-shadow:0 22px 60px rgba(20,26,37,.28);
+  width:min(720px,100%);max-height:88vh;overflow:auto}
+.modal header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start}
+.modal header h3{margin:0;font-family:var(--font-display);font-size:20px;font-weight:600}
+.modal header .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+.modal .body{padding:18px 20px}
+.modal footer{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.wizard-steps{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.wizard-steps .ws{flex:1;min-width:130px;border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:9px 11px;font-size:12px;color:var(--muted);background:var(--panel-2)}
+.wizard-steps .ws b{display:block;color:var(--text);font-size:12.5px;margin-bottom:2px}
+.wizard-steps .ws.on{border-color:var(--primary);background:#f9efe7;color:var(--primary-dark)}
+.preview{background:#f8f5f1;border:1px dashed #d8cbbd;border-radius:var(--r-md);padding:12px 14px;font-size:12.8px}
+.preview .row{display:flex;gap:10px;padding:3px 0}
+.preview .row .k{color:var(--muted);min-width:190px}
+.spec-ref{font-size:11px;color:var(--muted-2);letter-spacing:.02em}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;
+  border-radius:99px;padding:3px 10px;font-size:11.5px;font-weight:700;color:var(--muted)}
+.only-mobile-note{display:none}
+@media(max-width:900px){
+  .layout{flex-direction:column}
+  .sidenav{width:100%;flex:none;flex-direction:row;overflow:auto;padding:8px;gap:6px}
+  .sidenav .nav-group,.sidenav-foot{display:none}
+  .nav-item{width:auto;white-space:nowrap}
+  .nav-item .cnt{display:none}
+  .content{padding:14px}
+  .searchbtn{min-width:0}
+  .searchbtn span{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="proto-note">
+  <span class="tag">Прототип</span>
+  <span><b>Предлагаемая структура раздела «Настройки»</b> — к документу
+  <code>docs/SETTINGS-UI-PROPOSAL-2026-10-12.md</code> (ред. 5). Данные демонстрационные,
+  клики переключают под-разделы и открывают диалоги; на сервер ничего не уходит.
+  Кодов «С» и «НВ» в справочнике Табеля нет: суточная смена — графиковая, в дне начала
+  одна строка явки с окном 08:00–20:00 (часы «10,75» в значении — зарплатный атрибут,
+  в расчёте участвует только окно), выходной за часы — отсутствие в Графике при явке
+  в Табеле.</span>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+      <rect width="32" height="32" rx="6" fill="#0d1119" stroke="#cbb05b"/>
+      <circle cx="16" cy="16" r="9.2" stroke="#cbb05b" stroke-width="1.3" fill="none"/>
+      <path d="M16 10.4V16l4 2.6" stroke="#cbb05b" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="16" cy="16" r="1.1" fill="#cbb05b"/>
+    </svg>
+    <span>Батлер Сервис</span>
+  </div>
+  <div class="spacer"></div>
+  <button class="searchbtn" onclick="openSearch()">
+    <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <span>Поиск по настройкам…</span><kbd>⌘K</kbd>
+  </button>
+  <button class="icon-btn" title="Режим эксперта (JSON)" onclick="go('expert')">
+    <svg viewBox="0 0 24 24" width="19" height="19"><path d="M9 6l-5 6 5 6M15 6l5 6-5 6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <div class="user-chip">
+    <div class="avatar">АД</div>
+    <div class="user-meta"><strong>admin</strong><span>Администратор</span></div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidenav" id="sidenav"></nav>
+  <main class="content" id="content"></main>
+</div>
+
+<div class="modal-backdrop hidden" id="backdrop" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+/* ─────────────────────────── данные прототипа ─────────────────────────── */
+const CODES = [
+  {code:'Я',  title:'Явка (дневная работа)',           color:'#34a862', carries:1, ut:1, counts:1, auto:0, win:4, days:508, shift:'DAY12, DAY9, DAY8_17, SUTKI'},
+  {code:'К',  title:'Командировка',                    color:'#2b8fb6', carries:1, ut:1, counts:1, auto:1, win:3, days:8,   shift:'—'},
+  {code:'В',  title:'Выходной',                        color:'#c3cdd9', carries:0, ut:1, counts:1, auto:0, win:0, days:380, shift:'OFF'},
+  {code:'ОВ', title:'Оплачиваемый выходной',           color:'#9b59b6', carries:0, ut:0, counts:1, auto:0, win:0, days:6,   shift:'PAID_OFF'},
+  {code:'ОТ', title:'Ежегодный отпуск',                color:'#f0a500', carries:0, ut:0, counts:1, auto:0, win:0, days:41,  shift:'VACATION'},
+  {code:'ДО', title:'Отпуск без сохранения',           color:'#d9822b', carries:0, ut:0, counts:1, auto:0, win:0, days:9,   shift:'VACATION_UNPAID'},
+  {code:'Б',  title:'Больничный',                      color:'#e05d4b', carries:0, ut:0, counts:0, auto:0, win:0, days:12,  shift:'SICK'},
+  {code:'НБ', title:'Неоплачиваемый больничный',        color:'#c0504d', carries:0, ut:0, counts:0, auto:0, win:0, days:2,   shift:''},
+  {code:'НН', title:'Неявка по невыясненным причинам',  color:'#b03a48', carries:0, ut:0, counts:0, auto:0, win:0, days:1,   shift:'ABSENT_UNKNOWN'},
+];
+const WINDOWS = [
+  {v:'Я 12', code:'Я', h:'12',    s:480,  e:1200, plan:720, days:412},
+  {v:'Я 9',  code:'Я', h:'9',     s:540,  e:1080, plan:540, days:38},
+  {v:'Я 8',  code:'Я', h:'8',     s:540,  e:1020, plan:480, days:22},
+  {v:'К 12', code:'К', h:'12',    s:480,  e:1200, plan:720, days:6},
+  {v:'К 9',  code:'К', h:'9',     s:540,  e:1080, plan:540, days:2},
+  {v:'К 8',  code:'К', h:'8',     s:540,  e:1020, plan:480, days:0},
+  {v:'Я 10,75', code:'Я', h:'10,75', s:480, e:1200, plan:645, days:96},
+];
+const RULES = [
+  {id:24, name:'plan_equals_fact', title:'План=Факт',                     val:'Нет',  who:'группа «Пятидневка»', when:'октябрь 2026',     lvl:4, author:'Смирнов А.В.', note:'по письму C&B', src:'rule'},
+  {id:21, name:'double_overtime',  title:'Двойные переработки',           val:'Да',   who:'все',                   when:'15.10.2026',       lvl:5, author:'Смирнов А.В.', note:'праздник', src:'calendar'},
+  {id:18, name:'pays_overtime',    title:'Оплачиваются ли переработки',   val:'Нет',  who:'Петров П.П.',           when:'01.09–30.09.2026', lvl:2, author:'Громова О.П.', note:'ВИП-гость', src:'vip'},
+  {id:14, name:'pays_overtime',    title:'Оплачиваются ли переработки',   val:'Нет',  who:'группа «Смена 1»',      when:'12.10.2026',       lvl:3, author:'Смирнов А.В.', note:'', src:'rule'},
+  {id:11, name:'double_overtime',  title:'Двойные переработки',           val:'Да',   who:'Иванов И.И.',           when:'01.11.2026 →',     lvl:2, author:'admin',        note:'будущее', src:'rule'},
+  {id:7,  name:'counts_in_ut',     title:'Учитываются ли часы в УТ',      val:'Да',   who:'все',                   when:'октябрь 2026',     lvl:6, author:'system',       note:'из версии справочников', src:'static'},
+];
+const MODS = [
+  {name:'pays_overtime', title:'Оплачиваются ли переработки', type:'bool', def:'Да',
+   what:'Переработка дня идёт в УТ («Да») или в банк часов по весу кода («Нет»).',
+   ex:'12 ч ДЯ2 при «Нет» → 24 ч банка, в УТ дня кодов нет (INV-NO-CODES-WHEN-EXCLUDED).',
+   spec:'5.2 pays_overtime(D) = counts_in_ut(D) ∧ модификатор(D) · RUL-UNPAID-TO-BANK',
+   by:'Смирнов А.В., 01.10.2026 · «по письму C&B»', cnt:3},
+  {name:'double_overtime', title:'Двойные переработки', type:'bool', def:'Нет',
+   what:'Вес часа переработки = 2: коды ДЯ2/ДН2 вместо ДЯ/ДН.',
+   ex:'Слои-источники: производственный календарь (двойные дни) и ВИП-периоды подмешиваются автоматически.',
+   spec:'CFG-MODIFIERS · CFG-WEIGHTS (ДЯ2 = 2) · каскад гасит долг двойными последними',
+   by:'Смирнов А.В., 01.10.2026', cnt:5},
+  {name:'plan_equals_fact', title:'План=Факт', type:'tri', def:'Нет',
+   what:'День без отметок и без факта считается отработанным как запланировано.',
+   ex:'Применяется, если: код несёт часы ∧ значение «Да» ∧ нет исходной отметки ∧ факт = 0. Освобождает день от недостачи, план карточки = 0, синтетика не создаётся.',
+   spec:'R30 (единый предикат) · «Авто» разрешается в «Да» только колонкой кода (R19, стартово у «К»)',
+   by:'Смирнов А.В., 01.10.2026', cnt:1},
+  {name:'counts_in_ut', title:'Учитываются ли часы в УТ', type:'bool', def:'по коду дня',
+   what:'Переопределяет колонку «Учитывается в УТ» из справочника кодов Табеля.',
+   ex:'Уровень 7 для этого модификатора — колонка кода, а не глобальная строка (CHK-DEFAULTS).',
+   spec:'CFG-DAY-CODES.counts_in_ut · участвует в pays_overtime',
+   by:'—', cnt:1},
+];
+const GROUPS = [
+  {name:'Смена 1',  emp:5, tpl:'базовый цикл 2/2', rules:2, incfg:1, inblocks:1},
+  {name:'Смена 2',  emp:3, tpl:'базовый цикл 2/2 (противофаза)', rules:0, incfg:1, inblocks:1},
+  {name:'Пятидневка', emp:2, tpl:'5/2, выходные у каждого свои', rules:1, incfg:1, inblocks:1},
+  {name:'Другие смены', emp:1, tpl:'индивидуальный цикл / вручную', rules:0, incfg:1, inblocks:1},
+  {name:'Смена 3',  emp:0, tpl:'—', rules:0, incfg:1, inblocks:0},
+];
+const NAV = [
+  {g:'Расчёт'},
+  {id:'overview', t:'Обзор', c:'3', ic:'home'},
+  {id:'calc',     t:'Расчёт', ic:'calc'},
+  {id:'pay',      t:'Правила оплаты', c:'7', ic:'money'},
+  {id:'codes',    t:'Коды и окна Табеля', c:'11', ic:'codes'},
+  {id:'groups',   t:'Группы и графики', ic:'people'},
+  {id:'calendar', t:'Календарь правил', c:'3', ic:'cal'},
+  {g:'Справочники объекта'},
+  {id:'shifts',   t:'Смены и отсутствия', c:'14', ic:'shift'},
+  {id:'docs',     t:'Документы и справочники', ic:'doc'},
+  {g:'Служебное'},
+  {id:'system',   t:'Система', ic:'gear'},
+  {id:'access',   t:'Права доступа ↗', ic:'shield'},
+  {id:'audit',    t:'Журнал аудита ↗', ic:'list'},
+  {id:'expert',   t:'Режим эксперта (JSON)', ic:'code'},
+];
+const ICONS = {
+  home:'<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
+  calc:'<rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M8 7h8M8 11h3M13 11h3M8 15h3M13 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  money:'<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7v10M9.5 9.5h4a1.6 1.6 0 0 1 0 3.2h-3a1.6 1.6 0 0 0 0 3.2h4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  codes:'<rect x="3" y="5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 5v15" stroke="currentColor" stroke-width="1.7"/><path d="M12 14h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  people:'<circle cx="9" cy="8" r="3.1" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.5 20c.8-3.3 3-5 5.5-5s4.7 1.7 5.5 5" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  cal:'<rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/>',
+  doc:'<path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 12h7M9 16h7M9 8h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  gear:'<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  shield:'<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9.4 12.2l1.9 1.9 3.4-3.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/>',
+  list:'<path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 11h7M9 15h7M9 7h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  code:'<path d="M9 6l-5 6 5 6M15 6l5 6-5 6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  shift:'<circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7.2V12l3.2 2" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hm = m => String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+const pct = (m,total) => (m/(total||1440)*100);
+
+/* ─────────────────────────── навигация ─────────────────────────── */
+let current = 'overview';
+function renderNav(){
+  document.getElementById('sidenav').innerHTML = NAV.map(n => n.g
+    ? `<div class="nav-group">${esc(n.g)}</div>`
+    : `<button class="nav-item${n.id===current?' active':''}" onclick="go('${n.id}')">
+         <svg viewBox="0 0 24 24">${ICONS[n.ic]}</svg><span>${esc(n.t)}</span>
+         ${n.c?`<span class="cnt">${n.c}</span>`:''}</button>`).join('')
+    + `<div class="sidenav-foot">Движок v7.1 · версия справочников #12<br>Действует с 01.10.2026<br>Черновик #13 (не опубликован)</div>`;
+}
+function go(id){
+  if(id==='access'||id==='audit'){ alert('В прототипе — переход в существующую вкладку «'+(id==='access'?'Права доступа':'Журнал аудита')+'».'); return; }
+  current=id; renderNav(); render(); window.scrollTo(0,0);
+  if(history.replaceState) history.replaceState(null,'','#/settings/'+id);
+}
+function render(){ document.getElementById('content').innerHTML = SCREENS[current](); if(current==='pay') filterRules(); }
+
+/* ─────────────────────────── общие куски ─────────────────────────── */
+const head = (t,sub,right='') => `<div class="page-head"><div><h2>${t}</h2><div class="sub">${sub}</div></div><div class="spacer"></div>${right}</div>`;
+const healthBanner = () => `
+  <div class="health">
+    <b>⚠ Здоровье конфигурации: 3 предупреждения, 0 ошибок</b>
+    <ul>
+      <li><span>Группа «Смена 3» есть в CFG-GROUPS, но не используется ни одним блоком приложения</span><a href="#" onclick="go('groups');return false">Группы →</a></li>
+      <li><span>Связь словарей: у кода Табеля «К» нет смены с таким кодом Т-13 — назначить из сетки Графика нельзя</span><a href="#" onclick="go('shifts');return false">Смены →</a></li>
+      <li><span>Связь словарей: у смены AWAY_HOURS не задан код Табеля — так задумано (логический разрез смены)</span><a href="#" onclick="go('shifts');return false">Смены →</a></li>
+    </ul>
+    <div class="hint">Проверки уровня 1 (CHK-*, 14 правил) — без нарушений. Сверки приложения: группы ↔ блоки,
+    коды Табеля ↔ словарь смен, окна ↔ коды. Словари живут раздельно: «Коды и окна Табеля» (расчёт) и
+    «Смены и отсутствия» (ввод Графика); здесь они сверяются, но не редактируются.</div>
+  </div>`;
+const dictLinks = (side) => `
+  <div class="panel" style="border-left:4px solid var(--info)">
+    <h3 class="panel-title">Связь словарей · справочно</h3>
+    <p class="hint" style="margin-top:0">Два словаря живут раздельно: <b>коды Табеля</b> — норма расчёта
+    (версия справочников, право <code>settings.edit</code>), <b>смены и отсутствия</b> — инструмент ввода
+    Графика (ревизии и архив, право <code>schedule.edit</code>). Связывает их одно поле: «Код Табеля (Т-13)»
+    у вида смены. ${side==='codes'
+      ? 'Создать или изменить смену отсюда нельзя — это делается в «Смены и отсутствия».'
+      : 'Создать или изменить код Табеля отсюда нельзя — это делается в «Коды и окна Табеля».'}</p>
+    <div class="kv"><span class="k">⚠ Код «К» (Командировка) — в словаре нет смены с таким кодом Т-13</span>
+      <span class="v">${side==='codes'
+        ? '<button class="btn btn-sm btn-ghost" onclick="go(\'shifts\')">Открыть словарь смен →</button>'
+        : '<button class="btn btn-sm btn-ghost" onclick="alert(\'Создать смену «Командировка» с кодом Табеля «К»\')">+ Создать смену</button>'}</span></div>
+    <div class="kv"><span class="k">⚠ AWAY_HOURS «Отпросился» — код Табеля не задан</span>
+      <span class="v"><span class="badge info">так задумано: логический разрез смены</span></span></div>
+    <div class="kv"><span class="k">✓ Остальные 10 кодов и 13 видов смен связаны</span>
+      <span class="v"><span class="badge ok">битых ссылок нет</span></span></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="go('${side==='codes'?'shifts':'codes'}')">${side==='codes'?'Смены и отсутствия →':'Коды и окна Табеля →'}</button>
+      <button class="btn btn-sm btn-ghost" onclick="alert('GET /api/shift-types/links → коды без смены, смены без кода, битые ссылки на архивированный код')">Проверить связь</button>
+    </div>
+  </div>`;
+const lvlBadge = l => `<span class="level-badge${l===7?' l7':''}" title="Уровень приоритета CFG-MODIFIERS">${l}</span>`;
+const chain = (hit) => {
+  const names=['сотрудник+день','сотрудник+период','группа+день','группа+период','все+день','все+период','глобальный дефолт'];
+  return `<div class="chain">${names.map((n,i)=>`
+    <span class="step${i+1===hit?' hit':''}">${lvlBadge(i+1)} ${n}${i+1===hit?' ✓':''}</span>
+    ${i<6?'<span class="arrow">→</span>':''}`).join('')}</div>`;
+};
+
+/* ─────────────────────────── экраны ─────────────────────────── */
+const SCREENS = {};
+
+SCREENS.overview = () => `
+${head('Обзор','Что действует сейчас, здорова ли конфигурация и что вступит в силу. Паспорт объекта — одним экраном.',
+  `<button class="btn btn-sm" onclick="openVersions()">История версий</button>
+   <button class="btn btn-sm btn-primary" onclick="go('expert')">Режим эксперта</button>`)}
+<div class="panel">
+  <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <div class="panel-title" style="margin-bottom:6px">Действующая версия справочников</div>
+      <div style="font-family:var(--font-display);font-size:21px">#12 · действует с 01.10.2026</div>
+      <div class="hint" style="margin-top:4px">Смирнов А.В. · 01.10.2026 09:14 · «Новые окна для суточных смен»</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="openDiff()">Сравнить с #11</button>
+      <button class="btn btn-sm" onclick="go('system')">Версии и откат</button>
+      <button class="btn btn-sm btn-ghost" onclick="alert('Черновик #13: шаг 30 мин, вступает с 01.11.2026')">Черновик #13</button>
+    </div>
+  </div>
+</div>
+${healthBanner()}
+<div class="stat-grid">
+  <div class="stat"><div class="k">Шаг расчёта</div><div class="v">60 <small>мин</small></div></div>
+  <div class="stat info"><div class="k">Период</div><div class="v" style="font-size:19px">месяц</div></div>
+  <div class="stat"><div class="k">Лимит опоздания</div><div class="v">5 <small>мин</small></div></div>
+  <div class="stat"><div class="k">Кодов Табеля</div><div class="v">${CODES.length}</div></div>
+  <div class="stat"><div class="k">Окон (значений)</div><div class="v">${WINDOWS.length}</div></div>
+  <div class="stat warn"><div class="k">Переопределений</div><div class="v">${RULES.length}</div></div>
+</div>
+<div class="grid-2">
+  <div class="panel">
+    <h3 class="panel-title">Вступит в силу</h3>
+    <div class="kv"><span class="k">01.11.2026 · версия #13 (черновик)</span><span class="v">шаг 30 мин <a href="#" onclick="go('calc');return false" style="color:var(--primary)">открыть</a></span></div>
+    <div class="kv"><span class="k">15.10.2026 · правило #21</span><span class="v">Двойные переработки = Да, все</span></div>
+    <div class="kv"><span class="k">01.11.2026 · правило #11</span><span class="v">Двойные = Да, Иванов И.И. (с даты и далее)</span></div>
+    <p class="hint">Сегодня правил на будущее не видно — это главная причина «я не помню, что уже задал». Список показывает всё, что вступит после сегодня.</p>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Изменения за 30 дней</h3>
+    <div class="kv"><span class="k">11.10 · Смирнов А.В.</span><span class="v" style="font-weight:600">правило #24: План=Факт = Нет, «Пятидневка», октябрь</span></div>
+    <div class="kv"><span class="k">05.10 · Громова О.П.</span><span class="v" style="font-weight:600">правило #18: оплата переработок = Нет, Петров П.П.</span></div>
+    <div class="kv"><span class="k">01.10 · Смирнов А.В.</span><span class="v" style="font-weight:600">версия #12: окно «Я 10,75» для суточных смен</span></div>
+    <div style="margin-top:10px"><button class="btn btn-sm btn-ghost" onclick="go('system')">Весь аудит настроек →</button></div>
+  </div>
+</div>
+<div class="panel">
+  <h3 class="panel-title">Быстрые действия</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-sm" onclick="openWizard()">+ Переопределение правила</button>
+    <button class="btn btn-sm" onclick="openResolver()">Проверить значение для дня</button>
+    <button class="btn btn-sm" onclick="go('codes')">+ Код Табеля</button>
+    <button class="btn btn-sm" onclick="go('codes')">+ Значение и окно</button>
+    <button class="btn btn-sm" onclick="go('calendar')">Открыть календарь правил</button>
+  </div>
+</div>`;
+
+SCREENS.calc = () => `
+${head('Расчёт','Лимит опоздания действует с любой даты как правило. Каркас расчёта публикуется версией и применяется к периодам, начинающимся с указанной даты.',
+  `<span class="chip">Черновик #13 · не опубликован</span>
+   <button class="btn btn-sm" onclick="openDiff()">Diff</button>
+   <button class="btn btn-sm btn-primary" onclick="openPublish()">Опубликовать…</button>`)}
+
+<div class="panel" style="border-left:4px solid var(--primary)">
+  <h3 class="panel-title">А · Лимит опоздания — действует с любой даты, отдельно от версии справочников</h3>
+  <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+    <label class="field" style="margin:0"><span>Сейчас действует</span>
+      <div style="font-family:var(--font-display);font-size:26px;padding:4px 0">5 <span style="font-family:var(--font-body);font-size:13px;color:var(--muted)">мин · с 01.10.2026 (версия #12)</span></div></label>
+    <label class="field" style="margin:0;width:130px"><span>Новое значение</span><input type="number" value="10" min="0" max="240" step="1"></label>
+    <label class="field" style="margin:0;width:170px"><span>Действует с</span><input type="date" value="2026-10-12" min="2026-10-12"></label>
+    <label class="field" style="margin:0;width:190px"><span>Кому</span><select><option>все сотрудники</option><option>группа «Смена 1»</option><option>группа «Пятидневка»</option><option>сотрудник…</option></select></label>
+    <label class="field" style="margin:0;width:170px"><span>Когда</span><select><option>с даты и далее</option><option>один день</option><option>диапазон с–по</option><option>период (месяц)</option></select></label>
+    <button class="btn btn-sm btn-primary" onclick="alert('Сохранено как правило уровня 6 (все + с даты). Применяется подневно — публикация версии справочников не нужна.')">Сохранить как правило</button>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="badge warn">переопределений активно: 2</span>
+    <button class="btn btn-sm btn-ghost" onclick="go('pay')">Показать переопределения</button>
+    <button class="btn btn-sm btn-ghost" onclick="openResolver()">Проверить для сотрудника и дня</button>
+    <span class="hint" style="margin:0">Дата в прошлом — только через ретро-версию каркаса, чтобы не менять историю молча</span>
+  </div>
+  <p class="hint">До какой задержки флаг <code>LATE</code> не ставится; тот же лимит применяется к раннему уходу
+  (<code>EARLY_DEPARTURE</code>). Норма: CFG-LIMITS, 6.6. Значение разбирается по дням, как остальные модификаторы
+  (уровни 1–7), поэтому «с сегодняшнего дня» работает без публикации версии — это единственно возможный способ:
+  версия справочников выбирается по дате <b>начала периода</b>, а не подневно (R41, §4.3 документа).</p>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">Б · Каркас расчёта — публикуется версией</h3>
+  <div class="grid-2">
+    <label class="field"><span>Часовой пояс объекта</span>
+      <select><option>Europe/Moscow</option><option>Europe/Simferopol</option><option>Asia/Yekaterinburg</option></select>
+      <div class="hint">Должен совпадать с <code>APP_TZ</code>. DST намеренно не поддерживается: локальные сутки = 1440 мин (R24).</div></label>
+    <label class="field"><span>Период расчёта</span>
+      <div class="seg" style="margin-top:4px"><button class="active">месяц</button><button>полмесяца</button></div>
+      <div class="hint">Полмесяца = 1–15 / 16–конец. Определяет цепочку периодов и границу закрытия (R36).</div></label>
+    <label class="field"><span>Шаг расчёта</span>
+      <div class="seg" style="margin-top:4px"><button>15</button><button class="active">30</button><button>60</button></div>
+      <div class="hint">Округляются только моменты отметок и <code>now</code>; границы окон и категорий лежат на той же сетке (CHK-GRID). Смена шага нормализует входящие остатки банка (<code>OPENING_ROUNDED</code>).</div></label>
+    <label class="field"><span>Лимит часов в дне</span>
+      <input type="text" value="1440 мин · фиксировано" readonly style="background:#f4f0ed">
+      <div class="hint">Ёмкость дня для переносов: <code>лимит − длина окна − Σ размещённых кодов</code>.</div></label>
+  </div>
+  <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;border-top:1px solid var(--line-soft);padding-top:12px;margin-top:4px">
+    <label class="field" style="margin:0;width:190px"><span>Действует с</span><input type="date" value="2026-11-01"></label>
+    <label class="field" style="margin:0;flex:1;min-width:220px"><span>Комментарий (обязателен)</span><input type="text" placeholder="что и почему меняем"></label>
+    <button class="btn btn-sm btn-primary" onclick="openPublish()">Опубликовать версию</button>
+    <button class="btn btn-sm" onclick="openRetroFix()">Исправить последний закрытый период…</button>
+  </div>
+  <div class="preview" style="margin-top:12px">
+    <div class="row"><span class="k">Фактически применится</span><b>к периодам, начинающимся с 01.11.2026</b></div>
+    <div class="row"><span class="k">Октябрь 2026 (не закрыт)</span><b>считается по версии #12 — дата лежит внутри периода</b></div>
+    <div class="row"><span class="k">Сентябрь 2026 (закрыт, последний)</span><b style="color:var(--warn)">не меняется; доступен пересчёт</b></div>
+    <div class="row"><span class="k">Август 2026 и раньше (закрыты)</span><b style="color:var(--danger)">изменить нельзя: пересчёт недоступен</b></div>
+  </div>
+  <p class="hint">Версия выбирается по дате <b>начала</b> периода (<code>sql_settings.base_version(db, period.start)</code>),
+  поэтому любая дата внутри периода эквивалентна дате начала следующего. Ограничение «только 1 или 16 число» снято —
+  вместо него интерфейс показывает настоящую дату применения. Чтобы изменить уже закрытый период, нужна ретро-версия
+  с <code>valid_from ≤ начало периода</code> и явный «Пересчитать».</p>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">В · Категории времени · CFG-CATEGORIES</h3>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+    <label class="field" style="margin:0;width:170px"><span>Начало дневных часов</span><input type="time" value="06:00" step="3600"></label>
+    <label class="field" style="margin:0;width:170px"><span>Конец дневных часов</span><input type="time" value="22:00" step="3600"></label>
+    <div class="field" style="margin:0"><span>Ночные (ДН) — выводятся</span>
+      <div style="padding:9px 12px;border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--panel-2);font-size:13.5px">22:00 → 06:00 <span class="badge info">через полночь</span></div></div>
+  </div>
+  ${timeline([
+    {lbl:'ДН', bars:[{s:1320,e:1440,c:'#2c3550',t:'22:00–24:00'},{s:0,e:360,c:'#2c3550',t:'00:00–06:00'}]},
+    {lbl:'ДЯ', bars:[{s:360,e:1320,c:'#3d7a52',t:'дневные 06:00–22:00'}]},
+  ])}
+  <p class="hint"><span class="badge ok">✓ CHK-CATEGORIES-COVER</span> сутки покрыты без дыр и пересечений —
+  при двух полях это выполняется по построению, проверка остаётся страховкой ·
+  <span class="badge ok">✓ CHK-GRID</span> границы кратны шагу. Больше двух категорий (например «вечерние») —
+  в режиме эксперта: форма переключается в табличный вид.</p>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">Г · Веса кодов УТ · CFG-WEIGHTS — редактируемые</h3>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Код</th><th>Категория</th><th class="num">Вес</th><th>Часов банка за 1 физический час</th><th>Как получается код</th></tr></thead>
+    <tbody>
+      <tr><td><b>ДЯ</b></td><td><span class="code-dot" style="background:#3d7a52"></span> дневные</td>
+        <td class="num"><input type="number" value="1" min="1" max="9" style="width:74px;padding:5px 8px;text-align:right"></td>
+        <td>1 ч банка</td><td class="spec-ref">одиночные переработки</td></tr>
+      <tr><td><b>ДН</b></td><td><span class="code-dot" style="background:#2c3550"></span> ночные</td>
+        <td class="num"><input type="number" value="2" min="1" max="9" style="width:74px;padding:5px 8px;text-align:right"></td>
+        <td><b>2 ч банка</b> <span class="badge warn">изменён с 1</span></td><td class="spec-ref">одиночные переработки</td></tr>
+      <tr><td><b>ДЯ2</b></td><td><span class="code-dot" style="background:#3d7a52"></span> дневные</td>
+        <td class="num"><input type="number" value="2" min="1" max="9" style="width:74px;padding:5px 8px;text-align:right"></td>
+        <td>2 ч банка</td><td class="spec-ref">«Двойные переработки» = Да</td></tr>
+      <tr><td><b>ДН2</b></td><td><span class="code-dot" style="background:#2c3550"></span> ночные</td>
+        <td class="num"><input type="number" value="4" min="1" max="9" style="width:74px;padding:5px 8px;text-align:right"></td>
+        <td><b>4 ч банка</b> <span class="badge warn">изменён с 2</span></td><td class="spec-ref">«Двойные переработки» = Да</td></tr>
+    </tbody></table></div>
+  <div class="grid-2" style="margin-top:12px">
+    <div>
+      <p class="hint" style="margin-top:0"><b>Вес — множитель перевода в банк, а не признак двойного дня</b> (спека 4.1, «две валюты»):
+      недостача начисляется 1:1, погашение кодом и зачисление в банк — по весу кода.</p>
+      <p class="hint">Пример: 6 ч ночной переработки при <code>ДН = 2</code> дают 12 ч банка вместо 6,
+      а недостача 6 ч гасится тремя часами <code>ДН</code>.</p>
+    </div>
+    <div>
+      <p class="hint" style="margin-top:0"><b>Какой код появится в дне, решает модификатор «Двойные переработки»</b>,
+      а не вес: <code>weight_of_day</code> возвращает 1 или 2, имя кода = категория + вес (<code>ДЯ2</code>, слитно).</p>
+      <p class="hint">Движок порождает только коды с весом 1 и 2, поэтому «ДЯ3» был бы мёртвой конфигурацией
+      (нужен R42). План, факт, рабочее время и недостача не взвешиваются никогда.</p>
+    </div>
+  </div>
+  <p class="hint"><span class="badge ok">✓ CHK-WEIGHTS-POSITIVE</span> целые &gt; 0 ·
+  <span class="badge ok">✓ CHK-CODES-EXIST</span> коды веса 1 и 2 есть для каждой категории ·
+  <span class="badge ok">✓ CHK-CASCADE-FULL / CHK-PLACEMENT-FULL</span> оба порядка содержат все коды.
+  Вес входит в каркас расчёта → меняется версией и влияет на закрытые периоды: публикация показывает impact и предлагает пересчёт.</p>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">Д · Порядки · CFG-CASCADE и CFG-PLACEMENT</h3>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Погашение недостачи (каскад)</div>
+  <div class="order-list">
+    <span class="item bank"><span class="grip">⣿</span><span class="n">1</span>Банк часов</span>
+    <span class="item"><span class="grip">⣿</span><span class="n">2</span>ДЯ</span>
+    <span class="item"><span class="grip">⣿</span><span class="n">3</span>ДН</span>
+    <span class="item"><span class="grip">⣿</span><span class="n">4</span>ДЯ2</span>
+    <span class="item"><span class="grip">⣿</span><span class="n">5</span>ДН2</span>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Размещение переносов</div>
+  <div class="order-list">
+    <span class="item"><span class="grip">⣿</span><span class="n">1</span>ДЯ</span>
+    <span class="item"><span class="grip">⣿</span><span class="n">2</span>ДН</span>
+    <span class="item"><span class="grip">⣿</span><span class="n">3</span>ДЯ2</span>
+    <span class="item"><span class="grip">⣿</span><span class="n">4</span>ДН2</span>
+  </div>
+  <p class="hint">Банк гасит долг первым всегда — это закон (стадия 10), в списке он не перемещаем.
+  Порядок кодов меняется перетаскиванием или ↑↓. Внутри тарифа — по возрастанию даты происхождения.</p>
+</div>`;
+
+SCREENS.pay = () => `
+${head('Правила оплаты','Четыре модификатора календарного дня (CFG-MODIFIERS): глобальные значения, переопределения по людям и датам, объяснение любого дня.',
+  `<button class="btn btn-sm" onclick="openResolver()">Проверитель</button>
+   <button class="btn btn-sm btn-primary" onclick="openWizard()">+ Переопределение</button>`)}
+<div class="panel">
+  <h3 class="panel-title">Как выбирается значение</h3>
+  ${chain(7)}
+  <p class="hint">Поиск идёт от сильной формы к слабой, первое совпадение выигрывает; сравнение — подневно.
+  Группа берётся из строки Табеля соответствующего дня (<code>RUL-GROUP-PER-DAY</code>): перевод сотрудника
+  между блоками внутри периода учитывается. Две записи одного уровня на один день — конфликт конфигурации:
+  система не даст его сохранить.</p>
+</div>
+
+${MODS.map(m=>`
+<div class="rule-card">
+  <div class="rc-head">
+    <h4>${esc(m.title)}</h4>
+    <span class="badge">${lvlBadge(7)} глобальный дефолт</span>
+    <span class="spacer"></span>
+    <span class="val-picker">
+      ${m.type==='bool'
+        ? `<select><option ${m.def==='Да'?'selected':''}>Да</option><option ${m.def==='Нет'?'selected':''}>Нет</option></select>`
+        : (m.type==='tri'
+          ? `<select><option>Да</option><option ${m.def==='Нет'?'selected':''}>Нет</option><option>Авто</option></select>`
+          : `<select><option selected>по коду дня</option><option>Да</option><option>Нет</option></select>`)}
+    </span>
+  </div>
+  <div class="rc-body">${esc(m.what)}<br><b>Пример:</b> ${esc(m.ex)}</div>
+  <div class="rc-meta">
+    <span>Норма: <span class="spec-ref">${esc(m.spec)}</span></span>
+    <span>Переопределений активно: <b>${m.cnt}</b> <a href="#" style="color:var(--primary);text-decoration:none" onclick="filterRules('${m.name}');return false">показать →</a></span>
+    <span>Менял: <b>${esc(m.by)}</b></span>
+  </div>
+</div>`).join('')}
+
+<div class="panel">
+  <h3 class="panel-title" id="rules-title">Переопределения (уровни 1–6) · все источники</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+    <select style="width:auto;min-width:210px" id="f-mod" onchange="filterRules()">
+      <option value="">Все модификаторы</option>
+      ${MODS.map(m=>`<option value="${m.name}">${esc(m.title)}</option>`).join('')}
+    </select>
+    <select style="width:auto;min-width:170px"><option>Кому: все</option><option>Группа…</option><option>Сотрудник…</option></select>
+    <label class="chip" style="cursor:pointer"><input type="checkbox" checked style="width:15px;height:15px"> будущие</label>
+    <label class="chip" style="cursor:pointer"><input type="checkbox" checked style="width:15px;height:15px"> истёкшие</label>
+    <label class="chip" style="cursor:pointer"><input type="checkbox" checked style="width:15px;height:15px"> из версии (static)</label>
+    <span class="spacer" style="flex:1"></span>
+    <span class="hint" style="margin:0">Источники: правила · календарь двойных дней · ВИП-периоды</span>
+  </div>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>#</th><th>Правило</th><th>Значение</th><th>Кому</th><th>Когда</th><th>Уровень</th><th>Источник</th><th>Автор</th><th></th></tr></thead>
+    <tbody id="rules-body"></tbody>
+  </table></div>
+  <p class="hint">Правило можно изменить, не удаляя (примечание и автор сохранятся), продлить и скопировать
+  на другой срок. Удаление — с подтверждением и записью в аудит.</p>
+</div>`;
+
+SCREENS.codes = () => `
+${head('Коды и окна Табеля','Нормы расчёта: коды (CFG-DAY-CODES) и окна значений (CFG-WINDOWS). Версионируются вместе со справочниками движка. Право settings.edit.',
+  `<button class="btn btn-sm btn-ghost" onclick="go('shifts')">Смены и отсутствия →</button>
+   <button class="btn btn-sm btn-primary" onclick="openCodeEditor()">+ Код Табеля</button>`)}
+<div class="panel" style="background:var(--panel-2);border-style:dashed">
+  <div style="font-size:13px;color:var(--muted)"><b style="color:var(--text)">Это не словарь смен.</b>
+  Здесь — как день считается: код, четыре флага, окно рабочего времени. Что можно поставить в ячейку Графика
+  (смены, виды отсутствий, заявления, цвета ячеек, ревизии) — в отдельном разделе
+  <a href="#" onclick="go('shifts');return false" style="color:var(--primary);font-weight:700">«Смены и отсутствия»</a>.</div>
+</div>
+<div class="tabs">
+  <button class="active" onclick="codesTab('codes',this)">Коды Табеля · ${CODES.length}</button>
+  <button onclick="codesTab('windows',this)">Окна и значения · ${WINDOWS.length}</button>
+</div>
+<div id="codes-body">${codesTable()}</div>
+${dictLinks('codes')}`;
+
+SCREENS.shifts = () => `
+${head('Смены и отсутствия','Словарь ячеек Графика: что можно поставить в день. На расчёт часов влияет косвенно — через заполнение Табеля и через флаги. Право schedule.edit.',
+  `<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:15px;height:15px"> показать архив</label>
+   <button class="btn btn-sm btn-ghost" onclick="go('codes')">Коды и окна Табеля →</button>
+   <button class="btn btn-sm btn-primary" onclick="openShiftEditor()">+ Смена / вид отсутствия</button>`)}
+<div class="panel" style="background:var(--panel-2);border-style:dashed">
+  <div style="font-size:13px;color:var(--muted)"><b style="color:var(--text)">Это не нормы расчёта.</b>
+  Здесь — словарь ячеек Графика: смены, виды отсутствий, заявления, режим отметок, цвет ячейки, архив и ревизии
+  с датами вступления. Как день считается (коды Табеля, окна, недостача, коды УТ) — в разделе
+  <a href="#" onclick="go('codes');return false" style="color:var(--primary);font-weight:700">«Коды и окна Табеля»</a>.</div>
+</div>
+<div class="tabs">
+  <button class="active" onclick="shiftsTab('work',this)">Смены · 6</button>
+  <button onclick="shiftsTab('absence',this)">Виды отсутствий · 8</button>
+</div>
+<div id="shifts-body">${shiftsTable('work')}</div>
+${dictLinks('shifts')}
+<div class="panel">
+  <h3 class="panel-title">Как здесь устроены изменения</h3>
+  <div class="kv"><span class="k">Изменение времени смены</span><span class="v">создаёт ревизию с датой вступления</span></div>
+  <div class="kv"><span class="k">Прошлые графики и табели</span><span class="v">считаются по прежним часам</span></div>
+  <div class="kv"><span class="k">«Удаление»</span><span class="v">архив: в новых ячейках недоступна, в истории видна</span></div>
+  <div class="kv"><span class="k">Версии справочников движка</span><span class="v">не участвуют — здесь свои ревизии</span></div>
+  <p class="hint">Поэтому на этом экране нет черновика, diff и публикации версии: цена ошибки другая
+  (часы смены против математики расчёта), и механизм версионирования уже свой — <code>shift_revisions</code>.</p>
+</div>`;
+
+SCREENS.groups = () => `
+${head('Группы и графики','Группы сотрудников (CFG-GROUPS), блоки графика, базовый цикл объекта и шаблоны.','<button class="btn btn-sm btn-primary">+ Группа</button>')}
+<div class="panel">
+  <h3 class="panel-title">Группы · единый источник</h3>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Группа</th><th class="num">Сотрудников</th><th>Шаблон графика</th><th class="num">Правил</th><th>CFG-GROUPS</th><th>Блоки приложения</th><th></th></tr></thead>
+    <tbody>${GROUPS.map(g=>`<tr>
+      <td><b>${esc(g.name)}</b></td><td class="num">${g.emp}</td><td>${esc(g.tpl)}</td><td class="num">${g.rules}</td>
+      <td>${g.incfg?'<span class="badge ok">есть</span>':'<span class="badge danger">нет</span>'}</td>
+      <td>${g.inblocks?'<span class="badge ok">есть</span>':'<span class="badge warn">не используется</span>'}</td>
+      <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost">Правила</button> <button class="btn btn-sm btn-ghost">Изменить</button></td>
+    </tr>`).join('')}</tbody></table></div>
+  <p class="hint">Группа хранится в строке Табеля каждого дня, поэтому перевод между блоками внутри периода
+  учитывается в расчёте. Переименование требует переноса истории: система покажет число затрагиваемых строк.</p>
+</div>
+<div class="grid-2">
+  <div class="panel">
+    <h3 class="panel-title">Базовый цикл объекта · «Смена 1» и «Смена 2»</h3>
+    <label class="field"><span>Цикл</span>
+      <div class="seg" style="margin-top:4px"><button class="active">2/2</button><button>3/3</button><button>4/2</button><button>4/3</button><button>1/3</button><button>произвольный</button></div></label>
+    <div class="grid-2">
+      <label class="field"><span>Опорная дата (Смена 1 рабочая)</span><input type="date" value="2024-01-01"></label>
+      <label class="field"><span>Смена блока «Смена 1»</span><select><option>08:00–20:00 (12 ч)</option><option>09:00–18:00 (9 ч)</option></select></label>
+    </div>
+    <label class="chip" style="cursor:pointer;margin-bottom:10px"><input type="checkbox" checked style="width:15px;height:15px"> Смена 2 в противофазе со Сменой 1</label>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:5px">Предпросмотр · октябрь 2026</div>
+    <div style="display:flex;gap:3px;flex-wrap:wrap">
+      ${Array.from({length:31},(_,i)=>{const w=(i%4<2);return `<span style="width:24px;height:24px;border-radius:3px;display:grid;place-items:center;font-size:10px;font-weight:800;background:${w?'#e9f0e6':'#efe9e1'};color:${w?'#3d6b45':'var(--muted)'}">${i+1}</span>`}).join('')}
+    </div>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Пятидневка и «Другие смены»</h3>
+    <p class="hint" style="margin-top:0">Здесь не настраиваются: у пятидневки выходные задаются для каждого
+    сотрудника индивидуально, «Другие смены» — контейнер индивидуальных графиков (3/3, 1/3, сутки через трое,
+    произвольный цикл «РРВВ» или ручное заполнение).</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-sm" onclick="alert('Открывает карточку сотрудника → «Перевод в блок»')">Карточка сотрудника →</button>
+      <button class="btn btn-sm" onclick="go('calendar')">Календарь правил →</button>
+    </div>
+    <h3 class="panel-title" style="margin-top:18px">Согласованность</h3>
+    <div class="kv"><span class="k">Групп в CFG-GROUPS</span><span class="v">5</span></div>
+    <div class="kv"><span class="k">Блоков в приложении</span><span class="v">4</span></div>
+    <div class="kv"><span class="k">Расхождения</span><span class="v" style="color:var(--warn)">1 («Смена 3»)</span></div>
+    <button class="btn btn-sm" style="margin-top:10px" onclick="alert('Синхронизация: «Смена 3» будет добавлена в блоки приложения или удалена из CFG-GROUPS — на выбор, с предпросмотром')">Синхронизировать…</button>
+  </div>
+</div>`;
+
+SCREENS.calendar = () => {
+  const days=Array.from({length:31},(_,i)=>i+1);
+  const cell=(d)=>{
+    const we=[6,0].includes(new Date(2026,9,d).getDay());
+    let cls='', txt='';
+    if(d===15){cls='dbl';txt='ДЯ2'}
+    if(d===12){cls='rule';txt='●'}
+    if(d===11){cls='ver';txt='#13'}
+    return `<td class="cell${we?' we':''} ${cls}" title="${d}.10.2026" onclick="openDay(${d})">${txt}</td>`;
+  };
+  const row=(lbl,cells)=>`<tr><td class="rowlbl">${lbl}</td>${cells}</tr>`;
+  return `
+${head('Календарь правил','Один экран «день × кто»: переопределения, производственный календарь двойных дней, ВИП-периоды и версии справочников — слоями.',
+  `<div class="seg"><button>‹</button><button style="min-width:150px">октябрь 2026</button><button>›</button></div>
+   <button class="btn btn-sm btn-primary" onclick="openWizard()">+ Правило</button>`)}
+<div class="panel">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <label class="chip" style="cursor:pointer"><input type="checkbox" checked style="width:15px;height:15px"> Переопределения</label>
+    <label class="chip" style="cursor:pointer"><input type="checkbox" checked style="width:15px;height:15px"> Дни двойной оплаты</label>
+    <label class="chip" style="cursor:pointer"><input type="checkbox" checked style="width:15px;height:15px"> ВИП-периоды</label>
+    <label class="chip" style="cursor:pointer"><input type="checkbox" checked style="width:15px;height:15px"> Версии справочников</label>
+    <span style="flex:1"></span>
+    <span class="chip" style="background:#f6e3d8;border-color:#e5c3b1;color:#8c3a24">ДЯ2 — двойные</span>
+    <span class="chip" style="background:#e7eef2;border-color:#c3d9e0;color:#2c5f70">● — правило</span>
+    <span class="chip" style="background:#efe7f5;border-color:#d6c5e8;color:#5d3a80">ВИП</span>
+    <span class="chip" style="background:#faf3dd;border-color:#e6d69b;color:#7d6415"># — версия</span>
+  </div>
+  <div style="overflow:auto"><table class="cal">
+    <thead><tr><th></th>${days.map(d=>`<th>${d}<br>${['вс','пн','вт','ср','чт','пт','сб'][new Date(2026,9,d).getDay()]}</th>`).join('')}</tr></thead>
+    <tbody>
+      ${row('все', days.map(cell).join(''))}
+      ${row('Смена 1', days.map(d=>`<td class="cell${d===12?' rule':''}" onclick="openDay(${d})">${d===12?'ОП✕':''}</td>`).join(''))}
+      ${row('Смена 2', days.map(d=>`<td class="cell" onclick="openDay(${d})"></td>`).join(''))}
+      ${row('Пятидневка', days.map(d=>`<td class="cell${d>0&&d<=31&&[1,2,3,4,5].includes(d%7)?' rule':''}" onclick="openDay(${d})"></td>`).join(''))}
+      ${row('Иванов И.И.', days.map(d=>`<td class="cell${d===12?' rule':''}" onclick="openDay(${d})">${d===12?'●2':''}</td>`).join(''))}
+      ${row('Петров П.П.', days.map(d=>`<td class="cell vip" onclick="openDay(${d})">ВИП</td>`).join(''))}
+    </tbody>
+  </table></div>
+  <p class="hint">Клик по дню — панель дня со всеми действующими правилами и источниками. Клик по строке
+  сотрудника — «Проверитель» с готовым именем. Массовое назначение: «все субботы года для пятидневки →
+  Двойные переработки = Да» — как в нынешнем календаре двойных дней, но для любого правила.</p>
+</div>
+<div class="grid-2">
+  <div class="panel">
+    <h3 class="panel-title">Массовое назначение</h3>
+    <label class="field"><span>Правило</span><select><option>Двойные переработки = Да</option><option>Оплачиваются ли переработки = Нет</option><option>План=Факт = Да</option></select></label>
+    <label class="field"><span>Кому</span><select><option>все</option><option>группа «Пятидневка»</option><option>сотрудники…</option></select></label>
+    <div class="grid-2">
+      <label class="field"><span>С</span><input type="date" value="2027-01-01"></label>
+      <label class="field"><span>По</span><input type="date" value="2027-12-31"></label>
+    </div>
+    <label class="field"><span>Только дни недели</span>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">${['пн','вт','ср','чт','пт','сб','вс'].map((d,i)=>`<label class="chip" style="cursor:pointer"><input type="checkbox" ${i>4?'checked':''} style="width:14px;height:14px">${d}</label>`).join('')}</div></label>
+    <div class="preview"><div class="row"><span class="k">Создаст правил</span><b>104 (уровень 5)</b></div>
+      <div class="row"><span class="k">Затронет сотрудников</span><b>11</b></div>
+      <div class="row"><span class="k">Пересечение с закрытыми периодами</span><b>нет</b></div></div>
+    <button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="alert('Pre-flight: конфликтов того же уровня нет → сохраняем 104 правила')">Назначить</button>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Источники-слои (данные не сливаем)</h3>
+    <div class="kv"><span class="k">Переопределения</span><span class="v">day_modifiers</span></div>
+    <div class="kv"><span class="k">Дни двойной оплаты</span><span class="v">double_pay_days</span></div>
+    <div class="kv"><span class="k">ВИП-периоды</span><span class="v">vip_double_pay</span></div>
+    <div class="kv"><span class="k">Из версии справочников</span><span class="v">payload.static_modifiers</span></div>
+    <p class="hint">Адаптер настроек уже приводит все четыре источника к записям CFG-MODIFIERS
+    и дедуплицирует идентичные. Календарь показывает их вместе, но правка идёт в своём источнике —
+    миграция данных не требуется (вопрос 1 в документе).</p>
+  </div>
+</div>`;
+};
+
+SCREENS.docs = () => `
+${head('Документы и справочники','Реквизиты для печати, виды заявлений и бланки .docx, департаменты, службы, прочие правила объекта. Часы «выходного за часы» выводятся из окна смен сотрудника.','')}
+<div class="grid-2">
+  <div class="panel">
+    <h3 class="panel-title">Реквизиты организации</h3>
+    <label class="field"><span>Организация</span><input type="text" value="ООО «Управляющая компания»"></label>
+    <label class="field"><span>Кому (шапка заявления)</span><input type="text" value="Директору Иванову И.И."></label>
+    <button class="btn btn-sm btn-primary">Сохранить реквизиты</button>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Прочие правила объекта</h3>
+    <div style="border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:12.5px;font-weight:800;margin-bottom:6px">Часы «выходного за часы» (код «НВ»)</div>
+      <div class="kv"><span class="k">По умолчанию</span><span class="v">стандартное окно смен сотрудника из Табеля</span></div>
+      <div class="kv"><span class="k">Иванов И.И. · Смена 1 · «Я 12»</span><span class="v">12 ч <span class="spec-ref">window_of_day</span></span></div>
+      <div class="kv"><span class="k">Соколова Е.В. · Пятидневка · «Я 9»</span><span class="v">9 ч <span class="spec-ref">window_of_day</span></span></div>
+      <div class="kv"><span class="k">Волков А.Д. · ручной график</span><span class="v">12 ч <span class="spec-ref">timesheet_mode</span></span></div>
+      <label class="field" style="margin:10px 0 0"><span>Если окно не определилось</span>
+        <input type="number" value="8" min="1" max="24" style="width:110px;padding:6px 8px"></label>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="openTimeoff()">Проверить для сотрудника…</button>
+      </div>
+      <p class="hint">Порядок вывода: окно дня, который меняем на выходной (смена по циклу/шаблону → строка
+      CFG-WINDOWS с теми же границами) → мода окон в Табеле сотрудника за период → этот fallback.
+      Число информационное: «НВ» не несёт плановых часов, отсутствие не влияет на план, часы и банк
+      (RUL-ABSENCE-ONLY-FLAGS) — оно попадает в заявление и в предзаполнение ячейки.</p>
+    </div>
+    <div class="kv"><span class="k">Хранение фото ночных отчётов и электрокаров, дней</span><span class="v"><input type="number" value="180" style="width:80px;padding:5px 8px"></span></div>
+    <p class="hint">0 — хранить всегда. Правила применяются сразу и не версионируются: на расчёт часов они не влияют.</p>
+  </div>
+</div>
+<div class="panel">
+  <h3 class="panel-title">Виды заявлений и шаблоны</h3>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Вид заявления</th><th>Код</th><th>Бланк .docx</th><th>Привязан к отсутствию</th><th></th></tr></thead>
+    <tbody>
+      <tr><td>Ежегодный отпуск <span class="badge">встроенный</span></td><td><code>vacation_paid</code></td><td><span class="badge ok">загружен</span></td><td>ОТ — Ежегодный отпуск</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDocPreview()">Предпросмотр</button> <button class="btn btn-sm btn-ghost">Изменить</button></td></tr>
+      <tr><td>Отпуск без сохранения</td><td><code>vacation_unpaid</code></td><td><span class="badge muted">печать текстом</span></td><td>ДО — Отпуск без сохранения</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDocPreview()">Предпросмотр</button> <button class="btn btn-sm btn-ghost">Изменить</button></td></tr>
+      <tr><td>Выходной за ранее отработанные часы</td><td><code>day_off_hours</code></td><td><span class="badge muted">печать текстом</span></td><td>НВ — Выходной за часы</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDocPreview()">Предпросмотр</button> <button class="btn btn-sm btn-ghost">Изменить</button></td></tr>
+      <tr><td>Отпросился с … до …</td><td><code>time_off_request</code></td><td><span class="badge muted">печать текстом</span></td><td>согласованное отсутствие</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDocPreview()">Предпросмотр</button> <button class="btn btn-sm btn-ghost">Изменить</button></td></tr>
+    </tbody></table></div>
+  <p class="hint">Предпросмотр — на реальных данных выбранного сотрудника: сейчас плейсхолдеры проверяются только печатью.</p>
+</div>
+<div class="panel">
+  <h3 class="panel-title">Департаменты и службы</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    ${['Служба батлеров','Управление','Хаус-кипинг','Ресторан','СПА'].map(d=>`<span class="chip">${esc(d)} <b style="cursor:pointer;color:var(--primary)">✎</b></span>`).join('')}
+    <button class="btn btn-sm btn-ghost">+ Департамент</button>
+  </div>
+  <p class="hint">Значения попадают в карточку сотрудника и подставляются в документы. Переименование обновляет
+  карточки, удаление — очищает поле там, где значение было выбрано.</p>
+</div>`;
+
+SCREENS.system = () => `
+${head('Система','Версии справочников с diff и откатом, аудит настроек, данные системы, диагностика.','')}
+<div class="panel">
+  <h3 class="panel-title">Версии справочников</h3>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>#</th><th>Действует с</th><th>Тип</th><th>Комментарий</th><th>Автор</th><th>Создана</th><th></th></tr></thead>
+    <tbody>
+      <tr><td>13</td><td>01.11.2026</td><td><span class="badge gold">черновик</span></td><td>шаг 30 мин</td><td>admin</td><td>12.10.2026</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDiff()">Diff</button> <button class="btn btn-sm btn-ghost" onclick="openPublish()">Опубликовать</button></td></tr>
+      <tr style="background:#f6faf4"><td><b>12</b></td><td><b>01.10.2026</b></td><td><span class="badge ok">действует</span></td><td>Новые окна для суточных смен</td><td>Смирнов А.В.</td><td>01.10.2026</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDiff()">Diff</button></td></tr>
+      <tr><td>11</td><td>01.09.2026</td><td><span class="badge muted">архив</span></td><td>Код «НВ», подпись «Выходной за часы»</td><td>admin</td><td>28.08.2026</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDiff()">Diff</button> <button class="btn btn-sm btn-ghost" onclick="alert('Откат = создать новую версию #14 из payload #11. История не переписывается.')">Откатиться</button></td></tr>
+      <tr><td>1</td><td>01.01.2000</td><td><span class="badge muted">архив</span></td><td>Стартовое наполнение CFG-* (v7.1)</td><td>system</td><td>—</td><td class="num"><button class="btn btn-sm btn-ghost" onclick="openDiff()">Diff</button></td></tr>
+    </tbody></table></div>
+  <p class="hint">Откат создаёт новую версию из старой — история не переписывается. Закрытые периоды
+  не пересчитываются автоматически (RUL-CLOSED-PERIOD-IMMUTABLE): нужен явный «Пересчитать» в управленческом табеле.</p>
+</div>
+<div class="grid-2">
+  <div class="panel">
+    <h3 class="panel-title">Данные системы</h3>
+    <div class="kv"><span class="k">Сотрудников</span><span class="v">11</span></div>
+    <div class="kv"><span class="k">Учётных записей</span><span class="v">12</span></div>
+    <div class="kv"><span class="k">Ячеек графика</span><span class="v">1 842</span></div>
+    <div class="kv"><span class="k">Отметок</span><span class="v">9 310</span></div>
+    <div class="kv"><span class="k">Ячеек Табеля</span><span class="v">3 204</span></div>
+    <div class="kv"><span class="k">Закрытий периодов</span><span class="v">22</span></div>
+    <div class="kv"><span class="k">Правил (переопределений)</span><span class="v">24</span></div>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Диагностика</h3>
+    <div class="kv"><span class="k">Версия сборки</span><span class="v">v7.1 · 37a63b0</span></div>
+    <div class="kv"><span class="k">Схема БД</span><span class="v" style="color:var(--accent)">актуальна</span></div>
+    <div class="kv"><span class="k">APP_TZ / Settings.tz</span><span class="v">Europe/Moscow ✓</span></div>
+    <div class="kv"><span class="k">PDF-движок</span><span class="v" style="color:var(--warn)">LibreOffice не установлен</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-sm" onclick="alert('GET /api/selfcheck — 200, расхождений схемы нет')">Selfcheck</button>
+      <button class="btn btn-sm" onclick="alert('Скачать: версия #12 + payload + health + selfcheck (для поддержки)')">Диагностический пакет</button>
+      <button class="btn btn-sm btn-ghost" onclick="go('audit')">Аудит настроек →</button>
+    </div>
+  </div>
+</div>
+<div class="panel">
+  <h3 class="panel-title">Права на настройки</h3>
+  <div class="kv"><span class="k">settings.view</span><span class="v">администратор, менеджер, старший</span></div>
+  <div class="kv"><span class="k">settings.edit</span><span class="v">администратор, менеджер</span></div>
+  <p class="hint">Предложение (вопрос 5 в документе): разделить <code>settings.edit</code> на
+  <code>settings.edit.calc</code> (математика расчёта), <code>settings.edit.dict</code> (справочники)
+  и <code>settings.edit.pay</code> (правила оплаты) — сейчас одно право даёт доступ и к деньгам, и к словарям.</p>
+</div>`;
+
+SCREENS.expert = () => `
+${head('Режим эксперта','Тот же черновик, что редактируют формы — в виде JSON. Два вида одного объекта: правки не теряются при переключении.',
+  `<div class="seg"><button class="active" onclick="go('calc')">Формы</button><button>JSON</button></div>
+   <button class="btn btn-sm" onclick="openDiff()">Diff</button>
+   <button class="btn btn-sm" onclick="alert('POST /api/engine-settings/validate → все нарушения CHK-* разом, с привязкой к полям формы')">Проверить</button>
+   <button class="btn btn-sm btn-primary" onclick="openPublish()">Опубликовать</button>`)}
+<div class="panel">
+  <p class="hint" style="margin-top:0">Формы покрывают все поля payload; JSON нужен для редких случаев,
+  массовых правок и переноса конфигурации между объектами. Ошибки подсвечиваются до сохранения:
+  сервер возвращает все нарушения CHK-* разом, интерфейс привязывает их к полям.</p>
+  <textarea style="width:100%;min-height:420px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5" spellcheck="false">${esc(JSON.stringify({
+    tz:'Europe/Moscow', period_granularity:'month', step_minutes:60, late_limit_minutes:5, day_limit_minutes:1440,
+    day_code_policy:{'Я':{carries_hours:true,accepts_ut:true,counts_in_ut:true,plan_equals_fact_auto:false}},
+    windows:{'Я 12':{start_minute:480,end_minute:1200}},
+    categories:[{code:'ДЯ',start_minute:360,end_minute:1320},{code:'ДН',start_minute:1320,end_minute:360}],
+    weights:{'ДЯ':1,'ДН':1,'ДЯ2':2,'ДН2':2}, cascade_order:['ДЯ','ДН','ДЯ2','ДН2'], placement_order:['ДЯ','ДН','ДЯ2','ДН2'],
+    groups:['Смена 1','Смена 2','Пятидневка','Другие смены'],
+    global_defaults:{double_overtime:false,pays_overtime:true,plan_equals_fact:'no'},
+    presentation:{day_codes:{'Я':{title:'Явка (дневная работа)',color:'#34a862'}}}
+  },null,2))}…</textarea>
+  <p class="hint">Блок <code>presentation</code> (подписи и цвета кодов) — новый: хранится в payload версии,
+  версионируется вместе со справочником и проходит через кодек без потерь (pass-through). Домен подписей не знает.</p>
+</div>`;
+
+/* ─────────────────────────── вспомогательные рендеры ─────────────────────────── */
+function timeline(rows){
+  return `<div class="timeline">
+    <div class="tl-scale">${[0,4,8,12,16,20,24].map(h=>`<span>${String(h).padStart(2,'0')}:00</span>`).join('')}</div>
+    ${rows.map(r=>`<div class="tl-row"><div class="lbl">${esc(r.lbl)}</div><div class="tl-track">
+      ${r.bars.map(b=>`<div class="tl-bar" style="left:${pct(b.s)}%;width:${pct(b.e-b.s)}%;background:${b.c}" title="${esc(b.t)}">${esc(b.t)}</div>`).join('')}
+    </div></div>`).join('')}
+  </div>`;
+}
+function codesTable(){
+  return `<div class="panel">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Код</th><th>Подпись</th><th>Несёт часы</th><th>Принимает УТ</th><th>В УТ</th><th>П=Ф «Авто»</th><th class="num">Окон</th><th class="num">Дней в Табеле</th><th>Связанные смены <span class="spec-ref">(справочно)</span></th><th></th></tr></thead>
+    <tbody>${CODES.map(c=>`<tr>
+      <td><span class="code-pill" style="background:${c.color}22;color:${c.color};border:1px solid ${c.color}55">${esc(c.code)}</span></td>
+      <td>${esc(c.title)}</td>
+      <td>${c.carries?'<span class="badge ok">да</span>':'<span class="badge muted">нет</span>'}</td>
+      <td>${c.ut?'<span class="badge ok">да</span>':'<span class="badge muted">нет</span>'}</td>
+      <td>${c.counts?'<span class="badge ok">да</span>':'<span class="badge muted">нет</span>'}</td>
+      <td>${c.auto?'<span class="badge info">да</span>':'—'}</td>
+      <td class="num">${c.win||'—'}</td>
+      <td class="num">${c.days||'—'}</td>
+      <td style="font-size:12px">${c.shift?esc(c.shift):'<span class="badge warn" title="Назначить код из сетки Графика нельзя, только вручную в Табеле. Правится в «Смены и отсутствия»">нет смены</span>'}</td>
+      <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="openCodeEditor('${c.code}')">Изменить</button></td>
+    </tr>`).join('')}</tbody></table></div>
+  <p class="hint">Четыре флага — колонки CFG-DAY-CODES: «несёт плановые часы», «принимает коды УТ» (приёмник переносов),
+  «учитывается в УТ» (уровень 7 для модификатора), «План=Факт = Авто → Да» (единственный источник «Авто», R19).
+  Подпись и цвет — блок <code>presentation</code>: они не участвуют в расчёте, но версионируются вместе со справочником.
+  Колонка «Дней в Табеле» объясняет, почему код нельзя удалить — только архивировать.<br>
+  Колонка «Связанные смены» — только чтение: она показывает, какие виды смен из словаря Графика ссылаются на код.
+  Правится связь там, в поле «Код Табеля (Т-13)».</p>
+</div>`;
+}
+function windowsTable(){
+  return `<div class="panel">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Значение Табеля</th><th>Код</th><th class="num">Часы</th><th>Окно</th><th class="num">Длина окна</th><th class="num">План строки</th><th class="num">Δ</th><th class="num">Дней</th><th></th></tr></thead>
+    <tbody>${WINDOWS.map(w=>`<tr>
+      <td><b>${esc(w.v)}</b></td>
+      <td><span class="code-pill" style="background:${(CODES.find(c=>c.code===w.code)||{color:'#888'}).color}22;color:${(CODES.find(c=>c.code===w.code)||{color:'#888'}).color}">${esc(w.code)}</span></td>
+      <td class="num">${esc(w.h)}</td>
+      <td>${hm(w.s)}–${hm(w.e)}</td>
+      <td class="num">${(w.e-w.s)/60} ч</td>
+      <td class="num">${w.plan/60} ч</td>
+      <td class="num">${w.plan<w.e-w.s?`<span class="badge info" title="Зарплатная норма меньше окна (обед): расчёт всё равно от окна (R34, EX-51)">${((w.e-w.s)-w.plan)/60}</span>`:'—'}</td>
+      <td class="num">${w.days||'—'}</td>
+      <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="openWindowEditor('${w.v}')">Изменить</button> <button class="btn btn-sm btn-ghost">⧉</button></td>
+    </tr>`).join('')}</tbody></table></div>
+  <h3 class="panel-title" style="margin-top:18px">Все окна на полосе суток · сетка = шаг 60 мин</h3>
+  ${timeline(WINDOWS.map(w=>({lbl:w.v, bars:[{s:w.s,e:w.e,c:(CODES.find(c=>c.code===w.code)||{color:'#8a94a6'}).color,t:`${hm(w.s)}–${hm(w.e)}`}]})))}
+  <p class="hint">Окно не пересекает полночь (CHK-WINDOW-BOUNDS). Суточная смена — графиковая: в Табеле
+  одна строка явки в дне начала с окном, начинающимся вместе со сменой, а часы после полуночи расчёт
+  относит к переработке следующего дня (норматив 12.10.2026). Значения «Я 12» и «Я 10,75» делят окно
+  08:00–20:00: расчёт от выбора не зависит, часы в значении — зарплатный атрибут строки. Ключ значения собирается автоматически
+  и проверяется на канон: ровно один пробел, дробь через запятую, ≤ 2 знаков, без хвостовых нулей (CHK-WINDOW-KEY).
+  Границы кратны шагу (CHK-GRID), план строки не превышает длину окна (CHK-WINDOW-PLAN).</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+    <button class="btn btn-sm btn-primary" onclick="openWindowEditor()">+ Значение и окно</button>
+    <button class="btn btn-sm" onclick="alert('Скопировать все окна кода «Я» для кода «К»: 3 значения. Сегодня это ручная правка трёх блоков JSON.')">Скопировать окна кода…</button>
+  </div>
+</div>`;
+}
+function shiftsTable(kind){
+  const WORK = [
+    ['DAY12','08:00–20:00 (12 ч, график 2/2 или 3/3)','08:00–20:00',12,'Я','#34a862','2 изм.','01.01.2024'],
+    ['NIGHT12','20:00–08:00 (ночная, ручная смена Графика)','20:00–08:00',12,'Я','#5b6bd6','—','—'],
+    ['DAY9','09:00–18:00 (9 ч, график 5/2)','09:00–18:00',9,'Я','#2bb673','—','—'],
+    ['DAY8_17','08:00–17:00 (8 ч, график 5/2)','08:00–17:00',8,'Я','#4cae52','—','—'],
+    ['SUTKI','08:00–08:00 (сутки, 1/3)','08:00–08:00',24,'Я','#b44fd6','1 изм.','01.10.2026'],
+    ['DAY10_22','10:00–22:00 (12 ч)','10:00–22:00',12,'Я','#7ac943','—','—'],
+  ];
+  const ABS = [
+    ['OFF','Выходной по графику','В','#c3cdd9','—','отметки не нужны','—'],
+    ['SICK','Больничный','Б','#e05d4b','—','можно отмечаться','—'],
+    ['VACATION','Отпуск (за счёт предприятия)','ОТ','#f0a500','Ежегодный отпуск','отметки запрещены','—'],
+    ['VACATION_UNPAID','Отпуск за свой счёт','ДО','#d9822b','Отпуск без сохранения','отметки запрещены','—'],
+    ['TIMEOFF_HOURS','Выходной за часы','<span class="badge warn">не задан</span>','#17a2b8','Выходной за ранее отработанные часы','можно отмечаться','в Табеле остаётся явка, день гасит банк'],
+    ['PAID_OFF','Выходной оплачиваемый (донорские)','ОВ','#9b59b6','—','можно отмечаться','—'],
+    ['ABSENT_UNKNOWN','Неявка по невыясненной причине','НН','#b03a48','—','можно отмечаться','—'],
+    ['AWAY_HOURS','Отпросился: отсутствовал часть смены','<span class="badge warn">не задан</span>','#0e9aa7','Отпросился с … до …','можно отмечаться','логический разрез смены'],
+  ];
+  const rows = kind==='work'
+    ? WORK.map(r=>`<tr>
+        <td><span class="code-pill" style="background:${r[5]}22;color:${r[5]};border:1px solid ${r[5]}55">${r[0]}</span></td>
+        <td>${r[1]}</td><td>${r[2]}${r[2].startsWith('20:00')||r[0]==='SUTKI'?' <span class="badge info">через полночь</span>':''}</td>
+        <td class="num">${r[3]}</td>
+        <td>${r[4]==='—'?'—':`<b>${r[4]}</b> <span class="spec-ref">связь ✓</span>`}</td>
+        <td>${r[6]}</td><td>${r[7]}</td>
+        <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="openShiftEditor('${r[0]}')">Изменить</button> <button class="btn btn-sm btn-ghost" onclick="alert('В архив: исчезнет из новых назначений, прошлые графики и табели продолжат считаться по ней')">В архив</button></td></tr>`).join('')
+    : ABS.map(r=>`<tr>
+        <td><span class="code-pill" style="background:${r[3]}22;color:${r[3]};border:1px solid ${r[3]}55">${r[0]}</span></td>
+        <td>${r[1]}</td>
+        <td>${r[2]}</td>
+        <td>${r[4]==='—'?'<span class="badge muted">печать текстом</span>':`<span class="badge ok">${r[4]}</span>`}</td>
+        <td style="font-size:12px">${r[5]}</td>
+        <td style="font-size:12px">${r[6]}</td>
+        <td class="num" style="white-space:nowrap"><button class="btn btn-sm btn-ghost" onclick="openShiftEditor('${r[0]}')">Изменить</button> <button class="btn btn-sm btn-ghost" onclick="alert('В архив')">В архив</button></td></tr>`).join('');
+  const head = kind==='work'
+    ? `<tr><th>Код</th><th>Название</th><th>Время</th><th class="num">Часов</th><th>Код Табеля (Т-13)</th><th>Ревизии</th><th>Действует с</th><th></th></tr>`
+    : `<tr><th>Код</th><th>Название</th><th>Код Табеля (Т-13)</th><th>Заявление</th><th>Отметки</th><th>Особенность</th><th></th></tr>`;
+  return `<div class="panel">
+  <div class="table-wrap"><table class="data"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
+  <p class="hint">${kind==='work'
+    ? 'Изменение времени создаёт новую ревизию словаря: отработанные дни остаются посчитанными по ПРЕЖНИМ часам, дата вступления указывается в редакторе. Смена через полночь оформляется в Табеле одной строкой в дне начала: значение подбирается по окну, начинающемуся вместе со сменой (суточные 08:00–08:00 → окно 08:00–20:00); часы после полуночи считаются переработкой следующего дня.'
+    : 'Вид отсутствия привязывается к коду Табеля и (по желанию) к заявлению: документ печатается из ячейки Графика. Режим отметок — можно ли во время отсутствия жать «Пришёл»/«Ушёл».'}
+  «Удаление» = архив: значение исчезает из новых назначений, но прошлые графики и табели продолжают считаться по нему.</p>
+</div>`;
+}
+function openShiftEditor(code){
+  const isWork = ['DAY12','NIGHT12','DAY9','DAY8_17','SUTKI','DAY10_22'].includes(code);
+  modal(code?'Смена / вид отсутствия «'+code+'»':'Новая смена или вид отсутствия',
+    'Словарь Графика · shift_types. Нормы расчёта (коды Табеля, окна) здесь не меняются',
+  `<div class="grid-2">
+     <label class="field"><span>Код</span><input type="text" value="${esc(code||'')}" ${code?'readonly style="background:#f4f0ed"':''}></label>
+     <label class="field"><span>Название</span><input type="text" value="${isWork?'08:00–20:00 (12 ч, график 2/2 или 3/3)':'Выходной по графику'}"></label>
+     <label class="field"><span>Тип</span><select><option ${isWork?'selected':''}>смена (рабочее время)</option><option ${isWork?'':'selected'}>отсутствие</option></select></label>
+     <label class="field"><span>Цвет ячейки Графика</span>
+       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:2px">
+         ${['#34a862','#5b6bd6','#2bb673','#b44fd6','#c3cdd9','#e05d4b','#f0a500','#17a2b8'].map(c=>
+           `<span style="width:28px;height:28px;border-radius:4px;background:${c};cursor:pointer;border:2px solid ${c==='#34a862'?'var(--primary)':'transparent'}"></span>`).join('')}
+       </div></label>
+   </div>
+   ${isWork?`<div class="grid-3">
+     <label class="field"><span>Начало</span><input type="time" value="08:00"></label>
+     <label class="field"><span>Конец</span><input type="time" value="20:00"></label>
+     <label class="field"><span>Через полночь</span><select><option>нет</option><option>да</option></select></label>
+   </div>
+   <label class="field"><span>Действует с (ревизия)</span><input type="date" value="2026-11-01">
+     <div class="hint">Отработанные дни останутся посчитанными по прежним часам: создаётся запись в <code>shift_revisions</code>, а не правка истории</div></label>`
+   :`<div class="grid-2">
+     <label class="field"><span>Заявление (вид документа)</span><select><option>— не печатать —</option><option>Ежегодный отпуск</option><option>Отпуск без сохранения</option><option>Выходной за ранее отработанные часы</option><option>Отпросился с … до …</option></select></label>
+     <label class="field"><span>Отметки во время отсутствия</span><select><option>можно отмечаться</option><option>отметки запрещены</option></select></label>
+   </div>`}
+   <div class="panel" style="background:var(--panel-2);margin:6px 0 0">
+     <label class="field" style="margin:0"><span>Код Табеля (Т-13)</span>
+       <select>
+         <option value="">— не задан —</option>
+         ${CODES.map(c=>`<option ${c.code==='Я'?'selected':''}>${esc(c.code)} — ${esc(c.title)}</option>`).join('')}
+       </select>
+       <div class="hint">Единственная связь двух словарей: выбирается из существующих кодов Табеля, а не вводится
+       строкой. Создать новый код отсюда нельзя — <a href="#" onclick="closeModal();go('codes');return false" style="color:var(--primary);font-weight:700">«Коды и окна Табеля»</a>.
+       Без кода смену нельзя подставить в Табель при заполнении из циклов.</div></label>
+   </div>
+   <p class="hint">Этот словарь не связан с версиями справочников движка: у него свои ревизии и свой архив,
+   право на правку — <code>schedule.edit</code>.</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+   <button class="btn btn-primary" onclick="alert('Сохранено: создана ревизия, действует с 01.11.2026')">Сохранить</button>`);
+}
+function codesTab(t,btn){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('codes-body').innerHTML = t==='codes'?codesTable():windowsTable();
+}
+function shiftsTab(t,btn){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('shifts-body').innerHTML = shiftsTable(t);
+}
+const SRC = {rule:'<span class="badge info">правило</span>', calendar:'<span class="badge gold">календарь C&amp;B</span>',
+             vip:'<span class="badge" style="background:#efe7f5;color:#5d3a80;border-color:#d6c5e8">ВИП</span>',
+             static:'<span class="badge muted">из версии</span>'};
+function filterRules(name){
+  const sel=document.getElementById('f-mod'); if(sel&&name) sel.value=name;
+  const f=(sel&&sel.value)||name||'';
+  const rows=RULES.filter(r=>!f||r.name===f);
+  document.getElementById('rules-body').innerHTML = rows.map(r=>`<tr>
+    <td class="num">${r.id}</td><td>${esc(r.title)}</td>
+    <td><b>${esc(r.val)}</b></td><td>${esc(r.who)}</td><td>${esc(r.when)}</td>
+    <td>${lvlBadge(r.lvl)}</td><td>${SRC[r.src]}</td><td style="font-size:12px">${esc(r.author)}</td>
+    <td class="num" style="white-space:nowrap">
+      <button class="btn btn-sm btn-ghost" title="Изменить без пересоздания" onclick="openRule(${r.id})">✎</button>
+      <button class="btn btn-sm btn-ghost" title="Скопировать на другой срок" onclick="openWizard()">⧉</button>
+      <button class="btn btn-sm btn-ghost" title="Удалить" onclick="alert('Удаление правила #${r.id} — с подтверждением и записью в аудит')">✕</button>
+    </td></tr>`).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:26px">Нет правил по фильтру</td></tr>';
+  const t=document.getElementById('rules-title');
+  if(t) t.textContent = 'Переопределения (уровни 1–6) · все источники' + (f?` · ${(MODS.find(m=>m.name===f)||{}).title}`:'');
+}
+
+/* ─────────────────────────── диалоги ─────────────────────────── */
+function modal(title,sub,body,footer){
+  document.getElementById('modal').innerHTML =
+    `<header><div style="flex:1"><h3>${title}</h3>${sub?`<div class="sub">${sub}</div>`:''}</div>
+      <button class="btn btn-sm btn-ghost" onclick="closeModal()">✕</button></header>
+     <div class="body">${body}</div>${footer?`<footer>${footer}</footer>`:''}`;
+  document.getElementById('backdrop').classList.remove('hidden');
+}
+function closeModal(){ document.getElementById('backdrop').classList.add('hidden'); }
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') closeModal();
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openSearch();}
+});
+
+function openResolver(){
+  modal('Проверитель правила','Какое значение действует для сотрудника в конкретный день и почему — без чтения трассы расчёта',
+  `<div class="grid-3">
+     <label class="field"><span>Сотрудник</span><select><option>Иванов И.И. · Смена 1</option><option>Петров П.П. · Смена 2</option><option>Громова О.П. · Смена 1</option></select></label>
+     <label class="field"><span>День</span><input type="date" value="2026-10-12"></label>
+     <label class="field"><span>Правило</span><select><option>Оплачиваются ли переработки</option><option>Двойные переработки</option><option>План=Факт</option><option>Учитываются ли часы в УТ</option></select></label>
+   </div>
+   <div class="panel" style="margin:6px 0 0;background:#f9efe7;border-color:#e0c8b6">
+     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+       <div style="font-family:var(--font-display);font-size:26px;color:var(--primary-dark)">НЕТ</div>
+       <div style="font-size:13px;color:var(--muted)">переработка 12.10.2026 уйдёт в банк часов по весу кода, в УТ дня кодов не будет</div>
+     </div>
+   </div>
+   <div style="margin-top:14px">${chain(3)}</div>
+   <div class="panel" style="margin-top:12px">
+     <h3 class="panel-title">Почему</h3>
+     <div class="kv"><span class="k">Сработало</span><span class="v">уровень 3 · группа «Смена 1» · правило #14</span></div>
+     <div class="kv"><span class="k">Автор и дата</span><span class="v">Смирнов А.В., 01.10.2026</span></div>
+     <div class="kv"><span class="k">Группа в этот день</span><span class="v">Смена 1 (из строки Табеля, RUL-GROUP-PER-DAY)</span></div>
+     <div class="kv"><span class="k">Не понадобилось</span><span class="v">уровень 7 · глобальный дефолт = Да</span></div>
+   </div>
+   <p class="hint">Тот же диалог открывается из карточки дня в «Управленческом табеле» по клику на бейдж «в банк».</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Закрыть</button>
+   <button class="btn" onclick="alert('Открывает правило #14 для правки')">Открыть правило</button>
+   <button class="btn btn-primary" onclick="alert('Создаёт правило уровня 1 (сотрудник+день), которое перекроет #14')">Исключение для сотрудника</button>`);
+}
+
+function openWizard(){
+  modal('Новое переопределение','Шаги: что → кому → когда. Конфликты и пересечения с закрытыми периодами проверяются до сохранения',
+  `<div class="wizard-steps">
+     <div class="ws on"><b>1 · Что</b>правило и значение</div>
+     <div class="ws on"><b>2 · Кому</b>все / группа / сотрудники</div>
+     <div class="ws on"><b>3 · Когда</b>день / диапазон / период / с даты</div>
+   </div>
+   <div class="grid-2">
+     <label class="field"><span>Правило</span><select><option>Оплачиваются ли переработки</option><option>Двойные переработки</option><option>План=Факт</option><option>Учитываются ли часы в УТ</option></select></label>
+     <label class="field"><span>Значение</span><select><option>Да</option><option selected>Нет</option><option disabled>Авто (только «План=Факт»)</option></select></label>
+     <label class="field"><span>Кому</span><select><option>все сотрудники</option><option selected>группа «Смена 1»</option><option>сотрудники (списком)…</option></select></label>
+     <label class="field"><span>Когда</span><select><option>один день</option><option selected>диапазон с–по</option><option>период (месяц / полмесяца)</option><option>с даты и далее</option></select></label>
+     <label class="field"><span>С</span><input type="date" value="2026-10-10"></label>
+     <label class="field"><span>По</span><input type="date" value="2026-10-20"></label>
+   </div>
+   <label class="field"><span>Комментарий (обязателен)</span><input type="text" placeholder="что и почему меняем — попадёт в аудит и в список правил"></label>
+   <div class="preview">
+     <div class="row"><span class="k">Уровень приоритета</span><b>4 · группа + период</b></div>
+     <div class="row"><span class="k">Затронет</span><b>5 сотрудников · 11 дней · период 10.2026</b></div>
+     <div class="row"><span class="k">Пересечение с закрытым периодом</span><b style="color:var(--warn)">сентябрь закрыт — не пересекается ✓</b></div>
+     <div class="row"><span class="k">Конфликты того же уровня</span><b style="color:var(--accent)">не найдены ✓</b></div>
+     <div class="row"><span class="k">Конфликт иного уровня</span><b>правило #14 (уровень 3, 12.10) сильнее — 12.10 останется «Нет»</b></div>
+   </div>
+   <p class="hint">Pre-flight выполняется на сервере до записи: форма области (CHK-MODIFIER-SCOPE), тип значения
+   (CHK-MODIFIER-TYPE), существование группы, поиск записи того же уровня на те же дни (CHK-MODIFIER-CONFLICT).
+   При конфликте — 409 с реальными ID и автором, а не «500 на вкладке УТ».</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+   <button class="btn" onclick="alert('Сохранить как черновик и применить позже')">В черновик</button>
+   <button class="btn btn-primary" onclick="alert('POST /api/rules → 200. Правило #25 создано')">Сохранить правило</button>`);
+}
+
+function openRule(id){
+  const r=RULES.find(x=>x.id===id)||RULES[0];
+  modal('Правило #'+r.id, esc(r.title)+' · '+esc(r.when),
+  `<div class="grid-2">
+     <label class="field"><span>Значение</span><select><option ${r.val==='Да'?'selected':''}>Да</option><option ${r.val==='Нет'?'selected':''}>Нет</option></select></label>
+     <label class="field"><span>Кому</span><select><option>все сотрудники</option><option selected>группа «Смена 1»</option><option>сотрудник…</option></select></label>
+     <label class="field"><span>Когда</span><select><option>один день</option><option selected>диапазон с–по</option><option>период</option><option>с даты и далее</option></select></label>
+     <label class="field"><span>Уровень</span><input type="text" value="${r.lvl} · ${r.who}" readonly></label>
+   </div>
+   <label class="field"><span>Комментарий</span><input type="text" value="${esc(r.note)}"></label>
+   <div class="kv"><span class="k">Автор</span><span class="v">${esc(r.author)}</span></div>
+   <div class="kv"><span class="k">Источник</span><span class="v">${SRC[r.src]}</span></div>
+   <div class="kv"><span class="k">Затрагивает период</span><span class="v">октябрь 2026 (не закрыт)</span></div>
+   <p class="hint">Правка не создаёт новую запись: автор и дата создания сохраняются, изменение пишется в аудит.
+   Сегодня правило можно только удалить и создать заново.</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+   <button class="btn" onclick="alert('Продлить до 31.10.2026')">Продлить</button>
+   <button class="btn btn-primary" onclick="alert('PATCH /api/rules/${r.id} → 200')">Сохранить</button>`);
+}
+
+function openCodeEditor(code){
+  const c=CODES.find(x=>x.code===code)||{code:'',title:'',color:'#8a94a6',carries:0,ut:0,counts:0,auto:0,win:0,days:0,shift:''};
+  modal(code?'Код Табеля «'+code+'»':'Новый код Табеля','CFG-DAY-CODES · строка справочника, а не правка кода программы',
+  `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+     ${[['work','Рабочий день'],['absence_ut','Отсутствие, учитывается в УТ'],['absence_no_ut','Отсутствие, не учитывается'],['no_ut','Рабочий день без приёма переносов']]
+       .map(p=>`<button class="btn btn-sm btn-ghost" onclick="alert('Пресет «${p[1]}»: подставляет сочетание четырёх флагов')">${p[1]}</button>`).join('')}
+     <span class="hint" style="margin:0">Пресета «суточная смена» нет намеренно: суточная смена — графиковая, в Табеле это явка с окном 08:00–20:00 в дне начала, а часы «10,75» в значении — зарплатный атрибут, не участвующий в расчёте (норматив 12.10.2026)</span>
+   </div>
+   <div class="grid-2">
+     <label class="field"><span>Код</span><input type="text" value="${esc(c.code)}" ${code?'readonly style="background:#f4f0ed"':''}>
+       ${code?'<div class="hint">Код существующей строки не меняется: он хранится в Табеле каждого дня.</div>':''}</label>
+     <label class="field"><span>Подпись (для интерфейса и печати)</span><input type="text" value="${esc(c.title)}"></label>
+   </div>
+   <label class="field"><span>Цвет в сетках</span>
+     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:2px">
+       ${['#34a862','#2b8fb6','#7c5bd6','#c3cdd9','#d9822b','#f0a500','#9b59b6','#e05d4b','#17a2b8'].map(col=>
+         `<span style="width:28px;height:28px;border-radius:4px;background:${col};cursor:pointer;border:2px solid ${col===c.color?'var(--primary)':'transparent'}"></span>`).join('')}
+     </div></label>
+   <div class="panel" style="background:var(--panel-2);margin:6px 0 12px">
+     <label style="display:flex;gap:10px;align-items:flex-start;padding:5px 0"><input type="checkbox" ${c.carries?'checked':''} style="width:17px;height:17px;margin-top:2px">
+       <span><b>Несёт плановые часы</b><br><span class="hint" style="margin:2px 0 0">Открывает значения и окна; план строки &gt; 0 и кратен 15 мин (CHK-PLAN-*)</span></span></label>
+     <label style="display:flex;gap:10px;align-items:flex-start;padding:5px 0"><input type="checkbox" ${c.ut?'checked':''} style="width:17px;height:17px;margin-top:2px">
+       <span><b>Принимает коды УТ</b><br><span class="hint" style="margin:2px 0 0">День может быть приёмником переносов (5.2 receiver_ok); день редактируем в Графике</span></span></label>
+     <label style="display:flex;gap:10px;align-items:flex-start;padding:5px 0"><input type="checkbox" ${c.counts?'checked':''} style="width:17px;height:17px;margin-top:2px">
+       <span><b>Учитывается в УТ</b><br><span class="hint" style="margin:2px 0 0">Уровень 7 для модификатора «Учитываются ли часы в УТ»; участвует в pays_overtime</span></span></label>
+     <label style="display:flex;gap:10px;align-items:flex-start;padding:5px 0"><input type="checkbox" ${c.auto?'checked':''} style="width:17px;height:17px;margin-top:2px">
+       <span><b>«План=Факт = Авто» разрешается в «Да»</b><br><span class="hint" style="margin:2px 0 0">Единственный источник «Авто» (R19, R30); стартово только у «К»</span></span></label>
+   </div>
+   <label class="field"><span>Вид смены с этим кодом Т-13</span>
+     <select><option value="">— не связан —</option><option ${c.shift?'selected':''}>DAY12 · 08:00–20:00</option><option>SUTKI · сутки 08:00–08:00</option><option>OFF · выходной</option></select>
+     <div class="hint">Связь проверяется: код без вида смены нельзя назначить из графика (предупреждение в «Обзоре»).</div></label>
+   <div class="kv"><span class="k">Окон у кода</span><span class="v">${c.win}</span></div>
+   <div class="kv"><span class="k">Строк Табеля</span><span class="v">${c.days}</span></div>
+   <div class="kv"><span class="k">Закрытых периодов используют</span><span class="v">${c.days?3:0}</span></div>
+   <p class="hint">Удаление кода, который есть в Табеле, недоступно — только архив: прошлые графики и закрытые
+   периоды продолжат считаться по нему (тот же принцип, что для словаря смен).</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+   <button class="btn" onclick="alert('Сохранить в черновик #13 — опубликуете вместе с остальными правками')">В черновик</button>
+   <button class="btn btn-primary" onclick="alert('Сохранить в черновик и предложить дату вступления (для словарей — любая дата)')">Сохранить…</button>`);
+}
+
+function openWindowEditor(v){
+  const w=WINDOWS.find(x=>x.v===v)||{v:'',code:'Я',h:'',s:480,e:1200,plan:720};
+  modal(v?'Значение «'+v+'»':'Новое значение Табеля и окно','CFG-WINDOWS · ключ = «код + часы», границы кратны шагу',
+  `<div class="grid-3">
+     <label class="field"><span>Код Табеля</span><select>${CODES.filter(c=>c.carries).map(c=>`<option ${c.code===w.code?'selected':''}>${c.code} — ${esc(c.title)}</option>`).join('')}</select></label>
+     <label class="field"><span>Часы (план строки)</span><input type="text" value="${esc(w.h)}" list="dl"><datalist id="dl"><option value="12"><option value="10,75"><option value="9"><option value="8"></datalist>
+       <div class="hint">Канон: дробь через запятую, ≤ 2 знаков, без хвостовых нулей («10,75», не «10,50»)</div></label>
+     <label class="field"><span>Ключ (собирается сам)</span><input type="text" value="${esc(w.v)}" readonly style="background:#f4f0ed"></label>
+     <label class="field"><span>Начало окна</span><input type="time" value="${hm(w.s)}" step="3600"></label>
+     <label class="field"><span>Конец окна</span><input type="time" value="${hm(w.e)}" step="3600"></label>
+     <label class="field"><span>Длина окна</span><input type="text" value="${(w.e-w.s)/60} ч" readonly style="background:#f4f0ed"></label>
+   </div>
+   ${timeline([{lbl:w.v||'новое',bars:[{s:w.s,e:w.e,c:'#94583a',t:`${hm(w.s)}–${hm(w.e)}`}]}])}
+   <p class="hint"><span class="badge ok">✓ CHK-GRID</span> границы кратны шагу 60 мин ·
+   <span class="badge ok">✓ CHK-WINDOW-BOUNDS</span> окно не пересекает полночь ·
+   <span class="badge ok">✓ CHK-WINDOW-PLAN</span> план строки ≤ длины окна.<br>
+   План карточки УТ, рабочее время, недостача и ёмкость переносов считаются <b>от окна</b> (R34);
+   план строки — информационный зарплатный атрибут (может быть меньше окна, например обед — EX-51).</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+   <button class="btn btn-primary" onclick="alert('Сохранить в черновик #13')">Сохранить</button>`);
+}
+
+function openDay(d){
+  modal(d+'.10.2026 · понедельник','Всё, что действует в этот день, по слоям и источникам',
+  `<div class="kv"><span class="k">Версия справочников</span><span class="v">#12 · действует с 01.10.2026</span></div>
+   <div class="kv"><span class="k">Для всех · Двойные переработки</span><span class="v">Нет (уровень 7)</span></div>
+   <div class="kv"><span class="k">Для всех · Оплачиваются ли переработки</span><span class="v">Да (уровень 7)</span></div>
+   <div class="kv"><span class="k">Группа «Смена 1» · Оплата переработок</span><span class="v" style="color:var(--danger)">Нет · правило #14 (уровень 3)</span></div>
+   <div class="kv"><span class="k">Группа «Пятидневка» · План=Факт</span><span class="v">Нет · правило #24 (уровень 4)</span></div>
+   <div class="kv"><span class="k">Иванов И.И. · План=Факт</span><span class="v">Да · правило #18 (уровень 1)</span></div>
+   <div class="kv"><span class="k">Петров П.П. · Двойные (ВИП)</span><span class="v">Да · ВИП-период 01.09–30.09 (уровень 2)</span></div>
+   <p class="hint">Значения показаны так, как их увидит расчёт: поиск по уровням 1→7, первое совпадение выигрывает.</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Закрыть</button>
+   <button class="btn" onclick="openResolver()">Проверить сотрудника…</button>
+   <button class="btn btn-primary" onclick="openWizard()">+ Правило на этот день</button>`);
+}
+
+function openDiff(){
+  modal('Сравнение версий','#11 (01.09.2026) → #12 (01.10.2026) · diff по блокам справочников, а не по строкам JSON',
+  `<div class="kv"><span class="k">windows</span><span class="v" style="color:var(--accent)">+1 · «Я 10,75» (08:00–20:00)</span></div>
+   <div class="kv"><span class="k">day_code_policy</span><span class="v" style="color:var(--danger)">−2 · «С» и «НВ» исключены из справочника Табеля</span></div>
+   <div class="kv"><span class="k">day_code_policy</span><span class="v" style="color:var(--accent)">+1 · «НВ» (Выходной за отработанные часы)</span></div>
+   <div class="kv"><span class="k">groups</span><span class="v" style="color:var(--accent)">+1 · «Другие смены»</span></div>
+   <div class="kv"><span class="k">day_code_policy.С</span><span class="v" style="color:var(--warn)">accepts_ut: нет → да</span></div>
+   <div class="kv"><span class="k">limits, categories, weights, cascade, placement</span><span class="v">без изменений</span></div>
+   <div class="preview" style="margin-top:12px">
+     <div class="row"><span class="k">Dry-run на 5 сотрудниках</span><b>октябрь 2026</b></div>
+     <div class="row"><span class="k">Переработка в УТ</span><b>было 128 ч → станет 136 ч (+8)</b></div>
+     <div class="row"><span class="k">Банк на закрытие</span><b>было +14 ч → станет +6 ч</b></div>
+     <div class="row"><span class="k">Затронутые закрытые периоды</span><b>сентябрь 2026 (нужен пересчёт, если публикуем задним числом)</b></div>
+   </div>
+   <p class="hint">Dry-run прогоняет <code>view_period</code> на выборке и ничего не сохраняет — это режим «посмотреть»,
+   а не «закрыть». Публикация версии с датой внутри незакрытого периода разрешена для словарей и политик;
+   для каркаса расчёта (шаг, гранулярность) — только с границы периода.</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Закрыть</button>
+   <button class="btn" onclick="alert('POST /api/engine-settings/dry-run на всех сотрудниках периода')">Dry-run на всех</button>
+   <button class="btn btn-primary" onclick="openPublish()">Опубликовать #12</button>`);
+}
+function openPublish(){
+  modal('Публикация версии','Черновик #13 → новая версия справочников. Дата любая: применяется к периодам, начинающимся с неё',
+  `<div class="grid-2">
+     <label class="field"><span>Действует с</span><input type="date" value="2026-11-01">
+       <div class="hint">Ограничение «1 или 16 число» снято. Фактическая дата применения считается по началу периода</div></label>
+     <label class="field"><span>Комментарий (обязателен)</span><input type="text" placeholder="что и почему меняем"></label>
+   </div>
+   <div class="preview">
+     <div class="row"><span class="k">Изменений в черновике</span><b>шаг 60 → 30 мин · ДН вес 1 → 2 · ДН2 вес 2 → 4</b></div>
+     <div class="row"><span class="k">Класс полей</span><b>каркас расчёта</b></div>
+     <div class="row"><span class="k">Применится к периодам</span><b>начинающимся с 01.11.2026 · 11 сотрудников</b></div>
+     <div class="row"><span class="k">Октябрь 2026 (не закрыт)</span><b>останется на версии #12 — дата внутри периода</b></div>
+     <div class="row"><span class="k">Входящие остатки банка</span><b>нормализуются к шагу 30 (OPENING_ROUNDED)</b></div>
+     <div class="row"><span class="k">Закрытые периоды</span><b>не меняются; пересчёт — только последнего закрытого</b></div>
+     <div class="row"><span class="k">Проверки CHK-*</span><b style="color:var(--accent)">14/14 пройдены ✓</b></div>
+   </div>
+   <p class="hint">Если правку нужно применить к уже закрытому периоду — используйте «Исправить последний закрытый
+   период»: создаётся ретро-версия с начала этого периода и предлагается пакетный пересчёт.</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+   <button class="btn" onclick="openRetroFix()">Исправить закрытый период…</button>
+   <button class="btn" onclick="alert('Сохранить черновик, не публикуя')">Оставить черновиком</button>
+   <button class="btn btn-primary" onclick="alert('PUT /api/engine-settings → версия #13 опубликована, запись в аудит')">Опубликовать</button>`);
+}
+function openRetroFix(){
+  modal('Исправить последний закрытый период','Ретро-версия справочников + пересчёт. Более ранние закрытые периоды изменить нельзя',
+  `<div class="grid-2">
+     <label class="field"><span>Период</span><select><option>сентябрь 2026 (01.09–30.09) — последний закрытый</option><option disabled>август 2026 — пересчёт недоступен</option></select></label>
+     <label class="field"><span>Как применить</span><select><option>Только этот период (две версии: ретро + возврат с 01.10)</option><option>Этот и все следующие (одна ретро-версия)</option></select></label>
+   </div>
+   <div class="preview">
+     <div class="row"><span class="k">Ретро-версия</span><b>valid_from = 01.09.2026 (начало периода)</b></div>
+     <div class="row"><span class="k">Версия возврата</span><b>valid_from = 01.10.2026 · прежнее значение шага и весов</b></div>
+     <div class="row"><span class="k">Закрыто по версии</span><b>#11 · сейчас действовала бы #12 → расхождение видно из period_closings.settings_versions</b></div>
+     <div class="row"><span class="k">Доступен пересчёт</span><b>9 из 11 сотрудников (следующий период не закрыт)</b></div>
+     <div class="row"><span class="k">Недоступен</span><b>2 сотрудника: октябрь уже закрыт → 7.2 запрещает пересчёт</b></div>
+     <div class="row"><span class="k">Что изменится после пересчёта</span><b>банк на закрытие: +6 ч → +4 ч у 3 сотрудников</b></div>
+   </div>
+   <p class="hint">Пересчёт перечитывает отметки, Табель и корректировки свежими, входные остатки (<code>ClosingInputs</code>)
+   заморожены; результат, банк, переносы и снимок флагов заменяются, исчезнувшие переносы удаляются из входа
+   следующего периода (EX-53). Отметка о ретро-правке сохраняется в версии (<code>retro_of</code>) и в аудите.</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+   <button class="btn" onclick="alert('POST /api/engine-settings/retro-fix → созданы версии #14 (ретро) и #15 (возврат)')">Создать версии</button>
+   <button class="btn btn-primary" onclick="alert('Создать версии и запустить POST /api/mgmt/recalculate для 9 сотрудников')">Создать и пересчитать</button>`);
+}
+function openVersions(){ openDiff(); }
+function openDocPreview(){
+  modal('Предпросмотр заявления','Ежегодный отпуск · данные сотрудника подставляются в плейсхолдеры',
+  `<div style="border:1px solid var(--line);background:#fff;padding:26px 30px;font-size:13.5px;line-height:1.7">
+     <div style="text-align:right;margin-bottom:18px">Директору ООО «Управляющая компания»<br>Иванову И.И.<br>от батлера Иванова Ивана Ивановича</div>
+     <div style="text-align:center;font-weight:800;margin-bottom:12px">ЗАЯВЛЕНИЕ</div>
+     <div>Прошу предоставить мне ежегодный оплачиваемый отпуск продолжительностью
+     14 календарных дней с 20 октября 2026 года по 02 ноября 2026 года.</div>
+     <div style="margin-top:22px;display:flex;justify-content:space-between"><span>12.10.2026</span><span>Иванов И.И. ____________</span></div>
+   </div>
+   <p class="hint">Плейсхолдеры: <code>{full_name_genitive}</code>, <code>{date_from_ru}</code>, <code>{days_word}</code>,
+   <code>{department}</code>, <code>{subdivision}</code>, <code>{nationality}</code>… Печать — DOCX всегда, PDF при
+   установленном LibreOffice (иначе честный 501 с подсказкой).</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Закрыть</button>
+   <button class="btn btn-primary" onclick="alert('DOCX скачивается')">Скачать DOCX</button>`);
+}
+function openTimeoff(){
+  modal('Часы «выходного за часы»','Как получилось число для конкретного сотрудника и дня',
+  `<div class="grid-3">
+     <label class="field"><span>Сотрудник</span><select><option>Иванов И.И. · Смена 1</option><option>Соколова Е.В. · Пятидневка</option><option>Волков А.Д. · Другие смены</option></select></label>
+     <label class="field"><span>День выходного</span><input type="date" value="2026-10-20"></label>
+     <label class="field"><span>Результат</span><input type="text" value="12 ч" readonly style="background:#f4f0ed;font-weight:800"></label>
+   </div>
+   <div class="kv"><span class="k">Шаг 1 · окно дня по циклу</span><span class="v" style="color:var(--accent)">смена 08:00–20:00 → окно «Я 12» → 12 ч ✓</span></div>
+   <div class="kv"><span class="k">Шаг 2 · мода окон в Табеле</span><span class="v">не понадобился</span></div>
+   <div class="kv"><span class="k">Шаг 3 · глобальный fallback</span><span class="v">не понадобился (8 ч)</span></div>
+   <div class="kv"><span class="k">Источник (<code>hours_source</code>)</span><span class="v">window_of_day</span></div>
+   <p class="hint">Число подставляется в предзаполнение ячейки Табеля и в заявление
+   «в счёт ранее отработанного времени ({hours} ч переработки)». Сегодня оно не подставляется вовсе:
+   <code>absence-period</code> не возвращает <code>hours</code>, и документ печатается с нулём (D24).</p>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Закрыть</button>`);
+}
+function openSearch(){
+  modal('Поиск по настройкам','⌘K · ищет настройки, коды, окна, правила, сотрудников и действия',
+  `<input type="text" placeholder="оплата переработок / Я 10,75 / Смена 1 / шаг…" autofocus style="font-size:15px">
+   <div style="margin-top:14px">
+     <div class="panel-title" style="margin-bottom:8px">Найдено</div>
+     <div class="kv" style="cursor:pointer" onclick="go('pay')"><span class="k">Правила оплаты · <b>Оплачиваются ли переработки</b></span><span class="v">глобально: Да · 3 переопределения →</span></div>
+     <div class="kv" style="cursor:pointer" onclick="go('pay')"><span class="k">Переопределение #14</span><span class="v">«Смена 1», 12.10.2026, уровень 3 →</span></div>
+     <div class="kv" style="cursor:pointer" onclick="go('calc')"><span class="k">Расчёт · шаг</span><span class="v">60 мин →</span></div>
+     <div class="kv" style="cursor:pointer" onclick="go('codes')"><span class="k">Код Табеля · «С»</span><span class="v">Суточная смена (части дня) →</span></div>
+     <div class="kv" style="cursor:pointer" onclick="go('shifts')"><span class="k">Смена · SUTKI</span><span class="v">08:00–08:00 (сутки, 1/3) →</span></div>
+     <div class="kv" style="cursor:pointer" onclick="alert('Действие: + Переопределение правила')"><span class="k">Действие</span><span class="v">+ Переопределение правила →</span></div>
+   </div>`, '');
+}
+
+/* ─────────────────────────── старт ─────────────────────────── */
+renderNav(); render();
+if(location.hash.startsWith('#/settings/')){ const id=location.hash.split('/')[2]; if(SCREENS[id]) go(id); }
+</script>
+</body>
+</html>
