@@ -63,21 +63,26 @@ SHIFT_TYPES = [
     ("SICK", "Больничный", "БОЛ", "Б", "absence", "", "", False, "#e05d4b", 80, False, False, False),
     ("VACATION", "Отпуск (за счёт предприятия)", "ОТП", "ОТ", "absence", "", "", False, "#f0a500", 90, False, False, False),
     ("VACATION_UNPAID", "Отпуск за свой счёт", "ОСЧ", "ДО", "absence", "", "", False, "#d9822b", 100, False, False, False),
-    # «выходной за часы» — отсутствие в Графике: в Табеле остаётся явка, недостачу
-    # гасит банк (EX-29), поэтому кода Табеля у вида нет
-    ("TIMEOFF_HOURS", "Выходной за часы", "ВЧ", "", "absence", "", "", False, "#17a2b8", 110, False, False, False),
+    # «Отпросился (выходной за часы)» — ОДНА сущность с двумя точками ввода (Q3,
+    # 12.10.2026): интервал части смены либо вся смена. Это данные Графика, а не код
+    # первичного документа: в Табеле остаётся явка, отсутствие снимает ожидание и флаги,
+    # а недостачу гасит банк (EX-29) — поэтому кода Табеля у вида нет (Q4, Q8).
+    ("TIMEOFF_HOURS", "Отпросился (выходной за часы)", "ОТПР", "", "absence", "", "", False, "#17a2b8", 110, False, False, False),
     ("PAID_OFF", "Выходной оплачиваемый (донорские и т.п.)", "ВОП", "ОВ", "absence", "", "", False, "#9b59b6", 120, False, True, False),
     ("ABSENT_UNKNOWN", "Неявка по невыясненной причине", "НН", "НН", "absence", "", "", False, "#b03a48", 130, False, False, False),
-    ("AWAY_HOURS", "Отпросился: отсутствовал часть смены", "ОТПР", "", "absence", "", "", False, "#0e9aa7", 140, False, False, False),
 ]
 
 # дополнительные свойства словаря смен: какой документ печатаем и можно ли отмечаться
+# какой документ печатаем по отсутствию и можно ли во время него отмечаться.
+# У единой сущности «отпросился (выходной за часы)» заявление зависит от ТОЧКИ ВВОДА:
+# на всю смену — «выходной за ранее отработанные часы», интервалом — «об отсутствии на
+# рабочем месте» (Q3, 12.10.2026). Выбирает сервер — app/api/schedule.py::doc_type_of_absence;
+# здесь стоит базовая привязка вида (основной случай — вся смена).
 SHIFT_EXTRA = {
     "VACATION": {"doc_type": "vacation_paid", "punch_in_allowed": False, "punch_out_allowed": False},
     "VACATION_UNPAID": {"doc_type": "vacation_unpaid", "punch_in_allowed": False,
                         "punch_out_allowed": False},
     "TIMEOFF_HOURS": {"doc_type": "day_off_hours"},
-    "AWAY_HOURS": {"doc_type": "time_off_request"},
 }
 
 # ФИО, должность, таб.№, приём, группа, цвет, график, сдвиг, банк, роль, логин, экстренный контакт
@@ -299,7 +304,7 @@ def seed_if_empty(db: Session) -> bool:
     db.add(ScheduleAbsence(employee_id=ivanov.id,
                            start_utc=_utc_naive(dt.datetime.combine(away_day, dt.time(14, 0))),
                            end_utc=_utc_naive(dt.datetime.combine(away_day, dt.time(16, 0))),
-                           kind_id=shifts["AWAY_HOURS"].id,
+                           kind_id=shifts["TIMEOFF_HOURS"].id,
                            note="Отпросился с 14:00 до 16:00 (заявление)"))
     db.flush()
 

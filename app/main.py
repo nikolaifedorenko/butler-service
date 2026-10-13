@@ -32,7 +32,14 @@ from .api import (
 from .config import settings
 from .db import Base, SessionLocal, engine
 from .deps import now_local
-from .migrations import migrate_db, migrate_engine_v7, migrate_night_cars, seed_statement_kinds
+from .migrations import (
+    migrate_db,
+    migrate_engine_v7,
+    migrate_night_cars,
+    migrate_shift_tabel_codes,
+    migrate_timeoff_entity,
+    seed_statement_kinds,
+)
 from .seed import seed_if_empty
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -52,6 +59,11 @@ def init_db() -> None:
         db.commit()
     finally:
         db.close()
+    # норматив 12.10.2026 (T1/T4): «код в табеле» у смен — только коды словаря Табеля,
+    # «отпросился» и «выходной за часы» — одна запись словаря. Обе миграции идемпотентны
+    # и идут ПОСЛЕ bootstrap: первой нужен действующий справочник CFG-DAY-CODES.
+    migrate_timeoff_entity()
+    migrate_shift_tabel_codes()
     migrate_night_cars()
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
     from .night import sync_reports

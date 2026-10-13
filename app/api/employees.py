@@ -37,7 +37,7 @@ from ..models import (
 from ..names import suggest_genitive
 from ..security import hash_password
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
-from .engine_common import domain_error_text, engine_ports, last_closed_bank, now_utc
+from .engine_common import day_code_rows, domain_error_text, engine_ports, last_closed_bank, now_utc
 
 router = APIRouter(prefix="/api", tags=["directory"])
 
@@ -862,6 +862,44 @@ def delete_subdivision(sub_id: int, principal: Principal = Depends(require_manag
 
 
 # ──────────────────────────────── смены (словарь) ────────────────────────────────
+def _split_codes(db: Session, data: dict) -> None:
+    """Развести «код в сетке» и «код в табеле» и проверить второй по справочнику (T1).
+
+    Раньше редактор отправлял одно поле `short_code`, а API писал его значение в ОБА
+    столбца — `display_code` и `tzh_code`. В поле кода Табеля оказывалась подпись
+    смены («08-20»), которой нет в CFG-DAY-CODES: health-панель честно выдавала
+    APP-SHIFT-CODE, а ночные и суточные смены переставали заполнять Табель из циклов
+    (`tabel_fill._anchor_value` требует код, несущий часы).
+
+    Норматив (ответ владельца на Q9, 12.10.2026): модель не меняется — код Табеля
+    жёстко определяет стандартное окно, эти же часы попадают в График
+    первоначальными сменами. Чинится только поле: в «коде в табеле» допустимы
+    коды из словаря Табеля или пустое значение; подпись сетки живёт отдельно.
+    """
+    short = (data.pop("short_code", "") or "").strip()
+    if short:
+        data["display_code"] = short
+    if "tzh_code" not in data:
+        return
+    code = (data.get("tzh_code") or "").strip()
+    data["tzh_code"] = code
+    if not code:
+        return
+    known = day_code_rows(db)
+    if not known:                       # действующей версии справочников ещё нет
+        return
+    if code in known:
+        return
+    sample = ", ".join(list(known)[:12])
+    raise HTTPException(
+        status_code=422,
+        detail=(f"Код в табеле «{code}» отсутствует в справочнике кодов Табеля "
+                f"(CFG-DAY-CODES). Допустимы: {sample}"
+                f"{'…' if len(known) > 12 else ''} — либо оставьте поле пустым "
+                "(тогда смена не участвует в автозаполнении Табеля: день заполнится "
+                "значением по окну или кодом отсутствия)"))
+
+
 def _shift_dict(s: ShiftType, revisions: int = 0) -> dict:
     return {
         "id": s.id, "code": s.code, "name": s.name, "display_code": s.display_code,
@@ -898,11 +936,26 @@ def list_shift_types(include_archived: bool = False,
     return [_shift_dict(t, counts.get(t.id, 0)) for t in types]
 
 
+@router.get("/shift-types/tabel-codes")
+def shift_tabel_codes(principal: Principal = Depends(current_principal),
+                      db: Session = Depends(get_db)):
+    """Словарь кодов Табеля для редактора смены (T1).
+
+    Поле «код в табеле» — выбор из существующих кодов CFG-DAY-CODES, а не свободный
+    текст: именно код определяет стандартное окно дня и значение Табеля при
+    автозаполнении из циклов. Чтение — любому вошедшему (как у списка смен):
+    справочник нужен и легенде, и редактору.
+    """
+    return {"codes": list(day_code_rows(db).values())}
+
+
 class ShiftTypeIn(BaseModel):
     code: str
     name: str
-    short_code: str = ""        # единый код для сетки и табеля
+    # подпись ячейки сетки («08–20», «ОТПР») — свободный текст, только отображение
+    short_code: str = ""
     display_code: str = ""
+    # код Табеля (CFG-DAY-CODES) или пусто: проверяется в _split_codes (T1)
     tzh_code: str = ""
     kind: str = "work"
     start_time: str = ""
@@ -926,10 +979,8 @@ def create_shift_type(payload: ShiftTypeIn, principal: Principal = Depends(requi
     if db.scalar(select(ShiftType).where(ShiftType.code == payload.code)):
         raise HTTPException(status_code=409, detail="Такой код смены уже существует")
     data = payload.model_dump()
-    if data.get("short_code"):
-        data["display_code"] = data["tzh_code"] = data["short_code"]
-    data.pop("short_code", None)
     data.pop("effective_from", None)
+    _split_codes(db, data)
     st = ShiftType(**data)
     db.add(st)
     audit(db, principal, "shift_type_create", payload.code, payload.model_dump())
@@ -949,9 +1000,10 @@ def update_shift_type(type_id: int, payload: ShiftTypeIn,
     if not st:
         raise HTTPException(status_code=404, detail="Тип смены не найден")
     data = payload.model_dump()
-    if data.get("short_code"):
-        data["display_code"] = data["tzh_code"] = data["short_code"]
-    data.pop("short_code", None)
+    if "tzh_code" not in payload.model_fields_set:
+        # поле не присылали — не обнуляем (иначе любой PUT чистил бы код Табеля)
+        data["tzh_code"] = st.tzh_code
+    _split_codes(db, data)
     eff_raw = data.pop("effective_from", None)
     eff = _parse_date(eff_raw) or local_date()
 

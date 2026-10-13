@@ -118,7 +118,9 @@ def migrate_db() -> None:
             con.execute(text('UPDATE block_assignments SET "group"=:new '
                              'WHERE "group"=:old'), {"new": "Пятидневка", "old": "Администрация"})
 
-        # вид отсутствий, по которому печатаем документ, и списание часов с банка
+        # вид отсутствий, по которому печатаем документ, и списание часов с банка.
+        # AWAY_HOURS упомянут только как исторический код: вид слит с TIMEOFF_HOURS
+        # в единую сущность «отпросился (выходной за часы)» — см. migrate_timeoff_entity
         if insp.has_table("shift_types"):
             for code, doc_type in (("VACATION", "vacation_paid"),
                                    ("VACATION_UNPAID", "vacation_unpaid"),
@@ -151,7 +153,7 @@ def migrate_db() -> None:
                   AND NOT EXISTS (SELECT 1 FROM subdivisions s WHERE s.name = e.subdivision)
             """))
 
-    # старым базам докладываем новые смены словаря (например «Отпросился» — AWAY_HOURS)
+    # старым базам докладываем новые смены словаря из сида
     _migrate_missing_shifts()
     # периоды работы (приём → увольнение → повторный приём)
     _migrate_employment_periods()
@@ -162,8 +164,8 @@ def migrate_db() -> None:
 
 
 def _migrate_missing_shifts() -> None:
-    """Старым базам докладываем отсутствующие смены из словаря сида (например AWAY_HOURS
-    «Отпросился: отсутствовал часть смены»). Существующие смены НЕ трогаются."""
+    """Старым базам докладываем отсутствующие смены из словаря сида. Существующие
+    смены НЕ трогаются (их значения правит владелец, история — через ревизии)."""
     from sqlalchemy import inspect, text
 
     from .seed import SHIFT_EXTRA, SHIFT_TYPES
@@ -322,6 +324,105 @@ def seed_statement_kinds() -> None:
         db.commit()
     finally:
         db.close()
+
+
+def migrate_shift_tabel_codes() -> None:
+    """T1 (норматив 12.10.2026): в поле «код в табеле» — только коды CFG-DAY-CODES.
+
+    Редактор смен писал туда короткое имя смены («08-20»), поэтому health-панель
+    выдавала APP-SHIFT-CODE, а ночные и суточные смены не заполняли Табель из циклов.
+    Значения, которых нет в словаре кодов действующей версии справочников, очищаются:
+    пустое поле — честное состояние («у смены не задан код Табеля»), его видно в
+    словаре смен, а владелец ставит нужный код через исправленный редактор (выбор из
+    списка). Подпись сетки (`display_code`) и история ревизий не меняются.
+
+    Идемпотентно; если действующей версии справочников нет (свежая база до bootstrap),
+    миграция ничего не делает — сравнивать не с чем.
+    """
+    import json
+    import logging
+
+    from sqlalchemy import inspect, text
+
+    from .deps import local_date
+    from .engine.adapters.sql_settings import base_version
+
+    insp = inspect(engine)
+    if not (insp.has_table("shift_types") and insp.has_table("engine_settings_versions")):
+        return
+    db = SessionLocal()
+    try:
+        ver = base_version(db, local_date())
+        codes: set[str] = set()
+        if ver is not None:
+            try:
+                codes = set((json.loads(ver.payload_json).get("day_code_policy") or {}).keys())
+            except (TypeError, ValueError, AttributeError):
+                codes = set()
+    finally:
+        db.close()
+    if not codes:
+        return
+    with engine.begin() as con:
+        rows = con.execute(text(
+            "SELECT id, code, tzh_code FROM shift_types "
+            "WHERE tzh_code IS NOT NULL AND tzh_code <> ''")).all()
+        bad = [(rid, code, (tzh or "").strip()) for rid, code, tzh in rows
+               if (tzh or "").strip() not in codes]
+        for rid, _code, _tzh in bad:
+            con.execute(text("UPDATE shift_types SET tzh_code='' WHERE id=:i"), {"i": rid})
+    if bad:
+        logging.getLogger("uvicorn.error").info(
+            "T1: очищено поле «код в табеле» у смен %s — значения не из словаря "
+            "CFG-DAY-CODES (ставьте код через словарь смен)",
+            ", ".join(f"{c} («{t}»)" for _rid, c, t in bad))
+
+
+TIMEOFF_UNIFIED_CODE = "TIMEOFF_HOURS"
+TIMEOFF_UNIFIED_NAME = "Отпросился (выходной за часы)"
+TIMEOFF_MERGED_CODES = ("AWAY_HOURS",)
+
+
+def migrate_timeoff_entity() -> None:
+    """T4 (решение владельца Q3, 12.10.2026): «отпросился» и «выходной за часы» — ОДНА сущность.
+
+    Одна запись словаря с двумя точками ввода: интервал части смены либо вся смена.
+    Старым базам: записи согласованных отсутствий дубля (`AWAY_HOURS` «Отпросился:
+    отсутствовал часть смены») переносятся на объединённый вид, сам дубль архивируется —
+    прошлые ячейки Графика и напечатанные заявления остаются читаемыми (архив, не удаление).
+    Название объединённого вида приводится к нормативному, только если его не меняли
+    руками. Идемпотентно.
+    """
+    from sqlalchemy import inspect, text
+
+    from .deps import local_date
+
+    insp = inspect(engine)
+    if not (insp.has_table("shift_types") and insp.has_table("schedule_absences")):
+        return
+    with engine.begin() as con:
+        target = con.execute(text(
+            "SELECT id, name FROM shift_types WHERE code=:c"),
+            {"c": TIMEOFF_UNIFIED_CODE}).first()
+        if target is None:
+            return                      # свежую базу заполняет сид новым словарём
+        if (target[1] or "") == "Выходной за часы":
+            con.execute(text("UPDATE shift_types SET name=:n, display_code=:d WHERE id=:i"),
+                        {"n": TIMEOFF_UNIFIED_NAME, "d": "ОТПР", "i": target[0]})
+        if not con.execute(text("SELECT doc_type FROM shift_types WHERE id=:i"),
+                           {"i": target[0]}).scalar():
+            # базовая привязка заявления; точку ввода учитывает doc_type_of_absence (T4)
+            con.execute(text("UPDATE shift_types SET doc_type='day_off_hours' WHERE id=:i"),
+                        {"i": target[0]})
+        today = local_date().isoformat()
+        for code in TIMEOFF_MERGED_CODES:
+            dup = con.execute(text("SELECT id FROM shift_types WHERE code=:c"), {"c": code}).first()
+            if dup is None:
+                continue
+            con.execute(text("UPDATE schedule_absences SET kind_id=:t WHERE kind_id=:d"),
+                        {"t": target[0], "d": dup[0]})
+            con.execute(text("UPDATE shift_types SET active=0, archived_at=:d WHERE id=:i "
+                             "AND archived_at IS NULL"), {"d": today, "i": dup[0]})
 
 
 def migrate_night_cars() -> None:
