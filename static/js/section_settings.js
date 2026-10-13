@@ -1736,11 +1736,17 @@ async function settingsScreenShifts(host) {
         посчитанными по ПРЕЖНИМ часам, дата вступления указывается в редакторе смены.</p>`)}
     ${settingsPanel('Связь словарей', `
       <p class="hint" style="margin:-4px 0 10px">Общее у двух справочников ровно одно:
-        <code>shift_types.tzh_code</code> → код Табеля. Без неё код нельзя назначить из Графика,
-        а «Заполнить из циклов» не подберёт отсутствие.</p>
+        <code>shift_types.tzh_code</code> → код Табеля. По этому коду день заполняется из циклов
+        и получает стандартное окно (Я 8 → 09:00–18:00, Я 10,75 → 08:00–20:00); те же часы
+        попадают в График первоначальными сменами. В поле допустимы только коды справочника
+        или пустое значение — редактор смены предлагает список, а не свободный текст (T1).
+        Подпись ячейки («08–20») хранится отдельно, в «коде в сетке».</p>
       ${broken.length ? `<div class="opt-group-title">Битые ссылки</div>
         ${broken.map(s => `<div class="kv"><span class="k">${esc(s.code)} · ${esc(s.name)}</span>
-          <span class="v" style="color:var(--danger)">код «${esc(s.tzh_code)}» отсутствует в справочнике Табеля</span></div>`).join('')}` : ''}
+          <span class="v" style="color:var(--danger)">код «${esc(s.tzh_code)}» отсутствует в справочнике Табеля
+          ${edit ? `<button class="btn btn-sm btn-ghost" data-fix-tzh="${s.id}" style="margin-left:8px">Исправить</button>` : ''}</span></div>`).join('')}
+        <p class="hint" style="margin:6px 0 0">Такой день не заполнится из циклов (APP-SHIFT-CODE). Исправление:
+          выберите код из списка или оставьте поле пустым — границы смены уже хранятся в её времени.</p>` : ''}
       ${orphan.length ? `<div class="opt-group-title">Коды Табеля без смены</div>
         <p class="hint" style="margin:0">Ставятся только вручную в Табеле: ${orphan.map(c =>
           settingsCodePill(c, codes)).join(' ')}</p>` : ''}
@@ -1757,6 +1763,10 @@ async function settingsScreenShifts(host) {
   settingsOn('#sh-new', host, () => shiftModal(null));
   $$('[data-shift]', host).forEach(b => b.onclick = () =>
     shiftModal(shiftList.find(x => x.id === +b.dataset.shift)));
+  /* «Исправить» у битой ссылки — тот же редактор смены: «код в табеле» в нём выбирается
+     из справочника, а прежнее значение предложено очистить (T1). */
+  $$('[data-fix-tzh]', host).forEach(b => b.onclick = () =>
+    shiftModal(shiftList.find(x => x.id === +b.dataset.fixTzh)));
   $$('[data-archive]', host).forEach(b => b.onclick = () => {
     const sh = shiftList.find(x => x.id === +b.dataset.archive);
     confirmDialog('Архивировать смену?',

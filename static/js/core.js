@@ -171,6 +171,7 @@ const state = {
   subdivisions: [],
   docKinds: [],
   docPlaceholders: {},
+  tabelCodes: [],     // словарь кодов Табеля (CFG-DAY-CODES): выбор «кода в табеле» у смены
   view: 'schedule',
   year: now0.getFullYear(),
   month: now0.getMonth() + 1,
