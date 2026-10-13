@@ -108,13 +108,21 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 
 ## 5. Вкладки и API
 
-| Вкладка | API | Use case | Домен |
+Навигация учёта — норматив «График = 4 слоя» (12.10.2026, T5): ОДИН пункт меню
+«График» со слоями **0 · Табель** (первоисточник) → **1 · План / График**
+(операционный план) → **2 · Факт** (отметки, округление до шага) →
+**3 · Управленческий Табель** (результат, банк, закрытие). Слои показываются по
+правам (`tabel.view`, `schedule.view`, `presence.view`, `mgmt.view`); доска
+«Отметки» — отдельный пункт меню (Q7). В слое 2 два режима: сетка «Номера»
+(день глазами движка) и «Сессии» (исходная история без округления).
+
+| Вкладка / слой | API | Use case | Домен |
 |---|---|---|---|
-| Отметки | `GET /api/presence/board` | `presence_board(now)` | `assemble_board` |
-| График | `GET /api/schedule`, `PUT/DELETE /api/schedule/shift`, `POST/DELETE /api/schedule/absence`, `POST /api/schedule/range-absence`, `fill-pattern`, `continue`, `copy`, `clear-month`, `xlsx`, `pdf` | `view_schedule`, `save_schedule_day`, `drop_manual_day`, `save_absence/drop_absence`, `rebuild_generated_schedule` | `accepts_ut`, окна |
-| Факт | `GET /api/fact/sessions?employee_id&first&last` | `view_sessions` | `pair_marks` |
-| Табель | `GET /api/tabel`, `PUT /api/tabel/cell`, `POST /api/tabel/bulk`, `POST /api/tabel/fill-from-cycles`, `POST /api/tabel/reset` | `save_timesheet_day` (+валидация доменными checks, F-16) | checks уровня 2 |
-| Управленческий табель | `GET /api/mgmt[?employee_id&detail&half]`, `POST /api/mgmt/close`, `POST /api/mgmt/recalculate`, `GET /api/mgmt/periods`, `GET /api/mgmt/xlsx` | `view_period` / `close_period` / `recalculate` | `settle` + `evaluate_flags` |
+| Отметки (доска) | `GET /api/presence/board` | `presence_board(now)` | `assemble_board` |
+| График (слой 1) | `GET /api/schedule`, `PUT/DELETE /api/schedule/shift`, `POST/DELETE /api/schedule/absence`, `POST /api/schedule/range-absence`, `fill-pattern`, `continue`, `copy`, `clear-month`, `xlsx`, `pdf` | `view_schedule`, `save_schedule_day`, `drop_manual_day`, `save_absence/drop_absence`, `rebuild_generated_schedule` | `accepts_ut`, окна |
+| Факт (слой 2) | `GET /api/fact/sessions?employee_id&first&last`, `GET /api/fact/day?date` (сетка «Номера»: отметки + округление `to_calc_mark`, сессии `pair_marks`, карточка дня) | `view_sessions`, `view_period` | `pair_marks`, `settle`/`day_card`, `evaluate_flags` |
+| Табель (слой 0) | `GET /api/tabel`, `PUT /api/tabel/cell`, `POST /api/tabel/bulk`, `POST /api/tabel/fill-from-cycles`, `POST /api/tabel/reset` | `save_timesheet_day` (+валидация доменными checks, F-16) | checks уровня 2 |
+| Управленческий Табель (слой 3) | `GET /api/mgmt[?employee_id&detail&half]`, `POST /api/mgmt/close`, `POST /api/mgmt/recalculate`, `GET /api/mgmt/periods`, `GET /api/mgmt/xlsx` | `view_period` / `close_period` / `recalculate` | `settle` + `evaluate_flags` |
 | Мои отметки | `GET /api/punches/status`, `POST /api/punches`, `GET /api/punches`, `DELETE /api/punches/{id}`, `PUT /api/punches/{id}/note` | — (лёгкие данные: График + отметки + банк последнего закрытого периода) | — |
 
 Прочие роутеры: `auth`, `employees` (карточки, корректировки банка с правилами посева,
