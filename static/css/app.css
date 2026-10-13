@@ -230,6 +230,45 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .view.active { display: block; animation: fade .18s ease-out; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
+/* ══════════════════════════ «ГРАФИК» = 4 СЛОЯ (T5, норматив 12.10.2026) ══════════════════════════
+   Один пункт меню «График»; внутри — панель слоёв: 0 Табель (первоисточник) ·
+   1 План/График (операционный план) · 2 Факт (отметки, округление) ·
+   3 Управленческий Табель (результат, закрытие). Панели слоёв вложены в
+   #view-grafik и показываются классом .on; слои без права скрыты из панели. */
+.layer-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.layer-tab { display: inline-flex; align-items: center; gap: 8px; background: #fff;
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 13px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); text-align: left;
+  transition: .18s ease-out; }
+.layer-tab:hover { border-color: var(--primary-soft); background: #faf6f1; color: var(--text); }
+.layer-tab.active { color: var(--primary-dark); border-color: #d9c4b4; font-weight: 700;
+  box-shadow: inset 0 -3px 0 var(--primary); }
+.layer-tab .ltt { display: inline-flex; flex-direction: column; line-height: 1.3; }
+.layer-tab small { font-size: 10.5px; color: var(--muted-2); font-weight: 500; letter-spacing: .01em; }
+.layer-tab.active small { color: var(--primary-soft); }
+.layer-tab .lnum { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; border-radius: 50%; background: #ece5db; color: var(--muted);
+  font-size: 10.5px; font-weight: 800; flex: 0 0 auto; }
+.layer-tab.active .lnum { background: var(--primary); color: var(--navy); }
+.layer-pane { display: none; }
+.layer-pane.on { display: block; animation: fade .18s ease-out; }
+@media (max-width: 720px) {
+  .layer-tabs { gap: 4px; }
+  .layer-tab { padding: 6px 9px; font-size: 12px; }
+  .layer-tab small { display: none; }
+}
+
+/* Слой 2 · Факт, сетка «Номера» (Q7): сырые отметки СКУД и округлённые сессии */
+.punch-chip { display: inline-flex; align-items: baseline; gap: 4px; border: 1px solid #d5dce4;
+  background: #eef2f6; color: #274b63; border-radius: 3px; padding: 2px 7px; margin: 1px 2px;
+  font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.punch-chip.out { background: #f1ece5; border-color: var(--line); color: var(--muted); }
+.punch-chip .rnd { color: var(--muted-2); font-weight: 500; }
+.seg-chip { display: inline-flex; align-items: baseline; border: 1px solid #cddcc7;
+  background: #e9f0e6; color: #2f5d3a; border-radius: 3px; padding: 2px 7px; margin: 1px 2px;
+  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.seg-chip.open { background: #faf0dc; border-color: #ecd9ae; color: #8a5a10; }
+
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; height: calc(var(--tab-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);

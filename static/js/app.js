@@ -7,6 +7,7 @@
 
 /* ───────────────────────────── вкладки ───────────────────────────── */
 const ICONS = {
+  grafik: '<svg viewBox="0 0 24 24"><path d="M12 3l8 4.4-8 4.4-8-4.4z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 12L12 16l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 16.4L12 20.4l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>',
   schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   attendance: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
   marks: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="19" cy="6" r="2.4" fill="currentColor"/></svg>',
@@ -26,13 +27,24 @@ const ICONS = {
 /* Права приходят с сервера (/api/auth/me → permissions): роль + группы + индивидуальные. */
 function can(perm) { return (state.perms || []).includes(perm); }
 
+/* T5 (норматив 12.10.2026): «График» — ОДИН пункт меню с четырьмя слоями внутри
+   (Q2): 0 Табель · 1 План/График · 2 Факт · 3 Управленческий Табель. Пункт виден,
+   если есть право хотя бы на один слой; сами слои фильтруются по правам в
+   grafikLayers(). Доска «Отметки» — отдельный пункт меню (Q7). */
+const GRAFIK_LAYERS = [
+  { view: 'timesheet', num: '0', title: 'Табель', sub: 'первоисточник · бухгалтерия', perm: 'tabel.view' },
+  { view: 'schedule', num: '1', title: 'План / График', sub: 'операционный план · флаги', perm: 'schedule.view' },
+  { view: 'fact', num: '2', title: 'Факт', sub: 'отметки · округление до шага', perm: 'presence.view' },
+  { view: 'mgmt', num: '3', title: 'Управленческий Табель', sub: 'результат · банк · закрытие', perm: 'mgmt.view' },
+];
+/* старые имена разделов — алиасы слоёв: navigate('timesheet') и др. продолжают
+   работать (переходы из модалок, сценарии, смоук harness) */
+const GRAFIK_ALIAS = { timesheet: 'grafik', schedule: 'grafik', fact: 'grafik', mgmt: 'grafik' };
+
 function visibleTabs() {
   const all = [
-    { id: 'schedule', title: 'График', perm: 'schedule.view' },
+    { id: 'grafik', title: 'График', anyPerm: GRAFIK_LAYERS.map(l => l.perm) },
     { id: 'marks', title: 'Отметки', perm: 'presence.view' },
-    { id: 'fact', title: 'Факт', perm: 'presence.view' },
-    { id: 'timesheet', title: 'Табель', perm: 'tabel.view' },
-    { id: 'mgmt', title: 'Управленческий табель', perm: 'mgmt.view' },
     { id: 'employees', title: 'Сотрудники', perm: 'employees.view' },
     { id: 'me', title: 'Мои отметки', perm: 'me.punch' },
     { id: 'night', title: 'Ночной отчёт', perm: 'night.view' },
@@ -41,7 +53,7 @@ function visibleTabs() {
     { id: 'audit', title: 'Журнал аудита', perm: 'audit.view' },
     { id: 'settings', title: 'Настройки', perm: 'settings.view' },
   ];
-  return all.filter(t => can(t.perm));
+  return all.filter(t => t.anyPerm ? t.anyPerm.some(can) : can(t.perm));
 }
 
 function renderNav() {
@@ -75,6 +87,7 @@ function renderNav() {
 }
 
 function navigate(view) {
+  if (GRAFIK_ALIAS[view]) { state.grafikLayer = view; view = GRAFIK_ALIAS[view]; }
   state.view = view;
   $('#sidenav').classList.remove('open');
   $$('.view').forEach(v => v.classList.remove('active'));
@@ -93,9 +106,8 @@ function navigate(view) {
      раньше здесь был `window[fnName]`, и потерянный loadNight не видел ни один
      инструмент — интерфейс просто молча пустел. */
   const LOADERS = {
-    schedule: () => loadSchedule(), marks: () => loadMarks(),
-    fact: () => loadFact(), timesheet: () => loadTabel(),
-    mgmt: () => loadMgmt(), access: () => loadAccess(), audit: () => loadAudit(),
+    grafik: () => loadGrafik(), marks: () => loadMarks(),
+    access: () => loadAccess(), audit: () => loadAudit(),
     employees: () => loadEmployees(), me: () => loadMe(),
     night: () => loadNight(), cars: () => loadCars(),
     settings: () => loadSettings(),
@@ -115,6 +127,59 @@ function navigate(view) {
       3) откройте http://127.0.0.1:8000/api/selfcheck — он покажет, не отстаёт ли схема БД;
       4) если ошибка повторяется, пришлите хвост server.log и текст из консоли браузера (F12 → Console).</p></div>`;
   });
+}
+
+/* ───────────── «График» = 4 слоя: обёртка и панель слоёв (T5) ───────────── */
+function grafikLayers() { return GRAFIK_LAYERS.filter(l => can(l.perm)); }
+
+const LAYER_LOADERS = {
+  timesheet: () => loadTabel(), schedule: () => loadSchedule(),
+  fact: () => loadFact(), mgmt: () => loadMgmt(),
+};
+
+/* Каркас обёртки живёт в index.html; восстанавливаем его, если предыдущая
+   загрузка раздела упала и заглушка ошибки перезаписала #view-grafik целиком. */
+function grafikSkeleton() {
+  $('#view-grafik').innerHTML = `
+    <div class="layer-tabs" id="grafik-tabs"></div>
+    <section id="view-timesheet" class="layer-pane"></section>
+    <section id="view-schedule" class="layer-pane"></section>
+    <section id="view-fact" class="layer-pane"></section>
+    <section id="view-mgmt" class="layer-pane"></section>`;
+}
+
+async function loadGrafik() {
+  if (!document.getElementById('grafik-tabs')) grafikSkeleton();
+  const layers = grafikLayers();
+  if (!layers.some(l => l.view === state.grafikLayer)) {
+    /* слой по умолчанию — План/График (как раньше открывался раздел «График»);
+       без права на него — первый доступный слой цепочки */
+    state.grafikLayer = (layers.find(l => l.view === 'schedule') || layers[0] || {}).view || null;
+  }
+  renderGrafikTabs();
+  $$('#view-grafik .layer-pane').forEach(p =>
+    p.classList.toggle('on', !!state.grafikLayer && p.id === `view-${state.grafikLayer}`));
+  if (!state.grafikLayer) {
+    const wrap = $('#view-grafik');
+    if (!wrap.querySelector('.layer-noperm')) {
+      wrap.insertAdjacentHTML('beforeend',
+        '<div class="panel layer-noperm"><div class="empty">Нет прав ни на один слой «Графика»</div></div>');
+    }
+    return;
+  }
+  await LAYER_LOADERS[state.grafikLayer]();
+}
+
+function renderGrafikTabs() {
+  const host = $('#grafik-tabs');
+  if (!host) return;
+  host.innerHTML = grafikLayers().map(l => `
+    <button class="layer-tab${l.view === state.grafikLayer ? ' active' : ''}" data-layer="${l.view}"
+      title="Слой ${l.num} · ${esc(l.title)}: ${esc(l.sub)}">
+      <span class="lnum">${l.num}</span>
+      <span class="ltt">${esc(l.title)}<small>${esc(l.sub)}</small></span>
+    </button>`).join('');
+  $$('#grafik-tabs .layer-tab').forEach(b => b.onclick = () => navigate(b.dataset.layer));
 }
 
 window.addEventListener('unhandledrejection', e => {
@@ -160,7 +225,7 @@ async function loadPerms() {
 
 function startView() {
   const tabs = visibleTabs().map(t => t.id);
-  return ['schedule', 'marks', 'me'].find(v => tabs.includes(v)) || tabs[0] || 'me';
+  return ['grafik', 'marks', 'me'].find(v => tabs.includes(v)) || tabs[0] || 'me';
 }
 
 async function enterApp() {
@@ -236,7 +301,7 @@ function scheduleShell() {
   return `
   <div class="page-head">
     <div>
-      <h2>График</h2>
+      <h2>Слой 1 · План / График</h2>
       <div class="sub">${ro
         ? 'План смен на месяц — так же, как его видит менеджер. Правки вносит менеджер'
         : 'График генерируется из Табеля по окнам CFG-WINDOWS; ручная смена заменяет генерацию дня. «Пропуск/отлучка» — согласованное отсутствие: смена показывается разрезанной, на часы не влияет'}</div>

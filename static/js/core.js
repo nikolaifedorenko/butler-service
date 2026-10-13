@@ -173,6 +173,7 @@ const state = {
   docPlaceholders: {},
   tabelCodes: [],     // словарь кодов Табеля (CFG-DAY-CODES): выбор «кода в табеле» у смены
   view: 'schedule',
+  grafikLayer: 'schedule',  // активный слой «Графика» (T5): timesheet | schedule | fact | mgmt
   year: now0.getFullYear(),
   month: now0.getMonth() + 1,
   attDate: todayISO(),

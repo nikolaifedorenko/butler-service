@@ -133,18 +133,54 @@ async function fetchMarks(silent) {
 state.factEmp = state.factEmp || null;
 state.factFrom = state.factFrom || null;
 
+/* ══════════════════════════════════════════════════════════════════
+   ФАКТ — слой 2 модели «График = 4 слоя» (T5, норматив 12.10.2026).
+   Два представления одних и тех же отметок СКУД:
+   · «Номера» (Q7) — один день глазами движка: сырые отметки и округление до шага,
+     сопряжённые сессии, окно из кода Табеля, план / отработано / недостача /
+     переработка по категориям и флаги из Графика. Все числа считает сервер
+     (/api/fact/day, settle за период дня); шаг округления — из настроек, а не из
+     интерфейса: источник истины — движок.
+   · «Сессии» — исходная история «пришёл — ушёл» за диапазон, без округления.
+   Оперативная доска «кто на работе» — отдельный пункт меню «Отметки» (Q7).
+   ══════════════════════════════════════════════════════════════════ */
 async function loadFact() {
   const host = $('#view-fact');
+  state.factMode = state.factMode || 'numbers';
+  host.innerHTML = `
+    <div class="page-head">
+      <div><h2>Слой 2 · Факт</h2>
+        <div class="sub">Слой 2 · отметки СКУД: «Номера» — день глазами движка
+          (округление до шага, окно из Табеля, план / отработано / недостача /
+          переработка, флаги из Графика); «Сессии» — исходная история
+          «пришёл — ушёл» без округления</div></div>
+      <div class="spacer"></div>
+      <div class="seg" id="fc-mode">
+        <button data-mode="numbers" class="${state.factMode === 'numbers' ? 'active' : ''}"
+          title="Сетка «Номера»: отметки дня, округлённые до шага, и расчёт дня">Номера</button>
+        <button data-mode="sessions" class="${state.factMode === 'sessions' ? 'active' : ''}"
+          title="История сессий «пришёл — ушёл»: точные моменты, без округления">Сессии</button>
+      </div>
+    </div>
+    <div id="fc-pane"></div>`;
+  $$('#fc-mode button').forEach(b => b.onclick = () => {
+    if (state.factMode === b.dataset.mode) return;
+    state.factMode = b.dataset.mode;
+    loadFact();
+  });
+  if (state.factMode === 'sessions') await loadFactSessions();
+  else await loadFactNumbers();
+}
+
+/* ── режим «Сессии»: прежняя история сессий (16.4) ── */
+async function loadFactSessions() {
+  const pane = $('#fc-pane');
   if (!state.factFrom) {
     const t = new Date();
     state.factFrom = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`;
   }
-  host.innerHTML = `
-    <div class="page-head">
-      <div><h2>Факт</h2>
-        <div class="sub">История сессий «пришёл — ушёл» за диапазон: полные реальные сессии,
-          пересекающие диапазон. Точные моменты, без округления</div></div>
-      <div class="spacer"></div>
+  pane.innerHTML = `
+    <div class="toolbar">
       <select id="fc-emp" style="max-width:240px"></select>
       <label class="field" style="margin:0"><span>С</span><input type="date" id="fc-from" value="${esc(state.factFrom)}"></label>
       <label class="field" style="margin:0"><span>По</span><input type="date" id="fc-to" value="${esc(state.factTo || todayISO())}"></label>
@@ -164,6 +200,113 @@ async function loadFact() {
   $('#fc-emp').onchange = () => { state.factEmp = +$('#fc-emp').value; };
   $('#fc-go').onclick = () => { state.factFrom = $('#fc-from').value; state.factTo = $('#fc-to').value; fetchFact(); };
   await fetchFact();
+}
+
+/* ── режим «Номера»: сетка дня (Q7, T5) ── */
+async function loadFactNumbers() {
+  const pane = $('#fc-pane');
+  if (!state.factDay) state.factDay = todayISO();
+  pane.innerHTML = `
+    <div class="toolbar">
+      <div class="month-nav">
+        <button id="fd-prev" title="Предыдущий день">‹</button>
+        <div class="label" id="fd-label">—</div>
+        <button id="fd-next" title="Следующий день">›</button>
+      </div>
+      <input type="date" id="fd-date" value="${esc(state.factDay)}" style="max-width:165px">
+      <button class="btn btn-sm" id="fd-today">Сегодня</button>
+      <div class="spacer"></div>
+      <span class="hint" id="fd-meta" style="margin:0"></span>
+    </div>
+    <div id="fd-body"><div class="empty">Загрузка…</div></div>`;
+  const shiftDay = delta => {
+    const t = new Date(`${state.factDay}T00:00:00`);
+    t.setDate(t.getDate() + delta);
+    state.factDay = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    loadFactNumbers();
+  };
+  $('#fd-prev').onclick = () => shiftDay(-1);
+  $('#fd-next').onclick = () => shiftDay(1);
+  $('#fd-today').onclick = () => { state.factDay = todayISO(); loadFactNumbers(); };
+  $('#fd-date').onchange = e => { if (e.target.value) { state.factDay = e.target.value; loadFactNumbers(); } };
+  await fetchFactDay();
+}
+
+async function fetchFactDay() {
+  const body = $('#fd-body');
+  $('#fd-label').textContent = dateRu(state.factDay);
+  let d;
+  try { d = await api(`/api/fact/day?date=${state.factDay}`); }
+  catch (e) { body.innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  state.factDayData = d;
+  $('#fd-meta').innerHTML = `Шаг округления: <b>${d.step_minutes} мин</b> (Настройки → Расчёт) ·
+    период ${dateRu(d.period.start)}–${dateRu(d.period.end)}`;
+  renderFactNumbers();
+}
+
+function factMarksCell(r) {
+  if (!r.marks.length) return '<span class="hint">отметок нет</span>';
+  const chips = r.marks.map(m => {
+    const rounded = m.rounded !== m.at ? `<span class="rnd"> → ${esc(m.rounded)}</span>` : '';
+    return `<span class="punch-chip${m.kind === 'out' ? ' out' : ''}"
+      title="${m.kind === 'in' ? 'Пришёл' : 'Ушёл'}: исходно ${esc(m.at)}, округлено до шага — ${esc(m.rounded)}">${m.kind === 'in' ? 'Пришёл' : 'Ушёл'} ${esc(m.at)}${rounded}</span>`;
+  }).join('');
+  const segs = r.segments.map(sg => `<span class="seg-chip${sg.open ? ' open' : ''}"
+    title="${sg.open ? 'Сессия не закрыта отметкой «Ушёл»' : (sg.crosses_midnight ? 'Сессия пересекает полночь — показана часть дня' : 'Сопряжённая сессия после округления')}">${esc(sg.start)}–${sg.open ? '…' : esc(sg.end)}</span>`).join('');
+  return `${chips}${segs ? ` <span class="hint">→</span> ${segs}` : ''}`;
+}
+
+function factOtCell(c) {
+  if (!c) return '';
+  const codes = Object.entries(c.codes || {}).map(([t, m]) =>
+    `<span class="v4-code ${t.startsWith('ДН') ? 'n' : 'd'}" style="display:inline-block;margin:1px 2px">${esc(t)} ${hours(m / 60)}</span>`).join('');
+  if (codes) return codes;
+  if (c.overtime_minutes) {
+    return `<span class="badge muted" title="Переработка без дневных/ночных кодов">перераб. ${hours(c.overtime_minutes / 60)}${c.pays_overtime ? '' : ' · в банк'}</span>`;
+  }
+  return '<span class="hint">—</span>';
+}
+
+function renderFactNumbers() {
+  const d = state.factDayData;
+  const body = $('#fd-body');
+  if (!d) return;
+  const rows = d.rows.map(r => {
+    const who = `<td class="who" data-label="Сотрудник">${esc(r.employee.short_name)}<small>${esc(r.employee.group)}${r.employee.position ? ' · ' + esc(r.employee.position) : ''}</small></td>`;
+    if (r.out_of_staff) {
+      return `<tr data-emp="${r.employee.id}">${who}<td colspan="7" data-label=""><span class="badge muted"
+        title="День вне интервала трудоустройства (R35)">не в штате в этот день</span></td></tr>`;
+    }
+    const c = r.card;
+    const marks = `<td data-label="Отметки">${factMarksCell(r)}</td>`;
+    if (!c) {
+      return `<tr data-emp="${r.employee.id}">${who}${marks}<td colspan="6" data-label="" style="color:var(--danger)">${esc(r.error || 'Нет данных расчёта за период')}</td></tr>`;
+    }
+    const flags = (c.flags || []).map(f =>
+      `<span class="v4-flagtext ${V4_FLAG_CLASS[f.code] || ''}" title="${esc(f.hint || '')}">● ${esc(f.title)}</span>`).join(' ')
+      || '<span class="hint">нет</span>';
+    return `<tr data-emp="${r.employee.id}">
+      ${who}
+      ${marks}
+      <td data-label="Окно" class="num" title="Стандартное окно кода Табеля (CFG-WINDOWS) — жёстко из кода (Q1)">${c.window ? `${esc(c.window[0])}–${esc(c.window[1])}` : '—'}<small class="hint" style="display:block">Табель: «${esc(c.timesheet_value)}»</small></td>
+      <td data-label="План" class="num" title="Расчётный план = длина окна (R34); план строки Табеля — информационный">${v4Hours(c.plan_minutes / 60)}${c.timesheet_plan_minutes ? `<small class="hint" style="display:block">строка ${hours(c.timesheet_plan_minutes / 60)}</small>` : ''}</td>
+      <td data-label="Отработано" class="num"><b>${v4Hours(c.work_minutes / 60)}</b><small class="hint" style="display:block">факт ${v4Hours(c.fact_minutes / 60)}</small></td>
+      <td data-label="Недоработка" class="num">${c.debt_minutes ? `<span class="v4-debt" title="Недостача дня (окно − отработано)">−${hours(c.debt_minutes / 60)}</span>` : '—'}${c.plan_equals_fact ? ' <span class="badge info" title="Применён «План=Факт»: день освобождён от недостачи">П=Ф</span>' : ''}</td>
+      <td data-label="Переработка" class="num">${factOtCell(c)}</td>
+      <td data-label="Флаги"><div style="display:flex;flex-direction:column;gap:2px">${flags}</div></td></tr>`;
+  }).join('');
+  body.innerHTML = `
+    <div class="table-wrap"><table class="data responsive">
+      <thead><tr><th class="who">Сотрудник</th><th>Отметки (СКУД → округление)</th>
+        <th>Окно (из Табеля)</th><th>План</th><th>Отработано</th><th>Недоработка</th>
+        <th>Переработка</th><th>Флаги (из Графика)</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="8" class="empty">${d.all_employees ? 'В этот день никто не трудоустроен' : 'Нет данных'}</td></tr>`}</tbody>
+    </table></div>
+    <p class="hint">${dateRu(d.date)} · период расчёта ${dateRu(d.period.start)}–${dateRu(d.period.end)}${d.granularity === 'half_month' ? ' (половина месяца)' : ''}.
+      Часы, недостача, переработка и флаги — из движка (settle периода); отметки показаны
+      сырыми и округлёнными до шага ${d.step_minutes} мин. Оперативная доска «кто на работе» —
+      в разделе «Отметки» (Q7); исходные сессии без округления — в режиме «Сессии».
+      Подробная карточка сотрудника с трассой расчёта — в слое 3 (клик по строке).</p>`;
 }
 
 async function fetchFact() {
@@ -212,7 +355,7 @@ async function loadTabel() {
   const host = $('#view-timesheet');
   host.innerHTML = `
     <div class="page-head">
-      <div><h2>Табель</h2><div class="sub">Первичный документ: код дня и плановые часы.
+      <div><h2>Слой 0 · Табель</h2><div class="sub">Первичный документ: код дня и плановые часы.
         Окно рабочего времени, недостача и план карточки считаются от значения Табеля
         (CFG-WINDOWS); График генерируется из Табеля</div></div>
       <div class="spacer"></div>
@@ -482,7 +625,7 @@ async function loadMgmt() {
   const host = $('#view-mgmt');
   host.innerHTML = `
     <div class="page-head">
-      <div><h2>Управленческий табель</h2><div class="sub">Коды УТ (ДЯ, ДН, ДЯ2, ДН2) по дням после
+      <div><h2>Слой 3 · Управленческий Табель</h2><div class="sub">Коды УТ (ДЯ, ДН, ДЯ2, ДН2) по дням после
         размещения; недостача гасится банком и каскадом при закрытии периода</div></div>
       <div class="spacer"></div>
       ${v4PeriodNav('ut')}

@@ -18,6 +18,12 @@
 неотработанные часы окна уходят в недостачу, её гасит банк при закрытии), заявление
 выбирается по точке ввода, а из Графика назначаются только виды «за счёт часов»:
 отпуск/больничный/за свой счёт/оплачиваемый выходной — коды Табеля (слой 0).
+
+**T5 · «График» = 4 слоя** (Q2, Q7): один пункт меню «График» со слоями 0 Табель ·
+1 План/График · 2 Факт · 3 Управленческий Табель; в слое 2 — сетка «Номера»
+(``GET /api/fact/day``): день глазами движка — отметки СКУД и округление до шага,
+окно из кода Табеля, план/отработано/недостача/переработка, флаги из Графика.
+Доска «Отметки» остаётся отдельным пунктом меню.
 """
 from __future__ import annotations
 
@@ -513,6 +519,126 @@ class TestAbsenceLayers(unittest.TestCase):
         row = _tabel_row(self.emp["id"], day)
         self.assertNotEqual(row.code, "", "в Табеле остаётся явка")
         self.assertGreater(row.plan_minutes, 0, "план дня отсутствие не уменьшает")
+
+
+class TestFactDayGrid(unittest.TestCase):
+    """T5 (Q7): слой 2 «Факт» — сетка «Номера» (GET /api/fact/day).
+
+    Один день глазами движка: сырые отметки СКУД и их округление до шага,
+    сопряжённые сессии, окно из кода Табеля (Q1 — жёстко из кода), план /
+    отработано / недостача / переработка по категориям и флаги из Графика.
+    Числа — из settle периода, содержащего день; шаг округления и границы
+    категорий ДЯ/ДН — из настроек, интерфейс ничего не пересчитывает.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        _login(client, "admin")
+        _login(employee_client, "ivanov")
+        # сотрудник, принятый в текущем месяце: первый период цепочки — текущий,
+        # после посева OPENING_SEED (v7.1/R37) view_period работает без закрытий
+        r = client.post("/api/employees", json={
+            "full_name": "Номерова Номер Номеровна", "position": "Батлер (норматив T5)",
+            "hired_at": FIRST.isoformat(), "schedule_group": "Смена 1",
+            "role": "employee", "username": "norm_t5_fact", "password": "demo1234"})
+        assert r.status_code == 200, r.text
+        cls.emp = r.json()
+        r = client.post(f"/api/employees/{cls.emp['id']}/bank-adjust", json={
+            "hours": 0, "date": FIRST.isoformat(), "note": "начальный банк (тест T5)",
+            "reason_code": "OPENING_SEED"})
+        assert r.status_code == 200, r.text
+        # цикл 2/2 покрывает месяц явками; целевой день переопределяем «Я 10,75»
+        # (окно 08:00–20:00) и отмечаем 07:35 → 19:25
+        _fill_cycle(cls.emp["id"])
+        cls.day = min(FIRST + dt.timedelta(days=4), TODAY)
+        r = client.put("/api/tabel/cell", json={
+            "employee_id": cls.emp["id"], "date": cls.day.isoformat(),
+            "code": "Я", "hours": 10.75, "note": ""})
+        assert r.status_code == 200, r.text
+        for ts, kind in ((f"{cls.day.isoformat()}T07:35:00", "in"),
+                         (f"{cls.day.isoformat()}T19:25:00", "out")):
+            r = client.post("/api/punches", json={
+                "employee_id": cls.emp["id"], "ts": ts, "kind": kind,
+                "source": "manager", "note": "сетка «Номера»"})
+            assert r.status_code == 200, r.text
+
+    @staticmethod
+    def _rounded(hhmm: str, step: int) -> str:
+        """Правило RUL-ROUND-MOMENTS: ближайшее кратное шагу от полуночи,
+        ровно половина шага — вперёд. Дублирует домен для проверки ответа."""
+        total = int(hhmm[:2]) * 60 + int(hhmm[3:])
+        whole, rest = divmod(total, step)
+        grids = whole + 1 if rest * 2 >= step else whole
+        return f"{grids * step // 60:02d}:{grids * step % 60:02d}"
+
+    def _grid(self, c=None):
+        r = (c or client).get("/api/fact/day", params={"date": self.day.isoformat()})
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        row = next(x for x in d["rows"] if x["employee"]["id"] == self.emp["id"])
+        return d, row
+
+    def test_01_marks_and_rounding(self):
+        """Сырые отметки, округление до шага и сопряжённая сессия — из движка."""
+        d, row = self._grid()
+        self.assertTrue(d["all_employees"], "менеджер видит всех трудоустроенных в дне")
+        self.assertIsNone(row["error"], row["error"])
+        self.assertFalse(row["out_of_staff"])
+        step = d["step_minutes"]
+        self.assertEqual([(m["at"], m["kind"]) for m in row["marks"]],
+                         [("07:35", "in"), ("19:25", "out")])
+        self.assertEqual([m["rounded"] for m in row["marks"]],
+                         [self._rounded("07:35", step), self._rounded("19:25", step)],
+                         "округление — то же правило, что в расчёте")
+        self.assertEqual([(s["start"], s["end"], s["open"]) for s in row["segments"]],
+                         [(self._rounded("07:35", step), self._rounded("19:25", step), False)])
+
+    def test_02_card_numbers_from_engine(self):
+        """Окно/план/отработано/недостача/переработка — числа settle, не клиента."""
+        d, row = self._grid()
+        c = row["card"]
+        self.assertIsNotNone(c, row.get("error"))
+        step = d["step_minutes"]
+        self.assertEqual(c["timesheet_value"], "Я 10,75")
+        self.assertEqual(c["window"], ["08:00", "20:00"], "окно жёстко из кода Табеля (Q1)")
+        self.assertEqual(c["plan_minutes"], 720, "расчётный план = длина окна (R34)")
+        to_min = lambda hhmm: int(hhmm[:2]) * 60 + int(hhmm[3:])  # noqa: E731
+        start = to_min(self._rounded("07:35", step))
+        end = to_min(self._rounded("19:25", step))
+        self.assertEqual(c["fact_minutes"], end - start)
+        self.assertEqual(c["work_minutes"], min(end, 20 * 60) - max(start, 8 * 60),
+                         "рабочее = сессия ∩ окно")
+        self.assertEqual(c["debt_minutes"], max(0, 720 - c["work_minutes"]))
+        self.assertEqual(c["overtime_minutes"], c["fact_minutes"] - c["work_minutes"])
+        self.assertEqual(sum(c["codes"].values()), c["overtime_minutes"],
+                         "переработка целиком разбирается по категориям ДЯ/ДН")
+
+    def test_03_flags_from_schedule(self):
+        """Флаги — из Графика: уход раньше конца смены — РАННИЙ УХОД; опоздания нет."""
+        _d, row = self._grid()
+        codes = {f["code"] for f in row["card"]["flags"]}
+        self.assertIn("EARLY_DEPARTURE", codes)
+        self.assertNotIn("LATE", codes)
+        for f in row["card"]["flags"]:
+            self.assertTrue(f["title"], "человеческий текст флага")
+
+    def test_04_employee_sees_only_self(self):
+        """Не-менеджер видит в сетке только себя (как в истории сессий)."""
+        r = employee_client.get("/api/fact/day", params={"date": self.day.isoformat()})
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        self.assertFalse(d["all_employees"])
+        self.assertEqual(len(d["rows"]), 1)
+        me = employee_client.get("/api/auth/me").json()
+        self.assertEqual(d["rows"][0]["employee"]["id"], me["user"]["employee_id"])
+
+    def test_05_day_before_employment_excluded(self):
+        """День до приёма: сотрудника нет в строках сетки (R35)."""
+        before = (FIRST - dt.timedelta(days=10)).isoformat()
+        r = client.get("/api/fact/day", params={"date": before})
+        self.assertEqual(r.status_code, 200, r.text)
+        ids = [x["employee"]["id"] for x in r.json()["rows"]]
+        self.assertNotIn(self.emp["id"], ids)
 
 
 if __name__ == "__main__":
