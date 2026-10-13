@@ -24,6 +24,8 @@ ACTION_TITLES = {
     "punch_in_backfill": "Приход задним числом", "punch_out_backfill": "Уход задним числом",
     "punch_delete": "Отмена отметки", "punch_note": "Описание переработки",
     "tabel_cell": "Табель: ячейка", "tabel_fill_from_schedule": "Табель: заполнение из Графика",
+    "tabel_fill_from_cycles": "Табель: заполнение из циклов",
+    "tabel_reset": "Табель: сброс к автозаполнению",
     "period_close": "УТ: закрытие периода", "period_recalculate": "УТ: пересчёт периода",
     "engine_settings": "Настройки движка", "day_modifier_create": "Модификатор дня: добавлен",
     "day_modifier_delete": "Модификатор дня: удалён",

@@ -113,13 +113,13 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 | Отметки | `GET /api/presence/board` | `presence_board(now)` | `assemble_board` |
 | График | `GET /api/schedule`, `PUT/DELETE /api/schedule/shift`, `POST/DELETE /api/schedule/absence`, `POST /api/schedule/range-absence`, `fill-pattern`, `continue`, `copy`, `clear-month`, `xlsx`, `pdf` | `view_schedule`, `save_schedule_day`, `drop_manual_day`, `save_absence/drop_absence`, `rebuild_generated_schedule` | `accepts_ut`, окна |
 | Факт | `GET /api/fact/sessions?employee_id&first&last` | `view_sessions` | `pair_marks` |
-| Табель | `GET /api/tabel`, `PUT /api/tabel/cell`, `POST /api/tabel/bulk`, `POST /api/tabel/fill-from-cycles` | `save_timesheet_day` (+валидация доменными checks, F-16) | checks уровня 2 |
+| Табель | `GET /api/tabel`, `PUT /api/tabel/cell`, `POST /api/tabel/bulk`, `POST /api/tabel/fill-from-cycles`, `POST /api/tabel/reset` | `save_timesheet_day` (+валидация доменными checks, F-16) | checks уровня 2 |
 | Управленческий табель | `GET /api/mgmt[?employee_id&detail&half]`, `POST /api/mgmt/close`, `POST /api/mgmt/recalculate`, `GET /api/mgmt/periods`, `GET /api/mgmt/xlsx` | `view_period` / `close_period` / `recalculate` | `settle` + `evaluate_flags` |
 | Мои отметки | `GET /api/punches/status`, `POST /api/punches`, `GET /api/punches`, `DELETE /api/punches/{id}`, `PUT /api/punches/{id}/note` | — (лёгкие данные: График + отметки + банк последнего закрытого периода) | — |
 
 Прочие роутеры: `auth`, `employees` (карточки, корректировки банка с правилами посева,
 периоды работы, переводы), `access`, `audit`, `settings` (+ `base` — цикл объекта),
-`engine-settings` (версии CFG-* + модификаторы), `shift-types` (словарь), `docs`
+`engine-settings` (версии CFG-* + модификаторы), `shift-types` (словарь; `GET /api/shift-types/tabel-codes` — коды Табеля для редактора смены), `docs`
 (заявления), `doublepay`, `night`, `cars`, `photos`, `departments`, `subdivisions`.
 
 Права: роль → группы доступа → индивидуальные гранты (запрет сильнее разрешения);

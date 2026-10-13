@@ -101,6 +101,36 @@ def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType]) -> dict:
              "doc_type": kind.doc_type or ""}}
 
 
+# единая сущность «отпросился (выходной за часы)» (Q3, 12.10.2026): один вид словаря,
+# две точки ввода — интервал части смены либо вся смена. Заявление выбирается по точке
+# ввода: на всю смену — «выходной за ранее отработанные часы», интервал — «об отсутствии
+# на рабочем месте». Оба вида заявлений уже есть в словаре видов (DOC_TYPES).
+DOC_WHOLE_SHIFT = "day_off_hours"
+DOC_PARTIAL_SHIFT = "time_off_request"
+
+
+def _statement_kind_exists(db: Session, code: str) -> bool:
+    from ..models import StatementKind
+
+    return db.scalar(select(StatementKind.id).where(StatementKind.code == code)) is not None
+
+
+def doc_type_of_absence(db: Session, kind: ShiftType, whole_shift: bool) -> str:
+    """Какое заявление печатать по отсутствию.
+
+    * вид с кодом Табеля (ОТ/ДО/ОВ/Б…) — заявление определяется самим видом и печатается
+      из Табеля (Q4: отпуск, за свой счёт, оплачиваемый выходной — только слой 0);
+    * вид без кода Табеля — это «отпросился (выходной за часы)» из Графика: документ
+      зависит от точки ввода (вся смена / интервал). Если нужный вид заявления в
+      словаре отсутствует (владелец его удалил), остаётся привязка самого вида смены.
+    """
+    own = (kind.doc_type or "").strip()
+    if (kind.tzh_code or "").strip():
+        return own
+    wanted = DOC_WHOLE_SHIFT if whole_shift else DOC_PARTIAL_SHIFT
+    return wanted if _statement_kind_exists(db, wanted) else own
+
+
 def _visible_employees(db: Session, first: dt.date,
                        last: dt.date) -> tuple[list[Employee], dict[int, list]]:
     """Сотрудники месяца + их периоды работы (батч, без N+1)."""
@@ -691,14 +721,19 @@ def absence_period(employee_id: int, date: dt.date,
             end_local = partial.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
             day = start_local.date()
             day_settings = st_day(db, day)
-            if _covers_whole_day(db, day_settings, employee_id, day, start_local, end_local):
-                # отсутствие на весь день («выходной за часы»): часов = стандартное окно
+            whole_shift = _covers_whole_day(db, day_settings, employee_id, day,
+                                            start_local, end_local)
+            if whole_shift:
+                # отсутствие на всю смену («выходной за часы»): часов = стандартное окно
                 # смен сотрудника, а не длина записи (норматив 12.10.2026, EX-29)
                 hours_value, hours_source = standard_day_hours(db, day_settings, emp, day)
             else:
                 hours_value = round((end_local - start_local).total_seconds() / 3600, 2)
                 hours_source = "absence_interval"
+            doc_type = doc_type_of_absence(db, kind, whole_shift)
             return {"employee": employee_payload,
+                    "source": "schedule_absence", "whole_shift": whole_shift,
+                    "doc_type": doc_type,
                     "start": day.isoformat(),
                     "end": (end_local - dt.timedelta(seconds=1)).date().isoformat(),
                     "days": 1, "shift": _kind_brief(kind), "note": partial.note or "",
@@ -732,6 +767,8 @@ def absence_period(employee_id: int, date: dt.date,
     st = _settings(db, month_period(start.year, start.month))
     hours_value, hours_source = standard_day_hours(db, st, emp, start)
     return {"employee": employee_payload,
+            "source": "tabel_code", "whole_shift": True,
+            "doc_type": doc_type_of_absence(db, kind, True),
             "start": start.isoformat(), "end": end.isoformat(),
             "days": (end - start).days + 1, "shift": _kind_brief(kind),
             "note": anchor.note or "", "partial": None,

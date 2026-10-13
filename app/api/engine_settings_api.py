@@ -297,7 +297,10 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
             out.append({"code": "APP-SHIFT-CODE", "level": "error", "screen": "shifts",
                         "text": (f"Смена «{s.name}» ({s.code}) ссылается на код Табеля "
                                  f"«{s.tzh_code}», которого нет в справочнике — такой день "
-                                 f"не заполнится из Графика")})
+                                 f"не заполнится из циклов. В поле «код в табеле» допустимы "
+                                 f"только коды CFG-DAY-CODES ({', '.join(list(codes)[:8])}…) "
+                                 f"или пустое значение — откройте смену в словаре и выберите "
+                                 f"код из списка")})
     for code in codes:
         if code not in linked:
             out.append({"code": "APP-CODE-NO-SHIFT", "level": "warn", "screen": "shifts",

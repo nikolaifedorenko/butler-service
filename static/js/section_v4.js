@@ -217,7 +217,9 @@ async function loadTabel() {
         (CFG-WINDOWS); График генерируется из Табеля</div></div>
       <div class="spacer"></div>
       ${v4MonthNav('tb')}
+      <button class="btn btn-sm" id="tb-absence" title="Слой 0 · Табель: отпуск, больничный, за свой счёт, оплачиваемый выходной — коды первичного документа">Назначить отсутствие</button>
       <button class="btn btn-sm" id="tb-fill">Заполнить из циклов</button>
+      <button class="btn btn-sm" id="tb-reset" title="Убрать ручные коды периода и вернуть автозаполнение из циклов">Сбросить</button>
     </div>
     <div id="tb-body"><div class="empty">Загрузка…</div></div>`;
   v4BindMonthNav('tb', loadTabel);
@@ -228,6 +230,12 @@ async function loadTabel() {
   state.tabel = data;
   $('#tb-fill').style.display = data.can_edit ? '' : 'none';
   $('#tb-fill').onclick = () => tabelFillModal(data);
+  /* T3 (Q5, 12.10.2026): «Сбросить» — убрать ручные коды и вернуть автозаполнение. */
+  $('#tb-reset').style.display = data.can_edit ? '' : 'none';
+  $('#tb-reset').onclick = () => tabelResetModal(data);
+  /* Q4: отпуск/ДО/Б/ОВ назначаются кодом Табеля — из Табеля, а не из Графика. */
+  $('#tb-absence').style.display = data.can_edit ? '' : 'none';
+  $('#tb-absence').onclick = () => openRangeModal('tabel');
   renderTabel();
   if (state.pendingTabelCell) {
     const { emp, date } = state.pendingTabelCell;
@@ -277,6 +285,13 @@ function tabelCellModal(empId, day) {
   const row = d.rows.find(r => r.employee.id === empId);
   const cur = row.cells[day] || null;
   const lastDay = d.days[d.days.length - 1].slice(8);
+  /* Q4 (норматив 12.10.2026): отпуск, больничный, за свой счёт и оплачиваемый выходной —
+     коды Табеля, и заявления по ним печатаются ОТСЮДА (из слоя 0). «Отпросился
+     (выходной за часы)» — данные Графика, его заявление печатается из ячейки Графика. */
+  const kindOfCode = code => (state.shiftTypes || []).find(x => x.tzh_code === code
+    && x.kind === 'absence' && x.doc_type && !x.archived);
+  const statementName = k => (state.docKinds || []).find(x => x.code === k.doc_type)?.name
+    || k.doc_type;
   openModal({
     title: `Табель · ${row.employee.short_name}`,
     subtitle: `${dateRu(day)}${row.lock === 'last_closed' ? ' · период закрыт: после правки нужен пересчёт в УТ' : ''}`,
@@ -293,7 +308,18 @@ function tabelCellModal(empId, day) {
       <label class="field"><span>Примечание</span><input type="text" id="tc-note" value="${esc(cur?.note || '')}"></label>
       <p class="hint">План кратен 15 минутам; для значения с часами нужна строка окна
         (${d.values.map(esc).join(', ')}). Информационный план может быть меньше длины окна
-        (например, обед в зарплатной норме) — расчёт идёт от окна.</p>`,
+        (например, обед в зарплатной норме) — расчёт идёт от окна.</p>
+      <div id="tc-doc-wrap" style="display:none;margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
+        <div class="opt-group-title" style="margin-top:0">Заявление по коду Табеля</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-sm" id="tc-print">Печать заявления</button>
+          <button class="btn btn-sm" id="tc-docx">DOCX (шаблон компании)</button>
+          <button class="btn btn-sm" id="tc-pdf">PDF (готов к печати)</button>
+          <span class="hint" style="margin:0" id="tc-doc-name"></span>
+        </div>
+        <p class="hint" style="margin:6px 0 0">Печатается по СОХРАНЁННОМУ коду дня и находит весь
+          период отсутствия, даже если он переходит границы месяца. Период берётся из Табеля.</p>
+      </div>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(m) {
       const sync = () => {
@@ -302,11 +328,34 @@ function tabelCellModal(empId, day) {
         $('#tc-hours-f').style.display = withHours ? '' : 'none';
         $('#tc-hours-list').innerHTML = d.values.filter(v => v.startsWith(opt.value + ' '))
           .map(v => `<option value="${v.split(' ')[1]}">`).join('');
+        /* у кода с часами план обязан быть положительным (CHK-PLAN-CONSISTENT): если
+           поле пустое/нулевое (прежнее значение кода без часов), предлагаем первое
+           окно кода из CFG-WINDOWS — иначе сохранение упадёт в 422 без подсказки */
+        if (withHours && !(Number($('#tc-hours').value) > 0)) {
+          const first = d.values.find(v => v.startsWith(opt.value + ' '));
+          if (first) $('#tc-hours').value = first.split(' ')[1];
+        }
+        const kind = kindOfCode(opt ? opt.value : '');
+        $('#tc-doc-wrap').style.display = kind ? '' : 'none';
+        if (kind) $('#tc-doc-name').textContent = statementName(kind);
       };
       $('#tc-code').onchange = sync; sync();
+      /* печать имеет смысл только по сохранённому дню: сервер читает код из Табеля */
+      const ifSaved = fn => () => {
+        if (!cur) return toast('Сначала сохраните код дня — тогда станет доступна печать', 'warn');
+        fn();
+      };
+      $('#tc-print').onclick = ifSaved(() => printAbsenceRequest(empId, day, 'tabel_code'));
+      $('#tc-docx').onclick = ifSaved(() => downloadAbsenceDoc(empId, day, 'docx', 'tabel_code'));
+      $('#tc-pdf').onclick = ifSaved(() => downloadAbsenceDoc(empId, day, 'pdf', 'tabel_code'));
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-save]').onclick = async () => {
-        const code = $('#tc-code').value, h = Number($('#tc-hours').value) || 0;
+        const code = $('#tc-code').value;
+        /* план отправляем только для кода, несущего часы: поле часов для прочих
+           скрыто, и его прежнее значение не должно попадать в запрос (иначе
+           CHK-PLAN-CONSISTENT честно вернёт 422 — «код не несёт часы») */
+        const codeOpt = $('#tc-code').selectedOptions[0];
+        const h = codeOpt && codeOpt.dataset.h === '1' ? (Number($('#tc-hours').value) || 0) : 0;
         const until = Math.max(+day.slice(8), Math.min(+lastDay, Number($('#tc-until').value) || +day.slice(8)));
         try {
           let res;
@@ -355,6 +404,60 @@ function tabelFillModal(d) {
             r.warnings.length ? 'warn' : 'ok', (r.warnings || []).slice(0, 8));
           loadTabel();
         } catch (e) { toast(e.message, 'err'); }
+      };
+    },
+  });
+}
+
+/* «Сбросить» (T3, решение владельца Q5 от 12.10.2026): убирает введённые вручную коды
+   периода и возвращает автозаполнение из циклов; закрытых периодов не касается. */
+function tabelResetModal(d) {
+  const rows = d.rows || [];
+  const manual = rows.reduce((n, r) => n + Object.values(r.cells)
+    .filter(c => c.source === 'manual').length, 0);
+  openModal({
+    title: 'Сбросить Табель',
+    subtitle: `${MONTHS[d.month - 1]} ${d.year}${d.half ? ` · половина ${d.half}` : ''}`,
+    body: `
+      <p>Табель — первичный документ: он заполняется из настроек сотрудника (циклов блоков),
+        а ручная правка ячейки запоминается и автозаполнением больше не перезаписывается.
+        Сброс убирает <b>введённые вручную</b> коды периода и заново заполняет Табель из
+        циклов; График перегенерируется из Табеля.</p>
+      <div class="panel" style="border-color:#ecd9ae;background:#fffaf0;margin:10px 0">
+        Сейчас вручную заполнено ячеек: <b>${manual}</b>. Закрытые периоды не трогаются
+        (RUL-CLOSED-PERIOD-IMMUTABLE); дни вне трудоустройства не заполняются.</div>
+      <label class="field"><span>Кому</span><select id="tr-emp">
+        <option value="">Всем сотрудникам периода</option>
+        ${rows.map(r => `<option value="${r.employee.id}">${esc(r.employee.short_name)} · ${esc(r.employee.group)}${r.lock === 'locked' ? ' · закрыт' : ''}</option>`).join('')}
+      </select></label>
+      <p class="hint">Если для дня цикл не даёт значения (нет строки CFG-WINDOWS либо отрезки
+        дня одним значением непредставимы), ячейка останется пустой — список вернёт сервер,
+        такие дни нужно заполнить вручную, иначе расчёт не запустится. Пересчёт часов не
+        запускается: итоги обновятся при чтении «Управленческого Табеля».</p>`,
+    footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
+             <button class="btn btn-danger" data-ok>Сбросить</button>`,
+    onMount(m) {
+      m.querySelector('[data-cancel]').onclick = closeModal;
+      m.querySelector('[data-ok]').onclick = () => {
+        const empId = $('#tr-emp').value;      // значение читаем ДО подтверждающей модалки
+        confirmDialog('Сбросить ручные коды Табеля?',
+          'Ручные правки периода будут удалены, Табель снова заполнится из циклов, График перегенерируется. Вернуть удалённые коды можно только повторным вводом вручную.',
+          async () => {
+            try {
+              const r = await api('/api/tabel/reset', { method: 'POST', body: {
+                year: d.year, month: d.month, half: d.half || null,
+                employee_ids: empId ? [+empId] : null } });
+              const bits = [`очищено ручных ячеек: ${r.cleared}`,
+                            `заполнено из циклов: ${r.written}`];
+              if ((r.locked_skipped || []).length) bits.push(`пропущено закрытых: ${r.locked_skipped.length}`);
+              if (r.uncovered_total) bits.push(`остались пустыми: ${r.uncovered_total} дн.`);
+              toast(bits.join(', '),
+                (r.uncovered_total || (r.warnings || []).length) ? 'warn' : 'ok',
+                [...(r.warnings || []),
+                 ...(r.uncovered || []).map(u => `${u.employee} ${dateRu(u.date)}: не заполнено`)].slice(0, 8));
+              loadTabel();
+            } catch (e) { toast(e.message, 'err'); }
+          }, 'Сбросить');
       };
     },
   });

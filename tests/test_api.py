@@ -371,12 +371,37 @@ class TestApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         row = r.json()["rows"][0]
         self.assertIn("totals", row)
+        # T1 (норматив 12.10.2026): «код в сетке» и «код в табеле» — РАЗНЫЕ поля.
+        # Подпись смены («07–16») больше не копируется в код Табеля: в нём допустимы
+        # только коды CFG-DAY-CODES или пустое значение.
         st = self.admin.post("/api/shift-types", json={
             "code": "TEST7_16", "name": "07:00–16:00 (9 ч)", "short_code": "07–16",
             "kind": "work", "start_time": "07:00", "end_time": "16:00", "color": "#2bb673"})
         self.assertEqual(st.status_code, 200, st.text)
         self.assertEqual(st.json()["display_code"], "07–16")
-        self.assertEqual(st.json()["tzh_code"], "07–16")
+        self.assertEqual(st.json()["tzh_code"], "", "подпись сетки не становится кодом Табеля")
+        # значение не из словаря кодов Табеля не сохраняется (раньше — 6 ошибок APP-SHIFT-CODE)
+        bad = self.admin.post("/api/shift-types", json={
+            "code": "TEST7_17", "name": "07:00–17:00 (10 ч)", "short_code": "07–17",
+            "tzh_code": "07-17", "kind": "work", "start_time": "07:00", "end_time": "17:00"})
+        self.assertEqual(bad.status_code, 422, bad.text)
+        self.assertIn("CFG-DAY-CODES", bad.json()["detail"])
+        good = self.admin.post("/api/shift-types", json={
+            "code": "TEST7_17", "name": "07:00–17:00 (10 ч)", "short_code": "07–17",
+            "tzh_code": "Я", "kind": "work", "start_time": "07:00", "end_time": "17:00"})
+        self.assertEqual(good.status_code, 200, good.text)
+        self.assertEqual(good.json()["tzh_code"], "Я")
+        self.assertEqual(good.json()["display_code"], "07–17")
+        # PUT без поля «код в табеле» его не обнуляет
+        upd = self.admin.put(f"/api/shift-types/{good.json()['id']}", json={
+            "code": "TEST7_17", "name": "07:00–17:30 (10,5 ч)", "short_code": "07–17",
+            "kind": "work", "start_time": "07:00", "end_time": "17:30"})
+        self.assertEqual(upd.status_code, 200, upd.text)
+        self.assertEqual(upd.json()["tzh_code"], "Я", "поле не присылали — значение сохранено")
+        self.assertEqual(upd.json()["planned_hours"], 10.5)
+        # словарь кодов Табеля доступен редактору смены
+        codes = self.admin.get("/api/shift-types/tabel-codes").json()["codes"]
+        self.assertIn("Я", [c["code"] for c in codes])
 
     def test_15d_doc_templates_and_range_assign(self):
         today = local_date()

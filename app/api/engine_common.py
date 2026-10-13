@@ -136,3 +136,38 @@ def last_closed_bank(db: Session, emp_id: int) -> tuple[float | None, Period | N
     if row is None:
         return None, None
     return round(row.closing_bank_minutes / 60, 2), Period(row.period_start, row.period_end)
+
+
+def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
+    """Строки CFG-DAY-CODES действующей версии справочников — данные приложения.
+
+    Домен читает их как `Settings.day_code_policy`, но HTTP-слою список нужен там,
+    где домен не участвует: редактор словаря смен проверяет, что «код в табеле»
+    существует (T1, норматив 12.10.2026), health-панель сверяет два справочника
+    (APP-SHIFT-CODE / APP-CODE-NO-SHIFT). Порядок — как в payload версии: тот же,
+    что видит экран «Коды и окна Табеля».
+
+    Пустой словарь означает «действующей версии ещё нет» (свежая база до bootstrap),
+    а не «кодов нет»: вызывающий код в этом случае проверку пропускает.
+    """
+    import json
+
+    from ..deps import local_date
+    from ..engine.adapters.sql_settings import base_version
+
+    ver = base_version(db, day or local_date())
+    if ver is None:
+        return {}
+    try:
+        raw = json.loads(ver.payload_json).get("day_code_policy") or {}
+    except (TypeError, ValueError, AttributeError):
+        return {}
+    out: dict[str, dict] = {}
+    for code, row in raw.items():
+        if not isinstance(row, dict):
+            continue
+        out[str(code)] = {"code": str(code), "title": str(row.get("title") or ""),
+                          "carries_hours": bool(row.get("carries_hours")),
+                          "accepts_ut": bool(row.get("accepts_ut")),
+                          "counts_in_ut": bool(row.get("counts_in_ut"))}
+    return out
