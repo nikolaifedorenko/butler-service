@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Батлер · прототип v2 — «График» из четырёх слоёв</title>
+<title>Батлер · прототип v2.1 — «График» из четырёх слоёв</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f4f0ed;color:#141a25;
@@ -149,14 +149,10 @@ code.mono{background:#f1ece5;border-radius:3px;padding:1px 5px;font-size:12px;
 </head>
 <body>
 <div class="topbar">
-  <span class="brand">Батлер · прототип v2</span>
-  <span class="sub">«График» = 4 слоя · по сообщению от 12.10.2026 · демо-период 01–14.10.2026</span>
+  <span class="brand">Батлер · прототип v2.1</span>
+  <span class="sub">«График» = 4 слоя · по нормативу от 12.10.2026 и ответам владельца · демо-период 01–14.10.2026</span>
   <span class="spacer"></span>
-  <span class="seg-label">Ручное окно Графика:</span>
-  <span class="seg" id="mode-seg">
-    <button data-mode="current" class="active">не влияет на часы (как сейчас)</button>
-    <button data-mode="proposal">задаёт окно (предложение)</button>
-  </span>
+  <span class="seg-label">Решения владельца от 12.10.2026 учтены (Q1–Q9) · окно — из кода Табеля</span>
 </div>
 <div class="layout">
   <nav class="sidenav" id="sidenav"></nav>
@@ -182,24 +178,27 @@ code.mono{background:#f1ece5;border-radius:3px;padding:1px 5px;font-size:12px;
 
         <div class="layer" id="layer-l1">
           <div class="page-head"><div><h2>Слой 1 · План / График</h2>
-          <div class="sub">Операционный план: кто когда стоит. Смена генерируется из Табеля по стандартному окну
-          (Я 8 → 09:00–18:00, Я 10,75 → 08:00–20:00), ручная смена из справочника важнее авто.
-          Правка Графика меняет флаги и доску, но НЕ часы Табеля.</div></div>
+          <div class="sub">Операционный план: кто когда стоит. По умолчанию показывается табельная смена —
+          стандартное окно кода Табеля (Я 8 → 09:00–18:00, Я 10,75 → 08:00–20:00); её можно заменить на ручную
+          смену из справочника. Ручная смена (в т.ч. ночная) Табель, окно и часы НЕ меняет — движок считает
+          как сейчас (решение Q1). Правка Графика влияет только на флаги и доску.</div></div>
           <span class="spacer"></span>
           <div class="toolbar"><button class="btn" id="l1-refill">Заполнить из Табеля (автоокна)</button></div></div>
-          <div class="note">Из Графика назначаются только «отпросился (выходной за часы)» ✂ и «недопуск к работе» ⛔.
-          Отпуск / больничный / за свой счёт / оплачиваемый выходной — из Табеля (слой 0). Ручное окно помечено «ОК»;
-          в режиме «как сейчас» оно справочное (⚠ — окна нет в справочнике), в режиме «предложение» — задаёт часы.</div>
+          <div class="note">Из Графика назначается только «отпросился (выходной за часы)» ✂ — информационно:
+          чтобы сотрудника не ждали; неотработанные часы окна уйдут в недостачу (Q8). Отпуск / больничный /
+          за свой счёт / оплачиваемый выходной — из Табеля (слой 0). «Недопуск» не добавляется — если понадобится,
+          владелец введёт новый код Табеля (замечание от 12.10.2026).</div>
           <div id="l1-grid"></div>
-          <div class="lgd"><span><b>СМ</b> ручная смена из справочника</span><span><b>✂</b> отпросился (за часы)</span>
-          <span><b>⛔</b> недопуск к работе</span><span><b>ОК</b> ручное окно</span>
-          <span><b>авто</b> смена из Табеля по стандартному окну</span></div>
+          <div class="lgd"><span><b>СМ</b> ручная смена из справочника (на часы не влияет)</span><span><b>✂</b> отпросился (за часы)</span>
+          <span><b>табельное окно</b> смена из Табеля по стандартному окну</span></div>
         </div>
 
         <div class="layer" id="layer-l2">
           <div class="page-head"><div><h2>Слой 2 · Факт</h2>
           <div class="sub">Отметки СКУД, округлённые до шага. План / отработано / недоработка / переработка считаются
-          от ОКНА из Табеля (слой 0); флаги опоздания, раннего ухода и «вне графика» — от ГРАФИКА (слой 1).</div></div>
+          от ОКНА из Табеля (слой 0); флаги опоздания, раннего ухода и «вне графика» — от ГРАФИКА (слой 1).
+          Деление переработки на категории ДЯ/ДН — по границам из НАСТРОЕК («Категории дневных кодов»,
+          по умолчанию ДЯ 06:00–22:00 / ДН 22:00–06:00).</div></div>
           <span class="spacer"></span>
           <div class="toolbar"><span class="seg-label" style="color:#6e6459">Шаг округления:</span>
           <span class="seg" id="step-seg" style="background:#f1ece5;border-color:#e2d9ce">
@@ -218,7 +217,8 @@ code.mono{background:#f1ece5;border-radius:3px;padding:1px 5px;font-size:12px;
           <div class="page-head"><div><h2>Слой 3 · Управленческий Табель</h2>
           <div class="sub">Результат: итоговые коды и переработки в часах, банк часов, закрытие периода.
           До закрытия значения предварительные; при закрытии банк оплачивает недоработку 1:1, каскад срезает
-          коды переработок, остаток недоработки уходит на следующий период.</div></div>
+          коды переработок, остаток недоработки уходит на следующий период. Переработки ДЯ/ДН и их границы —
+          из настроек («Категории дневных кодов»).</div></div>
           <span class="spacer"></span>
           <div class="toolbar"><span id="l3-badge"></span>
           <button class="btn btn-primary" id="l3-close">Закрыть период</button>
@@ -229,8 +229,9 @@ code.mono{background:#f1ece5;border-radius:3px;padding:1px 5px;font-size:12px;
 
         <div class="layer" id="layer-scheme">
 <div class="page-head"><div><h2>Схема: «График» из четырёх слоёв</h2>
-<div class="sub">Соответствие нормативному сообщению от 12.10.2026. Зелёным — что уже реализовано в движке v7.1,
-синим — что предлагается доработать. Прототип автономный (без сервера), данные демонстрационные.</div></div></div>
+<div class="sub">Соответствие нормативному сообщению от 12.10.2026 и ответам владельца (Q1–Q9 решены).
+Зелёным — что уже реализовано в движке v7.1, синим — что предлагается доработать. Прототип автономный
+(без сервера), данные демонстрационные.</div></div></div>
 
 <table class="scheme">
 <tr><th style="width:170px">Слой</th><th>Содержимое</th><th>Откуда берётся</th><th style="width:340px">Статус в движке v7.1</th></tr>
@@ -239,13 +240,13 @@ code.mono{background:#f1ece5;border-radius:3px;padding:1px 5px;font-size:12px;
 <td>Автозаполнение из графика работы + ручной ввод; «Сбросить» убирает введённые коды</td>
 <td>✅ реализовано: <code class="mono">app/tabel_fill.py</code>, <code class="mono">timesheet_edit</code> (перегенерация дня). 🆕 кнопка «Сбросить»</td></tr>
 <tr><td><b>1 · План / График</b><br><span class="hint">операционный план</span></td>
-<td>Смены (авто из Табеля по стандартным окнам + ручные из справочника смен), отсутствия: «отпросился (выходной за часы)», «недопуск»</td>
-<td>Генерация из Табеля (правило 16.3), правки — из справочника смен; ручная смена важнее авто</td>
-<td>✅ реализовано: <code class="mono">schedule_view</code> (16.3), <code class="mono">shift_segments</code>. 🆕 единая сущность «отпросился», код «НД», сборка UI</td></tr>
+<td>Смены: по умолчанию — табельное (стандартное) окно, замена — ручные смены из справочника; отсутствие «отпросился (выходной за часы)» — информационно</td>
+<td>Генерация из Табеля (правило 16.3), правки — из справочника смен; ручная смена важнее авто, но на Табель и часы не влияет (решение Q1)</td>
+<td>✅ реализовано: <code class="mono">schedule_view</code> (16.3), <code class="mono">shift_segments</code>. 🆕 единая сущность «отпросился», сборка UI</td></tr>
 <tr><td><b>2 · Факт</b><br><span class="hint">отметки</span></td>
 <td>Номера отметок, округлённые до шага (15/30/60 мин); план / отработано / недоработка / переработка; флаги</td>
-<td>СКУД; часы — от ОКНА из Табеля (слой 0); флаги — от ГРАФИКА (слой 1)</td>
-<td>✅ реализовано: <code class="mono">day_card</code> (settle: window_of_day, plan_of_day, debt_of_day, overtime ДЯ/ДН 06–22/22–06), <code class="mono">evaluate_flags</code>. 🆕 сетка «Номера» в этом виде</td></tr>
+<td>СКУД; часы — от ОКНА из Табеля (слой 0); флаги — от ГРАФИКА (слой 1); деление переработки на ДЯ/ДН — от НАСТРОЕК («Категории дневных кодов», по умолчанию 06:00–22:00 / 22:00–06:00)</td>
+<td>✅ реализовано: <code class="mono">day_card</code> (settle: window_of_day, plan_of_day, debt_of_day, overtime по категориям из настроек), <code class="mono">evaluate_flags</code>. 🆕 сетка «Номера» в этом виде</td></tr>
 <tr><td><b>3 · Управленческий Табель</b><br><span class="hint">результат</span></td>
 <td>Итоговые коды дня + переработки ДЯ/ДН в часах; банк часов; закрытие периода</td>
 <td>Расчёт при закрытии: банк платит 1:1 в счёт недоработки, каскад срезает коды переработок, остаток — перенос</td>
@@ -263,36 +264,30 @@ code.mono{background:#f1ece5;border-radius:3px;padding:1px 5px;font-size:12px;
 <td>Банк 1ч → 0 (оплатил недоработку при закрытии); УТ 05.10: ДЯ 5ч, ДН 1ч; флагов нет</td></tr>
 </table>
 
-<div class="note warn"><b>Главное противоречие (Q1).</b> В ответе на вопрос о часах: «Правка Графика меняет флаги и доску,
-но НЕ часы… На табель он не влияет». В ответе про окно: «ручной ввод + автоокно». В сообщении от 12.10: окно берётся
-из кода Табеля через справочник стандартных окон. Переключатель вверху прототипа показывает оба режима на примере
-Петрова 05.10 (ручное окно 07:30–19:30): «как сейчас» — недоработка 30м и ДЯ 30м; «предложение» — окно 07:30–19:30,
-недоработки и переработки нет. Нужен один вариант.</div>
+<div class="note"><b>Q1 — решён (ответ владельца, 12.10.2026).</b> Стандартное окно жёстко привязано к коду Табеля
+(Я 10,75 → 08:00–20:00, Я 8 → 09:00–18:00). В Графике по умолчанию показывается табельное окно; его можно заменить
+на ручную смену из справочника. Ручная смена на Табель не влияет никак: при ночной смене стандартное окно
+не меняется, движок всё считает как сейчас. Переключатель режима убран из прототипа (v2.1).
+Демо: Петров 06.10 — в Графике ночная смена 20:00–08:00, а окно и часы — из кода Табеля «Я 10,75» (08:00–20:00, план 12ч).</div>
 
-<h3 style="margin:18px 0 8px">Открытые вопросы</h3>
-<div class="q"><b class="qt">Q1. Ручное окно Графика — влияет ли на часы?</b> Три ответа противоречат друг другу (см. выше).
-<div class="rec">Рекомендация: окно ВСЕГДА из справочника по коду Табеля; ручное окно показывается в Графике справочно с предупреждением «окна нет в справочнике». Исключение — явный режим переопределения с подтверждением и записью в аудит.</div></div>
-<div class="q"><b class="qt">Q2. Название слоя 1 — «План» или «График»?</b> Весь пункт меню называется «График».
-<div class="rec">Рекомендация: пункт меню «График», внутри слой «План / График» — как в прототипе.</div></div>
-<div class="q"><b class="qt">Q3. «Отпросился» и «выходной за часы» — одна сущность?</b> По вашему ответу — да: две кнопки (интервал / вся смена).
-<div class="rec">Рекомендация: в словаре одна запись «Отпросился (выходной за часы)» с двумя точками ввода; заявление печатается из Графика.</div></div>
-<div class="q"><b class="qt">Q4. Какие отсутствия назначаются где?</b> Сообщение от 12.10 уточняет прежнее правило: отпуск / за свой счёт / оплачиваемый выходной — только из Табеля (там же заявления); из Графика — только «отпросился» и «недопуск».
-<div class="rec">Рекомендация: принять версию от 12.10 как итоговую; в модалке Графика оставить два типа (как в прототипе).</div></div>
-<div class="q"><b class="qt">Q5. «Сбросить» в Табеле — точная семантика?</b>
-<div class="rec">Рекомендация: убирает введённые вручную коды (Б/ОТ/ДО/НН/ОВ и ручные явки) за выбранный период у выбранного сотрудника, возвращает автозаполнение; с подтверждением; закрытых периодов не касается. В прототипе — именно так.</div></div>
-<div class="q"><b class="qt">Q6. Новый код «Недопуск к работе».</b> В словаре Табеля его нет.
-<div class="rec">Рекомендация: код «НД», часы не начисляет (план 0), в Графике отмечается как отсутствие на всю смену, заявление не печатается. Нужны: словарь, health-проверка, автозаполнение.</div></div>
-<div class="q"><b class="qt">Q7. Где живёт доска «Отметки»?</b>
-<div class="rec">Рекомендация: оперативная доска остаётся отдельным пунктом меню; сетка номеров с округлением — внутри слоя «Факт».</div></div>
-<div class="q"><b class="qt">Q8. «Выходной за часы» на всю смену — сколько часов спишет банк?</b> Сейчас недоработка = окно − отработано; отсутствие план НЕ уменьшает.
-<div class="rec">Рекомендация: оставить как есть — отпрос на всю смену при нуле отметок даёт недоработку всего окна, её и оплачивает банк. Подтвердите.</div></div>
-<div class="q"><b class="qt">Q9. APP-SHIFT-CODE (6 ошибок в панели здоровья).</b> Редактор смен пишет «код в сетке» в поле «код в табеле» — ночные/суточные смены перестали заполнять Табель из циклов.
-<div class="rec">Рекомендация: разделить поля shift_code / tzh_code (словарь, редактор, seed, health). Без этого автозаполнение слоя 0 из слоя 1 для ночных/суточных не работает.</div></div>
+<h3 style="margin:18px 0 8px">Вопросы и решения владельца (ответы от 12.10.2026)</h3>
+<div class="q"><b class="qt">Q1. ✅ Ручное окно Графика — влияет ли на часы?</b> Нет. Окно — из кода Табеля; График по умолчанию показывает табельное окно, заменяется на ручную смену; ручная смена Табель не меняет.
+<div class="rec">Принято как есть («сейчас это так же работает»). Задача T6 (режим переопределения окна) снята.</div></div>
+<div class="q"><b class="qt">Q2. ✅ Название пункта меню.</b> «График» — подтверждено; слой 1 внутри — «План / График».</div>
+<div class="q"><b class="qt">Q3. ✅ «Отпросился» и «выходной за часы» — одна сущность.</b> Подтверждено: одна запись словаря, две точки ввода (интервал / вся смена).</div>
+<div class="q"><b class="qt">Q4. ✅ Отсутствия из Графика — только «за счёт часов».</b> Отпуск / больничный / за свой счёт / оплачиваемый выходной — из Табеля (там же заявления). «Недопуск» не добавлять (замечание 1).</div>
+<div class="q"><b class="qt">Q5. ✅ «Сбросить» в Табеле.</b> Подтверждено: убирает введённые вручную коды за период, возвращает автозаполнение; закрытых периодов не касается — как в прототипе.</div>
+<div class="q"><b class="qt">Q6. ✅ Код «НД» (недопуск к работе).</b> Не добавляется: «забудь пока о нём; если будет надо — я введу в табель новый код» (замечание 1). Задача T2 снята.</div>
+<div class="q"><b class="qt">Q7. ✅ Доска «Отметки».</b> Согласовано: оперативная доска — отдельный пункт меню; сетка номеров с округлением — внутри слоя «Факт».</div>
+<div class="q"><b class="qt">Q8. ✅ «Выходной за часы» на всю смену.</b> Только информация («чтобы не ждали сотрудника»). Отсутствие отработанных часов в стандартном окне уходит в недостачу; при закрытии её оплачивает банк 1:1 — расчёт не меняется.</div>
+<div class="q"><b class="qt">Q9. ✅ APP-SHIFT-CODE (6 ошибок в панели здоровья).</b> Модель не меняется: код Табеля → стандартное окно → эти же часы попадают в График первоначальными сменами, далее редактируются. Правка техническая: редактор смены сейчас записывает в поле «код в табеле» короткое имя смены («08-20») — это не код Табеля, из-за чего health выдаёт 6 ошибок, а ночные/суточные смены перестали заполнять Табель из циклов. Лечение: в этом поле — только коды из словаря Табеля («Я», «Н», …) или пусто; границы смены уже хранятся отдельно. Новых сущностей не нужно (задача T1).</div>
+<div class="q"><b class="qt">Замечание 2. ✅ Деление переработок ДЯ/ДН — из настроек.</b> Границы категорий дневных кодов (по умолчанию ДЯ 06:00–22:00 / ДН 22:00–06:00) берутся из раздела настроек «Категории дневных кодов»; движок уже читает их из конфигурации. В прототипе — константы <code class="mono">CFG.dayFrom/dayTo</code> с теми же значениями.</div>
 
 <h3 style="margin:18px 0 8px">Упрощения прототипа</h3>
 <ul style="font-size:13px;color:#4d4437">
 <li>Нет сервера и БД: данные демо, состояние живёт до перезагрузки страницы.</li>
 <li>Переработки и флаги считаем в пределах суток (ночные смены через полночь не моделируются).</li>
+<li>Границы категорий ДЯ/ДН — константы <code class="mono">CFG</code> (06:00–22:00); в приложении они берутся из настроек («Категории дневных кодов») — замечание владельца от 12.10.2026.</li>
 <li>Каскад при закрытии: сначала ДН, потом ДЯ — порядок упрощён относительно движка.</li>
 <li>Отметки за дни без явных punches подставляются «чистые» по окну (демо полного выгруза СКУД).</li>
 <li>Флаги: опоздание &gt; 5 мин, ранний уход &gt; 5 мин, «вне графика» — только если факт вообще не пересекается со сменой.</li>
@@ -342,8 +337,7 @@ var CODE_META = {
   'ОТ':      { cls: 'abs',  t: 'Отпуск' },
   'ДО':      { cls: 'abs',  t: 'Отпуск за свой счёт' },
   'НН':      { cls: 'bad',  t: 'Неявка по невыясненной причине' },
-  'ОВ':      { cls: 'abs',  t: 'Оплачиваемый выходной' },
-  'НД':      { cls: 'bad',  t: 'Недопуск к работе (новый код — вопрос Q6)' }
+  'ОВ':      { cls: 'abs',  t: 'Оплачиваемый выходной' }
 };
 var TAB_CODES = ['Я 8', 'Я 10,75', 'Я 9', 'В', 'Б', 'ОТ', 'ДО', 'НН', 'ОВ'];
 
@@ -354,9 +348,11 @@ var SHIFTS = [
   { id: 'NIGHT12', name: 'Ночь 20:00–08:00',  f: '20:00', t: '08:00', over: true },
   { id: 'SUTKI',   name: 'Сутки 08:00–08:00', f: '08:00', t: '08:00', over: true }
 ];
+/* Решения владельца 12.10.2026 (замечание 1, Q4, Q6): из Графика назначается только
+   «отпросился (выходной за часы)» — и то информационно («чтобы не ждали сотрудника»).
+   «Недопуск к работе» НЕ добавляется; если понадобится — владелец введёт новый код Табеля сам. */
 var ABSENCE_KINDS = [
-  { id: 'TIMEOFF_HOURS', name: 'Отпросился (выходной за часы)', mark: '✂' },
-  { id: 'NOT_ADMITTED',  name: 'Недопуск к работе',             mark: '⛔' }
+  { id: 'TIMEOFF_HOURS', name: 'Отпросился (выходной за часы)', mark: '✂' }
 ];
 
 function cleanTable(defaultCode) {
@@ -375,7 +371,10 @@ var EMPS = [
   { id: 2, name: 'Петров Борис', pos: 'Повар', group: 'Кухня', bank: 0, defaultCode: 'Я 10,75',
     tabel: cleanTable('Я 10,75'),
     tabelManual: {},
-    sched: { 5: { window: { f: '07:30', t: '19:30' } } },
+    /* 05.10 — пример владельца №1: факт 07:30–19:30 при стандартном окне 08:00–20:00 (код «Я 10,75»).
+       06.10 — демо решения Q1: в Графике ночная смена (ручная из справочника), а табельное
+       стандартное окно 08:00–20:00 НЕ меняется — движок считает часы как сейчас. */
+    sched: { 6: { shift: { f: '20:00', t: '08:00', manual: true, over: true, dict: 'NIGHT12' } } },
     punches: { 5: [['07:30', '19:30']] } },
   { id: 3, name: 'Сидорова Вера', pos: 'Официант', group: 'Зал', bank: 0, defaultCode: 'Я 10,75',
     tabel: cleanTable('Я 10,75'),
@@ -388,7 +387,12 @@ EMPS.forEach(function (e) {
 });
 
 /* ═══════════════ Состояние представления ═══════════════ */
-var STATE = { nav: 'grafik', layer: 'l0', mode: 'current', step: 30, day: 5, closed: false };
+var STATE = { nav: 'grafik', layer: 'l0', step: 30, day: 5, closed: false };
+
+/* Категории дневных кодов (границы ДЯ/ДН) БЕРУТСЯ ИЗ НАСТРОЕК приложения (раздел
+   «Категории дневных кодов», CFG-DAY-CODES) — замечание владельца от 12.10.2026.
+   В прототипе — константы со значениями по умолчанию: ДЯ 06:00–22:00, ДН 22:00–06:00. */
+var CFG = { dayFrom: '06:00', dayTo: '22:00' };
 
 /* ═══════════════ Утилиты ═══════════════ */
 function $(s) { return document.querySelector(s); }
@@ -459,15 +463,16 @@ function mergeSegs(segs) {
 }
 function roundPunch(m) { return Math.round(m / STATE.step) * STATE.step; }
 
+/* Q1 решён (владелец, 12.10.2026): окно расчёта — ВСЕГДА стандартное окно кода Табеля
+   (Я 10,75 → 08:00–20:00, Я 8 → 09:00–18:00), привязка жёсткая. Ручные смены Графика
+   (включая ночные) окно и часы не меняют — «движок всё сам сделает, сейчас это так же работает». */
 function windowOf(emp, d) {
-  var man = emp.sched[d] && emp.sched[d].window;
-  if (man && STATE.mode === 'proposal') return [hhmm2min(man.f), hhmm2min(man.t)];
   var w = WINDOWS[emp.tabel[d]];
   return w ? [hhmm2min(w[0]), hhmm2min(w[1])] : null;
 }
 function shiftOf(emp, d) {
   var s = emp.sched[d] && emp.sched[d].shift;
-  if (s) return s;
+  if (s) return s.none ? null : s;
   var w = WINDOWS[emp.tabel[d]];
   if (w) return { f: w[0], t: w[1], auto: true };
   return null;
@@ -505,9 +510,10 @@ function dayCalc(emp, d) {
   var debt = Math.max(0, plan - work);
   var otSegs = win ? minusWin(segs, win[0], win[1]) : segs.slice();
   var otDay = 0, otNight = 0;
+  var catA = hhmm2min(CFG.dayFrom), catB = hhmm2min(CFG.dayTo);  /* из настроек, по умолч. 06:00–22:00 */
   otSegs.forEach(function (s) {
-    otDay += intersectSegs([s], 360, 1320);            /* ДЯ: 06:00–22:00 */
-    otNight += segLen(s[0], s[1]) - intersectSegs([s], 360, 1320); /* ДН: 22:00–06:00 */
+    otDay += intersectSegs([s], catA, catB);                      /* ДЯ */
+    otNight += segLen(s[0], s[1]) - intersectSegs([s], catA, catB); /* ДН */
   });
   var flags = [];
   var shift = shiftOf(emp, d);
@@ -522,11 +528,9 @@ function dayCalc(emp, d) {
     });
     if (coveredAny === 0 && segs.length) flags.push('OFF');
   }
-  var manWin = emp.sched[d] && emp.sched[d].window;
   return { code: code, win: win, plan: plan, raw: raw, segs: segs, work: work, debt: debt,
            otDay: otDay, otNight: otNight, flags: flags, shift: shift,
-           absences: absencesOf(emp, d), manualWin: manWin || null,
-           winInDict: !!(WINDOWS[code]) };
+           absences: absencesOf(emp, d), winInDict: !!(WINDOWS[code]) };
 }
 
 /* Закрытие периода: банк платит 1:1 по дням хронологически, затем каскад срезает
@@ -691,23 +695,18 @@ function renderL1() {
       var time = '—';
       if (c.shift) {
         time = c.shift.f + '–' + c.shift.t;
-        if (c.shift.manual) mks += '<span class="mk sm">СМ</span>';
-        if (c.shift.auto) sub = '<span class="shift-sub">авто из Табеля</span>';
+        if (c.shift.manual) { mks += '<span class="mk sm">СМ</span>'; sub = '<span class="shift-sub">ручная из справочника</span>'; }
+        if (c.shift.auto) sub = '<span class="shift-sub">табельное окно</span>';
       }
       c.absences.forEach(function (a) {
         var k = ABSENCE_KINDS.filter(function (x) { return x.id === a.kind; })[0] || { mark: '✂', name: a.kind };
         mks += '<span class="mk abs" title="' + esc(k.name) + ' ' + a.f + '–' + a.t + '">' + k.mark + '</span>';
         sub += '<span class="shift-sub">' + k.mark + ' ' + a.f + '–' + a.t + '</span>';
       });
-      if (c.manualWin) {
-        mks += '<span class="mk win" title="Ручное окно ' + c.manualWin.f + '–' + c.manualWin.t + '">ОК</span>';
-        sub += '<span class="shift-sub">окно ' + c.manualWin.f + '–' + c.manualWin.t +
-          (STATE.mode === 'proposal' ? '' : ' ⚠') + '</span>';
-      }
       return '<td class="cell"><button class="cellbtn scell' + (d.weekend ? ' weekend' : '') +
         (STATE.day === d.n ? ' sel' : '') + '" data-emp="' + e.id + '" data-day="' + d.n + '">' +
         mks + '<span class="shift-time">' + time + '</span>' + (sub || '<span class="shift-sub">' +
-        (c.code === 'В' ? 'выходной' : (WINDOWS[c.code] ? '' : 'нет смены')) + '</span>') + '</button></td>';
+        (c.code === 'В' ? 'выходной' : (c.shift ? '' : 'нет смены')) + '</span>') + '</button></td>';
     }).join('');
     return '<tr><td class="name-cell"><div class="nm">' + esc(e.name) + '</div>' +
       '<div class="pos">' + esc(e.pos) + '</div></td>' + tds + '</tr>';
@@ -743,9 +742,6 @@ function openSchedModal(empId, dayN) {
     return '<span class="chip absence">' + k.mark + ' ' + esc(k.name) + ' ' + a.f + '–' + a.t +
       ' <button class="rm-abs" data-ix="' + ix + '" style="border:none;background:none;cursor:pointer;color:#a53f2e;font:inherit">×</button></span>';
   }).join('') || '<span class="hint">нет</span>';
-  var winNote = STATE.mode === 'proposal'
-    ? 'Режим «предложение»: ручное окно ЗАДАЁТ окно расчёта часов.'
-    : 'Режим «как сейчас»: окно берётся из справочника по коду Табеля; ручное окно на часы НЕ влияет (вопрос Q1).';
   openModal('<h3>График дня · ' + esc(e.name) + '</h3>' +
     '<div class="msub">' + d.n + '.10.2026 (' + d.dow + ') · Табель (слой 0): «' + esc(c.code) + '» — не меняется отсюда</div>' +
     '<div class="row"><div><label class="fld">Смена</label><select id="m-shift">' + shiftOpts + '</select></div>' +
@@ -760,11 +756,10 @@ function openSchedModal(empId, dayN) {
     '<div><label class="fld">по</label><input type="time" id="m-abs-to" step="300" value="13:00"></div>' +
     '<button class="btn btn-sm" id="m-abs-add">Добавить интервал</button></div>' +
     '<div class="row" id="m-abs-list">' + absList + '</div>' +
-    '<div class="row"><button class="btn btn-sm" id="m-timeoff-full">Отпросился на всю смену</button>' +
-    '<button class="btn btn-sm" id="m-notadm">Недопуск к работе (весь день)</button></div>' +
-    '<div class="row"><div><label class="fld">Ручное окно (часы) c</label><input type="time" id="m-win-from" step="300" value="' + (s.window ? s.window.f : '') + '"></div>' +
-    '<div><label class="fld">по</label><input type="time" id="m-win-to" step="300" value="' + (s.window ? s.window.t : '') + '"></div></div>' +
-    '<div class="note' + (STATE.mode === 'proposal' ? '' : ' warn') + '" id="m-winnote">' + winNote + '</div>' +
+    '<div class="row"><button class="btn btn-sm" id="m-timeoff-full">Отпросился на всю смену</button></div>' +
+    '<div class="note" id="m-winnote">Окно и часы — из кода Табеля «' + esc(c.code) + '»' +
+      (WINDOWS[c.code] ? ': стандартное окно ' + WINDOWS[c.code][0] + '–' + WINDOWS[c.code][1] : '') +
+      '. Ручная смена (в т.ч. ночная) окно не меняет — Табель и часы остаются как есть (решение владельца, 12.10.2026).</div>' +
     '<div class="note">Правка Графика меняет только флаги (опоздание / ранний уход / вне графика) и доску. На часы Табеля График не влияет.</div>' +
     '<div class="actions"><button class="btn" data-x>Отмена</button><button class="btn btn-primary" id="m-save">Сохранить</button></div>');
   function refreshAbs() {
@@ -794,24 +789,16 @@ function openSchedModal(empId, dayN) {
     refreshAbs();
     toast('Отпросился на всю смену ' + sh.f + '–' + sh.t + ' (заявление печатается из Графика).', 'ok');
   };
-  $('#m-notadm').onclick = function () {
-    var sh = shiftOf(e, dayN);
-    s.absences = s.absences || [];
-    s.absences.push({ kind: 'NOT_ADMITTED', f: sh ? sh.f : '09:00', t: sh ? sh.t : '18:00', full: true });
-    refreshAbs();
-    toast('Недопуск к работе: весь день. Новый код «НД» — вопрос Q6 (в словаре Табеля его пока нет).', 'warn');
-  };
   $('#m-save').onclick = function () {
     var shSel = $('#m-shift').value;
     var mf = $('#m-from').value, mt = $('#m-to').value;
     if (shSel === 'NONE') { s.shift = { none: true }; }
-    else if (mf && mt && mf !== mt) { s.shift = { f: mf, t: mt, manual: true }; }
     else if (shSel) {
       var sh = SHIFTS.filter(function (x) { return x.id === shSel; })[0];
       s.shift = { f: sh.f, t: sh.t, manual: true, over: sh.over, dict: sh.id };
-    } else { delete s.shift; }
-    var wf = $('#m-win-from').value, wt = $('#m-win-to').value;
-    if (wf && wt && wf !== wt) s.window = { f: wf, t: wt }; else delete s.window;
+    }
+    else if (mf && mt && mf !== mt) { s.shift = { f: mf, t: mt, manual: true }; }
+    else { delete s.shift; }
     closeModal(); renderLayer();
     toast('График сохранён: флаги и доска обновятся; часы Табеля не менялись.', 'ok');
   };
@@ -820,7 +807,7 @@ function openSchedModal(empId, dayN) {
 /* ═══════════════ Слой 2 · Факт ═══════════════ */
 function dayHasActivity(e, d) {
   var c = dayCalc(e, d.n);
-  return !!(c.flags.length || c.otDay || c.otNight || c.debt || c.manualWin ||
+  return !!(c.flags.length || c.otDay || c.otNight || c.debt ||
     (c.shift && c.shift.manual) || c.absences.length);
 }
 function dayIsInteresting(d) {
@@ -853,9 +840,7 @@ function renderL2() {
         ' <span class="hint">→ ' + (c.segs.length ? c.segs.map(function (s) {
           return min2hhmm(s[0]) + '–' + min2hhmm(s[1]); }).join(', ') : '—') + '</span>'
       : '<span class="hint">отметок нет</span>';
-    var win = c.win ? min2hhmm(c.win[0]) + '–' + min2hhmm(c.win[1]) +
-      (c.manualWin && STATE.mode === 'proposal' ? ' <span class="chip bank">ручное</span>' :
-       (c.manualWin ? ' <span class="chip late">≠ справочник</span>' : '')) : '—';
+    var win = c.win ? min2hhmm(c.win[0]) + '–' + min2hhmm(c.win[1]) : '—';
     var ot = (c.otDay ? '<span class="chip day-ot">ДЯ ' + fmtMin(c.otDay) + '</span>' : '') +
       (c.otNight ? '<span class="chip night-ot">ДН ' + fmtMin(c.otNight) + '</span>' : '') || '<span class="hint">—</span>';
     return '<tr><td><b>' + esc(e.name) + '</b><div class="hint">' + esc(e.pos) + ' · Табель: «' + esc(c.code) + '»</div></td>' +
@@ -947,16 +932,6 @@ function openCloseModal(close) {
 
 /* ═══════════════ Обвязка ═══════════════ */
 function wireTop() {
-  $$('#mode-seg button').forEach(function (b) {
-    b.onclick = function () {
-      STATE.mode = b.dataset.mode;
-      $$('#mode-seg button').forEach(function (x) { x.classList.toggle('active', x === b); });
-      renderLayer();
-      toast(STATE.mode === 'proposal'
-        ? 'Режим «предложение»: ручное окно Графика задаёт окно расчёта часов (Петров 05.10: недоработка и переработка исчезнут).'
-        : 'Режим «как сейчас»: часы считаются по окну из справочника Табеля; ручное окно Графика на них не влияет.', 'warn');
-    };
-  });
   $$('#step-seg button').forEach(function (b) {
     b.onclick = function () { STATE.step = +b.dataset.step; renderL2(); };
   });
