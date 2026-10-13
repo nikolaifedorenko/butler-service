@@ -154,10 +154,11 @@ class TestNewFeatures(unittest.TestCase):
             self.assertGreater(cell["tabel"]["hours"], 0, iso)
             self.assertEqual(cell["planned_hours"], cell["tabel"]["hours"], iso)
 
-    # ── 3. «отпросился»: согласованное отсутствие — логический разрез Графика ──
+    # ── 3. «отпросился (выходной за часы)»: согласованное отсутствие — логический
+    #       разрез Графика; точка ввода «интервал» единой сущности (Q3, 12.10.2026) ──
     def test_03_partial_absence(self):
         emp = _create_employee("feat_partial", "Отпрос Петр Отпросович", TODAY - dt.timedelta(days=90))
-        away = _shift_by_code("AWAY_HOURS")
+        away = _shift_by_code("TIMEOFF_HOURS")
         day = TODAY - dt.timedelta(days=2)
         # план: «Я 12» в Табеле → смена 08:00–20:00 генерируется из Табеля (16.3)
         r = client.put("/api/tabel/cell", json={
@@ -434,7 +435,7 @@ class TestNewFeatures(unittest.TestCase):
     def test_11_doc_values(self):
         emp = _create_employee("feat_doc", "Документов Док Документович",
                                TODAY - dt.timedelta(days=60))
-        away = _shift_by_code("AWAY_HOURS")
+        away = _shift_by_code("TIMEOFF_HOURS")
         day12 = _shift_by_code("DAY12")
         day = TODAY - dt.timedelta(days=4)
         client.put("/api/schedule/cell", json={

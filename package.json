@@ -11,6 +11,7 @@
     "smoke": "./tools/run_ui_check.sh",
     "smoke:employee": "./tools/run_ui_check.sh 8198 ivanov",
     "smoke:settings": "./tools/run_settings_scenario.sh",
+    "smoke:norms": "./tools/run_norms_scenario.sh",
     "smoke:proto": "node tools/proto_layers_smoke.mjs",
     "snapshot": "./tools/run_snapshot.sh"
   },
