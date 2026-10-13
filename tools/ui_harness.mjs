@@ -14,7 +14,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const BASE = process.argv[2] || 'http://127.0.0.1:8141';
 const LOGIN = process.argv[3] || 'gromova';
-const VIEWS = (process.argv[4] || 'schedule,marks,fact,timesheet,mgmt,employees,me,night,cars,settings').split(',');
+const VIEWS = (process.argv[4] || 'grafik,schedule,marks,fact,timesheet,mgmt,employees,me,night,cars,settings').split(',');
 
 const consoleErrors = [];
 const vc = new VirtualConsole();
@@ -118,8 +118,17 @@ async function main() {
   const nav = [...window.document.querySelectorAll('#sidenav .nav-item')]
     .map(b => b.dataset.view).filter(Boolean);
   console.log('навигация:', nav.join(', '));
-  const views = VIEWS.filter(v => nav.includes(v));
-  const skipped = VIEWS.filter(v => !nav.includes(v));
+  /* T5: «График» — один пункт меню с четырьмя слоями; старые имена разделов
+     (schedule/fact/timesheet/mgmt) — алиасы слоёв: navigate() с ними работает,
+     а содержимое оказывается во вложенной панели #view-<слой>. Слой проверяем,
+     только если на него есть право роли — как раньше проверялся пункт меню. */
+  const LAYER_PERM = { timesheet: 'tabel.view', schedule: 'schedule.view',
+                       fact: 'presence.view', mgmt: 'mgmt.view' };
+  const perms = window.eval('state.perms') || [];
+  const allowed = v => nav.includes(v)
+    || (LAYER_PERM[v] && nav.includes('grafik') && perms.includes(LAYER_PERM[v]));
+  const views = VIEWS.filter(allowed);
+  const skipped = VIEWS.filter(v => !allowed(v));
   if (skipped.length) console.log('пропущено (нет в навигации для этой роли):', skipped.join(', '));
 
   let empty = 0, failed = 0;
