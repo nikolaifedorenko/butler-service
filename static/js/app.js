@@ -622,7 +622,7 @@ async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '') {
   try {
     const res = await fetch('/api/docs/render', {
       method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCookie('tt_csrf') },
       body: JSON.stringify({
         type, employee_id: empId, date_from: p.start, date_to: p.end, format: fmt,
         from_time: p.partial?.from_time || '', until_time: p.partial?.until_time || '',
@@ -1835,7 +1835,8 @@ function openKindModal(kind) {
         loading(true);
         try {
           const res = await fetch(`/api/docs/templates?type=${encodeURIComponent(kind.code)}`,
-            { method: 'POST', credentials: 'same-origin', body: fd });
+            { method: 'POST', credentials: 'same-origin', body: fd,
+              headers: { 'X-CSRF-Token': getCookie('tt_csrf') } });
           const d = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(d.detail || `Ошибка ${res.status}`);
           toast(`Бланк загружен · найдено плейсхолдеров: ${d.placeholders.length}`, 'ok');
