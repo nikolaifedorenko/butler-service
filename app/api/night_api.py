@@ -17,7 +17,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
-from ..permissions import require_perm
 from ..db import get_db
 from ..deps import now_local
 from ..models import (
@@ -36,6 +35,7 @@ from ..night import (
     section_dict,
     sync_reports,
 )
+from ..permissions import require_perm
 from ..photos import photos_of, save_photo
 
 router = APIRouter(prefix="/api/night", tags=["night"])

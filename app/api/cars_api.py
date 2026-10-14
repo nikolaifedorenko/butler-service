@@ -19,7 +19,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
-from ..permissions import require_perm
 from ..cars import (
     ACTION_TITLES,
     STATUS_TITLES,
@@ -42,6 +41,7 @@ from ..cars import (
 )
 from ..db import get_db
 from ..models import CarHistory
+from ..permissions import require_perm
 from ..photos import photos_of
 
 router = APIRouter(prefix="/api/cars", tags=["cars"])

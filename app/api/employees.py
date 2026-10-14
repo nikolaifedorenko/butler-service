@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from ..auth import Principal, audit, can_manage_user, current_principal, require_manager
 from ..base_schedule import dump_pattern, validate_pattern
 from ..db import get_db
-from ..permissions import require_perm
 from ..deps import local_date, slugify_username
 from ..employment import close_period, open_period, periods_of
 from ..groups import GROUP_META, normalize_group
@@ -37,6 +36,7 @@ from ..models import (
     utcnow,
 )
 from ..names import suggest_genitive
+from ..permissions import require_perm
 from ..security import hash_password
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
 from .engine_common import day_code_rows, domain_error_text, engine_ports, last_closed_bank, now_utc

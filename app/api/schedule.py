@@ -23,7 +23,6 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, require_manager
 from ..db import get_db
-from ..permissions import require_perm
 from ..deps import TZ, now_local, safe_sheet_cell, utc_to_local
 from ..doublepay import SCOPE_TITLES, calendar_map
 from ..employment import employed_on, periods_of, ranges_from_periods
@@ -47,6 +46,7 @@ from ..models import (
     TabelDay,
 )
 from ..names import suggest_genitive
+from ..permissions import require_perm
 from ..schedule_patterns import pattern_list, validate_pattern
 from ..tabel_fill import fill_timesheet_from_cycles
 from .engine_common import domain_error_text, engine_ports, now_utc
