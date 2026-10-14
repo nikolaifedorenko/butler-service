@@ -93,12 +93,18 @@ function loading(on) {
 }
 
 /* ───────────────────────────── API ───────────────────────────── */
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
 async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', credentials: 'same-origin', headers: {} };
   if (opts.body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(opts.body);
   }
+  const method = (opts.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') init.headers['X-CSRF-Token'] = getCookie('tt_csrf');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeout || 20000);
   init.signal = ctrl.signal;
@@ -142,7 +148,8 @@ async function multipartApi(path, formData, { timeout = 60000 } = {}) {
     const timer = setTimeout(() => ctrl.abort(), timeout);
     let res;
     try {
-      res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: formData, signal: ctrl.signal });
+      res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: formData, signal: ctrl.signal,
+        headers: { 'X-CSRF-Token': getCookie('tt_csrf') } });
     } catch (e) {
       if (e.name === 'AbortError') throw new Error('Загрузка не завершилась вовремя — проверьте связь');
       throw new Error('Не удалось связаться с сервером — проверьте связь и повторите');

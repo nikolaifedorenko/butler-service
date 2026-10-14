@@ -21,11 +21,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_manager
+from ..auth import Principal, audit, current_principal
 from ..db import get_db
 from ..deps import TZ, local_date, now_local
 from ..employment import employed_on, ensure_periods, periods_of
 from ..models import Employee, Punch, ScheduleAbsence, ScheduleShift
+from ..permissions import has_perm, require_perm
 from .engine_common import last_closed_bank
 
 # окно поиска открытой смены вокруг плана (интерфейс отметок; на расчёт часов не влияет)
@@ -253,9 +254,22 @@ def my_status(principal: Principal = Depends(current_principal), db: Session = D
     return _status_payload(db, emp)
 
 
+def _need(principal: Principal, db: Session, key: str) -> None:
+    if not has_perm(db, principal, key):
+        raise HTTPException(status_code=403, detail=f"Недостаточно прав: {key}")
+
+
 @router.post("")
 def punch(payload: PunchIn, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
-    """Кнопки «Пришёл на работу» / «Ушёл с работы»."""
+    """Кнопки «Пришёл на работу» / «Ушёл с работы».
+
+    Права: отметка за себя — me.punch; чужая отметка или отметка задним числом — punches.manage.
+    """
+    self_id = principal.employee.id if principal.employee else None
+    if payload.ts or (payload.employee_id is not None and payload.employee_id != self_id):
+        _need(principal, db, "punches.manage")
+    else:
+        _need(principal, db, "me.punch")
     emp = _resolve_employee(principal, payload.employee_id, db)
     with _lock_for(emp.id):
         return _punch_locked(payload, principal, db, emp)
@@ -391,7 +405,7 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
 
 
 @router.delete("/{punch_id}")
-def delete_punch(punch_id: int, principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def delete_punch(punch_id: int, principal: Principal = Depends(require_perm("punches.manage")), db: Session = Depends(get_db)):
     """Отменить ошибочную отметку (с записью в аудит)."""
     p = db.get(Punch, punch_id)
     if not p:

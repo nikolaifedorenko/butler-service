@@ -622,7 +622,7 @@ async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '') {
   try {
     const res = await fetch('/api/docs/render', {
       method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCookie('tt_csrf') },
       body: JSON.stringify({
         type, employee_id: empId, date_from: p.start, date_to: p.end, format: fmt,
         from_time: p.partial?.from_time || '', until_time: p.partial?.until_time || '',
@@ -1557,6 +1557,11 @@ async function employeeModal(emp) {
   try { state.subdivisions = await api('/api/subdivisions', { silent: true }); }
   catch { state.subdivisions = state.subdivisions || []; }
   const isNew = !emp;
+  // Роли, которые текущий пользователь вправе назначать (защита от эскалации прав):
+  // admin — все; manager — без admin; supervisor и ниже — только employee.
+  const roleOptions = state.user?.role === 'admin' ? ['employee', 'supervisor', 'manager', 'admin']
+    : state.user?.role === 'manager' ? ['employee', 'supervisor', 'manager']
+    : ['employee'];
   const contacts = emp?.contacts?.length ? emp.contacts
     : (emp?.emergency_name ? [{ name: emp.emergency_name, phone: emp.emergency_phone, relation: '' }] : []);
   openModal({
@@ -1597,7 +1602,7 @@ async function employeeModal(emp) {
           ${groupList.map(g => `<option value="${esc(g.name)}" ${emp?.schedule_group === g.name ? 'selected' : ''}>${esc(g.title || g.name)}</option>`).join('')}
         </select></label>
         <label class="field"><span>Роль в системе</span><select id="e-role">
-          ${['employee', 'supervisor', 'manager', 'admin'].map(r => `<option value="${r}" ${emp?.role === r ? 'selected' : ''}>${ROLE_TITLES[r]}</option>`).join('')}
+          ${roleOptions.map(r => `<option value="${r}" ${emp?.role === r ? 'selected' : ''}>${ROLE_TITLES[r]}</option>`).join('')}
         </select></label>
         <label class="field"><span>Стартовый банк часов</span><input type="number" step="0.5" id="e-balance" value="${emp?.balance_hours ?? 0}"></label>
         <label class="field"><span>Логин</span><input type="text" id="e-login" value="${esc(emp?.username || '')}" placeholder="создастся автоматически"></label>
@@ -1616,10 +1621,10 @@ async function employeeModal(emp) {
         </div>
       </div>
       <div class="grid-2">
-        <label class="field"><span>${isNew ? 'Пароль (по умолчанию demo1234)' : 'Новый пароль (оставьте пустым, чтобы не менять)'}</span>
-          <input type="text" id="e-pass" placeholder="••••••••"></label>
+        <label class="field"><span>${isNew ? 'Пароль (пусто — сгенерируется случайный)' : 'Новый пароль (оставьте пустым, чтобы не менять)'}</span>
+          <input type="password" id="e-pass" placeholder="••••••••" autocomplete="new-password"></label>
         <label class="field"><span>Подтверждение пароля</span>
-          <input type="text" id="e-pass2" placeholder="••••••••"></label>
+          <input type="password" id="e-pass2" placeholder="••••••••" autocomplete="new-password"></label>
       </div>`,
     footer: `
       <div style="flex:1"></div>
@@ -1830,7 +1835,8 @@ function openKindModal(kind) {
         loading(true);
         try {
           const res = await fetch(`/api/docs/templates?type=${encodeURIComponent(kind.code)}`,
-            { method: 'POST', credentials: 'same-origin', body: fd });
+            { method: 'POST', credentials: 'same-origin', body: fd,
+              headers: { 'X-CSRF-Token': getCookie('tt_csrf') } });
           const d = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(d.detail || `Ошибка ${res.status}`);
           toast(`Бланк загружен · найдено плейсхолдеров: ${d.placeholders.length}`, 'ok');

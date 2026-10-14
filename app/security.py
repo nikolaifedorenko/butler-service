@@ -31,6 +31,11 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def new_csrf_token() -> str:
+    """Случайный CSRF-токен (double-submit cookie)."""
+    return secrets.token_hex(16)
+
+
 def _b64e(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 

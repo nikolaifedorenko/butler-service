@@ -340,7 +340,11 @@ class ScheduleShift(Base):
     через ScheduleAbsence (v7/R17). Якорь правки — день начала (date)."""
 
     __tablename__ = "schedule_shifts"
-    __table_args__ = (Index("ix_sched_shifts_emp_date", "employee_id", "date"),)
+    __table_args__ = (
+        Index("ix_sched_shifts_emp_date", "employee_id", "date"),
+        # доска «кто на работе» и статус смены фильтруют по start_utc без employee_id
+        Index("ix_sched_shifts_start", "start_utc"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
@@ -362,7 +366,10 @@ class ScheduleAbsence(Base):
     (RUL-ABSENCE-ONLY-FLAGS). kind — тип отсутствия из словаря (заявление, режим отметок)."""
 
     __tablename__ = "schedule_absences"
-    __table_args__ = (Index("ix_sched_abs_emp_start", "employee_id", "start_utc"),)
+    __table_args__ = (
+        Index("ix_sched_abs_emp_start", "employee_id", "start_utc"),
+        Index("ix_sched_abs_start", "start_utc"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)

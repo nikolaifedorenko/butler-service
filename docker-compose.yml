@@ -8,7 +8,10 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: sqlite:///./data/timetrack.db
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # Обязательно задайте в .env:  SECRET_KEY=$(openssl rand -hex 32)
+      # Пустой ключ не позволит приложению запуститься (см. app/main.py).
+      SECRET_KEY: ${SECRET_KEY:-}
+      ALLOW_INSECURE_DEV_SECRET: ${ALLOW_INSECURE_DEV_SECRET:-0}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       TZ: ${APP_TZ:-Europe/Moscow}
       COOKIE_SECURE: ${COOKIE_SECURE:-0}

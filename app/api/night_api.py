@@ -35,6 +35,7 @@ from ..night import (
     section_dict,
     sync_reports,
 )
+from ..permissions import require_perm
 from ..photos import photos_of, save_photo
 
 router = APIRouter(prefix="/api/night", tags=["night"])
@@ -113,7 +114,7 @@ def _guard_open(rep: NightReport) -> None:
 # ─────────────────────────── справочник областей ───────────────────────────
 
 @router.get("/areas")
-def list_areas(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+def list_areas(principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Справочник областей с пунктами (виден всем ролям, включая батлеров)."""
     out = []
     for area in db.scalars(select(NightArea).order_by(NightArea.sort_order, NightArea.id)):
@@ -291,7 +292,7 @@ def delete_item(item_id: int, principal: Principal = Depends(require_manager),
 # ─────────────────────────── ход смены ───────────────────────────
 
 @router.get("/today")
-def today_report(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+def today_report(principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Актуальный отчёт текущей ночной смены (создаёт, если пора; закрывает наступившие)."""
     sync_reports(db)
     shift_d = current_shift_date()
@@ -305,7 +306,7 @@ def today_report(principal: Principal = Depends(current_principal), db: Session 
 
 
 @router.get("/reports")
-def list_reports(limit: int = 60, principal: Principal = Depends(current_principal),
+def list_reports(limit: int = 60, principal: Principal = Depends(require_perm("night.view")),
                  db: Session = Depends(get_db)):
     """Архив ночных отчётов (супервайзер и выше): список с итогами."""
     sync_reports(db)
@@ -317,7 +318,7 @@ def list_reports(limit: int = 60, principal: Principal = Depends(current_princip
 
 
 @router.get("/reports/{report_id}")
-def get_report(report_id: int, principal: Principal = Depends(current_principal),
+def get_report(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                db: Session = Depends(get_db)):
     rep = _get_report(db, report_id)
     return {"report": _report_payload(db, rep)}
@@ -409,6 +410,7 @@ def reopen_section(section_id: int, principal: Principal = Depends(require_super
     _guard_open(rep)
     sec.status = "taken"
     sec.closed_at = None
+    audit(db, principal, "night_section_reopen", f"section:{section_id}")
     db.commit()
     return {"ok": True, "section": section_dict(sec)}
 
@@ -435,6 +437,8 @@ def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(
         sec.taken_by = principal.user.id
         sec.taken_by_name = _principal_name(principal)
         sec.taken_at = now_local()
+    audit(db, principal, "night_item_answer", f"item:{item_id}",
+          {"answer": ni.answer, "section_id": sec.id})
     db.commit()
     return {"ok": True, "item": {"id": ni.id, "answer": ni.answer, "comment": ni.comment}}
 
@@ -487,7 +491,7 @@ def _cars_section(rep: NightReport) -> NightAreaSection:
 
 
 @router.get("/reports/{report_id}/cars")
-def report_cars(report_id: int, principal: Principal = Depends(current_principal),
+def report_cars(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
     """Состояние обхода электрокаров за смену (список каров + отметки)."""
     from ..cars import night_cars_state
@@ -624,7 +628,7 @@ def _company(db: Session) -> str:
 
 
 @router.get("/reports/{report_id}/export.docx")
-def export_docx(report_id: int, principal: Principal = Depends(current_principal),
+def export_docx(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
     from ..night_export import render_night_report_docx
 
@@ -639,7 +643,7 @@ def export_docx(report_id: int, principal: Principal = Depends(current_principal
 
 
 @router.get("/reports/{report_id}/export.pdf")
-def export_pdf(report_id: int, principal: Principal = Depends(current_principal),
+def export_pdf(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                db: Session = Depends(get_db)):
     from ..night_export import render_night_report_docx
     from ..pdf_render import docx_to_pdf

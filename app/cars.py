@@ -221,6 +221,11 @@ def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int]
     принявший (любой пользователь, если принял внешний)."""
     if car.status not in ("busy", "charging"):
         raise CarOpError("Передать можно занятый кар (или стоящий на зарядке у держателя)")
+    # как и возврат: передаёт тот, у кого кар сейчас, либо супервайзер/менеджер/админ
+    manager = principal.role in ("supervisor", "manager", "admin")
+    if not manager and car.holder_user_id and car.holder_user_id != principal.user.id:
+        raise CarOpError("Передать кар может сотрудник, у которого он сейчас "
+                         "(или супервайзер/менеджер/администратор)")
     uid, label = resolve_person(db, employee_id=employee_id, name=name)
     if uid == car.holder_user_id:
         raise CarOpError("Кар уже за этим сотрудником")

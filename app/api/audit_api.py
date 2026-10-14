@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal
 from ..db import get_db
-from ..deps import utc_to_local
+from ..deps import safe_sheet_cell, utc_to_local
 from ..models import AuditLog
 from ..permissions import require_perm
 
@@ -82,7 +82,8 @@ def export_csv(q: str = "", action: str = "", actor: str = "", date_from: Option
     w.writerow(["Время", "Кто", "Действие", "Объект", "Данные"])
     for r in rows:
         i = _item(r)
-        w.writerow([i["ts"], i["actor"], i["action_title"], i["target"], i["payload"]])
+        w.writerow([i["ts"], safe_sheet_cell(i["actor"]), i["action_title"],
+                    safe_sheet_cell(i["target"]), safe_sheet_cell(i["payload"])])
     data = io.BytesIO(("\ufeff" + buf.getvalue()).encode("utf-8"))
     return StreamingResponse(data, media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": 'attachment; filename="audit.csv"'})

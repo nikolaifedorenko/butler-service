@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -40,6 +41,7 @@ from .migrations import (
     migrate_timeoff_entity,
     seed_statement_kinds,
 )
+from .security import new_csrf_token
 from .seed import seed_if_empty
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -77,15 +79,34 @@ def init_db() -> None:
         db.close()
 
 
+def _weak_secret_key() -> bool:
+    """Слабый ключ подписи сессий: пустой, слишком короткий или значение из примера.
+
+    С таким ключом подделать cookie-сессию может кто угодно, поэтому по умолчанию
+    старт запрещён; локально его можно разрешить флагом ALLOW_INSECURE_DEV_SECRET=1.
+    """
+    key = (settings.secret_key or "").strip()
+    return len(key) < 16 or key.startswith("change-me")
+
+
+def _check_secret_key() -> None:
+    if not _weak_secret_key():
+        return
+    msg = (
+        "SECRET_KEY не задан или слишком короткий — сессии можно подделать. "
+        "Сгенерируйте ключ: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        "и пропишите SECRET_KEY в .env / окружение.")
+    if settings.allow_insecure_dev_secret:
+        import logging
+        logging.getLogger("uvicorn.error").warning(msg)
+    else:
+        raise RuntimeError(msg)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
     init_db()
-    if settings.secret_key.startswith("change-me"):
-        import logging
-        logging.getLogger("uvicorn.error").warning(
-            "SECRET_KEY не задан (используется значение по умолчанию)! Сессии можно подделать. "
-            "Сгенерируйте ключ: python -c \"import secrets; print(secrets.token_hex(32))\" "
-            "и пропишите SECRET_KEY в .env / окружение.")
     yield
 
 
@@ -104,6 +125,54 @@ async def security_headers(request: Request, call_next):
     h.setdefault("Referrer-Policy", "same-origin")
     if request.url.path.startswith("/api/") and "cache-control" not in h:
         h["Cache-Control"] = "no-store"   # персональные данные не должны оседать в кэшах
+    return response
+
+
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# Вход — точка входа: CSRF-cookie у клиента ещё нет, и это отдельная поверхность атаки
+# (login-CSRF), поэтому его не проверяем. Остальные mutating-запросы требуют заголовок.
+_CSRF_EXEMPT_PATHS = {"/api/auth/login"}
+
+
+def _set_csrf_cookie(response, token: str) -> None:
+    response.set_cookie(settings.csrf_cookie_name, token, httponly=False,
+                        samesite="lax", path="/", secure=settings.cookie_secure)
+
+
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    """CSRF-защита по схеме double-submit cookie.
+
+    Сессия живёт в httponly-cookie (JS её не видит); CSRF-токен — в отдельной cookie,
+    которую JS читает и передаёт в заголовке X-CSRF-Token. Кросс-сайтовый запрос не
+    сможет прочитать cookie другого origin, поэтому подделать пару «cookie+заголовок»
+    нельзя.
+
+    Токен проверяется ДО вызова обработчика: отклонённый запрос не должен производить
+    побочных эффектов. (Проверка после call_next лишь подменяла ответ — действие к
+    этому моменту уже было совершено и закоммичено в БД.) Заголовок сравнивается
+    побайтово: compare_digest для str с не-ASCII символами бросает TypeError,
+    а значение заголовка приходит из сети.
+    """
+    if not settings.csrf_enabled:
+        return await call_next(request)
+    token = request.cookies.get(settings.csrf_cookie_name)
+    fresh_cookie = token is None
+    if fresh_cookie:
+        token = new_csrf_token()
+    if request.method not in _CSRF_SAFE_METHODS and request.url.path not in _CSRF_EXEMPT_PATHS:
+        header = request.headers.get("x-csrf-token", "")
+        header_b = header.encode("utf-8", "surrogateescape")
+        if fresh_cookie or not header_b or not secrets.compare_digest(header_b, token.encode()):
+            # на 403 тоже выдаём cookie: клиент обновится и повторит запрос уже с токеном
+            denied = JSONResponse(
+                {"detail": "CSRF-проверка не пройдена: обновите страницу и повторите"},
+                status_code=403)
+            _set_csrf_cookie(denied, token)
+            return denied
+    response = await call_next(request)
+    if fresh_cookie:
+        _set_csrf_cookie(response, token)
     return response
 
 

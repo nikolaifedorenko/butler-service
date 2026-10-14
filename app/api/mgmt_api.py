@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit
 from ..db import get_db
+from ..deps import safe_sheet_cell
 from ..engine.application.close_period import close_period
 from ..engine.application.errors import ApplicationError
 from ..engine.application.months import (
@@ -102,6 +103,8 @@ def _context(db: Session, principal: Optional[Principal], year: int, month: int,
 def get_mgmt(year: int, month: int, half: Optional[int] = None, employee_id: Optional[int] = None,
              detail: bool = False, principal: Principal = Depends(require_perm("mgmt.view")),
              db: Session = Depends(get_db)):
+    if not (1 <= month <= 12 and 1 <= year <= 9999):
+        raise HTTPException(status_code=422, detail="year должен быть 1..9999, month — 1..12")
     now, ports, granularity, period, emps = _context(db, principal, year, month, half,
                                                      [employee_id] if employee_id else None)
     if employee_id and not emps:
@@ -218,12 +221,14 @@ def export_xlsx(year: int, month: int, half: Optional[int] = None,
         c.font = Font(bold=True)
     for r in data["rows"]:
         if r.get("error"):
-            ws.append([r["employee"]["full_name"], r["employee"]["tab_number"], r["error"]])
+            ws.append([safe_sheet_cell(r["employee"]["full_name"]),
+                       safe_sheet_cell(r["employee"]["tab_number"]), safe_sheet_cell(r["error"])])
             continue
         cells = [" ".join(f"{t} {h / 60:g}" for t, h in r["ut"].get(d_, {}).items())
                  for d_ in days]
         status = "закрыт" if r["state"]["closed"] else "просмотр"
-        ws.append([r["employee"]["full_name"], r["employee"]["tab_number"], *cells,
+        ws.append([safe_sheet_cell(r["employee"]["full_name"]),
+                   safe_sheet_cell(r["employee"]["tab_number"]), *cells,
                    *[r["totals"].get(t, 0) / 60 for t in tariffs],
                    r["debt"]["residual_h"], r["bank"]["closed_h"], status])
     for row in ws.iter_rows(min_row=2):

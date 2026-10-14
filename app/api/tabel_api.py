@@ -80,6 +80,8 @@ def _code_colors(db: Session) -> dict[str, str]:
 def get_tabel(year: int, month: int, half: Optional[int] = None,
               principal: Principal = Depends(require_perm("tabel.view")),
               db: Session = Depends(get_db)):
+    if not (1 <= month <= 12 and 1 <= year <= 9999):
+        raise HTTPException(status_code=422, detail="year должен быть 1..9999, month — 1..12")
     granularity = _granularity(db, month_period(year, month))
     period = _period_of(db, year, month, half)
     st = _settings(db, period)
@@ -177,6 +179,9 @@ def put_cell(payload: CellIn, principal: Principal = Depends(require_perm("tabel
 @router.post("/bulk")
 def bulk(payload: BulkIn, principal: Principal = Depends(require_perm("tabel.edit")),
          db: Session = Depends(get_db)):
+    if len(payload.employee_ids) > 500 or len(payload.dates) > 366:
+        raise HTTPException(status_code=422,
+                            detail="Слишком большой запрос (максимум 500 сотрудников и 366 дат)")
     warns, errors = set(), []
     for d in payload.dates:
         for eid in payload.employee_ids:
