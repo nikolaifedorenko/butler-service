@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from ..auth import Principal, audit, can_manage_user, current_principal, require_manager
 from ..base_schedule import dump_pattern, validate_pattern
 from ..db import get_db
+from ..permissions import require_perm
 from ..deps import local_date, slugify_username
 from ..employment import close_period, open_period, periods_of
 from ..groups import GROUP_META, normalize_group
@@ -41,7 +43,18 @@ from .engine_common import day_code_rows, domain_error_text, engine_ports, last_
 
 router = APIRouter(prefix="/api", tags=["directory"])
 
-DEFAULT_PASSWORD = "demo1234"
+# Алфавит без визуально похожих символов (0/O, 1/l/I) — чтобы пароль легко продиктовать.
+_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _initial_password() -> str:
+    """Случайный одноразовый пароль для новой учётной записи.
+
+    Раньше здесь был общий дефолт «demo1234»: все сотрудники, созданные без явного
+    пароля, получали один и тот же известный пароль. Теперь пароль уникален для
+    каждого и показывается администратору ровно один раз в ответе создания.
+    """
+    return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(12))
 
 
 _CAR_UNSET = object()      # «кар не предзагружен» — отличается от «кара нет» (None)
@@ -253,7 +266,7 @@ def _touch_block(db: Session, emp: Employee, new_group: str, since: dt.date,
 
 
 @router.get("/employees")
-def list_employees(include_deleted: bool = False, principal: Principal = Depends(require_manager),
+def list_employees(include_deleted: bool = False, principal: Principal = Depends(require_perm("employees.view")),
                    db: Session = Depends(get_db)):
     stmt = (select(Employee)
             .options(joinedload(Employee.department), joinedload(Employee.user),
@@ -287,7 +300,7 @@ def suggest_genitive_api(payload: SuggestGenitiveIn, principal: Principal = Depe
 
 
 @router.post("/employees")
-def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_manager),
+def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_perm("employees.edit")),
                     db: Session = Depends(get_db)):
     _guard_supervisor(principal, payload.role, None)
     hired = _parse_date(payload.hired_at) or local_date()
@@ -317,7 +330,7 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
     username = (payload.username or slugify_username(emp.full_name)).strip().lower()
     if db.scalar(select(User).where(User.username == username)):
         username = f"{username}{emp.id}"
-    password = payload.password or DEFAULT_PASSWORD
+    password = payload.password or _initial_password()
     db.add(User(username=username, password_hash=hash_password(password),
                 role=payload.role, employee_id=emp.id))
     _sync_contacts(db, emp, payload.contacts)
@@ -331,7 +344,7 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
 
 @router.put("/employees/{employee_id}")
 def update_employee(employee_id: int, payload: EmployeeIn,
-                    principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                    principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     emp = db.get(Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
@@ -425,7 +438,7 @@ def _build_pattern_json(payload: DatedAction) -> str:
 
 @router.post("/employees/{employee_id}/position-change")
 def position_change(employee_id: int, payload: DatedAction,
-                    principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                    principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод/повышение/понижение с произвольной даты."""
     emp = db.get(Employee, employee_id)
     if not emp:
@@ -443,7 +456,7 @@ def position_change(employee_id: int, payload: DatedAction,
 
 @router.post("/employees/{employee_id}/block-change")
 def block_change(employee_id: int, payload: DatedAction,
-                 principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                 principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод между блоками графика (Смена 1 ↔ Смена 2) с произвольной даты."""
     emp = db.get(Employee, employee_id)
     if not emp:
@@ -469,7 +482,7 @@ def block_change(employee_id: int, payload: DatedAction,
 
 @router.post("/employees/{employee_id}/dismiss")
 def dismiss_employee(employee_id: int, payload: DatedAction,
-                     principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                     principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Увольнение (деактивация) с произвольной даты; история сохраняется."""
     emp = db.get(Employee, employee_id)
     if not emp:
@@ -505,7 +518,7 @@ class RehireIn(BaseModel):
 
 @router.post("/employees/{employee_id}/rehire")
 def rehire_employee(employee_id: int, payload: RehireIn,
-                    principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                    principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Повторный приём уволенного сотрудника с произвольной даты.
 
     В графике будут видны: смены ДО увольнения, неактивные дни между периодами
@@ -588,7 +601,7 @@ class BankAdjustIn(BaseModel):
 
 @router.post("/employees/{employee_id}/bank-adjust")
 def bank_adjust(employee_id: int, payload: BankAdjustIn,
-                principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Ручная корректировка банка часов (+/−) с автором, датой и причиной."""
     _guard_bank(principal)
     emp = db.get(Employee, employee_id)
@@ -625,7 +638,7 @@ def bank_adjust(employee_id: int, payload: BankAdjustIn,
 
 
 @router.get("/employees/{employee_id}/bank-adjustments")
-def bank_adjustments(employee_id: int, principal: Principal = Depends(require_manager),
+def bank_adjustments(employee_id: int, principal: Principal = Depends(require_perm("employees.view")),
                      db: Session = Depends(get_db)):
     emp = db.get(Employee, employee_id)
     if not emp:
@@ -640,7 +653,7 @@ def bank_adjustments(employee_id: int, principal: Principal = Depends(require_ma
 
 @router.delete("/employees/{employee_id}/bank-adjustments/{adjustment_id}")
 def bank_adjust_delete(employee_id: int, adjustment_id: int,
-                       principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                       principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     _guard_bank(principal)
     adj = db.get(BankAdjustment, adjustment_id)
     if not adj or adj.employee_id != employee_id:
@@ -654,7 +667,7 @@ def bank_adjust_delete(employee_id: int, adjustment_id: int,
 
 
 @router.get("/employees/{employee_id}/history")
-def employee_history(employee_id: int, principal: Principal = Depends(require_manager),
+def employee_history(employee_id: int, principal: Principal = Depends(require_perm("employees.view")),
                      db: Session = Depends(get_db)):
     """История должностей и принадлежность к блокам графика с датами."""
     emp = db.get(Employee, employee_id)
@@ -694,23 +707,28 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_ma
 
 
 @router.post("/employees/{employee_id}/deactivate")
-def deactivate_employee(employee_id: int, principal: Principal = Depends(require_manager),
-                        db: Session = Depends(get_db)):
+def deactivate_employee(employee_id: int, principal: Principal = Depends(require_perm("employees.edit")),
+                        db: Session = Depends(get_db), active: bool = False):
+    """Деактивировать (по умолчанию) или активировать сотрудника — идемпотентно.
+
+    Раньше здесь был `active = not active` (переключатель): повторный запрос при таймауте
+    сети откатывал состояние обратно. Теперь состояние задаётся явно параметром `active`.
+    """
     emp = db.get(Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
     _guard_supervisor(principal, ROLE_EMPLOYEE, emp.user)
-    emp.active = not emp.active
+    emp.active = active
     if emp.user:
-        emp.user.is_active = emp.active
-    audit(db, principal, "employee_deactivate" if not emp.active else "employee_activate",
+        emp.user.is_active = active
+    audit(db, principal, "employee_deactivate" if not active else "employee_activate",
           f"employee:{emp.id}")
     db.commit()
     return _emp_dict(emp, with_user=True)
 
 
 @router.post("/employees/{employee_id}/delete")
-def delete_employee(employee_id: int, principal: Principal = Depends(require_manager),
+def delete_employee(employee_id: int, principal: Principal = Depends(require_perm("employees.edit")),
                     db: Session = Depends(get_db)):
     """«Полное удаление»: сотрудник исчезает из списков и графика, но ВСЯ история
     (табель, отметки, аудит) сохраняется — записи помечаются deleted_at."""

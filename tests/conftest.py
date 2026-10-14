@@ -39,6 +39,9 @@ TEST_DB = pathlib.Path(tempfile.gettempdir()) / "tt_test.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("APP_TZ", "Europe/Moscow")
+# CSRF-защита — браузерный механизм (cookie + заголовок); TestClient её не имитирует,
+# поэтому в тестах отключаем. Сам механизм покрыт отдельно (см. tests/test_csrf.py).
+os.environ.setdefault("CSRF_ENABLED", "0")
 
 DEMO_PASSWORD = "demo1234"
 

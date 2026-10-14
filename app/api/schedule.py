@@ -21,9 +21,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_manager
+from ..auth import Principal, audit, require_manager
 from ..db import get_db
-from ..deps import TZ, now_local, utc_to_local
+from ..permissions import require_perm
+from ..deps import TZ, now_local, safe_sheet_cell, utc_to_local
 from ..doublepay import SCOPE_TITLES, calendar_map
 from ..employment import employed_on, periods_of, ranges_from_periods
 from ..engine.adapters.sql_settings import SqlSettingsAdapter
@@ -168,12 +169,14 @@ def _strip_to_plan(payload: dict) -> dict:
 
 
 @router.get("")
-def get_grid(year: int, month: int, principal: Principal = Depends(current_principal),
+def get_grid(year: int, month: int, principal: Principal = Depends(require_perm("schedule.view")),
              db: Session = Depends(get_db)):
     """Сетка Графика: ФИО × дни месяца; ячейка — Табель-код, отрезки смен (generated/
     manual) и согласованные отсутствия (логический разрез)."""
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month должен быть 1..12")
+    if not (1 <= year <= 9999):
+        raise HTTPException(status_code=422, detail="year должен быть 1..9999")
     first, last = _month_bounds(year, month)
     period = month_period(year, month)
     days = [first + dt.timedelta(days=i) for i in range((last - first).days + 1)]
@@ -335,7 +338,7 @@ class ManualShiftIn(BaseModel):
 
 
 @router.put("/shift")
-def put_manual_shift(payload: ManualShiftIn, principal: Principal = Depends(require_manager),
+def put_manual_shift(payload: ManualShiftIn, principal: Principal = Depends(require_perm("schedule.edit")),
                      db: Session = Depends(get_db)):
     intervals = payload.shifts
     if payload.shift_type_id is not None and not intervals:
@@ -377,7 +380,7 @@ def put_manual_shift(payload: ManualShiftIn, principal: Principal = Depends(requ
 
 @router.delete("/shift")
 def delete_manual_shift(employee_id: int, date: dt.date,
-                        principal: Principal = Depends(require_manager),
+                        principal: Principal = Depends(require_perm("schedule.edit")),
                         db: Session = Depends(get_db)):
     """Удаление ручной смены — день возвращается к генерации из Табеля (16.3)."""
     ports = engine_ports(db, principal, now_utc())
@@ -399,7 +402,7 @@ class AbsenceIn(BaseModel):
 
 
 @router.post("/absence")
-def add_absence(payload: AbsenceIn, principal: Principal = Depends(require_manager),
+def add_absence(payload: AbsenceIn, principal: Principal = Depends(require_perm("schedule.edit")),
                 db: Session = Depends(get_db)):
     """«Пропуск/отлучка» — согласованное отсутствие (логический разрез Графика, v7/R17).
     На часы и банк не влияет (RUL-ABSENCE-ONLY-FLAGS): недостача возникает из отсутствия
@@ -428,7 +431,7 @@ def add_absence(payload: AbsenceIn, principal: Principal = Depends(require_manag
 
 
 @router.delete("/absence/{absence_id}")
-def remove_absence(absence_id: int, principal: Principal = Depends(require_manager),
+def remove_absence(absence_id: int, principal: Principal = Depends(require_perm("schedule.edit")),
                    db: Session = Depends(get_db)):
     ports = engine_ports(db, principal, now_utc())
     schedule_view.drop_absence(absence_id, ports)
@@ -604,7 +607,7 @@ def _range_absence_as_schedule(payload: RangeAbsenceIn, kind: ShiftType, princip
 
 
 @router.post("/range-absence")
-def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(require_manager),
+def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(require_perm("schedule.edit")),
                   db: Session = Depends(get_db)):
     """«Назначить отсутствие» на период.
 
@@ -619,6 +622,13 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
 
     Период может пересекать границы месяцев.
     """
+    if payload.last < payload.first:
+        raise HTTPException(status_code=422, detail="Дата окончания раньше даты начала")
+    if (payload.last - payload.first).days > 366:
+        raise HTTPException(status_code=422,
+                            detail="Период отсутствия не может быть больше 366 дней")
+    if len(payload.employee_ids) > 500:
+        raise HTTPException(status_code=422, detail="Слишком много сотрудников (максимум 500)")
     from ..engine.application import timesheet_edit
     code = payload.code.strip()
     kind = db.get(ShiftType, payload.shift_type_id) if payload.shift_type_id else None
@@ -675,7 +685,7 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
 
 @router.get("/timeoff-hours")
 def timeoff_hours(employee_id: int, date: dt.date,
-                  principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                  principal: Principal = Depends(require_perm("schedule.view")), db: Session = Depends(get_db)):
     """Часы «выходного за ранее отработанные часы» для сотрудника и дня.
 
     Значение выводится, а не задаётся константой (норматив от 12.10.2026):
@@ -693,7 +703,7 @@ def timeoff_hours(employee_id: int, date: dt.date,
 
 @router.get("/absence-period")
 def absence_period(employee_id: int, date: dt.date,
-                   principal: Principal = Depends(require_manager),
+                   principal: Principal = Depends(require_perm("schedule.view")),
                    db: Session = Depends(get_db)):
     """Непрерывный период одного отсутствия вокруг даты — для печати заявления.
 
@@ -799,12 +809,12 @@ class PatternIn(BaseModel):
 
 
 @router.get("/patterns")
-def get_patterns(principal: Principal = Depends(require_manager)):
+def get_patterns(principal: Principal = Depends(require_perm("schedule.edit"))):
     return {"patterns": pattern_list(), "groups": GROUP_ORDER}
 
 
 @router.post("/fill-pattern")
-def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_manager),
+def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_perm("schedule.edit")),
                  db: Session = Depends(get_db)):
     """Шаблон блока/цикла: сохраняет назначение блока и ЗАПОЛНЯЕТ ТАБЕЛЬ по циклу;
     График перегенерируется из Табеля (16.3)."""
@@ -904,7 +914,7 @@ class ContinueIn(BaseModel):
 
 
 @router.post("/continue")
-def continue_schedule(payload: ContinueIn, principal: Principal = Depends(require_manager),
+def continue_schedule(payload: ContinueIn, principal: Principal = Depends(require_perm("schedule.edit")),
                       db: Session = Depends(get_db)):
     """«Продолжить график»: заполняет Табель следующего месяца по циклам и
     перегенерирует График."""
@@ -930,7 +940,7 @@ class CopyIn(BaseModel):
 
 
 @router.post("/copy")
-def copy_period(payload: CopyIn, principal: Principal = Depends(require_manager),
+def copy_period(payload: CopyIn, principal: Principal = Depends(require_perm("schedule.edit")),
                 db: Session = Depends(get_db)):
     """Копирование ячеек Табеля месяц-в-месяц (по дням месяца); закрытые периоды
     не трогаются (16.5)."""
@@ -982,7 +992,7 @@ class ClearMonthIn(BaseModel):
 
 
 @router.post("/clear-month")
-def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_manager),
+def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_perm("schedule.edit")),
                 db: Session = Depends(get_db)):
     """Очистка Табеля месяца (и сгенерированного Графика); manual-строки — только с
     флагом manual_too. Закрытые периоды не трогаются."""
@@ -1040,8 +1050,9 @@ def export_xlsx(year: int, month: int, principal: Principal = Depends(require_ma
             if shifts:
                 spans = " ".join(f"{s['start_hm']}–{s['end_hm']}" for s in shifts)
                 text = f"{text}\n{spans}".strip()
-            cells.append(text)
-        ws.append([row["employee"]["full_name"], *cells, row["totals"]["planned_hours"]])
+            cells.append(safe_sheet_cell(text))
+        ws.append([safe_sheet_cell(row["employee"]["full_name"]), *cells,
+                   row["totals"]["planned_hours"]])
     for r in ws.iter_rows(min_row=2):
         for c in r:
             c.alignment = Alignment(wrap_text=True, vertical="top")
@@ -1057,7 +1068,7 @@ def export_xlsx(year: int, month: int, principal: Principal = Depends(require_ma
 
 
 @router.get("/pdf")
-def export_pdf(year: int, month: int, principal: Principal = Depends(current_principal),
+def export_pdf(year: int, month: int, principal: Principal = Depends(require_perm("schedule.view")),
                db: Session = Depends(get_db)):
     """График на месяц в PDF: та же таблица, что в «Печать»/Excel. Собирается через
     DOCX → PDF (LibreOffice или встроенный движок); без движка — 501 с подсказкой."""

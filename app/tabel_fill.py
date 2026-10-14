@@ -135,15 +135,21 @@ def _off_code(st: Settings, shift: Optional[ShiftType]) -> str:
 
 
 def value_for_day(db: Session, emp: Employee, day: dt.date, st: Settings,
-                  cfg=None, index=None, catalog=None) -> tuple[Optional[str], int, str]:
+                  periods: list, cfg=None, index=None, catalog=None) -> tuple[Optional[str], int, str]:
     """(код, плановые минуты, предупреждение) для дня; код None — день не заполняется
-    (вне трудоустройства / ручной режим / значение непредставимо)."""
-    today_shift = base_shift(db, emp, day, cfg=cfg, index=index, catalog=catalog)
+    (вне трудоустройства / ручной режим / значение непредставимо).
+
+    `periods` — уже загруженные периоды работы сотрудника: занятость `day` и вчерашнего
+    дня проверяется по ним, без повторных запросов к БД (раньше base_shift на каждый день
+    дёргал is_employed → periods_of — N+1 на старте и в «Продолжить/Сбросить»).
+    """
+    today_shift = base_shift(db, emp, day, employed=True, cfg=cfg, index=index, catalog=catalog)
     if _is_overnight(today_shift):
         # смена через полночь: одно значение в дне-якоре, «утро» следующего дня не учитываем
         return _anchor_value(st, today_shift, day)
-    yesterday_shift = base_shift(db, emp, day - dt.timedelta(days=1), cfg=cfg, index=index,
-                                 catalog=catalog)
+    yesterday = day - dt.timedelta(days=1)
+    yesterday_shift = (base_shift(db, emp, yesterday, employed=True, cfg=cfg, index=index,
+                                  catalog=catalog) if employed_on(periods, yesterday) else None)
     tail = [] if _is_overnight(yesterday_shift) else \
         _shift_day_parts(yesterday_shift, day, day - dt.timedelta(days=1))
     parts = _merge(_shift_day_parts(today_shift, day, day) + tail)
@@ -183,7 +189,8 @@ def fill_timesheet_from_cycles(db: Session, employees: list[Employee], first: dt
             if not employed_on(periods.get(emp.id, []), day):
                 day += dt.timedelta(days=1)
                 continue
-            code, minutes, warn = value_for_day(db, emp, day, st, cfg, index, catalog)
+            code, minutes, warn = value_for_day(db, emp, day, st, periods.get(emp.id, []),
+                                                cfg, index, catalog)
             if warn:
                 warnings.append(f"{emp.display_name} {warn}")
             row = existing.get((emp.id, day))

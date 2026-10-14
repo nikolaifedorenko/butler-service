@@ -109,6 +109,14 @@ def migrate_db() -> None:
         if insp.has_table("punches"):
             # основной фильтр всех запросов по отметкам: employee_id = ? AND ts >= ?
             con.execute(text("CREATE INDEX IF NOT EXISTS ix_punches_emp_ts ON punches (employee_id, ts)"))
+        # доска «кто на работе» и статус смены фильтруют по start_utc без employee_id —
+        # без индекса это полный скан растущих таблиц
+        if insp.has_table("schedule_shifts"):
+            con.execute(text("CREATE INDEX IF NOT EXISTS ix_sched_shifts_start "
+                             "ON schedule_shifts (start_utc)"))
+        if insp.has_table("schedule_absences"):
+            con.execute(text("CREATE INDEX IF NOT EXISTS ix_sched_abs_start "
+                             "ON schedule_absences (start_utc)"))
 
         # «Администрация» → «Пятидневка» (название блока уточнили по смыслу)
         if insp.has_table("employees"):

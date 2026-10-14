@@ -1,7 +1,11 @@
 """Аутентификация, профиль, «войти как сотрудник» для демонстрации."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+import threading
+import time
+from collections import defaultdict
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,6 +22,36 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _DUMMY_HASH = hash_password("dummy-password-for-timing")
 MIN_PASSWORD_LEN = 8
+
+# ── rate-limit входа: не более MAX неудач с одного IP за WINDOW секунд ──────────
+_LOGIN_WINDOW_SECONDS = 300
+_LOGIN_MAX_ATTEMPTS = 10
+_login_failures: dict[str, list[float]] = defaultdict(list)
+_login_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    # за reverse-proxy это будет адрес прокси; для точного лимита в проде читайте
+    # X-Forwarded-For (и доверяйте только своему прокси)
+    return request.client.host if request.client else "unknown"
+
+
+def _too_many_attempts(ip: str) -> bool:
+    now = time.time()
+    with _login_lock:
+        recent = [t for t in _login_failures.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
+        _login_failures[ip] = recent
+        return len(recent) >= _LOGIN_MAX_ATTEMPTS
+
+
+def _record_login_failure(ip: str) -> None:
+    with _login_lock:
+        _login_failures[ip].append(time.time())
+
+
+def _reset_login_failures(ip: str) -> None:
+    with _login_lock:
+        _login_failures.pop(ip, None)
 
 
 def _token(user: User, emp_id, imp: bool = False) -> str:
@@ -42,14 +76,20 @@ def _set_cookie(response: Response, token: str) -> None:
 
 
 @router.post("/login")
-def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
+def login(payload: LoginIn, response: Response, request: Request, db: Session = Depends(get_db)):
+    ip = _client_ip(request)
+    if _too_many_attempts(ip):
+        raise HTTPException(status_code=429,
+                            detail="Слишком много неудачных попыток входа. Подождите несколько минут.")
     user = db.scalar(select(User).where(User.username == payload.username.strip().lower()))
     # для несуществующего логина тоже считаем хеш — по времени ответа логин не угадать
     stored = user.password_hash if user else _DUMMY_HASH
     if not verify_password(payload.password, stored) or not user:
+        _record_login_failure(ip)
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Учётная запись отключена")
+    _reset_login_failures(ip)
     employee = db.get(Employee, user.employee_id) if user.employee_id else None
     token = _token(user, employee.id if employee else None)
     _set_cookie(response, token)

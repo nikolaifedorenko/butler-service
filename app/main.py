@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -77,15 +78,34 @@ def init_db() -> None:
         db.close()
 
 
+def _weak_secret_key() -> bool:
+    """Слабый ключ подписи сессий: пустой, слишком короткий или значение из примера.
+
+    С таким ключом подделать cookie-сессию может кто угодно, поэтому по умолчанию
+    старт запрещён; локально его можно разрешить флагом ALLOW_INSECURE_DEV_SECRET=1.
+    """
+    key = (settings.secret_key or "").strip()
+    return len(key) < 16 or key.startswith("change-me")
+
+
+def _check_secret_key() -> None:
+    if not _weak_secret_key():
+        return
+    msg = (
+        "SECRET_KEY не задан или слишком короткий — сессии можно подделать. "
+        "Сгенерируйте ключ: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        "и пропишите SECRET_KEY в .env / окружение.")
+    if settings.allow_insecure_dev_secret:
+        import logging
+        logging.getLogger("uvicorn.error").warning(msg)
+    else:
+        raise RuntimeError(msg)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
     init_db()
-    if settings.secret_key.startswith("change-me"):
-        import logging
-        logging.getLogger("uvicorn.error").warning(
-            "SECRET_KEY не задан (используется значение по умолчанию)! Сессии можно подделать. "
-            "Сгенерируйте ключ: python -c \"import secrets; print(secrets.token_hex(32))\" "
-            "и пропишите SECRET_KEY в .env / окружение.")
     yield
 
 
@@ -104,6 +124,37 @@ async def security_headers(request: Request, call_next):
     h.setdefault("Referrer-Policy", "same-origin")
     if request.url.path.startswith("/api/") and "cache-control" not in h:
         h["Cache-Control"] = "no-store"   # персональные данные не должны оседать в кэшах
+    return response
+
+
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# Вход — точка входа: CSRF-cookie у клиента ещё нет, и это отдельная поверхность атаки
+# (login-CSRF), поэтому его не проверяем. Остальные mutating-запросы требуют заголовок.
+_CSRF_EXEMPT_PATHS = {"/api/auth/login"}
+
+
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    """CSRF-защита по схеме double-submit cookie.
+
+    Сессия живёт в httponly-cookie (JS её не видит); CSRF-токен — в отдельной cookie,
+    которую JS читает и передаёт в заголовке X-CSRF-Token. Кросс-сайтовый запрос не
+    сможет прочитать cookie другого origin, поэтому подделать пару «cookie+заголовок»
+    нельзя.
+    """
+    if not settings.csrf_enabled:
+        return await call_next(request)
+    token = request.cookies.get(settings.csrf_cookie_name) or secrets.token_hex(16)
+    response = await call_next(request)
+    if request.cookies.get(settings.csrf_cookie_name) is None:
+        response.set_cookie(settings.csrf_cookie_name, token, httponly=False,
+                            samesite="lax", path="/", secure=settings.cookie_secure)
+    if request.method not in _CSRF_SAFE_METHODS and request.url.path not in _CSRF_EXEMPT_PATHS:
+        header = request.headers.get("x-csrf-token", "")
+        if not token or not secrets.compare_digest(header, token):
+            return JSONResponse(
+                {"detail": "CSRF-проверка не пройдена: обновите страницу и повторите"},
+                status_code=403)
     return response
 
 

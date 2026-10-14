@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
+import zipfile
 from pathlib import Path
 from typing import Optional
 
@@ -88,8 +89,15 @@ _HUNDREDS = ["", "сто", "двести", "триста", " четыреста"
 
 
 def number_to_words(n: int) -> str:
+    if n < 0:
+        return "минус " + number_to_words(-n)
     if n == 0:
         return "ноль"
+    # значения ≥ 1000 в заявлениях не встречаются, но не должны ронять рендер (раньше
+    # _HUNDREDS[h] с h ≥ 10 давал IndexError → 500). «N тысяч» — запасной вариант.
+    if n >= 1000:
+        head = number_to_words(n // 1000) + " тысяч"
+        return f"{head} {number_to_words(n % 1000)}" if n % 1000 else head
     parts = []
     h, rest = divmod(n, 100)
     if h:
@@ -133,11 +141,30 @@ def list_templates() -> list[dict]:
     return out
 
 
+_MAX_UNCOMPRESSED = 50 * 1024 * 1024   # распакованный docx не больше 50 МБ
+_MAX_ZIP_ENTRIES = 2000
+
+
+def _check_zip_size(data: bytes) -> None:
+    """Защита от zip-бомбы: лимит 5 МБ относится к СЖАТОМУ файлу, а распаковка
+    docx (document.xml + части) может раздуть память в разы."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            infos = zf.infolist()
+            if len(infos) > _MAX_ZIP_ENTRIES:
+                raise ValueError(f"Слишком много файлов в шаблоне (>{_MAX_ZIP_ENTRIES})")
+            if sum(i.file_size for i in infos) > _MAX_UNCOMPRESSED:
+                raise ValueError("Шаблон слишком велик при распаковке (> 50 МБ)")
+    except zipfile.BadZipFile:
+        raise ValueError("Файл не является корректным .docx")
+
+
 def save_template(doc_type: str, data: bytes) -> dict:
     # код вида заявления из БД (statement_kinds); формат жёстко ограничиваем —
     # имя файла бланка строится из кода, посторонние символы недопустимы
     if not CODE_RE.match(doc_type or ""):
         raise ValueError(f"Некорректный код вида заявления: {doc_type!r}")
+    _check_zip_size(data)
     try:
         Document(io.BytesIO(data))          # валидация: это действительно docx
     except Exception as exc:

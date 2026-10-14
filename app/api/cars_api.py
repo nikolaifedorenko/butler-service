@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
+from ..permissions import require_perm
 from ..cars import (
     ACTION_TITLES,
     STATUS_TITLES,
@@ -102,7 +103,7 @@ class LocationEditIn(BaseModel):
 
 
 @router.get("/meta")
-def meta(principal: Principal = Depends(current_principal)):
+def meta(principal: Principal = Depends(require_perm("cars.view"))):
     """Справочные словари для интерфейса + права."""
     from ..cars import CHARGE_TITLES
 
@@ -116,7 +117,7 @@ def meta(principal: Principal = Depends(current_principal)):
 
 
 @router.get("/locations")
-def locations(db: Session = Depends(get_db), principal: Principal = Depends(current_principal)):
+def locations(db: Session = Depends(get_db), principal: Principal = Depends(require_perm("cars.view"))):
     show_all = principal.role in ("admin", "manager", "supervisor")
     rows = list_locations(db)
     return {"locations": [r for r in rows if r["active"] or show_all]}
@@ -148,7 +149,7 @@ def location_update(loc_id: int, payload: LocationEditIn, db: Session = Depends(
 
 
 @router.get("")
-def park(db: Session = Depends(get_db), principal: Principal = Depends(current_principal)):
+def park(db: Session = Depends(get_db), principal: Principal = Depends(require_perm("cars.view"))):
     """Парк целиком (видно всем ролям). my_car_id — кар текущего пользователя."""
     from ..models import Car
 
@@ -195,7 +196,7 @@ def car_edit(car_id: int, payload: CarEditIn, db: Session = Depends(get_db),
 
 @router.get("/{car_id}/history")
 def car_history(car_id: int, limit: int = 200, db: Session = Depends(get_db),
-                principal: Principal = Depends(current_principal)):
+                principal: Principal = Depends(require_perm("cars.view"))):
     """История кара: только добавление новых записей — правок и удалений нет."""
     from ..models import Car
 

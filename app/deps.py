@@ -48,6 +48,18 @@ def slugify_username(full_name: str, fallback: str = "user") -> str:
     return re.sub(r"[^a-z0-9._-]", "", login)[:48] or fallback
 
 
+def safe_sheet_cell(value):
+    """Защита от CSV/Excel-инъекции формул.
+
+    Ячейка, начинающаяся с «=», «+», «-», «@», TAB или CR, при открытии в Excel/LibreOffice
+    может выполниться как формула. Предваряем такие значения апострофом — это общепринятая
+    защита (OWASP) от CSV/formula injection.
+    """
+    if isinstance(value, str) and value and value[0] in "=+-@\t\r":
+        return "'" + value
+    return value
+
+
 def month_name(month: int) -> str:
     names = ["январь", "февраль", "март", "апрель", "май", "июнь",
              "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"]
