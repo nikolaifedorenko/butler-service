@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     # CSP в режиме Report-Only (браузер предупреждает в консоли, но не блокирует) —
     # для осторожного раскатывания; 0 — полноценный блокирующий режим.
     csp_report_only: bool = False
+    # наблюдаемость: JSON-лог запросов (метод/путь/статус/длительность/request-id)
+    # вместо человечного; для прода за прокси (uvicorn --no-access-log в compose)
+    log_json: bool = False
+    # /metrics (Prometheus): по умолчанию выключен — метрики не должны быть публичными
+    metrics_enabled: bool = False
+    # семантическая версия приложения: bump при релизе (тег + docs/CHANGES-*.md)
+    app_version: str = "0.1.0"
     # разрешить запуск со слабым/пустым SECRET_KEY — ТОЛЬКО для локальной разработки.
     # В остальных случаях приложение откажется стартовать (см. app/main.py).
     allow_insecure_dev_secret: bool = False
