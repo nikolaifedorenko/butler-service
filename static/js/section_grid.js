@@ -123,7 +123,7 @@ function renderGrid() {
 
     const body = keys.map(key => {
       const list = groups[key];
-      const color = list[0]?.r.employee.group_color || '#8a94a6';
+      const color = cssColor(list[0]?.r.employee.group_color);
       /* заголовок блока: первая ячейка «липкая» — не уезжает при горизонтальной прокрутке,
          остальную строку заполняет ячейка-фон (исправление уезжавших заголовков) */
       const header = `<tr class="group-row"><td class="g-name">
@@ -196,7 +196,7 @@ function cellTd(r, d, c, cls) {
 }
 
 function empRow(r, g, block) {
-  const accent = r.employee.group_color || '#8a94a6';
+  const accent = cssColor(r.employee.group_color);
   const ranges = block?.ranges || (block ? [{ start: block.start, end: block.end }] : []);
   const inBlock = iso => !ranges.length || ranges.some(rg =>
     iso >= rg.start && (!rg.end || iso <= rg.end));

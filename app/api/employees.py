@@ -8,14 +8,14 @@ import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..auth import Principal, audit, can_manage_user, current_principal, require_manager
 from ..base_schedule import validate_pattern
 from ..db import get_db
-from ..deps import local_date, slugify_username
+from ..deps import local_date, normalize_hex_color, slugify_username
 from ..employment import open_period, periods_of
 from ..groups import group_choices as group_choices_list
 from ..groups import normalize_group
@@ -155,6 +155,11 @@ class EmployeeIn(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     role: str = ROLE_EMPLOYEE
+
+    @field_validator("group_color", mode="before")
+    @classmethod
+    def _valid_group_color(cls, v):
+        return normalize_hex_color(v, "#8a94a6")
 
 
 def _sync_contacts(db: Session, emp: Employee, contacts: list[ContactIn]) -> None:
@@ -798,6 +803,11 @@ class ShiftTypeIn(BaseModel):
     punch_in_allowed: bool = True   # можно ли жать «Пришёл» во время этой смены/отсутствия
     punch_out_allowed: bool = True  # можно ли жать «Ушёл»
     effective_from: Optional[str] = None  # изменения вступают в силу с даты; прошлое не меняется
+
+    @field_validator("color", mode="before")
+    @classmethod
+    def _valid_color(cls, v):
+        return normalize_hex_color(v, "#6b7280")
 
 
 @router.post("/shift-types")

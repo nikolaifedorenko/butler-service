@@ -22,7 +22,7 @@ async function loadEmployees() {
       </tr></thead><tbody>
       ${state.employees.map(e => `<tr data-card="${e.id}" style="cursor:pointer">
         <td class="who" data-label="Сотрудник">
-          <span class="dot-pos" style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${e.group_color};margin-right:7px"></span>${esc(e.full_name)}
+          <span class="dot-pos" style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${cssColor(e.group_color)};margin-right:7px"></span>${esc(e.full_name)}
           ${e.telegram ? `<small>tg: ${esc(e.telegram)}</small>` : ''}</td>
         <td data-label="Должность">${esc(e.position || '—')}</td>
         <td data-label="Блок">${esc(e.schedule_group || '—')}</td>

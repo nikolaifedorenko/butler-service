@@ -819,7 +819,7 @@ function settingsTimeline(rows) {
         ? [{ a: s, b: e }]
         : [{ a: s, b: 1440 }, { a: 0, b: e }];
       return `<div class="tl-row"><span class="lbl" title="${esc(r.label)}">${esc(r.label)}</span>
-        <div class="tl-track">${bars.map(x => `<div class="tl-bar" style="left:${pct(x.a)}%;width:${Math.max(pct(x.b) - pct(x.a), 0)}%;background:${r.color}">
+        <div class="tl-track">${bars.map(x => `<div class="tl-bar" style="left:${pct(x.a)}%;width:${Math.max(pct(x.b) - pct(x.a), 0)}%;background:${cssColor(r.color)}">
           ${x.b - x.a >= 120 ? esc(`${settingsHm(x.a)}–${settingsHm(x.b)}`) : ''}</div>`).join('')}</div></div>`;
     }).join('')}
   </div>`;
@@ -1232,7 +1232,7 @@ function settingsCodesTable(codes, windows, shifts, d, edit) {
           : esc(row.title || '—')}</td>
         <td data-label="Цвет">${edit
           ? `<input type="color" data-color="${esc(code)}" value="${esc(row.color || '#8a94a6')}" style="width:44px;height:32px;padding:2px">`
-          : `<span class="code-dot" style="background:${esc(row.color || '#8a94a6')}"></span>`}</td>
+          : `<span class="code-dot" style="background:${cssColor(row.color)}"></span>`}</td>
         ${SETTINGS_CODE_FLAGS.map(f => `<td data-label="${esc(f.title)}">
           <label class="switch"><input type="checkbox" data-flag="${esc(code)}:${f.key}"
             ${row[f.key] ? 'checked' : ''} ${edit ? '' : 'disabled'} title="${esc(f.hint)}"><span class="sl"></span></label></td>`).join('')}
@@ -1708,7 +1708,7 @@ async function settingsScreenShifts(host) {
         <th>Код</th><th>Название</th><th>Время</th><th class="num">Часов</th><th>Код Табеля</th><th>Признаки</th><th></th>
       </tr></thead><tbody>
       ${shown.map(s => `<tr${s.archived ? ' style="opacity:.62"' : ''}>
-        <td data-label="Код"><span class="shift-pill" style="background:${esc(s.color)};color:${textOn(s.color)}">${esc(s.code)}</span></td>
+        <td data-label="Код"><span class="shift-pill" style="background:${cssColor(s.color, '#6b7280')};color:${textOn(cssColor(s.color, '#6b7280'))}">${esc(s.code)}</span></td>
         <td data-label="Название">${esc(s.name)}</td>
         <td class="num" data-label="Время">${s.kind === 'work'
           ? `${esc(s.start_time)}–${esc(s.end_time)}${s.overnight ? ' <span class="badge info">через полночь</span>' : ''}` : '—'}</td>

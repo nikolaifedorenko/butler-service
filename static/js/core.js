@@ -41,6 +41,13 @@ function plural(n, one, few, many) {
   if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
   return many;
 }
+/* Цвет для атрибута style: только #rgb / #rrggbb, иначе fallback.
+   Значения приходят из БД (цвет должности, типа смены); без проверки строка вида
+   `red"><a href=…>` вырвалась бы из атрибута — HTML-инъекция. */
+function cssColor(v, fallback = '#8a94a6') {
+  const s = String(v ?? '').trim();
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s) ? s : fallback;
+}
 function withAlpha(hex, a) {
   const h = (hex || '#888').replace('#', '');
   const f = h.length === 3 ? h.split('').map(x => x + x).join('') : h;

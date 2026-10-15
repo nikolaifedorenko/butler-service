@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./timetrack.db"
     secret_key: str = "change-me-in-production"
     app_tz: str = "Europe/Moscow"
-    session_ttl_hours: int = 24 * 14
+    # срок жизни сессии: 48 ч (было 14 суток) — короткое окно для украденной cookie;
+    # переопределяется SESSION_TTL_HOURS
+    session_ttl_hours: int = 48
     cookie_name: str = "tt_session"
     # cookie с CSRF-токеном (double-submit): читается JS и передаётся в заголовке X-CSRF-Token
     csrf_cookie_name: str = "tt_csrf"

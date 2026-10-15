@@ -60,6 +60,23 @@ def safe_sheet_cell(value):
     return value
 
 
+_HEX_COLOR_RE = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
+
+
+def normalize_hex_color(value: str | None, default: str) -> str:
+    """Цвет только в формате #rgb / #rrggbb (пусто → default), иначе ValueError.
+
+    Цвета попадают во фронтенде в атрибут style="background:…"; произвольная строка
+    там — HTML/CSS-инъекция (например, `red"><a href=…>`). Поэтому формат жёсткий.
+    """
+    v = (value or "").strip()
+    if not v:
+        return default
+    if not _HEX_COLOR_RE.fullmatch(v):
+        raise ValueError("Цвет должен быть в формате #RRGGBB (например, #8a94a6)")
+    return v.lower()
+
+
 def month_name(month: int) -> str:
     names = ["январь", "февраль", "март", "апрель", "май", "июнь",
              "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"]

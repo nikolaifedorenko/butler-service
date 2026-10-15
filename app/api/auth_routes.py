@@ -111,7 +111,16 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
 
 @router.post("/logout")
 def logout(response: Response, principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
-    audit(db, principal, "logout", f"user:{principal.user.username}")
+    """Выход: cookie удаляется у клиента И отзывается на сервере.
+
+    Токен stateless, поэтому одного delete_cookie мало — скопированная/украденная
+    cookie продолжала бы работать до истечения срока. Увеличение token_version
+    делает недействительными все ранее выданные токены пользователя (на всех
+    устройствах) — так же, как при смене пароля.
+    """
+    user = principal.user
+    user.token_version = int(user.token_version or 0) + 1
+    audit(db, principal, "logout", f"user:{user.username}")
     db.commit()
     response.delete_cookie(settings.cookie_name, path="/")
     return {"ok": True}
