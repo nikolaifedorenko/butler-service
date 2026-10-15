@@ -504,11 +504,14 @@ def migrate_engine_v7() -> None:
         marker = con.execute(text(
             "SELECT value FROM settings WHERE key = 'engine_v7_reset'")).scalar() \
             if "settings" in existing else "n/a"
+        has_data = "tabel_days" in existing and con.execute(
+            text("SELECT 1 FROM tabel_days LIMIT 1")).first() is not None
         if marker is None:
             import logging
-            logging.getLogger("uvicorn.error").warning(
-                "migrate_engine_v7: маркер engine_v7_reset не найден — данные НЕ очищаются "
-                "(автоочистка отключена), маркер записан")
+            if has_data:  # на свежей базе предупреждать не о чем
+                logging.getLogger("uvicorn.error").warning(
+                    "migrate_engine_v7: маркер engine_v7_reset не найден — данные НЕ очищаются "
+                    "(автоочистка отключена), маркер записан")
             con.execute(text(
                 "INSERT INTO settings (key, value, description) VALUES "
                 "('engine_v7_reset', '1', 'Движок v7.1: маркер миграции (автоочистка отключена)')"))

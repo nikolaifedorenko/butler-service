@@ -88,9 +88,11 @@ jobs:
           DATABASE_URL="sqlite:///./ci_selfcheck.db" SECRET_KEY="ci-only-not-a-secret" \
           python -c "
           from fastapi.testclient import TestClient
-          from app.main import app, init_db
+          from app.main import app, init_db, schema_report
           init_db()
-          data = TestClient(app).get('/api/selfcheck').json()
+          # без входа эндпоинт отдаёт только ok — проверяем его, а детали берём напрямую
+          assert TestClient(app).get('/api/selfcheck').json()['ok']
+          data = schema_report()
           assert data['ok'], data['missing']
           print('selfcheck ok:', data['tables_found'], 'таблиц из', data['tables_expected'])
           "

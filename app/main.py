@@ -336,19 +336,8 @@ app.include_router(cars_api.router)
 app.include_router(photos_api.router)
 
 
-@app.get("/api/selfcheck")
-def selfcheck(principal: Optional[Principal] = Depends(optional_principal)):
-    """Самодиагностика: соответствует ли схема БД моделям текущего кода.
-
-    Список таблиц и колонок берётся из Base.metadata (models.py) — единственного
-    источника правды. Раньше здесь был второй рукописный список, который уже
-    разошёлся с migrate_db(): шесть добавленных колонок (включая users.token_version)
-    не проверялись, и selfcheck не мог заметить отставание схемы.
-
-    Без входа (так проверку показывает инструкция по установке) отдаётся только
-    итог ok/hint; перечень таблиц и колонок — лишь администратору: схема БД —
-    полезная разведка для атакующего.
-    """
+def schema_report() -> dict:
+    """Полный отчёт о расхождении схемы БД с моделями (для админа и CI)."""
     from sqlalchemy import inspect
 
     from .models import Base
@@ -364,7 +353,7 @@ def selfcheck(principal: Optional[Principal] = Depends(optional_principal)):
         for column in table.columns:
             if column.name not in have:
                 missing.append(f"{table.name}.{column.name}")
-    full = {
+    return {
         "ok": not missing,
         "missing": missing,
         "tables_expected": len(Base.metadata.sorted_tables),
@@ -374,6 +363,22 @@ def selfcheck(principal: Optional[Principal] = Depends(optional_principal)):
                 "Схема БД старее кода: остановите сервер и запустите снова (миграция применится при старте). "
                 "Если не помогло — удалите timetrack.db (демо) или восстановите базу из бэкапа (боевая).",
     }
+
+
+@app.get("/api/selfcheck")
+def selfcheck(principal: Optional[Principal] = Depends(optional_principal)):
+    """Самодиагностика: соответствует ли схема БД моделям текущего кода.
+
+    Список таблиц и колонок берётся из Base.metadata (models.py) — единственного
+    источника правды. Раньше здесь был второй рукописный список, который уже
+    разошёлся с migrate_db(): шесть добавленных колонок (включая users.token_version)
+    не проверялись, и selfcheck не мог заметить отставание схемы.
+
+    Без входа (так проверку показывает инструкция по установке) отдаётся только
+    итог ok/hint; перечень таблиц и колонок — лишь администратору: схема БД —
+    полезная разведка для атакующего.
+    """
+    full = schema_report()
     if principal is not None and principal.is_admin:
         return full
     return {"ok": full["ok"], "app": full["app"], "hint": full["hint"],
