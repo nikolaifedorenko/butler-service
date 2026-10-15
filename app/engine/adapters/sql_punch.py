@@ -78,9 +78,24 @@ class SqlPunchAdapter:
         return _mark(p) if p else None
 
     def last_marks(self, at_utc: dt.datetime) -> list[Mark]:
-        """Батч (16.2): по одной последней отметке на сотрудника с at ≤ at_utc, один запрос."""
+        """Батч (16.2): по одной последней отметке на сотрудника с at ≤ at_utc, один запрос.
+
+        Последняя — по МОМЕНТУ (ts, id), а не по id создания: отметки задним числом
+        (менеджер поправил забытый уход), сид и импорты пишут строки вне порядка ts.
+        С MAX(id) доска показывала устаревший статус: сотрудник с закрытой сессией
+        оставался «на работе» с более раннего «пришёл» (дефект 15.10.2026: расхождение
+        доски с личным экраном, который смотрит по ts).
+        """
         hi = utc_to_local_naive(min(at_utc, self.now))
-        latest = select(func.max(Punch.id)).where(Punch.ts <= hi).group_by(Punch.employee_id)
-        rows = self.db.scalars(select(Punch).where(Punch.id.in_(latest))
-                               .order_by(Punch.ts, Punch.id))
+        ranked = select(
+            Punch.id,
+            func.row_number().over(
+                partition_by=Punch.employee_id,
+                order_by=(Punch.ts.desc(), Punch.id.desc()),
+            ).label("rn"),
+        ).where(Punch.ts <= hi).subquery()
+        rows = self.db.scalars(
+            select(Punch).join(ranked, Punch.id == ranked.c.id)
+            .where(ranked.c.rn == 1)
+            .order_by(Punch.ts, Punch.id))
         return [_mark(p) for p in rows]
