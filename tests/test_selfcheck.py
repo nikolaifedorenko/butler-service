@@ -8,8 +8,8 @@ migrate_db(): шесть добавленных миграцией колоно�
 from __future__ import annotations
 
 
-def test_selfcheck_ok_na_svezhei_baze(client):
-    r = client.get("/api/selfcheck")
+def test_selfcheck_ok_na_svezhei_baze(admin_client):
+    r = admin_client.get("/api/selfcheck")
     assert r.status_code == 200, r.text
     data = r.json()
     assert data["ok"] is True, f"схема не совпадает с моделями: {data['missing'][:10]}"
@@ -17,10 +17,10 @@ def test_selfcheck_ok_na_svezhei_baze(client):
     assert data["hint"] == ""
 
 
-def test_selfcheck_ozhidaet_vse_tablicy_iz_modealey(client):
+def test_selfcheck_ozhidaet_vse_tablicy_iz_modealey(admin_client):
     from app.models import Base
 
-    data = client.get("/api/selfcheck").json()
+    data = admin_client.get("/api/selfcheck").json()
     expected = {t.name for t in Base.metadata.sorted_tables}
     assert data["tables_expected"] == len(expected)
     assert data["tables_found"] == len(expected), \
@@ -29,11 +29,22 @@ def test_selfcheck_ozhidaet_vse_tablicy_iz_modealey(client):
 
 
 def test_selfcheck_dostupen_bez_vhoda(client):
-    """Самодиагностика намеренно не требует входа: её показывают в инструкции по установке."""
-    assert client.get("/api/selfcheck").status_code == 200
+    """Самодиагностика намеренно не требует входа: её показывают в инструкции по установке.
+    Но без входа отдаётся только итог — без перечня таблиц и колонок."""
+    r = client.get("/api/selfcheck")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    for key in ("missing", "tables_expected", "tables_found"):
+        assert key not in data, f"анониму не должна раскрываться схема БД ({key})"
 
 
-def test_migraciya_idempotentna(client):
+def test_selfcheck_bez_detalei_dlya_ne_admina(employee_client):
+    data = employee_client.get("/api/selfcheck").json()
+    assert "missing" not in data
+
+
+def test_migraciya_idempotentna(admin_client):
     """Повторный прогон migrate_db() не ломает схему и не падает.
 
     Миграция выполняется при каждом старте сервера, поэтому обязана быть идемпотентной:
@@ -43,5 +54,5 @@ def test_migraciya_idempotentna(client):
 
     migrate_db()          # второй раз поверх уже мигрированной базы
     migrate_db()          # и третий — для надёжности
-    data = client.get("/api/selfcheck").json()
+    data = admin_client.get("/api/selfcheck").json()
     assert data["ok"] is True, f"после повторных миграций схема разошлась: {data['missing'][:10]}"

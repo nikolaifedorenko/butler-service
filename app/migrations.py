@@ -476,8 +476,8 @@ def migrate_engine_v7() -> None:
     * bank_adjustments.reason_code — маркер OPENING_SEED (v7.1/R37);
     * period_closings.flags_json — снимок флагов при закрытии (7.2);
     * legacy-таблицы timesheet_rows и schedule_entries удаляются вместе со старым движком;
-    * расчётные данные (закрытия, переносы, версии справочников, модификаторы, Табель)
-      очищаются ОДИН раз (маркер в settings) — демо-база пересоздаётся сидом.
+    * расчётные данные автоматически НЕ очищаются (раньше — однократно по маркеру
+      в settings); маркер только записывается, очистка демо-базы — вручную.
     """
     from sqlalchemy import inspect, text
 
@@ -495,13 +495,23 @@ def migrate_engine_v7() -> None:
         for legacy in ("timesheet_rows", "schedule_entries"):
             if legacy in existing:
                 con.execute(text(f"DROP TABLE IF EXISTS {legacy}"))
+        # Раньше при отсутствии маркера здесь выполнялся DELETE FROM по семи расчётным
+        # таблицам (Табель, смены, закрытия периодов…). Переход v4 → v7.1 уже выполнен
+        # на всех стендах, а автоматическое удаление на старте опасно: восстановление
+        # бэкапа без этой строки в settings молча стирало бы боевые данные.
+        # Теперь маркер только фиксируется; демо-базу при необходимости пересоздают
+        # вручную (удалить timetrack.db — сид заполнит её заново).
         marker = con.execute(text(
-            "SELECT value FROM settings WHERE key = 'engine_v7_reset'")).scalar()
-        if marker is None and "settings" in existing:
-            for table in ("period_closings", "deferred_carry", "engine_settings_versions",
-                          "day_modifiers", "tabel_days", "schedule_shifts", "schedule_absences"):
-                if table in existing or table in set(insp.get_table_names()):
-                    con.execute(text(f"DELETE FROM {table}"))
+            "SELECT value FROM settings WHERE key = 'engine_v7_reset'")).scalar() \
+            if "settings" in existing else "n/a"
+        has_data = "tabel_days" in existing and con.execute(
+            text("SELECT 1 FROM tabel_days LIMIT 1")).first() is not None
+        if marker is None:
+            import logging
+            if has_data:  # на свежей базе предупреждать не о чем
+                logging.getLogger("uvicorn.error").warning(
+                    "migrate_engine_v7: маркер engine_v7_reset не найден — данные НЕ очищаются "
+                    "(автоочистка отключена), маркер записан")
             con.execute(text(
                 "INSERT INTO settings (key, value, description) VALUES "
-                "('engine_v7_reset', '1', 'Движок v7.1: расчётные данные v4 были тестовыми — очищены')"))
+                "('engine_v7_reset', '1', 'Движок v7.1: маркер миграции (автоочистка отключена)')"))
