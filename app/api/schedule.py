@@ -48,8 +48,8 @@ from ..models import (
 from ..names import suggest_genitive
 from ..permissions import require_perm
 from ..schedule_patterns import pattern_list, validate_pattern
+from ..services.engine_common import domain_error_text, engine_ports, now_utc
 from ..tabel_fill import fill_timesheet_from_cycles
-from .engine_common import domain_error_text, engine_ports, now_utc
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 _HHMM = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")

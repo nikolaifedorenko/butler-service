@@ -25,9 +25,15 @@ from ..auth import Principal, audit, current_principal
 from ..db import get_db
 from ..deps import TZ, local_date, now_local
 from ..employment import employed_on, ensure_periods, periods_of
-from ..models import Employee, Punch, ScheduleAbsence, ScheduleShift
+from ..models import Employee, Punch, ScheduleAbsence
 from ..permissions import has_perm, require_perm
-from .engine_common import last_closed_bank
+from ..services.engine_common import last_closed_bank
+from ..services.punch_plan import (
+    plan_for_date as _plan_for_date,
+)
+from ..services.punch_plan import (
+    to_local as _to_local,
+)
 
 # окно поиска открытой смены вокруг плана (интерфейс отметок; на расчёт часов не влияет)
 WINDOW_BEFORE_H = 4
@@ -83,79 +89,6 @@ def _resolve_employee(principal: Principal, employee_id: Optional[int], db: Sess
     if principal.employee:
         return principal.employee
     raise HTTPException(status_code=403, detail="К вашей учётной записи не привязан сотрудник")
-
-
-def _to_local(value: dt.datetime) -> dt.datetime:
-    return value.replace(tzinfo=dt.timezone.utc).astimezone(TZ).replace(tzinfo=None)
-
-
-def _day_bounds_utc(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
-    lo = dt.datetime.combine(day, dt.time(0), TZ).astimezone(dt.timezone.utc)
-    return lo, lo + dt.timedelta(days=1)
-
-
-def _plan_for_date(db: Session, emp_id: int, today: dt.date,
-                   at_ts: Optional[dt.datetime] = None):
-    """План на «сегодня» из Графика (generated/manual); ранним утром учитывается
-    вчерашняя смена через полночь. Возвращает (shift_brief | None, plan_start, plan_end,
-    plan_date, subintervals)."""
-    yesterday = today - dt.timedelta(days=1)
-    lo, _ = _day_bounds_utc(yesterday)
-    _, hi = _day_bounds_utc(today)
-    rows = db.scalars(select(ScheduleShift).where(
-        ScheduleShift.employee_id == emp_id, ScheduleShift.start_utc < hi,
-        ScheduleShift.end_utc > lo).order_by(ScheduleShift.start_utc)).all()
-    now = at_ts or now_local()
-    today_rows, y_rows = [], []
-    for row in rows:
-        start, end = _to_local(row.start_utc), _to_local(row.end_utc)
-        item = {"id": row.id, "source": row.source, "start": start, "end": end,
-                "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
-                "date": row.date.isoformat()}
-        (y_rows if row.date == yesterday else today_rows).append(item)
-    active_yesterday = [r for r in y_rows if r["end"] >= now]
-    if active_yesterday and not today_rows:
-        row = active_yesterday[-1]
-        return row, row["start"], row["end"], yesterday, _subintervals(db, emp_id, yesterday)
-    if today_rows:
-        row = today_rows[0]
-        return row, row["start"], row["end"], today, _subintervals(db, emp_id, today)
-    if active_yesterday:
-        row = active_yesterday[-1]
-        return row, row["start"], row["end"], yesterday, _subintervals(db, emp_id, yesterday)
-    return None, None, None, today, ()
-
-
-def _subintervals(db: Session, emp_id: int, day: dt.date) -> tuple:
-    """Ожидаемые подинтервалы дня: отрезки смен минус согласованные отсутствия
-    (доменные функции Графика — лёгкий расчёт вкладки, не тяжёлый конвейер)."""
-    from ..engine.domain.schedule.expected_subintervals import expected_subintervals
-    from ..engine.domain.schedule.merge_absences import merge_absences
-    from ..engine.domain.schedule.shift_segments import merge_spans
-    lo, hi = _day_bounds_utc(day)
-    rows = db.scalars(select(ScheduleShift).where(
-        ScheduleShift.employee_id == emp_id, ScheduleShift.start_utc < hi,
-        ScheduleShift.end_utc > lo)).all()
-    spans = [(max(_start(r), lo), min(_end(r), hi)) for r in rows]
-    spans = [(a, b) for a, b in spans if a < b]
-    absences = db.scalars(select(ScheduleAbsence).where(
-        ScheduleAbsence.employee_id == emp_id, ScheduleAbsence.start_utc < hi,
-        ScheduleAbsence.end_utc > lo)).all()
-    merged_abs = merge_absences([_absence(a) for a in absences])
-    return expected_subintervals(merge_spans(spans), merged_abs, day)
-
-
-def _start(row: ScheduleShift) -> dt.datetime:
-    return row.start_utc.replace(tzinfo=dt.timezone.utc)
-
-
-def _end(row: ScheduleShift) -> dt.datetime:
-    return row.end_utc.replace(tzinfo=dt.timezone.utc)
-
-
-def _absence(row: ScheduleAbsence):
-    from ..engine.domain.types.entities import Absence
-    return Absence(str(row.employee_id), _start(row), _end(row))
 
 
 def _open_session(db: Session, emp_id: int, since: dt.datetime) -> Optional[Punch]:

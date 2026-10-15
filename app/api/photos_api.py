@@ -13,14 +13,14 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal
+from ..auth import Principal, current_principal
 from ..db import get_db
-from ..models import Photo
-from ..photos import get_photo_file, unlink_photo
+from ..photos import delete_photo as delete_photo_usecase
+from ..photos import resolve_photo_file
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
 
@@ -30,11 +30,7 @@ router = APIRouter(prefix="/api/photos", tags=["photos"])
 def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
                db: Session = Depends(get_db)):
     """Отдача оригинала фото. Только авторизованным; HEAD — для проверки доступности."""
-    p, path, mime = get_photo_file(db, photo_id)
-    if p is None:
-        raise HTTPException(status_code=404, detail="Фото не найдено")
-    if path is None:
-        raise HTTPException(status_code=410, detail="Файл удалён по сроку хранения")
+    p, path, mime = resolve_photo_file(db, photo_id)
     return FileResponse(str(path), media_type=mime or "application/octet-stream",
                         filename=p.filename or None,
                         headers={"Cache-Control": "private, max-age=86400"})
@@ -44,13 +40,5 @@ def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
 def photo_delete(photo_id: int, principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Удалить фото: своё — любой пользователь, чужое — менеджер и выше."""
-    p = db.get(Photo, photo_id)
-    if p is None:
-        raise HTTPException(status_code=404, detail="Фото не найдено")
-    if p.uploaded_by != principal.user.id and not principal.is_manager:
-        raise HTTPException(status_code=403, detail="Можно удалять только свои фото")
-    unlink_photo(p)
-    db.delete(p)
-    audit(db, principal, "photo_delete", f"photo:{photo_id}", {"kind": p.kind, "ref_id": p.ref_id})
-    db.commit()
+    delete_photo_usecase(db, principal, photo_id)
     return {"ok": True}

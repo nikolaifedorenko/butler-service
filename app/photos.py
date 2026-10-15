@@ -20,8 +20,10 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .auth import audit
 from .deps import now_local
 from .models import Photo
+from .services.errors import Forbidden, Gone, NotFound
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_ROOT = BASE_DIR / "data" / "uploads"
@@ -165,3 +167,35 @@ def cleanup_photos(db: Session, days: Optional[int] = None) -> int:
     if removed:
         db.commit()
     return removed
+
+
+# ─────────────────── use-case'ы для API-слоя (15.10.2026) ───────────────────
+# Общие для канонического /api/photos и алиасов в ночном отчёте: раньше
+# night_api импортировал роут-функции photos_api (api → api), теперь оба
+# модуля вызывают сервис (контракт import-linter «api-модули независимы»).
+
+def resolve_photo_file(db: Session, photo_id: int):
+    """(фото, путь, mime) для отдачи оригинала.
+
+    NotFound — фото нет в БД; Gone — файл удалён по сроку хранения (запись
+    в БД остаётся, комментарии и история не теряются)."""
+    p, path, mime = get_photo_file(db, photo_id)
+    if p is None:
+        raise NotFound("Фото не найдено")
+    if path is None:
+        raise Gone("Файл удалён по сроку хранения")
+    return p, path, mime
+
+
+def delete_photo(db: Session, principal, photo_id: int) -> None:
+    """Удалить фото: своё — любой пользователь, чужое — менеджер и выше."""
+    photo = db.get(Photo, photo_id)
+    if photo is None:
+        raise NotFound("Фото не найдено")
+    if photo.uploaded_by != principal.user.id and not principal.is_manager:
+        raise Forbidden("Можно удалять только свои фото")
+    unlink_photo(photo)
+    db.delete(photo)
+    audit(db, principal, "photo_delete", f"photo:{photo_id}",
+          {"kind": photo.kind, "ref_id": photo.ref_id})
+    db.commit()

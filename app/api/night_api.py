@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -36,7 +36,8 @@ from ..night import (
     sync_reports,
 )
 from ..permissions import require_perm
-from ..photos import photos_of, save_photo
+from ..photos import delete_photo as delete_photo_usecase
+from ..photos import photos_of, resolve_photo_file, save_photo
 
 router = APIRouter(prefix="/api/night", tags=["night"])
 
@@ -476,9 +477,10 @@ def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
 
     Маршрут сохранён для совместимости со старыми ссылками; реализация общая
     (см. app/api/photos_api.py), чтобы поведение не могло разъехаться."""
-    from .photos_api import photo_file as _photo_file
-
-    return _photo_file(photo_id, principal, db)
+    p, path, mime = resolve_photo_file(db, photo_id)
+    return FileResponse(str(path), media_type=mime or "application/octet-stream",
+                        filename=p.filename or None,
+                        headers={"Cache-Control": "private, max-age=86400"})
 
 
 # ─────────────────────────── шаг «Проверка электрокаров» ───────────────────────────
@@ -615,9 +617,8 @@ def reopen_report(report_id: int, principal: Principal = Depends(require_supervi
 def delete_photo(photo_id: int, principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Удалить фото — алиас канонического `DELETE /api/photos/{id}`."""
-    from .photos_api import photo_delete
-
-    return photo_delete(photo_id, principal, db)
+    delete_photo_usecase(db, principal, photo_id)
+    return {"ok": True}
 
 
 # ─────────────────────────── выгрузка ───────────────────────────

@@ -33,8 +33,8 @@ from ..engine.domain.types.entities import Period
 from ..engine.domain.types.errors import ConfigError, DomainError
 from ..models import Employee, TabelDay
 from ..permissions import principal_permissions, require_perm
+from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
 from ..tabel_fill import fill_timesheet_from_cycles
-from .engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
 
 router = APIRouter(prefix="/api/tabel", tags=["tabel"])
 
