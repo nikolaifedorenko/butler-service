@@ -11,7 +11,7 @@ from typing import Optional
 
 from .config import settings
 
-_ITERATIONS = 120_000
+_ITERATIONS = 600_000   # рекомендация OWASP для PBKDF2-HMAC-SHA256 (было 120 000)
 
 
 def hash_password(password: str) -> str:
@@ -29,6 +29,16 @@ def verify_password(password: str, stored: str) -> bool:
         return hmac.compare_digest(calc, digest)
     except Exception:
         return False
+
+
+def needs_rehash(stored: str) -> bool:
+    """Хеш создан со старыми параметрами (число итераций) — при следующем успешном
+    входе его нужно пересчитать с текущими (ленивая миграция без сброса паролей)."""
+    try:
+        algo, iters, _salt, _digest = stored.split("$")
+        return algo != "pbkdf2" or int(iters) < _ITERATIONS
+    except Exception:
+        return True
 
 
 def new_csrf_token() -> str:

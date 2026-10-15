@@ -15,7 +15,7 @@ from ..config import settings
 from ..db import get_db
 from ..deps import local_date
 from ..models import Employee, User
-from ..security import create_token, hash_password, verify_password
+from ..security import create_token, hash_password, needs_rehash, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -31,8 +31,15 @@ _login_lock = threading.Lock()
 
 
 def _client_ip(request: Request) -> str:
-    # за reverse-proxy это будет адрес прокси; для точного лимита в проде читайте
-    # X-Forwarded-For (и доверяйте только своему прокси)
+    # Без reverse-proxy адрес клиента — адрес соединения. За прокси это адрес прокси
+    # (все клиенты в одном бакете лимита), поэтому X-Forwarded-For читается ТОЛЬКО
+    # при TRUST_PROXY_HEADERS=1 — включайте, когда приложение гарантированно стоит
+    # за своим доверенным прокси (nginx из docker-compose.prod.yml), иначе заголовок
+    # подделывается клиентом и лимит обходится/направляется на чужой IP.
+    if settings.trust_proxy_headers:
+        xff = request.headers.get("x-forwarded-for", "")
+        if xff:
+            return xff.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -90,6 +97,10 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Учётная запись отключена")
     _reset_login_failures(ip)
+    if needs_rehash(stored):
+        # ленивая миграция хеша: старые записи (например, 120k итераций) обновляются
+        # на текущие параметры при успешном входе — пароль у нас в этот момент есть
+        user.password_hash = hash_password(payload.password)
     employee = db.get(Employee, user.employee_id) if user.employee_id else None
     token = _token(user, employee.id if employee else None)
     _set_cookie(response, token)

@@ -12,3 +12,8 @@ python-multipart>=0.0.9
 # на pbkdf2-sha256 (см. app/security.py), поэтому ставим отдельно в run.sh
 #
 # PDF-движок (reportlab) НЕ обязателен: см. requirements-pdf.txt
+
+# ── Наблюдаемость (опционально) ──────────────────────────────────────────────
+# prometheus-client: метрики /metrics при METRICS_ENABLED=1; без него приложение
+# работает (импорт guarded), просто метрики не включить
+prometheus-client>=0.20

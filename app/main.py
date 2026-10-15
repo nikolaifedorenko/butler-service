@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import logging
+import re
 import secrets
+import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from .api import (
     access_api,
@@ -110,23 +116,14 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.1.0", docs_url="/api/docs",
+app = FastAPI(title=settings.app_name, version=settings.app_version, docs_url="/api/docs",
               openapi_url="/api/openapi.json", lifespan=lifespan)
 
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-
-@app.middleware("http")
-async def security_headers(request: Request, call_next):
-    response = await call_next(request)
-    h = response.headers
-    h.setdefault("X-Content-Type-Options", "nosniff")
-    h.setdefault("X-Frame-Options", "DENY")
-    h.setdefault("Referrer-Policy", "same-origin")
-    if request.url.path.startswith("/api/") and "cache-control" not in h:
-        h["Cache-Control"] = "no-store"   # персональные данные не должны оседать в кэшах
-    return response
-
+# Порядок middleware: регистрируются снизу вверх (последний — самый внешний).
+# csrf_protection → security_headers → request_context: заголовки безопасности и
+# X-Request-ID попадают и на 403-ответы CSRF-проверки, а метрики/лог видят всё.
 
 _CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # Вход — точка входа: CSRF-cookie у клиента ещё нет, и это отдельная поверхность атаки
@@ -174,6 +171,119 @@ async def csrf_protection(request: Request, call_next):
     if fresh_cookie:
         _set_csrf_cookie(response, token)
     return response
+
+
+# Политика CSP подобрана по фактическому содержимому интерфейса: все скрипты —
+# внешние файлы (inline-скриптов и onclick-обработчиков в SPA нет — проверено),
+# поэтому script-src строго 'self'. Inline-атрибуты style="…" в шаблонах есть
+# (300+) — для них 'unsafe-inline' в style-src (осознанный компромисс без сборки;
+# см. docs/adr/0004). data: — SVG-фавикон и иконки селекторов в CSS; blob: —
+# скачивание PDF/DOCX через createObjectURL; frame-ancestors дублирует X-Frame-Options.
+_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; "
+        "worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; "
+        "form-action 'self'; frame-ancestors 'none'")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "same-origin")
+    h.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()")
+    csp_header = "Content-Security-Policy-Report-Only" if settings.csp_report_only \
+        else "Content-Security-Policy"
+    h.setdefault(csp_header, _CSP)
+    # HSTS имеет смысл только по TLS: за прокси смотрим X-Forwarded-Proto
+    # (доверяем ему лишь при TRUST_PROXY_HEADERS — иначе заголовок клиентский),
+    # без прокси — схему запроса. По HTTP заголовок браузерами игнорируется,
+    # но не рассылаем его зря.
+    proto = (request.headers.get("x-forwarded-proto", "") if settings.trust_proxy_headers
+             else "") or request.url.scheme
+    if proto == "https":
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    if request.url.path.startswith("/api/") and "cache-control" not in h:
+        h["Cache-Control"] = "no-store"   # персональные данные не должны оседать в кэшах
+    return response
+
+
+# ── наблюдаемость: request-id, JSON-лог запросов, метрики Prometheus ──────────
+# Метрики — опциональная зависимость: без prometheus_client приложение работает,
+# METRICS_ENABLED просто не включить (в requirements.txt пакет есть).
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+
+    _HTTP_COUNT = Counter("tt_http_requests_total", "HTTP-запросы по маршрутам",
+                          ["method", "route", "status"])
+    _HTTP_LATENCY = Histogram("tt_http_request_duration_seconds",
+                              "Латентность HTTP-запросов, с", ["method", "route"])
+    _PROM_OK = True
+except ImportError:          # pragma: no cover - зависит от окружения
+    _PROM_OK = False
+
+_access_log = logging.getLogger("butler.access")
+if settings.log_json and not _access_log.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(message)s"))
+    _access_log.addHandler(_h)
+    _access_log.setLevel(logging.INFO)
+    _access_log.propagate = False
+
+# health опрашивается healthcheck'ами каждые секунды, /metrics — скрейпером:
+# в логе запросов это шум без информации
+_QUIET_LOG_PATHS = {"/api/health", "/metrics"}
+_REQUEST_ID_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _observe(request: Request, status: int, started: float, request_id: str) -> None:
+    duration_ms = round((time.perf_counter() - started) * 1000.0, 1)
+    # метка маршрута — шаблон из роутера (/api/employees/{employee_id}), а не сырой
+    # путь: иначе случайные 404-URL раздули бы кардинальность метрик
+    label = getattr(request.scope.get("route"), "path", None) or "unmatched"
+    if settings.metrics_enabled and _PROM_OK:
+        try:
+            _HTTP_COUNT.labels(request.method, label, status).inc()
+            _HTTP_LATENCY.labels(request.method, label).observe(duration_ms / 1000.0)
+        except Exception:   # метрики не должны ронять запрос
+            pass
+    if settings.log_json and request.url.path not in _QUIET_LOG_PATHS:
+        _access_log.info(json.dumps({
+            "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds"),
+            "method": request.method, "path": request.url.path, "status": status,
+            "duration_ms": duration_ms, "route": label, "request_id": request_id,
+            "ip": request.client.host if request.client else "-",
+        }, ensure_ascii=False))
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    """Сквозной request-id (от прокси или сгенерированный) + учёт для лога/метрик.
+
+    X-Request-ID возвращается в ответе: по нему один запрос связывается между
+    логом приложения, логом прокси и обращением пользователя в поддержку.
+    """
+    incoming = request.headers.get("x-request-id", "")
+    request_id = _REQUEST_ID_RE.sub("", incoming)[:64] or uuid.uuid4().hex[:16]
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        _observe(request, 500, started, request_id)
+        raise
+    _observe(request, response.status_code, started, request_id)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint():
+    """Prometheus-метрики. Включаются METRICS_ENABLED=1; по умолчанию 404 —
+    счётчики не должны быть публичными (за прокси доступ можно ограничить по IP)."""
+    if not settings.metrics_enabled or not _PROM_OK:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 app.include_router(auth_routes.router)
@@ -233,9 +343,21 @@ def selfcheck():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "app": settings.app_name, "tz": settings.app_tz,
-            "server_time_local": now_local().isoformat(timespec="seconds"),
-            "server_time_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+    """Liveness + readiness: 200, если приложение отвечает и БД доступна;
+    503 — если БД недоступна (healthcheck контейнера/балансировщика должен падать,
+    harнессы готовности это используют). Детали ошибки БД наружу не отдаются —
+    только тип исключения: в сообщении могут быть данные подключения."""
+    db_state = "ok"
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+    except Exception as exc:
+        db_state = f"error: {type(exc).__name__}"
+    payload = {"ok": db_state == "ok", "app": settings.app_name,
+               "version": settings.app_version, "db": db_state, "tz": settings.app_tz,
+               "server_time_local": now_local().isoformat(timespec="seconds"),
+               "server_time_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+    return JSONResponse(payload, status_code=200 if payload["ok"] else 503)
 
 
 @app.get("/sw.js", include_in_schema=False)

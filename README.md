@@ -9,7 +9,7 @@
 Расчёт ведётся детерминированным движком по спецификации
 [`docs/overtime_spec_v7_1_final.md`](docs/overtime_spec_v7_1_final.md)
 (единственный нормативный документ; инженерная обёртка —
-[`docs/overtime_ai_tz_v3.md`](docs/overtime_ai_tz_v3.md)): чистые функции
+[`docs/archive/overtime_ai_tz_v3.md`](docs/archive/overtime_ai_tz_v3.md)): чистые функции
 «данные → данные», пять слоёв (`domain / application / ports / adapters / interface`),
 поведение из справочников CFG-*, трассируемость каждого действия, 55 приёмочных
 примеров EX-01…EX-55 в автотестах.
@@ -21,19 +21,29 @@
 * [`docs/overtime_spec_v7_1_final.md`](docs/overtime_spec_v7_1_final.md) — **спецификация
   движка v7.1** (норматив): предметная модель, справочники CFG-*, правила RUL-*,
   инварианты INV-*, примеры EX-*, вкладки веб-приложения (раздел 16).
-* [`docs/overtime_ai_tz_v3.md`](docs/overtime_ai_tz_v3.md) — ТЗ ред. 3: слои, контракты
-  функций, порядок работ.
+* [`docs/archive/overtime_ai_tz_v3.md`](docs/archive/overtime_ai_tz_v3.md) — ТЗ ред. 3: слои, контракты
+  функций, порядок работ (исторический документ, заменён спецификацией v7.1).
 * [`docs/MIGRATION-MAP-v7.md`](docs/MIGRATION-MAP-v7.md) — карта миграции прототипа:
   «что было → что заменяет» + решения владельца от 11.10.2026.
 * [`docs/SPEC.md`](docs/SPEC.md) — спецификация приложения: модель данных, API, вкладки,
   документы, выгрузки.
+* [`docs/openapi.json`](docs/openapi.json) — контракт API (экспорт OpenAPI; сверяется
+  с кодом в CI, обновление: `python tools/export_openapi.py`).
 * [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — архитектурный
   разбор (слои, потоки, риски).
+* [`docs/adr/`](docs/adr/) — записи архитектурных решений (ADR): миграции, хеширование
+  паролей, CSRF/CSP, rate-limit, граница чистой архитектуры, формат токена.
 * [`docs/CHANGES-2026-10-11.md`](docs/CHANGES-2026-10-11.md) — что изменилось в батче
-  «движок v7.1».
-* [`docs/INSTALL.md`](docs/INSTALL.md) — установка (локально, сервер, Docker, бэкапы).
-* [`docs/AUTH.md`](docs/AUTH.md) — аутентификация и безопасность.
+  «движок v7.1»; свежие батчи — `CHANGES-2026-10-14-security.md` и
+  `CHANGES-2026-10-15-hardening.md`.
+* [`docs/INSTALL.md`](docs/INSTALL.md) — установка (локально, сервер, Docker, бэкапы);
+  прод-стек (nginx+TLS+PostgreSQL+бэкапы) — [`deploy/README.md`](deploy/README.md).
+* [`docs/AUTH.md`](docs/AUTH.md) — аутентификация и безопасность;
+  [`SECURITY.md`](SECURITY.md) — как сообщить об уязвимости.
 * [`docs/TEMPLATES.md`](docs/TEMPLATES.md) — шаблоны документов .docx.
+* [`NOTICE.md`](NOTICE.md) — сторонние компоненты (шрифты, зависимости). Проект
+  внутренний, не распространяется — открытой лицензии нет (решение владельца
+  от 15.10.2026).
 
 ## Быстрый старт
 
@@ -404,16 +414,32 @@ API: http://127.0.0.1:8000/api/docs (Swagger).
 
 ## Продакшен-заметки
 
+* **Референс-прод-стек**: `docker-compose.prod.yml` — nginx (TLS, gzip, лимиты) +
+  PostgreSQL 16 + приложение в несколько воркеров + ежедневные бэкапы. Пошагово —
+  [`deploy/README.md`](deploy/README.md). Для знакомства достаточно одиночного
+  `docker-compose.yml` (SQLite), для разработки — `./run.sh`.
 * БД: SQLite по умолчанию (WAL + `busy_timeout`); для боевого режима
-  `DATABASE_URL=postgresql://…` в `.env`.
+  `DATABASE_URL=postgresql://…` в `.env` (драйвер уже в образе,
+  `requirements-postgres.txt`).
 * Часовой пояс объекта: `APP_TZ` (по умолчанию `Europe/Moscow`) — должен совпадать
   с `Settings.tz` движка; DST намеренно не поддерживается (локальные сутки = 1440 мин,
   решение владельца R24).
-* `SECRET_KEY` — обязательно задайте уникальный; при старте со значением по умолчанию
-  сервер пишет предупреждение.
+* `SECRET_KEY` — обязательно задайте уникальный: с пустым/коротким/примерным ключом
+  приложение **отказывается стартовать** (см. `app/main.py`).
+* Боевые флаги по умолчанию безопасны: CSP блокирующая, `/metrics` выключен.
+  Демо-вход «как сотрудник» включён по умолчанию (решение владельца от
+  15.10.2026) — `ALLOW_IMPERSONATION=0` выключает. За reverse-proxy включите
+  `TRUST_PROXY_HEADERS=1`; при раскатке CSP можно временно перевести в
+  `CSP_REPORT_ONLY=1`.
+* Наблюдаемость: `LOG_JSON=1` — структурированный access-лог; сквозной
+  `X-Request-ID`; `GET /api/health` проверяет БД (503 при недоступности) и
+  возвращает версию; `METRICS_ENABLED=1` — Prometheus-метрики `/metrics`.
 * Атомарность закрытий обеспечивает `UnitOfWork` (commit/rollback); конкурентное
-  повторное закрытие исключает уникальный ключ `(employee_id, period_start)`.
-* Бэкапы: регулярно копируйте файл БД; в базе — персональные данные.
+  повторное закрытие исключает уникальный ключ `(employee_id, period_start)`;
+  отметки при нескольких воркерах защищены строковым замком БД (`FOR UPDATE`).
+* Бэкапы: в прод-профиле — автоматические (`./backups`, pg_dumpall ежесуточно,
+  восстановление — см. `deploy/README.md`); на SQLite регулярно копируйте файл БД.
+  В базе — персональные данные: храните копии зашифрованными.
 * Зарплатный модуль намеренно не ведётся; информационный план строки Табеля —
   зарплатный атрибут, денежный расчёт добавляется отдельным слоем поверх данных УТ.
 
@@ -421,7 +447,7 @@ API: http://127.0.0.1:8000/api/docs (Swagger).
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q                    # 430+ проверок
+python -m pytest tests/ -q                    # 480+ проверок
 python -m pytest tests/engine -q --cov=app.engine.domain --cov-report=term   # покрытие домена ≥ 95 %
 python -m ruff check .                        # линтер Python
 npm install && npm run lint                   # ESLint (no-undef по списку глобальных имён)

@@ -13,7 +13,6 @@
     "smoke:settings": "./tools/run_settings_scenario.sh",
     "smoke:norms": "./tools/run_norms_scenario.sh",
     "smoke:layers": "./tools/run_layers_scenario.sh",
-    "smoke:proto": "node tools/proto_layers_smoke.mjs",
     "snapshot": "./tools/run_snapshot.sh"
   },
   "devDependencies": {

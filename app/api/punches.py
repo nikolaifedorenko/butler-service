@@ -276,6 +276,12 @@ def punch(payload: PunchIn, principal: Principal = Depends(current_principal), d
 
 
 def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Employee):
+    # Межпроцессное взаимное исключение: threading.Lock в punch() защищает только
+    # внутри процесса. При нескольких воркерах/инстансах гонку «прочитал состояние —
+    # вставил отметку» закрывает блокировка строки сотрудника: Postgres выполняет
+    # SELECT … FOR UPDATE, SQLite форсу игнорирует — там писатели и так
+    # сериализуются файловой блокировкой (WAL + busy_timeout).
+    db.execute(select(Employee).where(Employee.id == emp.id).with_for_update())
     now = now_local()
     backfill = False
     ts = now

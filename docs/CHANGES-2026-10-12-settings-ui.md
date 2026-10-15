@@ -156,5 +156,5 @@ tools/snapshot.mjs                   +25 (снимки под-экранов, SN
 .github/workflows/ci.yml             +13 (admin-смоук, сценарий настроек)
 package.json                         +1 (smoke:settings)
 README.md, docs/SPEC.md, docs/SETTINGS-UI-PROPOSAL-2026-10-12.md (ред. 6, §0.2),
-docs/settings-ui-prototype.html, docs/CHANGES-2026-10-12-settings-ui.md
+docs/archive/settings-ui-prototype.html, docs/CHANGES-2026-10-12-settings-ui.md
 ```

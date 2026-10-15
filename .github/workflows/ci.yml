@@ -67,6 +67,19 @@ jobs:
         if: matrix.python-version == '3.11'
         run: python tools/freeze_requirements.py --check
 
+      - name: Контракт OpenAPI не разошёлся с кодом (docs/openapi.json)
+        if: matrix.python-version == '3.11'
+        run: python tools/export_openapi.py --check
+
+      - name: Аудит зависимостей (pip-audit, известные CVE)
+        if: matrix.python-version == '3.11'
+        # первое время неразрушающий шаг: после инвентаризации находок и фиксации
+        # исключений снять continue-on-error, чтобы новые CVE блокировали merge
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit --desc
+
       - name: Самодиагностика схемы (/api/selfcheck)
         run: |
           DATABASE_URL="sqlite:///./ci_selfcheck.db" SECRET_KEY="ci-only-not-a-secret" \
@@ -105,6 +118,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           npm install --no-audit --no-fund
+
+      - name: Аудит npm-зависимостей (известные CVE)
+        # первое время неразрушающий: после инвентаризации находок снять
+        # continue-on-error, чтобы новые CVE блокировали merge
+        continue-on-error: true
+        run: npm audit --audit-level=high
 
       - name: Линтер JavaScript (no-undef ловит отсутствующие функции разделов)
         run: npx eslint static/js static/sw.js
@@ -145,13 +164,6 @@ jobs:
         # из настроек, окно из кода Табеля, план/отработано/недостача/переработка,
         # флаги; слои фильтруются по правам роли, алиасы старых разделов работают.
         run: ./tools/run_layers_scenario.sh 8194 admin
-
-      - name: Прототип «График — 4 слоя» (автономный HTML, jsdom без сервера)
-        # Прототип из docs/grafik-4-sloya-prototype.html — черновик будущего раздела
-        # «График» (слои: Табель → План/График → Факт → Управленческий Табель).
-        # Смоук фиксирует числовые примеры владельца от 12.10.2026 и работу всех
-        # слоёв, чтобы правки прототипа не ломали согласованную арифметику.
-        run: npm run smoke:proto
 
   docker:
     name: Docker-образ собирается

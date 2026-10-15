@@ -1,0 +1,3 @@
+# Драйвер PostgreSQL — нужен для прод-профиля (docker-compose.prod.yml).
+# Локальной разработке на SQLite не мешает: просто установлен в образ.
+psycopg2-binary>=2.9
