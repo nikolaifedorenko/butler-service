@@ -35,8 +35,9 @@ from ..services.punch_plan import (
     to_local as _to_local,
 )
 
-# окно поиска открытой смены вокруг плана (интерфейс отметок; на расчёт часов не влияет)
-WINDOW_BEFORE_H = 4
+# Grace-период опоздания. Окно поиска открытой сессии больше не нужно:
+# открытая сессия ищется по всей истории — как на доске (решение владельца
+# 15.10.2026: смены длительностью сутки и более — норма, см. ADR-0009)
 GRACE_MINUTES = 5
 
 
@@ -91,17 +92,19 @@ def _resolve_employee(principal: Principal, employee_id: Optional[int], db: Sess
     raise HTTPException(status_code=403, detail="К вашей учётной записи не привязан сотрудник")
 
 
-def _open_session(db: Session, emp_id: int, since: dt.datetime) -> Optional[Punch]:
-    """Последний IN, после которого нет OUT."""
-    punches = db.scalars(select(Punch).where(
-        Punch.employee_id == emp_id, Punch.ts >= since).order_by(Punch.ts)).all()
-    last_in = None
-    for p in punches:
-        if p.kind == "IN":
-            last_in = p
-        else:
-            last_in = None
-    return last_in
+def _open_session(db: Session, emp_id: int) -> Optional[Punch]:
+    """Открытая сессия = последняя по времени (ts, id) отметка является «пришёл».
+
+    Окно — вся история, ровно как на доске «кто на работе» (last_marks):
+    сотрудник может легально быть на смене сутки и более (решение владельца
+    15.10.2026, ADR-0009). Прежнее окно «план − 4 ч» обрезало длинные сессии:
+    личный экран предлагал «Пришёл» при фактически открытой сессии, а расчёт
+    всё равно склеивал сессии (sanitize адаптера отбрасывает повторный IN) —
+    окно не защищало расчёт, а лишь разводило экраны (дефект 15.10.2026).
+    """
+    last = db.scalar(select(Punch).where(Punch.employee_id == emp_id)
+                     .order_by(Punch.ts.desc(), Punch.id.desc()).limit(1))
+    return last if last is not None and last.kind == "IN" else None
 
 
 def _punch_permissions(db: Session, emp_id: int, now: dt.datetime):
@@ -140,9 +143,7 @@ def _status_payload(db: Session, emp: Employee) -> dict:
     rules = load_rules(db)
     today = local_date()
     shift, p_start, p_end, plan_date, subs = _plan_for_date(db, emp.id, today)
-    since = (p_start - dt.timedelta(hours=WINDOW_BEFORE_H)) if p_start \
-        else dt.datetime(today.year, today.month, today.day) - dt.timedelta(hours=12)
-    open_in = _open_session(db, emp.id, since)
+    open_in = _open_session(db, emp.id)
     now = now_local()
     last_punch = db.scalar(select(Punch).where(Punch.employee_id == emp.id)
                            .order_by(Punch.ts.desc()).limit(1))
@@ -240,9 +241,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
         raise HTTPException(status_code=409,
                             detail="Отметку поставить нельзя: в эту дату сотрудник не работал в компании "
                                    "(до приёма или после увольнения)")
-    since = (p_start - dt.timedelta(hours=WINDOW_BEFORE_H)) if p_start \
-        else dt.datetime(target_date.year, target_date.month, target_date.day) - dt.timedelta(hours=12)
-    open_in = _open_session(db, emp.id, since)
+    open_in = _open_session(db, emp.id)
 
     kind = payload.kind
     if kind == "auto":
