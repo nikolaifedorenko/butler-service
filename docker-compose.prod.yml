@@ -40,10 +40,11 @@ services:
       SECRET_KEY: ${SECRET_KEY:?задайте SECRET_KEY в .env (openssl rand -hex 32)}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       TZ: ${APP_TZ:-Europe/Moscow}
-      # боевые нормы: cookie только по TLS, демо-вход выключен, IP из XFF
-      # (приложение стоит за своим nginx), JSON-лог, метрики для внутреннего скрейпера
+      # боевые нормы: cookie только по TLS, IP из XFF (приложение стоит за своим
+      # nginx), JSON-лог, метрики для внутреннего скрейпера; демо-вход включён
+      # по умолчанию (решение владельца 15.10.2026), 0 — выключить
       COOKIE_SECURE: "1"
-      ALLOW_IMPERSONATION: "0"
+      ALLOW_IMPERSONATION: ${ALLOW_IMPERSONATION:-1}
       TRUST_PROXY_HEADERS: "1"
       LOG_JSON: "1"
       METRICS_ENABLED: ${METRICS_ENABLED:-1}

@@ -1,6 +1,6 @@
 """Безопасность, батч 15.10.2026: параметры хешей и ленивый rehash, заголовки
-(CSP/HSTS/Permissions-Policy), демо-вход по умолчанию выключен, X-Forwarded-For
-читается только за доверенным прокси.
+(CSP/HSTS/Permissions-Policy), демо-вход управляется флагом (включён по решению
+владельца), X-Forwarded-For читается только за доверенным прокси.
 
 Механизмы проверяются точечно: общий прогон (conftest) не имитирует браузер и
 использует демо-флаги, поэтому здесь нужные настройки включаются/выключаются
@@ -107,13 +107,14 @@ def test_hsts_only_over_https(app_stack):
 
 
 def test_impersonation_flag_respected(app_stack):
-    """Демо-вход «как сотрудник» управляется флагом; боевой default — выключен."""
+    """Демо-вход «как сотрудник»: включён по умолчанию (решение владельца
+    15.10.2026), при ALLOW_IMPERSONATION=0 маршрут отдаёт 403."""
     from fastapi.testclient import TestClient
 
     from app.config import Settings, settings
 
-    assert Settings.model_fields["allow_impersonation"].default is False, \
-        "в production демо-вход должен быть выключен по умолчанию"
+    assert Settings.model_fields["allow_impersonation"].default is True, \
+        "демо-вход нужен по умолчанию (решение владельца 15.10.2026)"
 
     c = TestClient(app_stack["app"])
     assert c.post("/api/auth/login", json={"username": "gromova", "password": "demo1234"}).status_code == 200

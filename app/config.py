@@ -20,9 +20,10 @@ class Settings(BaseSettings):
     # ставьте 1, когда сайт работает по HTTPS: cookie будет передаваться только по TLS
     cookie_secure: bool = False
     # demo-режим: разрешить менеджеру «войти как сотрудник» без пароля.
-    # По умолчанию ВЫКЛЮЧЕН: это демо-фича, в проде включается осознанно
-    # (ALLOW_IMPERSONATION=1 — в .env.example локальной разработки).
-    allow_impersonation: bool = False
+    # Включён ПО УМОЛЧАНИЮ — решение владельца от 15.10.2026: функция нужна
+    # в повседневной работе (демонстрация интерфейса, поддержка сотрудников).
+    # Отключается ALLOW_IMPERSONATION=0 на стендах, где она не нужна.
+    allow_impersonation: bool = True
     # читать IP клиента (rate-limit входа) из X-Forwarded-For — включать ТОЛЬКО
     # за своим доверенным reverse-proxy, иначе заголовок подделывается клиентом.
     trust_proxy_headers: bool = False

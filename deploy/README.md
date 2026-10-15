@@ -37,7 +37,7 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 | Флаг | Прод-значение | Смысл |
 |---|---|---|
 | `COOKIE_SECURE` | `1` | cookie только по TLS |
-| `ALLOW_IMPERSONATION` | `0` | демо-вход «как сотрудник» выключен |
+| `ALLOW_IMPERSONATION` | `1` | демо-вход «как сотрудник» включён по умолчанию (решение владельца 15.10.2026); `0` — выключить |
 | `TRUST_PROXY_HEADERS` | `1` | IP для rate-limit берётся из X-Forwarded-For (доверяем своему nginx) |
 | `LOG_JSON` | `1` | структурированный access-лог (uvicorn стартует с `--no-access-log`) |
 | `METRICS_ENABLED` | `1` | `/metrics` для внутреннего скрейпера |
