@@ -1,10 +1,12 @@
 # Простой контейнер TimeTrack: приложение + SQLite в томе
 FROM python:3.11-slim
 WORKDIR /srv/timetrack
-COPY requirements.txt requirements-pdf.txt ./
+COPY requirements.txt requirements-pdf.txt requirements-postgres.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 # PDF-движок необязателен: если под этот Python нет готовых сборок — образ всё равно соберётся
 RUN pip install --no-cache-dir -r requirements-pdf.txt || echo "PDF-движок не установлен (не критично)"
+# Драйвер PostgreSQL: нужен прод-профилю (docker-compose.prod.yml); на SQLite просто не используется
+RUN pip install --no-cache-dir -r requirements-postgres.txt || echo "PostgreSQL-драйвер не установлен (SQLite работает без него)"
 COPY app ./app
 COPY static ./static
 COPY assets ./assets
