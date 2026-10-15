@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit
 from ..db import get_db
+from ..deps import normalize_hex_color
 from ..engine.adapters.settings_codec import from_payload, to_payload
 from ..engine.adapters.sql_settings import SCOPE_GROUPS, SqlSettingsAdapter, base_version
 from ..engine.domain.settings.defaults import default_settings
@@ -89,6 +90,20 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
         raise HTTPException(status_code=422, detail=domain_error_text(exc))
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=f"Некорректный формат настроек: {exc}")
+    # Цвета кодов Табеля попадают во фронтенде в атрибут style="…" (пилюли кодов,
+    # таймлайн) — произвольная строка там означает HTML/CSS-инъекцию, поэтому формат
+    # жёсткий, как для цветов должностей и смен (normalize_hex_color). Заодно
+    # канонизуем (нижний регистр) перед сохранением версии.
+    for code, pol in (data.payload.get("day_code_policy") or {}).items():
+        if not isinstance(pol, dict):
+            continue
+        color = pol.get("color")
+        if color not in (None, ""):
+            try:
+                pol["color"] = normalize_hex_color(color, "#8a94a6")
+            except ValueError as exc:
+                raise HTTPException(status_code=422,
+                                    detail=f"Цвет кода Табеля «{code}»: {exc}")
     v = EngineSettingsVersion(valid_from=data.valid_from, payload_json=json.dumps(data.payload, ensure_ascii=False),
                               note=data.note[:255], created_by_name=principal.name)
     db.add(v)

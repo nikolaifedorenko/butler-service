@@ -17,7 +17,9 @@ const V4_CODE_COLORS = {
   'НН': '#b03a48',
 };
 function v4CodeColor(code, fromPayload) {
-  return (fromPayload && fromPayload[code]) || V4_CODE_COLORS[code] || '#8a94a6';
+  /* cssColor на выходе закрывает все стоки (пилюли, таймлайн, ячейки): цвета из
+     payload настроек приходят из БД и не должны вырываться из style="…". */
+  return cssColor((fromPayload && fromPayload[code]) || V4_CODE_COLORS[code]);
 }
 const V4_FLAG_CLASS = { LATE: 'warn', EARLY_DEPARTURE: 'warn', OFF_SHIFT_ATTENDANCE: 'info' };
 
