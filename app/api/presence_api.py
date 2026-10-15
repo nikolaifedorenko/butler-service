@@ -20,7 +20,7 @@ from ..engine.domain.types.errors import DomainError
 from ..engine.interface.views import board_dict
 from ..models import Employee
 from ..permissions import require_perm
-from .engine_common import domain_error_text, emp_brief, engine_ports, now_utc
+from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc
 
 router = APIRouter(prefix="/api/presence", tags=["presence"])
 

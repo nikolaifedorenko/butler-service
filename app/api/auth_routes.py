@@ -126,15 +126,15 @@ def me(principal: Principal = Depends(current_principal), db: Session = Depends(
     data = {"user": principal.to_dict(), "today": None,
             "permissions": sorted(principal_permissions(db, principal))}
     if emp:
-        from .punches import _plan_for_date, _to_local
+        from ..services.punch_plan import plan_for_date, to_local
         today = local_date()
-        shift, p_start, p_end, _plan_date, subs = _plan_for_date(db, emp.id, today)
+        shift, p_start, p_end, _plan_date, subs = plan_for_date(db, emp.id, today)
         data["today"] = {
             "date": today.isoformat(),
             "shift": shift,      # отрезок Графика (generated/manual) либо None
             "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
             "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
-            "expected": [[_to_local(a).strftime("%H:%M"), _to_local(b).strftime("%H:%M")]
+            "expected": [[to_local(a).strftime("%H:%M"), to_local(b).strftime("%H:%M")]
                          for a, b in subs],
         }
     return data

@@ -37,7 +37,7 @@ from ..engine.domain.types.errors import DomainError
 from ..engine.interface.serialize import plain
 from ..engine.interface.views import period_view_dict
 from ..permissions import principal_permissions, require_perm
-from .engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
+from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
 
 router = APIRouter(prefix="/api/mgmt", tags=["mgmt-timesheet"])
 

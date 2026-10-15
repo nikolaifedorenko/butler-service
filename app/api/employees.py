@@ -13,12 +13,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..auth import Principal, audit, can_manage_user, current_principal, require_manager
-from ..base_schedule import dump_pattern, validate_pattern
+from ..base_schedule import validate_pattern
 from ..db import get_db
 from ..deps import local_date, slugify_username
-from ..employment import close_period, open_period, periods_of
-from ..groups import GROUP_META, normalize_group
+from ..employment import open_period, periods_of
 from ..groups import group_choices as group_choices_list
+from ..groups import normalize_group
 from ..models import (
     ROLE_ADMIN,
     ROLE_EMPLOYEE,
@@ -38,8 +38,21 @@ from ..models import (
 from ..names import suggest_genitive
 from ..permissions import require_perm
 from ..security import hash_password
+from ..services import employee_lifecycle as lifecycle
+from ..services.employee_lifecycle import (
+    normalize_block_history,
+)
+from ..services.employee_lifecycle import (
+    parse_date as _parse_date,
+)
+from ..services.employee_lifecycle import (
+    touch_block as _touch_block,
+)
+from ..services.employee_lifecycle import (
+    touch_position as _touch_position,
+)
+from ..services.engine_common import day_code_rows, domain_error_text, engine_ports, last_closed_bank, now_utc
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
-from .engine_common import day_code_rows, domain_error_text, engine_ports, last_closed_bank, now_utc
 
 router = APIRouter(prefix="/api", tags=["directory"])
 
@@ -144,15 +157,6 @@ class EmployeeIn(BaseModel):
     role: str = ROLE_EMPLOYEE
 
 
-def _parse_date(value: Optional[str]) -> Optional[dt.date]:
-    if not value:
-        return None
-    try:
-        return dt.date.fromisoformat(value)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Дата должна быть в формате ГГГГ-ММ-ДД")
-
-
 def _sync_contacts(db: Session, emp: Employee, contacts: list[ContactIn]) -> None:
     for c in list(emp.contacts):
         db.delete(c)
@@ -165,104 +169,8 @@ def _sync_contacts(db: Session, emp: Employee, contacts: list[ContactIn]) -> Non
             emp.contacts.append(obj)
 
 
-def _touch_position(db: Session, emp: Employee, new_position: str, since: dt.date) -> None:
-    """Закрыть текущую запись истории должностей и открыть новую (повышение/понижение/перевод)."""
-    if (emp.position or "") == (new_position or ""):
-        return
-    cur = db.scalar(select(PositionHistory).where(
-        PositionHistory.employee_id == emp.id, PositionHistory.end_date.is_(None)))
-    if cur:
-        cur.end_date = since - dt.timedelta(days=1)
-    db.add(PositionHistory(employee_id=emp.id, position=new_position, start_date=since, end_date=None))
-
-
 def _coverage_start(emp: Employee) -> dt.date:
     return emp.hired_at or dt.date(2020, 1, 1)
-
-
-def normalize_block_history(db: Session, emp: Employee) -> None:
-    """Инвариант истории блоков: периоды не пересекаются, идут подряд,
-    соседние периоды одной группы склеиваются. Чинит в т.ч. старые «рваные» истории."""
-    recs = list(db.scalars(select(BlockAssignment).where(
-        BlockAssignment.employee_id == emp.id).order_by(BlockAssignment.start_date)))
-    if not recs:
-        return
-    result: list[BlockAssignment] = []
-    for rec in recs:
-        if result:
-            last = result[-1]
-            last_end = last.end_date
-            if last_end is None or last_end >= rec.start_date:
-                # последний открытый/перекрывающий период упирается в начало нового
-                new_end = rec.start_date - dt.timedelta(days=1)
-                if last_end is None or last_end > new_end:
-                    if new_end < last.start_date:
-                        db.delete(last)
-                        result.pop()
-                    else:
-                        last.end_date = new_end
-        if result:
-            last = result[-1]
-            if last.group == rec.group and last.end_date == rec.start_date - dt.timedelta(days=1):
-                last.end_date = rec.end_date
-                db.delete(rec)
-                continue
-            if last.group == rec.group and last.end_date is None:
-                db.delete(rec)
-                continue
-        result.append(rec)
-    db.flush()
-
-
-def _touch_block(db: Session, emp: Employee, new_group: str, since: dt.date,
-                 pattern_json: str = "") -> None:
-    """
-    Перевод между блоками с произвольной датой: история с даты перевода перезаписывается.
-    Все периоды, начинающиеся не раньше `since`, заменяются новым открытым периодом;
-    период, накрывающий `since`, обрезается по `since-1` (или склеивается, если группа та же).
-    `pattern_json` — индивидуальный шаблон блока (выходные пятидневки, цикл 3/3 и т.п.).
-    """
-    new_group = normalize_group(new_group)
-    if (normalize_group(emp.schedule_group) or "") == (new_group or ""):
-        if pattern_json:
-            cur = db.scalar(select(BlockAssignment).where(
-                BlockAssignment.employee_id == emp.id, BlockAssignment.end_date.is_(None)
-            ).order_by(BlockAssignment.start_date.desc()))
-            if cur is not None:
-                cur.pattern_json = pattern_json
-                db.flush()
-        return
-    doomed = db.scalars(select(BlockAssignment).where(
-        BlockAssignment.employee_id == emp.id, BlockAssignment.start_date >= since)).all()
-    for rec in doomed:
-        db.delete(rec)
-    straddling = db.scalar(select(BlockAssignment).where(
-        BlockAssignment.employee_id == emp.id,
-        BlockAssignment.start_date < since,
-        BlockAssignment.end_date.is_(None)))
-    if straddling is not None:
-        if normalize_group(straddling.group) == new_group:
-            if pattern_json:
-                straddling.pattern_json = pattern_json
-                db.flush()
-            return                      # он и так уже в этой группе с более ранней даты
-        straddling.end_date = since - dt.timedelta(days=1)
-    prev = db.scalar(select(BlockAssignment).where(
-        BlockAssignment.employee_id == emp.id,
-        BlockAssignment.start_date < since).order_by(BlockAssignment.start_date.desc()))
-    if prev is not None and normalize_group(prev.group) == new_group \
-            and prev.end_date == since - dt.timedelta(days=1):
-        prev.end_date = None            # склеиваем с предыдущим периодом той же группы
-        if pattern_json:
-            prev.pattern_json = pattern_json
-        db.flush()
-        return
-    if prev is not None and prev.end_date is None:
-        prev.end_date = since - dt.timedelta(days=1)
-    db.add(BlockAssignment(employee_id=emp.id, group=new_group, start_date=since, end_date=None,
-                           pattern_json=pattern_json))
-    db.flush()
-    normalize_block_history(db, emp)
 
 
 @router.get("/employees")
@@ -410,47 +318,19 @@ class DatedAction(BaseModel):
     label: str = ""
 
 
-def _build_pattern_json(payload: DatedAction) -> str:
-    """Собрать и проверить индивидуальный шаблон блока из payload перевода."""
-    group = normalize_group(payload.group.strip())
-    kind = (payload.kind or GROUP_META.get(group, {}).get("kind") or "base").strip()
-    if kind == "base":
-        return ""
-    pattern: dict = {"kind": kind}
-    if payload.shift_code.strip():
-        pattern["shift_code"] = payload.shift_code.strip()
-    if kind == "week5":
-        pattern["off_weekdays"] = sorted({int(d) % 7 for d in payload.off_weekdays})
-    if kind == "cycle":
-        pattern["cycle"] = (payload.cycle or "").strip() or "3/3"
-        if payload.anchor:
-            pattern["anchor"] = payload.anchor
-    if payload.label.strip():
-        pattern["label"] = payload.label.strip()
-    try:
-        label = validate_pattern(pattern)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    if not pattern.get("label"):
-        pattern["label"] = label
-    return dump_pattern(pattern)
+def _block_of(payload) -> lifecycle.BlockChange:
+    """DTO → данные use-case'а: сервис не зависит от pydantic-моделей api-слоя."""
+    return lifecycle.BlockChange(group=payload.group, kind=payload.kind,
+                                 shift_code=payload.shift_code, cycle=payload.cycle,
+                                 anchor=payload.anchor, off_weekdays=payload.off_weekdays,
+                                 label=payload.label)
 
 
 @router.post("/employees/{employee_id}/position-change")
 def position_change(employee_id: int, payload: DatedAction,
                     principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод/повышение/понижение с произвольной даты."""
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    if not payload.position.strip():
-        raise HTTPException(status_code=422, detail="Укажите новую должность")
-    since = _parse_date(payload.date) or local_date()
-    _touch_position(db, emp, payload.position.strip(), since)
-    emp.position = payload.position.strip()
-    audit(db, principal, "position_change", f"employee:{emp.id}",
-          {"position": emp.position, "since": since.isoformat()})
-    db.commit()
+    emp = lifecycle.position_change(db, principal, employee_id, payload.position, payload.date)
     return _emp_dict(emp)
 
 
@@ -458,25 +338,7 @@ def position_change(employee_id: int, payload: DatedAction,
 def block_change(employee_id: int, payload: DatedAction,
                  principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод между блоками графика (Смена 1 ↔ Смена 2) с произвольной даты."""
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    if not payload.group.strip():
-        raise HTTPException(status_code=422, detail="Укажите блок графика")
-    since = _parse_date(payload.date) or local_date()
-    group = normalize_group(payload.group.strip())
-    pattern_json = _build_pattern_json(payload)
-    _touch_block(db, emp, group, since, pattern_json=pattern_json)
-    emp.schedule_group = group
-    # цикл сотрудника для «Продолжить график»: из индивидуального шаблона
-    if payload.kind == "cycle" or (pattern_json and '"kind": "cycle"' in pattern_json):
-        emp.schedule_pattern = payload.cycle.strip() or "3/3"
-        emp.schedule_anchor = _parse_date(payload.anchor) or since
-    elif group == "Пятидневка":
-        emp.schedule_pattern = emp.schedule_pattern or "5/2"
-    audit(db, principal, "block_change", f"employee:{emp.id}",
-          {"group": emp.schedule_group, "since": since.isoformat(), "pattern": pattern_json})
-    db.commit()
+    emp = lifecycle.block_change(db, principal, employee_id, _block_of(payload), payload.date)
     return _emp_dict(emp)
 
 
@@ -484,23 +346,7 @@ def block_change(employee_id: int, payload: DatedAction,
 def dismiss_employee(employee_id: int, payload: DatedAction,
                      principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Увольнение (деактивация) с произвольной даты; история сохраняется."""
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    _guard_supervisor(principal, ROLE_EMPLOYEE, emp.user)
-    since = _parse_date(payload.date) or local_date()
-    emp.dismissed_at = since
-    emp.active = False
-    if emp.user:
-        emp.user.is_active = False
-    # При увольнении все закрепления электрокаров снимаются автоматически (ТЗ, ч.3)
-    for car in db.scalars(select(Car).where(Car.assigned_to == emp.id)):
-        car.assigned_to = None
-        car.note = (car.note + "; " if car.note else "") + "закрепление снято: увольнение"
-    close_period(db, emp, until=since, note="увольнение")
-    audit(db, principal, "employee_dismiss", f"employee:{emp.id}",
-          {"since": since.isoformat(), "note": "дата считается последним рабочим днём"})
-    db.commit()
+    emp = lifecycle.dismiss(db, principal, employee_id, payload.date)
     return _emp_dict(emp, with_user=True)
 
 
@@ -523,45 +369,8 @@ def rehire_employee(employee_id: int, payload: RehireIn,
 
     В графике будут видны: смены ДО увольнения, неактивные дни между периодами
     и активные дни после повторного приёма. Вся прошлая история сохраняется."""
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    if emp.deleted_at:
-        raise HTTPException(status_code=409,
-                            detail="Сотрудник помечен удалённым — сначала восстановите запись")
-    since = _parse_date(payload.date) or local_date()
-
-    periods = periods_of(db, emp.id)
-    last = periods[-1] if periods else None
-    if last is not None and last.end_date is not None \
-            and last.start_date <= since <= last.end_date + dt.timedelta(days=1):
-        # дата приёма вплотную к увольнению (или раньше) — просто возобновляем период
-        last.end_date = None
-        last.note = (last.note + "; " if last.note else "") + f"повторный приём с {since.isoformat()}"
-    else:
-        open_period(db, emp, since, note="повторный приём", user_id=principal.user.id)
-
-    emp.active = True
-    emp.dismissed_at = None
-    if emp.user:
-        emp.user.is_active = True
-    if payload.position.strip():
-        _touch_position(db, emp, payload.position.strip(), since)
-        emp.position = payload.position.strip()
-    if payload.group.strip():
-        act = DatedAction(date=since.isoformat(), group=payload.group, kind=payload.kind,
-                          shift_code=payload.shift_code, cycle=payload.cycle,
-                          anchor=payload.anchor, off_weekdays=payload.off_weekdays,
-                          label=payload.label)
-        group = normalize_group(act.group.strip())
-        _touch_block(db, emp, group, since, pattern_json=_build_pattern_json(act))
-        emp.schedule_group = group
-    elif not db.scalar(select(BlockAssignment).where(
-            BlockAssignment.employee_id == emp.id, BlockAssignment.end_date.is_(None))):
-        _touch_block(db, emp, normalize_group(emp.schedule_group) or "Смена 1", since)
-
-    audit(db, principal, "employee_rehire", f"employee:{emp.id}", {"since": since.isoformat()})
-    db.commit()
+    block = _block_of(payload) if payload.group.strip() else None
+    emp = lifecycle.rehire(db, principal, employee_id, payload.date, payload.position, block)
     return _emp_dict(emp, with_user=True)
 
 

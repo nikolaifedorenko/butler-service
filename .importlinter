@@ -1,0 +1,48 @@
+; Контракты импортов (lint-imports) — Python-аналог архитектурных тестов движка
+; (tests/engine/test_architecture.py) для остального приложения.
+; Законы ADR-0006: api → services → models; api-модули независимы; движок
+; изолирован от HTTP-слоя и сервисов (адаптеры движка могут использовать models).
+
+[importlinter]
+root_packages =
+    app
+
+[importlinter:contract:app-layers]
+name = Слои приложения: api над services, services над models
+type = layers
+layers =
+    app.api
+    app.services
+    app.models
+
+[importlinter:contract:api-independence]
+name = API-модули не импортируют друг друга (общее — только services)
+type = independence
+modules =
+    app.api.access_api
+    app.api.audit_api
+    app.api.auth_routes
+    app.api.cars_api
+    app.api.docs_api
+    app.api.doublepay
+    app.api.employees
+    app.api.engine_settings_api
+    app.api.fact_api
+    app.api.mgmt_api
+    app.api.night_api
+    app.api.photos_api
+    app.api.presence_api
+    app.api.punches
+    app.api.schedule
+    app.api.settings_api
+    app.api.tabel_api
+
+[importlinter:contract:engine-isolation]
+name = Движок v7.1 не знает про api/services/main
+type = forbidden
+source_modules =
+    app.engine
+forbidden_modules =
+    app.api
+    app.services
+    app.main

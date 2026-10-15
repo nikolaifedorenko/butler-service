@@ -26,7 +26,7 @@ from ..engine.domain.types.entities import Period
 from ..engine.domain.types.errors import ConfigError
 from ..models import DayModifier, EngineSettingsVersion
 from ..permissions import require_perm
-from .engine_common import domain_error_text
+from ..services.engine_common import domain_error_text
 
 router = APIRouter(prefix="/api/engine-settings", tags=["engine-settings"])
 MODIFIER_TITLES = {"double_overtime": "Двойные переработки", "pays_overtime": "Оплачиваются ли переработки",

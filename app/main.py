@@ -49,6 +49,7 @@ from .migrations import (
 )
 from .security import new_csrf_token
 from .seed import seed_if_empty
+from .services.errors import Conflict, Forbidden, Gone, NotFound, Validation
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -120,6 +121,34 @@ app = FastAPI(title=settings.app_name, version=settings.app_version, docs_url="/
               openapi_url="/api/openapi.json", lifespan=lifespan)
 
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+# ── маппинг доменных ошибок сервисного слоя в HTTP ──────────────────────────
+# Сервисы (app/services/*) не знают про FastAPI и бросают services.errors.*;
+# тело ответа прежнее — {"detail": текст}, контракты API и тесты не меняются.
+@app.exception_handler(NotFound)
+async def _not_found_handler(request: Request, exc: NotFound):
+    return JSONResponse({"detail": str(exc)}, status_code=404)
+
+
+@app.exception_handler(Forbidden)
+async def _forbidden_handler(request: Request, exc: Forbidden):
+    return JSONResponse({"detail": str(exc)}, status_code=403)
+
+
+@app.exception_handler(Validation)
+async def _validation_handler(request: Request, exc: Validation):
+    return JSONResponse({"detail": str(exc)}, status_code=422)
+
+
+@app.exception_handler(Conflict)
+async def _conflict_handler(request: Request, exc: Conflict):
+    return JSONResponse({"detail": str(exc)}, status_code=409)
+
+
+@app.exception_handler(Gone)
+async def _gone_handler(request: Request, exc: Gone):
+    return JSONResponse({"detail": str(exc)}, status_code=410)
 
 # Порядок middleware: регистрируются снизу вверх (последний — самый внешний).
 # csrf_protection → security_headers → request_context: заголовки безопасности и

@@ -34,7 +34,7 @@ from ..engine.interface.formatting import hm, local_hm
 from ..engine.interface.views import flag_dict, session_view_dict
 from ..models import Employee
 from ..permissions import require_perm
-from .engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
+from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
 
 router = APIRouter(prefix="/api/fact", tags=["fact"])
 
