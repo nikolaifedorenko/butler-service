@@ -67,6 +67,19 @@ jobs:
         if: matrix.python-version == '3.11'
         run: python tools/freeze_requirements.py --check
 
+      - name: Контракт OpenAPI не разошёлся с кодом (docs/openapi.json)
+        if: matrix.python-version == '3.11'
+        run: python tools/export_openapi.py --check
+
+      - name: Аудит зависимостей (pip-audit, известные CVE)
+        if: matrix.python-version == '3.11'
+        # первое время неразрушающий шаг: после инвентаризации находок и фиксации
+        # исключений снять continue-on-error, чтобы новые CVE блокировали merge
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit --desc
+
       - name: Самодиагностика схемы (/api/selfcheck)
         run: |
           DATABASE_URL="sqlite:///./ci_selfcheck.db" SECRET_KEY="ci-only-not-a-secret" \
@@ -105,6 +118,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           npm install --no-audit --no-fund
+
+      - name: Аудит npm-зависимостей (известные CVE)
+        # первое время неразрушающий: после инвентаризации находок снять
+        # continue-on-error, чтобы новые CVE блокировали merge
+        continue-on-error: true
+        run: npm audit --audit-level=high
 
       - name: Линтер JavaScript (no-undef ловит отсутствующие функции разделов)
         run: npx eslint static/js static/sw.js

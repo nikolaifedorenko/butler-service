@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Python-зависимости: PR обновляют requirements*.txt; после мержа не забыть
+  # python tools/freeze_requirements.py (CI-шаг «Лок-файл… не разошёлся» напомнит)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # dev-зависимости фронтенда (jsdom/eslint для смоуков)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # версии actions (checkout/setup-python/setup-node)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
