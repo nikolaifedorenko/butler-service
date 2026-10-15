@@ -42,6 +42,10 @@ os.environ.setdefault("APP_TZ", "Europe/Moscow")
 # CSRF-защита — браузерный механизм (cookie + заголовок); TestClient её не имитирует,
 # поэтому в тестах отключаем. Сам механизм покрыт отдельно (см. tests/test_csrf.py).
 os.environ.setdefault("CSRF_ENABLED", "0")
+# демо-вход «как сотрудник»: в приложении по умолчанию выключен (боевая норма),
+# но тесты test_13_impersonation / test_impersonated_manager проверяют сам механизм —
+# в тестовом окружении он включается явно (default-off проверяется отдельным тестом).
+os.environ.setdefault("ALLOW_IMPERSONATION", "1")
 
 DEMO_PASSWORD = "demo1234"
 

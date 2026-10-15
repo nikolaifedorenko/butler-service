@@ -116,6 +116,18 @@ app = FastAPI(title=settings.app_name, version="0.1.0", docs_url="/api/docs",
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
+# Политика CSP подобрана по фактическому содержимому интерфейса: все скрипты —
+# внешние файлы (inline-скриптов и onclick-обработчиков в SPA нет — проверено),
+# поэтому script-src строго 'self'. Inline-атрибуты style="…" в шаблонах есть
+# (300+) — для них 'unsafe-inline' в style-src (осознанный компромисс без сборки;
+# см. docs/adr/0004). data: — SVG-фавикон и иконки селекторов в CSS; blob: —
+# скачивание PDF/DOCX через createObjectURL; frame-ancestors дублирует X-Frame-Options.
+_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; "
+        "worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; "
+        "form-action 'self'; frame-ancestors 'none'")
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -123,6 +135,18 @@ async def security_headers(request: Request, call_next):
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("X-Frame-Options", "DENY")
     h.setdefault("Referrer-Policy", "same-origin")
+    h.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()")
+    csp_header = "Content-Security-Policy-Report-Only" if settings.csp_report_only \
+        else "Content-Security-Policy"
+    h.setdefault(csp_header, _CSP)
+    # HSTS имеет смысл только по TLS: за прокси смотрим X-Forwarded-Proto
+    # (доверяем ему лишь при TRUST_PROXY_HEADERS — иначе заголовок клиентский),
+    # без прокси — схему запроса. По HTTP заголовок браузерами игнорируется,
+    # но не рассылаем его зря.
+    proto = (request.headers.get("x-forwarded-proto", "") if settings.trust_proxy_headers
+             else "") or request.url.scheme
+    if proto == "https":
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     if request.url.path.startswith("/api/") and "cache-control" not in h:
         h["Cache-Control"] = "no-store"   # персональные данные не должны оседать в кэшах
     return response
