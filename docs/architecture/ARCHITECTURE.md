@@ -3,7 +3,7 @@
 **Репозиторий:** https://github.com/nikolaifedorenko/butler-service
 **Редакция:** 11.10.2026 — после переписывания расчётного движка по спецификации v7.1
 (предыдущий разбор от 28.09.2026 описывал legacy-движок `app/timesheet.py` и движок v4;
-история — в `docs/AUDIT-2026-09-27.md` и `docs/CHANGES-*.md`)
+история — в `docs/archive/AUDIT-2026-09-27.md` и `docs/CHANGES-*.md`)
 **Фокус:** слои и модули, модель данных, ключевые потоки, риски, онбординг
 **Как получен материал:** статический анализ импортов (архитектурные тесты), подсчёт
 SQL-запросов (`SQLAlchemy before_cursor_execute`, `tests/test_query_budget.py`),

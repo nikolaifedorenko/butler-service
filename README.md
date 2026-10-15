@@ -9,7 +9,7 @@
 Расчёт ведётся детерминированным движком по спецификации
 [`docs/overtime_spec_v7_1_final.md`](docs/overtime_spec_v7_1_final.md)
 (единственный нормативный документ; инженерная обёртка —
-[`docs/overtime_ai_tz_v3.md`](docs/overtime_ai_tz_v3.md)): чистые функции
+[`docs/archive/overtime_ai_tz_v3.md`](docs/archive/overtime_ai_tz_v3.md)): чистые функции
 «данные → данные», пять слоёв (`domain / application / ports / adapters / interface`),
 поведение из справочников CFG-*, трассируемость каждого действия, 55 приёмочных
 примеров EX-01…EX-55 в автотестах.
@@ -21,7 +21,7 @@
 * [`docs/overtime_spec_v7_1_final.md`](docs/overtime_spec_v7_1_final.md) — **спецификация
   движка v7.1** (норматив): предметная модель, справочники CFG-*, правила RUL-*,
   инварианты INV-*, примеры EX-*, вкладки веб-приложения (раздел 16).
-* [`docs/overtime_ai_tz_v3.md`](docs/overtime_ai_tz_v3.md) — ТЗ ред. 3: слои, контракты
+* [`docs/archive/overtime_ai_tz_v3.md`](docs/archive/overtime_ai_tz_v3.md) — ТЗ ред. 3: слои, контракты
   функций, порядок работ.
 * [`docs/MIGRATION-MAP-v7.md`](docs/MIGRATION-MAP-v7.md) — карта миграции прототипа:
   «что было → что заменяет» + решения владельца от 11.10.2026.
@@ -421,7 +421,7 @@ API: http://127.0.0.1:8000/api/docs (Swagger).
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q                    # 430+ проверок
+python -m pytest tests/ -q                    # 480+ проверок
 python -m pytest tests/engine -q --cov=app.engine.domain --cov-report=term   # покрытие домена ≥ 95 %
 python -m ruff check .                        # линтер Python
 npm install && npm run lint                   # ESLint (no-undef по списку глобальных имён)

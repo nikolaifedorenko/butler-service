@@ -25,6 +25,11 @@ server.log
 # node (jsdom-харнесс интерфейса)
 node_modules/
 
+# кэши инструментов тестирования/линтинга
+.hypothesis/
+.ruff_cache/
+.pytest_cache/
+
 # сгенерированные снимки интерфейса
 ui-snapshot.html
 .coverage
