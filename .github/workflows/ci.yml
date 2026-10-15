@@ -26,7 +26,7 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -99,7 +99,7 @@ jobs:
     name: "JavaScript: синтаксис + смоук интерфейса"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -172,6 +172,6 @@ jobs:
     name: Docker-образ собирается
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Сборка
         run: docker build -t butler-service:ci .
