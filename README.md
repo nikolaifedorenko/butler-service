@@ -456,6 +456,9 @@ API: http://127.0.0.1:8000/api/docs (Swagger).
 
 ## Тесты и проверки
 
+Для dev-инструментов (смоуки интерфейса, eslint) нужен **Node ≥ 22**:
+jsdom 30+ тянет undici 7, который на Node 20 падает на `markAsUncloneable`.
+
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest tests/ -q                    # 480+ проверок
