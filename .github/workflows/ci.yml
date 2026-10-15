@@ -103,7 +103,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          # jsdom 30+ (undici 7) требует Node ≥22: на 20 харнес падал с
+          # «webidl.util.markAsUncloneable is not a function» (дефект 15.10.2026)
+          node-version: "22"
 
       - uses: actions/setup-python@v7
         with:

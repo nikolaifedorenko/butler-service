@@ -7,6 +7,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # pyee 14 требует Python >=3.12, а CI-матрица 3.10-3.12 ставит лок на 3.11:
+      # автобамп транзитивного pyee в lock ломал установку (дефект 15.10.2026).
+      # Вернёмся, когда матрица начнётся с 3.12.
+      - dependency-name: "pyee"
+        versions: [">=14"]
 
   # dev-зависимости фронтенда (jsdom/eslint для смоуков)
   - package-ecosystem: "npm"
