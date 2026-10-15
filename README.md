@@ -35,7 +35,8 @@
   паролей, CSRF/CSP, rate-limit, граница чистой архитектуры, формат токена.
 * [`docs/CHANGES-2026-10-11.md`](docs/CHANGES-2026-10-11.md) — что изменилось в батче
   «движок v7.1»; свежие батчи — `CHANGES-2026-10-14-security.md` и
-  `CHANGES-2026-10-15-hardening.md`.
+  `CHANGES-2026-10-15-hardening.md` и `CHANGES-2026-10-15-refactoring.md`
+  (сервисный слой, пакет моделей, структура фронтенда).
 * [`docs/INSTALL.md`](docs/INSTALL.md) — установка (локально, сервер, Docker, бэкапы);
   прод-стек (nginx+TLS+PostgreSQL+бэкапы) — [`deploy/README.md`](deploy/README.md).
 * [`docs/AUTH.md`](docs/AUTH.md) — аутентификация и безопасность;
@@ -359,11 +360,12 @@ butler-service/
 ├── app/
 │   ├── main.py               # сборка FastAPI, lifespan, раздача SPA, health/selfcheck
 │   ├── migrations.py         # миграции схемы (идемпотентные) + migrate_engine_v7
-│   ├── models.py             # таблицы: Employee, ShiftType(+ревизии), ScheduleShift/
-│   │                         #   ScheduleAbsence (График v7), TabelDay (Табель), Punch,
-│   │                         #   EmploymentPeriod, BankAdjustment(+reason_code),
-│   │                         #   PeriodClosing(+flags_json), DeferredCarry, DayModifier,
-│   │                         #   EngineSettingsVersion, BlockAssignment, Night*, Car*, …
+│   ├── models/               # таблицы (пакет по поддоменам, фасад __init__):
+│   │                         #   directory (Employee, User, EmploymentPeriod,
+│   │                         #   BankAdjustment, …), schedule (ShiftType+ревизии,
+│   │                         #   ScheduleShift/Absence), engine_store (TabelDay,
+│   │                         #   PeriodClosing, DeferredCarry, DayModifier, …),
+│   │                         #   punch, night, cars, media, audit, access, common
 │   ├── engine/               # ДВИЖОК v7.1 — чистая архитектура (спека 2.1, 8.1–8.4)
 │   │   ├── domain/           #   чистое ядро: types, codes_registry, settings (defaults,
 │   │   │                     #   validate, checks/*), validation/* (стадия 1), time/*,
@@ -378,9 +380,13 @@ butler-service/
 │   │   ├── ports/            #   13 Protocol'ов (без ClockPort — now параметром, F-15)
 │   │   ├── adapters/         #   SQL-адаптеры поверх БД прототипа + factory
 │   │   └── interface/        #   человекочитаемые тексты (formatting), serialize/deserialize, views
-│   ├── api/                  # роутеры: schedule (График), tabel, mgmt (УТ), presence
-│   │                         #   (доска), fact (сессии), punches, employees, engine_settings,
-│   │                         #   access, audit, settings, docs, doublepay, night, cars, photos
+│   ├── api/                  # роутеры (тонкие): schedule (График), tabel, mgmt (УТ),
+│   │                         #   presence (доска), fact (сессии), punches, employees,
+│   │                         #   engine_settings, access, audit, settings, docs,
+│   │                         #   doublepay, night, cars, photos
+│   ├── services/             # use-case'и (без FastAPI): employee_lifecycle, punch_plan,
+│   │                         #   engine_common (мост к движку), errors (→ HTTP в main.py).
+│   │                         #   Границы: .importlinter (api → services → models)
 │   ├── base_schedule.py      # блоки и циклы (инструмент заполнения Табеля)
 │   ├── schedule_patterns.py  # циклы N/M, 5/2, произвольные «РРВВРВ»
 │   ├── tabel_fill.py         # заполнение Табеля из циклов (дробление ночных на 2 значения)
@@ -394,7 +400,12 @@ butler-service/
 │                             #   График из Табеля, отметки
 ├── static/
 │   ├── index.html            # оболочка SPA + экран входа
-│   ├── js/core.js app.js     # ядро + График/Мои отметки/Сотрудники
+│   ├── js/core.js app.js     # ядро (api/модалки/утилиты) + навигация/вход/слои Графика
+│   ├── js/section_grid.js    # сетка Графика, редакторы ячейки/периода, печать сетки
+│   ├── js/section_docs.js    # заявления и печать: шаблоны, скачивание DOCX/PDF
+│   ├── js/section_me.js      # «Мои отметки» (личный кабинет, PWA)
+│   ├── js/section_employees.js # «Сотрудники»: список → карточка → редактор
+│   ├── js/section_dicts.js   # Настройки: справочники, виды заявлений, двойные, смены
 │   ├── js/section_v4.js      # Отметки (доска) · Факт · Табель · УТ · Права · Аудит · CFG-*
 │   ├── js/section_settings.js # Настройки: под-разделы, черновик версии, правила, проверитель
 │   ├── js/section_night.js section_cars.js
