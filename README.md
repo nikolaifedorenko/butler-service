@@ -22,18 +22,27 @@
   движка v7.1** (норматив): предметная модель, справочники CFG-*, правила RUL-*,
   инварианты INV-*, примеры EX-*, вкладки веб-приложения (раздел 16).
 * [`docs/archive/overtime_ai_tz_v3.md`](docs/archive/overtime_ai_tz_v3.md) — ТЗ ред. 3: слои, контракты
-  функций, порядок работ.
+  функций, порядок работ (исторический документ, заменён спецификацией v7.1).
 * [`docs/MIGRATION-MAP-v7.md`](docs/MIGRATION-MAP-v7.md) — карта миграции прототипа:
   «что было → что заменяет» + решения владельца от 11.10.2026.
 * [`docs/SPEC.md`](docs/SPEC.md) — спецификация приложения: модель данных, API, вкладки,
   документы, выгрузки.
+* [`docs/openapi.json`](docs/openapi.json) — контракт API (экспорт OpenAPI; сверяется
+  с кодом в CI, обновление: `python tools/export_openapi.py`).
 * [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — архитектурный
   разбор (слои, потоки, риски).
+* [`docs/adr/`](docs/adr/) — записи архитектурных решений (ADR): миграции, хеширование
+  паролей, CSRF/CSP, rate-limit, граница чистой архитектуры, формат токена.
 * [`docs/CHANGES-2026-10-11.md`](docs/CHANGES-2026-10-11.md) — что изменилось в батче
-  «движок v7.1».
-* [`docs/INSTALL.md`](docs/INSTALL.md) — установка (локально, сервер, Docker, бэкапы).
-* [`docs/AUTH.md`](docs/AUTH.md) — аутентификация и безопасность.
+  «движок v7.1»; свежие батчи — `CHANGES-2026-10-14-security.md` и
+  `CHANGES-2026-10-15-hardening.md`.
+* [`docs/INSTALL.md`](docs/INSTALL.md) — установка (локально, сервер, Docker, бэкапы);
+  прод-стек (nginx+TLS+PostgreSQL+бэкапы) — [`deploy/README.md`](deploy/README.md).
+* [`docs/AUTH.md`](docs/AUTH.md) — аутентификация и безопасность;
+  [`SECURITY.md`](SECURITY.md) — как сообщить об уязвимости.
 * [`docs/TEMPLATES.md`](docs/TEMPLATES.md) — шаблоны документов .docx.
+* [`LICENSE`](LICENSE) (MIT) и [`NOTICE.md`](NOTICE.md) — лицензия кода и сторонние
+  компоненты (шрифты, зависимости).
 
 ## Быстрый старт
 
