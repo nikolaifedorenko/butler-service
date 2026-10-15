@@ -150,7 +150,7 @@ function settingsChainHtml(chain) {
 }
 function settingsCodeColor(code, policy) {
   const from = policy?.[code]?.color;
-  return from || v4CodeColor(code, null);
+  return cssColor(from, v4CodeColor(code, null));
 }
 function settingsCodePill(code, policy) {
   const c = settingsCodeColor(code, policy);
