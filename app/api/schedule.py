@@ -49,7 +49,7 @@ from ..models import (
 from ..names import suggest_genitive
 from ..permissions import require_perm
 from ..schedule_patterns import pattern_list, validate_pattern
-from ..services.engine_common import day_code_colors, domain_error_text, engine_ports, now_utc
+from ..services.engine_common import color_lookups, covers_window, domain_error_text, engine_ports, now_utc
 from ..tabel_fill import fill_timesheet_from_cycles
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -270,18 +270,9 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
     kinds = {k.id: k for k in db.scalars(select(ShiftType).where(
         ShiftType.id.in_({a.kind_id for a in absence_rows if a.kind_id})))} \
         if absence_rows else {}
-    # цвета ячеек — из словаря «Смены и отсутствия»: смены матчатся по окну,
-    # коды отсутствий — по tzh_code; запасной — цвет кода Табеля (16.10.2026)
-    work_types: dict[tuple[str, str], ShiftType] = {}
-    for x in db.scalars(select(ShiftType).where(ShiftType.kind == "work")
-                        .order_by(ShiftType.id)):
-        work_types.setdefault((x.start_time, x.end_time), x)
-    absence_types: dict[str, ShiftType] = {}
-    for x in db.scalars(select(ShiftType).where(ShiftType.kind == "absence")
-                        .order_by(ShiftType.id)):
-        if (x.tzh_code or "").strip():
-            absence_types.setdefault(x.tzh_code.strip(), x)
-    code_colors = day_code_colors(db)
+    # цвета ячеек — из словаря «Смены и отсутствия» (общий сервис: те же цвета
+    # у Графика, Факта-Ганта и печатных форм, 16.10.2026)
+    work_types, absence_types, code_colors = color_lookups(db)
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for row in shift_rows:
         start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
@@ -597,25 +588,8 @@ def st_day(db: Session, day: dt.date):
 
 def _covers_window(st, row: Optional[TabelDay], day: dt.date,
                    start_local: dt.datetime, end_local: dt.datetime) -> bool:
-    """Отсутствие покрывает рабочее окно значения Табеля дня целиком (чистая функция).
-
-    ЕДИНСТВЕННОЕ правило «выходного за часы» (EX-29) — его используют заявление
-    (absence-period) и сетка Графика (плашка на весь день); второй копии на
-    фронтенде нет (дух антипаттерна 12.23)."""
-    if (end_local - start_local) >= dt.timedelta(hours=23):
-        return True
-    if row is None:
-        return False
-    policy = st.day_code_policy.get(row.code)
-    if policy is None or not policy.carries_hours or not row.plan_minutes:
-        return False
-    window = st.windows.get(f"{row.code} {fmt_hours(row.plan_minutes)}")
-    if window is None:
-        return False
-    midnight = dt.datetime.combine(day, dt.time(0), TZ)
-    win_start = midnight + dt.timedelta(minutes=window.start_minute)
-    win_end = midnight + dt.timedelta(minutes=window.end_minute)
-    return start_local <= win_start and end_local >= win_end
+    """Делегирование в общий сервис (правило EX-29 одно на все стоки)."""
+    return covers_window(st, row, day, start_local, end_local)
 
 
 def _covers_whole_day(db: Session, st, employee_id: int, day: dt.date,

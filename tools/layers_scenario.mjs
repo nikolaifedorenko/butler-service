@@ -240,9 +240,13 @@ async function main() {
   console.log('\n4 · Слой 2 · Факт: сетка «Номера»');
   click($('#grafik-tabs .layer-tab[data-layer="fact"]'));
   check('панель Факта активна', await waitFor(() => activeLayer() === 'fact' && $('#fc-mode')));
-  check('режимы «Номера» / «Сессии», по умолчанию «Номера»',
-    $$('#fc-mode button').length === 2
-    && $('#fc-mode button[data-mode="numbers"]').classList.contains('active'));
+  check('вкладки «День» / «Месяц» / «Сотрудник», по умолчанию «День»',
+    $$('#fc-mode button').length === 3
+    && $('#fc-mode button[data-mode="numbers"]').classList.contains('active')
+    && text('#fc-mode button[data-mode="numbers"]') === 'День'
+    && text('#fc-mode button[data-mode="month"]') === 'Месяц'
+    && text('#fc-mode button[data-mode="sessions"]') === 'Сотрудник',
+    $$('#fc-mode button').map(b => b.textContent).join('|'));
   check('шаг округления и период показаны (шаг — из настроек)',
     await waitFor(() => /Шаг округления/.test(text('#fd-meta')) && /период/.test(text('#fd-meta'))),
     text('#fd-meta'));
@@ -273,11 +277,36 @@ async function main() {
   check('подсказка: оперативная доска — в «Отметках» (Q7)',
     /«Отметки»/.test(text('#fd-body')) || /Отметки/.test(text('#view-fact .hint')));
 
+  /* ── 4б. вкладка «Месяц»: гант фактических присутствий ── */
+  console.log('\n4б · Факт: вкладка «Месяц» (гант)');
+  const dayRows = $$('#fd-body tr[data-emp]').length;
+  click($('#fc-mode button[data-mode="month"]'));
+  check('гант отрисован (SVG с полосами и штриховкой окон)',
+    await waitFor(() => $('#fm-body svg') && $$('#fm-body svg rect').length > 10, 15000),
+    `rect: ${$$('#fm-body svg rect').length}`);
+  check('гант: строка на сотрудника, имена в левой колонке',
+    $$('#fm-names .fg-row').length === dayRows && dayRows > 0,
+    `имён: ${$$('#fm-names .fg-row').length}, строк дня: ${dayRows}`);
+  check('гант: штриховка окна — SVG-паттерны по цветам словаря',
+    $$('#fm-body svg pattern').length >= 1);
+  const sessColor = window.eval(
+    `((state.factMonth || {rows:[]}).rows.find(r => r.employee.id === ${empId}) || {days:{}}).days['${day}']?.color || ''`);
+  check('гант: полоса сотрудника с отметками — цветом словарной смены',
+    !!sessColor && !!$(`#fm-body svg rect[fill="${sessColor}"]`), sessColor || 'цвет не найден');
+  check('гант: у полос есть подсказки с окном и Табелем',
+    $$('#fm-body svg rect title').length > 0,
+    `title: ${$$('#fm-body svg rect title').length}`);
+  check('подсказка оси: непрерывное время, полночь одной полосой',
+    /непрерывное время/.test(text('#fm-meta')), text('#fm-meta'));
+  click($('#fc-mode button[data-mode="numbers"]'));
+  check('возврат на вкладку «День»', await waitFor(() => $('#fd-body table')));
+
   /* ── 5. Режим «Сессии»: прежняя история без округления ── */
   console.log('\n5 · Факт: режим «Сессии»');
   window.eval('state.employees = null; state.factEmp = null;');   // список перечитается с сервера
   click($('#fc-mode button[data-mode="sessions"]'));
-  check('переключилось на сессии', await waitFor(() => $('#fc-emp') && $('#fc-body')));
+  check('переключилось на вкладку «Сотрудник» (история сессий)',
+    await waitFor(() => $('#fc-emp') && $('#fc-body')));
   await waitFor(() => $(`#fc-emp option[value="${empId}"]`), 8000);
   change($('#fc-emp'), String(empId));
   check('сотрудник выбран в селекте', $('#fc-emp').value === String(empId), $('#fc-emp').value);
@@ -293,7 +322,7 @@ async function main() {
       text('#fc-body').slice(0, 200));
   }
   click($('#fc-mode button[data-mode="numbers"]'));
-  check('возврат к «Номерам»', await waitFor(() => $('#fd-body table')));
+  check('возврат к «Дню»', await waitFor(() => $('#fd-body table')));
 
   /* ── 6. Алиасы старых разделов ── */
   console.log('\n6 · Алиасы: navigate("timesheet"/"mgmt"/"schedule")');
@@ -350,4 +379,4 @@ async function main() {
   process.exit(failed ? 2 : 0);
 }
 
-main().catch(e => { console.error('сценарий упал:', e); process.exit(2); });
+main().catch(e => { console.error('сценарий упал:', e && e.stack || e); process.exit(2); });

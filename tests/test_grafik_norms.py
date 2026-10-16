@@ -834,6 +834,67 @@ class TestScheduleMonthReset(unittest.TestCase):
         _login(client, "admin")
 
 
+class TestFactMonthGantt(unittest.TestCase):
+    """Вкладка «Месяц» слоя 2 (16.10.2026): гант фактических присутствий —
+    округлённые сессии ЦЕЛИКОМ на непрерывной оси месяца (смена через полночь —
+    одна полоса), на день — окно Табеля и цвет словарной смены; сотруднику —
+    только своя строка."""
+
+    @classmethod
+    def setUpClass(cls):
+        _login(client, "admin")
+        cls.emp = _create_employee("norm_gantt", "Гантов Гант Гантович")
+        _fill_cycle(cls.emp["id"])
+        days = _work_days(cls.emp["id"])
+        cls.day = next(d for d in days if d < TODAY - dt.timedelta(days=1))
+        cls.next_day = cls.day + dt.timedelta(days=1)
+        # ручная ночная смена 20:00–08:00 и непрерывные отметки через полночь
+        r = client.put("/api/schedule/shift", json={
+            "employee_id": cls.emp["id"], "date": cls.day.isoformat(),
+            "shifts": [{"start": "20:00", "end": "08:00", "end_next_day": True}]})
+        assert r.status_code == 200, r.text
+        for ts, kind in ((f"{cls.day.isoformat()}T20:05:00", "in"),
+                         (f"{cls.next_day.isoformat()}T07:55:00", "out")):
+            r = client.post("/api/punches", json={
+                "employee_id": cls.emp["id"], "ts": ts, "kind": kind, "source": "manager"})
+            assert r.status_code == 200, r.text
+
+    def _month(self):
+        return client.get("/api/fact/month", params={
+            "year": self.day.year, "month": self.day.month}).json()
+
+    def test_01_overnight_session_is_single_bar(self):
+        data = self._month()
+        row = next(r for r in data["rows"] if r["employee"]["id"] == self.emp["id"])
+        night = [s for s in row["sessions"]
+                 if s["start"].startswith(self.day.isoformat()) and s["start"][11:16] == "20:00"]
+        self.assertEqual(len(night), 1, "одна полоса на ночную смену")
+        self.assertEqual(night[0]["end"][:16], f"{self.next_day.isoformat()}T08:00",
+                         "полоса НЕ разрезана полуночью")
+        self.assertFalse(night[0]["open"])
+
+    def test_02_day_window_and_dictionary_color(self):
+        data = self._month()
+        row = next(r for r in data["rows"] if r["employee"]["id"] == self.emp["id"])
+        day = row["days"][self.day.isoformat()]
+        self.assertEqual(day["window"], ["08:00", "20:00"],
+                         "штриховка — стандартное окно кода Табеля (Я 12), "
+                         "ночная полоса факта лежит вне его — переработка видна")
+        self.assertEqual(day["color"], "#5b6bd6", "цвет NIGHT12 из словаря смен")
+        off_day = next(d for d, info in row["days"].items() if info.get("tabel") == "В")
+        self.assertEqual(row["days"][off_day]["color"], "#c3cdd9", "цвет вида «В»")
+        self.assertIsNone(row["days"][off_day]["window"])
+
+    def test_03_employee_sees_only_self(self):
+        _login(client, "ivanov")
+        data = client.get("/api/fact/month", params={
+            "year": TODAY.year, "month": TODAY.month}).json()
+        self.assertEqual(len(data["rows"]), 1)
+        self.assertEqual(data["rows"][0]["employee"]["id"],
+                         client.get("/api/auth/me").json()["user"]["employee_id"])
+        _login(client, "admin")
+
+
 class TestAbsenceLayers(unittest.TestCase):
     """Q4: из Графика — только «за счёт часов», отпуск/ДО/ОВ — коды Табеля."""
 

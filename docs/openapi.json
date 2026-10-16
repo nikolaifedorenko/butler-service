@@ -5213,6 +5213,56 @@
         ]
       }
     },
+    "/api/fact/month": {
+      "get": {
+        "description": "Слой 2, вкладка «Месяц» (16.10.2026): Гант фактических присутствий за месяц.\n\nОсь X — непрерывное время месяца (не колонки дней), поэтому смена через\nполночь — ОДНА полоса: сессии берём сопряжением ОКРУГЛЁННЫХ отметок\n(to_calc_mark + pair_marks, то же ядро, что у «Дня») ЦЕЛИКОМ, без нарезки\nполуночью. На день отдаём стандартное окно Табеля (штриховка), цвет полосы\n(словарь «Смены и отсутствия», общий с Графиком) и согласованные отсутствия.\nЧисла расчёта (план/недостача) Ганту не нужны — settle не запускаем.",
+        "operationId": "fact_month_api_fact_month_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "year",
+            "required": true,
+            "schema": {
+              "title": "Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fact Month",
+        "tags": [
+          "fact"
+        ]
+      }
+    },
     "/api/fact/sessions": {
       "get": {
         "operationId": "sessions_api_fact_sessions_get",
