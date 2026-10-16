@@ -42,7 +42,7 @@ function scheduleShell() {
     <input id="f-text" type="text" placeholder="Поиск по ФИО…" style="max-width:210px">
     <div class="spacer" style="flex:1"></div>
     ${ro ? '' : `<button class="btn btn-sm" id="btn-range" title="Слой 1 · График: только «за счёт часов» — в Табеле остаётся явка, часы не меняются">Выходной за часы</button>
-    <button class="btn btn-sm" id="btn-clear" title="Убрать ручные смены месяца и перегенерировать График из Табеля; Табель не меняется">Сбросить месяц</button>
+    <button class="btn btn-sm" id="btn-clear" title="Убрать ручные смены и согласованные отсутствия месяца, перегенерировать График из Табеля; Табель не меняется">Сбросить месяц</button>
     <button class="btn btn-sm" id="btn-xlsx">Excel</button>`}
     <button class="btn btn-sm btn-ghost" id="btn-print">Печать</button>
     <button class="btn btn-sm btn-ghost" id="btn-pdf" title="Скачать PDF: файл собирает сервер">PDF</button>
@@ -67,13 +67,15 @@ function bindScheduleToolbar() {
   if ($('#btn-range')) $('#btn-range').onclick = () => openRangeModal('schedule');
   if ($('#btn-clear')) $('#btn-clear').onclick = () => confirmDialog(
     'Сбросить месяц в Графике?',
-    `Ручные смены за ${MONTHS[state.month - 1]} ${state.year} будут удалены, График перегенерируется
-     из Табеля. Табель НЕ трогается — он сбрасывается в «Слой 0 · Табель». Согласованные
-     отсутствия (отлучки) сохраняются: это документированные записи, удаляются в ячейке дня.
+    `Ручные смены и согласованные отсутствия (отлучки-интервалы, «выходные за часы»)
+     за ${MONTHS[state.month - 1]} ${state.year} будут удалены, График перегенерируется из Табеля —
+     слой 1 вернётся к чистому плану из слоя 0. Табель НЕ трогается — он сбрасывается
+     в «Слой 0 · Табель». Напечатанные заявления останутся в журнале аудита.
      Закрытые периоды не трогаются.`,
     async () => {
       const r = await api('/api/schedule/reset-month', { method: 'POST', body: { year: state.year, month: state.month } });
-      toast(`Ручных смен удалено: ${r.cleared}`, 'ok');
+      toast(`Ручных смен удалено: ${r.cleared}, отсутствий: ${r.absences_cleared}`
+        + (r.skipped_employees ? `, пропущено закрытых сотрудников: ${r.skipped_employees}` : ''), 'ok');
       loadSchedule();
     });
 
