@@ -139,6 +139,7 @@
   "nightState": "readonly",
   "now0": "readonly",
   "openCellModal": "readonly",
+  "openEmployeeCard": "readonly",
   "openKindModal": "readonly",
   "openModal": "readonly",
   "openOtNoteModal": "readonly",
@@ -155,6 +156,7 @@
   "printGrid": "readonly",
   "printWindow": "readonly",
   "punchInFlight": "readonly",
+  "refreshAfterEmployeeChange": "readonly",
   "refreshDoublePay": "readonly",
   "rehireModal": "readonly",
   "renameDictModal": "readonly",
@@ -407,6 +409,7 @@
   "nightState": "section_night.js",
   "now0": "core.js",
   "openCellModal": "section_grid.js",
+  "openEmployeeCard": "section_employees.js",
   "openKindModal": "section_dicts.js",
   "openModal": "core.js",
   "openOtNoteModal": "section_me.js",
@@ -423,6 +426,7 @@
   "printGrid": "section_grid.js",
   "printWindow": "section_docs.js",
   "punchInFlight": "section_me.js",
+  "refreshAfterEmployeeChange": "section_employees.js",
   "refreshDoublePay": "section_dicts.js",
   "rehireModal": "section_employees.js",
   "renameDictModal": "section_dicts.js",
@@ -600,7 +604,8 @@
    "printWindow"
   ],
   "section_employees.js": [
-   "loadEmployees"
+   "loadEmployees",
+   "openEmployeeCard"
   ],
   "section_grid.js": [
    "loadSchedule",

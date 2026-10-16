@@ -399,8 +399,12 @@ function renderTabel() {
     : (l === 'last_closed'
       ? '<span class="badge warn" title="Последний закрытый период: правка разрешена, затем — пересчёт в УТ">закрыт · можно править</span>' : '');
   const missing = d.rows.reduce((n, r) => n + (r.missing_days || []).length, 0);
+  /* ФИО строки — вход в карточку сотрудника (та же, что в разделе «Сотрудники»):
+     правки доступны прямо из Табеля, без перехода в другой раздел.
+     Без права employees.view — обычный текст. */
+  const canCard = can('employees.view');
   const rows = d.rows.map(r => `<tr>
-    <td class="who">${esc(r.employee.short_name)}<small>${esc(r.employee.group)} ${lockBadge(r.lock)}</small></td>
+    <td class="who${canCard ? ' who-click' : ''}"${canCard ? ` data-emp="${r.employee.id}" title="Карточка сотрудника — открыть"` : ''}><span class="emp-nm">${esc(r.employee.short_name)}</span><small>${esc(r.employee.group)} ${lockBadge(r.lock)}</small></td>
     ${d.days.map(day => {
       const c = r.cells[day];
       const color = c ? v4CodeColor(c.code, d.colors) : 'transparent';
@@ -419,10 +423,11 @@ function renderTabel() {
       <thead><tr><th class="who">Сотрудник</th>${d.days.map(v4DayHead).join('')}<th>План, ч</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${d.days.length + 2}" class="empty">Нет сотрудников</td></tr>`}</tbody>
     </table></div>
-    <p class="hint">Коды: ${d.codes.map(c => `<span class="badge" style="background:${withAlpha(v4CodeColor(c.code, d.colors), .22)}" title="${esc(c.title)}">${esc(c.code)}</span> ${esc(c.title)}`).join(' · ')}.
+    <p class="hint">${canCard ? 'Клик по ФИО — карточка сотрудника. ' : ''}Коды: ${d.codes.map(c => `<span class="badge" style="background:${withAlpha(v4CodeColor(c.code, d.colors), .22)}" title="${esc(c.title)}">${esc(c.code)}</span> ${esc(c.title)}`).join(' · ')}.
       Значения с окнами (CFG-WINDOWS): ${d.values.map(esc).join(', ')}. План строки — информационный
       (зарплатный) атрибут; план карточки УТ = длина окна.</p>`;
   $$('#tb-body td.v4-cell.edit').forEach(td => td.onclick = () => tabelCellModal(+td.dataset.e, td.dataset.d));
+  $$('#tb-body td.who[data-emp]').forEach(td => td.onclick = () => openEmployeeCard(+td.dataset.emp));
 }
 
 function tabelCellModal(empId, day) {

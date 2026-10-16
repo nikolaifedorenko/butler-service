@@ -139,6 +139,9 @@ function renderGrid() {
     } else {
       $$('#grid-host .cellbtn:not([disabled])').forEach(btn => btn.onclick = () => openCellModal(+btn.dataset.emp, btn.dataset.date));
     }
+    /* ФИО открывает карточку сотрудника (право employees.view — data-emp без него
+       не рендерится, поэтому связка безопасна и для роли сотрудника) */
+    $$('#grid-host td.name-cell[data-emp]').forEach(td => td.onclick = () => openEmployeeCard(+td.dataset.emp));
     if (state.scrollToToday) { state.scrollToToday = false; scrollGridToToday(); }
   }
 
@@ -197,6 +200,10 @@ function cellTd(r, d, c, cls) {
 
 function empRow(r, g, block) {
   const accent = cssColor(r.employee.group_color);
+  /* ФИО строки — вход в карточку сотрудника (та же, что в разделе «Сотрудники»):
+     правки доступны прямо из Графика. Без права employees.view (например, роль
+     сотрудника) — обычный текст: ни класса, ни data-emp. */
+  const canCard = can('employees.view');
   const ranges = block?.ranges || (block ? [{ start: block.start, end: block.end }] : []);
   const inBlock = iso => !ranges.length || ranges.some(rg =>
     iso >= rg.start && (!rg.end || iso <= rg.end));
@@ -216,7 +223,7 @@ function empRow(r, g, block) {
     return cellTd(r, d, c, cls);
   }).join('');
   return `<tr class="emp-row">
-    <td class="name-cell" style="box-shadow: inset 4px 0 0 ${accent}">
+    <td class="name-cell${canCard ? ' who-click' : ''}"${canCard ? ` data-emp="${r.employee.id}" title="Карточка сотрудника — открыть"` : ''} style="box-shadow: inset 4px 0 0 ${accent}">
       <div class="nm" title="${esc(r.employee.full_name)}">${esc(r.employee.short_name || r.employee.full_name)}</div>
       <div class="pos"><span class="dot-pos" style="background:${accent}"></span>${esc(r.employee.position || '')}</div>
       <div class="tot">${hours(r.totals.planned_hours)} ч · ${r.totals.work_days} ${plural(r.totals.work_days, 'смена', 'смены', 'смен')}</div>
