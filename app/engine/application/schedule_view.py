@@ -40,6 +40,10 @@ def save_schedule_day(employee_id: str, day: dt.date, shifts: Sequence[Shift],
                       ports: EnginePorts) -> None:
     if not day_editable(employee_id, day, ports):
         raise ScheduleDayNotEditableError(employee_id, day)
+    # ручная смена ЗАМЕЩАЕТ генерацию дня целиком (16.3): generated-строки дня
+    # убираются сразу, иначе в ячейке соседствуют оба интервала (дефект 16.10.2026:
+    # «Я 12 08:00–20:00» не пропадала после ручной 09:00–18:00)
+    ports.schedule_store.replace_generated(employee_id, Period(day, day), ())
     ports.schedule_store.save_manual(employee_id, day, shifts)
 
 
@@ -77,23 +81,27 @@ class RebuildOutcome:
 
 def rebuild_generated_schedule(employee_id: str, period: Period,
                                ports: EnginePorts) -> RebuildOutcome:
-    """Перегенерация Графика из Табеля (16.3): generated-записи заменяются; manual
-    сохраняются, если код дня остаётся редактируемым, и удаляются, если стал
-    нередактируемым (UI показывает уведомление)."""
+    """Перегенерация Графика из Табеля (16.3): generated-записи заменяются, КРОМЕ
+    дней с ручной сменой — она замещает генерацию дня целиком и восстанавливается
+    только явным удалением (drop_manual_day); manual сохраняются, если код дня
+    остаётся редактируемым, и удаляются, если стал нередактируемым (UI показывает
+    уведомление)."""
     st = ports.settings.load(period)
     rows = ports.timesheet.days(employee_id, period)
-    entries = [e for e in (generated_entry(row, st) for row in rows) if e is not None]
+    # якорные дни ручных смен — одним чтением периода (без N+1 по дням)
+    manual_days = {e.shift.start_utc.astimezone(st.tz).date()
+                   for e in ports.schedule_store.load_entries(employee_id, period)
+                   if e.source == "manual"}
+    entries = []
+    for row in rows:
+        if row.day in manual_days:
+            continue                      # день закрыт ручной сменой (16.3)
+        entry = generated_entry(row, st)
+        if entry is not None:
+            entries.append(entry)
     ports.schedule_store.replace_generated(employee_id, period, entries)
-    dropped = tuple(row.day for row in rows if not accepts_ut(row, st)
-                    and _has_manual(ports, employee_id, row.day, period, st))
+    dropped = tuple(row.day for row in rows
+                    if not accepts_ut(row, st) and row.day in manual_days)
     for day in dropped:
         ports.schedule_store.drop_manual(employee_id, day)
     return RebuildOutcome(len(entries), dropped)
-
-
-def _has_manual(ports: EnginePorts, employee_id: str, day: dt.date, period: Period,
-                st: Settings) -> bool:
-    """Ручная смена с якорем (днём начала) в дне D (16.3)."""
-    entries = ports.schedule_store.load_entries(employee_id, period)
-    return any(e.source == "manual" and e.shift.start_utc.astimezone(st.tz).date() == day
-               for e in entries)

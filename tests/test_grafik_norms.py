@@ -52,7 +52,13 @@ from app.migrations import (  # noqa: E402
     migrate_time_off_template,
     migrate_timeoff_entity,
 )
-from app.models import PeriodClosing, ScheduleAbsence, ShiftType, TabelDay  # noqa: E402
+from app.models import (  # noqa: E402
+    PeriodClosing,
+    ScheduleAbsence,
+    ScheduleShift,
+    ShiftType,
+    TabelDay,
+)
 
 init_db()
 client = TestClient(app)          # администратор
@@ -652,6 +658,8 @@ class TestGridCellSegments(unittest.TestCase):
         cell = self._cell(self.day_a)
         self.assertEqual(cell["segments"], [["08:00", "14:00"], ["16:00", "20:00"]])
         self.assertEqual([a["whole_shift"] for a in cell["absences"]], [False])
+        self.assertEqual(cell["color"], "#34a862",
+                         "цвет ячейки — словарной смены DAY12 (08:00–20:00)")
         # смена физически не делится (v7/R17) — запись осталась одной
         self.assertEqual([(s["start_hm"], s["end_hm"]) for s in cell["shifts"]],
                          [("08:00", "20:00")])
@@ -665,6 +673,8 @@ class TestGridCellSegments(unittest.TestCase):
         self.assertTrue(any(a["whole_shift"] for a in cell["absences"]),
                         "отсутствие на всё окно дня — whole_shift для плашки")
         self.assertEqual(cell["segments"], [], "видимых отрезков не осталось")
+        self.assertEqual(cell["color"], "#17a2b8",
+                         "цвет плашки — вида отсутствия «Отпросился» из словаря")
 
     def test_03_seniors_first_within_group(self):
         """Порядок строк (решение 16.10.2026): внутри блока старшие впереди,
@@ -684,6 +694,88 @@ class TestGridCellSegments(unittest.TestCase):
         order = [r["employee"]["id"] for r in grid["rows"]]
         self.assertLess(order.index(senior.json()["id"]), order.index(junior.json()["id"]),
                         "«Старший батлер» Яковлева — раньше «Батлера» Абрамовой")
+
+
+class TestManualReplacesGenerated(unittest.TestCase):
+    """Дефект 16.10.2026: ручная смена НЕ вытесняла генерацию дня — в ячейке
+    соседствовали оба интервала («08:00–20:00» из Табеля + «09:00–18:00» ручная),
+    а отрезки отсутствий удваивались. Ручная смена заменяет генерацию дня целиком
+    (16.3): save_manual убирает generated-строки дня, rebuild их не возвращает,
+    удаление ручной — возвращает день к генерации."""
+
+    @classmethod
+    def setUpClass(cls):
+        _login(client, "admin")
+        cls.emp = _create_employee("norm_manual_gen", "Ручнов Ручной Ручнович")
+        _fill_cycle(cls.emp["id"])
+        cls.day = _work_days(cls.emp["id"])[0]
+
+    def _cell(self, day) -> dict:
+        grid = client.get("/api/schedule", params={
+            "year": day.year, "month": day.month}).json()
+        row = next(r for r in grid["rows"] if r["employee"]["id"] == self.emp["id"])
+        return row["cells"][day.isoformat()]
+
+    def test_01_manual_shift_displaces_generated(self):
+        r = client.put("/api/schedule/shift", json={
+            "employee_id": self.emp["id"], "date": self.day.isoformat(),
+            "shifts": [{"start": "09:00", "end": "18:00"}]})
+        self.assertEqual(r.status_code, 200, r.text)
+        cell = self._cell(self.day)
+        self.assertEqual([(s["source"], s["start_hm"], s["end_hm"]) for s in cell["shifts"]],
+                         [("manual", "09:00", "18:00")],
+                         "смена из Табеля ушла — осталась только ручная")
+        self.assertEqual(cell["segments"], [["09:00", "18:00"]])
+
+    def test_02_rebuild_keeps_manual_priority(self):
+        """Правка Табеля дня запускает перегенерацию — ручная смена в приоритете."""
+        row = _tabel_row(self.emp["id"], self.day)
+        r = client.put("/api/tabel/cell", json={
+            "employee_id": self.emp["id"], "date": self.day.isoformat(),
+            "code": row.code, "hours": row.plan_minutes / 60, "note": ""})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual([s["source"] for s in self._cell(self.day)["shifts"]], ["manual"])
+
+    def test_03_drop_manual_returns_generated(self):
+        r = client.delete("/api/schedule/shift", params={
+            "employee_id": self.emp["id"], "date": self.day.isoformat()})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual([(s["source"], s["start_hm"], s["end_hm"])
+                          for s in self._cell(self.day)["shifts"]],
+                         [("generated", "08:00", "20:00")],
+                         "день вернулся к генерации из Табеля")
+
+    def test_04_migration_cleans_legacy_duplicates(self):
+        """Старая база: дубль generated+manual чистится миграцией, идемпотентно."""
+        from app.migrations import migrate_manual_replaces_generated
+
+        day = _work_days(self.emp["id"])[1]
+        db = SessionLocal()
+        try:
+            gen = ScheduleShift(employee_id=self.emp["id"], date=day,
+                                start_utc=dt.datetime.combine(day, dt.time(5)),
+                                end_utc=dt.datetime.combine(day, dt.time(17)),
+                                source="generated")
+            man = ScheduleShift(employee_id=self.emp["id"], date=day,
+                                start_utc=dt.datetime.combine(day, dt.time(6)),
+                                end_utc=dt.datetime.combine(day, dt.time(15)),
+                                source="manual")
+            db.add_all([gen, man])
+            db.commit()
+            gen_id, man_id = gen.id, man.id
+        finally:
+            db.close()
+        migrate_manual_replaces_generated()
+        migrate_manual_replaces_generated()
+        db = SessionLocal()
+        try:
+            self.assertIsNone(db.get(ScheduleShift, gen_id), "дубль генерации удалён")
+            self.assertIsNotNone(db.get(ScheduleShift, man_id), "ручная смена сохранена")
+        finally:
+            db.close()
+        r = client.delete("/api/schedule/shift", params={
+            "employee_id": self.emp["id"], "date": day.isoformat()})
+        self.assertEqual(r.status_code, 200, r.text)
 
 
 class TestScheduleMonthReset(unittest.TestCase):

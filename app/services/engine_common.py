@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..employment import employed_on
 from ..engine.adapters.factory import build_ports
+from ..engine.adapters.sql_settings import base_version
 from ..engine.application.errors import ApplicationError
 from ..engine.domain.types.entities import Period
 from ..engine.domain.types.errors import (
@@ -25,6 +27,23 @@ from ..engine.domain.types.errors import (
 )
 from ..groups import group_index, normalize_group
 from ..models import Employee, EmploymentPeriod, PeriodClosing
+
+
+def day_code_colors(db: Session) -> dict[str, str]:
+    """Цвета кодов Табеля — блок presentation версии справочников (данные приложения;
+    домен цветов не знает, 2.4). Общий источник Табеля и Графика: пустой словарь —
+    потребители берут свою подстраховку."""
+    ver = base_version(db, dt.date.today())
+    if ver is None:
+        return {}
+    try:
+        payload = json.loads(ver.payload_json)
+    except (ValueError, TypeError):
+        return {}
+    rows = payload.get("day_code_policy") or {}
+    return {code: row["color"] for code, row in rows.items()
+            if isinstance(row, dict) and row.get("color")}
+
 
 ERROR_TEXTS = {
     "PERIOD_OUTSIDE_EMPLOYMENT": "Период вне интервала трудоустройства — не рассчитывается",

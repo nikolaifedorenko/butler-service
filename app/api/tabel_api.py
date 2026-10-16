@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit
 from ..db import get_db
-from ..deps import local_date
 from ..engine.adapters.sql_settings import SqlSettingsAdapter, base_version
 from ..engine.application import timesheet_edit
 from ..engine.application.errors import ApplicationError
@@ -34,7 +33,14 @@ from ..engine.domain.types.errors import ConfigError, DomainError
 from ..engine.interface.formatting import hm
 from ..models import Employee, TabelDay
 from ..permissions import principal_permissions, require_perm
-from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
+from ..services.engine_common import (
+    day_code_colors,
+    domain_error_text,
+    emp_brief,
+    engine_ports,
+    now_utc,
+    period_employees,
+)
 from ..tabel_fill import fill_timesheet_from_cycles
 
 router = APIRouter(prefix="/api/tabel", tags=["tabel"])
@@ -60,21 +66,9 @@ def _code_titles(db: Session) -> dict[str, str]:
 
 
 def _code_colors(db: Session) -> dict[str, str]:
-    """Цвета кодов Табеля — блок presentation версии справочников (данные приложения).
-
-    Домен подписей и цветов не знает (2.4): они лежат рядом со строкой CFG-DAY-CODES
-    и читаются только интерфейсом. Пустой словарь — фронтенд берёт свою подстраховку.
-    """
-    ver = base_version(db, local_date())
-    if ver is None:
-        return {}
-    try:
-        payload = json.loads(ver.payload_json)
-    except (ValueError, TypeError):
-        return {}
-    rows = payload.get("day_code_policy") or {}
-    return {code: row["color"] for code, row in rows.items()
-            if isinstance(row, dict) and row.get("color")}
+    """Цвета кодов Табеля (presentation версии справочников) — общий сервис:
+    тот же источник использует График для цветов ячеек (16.10.2026)."""
+    return day_code_colors(db)
 
 
 @router.get("")
