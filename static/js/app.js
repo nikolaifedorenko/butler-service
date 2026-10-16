@@ -292,24 +292,15 @@ async function loadDirectory() {
 /* ══════════════════════════════════════════════════════════════════
    СТАРТ
    ══════════════════════════════════════════════════════════════════ */
-$('#login-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  $('#login-error').classList.add('hidden');
-  try {
-    const res = await api('/api/auth/login', { method: 'POST', allow401: true,
-      body: { username: $('#login-username').value.trim(), password: $('#login-password').value } });
-    state.user = res.user;
-    /* пароль не держим в DOM: скрытая форма логина живёт всю сессию, и менеджеры
-       паролей браузера реагируют на оставшееся значение (плашка «сохранить пароль»
-       всплывала при переходах по разделам) */
-    $('#login-password').value = '';
-    await enterApp();
-  } catch (err) {
-    const box = $('#login-error');
-    box.textContent = err.message || 'Не удалось войти';
-    box.classList.remove('hidden');
-  }
-});
+/* Форма логина отправляется НАТИВНО (action=/api/auth/login-form, 303-редирект):
+   связку «submit формы с паролем → редирект» менеджеры паролей распознают без
+   эвристик и предлагают сохранить пароль сразу после входа. Ошибки возвращаются
+   кодом в ?login_error=… и показываются здесь при старте. */
+const LOGIN_ERRORS = {
+  auth: 'Неверный логин или пароль',
+  rate: 'Слишком много неудачных попыток входа. Подождите несколько минут.',
+  disabled: 'Учётная запись отключена',
+};
 
 $('#logout-btn').onclick = async () => {
   try { await api('/api/auth/logout', { method: 'POST', silent: true }); } catch { /* не важно */ }
@@ -363,12 +354,20 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   }).catch(e => console.warn('SW:', e));
 }
 
-(async function boot() {
+async function bootApp() {
   api('/api/health', { silent: true, allow401: true })
     .then(h => syncServerClock(h?.server_time_local)).catch(() => {});
+  const loginErr = new URLSearchParams(location.search).get('login_error');
+  if (loginErr) history.replaceState(null, '', location.pathname + location.hash);
   try {
     const me = await api('/api/auth/me', { silent: true, allow401: true });
     if (me?.user) { state.user = me.user; await enterApp(); return; }
   } catch { /* не авторизован */ }
   showLogin();
-})();
+  if (loginErr) {
+    const box = $('#login-error');
+    box.textContent = LOGIN_ERRORS[loginErr] || 'Не удалось войти';
+    box.classList.remove('hidden');
+  }
+}
+bootApp();

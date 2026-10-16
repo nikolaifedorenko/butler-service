@@ -104,9 +104,10 @@ async function main() {
               ' api=' + typeof window.api + ' loadNight=' + typeof window.loadNight +
               ' loadCars=' + typeof window.loadCars + ' CAR_BADGE=' + typeof window.CAR_BADGE);
   await sleep(400);
-  $('#login-username').value = LOGIN;
-  $('#login-password').value = 'demo1234';
-  $('#login-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  const loginRes = await proxy('POST', '/api/auth/login', {
+    body: JSON.stringify({ username: LOGIN, password: 'demo1234' }),
+    headers: { 'Content-Type': 'application/json' } });
+  if (loginRes.ok) window.eval('bootApp()');
   for (let i = 0; i < 150 && $('#app').classList.contains('hidden'); i++) await sleep(200);
   if ($('#app').classList.contains('hidden')) {
     console.log('❌ вход не выполнен; login-error=' + JSON.stringify($('#login-error')?.textContent));
