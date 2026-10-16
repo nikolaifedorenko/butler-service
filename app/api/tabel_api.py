@@ -31,6 +31,7 @@ from ..engine.application.schedule_view import rebuild_generated_schedule
 from ..engine.domain.day_card.fmt_hours import fmt_hours
 from ..engine.domain.types.entities import Period
 from ..engine.domain.types.errors import ConfigError, DomainError
+from ..engine.interface.formatting import hm
 from ..models import Employee, TabelDay
 from ..permissions import principal_permissions, require_perm
 from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
@@ -120,6 +121,10 @@ def get_tabel(year: int, month: int, half: Optional[int] = None,
                        "counts_in_ut": p.counts_in_ut, "plan_equals_fact_auto": p.plan_equals_fact_auto}
                       for code, p in st.day_code_policy.items()],
             "values": sorted(st.windows.keys()),
+            # границы окон по значениям («Я 12» → 08:00–20:00): подсказки плашек
+            # в редакторе ячейки — редактор собирает значения только из справочников
+            "windows": {v: [hm(w.start_minute), hm(w.end_minute)]
+                        for v, w in st.windows.items()},
             "can_edit": "tabel.edit" in perms, "rows": out}
 
 

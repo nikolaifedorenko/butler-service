@@ -5,7 +5,7 @@
        справочника CFG-DAY-CODES или пусто); API отклоняет чужой код (422); health
        без APP-SHIFT-CODE;
   T3 — «Сбросить» в Табеле: ручной код уходит, день снова заполняется из циклов,
-       закрытые периоды не трогаются, действие审计… (см. audit «tabel_reset»);
+       закрытые периоды не трогаются, действие аудируется (см. audit «tabel_reset»);
   T4 — «Отпросился (выходной за часы)» — ОДНА сущность словаря с двумя точками ввода
        (интервал / вся смена); из Графика назначаются только виды «за счёт часов»,
        отпуск/ДО/Б/ОВ — коды Табеля из раздела «Табель»; заявления печатаются из своего
@@ -172,8 +172,19 @@ async function main() {
   console.log('\n2 · T3: ручной код и возврат автозаполнения');
   await tabelReady();
   click($(`#tb-body td.v4-cell.edit[data-e="${empId}"][data-d="${dayA}"]`));
-  check('модалка ячейки Табеля открылась', await waitFor(() => !!$('#tc-code')));
-  change($('#tc-code'), 'НН');
+  check('модалка ячейки Табеля открылась', await waitFor(() => !!$('#tc-chips')));
+  check('значения — плашки справочников, ручного ввода часов нет',
+    $$('#tc-chips .tc-chip[data-code]').length >= 5 && !$('#tc-code') && !$('#tc-hours'));
+  check('текущее значение ячейки предвыбрано плашкой',
+    $$('#tc-chips .tc-chip.sel').length === 1, text('#tc-sel').slice(0, 120));
+  check('у плашки с часами в подсказке — окно CFG-WINDOWS',
+    /окно \d{2}:\d{2}–\d{2}:\d{2}/.test($$('#tc-chips .tc-chip[data-code]')
+      .find(b => b.dataset.hours !== '0')?.title || ''),
+    $$('#tc-chips .tc-chip[data-code]').find(b => b.dataset.hours !== '0')?.title || '');
+  click($('#tc-chips .tc-chip[data-code="НН"]'));
+  check('выбранная плашка подсвечена и показана строкой',
+    $('#tc-chips .tc-chip[data-code="НН"]').classList.contains('sel')
+    && $$('#tc-chips .tc-chip.sel').length === 1 && /НН/.test(text('#tc-sel')), text('#tc-sel').slice(0, 120));
   click($('#modal [data-save]'));
   check('ручной код сохранён', await waitFor(async () =>
     (await jget(`/api/tabel?year=${Y}&month=${M}`)).rows
@@ -199,10 +210,10 @@ async function main() {
   check('есть второй день для кода отсутствия', !!dayB);
   await tabelReady();
   click($(`#tb-body td.v4-cell.edit[data-e="${empId}"][data-d="${dayB}"]`));
-  check('модалка второго дня открылась', await waitFor(() => !!$('#tc-code')));
-  check('блок заявления скрыт, пока код не выбран',
+  check('модалка второго дня открылась', await waitFor(() => !!$('#tc-chips')));
+  check('блок заявления скрыт, пока не выбран код отсутствия',
     $('#tc-doc-wrap') && $('#tc-doc-wrap').style.display === 'none');
-  change($('#tc-code'), 'ОТ');
+  click($('#tc-chips .tc-chip[data-code="ОТ"]'));
   check('для кода «ОТ» появился блок заявления', await waitFor(() => $('#tc-doc-wrap')
     && $('#tc-doc-wrap').style.display !== 'none' && /Отпуск/i.test(text('#tc-doc-name'))),
   text('#tc-doc-name'));
