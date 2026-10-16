@@ -125,9 +125,11 @@ const activeLayer = () => $('#grafik-tabs .layer-tab.active')?.dataset.layer || 
 const paneOn = () => $$('#view-grafik .layer-pane.on').map(p => p.id.replace('view-', ''));
 
 async function login(username) {
-  $('#login-username').value = username;
-  $('#login-password').value = 'demo1234';
-  $('#login-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  /* форма логина теперь отправляется нативно (менеджеры паролей): в jsdom
+     воспроизводим тем же путём — JSON-вход (кука в «jar») + перезапуск SPA */
+  const r = await jsend('POST', '/api/auth/login', { username, password: 'demo1234' });
+  if (!r.ok) return false;
+  window.eval('bootApp()');
   return waitFor(() => !$('#app').classList.contains('hidden'), 30000);
 }
 

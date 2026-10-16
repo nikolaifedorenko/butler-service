@@ -117,9 +117,10 @@ async function go(screen) {
 
 async function main() {
   await sleep(400);
-  $('#login-username').value = LOGIN;
-  $('#login-password').value = 'demo1234';
-  $('#login-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  const loginRes = await proxy('POST', '/api/auth/login', {
+    body: JSON.stringify({ username: LOGIN, password: 'demo1234' }),
+    headers: { 'Content-Type': 'application/json' } });
+  if (loginRes.ok) window.eval('bootApp()');
   await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
   check('вход выполнен', !$('#app').classList.contains('hidden'), text('#login-error'));
   await sleep(500);

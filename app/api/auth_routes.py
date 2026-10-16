@@ -5,7 +5,8 @@ import threading
 import time
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -82,16 +83,17 @@ def _set_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/login")
-def login(payload: LoginIn, response: Response, request: Request, db: Session = Depends(get_db)):
+def _authenticate(db: Session, request: Request, username: str, password: str):
+    """Общая проверка учётных данных для JSON- и форм-входа (rate-limit, постоянный
+    хеш для несуществующего логина, ленивый rehash). Возвращает (user, employee)."""
     ip = _client_ip(request)
     if _too_many_attempts(ip):
         raise HTTPException(status_code=429,
                             detail="Слишком много неудачных попыток входа. Подождите несколько минут.")
-    user = db.scalar(select(User).where(User.username == payload.username.strip().lower()))
+    user = db.scalar(select(User).where(User.username == username.strip().lower()))
     # для несуществующего логина тоже считаем хеш — по времени ответа логин не угадать
     stored = user.password_hash if user else _DUMMY_HASH
-    if not verify_password(payload.password, stored) or not user:
+    if not verify_password(password, stored) or not user:
         _record_login_failure(ip)
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
     if not user.is_active:
@@ -100,13 +102,43 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
     if needs_rehash(stored):
         # ленивая миграция хеша: старые записи (например, 120k итераций) обновляются
         # на текущие параметры при успешном входе — пароль у нас в этот момент есть
-        user.password_hash = hash_password(payload.password)
+        user.password_hash = hash_password(password)
     employee = db.get(Employee, user.employee_id) if user.employee_id else None
+    return user, employee
+
+
+@router.post("/login")
+def login(payload: LoginIn, response: Response, request: Request, db: Session = Depends(get_db)):
+    user, employee = _authenticate(db, request, payload.username, payload.password)
     token = _token(user, employee.id if employee else None)
     _set_cookie(response, token)
     audit(db, Principal(user, employee), "login", f"user:{user.username}")
     db.commit()
     return {"ok": True, "user": Principal(user, employee).to_dict()}
+
+
+@router.post("/login-form")
+def login_form(request: Request, username: str = Form(""), password: str = Form(""),
+               db: Session = Depends(get_db)):
+    """Классический form-login с редиректом — ДЛЯ МЕНЕДЖЕРОВ ПАРОЛЕЙ (16.10.2026).
+
+    Браузерные менеджеры (Safari/«Пароли» macOS включительно) надёжно распознают
+    связку «submit формы с паролем → 303-редирект» и показывают «Сохранить пароль?»
+    сразу после входа. SPA-вход через preventDefault+fetch они откладывают до
+    следующего действия пользователя — владелец видел плашку при открытии
+    «Настроек». Ошибки уносим кодом в URL: пароль в адресную строку не попадает."""
+    from fastapi import HTTPException as _HE
+    try:
+        user, employee = _authenticate(db, request, username, password)
+    except _HE as exc:
+        code = {429: "rate", 401: "auth", 403: "disabled"}.get(exc.status_code, "auth")
+        return RedirectResponse(f"/?login_error={code}", status_code=303)
+    resp = RedirectResponse("/", status_code=303)
+    token = _token(user, employee.id if employee else None)
+    _set_cookie(resp, token)
+    audit(db, Principal(user, employee), "login", f"user:{user.username} (form)")
+    db.commit()
+    return resp
 
 
 @router.post("/logout")

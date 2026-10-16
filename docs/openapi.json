@@ -297,6 +297,22 @@
         "title": "Body_car_return_api_cars__car_id__return_post",
         "type": "object"
       },
+      "Body_login_form_api_auth_login_form_post": {
+        "properties": {
+          "password": {
+            "default": "",
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "default": "",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "title": "Body_login_form_api_auth_login_form_post",
+        "type": "object"
+      },
       "Body_upload_template_api_docs_templates_post": {
         "properties": {
           "file": {
@@ -2827,6 +2843,45 @@
           }
         },
         "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login-form": {
+      "post": {
+        "description": "Классический form-login с редиректом — ДЛЯ МЕНЕДЖЕРОВ ПАРОЛЕЙ (16.10.2026).\n\nБраузерные менеджеры (Safari/«Пароли» macOS включительно) надёжно распознают\nсвязку «submit формы с паролем → 303-редирект» и показывают «Сохранить пароль?»\nсразу после входа. SPA-вход через preventDefault+fetch они откладывают до\nследующего действия пользователя — владелец видел плашку при открытии\n«Настроек». Ошибки уносим кодом в URL: пароль в адресную строку не попадает.",
+        "operationId": "login_form_api_auth_login_form_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_login_form_api_auth_login_form_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Form",
         "tags": [
           "auth"
         ]

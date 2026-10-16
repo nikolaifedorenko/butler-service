@@ -164,8 +164,9 @@ async def _gone_handler(request: Request, exc: Gone):
 
 _CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # Вход — точка входа: CSRF-cookie у клиента ещё нет, и это отдельная поверхность атаки
-# (login-CSRF), поэтому его не проверяем. Остальные mutating-запросы требуют заголовок.
-_CSRF_EXEMPT_PATHS = {"/api/auth/login"}
+# (login-CSRF), поэтому его не проверяем (оба варианта: JSON и form-login с редиректом
+# для менеджеров паролей). Остальные mutating-запросы требуют заголовок.
+_CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/login-form"}
 
 
 def _set_csrf_cookie(response, token: str) -> None:
