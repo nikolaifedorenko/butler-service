@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from ..auth import Principal, audit, require_manager
 from ..db import get_db
 from ..deps import TZ, now_local, safe_sheet_cell, utc_to_local
+from ..doc_render import hours_text
 from ..doublepay import SCOPE_TITLES, calendar_map
 from ..employment import employed_on, periods_of, ranges_from_periods
 from ..engine.adapters.sql_settings import SqlSettingsAdapter
@@ -701,15 +702,53 @@ def timeoff_hours(employee_id: int, date: dt.date,
             "hours_source": source}
 
 
+def _interval_info(db: Session, emp: Optional[Employee], row: ScheduleAbsence) -> Optional[dict]:
+    """Интервал согласованного отсутствия как фрагмент заявления.
+
+    None — запись без вида словаря либо у вида нет заявления (doc_type пуст):
+    в печатный период такой интервал не входит. Часы: «вся смена» — стандартное
+    окно смен сотрудника (норматив 12.10.2026, EX-29), интервал — длина записи."""
+    if not row.kind_id:
+        return None
+    kind = db.get(ShiftType, row.kind_id)
+    if kind is None or not kind.doc_type:
+        return None
+    start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+    end_local = row.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+    day = start_local.date()
+    day_settings = st_day(db, day)
+    whole_shift = _covers_whole_day(db, day_settings, row.employee_id, day,
+                                    start_local, end_local)
+    if whole_shift:
+        hours_value, hours_source = standard_day_hours(db, day_settings, emp, day)
+    else:
+        hours_value = round((end_local - start_local).total_seconds() / 3600, 2)
+        hours_source = "absence_interval"
+    return {"id": row.id,
+            "start": day.isoformat(),
+            "end": (end_local - dt.timedelta(seconds=1)).date().isoformat(),
+            "from_time": start_local.strftime("%H:%M"),
+            "until_time": end_local.strftime("%H:%M"),
+            "hours": hours_value, "hours_source": hours_source,
+            "whole_shift": whole_shift, "kind": _kind_brief(kind),
+            "note": row.note or "",
+            "doc_type": doc_type_of_absence(db, kind, whole_shift)}
+
+
 @router.get("/absence-period")
-def absence_period(employee_id: int, date: dt.date,
+def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = None,
                    principal: Principal = Depends(require_perm("schedule.view")),
                    db: Session = Depends(get_db)):
     """Непрерывный период одного отсутствия вокруг даты — для печати заявления.
 
-    Источник — Табель (коды отсутствий) либо запись согласованного отсутствия
+    Источник — Табель (коды отсутствий) либо записи согласованного отсутствия
     («отпросился»): заявление находит весь период, даже если он пересекает границы
-    месяцев."""
+    месяцев.
+
+    Отлучек в одном дне может быть несколько (решение владельца 16.10.2026):
+    по умолчанию заявление ОДНО на все интервалы дня (`intervals`, `intervals_text`
+    — перечень «с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)», `hours` — сумма);
+    с `absence_id` — заявление по одному выбранному интервалу."""
     emp = db.get(Employee, employee_id)
     employee_payload = None if emp is None else {
         "id": emp.id, "full_name": emp.full_name, "short_name": emp.display_name,
@@ -718,41 +757,48 @@ def absence_period(employee_id: int, date: dt.date,
         "nationality": emp.nationality or "", "subdivision": emp.subdivision or "",
         "department": emp.department.name if emp.department else "",
     }
-    # 1) частичное отсутствие («отпросился») — запись Графика с типом-заявлением
+    # 1) согласованные отсутствия дня («отпросился») — записи Графика с типом-заявлением
     day_lo = dt.datetime.combine(date, dt.time(0), TZ).astimezone(dt.timezone.utc)
     day_hi = day_lo + dt.timedelta(days=1)
-    partial = db.scalar(select(ScheduleAbsence).where(
+    day_rows = list(db.scalars(select(ScheduleAbsence).where(
         ScheduleAbsence.employee_id == employee_id, ScheduleAbsence.start_utc < day_hi,
-        ScheduleAbsence.end_utc > day_lo).limit(1))
-    if partial is not None and partial.kind_id:
-        kind = db.get(ShiftType, partial.kind_id)
-        if kind is not None and kind.doc_type:
-            start_local = partial.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-            end_local = partial.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-            day = start_local.date()
-            day_settings = st_day(db, day)
-            whole_shift = _covers_whole_day(db, day_settings, employee_id, day,
-                                            start_local, end_local)
-            if whole_shift:
-                # отсутствие на всю смену («выходной за часы»): часов = стандартное окно
-                # смен сотрудника, а не длина записи (норматив 12.10.2026, EX-29)
-                hours_value, hours_source = standard_day_hours(db, day_settings, emp, day)
-            else:
-                hours_value = round((end_local - start_local).total_seconds() / 3600, 2)
-                hours_source = "absence_interval"
-            doc_type = doc_type_of_absence(db, kind, whole_shift)
-            return {"employee": employee_payload,
-                    "source": "schedule_absence", "whole_shift": whole_shift,
-                    "doc_type": doc_type,
-                    "start": day.isoformat(),
-                    "end": (end_local - dt.timedelta(seconds=1)).date().isoformat(),
-                    "days": 1, "shift": _kind_brief(kind), "note": partial.note or "",
-                    "hours": hours_value, "hours_source": hours_source,
-                    "partial": {"from_time": start_local.strftime("%H:%M"),
-                                "until_time": end_local.strftime("%H:%M"),
-                                "hours": hours_value, "hours_source": hours_source,
-                                "kind": _kind_brief(kind)},
-                    "notes": [partial.note] if partial.note else []}
+        ScheduleAbsence.end_utc > day_lo).order_by(ScheduleAbsence.start_utc)))
+    intervals = [iv for iv in (_interval_info(db, emp, r) for r in day_rows) if iv]
+    if absence_id is not None:
+        intervals = [iv for iv in intervals if iv["id"] == absence_id]
+        if not intervals:
+            raise HTTPException(status_code=404,
+                                detail="Интервал отсутствия не найден в этот день")
+    if intervals:
+        first, last = intervals[0], intervals[-1]
+        total = round(sum(iv["hours"] or 0 for iv in intervals), 2)
+        one = len(intervals) == 1
+        doc_types = {iv["doc_type"] for iv in intervals}
+        if len(doc_types) == 1:
+            doc_type = doc_types.pop()
+        else:
+            # смешанные точки ввода (вся смена + интервал): перечень интервалов
+            # печатается заявлением «об отсутствии на рабочем месте»
+            doc_type = (DOC_PARTIAL_SHIFT if _statement_kind_exists(db, DOC_PARTIAL_SHIFT)
+                        else first["doc_type"])
+        intervals_text = " и ".join(
+            f"с {iv['from_time']} до {iv['until_time']} ({hours_text(iv['hours'] or 0)} ч)"
+            for iv in intervals)
+        return {"employee": employee_payload,
+                "source": "schedule_absence",
+                "whole_shift": all(iv["whole_shift"] for iv in intervals),
+                "doc_type": doc_type,
+                "start": first["start"], "end": last["end"], "days": 1,
+                "shift": first["kind"], "note": first["note"],
+                "hours": total,
+                "hours_source": first["hours_source"] if one else "combined",
+                "partial": {"from_time": first["from_time"],
+                            "until_time": last["until_time"],
+                            "hours": total,
+                            "hours_source": first["hours_source"] if one else "combined",
+                            "kind": first["kind"]},
+                "intervals": intervals, "intervals_text": intervals_text,
+                "notes": sorted({iv["note"] for iv in intervals if iv["note"]})}
     # 2) отсутствие на период — непрерывный диапазон одного кода Табеля
     rows = {r.date: r for r in db.scalars(select(TabelDay).where(
         TabelDay.employee_id == employee_id).order_by(TabelDay.date))}

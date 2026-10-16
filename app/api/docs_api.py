@@ -25,6 +25,7 @@ from ..doc_render import (
     build_sample_docx,
     build_values,
     delete_template,
+    hours_text,
     pdf_available,
     pdf_status,
     render_docx,
@@ -221,6 +222,7 @@ class RenderIn(BaseModel):
     from_time: str = ""         # «отпросился с 14:00…»
     until_time: str = ""        # «…до 16:00»
     hours: Optional[float] = None
+    intervals: str = ""         # перечень интервалов одной строкой («с 14:00 до 16:00 (2 ч) и …»)
     reason: str = ""            # вид отсутствия из словаря («Отпуск», «Выходной за часы»…)
     note: str = ""              # примечание из ячейки графика (приказ, причина)
 
@@ -244,10 +246,18 @@ def render(payload: RenderIn, principal: Principal = Depends(require_manager),
     hours_val = payload.hours
     if hours_val is None and payload.from_time and payload.until_time:
         hours_val = _hours_between(payload.from_time, payload.until_time)
+    # {intervals}: готовый перечень из absence-period (несколько отлучек одним
+    # заявлением) либо одиночный интервал, собранный из from/until — шаблон
+    # «об отсутствии на рабочем месте» всегда может использовать один плейсхолдер
+    intervals = payload.intervals.strip()
+    if not intervals and payload.from_time and payload.until_time:
+        intervals = (f"с {payload.from_time} до {payload.until_time} "
+                     f"({hours_text(hours_val or 0)} ч)")
     values = build_values(emp, d1, d2, extra={
         "company": doc_cfg["company"], "director": doc_cfg["director"],
         "from_time": payload.from_time, "until_time": payload.until_time,
-        "hours": hours_val or 0, "reason": payload.reason, "note": payload.note})
+        "hours": hours_val or 0, "reason": payload.reason, "note": payload.note,
+        "intervals": intervals})
     # текст-заполнитель вида; для встроенных видов без текста — прежние шаблоны из настроек
     fallback = (kind.text or "").strip() or _legacy_fallback_text(doc_cfg, kind.code)
     docx_bytes = render_docx(kind.code, values, fallback)

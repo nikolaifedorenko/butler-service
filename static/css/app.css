@@ -855,6 +855,7 @@ table.sched thead th.today.double-day .dow { color: var(--gold); }
 .tc-chip.sel { box-shadow: 0 0 0 3px rgba(148, 88, 58, .28); transform: translateY(-1px); }
 .tc-chip.sel::after { content: '✓'; margin-left: 5px; color: var(--primary); }
 .tc-chip.clear { background: #f4f5f7; border-color: var(--line); color: var(--muted); font-weight: 600; }
+.tc-chip small { font-weight: 500; color: var(--muted); margin-left: 6px; font-size: 11.5px; }
 .tc-chip.off { opacity: .5; cursor: not-allowed; border-style: dashed; font-weight: 600; }
 .v4-ut { min-width: 46px; vertical-align: top; border-bottom: 1px solid var(--line-soft); }
 .v4-code { display: block; font-size: 10.5px; line-height: 1.35; border-radius: 3px; padding: 0 3px; margin: 1px 0; }

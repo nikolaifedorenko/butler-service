@@ -26,7 +26,10 @@ class Setting(Base):
     __tablename__ = "settings"
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    value: Mapped[str] = mapped_column(String(255), default="")
+    # Text, не String(255): здесь же хранятся шаблоны документов (tpl_*) — они длиннее
+    # 255 символов, и PostgreSQL отклонял запись («value too long»), см. миграцию
+    # migrate_settings_value_text (16.10.2026)
+    value: Mapped[str] = mapped_column(Text, default="")
     description: Mapped[str] = mapped_column(String(255), default="")
 
 

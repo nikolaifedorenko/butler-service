@@ -47,7 +47,11 @@ from sqlalchemy import select  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.deps import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
-from app.migrations import migrate_shift_tabel_codes, migrate_timeoff_entity  # noqa: E402
+from app.migrations import (  # noqa: E402
+    migrate_shift_tabel_codes,
+    migrate_time_off_template,
+    migrate_timeoff_entity,
+)
 from app.models import PeriodClosing, ScheduleAbsence, ShiftType, TabelDay  # noqa: E402
 
 init_db()
@@ -479,6 +483,145 @@ class TestTimeoffEntity(unittest.TestCase):
         live = [k for k in client.get("/api/shift-types").json()
                 if k["kind"] == "absence" and not k["tzh_code"]]
         self.assertEqual([k["code"] for k in live], ["TIMEOFF_HOURS"])
+
+
+class TestIntervalStatements(unittest.TestCase):
+    """Несколько отлучек в один день (решение владельца 16.10.2026): ОДНО заявление
+    с перечнем интервалов либо заявление по каждому интервалу отдельно (absence_id)."""
+
+    @classmethod
+    def setUpClass(cls):
+        _login(client, "admin")
+        cls.emp = _create_employee("norm_intervals", "Интервалов Интервал Интервалович")
+        _fill_cycle(cls.emp["id"])
+        cls.day = _work_days(cls.emp["id"])[0]
+        cls.kind = _shift("TIMEOFF_HOURS")
+        for frm, until, note in (("14:00", "16:00", "к врачу"), ("18:00", "20:00", "")):
+            r = client.post("/api/schedule/absence", json={
+                "employee_id": cls.emp["id"], "date": cls.day.isoformat(),
+                "from_time": frm, "until_time": until,
+                "kind_id": cls.kind["id"], "note": note})
+            assert r.status_code == 200, r.text
+
+    def _period(self, **extra) -> dict:
+        r = client.get("/api/schedule/absence-period", params={
+            "employee_id": self.emp["id"], "date": self.day.isoformat(), **extra})
+        return r
+
+    def test_01_combined_period_lists_intervals(self):
+        r = self._period()
+        self.assertEqual(r.status_code, 200, r.text)
+        data = r.json()
+        self.assertEqual(data["source"], "schedule_absence")
+        self.assertEqual([(iv["from_time"], iv["until_time"]) for iv in data["intervals"]],
+                         [("14:00", "16:00"), ("18:00", "20:00")])
+        self.assertEqual(data["hours"], 4.0, "часы — сумма интервалов")
+        self.assertEqual(data["hours_source"], "combined")
+        self.assertFalse(data["whole_shift"])
+        self.assertEqual(data["doc_type"], "time_off_request")
+        self.assertEqual(data["intervals_text"],
+                         "с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)")
+        # прежний контракт для одиночных полей сохранён: границы — первого и последнего
+        self.assertEqual(data["partial"]["from_time"], "14:00")
+        self.assertEqual(data["partial"]["until_time"], "20:00")
+        self.assertEqual(data["notes"], ["к врачу"])
+
+    def test_02_single_interval_by_id(self):
+        combined = self._period().json()
+        second = combined["intervals"][1]
+        r = self._period(absence_id=second["id"])
+        self.assertEqual(r.status_code, 200, r.text)
+        one = r.json()
+        self.assertEqual(len(one["intervals"]), 1)
+        self.assertEqual(one["partial"]["from_time"], "18:00")
+        self.assertEqual(one["partial"]["until_time"], "20:00")
+        self.assertEqual(one["hours"], 2.0)
+        self.assertEqual(one["hours_source"], "absence_interval")
+        self.assertEqual(one["intervals_text"], "с 18:00 до 20:00 (2 ч)")
+        self.assertEqual(one["doc_type"], "time_off_request")
+
+    def test_03_unknown_interval_404(self):
+        r = self._period(absence_id=10 ** 9)
+        self.assertEqual(r.status_code, 404)
+
+    def _docx_text(self, payload: dict) -> str:
+        import io
+
+        from docx import Document
+        r = client.post("/api/docs/render", json=payload)
+        self.assertEqual(r.status_code, 200, r.text[:300])
+        doc = Document(io.BytesIO(r.content))
+        return "\n".join(par.text for par in doc.paragraphs)
+
+    def test_04_render_combined_intervals(self):
+        text = self._docx_text({
+            "type": "time_off_request", "employee_id": self.emp["id"],
+            "date_from": self.day.isoformat(), "date_to": self.day.isoformat(),
+            "format": "docx",
+            "intervals": "с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)"})
+        self.assertIn("с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)", text)
+        self.assertIn(self.emp["full_name"], text)
+
+    def test_05_render_single_interval_fallback(self):
+        """Без intervals сервер собирает строку из from/until — старые вызовы работают."""
+        text = self._docx_text({
+            "type": "time_off_request", "employee_id": self.emp["id"],
+            "date_from": self.day.isoformat(), "date_to": self.day.isoformat(),
+            "format": "docx", "from_time": "14:00", "until_time": "16:00", "hours": 2})
+        self.assertIn("с 14:00 до 16:00 (2 ч)", text)
+
+    def test_06_migration_updates_pristine_template(self):
+        """Старая база: нетронутый шаблон заменяется на версию с {intervals};
+        отредактированный вручную — не трогается. Идемпотентно."""
+        from app.doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
+        from app.models import Setting, StatementKind
+
+        def _texts():
+            db = SessionLocal()
+            try:
+                return (db.scalar(select(Setting.value).where(
+                            Setting.key == "tpl_time_off_request")),
+                        db.scalar(select(StatementKind.text).where(
+                            StatementKind.code == "time_off_request")))
+            finally:
+                db.close()
+
+        db = SessionLocal()
+        try:
+            row = db.scalar(select(Setting).where(Setting.key == "tpl_time_off_request"))
+            if row is None:      # в свежей базе строки нет — старая база её сохраняла
+                row = Setting(key="tpl_time_off_request", value="", description="")
+                db.add(row)
+            row.value = PREV_DEFAULT_TPL_TIME_OFF
+            db.scalar(select(StatementKind).where(
+                StatementKind.code == "time_off_request")).text = PREV_DEFAULT_TPL_TIME_OFF
+            db.commit()
+        finally:
+            db.close()
+        migrate_time_off_template()
+        migrate_time_off_template()                        # идемпотентно
+        self.assertEqual(_texts(), (DEFAULT_TPL_TIME_OFF, DEFAULT_TPL_TIME_OFF))
+
+        db = SessionLocal()
+        try:
+            db.scalar(select(Setting).where(
+                Setting.key == "tpl_time_off_request")).value = "свой текст {intervals}"
+            db.commit()
+        finally:
+            db.close()
+        migrate_time_off_template()
+        setting_text, kind_text = _texts()
+        self.assertEqual(setting_text, "свой текст {intervals}", "ручная правка не тронута")
+        self.assertEqual(kind_text, DEFAULT_TPL_TIME_OFF)
+
+        # вернуть штатный шаблон — за классом следуют другие тесты документов
+        db = SessionLocal()
+        try:
+            db.scalar(select(Setting).where(
+                Setting.key == "tpl_time_off_request")).value = DEFAULT_TPL_TIME_OFF
+            db.commit()
+        finally:
+            db.close()
 
 
 class TestAbsenceLayers(unittest.TestCase):
