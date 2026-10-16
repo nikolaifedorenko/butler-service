@@ -172,6 +172,21 @@ def test_tabel_validation_by_domain_checks(admin, emp):
     assert r.status_code == 422      # план не кратен 15 минутам
 
 
+def test_tabel_values_carry_windows(admin, emp):
+    """16.5/UI: редактор ячейки собирает значения плашками из справочников —
+    GET /api/tabel отдаёт границы окна (HH:MM) для каждого значения CFG-WINDOWS,
+    чтобы подсказка показывала окно, а часы вне справочника нельзя было ввести."""
+    data = admin.get("/api/tabel", params={"year": PREV.year, "month": PREV.month}).json()
+    assert data["values"], data
+    assert set(data["windows"]) == set(data["values"])
+    for value, win in data["windows"].items():
+        assert len(win) == 2, value
+        for hm in win:
+            hh, mm = hm.split(":")
+            assert len(hh) == 2 and len(mm) == 2 and 0 <= int(hh) <= 23 and int(mm) <= 59
+        assert win[0] < win[1], value      # окно не пересекает полночь (3.5)
+
+
 def test_presence_board_contract(admin):
     r = admin.get("/api/presence/board")
     assert r.status_code == 200

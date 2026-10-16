@@ -442,23 +442,49 @@ function tabelCellModal(empId, day) {
     && x.kind === 'absence' && x.doc_type && !x.archived);
   const statementName = k => (state.docKinds || []).find(x => x.code === k.doc_type)?.name
     || k.doc_type;
+  /* Значение — только плашкой из справочников (решение владельца 16.10.2026): код без
+     часов (CFG-DAY-CODES) — одна плашка, код с часами — по плашке на строку CFG-WINDOWS
+     («Я 12», «Я 9»…). Плашка и есть значение, поэтому часы, которых нет в справочнике,
+     ввести нельзя: сервер их и так отклонял (CHK-WINDOW-EXISTS, CHK-PLAN-CONSISTENT/
+     FORMAT), но теперь невалидная комбинация даже не уходит в запрос. Код с часами без
+     строк окон показан отключённой плашкой — значение нельзя задать, пока окно не добавлено
+     в «Настройках». */
+  const num = s => Number(String(s).replace(',', '.'));
+  const winOf = v => (d.windows || {})[v] || null;
+  const chipsHtml = d.codes.map(c => {
+    const color = v4CodeColor(c.code, d.colors);
+    const tip = c.title ? `${c.code} — ${c.title}` : c.code;
+    const style = `background:${withAlpha(color, .22)};border-color:${color}`;
+    if (!c.carries_hours) {
+      return `<button type="button" class="tc-chip" data-code="${esc(c.code)}" data-hours="0" style="${style}" title="${esc(tip)}">${esc(c.code)}</button>`;
+    }
+    const vals = d.values.filter(v => v.startsWith(c.code + ' '))
+      .sort((a, b) => num(a.split(' ')[1]) - num(b.split(' ')[1]));
+    if (!vals.length) {
+      return `<span class="tc-chip off" title="${esc(tip)}: нет строки в CFG-WINDOWS — значение нельзя задать, пока окно не добавлено в настройках">${esc(c.code)}</span>`;
+    }
+    return vals.map(v => {
+      const w = winOf(v);
+      return `<button type="button" class="tc-chip" data-code="${esc(c.code)}" data-hours="${esc(v.split(' ')[1])}" style="${style}" title="${esc(tip)}${w ? ` · окно ${w[0]}–${w[1]}` : ''}">${esc(v)}</button>`;
+    }).join('');
+  }).join('');
   openModal({
     title: `Табель · ${row.employee.short_name}`,
     subtitle: `${dateRu(day)}${row.lock === 'last_closed' ? ' · период закрыт: после правки нужен пересчёт в УТ' : ''}`,
     body: `
-      <label class="field"><span>Код дня (CFG-DAY-CODES)</span><select id="tc-code">
-        <option value="">— очистить ячейку —</option>
-        ${d.codes.map(c => `<option value="${esc(c.code)}" data-h="${c.carries_hours ? 1 : 0}" ${cur && cur.code === c.code ? 'selected' : ''}>${esc(c.code)} — ${esc(c.title)}</option>`).join('')}
-      </select></label>
-      <label class="field" id="tc-hours-f"><span>Плановые часы (информационный план строки)</span>
-        <input id="tc-hours" type="number" step="0.25" min="0" max="24" value="${cur ? cur.hours : 12}" list="tc-hours-list">
-        <datalist id="tc-hours-list"></datalist></label>
+      <div class="opt-group-title" style="margin-top:0">Значение дня — код и плановые часы (CFG-DAY-CODES · CFG-WINDOWS)</div>
+      <div class="tc-chips" id="tc-chips">
+        <button type="button" class="tc-chip clear" data-code="" data-hours="0"
+          title="Убрать значение ячейки — день станет незаполненным">✕ Очистить</button>
+        ${chipsHtml}
+      </div>
+      <div class="hint" id="tc-sel" style="margin:4px 0 10px"></div>
       <label class="field"><span>Применить по число месяца (включительно)</span>
         <input id="tc-until" type="number" min="${+day.slice(8)}" max="${+lastDay}" value="${+day.slice(8)}"></label>
       <label class="field"><span>Примечание</span><input type="text" id="tc-note" value="${esc(cur?.note || '')}"></label>
-      <p class="hint">План кратен 15 минутам; для значения с часами нужна строка окна
-        (${d.values.map(esc).join(', ')}). Информационный план может быть меньше длины окна
-        (например, обед в зарплатной норме) — расчёт идёт от окна.</p>
+      <p class="hint">На плашках — только значения, которые можно сохранить: коды без часов и
+        значения с часами, у которых есть строка окна (${d.values.map(esc).join(', ') || 'окон в справочнике нет'}).
+        План строки — информационный (зарплатный); план карточки УТ = длина окна.</p>
       <div id="tc-doc-wrap" style="display:none;margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
         <div class="opt-group-title" style="margin-top:0">Заявление по коду Табеля</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -472,24 +498,35 @@ function tabelCellModal(empId, day) {
       </div>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(m) {
-      const sync = () => {
-        const opt = $('#tc-code').selectedOptions[0];
-        const withHours = opt && opt.dataset.h === '1';
-        $('#tc-hours-f').style.display = withHours ? '' : 'none';
-        $('#tc-hours-list').innerHTML = d.values.filter(v => v.startsWith(opt.value + ' '))
-          .map(v => `<option value="${v.split(' ')[1]}">`).join('');
-        /* у кода с часами план обязан быть положительным (CHK-PLAN-CONSISTENT): если
-           поле пустое/нулевое (прежнее значение кода без часов), предлагаем первое
-           окно кода из CFG-WINDOWS — иначе сохранение упадёт в 422 без подсказки */
-        if (withHours && !(Number($('#tc-hours').value) > 0)) {
-          const first = d.values.find(v => v.startsWith(opt.value + ' '));
-          if (first) $('#tc-hours').value = first.split(' ')[1];
+      const chipEls = $$('.tc-chip[data-code]', m);
+      const chipValue = b => !b.dataset.code ? ''
+        : (b.dataset.hours === '0' ? b.dataset.code : `${b.dataset.code} ${b.dataset.hours}`);
+      /* Предвыбор — то, что уже в ячейке; старое значение вне справочника не совпадёт
+         ни с одной плашкой — показываем его подсказкой и требуем явного выбора */
+      let selChip = chipEls.find(b => b.dataset.code && cur && chipValue(b) === cur.value) || null;
+      const applySel = () => {
+        chipEls.forEach(b => b.classList.toggle('sel', b === selChip));
+        const selLine = $('#tc-sel');
+        if (!selChip) {
+          selLine.innerHTML = cur
+            ? `Сейчас в ячейке: <b>«${esc(cur.value)}»</b>${cur.source === 'cycle' ? ' (из циклов)' : ' (вручную)'} — выберите значение или «Очистить»`
+            : 'Ячейка не заполнена — выберите значение';
+        } else if (!selChip.dataset.code) {
+          selLine.textContent = 'Ячейка будет очищена: день станет незаполненным (расчёт не запустится, пока Табель не покрывает период)';
+        } else {
+          const c = d.codes.find(x => x.code === selChip.dataset.code);
+          const v = chipValue(selChip);
+          const w = winOf(v);
+          selLine.innerHTML = `Выбрано: <b>«${esc(v)}»</b>${c && c.title ? ' — ' + esc(c.title) : ''}${w ? ` · окно ${esc(w[0])}–${esc(w[1])}` : ''}`;
         }
-        const kind = kindOfCode(opt ? opt.value : '');
+        /* пустой код («Очистить») не должен совпасть с видом смены без кода Табеля
+           (tzh_code = ''): заявления «за счёт часов» печатаются из Графика */
+        const kind = selChip && selChip.dataset.code ? kindOfCode(selChip.dataset.code) : null;
         $('#tc-doc-wrap').style.display = kind ? '' : 'none';
         if (kind) $('#tc-doc-name').textContent = statementName(kind);
       };
-      $('#tc-code').onchange = sync; sync();
+      chipEls.forEach(b => b.onclick = () => { selChip = b; applySel(); });
+      applySel();
       /* печать имеет смысл только по сохранённому дню: сервер читает код из Табеля */
       const ifSaved = fn => () => {
         if (!cur) return toast('Сначала сохраните код дня — тогда станет доступна печать', 'warn');
@@ -500,12 +537,11 @@ function tabelCellModal(empId, day) {
       $('#tc-pdf').onclick = ifSaved(() => downloadAbsenceDoc(empId, day, 'pdf', 'tabel_code'));
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-save]').onclick = async () => {
-        const code = $('#tc-code').value;
-        /* план отправляем только для кода, несущего часы: поле часов для прочих
-           скрыто, и его прежнее значение не должно попадать в запрос (иначе
-           CHK-PLAN-CONSISTENT честно вернёт 422 — «код не несёт часы») */
-        const codeOpt = $('#tc-code').selectedOptions[0];
-        const h = codeOpt && codeOpt.dataset.h === '1' ? (Number($('#tc-hours').value) || 0) : 0;
+        if (!selChip) return toast('Выберите значение дня или «Очистить»', 'warn');
+        const code = selChip.dataset.code;
+        /* часы — из плашки (строка CFG-WINDOWS), для кода без часов всегда 0:
+           CHK-PLAN-CONSISTENT не сработает, план отправляется только с кодом */
+        const h = code && selChip.dataset.hours !== '0' ? num(selChip.dataset.hours) : 0;
         const until = Math.max(+day.slice(8), Math.min(+lastDay, Number($('#tc-until').value) || +day.slice(8)));
         try {
           let res;
