@@ -20,6 +20,7 @@
   "NIGHT_ANSWER_BADGE": "readonly",
   "NIGHT_SECTION_BADGE": "readonly",
   "POSITION_COLORS": "readonly",
+  "P_NAME_W": "readonly",
   "ROLE_TITLES": "readonly",
   "SETTINGS_CODE_FLAGS": "readonly",
   "SETTINGS_ICONS": "readonly",
@@ -36,6 +37,7 @@
   "WD": "readonly",
   "WD_SHORT": "readonly",
   "absencePeriodInfo": "readonly",
+  "absenceTypeOfCode": "readonly",
   "accessMatrix": "readonly",
   "api": "readonly",
   "bankAdjustModal": "readonly",
@@ -60,7 +62,10 @@
   "carTake": "readonly",
   "carsFinish": "readonly",
   "carsState": "readonly",
+  "cellColor": "readonly",
+  "cellSegLines": "readonly",
   "cellTd": "readonly",
+  "cellWholeOff": "readonly",
   "clearTimers": "readonly",
   "closeModal": "readonly",
   "closeReportModal": "readonly",
@@ -268,7 +273,8 @@
   "v4MonthNav": "readonly",
   "v4PeriodNav": "readonly",
   "visibleTabs": "readonly",
-  "withAlpha": "readonly"
+  "withAlpha": "readonly",
+  "workTypeOfShift": "readonly"
  },
  "by_file": {
   "$": "core.js",
@@ -290,6 +296,7 @@
   "NIGHT_ANSWER_BADGE": "section_night.js",
   "NIGHT_SECTION_BADGE": "section_night.js",
   "POSITION_COLORS": "core.js",
+  "P_NAME_W": "section_grid.js",
   "ROLE_TITLES": "core.js",
   "SETTINGS_CODE_FLAGS": "section_settings.js",
   "SETTINGS_ICONS": "section_settings.js",
@@ -306,6 +313,7 @@
   "WD": "core.js",
   "WD_SHORT": "core.js",
   "absencePeriodInfo": "section_docs.js",
+  "absenceTypeOfCode": "section_grid.js",
   "accessMatrix": "section_v4.js",
   "api": "core.js",
   "bankAdjustModal": "section_employees.js",
@@ -330,7 +338,10 @@
   "carTake": "section_cars.js",
   "carsFinish": "section_night.js",
   "carsState": "section_cars.js",
+  "cellColor": "section_grid.js",
+  "cellSegLines": "section_grid.js",
   "cellTd": "section_grid.js",
+  "cellWholeOff": "section_grid.js",
   "clearTimers": "app.js",
   "closeModal": "core.js",
   "closeReportModal": "section_night.js",
@@ -538,7 +549,8 @@
   "v4MonthNav": "section_v4.js",
   "v4PeriodNav": "section_v4.js",
   "visibleTabs": "app.js",
-  "withAlpha": "core.js"
+  "withAlpha": "core.js",
+  "workTypeOfShift": "section_grid.js"
  },
  "used_elsewhere": {
   "app.js": [

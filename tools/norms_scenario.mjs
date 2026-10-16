@@ -130,7 +130,7 @@ const toasts = () => text('#toast-host');
 async function main() {
   /* печать заявлений проверяем по содержимому: перехватываем printWindow */
   const printed = [];
-  window.printWindow = (t, h) => printed.push({ t, h });
+  window.printWindow = (t, h, css) => printed.push({ t, h, css: css || '' });
 
   await sleep(400);
   $('#login-username').value = LOGIN;
@@ -269,11 +269,22 @@ async function main() {
   await waitFor(modalClosed);
 
   /* ── 5. T4: из Графика — только «за счёт часов», одна сущность ── */
-  console.log('\n5 · T4: «Отпросить (выходной за часы)» из Графика');
+  console.log('\n5 · T4: «Выходной за часы» из Графика');
   window.navigate('schedule');
   check('График отрисован', await waitFor(() => $$('#grid-host .cellbtn:not([disabled])').length > 0));
-  check('кнопка панели — «Отпросить (выходной за часы)»',
-    text('#btn-range') === 'Отпросить (выходной за часы)', text('#btn-range'));
+  check('кнопка панели — «Выходной за часы»',
+    text('#btn-range') === 'Выходной за часы', text('#btn-range'));
+  check('кнопка панели — «Сбросить месяц»', text('#btn-clear') === 'Сбросить месяц',
+    text('#btn-clear'));
+  click($('#btn-clear'));
+  check('сброс месяца — только ручные смены, Табель не трогается',
+    await waitFor(() => !!$('#modal [data-yes]'))
+    && /Ручные смены/.test(text('#modal')) && /Табель НЕ трогается/.test(text('#modal')),
+    text('#modal').slice(0, 220));
+  click($('#modal [data-yes]'));
+  check('сброс месяца выполнен (эндпоинт reset-month)',
+    await waitFor(() => /Ручных смен удалено/.test(toasts()), 15000), toasts().slice(0, 160));
+  await waitFor(() => $$('#grid-host .cellbtn:not([disabled])').length > 0);
   click($('#btn-range'));
   check('модалка «Отпросить» открылась', await waitFor(() => !!$('#rg-shift')));
   const schedKinds = $$('#rg-shift option').map(o => o.textContent.trim());
@@ -301,6 +312,10 @@ async function main() {
   check('Табель остался явкой (часы не меняются — Q8)',
     (await jget(`/api/tabel?year=${Y}&month=${M}`)).rows
       .find(r => r.employee.id === row2.employee.id).cells[dayW]?.code !== 'ОТПР');
+  const cellW = $(`#grid-host .cellbtn[data-emp="${row2.employee.id}"][data-date="${dayW}"]`);
+  check('отсутствие на всю смену — плашка «Выходной за часы» на всю ячейку',
+    !!cellW && /Выходной/.test(cellW.textContent) && /за часы/.test(cellW.textContent),
+    cellW ? cellW.textContent.replace(/\s+/g, ' ').slice(0, 80) : 'ячейка не найдена');
 
   /* ── 6. T4: ячейка Графика — две точки ввода одной сущности ── */
   console.log('\n6 · T4: ячейка Графика, интервал и заявление');
@@ -356,6 +371,17 @@ async function main() {
   }
   check('в Графике есть интервальное отсутствие (сид)', !!(ivanov && ivanovDay), ivanovDay || '');
   if (ivanov && ivanovDay) {
+    const ivCell = (await jget(`/api/schedule?year=${Y}&month=${M}`)).rows
+      .find(r => r.employee.id === ivanov.id)?.cells[ivanovDay] || {};
+    const cellIv = $(`#grid-host .cellbtn[data-emp="${ivanov.id}"][data-date="${ivanovDay}"]`);
+    if ((ivCell.segments || []).length) {
+      check('ячейка — отрезки смены по строкам, без кода Табеля',
+        !!cellIv && ivCell.segments.every(s => cellIv.textContent.includes(`${s[0]}–${s[1]}`))
+        && !/Я/.test(cellIv.textContent),
+        cellIv ? cellIv.textContent.replace(/\s+/g, ' ').slice(0, 90) : 'ячейка не найдена');
+    } else {
+      check('ячейка без смены показывает код Табеля', !!cellIv, cellIv?.textContent || '');
+    }
     const ap3 = await jsend('GET', `/api/schedule/absence-period?employee_id=${ivanov.id}&date=${ivanovDay}`);
     check('интервал: та же сущность, документ — об отсутствии на рабочем месте',
       ap3.ok && ap3.json?.source === 'schedule_absence' && ap3.json?.whole_shift === false
@@ -419,6 +445,22 @@ async function main() {
   const ap4 = await jsend('GET', `/api/schedule/absence-period?employee_id=${row2.employee.id}&date=${dayW}`);
   check('после удаления absence-period пуст', !ap4.ok || !ap4.json?.source,
     JSON.stringify(ap4.json || '').slice(0, 120));
+
+  /* печать (16.10.2026): та же геометрия и содержимое, что на экране; блоки смен
+     разделены заголовками; месяц — двумя страницами-половинками с колонкой ФИО */
+  const beforePrint = printed.length;
+  click($('#btn-print'));
+  const prOk = await waitFor(() => printed.length > beforePrint, 5000);
+  const pr = prOk ? printed.at(-1) : { h: '', css: '' };
+  check('печать: блоки смен разделены заголовками', /p-group/.test(pr.h));
+  check('печать: месяц разбит на страницы, колонка ФИО на каждой',
+    (pr.h.match(/<h1>/g) || []).length >= 2 && (pr.h.match(/Сотрудник/g) || []).length >= 2,
+    `страниц: ${(pr.h.match(/<h1>/g) || []).length}`);
+  check('печать: экранные размеры ячеек, единый масштаб под ширину листа',
+    /gridprint/.test(pr.css) && /zoom: (0\.\d+|1)/.test(pr.css)
+    && /width: 60px/.test(pr.css) && /height: 52px/.test(pr.css), (pr.css || '').slice(0, 120));
+  check('печать: содержимое ячеек — время смен, как на экране',
+    /p-cell/.test(pr.h) && /\d{2}:\d{2}–\d{2}:\d{2}/.test(pr.h), pr.h.slice(0, 120));
 
   /* ── 7. T1: редактор смены — «код в сетке» отдельно, «код в табеле» из справочника ── */
   console.log('\n7 · T1: словарь смен и health');

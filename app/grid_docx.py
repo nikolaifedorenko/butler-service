@@ -242,16 +242,29 @@ def schedule_docx(data: dict) -> bytes:
                     _cell_text(c, "—", size=6, color=MUTED)
                     _shade(c, OUT_FILL)
                 elif t or shifts:
-                    text = (t.get("value") or t.get("code") or "").replace("\u2013", "-")
-                    size = 5.6
-                    if shifts:
-                        spans = " ".join(f"{sh.get('start_hm', '')}–{sh.get('end_hm', '')}"
-                                         for sh in shifts)
-                        text = f"{text}\n{spans}".strip()
+                    # тот же вид, что на экране и в «Печати» (16.10.2026): плашка
+                    # «Выходной за часы» на весь день, иначе отрезки смены по строкам
+                    # (без кода Табеля), без смены — код Табеля
+                    absences = cell.get("absences") or []
+                    segments = cell.get("segments") or []
+                    if any(a.get("whole_shift") for a in absences):
+                        text, size = "Выходной\nза часы", 5.2
+                    elif shifts:
+                        # segments — пары [начало, конец] из API; запасной вариант —
+                        # интервалы самих смен (payload без segments)
+                        lines = [f"{s[0]}–{s[1]}" for s in segments] if segments else \
+                            [f"{sh.get('start_hm', '')}–{sh.get('end_hm', '')}" for sh in shifts]
+                        text = "\n".join(x.replace("\u2013", "-") for x in lines)
                         size = 5.2
-                    if cell.get("absences"):
-                        text += "*"      # логический разрез: согласованное отсутствие (v7/R17)
-                    _cell_text(c, text, size=size, bold=bool(t.get("code") == "Я"))
+                        if absences:
+                            text += "\n*"   # логический разрез (v7/R17)
+                    else:
+                        text = (t.get("value") or t.get("code") or "").replace("\u2013", "-")
+                        size = 5.6
+                        if absences:
+                            text += "*"
+                    _cell_text(c, text, size=size,
+                               bold=bool(t.get("code") == "Я") and bool(shifts))
                     if d.get("is_weekend"):
                         _shade(c, WEEKEND_FILL)
                 else:
