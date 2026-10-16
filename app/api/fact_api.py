@@ -1,12 +1,15 @@
 """Вкладка «Факт» — слой 2 модели «График = 4 слоя» (16.4, T5).
 
-Два представления одних и тех же отметок СКУД:
+Три представления одних и тех же отметок СКУД:
 
 * ``GET /api/fact/sessions`` — история сессий «пришёл — ушёл» за произвольный
   диапазон на общем ядре pair_marks; моменты исходные, без округления и нарезки —
   визуализация (шкала, группировка по дням, подсветка ночных часов) строится
   фронтендом. Вкладка не зависит ни от чего, кроме отметок.
-* ``GET /api/fact/day`` — сетка «Номера» (Q7): один день, все сотрудники — сырые
+* ``GET /api/fact/month`` — гант «Месяц» (16.10.2026): округлённые сессии целиком
+  на непрерывной оси времени (смена через полночь — одна полоса), окно Табеля
+  и цвет словарной смены на день, согласованные отсутствия; без settle.
+* ``GET /api/fact/day`` — сетка «День» (Q7): один день, все сотрудники — сырые
   отметки и их округление до шага, сопряжённые сессии, окно из кода Табеля,
   план / отработано / недостача / переработка по категориям и флаги из Графика.
   Числа — из движка (settle за период, содержащий день): клиент ничего не
@@ -17,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal
@@ -27,9 +31,10 @@ from ..engine.application.months import month_period, period_containing
 from ..engine.application.period_view import day_views
 from ..engine.application.view_period import view_period
 from ..engine.application.view_sessions import view_sessions
+from ..engine.domain.day_card.fmt_hours import fmt_hours
 from ..engine.domain.sessions.pair_marks import pair_marks
 from ..engine.domain.time.to_calc_mark import to_calc_mark
-from ..engine.domain.types.errors import DomainError
+from ..engine.domain.types.errors import ConfigError, DomainError
 from ..engine.interface.formatting import hm, local_hm
 from ..engine.interface.views import flag_dict, session_view_dict
 from ..models import Employee
@@ -63,6 +68,148 @@ def sessions(employee_id: int, first: dt.date, last: dt.date,
             "range": {"from": from_utc.isoformat(), "to": to_utc.isoformat(),
                       "first": first.isoformat(), "last": last.isoformat()},
             "sessions": [session_view_dict(v, TZ) for v in views]}
+
+
+@router.get("/month")
+def fact_month(year: int, month: int, principal: Principal = Depends(require_perm("presence.view")),
+               db: Session = Depends(get_db)):
+    """Слой 2, вкладка «Месяц» (16.10.2026): Гант фактических присутствий за месяц.
+
+    Ось X — непрерывное время месяца (не колонки дней), поэтому смена через
+    полночь — ОДНА полоса: сессии берём сопряжением ОКРУГЛЁННЫХ отметок
+    (to_calc_mark + pair_marks, то же ядро, что у «Дня») ЦЕЛИКОМ, без нарезки
+    полуночью. На день отдаём стандартное окно Табеля (штриховка), цвет полосы
+    (словарь «Смены и отсутствия», общий с Графиком) и согласованные отсутствия.
+    Числа расчёта (план/недостача) Ганту не нужны — settle не запускаем."""
+    from ..models import ScheduleAbsence, ScheduleShift, ShiftType, TabelDay
+    from ..services.engine_common import color_lookups, covers_window, pick_cell_color
+
+    if not (1 <= month <= 12 and 1 <= year <= 9999):
+        raise HTTPException(status_code=422, detail="year должен быть 1..9999, month — 1..12")
+    period = month_period(year, month)
+    st = _settings_for_period(db, period)
+    emps = period_employees(db, period.start, period.end)
+    if not principal.is_manager:
+        own = principal.employee.id if principal.employee else None
+        emps = [e for e in emps if e.id == own]
+    ports = engine_ports(db, principal, now_utc())
+    lo = dt.datetime.combine(period.start, dt.time(0), TZ)
+    hi = dt.datetime.combine(period.end + dt.timedelta(days=1), dt.time(0), TZ)
+    lookups = color_lookups(db)
+    emp_ids = [e.id for e in emps]
+    tabel_rows: dict[tuple[int, dt.date], TabelDay] = {
+        (r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
+            TabelDay.employee_id.in_(emp_ids), TabelDay.date >= period.start,
+            TabelDay.date <= period.end))} if emp_ids else {}
+    lo_utc = lo.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    hi_utc = hi.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    absence_rows = list(db.scalars(select(ScheduleAbsence).where(
+        ScheduleAbsence.employee_id.in_(emp_ids), ScheduleAbsence.start_utc < hi_utc,
+        ScheduleAbsence.end_utc > lo_utc))) if emp_ids else []
+    absences_by_emp: dict[int, list] = {}
+    for a in absence_rows:
+        absences_by_emp.setdefault(a.employee_id, []).append(a)
+    kinds = {k.id: k for k in db.scalars(select(ShiftType).where(
+        ShiftType.id.in_({a.kind_id for a in absence_rows if a.kind_id})))} \
+        if absence_rows else {}
+    # цвета полос — как в сетке Графика: по сменам месяца (якорь и соседи)
+    shift_rows = list(db.scalars(select(ScheduleShift).where(
+        ScheduleShift.employee_id.in_(emp_ids), ScheduleShift.start_utc < hi_utc,
+        ScheduleShift.end_utc > lo_utc).order_by(ScheduleShift.start_utc))) if emp_ids else []
+    shifts_by_emp_day: dict[tuple[int, str], list] = {}
+    for r in shift_rows:
+        s_local = r.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+        e_local = r.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+        d0 = s_local.date()
+        while d0 <= min(e_local.date(), period.end):
+            if period.start <= d0:
+                shifts_by_emp_day.setdefault((r.employee_id, d0.isoformat()), []).append(r)
+            d0 += dt.timedelta(days=1)
+    days = [period.start + dt.timedelta(days=i)
+            for i in range((period.end - period.start).days + 1)]
+    rows = []
+    for e in emps:
+        eid = str(e.id)
+        marks = ports.punch.marks_between(eid, lo, hi)
+        opening = ports.punch.last_mark_before(eid, lo)
+        calc = [to_calc_mark(m, st) for m in marks]
+        opening_calc = to_calc_mark(opening, st) if opening is not None else None
+        try:
+            sessions = pair_marks(calc, opening_calc)
+        except DomainError:
+            sessions = pair_marks(calc)
+        sess_out = []
+        for s in sessions:
+            if s.end is None:
+                if s.start >= hi:
+                    continue
+                sess_out.append({"start": s.start.astimezone(TZ).isoformat(timespec="minutes"),
+                                 "end": None, "open": True})
+                continue
+            if s.end <= lo or s.start >= hi:
+                continue
+            sess_out.append({"start": s.start.astimezone(TZ).isoformat(timespec="minutes"),
+                             "end": s.end.astimezone(TZ).isoformat(timespec="minutes"),
+                             "open": False})
+        day_out = {}
+        emp_abs = absences_by_emp.get(e.id, [])
+        employment = ports.employment.employment(eid, period)
+        for d in days:
+            trow = tabel_rows.get((e.id, d))
+            policy = st.day_code_policy.get(trow.code) if trow else None
+            window = None
+            value = None
+            if trow:
+                value = (f"{trow.code} {fmt_hours(trow.plan_minutes)}"
+                         if policy and policy.carries_hours else trow.code)
+                if policy and policy.carries_hours:
+                    w = st.windows.get(value)
+                    window = [hm(w.start_minute), hm(w.end_minute)] if w else None
+            # цвет дня — по смене с ЯКОРЕМ в этом дне: ночная полоса, заходящая
+            # на соседний «В», не перекрашивает его код (полоса несёт свой цвет)
+            sh_rows = [r for r in shifts_by_emp_day.get((e.id, d.isoformat()), [])
+                       if r.date == d]
+            shift_hm = None
+            if sh_rows:
+                s0 = sh_rows[0].start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+                e0 = sh_rows[0].end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+                shift_hm = (s0.strftime("%H:%M"), e0.strftime("%H:%M"))
+            day_abs = []
+            whole_off_color = None
+            d_lo = dt.datetime.combine(d, dt.time(0), TZ)
+            d_hi = d_lo + dt.timedelta(days=1)
+            for a in emp_abs:
+                a_lo = a.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+                a_hi = a.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+                if a_lo < d_hi and a_hi > d_lo:
+                    day_abs.append([max(a_lo, d_lo).strftime("%H:%M"),
+                                    min(a_hi, d_hi).strftime("%H:%M")])
+                    kind = kinds.get(a.kind_id)
+                    if (whole_off_color is None and kind is not None and kind.doc_type
+                            and covers_window(st, trow, a_lo.date(), a_lo, a_hi)):
+                        whole_off_color = kind.color or "#0e9aa7"
+            out_of_staff = d < employment.start or (employment.end is not None and d > employment.end)
+            day_out[d.isoformat()] = {
+                "tabel": value, "window": window, "absences": day_abs,
+                "out_of_staff": out_of_staff,
+                "color": pick_cell_color(lookups, shift_hm, trow.code if trow else None,
+                                         whole_off_color),
+            }
+        rows.append({"employee": emp_brief(e), "sessions": sess_out, "days": day_out})
+    return {"year": year, "month": month, "step_minutes": st.step_minutes,
+            "days": [{"date": d.isoformat(), "day": d.day,
+                      "weekday": ["пн", "вт", "ср", "чт", "пт", "сб", "вс"][d.weekday()],
+                      "is_weekend": d.weekday() >= 5,
+                      "is_today": d == now_utc().astimezone(TZ).date()} for d in days],
+            "rows": rows}
+
+
+def _settings_for_period(db, period):
+    from ..engine.adapters.sql_settings import SqlSettingsAdapter
+    try:
+        return SqlSettingsAdapter(db).load(period)
+    except ConfigError as exc:
+        raise HTTPException(status_code=409, detail=domain_error_text(exc))
 
 
 def _day_marks(eid: str, ports, st, day_lo: dt.datetime, day_hi: dt.datetime,

@@ -29,6 +29,67 @@ from ..groups import group_index, normalize_group
 from ..models import Employee, EmploymentPeriod, PeriodClosing
 
 
+def covers_window(st, row, day, start_local, end_local) -> bool:
+    """Отсутствие покрывает рабочее окно значения Табеля дня целиком (EX-29).
+
+    ЕДИНСТВЕННОЕ правило «выходного за часы»: его используют заявления
+    (absence-period), сетка Графика (плашка и whole_shift) и Гант Факта
+    (цвет дня); второй копии правила нет (дух антипаттерна 12.23)."""
+    from ..engine.domain.day_card.fmt_hours import fmt_hours
+
+    if (end_local - start_local) >= dt.timedelta(hours=23):
+        return True
+    if row is None:
+        return False
+    policy = st.day_code_policy.get(row.code)
+    if policy is None or not policy.carries_hours or not row.plan_minutes:
+        return False
+    window = st.windows.get(f"{row.code} {fmt_hours(row.plan_minutes)}")
+    if window is None:
+        return False
+    midnight = dt.datetime.combine(day, dt.time(0), st.tz)
+    win_start = midnight + dt.timedelta(minutes=window.start_minute)
+    win_end = midnight + dt.timedelta(minutes=window.end_minute)
+    return start_local <= win_start and end_local >= win_end
+
+
+def color_lookups(db: Session) -> tuple[dict, dict, dict]:
+    """Словари для раскраски ячеек план/факт из словаря «Смены и отсутствия»:
+    (рабочие виды по окну (start,end), виды отсутствий по tzh_code, цвета кодов
+    Табеля). Один источник для Графика, Факта-Ганта и печатных форм (16.10.2026)."""
+    from ..models import ShiftType
+
+    work_types: dict[tuple[str, str], ShiftType] = {}
+    absence_types: dict[str, ShiftType] = {}
+    for x in db.scalars(select(ShiftType).order_by(ShiftType.id)):
+        if x.kind == "work":
+            work_types.setdefault((x.start_time, x.end_time), x)
+        elif x.kind == "absence" and (x.tzh_code or "").strip():
+            absence_types.setdefault(x.tzh_code.strip(), x)
+    return work_types, absence_types, day_code_colors(db)
+
+
+def pick_cell_color(lookups: tuple[dict, dict, dict], shift_hm: tuple[str, str] | None,
+                    tabel_code: str | None, whole_off_color: str | None = None) -> str | None:
+    """Цвет ячейки/полосы: плашка отсутствия → цвет вида; смена → цвет словарной
+    смены с тем же окном; код без смены → цвет вида по tzh_code; запасной — цвет
+    кода Табеля из presentation настроек."""
+    work_types, absence_types, code_colors = lookups
+    if whole_off_color:
+        return whole_off_color
+    if shift_hm:
+        wt = work_types.get(shift_hm)
+        if wt is not None and (wt.color or "").strip():
+            return wt.color
+    elif tabel_code:
+        at = absence_types.get(tabel_code)
+        if at is not None and (at.color or "").strip():
+            return at.color
+    if tabel_code:
+        return code_colors.get(tabel_code)
+    return None
+
+
 def day_code_colors(db: Session) -> dict[str, str]:
     """Цвета кодов Табеля — блок presentation версии справочников (данные приложения;
     домен цветов не знает, 2.4). Общий источник Табеля и Графика: пустой словарь —

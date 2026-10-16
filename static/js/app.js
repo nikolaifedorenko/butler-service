@@ -230,6 +230,11 @@ function startView() {
 }
 
 async function enterApp() {
+  /* выход не перезагружает страницу: состояние вкладок «Факта» и кэш
+     сотрудников не должны доставаться следующему пользователю (16.10.2026) */
+  state.factMode = null; state.factMonth = null; state.factDay = null;
+  state.factEmp = null; state.factFrom = null; state.factTo = null;
+  state.employees = [];
   $('#login-screen').classList.add('hidden');
   $('#app').classList.remove('hidden');
   await loadPerms();

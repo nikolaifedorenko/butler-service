@@ -851,6 +851,26 @@ table.sched thead th.today.double-day .dow { color: var(--gold); }
 .v4-cell.edit:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
 .v4-cell.empty { background: repeating-linear-gradient(45deg, transparent 0 4px, #f3ece2 4px 8px); }
 
+/* ── Слой 2 «Факт», вкладка «Месяц»: гант фактических присутствий ──
+   Слева липкая колонка имён, справа горизонтальная прокрутка SVG-полотна. */
+.fg-wrap { display: flex; border: 1px solid var(--line); border-radius: var(--r-md);
+  overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
+.fg-names { flex: 0 0 210px; border-right: 1px solid var(--line); background: #fbfcfd; }
+.fg-names .fg-hd { height: 34px; border-bottom: 1px solid var(--line); display: flex;
+  align-items: center; padding: 0 10px; font-weight: 700; font-size: 10.5px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .08em; }
+.fg-names .fg-row { height: 34px; display: flex; flex-direction: column; justify-content: center;
+  padding: 0 10px; border-bottom: 1px solid #eef0f4; }
+.fg-names .fg-row b { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fg-names .fg-row i { font-style: normal; font-size: 10.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fg-scroll { overflow-x: auto; flex: 1; }
+.fg-scroll svg { display: block; }
+.fg-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--muted);
+  font-size: 11.5px; align-items: center; }
+.fg-legend .sw { display: inline-block; width: 24px; height: 12px; border-radius: 3px;
+  vertical-align: -2px; margin-right: 6px; }
+
 /* Редактор ячейки Табеля (слой 0): плашки значений — код и часы только из справочников
    (CFG-DAY-CODES / CFG-WINDOWS). Цвет и рамка плашки — inline из цвета кода (cssColor);
    здесь — форма, состояние выбора (.sel) и отключённый код без строк окон (.off). */
