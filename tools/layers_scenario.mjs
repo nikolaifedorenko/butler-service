@@ -240,13 +240,17 @@ async function main() {
   console.log('\n4 · Слой 2 · Факт: сетка «Номера»');
   click($('#grafik-tabs .layer-tab[data-layer="fact"]'));
   check('панель Факта активна', await waitFor(() => activeLayer() === 'fact' && $('#fc-mode')));
-  check('вкладки «День» / «Месяц» / «Сотрудник», по умолчанию «День»',
-    $$('#fc-mode button').length === 3
-    && $('#fc-mode button[data-mode="numbers"]').classList.contains('active')
-    && text('#fc-mode button[data-mode="numbers"]') === 'День'
+  check('порядок вкладок владельца: Месяц, День, Сотрудник; по умолчанию Месяц',
+    $$('#fc-mode button').map(b => b.dataset.mode).join(',') === 'month,numbers,sessions'
+    && $('#fc-mode button[data-mode="month"]').classList.contains('active')
     && text('#fc-mode button[data-mode="month"]') === 'Месяц'
+    && text('#fc-mode button[data-mode="numbers"]') === 'День'
     && text('#fc-mode button[data-mode="sessions"]') === 'Сотрудник',
     $$('#fc-mode button').map(b => b.textContent).join('|'));
+  check('Месяц по умолчанию: гант отрисован без кликов',
+    await waitFor(() => $('#fm-body svg') && $$('#fm-body svg rect').length > 10, 15000),
+    `rect: ${$$('#fm-body svg rect').length}`);
+  click($('#fc-mode button[data-mode="numbers"]'));
   check('шаг округления и период показаны (шаг — из настроек)',
     await waitFor(() => /Шаг округления/.test(text('#fd-meta')) && /период/.test(text('#fd-meta'))),
     text('#fd-meta'));
@@ -281,6 +285,8 @@ async function main() {
   console.log('\n4б · Факт: вкладка «Месяц» (гант)');
   const dayRows = $$('#fd-body tr[data-emp]').length;
   click($('#fc-mode button[data-mode="month"]'));
+  check('возврат на «Месяц» переключает на гант',
+    await waitFor(() => $('#fm-body svg'), 10000));
   check('гант отрисован (SVG с полосами и штриховкой окон)',
     await waitFor(() => $('#fm-body svg') && $$('#fm-body svg rect').length > 10, 15000),
     `rect: ${$$('#fm-body svg rect').length}`);
@@ -358,7 +364,11 @@ async function main() {
     $$('#grafik-tabs .layer-tab').map(b => b.dataset.layer).join(','));
   window.navigate('fact');
   const me = await jget('/api/auth/me');
-  check('«Номера» сотрудника: в сетке только своя строка',
+  check('«Месяц» по умолчанию у сотрудника: в ганте только своя строка',
+    await waitFor(() => $$('#fm-names .fg-row').length === 1, 15000),
+    `строк: ${$$('#fm-names .fg-row').length}`);
+  click($('#fc-mode button[data-mode="numbers"]'));
+  check('«День» сотрудника: в сетке только своя строка',
     await waitFor(() => $$('#fd-body tr[data-emp]').length === 1
       && $$('#fd-body tr[data-emp]')[0].dataset.emp === String(me.user.employee_id), 10000),
     $$('#fd-body tr[data-emp]').map(t => t.dataset.emp).join(','));
