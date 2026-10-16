@@ -1178,12 +1178,16 @@ def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
 @router.post("/reset-month")
 def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_perm("schedule.edit")),
                 db: Session = Depends(get_db)):
-    """«Сбросить месяц» в Графике (решение владельца 16.10.2026): убрать РУЧНЫЕ
-    смены месяца и перегенерировать График из Табеля.
+    """«Сбросить месяц» в Графике (решения владельца 16.10.2026): убрать РУЧНЫЕ
+    смены и согласованные ОТСУТСТВИЯ месяца (отлучки-интервалы и «выходные за
+    часы») и перегенерировать График из Табеля — слой 1 возвращается к чистому
+    плану из слоя 0.
 
     Отличие от clear-month: Табель НЕ трогается (он сбрасывается из «Слой 0 ·
-    Табель»), согласованные отсутствия сохраняются (это документированные записи
-    с заявлениями, удаляются в ячейке дня). Закрытые периоды не трогаются."""
+    Табель»). Отсутствие принадлежит месяцу по перекрытию интервала (как в сетке:
+    отлучка через полночь на границе месяцев уходит в сброс своего месяца).
+    Записи удаляются с аудитом; напечатанные ранее заявления остаются в истории
+    журнала. Закрытые периоды не трогаются (RUL-CLOSED-PERIOD-IMMUTABLE)."""
     from ..engine.application import timesheet_edit
     if not (1 <= payload.month <= 12):
         raise HTTPException(status_code=422, detail="month должен быть 1..12")
@@ -1194,7 +1198,10 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
     emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
     emps = [e for e in emps if e is not None and e.deleted_at is None] or \
         _visible_employees(db, first, last)[0]
-    cleared, skipped = 0, 0
+    lo_utc = dt.datetime.combine(first, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    hi_utc = dt.datetime.combine(last + dt.timedelta(days=1), dt.time(0),
+                                 TZ).astimezone(dt.timezone.utc)
+    cleared, absences_cleared, skipped = 0, 0, 0
     for emp in emps:
         if timesheet_edit.lock_state(str(emp.id), first, ports) == "locked":
             skipped += 1
@@ -1205,14 +1212,21 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
         for row in manual:
             db.delete(row)
         cleared += len(manual)
-        db.flush()      # rebuild не должен видеть удалённые ручные смены (autoflush off)
+        absences = list(db.scalars(select(ScheduleAbsence).where(
+            ScheduleAbsence.employee_id == emp.id, ScheduleAbsence.start_utc < hi_utc,
+            ScheduleAbsence.end_utc > lo_utc)))
+        for row in absences:
+            db.delete(row)
+        absences_cleared += len(absences)
+        db.flush()      # rebuild не должен видеть удалённые строки (autoflush off)
         schedule_view.rebuild_generated_schedule(str(emp.id),
                                                  month_period(payload.year, payload.month),
                                                  ports)
     audit(db, principal, "schedule_reset_month", f"{payload.year}-{payload.month:02d}",
-          {"manual_shifts_cleared": cleared})
+          {"manual_shifts_cleared": cleared, "absences_cleared": absences_cleared})
     db.commit()
-    return {"ok": True, "cleared": cleared, "skipped_employees": skipped}
+    return {"ok": True, "cleared": cleared, "absences_cleared": absences_cleared,
+            "skipped_employees": skipped}
 
 
 # ── печать и экспорт ──────────────────────────────────────────────────────────

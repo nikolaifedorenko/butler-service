@@ -278,15 +278,6 @@ async function main() {
     text('#btn-range') === 'Выходной за часы', text('#btn-range'));
   check('кнопка панели — «Сбросить месяц»', text('#btn-clear') === 'Сбросить месяц',
     text('#btn-clear'));
-  click($('#btn-clear'));
-  check('сброс месяца — только ручные смены, Табель не трогается',
-    await waitFor(() => !!$('#modal [data-yes]'))
-    && /Ручные смены/.test(text('#modal')) && /Табель НЕ трогается/.test(text('#modal')),
-    text('#modal').slice(0, 220));
-  click($('#modal [data-yes]'));
-  check('сброс месяца выполнен (эндпоинт reset-month)',
-    await waitFor(() => /Ручных смен удалено/.test(toasts()), 15000), toasts().slice(0, 160));
-  await waitFor(() => $$('#grid-host .cellbtn:not([disabled])').length > 0);
   click($('#btn-range'));
   check('модалка «Отпросить» открылась', await waitFor(() => !!$('#rg-shift')));
   const schedKinds = $$('#rg-shift option').map(o => o.textContent.trim());
@@ -469,6 +460,27 @@ async function main() {
     await waitFor(() => {
       const el = $(`#grid-host .cellbtn[data-emp="${empId}"][data-date="${dayA}"]`);
       return el && /08:00–20:00/.test(el.textContent) && !/09:00–18:00/.test(el.textContent);
+    }, 15000));
+
+  /* «Сбросить месяц» (16.10.2026): ручные смены И согласованные отсутствия —
+     слой 1 возвращается к чистому плану из Табеля; Табель не трогается.
+     К сид-интервалу Иванова добавляем «выходной за часы» у цели row2/dayW…
+     (сид-интервал ещё на месте) — сброс убирает оба. */
+  click($('#btn-clear'));
+  check('сброс месяца — ручные смены и отсутствия, Табель не трогается',
+    await waitFor(() => !!$('#modal [data-yes]'))
+    && /Ручные смены/.test(text('#modal')) && /отсутствия/.test(text('#modal'))
+    && /Табель НЕ трогается/.test(text('#modal')),
+    text('#modal').slice(0, 220));
+  click($('#modal [data-yes]'));
+  check('сброс месяца выполнен (эндпоинт reset-month)',
+    await waitFor(() => /Ручных смен удалено/.test(toasts())
+      && /отсутствий: [1-9]/.test(toasts()), 15000), toasts().slice(0, 200));
+  check('после сброса в Графике не осталось согласованных отсутствий месяца',
+    await waitFor(async () => {
+      const g = await jget(`/api/schedule?year=${Y}&month=${M}`);
+      return (g.rows || []).every(r => Object.values(r.cells || {})
+        .every(cc => !(cc.absences || []).length));
     }, 15000));
 
   /* печать (16.10.2026): та же геометрия и содержимое, что на экране; блоки смен

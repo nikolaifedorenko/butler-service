@@ -779,8 +779,10 @@ class TestManualReplacesGenerated(unittest.TestCase):
 
 
 class TestScheduleMonthReset(unittest.TestCase):
-    """«Сбросить месяц» в Графике (16.10.2026): убирает только РУЧНЫЕ смены,
-    Табель не трогается (сбрасывается из слоя 0), отсутствия сохраняются."""
+    """«Сбросить месяц» в Графике (16.10.2026, правка владельца того же дня):
+    убирает РУЧНЫЕ смены И согласованные отсутствия месяца (отлучки, «выходные
+    за часы») — слой 1 возвращается к чистому плану из слоя 0; Табель не
+    трогается (сбрасывается из слоя 0)."""
 
     @classmethod
     def setUpClass(cls):
@@ -790,7 +792,7 @@ class TestScheduleMonthReset(unittest.TestCase):
         cls.day = _work_days(cls.emp["id"])[0]
         cls.kind = _shift("TIMEOFF_HOURS")
 
-    def test_01_reset_removes_manual_shifts_keeps_tabel_and_absences(self):
+    def test_01_reset_removes_manual_shifts_and_absences_keeps_tabel(self):
         day = self.day
         r = client.put("/api/schedule/shift", json={
             "employee_id": self.emp["id"], "date": day.isoformat(),
@@ -807,6 +809,7 @@ class TestScheduleMonthReset(unittest.TestCase):
             "year": day.year, "month": day.month, "employee_ids": [self.emp["id"]]})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["cleared"], 1, "удалена одна ручная смена")
+        self.assertEqual(r.json()["absences_cleared"], 1, "удалено согласованное отсутствие")
 
         grid = client.get("/api/schedule", params={
             "year": day.year, "month": day.month}).json()
@@ -814,7 +817,10 @@ class TestScheduleMonthReset(unittest.TestCase):
         cell = row["cells"][day.isoformat()]
         self.assertEqual([(s["source"], s["start_hm"], s["end_hm"]) for s in cell["shifts"]],
                          [("generated", "08:00", "20:00")], "График снова из Табеля")
-        self.assertEqual(len(cell["absences"]), 1, "согласованное отсутствие сохранено")
+        self.assertEqual(cell["absences"], [],
+                         "отлучка снята — слой 1 снова чистый план из слоя 0")
+        self.assertEqual(cell["segments"], [["08:00", "20:00"]],
+                         "отрезки снова на всё окно — разреза нет")
         after = _tabel_row(self.emp["id"], day)
         self.assertEqual((after.code, after.plan_minutes, after.source),
                          (before.code, before.plan_minutes, before.source),
