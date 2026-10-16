@@ -422,11 +422,15 @@ function openRangeModal(mode = 'tabel') {
         <label class="field"><span>С</span><input type="date" id="rg-from" value="${first}"></label>
         <label class="field"><span>По (включительно)</span><input type="date" id="rg-to" value="${first}"></label>
       </div>
-      <label class="field"><span>${fromSchedule ? 'Вид (из Графика — только «за счёт часов»)' : 'Вид отсутствия (код Табеля)'}</span><select id="rg-shift">
-        ${kinds.map((x, i) => `<option value="${x.id}" ${!fromSchedule && (x.code === 'VACATION' || i === 0) ? 'selected' : ''}>${esc(x.name)} · код Табеля ${x.tzh_code ? `«${esc(x.tzh_code)}»` : 'не задан'}</option>`).join('')
-          || '<option value="">— нет подходящих видов в словаре смен —</option>'}
-      </select>
-        <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></label>
+      ${fromSchedule
+        ? `<div class="field"><span>Вид («за счёт часов») — в словаре один</span>
+           <div style="font-weight:600">${kinds[0] ? esc(kinds[0].name) : '— нет вида в словаре смен —'}</div>
+           <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></div>`
+        : `<label class="field"><span>Вид отсутствия (код Табеля)</span><select id="rg-shift">
+          ${kinds.map((x, i) => `<option value="${x.id}" ${x.code === 'VACATION' || i === 0 ? 'selected' : ''}>${esc(x.name)} · код Табеля ${x.tzh_code ? `«${esc(x.tzh_code)}»` : 'не задан'}</option>`).join('')
+            || '<option value="">— нет подходящих видов в словаре смен —</option>'}
+        </select>
+          <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></label>`}
       <label class="field"><span>Примечание</span>
         <input type="text" id="rg-note" placeholder="${fromSchedule ? 'Например: заявление согласовано 12.10' : 'Например: приказ №47 от 01.09.2026'}"></label>
       <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
@@ -449,7 +453,7 @@ function openRangeModal(mode = 'tabel') {
       m.querySelector('[data-ok]').onclick = async () => {
         const ids = $$('#rg-emps input:checked').map(i => +i.value);
         if (!ids.length) return toast('Отметьте сотрудников', 'warn');
-        const kindId = +$('#rg-shift').value;
+        const kindId = fromSchedule ? (kinds[0] ? kinds[0].id : 0) : +$('#rg-shift').value;
         if (!kindId) return toast('Выберите вид отсутствия', 'warn');
         const from = $('#rg-from').value, to = $('#rg-to').value;
         if (!from || !to || from > to) return toast('Проверьте даты периода', 'warn');
@@ -489,6 +493,9 @@ function openCellModal(empId, dateISO) {
      ставятся в Табеле (слой 0), там же печатаются заявления. */
   const absenceKinds = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off
     && !x.tzh_code && !x.archived);
+  /* вид отсутствия из Графика — единственный «за счёт часов» (Q4): выбор убран,
+     владельцу не зачем выбирать из одного (16.10.2026) */
+  const absenceKind = absenceKinds[0] || null;
   const t = cell.tabel;
   const shifts = cell.shifts || [];
   const absences = cell.absences || [];
@@ -548,14 +555,9 @@ function openCellModal(empId, dateISO) {
             <button class="btn btn-sm btn-ghost" data-abs-print="${a.id}" title="Заявление только по этому интервалу">Печать</button>
             <button class="btn btn-sm btn-ghost" data-abs-pdf="${a.id}" title="PDF заявления только по этому интервалу">PDF</button>` : ''}
             <button class="btn btn-sm btn-ghost" data-abs-del="${a.id}">Удалить</button></span></div>`).join('') || ''}
+      ${shifts.length ? `
       <div style="margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 8px;background:#f8fbfd">
         <div class="opt-group-title" style="margin-top:0">Одна сущность — две точки ввода: интервал или вся смена</div>
-        <label class="field"><span>Вид отсутствия</span><select id="cell-abs-kind">
-          <option value="">— без вида —</option>
-          ${absenceKinds.map(x => `<option value="${x.id}" data-code="${esc(x.code)}">${esc(x.name)}</option>`).join('')}
-        </select>
-          <div class="hint" style="margin-top:2px">Из Графика — только «за счёт часов». Отпуск, больничный,
-            за свой счёт и оплачиваемый выходной ставятся кодом Табеля («Изменить код Табеля…» выше).</div></label>
         <div class="grid-2">
           <label class="field"><span>Отсутствовал с</span><input type="time" id="cell-abs-from" value="14:00"></label>
           <label class="field"><span>Отсутствовал до</span><input type="time" id="cell-abs-until" value="16:00"></label>
@@ -575,7 +577,10 @@ function openCellModal(empId, dateISO) {
           в ожидаемое время) и для доски «Отметки». Неотработанные часы стандартного окна уходят
           в недостачу дня, а при закрытии периода недостачу гасит банк 1:1 — то есть ранее
           накопленные переработки (EX-29). В Табеле остаётся явка.</p>
-      </div>
+      </div>` : `<p class="hint" style="margin:8px 0 0">Смены с часами в этот день нет —
+        согласованное отсутствие («выходной за часы») режет смену, поэтому назначать
+        его не к чему. Поставьте смену плашками выше, а отсутствие на весь день без
+        смены оформляется кодом Табеля в слое 0 («Изменить код Табеля…»).</p>`}
       <div id="doc-btns" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-sm" id="doc-print">Печать заявления${multiIv ? ' (все интервалы одним)' : ''}</button>
         <button class="btn btn-sm" id="doc-docx">${multiIv ? 'DOCX (все интервалы)' : 'Заявление DOCX'} (шаблон компании)</button>
@@ -654,18 +659,21 @@ function openCellModal(empId, dateISO) {
             employee_id: empId, date: dateISO,
             from_time: from, until_time: until,
             next_day: nextDay,
-            kind_id: +$('#cell-abs-kind').value || null,
+            /* вид «за счёт часов» в словаре один (Q4) — выбор убран (16.10.2026) */
+            kind_id: absenceKind ? absenceKind.id : null,
             note: $('#cell-abs-note').value.trim(),
           } });
           toast('Согласованное отсутствие добавлено — заявление можно печатать сразу', 'ok');
           await refreshCellModal();
         } catch (e) { toast(e.message, 'err'); }
       };
-      $('#cell-abs-save').onclick = () => addAbsence($('#cell-abs-from').value,
+      const absSave = m.querySelector('#cell-abs-save');
+      if (absSave) absSave.onclick = () => addAbsence($('#cell-abs-from').value,
         $('#cell-abs-until').value, $('#cell-abs-next').checked);
       /* «На всю смену» — границы берутся из смены дня (График), а не вводятся руками:
          это типичный «выходной за часы» (EX-29). */
-      $('#cell-abs-shift').onclick = () => {
+      const absShift = m.querySelector('#cell-abs-shift');
+      if (absShift) absShift.onclick = () => {
         const sh = shifts[0];
         if (!sh) return toast('В этот день нет смены — задайте время вручную', 'warn');
         const untilNext = sh.end_hm <= sh.start_hm;
@@ -689,15 +697,9 @@ function openCellModal(empId, dateISO) {
       };
       /* Обе точки ввода принадлежат одной сущности (Q3), поэтому доступны для любого
          вида «за счёт часов»; «без вида» — отсутствие без заявления. */
-      const absKind = $('#cell-abs-kind');
-      const syncAbsKind = () => {
-        const sel = absKind.selectedOptions[0];
-        $('#cell-abs-shift').style.display = sel ? '' : 'none';
-        if (sel) showTimeoffHours(); else $('#cell-abs-hours').textContent = '';
-      };
-      absKind.onchange = syncAbsKind;
-      if (absenceKinds.length) absKind.value = String(absenceKinds[0].id);
-      syncAbsKind();
+      /* вид не выбирается: кнопки и часы «выходного за часы» доступны сразу,
+         блок существует только при смене с часами (см. разметку выше) */
+      if (m.querySelector('#cell-abs-shift')) showTimeoffHours();
       $$('[data-abs-del]', m).forEach(b => b.onclick = async () => {
         try {
           await api(`/api/schedule/absence/${b.dataset.absDel}`, { method: 'DELETE' });

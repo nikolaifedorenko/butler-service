@@ -214,6 +214,7 @@ function showLogin() {
   clearTimers();
   $('#app').classList.add('hidden');
   $('#login-screen').classList.remove('hidden');
+  $('#login-password').value = '';   // после выхода форма логина пустая (16.10.2026)
 }
 
 async function loadPerms() {
@@ -298,6 +299,10 @@ $('#login-form').addEventListener('submit', async e => {
     const res = await api('/api/auth/login', { method: 'POST', allow401: true,
       body: { username: $('#login-username').value.trim(), password: $('#login-password').value } });
     state.user = res.user;
+    /* пароль не держим в DOM: скрытая форма логина живёт всю сессию, и менеджеры
+       паролей браузера реагируют на оставшееся значение (плашка «сохранить пароль»
+       всплывала при переходах по разделам) */
+    $('#login-password').value = '';
     await enterApp();
   } catch (err) {
     const box = $('#login-error');
