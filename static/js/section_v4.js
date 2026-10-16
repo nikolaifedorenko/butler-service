@@ -87,8 +87,9 @@ async function fetchMarks(silent) {
   if (nowEl) nowEl.textContent = `Сейчас ${d.now.slice(11, 16)}`;
   const card = c => {
     const e = c.employee || {};
-    const shiftToday = (c.shift_today || []).map(([a, b]) =>
-      `${a.slice(11, 16)}–${b.slice(11, 16)}`).join(', ');
+    /* shift_today_hm — готовые HH:MM в поясе объекта (UTC-моменты shift_today
+       для показа не годятся: срез slice(11,16) дал бы часы UTC). */
+    const shiftToday = (c.shift_today_hm || []).map(([a, b]) => `${a}–${b}`).join(', ');
     return `<div class="presence-card">
       <div class="nm"><span class="pulse"></span>${esc(e.short_name || c.employee_id)}</div>
       <div class="pos">${esc(e.position || '—')}${e.group ? ' · ' + esc(e.group) : ''}</div>
