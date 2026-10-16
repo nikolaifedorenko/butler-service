@@ -7412,6 +7412,46 @@
         ]
       }
     },
+    "/api/schedule/reset-month": {
+      "post": {
+        "description": "«Сбросить месяц» в Графике (решение владельца 16.10.2026): убрать РУЧНЫЕ\nсмены месяца и перегенерировать График из Табеля.\n\nОтличие от clear-month: Табель НЕ трогается (он сбрасывается из «Слой 0 ·\nТабель»), согласованные отсутствия сохраняются (это документированные записи\nс заявлениями, удаляются в ячейке дня). Закрытые периоды не трогаются.",
+        "operationId": "reset_month_api_schedule_reset_month_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearMonthIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Month",
+        "tags": [
+          "schedule"
+        ]
+      }
+    },
     "/api/schedule/shift": {
       "delete": {
         "description": "Удаление ручной смены — день возвращается к генерации из Табеля (16.3).",

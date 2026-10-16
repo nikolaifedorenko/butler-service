@@ -5,7 +5,7 @@
    область (реестр tools/js_globals.json, ESLint no-undef ловит пропуски). */
 
 /* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ── */
-function printWindow(title, bodyHtml) {
+function printWindow(title, bodyHtml, extraCss = '') {
   const w = window.open('', '_blank', 'width=1200,height=800');
   if (!w) { toast('Браузер заблокировал окно печати — разрешите всплывающие окна', 'warn'); return; }
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -18,6 +18,7 @@ function printWindow(title, bodyHtml) {
       th.name, td.name { text-align: left; padding-left: 2mm; width: 52mm; font-size: 10px; }
       tr.group td { background: #eef2f8; font-weight: 700; text-align: left; padding-left: 2mm; font-size: 10px; }
       .muted { color: #8b98ad; }
+      ${extraCss}
     </style></head><body>${bodyHtml}<script>window.onload = () => { window.print(); };<\/script></body></html>`);
   w.document.close();
 }

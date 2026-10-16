@@ -92,15 +92,45 @@ def _shift_brief(row: ScheduleShift) -> dict:
             "note": row.note or "", "id": row.id}
 
 
-def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType]) -> dict:
+def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType],
+                   whole_shift: bool = False) -> dict:
     start = utc_to_local(row.start_utc.replace(tzinfo=dt.timezone.utc))
     end = utc_to_local(row.end_utc.replace(tzinfo=dt.timezone.utc))
     return {"id": row.id, "start": start.isoformat(), "end": end.isoformat(),
             "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
             "note": row.note or "",
+            # покрывает всё рабочее окно дня — «выходной за часы» (EX-29): сетка
+            # рисует плашку на весь день вместо разрезанных отрезков смены
+            "whole_shift": whole_shift,
             "kind": None if kind is None else
             {"id": kind.id, "code": kind.code, "name": kind.name, "color": kind.color,
              "doc_type": kind.doc_type or ""}}
+
+
+def _visible_segments(shift_rows: list, absence_rows: list) -> list[list[str]]:
+    """Видимые части смен дня: смена МИНУС интервалы согласованных отсутствий.
+
+    Разрез логический (v7/R17): записи смен не меняются, сетка показывает остаток —
+    каждый отрезок с новой строки («08:00–12:00», «14:00–16:00», «17:00–20:00»).
+    Моменты — реальные UTC-датавремя, поэтому отрезки через полночь режутся без
+    особых случаев. Без отсутствий результат равен интервалам самих смен."""
+    out: list[list[str]] = []
+    for sh in shift_rows:
+        segs = [(sh.start_utc, sh.end_utc)]
+        for a in sorted(absence_rows, key=lambda r: r.start_utc):
+            nxt = []
+            for ss, se in segs:
+                if a.end_utc <= ss or a.start_utc >= se:
+                    nxt.append((ss, se))
+                    continue
+                if a.start_utc > ss:
+                    nxt.append((ss, a.start_utc))
+                if a.end_utc < se:
+                    nxt.append((a.end_utc, se))
+            segs = nxt
+        hm = lambda v: utc_to_local(v.replace(tzinfo=dt.timezone.utc)).strftime("%H:%M")  # noqa: E731
+        out.extend([[hm(ss), hm(se)] for ss, se in segs])
+    return out
 
 
 # единая сущность «отпросился (выходной за часы)» (Q3, 12.10.2026): один вид словаря,
@@ -133,6 +163,13 @@ def doc_type_of_absence(db: Session, kind: ShiftType, whole_shift: bool) -> str:
     return wanted if _statement_kind_exists(db, wanted) else own
 
 
+def _position_rank(position: Optional[str]) -> int:
+    """Порядок внутри блока (решение владельца 16.10.2026): старшие («Старший
+    батлер» и т.п.) впереди остальных, дальше — алфавит. Работает на всех стоках
+    сетки разом (экран, печать, PDF, Excel), потому что порядок задаётся здесь."""
+    return 0 if position and "старш" in position.lower() else 1
+
+
 def _visible_employees(db: Session, first: dt.date,
                        last: dt.date) -> tuple[list[Employee], dict[int, list]]:
     """Сотрудники месяца + их периоды работы (батч, без N+1)."""
@@ -151,7 +188,8 @@ def _visible_employees(db: Session, first: dt.date,
                    for p in recs)
 
     out = [e for e in candidates if visible(e)]
-    out.sort(key=lambda e: (group_index(normalize_group(e.schedule_group)), e.full_name))
+    out.sort(key=lambda e: (group_index(normalize_group(e.schedule_group)),
+                            _position_rank(e.position), e.full_name))
     return out, per_emp
 
 
@@ -159,7 +197,7 @@ def _strip_to_plan(payload: dict) -> dict:
     """Батлеры видят только план: без заметок, id записей и служебных полей."""
     for row in payload["rows"]:
         for cell in row["cells"].values():
-            cell["absences"] = [{k: a[k] for k in ("start_hm", "end_hm")
+            cell["absences"] = [{k: a[k] for k in ("start_hm", "end_hm", "whole_shift")
                                  if k in a} for a in cell["absences"]]
             if cell.get("tabel"):
                 cell["tabel"].pop("note", None)
@@ -238,6 +276,8 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
         for d in days:
             employed = employed_on(periods, d) if periods else True
             trow = tabel_rows.get((emp.id, d))
+            sh_rows = shifts_by_emp_day.get((emp.id, d.isoformat()), [])
+            ab_rows = absences_by_emp_day.get((emp.id, d.isoformat()), [])
             policy = st.day_code_policy.get(trow.code) if trow else None
             value = None
             if trow:
@@ -250,10 +290,12 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
                 "tabel": None if trow is None else
                 {"code": trow.code, "value": value, "hours": trow.plan_minutes / 60,
                  "source": trow.source, "note": trow.note or ""},
-                "shifts": [_shift_brief(r) for r in
-                           shifts_by_emp_day.get((emp.id, d.isoformat()), [])],
-                "absences": [_absence_brief(r, kinds.get(r.kind_id)) for r in
-                             absences_by_emp_day.get((emp.id, d.isoformat()), [])],
+                "shifts": [_shift_brief(r) for r in sh_rows],
+                # видимые отрезки смены (минус отсутствия) — по строке на отрезок
+                "segments": _visible_segments(sh_rows, ab_rows),
+                "absences": [_absence_brief(r, kinds.get(r.kind_id),
+                                            _absence_covers_day(st, tabel_rows, emp.id, r))
+                             for r in ab_rows],
                 "planned_hours": planned,
                 "employed": employed,
                 # день редактируем (ручная смена) ⇔ accepts_ut кода Табеля (16.3)
@@ -510,18 +552,15 @@ def st_day(db: Session, day: dt.date):
     return _settings(db, month_period(day.year, day.month))
 
 
-def _covers_whole_day(db: Session, st, employee_id: int, day: dt.date,
-                      start_local: dt.datetime, end_local: dt.datetime) -> bool:
-    """Отсутствие покрывает рабочую часть дня целиком.
+def _covers_window(st, row: Optional[TabelDay], day: dt.date,
+                   start_local: dt.datetime, end_local: dt.datetime) -> bool:
+    """Отсутствие покрывает рабочее окно значения Табеля дня целиком (чистая функция).
 
-    Признак «дня за часы»: сравниваем с окном значения Табеля этого дня (12 часовая
-    смена 08:00–20:00 покрыта записью 08:00–20:00), а не с календарными сутками —
-    иначе заявление печаталось бы с длиной записи вместо нормы смены.
-    """
+    ЕДИНСТВЕННОЕ правило «выходного за часы» (EX-29) — его используют заявление
+    (absence-period) и сетка Графика (плашка на весь день); второй копии на
+    фронтенде нет (дух антипаттерна 12.23)."""
     if (end_local - start_local) >= dt.timedelta(hours=23):
         return True
-    row = db.scalar(select(TabelDay).where(TabelDay.employee_id == employee_id,
-                                           TabelDay.date == day))
     if row is None:
         return False
     policy = st.day_code_policy.get(row.code)
@@ -534,6 +573,29 @@ def _covers_whole_day(db: Session, st, employee_id: int, day: dt.date,
     win_start = midnight + dt.timedelta(minutes=window.start_minute)
     win_end = midnight + dt.timedelta(minutes=window.end_minute)
     return start_local <= win_start and end_local >= win_end
+
+
+def _covers_whole_day(db: Session, st, employee_id: int, day: dt.date,
+                      start_local: dt.datetime, end_local: dt.datetime) -> bool:
+    """Отсутствие покрывает рабочую часть дня целиком.
+
+    Признак «дня за часы»: сравниваем с окном значения Табеля этого дня (12 часовая
+    смена 08:00–20:00 покрыта записью 08:00–20:00), а не с календарными сутками —
+    иначе заявление печаталось бы с длиной записи вместо нормы смены.
+    """
+    row = db.scalar(select(TabelDay).where(TabelDay.employee_id == employee_id,
+                                           TabelDay.date == day))
+    return _covers_window(st, row, day, start_local, end_local)
+
+
+def _absence_covers_day(st, tabel_rows: dict, employee_id: int,
+                        row: ScheduleAbsence) -> bool:
+    """whole_shift для строки сетки: окно берём у дня-якоря отсутствия (у смены
+    через полночь якорь — день начала)."""
+    start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+    end_local = row.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+    day = start_local.date()
+    return _covers_window(st, tabel_rows.get((employee_id, day)), day, start_local, end_local)
 
 
 def _day_window_hhmm(db: Session, st, employee_id: int, day: dt.date) -> tuple[str, str, bool]:
@@ -1065,6 +1127,45 @@ def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
                                                                           payload.month), ports)
     audit(db, principal, "schedule_clear_month", f"{payload.year}-{payload.month:02d}",
           {"cleared": cleared})
+    db.commit()
+    return {"ok": True, "cleared": cleared, "skipped_employees": skipped}
+
+
+@router.post("/reset-month")
+def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_perm("schedule.edit")),
+                db: Session = Depends(get_db)):
+    """«Сбросить месяц» в Графике (решение владельца 16.10.2026): убрать РУЧНЫЕ
+    смены месяца и перегенерировать График из Табеля.
+
+    Отличие от clear-month: Табель НЕ трогается (он сбрасывается из «Слой 0 ·
+    Табель»), согласованные отсутствия сохраняются (это документированные записи
+    с заявлениями, удаляются в ячейке дня). Закрытые периоды не трогаются."""
+    from ..engine.application import timesheet_edit
+    if not (1 <= payload.month <= 12):
+        raise HTTPException(status_code=422, detail="month должен быть 1..12")
+    if not (1 <= payload.year <= 9999):
+        raise HTTPException(status_code=422, detail="year должен быть 1..9999")
+    first, last = _month_bounds(payload.year, payload.month)
+    ports = engine_ports(db, principal, now_utc())
+    emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
+    emps = [e for e in emps if e is not None and e.deleted_at is None] or \
+        _visible_employees(db, first, last)[0]
+    cleared, skipped = 0, 0
+    for emp in emps:
+        if timesheet_edit.lock_state(str(emp.id), first, ports) == "locked":
+            skipped += 1
+            continue
+        manual = list(db.scalars(select(ScheduleShift).where(
+            ScheduleShift.employee_id == emp.id, ScheduleShift.source == "manual",
+            ScheduleShift.date >= first, ScheduleShift.date <= last)))
+        for row in manual:
+            db.delete(row)
+        cleared += len(manual)
+        schedule_view.rebuild_generated_schedule(str(emp.id),
+                                                 month_period(payload.year, payload.month),
+                                                 ports)
+    audit(db, principal, "schedule_reset_month", f"{payload.year}-{payload.month:02d}",
+          {"manual_shifts_cleared": cleared})
     db.commit()
     return {"ok": True, "cleared": cleared, "skipped_employees": skipped}
 

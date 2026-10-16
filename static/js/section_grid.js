@@ -41,8 +41,8 @@ function scheduleShell() {
   <div class="grid-tools">
     <input id="f-text" type="text" placeholder="Поиск по ФИО…" style="max-width:210px">
     <div class="spacer" style="flex:1"></div>
-    ${ro ? '' : `<button class="btn btn-sm" id="btn-range" title="Слой 1 · График: только «за счёт часов» — в Табеле остаётся явка, часы не меняются">Отпросить (выходной за часы)</button>
-    <button class="btn btn-sm" id="btn-clear">Обнулить месяц</button>
+    ${ro ? '' : `<button class="btn btn-sm" id="btn-range" title="Слой 1 · График: только «за счёт часов» — в Табеле остаётся явка, часы не меняются">Выходной за часы</button>
+    <button class="btn btn-sm" id="btn-clear" title="Убрать ручные смены месяца и перегенерировать График из Табеля; Табель не меняется">Сбросить месяц</button>
     <button class="btn btn-sm" id="btn-xlsx">Excel</button>`}
     <button class="btn btn-sm btn-ghost" id="btn-print">Печать</button>
     <button class="btn btn-sm btn-ghost" id="btn-pdf" title="Скачать PDF: файл собирает сервер">PDF</button>
@@ -66,13 +66,14 @@ function bindScheduleToolbar() {
   if ($('#btn-xlsx')) $('#btn-xlsx').onclick = () => downloadBlob(`/api/schedule/xlsx?year=${state.year}&month=${state.month}`, 'grafik.xlsx');
   if ($('#btn-range')) $('#btn-range').onclick = () => openRangeModal('schedule');
   if ($('#btn-clear')) $('#btn-clear').onclick = () => confirmDialog(
-    'Обнулить месяц?',
-    `Строки Табеля и сгенерированный График за ${MONTHS[state.month - 1]} ${state.year} будут удалены
-     (месяц вернётся к пустому Табелю; заполните его из циклов во вкладке «Табель»).
+    'Сбросить месяц в Графике?',
+    `Ручные смены за ${MONTHS[state.month - 1]} ${state.year} будут удалены, График перегенерируется
+     из Табеля. Табель НЕ трогается — он сбрасывается в «Слой 0 · Табель». Согласованные
+     отсутствия (отлучки) сохраняются: это документированные записи, удаляются в ячейке дня.
      Закрытые периоды не трогаются.`,
     async () => {
-      const r = await api('/api/schedule/clear-month', { method: 'POST', body: { year: state.year, month: state.month } });
-      toast(`Очищено строк Табеля: ${r.cleared}`, 'ok');
+      const r = await api('/api/schedule/reset-month', { method: 'POST', body: { year: state.year, month: state.month } });
+      toast(`Ручных смен удалено: ${r.cleared}`, 'ok');
       loadSchedule();
     });
 
@@ -145,13 +146,35 @@ function renderGrid() {
     if (state.scrollToToday) { state.scrollToToday = false; scrollGridToToday(); }
   }
 
-  const usedCodes = {};
+  /* Легенда соответствует цвету ячеек: показываем, что реально использовано
+     в месяце, — смены словаря (по времени окна), коды отсутствий, плашку
+     «Выходной за часы». */
+  const usedTypes = new Map();
   rows.forEach(r => Object.values(r.cells || {}).forEach(c => {
-    if (c.tabel && c.tabel.code) usedCodes[c.tabel.code] = c.tabel.value || c.tabel.code;
+    if (c.employed === false) return;
+    const off = cellWholeOff(c);
+    if (off) {
+      usedTypes.set(`off:${off.kind ? off.kind.code : 'off'}`,
+        { label: (off.kind && off.kind.name) || 'Выходной за часы', color: cellColor(c) });
+      return;
+    }
+    const sh = (c.shifts || [])[0];
+    if (sh) {
+      const wt = workTypeOfShift(sh);
+      if (wt) usedTypes.set(`w:${wt.id}`,
+        { label: `${wt.display_code || wt.name} · ${wt.start_time}–${wt.end_time}`, color: cssColor(wt.color) });
+      else if (c.tabel) usedTypes.set(`c:${c.tabel.code}`,
+        { label: c.tabel.code, color: V4_CODE_COLORS[c.tabel.code] || '#8a94a6' });
+      return;
+    }
+    const tt = c.tabel;
+    if (!tt) return;
+    const at = absenceTypeOfCode(tt.code);
+    usedTypes.set(`a:${tt.code}`, { label: at ? `${tt.code} · ${at.name}` : tt.code,
+      color: at ? cssColor(at.color) : (V4_CODE_COLORS[tt.code] || '#8a94a6') });
   }));
-  $('#grid-legend').innerHTML = Object.keys(usedCodes).map(code =>
-    `<span class="chip"><span class="swatch" style="background:${V4_CODE_COLORS[code] || '#8a94a6'}"></span>
-      <b>${esc(code)}</b>${usedCodes[code] !== code ? ' ' + esc(usedCodes[code]) : ''}</span>`).join('') +
+  $('#grid-legend').innerHTML = [...usedTypes.values()].map(x =>
+    `<span class="chip"><span class="swatch" style="background:${x.color}"></span>${esc(x.label)}</span>`).join('') +
     `<span class="chip" title="Согласованное отсутствие (логический разрез смены): на часы не влияет, видно во флагах и на доске">
       <span class="swatch" style="background:#0e9aa7"></span><b>✂</b> пропуск/отлучка</span>
      <span class="chip" title="Ручная смена заменяет сгенерированную из Табеля">
@@ -174,6 +197,43 @@ function scrollGridToToday() {
   });
 }
 
+/* ── Содержимое и цвет ячейки: ЕДИНЫЕ правила для экрана и печати (16.10.2026) ──
+   Содержимое: отсутствие на всё рабочее окно — плашка «Выходной за часы» (EX-29;
+   whole_shift считает СЕРВЕР тем же правилом, что и для заявлений — второй копии
+   правила на фронтенде нет); иначе — видимые отрезки смены по строкам (смена минус
+   отсутствия, segments считает сервер); без смены — код Табеля. Код Табеля из ячейки
+   убран: он живёт в слое 0 и в подсказке. Цвет — из словаря «Смены и отсутствия»:
+   смена матчится по времени окна, код отсутствия — по tzh_code словаря; запасной
+   вариант — цвет кода Табеля. */
+function cellWholeOff(c) {
+  return (c.absences || []).find(a => a.whole_shift) || null;
+}
+function cellSegLines(c) {
+  if ((c.segments || []).length) return c.segments.map(s => `${s[0]}–${s[1]}`);
+  return (c.shifts || []).map(x => `${x.start_hm}–${x.end_hm}`);   // кеш без segments
+}
+function workTypeOfShift(sh) {
+  return (state.shiftTypes || []).find(x => x.kind === 'work'
+    && x.start_time === sh.start_hm && x.end_time === sh.end_hm);
+}
+function absenceTypeOfCode(code) {
+  return (state.shiftTypes || []).find(x => x.kind === 'absence' && x.tzh_code === code);
+}
+function cellColor(c) {
+  const off = cellWholeOff(c);
+  if (off) return cssColor(off.kind && off.kind.color, '#0e9aa7');
+  const t = c.tabel;
+  const sh = (c.shifts || [])[0];
+  if (sh) {
+    const wt = workTypeOfShift(sh);
+    if (wt) return cssColor(wt.color);
+  } else if (t) {
+    const at = absenceTypeOfCode(t.code);
+    if (at) return cssColor(at.color);
+  }
+  return V4_CODE_COLORS[t ? t.code : ''] || '#8a94a6';
+}
+
 function cellTd(r, d, c, cls) {
   const btn = (extra, inner, title, style) =>
     `<td class="${cls}"><button class="cellbtn ${extra}" data-emp="${r.employee.id}" data-date="${d.date}" title="${esc(title)}"${style ? ` style="${style}"` : ''}>${inner}</button></td>`;
@@ -181,21 +241,28 @@ function cellTd(r, d, c, cls) {
   const shifts = c.shifts || [];
   const absences = c.absences || [];
   const code = t ? t.code : '';
-  const color = V4_CODE_COLORS[code] || '#8a94a6';
-  const parts = [];
-  if (t) parts.push(t.value || t.code);
-  if (shifts.length) parts.push(shifts.map(x => `${x.start_hm}–${x.end_hm}`).join(' '));
+  const color = cellColor(c);
+  const off = cellWholeOff(c);
+  const lines = cellSegLines(c);
   const manual = shifts.some(x => x.source === 'manual');
   const title = `${r.employee.short_name}, ${dateRu(d.date)}: ` +
     (t ? `Табель «${t.value || t.code}»${t.source === 'cycle' ? ' (из циклов)' : ' (вручную)'}` : 'Табель не заполнен') +
     (shifts.length ? ` · смена ${shifts.map(x => `${x.start_hm}–${x.end_hm}${x.source === 'manual' ? ' (ручная)' : ''}`).join(', ')}` : ' · смены нет') +
-    (absences.length ? ` · согласованное отсутствие ${absences.map(a => `${a.start_hm}–${a.end_hm}${a.kind ? ' (' + a.kind.name + ')' : ''}`).join(', ')} — на часы не влияет` : '') +
+    (absences.length ? ` · согласованное отсутствие ${absences.map(a => `${a.start_hm}–${a.end_hm}${a.whole_shift ? ' — вся смена (выходной за часы)' : ''}${a.kind ? ' (' + a.kind.name + ')' : ''}`).join(', ')} — на часы не влияет` : '') +
     (t && t.note ? ` · ${t.note}` : '');
   const marks = [manual ? '<span class="manual-mark" title="Ручная смена">Р</span>' : '',
-    absences.length ? '<span class="partial-mark" title="Согласованное отсутствие: смена показана разрезанной">✂</span>' : ''].join('');
-  const inner = `${marks}<span class="t t-full">${esc(parts.join(' ') || '—')}</span><span class="t t-short">${esc(t ? (t.value || t.code).replace(' ', '') : '—')}</span>`;
-  const style = code ? `background:linear-gradient(165deg, ${withAlpha(color, .30)}, ${withAlpha(color, .16)});color:#2c3440` : '';
-  return btn(code ? '' : 'empty', inner, title, style);
+    (absences.length && !off) ? '<span class="partial-mark" title="Согласованное отсутствие: смена показана разрезанной">✂</span>' : ''].join('');
+  let inner;
+  if (off) {
+    inner = `${marks}<span class="dayoff" style="background:${withAlpha(color, .16)};border-color:${withAlpha(color, .6)}">Выходной<br>за часы</span>`;
+  } else if (lines.length) {
+    inner = `${marks}${lines.map(x => `<span class="t seg">${esc(x)}</span>`).join('')}`;
+  } else {
+    inner = `${marks}<span class="t t-full">${esc(t ? (t.value || t.code) : '—')}</span><span class="t t-short">${esc(t ? (t.value || t.code).replace(' ', '') : '—')}</span>`;
+  }
+  const style = (off || lines.length || code)
+    ? `background:linear-gradient(165deg, ${withAlpha(color, .30)}, ${withAlpha(color, .16)});color:#2c3440` : '';
+  return btn(code || off || lines.length ? '' : 'empty', inner, title, style);
 }
 
 function empRow(r, g, block) {
@@ -233,40 +300,94 @@ function empRow(r, g, block) {
 }
 
 
+/* ── Печать: те же ячейки, что на экране (решение 16.10.2026) — та же геометрия
+   (имя 232px, день 60px, итого 80px, строка 52px, те же шрифты), то же содержимое
+   (отрезки смены по строкам, плашка «Выходной за часы», коды Табеля), блоки смен
+   разделены заголовками. Физически 1:1 месяц на A4 не помещается (31 день × ~15 мм
+   > 277 мм), поэтому дни режутся на страницы по ≤16 (колонка ФИО повторяется на
+   каждой), а лист пропорционально масштабируется под ширину страницы — форма и
+   пропорции ячеек остаются экранными (масштаб ≈0.9 вместо ≈0.5 при одной странице).
+   Порядок строк задаёт сервер: блок → старшие → алфавит (16.10.2026). ── */
+const P_NAME_W = 232, P_DAY_W = 60, P_TOT_W = 80, P_PAGE_PX = 1062, P_CHUNK = 16;
+
 function printGrid() {
   const g = state.grid;
   if (!g) return;
   const rows = filteredRows();
+  /* блоки — как на экране; сотрудник без блока попадает в «Без группы» (не теряется) */
   const groups = {};
   rows.forEach(r => (r.blocks || []).forEach(b => { (groups[b.group] ||= []).push({ r, b }); }));
-  const keys = Object.keys(groups).sort((a, b) => groupOrder(a) - groupOrder(b));
-  const body = keys.map(key => {
-    const trs = groups[key].map(({ r, b }) => {
-      const rgs = (b && b.ranges) || (b ? [{ start: b.start, end: b.end }] : []);
-      const tds = g.days.map(d => {
-        const c = r.cells[d.date] || {};
-        const out = rgs.length && !rgs.some(rg => d.date >= rg.start && (!rg.end || d.date <= rg.end));
-        if (c.employed === false) return `<td style="background:${g.colors.inactive || '#eceff4'};color:#98a2b3">—</td>`;
-        if (out) return `<td style="background:${g.colors.out_of_block}">—</td>`;
-        const t = c.tabel;
-        const shifts = c.shifts || [];
-        let txt = t ? (t.value || t.code) : '';
-        if (shifts.length) txt += (txt ? '\n' : '') + shifts.map(x => `${x.start_hm}–${x.end_hm}`).join(' ');
-        if ((c.absences || []).length) txt += '*';
-        const color = t ? (V4_CODE_COLORS[t.code] || '#8a94a6') : null;
-        return `<td${color ? ` style="background:${withAlpha(color, .22)}"` : ' class="muted"'}>${esc(txt)}</td>`;
+  rows.forEach(r => { if (!(r.blocks || []).length) (groups[''] ||= []).push({ r, b: null }); });
+  const keys = Object.keys(groups).sort((a, b) =>
+    groupOrder(a) - groupOrder(b) || a.localeCompare(b, 'ru'));
+  const pages = Math.max(1, Math.ceil(g.days.length / P_CHUNK));
+  const perPage = Math.ceil(g.days.length / pages);
+  const zoom = Math.min(1, P_PAGE_PX / (P_NAME_W + perPage * P_DAY_W + P_TOT_W));
+  let html = '';
+  for (let pi = 0; pi < pages; pi++) {
+    const chunk = g.days.slice(pi * perPage, (pi + 1) * perPage);
+    if (!chunk.length) continue;
+    const head = `<tr><th class="p-name">Сотрудник</th>${chunk.map(d =>
+      `<th class="p-day${d.is_weekend ? ' we' : ''}${d.is_today ? ' today' : ''}">${String(d.day).padStart(2, '0')}<br><span class="dow">${esc(d.weekday)}</span>${d.double_scope ? '<span class="dbl">×2</span>' : ''}</th>`).join('')}<th class="p-tot">Часов</th></tr>`;
+    const body = keys.map(key => {
+      const trs = groups[key].map(({ r, b }) => {
+        const rgs = (b && b.ranges) || (b ? [{ start: b.start, end: b.end }] : []);
+        const tds = chunk.map(d => {
+          const c = r.cells[d.date] || {};
+          const out = rgs.length && !rgs.some(rg => d.date >= rg.start && (!rg.end || d.date <= rg.end));
+          if (c.employed === false) return `<td class="p-cell dim" style="background:${g.colors.inactive || '#eceff4'}">—</td>`;
+          if (out) return `<td class="p-cell dim" style="background:${g.colors.out_of_block}">—</td>`;
+          const off = cellWholeOff(c);
+          const lines = cellSegLines(c);
+          const tt = c.tabel;
+          const color = cellColor(c);
+          const manual = (c.shifts || []).some(x => x.source === 'manual');
+          const marks = `${manual ? '<sup>Р</sup>' : ''}${(c.absences || []).length && !off ? '<sup>✂</sup>' : ''}`;
+          let txt;
+          if (off) txt = 'Выходной\nза часы';
+          else if (lines.length) txt = lines.join('\n');
+          else txt = tt ? (tt.value || tt.code) : '';
+          const bg = (off || lines.length || tt) ? ` style="background:${withAlpha(color, .22)}"` : '';
+          return `<td class="p-cell${d.is_weekend ? ' we' : ''}"${bg}>${marks}${esc(txt)}</td>`;
+        }).join('');
+        return `<tr><td class="p-name">${esc(r.employee.full_name)} <span class="muted">${esc(r.employee.position || '')}</span></td>${tds}
+          <td class="p-tot"><b>${hours(r.totals.planned_hours)}</b></td></tr>`;
       }).join('');
-      return `<tr><td class="name">${esc(r.employee.full_name)}<br><span class="muted">${esc(r.employee.position || '')}</span></td>${tds}
-        <td><b>${hours(r.totals.planned_hours)}</b></td></tr>`;
+      return `<tr class="p-group"><td colspan="${chunk.length + 2}">${esc(key || 'Без группы')}</td></tr>${trs}`;
     }).join('');
-    return `<tr class="group"><td colspan="${g.days.length + 2}">${esc(key.toUpperCase())}</td></tr>${trs}`;
-  }).join('');
-  const head = `<tr><th class="name">Сотрудник</th>${g.days.map(d =>
-    `<th>${d.day}<br><span class="muted">${esc(d.weekday)}</span></th>`).join('')}<th>Часов</th></tr>`;
-  printWindow(`График сменности ${MONTHS[g.month - 1]} ${g.year}`,
-    `<h1>График сменности, ${MONTHS[g.month - 1]} ${g.year} г. (весь месяц)</h1>
-     <p style="font-size:12px;color:#667">Значение Табеля и интервалы смен; * — согласованное отсутствие (логический разрез смены).</p>
-     <table><thead>${head}</thead><tbody>${body}</tbody></table>`);
+    html += `<div class="p-page${pi ? ' pb' : ''}">
+      <h1>График сменности, ${MONTHS[g.month - 1]} ${g.year} г. · дни ${chunk[0].day}–${chunk[chunk.length - 1].day}</h1>
+      <p class="note">Ячейка — смена: отрезки времени по строкам. Плашка «Выходной за часы» —
+        отсутствие на всю смену; ✂ — согласованное отсутствие (логический разрез, на часы не влияет);
+        Р — ручная смена; ×2 — день двойной оплаты. «—» — вне блока/периода трудоустройства.
+        Внутри блока: старшие, далее по алфавиту.</p>
+      <table class="gridprint"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  }
+  printWindow(`График сменности ${MONTHS[g.month - 1]} ${g.year}`, html, `
+    @page { size: A4 landscape; margin: 8mm; }
+    body { zoom: ${zoom.toFixed(3)}; }
+    .p-page.pb { page-break-before: always; }
+    table.gridprint { border-collapse: collapse; table-layout: fixed; }
+    .gridprint th, .gridprint td { border: 1px solid #b9c2d0; padding: 1px 2px; text-align: center;
+      vertical-align: middle; font-size: 9px; }
+    .gridprint th.p-name, .gridprint td.p-name { width: ${P_NAME_W}px; min-width: ${P_NAME_W}px;
+      text-align: left; padding-left: 6px; font-size: 10.5px; }
+    .gridprint td.p-name { height: 52px; }
+    .gridprint th.p-day { width: ${P_DAY_W}px; min-width: ${P_DAY_W}px; height: 34px;
+      font-size: 10.5px; background: #eef2f8; }
+    .gridprint th.p-day .dow { color: #667; font-size: 9px; }
+    .gridprint th.p-day.we { background: #f7efe7; color: #a04a3a; }
+    .gridprint th.p-day.today { background: #141a25; color: #fff; }
+    .gridprint th.p-day.today .dow { color: #e6c267; }
+    .gridprint th.p-tot, .gridprint td.p-tot { width: ${P_TOT_W}px; min-width: ${P_TOT_W}px; font-size: 11px; }
+    .gridprint td.p-cell { width: ${P_DAY_W}px; min-width: ${P_DAY_W}px; height: 52px;
+      font-size: 9px; font-weight: 700; white-space: pre-line; line-height: 1.3; }
+    .gridprint td.p-cell.dim { color: #98a2b3; font-weight: 400; }
+    .gridprint tr.p-group td { background: #ede5da; font-weight: 700; text-align: left;
+      padding: 4px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #57493c; }
+    .gridprint sup { font-size: 7px; }
+    .gridprint .dbl { color: #8a6d1a; font-weight: 800; margin-left: 2px; }
+    .muted { color: #8b98ad; }`);
 }
 
 
@@ -284,7 +405,7 @@ function openRangeModal(mode = 'tabel') {
   const kinds = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off
     && (fromSchedule ? !x.tzh_code : !!x.tzh_code));
   openModal({
-    title: fromSchedule ? 'Отпросить (выходной за часы)' : 'Назначить отсутствие (код Табеля)',
+    title: fromSchedule ? 'Выходной за часы' : 'Назначить отсутствие (код Табеля)',
     subtitle: fromSchedule
       ? 'Слой 1 · График: в Табеле остаётся явка, часы и план не меняются'
       : 'Слой 0 · Табель: отпуск, больничный, за свой счёт, оплачиваемый выходной — на период сразу',

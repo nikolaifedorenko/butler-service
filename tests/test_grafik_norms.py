@@ -624,6 +624,118 @@ class TestIntervalStatements(unittest.TestCase):
             db.close()
 
 
+class TestGridCellSegments(unittest.TestCase):
+    """Сетка Графика (16.10.2026): segments — видимые отрезки смены (минус отсутствия),
+    whole_shift — плашка «Выходной за часы» на весь день. Считает СЕРВЕР — один
+    источник правила EX-29 для сетки, печати и заявлений."""
+
+    @classmethod
+    def setUpClass(cls):
+        _login(client, "admin")
+        cls.emp = _create_employee("norm_segments", "Отрезов Отрез Отрезович")
+        _fill_cycle(cls.emp["id"])
+        days = _work_days(cls.emp["id"])
+        cls.day_a, cls.day_b = days[0], days[1]
+        cls.kind = _shift("TIMEOFF_HOURS")
+
+    def _cell(self, day) -> dict:
+        grid = client.get("/api/schedule", params={
+            "year": day.year, "month": day.month}).json()
+        row = next(r for r in grid["rows"] if r["employee"]["id"] == self.emp["id"])
+        return row["cells"][day.isoformat()]
+
+    def test_01_interval_splits_shift_into_segments(self):
+        r = client.post("/api/schedule/absence", json={
+            "employee_id": self.emp["id"], "date": self.day_a.isoformat(),
+            "from_time": "14:00", "until_time": "16:00", "kind_id": self.kind["id"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        cell = self._cell(self.day_a)
+        self.assertEqual(cell["segments"], [["08:00", "14:00"], ["16:00", "20:00"]])
+        self.assertEqual([a["whole_shift"] for a in cell["absences"]], [False])
+        # смена физически не делится (v7/R17) — запись осталась одной
+        self.assertEqual([(s["start_hm"], s["end_hm"]) for s in cell["shifts"]],
+                         [("08:00", "20:00")])
+
+    def test_02_whole_window_absence_flags_whole_shift(self):
+        r = client.post("/api/schedule/absence", json={
+            "employee_id": self.emp["id"], "date": self.day_b.isoformat(),
+            "from_time": "08:00", "until_time": "20:00", "kind_id": self.kind["id"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        cell = self._cell(self.day_b)
+        self.assertTrue(any(a["whole_shift"] for a in cell["absences"]),
+                        "отсутствие на всё окно дня — whole_shift для плашки")
+        self.assertEqual(cell["segments"], [], "видимых отрезков не осталось")
+
+    def test_03_seniors_first_within_group(self):
+        """Порядок строк (решение 16.10.2026): внутри блока старшие впереди,
+        далее по алфавиту — задаётся сервером, поэтому действует на всех стоках."""
+        base = {"hired_at": (TODAY - dt.timedelta(days=120)).isoformat(),
+                "schedule_group": "Смена 1", "role": "employee", "password": "demo1234"}
+        junior = client.post("/api/employees", json={
+            **base, "full_name": "Абрамова Батлеровна Батлерова", "position": "Батлер",
+            "username": "norm_order_jr"})
+        senior = client.post("/api/employees", json={
+            **base, "full_name": "Яковлева Старшая Петровна", "position": "Старший батлер",
+            "username": "norm_order_sr"})
+        self.assertEqual(junior.status_code, 200, junior.text)
+        self.assertEqual(senior.status_code, 200, senior.text)
+        grid = client.get("/api/schedule", params={
+            "year": TODAY.year, "month": TODAY.month}).json()
+        order = [r["employee"]["id"] for r in grid["rows"]]
+        self.assertLess(order.index(senior.json()["id"]), order.index(junior.json()["id"]),
+                        "«Старший батлер» Яковлева — раньше «Батлера» Абрамовой")
+
+
+class TestScheduleMonthReset(unittest.TestCase):
+    """«Сбросить месяц» в Графике (16.10.2026): убирает только РУЧНЫЕ смены,
+    Табель не трогается (сбрасывается из слоя 0), отсутствия сохраняются."""
+
+    @classmethod
+    def setUpClass(cls):
+        _login(client, "admin")
+        cls.emp = _create_employee("norm_month_reset", "Сбросов Сброс Сбросович")
+        _fill_cycle(cls.emp["id"])
+        cls.day = _work_days(cls.emp["id"])[0]
+        cls.kind = _shift("TIMEOFF_HOURS")
+
+    def test_01_reset_removes_manual_shifts_keeps_tabel_and_absences(self):
+        day = self.day
+        r = client.put("/api/schedule/shift", json={
+            "employee_id": self.emp["id"], "date": day.isoformat(),
+            "shifts": [{"start": "10:00", "end": "19:00"}]})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = client.post("/api/schedule/absence", json={
+            "employee_id": self.emp["id"], "date": day.isoformat(),
+            "from_time": "14:00", "until_time": "15:00", "kind_id": self.kind["id"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        before = _tabel_row(self.emp["id"], day)
+        self.assertEqual((before.code, before.plan_minutes), ("Я", 720))
+
+        r = client.post("/api/schedule/reset-month", json={
+            "year": day.year, "month": day.month, "employee_ids": [self.emp["id"]]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["cleared"], 1, "удалена одна ручная смена")
+
+        grid = client.get("/api/schedule", params={
+            "year": day.year, "month": day.month}).json()
+        row = next(x for x in grid["rows"] if x["employee"]["id"] == self.emp["id"])
+        cell = row["cells"][day.isoformat()]
+        self.assertEqual([(s["source"], s["start_hm"], s["end_hm"]) for s in cell["shifts"]],
+                         [("generated", "08:00", "20:00")], "График снова из Табеля")
+        self.assertEqual(len(cell["absences"]), 1, "согласованное отсутствие сохранено")
+        after = _tabel_row(self.emp["id"], day)
+        self.assertEqual((after.code, after.plan_minutes, after.source),
+                         (before.code, before.plan_minutes, before.source),
+                         "Табель не тронут")
+
+    def test_02_reset_requires_schedule_edit(self):
+        _login(client, "ivanov")
+        r = client.post("/api/schedule/reset-month", json={
+            "year": TODAY.year, "month": TODAY.month})
+        self.assertEqual(r.status_code, 403)
+        _login(client, "admin")
+
+
 class TestAbsenceLayers(unittest.TestCase):
     """Q4: из Графика — только «за счёт часов», отпуск/ДО/ОВ — коды Табеля."""
 
