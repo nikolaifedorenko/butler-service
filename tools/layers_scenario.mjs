@@ -213,6 +213,19 @@ async function main() {
   check('переключение слоёв скрывает соседние панели', paneOn().join(',') === 'timesheet');
   check('кнопки слоя 0 на месте («Заполнить из циклов», «Сбросить», «Назначить отсутствие»)',
     !!$('#tb-fill') && !!$('#tb-reset') && !!$('#tb-absence'));
+  /* карточка сотрудника из Табеля: клик по ФИО открывает ту же модалку, что и
+     раздел «Сотрудники» — правки без перехода в другой раздел. Посеянный
+     сотрудник создан ПОСЛЕ loadDirectory(), поэтому попутно проверяется
+     дозагрузка справочника в openEmployeeCard(). */
+  check('ФИО в строке Табеля кликабельно (data-emp)', !!$(`#tb-body td.who[data-emp="${empId}"]`));
+  click($(`#tb-body td.who[data-emp="${empId}"]`));
+  check('слой 0: клик по ФИО открыл карточку сотрудника',
+    await waitFor(() => !$('#modal-backdrop').classList.contains('hidden')
+      && /Сеточкин/.test(text('#modal h3')), 8000), text('#modal h3'));
+  check('карточка та же, что в разделе «Сотрудники» (банк часов, действия)',
+    /Банк часов/.test(text('#modal')) && !!$('#modal [data-edit]'));
+  click($('#modal .x'));
+  check('карточка закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
 
   /* ── 3. Слой 3 · Управленческий Табель ── */
   console.log('\n3 · Слой 3 · Управленческий Табель');
@@ -290,6 +303,15 @@ async function main() {
   window.navigate('schedule');
   check('navigate("schedule") открывает слой 1', await waitFor(() => activeLayer() === 'schedule'
     && $('#grid-host table')));
+  /* карточка сотрудника из Графика (слой 1) — тот же короткий путь */
+  check('ФИО в сетке Графика кликабельно (data-emp)',
+    await waitFor(() => $(`#grid-host td.name-cell[data-emp="${empId}"]`), 10000));
+  click($(`#grid-host td.name-cell[data-emp="${empId}"]`));
+  check('слой 1: клик по ФИО открыл карточку сотрудника',
+    await waitFor(() => !$('#modal-backdrop').classList.contains('hidden')
+      && /Сеточкин/.test(text('#modal h3')), 8000), text('#modal h3'));
+  click($('#modal .x'));
+  check('карточка закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
 
   /* ── 7. Роль сотрудника: только свои слои и своя строка ── */
   console.log('\n7 · Сотрудник: слои по правам, в «Номерах» только себя');
@@ -312,6 +334,9 @@ async function main() {
   window.navigate('timesheet');
   check('алиас без права откатывается на доступный слой',
     await waitFor(() => activeLayer() === 'schedule'));
+  check('без права employees.view имена в сетке не кликабельны (чужая карточка недоступна)',
+    await waitFor(() => $('#grid-host table')) && $$('#grid-host td.name-cell[data-emp]').length === 0,
+    `кликов по ФИО: ${$$('#grid-host td.name-cell[data-emp]').length}`);
 
   /* ── 8. Консоль ── */
   console.log('\n8 · Консоль');

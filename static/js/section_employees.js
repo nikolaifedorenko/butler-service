@@ -39,6 +39,35 @@ async function loadEmployees() {
     employeeCard(state.employees.find(x => x.id === +tr.dataset.card)));
 }
 
+/* Вход в карточку по id из других разделов («Слой 0 Табель», «Слой 1 План/График»):
+   открывается ТА ЖЕ карточка, что и по строке раздела «Сотрудники», — правки
+   доступны прямо из сетки, без перехода в другой раздел. Право — employees.view
+   (как у самого раздела и у GET /api/employees/{id}/history); без права вызывающий
+   код даже не делает имя кликабельным, но проверяем и здесь (защита в глубину).
+   Если сотрудника нет в кеше справочника (не загружался для этой роли либо он
+   удалён и виден только в строках истории), список дозагружается с сервера. */
+async function openEmployeeCard(empId) {
+  if (!can('employees.view')) return;
+  let emp = (state.employees || []).find(e => e.id === empId);
+  if (!emp) {
+    try {
+      const all = await api('/api/employees?include_deleted=true', { silent: true });
+      emp = all.find(e => e.id === empId);
+    } catch (e) { toast(e.message, 'err'); return; }
+  }
+  if (!emp) return toast('Сотрудник не найден', 'err');
+  await employeeCard(emp);
+}
+
+/* После изменений карточки освежаем справочник и ТЕКУЩИЙ раздел: карточка
+   открывается не только из «Сотрудников», но и из Табеля/Графика — сетка за
+   модалкой должна показать свежие ФИО, цвет и статус. */
+async function refreshAfterEmployeeChange() {
+  await loadDirectory();
+  if (state.view === 'employees') loadEmployees();
+  else navigate(state.view);
+}
+
 async function employeeCard(emp) {
   const history = await api(`/api/employees/${emp.id}/history`);
   const contacts = emp.contacts?.length ? emp.contacts
@@ -118,7 +147,7 @@ async function employeeCard(emp) {
           async () => {
             await api(`/api/employees/${emp.id}/delete`, { method: 'POST' });
             toast('Сотрудник удалён из активных списков; история сохранена', 'ok');
-            await loadDirectory(); loadEmployees();
+            await refreshAfterEmployeeChange();
           }, 'Удалить');
       };
     },
@@ -231,8 +260,7 @@ async function datedActionModal(emp, kind) {
           }
           closeModal();
           toast('Проведено: ' + titles[kind].toLowerCase() + ' с ' + dateRu(date), 'ok');
-          await loadDirectory();
-          if (state.view === 'employees') loadEmployees(); else navigate(state.view);
+          await refreshAfterEmployeeChange();
         } catch (e) { toast(e.message, 'err'); }
       };
     },
@@ -286,8 +314,7 @@ async function rehireModal(emp) {
           await api(`/api/employees/${emp.id}/rehire`, { method: 'POST', body });
           closeModal();
           toast(`Сотрудник принят обратно с ${dateRu(date)}`, 'ok');
-          await loadDirectory();
-          if (state.view === 'employees') loadEmployees(); else navigate(state.view);
+          await refreshAfterEmployeeChange();
         } catch (e) { toast(e.message, 'err'); }
       };
     },
@@ -479,9 +506,8 @@ async function employeeModal(emp) {
             ? await api('/api/employees', { method: 'POST', body })
             : await api(`/api/employees/${emp.id}`, { method: 'PUT', body });
           closeModal();
-          await loadDirectory();
           toast(isNew ? `Создан: ${res.full_name}, логин ${res.username}, пароль ${res.initial_password}` : 'Изменения сохранены', 'ok');
-          loadEmployees();
+          await refreshAfterEmployeeChange();
         } catch (e) { toast(e.message, 'err'); }
       };
     },
