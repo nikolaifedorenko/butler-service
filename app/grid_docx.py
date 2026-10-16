@@ -51,6 +51,37 @@ def pdf_unavailable_detail(how: str) -> str:
             "Без него работают «Печать» в браузере и выгрузка Excel.")
 
 
+def cell_plan_text(cell: dict) -> str:
+    """Содержимое ячейки Графика — как на экране (16.10.2026): плашка «Выходной за
+    часы» при отсутствии на всё рабочее окно, иначе видимые отрезки смены (смена
+    минус отсутствия) по строке на отрезок, без смены — значение/код Табеля.
+    Общий источник DOCX/PDF и Excel."""
+    if any(a.get("whole_shift") for a in (cell.get("absences") or [])):
+        return "Выходной за часы"
+    segments = cell.get("segments") or []
+    if segments:
+        return "\n".join(f"{s[0]}–{s[1]}" for s in segments)
+    shifts = cell.get("shifts") or []
+    if shifts:   # payload без segments (кеш) — интервалы самих смен
+        return "\n".join(f"{s.get('start_hm', '')}–{s.get('end_hm', '')}" for s in shifts)
+    t = cell.get("tabel") or {}
+    return t.get("value") or t.get("code") or ""
+
+
+def tint_hex(color, factor: float = 0.22) -> str | None:
+    """Подложка ячейки как на экране: цвет словаря, смешанный с белым (withAlpha).
+    Возвращает RRGGBB без «#» для fills DOCX/Excel; None — цвет не распознан."""
+    m = _hex_re.match(str(color or "").strip())
+    if not m:
+        return None
+    h = m.group(1)
+    out = []
+    for i in (0, 2, 4):
+        v = int(h[i:i + 2], 16)
+        out.append(round(255 - (255 - v) * factor))
+    return f"{out[0]:02X}{out[1]:02X}{out[2]:02X}"
+
+
 def _fmt_hours(x) -> str:
     try:
         return f"{float(x or 0):g}"
@@ -185,14 +216,17 @@ def schedule_docx(data: dict) -> bytes:
     month_name = data.get("month_name", "")
     doc = _new_doc(f"График сменности · {month_name} {year} · «Батлер Сервис»")
     _title(doc, f"График сменности, {month_name} {year} г.",
-           "План по блокам: значение Табеля и интервалы смен. «—» — вне периода работы; "
-           "×2 в шапке — день двойной оплаты; * — согласованное отсутствие.")
+           "План по блокам: отрезки смен по строкам, цвет — из словаря «Смены и "
+           "отсутствия». Плашка «Выходной за часы» — отсутствие на всю смену; "
+           "* — согласованное отсутствие; «—» — вне периода работы; ×2 в шапке — "
+           "день двойной оплаты. Внутри блока: старшие, далее по алфавиту.")
 
-    name_w, hours_w = 29.0, 11.0
-    day_w = (USABLE_MM - name_w - hours_w) / ndays
-    widths = [name_w] + [day_w] * ndays + [hours_w]
+    # итоговая колонка «Часов» убрана (решение владельца 16.10.2026)
+    name_w = 29.0
+    day_w = (USABLE_MM - name_w) / ndays
+    widths = [name_w] + [day_w] * ndays
 
-    table = doc.add_table(rows=1, cols=ndays + 2)
+    table = doc.add_table(rows=1, cols=ndays + 1)
     table.style = "Table Grid"
     hdr = table.rows[0]
     _repeat_header(hdr)
@@ -203,8 +237,6 @@ def schedule_docx(data: dict) -> bytes:
         _cell_text(c, f"{d['day']:02d}\n{d['weekday']}" + ("\n×2" if d.get("double_scope") else ""),
                    size=5.8, bold=True)
         _shade(c, WEEKEND_FILL if d.get("is_weekend") else HEAD_FILL)
-    _cell_text(hdr.cells[-1], "Часов", size=7.5, bold=True)
-    _shade(hdr.cells[-1], HEAD_FILL)
 
     groups: dict[str, list[dict]] = {}
     for row in data["rows"]:
@@ -244,34 +276,32 @@ def schedule_docx(data: dict) -> bytes:
                 elif t or shifts:
                     # тот же вид, что на экране и в «Печати» (16.10.2026): плашка
                     # «Выходной за часы» на весь день, иначе отрезки смены по строкам
-                    # (без кода Табеля), без смены — код Табеля
+                    # (без кода Табеля), без смены — код Табеля; цвет — из словаря
                     absences = cell.get("absences") or []
-                    segments = cell.get("segments") or []
-                    if any(a.get("whole_shift") for a in absences):
-                        text, size = "Выходной\nза часы", 5.2
+                    badge = any(a.get("whole_shift") for a in absences)
+                    text = cell_plan_text(cell).replace("\u2013", "-")
+                    if badge:
+                        text = text.replace("Выходной за часы", "Выходной\nза часы")
+                        size = 5.2
                     elif shifts:
-                        # segments — пары [начало, конец] из API; запасной вариант —
-                        # интервалы самих смен (payload без segments)
-                        lines = [f"{s[0]}–{s[1]}" for s in segments] if segments else \
-                            [f"{sh.get('start_hm', '')}–{sh.get('end_hm', '')}" for sh in shifts]
-                        text = "\n".join(x.replace("\u2013", "-") for x in lines)
                         size = 5.2
                         if absences:
                             text += "\n*"   # логический разрез (v7/R17)
                     else:
-                        text = (t.get("value") or t.get("code") or "").replace("\u2013", "-")
                         size = 5.6
                         if absences:
                             text += "*"
                     _cell_text(c, text, size=size,
-                               bold=bool(t.get("code") == "Я") and bool(shifts))
-                    if d.get("is_weekend"):
+                               bold=bool(t.get("code") == "Я") and bool(shifts) and not badge)
+                    tint = tint_hex(cell.get("color"))
+                    if tint:
+                        _shade(c, tint)
+                    elif d.get("is_weekend"):
                         _shade(c, WEEKEND_FILL)
                 else:
                     _cell_text(c, "", size=6)
                     if d.get("is_weekend"):
                         _shade(c, WEEKEND_FILL)
-            _cell_text(tr.cells[-1], _fmt_hours(row["totals"]["planned_hours"]), size=7.5, bold=True)
 
     _fixed_widths(table, widths)
 

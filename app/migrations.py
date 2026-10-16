@@ -449,6 +449,25 @@ def migrate_settings_value_text() -> None:
         con.execute(text("ALTER TABLE settings ALTER COLUMN value TYPE TEXT"))
 
 
+def migrate_manual_replaces_generated() -> None:
+    """Старые базы: ручная смена не вытесняла генерацию дня (дефект до 16.10.2026) —
+    в ячейке Графика соседствовали смена из Табеля и ручная («08:00–20:00» и
+    «09:00–18:00» разом). Удаляем generated-строки тех дней, где стоит ручная смена;
+    движок после правки (schedule_view.save_schedule_day / rebuild_generated_schedule)
+    их больше не создаёт. Идемпотентно."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if not insp.has_table("schedule_shifts"):
+        return
+    with engine.begin() as con:
+        con.execute(text(
+            "DELETE FROM schedule_shifts WHERE source = 'generated' AND EXISTS ("
+            "SELECT 1 FROM schedule_shifts AS m WHERE m.source = 'manual' "
+            "AND m.employee_id = schedule_shifts.employee_id "
+            "AND m.date = schedule_shifts.date)"))
+
+
 def migrate_time_off_template() -> None:
     """Шаблон «об отсутствии на рабочем месте» с перечнем интервалов (16.10.2026).
 

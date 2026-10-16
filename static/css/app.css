@@ -368,7 +368,6 @@ table.sched { border-collapse: separate; border-spacing: 0; width: max-content; 
   font-size: 13px; table-layout: fixed; }
 table.sched th.corner { width: 232px; }
 table.sched thead th:not(.corner) { width: 60px; }
-table.sched thead th:last-child { width: 80px; }
 table.sched th, table.sched td { border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
 table.sched thead th {
   position: sticky; top: 0; z-index: 6; background: var(--panel-2); padding: 6px 2px; text-align: center;
@@ -699,7 +698,6 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
   table.sched th.corner, table.sched td.name-cell { min-width: 138px; max-width: 138px; padding: 7px 8px; }
   tr.group-row td.g-name { min-width: 138px; max-width: 138px; width: 138px; padding: 7px 8px; }
   table.sched thead th:not(.corner) { width: 46px; }
-  table.sched thead th:last-child { width: 64px; }
   .name-cell .pos { display: none; }
   table.sched thead th { min-width: 46px; }
   td.cell { min-width: 46px; max-width: 46px; height: 48px; }

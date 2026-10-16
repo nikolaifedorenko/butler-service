@@ -272,6 +272,8 @@ async function main() {
   console.log('\n5 · T4: «Выходной за часы» из Графика');
   window.navigate('schedule');
   check('График отрисован', await waitFor(() => $$('#grid-host .cellbtn:not([disabled])').length > 0));
+  check('в сетке нет итоговой колонки часов (16.10.2026)',
+    !$$('#grid-host thead th').some(th => /Итого|Часов/.test(th.textContent)));
   check('кнопка панели — «Выходной за часы»',
     text('#btn-range') === 'Выходной за часы', text('#btn-range'));
   check('кнопка панели — «Сбросить месяц»', text('#btn-clear') === 'Сбросить месяц',
@@ -446,6 +448,29 @@ async function main() {
   check('после удаления absence-period пуст', !ap4.ok || !ap4.json?.source,
     JSON.stringify(ap4.json || '').slice(0, 120));
 
+  /* дефект 16.10.2026: ручная смена замещает генерацию дня ЦЕЛИКОМ — в ячейке
+     только ручной интервал; удаление ручной возвращает день к генерации */
+  click($(`#grid-host .cellbtn[data-emp="${empId}"][data-date="${dayA}"]`));
+  check('редактор дня открылся для ручной смены', await waitFor(() => !!$('#cell-sh-chips')));
+  const d9 = $$('#cell-sh-chips .tc-chip[data-sh]').find(b => /09:00–18:00/.test(b.textContent));
+  check('в словаре есть плашка смены 09:00–18:00', !!d9);
+  click(d9);
+  click($('#cell-sh-save'));
+  check('ручная смена вытеснила генерацию — в ячейке только 09:00–18:00',
+    await waitFor(() => {
+      const el = $(`#grid-host .cellbtn[data-emp="${empId}"][data-date="${dayA}"]`);
+      return el && /09:00–18:00/.test(el.textContent) && !/08:00–20:00/.test(el.textContent);
+    }, 15000),
+    ($(`#grid-host .cellbtn[data-emp="${empId}"][data-date="${dayA}"]`) || {}).textContent || '');
+  click($(`#grid-host .cellbtn[data-emp="${empId}"][data-date="${dayA}"]`));
+  await waitFor(() => !!$('#cell-sh-drop'), 10000);
+  click($('#cell-sh-drop'));
+  check('удаление ручной смены — возврат к генерации из Табеля (08:00–20:00)',
+    await waitFor(() => {
+      const el = $(`#grid-host .cellbtn[data-emp="${empId}"][data-date="${dayA}"]`);
+      return el && /08:00–20:00/.test(el.textContent) && !/09:00–18:00/.test(el.textContent);
+    }, 15000));
+
   /* печать (16.10.2026): та же геометрия и содержимое, что на экране; блоки смен
      разделены заголовками; месяц — двумя страницами-половинками с колонкой ФИО */
   const beforePrint = printed.length;
@@ -461,6 +486,7 @@ async function main() {
     && /width: 60px/.test(pr.css) && /height: 52px/.test(pr.css), (pr.css || '').slice(0, 120));
   check('печать: содержимое ячеек — время смен, как на экране',
     /p-cell/.test(pr.h) && /\d{2}:\d{2}–\d{2}:\d{2}/.test(pr.h), pr.h.slice(0, 120));
+  check('печать: итоговой колонки часов нет', !/Часов/.test(pr.h));
 
   /* ── 7. T1: редактор смены — «код в сетке» отдельно, «код в табеле» из справочника ── */
   console.log('\n7 · T1: словарь смен и health');

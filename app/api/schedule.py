@@ -49,7 +49,7 @@ from ..models import (
 from ..names import suggest_genitive
 from ..permissions import require_perm
 from ..schedule_patterns import pattern_list, validate_pattern
-from ..services.engine_common import domain_error_text, engine_ports, now_utc
+from ..services.engine_common import day_code_colors, domain_error_text, engine_ports, now_utc
 from ..tabel_fill import fill_timesheet_from_cycles
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -105,6 +105,30 @@ def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType],
             "kind": None if kind is None else
             {"id": kind.id, "code": kind.code, "name": kind.name, "color": kind.color,
              "doc_type": kind.doc_type or ""}}
+
+
+def _cell_color(shifts: list, absences: list, trow: Optional[TabelDay], work_types: dict,
+                absence_types: dict, code_colors: dict) -> Optional[str]:
+    """Цвет ячейки Графика — из словаря «Смены и отсутствия» (16.10.2026).
+
+    Разрешается СЕРВЕРОМ, чтобы экран, браузерная печать, PDF и Excel красили
+    одинаково: плашка «выходной за часы» — цвет вида отсутствия; смена — цвет
+    словарной смены с тем же окном (первая по id); код дня без смены — цвет вида
+    по tzh_code; запасной вариант — цвет кода Табеля из presentation настроек."""
+    off = next((a for a in absences if a.get("whole_shift")), None)
+    if off is not None:
+        return (off.get("kind") or {}).get("color") or "#0e9aa7"
+    if shifts:
+        wt = work_types.get((shifts[0]["start_hm"], shifts[0]["end_hm"]))
+        if wt is not None and (wt.color or "").strip():
+            return wt.color
+    elif trow is not None:
+        at = absence_types.get(trow.code)
+        if at is not None and (at.color or "").strip():
+            return at.color
+    if trow is not None:
+        return code_colors.get(trow.code)
+    return None
 
 
 def _visible_segments(shift_rows: list, absence_rows: list) -> list[list[str]]:
@@ -246,6 +270,18 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
     kinds = {k.id: k for k in db.scalars(select(ShiftType).where(
         ShiftType.id.in_({a.kind_id for a in absence_rows if a.kind_id})))} \
         if absence_rows else {}
+    # цвета ячеек — из словаря «Смены и отсутствия»: смены матчатся по окну,
+    # коды отсутствий — по tzh_code; запасной — цвет кода Табеля (16.10.2026)
+    work_types: dict[tuple[str, str], ShiftType] = {}
+    for x in db.scalars(select(ShiftType).where(ShiftType.kind == "work")
+                        .order_by(ShiftType.id)):
+        work_types.setdefault((x.start_time, x.end_time), x)
+    absence_types: dict[str, ShiftType] = {}
+    for x in db.scalars(select(ShiftType).where(ShiftType.kind == "absence")
+                        .order_by(ShiftType.id)):
+        if (x.tzh_code or "").strip():
+            absence_types.setdefault(x.tzh_code.strip(), x)
+    code_colors = day_code_colors(db)
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for row in shift_rows:
         start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
@@ -286,16 +322,20 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
             planned = (trow.plan_minutes / 60) if trow else 0.0
             planned_total += planned
             work_days += 1 if (policy and policy.carries_hours) else 0
+            shifts_brief = [_shift_brief(r) for r in sh_rows]
+            absences_brief = [_absence_brief(r, kinds.get(r.kind_id),
+                                             _absence_covers_day(st, tabel_rows, emp.id, r))
+                              for r in ab_rows]
             cells[d.isoformat()] = {
                 "tabel": None if trow is None else
                 {"code": trow.code, "value": value, "hours": trow.plan_minutes / 60,
                  "source": trow.source, "note": trow.note or ""},
-                "shifts": [_shift_brief(r) for r in sh_rows],
+                "shifts": shifts_brief,
                 # видимые отрезки смены (минус отсутствия) — по строке на отрезок
                 "segments": _visible_segments(sh_rows, ab_rows),
-                "absences": [_absence_brief(r, kinds.get(r.kind_id),
-                                            _absence_covers_day(st, tabel_rows, emp.id, r))
-                             for r in ab_rows],
+                "absences": absences_brief,
+                "color": _cell_color(shifts_brief, absences_brief, trow,
+                                     work_types, absence_types, code_colors),
                 "planned_hours": planned,
                 "employed": employed,
                 # день редактируем (ручная смена) ⇔ accepts_ut кода Табеля (16.3)
@@ -428,6 +468,9 @@ def delete_manual_shift(employee_id: int, date: dt.date,
     """Удаление ручной смены — день возвращается к генерации из Табеля (16.3)."""
     ports = engine_ports(db, principal, now_utc())
     schedule_view.drop_manual_day(str(employee_id), date, ports)
+    # генерация дня была вытеснена ручной сменой при сохранении — восстанавливаем
+    schedule_view.rebuild_generated_schedule(str(employee_id),
+                                             month_period(date.year, date.month), ports)
     audit(db, principal, "schedule_drop_manual", f"employee:{employee_id}",
           {"date": date.isoformat()})
     db.commit()
@@ -1123,6 +1166,7 @@ def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
         for row in rows:
             db.delete(row)
             cleared += 1
+        db.flush()      # rebuild читает ту же сессию (autoflush off) — не должен видеть удалённое
         schedule_view.rebuild_generated_schedule(str(emp.id), month_period(payload.year,
                                                                           payload.month), ports)
     audit(db, principal, "schedule_clear_month", f"{payload.year}-{payload.month:02d}",
@@ -1161,6 +1205,7 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
         for row in manual:
             db.delete(row)
         cleared += len(manual)
+        db.flush()      # rebuild не должен видеть удалённые ручные смены (autoflush off)
         schedule_view.rebuild_generated_schedule(str(emp.id),
                                                  month_period(payload.year, payload.month),
                                                  ports)
@@ -1175,35 +1220,41 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
 @router.get("/xlsx")
 def export_xlsx(year: int, month: int, principal: Principal = Depends(require_manager),
                 db: Session = Depends(get_db)):
-    """График в Excel: «ФИО × дни», ячейка — код Табеля и интервалы смен."""
+    """График в Excel: тот же вид ячейки, что на экране (16.10.2026) — время смены
+    (отрезки по строкам), плашка «Выходной за часы», цвет из словаря «Смены и
+    отсутствия»; итоговой колонки «Часов» нет (решение владельца)."""
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
 
+    from ..grid_docx import cell_plan_text, tint_hex
     data = get_grid(year, month, principal, db)
     wb = Workbook()
     ws = wb.active
     ws.title = f"График {month:02d}.{year}"
     days = [d["date"] for d in data["days"]]
-    ws.append(["Сотрудник"] + [d[8:] for d in days] + ["Часов"])
+    ws.append(["Сотрудник"] + [d[8:] for d in days])
     for c in ws[1]:
         c.font = Font(bold=True)
     for row in data["rows"]:
         cells = []
         for iso in days:
             cell = row["cells"].get(iso) or {}
-            t = cell.get("tabel") or {}
-            shifts = cell.get("shifts") or []
-            text = t.get("value") or t.get("code") or ""
-            if shifts:
-                spans = " ".join(f"{s['start_hm']}–{s['end_hm']}" for s in shifts)
-                text = f"{text}\n{spans}".strip()
-            cells.append(safe_sheet_cell(text))
-        ws.append([safe_sheet_cell(row["employee"]["full_name"]), *cells,
-                   row["totals"]["planned_hours"]])
-    for r in ws.iter_rows(min_row=2):
-        for c in r:
-            c.alignment = Alignment(wrap_text=True, vertical="top")
+            cells.append(safe_sheet_cell(cell_plan_text(cell)))
+        ws.append([safe_sheet_cell(row["employee"]["full_name"]), *cells])
+    center = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    for ri, row in enumerate(data["rows"], start=2):
+        for ci, iso in enumerate(days, start=2):
+            cell = row["cells"].get(iso) or {}
+            wsc = ws.cell(row=ri, column=ci)
+            wsc.alignment = center
+            tint = tint_hex(cell.get("color"))
+            if tint:
+                wsc.fill = PatternFill("solid", start_color=tint, end_color=tint)
+        ws.cell(row=ri, column=1).alignment = Alignment(vertical="center")
     ws.column_dimensions["A"].width = 32
+    for ci in range(2, len(days) + 2):
+        ws.column_dimensions[get_column_letter(ci)].width = 13.5
     import io
     buf = io.BytesIO()
     wb.save(buf)

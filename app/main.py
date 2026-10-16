@@ -44,6 +44,7 @@ from .deps import now_local
 from .migrations import (
     migrate_db,
     migrate_engine_v7,
+    migrate_manual_replaces_generated,
     migrate_night_cars,
     migrate_settings_value_text,
     migrate_shift_tabel_codes,
@@ -77,6 +78,7 @@ def init_db() -> None:
     # «отпросился» и «выходной за часы» — одна запись словаря. Обе миграции идемпотентны
     # и идут ПОСЛЕ bootstrap: первой нужен действующий справочник CFG-DAY-CODES.
     migrate_timeoff_entity()
+    migrate_manual_replaces_generated()
     migrate_time_off_template()
     migrate_shift_tabel_codes()
     migrate_night_cars()

@@ -109,7 +109,7 @@ function renderGrid() {
     const head = `<tr><th class="corner">ФИО</th>${g.days.map(d =>
       `<th class="${d.is_weekend ? 'weekend' : ''} ${d.is_today ? 'today' : ''}${d.double_scope ? ' double-day' : ''}"
         title="${dateRu(d.date)}${d.double_scope ? ' · день двойной оплаты (' + (d.double_title || '') + '): переработки идут кодами ДЯ2/ДН2' : ''}">
-        <span class="dow">${esc(d.weekday)}</span>${d.day}${d.double_scope ? '<span class="dbl-mark">×2</span>' : ''}</th>`).join('')}<th>Итого</th></tr>`;
+        <span class="dow">${esc(d.weekday)}</span>${d.day}${d.double_scope ? '<span class="dbl-mark">×2</span>' : ''}</th>`).join('')}</tr>`;
 
     /* блоки: Смена 1, Смена 2, Пятидневка, Другие смены; сотрудник виден в каждом своём блоке */
     const blocksOf = r => (r.blocks && r.blocks.length)
@@ -130,7 +130,7 @@ function renderGrid() {
       const header = `<tr class="group-row"><td class="g-name">
         <span class="g-dot" style="background:${color}"></span>${esc(key || 'Без группы')}
         <span class="g-count">${list.length} ${plural(list.length, 'сотрудник', 'сотрудника', 'сотрудников')}</span></td>
-        <td class="gfill" colspan="${g.days.length + 1}"></td></tr>`;
+        <td class="gfill" colspan="${g.days.length}"></td></tr>`;
       return header + list.map(({ r, b }) => empRow(r, g, b)).join('');
     }).join('');
 
@@ -162,16 +162,16 @@ function renderGrid() {
     if (sh) {
       const wt = workTypeOfShift(sh);
       if (wt) usedTypes.set(`w:${wt.id}`,
-        { label: `${wt.display_code || wt.name} · ${wt.start_time}–${wt.end_time}`, color: cssColor(wt.color) });
+        { label: `${wt.display_code || wt.name} · ${wt.start_time}–${wt.end_time}`, color: cellColor(c) });
       else if (c.tabel) usedTypes.set(`c:${c.tabel.code}`,
-        { label: c.tabel.code, color: V4_CODE_COLORS[c.tabel.code] || '#8a94a6' });
+        { label: c.tabel.code, color: cellColor(c) });
       return;
     }
     const tt = c.tabel;
     if (!tt) return;
     const at = absenceTypeOfCode(tt.code);
     usedTypes.set(`a:${tt.code}`, { label: at ? `${tt.code} · ${at.name}` : tt.code,
-      color: at ? cssColor(at.color) : (V4_CODE_COLORS[tt.code] || '#8a94a6') });
+      color: cellColor(c) });
   }));
   $('#grid-legend').innerHTML = [...usedTypes.values()].map(x =>
     `<span class="chip"><span class="swatch" style="background:${x.color}"></span>${esc(x.label)}</span>`).join('') +
@@ -220,6 +220,9 @@ function absenceTypeOfCode(code) {
   return (state.shiftTypes || []).find(x => x.kind === 'absence' && x.tzh_code === code);
 }
 function cellColor(c) {
+  /* сервер разрешает цвет по словарю «Смены и отсутствия» (payload.color) — один
+     источник для экрана, печати, PDF и Excel; ниже — подстраховка для кеша */
+  if (c.color) return cssColor(c.color);
   const off = cellWholeOff(c);
   if (off) return cssColor(off.kind && off.kind.color, '#0e9aa7');
   const t = c.tabel;
@@ -293,9 +296,8 @@ function empRow(r, g, block) {
     <td class="name-cell${canCard ? ' who-click' : ''}"${canCard ? ` data-emp="${r.employee.id}" title="Карточка сотрудника — открыть"` : ''} style="box-shadow: inset 4px 0 0 ${accent}">
       <div class="nm" title="${esc(r.employee.full_name)}">${esc(r.employee.short_name || r.employee.full_name)}</div>
       <div class="pos"><span class="dot-pos" style="background:${accent}"></span>${esc(r.employee.position || '')}</div>
-      <div class="tot">${hours(r.totals.planned_hours)} ч · ${r.totals.work_days} ${plural(r.totals.work_days, 'смена', 'смены', 'смен')}</div>
+      <div class="tot">${r.totals.work_days} ${plural(r.totals.work_days, 'смена', 'смены', 'смен')}</div>
     </td>${cells}
-    <td class="num" style="padding:8px 10px;font-weight:700">${hours(r.totals.planned_hours)}<small style="color:var(--muted);font-weight:400"> ч</small></td>
   </tr>`;
 }
 
@@ -308,7 +310,7 @@ function empRow(r, g, block) {
    каждой), а лист пропорционально масштабируется под ширину страницы — форма и
    пропорции ячеек остаются экранными (масштаб ≈0.9 вместо ≈0.5 при одной странице).
    Порядок строк задаёт сервер: блок → старшие → алфавит (16.10.2026). ── */
-const P_NAME_W = 232, P_DAY_W = 60, P_TOT_W = 80, P_PAGE_PX = 1062, P_CHUNK = 16;
+const P_NAME_W = 232, P_DAY_W = 60, P_PAGE_PX = 1062, P_CHUNK = 16;
 
 function printGrid() {
   const g = state.grid;
@@ -322,13 +324,13 @@ function printGrid() {
     groupOrder(a) - groupOrder(b) || a.localeCompare(b, 'ru'));
   const pages = Math.max(1, Math.ceil(g.days.length / P_CHUNK));
   const perPage = Math.ceil(g.days.length / pages);
-  const zoom = Math.min(1, P_PAGE_PX / (P_NAME_W + perPage * P_DAY_W + P_TOT_W));
+  const zoom = Math.min(1, P_PAGE_PX / (P_NAME_W + perPage * P_DAY_W));
   let html = '';
   for (let pi = 0; pi < pages; pi++) {
     const chunk = g.days.slice(pi * perPage, (pi + 1) * perPage);
     if (!chunk.length) continue;
     const head = `<tr><th class="p-name">Сотрудник</th>${chunk.map(d =>
-      `<th class="p-day${d.is_weekend ? ' we' : ''}${d.is_today ? ' today' : ''}">${String(d.day).padStart(2, '0')}<br><span class="dow">${esc(d.weekday)}</span>${d.double_scope ? '<span class="dbl">×2</span>' : ''}</th>`).join('')}<th class="p-tot">Часов</th></tr>`;
+      `<th class="p-day${d.is_weekend ? ' we' : ''}${d.is_today ? ' today' : ''}">${String(d.day).padStart(2, '0')}<br><span class="dow">${esc(d.weekday)}</span>${d.double_scope ? '<span class="dbl">×2</span>' : ''}</th>`).join('')}</tr>`;
     const body = keys.map(key => {
       const trs = groups[key].map(({ r, b }) => {
         const rgs = (b && b.ranges) || (b ? [{ start: b.start, end: b.end }] : []);
@@ -350,10 +352,9 @@ function printGrid() {
           const bg = (off || lines.length || tt) ? ` style="background:${withAlpha(color, .22)}"` : '';
           return `<td class="p-cell${d.is_weekend ? ' we' : ''}"${bg}>${marks}${esc(txt)}</td>`;
         }).join('');
-        return `<tr><td class="p-name">${esc(r.employee.full_name)} <span class="muted">${esc(r.employee.position || '')}</span></td>${tds}
-          <td class="p-tot"><b>${hours(r.totals.planned_hours)}</b></td></tr>`;
+        return `<tr><td class="p-name">${esc(r.employee.full_name)} <span class="muted">${esc(r.employee.position || '')}</span></td>${tds}</tr>`;
       }).join('');
-      return `<tr class="p-group"><td colspan="${chunk.length + 2}">${esc(key || 'Без группы')}</td></tr>${trs}`;
+      return `<tr class="p-group"><td colspan="${chunk.length + 1}">${esc(key || 'Без группы')}</td></tr>${trs}`;
     }).join('');
     html += `<div class="p-page${pi ? ' pb' : ''}">
       <h1>График сменности, ${MONTHS[g.month - 1]} ${g.year} г. · дни ${chunk[0].day}–${chunk[chunk.length - 1].day}</h1>
@@ -379,7 +380,6 @@ function printGrid() {
     .gridprint th.p-day.we { background: #f7efe7; color: #a04a3a; }
     .gridprint th.p-day.today { background: #141a25; color: #fff; }
     .gridprint th.p-day.today .dow { color: #e6c267; }
-    .gridprint th.p-tot, .gridprint td.p-tot { width: ${P_TOT_W}px; min-width: ${P_TOT_W}px; font-size: 11px; }
     .gridprint td.p-cell { width: ${P_DAY_W}px; min-width: ${P_DAY_W}px; height: 52px;
       font-size: 9px; font-weight: 700; white-space: pre-line; line-height: 1.3; }
     .gridprint td.p-cell.dim { color: #98a2b3; font-weight: 400; }
