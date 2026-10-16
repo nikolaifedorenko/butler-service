@@ -433,6 +433,50 @@ def migrate_timeoff_entity() -> None:
                              "AND archived_at IS NULL"), {"d": today, "i": dup[0]})
 
 
+def migrate_settings_value_text() -> None:
+    """settings.value — TEXT вместо VARCHAR(255) (16.10.2026).
+
+    В settings хранятся шаблоны документов (tpl_*), а они длиннее 255 символов:
+    SQLite длину не контролирует, PostgreSQL отклонял сохранение шаблонов
+    («value too long for type character varying(255)»). На PostgreSQL колонка
+    расширяется, на SQLite DDL не требуется. Идемпотентно."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if not insp.has_table("settings") or engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as con:
+        con.execute(text("ALTER TABLE settings ALTER COLUMN value TYPE TEXT"))
+
+
+def migrate_time_off_template() -> None:
+    """Шаблон «об отсутствии на рабочем месте» с перечнем интервалов (16.10.2026).
+
+    Несколько отлучек в один день печатаются ОДНИМ заявлением со списком интервалов
+    («с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)»): плейсхолдеры {from_time}/
+    {until_time}/{hours} для этого не годятся, в тексте появился {intervals}.
+    Сохранённые тексты (настройка tpl_time_off_request и текст вида заявления
+    time_off_request), которые НЕ редактировали вручную, заменяются на новую версию;
+    пользовательские правки не трогаются. Идемпотентно.
+    """
+    from sqlalchemy import select
+
+    from .doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
+    from .models import Setting, StatementKind
+
+    db = SessionLocal()
+    try:
+        row = db.scalar(select(Setting).where(Setting.key == "tpl_time_off_request"))
+        if row is not None and (row.value or "") == PREV_DEFAULT_TPL_TIME_OFF:
+            row.value = DEFAULT_TPL_TIME_OFF
+        kind = db.scalar(select(StatementKind).where(StatementKind.code == "time_off_request"))
+        if kind is not None and (kind.text or "") == PREV_DEFAULT_TPL_TIME_OFF:
+            kind.text = DEFAULT_TPL_TIME_OFF
+        db.commit()
+    finally:
+        db.close()
+
+
 def migrate_night_cars() -> None:
     """Старым локальным БД докладываем таблицы ночных отчётов и электрокаров.
 

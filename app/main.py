@@ -45,7 +45,9 @@ from .migrations import (
     migrate_db,
     migrate_engine_v7,
     migrate_night_cars,
+    migrate_settings_value_text,
     migrate_shift_tabel_codes,
+    migrate_time_off_template,
     migrate_timeoff_entity,
     seed_statement_kinds,
 )
@@ -60,6 +62,7 @@ def init_db() -> None:
     """Создать таблицы, прогнать миграцию и заполнить демо-данными при первом запуске."""
     Base.metadata.create_all(bind=engine)
     migrate_db()
+    migrate_settings_value_text()   # PostgreSQL: шаблоны документов длиннее VARCHAR(255)
     migrate_engine_v7()
     seed_statement_kinds()
     db = SessionLocal()
@@ -74,6 +77,7 @@ def init_db() -> None:
     # «отпросился» и «выходной за часы» — одна запись словаря. Обе миграции идемпотентны
     # и идут ПОСЛЕ bootstrap: первой нужен действующий справочник CFG-DAY-CODES.
     migrate_timeoff_entity()
+    migrate_time_off_template()
     migrate_shift_tabel_codes()
     migrate_night_cars()
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших

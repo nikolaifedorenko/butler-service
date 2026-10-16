@@ -370,6 +370,11 @@ function openCellModal(empId, dateISO) {
   const shifts = cell.shifts || [];
   const absences = cell.absences || [];
   const editable = cell.editable !== false;
+  /* Отлучек в дне может быть несколько (решение владельца 16.10.2026): каждое
+     печатается своим заявлением, а нижние кнопки собирают ОДНО заявление
+     со списком интервалов («с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)»). */
+  const printableIv = absences.filter(a => a.kind && a.kind.doc_type).length;
+  const multiIv = printableIv > 1;
 
   openModal({
     title: row?.employee.full_name || 'Сотрудник',
@@ -388,30 +393,38 @@ function openCellModal(empId, dateISO) {
       ${editable ? `
       <div id="manual-block" style="margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 8px;background:#f8fbfd">
         <div class="opt-group-title" style="margin-top:0">Ручная смена (заменяет генерацию дня целиком)</div>
-        <label class="field"><span>Пресет из словаря</span><select id="cell-preset">
-          <option value="">— задать время вручную —</option>
-          ${workShifts.map(x => `<option value="${x.start_time}|${x.end_time}|${x.overnight ? 1 : 0}">${esc(x.name)}</option>`).join('')}
-        </select></label>
-        <div class="grid-2">
-          <label class="field"><span>Начало</span><input type="time" id="cell-sh-from" value="09:00"></label>
-          <label class="field"><span>Конец</span><input type="time" id="cell-sh-until" value="18:00"></label>
+        <div class="tc-chips" id="cell-sh-chips">
+          ${workShifts.map(x => `<button type="button" class="tc-chip" data-sh="${x.id}"
+            style="background:${withAlpha(cssColor(x.color), .18)};border-color:${cssColor(x.color)}"
+            title="${esc(x.name)}${x.overnight ? ' · заканчивается на следующие сутки' : ''}">${esc(x.display_code || x.name)}<small>${esc(x.start_time)}–${esc(x.end_time)}${x.overnight ? ' · +1 сутки' : ''}</small></button>`).join('')}
+          <button type="button" class="tc-chip manual" data-sh="manual" title="Задать начало и конец вручную">⚙ Вручную</button>
         </div>
-        <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
-          <input type="checkbox" id="cell-sh-next" style="width:17px;height:17px;accent-color:var(--primary)">
-          Заканчивается на следующие сутки (смена через полночь)
-        </label>
+        <div id="cell-sh-manual" style="display:none">
+          <div class="grid-2">
+            <label class="field"><span>Начало</span><input type="time" id="cell-sh-from" value="09:00"></label>
+            <label class="field"><span>Конец</span><input type="time" id="cell-sh-until" value="18:00"></label>
+          </div>
+          <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
+            <input type="checkbox" id="cell-sh-next" style="width:17px;height:17px;accent-color:var(--primary)">
+            Заканчивается на следующие сутки (смена через полночь)
+          </label>
+        </div>
         <div style="display:flex;gap:8px;margin:8px 0 6px;flex-wrap:wrap">
           <button class="btn btn-sm btn-primary" id="cell-sh-save">Сохранить ручную смену</button>
           ${shifts.some(x => x.source === 'manual') ? '<button class="btn btn-sm btn-danger" id="cell-sh-drop">Вернуть к генерации из Табеля</button>' : ''}
         </div>
-        <p class="hint" style="margin:2px 0 6px">День редактируем, если его код Табеля принимает коды УТ
+        <p class="hint" style="margin:2px 0 6px">Смена выбирается плашкой из словаря (как значение дня
+          в Табеле) либо «⚙ Вручную». День редактируем, если его код Табеля принимает коды УТ
           (accepts_ut = Да). Ручная смена может пересекать полночь; на часы влияет только Табель —
           правка Графика меняет флаги и доску, но не расчёт (RUL-SCHEDULE-ONLY-FLAGS).</p>
       </div>` : '<p class="hint">Ручную смену в этот день поставить нельзя: код Табеля не принимает коды УТ (день-якорь).</p>'}
       <div class="opt-group-title" style="margin-top:12px">Отпросился (выходной за часы) — согласованные отсутствия дня</div>
       ${absences.map(a => `<div class="status-line">
           <span class="k">✂ ${esc(a.start_hm)}–${esc(a.end_hm)}${a.kind ? ' · ' + esc(a.kind.name) : ''}${a.note ? ' · ' + esc(a.note) : ''}</span>
-          <span class="v"><button class="btn btn-sm btn-ghost" data-abs-del="${a.id}">Удалить</button></span></div>`).join('') || ''}
+          <span class="v">${multiIv && a.kind && a.kind.doc_type ? `
+            <button class="btn btn-sm btn-ghost" data-abs-print="${a.id}" title="Заявление только по этому интервалу">Печать</button>
+            <button class="btn btn-sm btn-ghost" data-abs-pdf="${a.id}" title="PDF заявления только по этому интервалу">PDF</button>` : ''}
+            <button class="btn btn-sm btn-ghost" data-abs-del="${a.id}">Удалить</button></span></div>`).join('') || ''}
       <div style="margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 8px;background:#f8fbfd">
         <div class="opt-group-title" style="margin-top:0">Одна сущность — две точки ввода: интервал или вся смена</div>
         <label class="field"><span>Вид отсутствия</span><select id="cell-abs-kind">
@@ -430,8 +443,8 @@ function openCellModal(empId, dateISO) {
         </label>
         <label class="field"><span>Примечание</span><input type="text" id="cell-abs-note" placeholder="Например: заявление согласовано"></label>
         <div style="display:flex;gap:8px;margin:4px 0 6px;flex-wrap:wrap">
-          <button class="btn btn-sm" id="cell-abs-save" title="Отпросился на часть смены: интервал внутри окна">Отпросить на интервал</button>
-          <button class="btn btn-sm" id="cell-abs-shift" title="Отсутствие на всё окно смены: «выходной за часы»">На всю смену</button>
+          <button class="btn btn-sm btn-primary" id="cell-abs-save" title="Отпросился на часть смены: интервал внутри окна">На интервал</button>
+          <button class="btn btn-sm btn-primary" id="cell-abs-shift" title="Отсутствие на всё окно смены: «выходной за часы»">На всю смену</button>
           <span class="hint" id="cell-abs-hours" style="margin:0;align-self:center"></span>
         </div>
         <p class="hint" style="margin:2px 0 6px">Назначение <b>информационное</b> — «чтобы мы не ждали сотрудника» (Q8):
@@ -441,12 +454,12 @@ function openCellModal(empId, dateISO) {
           накопленные переработки (EX-29). В Табеле остаётся явка.</p>
       </div>
       <div id="doc-btns" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="btn btn-sm" id="doc-print">Печать заявления</button>
-        <button class="btn btn-sm" id="doc-docx">Заявление DOCX (шаблон компании)</button>
-        <button class="btn btn-sm" id="doc-pdf">Заявление PDF (готов к печати)</button>
-        <span class="hint" style="margin:0">Из Графика печатается «отпросился (выходной за часы)»:
-          на всю смену — заявление на выходной за ранее отработанные часы, интервалом —
-          об отсутствии на рабочем месте. Отпуск/ДО/ОВ — из Табеля.</span>
+        <button class="btn btn-sm" id="doc-print">Печать заявления${multiIv ? ' (все интервалы одним)' : ''}</button>
+        <button class="btn btn-sm" id="doc-docx">${multiIv ? 'DOCX (все интервалы)' : 'Заявление DOCX'} (шаблон компании)</button>
+        <button class="btn btn-sm" id="doc-pdf">${multiIv ? 'PDF (все интервалы)' : 'Заявление PDF'} (готов к печати)</button>
+        <span class="hint" style="margin:0">${multiIv
+          ? `В дне ${printableIv} интервала(-ов): нижние кнопки печатают ОДНО заявление со списком («…с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)…»), «Печать»/«PDF» у интервала — заявление по нему одному.`
+          : 'Из Графика печатается «отпросился (выходной за часы)»: на всю смену — заявление на выходной за ранее отработанные часы, интервалом — об отсутствии на рабочем месте. Отпуск/ДО/ОВ — из Табеля.'}</span>
       </div>`,
     footer: `<div style="flex:1"></div>
       <button class="btn btn-ghost" data-cancel>Закрыть</button>`,
@@ -457,19 +470,44 @@ function openCellModal(empId, dateISO) {
         state.pendingTabelCell = { emp: empId, date: dateISO };
         navigate('timesheet');
       };
-      const preset = m.querySelector('#cell-preset');
-      if (preset) preset.onchange = () => {
-        if (!preset.value) return;
-        const [a, b, next] = preset.value.split('|');
-        $('#cell-sh-from').value = a; $('#cell-sh-until').value = b; $('#cell-sh-next').checked = next === '1';
+      /* Ручная смена — плашкой из словаря (как значение дня в Табеле) либо «⚙ Вручную»:
+         плашка выбирается, время сохраняет «Сохранить ручную смену». */
+      const shChips = $$('#cell-sh-chips .tc-chip', m);
+      const manualBox = m.querySelector('#cell-sh-manual');
+      const pick = chip => {
+        shChips.forEach(b => b.classList.toggle('sel', b === chip));
+        if (manualBox) manualBox.style.display = chip && chip.dataset.sh === 'manual' ? '' : 'none';
       };
+      shChips.forEach(b => b.onclick = () => pick(b));
+      const manualNow = shifts.find(x => x.source === 'manual');
+      if (manualNow && shChips.length) {
+        /* текущая ручная смена совпадает со словарём — предвыбираем её плашку,
+           иначе — «Вручную» с её временем */
+        const match = shChips.find(b => {
+          const x = workShifts.find(s => String(s.id) === b.dataset.sh);
+          return x && x.start_time === manualNow.start_hm && x.end_time === manualNow.end_hm;
+        });
+        if (match) pick(match);
+        else {
+          pick(shChips.find(b => b.dataset.sh === 'manual'));
+          $('#cell-sh-from').value = manualNow.start_hm;
+          $('#cell-sh-until').value = manualNow.end_hm;
+          $('#cell-sh-next').checked = manualNow.end_hm <= manualNow.start_hm;
+        }
+      }
       const shSave = m.querySelector('#cell-sh-save');
       if (shSave) shSave.onclick = async () => {
+        const sel = m.querySelector('#cell-sh-chips .tc-chip.sel');
+        if (!sel) return toast('Выберите смену из словаря или «⚙ Вручную»', 'warn');
+        const dict = workShifts.find(s => String(s.id) === sel.dataset.sh);
+        if (sel.dataset.sh !== 'manual' && !dict) return toast('Смена не найдена в словаре', 'err');
+        const one = sel.dataset.sh === 'manual'
+          ? { start: $('#cell-sh-from').value, end: $('#cell-sh-until').value,
+              end_next_day: $('#cell-sh-next').checked }
+          : { start: dict.start_time, end: dict.end_time, end_next_day: !!dict.overnight };
         try {
           await api('/api/schedule/shift', { method: 'PUT', body: {
-            employee_id: empId, date: dateISO,
-            shifts: [{ start: $('#cell-sh-from').value, end: $('#cell-sh-until').value,
-                       end_next_day: $('#cell-sh-next').checked }],
+            employee_id: empId, date: dateISO, shifts: [one],
           } });
           closeModal(); toast('Ручная смена сохранена', 'ok'); loadSchedule();
         } catch (e) { toast(e.message, 'err'); }
@@ -481,6 +519,12 @@ function openCellModal(empId, dateISO) {
           closeModal(); toast('День возвращён к генерации из Табеля', 'ok'); loadSchedule();
         } catch (e) { toast(e.message, 'err'); }
       };
+      /* После назначения модалка НЕ закрывается (решение владельца 16.10.2026):
+         заявление можно напечатать сразу, а список интервалов обновляется на месте. */
+      const refreshCellModal = async () => {
+        await loadSchedule();
+        openCellModal(empId, dateISO);
+      };
       const addAbsence = async (from, until, nextDay) => {
         try {
           await api('/api/schedule/absence', { method: 'POST', body: {
@@ -490,7 +534,8 @@ function openCellModal(empId, dateISO) {
             kind_id: +$('#cell-abs-kind').value || null,
             note: $('#cell-abs-note').value.trim(),
           } });
-          closeModal(); toast('Согласованное отсутствие добавлено', 'ok'); loadSchedule();
+          toast('Согласованное отсутствие добавлено — заявление можно печатать сразу', 'ok');
+          await refreshCellModal();
         } catch (e) { toast(e.message, 'err'); }
       };
       $('#cell-abs-save').onclick = () => addAbsence($('#cell-abs-from').value,
@@ -533,9 +578,15 @@ function openCellModal(empId, dateISO) {
       $$('[data-abs-del]', m).forEach(b => b.onclick = async () => {
         try {
           await api(`/api/schedule/absence/${b.dataset.absDel}`, { method: 'DELETE' });
-          closeModal(); toast('Отсутствие удалено — отображение смены восстановлено', 'ok'); loadSchedule();
+          toast('Отсутствие удалено — отображение смены восстановлено', 'ok');
+          await refreshCellModal();
         } catch (e) { toast(e.message, 'err'); }
       });
+      /* печать заявления по ОДНОМУ интервалу, когда их в дне несколько */
+      $$('[data-abs-print]', m).forEach(b => b.onclick = () =>
+        printAbsenceRequest(empId, dateISO, 'schedule_absence', +b.dataset.absPrint));
+      $$('[data-abs-pdf]', m).forEach(b => b.onclick = () =>
+        downloadAbsenceDoc(empId, dateISO, 'pdf', 'schedule_absence', +b.dataset.absPdf));
       $('#doc-print').onclick = () => printAbsenceRequest(empId, dateISO, 'schedule_absence');
       $('#doc-docx').onclick = () => downloadAbsenceDoc(empId, dateISO, 'docx', 'schedule_absence');
       $('#doc-pdf').onclick = () => downloadAbsenceDoc(empId, dateISO, 'pdf', 'schedule_absence');

@@ -189,6 +189,10 @@ async function main() {
   check('ручной код сохранён', await waitFor(async () =>
     (await jget(`/api/tabel?year=${Y}&month=${M}`)).rows
       .find(r => r.employee.id === empId).cells[dayA]?.source === 'manual'), 15000);
+  check('после сохранения модалка ячейки осталась открытой (16.10.2026)',
+    modalOpen() && await waitFor(() => /НН/.test(text('#tc-sel')), 10000), text('#tc-sel').slice(0, 100));
+  click($('#modal [data-cancel]'));
+  await waitFor(modalClosed);
 
   await tabelReady();
   click($('#tb-reset'));
@@ -222,9 +226,11 @@ async function main() {
     (await jget(`/api/tabel?year=${Y}&month=${M}`)).rows
       .find(r => r.employee.id === empId).cells[dayB]?.code === 'ОТ'), 15000);
 
-  await tabelReady();
-  click($(`#tb-body td.v4-cell.edit[data-e="${empId}"][data-d="${dayB}"]`));
-  check('сохранённая ячейка открылась повторно', await waitFor(() => !!$('#tc-print')));
+  check('после сохранения модалка осталась открытой, заявление доступно сразу',
+    modalOpen() && await waitFor(() => $('#tc-doc-wrap')
+      && $('#tc-doc-wrap').style.display !== 'none' && !!$('#tc-print'), 15000));
+  check('сохранённое значение «ОТ» предвыбрано плашкой', /ОТ/.test(text('#tc-sel')),
+    text('#tc-sel').slice(0, 100));
   const before = printed.length;
   click($('#tc-print'));
   check('заявление на отпуск напечатано из Табеля', await waitFor(() => printed.length > before),
@@ -303,6 +309,25 @@ async function main() {
   check('модалка дня открылась', await waitFor(() => !!$('#cell-abs-kind')));
   check('блок — «Отпросился (выходной за часы)»',
     /Отпросился \(выходной за часы\)/.test(text('#modal')));
+  check('ручная смена — плашки словаря, выпадающего списка нет',
+    !!$('#cell-sh-chips') && !$('#cell-preset')
+    && $$('#cell-sh-chips .tc-chip[data-sh]').length >= 3,
+    `плашек: ${$$('#cell-sh-chips .tc-chip[data-sh]').length}`);
+  const manChip = $('#cell-sh-chips .tc-chip[data-sh="manual"]');
+  click(manChip);
+  check('плашка «⚙ Вручную» раскрывает ввод времени',
+    manChip.classList.contains('sel') && $('#cell-sh-manual').style.display !== 'none');
+  const day12Chip = $$('#cell-sh-chips .tc-chip[data-sh]').find(b => /08:00–20:00/.test(b.textContent));
+  click(day12Chip);
+  check('плашка словарной смены выбирается и скрывает ручной ввод',
+    !!day12Chip && day12Chip.classList.contains('sel')
+    && $('#cell-sh-manual').style.display === 'none');
+  check('«Отпросить на интервал» переименована в «На интервал»',
+    text('#cell-abs-save') === 'На интервал', text('#cell-abs-save'));
+  check('кнопки отсутствия — основного цвета, как «Сохранить ручную смену»',
+    $('#cell-abs-save').classList.contains('btn-primary')
+    && $('#cell-abs-shift').classList.contains('btn-primary')
+    && $('#cell-sh-save').classList.contains('btn-primary'));
   check('назначенное отсутствие видно в списке', /Удалить/.test(text('#modal')));
   const cellKinds = $$('#cell-abs-kind option').map(o => o.textContent.trim());
   check('в ячейке только виды «за счёт часов»',
@@ -341,6 +366,41 @@ async function main() {
     check('интервал виден в списке отсутствий', /✂/.test(text('#modal')));
     check('часы «выходного за часы» показывает сервер',
       await waitFor(() => /ч/.test(text('#cell-abs-hours')), 8000), text('#cell-abs-hours'));
+
+    /* второй интервал в тот же день: «На интервал» НЕ закрывает модалку (16.10.2026),
+       заявление печатается по каждому интервалу и одним — со списком */
+    input($('#cell-abs-from'), '18:00');
+    input($('#cell-abs-until'), '20:00');
+    click($('#cell-abs-save'));
+    check('после «На интервал» модалка осталась открытой и обновилась',
+      await waitFor(() => /добавлено/i.test(toasts()), 10000)
+      && await waitFor(() => $$('#modal [data-abs-del]').length === 2, 15000),
+      `кнопок удаления: ${$$('#modal [data-abs-del]').length}`);
+    check('у каждого интервала — своя кнопка печати',
+      $$('#modal [data-abs-print]').length === 2);
+    const apMulti = await jsend('GET', `/api/schedule/absence-period?employee_id=${ivanov.id}&date=${ivanovDay}`);
+    check('absence-period: два интервала, сумма часов и перечень',
+      apMulti.ok && (apMulti.json?.intervals || []).length === 2
+      && apMulti.json?.hours === 4
+      && /с 14:00 до 16:00 \(2 ч\) и с 18:00 до 20:00 \(2 ч\)/.test(apMulti.json?.intervals_text || ''),
+      JSON.stringify(apMulti.json?.intervals_text || apMulti.status).slice(0, 160));
+    const beforeMulti = printed.length;
+    click($('#doc-print'));
+    check('одно заявление печатает все интервалы списком',
+      await waitFor(() => printed.length > beforeMulti, 8000)
+      && /14:00/.test(printed.at(-1).h) && /18:00/.test(printed.at(-1).h),
+      (printed.at(-1)?.h || '').replace(/<[^>]+>/g, '').slice(0, 220));
+    const line18 = $$('#modal .status-line').find(el => /18:00/.test(el.textContent));
+    const beforeOne = printed.length;
+    click(line18?.querySelector('[data-abs-print]'));
+    check('печать по интервалу — в заявлении только он',
+      await waitFor(() => printed.length > beforeOne, 8000)
+      && /18:00/.test(printed.at(-1).h) && !/14:00/.test(printed.at(-1).h),
+      (printed.at(-1)?.h || '').replace(/<[^>]+>/g, '').slice(0, 220));
+    click(line18?.querySelector('[data-abs-del]'));
+    check('интервал удалён — модалка осталась открытой',
+      await waitFor(() => modalOpen() && $$('#modal [data-abs-del]').length === 1, 15000),
+      `кнопок удаления: ${$$('#modal [data-abs-del]').length}`);
     click($('#modal [data-cancel]') || $('#modal .x'));
     await waitFor(modalClosed);
   }
@@ -349,8 +409,13 @@ async function main() {
   click($(`#grid-host .cellbtn[data-emp="${row2.employee.id}"][data-date="${dayW}"]`));
   await waitFor(() => !!$$('#modal [data-abs-del]').length);
   click($('#modal [data-abs-del]'));
-  check('отсутствие удалено', await waitFor(() => /Отсутствие удалено/.test(toasts()), 10000),
-    toasts().slice(0, 160));
+  /* структурное ожидание, не тост: текст «Отсутствие удалено» мог остаться в хосте
+     от предыдущего удаления (тосты живут ~5 c) — проверка прошла бы до завершения DELETE */
+  check('отсутствие удалено — модалка осталась открытой и обновилась',
+    await waitFor(() => modalOpen() && $$('#modal [data-abs-del]').length === 0, 15000),
+    `кнопок удаления: ${$$('#modal [data-abs-del]').length}, тосты: ${toasts().slice(0, 120)}`);
+  click($('#modal [data-cancel]') || $('#modal .x'));
+  await waitFor(modalClosed);
   const ap4 = await jsend('GET', `/api/schedule/absence-period?employee_id=${row2.employee.id}&date=${dayW}`);
   check('после удаления absence-period пуст', !ap4.ok || !ap4.json?.source,
     JSON.stringify(ap4.json || '').slice(0, 120));

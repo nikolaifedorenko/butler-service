@@ -496,7 +496,7 @@ function tabelCellModal(empId, day) {
         <p class="hint" style="margin:6px 0 0">Печатается по СОХРАНЁННОМУ коду дня и находит весь
           период отсутствия, даже если он переходит границы месяца. Период берётся из Табеля.</p>
       </div>`,
-    footer: `<button class="btn btn-ghost" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
+    footer: `<button class="btn btn-ghost" data-cancel>Закрыть</button><button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(m) {
       const chipEls = $$('.tc-chip[data-code]', m);
       const chipValue = b => !b.dataset.code ? ''
@@ -554,7 +554,12 @@ function tabelCellModal(empId, day) {
             res = await api('/api/tabel/cell', { method: 'PUT', body: { employee_id: empId, date: day, code, hours: h, note: $('#tc-note').value } });
             if (res.warning) toast(res.warning, 'warn');
           }
-          closeModal(); toast('Табель сохранён', 'ok'); loadTabel();
+          /* Модалка НЕ закрывается (решение владельца 16.10.2026): после сохранения
+             заявление печатается сразу, а сетка за модалкой показывает новое значение.
+             Перезагружаем Табель и пересобираем модалку по свежим данным. */
+          toast('Табель сохранён', 'ok');
+          await loadTabel();
+          tabelCellModal(empId, day);
         } catch (e) { toast(e.message, 'err'); }
       };
     },

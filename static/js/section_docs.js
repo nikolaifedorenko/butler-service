@@ -41,9 +41,12 @@ function fillTemplate(tpl, values) {
 }
 
 /* Документы по отсутствию: период берётся с сервера ЦЕЛИКОМ — даже когда отпуск
-   начинается в одном месяце, а заканчивается в следующем (исправление бага печати). */
-async function absencePeriodInfo(empId, dateISO) {
-  return await api(`/api/schedule/absence-period?employee_id=${empId}&date=${dateISO}`);
+   начинается в одном месяце, а заканчивается в следующем (исправление бага печати).
+   absenceId — печать заявления по ОДНОМУ интервалу отлучки (без него сервер отдаёт
+   все интервалы дня одним периодом: перечнем в `intervals_text`). */
+async function absencePeriodInfo(empId, dateISO, absenceId = null) {
+  return await api(`/api/schedule/absence-period?employee_id=${empId}&date=${dateISO}`
+    + (absenceId ? `&absence_id=${absenceId}` : ''));
 }
 
 /* Заявление печатается из своего слоя (Q4, норматив 12.10.2026): отпуск, больничный,
@@ -70,9 +73,9 @@ function triggerDownload(blob, name) {
 /* DOCX/PDF из корпоративного шаблона (Настройки → Шаблоны документов компании).
    PDF собирается на сервере (LibreOffice или встроенный рендер) и открывается в новой
    вкладке — из неё сразу можно печатать. */
-async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '') {
+async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenceId = null) {
   let p;
-  try { p = await absencePeriodInfo(empId, dateISO); }
+  try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
     return toast(e.message.includes('нет назначенного')
       ? 'Сначала сохраните отсутствие в ячейке — тогда станет доступна печать заявления'
@@ -92,6 +95,9 @@ async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '') {
         type, employee_id: empId, date_from: p.start, date_to: p.end, format: fmt,
         from_time: p.partial?.from_time || '', until_time: p.partial?.until_time || '',
         hours: p.hours != null ? p.hours : null,
+        /* перечень интервалов одной строкой — для заявления «об отсутствии на рабочем
+           месте»: сервер печатает несколько отлучек одним документом */
+        intervals: p.intervals_text || '',
         reason: p.partial?.reason?.name || p.shift?.name || '',
         note: (p.notes || []).join('; '),
       }),
@@ -123,9 +129,9 @@ async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '') {
 }
 
 /* Быстрая печать заявления окном браузера (по редактируемому шаблону из Настроек) */
-async function printAbsenceRequest(empId, dateISO, layer = '') {
+async function printAbsenceRequest(empId, dateISO, layer = '', absenceId = null) {
   let p;
-  try { p = await absencePeriodInfo(empId, dateISO); }
+  try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
     return toast(e.message.includes('нет назначенного')
       ? 'Сначала сохраните отсутствие в ячейке — тогда станет доступна печать заявления'
@@ -150,6 +156,12 @@ async function printAbsenceRequest(empId, dateISO, layer = '') {
       group: e.subdivision || '',
       date_from: dateRu(p.start), date_to: dateRu(p.end), days: p.days,
       from_time: p.partial?.from_time || '', until_time: p.partial?.until_time || '',
+      /* перечень интервалов одной строкой («с 14:00 до 16:00 (2 ч) и с 18:00 до
+         20:00 (2 ч)») — шаблон «об отсутствии» печатает несколько отлучек одним
+         заявлением; для одиночных периодов сервер собирает строку из from/until */
+      intervals: p.intervals_text || (p.partial && p.partial.from_time
+        ? `с ${p.partial.from_time} до ${p.partial.until_time}${p.hours != null ? ` (${hours(p.hours)} ч)` : ''}`
+        : ''),
       /* Часы отсутствия: сервер считает их по стандартному окну смен сотрудника
          (для «выходного за часы» — не длина записи, а норма его смены). */
       hours: p.hours != null ? hours(p.hours) : '',
