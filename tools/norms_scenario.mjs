@@ -279,10 +279,10 @@ async function main() {
   check('кнопка панели — «Сбросить месяц»', text('#btn-clear') === 'Сбросить месяц',
     text('#btn-clear'));
   click($('#btn-range'));
-  check('модалка «Отпросить» открылась', await waitFor(() => !!$('#rg-shift')));
-  const schedKinds = $$('#rg-shift option').map(o => o.textContent.trim());
-  check('из Графика — ровно один вид «за счёт часов»', schedKinds.length === 1
-    && /Отпросился \(выходной за часы\)/.test(schedKinds[0]), schedKinds.join(' | '));
+  check('модалка «Выходной за часы» открылась', await waitFor(() => !!$('#rg-from')));
+  check('из Графика вид отсутствия НЕ выбирается — он один в словаре',
+    !$('#rg-shift') && /Отпросился \(выходной за часы\)/.test(text('#modal')),
+    text('#modal').slice(0, 140));
   check('подсказка про единую сущность', /Единая сущность/.test(text('#rg-mode-hint')),
     text('#rg-mode-hint'));
 
@@ -314,7 +314,7 @@ async function main() {
   console.log('\n6 · T4: ячейка Графика, интервал и заявление');
   await waitFor(() => $$('#grid-host .cellbtn:not([disabled])').length > 0);
   click($(`#grid-host .cellbtn[data-emp="${row2.employee.id}"][data-date="${dayW}"]`));
-  check('модалка дня открылась', await waitFor(() => !!$('#cell-abs-kind')));
+  check('модалка дня открылась', await waitFor(() => !!$('#cell-abs-save')));
   check('блок — «Отпросился (выходной за часы)»',
     /Отпросился \(выходной за часы\)/.test(text('#modal')));
   check('ручная смена — плашки словаря, выпадающего списка нет',
@@ -337,10 +337,8 @@ async function main() {
     && $('#cell-abs-shift').classList.contains('btn-primary')
     && $('#cell-sh-save').classList.contains('btn-primary'));
   check('назначенное отсутствие видно в списке', /Удалить/.test(text('#modal')));
-  const cellKinds = $$('#cell-abs-kind option').map(o => o.textContent.trim());
-  check('в ячейке только виды «за счёт часов»',
-    cellKinds.some(t => /Отпросился/.test(t)) && !cellKinds.some(t => /Отпуск|Больничный/.test(t)),
-  cellKinds.join(' | '));
+  check('вид отсутствия в ячейке НЕ выбирается — единственный «за счёт часов»',
+    !$('#cell-abs-kind') && /Отпросился \(выходной за часы\)/.test(text('#modal')));
   check('две точки ввода: интервал и вся смена', $('#cell-abs-save')
     && text('#cell-abs-save').includes('интервал')
     && $('#cell-abs-shift') && $('#cell-abs-shift').style.display !== 'none');
@@ -381,7 +379,7 @@ async function main() {
       && ap3.json?.doc_type === 'time_off_request',
     JSON.stringify(ap3.json || ap3.status).slice(0, 200));
     click($(`#grid-host .cellbtn[data-emp="${ivanov.id}"][data-date="${ivanovDay}"]`));
-    check('модалка дня с интервалом открылась', await waitFor(() => !!$('#cell-abs-kind')));
+    check('модалка дня с интервалом открылась', await waitFor(() => !!$('#cell-abs-save')));
     check('интервал виден в списке отсутствий', /✂/.test(text('#modal')));
     check('часы «выходного за часы» показывает сервер',
       await waitFor(() => /ч/.test(text('#cell-abs-hours')), 8000), text('#cell-abs-hours'));
@@ -420,6 +418,23 @@ async function main() {
     check('интервал удалён — модалка осталась открытой',
       await waitFor(() => modalOpen() && $$('#modal [data-abs-del]').length === 1, 15000),
       `кнопок удаления: ${$$('#modal [data-abs-del]').length}`);
+    click($('#modal [data-cancel]') || $('#modal .x'));
+    await waitFor(modalClosed);
+  }
+
+  /* блок «Отпросился» — только при смене с часами (16.10.2026): день «В» — без блока */
+  const rowV = (sched.rows || []).find(r => Object.values(r.cells || {})
+    .some(cc => cc.tabel && cc.tabel.code === 'В' && !(cc.shifts || []).length));
+  const dayV = rowV && Object.keys(rowV.cells)
+    .find(d => rowV.cells[d].tabel && rowV.cells[d].tabel.code === 'В'
+      && !(rowV.cells[d].shifts || []).length);
+  check('найден день без смены (код «В»)', !!(rowV && dayV), dayV || '');
+  if (rowV && dayV) {
+    click($(`#grid-host .cellbtn[data-emp="${rowV.employee.id}"][data-date="${dayV}"]`));
+    check('в дне без смены блок отсутствия скрыт, объяснение показано',
+      await waitFor(() => modalOpen()) && !$('#cell-abs-save')
+      && /Смены с часами в этот день нет/.test(text('#modal')),
+      text('#modal').slice(0, 160));
     click($('#modal [data-cancel]') || $('#modal .x'));
     await waitFor(modalClosed);
   }
