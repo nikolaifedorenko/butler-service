@@ -581,6 +581,7 @@ function openCellModal(empId, dateISO) {
         согласованное отсутствие («выходной за часы») режет смену, поэтому назначать
         его не к чему. Поставьте смену плашками выше, а отсутствие на весь день без
         смены оформляется кодом Табеля в слое 0 («Изменить код Табеля…»).</p>`}
+      ${printableIv ? `
       <div id="doc-btns" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-sm" id="doc-print">Печать заявления${multiIv ? ' (все интервалы одним)' : ''}</button>
         <button class="btn btn-sm" id="doc-docx">${multiIv ? 'DOCX (все интервалы)' : 'Заявление DOCX'} (шаблон компании)</button>
@@ -588,7 +589,7 @@ function openCellModal(empId, dateISO) {
         <span class="hint" style="margin:0">${multiIv
           ? `В дне ${printableIv} интервала(-ов): нижние кнопки печатают ОДНО заявление со списком («…с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)…»), «Печать»/«PDF» у интервала — заявление по нему одному.`
           : 'Из Графика печатается «отпросился (выходной за часы)»: на всю смену — заявление на выходной за ранее отработанные часы, интервалом — об отсутствии на рабочем месте. Отпуск/ДО/ОВ — из Табеля.'}</span>
-      </div>`,
+      </div>` : ''}`,
     footer: `<div style="flex:1"></div>
       <button class="btn btn-ghost" data-cancel>Закрыть</button>`,
     onMount(m) {
@@ -712,9 +713,15 @@ function openCellModal(empId, dateISO) {
         printAbsenceRequest(empId, dateISO, 'schedule_absence', +b.dataset.absPrint));
       $$('[data-abs-pdf]', m).forEach(b => b.onclick = () =>
         downloadAbsenceDoc(empId, dateISO, 'pdf', 'schedule_absence', +b.dataset.absPdf));
-      $('#doc-print').onclick = () => printAbsenceRequest(empId, dateISO, 'schedule_absence');
-      $('#doc-docx').onclick = () => downloadAbsenceDoc(empId, dateISO, 'docx', 'schedule_absence');
-      $('#doc-pdf').onclick = () => downloadAbsenceDoc(empId, dateISO, 'pdf', 'schedule_absence');
+      /* кнопки печати — только когда в дне есть печатаемые отсутствия: без них
+         отсутствие-period отвечает ошибкой, и кнопки лишь сбивали с толку
+         (замечание владельца 16.10.2026) */
+      const docPrint = m.querySelector('#doc-print');
+      if (docPrint) docPrint.onclick = () => printAbsenceRequest(empId, dateISO, 'schedule_absence');
+      const docDocx = m.querySelector('#doc-docx');
+      if (docDocx) docDocx.onclick = () => downloadAbsenceDoc(empId, dateISO, 'docx', 'schedule_absence');
+      const docPdf = m.querySelector('#doc-pdf');
+      if (docPdf) docPdf.onclick = () => downloadAbsenceDoc(empId, dateISO, 'pdf', 'schedule_absence');
     },
   });
 }

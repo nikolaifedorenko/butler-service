@@ -435,6 +435,8 @@ async function main() {
       await waitFor(() => modalOpen()) && !$('#cell-abs-save')
       && /Смены с часами в этот день нет/.test(text('#modal')),
       text('#modal').slice(0, 160));
+    check('в дне без отсутствий кнопок печати заявления нет',
+      !$('#doc-print') && !$('#doc-docx') && !$('#doc-pdf'));
     click($('#modal [data-cancel]') || $('#modal .x'));
     await waitFor(modalClosed);
   }
