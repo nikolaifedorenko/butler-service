@@ -42,16 +42,18 @@ OBSOLETE_RULES = ("round_mode", "count_early_arrival", "count_late_departure", "
                   "auto_close_missing_out", "late_by_raw_time", "night_start", "night_end",
                   "round_step_min", "grace_minutes")
 
-# Коды, исключённые из справочника Табеля решением владельца от 12.10.2026:
-# «С» (суточная смена, части дня) и «НВ» (выходной за отработанные часы).
-# Оба случая оформляются данными Графика, а не кодом первичного документа (см. докстринг).
-REMOVED_DAY_CODES = ("С", "НВ")
+# Коды, исключённые из справочника Табеля решением владельца:
+# * 12.10.2026 — «С» (суточная смена, части дня) и «НВ» (выходной за отработанные
+#   часы): оба случая оформляются данными Графика, а не кодом первичного документа;
+# * 16.10.2026 — «НБ» (неоплачиваемый больничный): такого кода в Т-13 нет,
+#   это артефакт старого наполнения справочника.
+REMOVED_DAY_CODES = ("С", "НВ", "НБ")
 
 # Цвета кодов Табеля — данные приложения (домен их не знает, 2.4): хранятся в payload
 # рядом со строкой CFG-DAY-CODES и читаются интерфейсом (сетка Табеля, легенда).
 CODE_COLORS = {
     "Я": "#34a862", "К": "#2b8fb6", "В": "#c3cdd9", "ДО": "#d9822b", "ОТ": "#f0a500",
-    "ОВ": "#9b59b6", "Б": "#e05d4b", "НБ": "#c0504d", "НН": "#b03a48",
+    "ОВ": "#9b59b6", "Б": "#e05d4b", "НН": "#b03a48",
 }
 
 # Строки справочников приложения — данные, добавляемые к стартовому наполнению (раздел 5:
@@ -70,9 +72,29 @@ APP_EXTRA_WINDOWS = {
 CODE_TITLES = {
     "Я": "Явка (дневная работа)", "К": "Командировка", "В": "Выходной",
     "ДО": "Отпуск без сохранения", "ОТ": "Ежегодный отпуск", "ОВ": "Оплачиваемый выходной",
-    "Б": "Больничный", "НБ": "Неоплачиваемый больничный",
-    "НН": "Неявка по невыясненным причинам",
+    "Б": "Больничный", "НН": "Неявка по невыясненным причинам",
 }
+
+# Режим отметок и заявление — атрибуты КАРТОЧКИ кода Табеля (решение владельца
+# 16.10.2026): «пришёл/ушёл» настраиваются у кода, несущего часы, а у кода
+# отсутствия вместо них — шаблон заявления. Как и title/color, это данные
+# приложения (домен их не знает, 2.4): лежат в строке day_code_policy payload'а.
+# Сервер соблюдает punch_in/punch_out при приёме отметок (api/punches.py),
+# doc_type — источник заявления для печати по коду Табеля (api/schedule.py::
+# absence_period). Значения по умолчанию: отметки разрешены (RUL-ALL-MARKS-
+# COUNTED — отметка в день без плана даёт переработку), заявления нет.
+CODE_EXTRA = {
+    "ОТ": {"punch_in": False, "punch_out": False, "doc_type": "vacation_paid"},
+    "ДО": {"punch_in": False, "punch_out": False, "doc_type": "vacation_unpaid"},
+}
+
+
+def code_app_defaults(code: str) -> dict:
+    """App-поля строки кода Табеля по умолчанию: отметки, заявление."""
+    extra = CODE_EXTRA.get(code, {})
+    return {"punch_in": extra.get("punch_in", True),
+            "punch_out": extra.get("punch_out", True),
+            "doc_type": extra.get("doc_type", "")}
 
 
 def _initial_payload(db: Session) -> dict:
@@ -85,6 +107,8 @@ def _initial_payload(db: Session) -> dict:
     for code, row in payload["day_code_policy"].items():
         row.setdefault("title", CODE_TITLES.get(code, ""))
         row.setdefault("color", CODE_COLORS.get(code, ""))
+        for key, value in code_app_defaults(code).items():
+            row.setdefault(key, value)
     old = {s.key: s.value for s in db.scalars(select(Setting).where(Setting.key.in_(OBSOLETE_RULES)))}
     try:
         step = int(float(old.get("round_step_min", 60)))
@@ -149,6 +173,33 @@ def strip_removed_day_codes(db: Session) -> dict:
             "blocked_by_timesheet": blocked}
 
 
+def apply_code_app_defaults(db: Session) -> int:
+    """Добрать app-поля строк кодов Табеля (punch_in/punch_out/doc_type) в сохранённых
+    версиях справочников — идемпотентно: существующие значения не перезаписываются
+    (их правит владелец в карточке кода). Дописаны только недостающие ключи, поэтому
+    расчёт закрытых периодов не меняется: домен app-полей не знает (2.4)."""
+    patched = 0
+    for ver in db.scalars(select(EngineSettingsVersion)):
+        try:
+            payload = json.loads(ver.payload_json)
+        except (ValueError, TypeError):
+            continue
+        codes = payload.get("day_code_policy") or {}
+        changed = False
+        for code, row in codes.items():
+            if not isinstance(row, dict):
+                continue
+            for key, value in code_app_defaults(code).items():
+                if key not in row:
+                    row[key] = value
+                    changed = True
+        if changed:
+            ver.payload_json = json.dumps(payload, ensure_ascii=False)
+            patched += 1
+    db.flush()
+    return patched
+
+
 def bootstrap_engine(db: Session, first: dt.date | None = None, last: dt.date | None = None) -> None:
     if not db.scalar(select(EngineSettingsVersion.id)):
         db.add(EngineSettingsVersion(valid_from=dt.date(2000, 1, 1), payload_json=json.dumps(
@@ -156,6 +207,7 @@ def bootstrap_engine(db: Session, first: dt.date | None = None, last: dt.date | 
             note="Стартовое наполнение CFG-* (спецификация v7.1)", created_by_name="system"))
         db.flush()
     strip_removed_day_codes(db)
+    apply_code_app_defaults(db)
     from sqlalchemy import delete
     db.execute(delete(Setting).where(Setting.key.in_(OBSOLETE_RULES)))
     if not db.scalar(select(TabelDay.id)):

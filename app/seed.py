@@ -61,10 +61,9 @@ SHIFT_TYPES = [
     ("SUTKI", "08:00–08:00 (сутки, 1/3)", "СУТ", "Я", "work", "08:00", "08:00", True, "#b44fd6", 60, True, True, False),
     ("OFF", "Выходной по графику", "ВЫХ", "В", "absence", "", "", False, "#c3cdd9", 70, False, False, True),
     ("SICK", "Больничный", "БОЛ", "Б", "absence", "", "", False, "#e05d4b", 80, False, False, False),
-    # «НБ» — настоящий код отсутствия (carries_hours=False): ставится из Табеля
-    # назначением на период (range-absence). Без этого вида health-панель честно
-    # предупреждала APP-CODE-NO-SHIFT (16.10.2026); цвет — CODE_COLORS["НБ"].
-    ("SICK_UNPAID", "Неоплачиваемый больничный", "НБ", "НБ", "absence", "", "", False, "#c0504d", 85, False, False, False),
+    # «НБ» (неоплачиваемый больничный) из сида исключён: код-артефакт, в Табеле
+    # его не существует (решение владельца 16.10.2026) — см. REMOVED_DAY_CODES
+    # в engine_bootstrap.py; прежний вид SICK_UNPAID убирает миграция.
     ("VACATION", "Отпуск (за счёт предприятия)", "ОТП", "ОТ", "absence", "", "", False, "#f0a500", 90, False, False, False),
     ("VACATION_UNPAID", "Отпуск за свой счёт", "ОСЧ", "ДО", "absence", "", "", False, "#d9822b", 100, False, False, False),
     # «Отпросился (выходной за часы)» — ОДНА сущность с двумя точками ввода (Q3,

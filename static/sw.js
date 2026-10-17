@@ -1,21 +1,21 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-10-16n';
+const VERSION = 'tt-2026-10-16o';
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-10-16n',
-  '/static/js/app.js?v=2026-10-16n',
-  '/static/js/core.js?v=2026-10-16n',
-  '/static/js/section_cars.js?v=2026-10-16n',
-  '/static/js/section_dicts.js?v=2026-10-16n',
-  '/static/js/section_docs.js?v=2026-10-16n',
-  '/static/js/section_employees.js?v=2026-10-16n',
-  '/static/js/section_grid.js?v=2026-10-16n',
-  '/static/js/section_me.js?v=2026-10-16n',
-  '/static/js/section_night.js?v=2026-10-16n',
-  '/static/js/section_settings.js?v=2026-10-16n',
-  '/static/js/section_v4.js?v=2026-10-16n',
+  '/static/css/app.css?v=2026-10-16o',
+  '/static/js/app.js?v=2026-10-16o',
+  '/static/js/core.js?v=2026-10-16o',
+  '/static/js/section_cars.js?v=2026-10-16o',
+  '/static/js/section_dicts.js?v=2026-10-16o',
+  '/static/js/section_docs.js?v=2026-10-16o',
+  '/static/js/section_employees.js?v=2026-10-16o',
+  '/static/js/section_grid.js?v=2026-10-16o',
+  '/static/js/section_me.js?v=2026-10-16o',
+  '/static/js/section_night.js?v=2026-10-16o',
+  '/static/js/section_settings.js?v=2026-10-16o',
+  '/static/js/section_v4.js?v=2026-10-16o',
   '/manifest.webmanifest',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',

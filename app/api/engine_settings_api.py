@@ -104,6 +104,7 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
             except ValueError as exc:
                 raise HTTPException(status_code=422,
                                     detail=f"Цвет кода Табеля «{code}»: {exc}")
+    _guard_removed_day_codes(data.payload, db)
     v = EngineSettingsVersion(valid_from=data.valid_from, payload_json=json.dumps(data.payload, ensure_ascii=False),
                               note=data.note[:255], created_by_name=principal.name)
     db.add(v)
@@ -113,6 +114,47 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
     start = applies_from(data.valid_from, st.period_granularity)
     return {"ok": True, "id": v.id, "applies_from": start.isoformat(),
             "period": period_state_of(db, start)}
+
+
+def _guard_removed_day_codes(payload: dict, db: Session) -> None:
+    """Удаление кода Табеля из справочника — с серверной защитой (16.10.2026).
+
+    Владелец разрешил удалять коды из карточек «Коды Табеля», но версия, которая
+    сломала бы расчёт, опубликована не будет: код, стоящий в Табеле, изъять нельзя
+    (расчёт закрытых периодов сошёл бы с истории — UnknownDayCodeError,
+    CHK-KNOWN-DAY-CODES), как и код, на который ссылается живой вид смены словаря
+    (APP-SHIFT-CODE). Та же логика, что в strip_removed_day_codes для нормативных
+    изъятий («С», «НВ», «НБ»), — только на публикации версии."""
+    from ..models import ShiftType, TabelDay
+
+    new_codes = set((payload.get("day_code_policy") or {}).keys())
+    prev = base_version(db, dt.date.today())
+    if prev is None:
+        return
+    try:
+        old_codes = set((json.loads(prev.payload_json).get("day_code_policy") or {}).keys())
+    except (ValueError, TypeError, AttributeError):
+        return
+    removed = old_codes - new_codes
+    if not removed:
+        return
+    used = sorted(set(db.scalars(select(TabelDay.code)
+                                 .where(TabelDay.code.in_(removed)).distinct())))
+    if used:
+        listed = ", ".join(f"«{c}»" for c in used)
+        raise HTTPException(status_code=422, detail=(
+            f"Код {listed} нельзя удалить: в Табеле есть строки с ним. Сначала "
+            "замените их другим кодом — на истории кода держится расчёт закрытых "
+            "периодов."))
+    refs = list(db.scalars(select(ShiftType).where(
+        ShiftType.tzh_code.in_(removed), ShiftType.active.is_(True),
+        ShiftType.archived_at.is_(None))))
+    if refs:
+        listed = ", ".join(f"«{s.tzh_code}»" for s in refs)
+        names = "; ".join(f"«{s.name}» ({s.code})" for s in refs)
+        raise HTTPException(status_code=422, detail=(
+            f"Код {listed} нельзя удалить: на него ссылаются живые виды словаря "
+            f"смен — {names}. Сначала архивируйте вид или очистите его «код в табеле»."))
 
 
 @router.get("/modifiers")

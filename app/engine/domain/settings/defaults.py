@@ -31,9 +31,11 @@ DAY_CODES = {code: _policy(*row) for code, row in (
     ("ОТ", (False, False, True, False)),
     ("ОВ", (False, False, True, False)),
     ("Б", (False, False, False, False)),
-    ("НБ", (False, False, False, False)),
     ("НН", (False, False, False, False)),
 )}
+# «НБ» (неоплачиваемый больничный) в справочнике НЕ существует — артефакт старого
+# наполнения, исключён решением владельца от 16.10.2026 (см. REMOVED_DAY_CODES
+# в app/engine_bootstrap.py: из сохранённых версий код изымает strip_removed_day_codes).
 
 WINDOWS = {key: Window(start * H, end * H) for key, start, end in (
     ("Я 12", 8, 20), ("Я 9", 9, 18), ("Я 8", 9, 17),

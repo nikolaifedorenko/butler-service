@@ -185,17 +185,39 @@ async function main() {
   click($('[data-close]'));
   await sleep(200);
 
-  /* ── 5. Коды и окна Табеля: форма вместо JSON + публикация версии ── */
-  console.log('\n5 · Коды и окна Табеля');
+  /* ── 5. Коды Табеля: карточки кодов, форма вместо JSON + публикация версии ── */
+  console.log('\n5 · Коды Табеля');
   await go('codes');
-  check('таблица кодов с флагами', /Несёт часы/.test(text('#st-body')) && /Принимает коды УТ/.test(text('#st-body')));
+  check('карточки кодов с флагами-чекбоксами', await waitFor(() => $$('#st-body .code-card').length > 0)
+    && /Несёт часы/.test(text('#st-body')) && /Принимает коды УТ/.test(text('#st-body')));
   check('словаря смен на экране кодов НЕТ', !/Новая смена/.test(text('#st-body')));
+  check('код-артефакт «НБ» исключён из справочника', !$('[data-cdel="НБ"]') && !$('[data-cedit="НБ"]'));
+  check('в карточке кода — «Изменить» и удаление', $$('#st-body [data-cedit]').length > 0
+    && $$('#st-body [data-cdel]').length > 0);
+  check('у кода с часами — отметки «Пришёл/Ушёл»', !!$('#st-body [data-punch="Я:punch_in"]')
+    && !!$('#st-body [data-punch="Я:punch_out"]'));
+  check('у кода без часов — выбор заявления', $$('#st-body [data-doc]').length > 0
+    && !!$('[data-doc="ОТ"]'));
+  click($('#cd-add'));
+  check('форма нового кода открылась', await waitFor(() => !!$('#nc-code')));
+  check('окна по умолчанию в форме кода НЕТ', !$('#nc-window'));
+  check('новый код без часов — предлагается заявление', $('#nc-punch-wrap').style.display === 'none'
+    && $('#nc-doc-wrap').style.display !== 'none');
+  $('#nc-carries_hours').checked = true;
+  change($('#nc-carries_hours'));
+  check('«несёт часы» переключает на отметки «Пришёл/Ушёл»',
+    $('#nc-punch-wrap').style.display !== 'none' && $('#nc-doc-wrap').style.display === 'none');
+  click($('#modal [data-cancel]'));
+  await sleep(200);
   click($('[data-tab="windows"]'));
   check('окна и значения', await waitFor(() => /Окна и значения/.test(text('#st-body'))));
   check('полоса суток отрисована', !!$('#st-body .timeline .tl-bar'));
   const before = $$('#st-body tbody tr').length;
   click($('#cd-add'));
   check('форма нового значения открылась', await waitFor(() => !!$('#nw-hours')));
+  const winCodes = $$('#nw-code option').map(o => o.value);
+  check('окно — только коду, несущему часы', winCodes.includes('Я') && !winCodes.includes('В')
+    && !winCodes.includes('ОТ'), winCodes.join(','));
   input($('#nw-hours'), '10,5');
   change($('#nw-start'), '08:00');
   change($('#nw-end'), '20:00');

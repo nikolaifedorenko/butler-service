@@ -645,6 +645,24 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
 .shift-opt .swatch { width: 14px; height: 26px; border-radius: 3px; flex: 0 0 auto; }
 .shift-opt .nm { font-weight: 700; line-height: 1.25; }
 .shift-opt .hh { color: var(--muted); font-size: 11.5px; }
+/* «Коды Табеля» — карточки кодов (16.10.2026): флаги-чекбоксы, режим отметок,
+   заявление; кнопки «Изменить»/«✕» в шапке карточки */
+.code-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); }
+.code-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--panel, #fff); display: flex; flex-direction: column; gap: 9px; }
+.cc-head { display: flex; align-items: center; gap: 10px; }
+.cc-name { flex: 1; min-width: 0; }
+.cc-name b { display: block; font-size: 14px; line-height: 1.25; }
+.cc-actions { display: flex; gap: 4px; flex: none; }
+.cc-flags { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; }
+.cc-flag { display: flex; align-items: center; gap: 7px; font-size: 12.8px; color: var(--muted); cursor: pointer; }
+.cc-flag input { width: 16px; height: 16px; accent-color: var(--primary); flex: none; }
+.cc-extra { border-top: 1px dashed var(--line); padding-top: 8px; display: grid; gap: 5px; }
+.cc-doc { width: 100%; }
+.cc-foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; border-top: 1px dashed var(--line); padding-top: 8px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .code-cards { grid-template-columns: 1fr; }
+  .cc-flags { grid-template-columns: 1fr; }
+}
 .opt-group-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted);
   margin: 14px 0 8px; font-weight: 700; }
 .opt-group-title:first-child { margin-top: 0; }

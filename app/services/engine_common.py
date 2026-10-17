@@ -225,7 +225,7 @@ def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
     где домен не участвует: редактор словаря смен проверяет, что «код в табеле»
     существует (T1, норматив 12.10.2026), health-панель сверяет два справочника
     (APP-SHIFT-CODE / APP-CODE-NO-SHIFT). Порядок — как в payload версии: тот же,
-    что видит экран «Коды и окна Табеля».
+    что видит экран «Коды Табеля».
 
     Пустой словарь означает «действующей версии ещё нет» (свежая база до bootstrap),
     а не «кодов нет»: вызывающий код в этом случае проверку пропускает.
@@ -249,5 +249,11 @@ def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
         out[str(code)] = {"code": str(code), "title": str(row.get("title") or ""),
                           "carries_hours": bool(row.get("carries_hours")),
                           "accepts_ut": bool(row.get("accepts_ut")),
-                          "counts_in_ut": bool(row.get("counts_in_ut"))}
+                          "counts_in_ut": bool(row.get("counts_in_ut")),
+                          # режим отметок и шаблон заявления — атрибуты карточки кода
+                          # (решение владельца 16.10.2026). Отсутствующий ключ в старой
+                          # версии = разрешение (RUL-ALL-MARKS-COUNTED), заявления нет.
+                          "punch_in": bool(row.get("punch_in", True)),
+                          "punch_out": bool(row.get("punch_out", True)),
+                          "doc_type": str(row.get("doc_type") or "")}
     return out

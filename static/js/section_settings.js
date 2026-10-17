@@ -42,7 +42,7 @@ const SETTINGS_SCREENS = [
   { id: 'overview', title: 'Обзор', icon: 'home', render: settingsScreenOverview },
   { id: 'calc', title: 'Расчёт', icon: 'calc', render: settingsScreenCalc, edit: true },
   { id: 'pay', title: 'Правила оплаты', icon: 'money', render: settingsScreenPay },
-  { id: 'codes', title: 'Коды и окна Табеля', icon: 'codes', render: settingsScreenCodes, edit: true },
+  { id: 'codes', title: 'Коды Табеля', icon: 'codes', render: settingsScreenCodes, edit: true },
   { id: 'groups', title: 'Группы и графики', icon: 'people', render: settingsScreenGroups, edit: true },
   { id: 'calendar', title: 'Календарь правил', icon: 'cal', render: settingsScreenCalendar },
   { group: 'Справочники объекта' },
@@ -1170,7 +1170,7 @@ function settingsResolverModal(modName) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   ЭКРАН «КОДЫ И ОКНА ТАБЕЛЯ» — нормы расчёта (CFG-DAY-CODES, CFG-WINDOWS).
+   ЭКРАН «КОДЫ ТАБЕЛЯ» — нормы расчёта (CFG-DAY-CODES, CFG-WINDOWS).
    Словаря смен здесь НЕТ: это другой экран («Смены и отсутствия»), другая
    сущность и другое право (план, ред. 3, §3.4/§3.4б).
    ══════════════════════════════════════════════════════════════════════ */
@@ -1183,6 +1183,13 @@ const SETTINGS_CODE_FLAGS = [
 
 async function settingsScreenCodes(host) {
   await settingsEngine();
+  if (!state.docKinds) {
+    /* виды заявлений — для «Заявление по назначению кода» в карточке кода (16.10.2026) */
+    try {
+      const di = await api('/api/docs/kinds', { silent: true });
+      state.docKinds = di.kinds || []; state.docPlaceholders = di.placeholders || {};
+    } catch { state.docKinds = []; }
+  }
   const p = settingsPayload();
   const d = settingsDraft();
   if (!p || !d) { host.innerHTML = '<div class="empty">Справочники не загружены</div>'; return; }
@@ -1194,15 +1201,15 @@ async function settingsScreenCodes(host) {
   const step = Number(d.step_minutes) || 15;
 
   host.innerHTML = `
-    ${settingsHead('Коды и окна Табеля',
-      'Нормы расчёта: какие коды бывают в Табеле, что они означают и какие окна (значения) у них есть. Это не словарь смен — он на отдельном экране.',
+    ${settingsHead('Коды Табеля',
+      'Нормы расчёта: какие коды бывают в Табеле, что они означают, какой у них режим отметок и заявление, и какие окна (значения) у них есть. Это не словарь смен — он на отдельном экране.',
       `<button class="btn btn-sm btn-ghost" data-go="shifts">Смены и отсутствия ↗</button>
        ${edit ? `<button class="btn btn-sm btn-primary" id="cd-add">${tab === 'codes' ? '+ Код Табеля' : '+ Значение и окно'}</button>` : ''}`)}
     <div class="tabs">
       <button data-tab="codes" class="${tab === 'codes' ? 'active' : ''}">Коды Табеля · ${codes.length}</button>
       <button data-tab="windows" class="${tab === 'windows' ? 'active' : ''}">Окна и значения · ${windows.length}</button>
     </div>
-    <div id="cd-body">${tab === 'codes' ? settingsCodesTable(codes, windows, shifts, d, edit)
+    <div id="cd-body">${tab === 'codes' ? settingsCodesCards(codes, windows, shifts, d, edit)
       : settingsWindowsTable(windows, codes, step, edit)}</div>
     ${settingsDraftBarHtml()}`;
 
@@ -1216,41 +1223,74 @@ async function settingsScreenCodes(host) {
   settingsBindCodesBody(host, d, edit);
 }
 
-function settingsCodesTable(codes, windows, shifts, d, edit) {
+function settingsCodesCards(codes, windows, shifts, d, edit) {
+  /* Карточка кода (решение владельца 16.10.2026): флаги — чекбоксы, режим отметок
+     «Пришёл/Ушёл» — у кода, несущего часы, у кода без часов — заявление с выбором
+     шаблона. Кнопки «Изменить» (модалка) и «✕» (удаление из черновика с серверной
+     защитой при публикации). */
+  const docKinds = state.docKinds || [];
+  const docName = code => { const k = docKinds.find(x => x.code === code); return k ? k.name : code; };
   return `${settingsPanel('Коды Табеля · CFG-DAY-CODES', `
-    <div class="table-wrap"><table class="data responsive"><thead><tr>
-      <th>Код</th><th>Название</th><th>Цвет</th>
-      ${SETTINGS_CODE_FLAGS.map(f => `<th title="${esc(f.hint)}">${esc(f.title)}</th>`).join('')}
-      <th>Окон</th><th>Смены словаря</th></tr></thead>
-    <tbody>${codes.map(([code, row]) => {
+    <div class="code-cards">${codes.map(([code, row]) => {
       const win = windows.filter(([k]) => k.split(' ')[0] === code);
       const used = shifts.filter(s => s.tzh_code === code);
-      return `<tr>
-        <td data-label="Код">${settingsCodePill(code, d.day_code_policy)}</td>
-        <td data-label="Название">${edit
-          ? `<input type="text" data-title="${esc(code)}" value="${esc(row.title || '')}" placeholder="как в Т-13" style="min-width:180px">`
-          : esc(row.title || '—')}</td>
-        <td data-label="Цвет">${edit
-          ? `<input type="color" data-color="${esc(code)}" value="${esc(row.color || '#8a94a6')}" style="width:44px;height:32px;padding:2px">`
-          : `<span class="code-dot" style="background:${cssColor(row.color)}"></span>`}</td>
-        ${SETTINGS_CODE_FLAGS.map(f => `<td data-label="${esc(f.title)}">
-          <label class="switch"><input type="checkbox" data-flag="${esc(code)}:${f.key}"
-            ${row[f.key] ? 'checked' : ''} ${edit ? '' : 'disabled'} title="${esc(f.hint)}"><span class="sl"></span></label></td>`).join('')}
-        <td class="num" data-label="Окон">${win.length
-          ? `${win.length} <button class="btn btn-sm btn-ghost" data-winof="${esc(code)}">показать</button>` : '<span class="badge warn">нет</span>'}</td>
-        <td data-label="Смены словаря">${used.length
-          ? used.map(s => `<span class="chip" title="${esc(s.name)}">${esc(s.code)}</span>`).join(' ')
-          : '<span class="badge muted">из Графика не ставится</span>'}</td>
-      </tr>`;
-    }).join('')}</tbody></table></div>
+      const carries = !!row.carries_hours;
+      return `<div class="code-card">
+        <div class="cc-head">
+          ${settingsCodePill(code, d.day_code_policy)}
+          <div class="cc-name"><b>${esc(row.title || '—')}</b>
+            <span class="hint" style="margin:0">${carries ? 'несёт часы' : 'часов не несёт'}</span></div>
+          ${edit ? `<span class="cc-actions">
+            <button class="btn btn-sm btn-ghost" data-cedit="${esc(code)}" title="Изменить карточку кода">Изменить</button>
+            <button class="btn btn-sm btn-ghost" data-cdel="${esc(code)}" title="Удалить код из справочника">✕</button></span>` : ''}
+        </div>
+        <div class="cc-flags">${SETTINGS_CODE_FLAGS.map(f => `
+          <label class="cc-flag" title="${esc(f.hint)}">
+            <input type="checkbox" data-flag="${esc(code)}:${f.key}"
+              ${row[f.key] ? 'checked' : ''} ${edit ? '' : 'disabled'}>
+            <span>${esc(f.title)}</span></label>`).join('')}</div>
+        <div class="cc-extra">${carries ? `
+          <div class="opt-group-title" style="margin:0 0 4px">Отметки в день с этим кодом</div>
+          <label class="cc-flag" title="Сервер не примет отметку, пока флаг снят">
+            <input type="checkbox" data-punch="${esc(code)}:punch_in"
+              ${row.punch_in !== false ? 'checked' : ''} ${edit ? '' : 'disabled'}>
+            <span>«Пришёл на работу»</span></label>
+          <label class="cc-flag" title="Сервер не примет отметку, пока флаг снят">
+            <input type="checkbox" data-punch="${esc(code)}:punch_out"
+              ${row.punch_out !== false ? 'checked' : ''} ${edit ? '' : 'disabled'}>
+            <span>«Ушёл с работы»</span></label>`
+          : `<div class="opt-group-title" style="margin:0 0 4px">Заявление по назначению кода</div>
+            ${edit ? `<select data-doc="${esc(code)}" class="cc-doc">
+              <option value="">— не печатать —</option>
+              ${docKinds.filter(k => k.active !== false).map(k =>
+                `<option value="${esc(k.code)}" ${row.doc_type === k.code ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}
+              ${row.doc_type && !docKinds.some(k => k.code === row.doc_type)
+                ? `<option value="${esc(row.doc_type)}" selected>${esc(row.doc_type)} (вид удалён)</option>` : ''}
+            </select>`
+            : `<span class="hint" style="margin:0">${row.doc_type ? esc(docName(row.doc_type)) : 'не печатать'}</span>`}`}</div>
+        <div class="cc-foot">
+          <span>Окон: ${win.length
+            ? `${win.length} <button class="btn btn-sm btn-ghost" data-winof="${esc(code)}">показать</button>`
+            : '<span class="badge warn">нет</span>'}</span>
+          <span>${used.length
+            ? used.map(s => `<span class="chip" title="${esc(s.name)}">${esc(s.code)}</span>`).join(' ')
+            : '<span class="badge muted">из Графика не ставится</span>'}</span>
+        </div>
+      </div>`;
+    }).join('')}</div>
     <p class="hint">Флаги — то, как день считается: «Несёт часы» задаёт план строки, «Принимает коды УТ»
       разрешает разместить переработку, «Учитывается в УТ» — уровень 7 одноимённого правила,
       «План=Факт = Авто» — единственный источник, разрешающий «Авто» в «Да» (R19).
       Цвет и название — данные приложения (блок presentation версии), домен их не знает.</p>
-    <p class="hint"><b>Удаление кода здесь намеренно не предлагается:</b> код, который стоит в Табеле,
-      удалить нельзя — расчёт закрытых периодов сошёл бы с истории. Изъятие кода делается нормативным
-      решением и серверной проверкой (<code>strip_removed_day_codes</code>): так из справочника убрали
-      «С» и «НВ» 12.10.2026. В режиме эксперта удаление доступно, но без этой защиты.</p>`) }
+    <p class="hint">Режим отметок и заявление — атрибуты карточки кода (16.10.2026): у кода с часами
+      настраиваются кнопки «Пришёл на работу»/«Ушёл с работы» (сервер не примет отметку,
+      пока флаг снят), у кода без часов — шаблон заявления, которым оформляется назначение.
+      Отсутствие, у которого есть вид в словаре смен, дополнительно соблюдает режим этого вида.</p>
+    <p class="hint"><b>Удаление кода</b> (✕) убирает его из черновика вместе с его значениями/окнами.
+      Публикацию проверяет сервер: код, который стоит в Табеле или на который ссылается живой
+      вид смены, удалить не получится — расчёт закрытых периодов сошёл бы с истории.
+      Так из справочника изъяты «С» и «НВ» (12.10.2026) и «НБ» — артефакт старого
+      наполнения (16.10.2026).</p>`)}
   ${settingsPanel('Связь словарей · справочно', `
     <p class="hint" style="margin:0">Единственная связь двух справочников — <code>shift_types.tzh_code</code>:
       код Табеля, который проставляется из ячейки Графика. Разрывы видны на экране «Обзор»
@@ -1259,8 +1299,7 @@ function settingsCodesTable(codes, windows, shifts, d, edit) {
       График генерируется из Табеля.</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       ${shifts.filter(s => s.tzh_code).map(s => `<span class="chip">${esc(s.code)} → ${settingsCodePill(s.tzh_code, d.day_code_policy)}</span>`).join('')}
-    </div>`)}
-  <div id="cd-windows-extra"></div>`;
+    </div>`)}`;
 }
 
 function settingsWindowsTable(windows, codes, step, edit) {
@@ -1297,16 +1336,35 @@ function settingsBindCodesBody(host, draft, edit) {
     return;
   }
   const touch = () => settingsUpdateDraftBars();
-  $$('[data-title]', host).forEach(i => i.onchange = () => {
-    draft.day_code_policy[i.dataset.title].title = i.value.trim(); touch();
-  });
-  $$('[data-color]', host).forEach(i => i.onchange = () => {
-    draft.day_code_policy[i.dataset.color].color = i.value;
-    settingsRenderScreen();
-  });
   $$('[data-flag]', host).forEach(cb => cb.onchange = () => {
     const [code, flag] = cb.dataset.flag.split(':');
-    draft.day_code_policy[code][flag] = cb.checked; touch();
+    draft.day_code_policy[code][flag] = cb.checked;
+    /* «Несёт часы» переключает состав карточки: отметки (с часами) либо заявление
+       (без часов) — перерисовываем экран, остальные флаги копятся молча */
+    if (flag === 'carries_hours') settingsRenderScreen(); else touch();
+  });
+  $$('[data-punch]', host).forEach(cb => cb.onchange = () => {
+    const [code, key] = cb.dataset.punch.split(':');
+    draft.day_code_policy[code][key] = cb.checked; touch();
+  });
+  $$('[data-doc]', host).forEach(sel => sel.onchange = () => {
+    draft.day_code_policy[sel.dataset.doc].doc_type = sel.value; touch();
+  });
+  $$('[data-cedit]', host).forEach(b => b.onclick = () => settingsCodeModal(b.dataset.cedit));
+  $$('[data-cdel]', host).forEach(b => b.onclick = () => {
+    const code = b.dataset.cdel;
+    const row = draft.day_code_policy[code] || {};
+    const winKeys = Object.keys(draft.windows || {}).filter(k => k.split(' ')[0] === code);
+    confirmDialog('Удалить код Табеля?',
+      `«${code}»${row.title ? ' (' + row.title + ')' : ''} исчезнет из справочника вместе со значениями/окнами: `
+      + (winKeys.length ? winKeys.map(k => `«${k}»`).join(', ') : 'окон у кода нет')
+      + '. При публикации сервер проверит: код, который стоит в Табеле или на который ссылается живая смена словаря, удалить не получится.',
+      () => {
+        delete draft.day_code_policy[code];
+        winKeys.forEach(k => delete draft.windows[k]);
+        toast('Код удалён из черновика — опубликуйте версию', 'ok');
+        settingsRenderScreen();
+      }, 'Удалить из черновика');
   });
   $$('[data-winof]', host).forEach(b => b.onclick = () => { settingsUI.codesTab = 'windows'; settingsRenderScreen(); });
   $$('[data-win]', host).forEach(b => b.onclick = () => settingsWindowModal(b.dataset.win));
@@ -1324,6 +1382,7 @@ function settingsCodeModal(code) {
   if (!draft) return;
   const isNew = !code;
   const row = isNew ? null : draft.day_code_policy[code];
+  const docKinds = state.docKinds || [];
   openModal({
     title: isNew ? 'Новый код Табеля' : `Код «${code}»`,
     subtitle: 'Строка CFG-DAY-CODES: как день считается. Публикуется версией справочников',
@@ -1334,18 +1393,49 @@ function settingsCodeModal(code) {
         <label class="field"><span>Название</span>
           <input type="text" id="nc-title" value="${esc(row?.title || '')}" placeholder="Явка (дневная работа)"></label>
         <label class="field"><span>Цвет</span><input type="color" id="nc-color" value="${esc(row?.color || '#34a862')}" style="height:44px;padding:4px"></label>
-        <label class="field"><span>Окно (значение) по умолчанию</span>
-          <select id="nc-window"><option value="">— не создавать —</option>
-            ${[12, 11, 10, 9, 8].map(h => `<option value="${h}">${h} ч</option>`).join('')}</select></label>
       </div>
       ${SETTINGS_CODE_FLAGS.map(f => `<label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-bottom:8px">
         <input type="checkbox" id="nc-${f.key}" ${row?.[f.key] ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary);margin-top:2px">
         <span><b style="color:var(--text)">${esc(f.title)}</b><br><span class="hint" style="margin:0">${esc(f.hint)}</span></span></label>`).join('')}
-      <p class="hint">Код появится в Табеле после публикации версии. Чтобы его можно было поставить
-        из Графика, нужен вид смены с этим кодом Табеля — экран «Смены и отсутствия».</p>`,
+      <div id="nc-punch-wrap" style="border-top:1px dashed var(--line);padding-top:10px;margin-bottom:10px">
+        <div class="opt-group-title" style="margin:0 0 6px">Кнопки отметок в день с этим кодом</div>
+        <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted);margin-bottom:6px">
+          <input type="checkbox" id="nc-punch-in" ${row?.punch_in !== false ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary)">
+          Разрешить «Пришёл на работу»</label>
+        <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
+          <input type="checkbox" id="nc-punch-out" ${row?.punch_out !== false ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary)">
+          Разрешить «Ушёл с работы»</label>
+        <div class="hint" style="margin-top:4px">Флаги соблюдает сервер: пока флаг снят, отметку принять нельзя
+          (409 с текстом статуса), а кнопка в «Моих отметках» неактивна.</div>
+      </div>
+      <div id="nc-doc-wrap" style="border-top:1px dashed var(--line);padding-top:10px;margin-bottom:10px">
+        <label class="field"><span>Заявление по назначению кода (шаблон)</span>
+          <select id="nc-doc">
+            <option value="">— не печатать —</option>
+            ${docKinds.filter(k => k.active !== false).map(k => `<option value="${esc(k.code)}">${esc(k.name)}</option>`).join('')}
+            ${row?.doc_type && !docKinds.some(k => k.code === row.doc_type)
+              ? `<option value="${esc(row.doc_type)}" selected>${esc(row.doc_type)} (вид удалён — выберите другой)</option>` : ''}
+          </select>
+          <div class="hint" style="margin-top:2px">По этому шаблону печатается заявление, когда код назначен
+            на период («Печать заявления» в Табеле и Графике). Виды и бланки — экран «Документы и справочники».</div></label>
+      </div>
+      <p class="hint">Код появится в Табеле после публикации версии. Окна (значения) кода настраиваются
+        на вкладке «Окна и значения» — там же видно, что окно положено только коду, несущему часы.
+        Чтобы код можно было поставить из Графика, нужен вид смены с этим кодом Табеля —
+        экран «Смены и отсутствия».</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-save>${isNew ? 'Добавить в черновик' : 'Сохранить'}</button>`,
     onMount(m) {
+      if (!isNew) m.querySelector('#nc-doc').value = row?.doc_type || '';
+      /* «Пришёл/Ушёл» — у кода, несущего часы; заявление — у кода без часов
+         (решение владельца 16.10.2026): блоки переключаются чекбоксом «Несёт часы» */
+      const carriesBox = m.querySelector('#nc-carries_hours');
+      const syncWraps = () => {
+        const carries = carriesBox.checked;
+        m.querySelector('#nc-punch-wrap').style.display = carries ? '' : 'none';
+        m.querySelector('#nc-doc-wrap').style.display = carries ? 'none' : '';
+      };
+      carriesBox.onchange = syncWraps; syncWraps();
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-save]').onclick = () => {
         const c = m.querySelector('#nc-code').value.trim().toUpperCase();
@@ -1355,13 +1445,10 @@ function settingsCodeModal(code) {
         entry.title = m.querySelector('#nc-title').value.trim();
         entry.color = m.querySelector('#nc-color').value;
         SETTINGS_CODE_FLAGS.forEach(f => { entry[f.key] = m.querySelector(`#nc-${f.key}`).checked; });
+        entry.punch_in = m.querySelector('#nc-punch-in').checked;
+        entry.punch_out = m.querySelector('#nc-punch-out').checked;
+        entry.doc_type = entry.carries_hours ? (entry.doc_type || '') : m.querySelector('#nc-doc').value;
         draft.day_code_policy = { ...draft.day_code_policy, [c]: entry };
-        const h = m.querySelector('#nc-window').value;
-        if (h) {
-          const key = `${c} ${h}`;
-          draft.windows = { ...(draft.windows || {}),
-            [key]: draft.windows?.[key] || { start_minute: 480, end_minute: 480 + Number(h) * 60 } };
-        }
         closeModal();
         toast(isNew ? `Код «${c}» добавлен в черновик` : `Код «${c}» обновлён в черновике`, 'ok');
         settingsUI.codesTab = 'codes';
@@ -1376,8 +1463,12 @@ function settingsWindowModal(key) {
   if (!draft) return;
   const isNew = !key;
   const w = isNew ? { start_minute: 480, end_minute: 1200 } : draft.windows[key];
-  const codes = Object.keys(draft.day_code_policy || {});
+  /* Стандартное окно и часы — только у кода, несущего часы (решение владельца
+     16.10.2026): у кодов-отсутствий окна нет, день без часов не считается от окна.
+     Прежнее значение можно открыть, даже если флаг у кода сняли (история). */
+  const policy = draft.day_code_policy || {};
   const [curCode, curHours] = String(key || '').split(' ');
+  const codes = Object.keys(policy).filter(c => policy[c].carries_hours || c === curCode);
   const step = Number(draft.step_minutes) || 15;
   openModal({
     title: isNew ? 'Новое значение и окно' : `Значение «${key}»`,
@@ -1398,7 +1489,8 @@ function settingsWindowModal(key) {
           <input type="time" id="nw-end" value="${settingsHm(w.end_minute)}" step="${step * 60}"></label>
       </div>
       <div class="preview" id="nw-preview"></div>
-      <p class="hint">Ключ значения канонический: <code>КОД ПРОБЕЛ ЧАСЫ</code>, часы — десятичной дробью
+      <p class="hint">В списке — только коды, несущие часы: стандартное окно и часы бывают лишь
+        у рабочего дня (16.10.2026). Ключ значения канонический: <code>КОД ПРОБЕЛ ЧАСЫ</code>, часы — десятичной дробью
         через запятую (CHK-WINDOW-KEY). Окно не пересекает полночь (CHK-WINDOW-BOUNDS), границы лежат
         на сетке шага ${step} мин (CHK-GRID). Часов в значении может быть меньше длины окна —
         это зарплатная норма (RUL-PLAN-BELOW-WINDOW).</p>`,
@@ -1429,6 +1521,7 @@ function settingsWindowModal(key) {
         if (!k.trim() || k.split(' ').length !== 2) return toast('Заполните код и часы значения', 'warn');
         if (!(e > s)) return toast('Конец окна должен быть позже начала: окно не пересекает полночь', 'warn');
         if (!draft.day_code_policy[k.split(' ')[0]]) return toast('Такого кода нет в справочнике — сначала добавьте код', 'warn');
+        if (!draft.day_code_policy[k.split(' ')[0]].carries_hours) return toast('Окно положено только коду, который несёт часы', 'warn');
         if (isNew && draft.windows[k]) return toast(`Значение «${k}» уже есть`, 'warn');
         if (!isNew && k !== key) delete draft.windows[key];
         draft.windows = { ...draft.windows, [k]: { start_minute: s, end_minute: e } };
@@ -1697,8 +1790,8 @@ async function settingsScreenShifts(host) {
 
   host.innerHTML = `
     ${settingsHead('Смены и отсутствия',
-      'Словарь ячеек Графика: рабочие смены любого времени и виды отсутствий. На расчёт влияет косвенно — через код Табеля и флаги. Нормы расчёта — на экране «Коды и окна Табеля».',
-      `<button class="btn btn-sm btn-ghost" data-go="codes">Коды и окна Табеля ↗</button>
+      'Словарь ячеек Графика: рабочие смены любого времени и виды отсутствий. На расчёт влияет косвенно — через код Табеля и флаги. Нормы расчёта — на экране «Коды Табеля».',
+      `<button class="btn btn-sm btn-ghost" data-go="codes">Коды Табеля ↗</button>
        ${edit ? '<button class="btn btn-sm btn-primary" id="sh-add">+ Новая смена / отсутствие</button>' : ''}`)}
     <div class="tabs">
       <button data-stab="work" class="${tab === 'work' ? 'active' : ''}">Смены · ${shiftList.filter(s => !s.archived && s.kind === 'work').length}</button>
