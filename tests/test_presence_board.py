@@ -90,3 +90,61 @@ def test_long_session_visible_on_personal_screen(app_stack, manager_client):
     assert _on_board(c, eid), "доска: длинная открытая сессия видна"
     assert _on_shift_personal(c, eid), \
         "личный экран: смена ~2 суток не видна из-за окна поиска — расхождение с доской"
+
+
+def test_board_card_shift_today_hm_in_object_tz():
+    """Дефект 16.10.2026: «По графику сегодня» в карточке Отметок резалось
+    из сырых UTC-моментов shift_today — окно выводилось со сдвигом пояса
+    (08:00–20:00 MSC показывались как 05:00–17:00). Доска отдаёт готовые
+    shift_today_hm в часовом поясе объекта; UTC-моменты shift_today остаются
+    источником для расчётов и не меняются."""
+    from app.engine.domain.board.assemble_board import assemble_board
+    from app.engine.domain.settings.defaults import default_settings
+    from app.engine.domain.types.entities import Mark, Shift
+    from app.engine.interface.views import board_dict
+
+    utc = dt.timezone.utc
+    day = dt.date.today()
+    # смена 08:00–20:00 MSC = 05:00–17:00 UTC; отметка IN 09:00 MSC = 06:00 UTC
+    s_start = dt.datetime.combine(day, dt.time(5, 0), tzinfo=utc)
+    s_end = dt.datetime.combine(day, dt.time(17, 0), tzinfo=utc)
+    mark = dt.datetime.combine(day, dt.time(6, 0), tzinfo=utc)
+    now = dt.datetime.combine(day, dt.time(7, 0), tzinfo=utc)
+    board = assemble_board([Mark("e1", mark, "in")],
+                           [Shift("e1", s_start, s_end)], [], now,
+                           default_settings())
+    payload = board_dict(board, "Europe/Moscow")
+    card = payload["open_session_cards"][0]
+    assert card["shift_today_hm"] == [["08:00", "20:00"]], \
+        "карточка Отметок: окно смены должно быть в поясе объекта, не в UTC"
+    assert card["open_since_hm"] == "09:00"
+    assert card["shift_today"][0][0].startswith(day.isoformat() + "T05:00"), \
+        "shift_today — сырые UTC-моменты, контракт для расчётов не меняем"
+
+
+def test_board_route_shift_today_hm_end_to_end(app_stack, manager_client):
+    """Сквозная проверка маршрута: ручная смена 08:00–20:00 MSC в БД, отметка
+    «пришёл» — карточка Отметок обязана показать окно в поясе объекта."""
+    from app.deps import TZ
+    from app.models import ScheduleShift
+
+    c = manager_client
+    eid = _new_employee(c)
+    day = dt.datetime.now(TZ).date()
+    db = app_stack["SessionLocal"]()
+    try:
+        db.add(ScheduleShift(employee_id=eid, date=day,
+                             start_utc=dt.datetime.combine(day, dt.time(5)),
+                             end_utc=dt.datetime.combine(day, dt.time(17)),
+                             source="manual"))
+        db.commit()
+    finally:
+        db.close()
+    ts = dt.datetime.now(TZ).replace(tzinfo=None).isoformat(timespec="minutes")
+    assert c.post("/api/punches", json={"kind": "in", "employee_id": eid,
+                                        "ts": ts}).status_code == 200
+    cards = [x for x in c.get("/api/presence/board").json()["open_session_cards"]
+             if x["employee_id"] == str(eid)]
+    assert cards, "сотрудник с открытой сессией не попал на доску"
+    assert cards[0]["shift_today_hm"] == [["08:00", "20:00"]], \
+        "маршрут доски: окно смены отдаётся в поясе объекта"

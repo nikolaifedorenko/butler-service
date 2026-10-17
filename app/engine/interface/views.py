@@ -110,6 +110,10 @@ def session_view_dict(sv, tz) -> dict:
 
 
 def board_dict(board, tz) -> dict:
+    # Моменты домена — UTC; человекочитаемые HH:MM — только в часовом поясе
+    # объекта (дефект 16.10.2026: shift_today отдавался сырыми UTC-моментами,
+    # фронт резал из них HH:MM и карточка показывала окно со сдвигом пояса).
+    local = lambda m: m.astimezone(ZoneInfo(str(tz)))  # noqa: E731
     return {
         "at_work_now": board.at_work_now,
         "expected_now": board.expected_now,
@@ -120,7 +124,10 @@ def board_dict(board, tz) -> dict:
                                 "hours_open": hours(c.minutes_open),
                                 "expected_today": c.expected_today,
                                 "shift_today": [[s.isoformat(), e.isoformat()]
-                                                for s, e in c.shift_today]}
+                                                for s, e in c.shift_today],
+                                "shift_today_hm": [[local(s).strftime("%H:%M"),
+                                                    local(e).strftime("%H:%M")]
+                                                   for s, e in c.shift_today]}
                                for c in board.open_session_cards],
         "yet_to_come": [{"employee_id": a.employee_id,
                          "expected_at": a.expected_at_utc.isoformat(),
