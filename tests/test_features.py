@@ -118,6 +118,34 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(p["days"], 8)
         self.assertEqual(p["shift"]["code"], "VACATION")
 
+    # ── 1b. «Неоплачиваемый больничный» (НБ): вид отсутствия ставит код Табеля ──
+    def test_01b_sick_unpaid_range_absence(self):
+        """16.10.2026: у кода «НБ» есть вид SICK_UNPAID — предупреждение
+        APP-CODE-NO-SHIFT снято, отсутствие на период пишет код Табеля «НБ»."""
+        emp = _create_employee("feat_sick_unpaid", "Небольсин Роман Романович",
+                               TODAY - dt.timedelta(days=90))
+        kind = _shift_by_code("SICK_UNPAID")
+        self.assertEqual(kind["tzh_code"], "НБ")
+        self.assertEqual(kind["kind"], "absence")
+        start = TODAY.replace(day=1)
+        end = start + dt.timedelta(days=2)
+        r = client.post("/api/schedule/range-absence", json={
+            "employee_ids": [emp["id"]], "first": start.isoformat(), "last": end.isoformat(),
+            "shift_type_id": kind["id"], "note": "неоплачиваемый больничный"})
+        self.assertEqual(r.status_code, 200, r.text)
+        data = r.json()
+        self.assertEqual(data["written"], 3)
+        self.assertNotEqual(data.get("mode"), "schedule_absence",
+                            "НБ — код первичного документа: пишется в Табель")
+        row = _row(_grid(start.year, start.month), emp["id"])
+        self.assertIsNotNone(row)
+        d = start
+        while d <= end:
+            cell = row["cells"][d.isoformat()]
+            self.assertEqual(cell["tabel"]["code"], "НБ", f"не назначено на {d}")
+            self.assertEqual(cell["shifts"], [], f"смена в день больничного должна исчезнуть: {d}")
+            d += dt.timedelta(days=1)
+
     # ── 2. «только рабочие дни» для периода (по Табелю) ──
     def test_02_range_absence_only_work_days(self):
         emp = _create_employee("feat_workonly", "Онлир Работ Работович", TODAY - dt.timedelta(days=90))

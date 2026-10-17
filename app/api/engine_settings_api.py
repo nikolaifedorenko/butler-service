@@ -304,7 +304,10 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
     out: list[dict] = []
     codes = payload.get("day_code_policy") or {}
     shifts = list(db.scalars(select(ShiftType)))
-    live = [s for s in shifts if not getattr(s, "archived", False)]
+    # «живой» вид — не в архиве: архивация ставит active=False и archived_at
+    # (employees.py::_shift_dict). Прежнее getattr(s, "archived", False) всегда
+    # возвращало False — архивные смены ошибочно считались живыми.
+    live = [s for s in shifts if s.active and not s.archived_at]
     linked = {s.tzh_code for s in live if s.tzh_code}
 
     for s in shifts:
@@ -316,11 +319,18 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
                                  f"только коды CFG-DAY-CODES ({', '.join(list(codes)[:8])}…) "
                                  f"или пустое значение — откройте смену в словаре и выберите "
                                  f"код из списка")})
-    for code in codes:
-        if code not in linked:
-            out.append({"code": "APP-CODE-NO-SHIFT", "level": "warn", "screen": "shifts",
-                        "text": (f"У кода Табеля «{code}» нет вида смены с этим кодом — "
-                                 f"поставить его из Графика нельзя (только вручную в Табеле)")})
+    for code, row in codes.items():
+        if code in linked:
+            continue
+        if bool(row.get("plan_equals_fact_auto")):
+            # Документарный код с «План=Факт = Авто» (R19) — например «К»
+            # (командировка, приказ): Табель первичен, График генерируется из
+            # Табеля, а назначение отсутствия коды с часами не ставит — вид
+            # смены в словаре такому коду не нужен.
+            continue
+        out.append({"code": "APP-CODE-NO-SHIFT", "level": "warn", "screen": "shifts",
+                    "text": (f"У кода Табеля «{code}» нет вида смены с этим кодом — "
+                             f"поставить его из Графика нельзя (только вручную в Табеле)")})
 
     cfg_groups = set(payload.get("groups") or [])
     used = {normalize_group(e.schedule_group) for e in db.scalars(

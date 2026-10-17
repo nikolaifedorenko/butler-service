@@ -193,18 +193,24 @@ def _migrate_missing_shifts() -> None:
             if code in have:
                 continue
             extra = SHIFT_EXTRA.get(code, {})
+            # punch_*_allowed перечислены явно: в базах, созданных create_all, эти
+            # колонки NOT NULL без серверного дефолта — INSERT без них падал
+            # (sqlalchemy.exc.IntegrityError), и приложение не стартовало.
             con.execute(text("""
                 INSERT INTO shift_types (code, name, display_code, tzh_code, kind, start_time, end_time,
                     overnight, color, sort_order, is_working, counts_as_worked, is_default_off, active,
-                    deduct_from_bank, doc_type, archived_at)
+                    deduct_from_bank, doc_type, punch_in_allowed, punch_out_allowed, archived_at)
                 VALUES (:code, :name, :disp, :tzh, :kind, :start, :end, :overnight, :color, :order,
-                    :is_work, :counted, :default_off, 1, :deduct, :doc_type, NULL)
+                    :is_work, :counted, :default_off, 1, :deduct, :doc_type,
+                    :punch_in, :punch_out, NULL)
             """), {"code": code, "name": name, "disp": disp, "tzh": tzh, "kind": kind,
                    "start": start, "end": end, "overnight": int(bool(overnight)), "color": color,
                    "order": order, "is_work": int(bool(is_work)), "counted": int(bool(counted)),
                    "default_off": int(bool(default_off)),
                    "deduct": int(bool(extra.get("deduct_from_bank", False))),
-                   "doc_type": extra.get("doc_type", "")})
+                   "doc_type": extra.get("doc_type", ""),
+                   "punch_in": int(bool(extra.get("punch_in_allowed", True))),
+                   "punch_out": int(bool(extra.get("punch_out_allowed", True)))})
 
 
 def _apply_timesheet_code_normative(con) -> None:

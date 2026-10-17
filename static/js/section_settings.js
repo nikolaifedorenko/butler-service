@@ -1254,7 +1254,9 @@ function settingsCodesTable(codes, windows, shifts, d, edit) {
   ${settingsPanel('Связь словарей · справочно', `
     <p class="hint" style="margin:0">Единственная связь двух справочников — <code>shift_types.tzh_code</code>:
       код Табеля, который проставляется из ячейки Графика. Разрывы видны на экране «Обзор»
-      (проверки APP-SHIFT-CODE и APP-CODE-NO-SHIFT).</p>
+      (проверки APP-SHIFT-CODE и APP-CODE-NO-SHIFT). Документарному коду с «План=Факт = Авто»
+      (R19) — например «К» (командировка) — вид смены не нужен: Табель первичен,
+      График генерируется из Табеля.</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       ${shifts.filter(s => s.tzh_code).map(s => `<span class="chip">${esc(s.code)} → ${settingsCodePill(s.tzh_code, d.day_code_policy)}</span>`).join('')}
     </div>`)}
