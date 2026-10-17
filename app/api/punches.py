@@ -25,9 +25,9 @@ from ..auth import Principal, audit, current_principal
 from ..db import get_db
 from ..deps import TZ, local_date, now_local
 from ..employment import employed_on, ensure_periods, periods_of
-from ..models import Employee, Punch, ScheduleAbsence
+from ..models import Employee, Punch, ScheduleAbsence, TabelDay
 from ..permissions import has_perm, require_perm
-from ..services.engine_common import last_closed_bank
+from ..services.engine_common import day_code_rows, last_closed_bank
 from ..services.punch_plan import (
     plan_for_date as _plan_for_date,
 )
@@ -107,16 +107,39 @@ def _open_session(db: Session, emp_id: int) -> Optional[Punch]:
     return last if last is not None and last.kind == "IN" else None
 
 
-def _punch_permissions(db: Session, emp_id: int, now: dt.datetime):
-    """Режим отметок во время согласованного отсутствия — из словаря типа отсутствия
-    (например, в отпуске отмечаться не нужно)."""
+def _punch_permissions(db: Session, emp_id: int,
+                       now: dt.datetime) -> tuple[bool, bool, Optional[str]]:
+    """Можно ли сейчас нажать «Пришёл»/«Ушёл» — и текст статуса для подсказки.
+
+    Два слоя, оба соблюдает СЕРВЕР (решение владельца 16.10.2026: прежде флаги
+    читал только фронтенд, прямой запрос к API обходил запрет):
+
+    * покрывающее согласованное отсутствие — режим из словарного вида
+      (например, «Отпросился»);
+    * код Табеля сегодняшнего дня — режим из карточки кода (punch_in/punch_out):
+      отпуск «ОТ» отмечается заявлением, а не отметками. Отсутствующий ключ
+      в старой версии справочников — разрешение (RUL-ALL-MARKS-COUNTED)."""
     now_utc = now.replace(tzinfo=TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
+    in_ok, out_ok, hint = True, True, None
     row = db.scalar(select(ScheduleAbsence).where(
         ScheduleAbsence.employee_id == emp_id, ScheduleAbsence.start_utc <= now_utc,
         ScheduleAbsence.end_utc > now_utc, ScheduleAbsence.kind_id.is_not(None)).limit(1))
-    if row is None or row.kind is None:
-        return True, True, None
-    return bool(row.kind.punch_in_allowed), bool(row.kind.punch_out_allowed), row.kind
+    if row is not None and row.kind is not None:
+        in_ok = bool(row.kind.punch_in_allowed)
+        out_ok = bool(row.kind.punch_out_allowed)
+        if not (in_ok and out_ok):
+            hint = f"сейчас статус: {row.kind.name}"
+    day = now.date()
+    trow = db.scalar(select(TabelDay).where(TabelDay.employee_id == emp_id,
+                                            TabelDay.date == day))
+    if trow is not None:
+        crow = day_code_rows(db, day).get(trow.code)
+        if crow is not None and not (crow["punch_in"] and crow["punch_out"]):
+            in_ok = in_ok and crow["punch_in"]
+            out_ok = out_ok and crow["punch_out"]
+            if hint is None:
+                hint = f"сейчас статус: {crow['title'] or trow.code}"
+    return in_ok, out_ok, hint
 
 
 def _today_punched_hours(db: Session, emp_id: int, day: dt.date) -> float:
@@ -151,7 +174,7 @@ def _status_payload(db: Session, emp: Employee) -> dict:
     first_expected = subs[0][0] if subs else None
     is_late = bool(first_expected and not open_in
                    and now > _to_local(first_expected) + dt.timedelta(minutes=rules["grace_minutes"]))
-    in_ok, out_ok, kind = _punch_permissions(db, emp.id, now)
+    in_ok, out_ok, hint = _punch_permissions(db, emp.id, now)
     bank_hours, bank_period = last_closed_bank(db, emp.id)
 
     return {
@@ -160,7 +183,7 @@ def _status_payload(db: Session, emp: Employee) -> dict:
         "plan_date": plan_date.isoformat(),
         "punch_in_allowed": in_ok,
         "punch_out_allowed": out_ok,
-        "punch_status_hint": None if kind is None else f"сейчас статус: {kind.name}",
+        "punch_status_hint": hint,
         "shift": shift,
         "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
         "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
@@ -249,6 +272,17 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
     kind = kind.upper()
     if kind not in ("IN", "OUT"):
         raise HTTPException(status_code=422, detail="kind должен быть in/out/auto")
+    if not backfill:
+        # Режим отметок соблюдается на сервере (находка 16.10.2026): флаги вида
+        # отсутствия и карточки кода Табеля раньше читал только фронтенд — прямой
+        # запрос к API позволял отметиться в отпуске. Корректировка задним числом
+        # (backfill, инструмент менеджера) этому ограничению не подлежит.
+        in_ok, out_ok, hint = _punch_permissions(db, emp.id, now)
+        if (kind == "IN" and not in_ok) or (kind == "OUT" and not out_ok):
+            what = "приход" if kind == "IN" else "уход"
+            raise HTTPException(status_code=409,
+                                detail=f"Отметку поставить нельзя: {hint or 'отметки ограничены'}"
+                                       f" — отмечать {what} запрещено")
     if kind == "OUT" and not open_in:
         if not backfill:
             raise HTTPException(status_code=409, detail="Нет открытой смены: сначала нажмите «Пришёл на работу»")

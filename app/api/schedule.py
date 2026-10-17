@@ -49,7 +49,15 @@ from ..models import (
 from ..names import suggest_genitive
 from ..permissions import require_perm
 from ..schedule_patterns import pattern_list, validate_pattern
-from ..services.engine_common import color_lookups, covers_window, domain_error_text, engine_ports, now_utc
+from ..services.engine_common import (
+    color_lookups,
+    covers_window,
+    day_code_colors,
+    day_code_rows,
+    domain_error_text,
+    engine_ports,
+    now_utc,
+)
 from ..tabel_fill import fill_timesheet_from_cycles
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -893,19 +901,31 @@ def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = 
     while d in rows and rows[d].code == anchor.code:
         end = d
         d += dt.timedelta(days=1)
+    # Шаблон заявления — атрибут КАРТОЧКИ кода Табеля (решение владельца
+    # 16.10.2026): doc_type строки day_code_policy первее привязки словарного вида
+    # (вид может отсутствовать — словарь смен только про График).
+    code_row = day_code_rows(db, date).get(anchor.code) or {}
+    code_doc = (code_row.get("doc_type") or "").strip()
     kind = db.scalar(select(ShiftType).where(ShiftType.tzh_code == anchor.code,
                                              ShiftType.kind == "absence",
                                              ShiftType.doc_type != "").limit(1))
-    if kind is None:
+    doc_type = code_doc if code_doc and _statement_kind_exists(db, code_doc) \
+        else (doc_type_of_absence(db, kind, True) if kind is not None else "")
+    if not doc_type:
         raise HTTPException(status_code=404,
                             detail=f"Для кода «{anchor.code}» не настроен тип заявления")
     st = _settings(db, month_period(start.year, start.month))
     hours_value, hours_source = standard_day_hours(db, st, emp, start)
     return {"employee": employee_payload,
             "source": "tabel_code", "whole_shift": True,
-            "doc_type": doc_type_of_absence(db, kind, True),
+            "doc_type": doc_type,
             "start": start.isoformat(), "end": end.isoformat(),
-            "days": (end - start).days + 1, "shift": _kind_brief(kind),
+            "days": (end - start).days + 1,
+            "shift": _kind_brief(kind) if kind is not None else
+            {"id": None, "code": anchor.code, "kind": "absence",
+             "name": code_row.get("title") or anchor.code,
+             "color": day_code_colors(db).get(anchor.code, ""), "doc_type": doc_type,
+             "display_code": anchor.code, "tzh_code": anchor.code},
             "note": anchor.note or "", "partial": None,
             "hours": hours_value, "hours_source": hours_source,
             "notes": sorted({r.note for d_, r in rows.items() if start <= d_ <= end and r.note})}

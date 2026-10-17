@@ -161,6 +161,8 @@ def migrate_db() -> None:
                   AND NOT EXISTS (SELECT 1 FROM subdivisions s WHERE s.name = e.subdivision)
             """))
 
+    # «НБ» — артефакт: вид SICK_UNPAID (добавлялся 16.10.2026) убираем из словаря
+    _migrate_remove_sick_unpaid()
     # старым базам докладываем новые смены словаря из сида
     _migrate_missing_shifts()
     # периоды работы (приём → увольнение → повторный приём)
@@ -169,6 +171,37 @@ def migrate_db() -> None:
     _migrate_fiveday_patterns()
     # общий шаблон блоков в настройках: переименовываем ключ «Администрация»
     _migrate_base_groups_key()
+
+
+def _migrate_remove_sick_unpaid() -> None:
+    """«НБ» (неоплачиваемый больничный) — артефакт старого наполнения справочника:
+    такого кода Табеля не существует (решение владельца 16.10.2026). Код изымает
+    strip_removed_day_codes (REMOVED_DAY_CODES), а добавленный было вид смены
+    SICK_UNPAID убирается здесь: удаление, если на вид нет ссылок, иначе архив
+    с очисткой tzh_code (health-проверка APP-SHIFT-CODE смотрит и архивные строки).
+    Идемпотентно."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if not insp.has_table("shift_types"):
+        return
+    with engine.begin() as con:
+        row = con.execute(text("SELECT id FROM shift_types WHERE code='SICK_UNPAID'")).first()
+        if row is None:
+            return
+        sid = row[0]
+        refs = 0
+        for table, column in (("schedule_absences", "kind_id"),
+                              ("schedule_shifts", "shift_type_id"),
+                              ("shift_revisions", "shift_type_id")):
+            if insp.has_table(table):
+                refs += con.execute(text(f"SELECT COUNT(*) FROM {table} WHERE {column}=:i"),
+                                    {"i": sid}).scalar() or 0
+        if refs:
+            con.execute(text("UPDATE shift_types SET active=0, archived_at=CURRENT_DATE, "
+                             "tzh_code='' WHERE id=:i"), {"i": sid})
+        else:
+            con.execute(text("DELETE FROM shift_types WHERE id=:i"), {"i": sid})
 
 
 def _migrate_missing_shifts() -> None:

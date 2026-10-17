@@ -45,9 +45,11 @@ class ShiftType(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     # списывать часы этого отсутствия из банка часов (выходной за часы, отпросился на пару часов)
     deduct_from_bank: Mapped[bool] = mapped_column(Boolean, default=False)
-    # можно ли во время этой смены/отсутствия жать «Пришёл»/«Ушёл»
-    # (например, в отпуске отмечаться не нужно); в отдельной ячейке графика
-    # флаг можно переопределить — см. ScheduleEntry.punch_*_override
+    # можно ли во время этого отсутствия жать «Пришёл»/«Ушёл» (например,
+    # в отпуске отмечаться не нужно). Серверная проверка обоих слоёв режима —
+    # api/punches.py::_punch_permissions; помимо вида, режим задаётся в карточке
+    # кода Табеля (punch_in/punch_out строки day_code_policy, 16.10.2026).
+    # Поячеечных переопределений нет: прежняя schedule_entries — легаси-таблица.
     punch_in_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     punch_out_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     # какой документ печатаем по этому отсутствию (ключ из DOC_TYPES); пусто — документ не предлагается
