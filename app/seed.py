@@ -61,6 +61,10 @@ SHIFT_TYPES = [
     ("SUTKI", "08:00–08:00 (сутки, 1/3)", "СУТ", "Я", "work", "08:00", "08:00", True, "#b44fd6", 60, True, True, False),
     ("OFF", "Выходной по графику", "ВЫХ", "В", "absence", "", "", False, "#c3cdd9", 70, False, False, True),
     ("SICK", "Больничный", "БОЛ", "Б", "absence", "", "", False, "#e05d4b", 80, False, False, False),
+    # «НБ» — настоящий код отсутствия (carries_hours=False): ставится из Табеля
+    # назначением на период (range-absence). Без этого вида health-панель честно
+    # предупреждала APP-CODE-NO-SHIFT (16.10.2026); цвет — CODE_COLORS["НБ"].
+    ("SICK_UNPAID", "Неоплачиваемый больничный", "НБ", "НБ", "absence", "", "", False, "#c0504d", 85, False, False, False),
     ("VACATION", "Отпуск (за счёт предприятия)", "ОТП", "ОТ", "absence", "", "", False, "#f0a500", 90, False, False, False),
     ("VACATION_UNPAID", "Отпуск за свой счёт", "ОСЧ", "ДО", "absence", "", "", False, "#d9822b", 100, False, False, False),
     # «Отпросился (выходной за часы)» — ОДНА сущность с двумя точками ввода (Q3,
@@ -295,7 +299,17 @@ def seed_if_empty(db: Session) -> bool:
     # «отпросился» — согласованное отсутствие (логический разрез Графика, v7/R17):
     # часы не списывает, влияет только на флаги и доску
     ivanov = by_name["Иванов"]
+    # «Отпросился» осмысленно только в день со сменой и часами: демо-день — ближайший
+    # рабочий день по Табелю назад от today−3. Фиксированный сдвиг раз в 4 дня попадает
+    # на «В» цикла 2/2 — а в дне без смены блок отсутствия в ячейке не показывается
+    # (правило 16.10.2026), демо-сценарий интервала на смене становился невидим.
     away_day = today - dt.timedelta(days=3)
+    for _ in range(8):
+        row = db.scalar(select(TabelDay).where(TabelDay.employee_id == ivanov.id,
+                                               TabelDay.date == away_day))
+        if row is not None and row.plan_minutes > 0:
+            break
+        away_day -= dt.timedelta(days=1)
 
     def _utc_naive(local: dt.datetime) -> dt.datetime:
         from .deps import TZ

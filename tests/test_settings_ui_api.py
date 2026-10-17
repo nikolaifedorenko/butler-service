@@ -112,6 +112,92 @@ class TestHealth(unittest.TestCase):
     def test_04_health_requires_permission(self):
         self.assertEqual(self.emp.get("/api/engine-settings/health").status_code, 403)
 
+    def test_05_seed_closes_code_no_shift_warnings(self):
+        """16.10.2026: предупреждений APP-CODE-NO-SHIFT для «К» и «НБ» больше нет.
+
+        «НБ» — настоящий код отсутствия: в словаре появился вид SICK_UNPAID
+        («Неоплачиваемый больничный»), отсутствие ставится из Табеля на период.
+        «К» — документарный код с «План=Факт = Авто» (R19): Табель первичен,
+        График генерируется из Табеля, вид смены ему не нужен — проверка пропускает.
+        """
+        db = SessionLocal()
+        try:
+            st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK_UNPAID")).first()
+            self.assertIsNotNone(st, "в словаре смен нет вида «Неоплачиваемый больничный»")
+            self.assertEqual(st.tzh_code, "НБ")
+            self.assertEqual(st.kind, "absence")
+            self.assertFalse(st.is_working)
+            self.assertFalse(st.counts_as_worked)
+        finally:
+            db.close()
+        d = self.admin.get("/api/engine-settings/health").json()
+        warns = [c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"]
+        for code in ("К", "НБ"):
+            self.assertFalse(any(f"«{code}»" in c["text"] for c in warns), d["checks"])
+
+    def test_06_code_no_shift_still_warns_without_live_kind(self):
+        """Регресс: код без ЖИВОГО вида по-прежнему даёт APP-CODE-NO-SHIFT.
+
+        Архив вида (active=False + archived_at) рвёт связь справочников — из
+        Табеля код поставить нельзя; раньше проверка архив не видела (у модели
+        нет атрибута «archived», getattr всегда возвращал False).
+        """
+        db = SessionLocal()
+        st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK_UNPAID")).first()
+        assert st is not None
+        st.active = False
+        st.archived_at = self.today
+        db.commit()
+        db.close()
+        try:
+            d = self.admin.get("/api/engine-settings/health").json()
+            warns = [c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"]
+            self.assertTrue(any("«НБ»" in c["text"] for c in warns), d["checks"])
+            self.assertTrue(all(c["level"] == "warn" for c in warns))
+            self.assertTrue(all(c["screen"] == "shifts" for c in warns))
+        finally:
+            db = SessionLocal()
+            st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK_UNPAID")).first()
+            st.active = True
+            st.archived_at = None
+            db.commit()
+            db.close()
+        d = self.admin.get("/api/engine-settings/health").json()
+        self.assertEqual([c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"], [],
+                         "после возврата вида из архива предупреждение уходит")
+
+    def test_07_missing_kind_readded_by_migration(self):
+        """Старая база без «НБ»: _migrate_missing_shifts докладывает вид из сида.
+
+        Регресс старта приложения: raw-INSERT миграции не перечислял
+        punch_in_allowed/punch_out_allowed, а в базах, созданных create_all, эти
+        колонки NOT NULL без серверного дефолта — сервер падал при старте.
+        """
+        from app.migrations import _migrate_missing_shifts
+
+        db = SessionLocal()
+        st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK_UNPAID")).first()
+        assert st is not None
+        db.delete(st)
+        db.commit()
+        db.close()
+        try:
+            _migrate_missing_shifts()
+            _migrate_missing_shifts()          # идемпотентно
+            db = SessionLocal()
+            try:
+                st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK_UNPAID")).first()
+                self.assertIsNotNone(st, "миграция не вернула вид «НБ» в словарь")
+                self.assertEqual(st.tzh_code, "НБ")
+                self.assertTrue(st.punch_in_allowed)
+                self.assertTrue(st.punch_out_allowed)
+            finally:
+                db.close()
+        finally:
+            d = self.admin.get("/api/engine-settings/health").json()
+            self.assertEqual([c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"], [],
+                             "после миграции health снова чист")
+
 
 class TestResolver(unittest.TestCase):
     """«Проверитель»: какое значение подействовало и на каком уровне приоритета."""
