@@ -48,13 +48,10 @@ from app.db import SessionLocal  # noqa: E402
 from app.deps import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.migrations import (  # noqa: E402
-    migrate_schedule_dict_simplify,
-    migrate_shift_tabel_codes,
     migrate_time_off_template,
     migrate_timeoff_entity,
 )
 from app.models import (  # noqa: E402
-    PeriodClosing,
     ScheduleAbsence,
     ScheduleShift,
     ShiftType,

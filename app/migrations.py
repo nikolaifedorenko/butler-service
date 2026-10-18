@@ -195,7 +195,6 @@ def _apply_timesheet_code_normative(con) -> None:
     справочников очищает engine_bootstrap.strip_removed_day_codes, и только если
     в Табеле не осталось строк с этими кодами.
     """
-    from sqlalchemy import text
 
     # связка «смена → код Табеля» (tzh_code) удалена 18.10.2026: править нечего
 

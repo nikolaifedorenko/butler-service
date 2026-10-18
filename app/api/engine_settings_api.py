@@ -125,7 +125,7 @@ def _guard_removed_day_codes(payload: dict, db: Session) -> None:
     CHK-KNOWN-DAY-CODES), как и код, на который ссылается живой вид смены словаря
     (APP-SHIFT-CODE). Та же логика, что в strip_removed_day_codes для нормативных
     изъятий («С», «НВ», «НБ»), — только на публикации версии."""
-    from ..models import ShiftType, TabelDay
+    from ..models import TabelDay
 
     new_codes = set((payload.get("day_code_policy") or {}).keys())
     prev = base_version(db, dt.date.today())
@@ -332,14 +332,14 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
     """Прикладные сверки D18/D19: то, что домен не знает (словарь смен, сотрудники, блоки)."""
     from ..base_schedule import load_base_config
     from ..groups import normalize_group
-    from ..models import Employee, ShiftType
+    from ..models import Employee
 
     out: list[dict] = []
     codes = payload.get("day_code_policy") or {}
 
     # Значение рабочего дня — атрибут сотрудника (18.10.2026): без него цикл
     # не заполнит рабочие дни, поэтому подсвечиваем таких сотрудников заранее.
-    from ..base_schedule import BlockIndex, load_base_config, pattern_for_date
+    from ..base_schedule import BlockIndex, pattern_for_date
     from ..deps import local_date
     emps = list(db.scalars(select(Employee).where(Employee.deleted_at.is_(None))))
     if emps:

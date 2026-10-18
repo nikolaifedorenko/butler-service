@@ -728,10 +728,9 @@ def tabel_values(principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода
     (18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
-    import datetime as _dt
+    from ..deps import local_date
     from ..engine.adapters.sql_settings import SqlSettingsAdapter
     from ..engine.application.months import month_period
-    from ..deps import local_date
     from ..services.engine_common import day_code_rows
 
     _today = local_date()

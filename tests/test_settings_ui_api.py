@@ -33,7 +33,6 @@ from app.models import (  # noqa: E402
     DayModifier,
     DoublePayDay,
     Employee,
-    ScheduleAbsence,
     ShiftType,
 )
 

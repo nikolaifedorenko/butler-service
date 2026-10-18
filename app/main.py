@@ -44,9 +44,9 @@ from .deps import now_local
 from .migrations import (
     migrate_db,
     migrate_engine_v7,
-    migrate_schedule_dict_simplify,
     migrate_manual_replaces_generated,
     migrate_night_cars,
+    migrate_schedule_dict_simplify,
     migrate_settings_value_text,
     migrate_shift_tabel_codes,
     migrate_time_off_template,

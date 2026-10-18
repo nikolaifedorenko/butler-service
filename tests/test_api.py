@@ -113,8 +113,6 @@ class TestApi(unittest.TestCase):
         today = local_date()
         start = today.replace(day=1)
         end = start + dt.timedelta(days=6)
-        types = client.get("/api/shift-types").json()
-        day12 = next(t for t in types if t["code"] == "DAY12")
         emps = client.get("/api/employees").json()
         r = client.post("/api/schedule/fill-pattern", json={
             "employee_ids": [emps[0]["id"]], "start_date": start.isoformat(),
@@ -201,8 +199,6 @@ class TestApi(unittest.TestCase):
         today = local_date()
         start = today.replace(day=1)
         end = start + dt.timedelta(days=7)
-        types = client.get("/api/shift-types").json()
-        day12 = next(t for t in types if t["code"] == "DAY12")
         emps = client.get("/api/employees").json()
         r = client.post("/api/schedule/fill-pattern", json={
             "employee_ids": [emps[0]["id"]], "start_date": start.isoformat(),
@@ -226,8 +222,6 @@ class TestApi(unittest.TestCase):
         today = local_date()
         start = today.replace(day=1)
         end = start + dt.timedelta(days=6)
-        types = client.get("/api/shift-types").json()
-        day9 = next(t for t in types if t["code"] == "DAY9")
         emps = client.get("/api/employees").json()
         r = client.post("/api/schedule/fill-pattern", json={
             "employee_ids": [emps[1]["id"]], "start_date": start.isoformat(),
