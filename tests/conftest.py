@@ -105,6 +105,12 @@ def manager_client(app_stack):
 
 
 @pytest.fixture()
+def manager_role_client(app_stack):
+    """Менеджер объекта (роль manager): права cars.manage в отличие от supervisor."""
+    return _login(app_stack["app"], "smirnov")
+
+
+@pytest.fixture()
 def admin_client(app_stack):
     return _login(app_stack["app"], "admin")
 

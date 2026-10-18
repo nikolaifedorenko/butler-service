@@ -96,14 +96,25 @@ function renderCars() {
   const rows = list.map(c => {
     const mine = c.id === me.held;
     const assignedToMe = c.id === me.assigned;
+    /* Кнопки операций не существуют одновременно (решение владельца 18.10.2026):
+       свободный кар — «Взять»/«Выдать»; мой кар — «Вернул»/«Передать»; чужой занятый —
+       операции держателя скрыты, менеджеру (cars.issue) доступны возврат/передача
+       от имени держателя. Права: cars.use — свои операции, cars.issue — выдача и т.п. */
+    const takeable = c.status === 'free' || c.status === 'charging';
+    const heldBySomeone = c.status === 'busy';
     const acts = [];
-    if (!mine && (c.status === 'free' || c.status === 'charging')) acts.push(`<button class="btn btn-sm btn-accent" data-act="take" data-id="${c.id}">Взять</button>`);
-    if (mine || meta.can_manage) {
+    if (meta.can_use && !mine && takeable) acts.push(`<button class="btn btn-sm btn-accent" data-act="take" data-id="${c.id}">Взять</button>`);
+    if (meta.can_use && mine) {
       acts.push(`<button class="btn btn-sm" data-act="return" data-id="${c.id}">Вернул</button>`);
       acts.push(`<button class="btn btn-sm btn-ghost" data-act="handover" data-id="${c.id}">Передать</button>`);
+    } else if (meta.can_issue && heldBySomeone) {
+      acts.push(`<button class="btn btn-sm" data-act="return" data-id="${c.id}" title="Оформить возврат от имени держателя">Вернул</button>`);
+      acts.push(`<button class="btn btn-sm btn-ghost" data-act="handover" data-id="${c.id}" title="Передать от имени держателя">Передать</button>`);
     }
-    if (meta.can_manage) {
+    if (meta.can_issue && !mine && takeable) {
       acts.push(`<button class="btn btn-sm btn-ghost" data-act="give" data-id="${c.id}">Выдать</button>`);
+    }
+    if (meta.can_issue) {
       acts.push(`<button class="btn btn-sm btn-ghost" data-act="assign" data-id="${c.id}" title="Рекомендательное закрепление">Закрепить</button>`);
       acts.push(`<button class="btn btn-sm btn-ghost" data-act="status" data-id="${c.id}">Статус</button>`);
     }
@@ -115,7 +126,7 @@ function renderCars() {
       c.condition === 'bad' ? '<span class="badge danger">неисправен</span>' : '',
       c.trash ? '<span class="badge warn">мусор</span>' : '',
       c.clean ? '' : '<span class="badge warn">не убран</span>',
-      c.on_charge ? '<span class="badge info">на зарядке</span>' : '',
+      c.on_charge && c.status !== 'charging' ? '<span class="badge info">на зарядке</span>' : '',
     ].filter(Boolean).join(' ');
 
     return `<tr class="${mine ? 'row-mine' : ''}">
@@ -443,7 +454,8 @@ function carAddModal() {
     title: 'Новый кар',
     body: `<label class="field"><span>Номер (обязательно)</span>
         <input type="text" id="ca-number" maxlength="40" placeholder="Например: 04"></label>
-      <label class="field"><span>Место стоянки</span><select id="ca-loc">${locationOptions('')}</select></label>`,
+      <p class="hint">Место стоянки и состояние указываются при возврате и в карточке кара —
+        новый кар создаётся свободным без места (решение владельца 18.10.2026).</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Добавить</button>`,
     onMount(m) {
@@ -452,7 +464,7 @@ function carAddModal() {
         const number = $('#ca-number').value.trim();
         if (!number) return toast('Укажите номер кара', 'warn');
         try {
-          await api('/api/cars', { method: 'POST', body: { number, location: $('#ca-loc').value } });
+          await api('/api/cars', { method: 'POST', body: { number } });
           closeModal(); toast(`Кар №${number} добавлен`, 'ok'); fetchCars();
         } catch (e) { toast(e.message, 'err'); }
       };
@@ -520,7 +532,8 @@ async function carLocationsModal() {
               <div class="desc">${l.active ? '' : '<span class="badge muted">отключено</span>'}${l.builtin ? ' · встроенное' : ''}</div></div>
             ${canRename ? `<div style="display:flex;gap:6px">
               <button class="btn btn-sm btn-ghost" data-loc-rename="${l.id}">Переименовать</button>
-              <button class="btn btn-sm btn-ghost" data-loc-toggle="${l.id}">${l.active ? 'Отключить' : 'Включить'}</button></div>` : ''}
+              <button class="btn btn-sm btn-ghost" data-loc-toggle="${l.id}">${l.active ? 'Отключить' : 'Включить'}</button>
+              <button class="btn btn-sm btn-ghost" data-loc-del="${l.id}" title="Удалить место (если оно не указано у активных каров)">Удалить</button></div>` : ''}
           </div>`).join('') || '<div class="empty">Мест пока нет</div>'}</div>
         ${canEdit ? `<div class="grid-2" style="margin-top:12px">
           <input type="text" id="loc-new" placeholder="Новое место (например: Парковка у корпуса B)" maxlength="160">
@@ -546,6 +559,15 @@ async function carLocationsModal() {
           const loc = locations.find(x => x.id === Number(b.dataset.locToggle));
           try { await api(`/api/cars/locations/${loc.id}`, { method: 'PUT', body: { active: !loc.active } }); toast(loc.active ? 'Место отключено' : 'Место включено', 'ok'); render(); }
           catch (e) { toast(e.message, 'err'); }
+        });
+        $$('[data-loc-del]', m).forEach(b => b.onclick = async () => {
+          const loc = locations.find(x => x.id === Number(b.dataset.locDel));
+          confirmDialog('Удалить место стоянки?',
+            `«${loc.name}» исчезнет из справочника. Прошлые возвраты хранят место текстом — история не сломается. Если место указано у активного кара, сервер отклонит удаление.`,
+            async () => {
+              try { await api(`/api/cars/locations/${loc.id}`, { method: 'DELETE' }); toast('Место удалено', 'ok'); render(); }
+              catch (e) { toast(e.message, 'err'); }
+            }, 'Удалить');
         });
       },
     });
