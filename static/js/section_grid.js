@@ -397,8 +397,9 @@ function openRangeModal(mode = 'tabel') {
   const rows = (state.grid?.rows || state.tabel?.rows || []);
   const people = rows.length ? rows.map(r => r.employee)
     : (state.employees || []).map(e => ({ id: e.id, full_name: e.full_name, position: e.position }));
-  const kinds = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off
-    && (fromSchedule ? !x.tzh_code : !!x.tzh_code));
+  /* 18.10.2026: справочники независимы. «За счёт часов» — системный вид словаря
+     смен; отсутствия периода (отпуск, больничный…) — коды Табеля без часов. */
+  const kinds = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off);
   openModal({
     title: fromSchedule ? 'Выходной за часы' : 'Назначить отсутствие (код Табеля)',
     subtitle: fromSchedule
@@ -419,9 +420,8 @@ function openRangeModal(mode = 'tabel') {
         ? `<div class="field"><span>Вид («за счёт часов») — в словаре один</span>
            <div style="font-weight:600">${kinds[0] ? esc(kinds[0].name) : '— нет вида в словаре смен —'}</div>
            <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></div>`
-        : `<label class="field"><span>Вид отсутствия (код Табеля)</span><select id="rg-shift">
-          ${kinds.map((x, i) => `<option value="${x.id}" ${x.code === 'VACATION' || i === 0 ? 'selected' : ''}>${esc(x.name)} · код Табеля ${x.tzh_code ? `«${esc(x.tzh_code)}»` : 'не задан'}</option>`).join('')
-            || '<option value="">— нет подходящих видов в словаре смен —</option>'}
+        : `<label class="field"><span>Код отсутствия (CFG-DAY-CODES)</span><select id="rg-code">
+          <option value="">— загрузка… —</option>
         </select>
           <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></label>`}
       <label class="field"><span>Примечание</span>
@@ -441,19 +441,30 @@ function openRangeModal(mode = 'tabel') {
       const hint = $('#rg-mode-hint');
       if (hint) hint.textContent = fromSchedule
         ? 'Единая сущность «отпросился (выходной за часы)»: на весь день — из Графика, интервалом — в ячейке дня.'
-        : 'Вид с кодом Табеля: отсутствие оформляется кодом первичного документа.';
+        : 'Отсутствие оформляется кодом первичного документа: словарь смен не участвует.';
+      const codeSel = m.querySelector('#rg-code');
+      if (codeSel) (async () => {
+        try {
+          const di = await api('/api/shift-types/tabel-codes', { silent: true });
+          const off = (di.codes || []).filter(c => !c.carries_hours && c.code !== 'В');
+          codeSel.innerHTML = off.map(c => `<option value="${esc(c.code)}" ${c.code === 'ОТ' ? 'selected' : ''}>${esc(c.title || c.code)} · «${esc(c.code)}»</option>`).join('')
+            || '<option value="">— нет кодов отсутствий в справочнике —</option>';
+        } catch { codeSel.innerHTML = '<option value="">— справочник не загрузился —</option>'; }
+      })();
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-ok]').onclick = async () => {
         const ids = $$('#rg-emps input:checked').map(i => +i.value);
         if (!ids.length) return toast('Отметьте сотрудников', 'warn');
-        const kindId = fromSchedule ? (kinds[0] ? kinds[0].id : 0) : +$('#rg-shift').value;
-        if (!kindId) return toast('Выберите вид отсутствия', 'warn');
+        const kindId = fromSchedule ? (kinds[0] ? kinds[0].id : 0) : 0;
+        const code = fromSchedule ? '' : ($('#rg-code') ? $('#rg-code').value : '');
+        if (fromSchedule && !kindId) return toast('Нет вида «за счёт часов» в словаре', 'warn');
+        if (!fromSchedule && !code) return toast('Выберите код отсутствия', 'warn');
         const from = $('#rg-from').value, to = $('#rg-to').value;
         if (!from || !to || from > to) return toast('Проверьте даты периода', 'warn');
         try {
           const res = await api('/api/schedule/range-absence', { method: 'POST', body: {
             employee_ids: ids, first: from, last: to,
-            shift_type_id: kindId, note: $('#rg-note').value.trim(),
+            shift_type_id: kindId || null, code, note: $('#rg-note').value.trim(),
             workdays_only: $('#rg-work-only').checked,
           } });
           closeModal();
@@ -485,7 +496,7 @@ function openCellModal(empId, dateISO) {
      больничный, за свой счёт и оплачиваемый выходной — коды первичного документа, они
      ставятся в Табеле (слой 0), там же печатаются заявления. */
   const absenceKinds = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off
-    && !x.tzh_code && !x.archived);
+    && !x.archived);
   /* вид отсутствия из Графика — единственный «за счёт часов» (Q4): выбор убран,
      владельцу не зачем выбирать из одного (16.10.2026) */
   const absenceKind = absenceKinds[0] || null;

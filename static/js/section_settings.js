@@ -1524,6 +1524,9 @@ async function settingsScreenGroups(host) {
         </select></label>
         <label class="field"><span>Опорная дата (день, когда Смена 1 рабочая)</span>
           <input type="date" id="b-anchor" value="${esc(base.anchor || '2024-01-01')}" ${edit ? '' : 'disabled'}></label>
+        <label class="field hidden" id="b-cycle-wrap"><span>Произвольный цикл (Р/В)</span>
+          <input type="text" id="b-cycle-custom" placeholder="РРВВВВРР"
+            value="${esc(String(base.cycle || '').startsWith('custom') ? String(base.cycle).slice(7) : '')}" ${edit ? '' : 'disabled'}></label>
       </div>
       <p class="hint" style="margin:-4px 0 10px">Смена 2 работает в противофазе со Сменой 1 — системное
         правило (18.10.2026). Значение рабочего дня (код и окно) задаётся в карточке
@@ -2027,7 +2030,7 @@ function settingsSearchIndex() {
   (settingsUI.data?.items || []).forEach(i => out.push({
     title: i.description || i.key, hint: `прочие правила объекта · ${i.key}`, screen: 'docs' }));
   (state.shiftTypes || []).forEach(s => out.push({
-    title: `${s.kind === 'work' ? 'Смена' : 'Отсутствие'} «${s.name}»`, hint: `${s.code}${s.tzh_code ? ' · код Табеля ' + s.tzh_code : ''}`, screen: 'shifts' }));
+    title: `${s.kind === 'work' ? 'Смена' : 'Отсутствие'} «${s.name}»`, hint: `${s.code}`, screen: 'shifts' }));
   (state.docKinds || []).forEach(k => out.push({
     title: `Вид заявления «${k.name}»`, hint: k.code, screen: 'docs' }));
   return out;

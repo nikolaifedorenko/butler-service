@@ -589,10 +589,10 @@ function tabelCellModal(empId, day) {
   /* Q4 (норматив 12.10.2026): отпуск, больничный, за свой счёт и оплачиваемый выходной —
      коды Табеля, и заявления по ним печатаются ОТСЮДА (из слоя 0). «Отпросился
      (выходной за часы)» — данные Графика, его заявление печатается из ячейки Графика. */
-  const kindOfCode = code => (state.shiftTypes || []).find(x => x.tzh_code === code
-    && x.kind === 'absence' && x.doc_type && !x.archived);
-  const statementName = k => (state.docKinds || []).find(x => x.code === k.doc_type)?.name
-    || k.doc_type;
+  /* 18.10.2026: шаблон заявления — атрибут КАРТОЧКИ кода Табеля (doc_type строки
+     CFG-DAY-CODES); словарь смен в заявлениях слоя 0 больше не участвует. */
+  const docOfCode = code => ((d.codes || []).find(x => x.code === code) || {}).doc_type || '';
+  const statementNameByDoc = doc => (state.docKinds || []).find(x => x.code === doc)?.name || doc;
   /* Значение — только плашкой из справочников (решение владельца 16.10.2026): код без
      часов (CFG-DAY-CODES) — одна плашка, код с часами — по плашке на строку CFG-WINDOWS
      («Я 12», «Я 9»…). Плашка и есть значение, поэтому часы, которых нет в справочнике,
@@ -670,11 +670,11 @@ function tabelCellModal(empId, day) {
           const w = winOf(v);
           selLine.innerHTML = `Выбрано: <b>«${esc(v)}»</b>${c && c.title ? ' — ' + esc(c.title) : ''}${w ? ` · окно ${esc(w[0])}–${esc(w[1])}` : ''}`;
         }
-        /* пустой код («Очистить») не должен совпасть с видом смены без кода Табеля
-           (tzh_code = ''): заявления «за счёт часов» печатаются из Графика */
-        const kind = selChip && selChip.dataset.code ? kindOfCode(selChip.dataset.code) : null;
-        $('#tc-doc-wrap').style.display = kind ? '' : 'none';
-        if (kind) $('#tc-doc-name').textContent = statementName(kind);
+        /* пустой код («Очистить») заявления не имеет: заявления «за счёт часов»
+           печатаются из Графика, а слой 0 — по коду отсутствия и его карточке */
+        const doc = selChip && selChip.dataset.code ? docOfCode(selChip.dataset.code) : '';
+        $('#tc-doc-wrap').style.display = doc ? '' : 'none';
+        if (doc) $('#tc-doc-name').textContent = statementNameByDoc(doc);
       };
       chipEls.forEach(b => b.onclick = () => { selChip = b; applySel(); });
       applySel();
