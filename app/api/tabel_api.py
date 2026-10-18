@@ -35,6 +35,7 @@ from ..models import Employee, TabelDay
 from ..permissions import principal_permissions, require_perm
 from ..services.engine_common import (
     day_code_colors,
+    day_code_rows,
     domain_error_text,
     emp_brief,
     engine_ports,
@@ -87,6 +88,8 @@ def get_tabel(year: int, month: int, half: Optional[int] = None,
     days = [period.start + dt.timedelta(days=i)
             for i in range((period.end - period.start).days + 1)]
     titles = _code_titles(db)
+
+    code_rows = day_code_rows(db)
     p = ports(db, principal)
     out = []
     for e in emps:
@@ -112,7 +115,10 @@ def get_tabel(year: int, month: int, half: Optional[int] = None,
             "colors": _code_colors(db),
             "codes": [{"code": code, "title": titles.get(code, ""),
                        "carries_hours": p.carries_hours, "accepts_ut": p.accepts_ut,
-                       "counts_in_ut": p.counts_in_ut, "plan_equals_fact_auto": p.plan_equals_fact_auto}
+                       "counts_in_ut": p.counts_in_ut, "plan_equals_fact_auto": p.plan_equals_fact_auto,
+                       # шаблон заявления кода (18.10.2026): слой 0 печатает по коду,
+                       # словарь смен в заявлениях больше не участвует
+                       "doc_type": (code_rows.get(code) or {}).get("doc_type") or ""}
                       for code, p in st.day_code_policy.items()],
             "values": sorted(st.windows.keys()),
             # границы окон по значениям («Я 12» → 08:00–20:00): подсказки плашек

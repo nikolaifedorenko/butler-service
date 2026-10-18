@@ -53,38 +53,31 @@ def covers_window(st, row, day, start_local, end_local) -> bool:
     return start_local <= win_start and end_local >= win_end
 
 
-def color_lookups(db: Session) -> tuple[dict, dict, dict]:
-    """Словари для раскраски ячеек план/факт из словаря «Смены и отсутствия»:
-    (рабочие виды по окну (start,end), виды отсутствий по tzh_code, цвета кодов
-    Табеля). Один источник для Графика, Факта-Ганта и печатных форм (16.10.2026)."""
+def color_lookups(db: Session) -> tuple[dict, dict]:
+    """Словари для раскраски ячеек план/факт: (рабочие виды словаря «Смены и
+    отсутствия» по окну (start,end), цвета кодов Табеля из presentation настроек).
+    Один источник для Графика, Факта-Ганта и печатных форм (16.10.2026; 18.10.2026 —
+    цвета отсутствий берём из кодов Табеля: связка «вид → код» удалена)."""
     from ..models import ShiftType
 
     work_types: dict[tuple[str, str], ShiftType] = {}
-    absence_types: dict[str, ShiftType] = {}
     for x in db.scalars(select(ShiftType).order_by(ShiftType.id)):
         if x.kind == "work":
             work_types.setdefault((x.start_time, x.end_time), x)
-        elif x.kind == "absence" and (x.tzh_code or "").strip():
-            absence_types.setdefault(x.tzh_code.strip(), x)
-    return work_types, absence_types, day_code_colors(db)
+    return work_types, day_code_colors(db)
 
 
-def pick_cell_color(lookups: tuple[dict, dict, dict], shift_hm: tuple[str, str] | None,
+def pick_cell_color(lookups: tuple[dict, dict], shift_hm: tuple[str, str] | None,
                     tabel_code: str | None, whole_off_color: str | None = None) -> str | None:
     """Цвет ячейки/полосы: плашка отсутствия → цвет вида; смена → цвет словарной
-    смены с тем же окном; код без смены → цвет вида по tzh_code; запасной — цвет
-    кода Табеля из presentation настроек."""
-    work_types, absence_types, code_colors = lookups
+    смены с тем же окном; иначе — цвет кода Табеля из presentation настроек."""
+    work_types, code_colors = lookups
     if whole_off_color:
         return whole_off_color
     if shift_hm:
         wt = work_types.get(shift_hm)
         if wt is not None and (wt.color or "").strip():
             return wt.color
-    elif tabel_code:
-        at = absence_types.get(tabel_code)
-        if at is not None and (at.color or "").strip():
-            return at.color
     if tabel_code:
         return code_colors.get(tabel_code)
     return None

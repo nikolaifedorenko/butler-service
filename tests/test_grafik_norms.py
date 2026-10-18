@@ -48,12 +48,10 @@ from app.db import SessionLocal  # noqa: E402
 from app.deps import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.migrations import (  # noqa: E402
-    migrate_shift_tabel_codes,
     migrate_time_off_template,
     migrate_timeoff_entity,
 )
 from app.models import (  # noqa: E402
-    PeriodClosing,
     ScheduleAbsence,
     ScheduleShift,
     ShiftType,
@@ -117,8 +115,8 @@ def _fill_cycle(emp_id: int) -> None:
     """
     r = client.post("/api/schedule/fill-pattern", json={
         "employee_ids": [emp_id], "start_date": FIRST.isoformat(),
-        "end_date": _month_end(FIRST).isoformat(), "work_shift_id": _shift("DAY12")["id"],
-        "off_shift_id": _shift("OFF")["id"], "pattern": "2/2", "offset": 0})
+        "end_date": _month_end(FIRST).isoformat(), "value": "Я 12",
+        "pattern": "2/2", "offset": 0})
     assert r.status_code == 200, r.text
 
 
@@ -130,60 +128,32 @@ def _work_days(emp_id: int) -> list[dt.date]:
             if cell["hours"]]
 
 
-class TestShiftTabelCode(unittest.TestCase):
-    """T1: «код в сетке» и «код в табеле» — разные поля; код Табеля — из словаря."""
+class TestShiftDictSimplified(unittest.TestCase):
+    """Словарь смен 18.10.2026: только ячейки Графика. Связка с Табелем (tzh_code),
+    подпись сетки (display_code) и чекбокс банка удалены; отсутствий в словаре,
+    кроме системного «Отпросился (выходной за часы)», нет."""
 
     @classmethod
     def setUpClass(cls):
         _login(client, "admin")
         _login(employee_client, "ivanov")
 
-    def test_01_grid_label_is_not_tabel_code(self):
-        """Подпись сетки («07–16») больше не копируется в код Табеля."""
+    def test_01_no_link_fields(self):
         r = client.post("/api/shift-types", json={
-            "code": "NORM_T1_A", "name": "07:00–16:00 (9 ч, норматив)", "short_code": "07–16",
+            "code": "NORM_T1_A", "name": "07:00–16:00 (9 ч, норматив)",
             "kind": "work", "start_time": "07:00", "end_time": "16:00"})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["display_code"], "07–16")
-        self.assertEqual(r.json()["tzh_code"], "",
-                         "иначе health-панель снова получит APP-SHIFT-CODE")
+        for gone in ("display_code", "tzh_code", "deduct_from_bank"):
+            self.assertNotIn(gone, r.json(), f"поле {gone} удалено из модели")
+        self.assertEqual(r.json()["planned_hours"], 9.0)
 
-    def test_02_unknown_tabel_code_rejected(self):
-        payload = {"code": "NORM_T1_B", "name": "20:00–08:00 (ночная, норматив)",
-                   "short_code": "20–08", "tzh_code": "20-08", "kind": "work",
-                   "start_time": "20:00", "end_time": "08:00", "overnight": True}
-        r = client.post("/api/shift-types", json=payload)
-        self.assertEqual(r.status_code, 422, r.text)
-        self.assertIn("CFG-DAY-CODES", r.json()["detail"])
-        codes = [s["code"] for s in client.get("/api/shift-types?include_archived=true").json()]
-        self.assertNotIn("NORM_T1_B", codes, "смена с битым кодом не создаётся")
-        # тот же код, но из словаря Табеля — принимается
-        r = client.post("/api/shift-types", json={**payload, "tzh_code": "Я"})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["tzh_code"], "Я")
-        self.assertEqual(r.json()["display_code"], "20–08")
-        TestShiftTabelCode.shift_id = r.json()["id"]
-        # правка: битый код отклоняется, прежнее значение сохраняется
-        r = client.put(f"/api/shift-types/{self.shift_id}",
-                       json={**payload, "tzh_code": "08-20", "name": "20:00–08:30 (ночная)"})
-        self.assertEqual(r.status_code, 422, r.text)
-        after = _shift("NORM_T1_B")
-        self.assertEqual(after["tzh_code"], "Я")
-        self.assertEqual(after["name"], "20:00–08:00 (ночная, норматив)",
-                         "отклонённая правка не меняет смену")
-        # PUT без поля «код в табеле» его не обнуляет
-        r = client.put(f"/api/shift-types/{self.shift_id}", json={
-            "code": "NORM_T1_B", "name": "20:00–08:00 (ночная, норматив)", "short_code": "20–08",
-            "kind": "work", "start_time": "20:00", "end_time": "08:00", "overnight": True})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["tzh_code"], "Я")
-        # явная очистка разрешена: пусто — «смена не участвует в автозаполнении»
-        r = client.put(f"/api/shift-types/{self.shift_id}", json={
-            "code": "NORM_T1_B", "name": "20:00–08:00 (ночная, норматив)", "short_code": "20–08",
-            "tzh_code": "", "kind": "work", "start_time": "20:00", "end_time": "08:00",
-            "overnight": True})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["tzh_code"], "")
+    def test_02_only_system_absence(self):
+        live = [k for k in client.get("/api/shift-types").json()]
+        self.assertEqual([k["code"] for k in live if k["kind"] == "absence"],
+                         ["TIMEOFF_HOURS"],
+                         "из Графика назначается один вид — «за счёт часов»")
+        self.assertIn("Отпросился", live and
+                      next(k for k in live if k["code"] == "TIMEOFF_HOURS")["name"])
 
     def test_03_tabel_codes_available_to_editor(self):
         r = client.get("/api/shift-types/tabel-codes")
@@ -193,178 +163,18 @@ class TestShiftTabelCode(unittest.TestCase):
         self.assertTrue(codes["Я"]["carries_hours"], "явка несёт часы")
         self.assertIn("В", codes)
         self.assertFalse(codes["В"]["carries_hours"])
-        # справочник нужен редактору смены, поэтому читается любым вошедшим
+        # справочник нужен карточке сотрудника, поэтому читается любым вошедшим
         r = employee_client.get("/api/shift-types/tabel-codes")
         self.assertEqual(r.status_code, 200, r.text)
 
-    def test_04_legacy_values_cleared_by_migration(self):
-        """База владельца: 6 смен с подписями в «коде в табеле» → APP-SHIFT-CODE.
-
-        Миграция чистит значения не из словаря (подпись сетки не трогает), проверка
-        здоровья уходит, автозаполнение Табеля снова возможно.
-        """
-        before = client.get("/api/engine-settings/health").json()["checks"]
-        self.assertEqual([c for c in before if c["code"] == "APP-SHIFT-CODE"], [],
-                         "свежий словарь смен чист")
-        db = SessionLocal()
-        try:
-            st = db.get(ShiftType, self.shift_id)
-            st.tzh_code = "20-08"          # как записывал прежний редактор
-            db.commit()
-        finally:
-            db.close()
-        checks = client.get("/api/engine-settings/health").json()["checks"]
-        broken = [c for c in checks if c["code"] == "APP-SHIFT-CODE"]
-        self.assertEqual(len(broken), 1, checks)
-        self.assertIn("NORM_T1_B", broken[0]["text"])
-        self.assertEqual(broken[0]["level"], "error")
-
-        migrate_shift_tabel_codes()
-        migrate_shift_tabel_codes()        # идемпотентно
-
-        db = SessionLocal()
-        try:
-            st = db.get(ShiftType, self.shift_id)
-            self.assertEqual(st.tzh_code, "")
-            self.assertEqual(st.display_code, "20–08", "подпись сетки не меняется")
-        finally:
-            db.close()
-        checks = client.get("/api/engine-settings/health").json()["checks"]
-        self.assertEqual([c for c in checks if c["code"] == "APP-SHIFT-CODE"], [])
-
-
-class TestTabelReset(unittest.TestCase):
-    """T3: «Сбросить» — ручные коды периода убираются, возвращается автозаполнение."""
-
-    @classmethod
-    def setUpClass(cls):
-        _login(client, "admin")
-        _login(employee_client, "ivanov")
-        cls.emp = _create_employee("norm_reset", "Сбросов Сброс Сбросович")
-        cls.other = _create_employee("norm_reset2", "Ручнов Руч Ручнович")
-        _fill_cycle(cls.emp["id"])
-        _fill_cycle(cls.other["id"])
-        cls.day = _work_days(cls.emp["id"])[0]
-        cls.other_day = _work_days(cls.other["id"])[0]
-        cls.absence_code = next(c["code"] for c in _tabel()["codes"]
-                                if not c["carries_hours"] and c["code"] != "В")
-
-    def _set_manual(self, emp_id: int, day: dt.date, code: str) -> None:
-        r = client.put("/api/tabel/cell", json={
-            "employee_id": emp_id, "date": day.isoformat(), "code": code, "hours": 0})
+    def test_04_values_endpoint_for_employee_card(self):
+        r = client.get("/api/tabel-values")
         self.assertEqual(r.status_code, 200, r.text)
-
-    def test_01_reset_restores_autofill(self):
-        emp_id, day = self.emp["id"], self.day
-        auto = _tabel_row(emp_id, day)
-        self.assertEqual(auto.source, "cycle")
-        self.assertGreater(auto.plan_minutes, 0)
-        self._set_manual(emp_id, day, self.absence_code)
-        manual = _tabel_row(emp_id, day)
-        self.assertEqual(manual.source, "manual")
-        self.assertEqual(manual.code, self.absence_code)
-
-        r = client.post("/api/tabel/reset", json={
-            "year": day.year, "month": day.month, "employee_ids": [emp_id]})
-        self.assertEqual(r.status_code, 200, r.text)
-        res = r.json()
-        self.assertEqual(res["cleared"], 1, res)
-        self.assertGreaterEqual(res["written"], 1)
-        self.assertEqual(res["locked_skipped"], [])
-        self.assertEqual([c["code"] for c in res["cells"]], [self.absence_code])
-
-        row = _tabel_row(emp_id, day)
-        self.assertEqual(row.source, "cycle", "ячейка снова из циклов")
-        self.assertEqual(row.code, auto.code)
-        self.assertEqual(row.plan_minutes, auto.plan_minutes)
-        # действие видно в журнале
-        log = client.get("/api/audit", params={"action": "tabel_reset"}).json()
-        self.assertTrue(log["items"], "сброс пишется в аудит")
-        self.assertEqual(log["items"][0]["action_title"], "Табель: сброс к автозаполнению")
-        self.assertIn(f"{day.year}-{day.month:02d}", log["items"][0]["target"])
-
-    def test_02_reset_is_scoped_to_employee(self):
-        other_id, day = self.other["id"], self.other_day
-        self._set_manual(other_id, day, self.absence_code)
-        r = client.post("/api/tabel/reset", json={
-            "year": day.year, "month": day.month, "employee_ids": [self.emp["id"]]})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(_tabel_row(other_id, day).source, "manual",
-                         "чужие ручные правки сброс не трогает")
-        # сброс второму сотруднику — его ячейка возвращается к автозаполнению
-        r = client.post("/api/tabel/reset", json={
-            "year": day.year, "month": day.month, "employee_ids": [other_id]})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["cleared"], 1)
-        self.assertEqual(_tabel_row(other_id, day).source, "cycle")
-
-    def test_03_reset_skips_closed_period(self):
-        """Закрытый период (и следующий за ним закрытый) — только чтение (16.5)."""
-        emp_id, day = self.emp["id"], self.day
-        self._set_manual(emp_id, day, self.absence_code)
-        next_month = dt.date(day.year + (day.month == 12), day.month % 12 + 1, 1)
-        db = SessionLocal()
-        created = []
-        try:
-            for start, end in ((FIRST, _month_end(FIRST)), (next_month, _month_end(next_month))):
-                row = PeriodClosing(employee_id=emp_id, period_start=start, period_end=end,
-                                    closed_by_name="норматив-тест")
-                db.add(row)
-                db.flush()
-                created.append(row.id)
-            db.commit()
-        finally:
-            db.close()
-        try:
-            r = client.post("/api/tabel/reset", json={
-                "year": day.year, "month": day.month, "employee_ids": [emp_id]})
-            self.assertEqual(r.status_code, 200, r.text)
-            res = r.json()
-            self.assertEqual(res["locked_skipped"], [emp_id], res)
-            self.assertEqual(res["cleared"], 0)
-            self.assertEqual(_tabel_row(emp_id, day).code, self.absence_code,
-                             "ручная правка закрытого периода осталась")
-        finally:
-            db = SessionLocal()
-            try:
-                for cid in created:
-                    row = db.get(PeriodClosing, cid)
-                    if row is not None:
-                        db.delete(row)
-                db.commit()
-            finally:
-                db.close()
-            client.post("/api/tabel/reset", json={
-                "year": day.year, "month": day.month, "employee_ids": [emp_id]})
-
-    def test_04_reset_requires_permission(self):
-        day = self.day
-        r = employee_client.post("/api/tabel/reset", json={
-            "year": day.year, "month": day.month})
-        self.assertEqual(r.status_code, 403, r.text)
-        r = TestClient(app).post("/api/tabel/reset", json={"year": day.year, "month": day.month})
-        self.assertEqual(r.status_code, 401, r.text)
-
-    def test_05_reset_reports_uncovered_days(self):
-        """День, для которого цикл не даёт значения, остаётся пустым — сервер это показывает."""
-        emp_id = self.emp["id"]
-        day = self.day
-        db = SessionLocal()
-        try:
-            row = db.scalar(select(TabelDay).where(TabelDay.employee_id == emp_id,
-                                                   TabelDay.date == day))
-            row.source = "manual"          # сброс удалит строку
-            db.commit()
-        finally:
-            db.close()
-        r = client.post("/api/tabel/reset", json={
-            "year": day.year, "month": day.month, "employee_ids": [emp_id]})
-        self.assertEqual(r.status_code, 200, r.text)
-        res = r.json()
-        self.assertEqual(res["cleared"], 1)
-        # цикл заполняет день заново: пропусков нет
-        self.assertEqual(res["uncovered_total"], 0, res["uncovered"])
-        self.assertIsNotNone(_tabel_row(emp_id, day))
+        vals = {v["value"]: v for v in r.json()["values"]}
+        self.assertIn("Я 12", vals)
+        self.assertEqual(vals["Я 12"]["start_hm"], "08:00")
+        self.assertNotIn("В", {v["code"] for v in r.json()["values"]},
+                         "выходной часов не несёт — в значения рабочего дня не попадает")
 
 
 class TestTimeoffEntity(unittest.TestCase):
@@ -384,7 +194,7 @@ class TestTimeoffEntity(unittest.TestCase):
         self.assertTrue(not away or away[0]["archived"],
                         "дубль «Отпросился: отсутствовал часть смены» слит и в архиве")
         live = [k for k in kinds if not k["archived"]]
-        codeless = [k for k in live if k["kind"] == "absence" and not k["tzh_code"]]
+        codeless = [k for k in live if k["kind"] == "absence"]
         self.assertEqual([k["code"] for k in codeless], ["TIMEOFF_HOURS"],
                          "из Графика назначается один вид — «за счёт часов»")
         self.assertIn("Отпросился", codeless[0]["name"])
@@ -478,16 +288,14 @@ class TestTimeoffEntity(unittest.TestCase):
             row = db.get(ScheduleAbsence, absence_id)
             self.assertEqual(row.kind_id, self.kind["id"], "запись перенесена на единый вид")
             dup = db.get(ShiftType, dup_id)
-            self.assertTrue(dup.archived_at or not dup.active, "дубль в архиве, не удалён")
+            self.assertTrue(dup.archived_at or not dup.active,
+                            "дубль слит и убран в архив (удаление видов отсутствий — "
+                            "одномоментная миграция 18.10.2026, не инвариант)")
             unified = db.get(ShiftType, self.kind["id"])
             self.assertEqual(unified.name, "Отпросился (выходной за часы)")
-            self.assertEqual(unified.display_code, "ОТПР")
-            self.assertEqual(unified.tzh_code, "", "кода Табеля у вида нет (Q4)")
         finally:
             db.close()
-        # архивный дубль не мешает: в словаре активным остаётся один вид «за счёт часов»
-        live = [k for k in client.get("/api/shift-types").json()
-                if k["kind"] == "absence" and not k["tzh_code"]]
+        live = [k for k in client.get("/api/shift-types").json() if k["kind"] == "absence"]
         self.assertEqual([k["code"] for k in live], ["TIMEOFF_HOURS"])
 
 
@@ -673,7 +481,7 @@ class TestGridCellSegments(unittest.TestCase):
         self.assertTrue(any(a["whole_shift"] for a in cell["absences"]),
                         "отсутствие на всё окно дня — whole_shift для плашки")
         self.assertEqual(cell["segments"], [], "видимых отрезков не осталось")
-        self.assertEqual(cell["color"], "#17a2b8",
+        self.assertEqual(cell["color"], "#0e9aa7",
                          "цвет плашки — вида отсутствия «Отпросился» из словаря")
 
     def test_03_seniors_first_within_group(self):
@@ -907,14 +715,13 @@ class TestAbsenceLayers(unittest.TestCase):
         cls.day, cls.next_work_day = days[0], days[1]
 
     def test_01_vacation_is_tabel_code(self):
-        vac = _shift("VACATION")
         r = client.post("/api/schedule/range-absence", json={
             "employee_ids": [self.emp["id"]], "first": self.day.isoformat(),
-            "last": self.day.isoformat(), "shift_type_id": vac["id"], "note": "приказ №47"})
+            "last": self.day.isoformat(), "code": "ОТ", "note": "приказ №47"})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertNotEqual(r.json().get("mode"), "schedule_absence")
         row = _tabel_row(self.emp["id"], self.day)
-        self.assertEqual(row.code, vac["tzh_code"], "отпуск — код первичного документа")
+        self.assertEqual(row.code, "ОТ", "отпуск — код первичного документа")
         self.assertEqual(row.plan_minutes, 0)
         # заявление печатается из Табеля: источник — код Табеля
         data = client.get("/api/schedule/absence-period", params={

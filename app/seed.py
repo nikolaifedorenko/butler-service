@@ -49,38 +49,27 @@ COLOR_SENIOR = "#e8842c"
 COLOR_ADMIN = "#d9a514"
 COLOR_NIGHT = "#7c8db0"
 
-# код, название, код в сетке, код Т-13, kind, начало, конец, через ночь, цвет, порядок, рабочая, в зачёт, «выходной по умолчанию»
+# код, название, kind, начало, конец, через ночь, цвет, порядок, рабочая, в зачёт,
+# «выходной по умолчанию». Словарь с 18.10.2026 — только добавляемые смены Графика
+# и системное отсутствие «Отпросился (выходной за часы)»: связка «смена → код
+# Табеля» (tzh_code) и подпись сетки (display_code) удалены, виды отсутствий
+# (больничный, отпуск…) больше не нужны — отсутствия ставятся кодами Табеля.
 SHIFT_TYPES = [
-    ("DAY12", "08:00–20:00 (12 ч, график 2/2 или 3/3)", "08–20", "Я", "work", "08:00", "20:00", False, "#34a862", 10, True, True, False),
-    ("NIGHT12", "20:00–08:00 (ночная, ручная смена Графика)", "20–08", "Я", "work", "20:00", "08:00", True, "#5b6bd6", 20, True, True, False),
-    ("DAY9", "09:00–18:00 (9 ч, график 5/2)", "09–18", "Я", "work", "09:00", "18:00", False, "#2bb673", 30, True, True, False),
-    ("DAY8_17", "08:00–17:00 (8 ч, график 5/2)", "08–17", "Я", "work", "08:00", "17:00", False, "#4cae52", 40, True, True, False),
-    ("DAY10_22", "10:00–22:00 (12 ч)", "10–22", "Я", "work", "10:00", "22:00", False, "#7ac943", 50, True, True, False),
-    # суточная смена — графиковая: в Табеле обычная явка «Я», по факту сотрудник работает
-    # через полночь, а часы вне окна расчёт относит к переработке (норматив от 12.10.2026)
-    ("SUTKI", "08:00–08:00 (сутки, 1/3)", "СУТ", "Я", "work", "08:00", "08:00", True, "#b44fd6", 60, True, True, False),
-    ("OFF", "Выходной по графику", "ВЫХ", "В", "absence", "", "", False, "#c3cdd9", 70, False, False, True),
-    ("SICK", "Больничный", "БОЛ", "Б", "absence", "", "", False, "#e05d4b", 80, False, False, False),
-    # «НБ» (неоплачиваемый больничный) из сида исключён: код-артефакт, в Табеле
-    # его не существует (решение владельца 16.10.2026) — см. REMOVED_DAY_CODES
-    # в engine_bootstrap.py; прежний вид SICK_UNPAID убирает миграция.
-    ("VACATION", "Отпуск (за счёт предприятия)", "ОТП", "ОТ", "absence", "", "", False, "#f0a500", 90, False, False, False),
-    ("VACATION_UNPAID", "Отпуск за свой счёт", "ОСЧ", "ДО", "absence", "", "", False, "#d9822b", 100, False, False, False),
+    ("DAY12", "08:00–20:00 (12 ч, график 2/2 или 3/3)", "work", "08:00", "20:00", False, "#34a862", 10, True, True, False),
+    ("NIGHT12", "20:00–08:00 (ночная, ручная смена Графика)", "work", "20:00", "08:00", True, "#5b6bd6", 20, True, True, False),
+    ("DAY9", "09:00–18:00 (9 ч, график 5/2)", "work", "09:00", "18:00", False, "#2bb673", 30, True, True, False),
+    ("DAY8_17", "08:00–17:00 (8 ч, график 5/2)", "work", "08:00", "17:00", False, "#4cae52", 40, True, True, False),
+    ("DAY10_22", "10:00–22:00 (12 ч)", "work", "10:00", "22:00", False, "#7ac943", 50, True, True, False),
+    # суточная смена — графиковая: в Табеле обычная явка «Я 12» (окно 08:00–20:00),
+    # присутствие через полночь относится к карточке следующего дня (норматив 12.10.2026)
+    ("SUTKI", "08:00–08:00 (сутки, 1/3)", "work", "08:00", "08:00", True, "#b44fd6", 60, True, True, False),
     # «Отпросился (выходной за часы)» — ОДНА сущность с двумя точками ввода (Q3,
-    # 12.10.2026): интервал части смены либо вся смена. Это данные Графика, а не код
-    # первичного документа: в Табеле остаётся явка, отсутствие снимает ожидание и флаги,
-    # а недостачу гасит банк (EX-29) — поэтому кода Табеля у вида нет (Q4, Q8).
-    ("TIMEOFF_HOURS", "Отпросился (выходной за часы)", "ОТПР", "", "absence", "", "", False, "#17a2b8", 110, False, False, False),
-    ("PAID_OFF", "Выходной оплачиваемый (донорские и т.п.)", "ВОП", "ОВ", "absence", "", "", False, "#9b59b6", 120, False, True, False),
-    ("ABSENT_UNKNOWN", "Неявка по невыясненной причине", "НН", "НН", "absence", "", "", False, "#b03a48", 130, False, False, False),
+    # 12.10.2026): интервал части смены либо вся смена («выходной за часы»). Это
+    # данные Графика, а не код первичного документа: в Табеле остаётся явка,
+    # недостачу гасит банк (EX-29).
+    ("TIMEOFF_HOURS", "Отпросился (выходной за часы)", "absence", "", "", False, "#0e9aa7", 110, False, False, False),
 ]
 
-# дополнительные свойства словаря смен: какой документ печатаем и можно ли отмечаться
-# какой документ печатаем по отсутствию и можно ли во время него отмечаться.
-# У единой сущности «отпросился (выходной за часы)» заявление зависит от ТОЧКИ ВВОДА:
-# на всю смену — «выходной за ранее отработанные часы», интервалом — «об отсутствии на
-# рабочем месте» (Q3, 12.10.2026). Выбирает сервер — app/api/schedule.py::doc_type_of_absence;
-# здесь стоит базовая привязка вида (основной случай — вся смена).
 SHIFT_EXTRA = {
     "VACATION": {"doc_type": "vacation_paid", "punch_in_allowed": False, "punch_out_allowed": False},
     "VACATION_UNPAID": {"doc_type": "vacation_unpaid", "punch_in_allowed": False,
@@ -140,9 +129,9 @@ def seed_if_empty(db: Session) -> bool:
     deps = {"Служба батлеров": dep_butlers.id, "Управление": dep_mgmt.id}
 
     shifts = {}
-    for (code, name, disp, tzh, kind, start, end, overnight, color, order, is_work, counted,
+    for (code, name, kind, start, end, overnight, color, order, is_work, counted,
          default_off) in SHIFT_TYPES:
-        st = ShiftType(code=code, name=name, display_code=disp, tzh_code=tzh, kind=kind,
+        st = ShiftType(code=code, name=name, kind=kind,
                        start_time=start, end_time=end, overnight=overnight,
                        color=color, sort_order=order, is_working=is_work,
                        counts_as_worked=counted, is_default_off=default_off,
@@ -190,15 +179,15 @@ def seed_if_empty(db: Session) -> bool:
         pattern_json = ""
         if group == "Пятидневка":
             pattern_json = json.dumps({"kind": "week5", "off_weekdays": [5, 6],
-                                       "shift_code": "DAY9",
+                                       "value": "Я 9",
                                        "label": "5/2, выходные сб и вс"}, ensure_ascii=False)
         elif group == "Смена 2":
             pattern_json = json.dumps({"kind": "cycle", "cycle": pattern or "1/3",
-                                       "shift_code": "SUTKI", "anchor": acc_start.isoformat(),
+                                       "value": "Я 12", "anchor": acc_start.isoformat(),
                                        "label": f"{pattern or '1/3'} сутки"}, ensure_ascii=False)
         elif group == "Другие смены":
             pattern_json = json.dumps({"kind": "cycle", "cycle": pattern or "3/3",
-                                       "shift_code": "SUTKI", "anchor": acc_start.isoformat(),
+                                       "value": "Я 12", "anchor": acc_start.isoformat(),
                                        "label": f"{pattern or '3/3'} сутки"}, ensure_ascii=False)
         db.add(BlockAssignment(employee_id=emp.id, group=group, start_date=acc_start,
                                end_date=None, pattern_json=pattern_json))
@@ -229,6 +218,7 @@ def seed_if_empty(db: Session) -> bool:
     db.add(BlockAssignment(employee_id=morozova.id, group="Смена 2", start_date=transfer,
                            end_date=None,
                            pattern_json=json.dumps({"kind": "cycle", "cycle": "1/3",
+                                                      "value": "Я 12",
                                                     "shift_code": "SUTKI",
                                                     "anchor": transfer.isoformat(),
                                                     "label": "1/3 сутки"}, ensure_ascii=False)))
@@ -240,10 +230,11 @@ def seed_if_empty(db: Session) -> bool:
         "cycle": "2/2",
         "anchor": acc_start.isoformat(),
         "groups": {
-            "Смена 1": {"shift_code": "DAY12", "invert": False},
-            "Смена 2": {"shift_code": "SUTKI", "invert": True},
-            # у пятидневки выходные задаются у каждого сотрудника (карточка → «Перевод в блок»)
-            "Пятидневка": {"shift_code": "DAY9", "off_weekdays": [5, 6]},
+            # значение рабочего дня по умолчанию для блока: сотрудник без своего
+            # значения берёт его отсюда; личные значения живут в карточке (18.10.2026)
+            "Смена 1": {"value": "Я 12"},
+            "Смена 2": {"value": "Я 12"},
+            "Пятидневка": {"value": "Я 9", "off_weekdays": [5, 6]},
         },
     })
     db.flush()
@@ -262,8 +253,7 @@ def seed_if_empty(db: Session) -> bool:
     from .models import TabelDay
     defaults = default_settings()
 
-    def set_absence_code(emp: Employee, d1: int, d2: int, shift: ShiftType, note: str = "") -> None:
-        code = (shift.tzh_code or "").strip()
+    def set_absence_code(emp: Employee, d1: int, d2: int, code: str, note: str = "") -> None:
         policy = defaults.day_code_policy.get(code)
         if policy is None or policy.carries_hours:
             return
@@ -276,12 +266,12 @@ def seed_if_empty(db: Session) -> bool:
                             note=note, source="manual"))
 
     by_name = {e.full_name.split()[0]: e for e, _, _ in employees}
-    set_absence_code(by_name["Кузнецова"], 7, 20, shifts["VACATION"],
+    set_absence_code(by_name["Кузнецова"], 7, 20, "ОТ",
                      "Ежегодный оплачиваемый отпуск, приказ №47")
-    set_absence_code(by_name["Фёдоров"], 3, 8, shifts["SICK"], "Листок нетрудоспособности №1234")
-    set_absence_code(by_name["Орлов"], 14, 15, shifts["VACATION_UNPAID"],
+    set_absence_code(by_name["Фёдоров"], 3, 8, "Б", "Листок нетрудоспособности №1234")
+    set_absence_code(by_name["Орлов"], 14, 15, "ДО",
                      "Заявление: отпуск без сохранения з/п")
-    set_absence_code(by_name["Морозова"], 25, 25, shifts["PAID_OFF"], "Донорский день, справка №88")
+    set_absence_code(by_name["Морозова"], 25, 25, "ОВ", "Донорский день, справка №88")
     db.flush()
 
     # ───────────────────── Табель из циклов + График из Табеля (движок v7.1) ─────────────────────
@@ -328,8 +318,9 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── отметки прихода/ухода (от acc_start до сегодня) ─────────────────────
-    from .base_schedule import base_shift, load_base_config
+    from .base_schedule import BlockIndex, load_base_config, pattern_for_date, working_flag
     base_cfg = load_base_config(db)
+    block_index = BlockIndex.load(db, [e.id for e, _, _ in employees])
     now = now_local()
     absence_rows = {(r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
         TabelDay.source == "manual"))}
@@ -351,18 +342,22 @@ def seed_if_empty(db: Session) -> bool:
         d = acc_start
         while d <= today:
             row = absence_rows.get((emp.id, d))
-            shift = base_shift(db, emp, d, base_cfg)
-            works = shift is not None and shift.kind == "work"
+            pat = pattern_for_date(db, emp, d, base_cfg, index=block_index)
+            works = pat.get("kind") != "manual"
+            window = defaults.windows.get((pat.get("value") or "").strip()) if works else None
+            if works:
+                try:
+                    works = working_flag(base_cfg, pat, d)
+                except ValueError:
+                    works = False
+            works = works and window is not None
             if row is not None:                    # ручная строка Табеля (отсутствие/код)
                 policy = defaults.day_code_policy.get(row.code)
                 works = works and policy is not None and policy.carries_hours
             if works:
-                sh, sm = (int(x) for x in shift.start_time.split(":"))
-                eh, em = (int(x) for x in shift.end_time.split(":"))
-                start = dt.datetime(d.year, d.month, d.day, sh, sm)
-                end = dt.datetime(d.year, d.month, d.day, eh, em)
-                if shift.overnight or end <= start:
-                    end += dt.timedelta(days=1)
+                midnight = dt.datetime(d.year, d.month, d.day)
+                start = midnight + dt.timedelta(minutes=window.start_minute)
+                end = midnight + dt.timedelta(minutes=window.end_minute)
                 if start <= now < end:                      # смена идёт прямо сейчас
                     add_punch(emp.id, start + dt.timedelta(minutes=rnd.randint(-8, 12)), "IN")
                 elif end <= now:

@@ -124,7 +124,7 @@ def update_base(payload: BaseIn, principal: Principal = Depends(require_manager)
     """Базовый цикл объекта: какие дни рабочие у Смены 1 / Смены 2 / Администрации — на все месяцы."""
     import datetime as _dt
 
-    from ..base_schedule import _flag_for
+    from ..base_schedule import working_flag
 
     try:
         _dt.date.fromisoformat(payload.anchor)
@@ -134,7 +134,7 @@ def update_base(payload: BaseIn, principal: Principal = Depends(require_manager)
     probe = local_date()
     for name, g in cfg["groups"].items():
         try:
-            _flag_for(cfg, g, probe)
+            working_flag(cfg, g, probe)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"Блок «{name}»: {exc}")
     save_base_config(db, cfg)

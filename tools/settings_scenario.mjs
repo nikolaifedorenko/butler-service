@@ -188,16 +188,24 @@ async function main() {
   /* ── 5. Коды Табеля: карточки кодов, форма вместо JSON + публикация версии ── */
   console.log('\n5 · Коды Табеля');
   await go('codes');
-  check('карточки кодов с флагами-чекбоксами', await waitFor(() => $$('#st-body .code-card').length > 0)
-    && /Несёт часы/.test(text('#st-body')) && /Принимает коды УТ/.test(text('#st-body')));
+  check('компактный список кодов: имя и действия', await waitFor(() => $$('#st-body .code-card').length > 0)
+    && $$('#st-body [data-cedit]').length > 0 && $$('#st-body [data-cdel]').length > 0);
+  check('флаги и отметки НЕ дублируются в списке (18.10.2026)', !$$('#st-body [data-flag]').length
+    && !$$('#st-body [data-punch]').length && !$$('#st-body [data-doc]').length);
   check('словаря смен на экране кодов НЕТ', !/Новая смена/.test(text('#st-body')));
   check('код-артефакт «НБ» исключён из справочника', !$('[data-cdel="НБ"]') && !$('[data-cedit="НБ"]'));
-  check('в карточке кода — «Изменить» и удаление', $$('#st-body [data-cedit]').length > 0
-    && $$('#st-body [data-cdel]').length > 0);
-  check('у кода с часами — отметки «Пришёл/Ушёл»', !!$('#st-body [data-punch="Я:punch_in"]')
-    && !!$('#st-body [data-punch="Я:punch_out"]'));
-  check('у кода без часов — выбор заявления', $$('#st-body [data-doc]').length > 0
-    && !!$('[data-doc="ОТ"]'));
+  click($('[data-cedit="Я"]'));
+  check('у кода с часами отметки «Пришёл/Ушёл» — в модалке «Изменить»',
+    await waitFor(() => !!$('#nc-carries_hours')) && $('#nc-carries_hours').checked
+    && $('#nc-punch-wrap').style.display !== 'none');
+  click($('#modal [data-cancel]'));
+  await sleep(200);
+  click($('[data-cedit="ОТ"]'));
+  check('у кода без часов выбор заявления — в модалке «Изменить»',
+    await waitFor(() => !!$('#nc-carries_hours')) && !$('#nc-carries_hours').checked
+    && $('#nc-doc-wrap').style.display !== 'none' && !!$('#nc-doc'));
+  click($('#modal [data-cancel]'));
+  await sleep(200);
   click($('#cd-add'));
   check('форма нового кода открылась', await waitFor(() => !!$('#nc-code')));
   check('окна по умолчанию в форме кода НЕТ', !$('#nc-window'));
@@ -277,8 +285,10 @@ async function main() {
   /* ── 8. Остальные экраны ── */
   console.log('\n8 · Справочники объекта и служебные экраны');
   await go('shifts');
-  check('словарь смен', /Код Табеля/.test(text('#st-body')) && $$('#st-body tbody tr').length > 0);
-  check('связь словарей показана', /Связь словарей/.test(text('#st-body')));
+  check('словарь смен: добавляемые смены и «Отпросился»',
+    /Отпросился/.test(text('#st-body')) && $$('#st-body tbody tr').length > 0);
+  check('справочники независимы: колонки «Код Табеля» нет',
+    !/Код Табеля/.test(text('#st-body thead')) && /Как связаны Табель и График/.test(text('#st-body')));
   await go('docs');
   check('реквизиты и виды заявлений', /Реквизиты организации/.test(text('#st-body')) && /Виды заявлений/.test(text('#st-body')));
   check('прочие правила объекта', /Прочие правила объекта/.test(text('#st-body')));

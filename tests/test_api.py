@@ -113,14 +113,10 @@ class TestApi(unittest.TestCase):
         today = local_date()
         start = today.replace(day=1)
         end = start + dt.timedelta(days=6)
-        types = client.get("/api/shift-types").json()
-        day12 = next(t for t in types if t["code"] == "DAY12")
-        off = next(t for t in types if t["code"] == "OFF")
         emps = client.get("/api/employees").json()
         r = client.post("/api/schedule/fill-pattern", json={
             "employee_ids": [emps[0]["id"]], "start_date": start.isoformat(),
-            "end_date": end.isoformat(), "work_shift_id": day12["id"],
-            "off_shift_id": off["id"], "pattern": "2/2", "offset": 0})
+            "end_date": end.isoformat(), "value": "Я 12", "pattern": "2/2", "offset": 0})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertGreaterEqual(r.json()["written"], 0)
         self.assertIn("skipped", r.json())
@@ -203,13 +199,10 @@ class TestApi(unittest.TestCase):
         today = local_date()
         start = today.replace(day=1)
         end = start + dt.timedelta(days=7)
-        types = client.get("/api/shift-types").json()
-        day12 = next(t for t in types if t["code"] == "DAY12")
-        off = next(t for t in types if t["code"] == "OFF")
         emps = client.get("/api/employees").json()
         r = client.post("/api/schedule/fill-pattern", json={
             "employee_ids": [emps[0]["id"]], "start_date": start.isoformat(),
-            "end_date": end.isoformat(), "work_shift_id": day12["id"], "off_shift_id": off["id"],
+            "end_date": end.isoformat(), "value": "Я 12",
             "pattern": "custom", "cycle": "ВВРРРРВВ"})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertIn("written", r.json())
@@ -229,13 +222,10 @@ class TestApi(unittest.TestCase):
         today = local_date()
         start = today.replace(day=1)
         end = start + dt.timedelta(days=6)
-        types = client.get("/api/shift-types").json()
-        day9 = next(t for t in types if t["code"] == "DAY9")
-        off = next(t for t in types if t["code"] == "OFF")
         emps = client.get("/api/employees").json()
         r = client.post("/api/schedule/fill-pattern", json={
             "employee_ids": [emps[1]["id"]], "start_date": start.isoformat(),
-            "end_date": end.isoformat(), "work_shift_id": day9["id"], "off_shift_id": off["id"],
+            "end_date": end.isoformat(), "value": "Я 9",
             "pattern": "5/2", "off_weekdays": [0, 1]})     # выходные пн и вт
         self.assertEqual(r.status_code, 200, r.text)
         grid = client.get("/api/schedule", params={"year": start.year, "month": start.month}).json()
@@ -365,43 +355,29 @@ class TestApi(unittest.TestCase):
         with_hist = client.get("/api/tabel", params={"year": today.year, "month": today.month}).json()
         self.assertTrue(all(r["employee"]["id"] != eid for r in with_hist["rows"]) or True)
 
-    def test_15c_overtime_and_shift_short_code(self):
+    def test_15c_overtime_and_shift_dict_simplified(self):
+        """Словарь смен 18.10.2026: только ячейка Графика. Ни «кода в сетке», ни
+        «кода в табеле», ни чекбокса банка — связка справочников разорвана."""
         today = local_date()
         r = client.get("/api/mgmt", params={"year": today.year, "month": today.month})
         self.assertEqual(r.status_code, 200)
-        row = r.json()["rows"][0]
-        self.assertIn("totals", row)
-        # T1 (норматив 12.10.2026): «код в сетке» и «код в табеле» — РАЗНЫЕ поля.
-        # Подпись смены («07–16») больше не копируется в код Табеля: в нём допустимы
-        # только коды CFG-DAY-CODES или пустое значение.
+        self.assertIn("totals", r.json()["rows"][0])
         st = self.admin.post("/api/shift-types", json={
-            "code": "TEST7_16", "name": "07:00–16:00 (9 ч)", "short_code": "07–16",
+            "code": "TEST7_16", "name": "07:00–16:00 (9 ч)",
             "kind": "work", "start_time": "07:00", "end_time": "16:00", "color": "#2bb673"})
         self.assertEqual(st.status_code, 200, st.text)
-        self.assertEqual(st.json()["display_code"], "07–16")
-        self.assertEqual(st.json()["tzh_code"], "", "подпись сетки не становится кодом Табеля")
-        # значение не из словаря кодов Табеля не сохраняется (раньше — 6 ошибок APP-SHIFT-CODE)
-        bad = self.admin.post("/api/shift-types", json={
-            "code": "TEST7_17", "name": "07:00–17:00 (10 ч)", "short_code": "07–17",
-            "tzh_code": "07-17", "kind": "work", "start_time": "07:00", "end_time": "17:00"})
-        self.assertEqual(bad.status_code, 422, bad.text)
-        self.assertIn("CFG-DAY-CODES", bad.json()["detail"])
-        good = self.admin.post("/api/shift-types", json={
-            "code": "TEST7_17", "name": "07:00–17:00 (10 ч)", "short_code": "07–17",
-            "tzh_code": "Я", "kind": "work", "start_time": "07:00", "end_time": "17:00"})
-        self.assertEqual(good.status_code, 200, good.text)
-        self.assertEqual(good.json()["tzh_code"], "Я")
-        self.assertEqual(good.json()["display_code"], "07–17")
-        # PUT без поля «код в табеле» его не обнуляет
-        upd = self.admin.put(f"/api/shift-types/{good.json()['id']}", json={
-            "code": "TEST7_17", "name": "07:00–17:30 (10,5 ч)", "short_code": "07–17",
+        body = st.json()
+        for gone in ("display_code", "tzh_code", "deduct_from_bank"):
+            self.assertNotIn(gone, body, f"поле {gone} удалено из словаря смен")
+        self.assertEqual(body["planned_hours"], 9.0)
+        upd = self.admin.put(f"/api/shift-types/{body['id']}", json={
+            "code": "TEST7_16", "name": "07:00–17:30 (10,5 ч)",
             "kind": "work", "start_time": "07:00", "end_time": "17:30"})
         self.assertEqual(upd.status_code, 200, upd.text)
-        self.assertEqual(upd.json()["tzh_code"], "Я", "поле не присылали — значение сохранено")
         self.assertEqual(upd.json()["planned_hours"], 10.5)
-        # словарь кодов Табеля доступен редактору смены
-        codes = self.admin.get("/api/shift-types/tabel-codes").json()["codes"]
-        self.assertIn("Я", [c["code"] for c in codes])
+        # значения рабочего дня для карточки сотрудника отдаются отдельным списком
+        vals = self.admin.get("/api/tabel-values").json()["values"]
+        self.assertIn("Я 12", [v["value"] for v in vals])
 
     def test_15d_doc_templates_and_range_assign(self):
         today = local_date()
@@ -413,15 +389,13 @@ class TestApi(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(client.get("/api/settings").json()["doc"]["company"], "ООО «Ромашка»")
         # отпуск периодом разом: 5 дней одной операцией (коды Табеля — первичный документ)
-        types = client.get("/api/shift-types").json()
-        vac = next(t for t in types if t["code"] == "VACATION")
         emps = client.get("/api/employees").json()
         target = next(e for e in emps if e["full_name"].startswith("Иванов"))
         d1 = today.replace(day=1)
         r = client.post("/api/schedule/range-absence", json={
             "employee_ids": [target["id"]], "first": d1.isoformat(),
             "last": (d1 + dt.timedelta(days=4)).isoformat(),
-            "shift_type_id": vac["id"], "note": "приказ №1"})
+            "code": "ОТ", "note": "приказ №1"})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["written"], 5)
         grid = client.get("/api/schedule", params={"year": d1.year, "month": d1.month}).json()
@@ -478,9 +452,9 @@ class TestApi(unittest.TestCase):
         # опорная дата в будущем не ломает сетку
         r = client.put("/api/settings/base", json={
             "cycle": "2/2", "anchor": (today + dt.timedelta(days=40)).isoformat(),
-            "groups": {"Смена 1": {"shift_code": "DAY12", "invert": False},
-                       "Смена 2": {"shift_code": "SUTKI", "invert": True},
-                       "Администрация": {"shift_code": "DAY9", "pattern": "5/2",
+            "groups": {"Смена 1": {"value": "Я 12"},
+                       "Смена 2": {"value": "Я 12"},
+                       "Администрация": {"value": "Я 9", "pattern": "5/2",
                                          "off_weekdays": [5, 6]}}})
         self.assertEqual(r.status_code, 200, r.text)
         g = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
@@ -532,9 +506,9 @@ class TestApi(unittest.TestCase):
         transfer = first + dt.timedelta(days=4)      # 05-е число
         r = self.admin.put("/api/settings/base", json={
             "cycle": "2/2", "anchor": "2024-01-01",
-            "groups": {"Смена 1": {"shift_code": "DAY12", "invert": False},
-                       "Смена 2": {"shift_code": "SUTKI", "invert": True},
-                       "Пятидневка": {"shift_code": "DAY9", "off_weekdays": [5, 6]}}})
+            "groups": {"Смена 1": {"value": "Я 12"},
+                       "Смена 2": {"value": "Я 12"},
+                       "Пятидневка": {"value": "Я 9", "off_weekdays": [5, 6]}}})
         self.assertEqual(r.status_code, 200, r.text)
         created = self.admin.post("/api/employees", json={
             "full_name": "Фазовый Тест Тестович", "position": "Батлер",

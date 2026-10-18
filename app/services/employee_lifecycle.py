@@ -38,7 +38,8 @@ class BlockChange:
 
     group: str
     kind: str = ""
-    shift_code: str = ""
+    value: str = ""               # значение рабочего дня («Я 10,75») — ключ CFG-WINDOWS
+    shift_code: str = ""          # легаси-поле старых паттернов, не используется
     cycle: str = ""
     anchor: Optional[str] = None
     off_weekdays: list[int] = field(default_factory=list)
@@ -160,8 +161,8 @@ def build_pattern_json(data: BlockChange) -> str:
     if kind == "base":
         return ""
     pattern: dict = {"kind": kind}
-    if data.shift_code.strip():
-        pattern["shift_code"] = data.shift_code.strip()
+    if data.value.strip():
+        pattern["value"] = data.value.strip()
     if kind == "week5":
         pattern["off_weekdays"] = sorted({int(d) % 7 for d in data.off_weekdays})
     if kind == "cycle":

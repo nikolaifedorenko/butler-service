@@ -84,13 +84,12 @@ class TestNewFeatures(unittest.TestCase):
     # ── 1. отсутствие на период через границу месяцев: коды Табеля (v7.1) ──
     def test_01_range_absence_cross_month(self):
         emp = _create_employee("feat_range", "Ранжев Роман Ранжевич", TODAY - dt.timedelta(days=90))
-        vac = _shift_by_code("VACATION")
         nxt_first = (TODAY.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
         start = nxt_first - dt.timedelta(days=3)
         end = nxt_first + dt.timedelta(days=4)
         r = client.post("/api/schedule/range-absence", json={
             "employee_ids": [emp["id"]], "first": start.isoformat(), "last": end.isoformat(),
-            "shift_type_id": vac["id"], "note": "отпуск через границу месяца"})
+            "code": "ОТ", "note": "отпуск через границу месяца"})
         self.assertEqual(r.status_code, 200, r.text)
         data = r.json()
         self.assertEqual(data["written"], 8)
@@ -116,7 +115,8 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(p["start"], start.isoformat())
         self.assertEqual(p["end"], end.isoformat())
         self.assertEqual(p["days"], 8)
-        self.assertEqual(p["shift"]["code"], "VACATION")
+        self.assertEqual(p["shift"]["code"], "ОТ",
+                         "краткая справка отсутствия — код Табеля и его название")
 
     # ── 1b. «НБ» — артефакт: код исключён из справочника (16.10.2026) ──
     def test_01b_sick_unpaid_code_removed(self):
@@ -356,9 +356,11 @@ class TestNewFeatures(unittest.TestCase):
         client.delete(f"/api/shift-types/{st['id']}")
 
         # «выходной по умолчанию» архивировать нельзя
-        off = _shift_by_code("OFF")
-        r = client.delete(f"/api/shift-types/{off['id']}")
-        self.assertEqual(r.status_code, 409)
+        # 18.10.2026: вида «выходной по умолчанию» в словаре нет: выходной день
+        # Графика — код «В» из Табеля; предохранитель «единственный default_off»
+        # остаётся в модели, но в демо-словаре недостижим
+        kinds = client.get("/api/shift-types", params={"include_archived": "true"}).json()
+        self.assertFalse(any(k["is_default_off"] for k in kinds))
 
     # ── 9. блоки: Пятидневка (свои выходные) и Другие смены (цикл 3/3) → Табель ──
     def test_09_groups_and_patterns(self):
@@ -374,7 +376,7 @@ class TestNewFeatures(unittest.TestCase):
                                 TODAY - dt.timedelta(days=90), group="Пятидневка")
         r = client.post(f"/api/employees/{emp5['id']}/block-change", json={
             "group": "Пятидневка", "date": (TODAY - dt.timedelta(days=90)).isoformat(),
-            "kind": "week5", "off_weekdays": [6, 0], "shift_code": "DAY9",
+            "kind": "week5", "off_weekdays": [6, 0], "value": "Я 9",
             "label": "5/2, выходные вс и пн"})
         self.assertEqual(r.status_code, 200, r.text)
         r = client.post("/api/tabel/fill-from-cycles", json={
@@ -404,7 +406,7 @@ class TestNewFeatures(unittest.TestCase):
         anchor = TODAY.replace(day=1)
         r = client.post(f"/api/employees/{emp3['id']}/block-change", json={
             "group": "Другие смены", "date": anchor.isoformat(), "kind": "cycle",
-            "cycle": "3/3", "shift_code": "DAY12", "anchor": anchor.isoformat(),
+            "cycle": "3/3", "value": "Я 12", "anchor": anchor.isoformat(),
             "label": "3/3 дневные"})
         self.assertEqual(r.status_code, 200, r.text)
         r = client.post("/api/tabel/fill-from-cycles", json={

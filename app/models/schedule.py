@@ -31,8 +31,6 @@ class ShiftType(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True)      # DAY12 / NIGHT12 / SICK ...
     name: Mapped[str] = mapped_column(String(120))                  # «08:00–20:00», «больничный»
-    display_code: Mapped[str] = mapped_column(String(12), default="")  # «Я», «Н», «Б», «ОТ», «ДО»
-    tzh_code: Mapped[str] = mapped_column(String(12), default="")   # код для официального табеля (Т-13)
     kind: Mapped[str] = mapped_column(String(16), default="work")   # work | absence
     start_time: Mapped[str] = mapped_column(String(5), default="")  # "08:00"
     end_time: Mapped[str] = mapped_column(String(5), default="")    # "20:00"
@@ -43,8 +41,6 @@ class ShiftType(Base):
     counts_as_worked: Mapped[bool] = mapped_column(Boolean, default=True)  # идёт ли в «отработано» (у больничного — False)
     is_default_off: Mapped[bool] = mapped_column(Boolean, default=False)   # «выходной» по умолчанию
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    # списывать часы этого отсутствия из банка часов (выходной за часы, отпросился на пару часов)
-    deduct_from_bank: Mapped[bool] = mapped_column(Boolean, default=False)
     # можно ли во время этого отсутствия жать «Пришёл»/«Ушёл» (например,
     # в отпуске отмечаться не нужно). Серверная проверка обоих слоёв режима —
     # api/punches.py::_punch_permissions; помимо вида, режим задаётся в карточке
@@ -82,8 +78,6 @@ class ShiftRevision(Base):
     valid_from: Mapped[dt.date] = mapped_column(Date)          # с этой даты действуют значения
     code: Mapped[str] = mapped_column(String(20), default="")
     name: Mapped[str] = mapped_column(String(120), default="")
-    display_code: Mapped[str] = mapped_column(String(12), default="")
-    tzh_code: Mapped[str] = mapped_column(String(12), default="")
     kind: Mapped[str] = mapped_column(String(16), default="work")
     start_time: Mapped[str] = mapped_column(String(5), default="")
     end_time: Mapped[str] = mapped_column(String(5), default="")
@@ -92,7 +86,6 @@ class ShiftRevision(Base):
     is_working: Mapped[bool] = mapped_column(Boolean, default=True)
     counts_as_worked: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default_off: Mapped[bool] = mapped_column(Boolean, default=False)
-    deduct_from_bank: Mapped[bool] = mapped_column(Boolean, default=False)
     doc_type: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -143,6 +136,9 @@ class ScheduleAbsence(Base):
     end_utc: Mapped[dt.datetime] = mapped_column(DateTime)         # naive UTC
     kind_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(255), default="")
+    # выбранный сотрудником/менеджером шаблон заявления (18.10.2026): переопределяет
+    # привязку вида и точку ввода; пусто — правило по точке ввода (вся смена/интервал)
+    doc_type: Mapped[str] = mapped_column(String(40), default="")
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 

@@ -46,6 +46,7 @@ from .migrations import (
     migrate_engine_v7,
     migrate_manual_replaces_generated,
     migrate_night_cars,
+    migrate_schedule_dict_simplify,
     migrate_settings_value_text,
     migrate_shift_tabel_codes,
     migrate_time_off_template,
@@ -65,6 +66,7 @@ def init_db() -> None:
     migrate_db()
     migrate_settings_value_text()   # PostgreSQL: шаблоны документов длиннее VARCHAR(255)
     migrate_engine_v7()
+    migrate_schedule_dict_simplify()
     seed_statement_kinds()
     db = SessionLocal()
     try:

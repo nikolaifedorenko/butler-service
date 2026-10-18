@@ -116,13 +116,14 @@ def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType],
 
 
 def _cell_color(shifts: list, absences: list, trow: Optional[TabelDay], work_types: dict,
-                absence_types: dict, code_colors: dict) -> Optional[str]:
-    """Цвет ячейки Графика — из словаря «Смены и отсутствия» (16.10.2026).
+                code_colors: dict) -> Optional[str]:
+    """Цвет ячейки Графика (16.10.2026; 18.10.2026 — без связки «вид → код Табеля»).
 
     Разрешается СЕРВЕРОМ, чтобы экран, браузерная печать, PDF и Excel красили
-    одинаково: плашка «выходной за часы» — цвет вида отсутствия; смена — цвет
-    словарной смены с тем же окном (первая по id); код дня без смены — цвет вида
-    по tzh_code; запасной вариант — цвет кода Табеля из presentation настроек."""
+    одинаково: плашка «выходной за часы» — цвет вида отсутствия из словаря
+    «Смены и отсутствия»; смена — цвет словарной смены с тем же окном (первая
+    по id); день без смены (отсутствие кодом Табеля, выходной) — цвет кода
+    Табеля из presentation настроек."""
     off = next((a for a in absences if a.get("whole_shift")), None)
     if off is not None:
         return (off.get("kind") or {}).get("color") or "#0e9aa7"
@@ -130,10 +131,6 @@ def _cell_color(shifts: list, absences: list, trow: Optional[TabelDay], work_typ
         wt = work_types.get((shifts[0]["start_hm"], shifts[0]["end_hm"]))
         if wt is not None and (wt.color or "").strip():
             return wt.color
-    elif trow is not None:
-        at = absence_types.get(trow.code)
-        if at is not None and (at.color or "").strip():
-            return at.color
     if trow is not None:
         return code_colors.get(trow.code)
     return None
@@ -182,15 +179,13 @@ def _statement_kind_exists(db: Session, code: str) -> bool:
 def doc_type_of_absence(db: Session, kind: ShiftType, whole_shift: bool) -> str:
     """Какое заявление печатать по отсутствию.
 
-    * вид с кодом Табеля (ОТ/ДО/ОВ/Б…) — заявление определяется самим видом и печатается
-      из Табеля (Q4: отпуск, за свой счёт, оплачиваемый выходной — только слой 0);
-    * вид без кода Табеля — это «отпросился (выходной за часы)» из Графика: документ
-      зависит от точки ввода (вся смена / интервал). Если нужный вид заявления в
-      словаре отсутствует (владелец его удалил), остаётся привязка самого вида смены.
+    Словарь смен с 18.10.2026 содержит единственный вид отсутствия — системный
+    «Отпросился (выходной за часы)»: документ зависит от точки ввода (вся смена —
+    «выходной за ранее отработанные часы», интервал — «об отсутствии на рабочем
+    месте»). Если нужный вид заявления удалён владельцем, остаётся привязка самого
+    вида смены.
     """
     own = (kind.doc_type or "").strip()
-    if (kind.tzh_code or "").strip():
-        return own
     wanted = DOC_WHOLE_SHIFT if whole_shift else DOC_PARTIAL_SHIFT
     return wanted if _statement_kind_exists(db, wanted) else own
 
@@ -280,7 +275,7 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
         if absence_rows else {}
     # цвета ячеек — из словаря «Смены и отсутствия» (общий сервис: те же цвета
     # у Графика, Факта-Ганта и печатных форм, 16.10.2026)
-    work_types, absence_types, code_colors = color_lookups(db)
+    work_types, code_colors = color_lookups(db)
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for row in shift_rows:
         start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
@@ -334,7 +329,7 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
                 "segments": _visible_segments(sh_rows, ab_rows),
                 "absences": absences_brief,
                 "color": _cell_color(shifts_brief, absences_brief, trow,
-                                     work_types, absence_types, code_colors),
+                                     work_types, code_colors),
                 "planned_hours": planned,
                 "employed": employed,
                 # день редактируем (ручная смена) ⇔ accepts_ut кода Табеля (16.3)
@@ -484,6 +479,7 @@ class AbsenceIn(BaseModel):
     next_day: bool = False
     kind_id: Optional[int] = None    # тип отсутствия из словаря (заявление, режим отметок)
     note: str = ""
+    doc_type: str = ""               # шаблон заявления (18.10.2026): пусто — по точке ввода
 
 
 @router.post("/absence")
@@ -507,6 +503,9 @@ def add_absence(payload: AbsenceIn, principal: Principal = Depends(require_perm(
         row.kind_id = payload.kind_id
         row.note = payload.note[:255]
         row.created_by = principal.user.id
+        # выбранный в диалоге шаблон заявления (18.10.2026): пусто — правило
+        # по точке входа (вся смена / интервал) из doc_type_of_absence
+        row.doc_type = (payload.doc_type or "").strip()[:40]
     audit(db, principal, "schedule_absence", f"employee:{payload.employee_id}",
           {"date": payload.date.isoformat(), "from": payload.from_time,
            "until": payload.until_time, "next_day": payload.next_day,
@@ -723,8 +722,8 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
     if payload.shift_type_id and kind is None:
         raise HTTPException(status_code=422, detail="Вид отсутствия не найден")
     if not code and kind is not None:
-        code = (kind.tzh_code or "").strip()
-    if not code and kind is not None:
+        # вид без кода Табеля — «отпросился (выходной за часы)»: согласованное
+        # отсутствие в График, Табель не трогается (норматив 12.10.2026, EX-29)
         return _range_absence_as_schedule(payload, kind, principal, db)
     st = _settings(db, month_period(payload.first.year, payload.first.month))
     policy = st.day_code_policy.get(code)
@@ -798,7 +797,7 @@ def _interval_info(db: Session, emp: Optional[Employee], row: ScheduleAbsence) -
     if not row.kind_id:
         return None
     kind = db.get(ShiftType, row.kind_id)
-    if kind is None or not kind.doc_type:
+    if kind is None:
         return None
     start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
     end_local = row.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
@@ -806,6 +805,10 @@ def _interval_info(db: Session, emp: Optional[Employee], row: ScheduleAbsence) -
     day_settings = st_day(db, day)
     whole_shift = _covers_whole_day(db, day_settings, row.employee_id, day,
                                     start_local, end_local)
+    # шаблон заявления: выбранный в диалоге (18.10.2026) первее правила по точке входа
+    doc = (row.doc_type or "").strip() or doc_type_of_absence(db, kind, whole_shift)
+    if not doc:
+        return None
     if whole_shift:
         hours_value, hours_source = standard_day_hours(db, day_settings, emp, day)
     else:
@@ -819,7 +822,7 @@ def _interval_info(db: Session, emp: Optional[Employee], row: ScheduleAbsence) -
             "hours": hours_value, "hours_source": hours_source,
             "whole_shift": whole_shift, "kind": _kind_brief(kind),
             "note": row.note or "",
-            "doc_type": doc_type_of_absence(db, kind, whole_shift)}
+            "doc_type": doc}
 
 
 @router.get("/absence-period")
@@ -906,11 +909,7 @@ def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = 
     # (вид может отсутствовать — словарь смен только про График).
     code_row = day_code_rows(db, date).get(anchor.code) or {}
     code_doc = (code_row.get("doc_type") or "").strip()
-    kind = db.scalar(select(ShiftType).where(ShiftType.tzh_code == anchor.code,
-                                             ShiftType.kind == "absence",
-                                             ShiftType.doc_type != "").limit(1))
-    doc_type = code_doc if code_doc and _statement_kind_exists(db, code_doc) \
-        else (doc_type_of_absence(db, kind, True) if kind is not None else "")
+    doc_type = code_doc if code_doc and _statement_kind_exists(db, code_doc) else ""
     if not doc_type:
         raise HTTPException(status_code=404,
                             detail=f"Для кода «{anchor.code}» не настроен тип заявления")
@@ -921,11 +920,10 @@ def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = 
             "doc_type": doc_type,
             "start": start.isoformat(), "end": end.isoformat(),
             "days": (end - start).days + 1,
-            "shift": _kind_brief(kind) if kind is not None else
-            {"id": None, "code": anchor.code, "kind": "absence",
-             "name": code_row.get("title") or anchor.code,
-             "color": day_code_colors(db).get(anchor.code, ""), "doc_type": doc_type,
-             "display_code": anchor.code, "tzh_code": anchor.code},
+            "shift": {"id": None, "code": anchor.code, "kind": "absence",
+                      "name": code_row.get("title") or anchor.code,
+                      "color": day_code_colors(db).get(anchor.code, ""),
+                      "doc_type": doc_type},
             "note": anchor.note or "", "partial": None,
             "hours": hours_value, "hours_source": hours_source,
             "notes": sorted({r.note for d_, r in rows.items() if start <= d_ <= end and r.note})}
@@ -933,8 +931,7 @@ def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = 
 
 def _kind_brief(kind: ShiftType) -> dict:
     return {"id": kind.id, "code": kind.code, "name": kind.name, "kind": kind.kind,
-            "color": kind.color, "doc_type": kind.doc_type or "",
-            "display_code": kind.display_code, "tzh_code": kind.tzh_code}
+            "color": kind.color, "doc_type": kind.doc_type or ""}
 
 
 # ── циклы: инструмент заполнения Табеля (решение владельца) ───────────────────
@@ -943,7 +940,8 @@ class PatternIn(BaseModel):
     employee_ids: list[int]
     start_date: dt.date
     end_date: dt.date
-    work_shift_id: int
+    value: str = ""               # значение рабочего дня («Я 10,75») — ключ CFG-WINDOWS
+    work_shift_id: Optional[int] = None   # легаси-параметр, игнорируется (18.10.2026)
     off_shift_id: Optional[int] = None
     pattern: str = "2/2"
     cycle: str = ""
@@ -963,9 +961,10 @@ def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_perm
                  db: Session = Depends(get_db)):
     """Шаблон блока/цикла: сохраняет назначение блока и ЗАПОЛНЯЕТ ТАБЕЛЬ по циклу;
     График перегенерируется из Табеля (16.3)."""
-    work = db.get(ShiftType, payload.work_shift_id)
-    if work is None:
-        raise HTTPException(status_code=422, detail="Смена шаблона не найдена")
+    value = (payload.value or "").strip()
+    if not value:
+        raise HTTPException(status_code=422,
+                            detail="Укажите значение рабочего дня (код и часы, «Я 10,75»)")
     try:
         validate_pattern(payload.pattern, payload.cycle)
     except ValueError as exc:
@@ -974,7 +973,7 @@ def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_perm
     emps = [e for e in emps if e is not None and e.deleted_at is None]
     if payload.sync_blocks:
         for emp in emps:
-            _assign_block(db, emp, payload, work)
+            _assign_block(db, emp, payload, value)
     res = _fill_and_rebuild(db, emps, payload.start_date, payload.end_date,
                             payload.only_empty, principal)
     audit(db, principal, "schedule_fill_pattern",
@@ -985,7 +984,7 @@ def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_perm
     return res
 
 
-def _assign_block(db: Session, emp: Employee, payload: PatternIn, work: ShiftType) -> None:
+def _assign_block(db: Session, emp: Employee, payload: PatternIn, value: str) -> None:
     import json
     group = normalize_group(emp.schedule_group) or "Другие смены"
     kind = group_kind(group)
@@ -995,18 +994,19 @@ def _assign_block(db: Session, emp: Employee, payload: PatternIn, work: ShiftTyp
             cycle = "custom:" + cycle          # произвольная последовательность «ВВРРРРВВ»
         pattern_json = json.dumps({"kind": "cycle",
                                    "cycle": cycle or payload.pattern,
-                                   "shift_code": work.code,
+                                   "value": value,
                                    "anchor": payload.start_date.isoformat(),
-                                   "label": f"{payload.cycle or payload.pattern} {work.display_code}"},
+                                   "label": f"{payload.cycle or payload.pattern} {value}"},
                                   ensure_ascii=False)
     elif kind == "week5" or payload.pattern == "5/2":
         pattern_json = json.dumps({"kind": "week5", "off_weekdays": payload.off_weekdays,
-                                   "shift_code": work.code,
+                                   "value": value,
                                    "label": f"{payload.pattern}, вых. "
                                             f"{'/'.join(str(x) for x in payload.off_weekdays)}"},
                                   ensure_ascii=False)
     else:
-        pattern_json = json.dumps({"kind": "base", "invert": bool(payload.offset)},
+        pattern_json = json.dumps({"kind": "base", "value": value,
+                                   "invert": bool(payload.offset)},
                                   ensure_ascii=False)
     existing = db.scalar(select(BlockAssignment).where(
         BlockAssignment.employee_id == emp.id, BlockAssignment.group == group,

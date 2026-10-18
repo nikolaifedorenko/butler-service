@@ -316,7 +316,7 @@ class DatedAction(BaseModel):
     group: str = ""
     # индивидуальный шаблон блока (Пятидневка — свои выходные; Другие смены — свой цикл):
     kind: str = ""                 # base | week5 | cycle | manual (пусто — по типу блока)
-    shift_code: str = ""           # рабочая смена шаблона (DAY9, NIGHT12, SUTKI…)
+    value: str = ""                # значение рабочего дня («Я 10,75») — ключ CFG-WINDOWS
     cycle: str = ""                # "3/3", "1/3", "custom:РРВВРВ"
     anchor: Optional[str] = None   # опорная дата цикла
     off_weekdays: list[int] = []   # выходные дни недели (0=пн … 6=вс) для пятидневки
@@ -326,7 +326,7 @@ class DatedAction(BaseModel):
 def _block_of(payload) -> lifecycle.BlockChange:
     """DTO → данные use-case'а: сервис не зависит от pydantic-моделей api-слоя."""
     return lifecycle.BlockChange(group=payload.group, kind=payload.kind,
-                                 shift_code=payload.shift_code, cycle=payload.cycle,
+                                 value=payload.value, cycle=payload.cycle,
                                  anchor=payload.anchor, off_weekdays=payload.off_weekdays,
                                  label=payload.label)
 
@@ -360,7 +360,7 @@ class RehireIn(BaseModel):
     position: str = ""
     group: str = ""
     kind: str = ""
-    shift_code: str = ""
+    value: str = ""
     cycle: str = ""
     anchor: Optional[str] = None
     off_weekdays: list[int] = []
@@ -512,12 +512,25 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_pe
         "blocks": [{"group": normalize_group(b.group), "start": b.start_date.isoformat(),
                     "end": b.end_date.isoformat() if b.end_date else None,
                     "pattern_label": _block_label(b)} for b in blocks],
+        # значение рабочего дня сотрудника на сегодня (18.10.2026): своё из истории
+        # переводов либо значение блока из настроек объекта
+        "current_value": _current_value(db, emp),
         "employment": [{"start": p.start_date.isoformat(),
                         "end": p.end_date.isoformat() if p.end_date else None,
                         "note": p.note or "", "current": p.end_date is None} for p in periods],
         "bank_adjustments": [_adjustment_dict(a) for a in adjustments],
         "bank_now": bank_as_of(db, emp, local_date()),
     }
+
+
+def _current_value(db: Session, emp: Employee) -> str:
+    from ..base_schedule import load_base_config, pattern_for_date
+    from ..deps import local_date
+    try:
+        pat = pattern_for_date(db, emp, local_date(), cfg=load_base_config(db))
+        return (pat.get("value") or "").strip()
+    except Exception:
+        return ""
 
 
 @router.post("/employees/{employee_id}/deactivate")
@@ -694,58 +707,50 @@ def delete_subdivision(sub_id: int, principal: Principal = Depends(require_manag
 
 
 # ──────────────────────────────── смены (словарь) ────────────────────────────────
-def _split_codes(db: Session, data: dict) -> None:
-    """Развести «код в сетке» и «код в табеле» и проверить второй по справочнику (T1).
-
-    Раньше редактор отправлял одно поле `short_code`, а API писал его значение в ОБА
-    столбца — `display_code` и `tzh_code`. В поле кода Табеля оказывалась подпись
-    смены («08-20»), которой нет в CFG-DAY-CODES: health-панель честно выдавала
-    APP-SHIFT-CODE, а ночные и суточные смены переставали заполнять Табель из циклов
-    (`tabel_fill._anchor_value` требует код, несущий часы).
-
-    Норматив (ответ владельца на Q9, 12.10.2026): модель не меняется — код Табеля
-    жёстко определяет стандартное окно, эти же часы попадают в График
-    первоначальными сменами. Чинится только поле: в «коде в табеле» допустимы
-    коды из словаря Табеля или пустое значение; подпись сетки живёт отдельно.
-    """
-    short = (data.pop("short_code", "") or "").strip()
-    if short:
-        data["display_code"] = short
-    if "tzh_code" not in data:
-        return
-    code = (data.get("tzh_code") or "").strip()
-    data["tzh_code"] = code
-    if not code:
-        return
-    known = day_code_rows(db)
-    if not known:                       # действующей версии справочников ещё нет
-        return
-    if code in known:
-        return
-    sample = ", ".join(list(known)[:12])
-    raise HTTPException(
-        status_code=422,
-        detail=(f"Код в табеле «{code}» отсутствует в справочнике кодов Табеля "
-                f"(CFG-DAY-CODES). Допустимы: {sample}"
-                f"{'…' if len(known) > 12 else ''} — либо оставьте поле пустым "
-                "(тогда смена не участвует в автозаполнении Табеля: день заполнится "
-                "значением по окну или кодом отсутствия)"))
-
-
 def _shift_dict(s: ShiftType, revisions: int = 0) -> dict:
     return {
-        "id": s.id, "code": s.code, "name": s.name, "display_code": s.display_code,
-        "tzh_code": s.tzh_code, "kind": s.kind, "start_time": s.start_time, "end_time": s.end_time,
+        "id": s.id, "code": s.code, "name": s.name,
+        "kind": s.kind, "start_time": s.start_time, "end_time": s.end_time,
         "overnight": s.overnight, "color": s.color,
         "sort_order": s.sort_order, "is_working": s.is_working,
         "counts_as_worked": s.counts_as_worked, "is_default_off": s.is_default_off,
         "planned_hours": s.planned_hours, "active": s.active,
-        "doc_type": s.doc_type or "", "deduct_from_bank": bool(s.deduct_from_bank),
+        "doc_type": s.doc_type or "",
         "punch_in_allowed": bool(s.punch_in_allowed), "punch_out_allowed": bool(s.punch_out_allowed),
         "archived": bool(s.archived_at) or not s.active,
         "archived_at": s.archived_at.isoformat() if s.archived_at else None,
         "revisions": revisions,
     }
+
+
+@router.get("/tabel-values")
+def tabel_values(principal: Principal = Depends(current_principal),
+                 db: Session = Depends(get_db)):
+    """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода
+    (18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
+    from ..deps import local_date
+    from ..engine.adapters.sql_settings import SqlSettingsAdapter
+    from ..engine.application.months import month_period
+    from ..services.engine_common import day_code_rows
+
+    _today = local_date()
+    st = SqlSettingsAdapter(db).load(month_period(_today.year, _today.month))
+    rows = day_code_rows(db)
+    out = []
+    for key, w in sorted(st.windows.items(), key=lambda kv: (kv[0].split(" ")[0], w_start(kv[1]))):
+        code, _, hours = key.partition(" ")
+        row = rows.get(code) or {}
+        if not row.get("carries_hours"):
+            continue
+        out.append({"value": key, "code": code, "hours": hours,
+                    "title": row.get("title") or code,
+                    "start_hm": f"{w.start_minute // 60:02d}:{w.start_minute % 60:02d}",
+                    "end_hm": f"{w.end_minute // 60:02d}:{w.end_minute % 60:02d}"})
+    return {"values": out}
+
+
+def w_start(w) -> int:
+    return w.start_minute
 
 
 @router.get("/shift-types")
@@ -784,11 +789,6 @@ def shift_tabel_codes(principal: Principal = Depends(current_principal),
 class ShiftTypeIn(BaseModel):
     code: str
     name: str
-    # подпись ячейки сетки («08–20», «ОТПР») — свободный текст, только отображение
-    short_code: str = ""
-    display_code: str = ""
-    # код Табеля (CFG-DAY-CODES) или пусто: проверяется в _split_codes (T1)
-    tzh_code: str = ""
     kind: str = "work"
     start_time: str = ""
     end_time: str = ""
@@ -799,7 +799,6 @@ class ShiftTypeIn(BaseModel):
     counts_as_worked: bool = True
     is_default_off: bool = False
     doc_type: str = ""              # какой документ печатаем по этому отсутствию
-    deduct_from_bank: bool = False  # списывать часы из банка (выходной за часы, отпросился)
     punch_in_allowed: bool = True   # можно ли жать «Пришёл» во время этой смены/отсутствия
     punch_out_allowed: bool = True  # можно ли жать «Ушёл»
     effective_from: Optional[str] = None  # изменения вступают в силу с даты; прошлое не меняется
@@ -817,7 +816,6 @@ def create_shift_type(payload: ShiftTypeIn, principal: Principal = Depends(requi
         raise HTTPException(status_code=409, detail="Такой код смены уже существует")
     data = payload.model_dump()
     data.pop("effective_from", None)
-    _split_codes(db, data)
     st = ShiftType(**data)
     db.add(st)
     audit(db, principal, "shift_type_create", payload.code, payload.model_dump())
@@ -837,10 +835,6 @@ def update_shift_type(type_id: int, payload: ShiftTypeIn,
     if not st:
         raise HTTPException(status_code=404, detail="Тип смены не найден")
     data = payload.model_dump()
-    if "tzh_code" not in payload.model_fields_set:
-        # поле не присылали — не обнуляем (иначе любой PUT чистил бы код Табеля)
-        data["tzh_code"] = st.tzh_code
-    _split_codes(db, data)
     eff_raw = data.pop("effective_from", None)
     eff = _parse_date(eff_raw) or local_date()
 

@@ -75,20 +75,21 @@ class TestTimesheetCodeNorm(unittest.TestCase):
         finally:
             db.close()
 
-    def test_02_daily_shift_maps_to_timesheet_code(self):
-        """Суточная смена — графиковая: код Табеля «Я», отдельной сущности нормы нет."""
+    def test_02_shift_dictionary_has_no_link_fields(self):
+        """18.10.2026: словарь смен — только ячейки Графика: ни tzh_code, ни
+        display_code, ни deduct_from_bank; суточные — обычная добавляемая смена,
+        а «выходной за часы» — системное отсутствие с заявлением."""
         db = SessionLocal()
         try:
             sutki = db.scalar(select(ShiftType).where(ShiftType.code == "SUTKI"))
             self.assertIsNotNone(sutki)
-            self.assertEqual(sutki.tzh_code, "Я")
+            self.assertFalse(hasattr(sutki, "tzh_code"), "связка со справочником кодов удалена")
             self.assertFalse(hasattr(sutki, "tzh_hours"),
                              "зарплатная норма смены не моделируется в словаре")
             timeoff = db.scalar(select(ShiftType).where(ShiftType.code == "TIMEOFF_HOURS"))
             self.assertIsNotNone(timeoff)
-            self.assertEqual(timeoff.tzh_code, "",
-                             "у «выходного за часы» нет кода Табеля: это отсутствие Графика")
             self.assertEqual(timeoff.doc_type, "day_off_hours", "заявление остаётся")
+            self.assertEqual(timeoff.color, "#0e9aa7", "цвет плашки «Выходной за часы»")
         finally:
             db.close()
 

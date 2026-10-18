@@ -256,14 +256,14 @@ async function main() {
   console.log('\n4 · Q4: «Назначить отсутствие» из Табеля — только виды с кодом');
   await tabelReady();
   click($('#tb-absence'));
-  check('модалка периода открылась', await waitFor(() => !!$('#rg-shift')));
+  check('модалка периода открылась', await waitFor(() => !!$('#rg-code')));
   check('заголовок — слой 0', /Назначить отсутствие \(код Табеля\)/.test(text('#modal')));
-  const tabelKinds = $$('#rg-shift option').map(o => o.textContent);
-  check('виды — только с кодом Табеля', tabelKinds.length > 0
-    && tabelKinds.every(t => /код Табеля «.+»/.test(t)), tabelKinds.join(' | ').slice(0, 200));
-  check('«отпросился» из Табеля НЕ назначается', !tabelKinds.some(t => /Отпросился/i.test(t)));
-  check('отпуск и больничный в списке', tabelKinds.some(t => /Отпуск/.test(t))
-    && tabelKinds.some(t => /Больничный/.test(t)));
+  const codesLoaded = await waitFor(() => $$('#rg-code option').some(o => o.value));
+  const tabelCodes = $$('#rg-code option').map(o => o.textContent);
+  check('отсутствия периодом — коды Табеля без часов (18.10.2026)',
+    codesLoaded && tabelCodes.length > 0, tabelCodes.join(' | ').slice(0, 200));
+  check('«отпросился» из Табеля НЕ назначается', !tabelCodes.some(t => /Отпросился/i.test(t)));
+  check('отпуск в списке кодов', tabelCodes.some(t => /«ОТ»/.test(t)));
   click($('#modal [data-cancel]'));
   await waitFor(modalClosed);
 
@@ -516,8 +516,8 @@ async function main() {
     /p-cell/.test(pr.h) && /\d{2}:\d{2}–\d{2}:\d{2}/.test(pr.h), pr.h.slice(0, 120));
   check('печать: итоговой колонки часов нет', !/Часов/.test(pr.h));
 
-  /* ── 7. T1: редактор смены — «код в сетке» отдельно, «код в табеле» из справочника ── */
-  console.log('\n7 · T1: словарь смен и health');
+  /* ── 7. Словарь смен 18.10.2026: независим от Табеля ── */
+  console.log('\n7 · Словарь смен: независимость от Табеля и health');
   const tc = await jsend('GET', '/api/shift-types/tabel-codes');
   const codes = (tc.json?.codes || []).map(c => c.code);
   check('словарь кодов Табеля отдаётся', tc.ok && codes.includes('Я') && codes.includes('ОТ'),
@@ -529,52 +529,42 @@ async function main() {
   click($('#st-nav [data-st="shifts"]'));
   check('экран «Смены» отрисован', await waitFor(() => {
     const t = text('#st-body');
-    return t && !t.includes('Загрузка…') && /Связь словарей/.test(t);
+    return t && !t.includes('Загрузка…') && /Как связаны Табель и График/.test(t);
   }));
-  check('правило поля объяснено на экране', /только коды справочника или пустое значение/.test(text('#st-body')));
+  check('справочники независимы: правила поля tzh больше нет',
+    !/только коды справочника или пустое значение/.test(text('#st-body')));
+  check('в словаре — системное отсутствие «Отпросился»',
+    /Отпросился \(выходной за часы\)/.test(text('#st-body')));
 
   click($('#sh-new'));
-  check('редактор смены открылся', await waitFor(() => !!$('#sh-tzh'), 20000));
-  check('«код в сетке» — свободный текст', !!$('#sh-short'));
-  const tzhOpts = $$('#sh-tzh option').map(o => o.value);
-  check('«код в табеле» — только справочник или пусто', tzhOpts[0] === ''
-    && tzhOpts.includes('Я') && tzhOpts.includes('ОТ') && !tzhOpts.some(v => /\d/.test(v)),
-  tzhOpts.join(',').slice(0, 120));
-  check('подсказка: пусто — не участвует в автозаполнении',
-    /не участвует в автозаполнении/.test(text('#sh-tzh-hint')), text('#sh-tzh-hint'));
+  check('редактор смены открылся', await waitFor(() => !!$('#sh-code'), 20000));
+  check('связка с Табелём из редактора удалена', !$('#sh-tzh') && !$('#sh-short') && !$('#sh-deduct'));
+  check('заявление скрыто у типа «рабочая смена»', $('#sh-doc-wrap').style.display === 'none');
+  change($('#sh-kind'), 'absence');
+  check('заявление показано у типа «отсутствие»', $('#sh-doc-wrap').style.display !== 'none');
+  change($('#sh-kind'), 'work');
   input($('#sh-code'), 'NORM_UI');
   input($('#sh-name'), 'Сценарная смена (нормы)');
-  input($('#sh-short'), '08–20');
   change($('#sh-start'), '08:00'); change($('#sh-end'), '20:00');
-  change($('#sh-kind'), 'work');
   click($('#modal [data-save]'));
-  check('смена без кода Табеля создана', await waitFor(modalClosed, 15000)
+  check('смена создана без связки с Табелем', await waitFor(modalClosed, 15000)
     && await waitFor(() => /Словарь смен обновлён/.test(toasts()), 8000), toasts().slice(0, 160));
   const st1 = (await jget('/api/shift-types')).find(s => s.code === 'NORM_UI');
-  check('подпись сетки и пустой код Табеля сохранены отдельно',
-    st1 && st1.display_code === '08–20' && st1.tzh_code === '',
-  JSON.stringify({ d: st1?.display_code, t: st1?.tzh_code }));
+  check('поля связки удалены из API',
+    st1 && !('tzh_code' in st1) && !('display_code' in st1) && !('deduct_from_bank' in st1),
+    JSON.stringify(st1 || {}).slice(0, 200));
+  check('новая смена видна в списке', await waitFor(() => !!$(`[data-shift="${st1.id}"]`), 15000));
 
   const bad = await jsend('POST', '/api/shift-types', { code: 'NORM_UI2', name: 'Плохая',
     tzh_code: '08-20', kind: 'work', start_time: '08:00', end_time: '20:00' });
-  check('API отклоняет код не из справочника (422)', bad.status === 422
-    && /CFG-DAY-CODES/.test(bad.json?.detail || ''), `${bad.status} ${bad.json?.detail || ''}`.slice(0, 160));
-
-  check('новая смена видна в списке', await waitFor(() => !!$(`[data-shift="${st1.id}"]`), 15000));
-  click($(`[data-shift="${st1.id}"]`));
-  check('редактор существующей смены открылся', await waitFor(() => !!$('#sh-tzh'), 20000));
-  change($('#sh-tzh'), 'Я');
-  check('подсказка: код несёт часы — стандартное окно', /несёт часы/.test(text('#sh-tzh-hint')),
-    text('#sh-tzh-hint'));
-  click($('#modal [data-save]'));
-  check('код Табеля сохранён', await waitFor(modalClosed, 15000)
-    && await waitFor(async () => (await jget('/api/shift-types'))
-      .find(s => s.code === 'NORM_UI')?.tzh_code === 'Я', 8000));
+  check('API игнорирует легаси-поле связки', bad.status === 200, `${bad.status}`);
+  if (bad.json?.id) await jsend('DELETE', `/api/shift-types/${bad.json.id}`);
 
   const health = await jsend('GET', '/api/engine-settings/health');
-  const shiftCodeErrors = (health.json?.checks || []).filter(c => c.code === 'APP-SHIFT-CODE');
-  check('health без APP-SHIFT-CODE', health.ok && shiftCodeErrors.length === 0,
-    JSON.stringify(shiftCodeErrors).slice(0, 200));
+  const linkChecks = (health.json?.checks || []).filter(c =>
+    c.code === 'APP-SHIFT-CODE' || c.code === 'APP-CODE-NO-SHIFT');
+  check('health без сверок связки справочников', health.ok && linkChecks.length === 0,
+    JSON.stringify(linkChecks).slice(0, 200));
 
   console.log(`\n=== ошибки консоли ===`);
   const uniq = [...new Set(consoleErrors.map(e => e.slice(0, 240)))];

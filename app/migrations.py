@@ -75,7 +75,6 @@ def migrate_db() -> None:
             ("double_reason", "VARCHAR(16) DEFAULT ''"),
         ],
         "shift_types": [
-            ("deduct_from_bank", "BOOLEAN DEFAULT 0"),
             ("doc_type", "VARCHAR(40) DEFAULT ''"),
             ("archived_at", "DATE"),
             ("punch_in_allowed", "BOOLEAN DEFAULT 1"),
@@ -137,9 +136,6 @@ def migrate_db() -> None:
                 con.execute(text("UPDATE shift_types SET doc_type=:dt "
                                  "WHERE code=:c AND (doc_type IS NULL OR doc_type='')"),
                             {"dt": doc_type, "c": code})
-            con.execute(text("UPDATE shift_types SET deduct_from_bank=1 "
-                             "WHERE code IN ('TIMEOFF_HOURS','AWAY_HOURS') "
-                             "AND (deduct_from_bank IS NULL OR deduct_from_bank=0)"))
             _apply_timesheet_code_normative(con)
 
         # сотрудники без записей блоков получают открытую запись от даты приёма
@@ -174,76 +170,17 @@ def migrate_db() -> None:
 
 
 def _migrate_remove_sick_unpaid() -> None:
-    """«НБ» (неоплачиваемый больничный) — артефакт старого наполнения справочника:
-    такого кода Табеля не существует (решение владельца 16.10.2026). Код изымает
-    strip_removed_day_codes (REMOVED_DAY_CODES), а добавленный было вид смены
-    SICK_UNPAID убирается здесь: удаление, если на вид нет ссылок, иначе архив
-    с очисткой tzh_code (health-проверка APP-SHIFT-CODE смотрит и архивные строки).
-    Идемпотентно."""
-    from sqlalchemy import inspect, text
-
-    insp = inspect(engine)
-    if not insp.has_table("shift_types"):
-        return
-    with engine.begin() as con:
-        row = con.execute(text("SELECT id FROM shift_types WHERE code='SICK_UNPAID'")).first()
-        if row is None:
-            return
-        sid = row[0]
-        refs = 0
-        for table, column in (("schedule_absences", "kind_id"),
-                              ("schedule_shifts", "shift_type_id"),
-                              ("shift_revisions", "shift_type_id")):
-            if insp.has_table(table):
-                refs += con.execute(text(f"SELECT COUNT(*) FROM {table} WHERE {column}=:i"),
-                                    {"i": sid}).scalar() or 0
-        if refs:
-            con.execute(text("UPDATE shift_types SET active=0, archived_at=CURRENT_DATE, "
-                             "tzh_code='' WHERE id=:i"), {"i": sid})
-        else:
-            con.execute(text("DELETE FROM shift_types WHERE id=:i"), {"i": sid})
+    """Историческая миграция (16.10.2026): вид «НБ»/SICK_UNPAID. С 18.10.2026 все
+    виды отсутствий словаря, кроме системного «Отпросился», удаляет
+    migrate_schedule_dict_simplify — здесь делать нечего."""
+    return
 
 
 def _migrate_missing_shifts() -> None:
-    """Старым базам докладываем отсутствующие смены из словаря сида. Существующие
-    смены НЕ трогаются (их значения правит владелец, история — через ревизии)."""
-    from sqlalchemy import inspect, text
-
-    from .seed import SHIFT_EXTRA, SHIFT_TYPES
-
-    insp = inspect(engine)
-    if not insp.has_table("shift_types"):
-        return
-    with engine.begin() as con:
-        # свежую базу заполняет сид (seed_if_empty) — не дублируем его здесь
-        if insp.has_table("users"):
-            users = con.execute(text("SELECT COUNT(*) FROM users")).scalar() or 0
-            if not users:
-                return
-        have = {r[0] for r in con.execute(text("SELECT code FROM shift_types"))}
-        for (code, name, disp, tzh, kind, start, end, overnight, color, order,
-             is_work, counted, default_off) in SHIFT_TYPES:
-            if code in have:
-                continue
-            extra = SHIFT_EXTRA.get(code, {})
-            # punch_*_allowed перечислены явно: в базах, созданных create_all, эти
-            # колонки NOT NULL без серверного дефолта — INSERT без них падал
-            # (sqlalchemy.exc.IntegrityError), и приложение не стартовало.
-            con.execute(text("""
-                INSERT INTO shift_types (code, name, display_code, tzh_code, kind, start_time, end_time,
-                    overnight, color, sort_order, is_working, counts_as_worked, is_default_off, active,
-                    deduct_from_bank, doc_type, punch_in_allowed, punch_out_allowed, archived_at)
-                VALUES (:code, :name, :disp, :tzh, :kind, :start, :end, :overnight, :color, :order,
-                    :is_work, :counted, :default_off, 1, :deduct, :doc_type,
-                    :punch_in, :punch_out, NULL)
-            """), {"code": code, "name": name, "disp": disp, "tzh": tzh, "kind": kind,
-                   "start": start, "end": end, "overnight": int(bool(overnight)), "color": color,
-                   "order": order, "is_work": int(bool(is_work)), "counted": int(bool(counted)),
-                   "default_off": int(bool(default_off)),
-                   "deduct": int(bool(extra.get("deduct_from_bank", False))),
-                   "doc_type": extra.get("doc_type", ""),
-                   "punch_in": int(bool(extra.get("punch_in_allowed", True))),
-                   "punch_out": int(bool(extra.get("punch_out_allowed", True)))})
+    """Историческая миграция: докладывала старым базам смены из старого сида.
+    Словарь смен 18.10.2026 изменился (только добавляемые смены и «Отпросился»),
+    свежие базы заполняет сид, старым базам состав правит владелец."""
+    return
 
 
 def _apply_timesheet_code_normative(con) -> None:
@@ -258,12 +195,8 @@ def _apply_timesheet_code_normative(con) -> None:
     справочников очищает engine_bootstrap.strip_removed_day_codes, и только если
     в Табеле не осталось строк с этими кодами.
     """
-    from sqlalchemy import text
 
-    con.execute(text("UPDATE shift_types SET tzh_code='Я' "
-                     "WHERE code='SUTKI' AND (tzh_code='С' OR tzh_code='' OR tzh_code IS NULL)"))
-    con.execute(text("UPDATE shift_types SET tzh_code='' "
-                     "WHERE code='TIMEOFF_HOURS' AND tzh_code='НВ'"))
+    # связка «смена → код Табеля» (tzh_code) удалена 18.10.2026: править нечего
 
 
 def _migrate_employment_periods() -> None:
@@ -374,55 +307,9 @@ def seed_statement_kinds() -> None:
 
 
 def migrate_shift_tabel_codes() -> None:
-    """T1 (норматив 12.10.2026): в поле «код в табеле» — только коды CFG-DAY-CODES.
-
-    Редактор смен писал туда короткое имя смены («08-20»), поэтому health-панель
-    выдавала APP-SHIFT-CODE, а ночные и суточные смены не заполняли Табель из циклов.
-    Значения, которых нет в словаре кодов действующей версии справочников, очищаются:
-    пустое поле — честное состояние («у смены не задан код Табеля»), его видно в
-    словаре смен, а владелец ставит нужный код через исправленный редактор (выбор из
-    списка). Подпись сетки (`display_code`) и история ревизий не меняются.
-
-    Идемпотентно; если действующей версии справочников нет (свежая база до bootstrap),
-    миграция ничего не делает — сравнивать не с чем.
-    """
-    import json
-    import logging
-
-    from sqlalchemy import inspect, text
-
-    from .deps import local_date
-    from .engine.adapters.sql_settings import base_version
-
-    insp = inspect(engine)
-    if not (insp.has_table("shift_types") and insp.has_table("engine_settings_versions")):
-        return
-    db = SessionLocal()
-    try:
-        ver = base_version(db, local_date())
-        codes: set[str] = set()
-        if ver is not None:
-            try:
-                codes = set((json.loads(ver.payload_json).get("day_code_policy") or {}).keys())
-            except (TypeError, ValueError, AttributeError):
-                codes = set()
-    finally:
-        db.close()
-    if not codes:
-        return
-    with engine.begin() as con:
-        rows = con.execute(text(
-            "SELECT id, code, tzh_code FROM shift_types "
-            "WHERE tzh_code IS NOT NULL AND tzh_code <> ''")).all()
-        bad = [(rid, code, (tzh or "").strip()) for rid, code, tzh in rows
-               if (tzh or "").strip() not in codes]
-        for rid, _code, _tzh in bad:
-            con.execute(text("UPDATE shift_types SET tzh_code='' WHERE id=:i"), {"i": rid})
-    if bad:
-        logging.getLogger("uvicorn.error").info(
-            "T1: очищено поле «код в табеле» у смен %s — значения не из словаря "
-            "CFG-DAY-CODES (ставьте код через словарь смен)",
-            ", ".join(f"{c} («{t}»)" for _rid, c, t in bad))
+    """Историческая миграция T1 (12.10.2026): чистила «код в табеле» у смен.
+    Поле tzh_code удалено 18.10.2026 вместе со связкой справочников."""
+    return
 
 
 TIMEOFF_UNIFIED_CODE = "TIMEOFF_HOURS"
@@ -454,8 +341,8 @@ def migrate_timeoff_entity() -> None:
         if target is None:
             return                      # свежую базу заполняет сид новым словарём
         if (target[1] or "") == "Выходной за часы":
-            con.execute(text("UPDATE shift_types SET name=:n, display_code=:d WHERE id=:i"),
-                        {"n": TIMEOFF_UNIFIED_NAME, "d": "ОТПР", "i": target[0]})
+            con.execute(text("UPDATE shift_types SET name=:n WHERE id=:i"),
+                        {"n": TIMEOFF_UNIFIED_NAME, "i": target[0]})
         if not con.execute(text("SELECT doc_type FROM shift_types WHERE id=:i"),
                            {"i": target[0]}).scalar():
             # базовая привязка заявления; точку ввода учитывает doc_type_of_absence (T4)
@@ -617,3 +504,123 @@ def migrate_engine_v7() -> None:
             con.execute(text(
                 "INSERT INTO settings (key, value, description) VALUES "
                 "('engine_v7_reset', '1', 'Движок v7.1: маркер миграции (автоочистка отключена)')"))
+
+
+def migrate_schedule_dict_simplify() -> None:
+    """Упрощение словаря смен и базового цикла (решения владельца 18.10.2026).
+
+    * значение рабочего дня переезжает к сотруднику: паттерны блоков и настройки
+      блоков получают ключ "value" (ключ CFG-WINDOWS), вычисленный из прежней
+      связки «смена → код Табеля → окно»; ключ "shift_code" убирается;
+    * виды отсутствий словаря (больничный, отпуск, НН…) удаляются: отсутствия
+      ставятся кодами Табеля; согласованные отсутствия Графика перепривязываются
+      к системному виду «Отпросился (выходной за часы)» (создаётся, если его нет);
+    * столбцы display_code / tzh_code / deduct_from_bank удаляются из shift_types
+      и shift_revisions: связка справочников разорвана, банк гасит недостачу дня
+      механически (домен bank/ флаг не читал).
+    Миграция идемпотентна: ориентируется на наличие столбцов и видов.
+    """
+    import datetime as dt
+    import json
+
+    from sqlalchemy import inspect, text
+
+    from .engine.adapters.sql_settings import SqlSettingsAdapter
+    from .engine.application.months import month_period
+
+    insp = inspect(engine)
+    existing = set(insp.get_table_names())
+    if "shift_types" not in existing:
+        return
+    cols = {c["name"] for c in insp.get_columns("shift_types")}
+    if "tzh_code" not in cols:
+        return                                    # миграция уже выполнена
+    today = dt.date.today()
+    windows = {}
+    try:
+        session = SessionLocal()
+        try:
+            st = SqlSettingsAdapter(session).load(month_period(today.year, today.month))
+            windows = dict(st.windows)
+        finally:
+            session.close()
+    except Exception:                              # свежая база: версии ещё нет
+        windows = {}
+    with engine.begin() as con:
+
+        def value_of(shift_code: str, start: str, end: str, overnight: bool) -> str:
+            def hm(v: str) -> int:
+                h, m = (int(x) for x in (v or "0:0").split(":"))
+                return h * 60 + m
+            s, e = hm(start), hm(end)
+            for key, w in windows.items():
+                if (w.start_minute, w.end_minute) == (s, e):
+                    return key
+            if overnight or e <= s:                # якорь: окно начинается со смены
+                for key, w in windows.items():
+                    if w.start_minute == s:
+                        return key
+            return ""
+
+        shifts = con.execute(text(
+            "SELECT id, code, start_time, end_time, overnight, kind FROM shift_types")).mappings().all()
+        by_code = {r["code"]: r for r in shifts}
+        value_by_code = {r["code"]: value_of(r["code"], r["start_time"], r["end_time"],
+                                             bool(r["overnight"])) for r in shifts}
+
+        # 1. настройки блоков: shift_code → value
+        row = con.execute(text("SELECT value FROM settings WHERE key = 'base_groups'")).first()
+        if row and row[0]:
+            try:
+                groups = json.loads(row[0])
+            except json.JSONDecodeError:
+                groups = {}
+            for gcfg in (groups or {}).values():
+                if isinstance(gcfg, dict) and gcfg.get("shift_code"):
+                    sh = by_code.get(gcfg.pop("shift_code"))
+                    gcfg.pop("invert", None)
+                    if sh is not None and not gcfg.get("value"):
+                        gcfg["value"] = value_by_code.get(sh["code"], "")
+            con.execute(text("UPDATE settings SET value = :v WHERE key = 'base_groups'"),
+                        {"v": json.dumps(groups, ensure_ascii=False)})
+
+        # 2. паттерны блоков сотрудников: shift_code → value
+        for ba in con.execute(text("SELECT id, pattern_json FROM block_assignments")).mappings().all():
+            pat = {}
+            try:
+                pat = json.loads(ba["pattern_json"] or "")
+            except json.JSONDecodeError:
+                pat = {}
+            if not isinstance(pat, dict) or not pat.get("shift_code"):
+                continue
+            sh = by_code.get(pat.pop("shift_code"))
+            if sh is not None and not pat.get("value"):
+                pat["value"] = value_by_code.get(sh["code"], "")
+            con.execute(text("UPDATE block_assignments SET pattern_json = :v WHERE id = :id"),
+                        {"v": json.dumps(pat, ensure_ascii=False), "id": ba["id"]})
+
+        # 3. системный вид «Отпросился (выходной за часы)» + чистка видов отсутствий
+        asked = con.execute(text("SELECT id FROM shift_types WHERE code = 'TIMEOFF_HOURS'")).first()
+        if asked is None:
+            con.execute(text(
+                "INSERT INTO shift_types (code, name, kind, start_time, end_time, overnight,"
+                " color, sort_order, is_working, counts_as_worked, is_default_off, doc_type,"
+                " punch_in_allowed, punch_out_allowed, active)"
+                " VALUES ('TIMEOFF_HOURS', 'Отпросился (выходной за часы)', 'absence', '', '', 0,"
+                " '#0e9aa7', 110, 0, 0, 0, '', 1, 1, 1)"))
+            asked = con.execute(text("SELECT id FROM shift_types WHERE code = 'TIMEOFF_HOURS'")).first()
+        doomed = [r["id"] for r in con.execute(text(
+            "SELECT id FROM shift_types WHERE kind = 'absence' AND code <> 'TIMEOFF_HOURS'"))]
+        if doomed:
+            ids = ", ".join(str(i) for i in doomed)
+            con.execute(text(f"UPDATE schedule_absences SET kind_id = {asked[0]} "
+                             f"WHERE kind_id IN ({ids})"))
+            con.execute(text(f"DELETE FROM shift_revisions WHERE shift_type_id IN ({ids})"))
+            con.execute(text(f"DELETE FROM shift_types WHERE id IN ({ids})"))
+
+        # 4._DROP столбцов связки
+        for table in ("shift_types", "shift_revisions"):
+            tcols = {c["name"] for c in insp.get_columns(table)}
+            for colname in ("display_code", "tzh_code", "deduct_from_bank"):
+                if colname in tcols:
+                    con.execute(text(f"ALTER TABLE {table} DROP COLUMN {colname}"))
