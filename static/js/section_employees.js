@@ -106,6 +106,9 @@ async function employeeCard(emp) {
       <div class="opt-group-title">История должностей</div>
       ${history.positions.map(h => `<div style="font-size:13.5px;padding:3px 0">
         ${esc(h.position)} — с ${dateRu(h.start)}${h.end ? ` по ${dateRu(h.end)}` : ' — по настоящее время'}</div>`).join('') || '<div class="hint">нет записей</div>'}
+      <div class="opt-group-title">Блок и значение рабочего дня</div>
+      <div style="font-size:14px;margin-bottom:6px"><b>Блок:</b> ${esc(emp.schedule_group || '—')} ·
+        <b>значение:</b> ${esc(history.current_value || 'значение блока по умолчанию')}</div>
       <div class="opt-group-title">Блоки графика (переходы между сменами)</div>
       ${history.blocks.map(h => `<div style="font-size:13.5px;padding:3px 0">
         «${esc(h.group)}» — с ${dateRu(h.start)}${h.end ? ` по ${dateRu(h.end)}` : ' — по настоящее время'}${h.pattern_label ? ` <small class="muted">· ${esc(h.pattern_label)}</small>` : ''}</div>`).join('') || '<div class="hint">нет записей</div>'}
@@ -155,40 +158,45 @@ async function employeeCard(emp) {
 }
 
 /* ── шаблоны блоков: пятидневка (свои выходные) или индивидуальный цикл (3/3, 1/3, custom:РРВВ) ── */
-function patternFieldsHtml(prefix, kind, workShifts, today) {
+function patternFieldsHtml(prefix, kind, values, today) {
+  /* Значение рабочего дня (18.10.2026): код и окно из CFG-WINDOWS; пусто — берётся
+     значение блока из настроек объекта. Список значений — /api/tabel-values. */
+  const valueField = `
+    <label class="field" style="margin-top:8px"><span>Значение рабочего дня</span>
+      <select id="${prefix}-value">
+        <option value="">— значение блока по умолчанию —</option>
+        ${(values || []).map(v => `<option value="${esc(v.value)}">${esc(v.value)} · ${esc(v.title)} · ${esc(v.start_hm)}–${esc(v.end_hm)}</option>`).join('')}
+      </select></label>`;
   if (kind === 'week5') return `
     <div class="opt-group-title" style="margin-top:8px">Выходные дни этого сотрудника (пятидневка)</div>
     <div class="wd-picker" id="${prefix}-wd">
       ${WD_SHORT.map((w, i) => `<label><input type="checkbox" value="${i}" ${(i === 5 || i === 6) ? 'checked' : ''}>${w}</label>`).join('')}
     </div>
-    <label class="field" style="margin-top:8px"><span>Рабочая смена</span><select id="${prefix}-shift">
-      ${workShifts.map(x => `<option value="${x.code}" ${x.code === 'DAY9' ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
-    </select></label>
+    ${valueField}
     <p class="hint" style="margin:2px 0 0">У каждого сотрудника пятидневки СВОИ выходные: например у начальника вс/пн —
-      отметьте «вс» и «пн» (снимите «сб»).</p>`;
+      отметьте «вс» и «пн» (снимите «сб»). Значение рабочего дня — своё у каждого.</p>`;
   if (kind === 'cycle') return `
     <div class="grid-2" style="margin-top:8px">
       <label class="field"><span>Цикл</span><input type="text" id="${prefix}-cycle" value="3/3" placeholder="3/3, 1/3, 4/2 или custom:РРВВРВ"></label>
       <label class="field"><span>Опорная дата (начало цикла)</span><input type="date" id="${prefix}-anchor" value="${today}"></label>
     </div>
-    <label class="field"><span>Рабочая смена</span><select id="${prefix}-shift">
-      ${workShifts.map(x => `<option value="${x.code}">${esc(x.name)}</option>`).join('')}
-    </select></label>
-    <p class="hint" style="margin:2px 0 0">«Другие смены»: 3/3, 1/3, сутки через трое (смена 08:00–08:00) или
-      произвольный цикл «custom:РРВВРВ» (Р — рабочий, В — выходной).</p>`;
+    ${valueField}
+    <p class="hint" style="margin:2px 0 0">«Другие смены»: 3/3, 1/3, сутки через трое (окно 08:00–20:00 с явкой
+      «Я 12») или произвольный цикл «custom:РРВВРВ» (Р — рабочий, В — выходной).</p>`;
   if (kind === 'manual') return '<p class="hint">График этого сотрудника заполняется вручную по ячейкам — автоматического шаблона нет.</p>';
-  return '<p class="hint">Блок считается базовым циклом объекта (Настройки → Базовый цикл).</p>';
+  return `${valueField}
+    <p class="hint" style="margin:2px 0 0">Блок считается базовым циклом объекта (Настройки → Базовый цикл);
+      значение рабочего дня можно задать лично сотруднику.</p>`;
 }
 
 function collectPatternFields(prefix, kind, date) {
   const body = { kind };
+  body.value = $(`#${prefix}-value`)?.value || '';
   if (kind === 'week5') {
     body.off_weekdays = $$(`#${prefix}-wd input:checked`).map(i => +i.value);
-    body.shift_code = $(`#${prefix}-shift`)?.value || '';
   } else if (kind === 'cycle') {
     body.cycle = $(`#${prefix}-cycle`)?.value.trim() || '3/3';
     body.anchor = $(`#${prefix}-anchor`)?.value || date;
-    body.shift_code = $(`#${prefix}-shift`)?.value || '';
   }
   return body;
 }
@@ -205,7 +213,10 @@ async function datedActionModal(emp, kind) {
     try { groups = await api('/api/group-choices'); } catch { groups = []; }
     if (!groups.length) groups = ['Смена 1', 'Смена 2', 'Пятидневка', 'Другие смены'].map(name => ({ name, kind: 'base', title: name, hint: '' }));
   }
-  const workShifts = state.shiftTypes.filter(x => x.kind === 'work');
+  let values = [];
+  if (kind === 'block') {
+    try { values = (await api('/api/tabel-values', { silent: true })).values || []; } catch { values = []; }
+  }
   openModal({
     title: titles[kind],
     subtitle: emp.full_name,
@@ -240,7 +251,7 @@ async function datedActionModal(emp, kind) {
           const g = groups.find(x => x.name === sel.value) || {};
           blockKind = g.kind || 'base';
           hint.textContent = g.hint || '';
-          host.innerHTML = patternFieldsHtml('da', blockKind, workShifts, today);
+          host.innerHTML = patternFieldsHtml('da', blockKind, values, today);
         };
         sel.onchange = renderPattern;
         renderPattern();

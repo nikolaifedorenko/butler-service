@@ -1224,82 +1224,25 @@ async function settingsScreenCodes(host) {
 }
 
 function settingsCodesCards(codes, windows, shifts, d, edit) {
-  /* Карточка кода (решение владельца 16.10.2026): флаги — чекбоксы, режим отметок
-     «Пришёл/Ушёл» — у кода, несущего часы, у кода без часов — заявление с выбором
-     шаблона. Кнопки «Изменить» (модалка) и «✕» (удаление из черновика с серверной
-     защитой при публикации). */
-  const docKinds = state.docKinds || [];
-  const docName = code => { const k = docKinds.find(x => x.code === code); return k ? k.name : code; };
+  /* Компактный список (решение владельца 18.10.2026): строка = пилюля + название +
+     «Изменить» + «✕». Флаги расчёта, режим отметок и заявление настраиваются ТОЛЬКО
+     в модалке «Изменить» — дублирование в списке убрано; окна и значения — на
+     вкладке «Окна и значения». Логика и сервер не менялись. */
   return `${settingsPanel('Коды Табеля · CFG-DAY-CODES', `
-    <div class="code-cards">${codes.map(([code, row]) => {
-      const win = windows.filter(([k]) => k.split(' ')[0] === code);
-      const used = shifts.filter(s => s.tzh_code === code);
-      const carries = !!row.carries_hours;
-      return `<div class="code-card">
+    <div class="code-cards">${codes.map(([code, row]) => `
+      <div class="code-card" style="padding:10px 14px">
         <div class="cc-head">
           ${settingsCodePill(code, d.day_code_policy)}
-          <div class="cc-name"><b>${esc(row.title || '—')}</b>
-            <span class="hint" style="margin:0">${carries ? 'несёт часы' : 'часов не несёт'}</span></div>
+          <div class="cc-name"><b>${esc(row.title || '—')}</b></div>
+          <div style="flex:1"></div>
           ${edit ? `<span class="cc-actions">
             <button class="btn btn-sm btn-ghost" data-cedit="${esc(code)}" title="Изменить карточку кода">Изменить</button>
             <button class="btn btn-sm btn-ghost" data-cdel="${esc(code)}" title="Удалить код из справочника">✕</button></span>` : ''}
         </div>
-        <div class="cc-flags">${SETTINGS_CODE_FLAGS.map(f => `
-          <label class="cc-flag" title="${esc(f.hint)}">
-            <input type="checkbox" data-flag="${esc(code)}:${f.key}"
-              ${row[f.key] ? 'checked' : ''} ${edit ? '' : 'disabled'}>
-            <span>${esc(f.title)}</span></label>`).join('')}</div>
-        <div class="cc-extra">${carries ? `
-          <div class="opt-group-title" style="margin:0 0 4px">Отметки в день с этим кодом</div>
-          <label class="cc-flag" title="Сервер не примет отметку, пока флаг снят">
-            <input type="checkbox" data-punch="${esc(code)}:punch_in"
-              ${row.punch_in !== false ? 'checked' : ''} ${edit ? '' : 'disabled'}>
-            <span>«Пришёл на работу»</span></label>
-          <label class="cc-flag" title="Сервер не примет отметку, пока флаг снят">
-            <input type="checkbox" data-punch="${esc(code)}:punch_out"
-              ${row.punch_out !== false ? 'checked' : ''} ${edit ? '' : 'disabled'}>
-            <span>«Ушёл с работы»</span></label>`
-          : `<div class="opt-group-title" style="margin:0 0 4px">Заявление по назначению кода</div>
-            ${edit ? `<select data-doc="${esc(code)}" class="cc-doc">
-              <option value="">— не печатать —</option>
-              ${docKinds.filter(k => k.active !== false).map(k =>
-                `<option value="${esc(k.code)}" ${row.doc_type === k.code ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}
-              ${row.doc_type && !docKinds.some(k => k.code === row.doc_type)
-                ? `<option value="${esc(row.doc_type)}" selected>${esc(row.doc_type)} (вид удалён)</option>` : ''}
-            </select>`
-            : `<span class="hint" style="margin:0">${row.doc_type ? esc(docName(row.doc_type)) : 'не печатать'}</span>`}`}</div>
-        <div class="cc-foot">
-          <span>Окон: ${win.length
-            ? `${win.length} <button class="btn btn-sm btn-ghost" data-winof="${esc(code)}">показать</button>`
-            : '<span class="badge warn">нет</span>'}</span>
-          <span>${used.length
-            ? used.map(s => `<span class="chip" title="${esc(s.name)}">${esc(s.code)}</span>`).join(' ')
-            : '<span class="badge muted">из Графика не ставится</span>'}</span>
-        </div>
-      </div>`;
-    }).join('')}</div>
-    <p class="hint">Флаги — то, как день считается: «Несёт часы» задаёт план строки, «Принимает коды УТ»
-      разрешает разместить переработку, «Учитывается в УТ» — уровень 7 одноимённого правила,
-      «План=Факт = Авто» — единственный источник, разрешающий «Авто» в «Да» (R19).
-      Цвет и название — данные приложения (блок presentation версии), домен их не знает.</p>
-    <p class="hint">Режим отметок и заявление — атрибуты карточки кода (16.10.2026): у кода с часами
-      настраиваются кнопки «Пришёл на работу»/«Ушёл с работы» (сервер не примет отметку,
-      пока флаг снят), у кода без часов — шаблон заявления, которым оформляется назначение.
-      Отсутствие, у которого есть вид в словаре смен, дополнительно соблюдает режим этого вида.</p>
-    <p class="hint"><b>Удаление кода</b> (✕) убирает его из черновика вместе с его значениями/окнами.
-      Публикацию проверяет сервер: код, который стоит в Табеле или на который ссылается живой
-      вид смены, удалить не получится — расчёт закрытых периодов сошёл бы с истории.
-      Так из справочника изъяты «С» и «НВ» (12.10.2026) и «НБ» — артефакт старого
-      наполнения (16.10.2026).</p>`)}
-  ${settingsPanel('Связь словарей · справочно', `
-    <p class="hint" style="margin:0">Единственная связь двух справочников — <code>shift_types.tzh_code</code>:
-      код Табеля, который проставляется из ячейки Графика. Разрывы видны на экране «Обзор»
-      (проверки APP-SHIFT-CODE и APP-CODE-NO-SHIFT). Документарному коду с «План=Факт = Авто»
-      (R19) — например «К» (командировка) — вид смены не нужен: Табель первичен,
-      График генерируется из Табеля.</p>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-      ${shifts.filter(s => s.tzh_code).map(s => `<span class="chip">${esc(s.code)} → ${settingsCodePill(s.tzh_code, d.day_code_policy)}</span>`).join('')}
-    </div>`)}`;
+      </div>`).join('')}</div>
+    <p class="hint">Флаги расчёта, режим отметок «Пришёл/Ушёл» и шаблон заявления настраиваются
+      в карточке кода («Изменить») и больше не дублируются в списке (18.10.2026).
+      Значения и окна кода — на вкладке «Окна и значения».</p>`)}`;
 }
 
 function settingsWindowsTable(windows, codes, step, edit) {
@@ -1545,7 +1488,6 @@ async function settingsScreenGroups(host) {
   const emps = state.employees || [];
   const perGroup = {};
   emps.forEach(e => { const g = e.group || 'Другие смены'; perGroup[g] = (perGroup[g] || 0) + 1; });
-  const workShifts = (state.shiftTypes || []).filter(x => x.kind === 'work');
   const base = data.base || {};
   const groupChecks = (health?.checks || []).filter(c => c.screen === 'groups');
 
@@ -1582,21 +1524,10 @@ async function settingsScreenGroups(host) {
         </select></label>
         <label class="field"><span>Опорная дата (день, когда Смена 1 рабочая)</span>
           <input type="date" id="b-anchor" value="${esc(base.anchor || '2024-01-01')}" ${edit ? '' : 'disabled'}></label>
-        <label class="field hidden" id="b-cycle-wrap"><span>Произвольный цикл (Р/В)</span>
-          <input type="text" id="b-cycle-custom" placeholder="РРВВВВРР"
-            value="${esc(String(base.cycle || '').startsWith('custom') ? String(base.cycle).slice(7) : '')}" ${edit ? '' : 'disabled'}></label>
-        <label class="field"><span>Смена блока «Смена 1»</span><select id="b-shift1" ${edit ? '' : 'disabled'}>
-          ${workShifts.map(x => `<option value="${esc(x.code)}" ${base.groups?.['Смена 1']?.shift_code === x.code ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
-        </select></label>
-        <label class="field"><span>Смена блока «Смена 2»</span><select id="b-shift2" ${edit ? '' : 'disabled'}>
-          ${workShifts.map(x => `<option value="${esc(x.code)}" ${base.groups?.['Смена 2']?.shift_code === x.code ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
-        </select></label>
       </div>
-      <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
-        <input type="checkbox" id="b-invert2" ${base.groups?.['Смена 2']?.invert !== false ? 'checked' : ''}
-          style="width:17px;height:17px;accent-color:var(--primary)" ${edit ? '' : 'disabled'}>
-        Смена 2 работает в противофазе со Сменой 1 (когда одни работают — другие отдыхают)
-      </label>
+      <p class="hint" style="margin:-4px 0 10px">Смена 2 работает в противофазе со Сменой 1 — системное
+        правило (18.10.2026). Значение рабочего дня (код и окно) задаётся в карточке
+        сотрудника при приёме и переводе в блок.</p>
       ${edit ? '<button class="btn btn-primary btn-sm" id="b-save" style="margin-top:10px">Сохранить базовый цикл</button>' : ''}`)}
     ${settingsPanel('Пятидневка и «Другие смены»', `
       <p class="hint" style="margin:0">Здесь не настраиваются. У «Пятидневки» выходные задаются для
@@ -1631,11 +1562,16 @@ async function settingsScreenGroups(host) {
   $('#b-cycle').onchange = syncCycle; syncCycle();
   $('#b-save').onclick = async () => {
     const cycle = $('#b-cycle').value === 'custom' ? 'custom:' + $('#b-cycle-custom').value.trim() : $('#b-cycle').value;
-    const body = { cycle, anchor: $('#b-anchor').value, groups: {
-      'Смена 1': { shift_code: $('#b-shift1').value, invert: false },
-      'Смена 2': { shift_code: $('#b-shift2').value, invert: $('#b-invert2').checked },
-      'Пятидневка': base.groups?.['Пятидневка'] || { shift_code: 'DAY9', off_weekdays: [5, 6] },
-    } };
+    /* значения рабочего дня и выходные блоков сохраняются как есть: они правятся
+       в карточках сотрудников, экран базового цикла их не редактирует (18.10.2026) */
+    const keepGroups = {};
+    for (const [name, gc] of Object.entries(base.groups || {})) {
+      const keep = {};
+      if (gc && gc.value) keep.value = gc.value;
+      if (gc && gc.off_weekdays) keep.off_weekdays = gc.off_weekdays;
+      keepGroups[name] = keep;
+    }
+    const body = { cycle, anchor: $('#b-anchor').value, groups: keepGroups };
     try {
       await api('/api/settings/base', { method: 'PUT', body });
       toast('Базовый цикл сохранён и действует на все месяцы', 'ok');
@@ -1785,8 +1721,6 @@ async function settingsScreenShifts(host) {
   const shown = shiftList.filter(s => (tab === 'archived' ? !!s.archived
     : !s.archived && (tab === 'work' ? s.kind === 'work' : s.kind !== 'work')));
   const codes = p?.day_code_policy || {};
-  const broken = shiftList.filter(s => s.tzh_code && !codes[s.tzh_code]);
-  const orphan = Object.keys(codes).filter(c => !shiftList.some(s => s.tzh_code === c && !s.archived));
 
   host.innerHTML = `
     ${settingsHead('Смены и отсутствия',
@@ -1800,7 +1734,7 @@ async function settingsScreenShifts(host) {
     </div>
     ${settingsPanel('', `
       <div class="table-wrap" style="max-height:none"><table class="data responsive"><thead><tr>
-        <th>Код</th><th>Название</th><th>Время</th><th class="num">Часов</th><th>Код Табеля</th><th>Признаки</th><th></th>
+        <th>Код</th><th>Название</th><th>Время</th><th class="num">Часов</th><th>Признаки</th><th></th>
       </tr></thead><tbody>
       ${shown.map(s => `<tr${s.archived ? ' style="opacity:.62"' : ''}>
         <td data-label="Код"><span class="shift-pill" style="background:${cssColor(s.color, '#6b7280')};color:${textOn(cssColor(s.color, '#6b7280'))}">${esc(s.code)}</span></td>
@@ -1808,12 +1742,10 @@ async function settingsScreenShifts(host) {
         <td class="num" data-label="Время">${s.kind === 'work'
           ? `${esc(s.start_time)}–${esc(s.end_time)}${s.overnight ? ' <span class="badge info">через полночь</span>' : ''}` : '—'}</td>
         <td class="num" data-label="Часов">${s.kind === 'work' ? esc(hours(s.planned_hours)) : '—'}</td>
-        <td data-label="Код Табеля">${s.tzh_code ? settingsCodePill(s.tzh_code, codes) : '<span class="badge muted">нет</span>'}</td>
         <td data-label="Признаки">${s.kind === 'work' ? '<span class="badge ok">смена</span>' : '<span class="badge muted">отсутствие</span>'}
-          ${s.doc_type ? '<span class="badge info" title="Из ячейки Графика печатается заявление">заявление</span>' : ''}
+          ${s.kind !== 'work' && s.doc_type ? '<span class="badge info" title="Из ячейки Графика печатается заявление">заявление</span>' : ''}
           ${s.kind !== 'work' && (s.punch_in_allowed === false || s.punch_out_allowed === false)
             ? '<span class="badge warn" title="Отмечаться во время этого отсутствия нельзя">без отметок</span>' : ''}
-          ${s.deduct_from_bank ? '<span class="badge warn" title="Часы отсутствия списываются из банка часов">часы из банка</span>' : ''}
           ${s.archived ? `<span class="badge muted" title="В архиве${s.archived_at ? ' с ' + dateRu(s.archived_at) : ''}">архив</span>` : ''}
           ${s.revisions ? `<span class="badge" title="Есть история значений: прошлые даты считаются по прежним часам">${s.revisions} изм.</span>` : ''}</td>
         <td class="num" style="white-space:nowrap">
@@ -1829,23 +1761,12 @@ async function settingsScreenShifts(host) {
       <p class="hint">«Удаление» смены = архив: она исчезает из новых назначений, но прошлые графики и табели
         продолжают считаться по ней. Изменение времени создаёт новую ревизию словаря: отработанные дни остаются
         посчитанными по ПРЕЖНИМ часам, дата вступления указывается в редакторе смены.</p>`)}
-    ${settingsPanel('Связь словарей', `
-      <p class="hint" style="margin:-4px 0 10px">Общее у двух справочников ровно одно:
-        <code>shift_types.tzh_code</code> → код Табеля. По этому коду день заполняется из циклов
-        и получает стандартное окно (Я 8 → 09:00–18:00, Я 10,75 → 08:00–20:00); те же часы
-        попадают в График первоначальными сменами. В поле допустимы только коды справочника
-        или пустое значение — редактор смены предлагает список, а не свободный текст (T1).
-        Подпись ячейки («08–20») хранится отдельно, в «коде в сетке».</p>
-      ${broken.length ? `<div class="opt-group-title">Битые ссылки</div>
-        ${broken.map(s => `<div class="kv"><span class="k">${esc(s.code)} · ${esc(s.name)}</span>
-          <span class="v" style="color:var(--danger)">код «${esc(s.tzh_code)}» отсутствует в справочнике Табеля
-          ${edit ? `<button class="btn btn-sm btn-ghost" data-fix-tzh="${s.id}" style="margin-left:8px">Исправить</button>` : ''}</span></div>`).join('')}
-        <p class="hint" style="margin:6px 0 0">Такой день не заполнится из циклов (APP-SHIFT-CODE). Исправление:
-          выберите код из списка или оставьте поле пустым — границы смены уже хранятся в её времени.</p>` : ''}
-      ${orphan.length ? `<div class="opt-group-title">Коды Табеля без смены</div>
-        <p class="hint" style="margin:0">Ставятся только вручную в Табеле: ${orphan.map(c =>
-          settingsCodePill(c, codes)).join(' ')}</p>` : ''}
-      ${!broken.length && !orphan.length ? '<p class="hint" style="margin:0">Разрывов нет: у каждой смены код Табеля существует, у каждого кода есть смена.</p>' : ''}`)}`;
+    ${settingsPanel('Как связаны Табель и График', `
+      <p class="hint" style="margin:-4px 0 0">Справочники независимы (18.10.2026): Табель заполняется
+        из циклов значением рабочего дня сотрудника (окно берётся из CFG-WINDOWS), График
+        по умолчанию копирует смены Табеля с цветом кода. Словарь смен отвечает только
+        за добавляемые вручную смены и системное отсутствие «Отпросился (выходной за часы)».
+        Ручная смена Графика не меняет часы Табеля: Табель — первичный документ.</p>`)}`;
 
   settingsBindHealth(host);
   $$('[data-stab]', host).forEach(b => b.onclick = () => { settingsUI.shiftTab = b.dataset.stab; settingsRenderScreen(); });

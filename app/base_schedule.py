@@ -22,17 +22,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .groups import GROUP_META, normalize_group
-from .models import BlockAssignment, Employee, Setting, ShiftType
+from .models import BlockAssignment, Employee, Setting
 from .schedule_patterns import parse_custom_cycle
-from .shiftrev import ShiftCatalog, find_by_code, view_at
 
 DEFAULT_BASE = {
     "cycle": "2/2",
     "anchor": "2024-01-01",          # любой день в прошлом, когда Смена 1 была РАБОЧЕЙ
+    # Смена 2 работает в противофазе со Сменой 1 — системное правило (18.10.2026),
+    # не настройка. Значение рабочего дня («Я 10,75»…) живёт в шаблоне сотрудника.
     "groups": {
-        "Смена 1": {"shift_code": "DAY12", "invert": False},
-        "Смена 2": {"shift_code": "DAY12", "invert": True},   # противофаза
-        "Пятидневка": {"shift_code": "DAY9", "off_weekdays": [5, 6]},
+        "Смена 1": {},
+        "Смена 2": {},
+        "Пятидневка": {"off_weekdays": [5, 6]},
     },
 }
 
@@ -98,6 +99,8 @@ def dump_pattern(pattern: Optional[dict]) -> str:
 def validate_pattern(pattern: dict) -> str:
     """Проверка индивидуального шаблона; возвращает человекочитаемое описание."""
     kind = pattern.get("kind") or "base"
+    value = (pattern.get("value") or "").strip()
+    tail = f", значение {value}" if value else ""
     if kind not in PATTERN_KINDS:
         raise ValueError(f"Неизвестный тип шаблона: {kind}")
     if kind == "week5":
@@ -107,21 +110,21 @@ def validate_pattern(pattern: dict) -> str:
         if len(off) > 3:
             raise ValueError("Слишком много выходных: для пятидневки их два (максимум три)")
         return "Пятидневка, выходные: " + ", ".join(
-            ["пн", "вт", "ср", "чт", "пт", "сб", "вс"][d] for d in sorted(off))
+            ["пн", "вт", "ср", "чт", "пт", "сб", "вс"][d] for d in sorted(off)) + tail
     if kind == "cycle":
         cycle = (pattern.get("cycle") or "").strip()
         if cycle.startswith("custom:"):
             parse_custom_cycle(cycle[7:])
-            return f"Цикл «{cycle[7:]}»"
+            return f"Цикл «{cycle[7:]}»" + tail
         if not re.fullmatch(r"\d+\s*/\s*\d+", cycle):
             raise ValueError("Цикл задаётся как 3/3, 1/3, 4/2 или custom:РРВВРВ")
         w, o = (int(x) for x in re.split(r"\s*/\s*", cycle))
         if w <= 0 or o <= 0:
             raise ValueError("В цикле должны быть и рабочие, и выходные дни")
-        return f"Цикл {w}/{o}"
+        return f"Цикл {w}/{o}" + tail
     if kind == "manual":
         return "Ячейки заполняются вручную (автоматически график не строится)"
-    return "Базовый цикл объекта"
+    return "Базовый цикл объекта" + tail
 
 
 class BlockIndex:
@@ -193,8 +196,13 @@ def pattern_for_date(db: Session, emp: Employee, date: dt.date,
     pat = {
         "kind": kind,
         "group": group,
+        # значение рабочего дня (ключ CFG-WINDOWS, «Я 10,75»): своё из истории
+        # переводов, иначе значение блока из общих настроек (18.10.2026)
+        "value": own.get("value") or gcfg.get("value") or "",
         "shift_code": own.get("shift_code") or gcfg.get("shift_code") or "",
-        "invert": bool(own.get("invert", gcfg.get("invert", False))),
+        # Смена 2 — всегда противофаза: системное правило, не настройка (18.10.2026)
+        "invert": bool(own.get("invert", gcfg.get("invert", False)))
+        or group == "Смена 2",
         "cycle": own.get("cycle") or "",
         "anchor": own.get("anchor") or "",
         "off_weekdays": list(own.get("off_weekdays") or gcfg.get("off_weekdays") or []),
@@ -205,7 +213,7 @@ def pattern_for_date(db: Session, emp: Employee, date: dt.date,
     return pat
 
 
-def _flag_for(cfg: dict, pat: dict, date: dt.date) -> bool:
+def working_flag(cfg: dict, pat: dict, date: dt.date) -> bool:
     """Рабочий ли день по шаблону. Устойчиво к любой опорной дате (прошлой и будущей):
     фаза считается через математический остаток, отрицательные индексы корректны."""
     kind = pat.get("kind") or "base"
@@ -243,38 +251,6 @@ def is_working_date(db: Session, emp: Employee, date: dt.date, cfg: Optional[dic
     if pat.get("kind") == "manual":
         return False
     try:
-        return _flag_for(cfg, pat, date)
+        return working_flag(cfg, pat, date)
     except ValueError:
         return False
-
-
-def base_shift(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = None,
-               employed: Optional[bool] = None, index: Optional[BlockIndex] = None,
-               catalog: Optional[ShiftCatalog] = None):
-    """Виртуальная смена сотрудника по графику (если нет ручной ячейки).
-
-    Шаблон берётся от блока, в котором сотрудник состоял В ЭТУ ДАТУ (переводы учитываются),
-    а смена — из словаря такой, какой она была в эту дату (ревизии словаря).
-    Для дней, когда сотрудник не работал в компании (уволен/ещё не принят), — None.
-    """
-    from .employment import is_employed
-
-    if employed is None and not is_employed(db, emp, date):
-        return None
-    cfg = cfg or load_base_config(db)
-    pat = pattern_for_date(db, emp, date, cfg, index=index)
-    if pat.get("kind") == "manual":
-        return None
-    try:
-        flag = _flag_for(cfg, pat, date)
-    except ValueError:
-        return None
-    if not flag:
-        off = catalog.default_off() if catalog is not None else \
-            db.scalar(select(ShiftType).where(ShiftType.is_default_off.is_(True)))
-        return view_at(db, off, date, catalog=catalog)
-    shift = find_by_code(db, pat.get("shift_code") or "", catalog=catalog)
-    return view_at(db, shift, date, catalog=catalog)
-
-
-

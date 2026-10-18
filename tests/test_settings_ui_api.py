@@ -90,30 +90,34 @@ class TestHealth(unittest.TestCase):
         self.assertEqual(chk, [], [c["text"] for c in chk])
         for c in d["checks"]:
             self.assertIn(c["screen"], {"overview", "calc", "pay", "codes", "groups",
-                                        "shifts", "docs", "system", "expert"})
+                                        "shifts", "docs", "system", "expert",
+                                        "employees"})
             self.assertIn(c["level"], ("error", "warn"))
             self.assertTrue(c["text"].strip())
 
-    def test_03_broken_shift_link_is_reported(self):
-        """D19: смена ссылается на код Табеля, которого нет в справочнике."""
-        db = SessionLocal()
-        st = ShiftType(code="TEST_UI_BROKEN", name="Тест битой ссылки", tzh_code="ЫЫ",
-                       kind="work", start_time="08:00", end_time="17:00")
-        db.add(st)
-        db.commit()
-        st_id = st.id
-        db.close()
+    def test_03_employee_without_value_is_reported(self):
+        """18.10.2026: связка справочников удалена; health подсвечив сотрудников
+        без значения рабочего дня (APP-EMP-NO-VALUE) — без него цикл не заполнит дни."""
+        r = self.admin.post("/api/employees", json={
+            "full_name": "Беззначения Тест Тестович", "position": "Батлер",
+            "schedule_group": "Другие смены",
+            "hired_at": (self.today - dt.timedelta(days=30)).isoformat()})
+        self.assertEqual(r.status_code, 200, r.text)
+        emp_id = r.json()["id"]
         try:
             d = self.admin.get("/api/engine-settings/health").json()
-            codes = [c for c in d["checks"] if c["code"] == "APP-SHIFT-CODE"]
-            self.assertTrue(any("ЫЫ" in c["text"] for c in codes), d["checks"])
-            self.assertTrue(all(c["level"] == "error" for c in codes))
-            self.assertTrue(all(c["screen"] == "shifts" for c in codes))
+            warns = [c for c in d["checks"] if c["code"] == "APP-EMP-NO-VALUE"]
+            self.assertTrue(any("Беззначения" in c["text"] for c in warns), d["checks"])
+            self.assertTrue(all(c["level"] == "warn" for c in warns))
         finally:
-            db = SessionLocal()
-            db.delete(db.get(ShiftType, st_id))
-            db.commit()
-            db.close()
+            self.admin.post(f"/api/employees/{emp_id}/delete", json={})
+
+    def test_03b_link_checks_are_gone(self):
+        """Проверки APP-SHIFT-CODE и APP-CODE-NO-SHIFT удалены вместе со связкой."""
+        d = self.admin.get("/api/engine-settings/health").json()
+        codes = {c["code"] for c in d["checks"]}
+        self.assertNotIn("APP-SHIFT-CODE", codes)
+        self.assertNotIn("APP-CODE-NO-SHIFT", codes)
 
     def test_04_health_requires_permission(self):
         self.assertEqual(self.emp.get("/api/engine-settings/health").status_code, 403)
@@ -139,135 +143,43 @@ class TestHealth(unittest.TestCase):
         for code in ("К", "НБ"):
             self.assertFalse(any(f"«{code}»" in c["text"] for c in warns), d["checks"])
 
-    def test_06_code_no_shift_still_warns_without_live_kind(self):
-        """Регресс: код без ЖИВОГО вида по-прежнему даёт APP-CODE-NO-SHIFT.
-
-        Архив вида (active=False + archived_at) рвёт связь справочников — из
-        Табеля код поставить нельзя; раньше проверка архив не видела (у модели
-        нет атрибута «archived», getattr всегда возвращал False). Носитель —
-        «Б» (SICK): у него нет «План=Факт = Авто», пропуск проверки не срабатывает.
-        """
-        db = SessionLocal()
-        st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK")).first()
-        assert st is not None
-        st.active = False
-        st.archived_at = self.today
-        db.commit()
-        db.close()
-        try:
-            d = self.admin.get("/api/engine-settings/health").json()
-            warns = [c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"]
-            self.assertTrue(any("«Б»" in c["text"] for c in warns), d["checks"])
-            self.assertTrue(all(c["level"] == "warn" for c in warns))
-            self.assertTrue(all(c["screen"] == "shifts" for c in warns))
-        finally:
-            db = SessionLocal()
-            st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK")).first()
-            st.active = True
-            st.archived_at = None
-            db.commit()
-            db.close()
+    def test_06_archive_no_longer_breaks_links(self):
+        """Архив вида больше не рвёт связь справочников: связи нет (18.10.2026)."""
         d = self.admin.get("/api/engine-settings/health").json()
-        warns = [c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"]
-        self.assertFalse(any("«Б»" in c["text"] for c in warns),
-                         "после возврата вида из архива предупреждение уходит")
+        self.assertEqual([c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"], [])
 
-    def test_07_missing_kind_readded_by_migration(self):
-        """Старая база без вида словаря: _migrate_missing_shifts докладывает его из сида.
-
-        Регресс старта приложения: raw-INSERT миграции не перечислял
-        punch_in_allowed/punch_out_allowed, а в базах, созданных create_all, эти
-        колонки NOT NULL без серверного дефолта — сервер падал при старте.
-        Носитель — ABSENT_UNKNOWN («НН»): обычный вид из сида.
-        """
+    def test_07_missing_shifts_migration_is_noop(self):
+        """18.10.2026: _migrate_missing_shifts — историческая миграция, no-op.
+        Виды отсутствий удалены из сида и модели; словарём правит владелец."""
         from app.migrations import _migrate_missing_shifts
 
+        _migrate_missing_shifts()
+        _migrate_missing_shifts()          # идемпотентно
         db = SessionLocal()
-        st = db.scalars(select(ShiftType).where(ShiftType.code == "ABSENT_UNKNOWN")).first()
-        assert st is not None
-        db.delete(st)
-        db.commit()
-        db.close()
         try:
-            _migrate_missing_shifts()
-            _migrate_missing_shifts()          # идемпотентно
-            db = SessionLocal()
-            try:
-                st = db.scalars(select(ShiftType).where(ShiftType.code == "ABSENT_UNKNOWN")).first()
-                self.assertIsNotNone(st, "миграция не вернула вид «НН» в словарь")
-                self.assertEqual(st.tzh_code, "НН")
-                self.assertTrue(st.punch_in_allowed)
-                self.assertTrue(st.punch_out_allowed)
-            finally:
-                db.close()
+            st = db.scalars(select(ShiftType).where(ShiftType.code == "ABSENT_UNKNOWN")).first()
+            self.assertIsNone(st, "виды отсутствий в словарь не возвращаются")
         finally:
-            d = self.admin.get("/api/engine-settings/health").json()
-            warns = [c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"]
-            self.assertFalse(any("«НН»" in c["text"] for c in warns),
-                             "после миграции health снова чист")
+            db.close()
 
     def test_08_sick_unpaid_migration_idempotent(self):
-        """16.10.2026: «НБ» — артефакт. _migrate_remove_sick_unpaid убирает вид:
-        удаление без ссылок, архив + очистка tzh_code при ссылках, идемпотентно."""
+        """16.10.2026: «НБ» — артефакт; 18.10.2026: все виды отсутствий, кроме
+        системного «Отпросился», удалены миграцией упрощения. Историческая
+        _migrate_remove_sick_unpaid — no-op, идемпотентна."""
         from app.migrations import _migrate_remove_sick_unpaid
 
-        def _kind():
-            db = SessionLocal()
-            try:
-                return db.scalars(select(ShiftType).where(
-                    ShiftType.code == "SICK_UNPAID")).first()
-            finally:
-                db.close()
-
-        # 1) без ссылок — удаление
-        db = SessionLocal()
-        db.add(ShiftType(code="SICK_UNPAID", name="Неоплачиваемый больничный",
-                         display_code="НБ", tzh_code="НБ", kind="absence",
-                         color="#c0504d", sort_order=85, is_working=False,
-                         counts_as_worked=False))
-        db.commit()
-        db.close()
         _migrate_remove_sick_unpaid()
-        _migrate_remove_sick_unpaid()      # идемпотентно
-        self.assertIsNone(_kind(), "вид-артефакт не удалён")
-
-        # 2) со ссылкой отсутствия — архив и очистка tzh_code (health не ругается)
+        _migrate_remove_sick_unpaid()
         db = SessionLocal()
-        emp = db.scalars(select(Employee).order_by(Employee.id)).first()
-        st = ShiftType(code="SICK_UNPAID", name="Неоплачиваемый больничный",
-                       display_code="НБ", tzh_code="НБ", kind="absence",
-                       color="#c0504d", sort_order=85, is_working=False,
-                       counts_as_worked=False)
-        db.add(st)
-        db.flush()
-        now = dt.datetime.utcnow()
-        db.add(ScheduleAbsence(employee_id=emp.id, start_utc=now - dt.timedelta(hours=2),
-                               end_utc=now + dt.timedelta(hours=2), kind_id=st.id))
-        db.commit()
-        st_id = st.id
-        db.close()
         try:
-            _migrate_remove_sick_unpaid()
-            _migrate_remove_sick_unpaid()  # идемпотентно
-            db = SessionLocal()
-            row = db.get(ShiftType, st_id)
-            self.assertIsNotNone(row, "вид со ссылкой удалён — история сломана")
-            self.assertFalse(row.active)
-            self.assertIsNotNone(row.archived_at)
-            self.assertEqual(row.tzh_code, "", "tzh_code архивного вида должен быть очищен")
-            db.close()
+            st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK_UNPAID")).first()
+            self.assertIsNone(st)
+            absence = db.scalars(select(ShiftType).where(
+                ShiftType.kind == "absence", ShiftType.archived_at.is_(None),
+                ShiftType.active.is_(True))).all()
+            self.assertEqual([k.code for k in absence], ["TIMEOFF_HOURS"])
         finally:
-            from sqlalchemy import delete
-
-            db = SessionLocal()
-            db.execute(delete(ScheduleAbsence).where(ScheduleAbsence.kind_id == st_id))
-            row = db.get(ShiftType, st_id)
-            if row is not None:
-                db.delete(row)
-            db.commit()
             db.close()
-
-
 
 class TestResolver(unittest.TestCase):
     """«Проверитель»: какое значение подействовало и на каком уровне приоритета."""

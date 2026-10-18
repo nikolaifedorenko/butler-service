@@ -164,16 +164,14 @@ function renderGrid() {
     if (sh) {
       const wt = workTypeOfShift(sh);
       if (wt) usedTypes.set(`w:${wt.id}`,
-        { label: `${wt.display_code || wt.name} · ${wt.start_time}–${wt.end_time}`, color: cellColor(c) });
+        { label: `${wt.code} · ${wt.start_time}–${wt.end_time}`, color: cellColor(c) });
       else if (c.tabel) usedTypes.set(`c:${c.tabel.code}`,
         { label: c.tabel.code, color: cellColor(c) });
       return;
     }
     const tt = c.tabel;
     if (!tt) return;
-    const at = absenceTypeOfCode(tt.code);
-    usedTypes.set(`a:${tt.code}`, { label: at ? `${tt.code} · ${at.name}` : tt.code,
-      color: cellColor(c) });
+    usedTypes.set(`a:${tt.code}`, { label: tt.code, color: cellColor(c) });
   }));
   $('#grid-legend').innerHTML = [...usedTypes.values()].map(x =>
     `<span class="chip"><span class="swatch" style="background:${x.color}"></span>${esc(x.label)}</span>`).join('') +
@@ -205,8 +203,8 @@ function scrollGridToToday() {
    правила на фронтенде нет); иначе — видимые отрезки смены по строкам (смена минус
    отсутствия, segments считает сервер); без смены — код Табеля. Код Табеля из ячейки
    убран: он живёт в слое 0 и в подсказке. Цвет — из словаря «Смены и отсутствия»:
-   смена матчится по времени окна, код отсутствия — по tzh_code словаря; запасной
-   вариант — цвет кода Табеля. */
+   смена матчится по времени окна; день без смены — цвет кода Табеля из настроек
+   (18.10.2026: связка «вид отсутствия → код Табеля» удалена). */
 function cellWholeOff(c) {
   return (c.absences || []).find(a => a.whole_shift) || null;
 }
@@ -217,9 +215,6 @@ function cellSegLines(c) {
 function workTypeOfShift(sh) {
   return (state.shiftTypes || []).find(x => x.kind === 'work'
     && x.start_time === sh.start_hm && x.end_time === sh.end_hm);
-}
-function absenceTypeOfCode(code) {
-  return (state.shiftTypes || []).find(x => x.kind === 'absence' && x.tzh_code === code);
 }
 function cellColor(c) {
   /* сервер разрешает цвет по словарю «Смены и отсутствия» (payload.color) — один
@@ -232,10 +227,8 @@ function cellColor(c) {
   if (sh) {
     const wt = workTypeOfShift(sh);
     if (wt) return cssColor(wt.color);
-  } else if (t) {
-    const at = absenceTypeOfCode(t.code);
-    if (at) return cssColor(at.color);
   }
+  /* день без смены (отсутствие кодом Табеля, выходной) — цвет кода из настроек */
   return V4_CODE_COLORS[t ? t.code : ''] || '#8a94a6';
 }
 
@@ -567,6 +560,12 @@ function openCellModal(empId, dateISO) {
           До следующего дня (через полночь)
         </label>
         <label class="field"><span>Примечание</span><input type="text" id="cell-abs-note" placeholder="Например: заявление согласовано"></label>
+        <label class="field"><span>Шаблон заявления</span><select id="cell-abs-doc">
+          <option value="">— авто по точке ввода —</option></select>
+          <div class="hint" style="margin-top:2px">Авто: интервал — «об отсутствии на рабочем
+            месте», вся смена — «выходной за ранее отработанные часы». Выберите шаблон,
+            чтобы печатать другой документ.</div></label>
+        <p class="hint" id="cell-abs-split" style="margin:0 0 6px"></p>
         <div style="display:flex;gap:8px;margin:4px 0 6px;flex-wrap:wrap">
           <button class="btn btn-sm btn-primary" id="cell-abs-save" title="Отпросился на часть смены: интервал внутри окна">На интервал</button>
           <button class="btn btn-sm btn-primary" id="cell-abs-shift" title="Отсутствие на всё окно смены: «выходной за часы»">На всю смену</button>
@@ -663,6 +662,7 @@ function openCellModal(empId, dateISO) {
             /* вид «за счёт часов» в словаре один (Q4) — выбор убран (16.10.2026) */
             kind_id: absenceKind ? absenceKind.id : null,
             note: $('#cell-abs-note').value.trim(),
+            doc_type: $('#cell-abs-doc') ? $('#cell-abs-doc').value : '',
           } });
           toast('Согласованное отсутствие добавлено — заявление можно печатать сразу', 'ok');
           await refreshCellModal();
@@ -700,6 +700,38 @@ function openCellModal(empId, dateISO) {
          вида «за счёт часов»; «без вида» — отсутствие без заявления. */
       /* вид не выбирается: кнопки и часы «выходного за часы» доступны сразу,
          блок существует только при смене с часами (см. разметку выше) */
+      /* шаблоны заявлений для диалога «Отпросился» (18.10.2026) */
+      const docSel = m.querySelector('#cell-abs-doc');
+      if (docSel) (async () => {
+        try {
+          const di = await api('/api/docs/kinds', { silent: true });
+          docSel.innerHTML = '<option value="">— авто по точке ввода —</option>' +
+            (di.kinds || []).filter(k => k.active !== false)
+              .map(k => `<option value="${esc(k.code)}">${esc(k.name)}</option>`).join('');
+        } catch { /* остаётся авто */ }
+      })();
+      /* рабочее время ДО и ПОСЛЕ интервала (пункт 4 задания 17.10.2026) */
+      const splitHint = () => {
+        const box = m.querySelector('#cell-abs-split');
+        if (!box) return;
+        const sh = (shifts || [])[0];
+        const f = m.querySelector('#cell-abs-from')?.value;
+        const u = m.querySelector('#cell-abs-until')?.value;
+        if (!sh || !f || !u) { box.textContent = ''; return; }
+        const min = v => { const [h, mm] = v.split(':').map(Number); return h * 60 + mm; };
+        const hm = v => `${String(Math.floor(v / 60) % 24).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
+        const s0 = min(sh.start_hm), e0 = min(sh.end_hm), a = min(f), b = min(u);
+        if (!(a < b)) { box.textContent = ''; return; }
+        const parts = [];
+        if (a > s0) parts.push(`${sh.start_hm}–${f} (${hours((a - s0) / 60)} ч)`);
+        if (e0 > b) parts.push(`${u}–${sh.end_hm} (${hours((e0 - b) / 60)} ч)`);
+        box.textContent = parts.length
+          ? `Рабочее время дня: ${parts.join(' и ')}`
+          : 'Интервал накрывает всё окно — день станет плашкой «Выходной за часы»';
+      };
+      m.querySelector('#cell-abs-from')?.addEventListener('change', splitHint);
+      m.querySelector('#cell-abs-until')?.addEventListener('change', splitHint);
+      splitHint();
       if (m.querySelector('#cell-abs-shift')) showTimeoffHours();
       $$('[data-abs-del]', m).forEach(b => b.onclick = async () => {
         try {

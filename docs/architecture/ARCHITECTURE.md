@@ -255,4 +255,5 @@ POST /api/punches: сериализация по сотруднику (lock) →
 3. Код по стадиям: `domain/pipeline/settle.py` → пакеты стадий → `application/view_period.py`.
 4. `tests/engine/test_ex_01_15.py` — как читать приёмочные примеры (вход/выход/контроли).
 5. `app/api/mgmt_api.py` + `static/js/section_v4.js (loadMgmt)` — вертикальный срез вкладки.
-6. `docs/MIGRATION-MAP-v7.md` — что и почему заменили (карта «прототип → v7.1»).
+6. `docs/CHANGES-2026-10-18-settings-simplify.md` — упрощение настроек 18.10.2026
+   (независимые справочники, значение рабочего дня у сотрудника).

@@ -8,6 +8,11 @@
             "title": "Date",
             "type": "string"
           },
+          "doc_type": {
+            "default": "",
+            "title": "Doc Type",
+            "type": "string"
+          },
           "employee_id": {
             "title": "Employee Id",
             "type": "integer"
@@ -745,9 +750,9 @@
             "title": "Position",
             "type": "string"
           },
-          "shift_code": {
+          "value": {
             "default": "",
-            "title": "Shift Code",
+            "title": "Value",
             "type": "string"
           }
         },
@@ -1496,16 +1501,27 @@
             "title": "Sync Blocks",
             "type": "boolean"
           },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          },
           "work_shift_id": {
-            "title": "Work Shift Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Shift Id"
           }
         },
         "required": [
           "employee_ids",
           "start_date",
-          "end_date",
-          "work_shift_id"
+          "end_date"
         ],
         "title": "PatternIn",
         "type": "object"
@@ -1702,9 +1718,9 @@
             "title": "Position",
             "type": "string"
           },
-          "shift_code": {
+          "value": {
             "default": "",
-            "title": "Shift Code",
+            "title": "Value",
             "type": "string"
           }
         },
@@ -1910,16 +1926,6 @@
             "title": "Counts As Worked",
             "type": "boolean"
           },
-          "deduct_from_bank": {
-            "default": false,
-            "title": "Deduct From Bank",
-            "type": "boolean"
-          },
-          "display_code": {
-            "default": "",
-            "title": "Display Code",
-            "type": "string"
-          },
           "doc_type": {
             "default": "",
             "title": "Doc Type",
@@ -1975,11 +1981,6 @@
             "title": "Punch Out Allowed",
             "type": "boolean"
           },
-          "short_code": {
-            "default": "",
-            "title": "Short Code",
-            "type": "string"
-          },
           "sort_order": {
             "default": 100,
             "title": "Sort Order",
@@ -1988,11 +1989,6 @@
           "start_time": {
             "default": "",
             "title": "Start Time",
-            "type": "string"
-          },
-          "tzh_code": {
-            "default": "",
-            "title": "Tzh Code",
             "type": "string"
           }
         },
@@ -8383,6 +8379,26 @@
         "summary": "Get Tabel",
         "tags": [
           "tabel"
+        ]
+      }
+    },
+    "/api/tabel-values": {
+      "get": {
+        "description": "Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода\n(18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно.",
+        "operationId": "tabel_values_api_tabel_values_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Tabel Values",
+        "tags": [
+          "directory"
         ]
       }
     },

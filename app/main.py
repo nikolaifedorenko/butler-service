@@ -44,6 +44,7 @@ from .deps import now_local
 from .migrations import (
     migrate_db,
     migrate_engine_v7,
+    migrate_schedule_dict_simplify,
     migrate_manual_replaces_generated,
     migrate_night_cars,
     migrate_settings_value_text,
@@ -65,6 +66,7 @@ def init_db() -> None:
     migrate_db()
     migrate_settings_value_text()   # PostgreSQL: шаблоны документов длиннее VARCHAR(255)
     migrate_engine_v7()
+    migrate_schedule_dict_simplify()
     seed_statement_kinds()
     db = SessionLocal()
     try:

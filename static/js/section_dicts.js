@@ -359,23 +359,11 @@ async function shiftModal(st) {
         <label class="field"><span>Название</span><input type="text" id="sh-name" value="${esc(st?.name || '')}" placeholder="08:00–17:00 (9 ч)"></label>
         <label class="field"><span>Начало</span><input type="time" id="sh-start" value="${esc(st?.start_time || '08:00')}"></label>
         <label class="field"><span>Конец</span><input type="time" id="sh-end" value="${esc(st?.end_time || '17:00')}"></label>
-        <label class="field"><span>Код в сетке (подпись ячейки)</span><input type="text" id="sh-short" value="${esc(st?.display_code || '')}" placeholder="08–17 / В / ОТ…">
-          <div class="hint" style="margin-top:2px">Только отображение в сетке Графика — на расчёт не влияет.</div></label>
-        <label class="field"><span>Код в табеле (CFG-DAY-CODES)</span>
-          <select id="sh-tzh">
-            <option value="">— не задан —</option>
-            ${(state.tabelCodes || []).map(c => `<option value="${esc(c.code)}" ${st?.tzh_code === c.code ? 'selected' : ''}>${esc(c.code)}${c.title ? ' — ' + esc(c.title) : ''}${c.carries_hours ? ' (с часами)' : ''}</option>`).join('')}
-            ${st?.tzh_code && !(state.tabelCodes || []).some(c => c.code === st.tzh_code)
-              ? `<option value="" selected>⚠ «${esc(st.tzh_code)}» — нет в справочнике (будет очищено)</option>` : ''}
-          </select>
-          <div class="hint" style="margin-top:2px" id="sh-tzh-hint">По этому коду день заполняется из циклов
-            и получает стандартное окно (Я 8 → 09:00–18:00, Я 10,75 → 08:00–20:00). Пусто — смена
-            не участвует в автозаполнении Табеля (например, «отпросился»: в Табеле остаётся явка).</div></label>
         <label class="field"><span>Тип</span><select id="sh-kind">
           <option value="work" ${st?.kind === 'work' ? 'selected' : ''}>рабочая смена</option>
           <option value="absence" ${st?.kind === 'absence' ? 'selected' : ''}>отсутствие / выходной</option>
         </select></label>
-        <label class="field"><span>Заявление (печать из ячейки графика)</span><select id="sh-doc">
+        <label class="field" id="sh-doc-wrap"><span>Заявление (печать из ячейки графика)</span><select id="sh-doc">
           <option value="">— не печатать —</option>
           ${(state.docKinds || []).filter(k => k.active !== false).map(k =>
             `<option value="${esc(k.code)}">${esc(k.name)}</option>`).join('')}
@@ -387,10 +375,6 @@ async function shiftModal(st) {
       <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
         <input type="checkbox" id="sh-overnight" ${st?.overnight ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary)">
         Смена через полночь (ночная): конец принадлежит следующим суткам, часы — дате начала
-      </label>
-      <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
-        <input type="checkbox" id="sh-deduct" ${st?.deduct_from_bank ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary)">
-        Списывать часы этого отсутствия из банка часов («выходной за часы», «отпросился»)
       </label>
       <div id="sh-punch-wrap">
         <div class="opt-group-title" style="margin:12px 0 6px">Отметки во время этого отсутствия</div>
@@ -415,7 +399,10 @@ async function shiftModal(st) {
     onMount(m) {
       $('#sh-doc').value = st?.doc_type || '';
       const kindToggle = () => {
-        $('#sh-punch-wrap').style.display = $('#sh-kind').value === 'work' ? 'none' : '';
+        const isWork = $('#sh-kind').value === 'work';
+        $('#sh-punch-wrap').style.display = isWork ? 'none' : '';
+        /* заявление печатается только по отсутствию (пункт 6 задания 17.10.2026) */
+        $('#sh-doc-wrap').style.display = isWork ? 'none' : '';
       };
       $('#sh-kind').onchange = kindToggle; kindToggle();
       const recalc = () => {
@@ -429,35 +416,12 @@ async function shiftModal(st) {
         if (over) $('#sh-overnight').checked = true;
       };
       $('#sh-start').onchange = recalc; $('#sh-end').onchange = recalc; recalc();
-      /* T1: код Табеля определяет стандартное окно, поэтому подсказываем, совпадают ли
-         часы смены с окном этого кода (не совпадают — не ошибка, но владелец это видит). */
-      const tzhHint = () => {
-        const code = $('#sh-tzh').value;
-        const box = $('#sh-tzh-hint');
-        if (!box) return;
-        const meta = (state.tabelCodes || []).find(c => c.code === code);
-        const known = (state.tabelCodes || []).map(c => c.code);
-        if (!code) {
-          box.textContent = (st?.tzh_code && !known.includes(st.tzh_code))
-            ? `Прежнее значение «${st.tzh_code}» отсутствует в справочнике кодов Табеля — сохранение очистит поле. Выберите код из списка, чтобы дни этой смены заполнялись из циклов.`
-            : 'Код не задан: смена не участвует в автозаполнении Табеля (например, «отпросился»).';
-          box.style.color = (st?.tzh_code && !known.includes(st.tzh_code)) ? 'var(--danger)' : '';
-          return;
-        }
-        box.style.color = '';
-        box.textContent = `Код «${code}»${meta?.title ? ' — ' + meta.title : ''}: `
-          + (meta?.carries_hours
-            ? 'несёт часы — день получит стандартное окно из CFG-WINDOWS.'
-            : 'часы не несёт — день считается отсутствием.');
-      };
-      $('#sh-tzh').onchange = tzhHint; tzhHint();
+
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-save]').onclick = async () => {
         const kindSel = $('#sh-kind').value;
         const body = {
           code: $('#sh-code').value.trim().toUpperCase(), name: $('#sh-name').value.trim(),
-          short_code: $('#sh-short').value.trim(),
-          tzh_code: $('#sh-tzh').value,
           kind: kindSel === 'work' ? 'work' : 'absence',
           start_time: $('#sh-start').value, end_time: $('#sh-end').value,
           overnight: $('#sh-overnight').checked, color: $('#sh-color').value,
@@ -467,8 +431,7 @@ async function shiftModal(st) {
           punch_in_allowed: kindSel === 'work' ? true : $('#sh-punch-in').checked,
           punch_out_allowed: kindSel === 'work' ? true : $('#sh-punch-out').checked,
           is_default_off: st?.is_default_off ?? false,
-          doc_type: $('#sh-doc').value,
-          deduct_from_bank: $('#sh-deduct').checked,
+          doc_type: kindSel === 'work' ? '' : $('#sh-doc').value,
           effective_from: isNew ? null : ($('#sh-eff')?.value || todayISO()),
         };
         if (!body.code || !body.name) return toast('Заполните код и название', 'warn');

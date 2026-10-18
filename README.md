@@ -23,8 +23,6 @@
   инварианты INV-*, примеры EX-*, вкладки веб-приложения (раздел 16).
 * [`docs/archive/overtime_ai_tz_v3.md`](docs/archive/overtime_ai_tz_v3.md) — ТЗ ред. 3: слои, контракты
   функций, порядок работ (исторический документ, заменён спецификацией v7.1).
-* [`docs/MIGRATION-MAP-v7.md`](docs/MIGRATION-MAP-v7.md) — карта миграции прототипа:
-  «что было → что заменяет» + решения владельца от 11.10.2026.
 * [`docs/SPEC.md`](docs/SPEC.md) — спецификация приложения: модель данных, API, вкладки,
   документы, выгрузки.
 * [`docs/openapi.json`](docs/openapi.json) — контракт API (экспорт OpenAPI; сверяется
@@ -33,10 +31,9 @@
   разбор (слои, потоки, риски).
 * [`docs/adr/`](docs/adr/) — записи архитектурных решений (ADR): миграции, хеширование
   паролей, CSRF/CSP, rate-limit, граница чистой архитектуры, формат токена.
-* [`docs/CHANGES-2026-10-11.md`](docs/CHANGES-2026-10-11.md) — что изменилось в батче
-  «движок v7.1»; свежие батчи — `CHANGES-2026-10-14-security.md` и
-  `CHANGES-2026-10-15-hardening.md` и `CHANGES-2026-10-15-refactoring.md`
-  (сервисный слой, пакет моделей, структура фронтенда).
+* [`docs/CHANGES-2026-10-18-settings-simplify.md`](docs/CHANGES-2026-10-18-settings-simplify.md) —
+  свежий батч: упрощение раздела «Настройки» (независимые справочники, значение
+  рабочего дня в карточке сотрудника, компактный список кодов Табеля).
 * [`docs/INSTALL.md`](docs/INSTALL.md) — установка (локально, сервер, Docker, бэкапы);
   прод-стек (nginx+TLS+PostgreSQL+бэкапы) — [`deploy/README.md`](deploy/README.md).
 * [`docs/AUTH.md`](docs/AUTH.md) — аутентификация и безопасность;
@@ -66,7 +63,7 @@ pip install -r requirements.txt        # ядро (PDF-движок — отде
 > (однократно, маркер `engine_v7_reset` в таблице `settings`) — модель v7.1
 > несовместима с ними; демо-база пересоздаётся сидом. Отметки, сотрудники, периоды
 > работы, корректировки банка, документы и справочники сохраняются. Порядок переноса
-> боевой базы описан в `docs/MIGRATION-MAP-v7.md`.
+> боевой базы описан в `docs/INSTALL.md` (раздел бэкапов).
 
 ### Демо-доступы (пароль у всех `demo1234`)
 
@@ -199,7 +196,7 @@ pip install -r requirements.txt        # ядро (PDF-движок — отде
   **Режим эксперта** (тот же черновик в виде JSON). Правки справочников идут через
   черновик → diff → публикацию версии; проверка CHK-* выполняется до сохранения,
   конфликт правил одного уровня не сохраняется (409). План раздела и карта
-  «старое → новое» — `docs/SETTINGS-UI-PROPOSAL-2026-10-12.md`.
+  «старое → новое» — `docs/CHANGES-2026-10-18-settings-simplify.md`.
 * **Ночной отчёт**, **Электрокары**, **Права доступа**, **Журнал аудита** — как прежде.
 
 ---
@@ -417,7 +414,7 @@ butler-service/
 │   │                         #   application (4 режима 7.2, R35–R40, атомарность)
 │   └── test_api.py test_features.py test_v4_api.py …   # интеграция приложения
 ├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки
-├── docs/                     # спека v7.1, ТЗ, SPEC, ARCHITECTURE, CHANGES, MIGRATION-MAP
+├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, ADR, CHANGES
 └── requirements*.txt
 ```
 

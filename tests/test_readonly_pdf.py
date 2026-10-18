@@ -141,7 +141,7 @@ class TestReadonlySchedule(unittest.TestCase):
     def test_employee_reads_shift_dictionary(self):
         r = emp_client.get("/api/shift-types")
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertTrue(any(s["code"] == "OFF" for s in r.json()))
+        self.assertTrue(any(s["code"] == "TIMEOFF_HOURS" for s in r.json()))
 
     def test_anonymous_rejected(self):
         anon = TestClient(app)

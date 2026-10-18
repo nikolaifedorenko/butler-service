@@ -130,24 +130,8 @@ class TestCodePunchFlags(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["source"], "tabel_code")
         self.assertEqual(r.json()["doc_type"], "vacation_paid")
-        # даже если словарный вид потерял привязку — карточка кода остаётся источником
-        db = SessionLocal()
-        kind = db.scalars(select(ShiftType).where(ShiftType.code == "VACATION")).first()
-        assert kind is not None
-        saved = kind.doc_type
-        kind.doc_type = ""
-        db.commit()
-        db.close()
-        try:
-            r = client.get("/api/schedule/absence-period",
-                           params={"employee_id": self.emp["id"], "date": TODAY.isoformat()})
-            self.assertEqual(r.status_code, 200, r.text)
-            self.assertEqual(r.json()["doc_type"], "vacation_paid")
-        finally:
-            db = SessionLocal()
-            db.get(ShiftType, kind.id).doc_type = saved
-            db.commit()
-            db.close()
+        # видов отсутствий в словаре с 18.10.2026 нет: карточка кода — единственный
+        # источник шаблона заявления для отсутствий Табеля
 
     def test_06_work_code_allows_punch(self):
         """Явка «Я»: отметки разрешены (регресс — запрет не «расползается» на все дни)."""
@@ -180,13 +164,8 @@ class TestCodePunchFlags(unittest.TestCase):
             self.assertEqual(ctx.exception.status_code, 422)
             self.assertIn("«Я»", ctx.exception.detail)
             self.assertIn("Табел", ctx.exception.detail)
-            # «Б» — на код ссылается живой вид SICK
-            p = copy.deepcopy(base)
-            p["day_code_policy"].pop("Б")
-            with self.assertRaises(HTTPException) as ctx:
-                _guard_removed_day_codes(p, db)
-            self.assertEqual(ctx.exception.status_code, 422)
-            self.assertIn("«Б»", ctx.exception.detail)
+            # связка со словарём смен удалена (18.10.2026): второй предохранитель —
+            # только история Табеля, видов отсутствий в словаре больше нет
         finally:
             db.close()
 
