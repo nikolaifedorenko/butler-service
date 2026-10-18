@@ -27,9 +27,9 @@ RETURN_FORM = {"by_name": "", "location": "Парковка у главного 
                "on_charge": "false", "comment": ""}
 
 # отметка кара в ночном обходе: те же поля, что в окне возврата (строки — как шлёт FormData)
-NIGHT_CHECK_FORM = {"found": "true", "location": "", "canopy": "true", "charge": "half",
-                    "on_charge": "false", "condition": "ok", "trash": "false",
-                    "clean": "true", "comment": ""}
+NIGHT_CHECK_FORM = {"found": "true", "found_location": "", "moved": "false", "location": "",
+                    "canopy": "true", "charge": "half", "on_charge": "false",
+                    "condition": "ok", "trash": "false", "clean": "true", "comment": ""}
 
 PNG_1PX = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")
@@ -335,7 +335,7 @@ def test_nochnoy_obhod_karov_i_zavershenie_shaga(manager_client, db, freeze):
 
         r = manager_client.post(f"/api/night/reports/{rep.id}/cars/{car['id']}/check",
                                 data={**NIGHT_CHECK_FORM,
-                                      "location": car["location"] or "Парковка у главного входа",
+                                      "found_location": car["location"] or "Парковка у главного входа",
                                       "comment": "проверка тестом"})
         assert r.status_code == 200, r.text
 
@@ -365,7 +365,7 @@ def test_nochnaya_otmetka_kara_s_foto_i_mestom_iz_spravochnika(manager_client, d
         car = _obhod(manager_client, rep.id)["list"][0]["car"]
         r = manager_client.post(
             f"/api/night/reports/{rep.id}/cars/{car['id']}/check",
-            data={**NIGHT_CHECK_FORM, "found": "true", "location": place, "charge": "full",
+            data={**NIGHT_CHECK_FORM, "found": "true", "found_location": place, "charge": "full",
                   "on_charge": "true", "canopy": "false", "trash": "true", "clean": "false",
                   "condition": "ok", "comment": "кар на месте, снят на камеру"},
             files={"file": ("kar.png", PNG_1PX, "image/png")})
@@ -373,7 +373,8 @@ def test_nochnaya_otmetka_kara_s_foto_i_mestom_iz_spravochnika(manager_client, d
 
         check = next(e for e in _obhod(manager_client, rep.id)["list"]
                      if e["car"]["id"] == car["id"])["check"]
-        assert check["found"] is True and check["location"] == place
+        assert check["found"] is True and check["found_location"] == place
+        assert check["moved"] is False
         assert check["charge"] == "full" and check["on_charge"] is True
         assert check["canopy"] is False and check["trash"] is True and check["clean"] is False
         assert len(check["photos"]) == 1, "фото отметки не вернулось в обход"
@@ -394,8 +395,8 @@ def test_nochnaya_otmetka_kara_s_foto_i_mestom_iz_spravochnika(manager_client, d
         # повторное сохранение (last write wins): замечание по техсостоянию уводит кар
         # на обслуживание, а прежний снимок остаётся привязан к отметке
         r = manager_client.post(f"/api/night/reports/{rep.id}/cars/{car['id']}/check",
-                                data={**NIGHT_CHECK_FORM, "location": place, "condition": "bad",
-                                      "comment": "спущено колесо"})
+                                data={**NIGHT_CHECK_FORM, "found_location": place,
+                                      "condition": "bad", "comment": "спущено колесо"})
         assert r.status_code == 200, r.text
         assert next(c for c in _park(manager_client) if c["id"] == car["id"])["status"] == "maintenance"
         state2 = _obhod(manager_client, rep.id)
@@ -430,7 +431,7 @@ def test_otmetka_ne_nayden_ne_trogaet_kartochku_kara(manager_client, db, freeze)
         before = next(c for c in _park(manager_client) if c["id"] == car["id"])
 
         r = manager_client.post(f"/api/night/reports/{rep.id}/cars/{car['id']}/check",
-                                data={**NIGHT_CHECK_FORM, "found": "false", "location": "",
+                                data={**NIGHT_CHECK_FORM, "found": "false", "found_location": "",
                                       "charge": "empty", "condition": "bad", "clean": "false",
                                       "comment": "кара нет на месте"})
         assert r.status_code == 200, r.text
@@ -443,6 +444,74 @@ def test_otmetka_ne_nayden_ne_trogaet_kartochku_kara(manager_client, db, freeze)
         after = next(c for c in _park(manager_client) if c["id"] == car["id"])
         for field in ("location", "charge", "condition", "clean", "status", "on_charge"):
             assert after[field] == before[field], f"карточка кара изменена при «не найден»: {field}"
+
+
+def test_pereparkovka_kara_nochnym_batlerom(manager_client, db, freeze):
+    """Кар найден, но батлер переставил его: «где нашёл» → «куда переставил».
+
+    Перепарковка — факт, а не замечание: в счётчик «замечаний» не попадает, но место
+    в карточке кара обновляется, переход виден в истории кара и в выгрузке DOCX.
+    """
+    import io
+
+    from docx import Document
+
+    places = [loc["name"] for loc in
+              manager_client.get("/api/cars/locations").json()["locations"] if loc["active"]]
+    assert len(places) >= 2, "в демо-справочнике меньше двух мест"
+    place_from, place_to = places[0], places[1]
+
+    with _nochnaya_smena(db, freeze, dt.date(2026, 5, 16)) as rep:
+        car = _obhod(manager_client, rep.id)["list"][0]["car"]
+        url = f"/api/night/reports/{rep.id}/cars/{car['id']}/check"
+
+        # перепарковка без нового места игнорируется (нельзя «переставить в никуда»)
+        r = manager_client.post(url, data={**NIGHT_CHECK_FORM, "found_location": place_from,
+                                           "moved": "true", "location": ""})
+        assert r.status_code == 200, r.text
+        check = next(e for e in _obhod(manager_client, rep.id)["list"]
+                     if e["car"]["id"] == car["id"])["check"]
+        assert check["moved"] is False
+
+        # кар найден и переставлен на другое место
+        r = manager_client.post(url, data={**NIGHT_CHECK_FORM, "found_location": place_from,
+                                           "moved": "true", "location": place_to,
+                                           "comment": "мешал проезду, переставил"})
+        assert r.status_code == 200, r.text
+        state = _obhod(manager_client, rep.id)
+        check = next(e for e in state["list"] if e["car"]["id"] == car["id"])["check"]
+        assert check["found"] is True and check["moved"] is True
+        assert check["found_location"] == place_from and check["location"] == place_to
+        assert state["problems"] == 0, "перепарковка не должна попадать в замечания"
+
+        # место в карточке кара — новое
+        fresh = next(c for c in _park(manager_client) if c["id"] == car["id"])
+        assert fresh["location"] == place_to
+
+        # в истории кара виден переход с прежнего места
+        hist = manager_client.get(f"/api/cars/{car['id']}/history").json()["history"]
+        last = next(h for h in hist if h["action"] == "check")
+        assert last["details"]["moved"] is True
+        assert last["details"]["found_location"] == place_from
+        assert last["details"]["location_from"] == place_from
+
+        # выгрузка: переход мест и пометка «перепаркован»
+        docx = manager_client.get(f"/api/night/reports/{rep.id}/export.docx")
+        assert docx.status_code == 200, docx.text
+        doc = Document(io.BytesIO(docx.content))
+        text = "\n".join(c.text for t in doc.tables for row in t.rows for c in row.cells)
+        assert f"{place_from} → {place_to}" in text, text[-400:]
+        assert "перепаркован" in text
+
+        # «не найден» + перепарковка — бессмыслица: флаг сбрасывается, карточка не меняется
+        r = manager_client.post(url, data={**NIGHT_CHECK_FORM, "found": "false",
+                                           "found_location": "", "moved": "true",
+                                           "location": place_from})
+        assert r.status_code == 200, r.text
+        check = next(e for e in _obhod(manager_client, rep.id)["list"]
+                     if e["car"]["id"] == car["id"])["check"]
+        assert check["found"] is False and check["moved"] is False
+        assert next(c for c in _park(manager_client) if c["id"] == car["id"])["location"] == place_to
 
 
 def test_foto_otmetki_ne_kartinka_otklonyaetsya(manager_client, db, freeze):

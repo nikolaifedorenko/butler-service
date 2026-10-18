@@ -103,6 +103,10 @@ class CarNightCheck(Base):
     """Отметка электрокара внутри шага «Проверка электрокаров» ночного отчёта.
 
     found=False — «кар не найден» (идёт в замечания супервайзеру);
+    found_location — где батлер нашёл кар (место в карточке могло устареть);
+    moved=True — батлер ПЕРЕПАРКОВАЛ кар: found_location → location. Это факт,
+      а не замечание: видно в обходе, в истории кара и в выгрузке DOCX/PDF;
+    location — где кар оставлен после обхода (при перепарковке — новое место);
     checked_at фиксируется фактическое время проверки, поэтому супервайзер видит,
     если кар взяли ПОСЛЕ проверки (car.last_taken_at > checked_at).
     """
@@ -117,7 +121,9 @@ class CarNightCheck(Base):
     checker_name: Mapped[str] = mapped_column(String(120), default="")
     checked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
     found: Mapped[bool] = mapped_column(Boolean, default=True)
-    location: Mapped[str] = mapped_column(String(160), default="")
+    found_location: Mapped[str] = mapped_column(String(160), default="")  # где нашёл
+    location: Mapped[str] = mapped_column(String(160), default="")        # где оставил
+    moved: Mapped[bool] = mapped_column(Boolean, default=False)           # перепаркован батлером
     canopy: Mapped[bool] = mapped_column(Boolean, default=True)
     charge: Mapped[str] = mapped_column(String(16), default="")     # full | half | empty
     on_charge: Mapped[bool] = mapped_column(Boolean, default=False)

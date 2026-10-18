@@ -499,6 +499,8 @@ def report_cars(report_id: int, principal: Principal = Depends(require_perm("nig
 @router.post("/reports/{report_id}/cars/{car_id}/check")
 async def report_car_check(report_id: int, car_id: int,
                            found: bool = Form(True),
+                           found_location: str = Form(""),
+                           moved: bool = Form(False),
                            location: str = Form(""),
                            canopy: bool = Form(True),
                            charge: str = Form(""),        # full | half | empty | ''
@@ -515,6 +517,10 @@ async def report_car_check(report_id: int, car_id: int,
     Форма та же, что у окна возврата кара («Электрокары» → «Вернул»): место из
     справочника, заряд, чекбоксы состояния, комментарий и фото-доказательство
     (оригинал, до 12 МБ) — плюс чекбокс «Кар найден на месте».
+
+    Места два: `found_location` — где батлер нашёл кар, `location` — куда
+    переставил (`moved=True`): кар мог стоять не там, что в карточке, а найденный
+    кар батлер мог перепарковать. Перепарковка — факт, не замечание.
 
     Отметки пишутся в общую базу: состояние карточки кара обновляется.
     «Не ОК» и «кар не найден» идут в замечания супервайзеру; отсутствие тента —
@@ -540,6 +546,7 @@ async def report_car_check(report_id: int, car_id: int,
     sec = _cars_section(rep)
     try:
         res = check_car_night(db, rep, car, principal, found=found,
+                              found_location=found_location, moved=moved,
                               location=location, canopy=canopy,
                               charge=charge, on_charge=on_charge,
                               condition=condition, trash=trash,

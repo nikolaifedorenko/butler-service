@@ -109,6 +109,8 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
             row = table.add_row().cells
             charge = {"full": "полный", "half": "половина", "empty": "разряжен"}.get(c["charge"], "—")
             state_bits = []
+            if c.get("moved"):
+                state_bits.append("перепаркован")
             if not c["canopy"]:
                 state_bits.append("без тента")
             state_bits.append("на зарядке" if c["on_charge"] else "не на зарядке")
@@ -121,7 +123,13 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
             row[1].text = c["car_number"]
             row[2].text = c["checker_name"] or "—"
             row[3].text = "да" if c["found"] else "НЕТ"
-            row[4].text = f"{c['location'] or '—'} · {charge}"
+            # место: при перепарковке показываем переход «где нашёл → куда переставил»
+            found_loc = c.get("found_location") or ""
+            if c.get("moved") and c["location"]:
+                place = f"{found_loc or '—'} → {c['location']}"
+            else:
+                place = c["location"] or found_loc or "—"
+            row[4].text = f"{place} · {charge}"
             tail = "; ".join(state_bits) + (f"\n{c['comment']}" if c["comment"] else "")
             cell = row[5]
             cell.text = tail

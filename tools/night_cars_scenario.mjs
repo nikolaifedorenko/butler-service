@@ -236,13 +236,22 @@ async function main() {
   check('порядок чекбоксов как в окне возврата',
     JSON.stringify(nightLabels) === JSON.stringify(returnLabels));
 
-  const loc = $('#nc-location');
-  check('место — выпадающий список', loc?.tagName === 'SELECT', loc?.tagName || 'нет поля');
+  const foundSel = $('#nc-found-location');
+  const newSel = $('#nc-location');
+  check('место «Где нашёл» — выпадающий список', foundSel?.tagName === 'SELECT',
+    foundSel?.tagName || 'нет поля');
+  check('место «Куда переставил» — выпадающий список', newSel?.tagName === 'SELECT');
   const locNames = (await (await api('GET', '/api/cars/locations')).json()).locations
     .filter(l => l.active).map(l => l.name);
-  const optNames = $$('option', loc).map(o => o.value).filter(Boolean);
+  const optNames = $$('option', foundSel).map(o => o.value).filter(Boolean);
   check('в списке места из справочника', locNames.every(n => optNames.includes(n)),
     `справочник: ${locNames.join('|')} · опции: ${optNames.join('|')}`);
+  check('в списке «Куда переставил» те же места',
+    locNames.every(n => $$('option', newSel).map(o => o.value).includes(n)));
+  check('чекбокс «Перепаркован на другое место»',
+    /Перепаркован на другое место/.test($('#nc-moved')?.closest('label')?.textContent || ''));
+  check('«Куда переставил» скрыто, пока перепарковка не отмечена',
+    $('#nc-newloc-row').classList.contains('hidden'));
   check('заряд — выпадающий список', $('#nc-charge')?.tagName === 'SELECT');
   check('комментарий — textarea', $('#nc-comment')?.tagName === 'TEXTAREA');
   check('фото: съёмка на камеру (capture)', $('#nc-cam')?.getAttribute('capture') === 'environment');
@@ -255,13 +264,18 @@ async function main() {
   $('#nc-found').checked = false; change($('#nc-found'));
   check('подсказка показана', !$('#nc-notfound').classList.contains('hidden'));
   check('в подсказке — про замечания супервайзеру', /замечани/i.test(text('#nc-notfound')));
+  check('нет перепарковки, когда кар не найден', $('#nc-moved-row').classList.contains('hidden'));
+  check('подпись места — «если известно»', text('#nc-found-loc-label') === 'Место (если известно)',
+    text('#nc-found-loc-label'));
   $('#nc-found').checked = true; change($('#nc-found'));
   check('подсказка снова скрыта', $('#nc-notfound').classList.contains('hidden'));
+  check('перепарковка снова доступна', !$('#nc-moved-row').classList.contains('hidden'));
+  check('подпись места — «Где нашёл»', text('#nc-found-loc-label') === 'Где нашёл');
 
   /* ── 5. Заполнить и сохранить (с фото, как в окне возврата) ── */
   console.log('\n5 · Сохранение отметки с фото');
-  const place = optNames.find(n => n !== (loc.value || '')) || optNames[0];
-  change(loc, place);
+  const place = optNames.find(n => n !== (foundSel.value || '')) || optNames[0];
+  change(foundSel, place);
   change($('#nc-charge'), 'half');
   $('#nc-clean').checked = false; change($('#nc-clean'));
   $('#nc-things').checked = true; change($('#nc-things'));
@@ -287,7 +301,10 @@ async function main() {
   console.log('\n6 · Повторное открытие отметки');
   click($(`[data-car-check="${carId}"]`));
   check('окно отметки открылось снова', await waitFor(() => !!$('#nc-found')));
-  check('место подставлено', $('#nc-location').value === place, $('#nc-location').value);
+  check('место «где нашёл» подставлено', $('#nc-found-location').value === place,
+    $('#nc-found-location').value);
+  check('перепарковка не отмечена', !$('#nc-moved').checked
+    && $('#nc-newloc-row').classList.contains('hidden'));
   check('заряд подставлен', $('#nc-charge').value === 'half', $('#nc-charge').value);
   check('«Чистый» снят, «В салоне вещи» отмечен, «Тент» снят',
     !$('#nc-clean').checked && $('#nc-things').checked && !$('#nc-canopy').checked);
@@ -305,7 +322,8 @@ async function main() {
   check('отметка в обходе', !!entry?.check && entry.check.found === true);
   check('фото привязано к отметке', entry?.check?.photos?.length === 1,
     JSON.stringify(entry?.check?.photos || []).slice(0, 120));
-  check('место/заряд/состояние сохранены', entry.check.location === place
+  check('место/заряд/состояние сохранены', entry.check.found_location === place
+    && entry.check.moved === false
     && entry.check.charge === 'half' && entry.check.trash === true
     && entry.check.clean === false && entry.check.canopy === false);
   const photoRes = await api('GET', entry.check.photos[0].url);
@@ -319,8 +337,39 @@ async function main() {
       clean: car.clean, canopy: car.canopy }));
   check('время проверки зафиксировано', !!car.last_checked_at);
 
-  /* ── 8. Завершение шага ── */
-  console.log('\n8 · Завершение шага');
+  /* ── 8. Кар найден, но батлер переставил его на другое место ── */
+  console.log('\n8 · Перепарковка');
+  click($('#night-cars-open'));
+  check('список обхода открылся', await waitFor(() => !!$(`[data-car-check="${carId}"]`)));
+  click($(`[data-car-check="${carId}"]`));
+  check('окно отметки открылось', await waitFor(() => !!$('#nc-moved')));
+  $('#nc-moved').checked = true; change($('#nc-moved'));
+  check('поле «Куда переставил» открылось', !$('#nc-newloc-row').classList.contains('hidden'));
+  const otherPlace = optNames.find(n => n !== place) || place;
+  click($('[data-ok]'));
+  check('без нового места не сохраняет', await waitFor(() => /Укажите место/.test(text('#toast-host')))
+    && !!$('#nc-moved'), text('#toast-host'));
+  change($('#nc-location'), otherPlace);
+  input($('#nc-comment'), 'сценарий: мешал проезду, переставил');
+  click($('[data-ok]'));
+  check('отметка сохранена', await waitFor(() => !!$(`[data-car-check="${carId}"]`) && !$('#nc-moved')));
+  const movedRow = $(`[data-car-check="${carId}"]`)?.closest('.rule-row');
+  check('в списке — бейдж «перепаркован»', /перепаркован/.test(movedRow?.textContent || ''));
+  check('в списке — переход мест', (movedRow?.textContent || '').includes(`${place} → ${otherPlace}`),
+    (movedRow?.textContent || '').replace(/\s+/g, ' ').slice(0, 160));
+
+  const st2 = await (await api('GET', `/api/night/reports/${reportId}/cars`)).json();
+  const e2 = st2.list.find(e => e.car.id === carId);
+  check('отметка: найден и перепаркован', e2.check.found === true && e2.check.moved === true
+    && e2.check.found_location === place && e2.check.location === otherPlace);
+  check('перепарковка не считается замечанием', st2.problems === 0, String(st2.problems));
+  check('место в карточке кара обновлено',
+    (await (await api('GET', '/api/cars')).json()).cars.find(c => c.id === carId).location === otherPlace);
+  check('фото отметки сохранилось после перепарковки', e2.check.photos?.length === 1);
+  window.closeModal();
+
+  /* ── 9. Завершение шага ── */
+  console.log('\n9 · Завершение шага');
   click($('#night-cars-open'));
   check('список обхода открылся снова', await waitFor(() => !!$('[data-finish]')));
   click($('[data-finish]'));

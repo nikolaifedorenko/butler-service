@@ -90,6 +90,12 @@ def migrate_db() -> None:
         "block_assignments": [
             ("pattern_json", "TEXT DEFAULT ''"),
         ],
+        # ночная отметка кара (19.10.2026): где батлер нашёл кар и факт перепарковки
+        # («кар был на месте, но его переставили» — место в карточке могло устареть)
+        "car_night_checks": [
+            ("found_location", "VARCHAR(160) DEFAULT ''"),
+            ("moved", "BOOLEAN DEFAULT 0"),
+        ],
         "users": [
             ("token_version", "INTEGER DEFAULT 0"),
         ],

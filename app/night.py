@@ -211,6 +211,7 @@ def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
             "checker_name": c.checker_name or "",
             "checked_at": c.checked_at.isoformat(timespec="seconds") if c.checked_at else None,
             "found": bool(c.found), "location": c.location or "",
+            "found_location": c.found_location or "", "moved": bool(c.moved),
             "canopy": bool(c.canopy), "charge": c.charge or "", "on_charge": bool(c.on_charge),
             "condition": c.condition or "ok", "trash": bool(c.trash), "clean": bool(c.clean),
             "comment": c.comment or "", "taken_after_check": taken_after,
