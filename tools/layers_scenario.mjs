@@ -155,7 +155,6 @@ async function main() {
 
   const shifts = await jget('/api/shift-types');
   const day12 = shifts.find(s => s.code === 'DAY12');
-  const off = shifts.find(s => s.code === 'OFF');
   let emp = await jsend('POST', '/api/employees', {
     full_name: 'Сеточкин Сеть Сетевич', position: 'Батлер (слой 2)',
     hired_at: first, schedule_group: 'Смена 1',
@@ -169,7 +168,7 @@ async function main() {
     employee_ids: [empId], start_date: first,
     end_date: first.slice(0, 8) + String(new Date(Date.UTC(+first.slice(0, 4),
       +first.slice(5, 7), 0)).getUTCDate()).padStart(2, '0'),
-    work_shift_id: day12.id, off_shift_id: off.id, pattern: '2/2', offset: 0 });
+    value: 'Я 12', pattern: '2/2', offset: 0 });
   check('цикл 2/2 заполнил месяц', r.ok, JSON.stringify(r.json).slice(0, 160));
   r = await jsend('PUT', '/api/tabel/cell', { employee_id: empId, date: day,
     code: 'Я', hours: 10.75, note: '' });
