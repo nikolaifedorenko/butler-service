@@ -283,8 +283,8 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
         if not car.holder_user_id and car.holder_name:
             # брал внешний — отметить возврат может любой
             pass
-    if on_charge and charge not in ("empty", "half"):
-        raise CarOpError("На зарядке оставляют разряженный или полуразряженный кар — уточните заряд")
+    # 18.10.2026: оставить на зарядке можно кар с ЛЮБЫМ зарядом, включая полный —
+    # прежний запрет («только разряженный/полуразряженный») снят по решению владельца.
     # было `(by_employee_id or name)`: несуществующая переменная `name` давала NameError
     # при ЛЮБОМ возврате кара без явного employee_id (обычный случай — сотрудник
     # возвращает свой кар), то есть операция падала в 500.

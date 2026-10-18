@@ -124,7 +124,7 @@ function renderCars() {
     const flags = [
       c.canopy ? '' : '<span class="badge warn">нет тента</span>',
       c.condition === 'bad' ? '<span class="badge danger">неисправен</span>' : '',
-      c.trash ? '<span class="badge warn">мусор</span>' : '',
+      c.trash ? '<span class="badge warn">в салоне вещи</span>' : '',
       c.clean ? '' : '<span class="badge warn">не убран</span>',
       c.on_charge && c.status !== 'charging' ? '<span class="badge info">на зарядке</span>' : '',
     ].filter(Boolean).join(' ');
@@ -262,30 +262,41 @@ function carReturnModal(car, after) {
       ${state.user?.role !== 'employee' ? personFieldHtml('cr') : ''}
       <div class="opt-group-title">Состояние при возврате</div>
       <div class="check-list" style="max-height:none">
-        <label class="chk"><input type="radio" name="cr-cond" value="ok" ${car.condition !== 'bad' ? 'checked' : ''}> Технически исправен</label>
-        <label class="chk"><input type="radio" name="cr-cond" value="bad" ${car.condition === 'bad' ? 'checked' : ''}> Есть замечания (кар уйдёт «на обслуживании»)</label>
-        <label class="chk"><input type="checkbox" id="cr-canopy" ${car.canopy ? 'checked' : ''}> Тент на месте</label>
-        <label class="chk"><input type="checkbox" id="cr-trash" ${car.trash ? 'checked' : ''}> В салоне мусор</label>
-        <label class="chk"><input type="checkbox" id="cr-clean" ${car.clean ? 'checked' : ''}> Салон убран</label>
-        <label class="chk"><input type="checkbox" id="cr-oncharge" ${car.on_charge ? 'checked' : ''}> Оставил на зарядке</label>
-        ${car.has_key ? '<label class="chk"><input type="checkbox" id="cr-key" checked> Ключ сдал</label>' : ''}
+        <label class="chk"><input type="checkbox" id="cr-ok" ${car.condition !== 'bad' ? 'checked' : ''}> Технически исправен</label>
+        <label class="chk"><input type="checkbox" id="cr-clean" ${car.clean ? 'checked' : ''}> Чистый</label>
+        <label class="chk"><input type="checkbox" id="cr-things" ${car.trash ? 'checked' : ''}> В салоне вещи</label>
+        <label class="chk"><input type="checkbox" id="cr-canopy" ${car.canopy ? 'checked' : ''}> Тент</label>
+        <label class="chk"><input type="checkbox" id="cr-oncharge" ${car.on_charge ? 'checked' : ''}> Заряжается</label>
       </div>
+      ${car.has_key ? '<label class="chk" style="margin-top:8px"><input type="checkbox" id="cr-key" checked> Ключ сдал</label>' : ''}
       <label class="field" style="margin-top:12px"><span>Комментарий (что случилось, куда поставили)</span>
         <textarea id="cr-comment" rows="2" maxlength="255" placeholder="Например: оставил у главного входа, левое колесо спущено">${esc(car.note || '')}</textarea></label>
-      <label class="field"><span>Фото (необязательно, до 12 МБ, хранится оригинал)</span>
-        <input type="file" id="cr-file" accept="image/*"></label>
-      <p class="hint">«На зарядке» доступен только для разряженного или полуразряженного кара.
-      Замечания (неисправен / мусор / не убран) автоматически переводят кар в статус «на обслуживании».</p>`,
+      <div class="field" style="margin-top:12px"><span>Фото (необязательно, до 12 МБ, хранится оригинал)</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <label class="btn btn-sm">📷 Снять на камеру
+            <input type="file" id="cr-cam" accept="image/*" capture="environment" hidden></label>
+          <label class="btn btn-sm btn-ghost">Выбрать из галереи
+            <input type="file" id="cr-file" accept="image/*" hidden></label>
+          <span class="hint" id="cr-file-name" style="margin:0">файл не выбран</span>
+        </div>
+        <div class="hint" style="margin-top:4px">На смартфоне «Снять на камеру» открывает камеру
+          сразу со съёмкой; «Из галереи» — выбор готового снимка.</div></label>
+      <p class="hint">Снятый с галочки «Технически исправен», а также «В салоне вещи» или не «Чистый»
+      автоматически переводят кар в статус «на обслуживании». Оставить на зарядке можно кар
+      с любым зарядом, включая полный.</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Отметить возврат</button>`,
     onMount(m) {
       m.querySelector('[data-cancel]').onclick = closeModal;
+      /* фото: съёмка камерой смартфона (capture) или выбор из галереи (18.10.2026) */
+      let pendingPhoto = null;
+      const showName = () => { $('#cr-file-name').textContent = pendingPhoto
+        ? `${pendingPhoto.name || 'снимок камеры'} (${Math.round((pendingPhoto.size || 0) / 1024)} КБ)`
+        : 'файл не выбран'; };
+      ['#cr-cam', '#cr-file'].forEach(sel => { const inp = m.querySelector(sel); if (inp) inp.onchange = () => { pendingPhoto = inp.files?.[0] || null; showName(); }; });
       m.querySelector('[data-ok]').onclick = async () => {
         const charge = $('#cr-charge').value;
         const onCharge = $('#cr-oncharge').checked;
-        if (onCharge && charge === 'full') {
-          return toast('На зарядке оставляют разряженный или полуразряженный кар — уточните заряд', 'warn');
-        }
         const fd = new FormData();
         const person = state.user?.role !== 'employee' ? personFieldValue('cr') : { employee_id: null, name: '' };
         if (person.employee_id) fd.append('by_employee_id', String(person.employee_id));
@@ -293,14 +304,13 @@ function carReturnModal(car, after) {
         fd.append('location', $('#cr-location').value || '');
         fd.append('charge', charge);
         fd.append('canopy', $('#cr-canopy').checked ? 'true' : 'false');
-        fd.append('condition', ($('[name=cr-cond]:checked') || {}).value || 'ok');
-        fd.append('trash', $('#cr-trash').checked ? 'true' : 'false');
+        fd.append('condition', $('#cr-ok').checked ? 'ok' : 'bad');
+        fd.append('trash', $('#cr-things').checked ? 'true' : 'false');
         fd.append('clean', $('#cr-clean').checked ? 'true' : 'false');
         fd.append('on_charge', onCharge ? 'true' : 'false');
         if ($('#cr-key')) fd.append('key_returned', $('#cr-key').checked ? 'true' : 'false');
         fd.append('comment', $('#cr-comment').value.trim());
-        const f = $('#cr-file').files?.[0];
-        if (f) fd.append('file', f, f.name);
+        if (pendingPhoto) fd.append('file', pendingPhoto, pendingPhoto.name || 'photo.jpg');
         try {
           await multipartApi(`/api/cars/${car.id}/return`, fd);
           closeModal();

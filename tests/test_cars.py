@@ -122,16 +122,33 @@ def test_vozvrat_s_zamechaniyami_perevodit_na_obsluzhivanie(manager_client, admi
         admin_client.post(f"/api/cars/{car['id']}/status", json={"status": "free", "note": "тест"})
 
 
-def test_vozvrat_na_zaryadke_s_polnym_zaryadom_otklonen(manager_client, admin_client):
+def test_vozvrat_polnogo_kara_na_zaryadku_razreshen(manager_client, admin_client):
+    """18.10.2026: оставить на зарядке можно кар с ЛЮБЫМ зарядом, включая полный."""
     car = _free_car(manager_client)
     r = manager_client.post(f"/api/cars/{car['id']}/take", json={"ack_assigned": False})
     assert r.status_code == 200, r.text
     try:
         r = _return_car(manager_client, car["id"], on_charge="true", charge="full")
-        assert r.status_code == 400, f"ожидался отказ, получено {r.status_code}: {r.text}"
-        assert "заряд" in r.json()["detail"]
+        assert r.status_code == 200, f"заряженный кар можно оставлять на зарядке: {r.text}"
+        body = r.json()["car"]
+        assert body["status"] == "charging" and body["on_charge"] is True
     finally:
-        _return_car(manager_client, car["id"])
+        _return_car(manager_client, car["id"], on_charge="false")
+
+
+def test_veshchi_v_saloned_perevodyat_na_obsluzhivanie(manager_client, admin_client):
+    """Чекбокс «В салоне вещи» (18.10.2026) — замечание: кар уходит на обслуживание."""
+    car = _free_car(manager_client)
+    r = manager_client.post(f"/api/cars/{car['id']}/take", json={"ack_assigned": False})
+    assert r.status_code == 200, r.text
+    r = _return_car(manager_client, car["id"], trash="true", condition="ok", clean="true")
+    assert r.status_code == 200, r.text
+    body = r.json()["car"]
+    assert body["status"] == "maintenance", body
+    assert body["trash"] is True
+    r = admin_client.post(f"/api/cars/{car['id']}/status",
+                          json={"status": "free", "note": "салон освобождён (тест)"})
+    assert r.status_code == 200, r.text
 
 
 def test_vozvrat_na_zaryadke_s_razryazhennym_zaryadom(manager_client, admin_client):
