@@ -378,7 +378,7 @@ table.sched thead th .dow { display: block; font-size: 9.5px; color: var(--muted
 table.sched thead th.weekend { color: #a04a3a; background: #f7efe7; }
 table.sched thead th.today { color: #fff; background: var(--navy); }
 /* кнопка «Сегодня»: колонка текущего дня мигает, чтобы её было легко найти после прокрутки */
-table.sched thead th.flash-today { animation: flashToday 1.6s ease-out; }
+table.sched thead th.flash-today, table.v4-grid thead th.flash-today { animation: flashToday 1.6s ease-out; }
 @keyframes flashToday {
   0%, 100% { box-shadow: none; }
   25%, 60% { box-shadow: inset 0 0 0 3px rgba(203, 176, 91, .95), 0 0 12px rgba(148, 88, 58, .45); }

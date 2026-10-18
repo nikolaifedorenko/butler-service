@@ -36,12 +36,15 @@ PERMISSIONS: list[dict] = [
     {"key": "audit.view", "section": "Журнал аудита", "title": "Просмотр журнала аудита"},
     {"key": "me.punch", "section": "Мои отметки", "title": "Отмечаться «Пришёл/Ушёл»"},
     {"key": "night.view", "section": "Ночной отчёт", "title": "Ночной отчёт"},
-    {"key": "cars.view", "section": "Электрокары", "title": "Электрокары"},
+    {"key": "cars.view", "section": "Электрокары", "title": "Просмотр парка и истории"},
+    {"key": "cars.use", "section": "Электрокары", "title": "Взять / вернуть / передать кар"},
+    {"key": "cars.issue", "section": "Электрокары", "title": "Выдать, закрепить, сменить статус"},
+    {"key": "cars.manage", "section": "Электрокары", "title": "Парк и места стоянки: создание, правка, удаление"},
 ]
 ALL_KEYS = [p["key"] for p in PERMISSIONS]
 
-_EMPLOYEE = {"presence.view", "schedule.view", "me.punch", "night.view", "cars.view"}
-_SUPERVISOR = set(ALL_KEYS) - {"access.manage", "settings.edit", "mgmt.recalculate"}
+_EMPLOYEE = {"presence.view", "schedule.view", "me.punch", "night.view", "cars.view", "cars.use"}
+_SUPERVISOR = set(ALL_KEYS) - {"access.manage", "settings.edit", "mgmt.recalculate", "cars.manage"}
 ROLE_DEFAULTS: dict[str, set[str]] = {
     ROLE_ADMIN: set(ALL_KEYS),
     ROLE_MANAGER: set(ALL_KEYS) - {"access.manage"},

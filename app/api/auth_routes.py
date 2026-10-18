@@ -117,6 +117,17 @@ def login(payload: LoginIn, response: Response, request: Request, db: Session = 
     return {"ok": True, "user": Principal(user, employee).to_dict()}
 
 
+@router.get("/login-form")
+def login_form_get():
+    """Адрес действия формы логина принимает только POST (303-редирект).
+
+    GET сюда приходит лишь от восстановленных вкладок и пробных запросов браузера
+    (18.10.2026: владелец видел на таком URL JSON «Not found» после перезапуска
+    сервера). Возвращаем в приложение, а не JSON 404.
+    """
+    return RedirectResponse("/", status_code=303)
+
+
 @router.post("/login-form")
 def login_form(request: Request, username: str = Form(""), password: str = Form(""),
                db: Session = Depends(get_db)):

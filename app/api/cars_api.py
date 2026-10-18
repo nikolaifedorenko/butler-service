@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
+from ..auth import Principal, audit
 from ..cars import (
     ACTION_TITLES,
     STATUS_TITLES,
@@ -41,7 +41,7 @@ from ..cars import (
 )
 from ..db import get_db
 from ..models import CarHistory
-from ..permissions import require_perm
+from ..permissions import principal_permissions, require_perm
 from ..photos import photos_of
 
 router = APIRouter(prefix="/api/cars", tags=["cars"])
@@ -103,17 +103,44 @@ class LocationEditIn(BaseModel):
 
 
 @router.get("/meta")
-def meta(principal: Principal = Depends(require_perm("cars.view"))):
+def meta(db: Session = Depends(get_db), principal: Principal = Depends(require_perm("cars.view"))):
     """Справочные словари для интерфейса + права."""
     from ..cars import CHARGE_TITLES
+    perms = principal_permissions(db, principal)
 
     return {
         "statuses": [{"code": k, "title": v} for k, v in STATUS_TITLES.items()],
         "actions": [{"code": k, "title": v} for k, v in ACTION_TITLES.items()],
         "charges": [{"code": k, "title": v} for k, v in CHARGE_TITLES.items() if k],
-        "can_manage": principal.is_manager,          # добавлять места/карты — супервайзер+
-        "can_edit_park": principal.role in ("admin", "manager"),
+        # права раздела (18.10.2026): use — свои операции, issue — выдача/закрепление/
+        # статус, manage — парк и справочник мест; can_manage/can_edit_park — легаси-алиасы
+        "can_use": "cars.use" in perms,
+        "can_issue": "cars.issue" in perms,
+        "can_manage": "cars.manage" in perms,
+        "can_edit_park": "cars.manage" in perms,
     }
+
+
+@router.delete("/locations/{loc_id}")
+def location_delete(loc_id: int, db: Session = Depends(get_db),
+                    principal: Principal = Depends(require_perm("cars.manage"))):
+    """Удаление места стоянки (18.10.2026): запрещено, пока место указано у активных
+    каров — им нужно сначала сменить место; история хранит места текстом, поэтому
+    удалённое место не ломает прошлые записи."""
+    from ..models import Car, CarLocation
+
+    loc = db.get(CarLocation, loc_id)
+    if loc is None:
+        raise HTTPException(status_code=404, detail="Место не найдено")
+    used = db.scalar(select(Car).where(Car.active.is_(True), Car.location == loc.name))
+    if used is not None:
+        raise HTTPException(status_code=409, detail=(
+            f"Место «{loc.name}» указано у активного кара №{used.number} — сначала "
+            "измените место у кара (или отключите место вместо удаления)"))
+    db.delete(loc)
+    audit(db, principal, "car_location_delete", f"location:{loc_id}", {"name": loc.name})
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/locations")
@@ -125,7 +152,7 @@ def locations(db: Session = Depends(get_db), principal: Principal = Depends(requ
 
 @router.post("/locations")
 def location_add(payload: LocationIn, db: Session = Depends(get_db),
-                 principal: Principal = Depends(require_supervisor)):
+                 principal: Principal = Depends(require_perm("cars.manage"))):
     try:
         out = add_location(db, principal, payload.name)
     except CarOpError as e:
@@ -137,7 +164,7 @@ def location_add(payload: LocationIn, db: Session = Depends(get_db),
 
 @router.put("/locations/{loc_id}")
 def location_update(loc_id: int, payload: LocationEditIn, db: Session = Depends(get_db),
-                    principal: Principal = Depends(require_manager)):
+                    principal: Principal = Depends(require_perm("cars.manage"))):
     try:
         out = update_location(db, principal, loc_id, name=payload.name or "",
                               active=payload.active)
@@ -171,7 +198,7 @@ def park(db: Session = Depends(get_db), principal: Principal = Depends(require_p
 
 @router.post("")
 def car_add(payload: CarIn, db: Session = Depends(get_db),
-            principal: Principal = Depends(require_supervisor)):
+            principal: Principal = Depends(require_perm("cars.manage"))):
     try:
         car = create_car(db, principal, payload.number, payload.location)
     except CarOpError as e:
@@ -183,7 +210,7 @@ def car_add(payload: CarIn, db: Session = Depends(get_db),
 
 @router.put("/{car_id}")
 def car_edit(car_id: int, payload: CarEditIn, db: Session = Depends(get_db),
-             principal: Principal = Depends(require_manager)):
+             principal: Principal = Depends(require_perm("cars.manage"))):
     try:
         car = get_car(db, car_id)
         out = edit_car(db, car, principal, payload.model_dump(exclude_none=True))
@@ -214,7 +241,7 @@ def car_history(car_id: int, limit: int = 200, db: Session = Depends(get_db),
 
 @router.post("/{car_id}/take")
 def car_take(car_id: int, payload: TakeIn, db: Session = Depends(get_db),
-             principal: Principal = Depends(current_principal)):
+             principal: Principal = Depends(require_perm("cars.use"))):
     try:
         car = get_car(db, car_id)
         out = take_car(db, car, principal, ack_assigned=payload.ack_assigned)
@@ -227,7 +254,7 @@ def car_take(car_id: int, payload: TakeIn, db: Session = Depends(get_db),
 
 @router.post("/{car_id}/handover")
 def car_handover(car_id: int, payload: HandoverIn, db: Session = Depends(get_db),
-                 principal: Principal = Depends(current_principal)):
+                 principal: Principal = Depends(require_perm("cars.use"))):
     """Передать другому: внутренний — по id, внешний — по ФИО."""
     try:
         car = get_car(db, car_id)
@@ -242,7 +269,7 @@ def car_handover(car_id: int, payload: HandoverIn, db: Session = Depends(get_db)
 
 @router.post("/{car_id}/give")
 def car_give(car_id: int, payload: GiveIn, db: Session = Depends(get_db),
-             principal: Principal = Depends(require_supervisor)):
+             principal: Principal = Depends(require_perm("cars.issue"))):
     """Выдать кар сотруднику (менеджмент; внутренний — по id, внешний — по ФИО)."""
     try:
         car = get_car(db, car_id)
@@ -270,7 +297,7 @@ async def car_return(car_id: int,
                      comment: str = Form(""),
                      file: Optional[UploadFile] = File(None),
                      db: Session = Depends(get_db),
-                     principal: Principal = Depends(current_principal)):
+                     principal: Principal = Depends(require_perm("cars.use"))):
     """Возврат кара (multipart): состояние + фото доказательств (оригиналы)."""
     blobs: list[tuple[str, bytes]] = []
     if file is not None:
@@ -299,8 +326,8 @@ async def car_return(car_id: int,
 
 @router.post("/{car_id}/assign")
 def car_assign(car_id: int, payload: AssignIn, db: Session = Depends(get_db),
-               principal: Principal = Depends(require_supervisor)):
-    """Закрепление — рекомендательное; право супервайзера и выше (в ТЗ — в карточке сотрудника)."""
+               principal: Principal = Depends(require_perm("cars.issue"))):
+    """Закрепление — рекомендательное; право cars.issue (супервайзер и выше)."""
     try:
         car = get_car(db, car_id)
         out = assign_employee(db, car, principal, payload.employee_id)
@@ -313,7 +340,7 @@ def car_assign(car_id: int, payload: AssignIn, db: Session = Depends(get_db),
 
 @router.post("/{car_id}/status")
 def car_set_status(car_id: int, payload: StatusIn, db: Session = Depends(get_db),
-                   principal: Principal = Depends(require_supervisor)):
+                   principal: Principal = Depends(require_perm("cars.issue"))):
     """Ручная смена статуса (супервайзер+). Правила — в cars.set_status:
     «занят» без держателя нельзя; с занятого — только через возврат; обслуживание — только менеджер."""
     try:

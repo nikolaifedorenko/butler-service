@@ -2845,6 +2845,24 @@
       }
     },
     "/api/auth/login-form": {
+      "get": {
+        "description": "Адрес действия формы логина принимает только POST (303-редирект).\n\nGET сюда приходит лишь от восстановленных вкладок и пробных запросов браузера\n(18.10.2026: владелец видел на таком URL JSON «Not found» после перезапуска\nсервера). Возвращаем в приложение, а не JSON 404.",
+        "operationId": "login_form_get_api_auth_login_form_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Login Form Get",
+        "tags": [
+          "auth"
+        ]
+      },
       "post": {
         "description": "Классический form-login с редиректом — ДЛЯ МЕНЕДЖЕРОВ ПАРОЛЕЙ (16.10.2026).\n\nБраузерные менеджеры (Safari/«Пароли» macOS включительно) надёжно распознают\nсвязку «submit формы с паролем → 303-редирект» и показывают «Сохранить пароль?»\nсразу после входа. SPA-вход через preventDefault+fetch они откладывают до\nследующего действия пользователя — владелец видел плашку при открытии\n«Настроек». Ошибки уносим кодом в URL: пароль в адресную строку не попадает.",
         "operationId": "login_form_api_auth_login_form_post",
@@ -3037,6 +3055,45 @@
       }
     },
     "/api/cars/locations/{loc_id}": {
+      "delete": {
+        "description": "Удаление места стоянки (18.10.2026): запрещено, пока место указано у активных\nкаров — им нужно сначала сменить место; история хранит места текстом, поэтому\nудалённое место не ломает прошлые записи.",
+        "operationId": "location_delete_api_cars_locations__loc_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "loc_id",
+            "required": true,
+            "schema": {
+              "title": "Loc Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Delete",
+        "tags": [
+          "cars"
+        ]
+      },
       "put": {
         "operationId": "location_update_api_cars_locations__loc_id__put",
         "parameters": [
@@ -3158,7 +3215,7 @@
     },
     "/api/cars/{car_id}/assign": {
       "post": {
-        "description": "Закрепление — рекомендательное; право супервайзера и выше (в ТЗ — в карточке сотрудника).",
+        "description": "Закрепление — рекомендательное; право cars.issue (супервайзер и выше).",
         "operationId": "car_assign_api_cars__car_id__assign_post",
         "parameters": [
           {

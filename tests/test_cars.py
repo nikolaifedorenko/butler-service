@@ -48,12 +48,16 @@ def test_park_viden_vsem_rolyam(employee_client, manager_client):
         assert {"id", "number", "status", "status_title", "location", "charge_title"} <= set(data["cars"][0])
 
 
-def test_meta_soderzhit_slovari_i_prava(employee_client, manager_client):
+def test_meta_soderzhit_slovari_i_prava(employee_client, manager_client,
+                                        manager_role_client):
+    """Права раздела 18.10.2026: use — сотрудник, issue — супервайзер, manage — менеджер."""
     emp = employee_client.get("/api/cars/meta").json()
-    mgr = manager_client.get("/api/cars/meta").json()
+    sup = manager_client.get("/api/cars/meta").json()          # gromova = supervisor
+    mgr = manager_role_client.get("/api/cars/meta").json()     # smirnov = manager
     assert {s["code"] for s in emp["statuses"]} >= {"free", "busy", "charging", "maintenance"}
-    assert emp["can_manage"] is False, "сотрудник не должен управлять парком"
-    assert mgr["can_manage"] is True
+    assert (emp["can_use"], emp["can_issue"], emp["can_manage"]) == (True, False, False)
+    assert (sup["can_use"], sup["can_issue"], sup["can_manage"]) == (True, True, False)
+    assert (mgr["can_use"], mgr["can_issue"], mgr["can_manage"]) == (True, True, True)
 
 
 def test_otkluchennye_kary_skryty_ot_sotrudnika(employee_client, admin_client):
@@ -69,13 +73,13 @@ def test_otkluchennye_kary_skryty_ot_sotrudnika(employee_client, admin_client):
         admin_client.put(f"/api/cars/{car['id']}", json={"active": True})
 
 
-def test_mesta_stoyanki_crud(manager_client, admin_client):
-    before = {loc["name"] for loc in manager_client.get("/api/cars/locations").json()["locations"]}
-    r = manager_client.post("/api/cars/locations", json={"name": "Тестовый навес №42"})
+def test_mesta_stoyanki_crud(manager_role_client, admin_client):
+    before = {loc["name"] for loc in manager_role_client.get("/api/cars/locations").json()["locations"]}
+    r = manager_role_client.post("/api/cars/locations", json={"name": "Тестовый навес №42"})
     assert r.status_code == 200, r.text
     loc_id = r.json()["id"]
     try:
-        names = {loc["name"] for loc in manager_client.get("/api/cars/locations").json()["locations"]}
+        names = {loc["name"] for loc in manager_role_client.get("/api/cars/locations").json()["locations"]}
         assert "Тестовый навес №42" in names and "Тестовый навес №42" not in before
         r = admin_client.put(f"/api/cars/locations/{loc_id}", json={"active": False})
         assert r.status_code == 200, r.text
@@ -118,16 +122,33 @@ def test_vozvrat_s_zamechaniyami_perevodit_na_obsluzhivanie(manager_client, admi
         admin_client.post(f"/api/cars/{car['id']}/status", json={"status": "free", "note": "тест"})
 
 
-def test_vozvrat_na_zaryadke_s_polnym_zaryadom_otklonen(manager_client, admin_client):
+def test_vozvrat_polnogo_kara_na_zaryadku_razreshen(manager_client, admin_client):
+    """18.10.2026: оставить на зарядке можно кар с ЛЮБЫМ зарядом, включая полный."""
     car = _free_car(manager_client)
     r = manager_client.post(f"/api/cars/{car['id']}/take", json={"ack_assigned": False})
     assert r.status_code == 200, r.text
     try:
         r = _return_car(manager_client, car["id"], on_charge="true", charge="full")
-        assert r.status_code == 400, f"ожидался отказ, получено {r.status_code}: {r.text}"
-        assert "заряд" in r.json()["detail"]
+        assert r.status_code == 200, f"заряженный кар можно оставлять на зарядке: {r.text}"
+        body = r.json()["car"]
+        assert body["status"] == "charging" and body["on_charge"] is True
     finally:
-        _return_car(manager_client, car["id"])
+        _return_car(manager_client, car["id"], on_charge="false")
+
+
+def test_veshchi_v_saloned_perevodyat_na_obsluzhivanie(manager_client, admin_client):
+    """Чекбокс «В салоне вещи» (18.10.2026) — замечание: кар уходит на обслуживание."""
+    car = _free_car(manager_client)
+    r = manager_client.post(f"/api/cars/{car['id']}/take", json={"ack_assigned": False})
+    assert r.status_code == 200, r.text
+    r = _return_car(manager_client, car["id"], trash="true", condition="ok", clean="true")
+    assert r.status_code == 200, r.text
+    body = r.json()["car"]
+    assert body["status"] == "maintenance", body
+    assert body["trash"] is True
+    r = admin_client.post(f"/api/cars/{car['id']}/status",
+                          json={"status": "free", "note": "салон освобождён (тест)"})
+    assert r.status_code == 200, r.text
 
 
 def test_vozvrat_na_zaryadke_s_razryazhennym_zaryadom(manager_client, admin_client):
@@ -300,3 +321,43 @@ def test_nochnoy_obhod_karov_i_zavershenie_shaga(manager_client, db, freeze):
             if rep is not None:
                 db.delete(rep)          # каскад убирает области и пункты
         db.commit()
+
+
+# ───────────────────── права и удаление мест (18.10.2026) ─────────────────────
+def test_prava_operacii_razgranicheny(employee_client, manager_client, manager_role_client):
+    """Сотрудник не выдаёт и не правит парк; супервайзер не создаёт кары и места."""
+    park = employee_client.get("/api/cars").json()["cars"]
+    car = next(c for c in park if c["status"] == "free")
+    r = employee_client.post(f"/api/cars/{car['id']}/give",
+                             json={"employee_id": 1, "with_key": True})
+    assert r.status_code == 403, r.text
+    r = employee_client.post("/api/cars/locations", json={"name": "Нелегальный навес"})
+    assert r.status_code == 403, r.text
+    r = manager_client.post("/api/cars", json={"number": "SUP-1"})
+    assert r.status_code == 403, "супервайзер без cars.manage не создаёт кары"
+    r = manager_client.post("/api/cars/locations", json={"name": "Навес супервайзера"})
+    assert r.status_code == 403, "супервайзер без cars.manage не создаёт места"
+    r = manager_role_client.post("/api/cars", json={"number": "MGR-1"})
+    assert r.status_code == 200, r.text
+
+
+def test_udalenie_mesta_stoyanki(manager_role_client, employee_client):
+    """Место удаляется, пока не указано у активных каров; иначе 409 с подсказкой."""
+    r = manager_role_client.post("/api/cars/locations", json={"name": "Временный навес"})
+    assert r.status_code == 200, r.text
+    loc_id = r.json()["id"]
+    r = employee_client.delete(f"/api/cars/locations/{loc_id}")
+    assert r.status_code == 403, "удаление мест — право cars.manage"
+    r = manager_role_client.delete(f"/api/cars/locations/{loc_id}")
+    assert r.status_code == 200, r.text
+    names = {x["name"] for x in manager_role_client.get("/api/cars/locations").json()["locations"]}
+    assert "Временный навес" not in names
+    # место активного кара удалить нельзя
+    park = manager_role_client.get("/api/cars").json()["cars"]
+    with_loc = next((c for c in park if c.get("location")), None)
+    if with_loc:
+        locs = manager_role_client.get("/api/cars/locations").json()["locations"]
+        loc = next((x for x in locs if x["name"] == with_loc["location"]), None)
+        if loc:
+            r = manager_role_client.delete(f"/api/cars/locations/{loc['id']}")
+            assert r.status_code == 409, r.text

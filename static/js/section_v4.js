@@ -513,6 +513,7 @@ async function loadTabel() {
         (CFG-WINDOWS); График генерируется из Табеля</div></div>
       <div class="spacer"></div>
       ${v4MonthNav('tb')}
+      <button class="btn btn-sm" id="tb-today" title="Прокрутить сетку к колонке сегодняшнего дня">Сегодня</button>
       <button class="btn btn-sm" id="tb-absence" title="Слой 0 · Табель: отпуск, больничный, за свой счёт, оплачиваемый выходной — коды первичного документа">Назначить отсутствие</button>
       <button class="btn btn-sm" id="tb-fill">Заполнить из циклов</button>
       <button class="btn btn-sm" id="tb-reset" title="Убрать ручные коды периода и вернуть автозаполнение из циклов">Сбросить</button>
@@ -532,6 +533,8 @@ async function loadTabel() {
   /* Q4: отпуск/ДО/Б/ОВ назначаются кодом Табеля — из Табеля, а не из Графика. */
   $('#tb-absence').style.display = data.can_edit ? '' : 'none';
   $('#tb-absence').onclick = () => openRangeModal('tabel');
+  /* «Сегодня» — как в Графике (18.10.2026): докрутка к колонке дня и подсветка */
+  $('#tb-today').onclick = scrollTabelToToday;
   renderTabel();
   if (state.pendingTabelCell) {
     const { emp, date } = state.pendingTabelCell;
@@ -542,6 +545,16 @@ async function loadTabel() {
 }
 
 function v4CellLabel(c) { return c ? c.value.replace(' ', '') : ''; }
+
+function scrollTabelToToday() {
+  const host = $('#tb-body .v4-grid-wrap');
+  const th = host && host.querySelector('thead th.today');
+  if (!host || !th) { toast('Сегодняшний день не входит в открытый период', 'warn'); return; }
+  host.scrollTo({ left: Math.max(0, th.offsetLeft - host.clientWidth / 2 + th.clientWidth / 2),
+                  behavior: 'smooth' });
+  th.classList.add('flash-today');
+  setTimeout(() => th.classList.remove('flash-today'), 1800);
+}
 
 function renderTabel() {
   const d = state.tabel;
