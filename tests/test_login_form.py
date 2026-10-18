@@ -19,6 +19,12 @@ class TestLoginForm(unittest.TestCase):
                            data={"username": username, "password": password},
                            follow_redirects=False)
 
+    def test_00_get_redirects_home(self):
+        """GET на адрес действия формы (восстановленная вкладка) — 303 домой, не JSON 404."""
+        r = client.get("/api/auth/login-form", follow_redirects=False)
+        self.assertEqual(r.status_code, 303)
+        self.assertEqual(r.headers["location"], "/")
+
     def test_01_success_redirects_home_with_session(self):
         r = self._post("admin", "demo1234")
         self.assertEqual(r.status_code, 303, r.text)
