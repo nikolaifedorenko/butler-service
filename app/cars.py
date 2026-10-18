@@ -454,9 +454,11 @@ def night_cars_state(db: Session, report) -> dict:
     (т.е. свободные на момент проверки). Отметка фиксирует фактическое время — если
     кар возьмут после проверки, супервайзер увидит это (taken_after_check)."""
     from .models import CarNightCheck
+    from .photos import photos_of
 
     checked = {c.car_id: c for c in db.scalars(
         select(CarNightCheck).where(CarNightCheck.report_id == report.id))}
+    pmap = photos_of(db, "car_check", [c.id for c in checked.values()])
     out = []
     for car in db.scalars(select(Car).where(Car.active.is_(True)).order_by(Car.number)):
         ch = checked.get(car.id)
@@ -471,6 +473,7 @@ def night_cars_state(db: Session, report) -> dict:
                 "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None,
                 "taken_after_check": bool(car.last_taken_at and ch.checked_at
                                           and car.last_taken_at > ch.checked_at),
+                "photos": pmap.get(ch.id, []),
             }
         out.append(entry)
     total = len(out)
@@ -483,12 +486,18 @@ def night_cars_state(db: Session, report) -> dict:
 
 def check_car_night(db: Session, report, car: Car, principal, *, found: bool, location: str,
                     canopy: bool, charge: str, on_charge: bool, condition: str,
-                    trash: bool, clean: bool, comment: str) -> dict:
+                    trash: bool, clean: bool, comment: str,
+                    blob_photos: Optional[list[tuple[str, bytes]]] = None) -> dict:
     """Отметка по кару в ходе ночного обхода (перезапись — last write wins).
 
     Замечания супервайзеру: «Не ОК» по техсостоянию и «кар не найден». Отсутствие
     тента — просто факт, в замечания не идёт. Отметки пишутся в общую базу: состояние
-    карточки кара обновляется автоматически."""
+    карточки кара обновляется автоматически.
+
+    `blob_photos` — снимки с телефона (как в окне возврата кара): оригиналы
+    сохраняются в хранилище фото с kind="car_check" и привязываются к отметке.
+    Отметка одна на смену, поэтому повторное сохранение добавляет новый снимок
+    к прежним (старые можно удалить крестиком в окне отметки)."""
     from .models import CarNightCheck
 
     if report.status == "closed":
@@ -525,8 +534,13 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
         car.last_checked_at = ch.checked_at or now_local()
     add_history(db, car, "check", principal, person=principal.name, location=ch.location,
                 details={"found": ch.found, "charge": ch.charge, "condition": ch.condition,
-                         "trash": ch.trash, "clean": ch.clean, "comment": ch.comment})
-    db.flush()
+                         "trash": ch.trash, "clean": ch.clean, "comment": ch.comment,
+                         "photos": len(blob_photos or [])})
+    db.flush()          # нужен id отметки — фото привязываются к ней (kind="car_check")
+    for fname, fbytes in (blob_photos or []):
+        from .photos import save_photo
+        save_photo(db, kind="car_check", ref_id=ch.id, filename=fname, blob=fbytes,
+                   user_id=principal.user.id, user_name=principal.name)
     return {"id": ch.id, "found": ch.found,
             "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None}
 

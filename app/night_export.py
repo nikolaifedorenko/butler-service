@@ -87,8 +87,7 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
                 lines.append(f"— {item['answered_by_name']}, {_fmt_ts(item['answered_at'])}")
             cell.text = "\n".join(lines)
             for ph in photos.get(item["id"], []):
-                img = _image_cell(cell, ph)
-                if img is None:
+                if not _image_cell(cell, ph):
                     cell.add_paragraph(f"[фото {ph['filename']} недоступно]")
         _autosize(table, (Cm(7.5), Cm(2.6), Cm(6.4)))
 
@@ -124,7 +123,11 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
             row[3].text = "да" if c["found"] else "НЕТ"
             row[4].text = f"{c['location'] or '—'} · {charge}"
             tail = "; ".join(state_bits) + (f"\n{c['comment']}" if c["comment"] else "")
-            row[5].text = tail
+            cell = row[5]
+            cell.text = tail
+            for ph in c.get("photos", []):
+                if not _image_cell(cell, ph, width_cm=4.4):
+                    cell.add_paragraph(f"[фото {ph['filename']} недоступно]")
         _autosize(table, (Cm(2.6), Cm(2.0), Cm(3.0), Cm(1.6), Cm(3.6), Cm(4.7)))
 
     # ── перехваты ──
@@ -148,8 +151,11 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
     return buf.getvalue()
 
 
-def _image_cell(cell, ph: dict) -> bool:
-    """Вставить фото (оригинал) в ячейку таблицы; False — файла нет."""
+def _image_cell(cell, ph: dict, *, width_cm: float = 6.0) -> bool:
+    """Вставить фото (оригинал) в ячейку таблицы; False — файла нет.
+
+    `width_cm` — ширина картинки: в таблице обхода каров колонка «Состояние,
+    комментарий» уже, чем у пунктов чек-листа."""
     from docx.shared import Cm
 
     rel = ph.get("path") or ""
@@ -160,7 +166,7 @@ def _image_cell(cell, ph: dict) -> bool:
         return False
     para = cell.add_paragraph()
     try:
-        para.add_run().add_picture(str(target), width=Cm(6.0))
+        para.add_run().add_picture(str(target), width=Cm(width_cm))
     except Exception:
         return False
     return True
@@ -198,7 +204,11 @@ def render_night_report_docx(db: Session, report_id: int, *, company: str = "",
     rep = db.get(NightReport, report_id)
     if rep is None:
         raise KeyError("Отчёт не найден")
-    data = report_dict(rep)
+    # db обязателен: без него report_dict() не собирает car_checks/interceptions,
+    # и в документ попадали пустые блоки «Проверка электрокаров» и «Перехваты».
+    data = report_dict(rep, db=db)
     data["date_obj"] = rep.date
     photos = _photo_payload(db, photos_map or {})
+    # фото отметок каров живут внутри data["car_checks"] — дополняем их путём до файла
+    _photo_payload(db, {c["id"]: c.get("photos") or [] for c in data.get("car_checks") or []})
     return build_docx(data, photos, company=company)

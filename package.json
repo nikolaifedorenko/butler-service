@@ -13,6 +13,7 @@
     "smoke:settings": "./tools/run_settings_scenario.sh",
     "smoke:norms": "./tools/run_norms_scenario.sh",
     "smoke:layers": "./tools/run_layers_scenario.sh",
+    "smoke:nightcars": "./tools/run_night_cars_scenario.sh",
     "snapshot": "./tools/run_snapshot.sh"
   },
   "devDependencies": {
