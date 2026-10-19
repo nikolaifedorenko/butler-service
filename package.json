@@ -15,6 +15,7 @@
     "smoke:nightzones": "./tools/run_night_zones_scenario.sh",
     "smoke:norms": "./tools/run_norms_scenario.sh",
     "smoke:proto": "node docs/prototypes/night-report-v2.smoke.mjs",
+    "smoke:proto:settings": "node docs/prototypes/settings-ia.smoke.mjs",
     "smoke:settings": "./tools/run_settings_scenario.sh",
     "snapshot": "./tools/run_snapshot.sh"
   },
