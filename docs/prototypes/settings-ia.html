@@ -1,0 +1,1269 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Настройки — единый центр конфигурации · кликабельный концепт</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   КОНЦЕПТ «Единый центр настроек» (19.10.2026).
+   Иллюстрация к docs/PROPOSAL-SETTINGS-IA-2026-10-19.md:
+     · меню 9 → 7 пунктов (Права доступа и Журнал аудита — в Настройках);
+     · группа «Объект»: Ночной обход (зоны/объекты/чек-листы/службы)
+       и Электрокары (парк/места стоянки) — переехали из операционных разделов;
+     · операционные разделы сохранили deep-link-кнопки в Настройки;
+     · право night.edit (вместо ролевого is_manager) + песочница прав;
+     · телефон = батлер в поле (операции), компьютер = менеджмент (настройки).
+   Дизайн-токены — из static/css/app.css (фирменный стиль курорта «Мрия»).
+   Файл автономен: ни сети, ни внешних шрифтов.
+   ══════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#f4f0ed; --bg-soft:#faf8f5; --panel:#fff; --panel-2:#f4eeeb;
+  --line:#e2d9ce; --line-soft:#ece5dc;
+  --text:#141a25; --muted:#6e6459; --muted-2:#a2968a;
+  --primary:#94583a; --primary-dark:#683e29; --primary-soft:#9a7060;
+  --gold:#cbb05b; --gold-deep:#a8893a;
+  --navy:#141a25; --navy-2:#202530;
+  --accent:#3d7a52; --accent-dark:#2f6242; --danger:#b81818; --warn:#c96d00; --info:#1d7e94;
+  --r-lg:10px; --r-md:6px; --r-sm:4px;
+  --shadow:0 10px 28px rgba(20,26,37,.08); --shadow-lg:0 22px 60px rgba(20,26,37,.18);
+  --head-h:60px; --side-w:236px;
+  --font-body:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PT Sans','Noto Sans',Arial,sans-serif;
+  --font-display:'Playfair Display','SangBleu Kingdom',Georgia,'Times New Roman',serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:var(--font-body);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+.hidden{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+code{background:#f4eeeb;padding:1px 6px;border-radius:4px;color:var(--primary);font-size:.92em}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#d3c6b6;border-radius:8px;border:2px solid var(--bg)}
+
+/* ── топбар ── */
+.topbar{position:fixed;inset:0 0 auto 0;height:var(--head-h);z-index:50;display:flex;align-items:center;
+  gap:12px;padding:0 16px;background:linear-gradient(100deg,var(--navy) 0%,var(--navy-2) 100%);color:#f3ede2;
+  border-bottom:1px solid #0d121b;box-shadow:0 6px 20px rgba(20,26,37,.18)}
+.topbar .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-size:18px;letter-spacing:.2px}
+.topbar .brand small{display:block;font-family:var(--font-body);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--gold);font-weight:700}
+.topbar .spacer{flex:1}
+.proto-tag{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  background:var(--gold);color:var(--navy);padding:4px 8px;border-radius:3px}
+.tb-seg{display:inline-flex;background:rgba(255,255,255,.07);border:1px solid rgba(203,176,91,.4);border-radius:4px;overflow:hidden}
+.tb-seg button{background:none;border:none;color:#cfc6b8;padding:6px 11px;cursor:pointer;font-size:12px;font-weight:700}
+.tb-seg button.active{background:var(--gold);color:var(--navy)}
+.tb-btn{background:rgba(255,255,255,.07);border:1px solid rgba(203,176,91,.4);color:#f3ede2;border-radius:4px;
+  padding:6px 11px;cursor:pointer;font-size:12px;font-weight:700}
+.tb-btn:hover{background:rgba(203,176,91,.2)}
+.user-chip{display:flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid rgba(203,176,91,.4);
+  border-radius:var(--r-md);background:rgba(255,255,255,.05)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--gold);color:var(--navy);display:grid;
+  place-items:center;font-weight:800;font-size:12px}
+.user-chip .n{font-size:12.5px;font-weight:700;line-height:1.15}
+.user-chip .r{font-size:10.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em}
+
+/* ── раскладка (десктоп) ── */
+.app{position:fixed;inset:var(--head-h) 0 0 0;display:flex}
+.sidenav{width:var(--side-w);flex:0 0 var(--side-w);background:var(--bg-soft);border-right:1px solid var(--line);
+  overflow:auto;padding:14px 10px 40px}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 11px;margin-bottom:3px;
+  background:none;border:1px solid transparent;border-radius:var(--r-md);cursor:pointer;font-size:13.5px;
+  color:var(--muted);font-weight:600}
+.nav-item:hover{background:#efe8df;color:var(--text)}
+.nav-item.active{background:var(--panel-2);color:var(--primary-dark);border-color:#d9c4b4;font-weight:800}
+.nav-item svg{width:18px;height:18px;flex:0 0 auto}
+.nav-item .cnt{margin-left:auto;font-size:11px;font-weight:800;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:20px;padding:1px 7px;color:var(--muted)}
+.nav-item .cnt.bad{background:#f9ebea;color:#a02020;border-color:#eec8c5}
+.nav-foot{margin:18px 8px 0;font-size:11px;color:var(--muted-2);line-height:1.5;border-top:1px solid var(--line-soft);padding-top:10px}
+.main{flex:1;overflow:auto;padding:20px 22px 60px}
+
+/* ── компоненты ── */
+.page-head{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.page-head h2{margin:0;font-family:var(--font-display);font-size:24px;font-weight:600;letter-spacing:.2px}
+.page-head .sub{color:var(--muted);font-size:12.5px;margin-top:4px;max-width:760px}
+.page-head .spacer{flex:1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:14px;
+  box-shadow:var(--shadow)}
+.panel-title{font-size:11.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:800;margin:0 0 10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;border-radius:var(--r-sm);
+  border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text)}
+.btn:hover{border-color:var(--primary-soft);background:#faf6f1}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700;letter-spacing:.03em}
+.btn-primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn-accent:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
+.btn-danger{background:#f9ebea;border-color:#e8c8c4;color:#8f1d1d}
+.btn-danger:hover{background:#f4dcda;border-color:#dda9a3}
+.btn-ghost{background:transparent}
+.btn-sm{padding:6px 11px;font-size:12.5px}
+.btn-block{width:100%;padding:12px}
+.btn-xl{width:100%;padding:22px;font-size:20px;border-radius:var(--r-md)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:3px;font-size:11px;
+  font-weight:700;border:1px solid var(--line);background:var(--panel-2);color:var(--muted);letter-spacing:.02em}
+.badge.ok{background:#e9f0e6;color:#3d6b45;border-color:#cddcc7}
+.badge.warn{background:#faf0dc;color:#8a5a10;border-color:#ecd9ae}
+.badge.danger{background:#f9ebea;color:#a02020;border-color:#eec8c5}
+.badge.muted{background:#f1ece5;color:var(--muted);border-color:#e0d8cd}
+.badge.info{background:#e4eef1;color:#1d6e80;border-color:#c3d9e0}
+.badge.gold{background:#f7f0da;color:var(--gold-deep);border-color:#e6d6a8}
+.nb{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--gold);
+  color:var(--navy);padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:1px}
+.stat-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(146px,1fr));margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px}
+.stat .k{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-weight:800}
+.stat .v{font-family:var(--font-display);font-size:26px;font-weight:600;margin-top:4px;line-height:1.1}
+.stat .v small{font-family:var(--font-body);font-size:12.5px;color:var(--muted);font-weight:600}
+.stat.accent .v{color:var(--accent)} .stat.warn .v{color:var(--warn)}
+.stat.danger .v{color:var(--danger)} .stat.info .v{color:var(--info)}
+.toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+.seg{display:inline-flex;background:#ece5db;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg button{background:none;border:none;color:var(--muted);padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:700}
+.seg button.active{background:var(--navy);color:#f3ede2}
+input[type=text],input[type=search],input[type=number],input[type=password],select,textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;font-size:13.5px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-soft);box-shadow:0 0 0 3px rgba(148,88,58,.12)}
+.field{display:block;margin-bottom:14px}
+.field>span{display:block;font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;
+  letter-spacing:.1em;font-weight:800}
+.hint{color:var(--muted-2);font-size:12.5px;margin:10px 0 0}
+.empty{text-align:center;color:var(--muted);padding:36px 20px;font-size:14px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+table.tbl th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+  border-bottom:1px solid var(--line);padding:8px 9px;font-weight:800}
+table.tbl td{border-bottom:1px solid var(--line-soft);padding:9px;vertical-align:middle}
+table.tbl tr:last-child td{border-bottom:none}
+
+/* ── настройки: под-навигация ── */
+.settings-layout{display:flex;gap:18px;align-items:flex-start}
+.settings-nav{width:250px;flex:0 0 250px;background:var(--bg-soft);border:1px solid var(--line);
+  border-radius:var(--r-lg);padding:10px;position:sticky;top:0}
+.settings-nav .nav-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted-2);
+  font-weight:800;margin:14px 8px 6px}
+.settings-nav .nav-group:first-child{margin-top:4px}
+.settings-nav .nav-item{font-size:13px;padding:8px 10px}
+.settings-nav .nav-item.active{background:var(--panel);color:var(--primary-dark);border-color:#d9c4b4}
+.settings-body{flex:1;min-width:0}
+.settings-search{display:inline-flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);
+  border-radius:20px;padding:7px 14px;color:var(--muted-2);font-size:12.5px;cursor:pointer}
+.settings-search kbd{background:var(--panel-2);border:1px solid var(--line);border-radius:3px;padding:1px 5px;font-size:10.5px}
+.nav-foot2{margin:14px 8px 2px;font-size:11px;color:var(--muted-2);line-height:1.5;border-top:1px solid var(--line-soft);padding-top:10px}
+
+/* ── master-detail (ночной обход) ── */
+.md{display:grid;grid-template-columns:250px minmax(0,1fr);gap:14px;align-items:start}
+.md-list{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:10px;box-shadow:var(--shadow)}
+.md-row{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 10px;margin-bottom:3px;
+  background:none;border:1px solid transparent;border-radius:var(--r-md);cursor:pointer;font-size:13.5px;font-weight:600;color:var(--muted)}
+.md-row:hover{background:#f6f1ea;color:var(--text)}
+.md-row.active{background:var(--panel-2);color:var(--primary-dark);border-color:#d9c4b4;font-weight:800}
+.md-row .cnt{margin-left:auto;font-size:11px;color:var(--muted-2);font-weight:700}
+.md-right{min-width:0}
+.md-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.md-head h3{margin:0;font-family:var(--font-display);font-size:20px;font-weight:600}
+.item-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:center;
+  padding:9px 10px;border-bottom:1px solid var(--line-soft)}
+.item-row:last-child{border-bottom:none}
+.item-row .ord{font-size:11px;color:var(--muted-2);font-weight:800;text-align:center}
+.item-row .txt{font-size:13.5px;font-weight:600}
+.item-row.off .txt{color:var(--muted-2);text-decoration:line-through}
+.item-row .sub{font-size:11.5px;color:var(--muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.banner{display:flex;gap:10px;align-items:flex-start;background:#e4eef1;border:1px solid #c3d9e0;color:#155f70;
+  border-radius:var(--r-md);padding:10px 13px;font-size:12.5px;margin-bottom:14px}
+.banner.gold{background:#f7f0da;border-color:#e6d6a8;color:#6d5a1e}
+.banner b{font-weight:800}
+
+/* ── заметки концепта ── */
+.pnote{border:1px dashed var(--gold-deep);background:#fdf9ee;border-radius:var(--r-md);padding:10px 13px;
+  font-size:12.5px;color:#5f5233;margin-bottom:14px}
+.pnote b{color:#3f3620}
+body.notes-off .pnote{display:none}
+
+/* ── зоны/обход (операционный раздел) ── */
+.zone-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+.zone-card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--gold);
+  border-radius:var(--r-md);padding:14px}
+.zone-card h3{margin:0;font-family:var(--font-display);font-size:19px;font-weight:600}
+.zone-card .meta{font-size:12px;color:var(--muted);margin-top:3px}
+.bar{height:6px;border-radius:4px;background:#ece5db;overflow:hidden;margin:10px 0 8px;display:flex}
+.bar i{display:block;height:100%}
+.bar .ok{background:var(--accent)} .bar .bad{background:var(--danger)} .bar .todo{background:#ddd3c6}
+.car-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--panel);
+  border:1px solid var(--line);border-left:3px solid var(--line);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px}
+.car-card.free{border-left-color:var(--accent)} .car-card.busy{border-left-color:var(--warn)}
+.car-card.charging{border-left-color:var(--info)} .car-card.maintenance{border-left-color:var(--danger)}
+.car-card .t{font-size:15px;font-weight:800}
+.car-card .d{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ── модалка / тосты ── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(20,26,37,.5);z-index:100;display:grid;place-items:center;padding:20px;overflow:auto}
+.modal{background:var(--bg-soft);border:1px solid var(--line);border-radius:var(--r-lg);width:100%;max-width:560px;
+  box-shadow:var(--shadow-lg);max-height:92vh;display:flex;flex-direction:column}
+.modal.wide{max-width:880px}
+.modal-head{display:flex;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.modal-head h3{margin:0;font-family:var(--font-display);font-size:19px;font-weight:600}
+.modal-head p{margin:3px 0 0;font-size:12.5px;color:var(--muted);max-width:640px}
+.modal-body{padding:18px;overflow:auto}
+.modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
+.x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
+.toast-host{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:200;display:grid;gap:8px}
+.toast{background:var(--navy);color:#f3ede2;padding:11px 16px;border-radius:var(--r-md);box-shadow:var(--shadow-lg);
+  font-size:13.5px;max-width:88vw;border-left:3px solid var(--gold)}
+.toast.err{border-left-color:#e07a72} .toast.warn{border-left-color:var(--warn)} .toast.ok{border-left-color:#7fc79a}
+.chk{display:flex;align-items:center;gap:8px;padding:6px;font-size:13.5px;cursor:pointer}
+.chk input{width:17px;height:17px;accent-color:var(--primary);flex:none}
+
+/* ── телефон ── */
+.phone-wrap{position:fixed;inset:var(--head-h) 0 0 0;display:flex;gap:26px;align-items:flex-start;
+  justify-content:center;padding:24px;overflow:auto}
+.phone{width:390px;flex:0 0 390px;height:min(780px,calc(100vh - var(--head-h) - 48px));background:var(--bg);
+  border:10px solid #10141c;border-radius:34px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;overflow:hidden}
+.ph-top{background:linear-gradient(100deg,var(--navy),var(--navy-2));color:#f3ede2;padding:12px 14px 10px;
+  display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700}
+.ph-top .gold{color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:.12em;font-weight:800}
+.ph-body{flex:1;overflow:auto;padding:12px 12px 20px}
+.ph-tabs{display:flex;border-top:1px solid var(--line);background:var(--bg-soft)}
+.ph-tabs button{flex:1;background:none;border:none;padding:8px 2px 9px;cursor:pointer;color:var(--muted);
+  font-size:10px;font-weight:700;display:grid;gap:3px;justify-items:center}
+.ph-tabs button svg{width:20px;height:20px}
+.ph-tabs button.active{color:var(--primary-dark)}
+.ph-note{width:320px;flex:0 0 320px}
+.ph-note .panel{position:sticky;top:0}
+.big-punch{display:grid;gap:10px;margin-top:8px}
+@media(max-width:1100px){ .phone-side,.ph-note{display:none} }
+@media(max-width:900px){
+  .app{flex-direction:column}.sidenav{width:100%;flex:0 0 auto;display:flex;gap:6px;overflow:auto;padding:8px}
+  .sidenav .nav-item{white-space:nowrap;width:auto;margin:0}.main{padding:14px}
+  .grid-2,.md{grid-template-columns:1fr}.settings-layout{flex-direction:column}.settings-nav{width:100%;flex:0 0 auto;position:static}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+      <rect width="32" height="32" rx="6" fill="#141a25"/>
+      <circle cx="16" cy="15.2" r="8.4" stroke="#cbb05b" stroke-width="1.3" fill="none"/>
+      <path d="M16 10.4V16l4 2.6" stroke="#cbb05b" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path d="M8.5 25.5h15" stroke="#94583a" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    <div>Батлер Сервис<small>Настройки · концепт ИА</small></div>
+  </div>
+  <span class="proto-tag">кликабельный концепт</span>
+  <div class="spacer"></div>
+
+  <div class="tb-seg" id="role-seg" title="Роль: видимость разделов и кнопок определяется правами"></div>
+  <div class="tb-seg" id="dev-seg" title="Устройство: телефон — батлер в поле, компьютер — менеджмент"></div>
+  <button class="tb-btn" id="btn-sandbox" title="Песочница прав: гранты роли, как в «Правах доступа»">Права-песочница</button>
+  <button class="tb-btn" id="btn-notes" title="Что предлагается изменить">Заметки концепта</button>
+  <button class="tb-btn" id="btn-hints" title="Показать/скрыть пояснения на экранах">💡</button>
+  <div class="user-chip"><div class="avatar" id="u-av">?</div>
+    <div><div class="n" id="u-name">—</div><div class="r" id="u-role">—</div></div></div>
+</header>
+
+<!-- ДЕСКТОП -->
+<div class="app" id="app-desktop">
+  <nav class="sidenav" id="sidenav"></nav>
+  <main class="main" id="main"></main>
+</div>
+
+<!-- ТЕЛЕФОН -->
+<div class="phone-wrap hidden" id="app-phone">
+  <div class="phone">
+    <div class="ph-top">
+      <svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true">
+        <rect width="32" height="32" rx="6" fill="#0d1119" stroke="#cbb05b" stroke-width="1"/>
+        <circle cx="16" cy="16" r="9.2" stroke="#cbb05b" stroke-width="1.3" fill="none"/>
+        <path d="M16 10.4V16l4 2.6" stroke="#cbb05b" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      </svg>
+      <div>Батлер Сервис<div class="gold" id="ph-sub">телефон · поле</div></div>
+    </div>
+    <div class="ph-body" id="ph-body"></div>
+    <div class="ph-tabs" id="ph-tabs"></div>
+  </div>
+  <div class="ph-note">
+    <div class="panel">
+      <h3 class="panel-title">Телефон = батлер в поле</h3>
+      <p class="hint" style="margin-top:0">Решение владельца 19.10.2026: с телефона работают батлеры —
+        отметки, ночной обход, электрокары. Настройки, добавление и редактирование —
+        супервайзеры, менеджеры и админ <b>с компьютера</b>.</p>
+      <p class="hint">У батлера в tabbar ровно 5 нужных разделов, никаких кнопок правки
+        (скрыты правом, а не устройством). Приложение предлагается открывать на
+        «Моих отметках» — самом частом действии смены, а не на «Графике», как сейчас.</p>
+      <p class="hint">Переключите роль на супервайзера/менеджера и устройство на
+        «Компьютер», чтобы пройти по сценариям настройки.</p>
+    </div>
+  </div>
+</div>
+
+<div id="modal-host"></div>
+<div class="toast-host" id="toast-host"></div>
+
+<script>
+'use strict';
+/* ═══════════════════════ утилиты ═══════════════════════ */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function toast(msg, kind = 'ok', ms = 3200) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + (kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : kind === 'warn' ? 'warn' : '');
+  t.textContent = msg;
+  $('#toast-host').appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
+
+let modalStack = [];
+function openModal({ title, subtitle, body, footer, wide, onMount }) {
+  const bd = document.createElement('div');
+  bd.className = 'modal-backdrop';
+  bd.innerHTML = `<div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true">
+    <div class="modal-head"><div><h3>${esc(title)}</h3>${subtitle ? `<p>${subtitle}</p>` : ''}</div>
+      <button class="x" data-x aria-label="Закрыть">×</button></div>
+    <div class="modal-body">${body}</div>
+    ${footer ? `<div class="modal-foot">${footer}</div>` : ''}</div>`;
+  $('#modal-host').appendChild(bd);
+  bd.querySelector('[data-x]').onclick = () => closeModal(bd);
+  bd.addEventListener('click', e => { if (e.target === bd) closeModal(bd); });
+  modalStack.push(bd);
+  if (onMount) onMount(bd);
+  return bd;
+}
+function closeModal(bd) {
+  bd = bd || modalStack.pop();
+  if (bd) bd.remove();
+}
+function confirmDialog(title, text, onYes, yesLabel = 'Да') {
+  const m = openModal({
+    title, body: `<p style="margin:0 0 4px">${text}</p>`,
+    footer: `<button class="btn btn-ghost" data-no>Отмена</button><button class="btn btn-danger" data-yes>${esc(yesLabel)}</button>`,
+    onMount(bd) {
+      bd.querySelector('[data-no]').onclick = () => closeModal(bd);
+      bd.querySelector('[data-yes]').onclick = () => { closeModal(bd); onYes(); };
+    },
+  });
+  return m;
+}
+
+/* ═══════════════════════ иконки ═══════════════════════ */
+const svg = p => `<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
+const ICONS = {
+  grafik: svg('<path d="M12 3l8 4.4-8 4.4-8-4.4z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 12L12 16l7.4-4M4.6 16.4L12 20.4l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>'),
+  marks: svg('<circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="19" cy="6" r="2.4" fill="currentColor"/>'),
+  employees: svg('<circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 20c.9-3.3 3.2-5 6-5s5.1 1.7 6 5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),
+  night: svg('<path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>'),
+  cars: svg('<path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/>'),
+  me: svg('<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>'),
+  settings: svg('<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),
+};
+const SICONS = {
+  home: '<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
+  calc: '<rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M8 7h8M8 11h3M13 11h3M8 15h3M13 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  money: '<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7v10M9.5 9.5h4a1.6 1.6 0 0 1 0 3.2h-3a1.6 1.6 0 0 0 0 3.2h4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
+  codes: '<rect x="3" y="5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 5v15M12 14h6" stroke="currentColor" stroke-width="1.7"/>',
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/>',
+  people: '<circle cx="9" cy="8" r="3.1" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.5 20c.8-3.3 3-5 5.5-5s4.7 1.7 5.5 5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  shift: '<circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7.2V12l3.2 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+  moon: '<path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
+  car: '<path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/>',
+  doc: '<path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 12h7M9 16h7M9 8h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  mail: '<rect x="3" y="5.5" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.8 7l8.2 6 8.2-6" stroke="currentColor" stroke-width="1.7" fill="none"/>',
+  shield: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M9.4 12.2l1.9 1.9 3.4-3.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  list: '<path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 11h7M9 15h7M9 7h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  gear: '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  code: '<path d="M9 6l-5 6 5 6M15 6l5 6-5 6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+};
+
+/* ═══════════════════════ права и роли ═══════════════════════ */
+/* Каталог прав — как в app/permissions.py + НОВЫЙ ключ night.edit
+   (заменяет ролевую проверку is_manager у справочника ночного обхода). */
+const PERM_CATALOG = [
+  { key: 'schedule.view', title: 'Просмотр графика', sec: 'График' },
+  { key: 'tabel.view', title: 'Просмотр Табеля', sec: 'График' },
+  { key: 'mgmt.view', title: 'Управленческий табель', sec: 'График' },
+  { key: 'presence.view', title: 'Просмотр присутствия', sec: 'Отметки' },
+  { key: 'employees.view', title: 'Просмотр сотрудников', sec: 'Сотрудники' },
+  { key: 'me.punch', title: 'Отмечаться «Пришёл/Ушёл»', sec: 'Мои отметки' },
+  { key: 'night.view', title: 'Ночной отчёт', sec: 'Ночной отчёт' },
+  { key: 'night.edit', title: 'Зоны, объекты, чек-листы, службы', sec: 'Ночной отчёт', isNew: true },
+  { key: 'cars.view', title: 'Просмотр парка и истории', sec: 'Электрокары' },
+  { key: 'cars.use', title: 'Взять / вернуть / передать кар', sec: 'Электрокары' },
+  { key: 'cars.issue', title: 'Выдать, закрепить, сменить статус', sec: 'Электрокары' },
+  { key: 'cars.manage', title: 'Парк и места стоянки: создание, правка, удаление', sec: 'Электрокары' },
+  { key: 'settings.view', title: 'Просмотр настроек', sec: 'Настройки' },
+  { key: 'settings.edit', title: 'Изменение настроек и справочников', sec: 'Настройки' },
+  { key: 'access.manage', title: 'Управление правами доступа', sec: 'Администрирование' },
+  { key: 'audit.view', title: 'Просмотр журнала аудита', sec: 'Администрирование' },
+];
+const ALL_KEYS = PERM_CATALOG.map(p => p.key);
+const BUTLER = ['presence.view', 'schedule.view', 'me.punch', 'night.view', 'cars.view', 'cars.use'];
+const ROLE_DEFAULTS = {
+  admin: new Set(ALL_KEYS),
+  manager: new Set(ALL_KEYS.filter(k => k !== 'access.manage')),
+  supervisor: new Set(ALL_KEYS.filter(k => !['access.manage', 'settings.edit', 'cars.manage'].includes(k))),
+  butler: new Set(BUTLER),
+};
+const ROLES = {
+  admin: { title: 'Админ', name: 'Волков', init: 'АВ' },
+  manager: { title: 'Менеджер', name: 'Смирнов', init: 'СМ' },
+  supervisor: { title: 'Супервайзер', name: 'Громова', init: 'ГР' },
+  butler: { title: 'Батлер', name: 'Иванов', init: 'ИВ' },
+};
+
+/* ═══════════════════════ демо-данные ═══════════════════════ */
+let seq = 1000;
+const nid = () => ++seq;
+let ZONES = [
+  { id: 1, name: 'Виллы' }, { id: 2, name: 'СПА и бассейны' },
+  { id: 3, name: 'Парковая территория' }, { id: 4, name: 'Пляж' },
+];
+let AREAS = [
+  { id: 11, name: 'Вилла 4001', zone_id: 1 }, { id: 12, name: 'Вилла 4002', zone_id: 1 },
+  { id: 13, name: 'Вилла 4003', zone_id: 1 },
+  { id: 21, name: 'СПА-корпус', zone_id: 2 }, { id: 22, name: 'Детский бассейн', zone_id: 2 },
+  { id: 31, name: 'Центральная аллея', zone_id: 3 },
+  { id: 41, name: 'Пляж «Золотой»', zone_id: 4 },
+  { id: 51, name: 'Ресторан «Черноморский»', zone_id: null },
+];
+let ZITEMS = {
+  1: [{ id: 101, text: 'Двери и окна закрыты', svc: 'Служба безопасности', on: true },
+      { id: 102, text: 'Мебель на террасе под тентом', svc: 'Хозяйственная служба', on: true },
+      { id: 103, text: 'Мини-бар: открытых бутылок нет', svc: 'Служба питания', on: true },
+      { id: 104, text: 'Подсветка бассейна выключена', svc: 'Инженерная служба', on: true },
+      { id: 105, text: 'Садовая техника убрана', svc: 'Парковая служба', on: false }],
+  2: [{ id: 111, text: 'Температура воды в норме', svc: 'Инженерная служба', on: true },
+      { id: 112, text: 'Шезлонги расставлены', svc: 'Хозяйственная служба', on: true }],
+  3: [{ id: 121, text: 'Освещение аллей исправно', svc: 'Инженерная служба', on: true }],
+  4: [],
+};
+let AITEMS = {
+  11: [{ id: 201, text: 'Сейф: сверить код виллы 4001', svc: 'Служба безопасности', on: true }],
+  22: [{ id: 202, text: 'Ограждение детской чаши закреплено', svc: 'Инженерная служба', on: true }],
+};
+let SERVICES = [
+  { id: 1, name: 'Хозяйственная служба', chat: 'Housekeeping · чат', mail: true },
+  { id: 2, name: 'Инженерная служба', chat: 'Инженеры TG', mail: false },
+  { id: 3, name: 'Служба безопасности', chat: null, mail: true },
+  { id: 4, name: 'Служба питания', chat: 'F&B · чат', mail: false },
+  { id: 5, name: 'Парковая служба', chat: null, mail: false },
+];
+const CHATS = ['Housekeeping · чат', 'Инженеры TG', 'F&B · чат', 'Охрана · чат', 'Парк TG'];
+let CARS = [
+  { id: 1, no: 'CAR-01', model: '4-местный', status: 'busy', holder: 'Иванов', charge: 82, loc: 'Парковка у корпуса А', note: '' },
+  { id: 2, no: 'CAR-02', model: '2-местный', status: 'free', holder: null, charge: 100, loc: 'Парковка у корпуса А', note: '' },
+  { id: 3, no: 'CAR-03', model: '4-местный', status: 'charging', holder: null, charge: 46, loc: 'Служебная парковка', note: '' },
+  { id: 4, no: 'CAR-04', model: '6-местный', status: 'maintenance', holder: null, charge: 63, loc: null, note: 'в салоне вещи' },
+  { id: 5, no: 'CAR-05', model: '2-местный', status: 'free', holder: null, charge: 91, loc: null, note: '' },
+  { id: 6, no: 'CAR-06', model: '4-местный', status: 'busy', holder: 'Петров', charge: 55, loc: 'Пляжная парковка', note: '' },
+];
+let LOCS = [{ id: 1, name: 'Парковка у корпуса А' }, { id: 2, name: 'Служебная парковка' },
+            { id: 3, name: 'Пляжная парковка' }, { id: 4, name: 'Парковка вилльной зоны' }];
+const CAR_BADGE = { free: ['ok', 'свободен'], busy: ['warn', 'занят'], charging: ['info', 'на зарядке'],
+  maintenance: ['danger', 'на обслуживании'], archived: ['muted', 'в архиве'] };
+
+/* ═══════════════════════ состояние ═══════════════════════ */
+const state = {
+  role: 'manager',
+  device: 'desktop',          // desktop | phone
+  view: 'settings',           // раздел верхнего меню
+  screen: 'overview',         // экран настроек
+  notes: true,                // показывать пояснения концепта
+  overrides: {},              // песочница: role → Set(keys) | null
+  me: { on: false, since: null },
+  stNight: { tab: 'walk', zoneId: 1, areaId: null },
+  carsFilter: 'all',
+};
+function perms() { return state.overrides[state.role] || ROLE_DEFAULTS[state.role]; }
+function can(k) { return perms().has(k); }
+function anyCan(ks) { return ks.some(can); }
+
+/* ── видимость верхнего меню (как visibleTabs() в app.js, но 7 пунктов:
+      Права доступа и Журнал аудита переехали в Настройки → Администрирование) ── */
+function visibleTabs() {
+  const all = [
+    { id: 'grafik', title: 'График', anyPerm: ['tabel.view', 'schedule.view', 'presence.view', 'mgmt.view'] },
+    { id: 'marks', title: 'Отметки', perm: 'presence.view' },
+    { id: 'employees', title: 'Сотрудники', perm: 'employees.view' },
+    { id: 'me', title: 'Мои отметки', perm: 'me.punch' },
+    { id: 'night', title: 'Ночной отчёт', perm: 'night.view' },
+    { id: 'cars', title: 'Электрокары', perm: 'cars.view' },
+    { id: 'settings', title: 'Настройки', anyPerm: ['settings.view', 'night.edit', 'cars.manage', 'access.manage', 'audit.view'] },
+  ];
+  return all.filter(t => t.anyPerm ? anyCan(t.anyPerm) : can(t.perm));
+}
+
+/* ── реестр экранов Настроек: need = видимость экрана, edit = право правки.
+      Группа «Объект» — новая; «Администрирование» вобрало Права и Аудит. ── */
+const SETTINGS_SCREENS = [
+  { group: '' },
+  { id: 'overview', title: 'Обзор', icon: 'home', need: ['settings.view'] },
+  { group: 'Расчёт' },
+  { id: 'calc', title: 'Расчёт', icon: 'calc', need: ['settings.view'], edit: 'settings.edit' },
+  { id: 'pay', title: 'Правила оплаты', icon: 'money', need: ['settings.view'], edit: 'settings.edit' },
+  { id: 'codes', title: 'Коды Табеля', icon: 'codes', need: ['settings.view'], edit: 'settings.edit' },
+  { id: 'calendar', title: 'Календарь правил', icon: 'cal', need: ['settings.view'], edit: 'settings.edit' },
+  { group: 'Персонал и смены' },
+  { id: 'groups', title: 'Группы и графики', icon: 'people', need: ['settings.view'], edit: 'settings.edit' },
+  { id: 'shifts', title: 'Смены и отсутствия', icon: 'shift', need: ['settings.view'], edit: 'settings.edit' },
+  { group: 'Объект' },
+  { id: 'night', title: 'Ночной обход', icon: 'moon', need: ['settings.view', 'night.view'], edit: 'night.edit', isNew: true },
+  { id: 'cars', title: 'Электрокары', icon: 'car', need: ['settings.view', 'cars.view'], edit: 'cars.manage', isNew: true },
+  { id: 'docs', title: 'Документы и справочники', icon: 'doc', need: ['settings.view'], edit: 'settings.edit' },
+  { group: 'Доставка' },
+  { id: 'notify', title: 'Чаты и Почта', icon: 'mail', need: ['settings.view'], edit: 'settings.edit' },
+  { group: 'Администрирование' },
+  { id: 'access', title: 'Права доступа', icon: 'shield', need: ['access.manage'], moved: true },
+  { id: 'audit', title: 'Журнал аудита', icon: 'list', need: ['audit.view'], moved: true },
+  { id: 'system', title: 'Система', icon: 'gear', need: ['settings.view'] },
+  { id: 'expert', title: 'Режим эксперта (JSON)', icon: 'code', need: ['settings.view'], edit: 'settings.edit' },
+];
+function visibleScreens() { return SETTINGS_SCREENS.filter(s => s.id && anyCan(s.need)); }
+function canEditScreen(s) { return !s.edit || can(s.edit); }
+
+/* ═══════════════════════ маршрутизация ═══════════════════════ */
+function go(view, screen, opts = {}) {
+  state.view = view;
+  if (screen) state.screen = screen;
+  if (view === 'settings' && state.screen) location.hash = '#/settings/' + state.screen;
+  else location.hash = '#/' + view;
+  if (opts.toastMsg) toast(opts.toastMsg, opts.toastKind || 'ok');
+  render();
+}
+function parseHash() {
+  const m = (location.hash || '').match(/^#\/(settings\/)?([a-z-]+)/);
+  if (!m) return;
+  if (m[1]) {
+    if (!anyCan(['settings.view', 'night.edit', 'cars.manage', 'access.manage', 'audit.view'])) return;
+    state.view = 'settings';
+    if (visibleScreens().some(s => s.id === m[2])) state.screen = m[2];
+  } else if (visibleTabs().some(t => t.id === m[2])) state.view = m[2];
+}
+window.addEventListener('hashchange', () => { parseHash(); render(); });
+
+/* ═══════════════════════ топбар ═══════════════════════ */
+function renderTopbar() {
+  $('#role-seg').innerHTML = Object.entries(ROLES).map(([k, r]) =>
+    `<button data-role="${k}" class="${state.role === k ? 'active' : ''}">${esc(r.title)}</button>`).join('');
+  $$('#role-seg button').forEach(b => b.onclick = () => switchRole(b.dataset.role));
+  $('#dev-seg').innerHTML = [['desktop', 'Компьютер'], ['phone', 'Телефон']].map(([k, t]) =>
+    `<button data-dev="${k}" class="${state.device === k ? 'active' : ''}">${t}</button>`).join('');
+  $$('#dev-seg button').forEach(b => b.onclick = () => { state.device = b.dataset.dev; render(); });
+  const r = ROLES[state.role];
+  $('#u-av').textContent = r.init; $('#u-name').textContent = r.name; $('#u-role').textContent = r.title;
+  $('#btn-hints').style.background = state.notes ? 'rgba(203,176,91,.28)' : '';
+}
+function switchRole(role) {
+  state.role = role;
+  /* Профиль использования: батлер — телефон, менеджмент — компьютер. */
+  state.device = role === 'butler' ? 'phone' : 'desktop';
+  if (role === 'butler') { state.view = 'me'; toast('Батлер: телефон и только операции — правки скрыты правом night.edit/cars.manage/settings.*', 'warn', 4200); }
+  else {
+    if (!visibleTabs().some(t => t.id === state.view)) state.view = 'settings';
+    if (state.view === 'settings' && !visibleScreens().some(s => s.id === state.screen)) state.screen = 'overview';
+  }
+  render();
+}
+
+/* ═══════════════════════ примитивы экранов ═══════════════════════ */
+const note = html => `<div class="pnote"><b>💡 Концепт.</b> ${html}</div>`;
+function pageHead(title, sub, right = '') {
+  return `<div class="page-head"><div><h2>${esc(title)}</h2><div class="sub">${sub}</div></div>
+    <div class="spacer"></div><div class="row-actions">${right}</div></div>`;
+}
+function panel(title, body, extra = '') {
+  return `<div class="panel">${title ? `<h3 class="panel-title">${title}</h3>` : ''}${extra}${body}</div>`;
+}
+function stubScreen(title, desc, bullets = []) {
+  return pageHead(title, 'Экран приложения без изменений — в концепте показан заглушкой') +
+    panel('', `<p style="margin:0 0 8px;color:var(--muted);font-size:13.5px">${desc}</p>` +
+      (bullets.length ? `<ul style="margin:0;padding-left:20px;color:var(--muted);font-size:13px">${bullets.map(b => `<li style="margin-bottom:5px">${b}</li>`).join('')}</ul>` : ''));
+}
+
+/* ═══════════════════════ ОПЕРАЦИОННЫЕ РАЗДЕЛЫ ═══════════════════════ */
+function viewGrafik() {
+  return pageHead('График', 'Слои: 0 Табель · 1 План/График · 2 Факт · 3 Управленческий Табель') +
+    stubScreen('Операционный раздел — без изменений', 'Четыре слоя расчётного контура остаются как есть.',
+      ['Концепт не трогает «График»: это ежедневная работа, а не настройка.',
+       'Настройки, которые влияют на График (коды Табеля, смены, группы) — в разделе «Настройки», группы «Расчёт» и «Персонал и смены».']);
+}
+function viewMarks() {
+  return pageHead('Отметки', 'Доска «кто сейчас на работе»') +
+    stubScreen('Операционный раздел — без изменений', 'Доска присутствия, открытые сессии, ожидаемые интервалы.',
+      ['Обновление каждые 30 с, мобильный сценарий супервайзера смены.']);
+}
+function viewEmployees() {
+  return pageHead('Сотрудники', 'Карточки, трудоустройство, банк часов, «Открыть как сотрудник»') +
+    stubScreen('Операционный раздел — без изменений', 'Карточка сотрудника остаётся здесь: это ежедневный инструмент менеджера по персоналу.',
+      ['Значение рабочего дня, переводы в блок — в карточке (решение 18.10.2026).',
+       'Справочники, из которых карточка берёт значения (коды, смены, группы) — в Настройках.']);
+}
+function viewMe() {
+  const on = state.me.on;
+  return pageHead('Мои отметки', 'Пришёл / Ушёл · своя история · своё расписание') +
+    (state.notes ? note('Предложение: <b>стартовый экран батлера</b> — «Мои отметки» (самое частое действие), а не «График», как сейчас. После 20:00 можно открывать «Ночной отчёт».') : '') +
+    panel('', `
+      <div style="text-align:center;padding:10px 0 4px">
+        <div class="badge ${on ? 'ok' : 'muted'}" style="font-size:12.5px;padding:6px 14px">${on ? 'Вы на работе с ' + esc(state.me.since) : 'Вы не на работе'}</div>
+      </div>
+      <div class="big-punch">
+        ${on
+          ? '<button class="btn btn-danger btn-xl" id="me-out">Ушёл · ' + new Date().toTimeString().slice(0, 5) + '</button>'
+          : '<button class="btn btn-accent btn-xl" id="me-in">Пришёл · ' + new Date().toTimeString().slice(0, 5) + '</button>'}
+      </div>
+      <p class="hint" style="text-align:center">Отметка — одно нажатие большим пальцем, перчаткой, на ходу</p>`) +
+    panel('Сегодня', `<div class="item-row"><div class="ord">08:57</div><div><div class="txt">Пришёл</div><div class="sub">смена 08:00–16:00 · вовремя</div></div><span class="badge ok">ок</span></div>
+      <div class="item-row"><div class="ord">16:04</div><div><div class="txt">Ушёл</div><div class="sub">итого за день: 7 ч (округление до шага 1 ч)</div></div><span class="badge">—</span></div>`);
+}
+function bindMe(host) {
+  const i = $('#me-in', host); if (i) i.onclick = () => { state.me = { on: true, since: new Date().toTimeString().slice(0, 5) }; toast('Отметка «Пришёл» сохранена'); render(); };
+  const o = $('#me-out', host); if (o) o.onclick = () => { state.me = { on: false, since: null }; toast('Отметка «Ушёл» сохранена'); render(); };
+}
+
+/* ── Ночной отчёт (операционный) ── */
+function viewNight() {
+  const ed = can('night.edit');
+  const zones = ZONES.map(z => {
+    const areas = AREAS.filter(a => a.zone_id === z.id);
+    const items = (ZITEMS[z.id] || []).filter(i => i.on);
+    const total = areas.length * Math.max(items.length, 1);
+    const done = Math.round(total * (0.4 + (z.id % 3) * 0.2));
+    return { z, areas, total, done };
+  });
+  return pageHead('Ночной отчёт', 'Смена 20:00–08:00 · обход: зона → объект → чек-лист',
+      `<button class="btn btn-sm" data-stub>Обновить</button>
+       <button class="btn btn-sm btn-ghost" data-stub>Архив</button>
+       <button class="btn btn-sm btn-ghost" data-stub>Недостатки</button>
+       ${ed ? '<button class="btn btn-sm btn-ghost" id="night-dict">Справочник ↗</button>' : ''}
+       <button class="btn btn-sm btn-ghost" data-stub>DOCX</button>
+       <button class="btn btn-sm btn-danger" data-stub>Закрыть смену</button>`) +
+    (state.notes ? note('Раздел остаётся <b>рабочим местом</b> обхода. Кнопка «Справочник» больше не открывает модалку — она ведёт в <b>Настройки → Ночной обход</b> (deep-link <code>#/settings/night</code>). Видна только с правом <code>night.edit</code> — у батлера её нет. Правки с телефона никто не делает: это desktop-сценарий менеджмента.') : '') +
+    (ed ? '' : '<div class="banner gold"><span>🔒</span><span>Режим только просмотр: правки справочника — для менеджмента (право <b>night.edit</b>).</span></div>') +
+    `<div class="stat-grid">
+      <div class="stat"><div class="k">Зон</div><div class="v">${ZONES.length}</div></div>
+      <div class="stat"><div class="k">Объектов</div><div class="v">${AREAS.length}</div></div>
+      <div class="stat accent"><div class="k">Объектов закрыто</div><div class="v">6 <small>/ ${AREAS.length}</small></div></div>
+      <div class="stat warn"><div class="k">В работе</div><div class="v">3</div></div>
+      <div class="stat danger"><div class="k">Замечаний (Не ОК)</div><div class="v">2</div></div>
+      <div class="stat info"><div class="k">Электрокары</div><div class="v">${'не завершено'}</div></div>
+    </div>` +
+    panel('Шаг «Проверка электрокаров»', `<p class="hint" style="margin:0 0 10px">Отдельный шаг обхода (не зона): где кар, заряд, тент, состояние, фото.</p>
+      <button class="btn btn-primary" data-stub>Проверить электрокары</button>`) +
+    `<div class="zone-grid">${zones.map(({ z, areas, total, done }) => `
+      <div class="zone-card"><h3>${esc(z.name)}</h3>
+        <div class="meta">объектов: ${areas.length} · пунктов: ${done} / ${total}</div>
+        <div class="bar"><i class="ok" style="width:${Math.round(done / Math.max(total, 1) * 100)}%"></i><i class="bad" style="width:6%"></i><i class="todo" style="flex:1"></i></div>
+        <button class="btn btn-sm btn-primary" data-stub>Объекты зоны →</button></div>`).join('')}</div>
+    <p class="hint">Чек-лист задаётся на зону; индивидуальные особенности объекта — в его карточке (Настройки → Ночной обход).</p>`;
+}
+function bindNightOps(host) {
+  $$('[data-stub]', host).forEach(b => b.onclick = () => toast('Прототип: действие текущего приложения — без изменений', 'warn'));
+  const d = $('#night-dict', host);
+  if (d) d.onclick = () => go('settings', 'night', { toastMsg: 'Deep-link из раздела: Настройки → Ночной обход (единственное место правки)' });
+}
+
+/* ── Электрокары (операционный) ── */
+function viewCars() {
+  const mg = can('cars.manage'), use = can('cars.use'), issue = can('cars.issue') || mg;
+  const list = CARS.filter(c => state.carsFilter === 'all' || c.status === state.carsFilter);
+  return pageHead('Электрокары', 'Парк, держатели, заряд и состояние · история не редактируется',
+      `<button class="btn btn-sm" data-stub>Обновить</button>
+       ${mg ? '<button class="btn btn-sm btn-ghost" id="cars-loc">Места ↗</button><button class="btn btn-sm btn-primary" id="cars-add">+ Кар ↗</button>' : ''}`) +
+    (state.notes ? note('Ежедневные операции (<b>взять / вернуть / передать / выдать</b>) остаются в разделе. Кнопки «+ Кар» и «Места» (право <code>cars.manage</code>) теперь ведут в <b>Настройки → Электрокары</b> — справочник парка и мест стоянки живёт в одном месте.') : '') +
+    `<div class="toolbar"><div class="seg" id="cars-filter">
+      ${[['all', 'Все'], ['free', 'Свободные'], ['busy', 'Занятые'], ['charging', 'На зарядке'], ['maintenance', 'Обслуживание']]
+        .map(([k, t]) => `<button data-f="${k}" class="${state.carsFilter === k ? 'active' : ''}">${t}</button>`).join('')}</div></div>
+    ${list.map(c => {
+      const [cls, ttl] = CAR_BADGE[c.status];
+      const mine = c.holder === 'Иванов';
+      return `<div class="car-card ${c.status}">
+        <div><div class="t">${esc(c.no)} <span class="badge ${cls}">${ttl}</span>
+          ${c.note ? `<span class="badge warn">${esc(c.note)}</span>` : ''}</div>
+          <div class="d"><span>${esc(c.model)}</span><span>· заряд ${c.charge}%</span>
+            <span>· ${c.holder ? 'держит ' + esc(c.holder) : 'без держателя'}</span>
+            <span>· ${c.loc ? esc(c.loc) : 'место не указано'}</span></div></div>
+        <div class="row-actions">
+          ${c.status === 'free' && use ? '<button class="btn btn-sm btn-primary" data-stub>Взять</button>' : ''}
+          ${c.status === 'busy' && (mine || issue) ? '<button class="btn btn-sm" data-stub>Вернул</button><button class="btn btn-sm btn-ghost" data-stub>Передать</button>' : ''}
+          ${mg ? '<button class="btn btn-sm btn-ghost" data-stub>Карточка</button>' : ''}
+        </div></div>`;
+    }).join('') || '<div class="empty">Нет каров по фильтру</div>'}`;
+}
+function bindCarsOps(host) {
+  $$('[data-stub]', host).forEach(b => b.onclick = () => toast('Прототип: действие текущего приложения — без изменений', 'warn'));
+  $$('#cars-filter button', host).forEach(b => b.onclick = () => { state.carsFilter = b.dataset.f; render(); });
+  const a = $('#cars-add', host); if (a) a.onclick = () => go('settings', 'cars', { toastMsg: 'Deep-link: Настройки → Электрокары → «+ Кар»' });
+  const l = $('#cars-loc', host); if (l) l.onclick = () => go('settings', 'cars', { toastMsg: 'Deep-link: Настройки → Электрокары → места стоянки' });
+}
+
+/* ═══════════════════════ НАСТРОЙКИ ═══════════════════════ */
+function healthChecks() {
+  const checks = [];
+  ZONES.forEach(z => {
+    const n = (ZITEMS[z.id] || []).filter(i => i.on).length;
+    if (!n) checks.push({ code: 'APP-NIGHT-ZONE-NO-TEMPLATE', level: 'warn', text: `Зона «${z.name}»: шаблон чек-листа пуст — объекты зоны нельзя закрыть по пунктам` });
+  });
+  SERVICES.forEach(s => {
+    if (!s.chat && !s.mail) checks.push({ code: 'APP-SVC-NO-CHANNEL', level: 'warn', text: `Служба «${s.name}»: не задан ни чат, ни почта — недостатки ей не доставляются` });
+  });
+  CARS.forEach(c => {
+    if (!c.loc) checks.push({ code: 'APP-CAR-NO-LOC', level: 'info', text: `Кар ${c.no}: место стоянки не указано (для новых каров это нормально — место задаётся при возврате)` });
+  });
+  checks.push({ code: 'CHK-WINDOW-BOUNDS', level: 'ok', text: 'Окна смен не пересекают полночь (17 окон)' });
+  checks.push({ code: 'APP-EMP-NO-VALUE', level: 'ok', text: 'У всех трудоустроенных задано значение рабочего дня' });
+  checks.push({ code: 'APP-SHIFT-CODE', level: 'ok', text: 'Словарь смен согласован с кодами Табеля' });
+  return checks;
+}
+function screenOverview() {
+  const checks = healthChecks();
+  const bad = checks.filter(c => c.level !== 'ok');
+  return pageHead('Обзор', 'Паспорт конфигурации объекта и её здоровье. Health-проверки теперь покрывают и новые справочники группы «Объект».',
+      '<span class="settings-search">Поиск по настройкам… <kbd>⌘K</kbd></span>') +
+    (state.notes ? note('Экран «Обзор» получает новые проверки <code>APP-NIGHT-*</code>, <code>APP-SVC-*</code>, <code>APP-CAR-*</code>: пустой шаблон зоны, служба без канала доставки, кар без места. Механизм health уже существует — добавляются только проверки.') : '') +
+    `<div class="stat-grid">
+      <div class="stat"><div class="k">Версия справочников</div><div class="v">#24 <small>с 16.10.2026</small></div></div>
+      <div class="stat"><div class="k">Шаг округления</div><div class="v">1 ч</div></div>
+      <div class="stat"><div class="k">Кодов Табеля</div><div class="v">17</div></div>
+      <div class="stat info"><div class="k">Зон обхода</div><div class="v">${ZONES.length}</div></div>
+      <div class="stat info"><div class="k">Каров в парке</div><div class="v">${CARS.length}</div></div>
+      <div class="stat ${bad.length ? 'warn' : 'accent'}"><div class="k">Замечаний конфигурации</div><div class="v">${bad.length}</div></div>
+    </div>` +
+    panel('Замечания и проверки', checks.map(c => `
+      <div class="item-row"><div class="ord">${c.level === 'ok' ? '✓' : c.level === 'warn' ? '!' : 'i'}</div>
+        <div><div class="txt" style="${c.level === 'ok' ? 'color:var(--muted);font-weight:600' : ''}">${esc(c.text)}</div>
+          <div class="sub"><code>${esc(c.code)}</code></div></div>
+        <span class="badge ${c.level === 'ok' ? 'ok' : c.level === 'warn' ? 'warn' : 'info'}">${c.level === 'ok' ? 'ок' : c.level === 'warn' ? 'внимание' : 'инфо'}</span></div>`).join('')) +
+    panel('Изменения настроек за 30 дней', `<div class="item-row"><div class="ord">18.10</div><div><div class="txt">Опубликована версия справочников #24</div><div class="sub">Смирнов · коды Табеля, окна</div></div></div>
+      <div class="item-row"><div class="ord">18.10</div><div><div class="txt">Добавлен кар CAR-06</div><div class="sub">Смирнов · Настройки → Электрокары</div></div></div>
+      <div class="item-row"><div class="ord">17.10</div><div><div class="txt">Чек-лист зоны «Виллы»: + пункт «Подсветка бассейна»</div><div class="sub">Громова · Настройки → Ночной обход</div></div></div>`);
+}
+
+/* ── НОЧНОЙ ОБХОД (новый экран, master-detail) ── */
+function screenNight() {
+  const ed = can('night.edit');
+  const s = state.stNight;
+  const zone = ZONES.find(z => z.id === s.zoneId) || null;
+  const area = zone ? AREAS.find(a => a.id === s.areaId) || null : null;
+
+  const left = `<div class="md-list">
+    <div class="panel-title" style="margin:2px 4px 8px">Зоны обхода</div>
+    ${ZONES.map(z => `<button class="md-row${z.id === s.zoneId && s.tab === 'walk' ? ' active' : ''}" data-zone="${z.id}">
+        ${esc(z.name)}<span class="cnt">${AREAS.filter(a => a.zone_id === z.id).length} об · ${(ZITEMS[z.id] || []).filter(i => i.on).length} п.</span></button>`).join('')}
+    <button class="md-row${s.zoneId === 0 ? ' active' : ''}" data-zone="0">Без зоны<span class="cnt">${AREAS.filter(a => !a.zone_id).length} об</span></button>
+    ${ed ? '<button class="btn btn-sm btn-block" id="zone-add" style="margin-top:8px">+ Зона</button>' : ''}
+    <div class="nav-foot2">Первый уровень обхода.<br>Шаблон чек-листа задаётся на зону — у всех однотипных объектов он одинаковый.</div>
+  </div>`;
+
+  let right = '';
+  if (s.tab === 'services') right = servicesPane(ed);
+  else if (area) right = areaPane(zone, area, ed);
+  else if (zone || s.zoneId === 0) right = zonePane(zone, ed);
+  else right = '<div class="panel"><div class="empty">Выберите зону слева</div></div>';
+
+  return pageHead('Ночной обход',
+      'Зоны → объекты → чек-листы → службы. Единственное место правки справочника обхода.',
+      `<div class="seg"><button data-stab="walk" class="${s.tab === 'walk' ? 'active' : ''}">Обход</button>
+        <button data-stab="services" class="${s.tab === 'services' ? 'active' : ''}">Службы</button></div>`) +
+    (state.notes ? note('Переехал из модалки «Справочник» раздела «Ночной отчёт» (4 вкладки + модалка-в-модалке) в полноценный экран <b>master-detail</b>: зоны слева, объекты и шаблон справа. Доступ — право <code>night.edit</code> (новый ключ каталога, заменяет ролевой <code>is_manager</code>): супервайзер сохраняет правки, батлер экран не видит. Кнопка «Справочник» в разделе стала deep-link сюда.') : '') +
+    `<div class="banner"><span>🌙</span><span><b>Изменения применяются со следующей смены.</b>
+      Чек-листы идущей смены зафиксированы снимком в отчёте (<code>snapshot_json</code>) — правки справочника не могут изменить начатый обход.</span></div>
+    ${ed ? '' : '<div class="banner gold"><span>🔒</span><span>Только просмотр: для правок нужно право <b>night.edit</b> (выдать: Настройки → Права доступа).</span></div>'}
+    <div class="md">${left}<div class="md-right">${right}</div></div>`;
+}
+function zonePane(zone, ed) {
+  const areas = AREAS.filter(a => (zone ? a.zone_id === zone.id : !a.zone_id));
+  const items = (zone ? ZITEMS[zone.id] || [] : []);
+  return `<div class="md-head"><h3>${zone ? esc(zone.name) : 'Без зоны'}</h3>
+      <span class="badge">объектов: ${areas.length}</span><span class="badge">пунктов шаблона: ${items.filter(i => i.on).length}</span>
+      <div class="spacer" style="flex:1"></div>
+      ${zone && ed ? `<button class="btn btn-sm" data-zedit="${zone.id}">Изменить</button>
+        <button class="btn btn-sm btn-danger" data-zdel="${zone.id}">Удалить</button>` : ''}</div>
+    <div class="grid-2">
+      ${panel('Объекты зоны', `
+        ${areas.map(a => `<div class="item-row" data-area-open="${a.id}" style="cursor:pointer">
+            <div class="ord">›</div>
+            <div><div class="txt">${esc(a.name)}</div>
+              <div class="sub">${(AITEMS[a.id] || []).filter(i => i.on).length ? `<span class="badge info">своих пунктов: ${(AITEMS[a.id] || []).filter(i => i.on).length}</span>` : '<span>только шаблон зоны</span>'}</div></div>
+            ${ed ? `<span class="row-actions"><button class="btn btn-sm btn-ghost" data-aedit="${a.id}">✎</button><button class="btn btn-sm btn-ghost" data-adel="${a.id}">✕</button></span>` : ''}
+          </div>`).join('') || '<div class="empty" style="padding:18px">В зоне нет объектов</div>'}
+        ${ed ? `<div class="row-actions" style="margin-top:10px">
+          <button class="btn btn-sm" id="area-add">+ Объект</button>
+          <button class="btn btn-sm btn-ghost" id="area-master" title="«Вилла 4001…4012»">Мастер серии…</button></div>` : ''}`)}
+      ${panel(zone ? 'Шаблон чек-листа зоны' : 'Объекты без зоны', zone ? `
+        <p class="hint" style="margin:-2px 0 10px">Общий для всех объектов зоны. У пункта — ответственная служба: ей уходит замечание «Не ОК».</p>
+        ${items.map((i, k) => `<div class="item-row${i.on ? '' : ' off'}"><div class="ord">${k + 1}</div>
+            <div><div class="txt">${esc(i.text)}</div>
+              <div class="sub"><span class="badge ${i.svc ? '' : 'danger'}">${esc(i.svc || 'служба не задана')}</span>${i.on ? '' : '<span class="badge muted">отключён</span>'}</div></div>
+            ${ed ? `<span class="row-actions"><button class="btn btn-sm btn-ghost" data-ziedit="${i.id}">Изменить</button>
+              <button class="btn btn-sm btn-ghost" data-zitog="${i.id}">${i.on ? 'Отключить' : 'Включить'}</button></span>` : ''}</div>`).join('')
+          || '<div class="empty" style="padding:18px">Шаблон пуст — «Обзор» покажет замечание APP-NIGHT-ZONE-NO-TEMPLATE</div>'}
+        ${ed ? '<button class="btn btn-sm" id="zi-add" style="margin-top:10px">+ Пункт</button>' : ''}`
+        : `<p class="hint">Объекты, не входящие в зоны (например, ресторан). Чек-лист — только индивидуальные пункты объекта.</p>`)}
+    </div>`;
+}
+function areaPane(zone, area, ed) {
+  const own = AITEMS[area.id] || [];
+  const tpl = zone ? ZITEMS[zone.id] || [] : [];
+  return `<div class="md-head"><button class="btn btn-sm btn-ghost" id="area-back">← ${zone ? esc(zone.name) : 'Без зоны'}</button>
+      <h3>${esc(area.name)}</h3><span class="badge info">объект</span></div>
+    ${panel('Индивидуальные пункты объекта', `
+      <p class="hint" style="margin:-2px 0 10px">Своя формулировка или дополнительный пункт — только для этого объекта.</p>
+      ${own.map(i => `<div class="item-row"><div class="ord">+</div>
+        <div><div class="txt">${esc(i.text)}</div><div class="sub"><span class="badge">${esc(i.svc || 'служба не задана')}</span></div></div>
+        ${ed ? `<span class="row-actions"><button class="btn btn-sm btn-ghost" data-aiedit="${i.id}">Изменить</button><button class="btn btn-sm btn-ghost" data-aidel="${i.id}">✕</button></span>` : ''}</div>`).join('')
+        || '<div class="empty" style="padding:14px">Своих пунктов нет</div>'}
+      ${ed ? '<button class="btn btn-sm" id="ai-add" style="margin-top:10px">+ Свой пункт</button>' : ''}`)}
+    ${panel('Пункты из шаблона зоны', tpl.length ? tpl.map((i, k) => `
+      <div class="item-row"><div class="ord">${k + 1}</div>
+        <div><div class="txt">${esc(i.text)}</div><div class="sub"><span class="badge">${esc(i.svc || '—')}</span></div></div>
+        ${ed ? '<button class="btn btn-sm btn-ghost" data-stub2 title="Отключить пункт у этого объекта / своя формулировка">Переопределить</button>' : ''}</div>`).join('')
+      : '<p class="hint">Шаблон зоны пуст.</p>')}`;
+}
+function servicesPane(ed) {
+  return pageHead2('Ответственные службы', 'Получатели замечаний «Не ОК» и недостатков смены. Каналы доставки (чат, почта) крепятся прямо здесь.') +
+    (state.notes ? note('Службы — <b>одна сущность в одном месте</b>: сегодня их карточка в модалке ночного отчёта, а чат к ней крепится в «Чаты и Почта» (экран отправляет пользователя в другой раздел). В концепте каталог чатов остаётся в «Доставке», а выбор чата службы — здесь, одним селектом. Обратите внимание: это <code>responsibility_services</code>, а не «Службы / подразделения» сотрудника — два разных справочника, предлагается различать их в названиях.') : '') +
+    panel('', `<table class="tbl"><thead><tr><th>Служба</th><th>Telegram-чат</th><th>Почта</th><th>Пунктов-получателей</th><th></th></tr></thead>
+      <tbody>${SERVICES.map(s => `<tr>
+        <td><b>${esc(s.name)}</b></td>
+        <td>${s.chat ? `<span class="badge info">${esc(s.chat)}</span>` : '<span class="badge muted">не выбран</span>'}</td>
+        <td>${s.mail ? '<span class="badge ok">включена</span>' : '<span class="badge muted">выключена</span>'}</td>
+        <td>${countSvcItems(s.name)}</td>
+        <td class="row-actions" style="justify-content:flex-end">${ed ? `<button class="btn btn-sm btn-ghost" data-sedit="${s.id}">Изменить</button><button class="btn btn-sm btn-ghost" data-sdel="${s.id}">✕</button>` : ''}</td></tr>`).join('')}</tbody></table>
+      ${ed ? '<button class="btn btn-sm" id="svc-add" style="margin-top:10px">+ Служба</button>' : ''}
+      <p class="hint">Токен бота, каталог чатов (getUpdates) и шаблоны сообщений — экран «Чаты и Почта» (группа «Доставка»). Служба без канала доставки получает замечание в «Обзоре» (APP-SVC-NO-CHANNEL).</p>`);
+}
+function pageHead2(title, sub) { return `<div class="md-head"><h3>${esc(title)}</h3></div><p class="hint" style="margin:-6px 0 12px">${sub}</p>`; }
+function countSvcItems(name) {
+  let n = 0;
+  Object.values(ZITEMS).forEach(l => l.forEach(i => { if (i.svc === name && i.on) n++; }));
+  Object.values(AITEMS).forEach(l => l.forEach(i => { if (i.svc === name && i.on) n++; }));
+  return n ? `<span class="badge">${n}</span>` : '<span class="badge muted">нет пунктов</span>';
+}
+
+/* ── модалки ночного обхода ── */
+function svcOptions(sel) {
+  return `<option value="">— не задана —</option>` + SERVICES.map(s => `<option ${s.name === sel ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+}
+function zoneModal(z) {
+  openModal({
+    title: z ? 'Зона' : 'Новая зона', body: `<label class="field"><span>Название</span>
+      <input type="text" id="z-name" value="${esc(z ? z.name : '')}" placeholder="например: Виллы"></label>`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-s>Сохранить</button>`,
+    onMount(bd) {
+      bd.querySelector('[data-c]').onclick = () => closeModal(bd);
+      bd.querySelector('[data-s]').onclick = () => {
+        const n = bd.querySelector('#z-name').value.trim();
+        if (!n) return toast('Введите название', 'warn');
+        if (z) { z.name = n; toast('Зона сохранена — применится со следующей смены'); }
+        else { const id = nid(); ZONES.push({ id, name: n }); ZITEMS[id] = []; state.stNight.zoneId = id; toast('Зона добавлена — задайте шаблон чек-листа'); }
+        closeModal(bd); render();
+      };
+    },
+  });
+}
+function areaModal(a, zoneId) {
+  openModal({
+    title: a ? 'Объект' : 'Новый объект',
+    body: `<label class="field"><span>Название</span><input type="text" id="a-name" value="${esc(a ? a.name : '')}" placeholder="например: Вилла 4004"></label>
+      <label class="field"><span>Зона</span><select id="a-zone">${`<option value="0">Без зоны</option>` +
+        ZONES.map(z => `<option value="${z.id}" ${(a ? a.zone_id : zoneId) === z.id ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></label>`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-s>Сохранить</button>`,
+    onMount(bd) {
+      bd.querySelector('[data-c]').onclick = () => closeModal(bd);
+      bd.querySelector('[data-s]').onclick = () => {
+        const n = bd.querySelector('#a-name').value.trim(), zid = Number(bd.querySelector('#a-zone').value) || null;
+        if (!n) return toast('Введите название', 'warn');
+        if (a) { a.name = n; a.zone_id = zid; toast('Объект сохранён — применится со следующей смены'); }
+        else { AREAS.push({ id: nid(), name: n, zone_id: zid }); toast('Объект добавлен'); }
+        closeModal(bd); render();
+      };
+    },
+  });
+}
+function itemModal(it, list, kind) {
+  openModal({
+    title: it ? 'Пункт чек-листа' : (kind === 'area' ? 'Свой пункт объекта' : 'Новый пункт шаблона'),
+    body: `<label class="field"><span>Формулировка</span><input type="text" id="i-text" value="${esc(it ? it.text : '')}" placeholder="например: Двери и окна закрыты"></label>
+      <label class="field"><span>Ответственная служба (получатель «Не ОК»)</span><select id="i-svc">${svcOptions(it ? it.svc : '')}</select></label>
+      ${it ? `<label class="chk"><input type="checkbox" id="i-on" ${it.on ? 'checked' : ''}> Пункт включён</label>` : ''}`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-s>Сохранить</button>`,
+    onMount(bd) {
+      bd.querySelector('[data-c]').onclick = () => closeModal(bd);
+      bd.querySelector('[data-s]').onclick = () => {
+        const t = bd.querySelector('#i-text').value.trim(), sv = bd.querySelector('#i-svc').value;
+        if (!t) return toast('Введите формулировку', 'warn');
+        if (it) { it.text = t; it.svc = sv; const on = bd.querySelector('#i-on'); if (on) it.on = on.checked; toast('Пункт сохранён — применится со следующей смены'); }
+        else { list.push({ id: nid(), text: t, svc: sv, on: true }); toast('Пункт добавлен — применится со следующей смены'); }
+        closeModal(bd); render();
+      };
+    },
+  });
+}
+function serviceModal(s) {
+  openModal({
+    title: s ? 'Служба' : 'Новая служба',
+    body: `<label class="field"><span>Название</span><input type="text" id="s-name" value="${esc(s ? s.name : '')}" placeholder="например: Пляжная служба"></label>
+      <label class="field"><span>Telegram-чат (из каталога «Чаты и Почта»)</span><select id="s-chat">
+        <option value="">— не выбран —</option>${CHATS.map(c => `<option ${s && s.chat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+      <label class="chk"><input type="checkbox" id="s-mail" ${s && s.mail ? 'checked' : ''}> Отправлять недостатки почтой</label>`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-s>Сохранить</button>`,
+    onMount(bd) {
+      bd.querySelector('[data-c]').onclick = () => closeModal(bd);
+      bd.querySelector('[data-s]').onclick = () => {
+        const n = bd.querySelector('#s-name').value.trim();
+        if (!n) return toast('Введите название', 'warn');
+        const chat = bd.querySelector('#s-chat').value || null, mail = bd.querySelector('#s-mail').checked;
+        if (s) { s.name = n; s.chat = chat; s.mail = mail; toast('Служба сохранена'); }
+        else SERVICES.push({ id: nid(), name: n, chat, mail });
+        closeModal(bd); render();
+      };
+    },
+  });
+}
+function bindNightSettings(host) {
+  $$('[data-stab]', host).forEach(b => b.onclick = () => { state.stNight.tab = b.dataset.stab; render(); });
+  $$('[data-zone]', host).forEach(b => b.onclick = () => { state.stNight.tab = 'walk'; state.stNight.zoneId = Number(b.dataset.zone); state.stNight.areaId = null; render(); });
+  $$('[data-area-open]', host).forEach(r => r.onclick = e => {
+    if (e.target.closest('[data-aedit],[data-adel]')) return;
+    state.stNight.areaId = Number(r.dataset.areaOpen); render();
+  });
+  const za = $('#zone-add', host); if (za) za.onclick = () => zoneModal(null);
+  $$('[data-zedit]', host).forEach(b => b.onclick = () => zoneModal(ZONES.find(z => z.id === Number(b.dataset.zedit))));
+  $$('[data-zdel]', host).forEach(b => b.onclick = () => {
+    const z = ZONES.find(x => x.id === Number(b.dataset.zdel));
+    const n = AREAS.filter(a => a.zone_id === z.id).length;
+    confirmDialog(`Удалить зону «${z.name}»?`, n ? `В зоне ${n} объект(ов) — они станут «Без зоны». Шаблоны перестанут применяться со следующей смены.` : 'Шаблон зоны перестанет применяться со следующей смены.', () => {
+      ZONES = ZONES.filter(x => x.id !== z.id); delete ZITEMS[z.id];
+      AREAS.forEach(a => { if (a.zone_id === z.id) a.zone_id = null; });
+      state.stNight.zoneId = ZONES[0] ? ZONES[0].id : 0; state.stNight.areaId = null;
+      toast('Зона удалена', 'warn'); render();
+    }, 'Удалить');
+  });
+  const aa = $('#area-add', host); if (aa) aa.onclick = () => areaModal(null, state.stNight.zoneId);
+  const am = $('#area-master', host); if (am) am.onclick = () => toast('Прототип: мастер серии («Вилла 4001…4012») — как в текущем справочнике', 'warn');
+  $$('[data-aedit]', host).forEach(b => b.onclick = () => areaModal(AREAS.find(a => a.id === Number(b.dataset.aedit))));
+  $$('[data-adel]', host).forEach(b => b.onclick = () => {
+    const a = AREAS.find(x => x.id === Number(b.dataset.adel));
+    confirmDialog(`Удалить объект «${a.name}»?`, 'Из текущей смены объект не исчезнет (отчёт — снимок); со следующей смены его не будет в обходе.', () => {
+      AREAS = AREAS.filter(x => x.id !== a.id); delete AITEMS[a.id]; state.stNight.areaId = null;
+      toast('Объект удалён', 'warn'); render();
+    }, 'Удалить');
+  });
+  const ab = $('#area-back', host); if (ab) ab.onclick = () => { state.stNight.areaId = null; render(); };
+  $$('[data-ziedit]', host).forEach(b => b.onclick = () => {
+    const list = ZITEMS[state.stNight.zoneId] || [];
+    itemModal(list.find(i => i.id === Number(b.dataset.ziedit)), list, 'zone');
+  });
+  $$('[data-zitog]', host).forEach(b => b.onclick = () => {
+    const i = (ZITEMS[state.stNight.zoneId] || []).find(x => x.id === Number(b.dataset.zitog));
+    i.on = !i.on; toast(i.on ? 'Пункт включён — со следующей смены' : 'Пункт отключён — со следующей смены'); render();
+  });
+  const zia = $('#zi-add', host); if (zia) zia.onclick = () => {
+    if (!ZITEMS[state.stNight.zoneId]) ZITEMS[state.stNight.zoneId] = [];
+    itemModal(null, ZITEMS[state.stNight.zoneId], 'zone');
+  };
+  $$('[data-aiedit]', host).forEach(b => b.onclick = () => {
+    const list = AITEMS[state.stNight.areaId] || [];
+    itemModal(list.find(i => i.id === Number(b.dataset.aiedit)), list, 'area');
+  });
+  $$('[data-aidel]', host).forEach(b => b.onclick = () => {
+    const list = AITEMS[state.stNight.areaId] || [];
+    AITEMS[state.stNight.areaId] = list.filter(i => i.id !== Number(b.dataset.aidel));
+    toast('Свой пункт удалён', 'warn'); render();
+  });
+  const aia = $('#ai-add', host); if (aia) aia.onclick = () => {
+    if (!AITEMS[state.stNight.areaId]) AITEMS[state.stNight.areaId] = [];
+    itemModal(null, AITEMS[state.stNight.areaId], 'area');
+  };
+  $$('[data-stub2]', host).forEach(b => b.onclick = () => toast('Прототип: переопределение пункта — своя формулировка или отключение у объекта (как в текущем справочнике)', 'warn'));
+  const sa = $('#svc-add', host); if (sa) sa.onclick = () => serviceModal(null);
+  $$('[data-sedit]', host).forEach(b => b.onclick = () => serviceModal(SERVICES.find(s => s.id === Number(b.dataset.sedit))));
+  $$('[data-sdel]', host).forEach(b => b.onclick = () => {
+    const s = SERVICES.find(x => x.id === Number(b.dataset.sdel));
+    const n = parseInt(countSvcItems(s.name).replace(/\D/g, ''), 10) || 0;
+    confirmDialog(`Удалить службу «${s.name}»?`, n ? `У службы ${n} пункт(ов)-получателей — у них станет «служба не задана», замечания перестанут доставляться.` : 'Замечания службы перестанут доставляться.', () => {
+      SERVICES = SERVICES.filter(x => x.id !== s.id); toast('Служба удалена', 'warn'); render();
+    }, 'Удалить');
+  });
+}
+
+/* ── ЭЛЕКТРОКАРЫ (новый экран) ── */
+function screenCars() {
+  const ed = can('cars.manage');
+  return pageHead('Электрокары', 'Парк и места стоянки — справочник. Ежедневные операции (взять / вернуть / передать) — в разделе «Электрокары».',
+      `<button class="btn btn-sm btn-ghost" id="to-cars-ops">К операциям ↗</button>
+       ${ed ? '<button class="btn btn-sm btn-primary" id="car-add">+ Кар</button>' : ''}`) +
+    (state.notes ? note('Переехали из раздела «Электрокары»: кнопка «+ Кар» и модалка «Места». Раздел остался рабочим местом (<b>операции</b>), справочник — здесь (право <code>cars.manage</code>). Новый кар создаётся <b>без места стоянки</b> — место указывается при возврате (решение владельца 18.10.2026).') : '') +
+    panel('Парк', `<table class="tbl"><thead><tr><th>Номер</th><th>Модель</th><th>Статус</th><th>Закреплён</th><th>Место стоянки</th><th>Заряд</th><th></th></tr></thead>
+      <tbody>${CARS.map(c => {
+        const [cls, ttl] = CAR_BADGE[c.status];
+        return `<tr><td><b>${esc(c.no)}</b></td><td>${esc(c.model)}</td>
+          <td><span class="badge ${cls}">${ttl}</span>${c.note ? ` <span class="badge warn">${esc(c.note)}</span>` : ''}</td>
+          <td>${c.holder ? esc(c.holder) : '<span style="color:var(--muted-2)">—</span>'}</td>
+          <td>${c.loc ? esc(c.loc) : '<span style="color:var(--muted-2)">не указано</span>'}</td>
+          <td>${c.charge}%</td>
+          <td class="row-actions" style="justify-content:flex-end">${ed ? `<button class="btn btn-sm btn-ghost" data-cedit="${c.id}">Изменить</button>
+            ${c.status !== 'archived' ? `<button class="btn btn-sm btn-ghost" data-carch="${c.id}">В архив</button>` : ''}` : ''}</td></tr>`;
+      }).join('')}</tbody></table>
+      <p class="hint">«В архив» вместо удаления: история операций ссылается на кар и должна оставаться читаемой.</p>`) +
+    panel('Места стоянки', `
+      <div class="row-actions" style="margin-bottom:10px;flex-wrap:wrap">
+        ${LOCS.map(l => `<span class="badge" style="font-size:12px;padding:6px 10px">${esc(l.name)}
+          ${ed ? `<button data-locdel="${l.id}" style="background:none;border:none;cursor:pointer;color:#a02020;font-weight:800;margin-left:4px">✕</button>` : ''}</span>`).join('')}
+      </div>
+      ${ed ? `<div style="display:flex;gap:8px;max-width:520px">
+        <input type="text" id="loc-new" placeholder="Новое место (например: Парковка у корпуса B)" maxlength="160">
+        <button class="btn btn-sm" id="loc-add">+ Добавить</button></div>
+      <p class="hint">Удаление места, указанного у активного кара, сервер отклонит (409) — как сейчас.</p>` : ''}`);
+}
+function carModal(c) {
+  openModal({
+    title: c ? 'Кар ' + c.no : 'Новый кар',
+    subtitle: c ? '' : 'Новый кар создаётся свободным и без места стоянки — место укажут при первом возврате',
+    body: `<div class="grid-2">
+        <label class="field"><span>Номер</span><input type="text" id="c-no" value="${esc(c ? c.no : '')}" placeholder="CAR-07"></label>
+        <label class="field"><span>Модель / вместимость</span><input type="text" id="c-model" value="${esc(c ? c.model : '')}" placeholder="4-местный"></label></div>
+      <label class="field"><span>Место стоянки</span><select id="c-loc"><option value="">— не указано —</option>
+        ${LOCS.map(l => `<option ${c && c.loc === l.name ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>Заметка (неисправность и пр.)</span><input type="text" id="c-note" value="${esc(c ? c.note : '')}"></label>`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-s>Сохранить</button>`,
+    onMount(bd) {
+      bd.querySelector('[data-c]').onclick = () => closeModal(bd);
+      bd.querySelector('[data-s]').onclick = () => {
+        const no = bd.querySelector('#c-no').value.trim();
+        if (!no) return toast('Введите номер', 'warn');
+        if (!c && CARS.some(x => x.no.toLowerCase() === no.toLowerCase())) return toast('Кар с таким номером уже есть', 'err');
+        const model = bd.querySelector('#c-model').value.trim() || '—';
+        const loc = bd.querySelector('#c-loc').value || null;
+        const noteV = bd.querySelector('#c-note').value.trim();
+        if (c) { Object.assign(c, { no, model, loc, note: noteV }); toast('Кар сохранён'); }
+        else { CARS.push({ id: nid(), no, model, status: 'free', holder: null, charge: 100, loc, note: noteV }); toast('Кар добавлен в парк — свободен, без держателя'); }
+        closeModal(bd); render();
+      };
+    },
+  });
+}
+function bindCarsSettings(host) {
+  const tc = $('#to-cars-ops', host); if (tc) tc.onclick = () => go('cars', null, { toastMsg: 'Обратно в операционный раздел «Электрокары»' });
+  const ca = $('#car-add', host); if (ca) ca.onclick = () => carModal(null);
+  $$('[data-cedit]', host).forEach(b => b.onclick = () => carModal(CARS.find(c => c.id === Number(b.dataset.cedit))));
+  $$('[data-carch]', host).forEach(b => b.onclick = () => {
+    const c = CARS.find(x => x.id === Number(b.dataset.carch));
+    confirmDialog(`Архивировать кар ${c.no}?`, 'Кар исчезнет из активного парка, история операций сохранится. Вернуть можно из архива (в разделе «Электрокары»).', () => {
+      c.status = 'archived'; c.holder = null; toast('Кар в архиве', 'warn'); render();
+    }, 'В архив');
+  });
+  const la = $('#loc-add', host);
+  if (la) la.onclick = () => {
+    const inp = $('#loc-new', host), n = inp.value.trim();
+    if (!n) return toast('Введите название места', 'warn');
+    if (LOCS.some(l => l.name.toLowerCase() === n.toLowerCase())) return toast('Такое место уже есть', 'err');
+    LOCS.push({ id: nid(), name: n }); inp.value = ''; toast('Место добавлено'); render();
+  };
+  $$('[data-locdel]', host).forEach(b => b.onclick = () => {
+    const l = LOCS.find(x => x.id === Number(b.dataset.locdel));
+    const busy = CARS.filter(c => c.loc === l.name && c.status !== 'archived');
+    if (busy.length) return toast(`409: место указано у активного кара (${busy.map(c => c.no).join(', ')}) — сначала освободите его`, 'err', 4200);
+    confirmDialog(`Удалить место «${l.name}»?`, 'Прошлые возвраты хранят место текстом — история не сломается.', () => {
+      LOCS = LOCS.filter(x => x.id !== l.id); CARS.forEach(c => { if (c.loc === l.name) c.loc = null; });
+      toast('Место удалено', 'warn'); render();
+    }, 'Удалить');
+  });
+}
+
+/* ── остальные экраны Настроек (заглушки) ── */
+function screenStub(id) {
+  const STUBS = {
+    calc: ['Расчёт', 'Шаг округления, лимит опоздания, период, банк часов — как в текущем приложении.', ['Экран группы «Расчёт»: математика движка v7.1, версии справочников с diff и датой применения.']],
+    pay: ['Правила оплаты', 'Карточки модификаторов, переопределения 7 уровней, «Проверитель» — без изменений.', ['То, что определяет деньги — первый класс, как и сейчас.']],
+    codes: ['Коды Табеля', 'Список кодов: пилюля + название + «Изменить» — без изменений (упрощение 18.10.2026).'],
+    calendar: ['Календарь правил', 'Дни двойной оплаты и ВИП-периоды слоями по дням — без изменений.'],
+    groups: ['Группы и графики', 'Блоки, базовый цикл объекта, опорная дата — без изменений.', ['Значение рабочего дня — в карточке сотрудника (решение 18.10.2026).']],
+    shifts: ['Смены и отсутствия', 'Словарь ячеек Графика: смены, системное отсутствие «Отпросился» — без изменений.'],
+    docs: ['Документы и справочники', 'Реквизиты, виды заявлений и бланки, департаменты и подразделения, прочие правила объекта.',
+      ['Внимание: «Службы / подразделения» здесь — справочник <code>subdivisions</code> из карточки сотрудника. Ответственные службы обхода (<code>responsibility_services</code>) — экран «Ночной обход». В названиях экранов это различие должно быть очевидно (предложение: «Подразделения» здесь, «Ответственные службы» там).']],
+    notify: ['Чаты и Почта', 'Токен Telegram, каталог чатов (getUpdates), почта MS Exchange, шаблоны сообщений, журнал отправок — общий слой доставки.',
+      ['Группа «Доставка»: транспорт один на приложение. Выбор чата конкретной службой — на экране «Ночной обход» (карточка службы), чтобы не гонять пользователя между разделами.']],
+    access: ['Права доступа', 'Гранты ролям, группам и индивидуально; deny сильнее allow; админ всегда сохраняет access.manage.',
+      ['Переехал из верхнего меню в группу «Администрирование» — пункт меню больше не дублируется.', 'Здесь же выдаётся новое право <code>night.edit</code> (например, супервайзеру — по умолчанию выдано).']],
+    audit: ['Журнал аудита', 'Кто, что, когда: изменения настроек, справочников, отметок, операции с карами.',
+      ['Переехал из верхнего меню в группу «Администрирование». Записи car_create / zone_update / item_update пишутся и сейчас — концепт их не меняет.']],
+    system: ['Система', 'Диагностика схемы БД, версия, бэкапы, лимиты медиа — без изменений.'],
+    expert: ['Режим эксперта (JSON)', 'Сырой JSON справочников движка с валидацией — без изменений.'],
+  };
+  const [t, d, b] = STUBS[id] || [id, '', []];
+  return stubScreen(t, d, b || []);
+}
+
+/* ── оболочка Настроек ── */
+function viewSettings() {
+  navSeen.clear();
+  const screens = visibleScreens();
+  if (!screens.some(s => s.id === state.screen)) state.screen = (screens[0] || {}).id || 'overview';
+  const counters = {
+    night: { n: ZONES.length }, cars: { n: CARS.length },
+    pay: { n: 12 }, codes: { n: 17 }, shifts: { n: 6 }, calendar: { n: 3 },
+  };
+  const bad = healthChecks().filter(c => c.level !== 'ok').length;
+  if (bad) counters.overview = { n: bad, bad: true };
+  let lastGroup = null;
+  const nav = screens.map(s => {
+    let g = '';
+    const idx = SETTINGS_SCREENS.findIndex(x => x.id === s.id);
+    for (let i = idx - 1; i >= 0; i--) { if (SETTINGS_SCREENS[i].group !== undefined) { g = SETTINGS_SCREENS[i].group; break; } }
+    if (g !== lastGroup) { lastGroup = g; }
+    const c = counters[s.id];
+    return { ...s, groupHeader: g, c };
+  });
+  const navHtml = nav.map(s => `${s.groupHeader !== undefined && !navSeen.has(s.groupHeader) ? navGroup(s) : ''}${navItem(s)}`).join('');
+  return `<div class="page-head"><div><h2>Настройки</h2>
+      <div class="sub">Единый центр конфигурации объекта: расчёт и деньги · персонал и смены · объект (обход, парк) · доставка · администрирование.
+        Каждый экран имеет адрес <code>#/settings/&lt;экран&gt;</code></div></div>
+    <div class="spacer"></div>
+    <span class="settings-search">Поиск по настройкам… <kbd>⌘K</kbd></span></div>
+  ${state.notes ? note('<b>Меню 9 → 7 пунктов.</b> «Права доступа» и «Журнал аудита» больше не живут в верхнем меню — они в группе «Администрирование» (и сейчас уже продублированы там как ссылки). Новая группа <b>«Объект»</b> собрала то, что было разбросано: ночной справочник (модалка в «Ночном отчёте»), парк и места (кнопки в «Электрокарах»). Пункт «Настройки» виден, если есть право хотя бы на один экран — как «График» сейчас.') : ''}
+  <div class="settings-layout">
+    <nav class="settings-nav">${navHtml}
+      <div class="nav-foot2">Движок v7.1 · версия справочников #24<br>действует с 16.10.2026<br>
+        ${bad ? `<b style="color:var(--danger)">замечаний конфигурации: ${bad}</b>` : 'конфигурация здорова'}</div></nav>
+    <div class="settings-body" id="st-body">${renderScreen()}</div></div>`;
+}
+const navSeen = new Set();
+function navGroup(s) { navSeen.add(s.groupHeader); return s.groupHeader ? `<div class="nav-group">${esc(s.groupHeader)}${s.groupHeader === 'Объект' ? '<span class="nb">новое</span>' : ''}</div>` : ''; }
+function navItem(s) {
+  const c = s.c;
+  return `<button class="nav-item${s.id === state.screen ? ' active' : ''}" data-st="${s.id}">
+    ${svg(SICONS[s.icon] || '')}<span>${esc(s.title)}${s.isNew ? '<span class="nb">новое</span>' : s.moved ? '<span class="nb" style="background:#e4eef1;color:#1d6e80">перенесено</span>' : ''}</span>
+    ${c ? `<span class="cnt${c.bad ? ' bad' : ''}">${c.n}</span>` : ''}</button>`;
+}
+function renderScreen() {
+  const s = SETTINGS_SCREENS.find(x => x.id === state.screen);
+  if (!s) return '';
+  switch (s.id) {
+    case 'overview': return screenOverview();
+    case 'night': return screenNight();
+    case 'cars': return screenCars();
+    default: return screenStub(s.id);
+  }
+}
+function bindSettings(host) {
+  $$('[data-st]', host).forEach(b => b.onclick = () => { state.screen = b.dataset.st; state.stNight.areaId = null; go('settings', state.screen); });
+  $('.settings-search', host) && ($('.settings-search', host).onclick = () => toast('Прототип: поиск ⌘K работает по всем экранам, включая новые (индекс строится из реестра)', 'warn'));
+  if (state.screen === 'night') bindNightSettings(host);
+  if (state.screen === 'cars') bindCarsSettings(host);
+}
+
+/* ═══════════════════════ песочница прав ═══════════════════════ */
+function openSandbox() {
+  const cur = perms();
+  const rows = PERM_CATALOG.map(p => `
+    <div class="item-row"><div class="ord">${p.isNew ? '<span class="nb" style="margin:0">new</span>' : ''}</div>
+      <div><div class="txt">${esc(p.title)}</div><div class="sub"><code>${esc(p.key)}</code> · ${esc(p.sec)}</div></div>
+      <label class="chk"><input type="checkbox" data-perm="${esc(p.key)}" ${cur.has(p.key) ? 'checked' : ''}></label></div>`).join('');
+  openModal({
+    title: 'Песочница прав', wide: true,
+    subtitle: `Роль: ${ROLES[state.role].title}. В приложении это «Настройки → Администрирование → Права доступа»: гранты ролям, группам и индивидуально (deny сильнее allow). Попробуйте выдать батлеру settings.view или снять с супервайзера night.edit — интерфейс перерисуется сразу.`,
+    body: `<div class="panel" style="box-shadow:none;margin:0">${rows}</div>
+      <p class="hint">Новый ключ <code>night.edit</code> заменяет ролевую проверку <code>is_manager</code> у справочника ночного обхода: по умолчанию выдан админу, менеджеру и супервайзеру — поведение не меняется, но право становится управляемым.</p>`,
+    footer: `<button class="btn btn-ghost" data-reset>Сбросить к базовым правам роли</button><button class="btn btn-primary" data-done>Готово</button>`,
+    onMount(bd) {
+      $$('[data-perm]', bd).forEach(ch => ch.onchange = () => {
+        if (!state.overrides[state.role]) state.overrides[state.role] = new Set(ROLE_DEFAULTS[state.role]);
+        const set = state.overrides[state.role];
+        if (ch.checked) set.add(ch.dataset.perm); else set.delete(ch.dataset.perm);
+        render();
+      });
+      bd.querySelector('[data-reset]').onclick = () => { delete state.overrides[state.role]; closeModal(bd); toast('Права роли сброшены к базовым'); render(); };
+      bd.querySelector('[data-done]').onclick = () => closeModal(bd);
+    },
+  });
+}
+
+/* ═══════════════════════ заметки концепта ═══════════════════════ */
+function openNotes() {
+  openModal({
+    title: 'Заметки концепта', wide: true,
+    subtitle: 'Что предлагается изменить — коротко. Подробности: docs/PROPOSAL-SETTINGS-IA-2026-10-19.md',
+    body: `<div class="panel" style="box-shadow:none;margin:0">
+      <div class="item-row"><div class="ord">1</div><div><div class="txt">Меню: 9 → 7 пунктов</div><div class="sub">«Права доступа» и «Журнал аудита» переехали в Настройки → «Администрирование» (сейчас они и меню, и там — дублирование).</div></div></div>
+      <div class="item-row"><div class="ord">2</div><div><div class="txt">Группы Настроек: Расчёт · Персонал и смены · Объект · Доставка · Администрирование</div><div class="sub">Новая группа «Объект» собрала справочники, разбросанные по разделам.</div></div></div>
+      <div class="item-row"><div class="ord">3</div><div><div class="txt">«Ночной обход» — экран master-detail вместо модалки с 4 вкладками</div><div class="sub">Зоны слева; объекты и шаблон чек-листа справа; службы — вкладка экрана. Desktop-first: с телефона правки не делают (решение владельца).</div></div></div>
+      <div class="item-row"><div class="ord">4</div><div><div class="txt">«Электрокары» — парк и места стоянки в Настройках</div><div class="sub">Раздел «Электрокары» остаётся рабочим местом: взять / вернуть / передать. Новый кар — без места (место задаётся при возврате).</div></div></div>
+      <div class="item-row"><div class="ord">5</div><div><div class="txt">Deep-link вместо дублей</div><div class="sub">Кнопки «Справочник», «+ Кар», «Места» в операционных разделах ведут на экраны Настроек — единственное место правки.</div></div></div>
+      <div class="item-row"><div class="ord">6</div><div><div class="txt">Право night.edit вместо ролевого is_manager</div><div class="sub">Единственное место в системе, где доступ решался ролью, а не ключом права. Базово — у админа/менеджера/супервайзера (поведение не меняется), выдаётся через «Права доступа».</div></div></div>
+      <div class="item-row"><div class="ord">7</div><div><div class="txt">Плашка «применится со следующей смены»</div><div class="sub">Отчёт снимает чек-листы снимком при создании — правки не влияют на идущую смену. Теперь это видно пользователю.</div></div></div>
+      <div class="item-row"><div class="ord">8</div><div><div class="txt">«Обзор» проверяет и новые справочники</div><div class="sub">APP-NIGHT-ZONE-NO-TEMPLATE, APP-SVC-NO-CHANNEL, APP-CAR-NO-LOC — механизм health уже есть.</div></div></div>
+      <div class="item-row"><div class="ord">9</div><div><div class="txt">Телефон = батлер: интерфейс поля не меняется</div><div class="sub">Плюс маленькое улучшение: открывать приложение на «Моих отметках» (после 20:00 — «Ночной отчёт»), а не на «Графике».</div></div></div>
+    </div>`,
+    footer: '<button class="btn btn-primary" data-ok>Понятно</button>',
+    onMount(bd) { bd.querySelector('[data-ok]').onclick = () => closeModal(bd); },
+  });
+}
+
+/* ═══════════════════════ телефон ═══════════════════════ */
+function renderPhone() {
+  const tabs = visibleTabs().slice(0, 5);
+  if (!tabs.some(t => t.id === state.view)) state.view = state.role === 'butler' ? 'me' : (tabs[0] || {}).id;
+  $('#ph-sub').textContent = ROLES[state.role].title.toLowerCase() + ' · в поле';
+  $('#ph-tabs').innerHTML = tabs.map(t =>
+    `<button data-pt="${t.id}" class="${state.view === t.id ? 'active' : ''}">${ICONS[t.id] || ICONS.me}<span>${esc(t.title)}</span></button>`).join('');
+  $$('#ph-tabs button').forEach(b => b.onclick = () => { state.view = b.dataset.pt; render(); });
+  const host = $('#ph-body');
+  if (state.view === 'settings') {
+    host.innerHTML = `<div class="banner gold" style="margin-top:40px"><span>🖥</span><span><b>Настройки спроектированы для компьютера</b> (решение владельца 19.10.2026): мастер-детейл, широкие таблицы. С телефона — только просмотр в крайнем случае.</span></div>
+      <button class="btn btn-primary btn-block" id="ph-to-desktop">Открыть компьютерный вид</button>`;
+    $('#ph-to-desktop').onclick = () => { state.device = 'desktop'; render(); };
+    return;
+  }
+  const html = VIEW_FNS[state.view] ? VIEW_FNS[state.view]() : '<div class="empty">Раздел недоступен</div>';
+  host.innerHTML = html;
+  BIND_FNS[state.view] && BIND_FNS[state.view](host);
+}
+
+/* ═══════════════════════ диспетчер ═══════════════════════ */
+const VIEW_FNS = {
+  grafik: viewGrafik, marks: viewMarks, employees: viewEmployees, me: viewMe,
+  night: viewNight, cars: viewCars, settings: viewSettings,
+};
+const BIND_FNS = { me: bindMe, night: bindNightOps, cars: bindCarsOps, settings: bindSettings };
+
+function render() {
+  renderTopbar();
+  $('#app-desktop').classList.toggle('hidden', state.device !== 'desktop');
+  $('#app-phone').classList.toggle('hidden', state.device !== 'phone');
+  document.body.classList.toggle('notes-off', !state.notes);
+  if (state.device === 'phone') { renderPhone(); return; }
+  /* ушли с телефона — гасим его DOM, чтобы не жил устаревший контент */
+  $('#ph-body').innerHTML = ''; $('#ph-tabs').innerHTML = '';
+
+  /* левое меню */
+  const tabs = visibleTabs();
+  if (!tabs.some(t => t.id === state.view)) state.view = (tabs[0] || {}).id || 'me';
+  $('#sidenav').innerHTML = tabs.map(t =>
+    `<button class="nav-item${state.view === t.id ? ' active' : ''}" data-view="${t.id}">${ICONS[t.id]}<span>${esc(t.title)}</span></button>`).join('') +
+    `<div class="nav-foot">Концепт 19.10.2026<br>меню: ${tabs.length} из 7<br>телефон — батлеру,<br>компьютер — менеджменту</div>`;
+  $$('#sidenav [data-view]').forEach(b => b.onclick = () => go(b.dataset.view));
+
+  /* контент */
+  const main = $('#main');
+  main.innerHTML = VIEW_FNS[state.view] ? VIEW_FNS[state.view]() : '<div class="empty">Раздел не найден</div>';
+  BIND_FNS[state.view] && BIND_FNS[state.view](main);
+  main.scrollTop = 0;
+}
+
+/* ═══════════════════════ старт ═══════════════════════ */
+$('#btn-sandbox').onclick = openSandbox;
+$('#btn-notes').onclick = openNotes;
+$('#btn-hints').onclick = () => { state.notes = !state.notes; render(); };
+parseHash();
+if (!location.hash) location.hash = '#/settings/overview';
+render();
+</script>
+</body>
+</html>

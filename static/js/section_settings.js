@@ -1,12 +1,16 @@
 /* ══════════════════════════════════════════════════════════════════════
    РАЗДЕЛ «НАСТРОЙКИ» — область с под-разделами.
 
-   Реализация целевой информационной архитектуры из
-   docs/SETTINGS-UI-PROPOSAL-2026-10-12.md (ред. 5): вместо одной длинной страницы
-   из 8 панелей — под-навигация по группам («Расчёт», «Справочники объекта»,
-   «Служебное»), hash-адрес каждого экрана (#/settings/pay), поиск (⌘K), экран
-   «Обзор» со здоровьем конфигурации, формы вместо JSON и черновик версии
-   справочников с diff и честным показом даты применения.
+   Реализация целевой информационной архитектуры (ред. 19.10.2026 —
+   docs/PROPOSAL-SETTINGS-IA-2026-10-19.md, развитие SETTINGS-UI-PROPOSAL-2026-10-12):
+   единый центр конфигурации объекта. Под-навигация по группам («Расчёт»,
+   «Персонал и смены», «Объект», «Доставка», «Администрирование»), hash-адрес
+   каждого экрана (#/settings/pay), поиск (⌘K), экран «Обзор» со здоровьем
+   конфигурации, формы вместо JSON и черновик версии справочников с diff.
+   В группу «Объект» переехали справочники из операционных разделов: ночной
+   обход (зоны/объекты/чек-листы/службы — право night.edit) и электрокары
+   (парк/места стоянки — право cars.manage); «Права доступа» и «Журнал аудита»
+   убраны из верхнего меню и открываются из группы «Администрирование».
 
    Порядок экранов — по частоте обращений и цене ошибки, а не по порядку таблиц БД.
    Правила оплаты (то, что определяет деньги) — первый класс: карточки модификаторов,
@@ -34,30 +38,52 @@ const SETTINGS_ICONS = {
   shield: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9.4 12.2l1.9 1.9 3.4-3.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   list: '<path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 11h7M9 15h7M9 7h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
   mail: '<rect x="3" y="5.5" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.8 7l8.2 6 8.2-6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
+  moon: '<path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
+  car: '<path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/>',
 };
 
-/* Состав раздела. `external` — переход в самостоятельную вкладку приложения
-   (права и аудит не дублируются: у них свои разделы и свои права). */
+/* Состав раздела (ред. 19.10.2026 — единый центр конфигурации,
+   docs/PROPOSAL-SETTINGS-IA-2026-10-19.md): группы «Расчёт», «Персонал и смены»,
+   «Объект» (ночной обход, электрокары, документы), «Доставка», «Администрирование».
+   Экраны группы «Объект» реализованы в файлах своих разделов (renderNightDictScreen —
+   section_night.js, renderCarsDictScreen — section_cars.js; порядок подключения
+   в index.html это гарантирует): справочник один, а код рядом со своим доменом.
+   `external` — переход в самостоятельный view приложения: «Права доступа» и
+   «Журнал аудита» убраны из верхнего меню (19.10.2026) и открываются отсюда.
+   `perm` — право ВИДИМОСТИ экрана; право правки экраны проверяют сами
+   (night.edit, cars.manage, settings.edit). */
 const SETTINGS_SCREENS = [
-  { group: 'Расчёт' },
   { id: 'overview', title: 'Обзор', icon: 'home', render: settingsScreenOverview },
+  { group: 'Расчёт' },
   { id: 'calc', title: 'Расчёт', icon: 'calc', render: settingsScreenCalc, edit: true },
   { id: 'pay', title: 'Правила оплаты', icon: 'money', render: settingsScreenPay },
   { id: 'codes', title: 'Коды Табеля', icon: 'codes', render: settingsScreenCodes, edit: true },
-  { id: 'groups', title: 'Группы и графики', icon: 'people', render: settingsScreenGroups, edit: true },
   { id: 'calendar', title: 'Календарь правил', icon: 'cal', render: settingsScreenCalendar },
-  { group: 'Справочники объекта' },
+  { group: 'Персонал и смены' },
+  { id: 'groups', title: 'Группы и графики', icon: 'people', render: settingsScreenGroups, edit: true },
   { id: 'shifts', title: 'Смены и отсутствия', icon: 'shift', render: settingsScreenShifts, edit: true },
+  { group: 'Объект' },
+  { id: 'night', title: 'Ночной обход', icon: 'moon', render: renderNightDictScreen, perm: 'night.view' },
+  { id: 'cars', title: 'Электрокары', icon: 'car', render: renderCarsDictScreen, perm: 'cars.view' },
   { id: 'docs', title: 'Документы и справочники', icon: 'doc', render: settingsScreenDocs, edit: true },
-  { group: 'Служебное' },
+  { group: 'Доставка' },
   { id: 'notify', title: 'Чаты и Почта', icon: 'mail', render: settingsScreenNotify, perm: 'settings.edit' },
-  { id: 'system', title: 'Система', icon: 'gear', render: settingsScreenSystem },
-  { id: 'expert', title: 'Режим эксперта (JSON)', icon: 'code', render: settingsScreenExpert, edit: true },
+  { group: 'Администрирование' },
   { id: 'access', title: 'Права доступа', icon: 'shield', external: 'access', perm: 'access.manage' },
   { id: 'audit', title: 'Журнал аудита', icon: 'list', external: 'audit', perm: 'audit.view' },
+  { id: 'system', title: 'Система', icon: 'gear', render: settingsScreenSystem },
+  { id: 'expert', title: 'Режим эксперта (JSON)', icon: 'code', render: settingsScreenExpert, edit: true },
 ];
-const SETTINGS_IDS = SETTINGS_SCREENS.filter(s => s.id && !s.external).map(s => s.id);
 const SETTINGS_TITLES = Object.fromEntries(SETTINGS_SCREENS.filter(s => s.id).map(s => [s.id, s.title]));
+
+/* Открыть конкретный экран Настроек из другого раздела (deep-link 19.10.2026):
+   «Справочник» в «Ночном отчёте» и «+ Кар»/«Места» в «Электрокарах» больше не
+   открывают свои модалки — единственное место правки справочника здесь.
+   Hash читает loadSettings при входе в раздел. */
+function settingsOpen(screenId) {
+  location.hash = `#/settings/${screenId}`;
+  navigate('settings');
+}
 
 /* Карточки модификаторов CFG-MODIFIERS: что делает правило, пример и ссылка на норму.
    Тексты — из спецификации v7.1 (5.2, CFG-MODIFIERS, CFG-WEIGHTS), не из кода. */
@@ -184,17 +210,31 @@ function settingsFail(host, e) {
 }
 
 /* ─────────────────────────── оболочка раздела ─────────────────────────── */
+function settingsScreenAllowed(id) {
+  /* id обязателен: у записей групп ({ group: … }) его нет, и find по undefined
+     матчил бы группу — экран «undefined» вместо «Обзора» (найдено сценарием) */
+  if (!id) return false;
+  const item = SETTINGS_SCREENS.find(s => s.id === id);
+  return !!item && !item.external && (!item.perm || can(item.perm));
+}
+
 async function loadSettings() {
   const host = $('#view-settings');
   if (!host) return;
   host.innerHTML = '<div class="empty">Загрузка…</div>';
   try {
-    settingsUI.data = await api('/api/settings');
-  } catch (e) { settingsFail(host, e); return; }
+    settingsUI.data = await api('/api/settings', { silent: true });
+  } catch (e) {
+    /* Данные раздела недоступны (например, пункту «Настройки» хватит права
+       access.manage/audit.view — а /api/settings требует settings.view): оболочку
+       всё равно рисуем, external-экраны работают без данных, остальные покажут
+       свою ошибку в теле (19.10.2026). */
+    settingsUI.data = null;
+  }
 
   const fromHash = (location.hash.match(/^#\/settings\/([a-z-]+)/) || [])[1];
-  const screen = SETTINGS_IDS.includes(fromHash) ? fromHash
-    : (SETTINGS_IDS.includes(settingsUI.screen) ? settingsUI.screen : 'overview');
+  const screen = settingsScreenAllowed(fromHash) ? fromHash
+    : (settingsScreenAllowed(settingsUI.screen) ? settingsUI.screen : 'overview');
   settingsUI.screen = screen;
   if (!settingsUI.calYear) { settingsUI.calYear = state.year; settingsUI.calMonth = state.month; }
   settingsBindSearch();
@@ -254,6 +294,7 @@ function settingsGo(id) {
   const item = SETTINGS_SCREENS.find(s => s.id === id);
   if (!item) return;
   if (item.external) { navigate(item.external); return; }
+  if (item.perm && !can(item.perm)) { toast(`Нет права на экран «${item.title}»`, 'warn'); return; }
   if (settingsDirty() && id !== settingsUI.screen) {
     confirmDialog('Черновик не опубликован',
       'В справочниках есть несохранённые изменения. Перейти на другой экран и потерять черновик?',
@@ -268,7 +309,10 @@ function settingsGo(id) {
 async function settingsRenderScreen() {
   const body = $('#st-body');
   if (!body) return;
-  const item = SETTINGS_SCREENS.find(s => s.id === settingsUI.screen) || SETTINGS_SCREENS[1];
+  /* fallback — «Обзор», а не SETTINGS_SCREENS[1]: после перегруппировки (19.10.2026)
+     под этим индексом может оказаться запись группы без render */
+  const item = SETTINGS_SCREENS.find(s => s.id && s.id === settingsUI.screen)
+    || SETTINGS_SCREENS.find(s => s.id === 'overview');
   settingsUI.screen = item.id;
   if (history.replaceState) history.replaceState(null, '', `#/settings/${item.id}`);
   $$('#st-nav [data-st]').forEach(b => b.classList.toggle('active', b.dataset.st === item.id));
@@ -2029,6 +2073,17 @@ function settingsSearchIndex() {
     out.push({ title: 'Порядок каскада и размещения', hint: 'CFG-CASCADE, CFG-PLACEMENT', screen: 'calc' });
   }
   SETTINGS_MODS.forEach(m => out.push({ title: m.title, hint: m.what, screen: 'pay' }));
+  /* Справочники группы «Объект» (19.10.2026) — статические записи: содержимое
+     экраны подгружают сами, а найти их поиском можно уже отсюда. */
+  if (can('night.view')) {
+    out.push({ title: 'Зоны ночного обхода', hint: 'справочник обхода: зоны, объекты', screen: 'night' });
+    out.push({ title: 'Чек-листы зон', hint: 'шаблон зоны и индивидуальные пункты объекта', screen: 'night' });
+    out.push({ title: 'Ответственные службы', hint: 'получатели недостатков: чат и почта', screen: 'night' });
+  }
+  if (can('cars.view')) {
+    out.push({ title: 'Парк электрокаров', hint: 'кары: карточка, архив', screen: 'cars' });
+    out.push({ title: 'Места стоянки', hint: 'справочник мест электрокаров', screen: 'cars' });
+  }
   (settingsUI.data?.items || []).forEach(i => out.push({
     title: i.description || i.key, hint: `прочие правила объекта · ${i.key}`, screen: 'docs' }));
   (state.shiftTypes || []).forEach(s => out.push({

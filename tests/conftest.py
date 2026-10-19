@@ -188,13 +188,25 @@ def open_shift(db, freeze):
 
     Если отчёт за сегодня уже создан другим тестом, мы его не удаляем — только
     возвращаем прежний статус и убираем файлы, загруженные этим тестом.
+
+    ГЕРМЕТИЧНОСТЬ (19.10.2026): когда прогон идёт во время НАСТОЯЩЕЙ ночной смены
+    (после 20:00 времени объекта), ``sync_reports(force=True)`` при старте
+    приложения создаёт отчёт за сегодня РАНЬШЕ первого open_shift — фикстура
+    переиспользует его (created=False) и не удаляет в teardown, поэтому отметки,
+    отправки и закрытые объекты предыдущих тестов протекали в следующие
+    (dispatch находил «всё уже отправлено», выборочная отправка получала 422 на
+    пустом списке). Днём отчёт создаёт сама фикстура и удаляет его — сброс просто
+    no-op. Перед yield отчёт приводится к состоянию «смена началась, никто ничего
+    не отмечал»: секции свободны, ответы и отправки сняты, перехваты и ночные
+    отметки каров удалены. Все потребители сегодняшнего отчёта
+    (media_video, dispatch, export_v2, services) размечают свои пункты сами.
     """
     import datetime as dt
     from contextlib import contextmanager as _cm
 
     from sqlalchemy import select
 
-    from app.models import NightAreaSection, NightCheckItem, NightReport, Photo
+    from app.models import CarNightCheck, NightAreaSection, NightCheckItem, NightInterception, NightReport, Photo
     from app.night import ensure_report
     from app.photos import unlink_photo
 
@@ -208,6 +220,32 @@ def open_shift(db, freeze):
         assert rep is not None, "отчёт смены не создан"
         created = existed is None
         rep.status, rep.closed_at = "open", None        # тесту нужен открытый отчёт
+        rep.close_reason, rep.result, rep.cars_step_done = "", "", False
+        # сброс к «чистой смене» — см. докстринг (герметичность при прогоне ночью)
+        secs = list(db.scalars(select(NightAreaSection)
+                               .where(NightAreaSection.report_id == rep.id)))
+        for sec in secs:
+            sec.taken_by, sec.taken_by_name, sec.taken_at = None, "", None
+            sec.status, sec.closed_at, sec.closed_by = "free", None, None
+        sec_ids = [s.id for s in secs]
+        if sec_ids:
+            items = list(db.scalars(select(NightCheckItem)
+                                    .where(NightCheckItem.section_id.in_(sec_ids))))
+            for p in db.scalars(select(Photo).where(
+                    Photo.kind == "night_item",
+                    Photo.ref_id.in_([i.id for i in items] or [0]))):
+                unlink_photo(p)
+                db.delete(p)
+            for it in items:
+                it.answer, it.comment = "", ""
+                it.answered_by, it.answered_by_name, it.answered_at = None, "", None
+                it.dispatch_id, it.dispatched_at = None, None
+        for row in db.scalars(select(NightInterception)
+                              .where(NightInterception.report_id == rep.id)):
+            db.delete(row)
+        for row in db.scalars(select(CarNightCheck)
+                              .where(CarNightCheck.report_id == rep.id)):
+            db.delete(row)
         db.commit()
         start = dt.datetime.now() - dt.timedelta(seconds=1)
         try:

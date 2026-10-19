@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
+from ..auth import Principal, audit, current_principal, require_supervisor
 from ..db import get_db
 from ..deps import now_local
 from ..models import (
@@ -46,7 +46,7 @@ from ..night import (
     sync_reports,
     zone_dict,
 )
-from ..permissions import require_perm
+from ..permissions import has_perm, require_perm
 from ..photos import delete_photo as delete_photo_usecase
 from ..photos import max_upload_bytes, photos_of, resolve_photo_file, save_photo
 
@@ -193,7 +193,7 @@ def list_areas(principal: Principal = Depends(require_perm("night.view")), db: S
                     "items": items, "items_total": len([i for i in items if i["active"]]),
                     # чек-лист объекта = шаблон зоны + свои пункты (v2)
                     "effective_total": zone_items + len([i for i in items if i["active"]])})
-    return {"areas": out, "can_edit": principal.is_manager}
+    return {"areas": out, "can_edit": has_perm(db, principal, "night.edit")}
 
 
 class AreaBulkIn(BaseModel):
@@ -205,7 +205,7 @@ class AreaBulkIn(BaseModel):
 
 
 @router.post("/areas/bulk")
-def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(require_manager),
+def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(require_perm("night.edit")),
                       db: Session = Depends(get_db)):
     """Массовое создание однотипных областей («Вилла VEG », 4001, 12 шт → 4001…4012)."""
     if payload.count < 1 or payload.count > 200:
@@ -226,7 +226,7 @@ def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(requir
 
 
 @router.post("/areas")
-def create_area(payload: AreaIn, principal: Principal = Depends(require_manager),
+def create_area(payload: AreaIn, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     name = payload.name.strip()
     if not name:
@@ -243,7 +243,7 @@ def create_area(payload: AreaIn, principal: Principal = Depends(require_manager)
 
 
 @router.put("/areas/{area_id}")
-def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(require_manager),
+def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     area = db.get(NightArea, area_id)
     if area is None:
@@ -266,7 +266,7 @@ def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(re
 
 
 @router.delete("/areas/{area_id}")
-def delete_area(area_id: int, principal: Principal = Depends(require_manager),
+def delete_area(area_id: int, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     """Удаление мягкое: активные отчёты пересоздаются со свежим снимком, история остаётся."""
     area = db.get(NightArea, area_id)
@@ -286,7 +286,7 @@ def delete_area(area_id: int, principal: Principal = Depends(require_manager),
 
 
 @router.post("/areas/{area_id}/items")
-def add_item(area_id: int, payload: ItemIn, principal: Principal = Depends(require_manager),
+def add_item(area_id: int, payload: ItemIn, principal: Principal = Depends(require_perm("night.edit")),
              db: Session = Depends(get_db)):
     area = db.get(NightArea, area_id)
     if area is None:
@@ -321,7 +321,7 @@ def add_item(area_id: int, payload: ItemIn, principal: Principal = Depends(requi
 
 
 @router.put("/items/{item_id}")
-def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(require_manager),
+def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     item = db.get(ChecklistItem, item_id)
     if item is None:
@@ -356,7 +356,7 @@ def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(re
 
 
 @router.delete("/items/{item_id}")
-def delete_item(item_id: int, principal: Principal = Depends(require_manager),
+def delete_item(item_id: int, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     """Мягкое удаление: в незакрытых областях пункт исчезает, в закрытых остаётся навечно."""
     item = db.get(ChecklistItem, item_id)
@@ -432,13 +432,14 @@ def list_zones(principal: Principal = Depends(require_perm("night.view")),
         .group_by(ZoneChecklistItem.zone_id)).all())
     zones = [zone_dict(z, areas_total=areas_cnt.get(z.id, 0), items_total=items_cnt.get(z.id, 0))
              for z in db.scalars(select(NightZone).order_by(NightZone.sort_order, NightZone.id))]
-    # can_edit — то же правило, что и у записи (require_manager → principal.is_manager):
-    # супервайзер входит в MANAGER_ROLES, поэтому справочник ему доступен
-    return {"zones": zones, "can_edit": principal.is_manager}
+    # can_edit — ключ night.edit из каталога прав (19.10.2026): раньше здесь была
+    # роль is_manager; базово право есть у admin/manager/supervisor, поведение то же,
+    # но теперь его можно выдать/снять грантом («Права доступа»)
+    return {"zones": zones, "can_edit": has_perm(db, principal, "night.edit")}
 
 
 @router.post("/zones")
-def create_zone(payload: ZoneIn, principal: Principal = Depends(require_manager),
+def create_zone(payload: ZoneIn, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     name = payload.name.strip()
     if not name:
@@ -454,7 +455,7 @@ def create_zone(payload: ZoneIn, principal: Principal = Depends(require_manager)
 
 
 @router.put("/zones/{zone_id}")
-def update_zone(zone_id: int, payload: ZoneIn, principal: Principal = Depends(require_manager),
+def update_zone(zone_id: int, payload: ZoneIn, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     zone = db.get(NightZone, zone_id)
     if zone is None:
@@ -481,7 +482,7 @@ def update_zone(zone_id: int, payload: ZoneIn, principal: Principal = Depends(re
 
 
 @router.delete("/zones/{zone_id}")
-def delete_zone(zone_id: int, principal: Principal = Depends(require_manager),
+def delete_zone(zone_id: int, principal: Principal = Depends(require_perm("night.edit")),
                 db: Session = Depends(get_db)):
     """Отключение зоны (мягкое): объекты и история смен сохраняются.
 
@@ -529,7 +530,7 @@ def zone_items(zone_id: int, principal: Principal = Depends(require_perm("night.
 
 @router.post("/zones/{zone_id}/items")
 def add_zone_item(zone_id: int, payload: ZoneItemIn,
-                  principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                  principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
     """Пункт шаблона зоны: попадает в чек-листы ВСЕХ объектов зоны.
 
     В открытых сменах пункт добавляется только к ещё НЕ начатым объектам
@@ -575,7 +576,7 @@ def _remove_zone_item_from_open(db: Session, item: ZoneChecklistItem) -> int:
 
 @router.put("/zone-items/{item_id}")
 def update_zone_item(item_id: int, payload: ZoneItemIn,
-                     principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                     principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
     """Правка пункта шаблона зоны: текст уезжает во все незакрытые снимки объектов зоны."""
     item = db.get(ZoneChecklistItem, item_id)
     if item is None:
@@ -610,7 +611,7 @@ def update_zone_item(item_id: int, payload: ZoneItemIn,
 
 
 @router.delete("/zone-items/{item_id}")
-def delete_zone_item(item_id: int, principal: Principal = Depends(require_manager),
+def delete_zone_item(item_id: int, principal: Principal = Depends(require_perm("night.edit")),
                      db: Session = Depends(get_db)):
     """Мягкое удаление пункта шаблона: в незакрытых сменах исчезает, в закрытых остаётся."""
     item = db.get(ZoneChecklistItem, item_id)
@@ -668,7 +669,7 @@ def area_checklist(area_id: int, principal: Principal = Depends(require_perm("ni
 
 @router.put("/areas/{area_id}/overrides/{zone_item_id}")
 def set_override(area_id: int, zone_item_id: int, payload: OverrideIn,
-                 principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                 principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
     """Индивидуальная правка пункта шаблона зоны у объекта (своя формулировка / отключить).
 
     Пустая формулировка и снятое отключение означают «как в шаблоне зоны» — запись
@@ -710,7 +711,7 @@ def set_override(area_id: int, zone_item_id: int, payload: OverrideIn,
 
 @router.delete("/areas/{area_id}/overrides/{zone_item_id}")
 def reset_override(area_id: int, zone_item_id: int,
-                   principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                   principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
     """Сброс правки: пункт у объекта снова как в шаблоне зоны."""
     area = db.get(NightArea, area_id)
     if area is None:
@@ -752,11 +753,11 @@ def list_services(principal: Principal = Depends(require_perm("night.view")),
             for s in db.scalars(select(ResponsibilityService)
                                 .order_by(ResponsibilityService.sort_order,
                                           ResponsibilityService.id))]
-    return {"services": rows, "can_edit": principal.is_manager}
+    return {"services": rows, "can_edit": has_perm(db, principal, "night.edit")}
 
 
 @router.post("/services")
-def create_service(payload: ServiceIn, principal: Principal = Depends(require_manager),
+def create_service(payload: ServiceIn, principal: Principal = Depends(require_perm("night.edit")),
                    db: Session = Depends(get_db)):
     name = payload.name.strip()[:160]
     if not name:
@@ -778,7 +779,7 @@ def create_service(payload: ServiceIn, principal: Principal = Depends(require_ma
 
 @router.put("/services/{service_id}")
 def update_service(service_id: int, payload: ServiceIn,
-                   principal: Principal = Depends(require_manager),
+                   principal: Principal = Depends(require_perm("night.edit")),
                    db: Session = Depends(get_db)):
     """Правка службы: новое название уходит в незакрытые смены, в закрытых остаётся старое."""
     svc = db.get(ResponsibilityService, service_id)
@@ -817,7 +818,7 @@ def update_service(service_id: int, payload: ServiceIn,
 
 
 @router.delete("/services/{service_id}")
-def delete_service(service_id: int, principal: Principal = Depends(require_manager),
+def delete_service(service_id: int, principal: Principal = Depends(require_perm("night.edit")),
                    db: Session = Depends(get_db)):
     """Отключение службы (не удаление): пункты и история закрытых смен остаются как были.
 

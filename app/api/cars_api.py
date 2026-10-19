@@ -192,8 +192,10 @@ def park(db: Session = Depends(get_db), principal: Principal = Depends(require_p
                               if c["holder_user_id"] == principal.user.id), None),
                "free_recommended": free.id if free else None,
                "assigned": next((c["id"] for c in cars if c["assigned_to"] == principal.employee.id), None)}
+    # can_manage — по ключу cars.manage (как в /meta), а не по роли: иначе интерфейс
+    # показывал бы кнопки правки тому, кому сервер ответит 403 (19.10.2026)
     return {"cars": cars, "me": mine,
-            "can_manage": principal.is_manager}
+            "can_manage": "cars.manage" in principal_permissions(db, principal)}
 
 
 @router.post("")

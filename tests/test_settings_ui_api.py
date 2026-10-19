@@ -88,9 +88,11 @@ class TestHealth(unittest.TestCase):
         chk = [c for c in d["checks"] if c["code"].startswith("CHK-")]
         self.assertEqual(chk, [], [c["text"] for c in chk])
         for c in d["checks"]:
+            # night/cars — экраны группы «Объект» (19.10.2026): справочник ночного
+            # обхода и парк переехали в «Настройки», health-сверки ведут на них
             self.assertIn(c["screen"], {"overview", "calc", "pay", "codes", "groups",
                                         "shifts", "docs", "system", "expert",
-                                        "employees"})
+                                        "employees", "night", "cars"})
             self.assertIn(c["level"], ("error", "warn"))
             self.assertTrue(c["text"].strip())
 

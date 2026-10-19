@@ -375,6 +375,45 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
             out.append({"code": "APP-CODE-NO-WINDOW", "level": "warn", "screen": "codes",
                         "text": (f"Код «{code}» несёт часы, но у него нет ни одного окна "
                                  f"(значения Табеля) — строку с таким кодом не сохранить")})
+
+    # Справочники группы «Объект» (19.10.2026): ночной обход переехал в «Настройки»,
+    # поэтому «Обзор» покрывает и его — пустой шаблон зоны и службы без канала доставки.
+    # Места стоянки у каров НЕ проверяем: новый кар без места — норма (решение 18.10).
+    out += _night_checks(db)
+    return out
+
+
+def _night_checks(db: Session) -> list[dict]:
+    """Сверки справочника ночного обхода для экрана «Обзор»."""
+    from ..models import NightArea, NightZone, ResponsibilityService, ZoneChecklistItem
+
+    out: list[dict] = []
+    zones = {z.id: z.name for z in db.scalars(
+        select(NightZone).where(NightZone.active.is_(True)))}
+    if zones:
+        areas_by_zone = dict(db.execute(
+            select(NightArea.zone_id, func.count(NightArea.id))
+            .where(NightArea.active.is_(True), NightArea.zone_id.is_not(None))
+            .group_by(NightArea.zone_id)).all())
+        with_items = set(db.scalars(select(ZoneChecklistItem.zone_id)
+                                    .where(ZoneChecklistItem.active.is_(True)).distinct()))
+        for zid, zname in sorted(zones.items(), key=lambda kv: kv[1]):
+            if areas_by_zone.get(zid) and zid not in with_items:
+                out.append({"code": "APP-NIGHT-ZONE-NO-TEMPLATE", "level": "warn", "screen": "night",
+                            "text": (f"Зона «{zname}»: в шаблоне чек-листа нет активных пунктов — "
+                                     f"объекты зоны ({areas_by_zone[zid]}) проверяются только по "
+                                     f"индивидуальным пунктам. Задайте шаблон в «Настройки → Ночной обход»")})
+    for s in db.scalars(select(ResponsibilityService)
+                        .where(ResponsibilityService.active.is_(True))
+                        .order_by(ResponsibilityService.sort_order, ResponsibilityService.id)):
+        chats = json.loads(s.chat_ids or "[]")
+        tg_ready = bool(s.use_telegram and chats)
+        mail_ready = bool(s.use_email and "@" in (s.email_to or ""))
+        if not (tg_ready or mail_ready):
+            out.append({"code": "APP-SVC-NO-CHANNEL", "level": "warn", "screen": "night",
+                        "text": (f"Ответственная служба «{s.name}»: канал доставки не настроен — "
+                                 f"недостатки по её пунктам никуда не отправляются "
+                                 f"(«Настройки → Ночной обход → Службы»)")})
     return out
 
 

@@ -132,7 +132,8 @@ async function employeeCard(emp) {
       m.querySelector('[data-imp]').onclick = async () => {
         await api('/api/auth/impersonate', { method: 'POST', body: { employee_id: emp.id } });
         const me = await api('/api/auth/me');
-        state.user = me.user; state.perms = me.permissions || []; renderUserChip(); closeModal(); navigate('me');
+        state.user = me.user; state.perms = me.permissions || []; renderUserChip(); closeModal();
+        resetUserViewState(); navigate('me');
         toast('Вы смотрите интерфейс глазами сотрудника', 'warn');
       };
       m.querySelector('[data-pos]').onclick = () => { closeModal(); datedActionModal(emp, 'position'); };

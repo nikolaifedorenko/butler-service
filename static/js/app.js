@@ -1,6 +1,8 @@
 /* ══════════════════════════════════════════════════════════════════════
    TimeTrack — веб-интерфейс (SPA без сборки), светлая тема
-   Разделы: График · Кто на работе · Посещения · Табель · Сотрудники · Мои отметки · Настройки
+   Разделы (7): График · Отметки · Сотрудники · Мои отметки · Ночной отчёт ·
+   Электрокары · Настройки. Права доступа и Журнал аудита — экраны Настроек
+   (группа «Администрирование»), navigate('access'/'audit') продолжает работать.
    Ядро (утилиты, api, состояние, модалки) вынесено в core.js — подключается раньше этого файла.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
@@ -42,6 +44,10 @@ const GRAFIK_LAYERS = [
 const GRAFIK_ALIAS = { timesheet: 'grafik', schedule: 'grafik', fact: 'grafik', mgmt: 'grafik' };
 
 function visibleTabs() {
+  /* 7 пунктов (19.10.2026, docs/PROPOSAL-SETTINGS-IA-2026-10-19.md): «Права доступа»
+     и «Журнал аудита» убраны из верхнего меню — они живут в «Настройках»
+     (группа «Администрирование»); navigate('access'/'audit') по-прежнему работает.
+     «Настройки» видны, если есть право хотя бы на один их экран. */
   const all = [
     { id: 'grafik', title: 'График', anyPerm: GRAFIK_LAYERS.map(l => l.perm) },
     { id: 'marks', title: 'Отметки', perm: 'presence.view' },
@@ -49,32 +55,33 @@ function visibleTabs() {
     { id: 'me', title: 'Мои отметки', perm: 'me.punch' },
     { id: 'night', title: 'Ночной отчёт', perm: 'night.view' },
     { id: 'cars', title: 'Электрокары', perm: 'cars.view' },
-    { id: 'access', title: 'Права доступа', perm: 'access.manage' },
-    { id: 'audit', title: 'Журнал аудита', perm: 'audit.view' },
-    { id: 'settings', title: 'Настройки', perm: 'settings.view' },
+    { id: 'settings', title: 'Настройки', anyPerm: ['settings.view', 'access.manage', 'audit.view'] },
   ];
   return all.filter(t => t.anyPerm ? t.anyPerm.some(can) : can(t.perm));
 }
 
 function renderNav() {
   const tabs = visibleTabs();
+  /* «Права доступа» и «Журнал аудита» открываются из Настроек (external-экраны):
+     их содержимое — отдельные view, но в меню подсвечиваем «Настройки», откуда пришли. */
+  const activeView = (state.view === 'access' || state.view === 'audit') ? 'settings' : state.view;
   $('#sidenav').querySelectorAll('.nav-item').forEach(el => el.remove());
   const foot = $('#sidenav-foot');
   tabs.forEach(t => {
     const b = document.createElement('button');
-    b.className = 'nav-item' + (state.view === t.id ? ' active' : '');
+    b.className = 'nav-item' + (activeView === t.id ? ' active' : '');
     b.dataset.view = t.id;
     b.innerHTML = `${ICONS[t.id]}<span>${esc(t.title)}</span>`;
     b.onclick = () => navigate(t.id);
     $('#sidenav').insertBefore(b, foot);
   });
   $('#tabbar').innerHTML = tabs.slice(0, 5).map(t =>
-    `<button data-view="${t.id}" class="${state.view === t.id ? 'active' : ''}">${ICONS[t.id]}<span>${esc(t.title)}</span></button>`
+    `<button data-view="${t.id}" class="${activeView === t.id ? 'active' : ''}">${ICONS[t.id]}<span>${esc(t.title)}</span></button>`
   ).join('');
   $$('#tabbar button').forEach(b => b.onclick = () => navigate(b.dataset.view));
   if (tabs.length > 5) {
     const more = document.createElement('button');
-    more.className = 'nav-item' + (tabs.slice(5).some(t => t.id === state.view) ? ' active' : '');
+    more.className = 'nav-item' + (tabs.slice(5).some(t => t.id === activeView) ? ' active' : '');
     more.innerHTML = `${ICONS.settings}<span>Ещё</span>`;
     more.onclick = () => openModal({
       title: 'Разделы',
@@ -226,15 +233,33 @@ async function loadPerms() {
 
 function startView() {
   const tabs = visibleTabs().map(t => t.id);
-  return ['grafik', 'marks', 'me'].find(v => tabs.includes(v)) || tabs[0] || 'me';
+  /* Телефон — основной инструмент батлера (решение владельца 19.10.2026): смену
+     начинают с «Моих отметок» (пришёл/ушёл — самое частое действие), а не с «Графика».
+     У менеджмента стартовый раздел прежний. */
+  const order = state.user?.role === 'employee'
+    ? ['me', 'marks', 'grafik']
+    : ['grafik', 'marks', 'me'];
+  return order.find(v => tabs.includes(v)) || tabs[0] || 'me';
 }
 
-async function enterApp() {
-  /* выход не перезагружает страницу: состояние вкладок «Факта» и кэш
-     сотрудников не должны доставаться следующему пользователю (16.10.2026) */
+/* Сброс состояния при смене пользователя (вход, вход/выход из режима
+   «посмотреть глазами сотрудника»): выход не перезагружает страницу, поэтому
+   кэши и DOM разделов не должны доставаться следующему пользователю (16.10.2026).
+   «График» добавлен 19.10.2026: стартовый экран батлера — «Мои отметки», и без
+   сброса в DOM оставались бы вкладки слоёв предыдущего пользователя (например,
+   админские Табель/УТ, на которые у сотрудника нет прав). loadGrafik перерисует
+   полосы по правам при первом открытии раздела. */
+function resetUserViewState() {
   state.factMode = null; state.factMonth = null; state.factDay = null;
   state.factEmp = null; state.factFrom = null; state.factTo = null;
   state.employees = [];
+  state.grafikLayer = null;
+  const grafikTabs = $('#grafik-tabs');
+  if (grafikTabs) grafikTabs.innerHTML = '';
+}
+
+async function enterApp() {
+  resetUserViewState();
   $('#login-screen').classList.add('hidden');
   $('#app').classList.remove('hidden');
   await loadPerms();
@@ -340,7 +365,8 @@ $('#change-pass-btn').onclick = () => openModal({
 });
 $('#stop-impersonation').onclick = async () => {
   const r = await api('/api/auth/impersonate/stop', { method: 'POST' });
-  state.user = r.user; renderUserChip(); await loadPerms(); navigate(startView());
+  state.user = r.user; renderUserChip(); await loadPerms();
+  resetUserViewState(); navigate(startView());
   toast('Вы вернулись в свой интерфейс', 'ok');
 };
 
