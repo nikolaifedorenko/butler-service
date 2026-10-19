@@ -1023,7 +1023,12 @@ function bindDictServices(m, services, canEdit, render) {
   });
 }
 
-function serviceEditModal(s, after) {
+async function serviceEditModal(s, after) {
+  /* Чаты закрепляются прямо здесь: каталог общий (Настройки → Чаты и Почта),
+     а выбор «какие чаты получают недостатки этой службы» — свойство службы. */
+  let chats = [];
+  try { chats = (await api('/api/notify/chats')).chats || []; } catch { chats = []; }
+  const picked = new Set((s.chat_ids || []).map(Number));
   openModal({
     title: 'Ответственная служба',
     subtitle: s.name,
@@ -1049,22 +1054,37 @@ function serviceEditModal(s, after) {
           <option value="1" ${s.active ? 'selected' : ''}>да</option>
           <option value="0" ${s.active ? '' : 'selected'}>нет</option></select></label>
       </div>
-      <div class="opt-group-title">Чаты Telegram</div>
-      <div class="hint" style="margin-top:0">${s.chat_ids.length
-        ? `закреплено чатов: ${s.chat_ids.length} (${s.chat_ids.map(esc).join(', ')})`
-        : 'чаты не закреплены'}. Список чатов берётся из общего каталога —
-      «Настройки → Чаты и Почта» (бот добавляется в группы служб, каталог обновляется через getUpdates).</div>`,
+      <div class="opt-group-title">Чаты Telegram — отметить галочками</div>
+      ${chats.length ? `<div class="check-list" style="max-height:180px;overflow:auto">
+          ${chats.map(c => `<label class="chk"><input type="checkbox" data-chat="${c.chat_id}"
+              ${picked.has(Number(c.chat_id)) ? 'checked' : ''}>
+            <span style="flex:1">${esc(c.title)} <code>${esc(String(c.chat_id))}</code>
+              <span class="badge muted">${esc(c.kind)}</span>
+              ${c.used_by && c.used_by.filter(n => n !== s.name).length
+                ? `<span class="badge info">уже: ${esc(c.used_by.filter(n => n !== s.name).join(', '))}</span>` : ''}</span></label>`).join('')}
+        </div>
+        <p class="hint" style="margin-top:6px">Список общий для всего приложения: бот добавляется в группы
+        служб, каталог обновляется кнопкой «Обновить список чатов (getUpdates)» в
+        «Настройки → Чаты и Почта». Один чат можно закрепить за несколькими службами —
+        тогда каждая получит своё сообщение.</p>`
+        : `<div class="hint" style="margin-top:0">Каталог чатов пуст. Чтобы чат появился:
+        1) в «Настройки → Чаты и Почта» сохраните токен бота и нажмите «Проверить бота»;
+        2) в Telegram добавьте бота в группу службы и напишите в группу любое сообщение;
+        3) там же нажмите «Обновить список чатов (getUpdates)»; 4) вернитесь сюда и
+        отметьте чат галочкой. Личные чаты попадают в каталог так же — напишите боту.</div>`}`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Сохранить</button>`,
     onMount(m) {
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-ok]').onclick = async () => {
+        const chatIds = $$('[data-chat]', m).filter(cb => cb.checked)
+          .map(cb => Number(cb.dataset.chat));
         try {
           const r = await api(`/api/night/services/${s.id}`, { method: 'PUT', body: {
             name: $('#sv-name').value.trim(), sort_order: Number($('#sv-order').value) || 100,
             active: $('#sv-active').value === '1', use_telegram: $('#sv-tg').checked,
             use_email: $('#sv-mail').checked, email_to: $('#sv-to').value.trim(),
-            email_copy: $('#sv-copy').value.trim(), chat_ids: s.chat_ids || [],
+            email_copy: $('#sv-copy').value.trim(), chat_ids: chatIds,
             note: $('#sv-note').value.trim() } });
           closeModal();
           toast(r.open_items_updated ? `Служба сохранена · обновлено пунктов в открытых сменах: ${r.open_items_updated}`

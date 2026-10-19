@@ -352,7 +352,11 @@ async function main() {
   click(svcBtn);
   check('карточка службы открылась', await waitFor(() => !!$('#sv-name') && !!$('#sv-tg') && !!$('#sv-mail')));
   check('каналы — чекбоксы «чат» и «письмо»', !!$('#sv-tg') && !!$('#sv-mail'));
-  check('чат закрепляется из общего каталога (подсказка)', /общего каталога/.test(text('#modal')));
+  check('в карточке блок «Чаты Telegram — отметить галочками»', /Чаты Telegram/.test(text('#modal')));
+  const chatBoxes = $$('#modal [data-chat]');
+  check(chatBoxes.length ? `чаты каталога показаны чекбоксами (${chatBoxes.length})`
+                         : 'при пустом каталоге карточка объясняет, как получить чаты',
+    chatBoxes.length ? true : /Каталог чатов пуст/.test(text('#modal')));
   /* карточка службы открывается поверх справочника (одна модалка на приложение),
      поэтому сохраняем — после «Сохранить» справочник перерисовывается сам */
   click($('#modal .modal-foot [data-ok]'));
