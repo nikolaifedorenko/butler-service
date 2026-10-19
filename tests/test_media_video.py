@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import datetime as dt
-from contextlib import contextmanager
 
 import pytest
 
@@ -25,65 +24,6 @@ WEBM = b"\x1aE\xdf\xa3" + b"\x33" * 64
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x44" * 64
 HEIC = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00heicmif1" + b"\x55" * 64
 PDF = b"%PDF-1.4\n" + b"\x00" * 64
-
-
-@contextmanager
-def _smena(db, freeze):
-    """Открытый отчёт смены + уборка того, что создал тест.
-
-    Отчёт берём за СЕГОДНЯШНЮЮ дату и создаём под заморозкой времени (23:00 —
-    середина смены), а HTTP-запросы выполняем уже без freeze: FastAPI достраивает
-    pydantic-схемы маршрутов лениво, и внутри freeze_time аннотация ``dt.date``
-    подменена на ``FakeDate`` — схема не строится. Автозакрытие сегодняшней смены
-    (08:00 следующих суток) ещё не наступило, поэтому ``sync_reports`` отчёт не
-    закроет и загрузка остаётся разрешённой.
-
-    Если отчёт за сегодня уже есть (создан другим тестом), мы его не удаляем —
-    только возвращаем прежний статус и убираем свои файлы.
-    """
-    from sqlalchemy import select
-
-    from app.models import NightAreaSection, NightCheckItem, NightReport, Photo
-    from app.night import ensure_report
-    from app.photos import unlink_photo
-
-    shift_d = dt.date.today()
-    existed = db.scalar(select(NightReport).where(NightReport.date == shift_d))
-    prev_state = (existed.status, existed.closed_at) if existed else None
-    with freeze(f"{shift_d.isoformat()} 23:00:00"):
-        rep = ensure_report(db, shift_d)
-    assert rep is not None, "отчёт смены не создан"
-    created = existed is None
-    rep.status, rep.closed_at = "open", None       # тесту нужен открытый отчёт
-    db.commit()
-    start = dt.datetime.now() - dt.timedelta(seconds=1)
-    try:
-        yield rep
-    finally:
-        sec_ids = [s.id for s in db.scalars(
-            select(NightAreaSection).where(NightAreaSection.report_id == rep.id))]
-        item_ids = ([i.id for i in db.scalars(select(NightCheckItem).where(
-            NightCheckItem.section_id.in_(sec_ids)))] if sec_ids else [])
-        for p in db.scalars(select(Photo).where(Photo.kind == "night_item",
-                                                Photo.ref_id.in_(item_ids))):
-            if created or (p.created_at and p.created_at >= start):
-                unlink_photo(p)
-                db.delete(p)
-        db.flush()
-        if created:
-            for i in db.scalars(select(NightCheckItem).where(NightCheckItem.section_id.in_(sec_ids))):
-                db.delete(i)
-            db.flush()
-            for s in db.scalars(select(NightAreaSection).where(NightAreaSection.report_id == rep.id)):
-                db.delete(s)
-            db.flush()
-            fresh = db.get(NightReport, rep.id)
-            if fresh is not None:
-                db.delete(fresh)
-        else:
-            rep.status, rep.closed_at = prev_state
-        db.flush()
-        db.commit()
 
 
 def _report(client, rep) -> dict:
@@ -144,8 +84,8 @@ def test_ne_media_ne_prinimaem(blob, name):
 
 # ═══════════════════════════════ загрузка видео ═══════════════════════════════
 
-def test_video_zagruzhaetsya_i_otdayotsya_s_range(employee_client, db, freeze):
-    with _smena(db, freeze) as rep:
+def test_video_zagruzhaetsya_i_otdayotsya_s_range(employee_client, open_shift):
+    with open_shift() as rep:
         item_id = _first_item(employee_client, rep)
         r = _upload(employee_client, item_id, MP4, "obhod.mp4", "video/mp4")
         assert r.status_code == 200, r.text
@@ -167,8 +107,8 @@ def test_video_zagruzhaetsya_i_otdayotsya_s_range(employee_client, db, freeze):
         assert _items_of(employee_client, rep, item_id)[0]["photos"][0]["media_type"] == "video"
 
 
-def test_photo_i_video_lezhat_ryadom_u_punkta(employee_client, db, freeze):
-    with _smena(db, freeze) as rep:
+def test_photo_i_video_lezhat_ryadom_u_punkta(employee_client, open_shift):
+    with open_shift() as rep:
         item_id = _first_item(employee_client, rep)
         assert _upload(employee_client, item_id, PNG, "shot.png", "image/png").status_code == 200
         assert _upload(employee_client, item_id, MP4, "obhod.mp4", "video/mp4").status_code == 200
@@ -176,8 +116,8 @@ def test_photo_i_video_lezhat_ryadom_u_punkta(employee_client, db, freeze):
         assert kinds == ["photo", "video"], kinds
 
 
-def test_ne_media_otklonyaetsa_400(employee_client, db, freeze):
-    with _smena(db, freeze) as rep:
+def test_ne_media_otklonyaetsa_400(employee_client, open_shift):
+    with open_shift() as rep:
         item_id = _first_item(employee_client, rep)
         r = _upload(employee_client, item_id, PDF, "doc.pdf", "application/pdf")
         assert r.status_code == 400, r.text
@@ -186,8 +126,8 @@ def test_ne_media_otklonyaetsa_400(employee_client, db, freeze):
 
 # ═════════════════════ настраиваемые лимиты размера ═════════════════════
 
-def test_limity_razmera_zadayutsya_obektom(admin_client, employee_client, db, freeze):
-    with _smena(db, freeze) as rep:
+def test_limity_razmera_zadayutsya_obektom(admin_client, employee_client, open_shift):
+    with open_shift() as rep:
         item_id = _first_item(employee_client, rep)
 
         lim = employee_client.get("/api/photos/limits")          # доступно и батлеру, не только менеджеру
@@ -210,9 +150,9 @@ def test_limity_razmera_zadayutsya_obektom(admin_client, employee_client, db, fr
         _set_rules(admin_client, video_max_mb=50)
 
 
-def test_limit_deystvuet_na_svoy_tip(admin_client, employee_client, db, freeze):
+def test_limit_deystvuet_na_svoy_tip(admin_client, employee_client, open_shift):
     """video_max_mb не мешает фото и наоборот; 0 = не ограничивать."""
-    with _smena(db, freeze) as rep:
+    with open_shift() as rep:
         item_id = _first_item(employee_client, rep)
         _set_rules(admin_client, photo_max_mb=0, video_max_mb=1)
         huge_png = PNG + b"\x00" * (3 * 1024 * 1024)
@@ -224,7 +164,7 @@ def test_limit_deystvuet_na_svoy_tip(admin_client, employee_client, db, freeze):
 
 # ═══════════════════════ срок хранения: свой у видео ═══════════════════════
 
-def test_srok_hraneniya_svoy_u_foto_i_video(admin_client, employee_client, db, freeze):
+def test_srok_hraneniya_svoy_u_foto_i_video(admin_client, employee_client, db):
     from app.models import Photo
     from app.photos import cleanup_photos, media_limits, photos_of, retention_days, save_photo
 

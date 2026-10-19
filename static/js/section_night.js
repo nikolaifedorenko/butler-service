@@ -293,6 +293,7 @@ function nightItemRow(it, rep) {
   const photos = (it.photos || []);
   return `<div class="night-item ${it.answer || 'none'}" data-item="${it.id}">
     <div class="night-item-text">${esc(it.text)}
+      ${it.service_name ? `<span class="badge info" title="Ответственная служба: недостаток уйдёт ей">⚖ ${esc(it.service_name)}</span>` : ''}
       ${it.answered_by_name ? `<small class="muted">· ${esc(it.answered_by_name)}${it.answered_at ? ' ' + esc(hhmm(it.answered_at)) : ''}</small>` : ''}
     </div>
     <div class="night-item-acts">
@@ -699,21 +700,23 @@ function exportNight(fmt) {
 async function nightDictModal(tab) {
   if (tab) nightState.dictTab = tab;
   const render = async () => {
-    const [zr, ar] = await Promise.all([api('/api/night/zones'), api('/api/night/areas')]);
-    const zones = zr.zones || [], areas = ar.areas || [];
+    const [zr, ar, sr] = await Promise.all([api('/api/night/zones'), api('/api/night/areas'),
+                                             api('/api/night/services')]);
+    const zones = zr.zones || [], areas = ar.areas || [], services = sr.services || [];
     const canEdit = !!zr.can_edit;
     const t = nightState.dictTab;
     const m = openModal({
       title: 'Справочник ночного обхода',
-      subtitle: 'Зоны → объекты → чек-листы. Шаблон задаётся на зону, индивидуальные правки — у объекта',
+      subtitle: 'Зоны → объекты → чек-листы → службы. Шаблон задаётся на зону, правки — у объекта',
       wide: true,
       body: `<div class="toolbar" style="margin-bottom:12px">
-          <div class="seg">${[['zones', 'Зоны'], ['areas', 'Объекты'], ['items', 'Чек-листы']]
+          <div class="seg">${[['zones', 'Зоны'], ['areas', 'Объекты'], ['items', 'Чек-листы'], ['services', 'Службы']]
             .map(([k, l]) => `<button data-dtab="${k}" class="${t === k ? 'active' : ''}">${l}</button>`).join('')}</div>
           <div class="spacer"></div>
           ${canEdit ? '' : '<span class="hint" style="margin:0">только просмотр: правки — для менеджмента</span>'}</div>
         <div id="dict-host">${t === 'zones' ? dictZonesHtml(zones, canEdit)
           : t === 'areas' ? dictAreasHtml(zones, areas, canEdit)
+          : t === 'services' ? dictServicesHtml(services, canEdit)
           : '<div class="empty">Загрузка…</div>'}</div>`,
       footer: `<button class="btn btn-ghost" data-cancel>Закрыть</button>`,
       onMount(mm) {
@@ -721,9 +724,10 @@ async function nightDictModal(tab) {
         $$('[data-dtab]', mm).forEach(b => b.onclick = () => { nightState.dictTab = b.dataset.dtab; render(); });
         if (t === 'zones') bindDictZones(mm, zones, canEdit, render);
         if (t === 'areas') bindDictAreas(mm, zones, areas, canEdit, render);
+        if (t === 'services') bindDictServices(mm, services, canEdit, render);
       },
     });
-    if (t === 'items') await dictItemsTab(m, zones, canEdit, render);
+    if (t === 'items') await dictItemsTab(m, zones, services, canEdit, render);
   };
   await render();
 }
@@ -944,8 +948,124 @@ function nightAreaEditModal(a, zones, after) {
   });
 }
 
+/* ── вкладка «Службы»: получатели недостатков и их каналы доставки ── */
+function serviceOptions(services, selected, placeholder = '— не задана —') {
+  return `<option value="">${esc(placeholder)}</option>`
+    + services.filter(s => s.active || s.id === selected).map(s =>
+      `<option value="${s.id}" ${s.id === selected ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+}
+
+function serviceChannels(s) {
+  const parts = [];
+  if (s.use_telegram) parts.push(s.ready_telegram ? 'чат' : 'чат (не закреплён)');
+  if (s.use_email) parts.push(s.ready_email ? 'письмо' : 'письмо (нет ящика)');
+  return parts.join(' + ') || 'каналы не выбраны';
+}
+
+function dictServicesHtml(services, canEdit) {
+  return `
+    ${canEdit ? `<div class="grid-2" style="grid-template-columns:1fr 110px auto;margin-bottom:12px">
+        <input type="text" id="ns-name" maxlength="160" placeholder="Название службы (например: Хозяйственная служба)">
+        <input type="number" id="ns-order" value="100" title="Порядок">
+        <button class="btn btn-primary" id="ns-add">Добавить службу</button></div>` : ''}
+    <div class="check-list" style="max-height:46vh">${services.map(s => `
+      <div class="rule-row" style="grid-template-columns:1fr auto">
+        <div><div class="lbl">${esc(s.name)} <small class="muted">порядок ${s.sort_order}</small>
+            ${s.active ? '' : ' <span class="badge muted">отключена</span>'}
+            ${s.ready ? '' : ' <span class="badge warn" title="Канал выбран, но получатель не заполнен">не готова к отправке</span>'}</div>
+          <div class="desc">каналы: ${esc(serviceChannels(s))}${s.email_to ? ` · ящик: ${esc(s.email_to)}` : ''}${s.chat_ids.length ? ` · чатов: ${s.chat_ids.length}` : ''}
+            · пунктов закреплено: ${s.items_total}${s.note ? ` · ${esc(s.note)}` : ''}</div></div>
+        ${canEdit ? `<div class="row-actions">
+          <button class="btn btn-sm btn-ghost" data-sedit="${s.id}">Править</button>
+          ${s.active ? `<button class="btn btn-sm btn-ghost" data-sdel="${s.id}">Отключить</button>` : ''}</div>` : ''}
+      </div>`).join('') || '<div class="empty">Служб нет — добавьте первую</div>'}</div>
+    <p class="hint">Служба — получатель недостатков: закрепляется за пунктом шаблона зоны (вкладка
+    «Чек-листы»), а у отдельного объекта её можно переопределить. Каналы — чекбоксы «чат» и «письмо».
+    Токен бота, каталог чатов и почтовый сервер настраиваются в общих настройках приложения —
+    «Настройки → Чаты и Почта»: транспорт один на всё приложение.</p>`;
+}
+
+function bindDictServices(m, services, canEdit, render) {
+  const add = m.querySelector('#ns-add');
+  if (add) add.onclick = async () => {
+    const name = $('#ns-name').value.trim();
+    if (!name) return toast('Введите название службы', 'warn');
+    try {
+      await api('/api/night/services', { method: 'POST', body: {
+        name, sort_order: Number($('#ns-order').value) || 100, active: true,
+        use_telegram: true, use_email: false, chat_ids: [] } });
+      toast('Служба добавлена — укажите каналы и получателей', 'ok'); render();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  $$('[data-sedit]', m).forEach(b => b.onclick = () =>
+    serviceEditModal(services.find(x => x.id === Number(b.dataset.sedit)), render));
+  $$('[data-sdel]', m).forEach(b => b.onclick = () => {
+    const s = services.find(x => x.id === Number(b.dataset.sdel));
+    confirmDialog('Отключить службу?',
+      `«${s.name}» перестанет предлагаться в справочнике и не будет участвовать в новых отправках. `
+      + `Закреплённых пунктов: ${s.items_total} — их стоит переназначить. История закрытых смен не изменится.`,
+      async () => {
+        try { await api(`/api/night/services/${s.id}`, { method: 'DELETE' }); toast('Служба отключена', 'ok'); render(); }
+        catch (e) { toast(e.message, 'err'); }
+      }, 'Отключить');
+  });
+}
+
+function serviceEditModal(s, after) {
+  openModal({
+    title: 'Ответственная служба',
+    subtitle: s.name,
+    wide: true,
+    body: `<label class="field"><span>Название</span>
+        <input type="text" id="sv-name" value="${esc(s.name)}" maxlength="160"></label>
+      <div class="opt-group-title">Каналы доставки</div>
+      <label class="chk"><input type="checkbox" id="sv-tg" ${s.use_telegram ? 'checked' : ''}>
+        Чат (Telegram)</label>
+      <label class="chk"><input type="checkbox" id="sv-mail" ${s.use_email ? 'checked' : ''}>
+        Письмо (e-mail)</label>
+      <div class="grid-2">
+        <label class="field"><span>Ящик службы</span>
+          <input type="email" id="sv-to" value="${esc(s.email_to)}" maxlength="200" placeholder="service@resort.example"></label>
+        <label class="field"><span>Копия (через запятую)</span>
+          <input type="text" id="sv-copy" value="${esc(s.email_copy)}" maxlength="400"></label>
+      </div>
+      <label class="field"><span>Примечание</span>
+        <input type="text" id="sv-note" value="${esc(s.note)}" maxlength="300" placeholder="круглосуточный пост, дежурный инженер…"></label>
+      <div class="grid-2">
+        <label class="field"><span>Порядок</span><input type="number" id="sv-order" value="${s.sort_order}"></label>
+        <label class="field"><span>Активна</span><select id="sv-active">
+          <option value="1" ${s.active ? 'selected' : ''}>да</option>
+          <option value="0" ${s.active ? '' : 'selected'}>нет</option></select></label>
+      </div>
+      <div class="opt-group-title">Чаты Telegram</div>
+      <div class="hint" style="margin-top:0">${s.chat_ids.length
+        ? `закреплено чатов: ${s.chat_ids.length} (${s.chat_ids.map(esc).join(', ')})`
+        : 'чаты не закреплены'}. Список чатов берётся из общего каталога —
+      «Настройки → Чаты и Почта» (бот добавляется в группы служб, каталог обновляется через getUpdates).</div>`,
+    footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
+             <button class="btn btn-primary" data-ok>Сохранить</button>`,
+    onMount(m) {
+      m.querySelector('[data-cancel]').onclick = closeModal;
+      m.querySelector('[data-ok]').onclick = async () => {
+        try {
+          const r = await api(`/api/night/services/${s.id}`, { method: 'PUT', body: {
+            name: $('#sv-name').value.trim(), sort_order: Number($('#sv-order').value) || 100,
+            active: $('#sv-active').value === '1', use_telegram: $('#sv-tg').checked,
+            use_email: $('#sv-mail').checked, email_to: $('#sv-to').value.trim(),
+            email_copy: $('#sv-copy').value.trim(), chat_ids: s.chat_ids || [],
+            note: $('#sv-note').value.trim() } });
+          closeModal();
+          toast(r.open_items_updated ? `Служба сохранена · обновлено пунктов в открытых сменах: ${r.open_items_updated}`
+                                     : 'Служба сохранена', 'ok');
+          if (after) after();
+        } catch (e) { toast(e.message, 'err'); }
+      };
+    },
+  });
+}
+
 /* ── вкладка «Чек-листы»: шаблон зоны + индивидуальные правки объекта ── */
-async function dictItemsTab(m, zones, canEdit, render) {
+async function dictItemsTab(m, zones, services, canEdit, render) {
   const host = m.querySelector('#dict-host');
   if (!zones.length) { host.innerHTML = '<div class="empty">Сначала создайте зону (вкладка «Зоны»)</div>'; return; }
   if (!zones.some(z => z.id === nightState.dictZone)) nightState.dictZone = zones[0].id;
@@ -968,14 +1088,17 @@ async function dictItemsTab(m, zones, canEdit, render) {
       ${zones.map(z => `<option value="${z.id}" ${z.id === zid ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}
     </select></label>
     <div class="opt-group-title">Шаблон чек-листа зоны · объектов в зоне: ${zoneAreas.length}</div>
-    ${canEdit ? `<div class="grid-2" style="grid-template-columns:1fr 110px auto;margin-bottom:10px">
+    ${canEdit ? `<div class="grid-2" style="grid-template-columns:1fr 200px 90px auto;margin-bottom:10px">
         <input type="text" id="di-text" maxlength="300" placeholder="Пункт шаблона (например: Витражи закрыты)">
+        <select id="di-service" title="Ответственная служба">${serviceOptions(services, null)}</select>
         <input type="number" id="di-order" value="100" title="Порядок">
         <button class="btn btn-primary" id="di-add">Добавить в зону</button></div>` : ''}
     <div class="check-list" style="max-height:24vh">${zd.items.map(i => `
       <div class="rule-row" style="grid-template-columns:1fr auto">
         <div><div class="lbl">${esc(i.text)} <small class="muted">порядок ${i.sort_order}</small>
             ${i.active ? '' : ' <span class="badge muted">отключён</span>'}
+            ${i.service_name ? `<span class="badge info" title="Ответственная служба">⚖ ${esc(i.service_name)}</span>`
+              : '<span class="badge muted" title="Служба не задана — недостаток никуда не уйдёт">без службы</span>'}
             ${i.overrides ? `<span class="badge warn" title="у объектов зоны своя формулировка/отключение">индивидуально: ${i.overrides}</span>` : ''}</div>
           <div class="desc">действует для всех объектов зоны</div></div>
         ${canEdit ? `<div class="row-actions">
@@ -993,8 +1116,12 @@ async function dictItemsTab(m, zones, canEdit, render) {
         <div class="rule-row" style="grid-template-columns:1fr auto">
           <div><div class="lbl">${esc(i.in_checklist ? i.effective_text : i.text)}
               ${i.disabled ? ' <span class="badge muted">не проверяется</span>'
-                : (i.override_text ? ' <span class="badge warn">своя формулировка</span>' : '')}</div>
-            <div class="desc">${i.override_text || i.disabled ? `в шаблоне зоны: ${esc(i.text)}` : 'как в шаблоне зоны'}</div></div>
+                : (i.override_text ? ' <span class="badge warn">своя формулировка</span>' : '')}
+              ${i.effective_service_name ? `<span class="badge info" title="Кто получает недостаток">⚖ ${esc(i.effective_service_name)}</span>` : ''}
+              ${i.override_service_id ? '<span class="badge warn">своя служба</span>' : ''}</div>
+            <div class="desc">${i.override_text || i.disabled || i.override_service_id
+              ? `в шаблоне зоны: ${esc(i.text)}${i.service_name ? ` · ${esc(i.service_name)}` : ''}`
+              : 'как в шаблоне зоне'}</div></div>
           ${canEdit ? `<div class="row-actions">
             <button class="btn btn-sm btn-ghost" data-ov="${i.id}">Правка</button></div>` : ''}
         </div>`).join('') || '<div class="empty">Шаблон зоны пуст</div>'}</div>
@@ -1013,18 +1140,20 @@ async function dictItemsTab(m, zones, canEdit, render) {
     if (!text) return toast('Введите текст пункта', 'warn');
     try {
       const r = await api(`/api/night/zones/${zid}/items`, { method: 'POST',
-        body: { text, sort_order: Number($('#di-order').value) || 100, active: true } });
+        body: { text, sort_order: Number($('#di-order').value) || 100, active: true,
+                service_id: Number($('#di-service').value) || null } });
       toast(`Пункт добавлен в шаблон зоны${r.sections_refreshed ? ` · пересобрано смен: ${r.sections_refreshed}` : ''}`, 'ok');
       render();
     } catch (e) { toast(e.message, 'err'); }
   };
   $$('[data-ziedit]', host).forEach(b => b.onclick = () =>
-    nightZoneItemEditModal(zd.items.find(i => i.id === Number(b.dataset.ziedit)), render));
+    nightZoneItemEditModal(zd.items.find(i => i.id === Number(b.dataset.ziedit)), services, render));
   $$('[data-zitoggle]', host).forEach(b => b.onclick = async () => {
     const i = zd.items.find(x => x.id === Number(b.dataset.zitoggle));
     try {
       await api(`/api/night/zone-items/${i.id}`, { method: 'PUT',
-        body: { text: i.text, sort_order: i.sort_order, active: !i.active } });
+        body: { text: i.text, sort_order: i.sort_order, active: !i.active,
+                service_id: i.service_id || null } });
       render();
     } catch (e) { toast(e.message, 'err'); }
   });
@@ -1043,27 +1172,30 @@ async function dictItemsTab(m, zones, canEdit, render) {
   if (areaSel) areaSel.onchange = () => { nightState.dictArea = Number(areaSel.value); render(); };
   $$('[data-ov]', host).forEach(b => b.onclick = () => {
     const i = cl.zone_items.find(x => x.id === Number(b.dataset.ov));
-    nightOverrideModal(i, cl.area, render);
+    nightOverrideModal(i, cl.area, services, render);
   });
   const own = host.querySelector('[data-own]');
   if (own) own.onclick = () => nightItemsModal(
     { id: Number(own.dataset.own), name: cl.area.name }, render);
 }
 
-function nightZoneItemEditModal(i, after) {
+function nightZoneItemEditModal(i, services, after) {
   openModal({
     title: 'Пункт шаблона зоны',
     subtitle: i.text,
     body: `<label class="field"><span>Текст</span>
         <input type="text" id="zi-text" value="${esc(i.text)}" maxlength="300"></label>
+      <label class="field"><span>Ответственная служба</span>
+        <select id="zi-service">${serviceOptions(services, i.service_id)}</select></label>
       <div class="grid-2">
         <label class="field"><span>Порядок</span><input type="number" id="zi-order" value="${i.sort_order}"></label>
         <label class="field"><span>Активен</span><select id="zi-active">
           <option value="1" ${i.active ? 'selected' : ''}>да</option>
           <option value="0" ${i.active ? '' : 'selected'}>нет</option></select></label>
       </div>
-      <p class="hint">Правка текста обновит пункт во всех объектах зоны и в незакрытых сменах;
-      в закрытых останется старый текст (снимок).</p>`,
+      <p class="hint">Служба — получатель недостатка по этому пункту: она действует для всех объектов
+      зоны, а у отдельного объекта её можно переопределить. Правка текста и службы обновляет пункт
+      во всех объектах зоны и в незакрытых сменах; в закрытых останется снимок.</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Сохранить</button>`,
     onMount(m) {
@@ -1072,7 +1204,8 @@ function nightZoneItemEditModal(i, after) {
         try {
           await api(`/api/night/zone-items/${i.id}`, { method: 'PUT', body: {
             text: $('#zi-text').value.trim(), sort_order: Number($('#zi-order').value) || 100,
-            active: $('#zi-active').value === '1' } });
+            active: $('#zi-active').value === '1',
+            service_id: Number($('#zi-service').value) || null } });
           closeModal(); toast('Пункт шаблона сохранён', 'ok'); if (after) after();
         } catch (e) { toast(e.message, 'err'); }
       };
@@ -1080,16 +1213,21 @@ function nightZoneItemEditModal(i, after) {
   });
 }
 
-function nightOverrideModal(i, area, after) {
+function nightOverrideModal(i, area, services, after) {
   openModal({
     title: 'Индивидуальная правка',
     subtitle: `${area.name} · ${i.text}`,
     body: `<label class="field"><span>Формулировка у этого объекта</span>
         <input type="text" id="ov-text" value="${esc(i.override_text || i.text)}" maxlength="300"></label>
+      <label class="field"><span>Ответственная служба</span>
+        <select id="ov-service">${serviceOptions(services, i.override_service_id || i.service_id,
+          i.service_name ? `как в шаблоне зоны (${i.service_name})` : '— как в шаблоне зоны —')}</select></label>
       <label class="chk"><input type="checkbox" id="ov-dis" ${i.disabled ? 'checked' : ''}>
         Не проверять этот пункт у объекта</label>
       <p class="hint">В шаблоне зоны пункт останется прежним — правка касается только «${esc(area.name)}».
-      Применяется к ещё не начатым объектам в открытых сменах; начатые и закрытые не трогаются.</p>`,
+      Своя служба нужна, когда за объект отвечает не та же служба, что за зону (например, детскую
+      комнату проверяет батлер-сервис, а не хозяйственная служба). Применяется к ещё не начатым
+      объектам в открытых сменах; начатые и закрытые не трогаются.</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn" data-reset>Сбросить к шаблону</button>
              <button class="btn btn-primary" data-ok>Сохранить</button>`,
@@ -1104,7 +1242,8 @@ function nightOverrideModal(i, area, after) {
       m.querySelector('[data-ok]').onclick = async () => {
         try {
           const r = await api(`/api/night/areas/${area.id}/overrides/${i.id}`, { method: 'PUT', body: {
-            text: $('#ov-text').value.trim(), disabled: $('#ov-dis').checked } });
+            text: $('#ov-text').value.trim(), disabled: $('#ov-dis').checked,
+            service_id: Number($('#ov-service').value) || null } });
           closeModal();
           toast(r.sections_refreshed ? `Сохранено · пересобрано смен: ${r.sections_refreshed}` : 'Сохранено', 'ok');
           if (after) after();
@@ -1117,19 +1256,23 @@ function nightOverrideModal(i, area, after) {
 /* ── свои пункты одного объекта (не из шаблона зоны) ── */
 async function nightItemsModal(a, after) {
   const renderItems = async () => {
-    const fresh = (await api('/api/night/areas')).areas.find(x => x.id === a.id);
+    const [ar, sr] = await Promise.all([api('/api/night/areas'), api('/api/night/services')]);
+    const fresh = ar.areas.find(x => x.id === a.id);
+    const services = sr.services || [];
     openModal({
       title: 'Свои пункты: ' + fresh.name,
       subtitle: 'Пункты только этого объекта — дополнительно к шаблону зоны. Правка текста обновляет пункт в незакрытых сменах',
       wide: true,
-      body: `<div class="grid-2" style="grid-template-columns:1fr 110px auto;margin-bottom:12px">
+      body: `<div class="grid-2" style="grid-template-columns:1fr 200px 90px auto;margin-bottom:12px">
           <input type="text" id="it-text" maxlength="300" placeholder="Например: Детская кроватка установлена">
+          <select id="it-service" title="Ответственная служба">${serviceOptions(services, null)}</select>
           <input type="number" id="it-order" value="100" title="Порядок">
           <button class="btn btn-primary" id="it-add">Добавить</button></div>
         <div class="check-list" style="max-height:46vh">${fresh.items.map(it => `
           <div class="rule-row" style="grid-template-columns:1fr auto">
             <div><div class="lbl">${esc(it.text)} <small class="muted">· порядок ${it.sort_order}</small>
-              ${it.active ? '' : ' <span class="badge muted">отключён</span>'}</div>
+              ${it.active ? '' : ' <span class="badge muted">отключён</span>'}
+              ${it.service_name ? `<span class="badge info" title="Ответственная служба">⚖ ${esc(it.service_name)}</span>` : ''}</div>
               <div class="desc">зона: ${esc(fresh.zone_name || '—')} · всего в чек-листе объекта: ${fresh.effective_total}</div></div>
             <div class="row-actions">
               <button class="btn btn-sm btn-ghost" data-it-edit="${it.id}">Править</button>
@@ -1145,7 +1288,8 @@ async function nightItemsModal(a, after) {
           if (!text) return toast('Введите текст пункта', 'warn');
           try {
             const r = await api(`/api/night/areas/${fresh.id}/items`, { method: 'POST',
-              body: { text, sort_order: Number($('#it-order').value) || 100, active: true } });
+              body: { text, sort_order: Number($('#it-order').value) || 100, active: true,
+                      service_id: Number($('#it-service').value) || null } });
             toast(`Пункт добавлен${r.added_to_open_sections ? ` (попал в открытых смен: ${r.added_to_open_sections})` : ''}`, 'ok');
             renderItems();
           } catch (e) { toast(e.message, 'err'); }
@@ -1153,6 +1297,8 @@ async function nightItemsModal(a, after) {
         const editItem = (it) => openModal({
           title: 'Пункт объекта',
           body: `<label class="field"><span>Текст</span><input type="text" id="ie-text" value="${esc(it.text)}" maxlength="300"></label>
+            <label class="field"><span>Ответственная служба</span>
+              <select id="ie-service">${serviceOptions(services, it.service_id)}</select></label>
             <div class="grid-2">
               <label class="field"><span>Порядок</span><input type="number" id="ie-order" value="${it.sort_order}"></label>
               <label class="field"><span>Активен</span><select id="ie-active">
@@ -1166,7 +1312,8 @@ async function nightItemsModal(a, after) {
               try {
                 await api(`/api/night/items/${it.id}`, { method: 'PUT', body: {
                   text: $('#ie-text').value.trim(), sort_order: Number($('#ie-order').value) || 100,
-                  active: $('#ie-active').value === '1' } });
+                  active: $('#ie-active').value === '1',
+                  service_id: Number($('#ie-service').value) || null } });
                 toast('Пункт сохранён', 'ok'); renderItems();
               } catch (e) { toast(e.message, 'err'); }
             };
@@ -1176,7 +1323,7 @@ async function nightItemsModal(a, after) {
         $$('[data-it-toggle]', m).forEach(b => b.onclick = async () => {
           const it = fresh.items.find(x => x.id === Number(b.dataset.itToggle));
           try {
-            await api(`/api/night/items/${it.id}`, { method: 'PUT', body: { text: it.text, sort_order: it.sort_order, active: !it.active } });
+            await api(`/api/night/items/${it.id}`, { method: 'PUT', body: { text: it.text, sort_order: it.sort_order, active: !it.active, service_id: it.service_id || null } });
             renderItems();
           } catch (e) { toast(e.message, 'err'); }
         });

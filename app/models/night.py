@@ -94,6 +94,9 @@ class ZoneChecklistItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     zone_id: Mapped[int] = mapped_column(ForeignKey("night_zones.id"), index=True)
     text: Mapped[str] = mapped_column(String(300))
+    # ответственная служба (этап 3): кто получает недостаток по этому пункту
+    service_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("responsibility_services.id"), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
@@ -115,6 +118,8 @@ class ChecklistItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     area_id: Mapped[int] = mapped_column(ForeignKey("night_areas.id"), index=True)
     text: Mapped[str] = mapped_column(String(300))
+    service_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("responsibility_services.id"), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
@@ -142,6 +147,9 @@ class ChecklistOverride(Base):
     zone_item_id: Mapped[int] = mapped_column(ForeignKey("zone_checklist_items.id"), index=True)
     text: Mapped[str] = mapped_column(String(300), default="")
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # своя служба у этого объекта (None = как в шаблоне зоны)
+    service_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("responsibility_services.id"), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
 
@@ -220,6 +228,10 @@ class NightCheckItem(Base):
         ForeignKey("zone_checklist_items.id"), nullable=True)
     text: Mapped[str] = mapped_column(String(300))
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    # служба — снимком (id + название): переименование службы не меняет закрытые смены
+    service_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("responsibility_services.id"), nullable=True, index=True)
+    service_name: Mapped[str] = mapped_column(String(160), default="")
     answer: Mapped[str] = mapped_column(String(8), default="")   # '' (не отмечено) | ok | bad
     comment: Mapped[str] = mapped_column(Text, default="")
     answered_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)

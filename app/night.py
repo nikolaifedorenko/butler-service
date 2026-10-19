@@ -32,6 +32,7 @@ from .models import (
     NightInterception,
     NightReport,
     NightZone,
+    ResponsibilityService,
     ZoneChecklistItem,
 )
 
@@ -58,6 +59,38 @@ def close_deadline(shift_d: dt.date) -> dt.datetime:
     return dt.datetime.combine(shift_d + dt.timedelta(days=1), SHIFT_END)
 
 
+def services_map(db: Session) -> dict[int, str]:
+    """Названия ответственных служб одним запросом: {id: name}."""
+    return {s.id: s.name for s in db.scalars(select(ResponsibilityService))}
+
+
+def service_dict(svc: ResponsibilityService, *, items_total: int = 0) -> dict:
+    """Служба справочника: каналы доставки, ящик, закреплённые чаты, число пунктов.
+
+    ready_* — можно ли отправлять этим каналом (канал включён и заполнен получатель):
+    интерфейс показывает предупреждение, пока служба не готова, а этап 5 не шлёт
+    в пустоту. Чаты закрепляются из общего каталога Telegram («Настройки → Чаты и
+    Почта»), поэтому здесь только их id.
+    """
+    try:
+        chats = json.loads(svc.chat_ids or "[]")
+        if not isinstance(chats, list):
+            chats = []
+    except ValueError:
+        chats = []
+    return {
+        "id": svc.id, "name": svc.name, "sort_order": svc.sort_order,
+        "active": bool(svc.active),
+        "use_telegram": bool(svc.use_telegram), "use_email": bool(svc.use_email),
+        "email_to": svc.email_to or "", "email_copy": svc.email_copy or "",
+        "chat_ids": chats, "note": svc.note or "", "items_total": items_total,
+        "ready_telegram": bool(svc.use_telegram and chats),
+        "ready_email": bool(svc.use_email and (svc.email_to or "").strip()),
+        "ready": bool((svc.use_telegram and chats) or (svc.use_email and (svc.email_to or "").strip())),
+        "created_at": svc.created_at.isoformat(timespec="seconds") if svc.created_at else None,
+    }
+
+
 def effective_items(db: Session, area: NightArea) -> list[dict]:
     """Эффективный чек-лист объекта (v2): шаблон зоны + свои пункты − отключённые.
 
@@ -66,10 +99,14 @@ def effective_items(db: Session, area: NightArea) -> list[dict]:
     учитываются индивидуальные правки объекта (ChecklistOverride): disabled — пункт
     не проверяется у этого объекта, text — своя формулировка.
 
-    Возвращает снимок для отчёта: [{"id", "src": "zone"|"area", "text", "overridden"}],
-    где id — id пункта шаблона зоны или своего пункта (различаются по src).
+    Возвращает снимок для отчёта: [{"id", "src": "zone"|"area", "text", "overridden",
+    "service_id", "service_name", "service_own"}], где id — id пункта шаблона зоны
+    или своего пункта (различаются по src), а служба — ответственный получатель
+    недостатка по этому пункту (service_own=True — у объекта своя служба, а не
+    как в шаблоне зоны).
     """
     out: list[dict] = []
+    svc_names = services_map(db)
     if area.zone_id:
         zone_items = list(db.scalars(
             select(ZoneChecklistItem)
@@ -82,13 +119,18 @@ def effective_items(db: Session, area: NightArea) -> list[dict]:
             ov = ovs.get(it.id)
             if ov is not None and ov.disabled:
                 continue                       # у этого объекта пункт не проверяется
+            sid = ov.service_id if (ov is not None and ov.service_id) else it.service_id
             out.append({"id": it.id, "src": "zone", "text": (ov.text if ov is not None and ov.text
                                                              else it.text),
-                        "overridden": bool(ov is not None and ov.text)})
+                        "overridden": bool(ov is not None and ov.text),
+                        "service_id": sid, "service_name": svc_names.get(sid or 0, ""),
+                        "service_own": bool(ov is not None and ov.service_id)})
     for it in db.scalars(select(ChecklistItem)
                          .where(ChecklistItem.area_id == area.id, ChecklistItem.active.is_(True))
                          .order_by(ChecklistItem.sort_order, ChecklistItem.id)):
-        out.append({"id": it.id, "src": "area", "text": it.text, "overridden": False})
+        out.append({"id": it.id, "src": "area", "text": it.text, "overridden": False,
+                    "service_id": it.service_id, "service_name": svc_names.get(it.service_id or 0, ""),
+                    "service_own": False})
     return out
 
 
@@ -130,7 +172,9 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
             db.add(NightCheckItem(section_id=section.id,
                                   item_id=s["id"] if s["src"] == "area" else None,
                                   zone_item_id=s["id"] if s["src"] == "zone" else None,
-                                  text=s["text"], sort_order=(i + 1) * 10))
+                                  text=s["text"], sort_order=(i + 1) * 10,
+                                  service_id=s.get("service_id"),
+                                  service_name=s.get("service_name") or ""))
         order += 10
 
     if cars_step:
@@ -204,6 +248,8 @@ SECTION_TITLES = {"free": "свободна", "taken": "в работе", "done"
 def item_dict(it: NightCheckItem) -> dict:
     return {
         "id": it.id, "item_id": it.item_id, "text": it.text, "sort_order": it.sort_order,
+        # ответственная служба — снимком: переименование службы не меняет закрытые смены
+        "service_id": it.service_id, "service_name": it.service_name or "",
         "answer": it.answer, "answer_title": ANSWER_TITLES.get(it.answer, it.answer),
         "comment": it.comment or "",
         "answered_by_name": it.answered_by_name or "",
@@ -262,7 +308,9 @@ def refresh_free_section(db: Session, area: NightArea) -> int:
             db.add(NightCheckItem(section_id=sec.id,
                                   item_id=item["id"] if item["src"] == "area" else None,
                                   zone_item_id=item["id"] if item["src"] == "zone" else None,
-                                  text=item["text"], sort_order=(i + 1) * 10))
+                                  text=item["text"], sort_order=(i + 1) * 10,
+                                  service_id=item.get("service_id"),
+                                  service_name=item.get("service_name") or ""))
         touched += 1
     return touched
 

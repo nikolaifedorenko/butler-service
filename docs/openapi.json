@@ -1223,6 +1223,17 @@
             "title": "Active",
             "type": "boolean"
           },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
           "sort_order": {
             "default": 100,
             "title": "Sort Order",
@@ -1486,6 +1497,17 @@
             "default": false,
             "title": "Disabled",
             "type": "boolean"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
           },
           "text": {
             "default": "",
@@ -1918,6 +1940,63 @@
         "title": "RuleIn",
         "type": "object"
       },
+      "ServiceIn": {
+        "description": "Ответственная служба: каналы доставки и получатели (этап 3).\n\nchat_ids — закрепление чатов из ОБЩЕГО каталога Telegram (получается в\n«Настройки → Чаты и Почта»), поэтому здесь только их числовые id.",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "chat_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "email_copy": {
+            "default": "",
+            "title": "Email Copy",
+            "type": "string"
+          },
+          "email_to": {
+            "default": "",
+            "title": "Email To",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "sort_order": {
+            "default": 100,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "use_email": {
+            "default": false,
+            "title": "Use Email",
+            "type": "boolean"
+          },
+          "use_telegram": {
+            "default": false,
+            "title": "Use Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ServiceIn",
+        "type": "object"
+      },
       "SettingsIn": {
         "properties": {
           "note": {
@@ -2212,6 +2291,17 @@
             "default": true,
             "title": "Active",
             "type": "boolean"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
           },
           "sort_order": {
             "default": 100,
@@ -6986,6 +7076,153 @@
           }
         },
         "summary": "Take Section",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/services": {
+      "get": {
+        "description": "Справочник служб: каналы, получатели и сколько пунктов за каждой закреплено.",
+        "operationId": "list_services_api_night_services_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Services",
+        "tags": [
+          "night"
+        ]
+      },
+      "post": {
+        "operationId": "create_service_api_night_services_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Service",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/services/{service_id}": {
+      "delete": {
+        "description": "Отключение службы (не удаление): пункты и история закрытых смен остаются как были.\n\nСлужба перестаёт предлагаться в справочнике и не участвует в новых отправках;\nзакреплённые за ней пункты видны в ответе (items_total) — их стоит переназначить.",
+        "operationId": "delete_service_api_night_services__service_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Service",
+        "tags": [
+          "night"
+        ]
+      },
+      "put": {
+        "description": "Правка службы: новое название уходит в незакрытые смены, в закрытых остаётся старое.",
+        "operationId": "update_service_api_night_services__service_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Service",
         "tags": [
           "night"
         ]

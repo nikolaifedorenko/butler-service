@@ -74,6 +74,15 @@ def migrate_db() -> None:
             ("pay_ot_night2", "FLOAT DEFAULT 0"),
             ("double_reason", "VARCHAR(16) DEFAULT ''"),
         ],
+        "zone_checklist_items": [
+            ("service_id", "INTEGER"),
+        ],
+        "checklist_items": [
+            ("service_id", "INTEGER"),
+        ],
+        "checklist_overrides": [
+            ("service_id", "INTEGER"),
+        ],
         "photos": [
             # фото → медиа: видео ночного обхода (этап 2, 19.10.2026). У старых
             # записей значение пустое и трактуется как "photo".
@@ -106,6 +115,9 @@ def migrate_db() -> None:
         ],
         "night_check_items": [
             ("zone_item_id", "INTEGER"),
+            # ответственная служба — снимком (id + название), этап 3
+            ("service_id", "INTEGER"),
+            ("service_name", "VARCHAR(160) DEFAULT ''"),
         ],
         # ночная отметка кара (19.10.2026): где батлер нашёл кар и факт перепарковки
         # («кар был на месте, но его переставили» — место в карточке могло устареть)
@@ -461,6 +473,11 @@ def migrate_night_cars() -> None:
             "CREATE INDEX IF NOT EXISTS ix_night_items_section ON night_check_items (section_id)",
             "CREATE INDEX IF NOT EXISTS ix_car_history_car_ts ON car_history (car_id, ts)",
             "CREATE INDEX IF NOT EXISTS ix_photos_kind_ref ON photos (kind, ref_id)",
+            # ответственные службы (этап 3): поиск пунктов и снимков отчёта по службе
+            "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_service"
+            " ON zone_checklist_items (service_id)",
+            "CREATE INDEX IF NOT EXISTS ix_night_check_items_service"
+            " ON night_check_items (service_id)",
         ):
             # таблица ещё не создана — create_all разберётся сам
             with contextlib.suppress(Exception):
