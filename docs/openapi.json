@@ -630,6 +630,123 @@
         "title": "CloseSectionIn",
         "type": "object"
       },
+      "ConfigIn": {
+        "description": "Параметры доставки. Пустая строка у секрета означает «не менять».",
+        "properties": {
+          "notify_email_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Email From"
+          },
+          "notify_email_reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Email Reply To"
+          },
+          "notify_smtp_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Host"
+          },
+          "notify_smtp_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Password"
+          },
+          "notify_smtp_port": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Port"
+          },
+          "notify_smtp_security": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Security"
+          },
+          "notify_smtp_user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp User"
+          },
+          "notify_telegram_api": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Telegram Api"
+          },
+          "notify_telegram_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Telegram Token"
+          },
+          "notify_timeout": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Timeout"
+          }
+        },
+        "title": "ConfigIn",
+        "type": "object"
+      },
       "ContactIn": {
         "properties": {
           "name": {
@@ -873,6 +990,34 @@
         "title": "DepartmentIn",
         "type": "object"
       },
+      "DispatchIn": {
+        "description": "Ручная отправка недостатков службам (этап 5).\n\nmode=\"all\" — всё, что ещё не отправлено; \"selected\" — только item_ids.\nservice_ids сужает отправку до выбранных служб (кнопка «Отправить службе»).\nАвтоотправки нет: ни закрытие объекта, ни закрытие смены ничего не шлют.",
+        "properties": {
+          "item_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "all",
+            "title": "Mode",
+            "type": "string"
+          },
+          "service_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Service Ids",
+            "type": "array"
+          }
+        },
+        "title": "DispatchIn",
+        "type": "object"
+      },
       "DocIn": {
         "properties": {
           "company": {
@@ -907,6 +1052,24 @@
           }
         },
         "title": "DocIn",
+        "type": "object"
+      },
+      "EmailTestIn": {
+        "properties": {
+          "subject": {
+            "default": "",
+            "title": "Subject",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to"
+        ],
+        "title": "EmailTestIn",
         "type": "object"
       },
       "EmployeeIn": {
@@ -1223,6 +1386,17 @@
             "title": "Active",
             "type": "boolean"
           },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
           "sort_order": {
             "default": 100,
             "title": "Sort Order",
@@ -1486,6 +1660,17 @@
             "default": false,
             "title": "Disabled",
             "type": "boolean"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
           },
           "text": {
             "default": "",
@@ -1918,6 +2103,63 @@
         "title": "RuleIn",
         "type": "object"
       },
+      "ServiceIn": {
+        "description": "Ответственная служба: каналы доставки и получатели (этап 3).\n\nchat_ids — закрепление чатов из ОБЩЕГО каталога Telegram (получается в\n«Настройки → Чаты и Почта»), поэтому здесь только их числовые id.",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "chat_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "email_copy": {
+            "default": "",
+            "title": "Email Copy",
+            "type": "string"
+          },
+          "email_to": {
+            "default": "",
+            "title": "Email To",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "sort_order": {
+            "default": 100,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "use_email": {
+            "default": false,
+            "title": "Use Email",
+            "type": "boolean"
+          },
+          "use_telegram": {
+            "default": false,
+            "title": "Use Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ServiceIn",
+        "type": "object"
+      },
       "SettingsIn": {
         "properties": {
           "note": {
@@ -2115,6 +2357,51 @@
         "title": "TakeIn",
         "type": "object"
       },
+      "TelegramCheckIn": {
+        "properties": {
+          "api": {
+            "default": "",
+            "title": "Api",
+            "type": "string"
+          },
+          "token": {
+            "default": "",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "title": "TelegramCheckIn",
+        "type": "object"
+      },
+      "TelegramTestIn": {
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "integer"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id"
+        ],
+        "title": "TelegramTestIn",
+        "type": "object"
+      },
+      "TemplateIn": {
+        "properties": {
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "title": "TemplateIn",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2212,6 +2499,17 @@
             "default": true,
             "title": "Active",
             "type": "boolean"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
           },
           "sort_order": {
             "default": 100,
@@ -6722,6 +7020,200 @@
         ]
       }
     },
+    "/api/night/reports/{report_id}/defects": {
+      "get": {
+        "description": "Недостатки смены: позиции, группы по службам, журнал, шаблон сообщения.",
+        "operationId": "report_defects_api_night_reports__report_id__defects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Defects",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/reports/{report_id}/defects/preview": {
+      "post": {
+        "description": "Предпросмотр сообщений: что именно уйдёт каждой службе (без отправки).",
+        "operationId": "preview_defects_api_night_reports__report_id__defects_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Defects",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/reports/{report_id}/dispatch": {
+      "post": {
+        "description": "Отправить недостатки службам: всё скопом или выбранное (только вручную).",
+        "operationId": "dispatch_report_api_night_reports__report_id__dispatch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dispatch Report",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/reports/{report_id}/dispatches": {
+      "get": {
+        "description": "Журнал отправок смены — строки общего журнала раздела «Ночной отчёт».",
+        "operationId": "report_dispatches_api_night_reports__report_id__dispatches_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Dispatches",
+        "tags": [
+          "night"
+        ]
+      }
+    },
     "/api/night/reports/{report_id}/export.docx": {
       "get": {
         "operationId": "export_docx_api_night_reports__report_id__export_docx_get",
@@ -6986,6 +7478,153 @@
           }
         },
         "summary": "Take Section",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/services": {
+      "get": {
+        "description": "Справочник служб: каналы, получатели и сколько пунктов за каждой закреплено.",
+        "operationId": "list_services_api_night_services_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Services",
+        "tags": [
+          "night"
+        ]
+      },
+      "post": {
+        "operationId": "create_service_api_night_services_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Service",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/services/{service_id}": {
+      "delete": {
+        "description": "Отключение службы (не удаление): пункты и история закрытых смен остаются как были.\n\nСлужба перестаёт предлагаться в справочнике и не участвует в новых отправках;\nзакреплённые за ней пункты видны в ответе (items_total) — их стоит переназначить.",
+        "operationId": "delete_service_api_night_services__service_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Service",
+        "tags": [
+          "night"
+        ]
+      },
+      "put": {
+        "description": "Правка службы: новое название уходит в незакрытые смены, в закрытых остаётся старое.",
+        "operationId": "update_service_api_night_services__service_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Service",
         "tags": [
           "night"
         ]
@@ -7334,6 +7973,511 @@
         "summary": "Add Zone Item",
         "tags": [
           "night"
+        ]
+      }
+    },
+    "/api/notify/chats": {
+      "get": {
+        "description": "Каталог чатов для карточки службы: какие чаты найдены и кем уже используются.",
+        "operationId": "get_chats_api_notify_chats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Chats",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/config": {
+      "get": {
+        "description": "Параметры доставки (секреты маскированы) + готовность каналов и каталог чатов.",
+        "operationId": "get_config_api_notify_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "description": "Сохранить параметры доставки. В аудит попадают имена ключей, не значения.",
+        "operationId": "put_config_api_notify_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Config",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/dispatches": {
+      "get": {
+        "description": "Общий журнал отправок приложения (фильтр по разделу).\n\nИстория не редактируется: видно, какой раздел, кто, кому и что отправил,\nстатус доставки и ошибку. Журнал доступен менеджменту; в разделе «Ночной\nотчёт» есть своя обёртка /api/night/reports/{id}/dispatches для батлеров.",
+        "operationId": "list_dispatches_api_notify_dispatches_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Domain",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Dispatches",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/dispatches/export.csv": {
+      "get": {
+        "description": "Выгрузка общего журнала отправок в CSV (разборы, отчёт руководству).\n\nЖурнал общий для всех разделов: колонка «Раздел» показывает, откуда отправка\n(night — ночной отчёт, cars — электрокары и т. д.). Состав позиции хранится\nснимком, поэтому выгрузка закрытой смены не меняется со временем.",
+        "operationId": "export_dispatches_csv_api_notify_dispatches_export_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Domain",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 2000,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Dispatches Csv",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/dispatches/{dispatch_id}/resend": {
+      "post": {
+        "description": "Повторить неудачную доставку тем же текстом и составом (журнал не переписывается).",
+        "operationId": "resend_dispatch_api_notify_dispatches__dispatch_id__resend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Dispatch",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/email/test": {
+      "post": {
+        "description": "Тестовое письмо: проверяет коннектор Exchange, отправителя и адрес получателя.",
+        "operationId": "email_test_api_notify_email_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Email Test",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/telegram/chats": {
+      "post": {
+        "description": "Обновить общий каталог чатов (getUpdates).\n\nБот должен быть добавлен в группы служб, и в группе должно появиться хотя бы\nодно сообщение — иначе Telegram не отдаст чат в обновлениях.",
+        "operationId": "telegram_chats_api_notify_telegram_chats_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Telegram Chats",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/telegram/check": {
+      "post": {
+        "description": "getMe: проверить токен (можно ещё не сохранённый) и увидеть username бота.",
+        "operationId": "telegram_check_api_notify_telegram_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramCheckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Telegram Check",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/telegram/test": {
+      "post": {
+        "description": "Тестовое сообщение в выбранный чат — проверка, что бот добавлен и пишет.",
+        "operationId": "telegram_test_api_notify_telegram_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Telegram Test",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates": {
+      "get": {
+        "description": "Шаблоны сообщений по разделам (свои у каждого раздела приложения).",
+        "operationId": "get_templates_api_notify_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Templates",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates/{domain}": {
+      "put": {
+        "description": "Сохранить шаблон раздела. Пустой текст — вернуть вариант по умолчанию.",
+        "operationId": "put_template_api_notify_templates__domain__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "title": "Domain",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Template",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates/{domain}/preview": {
+      "post": {
+        "description": "Предпросмотр: тот же рендер, что при отправке, но на образцовых данных.",
+        "operationId": "preview_template_api_notify_templates__domain__preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "title": "Domain",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Template",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/photos/limits": {
+      "get": {
+        "description": "Лимиты медиа для интерфейса: размер фото/видео (МБ) и сроки хранения (дни).",
+        "operationId": "photo_limits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Photo Limits",
+        "tags": [
+          "photos"
         ]
       }
     },

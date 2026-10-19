@@ -17,13 +17,20 @@ from .models import Setting, ShiftType
 DEFAULT_RULES = {
     "timeoff_default_hours": "8",
     "photo_retention_days": "180",
+    "photo_max_mb": "12",
+    "video_max_mb": "50",
+    "video_retention_days": "180",
 }
 RULE_DESCRIPTIONS = {
     "timeoff_default_hours": "Часы «выходного за часы», если стандартное окно смен сотрудника не определилось "
                              "(обычно берётся окно его смены из Табеля)",
     "photo_retention_days": "Хранение фото ночных отчётов и электрокаров в днях (0 — хранить всегда)",
+    "photo_max_mb": "Наибольший размер загружаемого фото, МБ (оригиналы не сжимаются)",
+    "video_max_mb": "Наибольший размер загружаемого видео, МБ (50 — предел отправки в Telegram)",
+    "video_retention_days": "Хранение видео в днях (0 — хранить всегда)",
 }
-INT_RULES = {"timeoff_default_hours", "photo_retention_days"}
+INT_RULES = {"timeoff_default_hours", "photo_retention_days", "photo_max_mb",
+             "video_max_mb", "video_retention_days"}
 
 
 def coerce_rules(raw: dict) -> dict:

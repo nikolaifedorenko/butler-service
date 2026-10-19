@@ -1,8 +1,13 @@
 """Выгрузка ночного отчёта: DOCX и PDF.
 
-Формат — «сплошной поток»: сначала все области с пунктами (ответ, комментарий, фото),
-затем блок «Проверка электрокаров» (все обходы ночи) и служебные разделы
-(перехваты областей, замечания). Один документ на одну ночную смену.
+Формат — «сплошной поток»: сначала все области с пунктами по зонам обхода
+(пункт, результат, комментарий/фото, ответственная служба), затем блок
+«Проверка электрокаров» (все обходы ночи), «Недостатки смены» (что и кому
+направлено, включая «Не проверено» и «Исправлено после отправки»), журнал
+отправок службам и перехваты областей. Один документ на одну ночную смену.
+
+Службы и отправки берутся из снимка отчёта (night_check_items.service_name,
+notify_dispatches), поэтому выгрузка закрытой смены не меняется со временем.
 
 PDF собирается из того же .docx встроенным движком (app/pdf_render.py):
 если есть LibreOffice — через него, иначе reportlab. Картинки вставляются
@@ -25,8 +30,14 @@ def _fmt_ts(iso: Optional[str]) -> str:
     return iso.replace("T", " ")[:16] if iso else "—"
 
 
-def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: str = "") -> bytes:
-    """Собрать .docx ночного отчёта (python-docx)."""
+def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: str = "",
+               defects: Optional[dict] = None, dispatches: Optional[list[dict]] = None,
+               duty: str = "") -> bytes:
+    """Собрать .docx ночного отчёта (python-docx).
+
+    defects — результат night.defects_of() (позиции «Не ОК», «Не проверено» и
+    «Исправлено после отправки»), dispatches — строки общего журнала отправок.
+    """
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Cm, Pt
@@ -78,16 +89,17 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
             who += f" · закрыта {_fmt_ts(area['closed_at'])}"
         doc.add_paragraph(who).runs[0].font.size = Pt(9)
 
-        table = doc.add_table(rows=1, cols=3)
+        table = doc.add_table(rows=1, cols=4)
         table.style = "Table Grid"
         hdr = table.rows[0].cells
-        for i, text in enumerate(("Пункт проверки", "Результат", "Комментарий / фото")):
+        for i, text in enumerate(("Пункт проверки", "Результат", "Служба", "Комментарий / фото")):
             hdr[i].paragraphs[0].add_run(text).bold = True
         for item in area["items"]:
             row = table.add_row().cells
             row[0].text = item["text"]
             row[1].text = item["answer_title"]
-            cell = row[2]
+            row[2].text = item.get("service_name") or "—"
+            cell = row[3]
             lines = []
             if item["comment"]:
                 lines.append(item["comment"])
@@ -97,7 +109,7 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
             for ph in photos.get(item["id"], []):
                 if not _image_cell(cell, ph):
                     cell.add_paragraph(f"[фото {ph['filename']} недоступно]")
-        _autosize(table, (Cm(7.5), Cm(2.6), Cm(6.4)))
+        _autosize(table, (Cm(6.2), Cm(2.2), Cm(2.9), Cm(5.2)))
 
     # ── электрокары ──
     cars = data.get("car_checks") or []
@@ -145,6 +157,67 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
                 if not _image_cell(cell, ph, width_cm=4.4):
                     cell.add_paragraph(f"[фото {ph['filename']} недоступно]")
         _autosize(table, (Cm(2.6), Cm(2.0), Cm(3.0), Cm(1.6), Cm(3.6), Cm(4.7)))
+
+    # ── недостатки смены: что направлено службам (этап 5/6) ──
+    rows = (defects or {}).get("items") or []
+    counts = (defects or {}).get("counts") or {}
+    head = doc.add_paragraph()
+    head.add_run("Недостатки смены").bold = True
+    if not rows:
+        doc.add_paragraph("Замечаний нет: все пункты проверены, результат «ОК».")
+    else:
+        doc.add_paragraph(
+            f"Всего позиций {counts.get('total', len(rows))}: «Не ОК» {counts.get('bad', 0)}, "
+            f"«Не проверено» {counts.get('unchecked', 0)}, исправлено после отправки "
+            f"{counts.get('fixed_after_dispatch', 0)}"
+            + (f" · ночные батлеры смены: {duty}" if duty else "")).runs[0].font.size = Pt(9)
+        table = doc.add_table(rows=1, cols=5)
+        table.style = "Table Grid"
+        for i, text in enumerate(("Служба", "Зона / объект", "Пункт", "Комментарий", "Статус")):
+            table.rows[0].cells[i].paragraphs[0].add_run(text).bold = True
+        for d in sorted(rows, key=lambda x: (x.get("service_name") or "яяя", x.get("area") or "")):
+            row = table.add_row().cells
+            row[0].text = d.get("service_name") or "Без службы"
+            row[1].text = f"{d.get('zone') or '—'} · {d.get('area') or '—'}"
+            row[2].text = f"{d.get('kind_title', '')}: {d.get('text', '')}"
+            media = len(d.get("media") or [])
+            row[3].text = (d.get("comment") or "—") + (f"\nвложений: {media}" if media else "")
+            status = ("исправлено после отправки" if d.get("fixed_after_dispatch")
+                      else f"отправлено {_fmt_ts(d.get('dispatched_at'))}" if d.get("dispatched")
+                      else "не отправлено")
+            row[4].text = status
+        _autosize(table, (Cm(3.0), Cm(3.6), Cm(4.6), Cm(3.3), Cm(2.6)))
+        doc.add_paragraph(
+            "Позиции «Не проверено» включаются в отчёт; исправленное после отправки повторно "
+            "не направляется и не отзывается.").runs[0].font.size = Pt(9)
+
+    # ── журнал отправок службам ──
+    sends = dispatches or []
+    head = doc.add_paragraph()
+    head.add_run("Отправки службам").bold = True
+    if not sends:
+        doc.add_paragraph("В эту смену ничего не отправлялось.")
+    else:
+        table = doc.add_table(rows=1, cols=6)
+        table.style = "Table Grid"
+        for i, text in enumerate(("Время", "Кто отправил", "Служба", "Канал", "Получатель",
+                                  "Позиций / вложений / статус")):
+            table.rows[0].cells[i].paragraphs[0].add_run(text).bold = True
+        for d in sends:
+            row = table.add_row().cells
+            row[0].text = _fmt_ts(d.get("ts"))
+            row[1].text = d.get("actor_name") or "—"
+            row[2].text = d.get("recipient_name") or "—"
+            row[3].text = d.get("channel_title") or d.get("channel") or "—"
+            row[4].text = d.get("target") or "—"
+            tail = f"{d.get('items_count', 0)} / {d.get('media_count', 0)} / " \
+                   f"{'отправлено' if d.get('status') == 'sent' else 'ОШИБКА'}"
+            if d.get("attempts", 1) > 1:
+                tail += f" (попыток: {d['attempts']})"
+            if d.get("error"):
+                tail += f"\n{d['error'][:200]}"
+            row[5].text = tail
+        _autosize(table, (Cm(2.4), Cm(2.8), Cm(2.8), Cm(2.2), Cm(3.0), Cm(3.9)))
 
     # ── перехваты ──
     icepts = data.get("interceptions") or []
@@ -214,8 +287,10 @@ def _photo_payload(db: Session, photos: dict[int, list[dict]]) -> dict[int, list
 
 def render_night_report_docx(db: Session, report_id: int, *, company: str = "",
                              photos_map: Optional[dict[int, list[dict]]] = None) -> bytes:
-    """DOCX ночного отчёта (области + кары + перехваты)."""
+    """DOCX ночного отчёта (зоны и объекты + кары + недостатки + отправки + перехваты)."""
     from .models import NightReport
+    from .night import defects_of, duty_of
+    from .notify.dispatch import dispatch_dict, journal_of
 
     rep = db.get(NightReport, report_id)
     if rep is None:
@@ -227,4 +302,8 @@ def render_night_report_docx(db: Session, report_id: int, *, company: str = "",
     photos = _photo_payload(db, photos_map or {})
     # фото отметок каров живут внутри data["car_checks"] — дополняем их путём до файла
     _photo_payload(db, {c["id"]: c.get("photos") or [] for c in data.get("car_checks") or []})
-    return build_docx(data, photos, company=company)
+    # недостатки и журнал отправок — из снимка смены: выгрузка закрытой смены стабильна
+    defects = defects_of(db, rep)
+    dispatches = [dispatch_dict(d) for d in journal_of(db, "night", rep.id, limit=200)]
+    return build_docx(data, photos, company=company, defects=defects,
+                      dispatches=dispatches, duty=duty_of(rep))

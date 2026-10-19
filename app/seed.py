@@ -411,6 +411,35 @@ NIGHT_ZONES_DEMO = [
 ]
 
 
+# Ответственные службы (этап 3): (название, порядок, чат, письмо, ящик, копия, примечание).
+# Чаты закрепляются позже — из общего каталога Telegram («Настройки → Чаты и Почта»).
+NIGHT_SERVICES_DEMO = [
+    ("Батлер-сервис", 10, True, True, "butler@resort.example", "", "круглосуточный пост"),
+    ("Хозяйственная служба", 20, True, False, "", "", ""),
+    ("Техническая служба", 30, True, True, "tech@resort.example", "butler@resort.example",
+     "дежурный инженер"),
+    ("Служба безопасности", 40, True, False, "", "", "пост №1"),
+    ("СПА и бассейны", 50, False, True, "spa@resort.example", "", ""),
+]
+
+# Служба по умолчанию у пункта шаблона зоны (демо: видно, как недостаток уходит получателю)
+NIGHT_ITEM_SERVICE = {
+    "Витражи закрыты": "Батлер-сервис",
+    "Свет выключен": "Техническая служба",
+    "Вилла убрана": "Хозяйственная служба",
+    "Вилла укомплектована": "Батлер-сервис",
+    "Бассейн накрыт": "СПА и бассейны",
+    "Оборудование выключено": "Техническая служба",
+    "Продукты подписаны и убраны": "Хозяйственная служба",
+    "Вытяжка проверена": "Техническая служба",
+    "Уборка завершена": "Хозяйственная служба",
+    "Двери и сейфы закрыты": "Служба безопасности",
+    "Чистота пола и стоек ресепшн": "Хозяйственная служба",
+    "Освещение: все лампы горят": "Техническая служба",
+    "Мебель расставлена по схеме": "Хозяйственная служба",
+    "Нет посторонних запахов": "Хозяйственная служба",
+}
+
 CAR_LOCATIONS = ["Парковка у главного входа", "Навес у служебного входа",
                  "Место с зарядкой у корпуса B"]
 CARS_DEMO = [("1", "free", "Парковка у главного входа", ""), ("2", "busy", "Навес у служебного входа", "Иванов"),
@@ -422,9 +451,12 @@ def _seed_night_dirs(db: Session) -> None:
     """Зоны, объекты и чек-листы ночного обхода (демо-данные).
 
     Показывает обе возможности v2: общий шаблон зоны на все её объекты и
-    индивидуальные особенности конкретного объекта — своя формулировка, свой пункт
-    и отключённый пункт («Вилла 4001» / «Вилла 4002»).
+    индивидуальные особенности конкретного объекта — своя формулировка, свой пункт,
+    отключённый пункт и своя служба («Вилла 4001» / «Вилла 4002»). У пунктов шаблона
+    зоны заданы ответственные службы — по ним этап 5 собирает недостатки к отправке.
     """
+    import json
+
     from sqlalchemy import select
 
     from .models import (
@@ -432,15 +464,26 @@ def _seed_night_dirs(db: Session) -> None:
         ChecklistOverride,
         NightArea,
         NightZone,
+        ResponsibilityService,
         ZoneChecklistItem,
     )
+
+    services: dict[str, int] = {}
+    for name, order, tg, mail, email_to, email_copy, note in NIGHT_SERVICES_DEMO:
+        svc = ResponsibilityService(name=name, sort_order=order, use_telegram=tg,
+                                    use_email=mail, email_to=email_to,
+                                    email_copy=email_copy, chat_ids=json.dumps([]), note=note)
+        db.add(svc)
+        db.flush()
+        services[name] = svc.id
 
     for zone_name, order, tpl, objects in NIGHT_ZONES_DEMO:
         zone = NightZone(name=zone_name, sort_order=order)
         db.add(zone)
         db.flush()
         for i, text in enumerate(tpl, start=10):
-            db.add(ZoneChecklistItem(zone_id=zone.id, text=text, sort_order=i))
+            db.add(ZoneChecklistItem(zone_id=zone.id, text=text, sort_order=i,
+                                     service_id=services.get(NIGHT_ITEM_SERVICE.get(text, ""))))
         for j, obj_name in enumerate(objects):
             db.add(NightArea(name=obj_name, category=zone_name, zone_id=zone.id,
                              sort_order=(j + 1) * 10))
@@ -456,10 +499,13 @@ def _seed_night_dirs(db: Session) -> None:
     clean_item = _zone_item("Семейные виллы", "Вилла убрана")
     kit_item = _zone_item("Семейные виллы", "Вилла укомплектована")
     if villa_4001 is not None and clean_item is not None:
+        # своя формулировка И своя служба: детскую комнату проверяет батлер-сервис
         db.add(ChecklistOverride(area_id=villa_4001.id, zone_item_id=clean_item.id,
-                                 text="Вилла убрана (включая детскую комнату)"))
+                                 text="Вилла убрана (включая детскую комнату)",
+                                 service_id=services.get("Батлер-сервис")))
         db.add(ChecklistItem(area_id=villa_4001.id, sort_order=90,
-                             text="Детская кроватка установлена и исправна"))
+                             text="Детская кроватка установлена и исправна",
+                             service_id=services.get("Батлер-сервис")))
     if villa_4002 is not None and kit_item is not None:
         db.add(ChecklistOverride(area_id=villa_4002.id, zone_item_id=kit_item.id, disabled=True))
     db.flush()

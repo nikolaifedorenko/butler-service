@@ -25,7 +25,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B011"]
+# B011 — assert False в тестах намеренно; F811 — фикстуры, импортированные из
+# соседнего тестового модуля, pytest подставляет как параметры функций, а линтер
+# видит «переопределение имени» (tests/test_night_export_v2.py берёт транспортные
+# заглушки из tests/test_night_dispatch.py, чтобы не дублировать их).
+"tests/*" = ["B011", "F811"]
 "app/seed.py" = ["E402"]
 
 [tool.ruff.lint.isort]

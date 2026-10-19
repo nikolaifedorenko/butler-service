@@ -29,26 +29,30 @@ from ..models import (
     NightInterception,
     NightReport,
     NightZone,
+    ResponsibilityService,
     Setting,
     ZoneChecklistItem,
 )
 from ..night import (
     current_shift_date,
+    defects_of,
     effective_items,
     finalize_report,
     refresh_free_section,
     report_dict,
     section_dict,
+    service_dict,
+    services_map,
     sync_reports,
     zone_dict,
 )
 from ..permissions import require_perm
 from ..photos import delete_photo as delete_photo_usecase
-from ..photos import photos_of, resolve_photo_file, save_photo
+from ..photos import max_upload_bytes, photos_of, resolve_photo_file, save_photo
 
 router = APIRouter(prefix="/api/night", tags=["night"])
 
-MAX_PHOTO_BYTES = 12 * 1024 * 1024   # 12 МБ на файл — храним оригиналы
+# Лимиты размера медиа задаёт объект (photo_max_mb / video_max_mb) — см. photos.media_limits()
 
 
 # ─────────────────────────── входные модели ───────────────────────────
@@ -71,18 +75,50 @@ class ZoneItemIn(BaseModel):
     text: str
     sort_order: int = 100
     active: bool = True
+    service_id: Optional[int] = None   # ответственная служба: кто получает недостаток
 
 
 class OverrideIn(BaseModel):
     """Индивидуальная правка пункта шаблона зоны у конкретного объекта."""
-    text: str = ""            # своя формулировка ('' = как в шаблоне зоны)
-    disabled: bool = False    # пункт у этого объекта не проверяется
+    text: str = ""                       # своя формулировка ('' = как в шаблоне зоны)
+    disabled: bool = False               # пункт у этого объекта не проверяется
+    service_id: Optional[int] = None     # своя служба (None = как в шаблоне зоны)
 
 
 class ItemIn(BaseModel):
     text: str
     sort_order: int = 100
     active: bool = True
+    service_id: Optional[int] = None   # ответственная служба своего пункта объекта
+
+
+class DispatchIn(BaseModel):
+    """Ручная отправка недостатков службам (этап 5).
+
+    mode="all" — всё, что ещё не отправлено; "selected" — только item_ids.
+    service_ids сужает отправку до выбранных служб (кнопка «Отправить службе»).
+    Автоотправки нет: ни закрытие объекта, ни закрытие смены ничего не шлют.
+    """
+    mode: str = "all"
+    item_ids: list[int] = []
+    service_ids: list[int] = []
+
+
+class ServiceIn(BaseModel):
+    """Ответственная служба: каналы доставки и получатели (этап 3).
+
+    chat_ids — закрепление чатов из ОБЩЕГО каталога Telegram (получается в
+    «Настройки → Чаты и Почта»), поэтому здесь только их числовые id.
+    """
+    name: str
+    sort_order: int = 100
+    active: bool = True
+    use_telegram: bool = False
+    use_email: bool = False
+    email_to: str = ""
+    email_copy: str = ""
+    chat_ids: list[int] = []
+    note: str = ""
 
 
 class AnswerIn(BaseModel):
@@ -137,9 +173,12 @@ def _guard_open(rep: NightReport) -> None:
 def list_areas(principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Справочник областей с пунктами (виден всем ролям, включая батлеров)."""
     zones = {z.id: z.name for z in db.scalars(select(NightZone))}
+    svc_names = services_map(db)
     out = []
     for area in db.scalars(select(NightArea).order_by(NightArea.sort_order, NightArea.id)):
-        items = [{"id": it.id, "text": it.text, "sort_order": it.sort_order, "active": it.active}
+        items = [{"id": it.id, "text": it.text, "sort_order": it.sort_order, "active": it.active,
+                  "service_id": it.service_id,
+                  "service_name": svc_names.get(it.service_id or 0, "")}
                  for it in db.scalars(select(ChecklistItem)
                                       .where(ChecklistItem.area_id == area.id)
                                       .order_by(ChecklistItem.sort_order, ChecklistItem.id))]
@@ -255,20 +294,25 @@ def add_item(area_id: int, payload: ItemIn, principal: Principal = Depends(requi
     text = payload.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Введите текст пункта")
+    _check_service(db, payload.service_id)
     item = ChecklistItem(area_id=area.id, text=text[:300], sort_order=payload.sort_order,
-                         active=payload.active)
+                         active=payload.active, service_id=payload.service_id)
     db.add(item)
     db.flush()
     # добавленный пункт попадает только в ещё НЕ начатые открытые области
+    svc_names = services_map(db)
     added = 0
     for sec in db.scalars(select(NightAreaSection)
                           .join(NightReport, NightReport.id == NightAreaSection.report_id)
                           .where(NightReport.status == "open", NightAreaSection.area_id == area_id,
                                  NightAreaSection.status == "free")):
         db.add(NightCheckItem(section_id=sec.id, item_id=item.id, text=item.text,
-                              sort_order=item.sort_order))
+                              sort_order=item.sort_order, service_id=item.service_id,
+                              service_name=svc_names.get(item.service_id or 0, "")))
         snap = json.loads(sec.snapshot_json or "[]")
-        snap.append({"id": item.id, "text": item.text})
+        snap.append({"id": item.id, "src": "area", "text": item.text, "overridden": False,
+                     "service_id": item.service_id,
+                     "service_name": svc_names.get(item.service_id or 0, "")})
         sec.snapshot_json = json.dumps(snap, ensure_ascii=False)
         added += 1
     audit(db, principal, "night_item_create", f"item:{item.id}", {"area": area.name, "added_to": added})
@@ -283,10 +327,13 @@ def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(re
     if item is None:
         raise HTTPException(status_code=404, detail="Пункт не найден")
     old_text = item.text
+    _check_service(db, payload.service_id)
     item.text = payload.text.strip()[:300] or item.text
     item.sort_order = payload.sort_order
     item.active = payload.active
-    # обновляем текст/порядок в ещё открытых (незавершённых) снимках
+    item.service_id = payload.service_id
+    svc_names = services_map(db)
+    # обновляем текст/порядок/службу в ещё открытых (незавершённых) снимках
     for ni in db.scalars(select(NightCheckItem)
                          .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
@@ -294,6 +341,8 @@ def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(re
                                 NightAreaSection.status != "done")):
         ni.text = item.text
         ni.sort_order = item.sort_order
+        ni.service_id = item.service_id
+        ni.service_name = svc_names.get(item.service_id or 0, "")
         if not item.active and not ni.answer:
             # выключенный пункт без ответа убираем из незакрытой области
             snap = json.loads(ni.section.snapshot_json or "[]") if ni.section else []
@@ -325,6 +374,38 @@ def delete_item(item_id: int, principal: Principal = Depends(require_manager),
     audit(db, principal, "night_item_delete", f"item:{item_id}", {"removed_from_open": removed})
     db.commit()
     return {"ok": True, "removed_from_open": removed}
+
+
+def _check_service(db: Session, service_id: Optional[int]) -> None:
+    """Ответственная служба обязана существовать, иначе пункт останется без получателя."""
+    if not service_id:
+        return
+    if db.get(ResponsibilityService, service_id) is None:
+        raise HTTPException(status_code=400, detail="Ответственная служба не найдена")
+
+
+def _service_name_taken(db: Session, name: str, exclude_id: Optional[int] = None) -> bool:
+    """Занято ли название службы (сравнение без учёта регистра).
+
+    Сравниваем в Python, а не через SQL LOWER(): в SQLite lower() не работает с
+    кириллицей, поэтому «Хозяйственная служба» и «ХОЗЯЙСТВЕННАЯ СЛУЖБА» там
+    считались бы разными. Служб единицы — загрузка названий ничего не стоит.
+    """
+    want = name.strip().casefold()
+    q = select(ResponsibilityService.id, ResponsibilityService.name)
+    if exclude_id is not None:
+        q = q.where(ResponsibilityService.id != exclude_id)
+    return any(n.strip().casefold() == want for _, n in db.execute(q).all())
+
+
+def _check_channels(payload: ServiceIn) -> None:
+    """Каналы доставки: хотя бы один, и у каждого заполнен получатель."""
+    if not payload.use_telegram and not payload.use_email:
+        raise HTTPException(status_code=400,
+                            detail="Выберите хотя бы один канал: чат Telegram и/или письмо")
+    if payload.use_email and "@" not in (payload.email_to or ""):
+        raise HTTPException(status_code=400,
+                            detail="Укажите почтовый ящик службы (канал «письмо» включён)")
 
 
 # ─────────────────────────── зоны обхода (v2) ───────────────────────────
@@ -433,11 +514,14 @@ def zone_items(zone_id: int, principal: Principal = Depends(require_perm("night.
     ovs = dict(db.execute(select(ChecklistOverride.zone_item_id, func.count(ChecklistOverride.id))
                           .where(ChecklistOverride.area_id.in_(area_ids))
                           .group_by(ChecklistOverride.zone_item_id)).all()) if area_ids else {}
+    svc_names = services_map(db)
     items = []
     for i in db.scalars(select(ZoneChecklistItem).where(ZoneChecklistItem.zone_id == zone_id)
                         .order_by(ZoneChecklistItem.sort_order, ZoneChecklistItem.id)):
         items.append({"id": i.id, "text": i.text, "sort_order": i.sort_order,
-                      "active": bool(i.active), "overrides": ovs.get(i.id, 0)})
+                      "active": bool(i.active), "overrides": ovs.get(i.id, 0),
+                      "service_id": i.service_id,
+                      "service_name": svc_names.get(i.service_id or 0, "")})
     return {"zone": zone_dict(zone, areas_total=len(areas),
                               items_total=len([i for i in items if i["active"]])),
             "items": items, "areas": areas}
@@ -457,8 +541,9 @@ def add_zone_item(zone_id: int, payload: ZoneItemIn,
     text = payload.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Введите текст пункта")
+    _check_service(db, payload.service_id)
     item = ZoneChecklistItem(zone_id=zone.id, text=text[:300], sort_order=payload.sort_order,
-                             active=payload.active)
+                             active=payload.active, service_id=payload.service_id)
     db.add(item)
     db.flush()
     refreshed = 0
@@ -495,10 +580,13 @@ def update_zone_item(item_id: int, payload: ZoneItemIn,
     item = db.get(ZoneChecklistItem, item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Пункт не найден")
+    _check_service(db, payload.service_id)
     old_text = item.text
     item.text = payload.text.strip()[:300] or item.text
     item.sort_order = payload.sort_order
     item.active = payload.active
+    item.service_id = payload.service_id
+    svc_names = services_map(db)
     for ni in db.scalars(select(NightCheckItem)
                          .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
@@ -506,6 +594,14 @@ def update_zone_item(item_id: int, payload: ZoneItemIn,
                                 NightAreaSection.status != "done")):
         ni.text = item.text
         ni.sort_order = item.sort_order
+        # служба пункта шаблона меняется и в незакрытых сменах; у объекта может быть
+        # своя служба (ChecklistOverride) — её не переопределяем
+        own = {o.zone_item_id for o in db.scalars(select(ChecklistOverride).where(
+            ChecklistOverride.zone_item_id == item.id,
+            ChecklistOverride.service_id.is_not(None)))}
+        if ni.section.area_id not in own:
+            ni.service_id = item.service_id
+            ni.service_name = svc_names.get(item.service_id or 0, "")
     removed = _remove_zone_item_from_open(db, item) if not item.active else 0
     audit(db, principal, "night_zone_item_update", f"zone_item:{item.id}",
           {"old_text": old_text, **payload.model_dump(), "removed_from_open": removed})
@@ -538,6 +634,7 @@ def area_checklist(area_id: int, principal: Principal = Depends(require_perm("ni
     zone = db.get(NightZone, area.zone_id) if area.zone_id else None
     ovs = {o.zone_item_id: o for o in db.scalars(select(ChecklistOverride)
                                                  .where(ChecklistOverride.area_id == area.id))}
+    svc_names = services_map(db)
     zone_items = []
     if zone is not None:
         for i in db.scalars(select(ZoneChecklistItem)
@@ -545,12 +642,20 @@ def area_checklist(area_id: int, principal: Principal = Depends(require_perm("ni
                                    ZoneChecklistItem.active.is_(True))
                             .order_by(ZoneChecklistItem.sort_order, ZoneChecklistItem.id)):
             ov = ovs.get(i.id)
+            sid = ov.service_id if (ov and ov.service_id) else i.service_id
             zone_items.append({
                 "id": i.id, "text": i.text, "sort_order": i.sort_order,
                 "override_text": ov.text if ov else "", "disabled": bool(ov.disabled) if ov else False,
                 "effective_text": (ov.text if ov and ov.text else i.text),
-                "in_checklist": not (ov.disabled if ov else False)})
-    own = [{"id": i.id, "text": i.text, "sort_order": i.sort_order, "active": bool(i.active)}
+                "in_checklist": not (ov.disabled if ov else False),
+                "service_id": i.service_id,
+                "service_name": svc_names.get(i.service_id or 0, ""),
+                "override_service_id": ov.service_id if ov else None,
+                "override_service_name": svc_names.get(ov.service_id or 0, "") if ov else "",
+                "effective_service_id": sid,
+                "effective_service_name": svc_names.get(sid or 0, "")})
+    own = [{"id": i.id, "text": i.text, "sort_order": i.sort_order, "active": bool(i.active),
+            "service_id": i.service_id, "service_name": svc_names.get(i.service_id or 0, "")}
            for i in db.scalars(select(ChecklistItem)
                                .where(ChecklistItem.area_id == area.id, ChecklistItem.active.is_(True))
                                .order_by(ChecklistItem.sort_order, ChecklistItem.id))]
@@ -578,23 +683,27 @@ def set_override(area_id: int, zone_item_id: int, payload: OverrideIn,
     if item.zone_id != area.zone_id:
         raise HTTPException(status_code=400,
                             detail="Пункт не из шаблона зоны этого объекта")
+    _check_service(db, payload.service_id)
     text = payload.text.strip()[:300]
     ov = db.scalar(select(ChecklistOverride).where(ChecklistOverride.area_id == area.id,
                                                   ChecklistOverride.zone_item_id == item.id))
-    if not text and not payload.disabled:
+    # правка удаляется, только если объект снова во всём как шаблон зоны:
+    # нет своей формулировки, пункт не отключён и служба не переопределена
+    if not text and not payload.disabled and not payload.service_id:
         if ov is not None:
             db.delete(ov)
     elif ov is None:
         db.add(ChecklistOverride(area_id=area.id, zone_item_id=item.id, text=text,
-                                 disabled=bool(payload.disabled)))
+                                 disabled=bool(payload.disabled), service_id=payload.service_id))
     else:
         ov.text = text
         ov.disabled = bool(payload.disabled)
+        ov.service_id = payload.service_id
     db.flush()
     touched = refresh_free_section(db, area)
     audit(db, principal, "night_override_set", f"area:{area.id}",
           {"zone_item_id": item.id, "text": text, "disabled": bool(payload.disabled),
-           "sections_refreshed": touched})
+           "service_id": payload.service_id, "sections_refreshed": touched})
     db.commit()
     return {"ok": True, "sections_refreshed": touched, "effective": effective_items(db, area)}
 
@@ -618,6 +727,114 @@ def reset_override(area_id: int, zone_item_id: int,
           {"zone_item_id": zone_item_id, "sections_refreshed": touched})
     db.commit()
     return {"ok": True, "sections_refreshed": touched}
+
+
+# ─────────────────────── ответственные службы (этап 3) ───────────────────────
+# Служба — получатель недостатков ночного обхода: закрепляется за пунктом шаблона
+# зоны, у отдельного объекта переопределяется индивидуальной правкой. В отчёт
+# попадает снимком (service_name), поэтому переименование не меняет закрытые смены.
+# Здесь — только получатели и каналы; транспорт и учётные данные общие
+# («Настройки → Чаты и Почта», этап 4).
+
+@router.get("/services")
+def list_services(principal: Principal = Depends(require_perm("night.view")),
+                  db: Session = Depends(get_db)):
+    """Справочник служб: каналы, получатели и сколько пунктов за каждой закреплено."""
+    zone_counts = dict(db.execute(
+        select(ZoneChecklistItem.service_id, func.count(ZoneChecklistItem.id))
+        .where(ZoneChecklistItem.active.is_(True), ZoneChecklistItem.service_id.is_not(None))
+        .group_by(ZoneChecklistItem.service_id)).all())
+    own_counts = dict(db.execute(
+        select(ChecklistItem.service_id, func.count(ChecklistItem.id))
+        .where(ChecklistItem.active.is_(True), ChecklistItem.service_id.is_not(None))
+        .group_by(ChecklistItem.service_id)).all())
+    rows = [service_dict(s, items_total=zone_counts.get(s.id, 0) + own_counts.get(s.id, 0))
+            for s in db.scalars(select(ResponsibilityService)
+                                .order_by(ResponsibilityService.sort_order,
+                                          ResponsibilityService.id))]
+    return {"services": rows, "can_edit": principal.is_manager}
+
+
+@router.post("/services")
+def create_service(payload: ServiceIn, principal: Principal = Depends(require_manager),
+                   db: Session = Depends(get_db)):
+    name = payload.name.strip()[:160]
+    if not name:
+        raise HTTPException(status_code=400, detail="Введите название службы")
+    if _service_name_taken(db, name):
+        raise HTTPException(status_code=409, detail="Служба с таким названием уже есть")
+    _check_channels(payload)
+    svc = ResponsibilityService(
+        name=name, sort_order=payload.sort_order, active=payload.active,
+        use_telegram=payload.use_telegram, use_email=payload.use_email,
+        email_to=payload.email_to.strip()[:200], email_copy=payload.email_copy.strip()[:400],
+        chat_ids=json.dumps(payload.chat_ids), note=payload.note.strip()[:300])
+    db.add(svc)
+    db.flush()
+    audit(db, principal, "night_service_create", f"service:{svc.id}", payload.model_dump())
+    db.commit()
+    return {"ok": True, "id": svc.id, "service": service_dict(svc)}
+
+
+@router.put("/services/{service_id}")
+def update_service(service_id: int, payload: ServiceIn,
+                   principal: Principal = Depends(require_manager),
+                   db: Session = Depends(get_db)):
+    """Правка службы: новое название уходит в незакрытые смены, в закрытых остаётся старое."""
+    svc = db.get(ResponsibilityService, service_id)
+    if svc is None:
+        raise HTTPException(status_code=404, detail="Служба не найдена")
+    name = payload.name.strip()[:160]
+    if not name:
+        raise HTTPException(status_code=400, detail="Введите название службы")
+    if _service_name_taken(db, name, exclude_id=svc.id):
+        raise HTTPException(status_code=409, detail="Служба с таким названием уже есть")
+    _check_channels(payload)
+    old = service_dict(svc)
+    svc.name = name
+    svc.sort_order = payload.sort_order
+    svc.active = payload.active
+    svc.use_telegram = payload.use_telegram
+    svc.use_email = payload.use_email
+    svc.email_to = payload.email_to.strip()[:200]
+    svc.email_copy = payload.email_copy.strip()[:400]
+    svc.chat_ids = json.dumps(payload.chat_ids)
+    svc.note = payload.note.strip()[:300]
+    db.flush()
+    # снимок в незакрытых сменах обновляем (как у текста пункта шаблона зоны)
+    updated = 0
+    for ni in db.scalars(select(NightCheckItem)
+                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
+                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
+                         .where(NightCheckItem.service_id == svc.id, NightReport.status == "open",
+                                NightAreaSection.status != "done")):
+        ni.service_name = svc.name
+        updated += 1
+    audit(db, principal, "night_service_update", f"service:{svc.id}",
+          {"old": old, "new": service_dict(svc), "open_items_updated": updated})
+    db.commit()
+    return {"ok": True, "service": service_dict(svc), "open_items_updated": updated}
+
+
+@router.delete("/services/{service_id}")
+def delete_service(service_id: int, principal: Principal = Depends(require_manager),
+                   db: Session = Depends(get_db)):
+    """Отключение службы (не удаление): пункты и история закрытых смен остаются как были.
+
+    Служба перестаёт предлагаться в справочнике и не участвует в новых отправках;
+    закреплённые за ней пункты видны в ответе (items_total) — их стоит переназначить.
+    """
+    svc = db.get(ResponsibilityService, service_id)
+    if svc is None:
+        raise HTTPException(status_code=404, detail="Служба не найдена")
+    svc.active = False
+    items_total = db.scalar(select(func.count(ZoneChecklistItem.id))
+                            .where(ZoneChecklistItem.service_id == svc.id,
+                                   ZoneChecklistItem.active.is_(True))) or 0
+    audit(db, principal, "night_service_delete", f"service:{service_id}",
+          {"name": svc.name, "items_total": items_total})
+    db.commit()
+    return {"ok": True, "items_total": items_total}
 
 
 # ─────────────────────────── ход смены ───────────────────────────
@@ -784,16 +1001,86 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
     sec = _get_section(db, ni.section_id)
     rep = _get_report(db, sec.report_id)
     _guard_open(rep)
-    blob = await file.read(MAX_PHOTO_BYTES + 1)
-    if len(blob) > MAX_PHOTO_BYTES:
-        raise HTTPException(status_code=413, detail="Файл больше 12 МБ")
+    limit = max_upload_bytes(db)
+    blob = await file.read(limit + 1)
+    if len(blob) > limit:
+        raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
     try:
         photo = save_photo(db, kind="night_item", ref_id=ni.id, filename=file.filename or "photo.jpg",
                            blob=blob, user_id=principal.user.id, user_name=_principal_name(principal))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
-    return {"ok": True, "photo": {"id": photo.id, "url": f"/api/photos/{photo.id}/file"}}
+    return {"ok": True, "photo": {"id": photo.id, "url": f"/api/photos/{photo.id}/file",
+                                  "media_type": photo.media_type or "photo"}}
+
+
+# ─────────────── недостатки смены и отправка службам (этап 5) ───────────────
+# Экран консолидированной отправки: «Не ОК» и «Не проверено» группируются по
+# ответственным службам, отправляются вручную (всё или выбранное), отправленное
+# помечается. Исправленное ПОСЛЕ отправки повторно не уходит и не отзывается.
+# Отправить может любой пользователь обхода — нового права не вводили.
+
+@router.get("/reports/{report_id}/defects")
+def report_defects(report_id: int, principal: Principal = Depends(require_perm("night.view")),
+                   db: Session = Depends(get_db)):
+    """Недостатки смены: позиции, группы по службам, журнал, шаблон сообщения."""
+    from ..services.night_notify import defects_payload
+
+    rep = _get_report(db, report_id)
+    return defects_payload(db, rep)
+
+
+@router.post("/reports/{report_id}/dispatch")
+def dispatch_report(report_id: int, payload: DispatchIn,
+                    principal: Principal = Depends(require_perm("night.view")),
+                    db: Session = Depends(get_db)):
+    """Отправить недостатки службам: всё скопом или выбранное (только вручную)."""
+    from ..services.night_notify import dispatch_defects
+
+    rep = _get_report(db, report_id)
+    res = dispatch_defects(db, rep, principal, mode=payload.mode,
+                           item_ids=payload.item_ids, service_ids=payload.service_ids)
+    return res
+
+
+@router.get("/reports/{report_id}/dispatches")
+def report_dispatches(report_id: int, limit: int = 50,
+                      principal: Principal = Depends(require_perm("night.view")),
+                      db: Session = Depends(get_db)):
+    """Журнал отправок смены — строки общего журнала раздела «Ночной отчёт»."""
+    from ..services.night_notify import report_journal
+
+    rep = _get_report(db, report_id)
+    return {"dispatches": report_journal(db, rep, limit=limit)}
+
+
+@router.post("/reports/{report_id}/defects/preview")
+def preview_defects(report_id: int, payload: DispatchIn,
+                    principal: Principal = Depends(require_perm("night.view")),
+                    db: Session = Depends(get_db)):
+    """Предпросмотр сообщений: что именно уйдёт каждой службе (без отправки)."""
+    from ..notify.recipients import group_by_service
+    from ..services.night_notify import DOMAIN, preview_message
+
+    rep = _get_report(db, report_id)
+    data = defects_of(db, rep)
+    rows = [d for d in data["items"] if d["sendable"]]
+    if payload.mode == "selected":
+        wanted = {int(i) for i in payload.item_ids}
+        rows = [d for d in rows if d["id"] in wanted]
+    if payload.service_ids:
+        allowed = {int(i) for i in payload.service_ids}
+        rows = [d for d in rows if d.get("service_id") in allowed]
+    out = []
+    for group in group_by_service(db, rows):
+        if not [d for d in group["defects"] if d["sendable"]]:
+            continue
+        out.append({"service_id": group["service_id"], "service_name": group["service_name"],
+                    "channels": group["channels"], "problems": group["problems"],
+                    "defects": group["counts"]["sendable"],
+                    "message": preview_message(db, rep, group, principal.name)})
+    return {"ok": True, "messages": out, "domain": DOMAIN}
 
 
 # ─────────────────────────── отдача файлов фото ───────────────────────────
@@ -868,9 +1155,10 @@ async def report_car_check(report_id: int, car_id: int,
 
     blobs: list[tuple[str, bytes]] = []
     if file is not None:
-        blob = await file.read(MAX_PHOTO_BYTES + 1)
-        if len(blob) > MAX_PHOTO_BYTES:
-            raise HTTPException(status_code=413, detail="Файл больше 12 МБ")
+        limit = max_upload_bytes(db)
+        blob = await file.read(limit + 1)
+        if len(blob) > limit:
+            raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
         if blob:
             blobs.append((file.filename or "photo.jpg", blob))
 

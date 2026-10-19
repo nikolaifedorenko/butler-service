@@ -173,3 +173,71 @@ def freeze():
             yield f
 
     return _freeze
+
+
+@pytest.fixture()
+def open_shift(db, freeze):
+    """with open_shift() as rep: … → открытый отчёт ночной смены + уборка за тестом.
+
+    Отчёт берём за СЕГОДНЯШНЮЮ дату и создаём под заморозкой времени (23:00 UTC —
+    середина смены), а HTTP-запросы тест выполняет уже БЕЗ freeze: FastAPI
+    достраивает pydantic-схемы маршрутов лениво, и внутри freeze_time аннотация
+    ``dt.date`` подменена на ``FakeDate`` — схема не строится. Автозакрытие
+    сегодняшней смены (08:00 следующих суток) ещё не наступило, поэтому
+    ``sync_reports`` отчёт не закроет и загрузка отметок остаётся разрешённой.
+
+    Если отчёт за сегодня уже создан другим тестом, мы его не удаляем — только
+    возвращаем прежний статус и убираем файлы, загруженные этим тестом.
+    """
+    import datetime as dt
+    from contextlib import contextmanager as _cm
+
+    from sqlalchemy import select
+
+    from app.models import NightAreaSection, NightCheckItem, NightReport, Photo
+    from app.night import ensure_report
+    from app.photos import unlink_photo
+
+    @_cm
+    def _open():
+        shift_d = dt.date.today()
+        existed = db.scalar(select(NightReport).where(NightReport.date == shift_d))
+        prev_state = (existed.status, existed.closed_at) if existed else None
+        with freeze(f"{shift_d.isoformat()} 23:00:00"):
+            rep = ensure_report(db, shift_d)
+        assert rep is not None, "отчёт смены не создан"
+        created = existed is None
+        rep.status, rep.closed_at = "open", None        # тесту нужен открытый отчёт
+        db.commit()
+        start = dt.datetime.now() - dt.timedelta(seconds=1)
+        try:
+            yield rep
+        finally:
+            sec_ids = [s.id for s in db.scalars(
+                select(NightAreaSection).where(NightAreaSection.report_id == rep.id))]
+            item_ids = ([i.id for i in db.scalars(select(NightCheckItem).where(
+                NightCheckItem.section_id.in_(sec_ids)))] if sec_ids else [])
+            for p in db.scalars(select(Photo).where(Photo.kind == "night_item",
+                                                    Photo.ref_id.in_(item_ids))):
+                if created or (p.created_at and p.created_at >= start):
+                    unlink_photo(p)
+                    db.delete(p)
+            db.flush()
+            if created:
+                for i in db.scalars(select(NightCheckItem)
+                                    .where(NightCheckItem.section_id.in_(sec_ids))):
+                    db.delete(i)
+                db.flush()
+                for s in db.scalars(select(NightAreaSection)
+                                    .where(NightAreaSection.report_id == rep.id)):
+                    db.delete(s)
+                db.flush()
+                fresh = db.get(NightReport, rep.id)
+                if fresh is not None:
+                    db.delete(fresh)
+            else:
+                rep.status, rep.closed_at = prev_state
+            db.flush()
+            db.commit()
+
+    return _open

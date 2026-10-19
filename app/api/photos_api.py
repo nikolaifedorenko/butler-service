@@ -10,6 +10,10 @@
 
 Доступ: любой авторизованный пользователь (фото ночного отчёта и возврата кара
 не содержат персональных данных третьих лиц); удаление — автор либо менеджер и выше.
+
+Здесь же — `/api/photos/limits`: настроенные объектом лимиты медиа (размер фото и
+видео, сроки хранения). Они нужны интерфейсу для подсказок у кнопок загрузки во
+всех разделах, поэтому отдаются любому авторизованному пользователю.
 """
 from __future__ import annotations
 
@@ -20,9 +24,16 @@ from sqlalchemy.orm import Session
 from ..auth import Principal, current_principal
 from ..db import get_db
 from ..photos import delete_photo as delete_photo_usecase
-from ..photos import resolve_photo_file
+from ..photos import media_limits, resolve_photo_file
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
+
+
+@router.get("/limits", operation_id="photo_limits_get")
+def photo_limits(principal: Principal = Depends(current_principal),
+                 db: Session = Depends(get_db)):
+    """Лимиты медиа для интерфейса: размер фото/видео (МБ) и сроки хранения (дни)."""
+    return media_limits(db)
 
 
 @router.get("/{photo_id}/file", operation_id="photo_file_get")

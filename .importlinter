@@ -30,6 +30,7 @@ modules =
     app.api.fact_api
     app.api.mgmt_api
     app.api.night_api
+    app.api.notify_api
     app.api.photos_api
     app.api.presence_api
     app.api.punches
