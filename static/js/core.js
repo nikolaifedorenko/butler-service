@@ -199,6 +199,10 @@ const state = {
   expanded: new Set(),
   dpYear: new Date().getFullYear(),                              // календарь двойной оплаты: просматриваемый год
   timers: [],
+  /* Лимиты медиа задаёт объект (Настройки → прочие правила): нужны подсказкам у кнопок
+     загрузки фото/видео во всех разделах. Значения по умолчанию — как в app/photos.py. */
+  mediaLimits: { photo_max_mb: 12, video_max_mb: 50,
+                 photo_retention_days: 180, video_retention_days: 180 },
 };
 
 const ROLE_TITLES = { admin: 'Администратор', manager: 'Менеджер', supervisor: 'Супервайзер', employee: 'Сотрудник' };
@@ -245,6 +249,22 @@ function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', 
 }
 
 /* скачивание файлов без перехода по URL: не дёргает браузерные плашки (пароль и т.п.) */
+/* Лимиты фото/видео: один запрос при входе, дальше подсказки берут их из state.
+   Недоступны — остаются значения по умолчанию (интерфейс не ломается). */
+async function loadMediaLimits() {
+  try {
+    const lim = await api('/api/photos/limits', { silent: true });
+    if (lim && typeof lim === 'object') state.mediaLimits = { ...state.mediaLimits, ...lim };
+  } catch { /* подсказки со значениями по умолчанию */ }
+  return state.mediaLimits;
+}
+
+/* Короткая подсказка про размеры загрузки: «фото до 12 МБ, видео до 50 МБ». */
+function mediaHint() {
+  const l = state.mediaLimits || {};
+  return `фото до ${l.photo_max_mb || 12} МБ, видео до ${l.video_max_mb || 50} МБ`;
+}
+
 async function downloadBlob(path, fallbackName) {
   loading(true);
   try {

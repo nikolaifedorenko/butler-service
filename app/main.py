@@ -56,7 +56,7 @@ from .migrations import (
 )
 from .security import new_csrf_token
 from .seed import seed_if_empty
-from .services.errors import Conflict, Forbidden, Gone, NotFound, Validation
+from .services.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -161,6 +161,12 @@ async def _conflict_handler(request: Request, exc: Conflict):
 @app.exception_handler(Gone)
 async def _gone_handler(request: Request, exc: Gone):
     return JSONResponse({"detail": str(exc)}, status_code=410)
+
+
+@app.exception_handler(PayloadTooLarge)
+async def _payload_too_large_handler(request: Request, exc: PayloadTooLarge):
+    """Файл больше настроенного лимита (фото/видео) → 413."""
+    return JSONResponse({"detail": str(exc)}, status_code=413)
 
 # Порядок middleware: регистрируются снизу вверх (последний — самый внешний).
 # csrf_protection → security_headers → request_context: заголовки безопасности и

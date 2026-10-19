@@ -257,17 +257,25 @@ const CHARGE_OPTS = [['full', 'полный'], ['half', 'половина'], ['e
    18.10.2026, в обходе — с 19.10.2026): на смартфоне «Снять на камеру» открывает
    камеру сразу со съёмкой (capture=environment), «Из галереи» — готовый снимок.
    bindPhotoPick() возвращает функцию-геттер выбранного файла для FormData. */
+/* Выбор медиа: фото и видео (этап 2 ночного отчёта v2). Видео снимается
+   camcorder-режимом камеры, лимиты и сроки хранения — из настроек объекта. */
 function photoPickHtml(prefix) {
-  return `<div class="field" style="margin-top:12px"><span>Фото (необязательно, до 12 МБ, хранится оригинал)</span>
+  const lim = state.mediaLimits || {};
+  return `<div class="field" style="margin-top:12px"><span>Фото или видео (необязательно, ${mediaHint()}, хранится оригинал)</span>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <label class="btn btn-sm">📷 Снять на камеру
+      <label class="btn btn-sm">📷 Снять фото
         <input type="file" id="${prefix}-cam" accept="image/*" capture="environment" hidden></label>
-      <label class="btn btn-sm btn-ghost">Выбрать из галереи
+      <label class="btn btn-sm btn-ghost">Фото из галереи
         <input type="file" id="${prefix}-file" accept="image/*" hidden></label>
+      <label class="btn btn-sm">🎥 Снять видео
+        <input type="file" id="${prefix}-vcam" accept="video/*" capture="camcorder" hidden></label>
+      <label class="btn btn-sm btn-ghost">Видео из галереи
+        <input type="file" id="${prefix}-vfile" accept="video/*" hidden></label>
       <span class="hint" id="${prefix}-file-name" style="margin:0">файл не выбран</span>
     </div>
-    <div class="hint" style="margin-top:4px">На смартфоне «Снять на камеру» открывает камеру
-      сразу со съёмкой; «Из галереи» — выбор готового снимка.</div></div>`;
+    <div class="hint" style="margin-top:4px">На смартфоне «Снять фото» и «Снять видео» открывают камеру
+      сразу в нужном режиме; «из галереи» — выбор готового файла. Хранение: фото
+      ${lim.photo_retention_days || 180} дн., видео ${lim.video_retention_days || 180} дн.</div></div>`;
 }
 
 function bindPhotoPick(m, prefix) {
@@ -278,7 +286,7 @@ function bindPhotoPick(m, prefix) {
       ? `${pendingPhoto.name || 'снимок камеры'} (${Math.round((pendingPhoto.size || 0) / 1024)} КБ)`
       : 'файл не выбран';
   };
-  [`#${prefix}-cam`, `#${prefix}-file`].forEach(sel => {
+  [`#${prefix}-cam`, `#${prefix}-file`, `#${prefix}-vcam`, `#${prefix}-vfile`].forEach(sel => {
     const inp = m.querySelector(sel);
     if (inp) inp.onchange = () => { pendingPhoto = inp.files?.[0] || null; showName(); };
   });
@@ -535,11 +543,18 @@ async function carHistoryModal(car) {
 }
 
 /* ─────────────────── фото: превью + просмотр + удаление ─────────────────── */
+/* Миниатюра медиа: фото — картинкой, видео — первым кадром с кнопкой ▶.
+   Клик открывает оригинал в новой вкладке (видео отдаётся с Range, плеер мотает). */
 function photoThumb(p) {
-  if (!p.url) return `<span class="badge muted" title="файл удалён по сроку хранения">фото недоступно</span>`;
-  return `<a class="thumb" href="${esc(p.url)}" target="_blank" rel="noopener" title="${esc(p.filename || '')}">
-      <img src="${esc(p.url)}" alt="${esc(p.filename || 'фото')}" loading="lazy"></a>
-    <button class="icon-btn thumb-del" data-photo-del="${p.id}" title="Удалить фото">✕</button>`;
+  const isVideo = p.media_type === 'video';
+  const kind = isVideo ? 'видео' : 'фото';
+  if (!p.url) return `<span class="badge muted" title="файл удалён по сроку хранения">${kind} недоступно</span>`;
+  const inner = isVideo
+    ? `<video src="${esc(p.url)}" muted playsinline preload="metadata"></video><span class="thumb-play">▶</span>`
+    : `<img src="${esc(p.url)}" alt="${esc(p.filename || 'фото')}" loading="lazy">`;
+  return `<a class="thumb${isVideo ? ' thumb-video' : ''}" href="${esc(p.url)}" target="_blank"
+      rel="noopener" title="${esc(p.filename || kind)}">${inner}</a>
+    <button class="icon-btn thumb-del" data-photo-del="${p.id}" title="Удалить ${kind}">✕</button>`;
 }
 
 function bindPhotoDelete(root, after) {

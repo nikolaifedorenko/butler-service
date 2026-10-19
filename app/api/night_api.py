@@ -44,11 +44,11 @@ from ..night import (
 )
 from ..permissions import require_perm
 from ..photos import delete_photo as delete_photo_usecase
-from ..photos import photos_of, resolve_photo_file, save_photo
+from ..photos import max_upload_bytes, photos_of, resolve_photo_file, save_photo
 
 router = APIRouter(prefix="/api/night", tags=["night"])
 
-MAX_PHOTO_BYTES = 12 * 1024 * 1024   # 12 МБ на файл — храним оригиналы
+# Лимиты размера медиа задаёт объект (photo_max_mb / video_max_mb) — см. photos.media_limits()
 
 
 # ─────────────────────────── входные модели ───────────────────────────
@@ -784,16 +784,18 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
     sec = _get_section(db, ni.section_id)
     rep = _get_report(db, sec.report_id)
     _guard_open(rep)
-    blob = await file.read(MAX_PHOTO_BYTES + 1)
-    if len(blob) > MAX_PHOTO_BYTES:
-        raise HTTPException(status_code=413, detail="Файл больше 12 МБ")
+    limit = max_upload_bytes(db)
+    blob = await file.read(limit + 1)
+    if len(blob) > limit:
+        raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
     try:
         photo = save_photo(db, kind="night_item", ref_id=ni.id, filename=file.filename or "photo.jpg",
                            blob=blob, user_id=principal.user.id, user_name=_principal_name(principal))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
-    return {"ok": True, "photo": {"id": photo.id, "url": f"/api/photos/{photo.id}/file"}}
+    return {"ok": True, "photo": {"id": photo.id, "url": f"/api/photos/{photo.id}/file",
+                                  "media_type": photo.media_type or "photo"}}
 
 
 # ─────────────────────────── отдача файлов фото ───────────────────────────
@@ -868,9 +870,10 @@ async def report_car_check(report_id: int, car_id: int,
 
     blobs: list[tuple[str, bytes]] = []
     if file is not None:
-        blob = await file.read(MAX_PHOTO_BYTES + 1)
-        if len(blob) > MAX_PHOTO_BYTES:
-            raise HTTPException(status_code=413, detail="Файл больше 12 МБ")
+        limit = max_upload_bytes(db)
+        blob = await file.read(limit + 1)
+        if len(blob) > limit:
+            raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
         if blob:
             blobs.append((file.filename or "photo.jpg", blob))
 

@@ -74,6 +74,11 @@ def migrate_db() -> None:
             ("pay_ot_night2", "FLOAT DEFAULT 0"),
             ("double_reason", "VARCHAR(16) DEFAULT ''"),
         ],
+        "photos": [
+            # фото → медиа: видео ночного обхода (этап 2, 19.10.2026). У старых
+            # записей значение пустое и трактуется как "photo".
+            ("media_type", "VARCHAR(8) DEFAULT 'photo'"),
+        ],
         "shift_types": [
             ("doc_type", "VARCHAR(40) DEFAULT ''"),
             ("archived_at", "DATE"),

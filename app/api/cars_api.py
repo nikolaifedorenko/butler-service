@@ -42,11 +42,11 @@ from ..cars import (
 from ..db import get_db
 from ..models import CarHistory
 from ..permissions import principal_permissions, require_perm
-from ..photos import photos_of
+from ..photos import max_upload_bytes, photos_of
 
 router = APIRouter(prefix="/api/cars", tags=["cars"])
 
-MAX_PHOTO_BYTES = 12 * 1024 * 1024   # оригиналы не сжимаем
+# Лимиты размера медиа задаёт объект (photo_max_mb / video_max_mb) — см. photos.media_limits()
 
 
 def _err(e: CarOpError) -> HTTPException:
@@ -301,9 +301,10 @@ async def car_return(car_id: int,
     """Возврат кара (multipart): состояние + фото доказательств (оригиналы)."""
     blobs: list[tuple[str, bytes]] = []
     if file is not None:
-        blob = await file.read(MAX_PHOTO_BYTES + 1)
-        if len(blob) > MAX_PHOTO_BYTES:
-            raise HTTPException(status_code=413, detail="Файл больше 12 МБ")
+        limit = max_upload_bytes(db)
+        blob = await file.read(limit + 1)
+        if len(blob) > limit:
+            raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
         if blob:
             blobs.append((file.filename or "photo.jpg", blob))
     try:

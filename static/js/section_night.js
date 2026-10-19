@@ -302,7 +302,9 @@ function nightItemRow(it, rep) {
            <button class="btn btn-sm ${it.answer === 'bad' ? 'btn-danger' : 'btn-ghost'}" data-ans="bad" data-id="${it.id}">Не ОК</button>
            <button class="btn btn-sm btn-ghost" data-cmt="${it.id}" title="Комментарий">💬${it.comment ? ' •' : ''}</button>
            <label class="btn btn-sm btn-ghost" title="Добавить фото">📷
-             <input type="file" accept="image/*" data-photo="${it.id}" class="hidden-file"></label>`}
+             <input type="file" accept="image/*" data-photo="${it.id}" class="hidden-file"></label>
+           <label class="btn btn-sm btn-ghost" title="Снять видео">🎥
+             <input type="file" accept="video/*" capture="camcorder" data-video="${it.id}" class="hidden-file"></label>`}
       ${photos.length ? `<div class="thumbs">${photos.map(photoThumb).join('')}</div>` : ''}
       ${it.comment ? `<div class="night-item-cmt">${esc(it.comment)}</div>` : ''}
     </div>
@@ -336,14 +338,15 @@ function bindNight(rep, carsSection) {
     itemCommentModal(item, reload);
   });
 
-  $$('[data-photo]').forEach(inp => inp.onchange = async () => {
+  /* фото и видео грузятся одним маршрутом: тип сервер определяет по содержимому */
+  $$('[data-photo], [data-video]').forEach(inp => inp.onchange = async () => {
     const f = inp.files?.[0];
     if (!f) return;
     const fd = new FormData();
     fd.append('file', f, f.name);
     try {
-      await multipartApi(`/api/night/items/${inp.dataset.photo}/photo`, fd);
-      toast('Фото добавлено', 'ok'); reload();
+      const r = await multipartApi(`/api/night/items/${inp.dataset.photo || inp.dataset.video}/photo`, fd);
+      toast(r?.photo?.media_type === 'video' ? 'Видео добавлено' : 'Фото добавлено', 'ok'); reload();
     } catch (e) { toast(e.message, 'err'); }
   });
 

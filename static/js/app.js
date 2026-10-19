@@ -366,7 +366,12 @@ async function bootApp() {
   if (loginErr) history.replaceState(null, '', location.pathname + location.hash);
   try {
     const me = await api('/api/auth/me', { silent: true, allow401: true });
-    if (me?.user) { state.user = me.user; await enterApp(); return; }
+    if (me?.user) {
+      state.user = me.user;
+      await loadMediaLimits();     // лимиты фото/видео для подсказок загрузки
+      await enterApp();
+      return;
+    }
   } catch { /* не авторизован */ }
   showLogin();
   if (loginErr) {
