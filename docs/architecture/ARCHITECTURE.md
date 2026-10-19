@@ -166,9 +166,13 @@ serialize/deserialize (сохранение и чтение SettleResult/FlagsRe
 
 ### 3.5 Клиент
 
-SPA без сборки: `core.js` (утилиты/api/модалки), `app.js` (График, Мои отметки,
-Сотрудники, Настройки), `section_v4.js` (Отметки-доска, Факт, Табель, УТ, Права,
-Аудит, справочники CFG-*), `section_night.js`, `section_cars.js`. Контракты:
+SPA без сборки: `core.js` (утилиты/api/модалки), `app.js` (оболочка, меню 7 разделов,
+График-слои, Мои отметки), `section_v4.js` (Отметки-доска, Факт, Табель, УТ, Права,
+Аудит, справочники CFG-*), `section_settings.js` (реестр экранов «Настроек» — единого
+центра конфигурации, группы «Расчёт / Персонал и смены / Объект / Доставка /
+Администрирование»), `section_night.js` и `section_cars.js` (операционные разделы
+и свои справочные экраны `renderNightDictScreen` / `renderCarsDictScreen`, которые
+подключаются в реестр настроек; deep-link'и из разделов — `settingsOpen`). Контракты:
 `tools/check_api_contract.py` (JS-вызовы ↔ OpenAPI), `tools/gen_js_globals.py`
 (no-undef по списку глобальных имён), `tools/bump_version.py` (версии кэша + sw.js).
 
