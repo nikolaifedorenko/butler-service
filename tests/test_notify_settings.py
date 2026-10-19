@@ -14,11 +14,16 @@
     отказ при незаполненных параметрах;
   * шаблоны: свои у каждого раздела, предпросмотр, проверка плейсхолдеров,
     возврат к тексту по умолчанию;
-  * закрепление чата за службой делает её готовой к отправке в чат.
+  * закрепление чата за службой делает её готовой к отправке в чат;
+  * отсутствие httpx (старое venv) — 502 с инструкцией, не 500; зависимость
+    транспорта объявлена в requirements.txt, а не только в dev-наборе.
 
 Сеть в тестах подменяется: sender/mailer транспорта — заглушки.
 """
 from __future__ import annotations
+
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -330,3 +335,39 @@ def test_zakreplenie_chata_delaet_sluzhbu_gotovoy(admin_client):
     admin_client.put(f"/api/night/services/{svc['id']}", json={
         **{k: svc[k] for k in ("name", "sort_order", "active", "use_telegram", "use_email",
                                "email_to", "email_copy", "note")}, "chat_ids": []})
+
+
+def test_otsutstvie_httpx_daet_ponyatnuyu_oshibku_ne_500(admin_client, monkeypatch):
+    """Старое venv без httpx: 502 с инструкцией, а не «Internal Server Error».
+
+    Регрессия боевого случая: экран «Чаты и Почта» падал в 500 на машинах, где
+    venv создан до переноса httpx в обязательные зависимости (requirements.txt).
+    Транспорт обязан превращать отсутствие пакета в TransportError.
+    """
+    monkeypatch.setitem(sys.modules, "httpx", None)   # имитация неустановленного пакета
+    r = admin_client.post("/api/notify/telegram/check", json={"token": TOKEN, "api": ""})
+    assert r.status_code == 502, r.text
+    detail = r.json()["detail"]
+    assert "httpx" in detail and "requirements.txt" in detail
+    assert admin_client.put("/api/notify/config",
+                            json={"notify_telegram_token": TOKEN}).status_code == 200
+    r = admin_client.post("/api/notify/telegram/chats")
+    assert r.status_code == 502, r.text
+    assert "httpx" in r.json()["detail"]
+
+
+def test_httpx_obyavlen_v_obyazatelnyh_zavisimostyah():
+    """Транспорт Telegram выходит в сеть из процесса: httpx — в requirements.txt.
+
+    Dev-набор (requirements-dev.txt) ставится не на каждую машину заказчика,
+    поэтому обязательная для транспорта зависимость обязана быть в основном списке.
+    """
+    import re
+
+    text = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+    names = set()
+    for line in text.splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line and not line.startswith("-"):
+            names.add(re.split(r"[<>=!~;\[]", line, maxsplit=1)[0].strip().lower())
+    assert "httpx" in names

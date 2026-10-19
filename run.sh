@@ -41,7 +41,9 @@ PY=.venv/bin/python
 
 # ── 3. Обязательные зависимости ───────────────────────────────────────────
 install_core() { "$PY" -m pip install -q -r requirements.txt; }
-if ! "$PY" -c 'import fastapi, uvicorn, sqlalchemy, docx, openpyxl' 2>/dev/null || [ $REINSTALL -eq 1 ]; then
+# httpx в проверке: транспорт Telegram из requirements.txt; старое venv, созданное
+# до переноса httpx в обязательные зависимости, должно дозаказаться само.
+if ! "$PY" -c 'import fastapi, uvicorn, sqlalchemy, docx, openpyxl, httpx' 2>/dev/null || [ $REINSTALL -eq 1 ]; then
   say "Устанавливаю зависимости (requirements.txt) — первый раз это может занять минуту ..."
   if ! install_core; then
     say "Обычная установка не удалась, пробую по одному пакету ..."
