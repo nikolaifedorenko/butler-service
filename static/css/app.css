@@ -1132,3 +1132,27 @@ tr.v4-click:hover td { background: #faf6ef; }
   .settings-search { min-width: 0; }
   .settings-search span { display: none; }
 }
+
+/* ─────────────── экраны справочников группы «Объект» (19.10.2026) ───────────────
+   «Ночной обход» (#/settings/night) — master-detail: зоны слева, словарь справа.
+   «Электрокары» (#/settings/cars) — панели парка и мест. Баннеры объясняют
+   семантику правок (снимок смены) и режим только-просмотр (нет права). */
+.dict-banner { display: flex; gap: 10px; align-items: flex-start; background: #e4eef1;
+  border: 1px solid #c3d9e0; color: #155f70; border-radius: var(--r-md);
+  padding: 10px 13px; font-size: 12.5px; margin-bottom: 14px; }
+.dict-banner.gold { background: #f7f0da; border-color: #e6d6a8; color: #6d5a1e; }
+.dict-md { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 16px; align-items: start; }
+.dict-zones { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: 12px; }
+.dict-zones .panel-title { margin: 2px 4px 10px; }
+.dict-zone { padding: 9px 10px; margin-bottom: 4px; border: 1px solid transparent;
+  border-radius: var(--r-md); cursor: pointer; }
+.dict-zone:hover { background: #efe8df; }
+.dict-zone.active { background: var(--panel); border-color: #d9c4b4; box-shadow: var(--shadow); }
+.dict-zone .dz-name { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.dict-zone.active .dz-name { color: var(--primary-dark); }
+.dict-zone .dz-meta { font-size: 11.5px; color: var(--muted-2); margin-top: 2px; }
+.dict-zone .row-actions { margin-top: 6px; }
+@media (max-width: 1000px) {
+  .dict-md { grid-template-columns: 1fr; }
+}

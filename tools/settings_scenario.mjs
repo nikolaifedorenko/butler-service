@@ -292,6 +292,17 @@ async function main() {
   await go('docs');
   check('реквизиты и виды заявлений', /Реквизиты организации/.test(text('#st-body')) && /Виды заявлений/.test(text('#st-body')));
   check('прочие правила объекта', /Прочие правила объекта/.test(text('#st-body')));
+  /* группа «Объект» (19.10.2026): справочники, переехавшие из операционных разделов */
+  await go('night');
+  check('«Ночной обход»: зоны слева, словарь справа (master-detail)',
+    await waitFor(() => $$('#st-body .dict-zone').length >= 4 && !!$('#dict-host')),
+    String($$('#st-body .dict-zone').length));
+  check('«Ночной обход»: вкладки Объекты/Чек-листы/Службы', $$('[data-dtab]').length === 3);
+  check('«Ночной обход»: баннер про снимок смены', /ещё не начатым объектам/.test(text('#st-body')));
+  await go('cars');
+  check('«Электрокары»: парк и места стоянки', await waitFor(() =>
+    /Места стоянки/.test(text('#st-body')) && $$('#st-body [data-cd-edit]').length > 0));
+  check('«Электрокары»: кнопка возврата к операциям', !!$('#cd-to-cars'));
   await go('system');
   check('данные системы и версии', /Данные системы/.test(text('#st-body')) && /Версии справочников/.test(text('#st-body')));
   await go('expert');

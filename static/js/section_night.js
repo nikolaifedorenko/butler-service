@@ -11,7 +11,7 @@
 /* Навигация обхода (v2): зона → объект → чек-лист.
    zoneId: null — экран зон; 0 — объекты «Без зоны»; иначе id зоны.
    areaId: id объекта, чей чек-лист открыт (null — список объектов). */
-const nightState = { reportId: null, today: null, areas: null, canEditDict: false,
+const nightState = { reportId: null, today: null, areas: null,
   zoneId: null, areaId: null, q: '', filter: 'all',
   dictTab: 'zones', dictZone: null, dictArea: null,
   /* экран «Недостатки смены»: выбор позиций и показ отправленных/исправленных */
@@ -37,7 +37,7 @@ async function loadNight() {
       <button class="btn btn-sm btn-ghost hidden" id="night-today-btn">К текущей смене</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-archive">Архив</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-defects">Недостатки</button>
-      <button class="btn btn-sm btn-ghost hidden" id="night-dict">Справочник</button>
+      <button class="btn btn-sm btn-ghost hidden" id="night-dict" title="Настройки → Ночной обход">Справочник ↗</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-docx">DOCX</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-pdf">PDF</button>
       <button class="btn btn-sm btn-danger hidden" id="night-close">Закрыть смену</button>
@@ -48,7 +48,9 @@ async function loadNight() {
   $('#night-refresh').onclick = () => fetchNight();
   $('#night-today-btn').onclick = () => { nightState.reportId = null; fetchNight(); };
   $('#night-archive').onclick = () => nightArchiveModal();
-  $('#night-dict').onclick = () => nightDictModal();
+  /* 19.10.2026: справочник переехал в «Настройки → Ночной обход» — кнопка ведёт туда
+     (единственное место правки); видна только тем, кто может войти в Настройки. */
+  $('#night-dict').onclick = () => settingsOpen('night');
   $('#night-defects').onclick = () => nightDefectsModal();
   $('#night-docx').onclick = () => exportNight('docx');
   $('#night-pdf').onclick = () => exportNight('pdf');
@@ -148,7 +150,7 @@ function nightObjectRow(a, rep) {
 function renderNight(rep, note) {
   const show = (id, on) => $(id)?.classList.toggle('hidden', !on);
   show('#night-archive', true);
-  show('#night-dict', true);
+  show('#night-dict', can('settings.view'));
   show('#night-defects', !!rep);
   /* счётчик недостатков, которые можно отправить: видно до открытия экрана */
   const dfBtn = $('#night-defects');
@@ -270,7 +272,7 @@ function renderNight(rep, note) {
       </div>`).join('')}</div></div>` : ''}
 
     ${zones.length ? `<div class="night-zones">${zones.map(z => nightZoneCard(z)).join('')}</div>`
-      : `<div class="empty">Зоны обхода не настроены — справочник: кнопка «Справочник» справа вверху</div>`}
+      : `<div class="empty">Зоны обхода не настроены — добавьте их в «Настройки → Ночной обход» (кнопка «Справочник ↗» справа вверху)</div>`}
 
     <p class="hint">Обход: зона → объект → чек-лист. Чек-лист задаётся на зону, поэтому у всех однотипных
     объектов он одинаковый; индивидуальные особенности объекта настраиваются в справочнике.</p>`;
@@ -701,92 +703,97 @@ function exportNight(fmt) {
   downloadBlob(`/api/night/reports/${id}/export.${fmt}`, `night-${fmt}.docx`);
 }
 
-/* ─────────────── справочник областей и пунктов (менеджер/админ) ─────────────── */
-/* ─────────── справочник обхода (v2): зоны · объекты · чек-листы ───────────
-   Три вкладки одного окна:
-     «Зоны»      — справочник зон (первый уровень обхода);
-     «Объекты»   — объекты зоны, в т.ч. мастер серии («Вилла 4001…4012»);
-     «Чек-листы» — шаблон зоны (общий для всех её объектов) и индивидуальные
-                   особенности конкретного объекта (своя формулировка, отключить).
-   Правки доступны менеджменту — admin/manager/supervisor (can_edit из /api/night/zones). */
-async function nightDictModal(tab) {
-  if (tab) nightState.dictTab = tab;
+/* ─────────── экран Настроек «Ночной обход» (19.10.2026): зоны · объекты · чек-листы · службы ───────────
+   Единственное место правки справочника обхода — экран в «Настройках» (группа
+   «Объект», адрес #/settings/night; docs/PROPOSAL-SETTINGS-IA-2026-10-19.md).
+   Заменил модалку «Справочник» из раздела «Ночной отчёт» (4 вкладки и
+   модалка-в-модалке): зоны — список слева (master-detail), справа вкладки
+   «Объекты / Чек-листы / Службы»; модалки правки переиспользованы прежние.
+   Кнопка «Справочник» в разделе стала deep-link'ом сюда (settingsOpen).
+
+   Права: видимость экрана — night.view (и вход в «Настройки»), правки —
+   night.edit: ключ каталога прав вместо прежней ролевой проверки is_manager
+   (базово выдан admin/manager/supervisor — поведение не изменилось, но право
+   можно выдать/снять грантом в «Настройках → Права доступа»).
+   Вызывается из реестра section_settings.js (подключается после этого файла). */
+async function renderNightDictScreen(host) {
   const render = async () => {
     const [zr, ar, sr] = await Promise.all([api('/api/night/zones'), api('/api/night/areas'),
                                              api('/api/night/services')]);
     const zones = zr.zones || [], areas = ar.areas || [], services = sr.services || [];
     const canEdit = !!zr.can_edit;
+    if (!['areas', 'items', 'services'].includes(nightState.dictTab)) nightState.dictTab = 'areas';
     const t = nightState.dictTab;
-    const m = openModal({
-      title: 'Справочник ночного обхода',
-      subtitle: 'Зоны → объекты → чек-листы → службы. Шаблон задаётся на зону, правки — у объекта',
-      wide: true,
-      body: `<div class="toolbar" style="margin-bottom:12px">
-          <div class="seg">${[['zones', 'Зоны'], ['areas', 'Объекты'], ['items', 'Чек-листы'], ['services', 'Службы']]
-            .map(([k, l]) => `<button data-dtab="${k}" class="${t === k ? 'active' : ''}">${l}</button>`).join('')}</div>
-          <div class="spacer"></div>
-          ${canEdit ? '' : '<span class="hint" style="margin:0">только просмотр: правки — для менеджмента</span>'}</div>
-        <div id="dict-host">${t === 'zones' ? dictZonesHtml(zones, canEdit)
-          : t === 'areas' ? dictAreasHtml(zones, areas, canEdit)
+    if (t !== 'services' && zones.length && !zones.some(z => z.id === nightState.dictZone)) {
+      nightState.dictZone = zones[0].id; nightState.dictArea = null;
+    }
+    host.innerHTML = `
+      ${settingsHead('Ночной обход',
+        'Зоны → объекты → чек-листы → службы. Шаблон задаётся на зону, индивидуальные пункты — у объекта. Сам обход — в разделе «Ночной отчёт».',
+        `<div class="seg">${[['areas', 'Объекты'], ['items', 'Чек-листы'], ['services', 'Службы']]
+          .map(([k, l]) => `<button data-dtab="${k}" class="${t === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+         <button class="btn btn-sm btn-ghost" id="nd-to-night" title="Открыть раздел «Ночной отчёт»">К обходу ↗</button>`)}
+      <div class="dict-banner"><span>🌙</span><span>Правки применяются к <b>ещё не начатым объектам</b> —
+        в текущей и следующих сменах; чек-листы начатых объектов и закрытых смен зафиксированы
+        снимком в отчёте и не изменятся.</span></div>
+      ${canEdit ? '' : '<div class="dict-banner gold"><span>🔒</span><span>Только просмотр: для правок нужно право <b>night.edit</b> (выдаётся в «Настройки → Права доступа»).</span></div>'}
+      <div class="dict-md">
+        <div class="dict-zones">
+          <div class="panel-title">Зоны обхода</div>
+          ${zones.map(z => `
+            <div class="dict-zone${z.id === nightState.dictZone && t !== 'services' ? ' active' : ''}" data-dz="${z.id}">
+              <div class="dz-name">${esc(z.name)}${z.active ? '' : ' <span class="badge muted">отключена</span>'}</div>
+              <div class="dz-meta">объектов: ${z.areas_total} · пунктов шаблона: ${z.items_total}</div>
+              ${canEdit ? `<div class="row-actions">
+                <button class="btn btn-sm btn-ghost" data-zedit="${z.id}">Править</button>
+                <button class="btn btn-sm btn-ghost" data-zdel="${z.id}">Отключить</button></div>` : ''}
+            </div>`).join('') || '<div class="empty" style="padding:14px">Зон нет — добавьте первую</div>'}
+          ${canEdit ? `<div class="opt-group-title">Новая зона</div>
+            <div style="display:grid;gap:8px">
+              <input type="text" id="nz-name" maxlength="160" placeholder="Название зоны (например: Семейные виллы)">
+              <div style="display:flex;gap:8px">
+                <input type="number" id="nz-order" value="100" title="Порядок" style="width:96px;flex:none">
+                <button class="btn btn-primary" id="nz-add" style="flex:1">Добавить зону</button></div></div>` : ''}
+          <p class="hint">Зона — первый уровень обхода. Чек-лист задаётся на зону и действует
+            для всех её объектов; отключение зоны не трогает историю закрытых смен.</p>
+        </div>
+        <div id="dict-host">${t === 'areas' ? dictAreasHtml(zones, areas, canEdit)
           : t === 'services' ? dictServicesHtml(services, canEdit)
-          : '<div class="empty">Загрузка…</div>'}</div>`,
-      footer: `<button class="btn btn-ghost" data-cancel>Закрыть</button>`,
-      onMount(mm) {
-        mm.querySelector('[data-cancel]').onclick = closeModal;
-        $$('[data-dtab]', mm).forEach(b => b.onclick = () => { nightState.dictTab = b.dataset.dtab; render(); });
-        if (t === 'zones') bindDictZones(mm, zones, canEdit, render);
-        if (t === 'areas') bindDictAreas(mm, zones, areas, canEdit, render);
-        if (t === 'services') bindDictServices(mm, services, canEdit, render);
-      },
-    });
-    if (t === 'items') await dictItemsTab(m, zones, services, canEdit, render);
+          : '<div class="empty">Загрузка…</div>'}</div>
+      </div>`;
+    bindNightDictScreen(host, zones, canEdit, render);
+    if (t === 'areas') bindDictAreas(host, zones, areas, canEdit, render);
+    if (t === 'services') bindDictServices(host, services, canEdit, render);
+    if (t === 'items') await dictItemsTab(host, zones, services, canEdit, render);
   };
   await render();
 }
 
-/* ── вкладка «Зоны» ── */
-function dictZonesHtml(zones, canEdit) {
-  return `
-    ${canEdit ? `<div class="grid-2" style="grid-template-columns:1fr 110px auto;margin-bottom:12px">
-        <input type="text" id="nz-name" maxlength="160" placeholder="Название зоны (например: Семейные виллы)">
-        <input type="number" id="nz-order" value="100" title="Порядок">
-        <button class="btn btn-primary" id="nz-add">Добавить зону</button></div>` : ''}
-    <div class="check-list" style="max-height:46vh">${zones.map(z => `
-      <div class="rule-row" style="grid-template-columns:1fr auto">
-        <div><div class="lbl">${esc(z.name)} <small class="muted">порядок ${z.sort_order}</small>
-            ${z.active ? '' : ' <span class="badge muted">отключена</span>'}</div>
-          <div class="desc">объектов: ${z.areas_total} · пунктов шаблона: ${z.items_total}</div></div>
-        <div class="row-actions">
-          <button class="btn btn-sm btn-ghost" data-zitems="${z.id}">Чек-лист</button>
-          <button class="btn btn-sm btn-ghost" data-zareas="${z.id}">Объекты</button>
-          ${canEdit ? `<button class="btn btn-sm btn-ghost" data-zedit="${z.id}">Править</button>
-          <button class="btn btn-sm btn-ghost" data-zdel="${z.id}">Отключить</button>` : ''}
-        </div></div>`).join('') || '<div class="empty">Зон нет — добавьте первую</div>'}</div>
-    <p class="hint">Зона — первый уровень обхода («Семейные виллы», «Офисы»). Чек-лист задаётся на зону и
-    действует для всех её объектов. Отключение зоны не трогает историю закрытых смен: в отчёте хранится снимок.</p>`;
-}
-
-function bindDictZones(m, zones, canEdit, render) {
-  const add = m.querySelector('#nz-add');
+function bindNightDictScreen(host, zones, canEdit, render) {
+  $$('[data-dtab]', host).forEach(b => b.onclick = () => { nightState.dictTab = b.dataset.dtab; render(); });
+  const toNight = $('#nd-to-night', host);
+  if (toNight) toNight.onclick = () => navigate('night');
+  $$('[data-dz]', host).forEach(row => row.onclick = e => {
+    if (e.target.closest('button')) return;      /* «Править»/«Отключить» — не выбор зоны */
+    nightState.dictZone = Number(row.dataset.dz);
+    nightState.dictArea = null;
+    if (nightState.dictTab === 'services') nightState.dictTab = 'areas';
+    render();
+  });
+  const add = $('#nz-add', host);
   if (add) add.onclick = async () => {
     const name = $('#nz-name').value.trim();
     if (!name) return toast('Введите название зоны', 'warn');
     try {
-      await api('/api/night/zones', { method: 'POST',
+      const r = await api('/api/night/zones', { method: 'POST',
         body: { name, sort_order: Number($('#nz-order').value) || 100, active: true } });
+      nightState.dictZone = r.id; nightState.dictTab = 'areas';
       toast(`Зона «${name}» добавлена`, 'ok'); render();
     } catch (e) { toast(e.message, 'err'); }
   };
-  $$('[data-zitems]', m).forEach(b => b.onclick = () => {
-    nightState.dictZone = Number(b.dataset.zitems); nightState.dictArea = null;
-    nightState.dictTab = 'items'; render();
-  });
-  $$('[data-zareas]', m).forEach(b => b.onclick = () => {
-    nightState.dictZone = Number(b.dataset.zareas); nightState.dictTab = 'areas'; render();
-  });
-  $$('[data-zedit]', m).forEach(b => b.onclick = () =>
+  $$('[data-zedit]', host).forEach(b => b.onclick = () =>
     nightZoneEditModal(zones.find(z => z.id === Number(b.dataset.zedit)), render));
-  $$('[data-zdel]', m).forEach(b => b.onclick = () => {
+  $$('[data-zdel]', host).forEach(b => b.onclick = () => {
     const z = zones.find(x => x.id === Number(b.dataset.zdel));
     confirmDialog('Отключить зону?',
       `«${z.name}» перестанет предлагаться в справочниках; объекты зоны (${z.areas_total}) останутся — `
@@ -1099,7 +1106,7 @@ async function serviceEditModal(s, after) {
 /* ── вкладка «Чек-листы»: шаблон зоны + индивидуальные правки объекта ── */
 async function dictItemsTab(m, zones, services, canEdit, render) {
   const host = m.querySelector('#dict-host');
-  if (!zones.length) { host.innerHTML = '<div class="empty">Сначала создайте зону (вкладка «Зоны»)</div>'; return; }
+  if (!zones.length) { host.innerHTML = '<div class="empty">Сначала создайте зону — форма в списке слева</div>'; return; }
   if (!zones.some(z => z.id === nightState.dictZone)) nightState.dictZone = zones[0].id;
   const zid = nightState.dictZone;
   let zd;

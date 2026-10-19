@@ -115,7 +115,7 @@ const TITLES = {
 /* Под-экраны раздела «Настройки» (новая область с под-разделами): снимаем каждый,
    чтобы в галерее была видна структура, а не только «Обзор». */
 const SETTINGS_SCREENS = ['overview', 'calc', 'pay', 'codes', 'groups', 'calendar',
-                          'shifts', 'docs', 'system', 'expert'];
+                          'shifts', 'night', 'cars', 'docs', 'system', 'expert'];
 
 const shots = [];
 async function main() {
