@@ -845,6 +845,27 @@ table.sched thead th.today.double-day .dow { color: var(--gold); }
 .night-item-acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .night-item-cmt { width: 100%; font-size: 12.5px; color: var(--muted); border-left: 3px solid var(--line);
   padding-left: 8px; margin-top: 2px; white-space: pre-wrap; }
+/* ── ночной отчёт v2 (19.10.2026): зоны → объекты → чек-лист объекта ── */
+.crumb { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px;
+  color: var(--muted); margin-bottom: 10px; }
+.crumb a { color: var(--primary); cursor: pointer; font-weight: 700;
+  border-bottom: 1px dotted rgba(148, 88, 58, .5); }
+.crumb .sep { color: var(--muted-2); }
+.night-zones { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.night-zone { margin-bottom: 0; border-left: 3px solid var(--line); }
+.night-zone.done { border-left-color: var(--accent); }
+.night-zone.bad { border-left-color: var(--danger); }
+.night-objects { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+.night-object { margin-bottom: 0; padding: 12px 14px; border-left: 3px solid var(--line); }
+.night-object.taken { border-left-color: var(--warn); }
+.night-object.done { border-left-color: var(--accent); }
+.zone-bar { height: 6px; border-radius: 4px; background: #ece5db; overflow: hidden;
+  margin: 10px 0 8px; display: flex; }
+.zone-bar i { display: block; height: 100%; }
+.zone-bar .ok { background: var(--accent); }
+.zone-bar .bad { background: var(--danger); }
+.zone-bar .todo { background: #ddd3c6; }
+
 .night-dict-area + .night-dict-area { border-top: 1px solid var(--line-soft); }
 
 @media (max-width: 640px) {

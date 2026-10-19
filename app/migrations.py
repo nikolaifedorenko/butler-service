@@ -90,6 +90,18 @@ def migrate_db() -> None:
         "block_assignments": [
             ("pattern_json", "TEXT DEFAULT ''"),
         ],
+        # ночной отчёт v2 (19.10.2026): зоны обхода — первый уровень навигации,
+        # снимок зоны в отчёте и ссылка ответа на пункт шаблона зоны
+        "night_areas": [
+            ("zone_id", "INTEGER"),
+        ],
+        "night_area_sections": [
+            ("zone_id", "INTEGER"),
+            ("zone_name", "VARCHAR(160) DEFAULT ''"),
+        ],
+        "night_check_items": [
+            ("zone_item_id", "INTEGER"),
+        ],
         # ночная отметка кара (19.10.2026): где батлер нашёл кар и факт перепарковки
         # («кар был на месте, но его переставили» — место в карточке могло устареть)
         "car_night_checks": [
@@ -461,6 +473,63 @@ def migrate_night_cars() -> None:
                 WHERE NOT EXISTS (SELECT 1 FROM night_area_sections s
                                   WHERE s.report_id = r.id AND s.category = 'cars')
             """), {"name": CAR_AREA_NAME})
+
+
+def migrate_night_zones() -> None:
+    """Зоны обхода ночного отчёта (v2, 19.10.2026): зона вырастает из «категории» области.
+
+    Что делает:
+      * по зоне на каждое значение ``night_areas.category`` (пустая категория →
+        зона «Без зоны») и простановка ``night_areas.zone_id``;
+      * снимок в уже созданных отчётах: ``night_area_sections.zone_id/zone_name``
+        из области — история не должна зависеть от более поздних правок справочника;
+      * индексы новых колонок (в SQLite ``ADD COLUMN`` индекс не создаёт).
+
+    Идемпотентна: повторный вызов ничего не создаёт и не перезаписывает
+    (проверено tests/test_night_zones.py).
+    """
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    from .deps import now_local
+
+    insp = sa_inspect(engine)
+    if not (insp.has_table("night_areas") and insp.has_table("night_zones")):
+        return                      # таблицы ещё не созданы — create_all разберётся сам
+    ts = now_local()
+    with engine.begin() as con:
+        for idx in (
+            "CREATE INDEX IF NOT EXISTS ix_night_areas_zone_id ON night_areas (zone_id)",
+            "CREATE INDEX IF NOT EXISTS ix_night_area_sections_zone ON night_area_sections (zone_id)",
+            "CREATE INDEX IF NOT EXISTS ix_night_check_items_zone_item ON night_check_items (zone_item_id)",
+            "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_zone ON zone_checklist_items (zone_id)",
+            "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_area ON checklist_overrides (area_id)",
+            "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_zone_item ON checklist_overrides (zone_item_id)",
+        ):
+            # таблицы шаблона зоны/правок может ещё не быть — не мешаем create_all
+            with contextlib.suppress(Exception):
+                con.execute(text(idx))
+        cats = [r[0] for r in con.execute(text(
+            "SELECT DISTINCT COALESCE(category, '') FROM night_areas WHERE zone_id IS NULL"))]
+        for cat in cats:
+            name = cat.strip() or "Без зоны"
+            row = con.execute(text("SELECT id FROM night_zones WHERE name = :n"), {"n": name}).first()
+            if row is None:
+                con.execute(text("INSERT INTO night_zones (name, sort_order, active, created_at, updated_at) "
+                                 "VALUES (:n, 100, 1, :ts, :ts)"), {"n": name, "ts": ts})
+                row = con.execute(text("SELECT id FROM night_zones WHERE name = :n"), {"n": name}).first()
+            con.execute(text("UPDATE night_areas SET zone_id = :z WHERE zone_id IS NULL "
+                             "AND COALESCE(category, '') = :cat"), {"z": row[0], "cat": cat})
+        # снимок зоны в существующих отчётах (у шага «Проверка электрокаров» area_id NULL — не трогаем)
+        con.execute(text("""
+            UPDATE night_area_sections
+               SET zone_id = (SELECT a.zone_id FROM night_areas a
+                               WHERE a.id = night_area_sections.area_id),
+                   zone_name = (SELECT z.name FROM night_zones z
+                                 WHERE z.id = (SELECT a.zone_id FROM night_areas a
+                                                WHERE a.id = night_area_sections.area_id))
+             WHERE area_id IS NOT NULL AND COALESCE(zone_name, '') = ''
+        """))
 
 
 def migrate_engine_v7() -> None:

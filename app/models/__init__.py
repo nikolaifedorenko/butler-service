@@ -29,7 +29,17 @@ from .directory import (  # noqa: F401
 )
 from .engine_store import DayModifier, DeferredCarry, EngineSettingsVersion, PeriodClosing, Setting, TabelDay  # noqa: F401
 from .media import Photo  # noqa: F401
-from .night import ChecklistItem, NightArea, NightAreaSection, NightCheckItem, NightInterception, NightReport  # noqa: F401
+from .night import (  # noqa: F401
+    ChecklistItem,
+    ChecklistOverride,
+    NightArea,
+    NightAreaSection,
+    NightCheckItem,
+    NightInterception,
+    NightReport,
+    NightZone,
+    ZoneChecklistItem,
+)
 from .punch import Punch  # noqa: F401
 from .schedule import ScheduleAbsence, ScheduleShift, ShiftRevision, ShiftType  # noqa: F401
 
@@ -69,11 +79,14 @@ __all__ = [
     "TabelDay",
     "Photo",
     "ChecklistItem",
+    "ChecklistOverride",
     "NightArea",
     "NightAreaSection",
     "NightCheckItem",
     "NightInterception",
     "NightReport",
+    "NightZone",
+    "ZoneChecklistItem",
     "Punch",
     "ScheduleAbsence",
     "ScheduleShift",

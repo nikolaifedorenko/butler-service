@@ -389,19 +389,27 @@ def seed_if_empty(db: Session) -> bool:
     return True
 
 
-NIGHT_AREAS = [
-    ("Лобби", "общие зоны", ["Чистота пола и стоек ресепшн", "Освещение: все лампы горят",
-                             "Мебель расставлена по схеме", "Нет посторонних запахов"]),
-    ("Ресторан", "общие зоны", ["Столы сервированы на завтраки", "Посуда вымыта и расставлена",
-                                "Проверка холодильного оборудования (температура)",
-                                "Мусор вынесен, пакеты сменены"]),
-    ("Зона SPA", "общие зоны", ["Бассейн: уровень воды и химия в норме", "Шезлонги протёрты",
-                                "Полотенца пополнены"]),
-    ("Кухня", "служебные", ["Оборудование выключено", "Продукты подписаны и убраны",
-                            "Вытяжка проверена", "Уборка завершена"]),
-    ("Кладовая белья", "служебные", ["Учёт по журналу сходится",
-                                     "Дверь закрыта, ключ в сейфе"]),
+# Зоны обхода ночного отчёта (v2, 19.10.2026): зона → объекты → чек-лист.
+# Чек-лист задаётся НА ЗОНУ, поэтому у десятков однотипных объектов он одинаковый;
+# индивидуальные особенности отдельных объектов — ниже, в _seed_night_dirs().
+# Формат: (зона, порядок, шаблон чек-листа зоны, объекты зоны)
+NIGHT_ZONES_DEMO = [
+    ("Семейные виллы", 10,
+     ["Витражи закрыты", "Свет выключен", "Вилла убрана", "Вилла укомплектована"],
+     [f"Вилла {n}" for n in range(4001, 4013)]),
+    ("Президентские виллы", 20,
+     ["Витражи закрыты", "Свет выключен", "Вилла убрана", "Вилла укомплектована", "Бассейн накрыт"],
+     [f"Вилла {n}" for n in range(5001, 5005)]),
+    ("Офисы и служебные", 30,
+     ["Оборудование выключено", "Продукты подписаны и убраны", "Вытяжка проверена",
+      "Уборка завершена", "Двери и сейфы закрыты"],
+     ["Кухня", "Кладовая белья", "Офис батлер-сервиса"]),
+    ("Общие зоны", 40,
+     ["Чистота пола и стоек ресепшн", "Освещение: все лампы горят",
+      "Мебель расставлена по схеме", "Нет посторонних запахов"],
+     ["Лобби", "Ресторан", "Зона SPA"]),
 ]
+
 
 CAR_LOCATIONS = ["Парковка у главного входа", "Навес у служебного входа",
                  "Место с зарядкой у корпуса B"]
@@ -411,14 +419,49 @@ CARS_DEMO = [("1", "free", "Парковка у главного входа", ""
 
 
 def _seed_night_dirs(db: Session) -> None:
-    from .models import ChecklistItem, NightArea
+    """Зоны, объекты и чек-листы ночного обхода (демо-данные).
 
-    for name, cat, items in NIGHT_AREAS:
-        area = NightArea(name=name, category=cat)
-        db.add(area)
+    Показывает обе возможности v2: общий шаблон зоны на все её объекты и
+    индивидуальные особенности конкретного объекта — своя формулировка, свой пункт
+    и отключённый пункт («Вилла 4001» / «Вилла 4002»).
+    """
+    from sqlalchemy import select
+
+    from .models import (
+        ChecklistItem,
+        ChecklistOverride,
+        NightArea,
+        NightZone,
+        ZoneChecklistItem,
+    )
+
+    for zone_name, order, tpl, objects in NIGHT_ZONES_DEMO:
+        zone = NightZone(name=zone_name, sort_order=order)
+        db.add(zone)
         db.flush()
-        for i, text in enumerate(items, start=10):
-            db.add(ChecklistItem(area_id=area.id, text=text, sort_order=i))
+        for i, text in enumerate(tpl, start=10):
+            db.add(ZoneChecklistItem(zone_id=zone.id, text=text, sort_order=i))
+        for j, obj_name in enumerate(objects):
+            db.add(NightArea(name=obj_name, category=zone_name, zone_id=zone.id,
+                             sort_order=(j + 1) * 10))
+        db.flush()
+
+    # индивидуальные особенности объекта (демо для экрана настроек)
+    def _zone_item(zone_name: str, text: str):
+        return db.scalar(select(ZoneChecklistItem).join(NightZone, NightZone.id == ZoneChecklistItem.zone_id)
+                         .where(NightZone.name == zone_name, ZoneChecklistItem.text == text))
+
+    villa_4001 = db.scalar(select(NightArea).where(NightArea.name == "Вилла 4001"))
+    villa_4002 = db.scalar(select(NightArea).where(NightArea.name == "Вилла 4002"))
+    clean_item = _zone_item("Семейные виллы", "Вилла убрана")
+    kit_item = _zone_item("Семейные виллы", "Вилла укомплектована")
+    if villa_4001 is not None and clean_item is not None:
+        db.add(ChecklistOverride(area_id=villa_4001.id, zone_item_id=clean_item.id,
+                                 text="Вилла убрана (включая детскую комнату)"))
+        db.add(ChecklistItem(area_id=villa_4001.id, sort_order=90,
+                             text="Детская кроватка установлена и исправна"))
+    if villa_4002 is not None and kit_item is not None:
+        db.add(ChecklistOverride(area_id=villa_4002.id, zone_item_id=kit_item.id, disabled=True))
     db.flush()
 
 

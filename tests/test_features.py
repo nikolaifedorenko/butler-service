@@ -158,14 +158,20 @@ class TestNewFeatures(unittest.TestCase):
         # норматив 12.10.2026: у вида «Выходной за часы» нет кода Табеля — отсутствие
         # пишется в График (согласованное отсутствие), Табель остаётся явкой (EX-29)
         self.assertEqual(data["mode"], "schedule_absence")
-        g = _grid(start.year, start.month)
-        row = _row(g, emp["id"])
-        assigned = [iso for iso, cell in row["cells"].items()
-                    if any(a["kind"] and a["kind"]["code"] == "TIMEOFF_HOURS"
-                           for a in cell["absences"])]
+        # Диапазон «сегодня−20 … сегодня−11» пересекает границу месяца, а число
+        # рабочих дней зависит от заполнения Табеля (на него влияют другие тесты
+        # прогона): раньше проверялся только месяц начала диапазона, и если все
+        # рабочие дни попадали в следующий месяц, тест падал на ровном месте.
+        # Смотрим оба месяца диапазона.
+        assigned = []
+        for y, m in sorted({(d.year, d.month) for d in (start, end)}):
+            row = _row(_grid(y, m), emp["id"])
+            assigned += [(row, iso) for iso, cell in row["cells"].items()
+                         if any(a["kind"] and a["kind"]["code"] == "TIMEOFF_HOURS"
+                                for a in cell["absences"])]
         self.assertTrue(assigned)
         # Табель не переписан: в назначенные дни по-прежнему явка с часами
-        for iso in assigned:
+        for row, iso in assigned:
             cell = row["cells"][iso]
             self.assertIsNotNone(cell["tabel"], iso)
             self.assertIn(cell["tabel"]["code"], ("Я", "К"), iso)
