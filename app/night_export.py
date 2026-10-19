@@ -56,14 +56,22 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
               f" · {status_line} · областей закрыто {data['progress']['done']} из {data['progress']['total']}"
               f" · проверка электрокаров: {'выполнена' if data['cars_step_done'] else 'не завершена'}")
 
-    # ── области ──
+    # ── области, сгруппированные по зонам обхода (v2: зона → объекты → пункты) ──
+    cur_zone = None
     for area in data["areas"]:
         if area["is_cars"]:
             continue
+        zone_name = area.get("zone_name") or area.get("category") or "Без зоны"
+        if zone_name != cur_zone:
+            cur_zone = zone_name
+            zh = doc.add_paragraph()
+            zr = zh.add_run(zone_name)
+            zr.bold = True
+            zr.font.size = Pt(12)
         head = doc.add_paragraph()
-        r = head.add_run(f"{area['name']}" + (f" · {area['category']}" if area["category"] else ""))
+        r = head.add_run(area["name"])
         r.bold = True
-        r.font.size = Pt(12)
+        r.font.size = Pt(11)
         who = (f"Взял: {area['taken_by_name'] or '—'} с {_fmt_ts(area['taken_at'])}"
                if area["status"] != "free" else "Не проверялась")
         if area["closed_at"]:

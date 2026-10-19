@@ -14,7 +14,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, current_principal, require_manager, require_supervisor
@@ -22,19 +22,25 @@ from ..db import get_db
 from ..deps import now_local
 from ..models import (
     ChecklistItem,
+    ChecklistOverride,
     NightArea,
     NightAreaSection,
     NightCheckItem,
     NightInterception,
     NightReport,
+    NightZone,
     Setting,
+    ZoneChecklistItem,
 )
 from ..night import (
     current_shift_date,
+    effective_items,
     finalize_report,
+    refresh_free_section,
     report_dict,
     section_dict,
     sync_reports,
+    zone_dict,
 )
 from ..permissions import require_perm
 from ..photos import delete_photo as delete_photo_usecase
@@ -50,8 +56,27 @@ MAX_PHOTO_BYTES = 12 * 1024 * 1024   # 12 МБ на файл — храним о
 class AreaIn(BaseModel):
     name: str
     category: str = ""
+    zone_id: Optional[int] = None     # зона обхода (v2): чек-лист зоны действует для объекта
     sort_order: int = 100
     active: bool = True
+
+
+class ZoneIn(BaseModel):
+    name: str
+    sort_order: int = 100
+    active: bool = True
+
+
+class ZoneItemIn(BaseModel):
+    text: str
+    sort_order: int = 100
+    active: bool = True
+
+
+class OverrideIn(BaseModel):
+    """Индивидуальная правка пункта шаблона зоны у конкретного объекта."""
+    text: str = ""            # своя формулировка ('' = как в шаблоне зоны)
+    disabled: bool = False    # пункт у этого объекта не проверяется
 
 
 class ItemIn(BaseModel):
@@ -111,16 +136,25 @@ def _guard_open(rep: NightReport) -> None:
 @router.get("/areas")
 def list_areas(principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Справочник областей с пунктами (виден всем ролям, включая батлеров)."""
+    zones = {z.id: z.name for z in db.scalars(select(NightZone))}
     out = []
     for area in db.scalars(select(NightArea).order_by(NightArea.sort_order, NightArea.id)):
         items = [{"id": it.id, "text": it.text, "sort_order": it.sort_order, "active": it.active}
                  for it in db.scalars(select(ChecklistItem)
                                       .where(ChecklistItem.area_id == area.id)
                                       .order_by(ChecklistItem.sort_order, ChecklistItem.id))]
+        zone_items = len(list(db.scalars(select(ZoneChecklistItem.id)
+                                         .where(ZoneChecklistItem.zone_id == area.zone_id,
+                                                ZoneChecklistItem.active.is_(True))))) \
+            if area.zone_id else 0
         out.append({"id": area.id, "name": area.name, "category": area.category,
+                    "zone_id": area.zone_id,
+                    "zone_name": zones.get(area.zone_id, area.category or ""),
                     "sort_order": area.sort_order, "active": area.active,
-                    "items": items, "items_total": len([i for i in items if i["active"]])})
-    return {"areas": out, "can_edit": principal.role in ("admin", "manager")}
+                    "items": items, "items_total": len([i for i in items if i["active"]]),
+                    # чек-лист объекта = шаблон зоны + свои пункты (v2)
+                    "effective_total": zone_items + len([i for i in items if i["active"]])})
+    return {"areas": out, "can_edit": principal.is_manager}
 
 
 class AreaBulkIn(BaseModel):
@@ -128,6 +162,7 @@ class AreaBulkIn(BaseModel):
     start: int
     count: int
     category: str = ""
+    zone_id: Optional[int] = None
 
 
 @router.post("/areas/bulk")
@@ -141,7 +176,8 @@ def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(requir
         name = f"{payload.prefix}{n}".strip()
         if db.scalar(select(NightArea).where(NightArea.name == name)):
             continue
-        area = NightArea(name=name, category=payload.category, sort_order=n % 1000 + 100)
+        area = NightArea(name=name, category=payload.category, zone_id=payload.zone_id,
+                         sort_order=n % 1000 + 100)
         db.add(area)
         db.flush()
         created.append(area.id)
@@ -158,8 +194,8 @@ def create_area(payload: AreaIn, principal: Principal = Depends(require_manager)
         raise HTTPException(status_code=400, detail="Введите название области")
     if db.scalar(select(NightArea).where(NightArea.name == name)):
         raise HTTPException(status_code=409, detail="Такая область уже есть")
-    area = NightArea(name=name, category=payload.category.strip(), sort_order=payload.sort_order,
-                     active=payload.active)
+    area = NightArea(name=name, category=payload.category.strip(), zone_id=payload.zone_id,
+                     sort_order=payload.sort_order, active=payload.active)
     db.add(area)
     db.flush()
     audit(db, principal, "night_area_create", f"area:{area.id}", {"name": name})
@@ -173,14 +209,21 @@ def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(re
     area = db.get(NightArea, area_id)
     if area is None:
         raise HTTPException(status_code=404, detail="Область не найдена")
-    old = {"name": area.name, "category": area.category, "active": area.active}
+    old = {"name": area.name, "category": area.category, "active": area.active,
+           "zone_id": area.zone_id}
     area.name = payload.name.strip() or area.name
     area.category = payload.category.strip()
+    zone_changed = payload.zone_id != area.zone_id
+    area.zone_id = payload.zone_id
     area.sort_order = payload.sort_order
     area.active = payload.active
-    audit(db, principal, "night_area_update", f"area:{area.id}", {"old": old, "new": payload.model_dump()})
+    db.flush()
+    # смена зоны меняет чек-лист объекта: пересобираем снимок в ещё не начатых сменах
+    touched = refresh_free_section(db, area) if zone_changed else 0
+    audit(db, principal, "night_area_update", f"area:{area.id}",
+          {"old": old, "new": payload.model_dump(), "sections_refreshed": touched})
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "sections_refreshed": touched}
 
 
 @router.delete("/areas/{area_id}")
@@ -282,6 +325,299 @@ def delete_item(item_id: int, principal: Principal = Depends(require_manager),
     audit(db, principal, "night_item_delete", f"item:{item_id}", {"removed_from_open": removed})
     db.commit()
     return {"ok": True, "removed_from_open": removed}
+
+
+# ─────────────────────────── зоны обхода (v2) ───────────────────────────
+# Первый уровень навигации: зона → объекты → чек-лист. Чек-лист задаётся НА ЗОНУ
+# (ZoneChecklistItem), поэтому у десятков однотипных объектов он одинаковый;
+# индивидуальные особенности объекта — ChecklistOverride (своя формулировка /
+# отключить пункт), свой пункт одного объекта — ChecklistItem(area_id=…).
+
+@router.get("/zones")
+def list_zones(principal: Principal = Depends(require_perm("night.view")),
+               db: Session = Depends(get_db)):
+    """Справочник зон обхода: сколько в зоне объектов и пунктов шаблона.
+
+    Видно всем ролям (зоны нужны батлерам для обхода). Счётчики — агрегатами,
+    чтобы список не масштабировался запросами на зону.
+    """
+    areas_cnt = dict(db.execute(
+        select(NightArea.zone_id, func.count(NightArea.id))
+        .where(NightArea.active.is_(True), NightArea.zone_id.is_not(None))
+        .group_by(NightArea.zone_id)).all())
+    items_cnt = dict(db.execute(
+        select(ZoneChecklistItem.zone_id, func.count(ZoneChecklistItem.id))
+        .where(ZoneChecklistItem.active.is_(True))
+        .group_by(ZoneChecklistItem.zone_id)).all())
+    zones = [zone_dict(z, areas_total=areas_cnt.get(z.id, 0), items_total=items_cnt.get(z.id, 0))
+             for z in db.scalars(select(NightZone).order_by(NightZone.sort_order, NightZone.id))]
+    # can_edit — то же правило, что и у записи (require_manager → principal.is_manager):
+    # супервайзер входит в MANAGER_ROLES, поэтому справочник ему доступен
+    return {"zones": zones, "can_edit": principal.is_manager}
+
+
+@router.post("/zones")
+def create_zone(payload: ZoneIn, principal: Principal = Depends(require_manager),
+                db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Введите название зоны")
+    if db.scalar(select(NightZone).where(NightZone.name == name)):
+        raise HTTPException(status_code=409, detail="Такая зона уже есть")
+    zone = NightZone(name=name[:160], sort_order=payload.sort_order, active=payload.active)
+    db.add(zone)
+    db.flush()
+    audit(db, principal, "night_zone_create", f"zone:{zone.id}", payload.model_dump())
+    db.commit()
+    return zone_dict(zone)
+
+
+@router.put("/zones/{zone_id}")
+def update_zone(zone_id: int, payload: ZoneIn, principal: Principal = Depends(require_manager),
+                db: Session = Depends(get_db)):
+    zone = db.get(NightZone, zone_id)
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Зона не найдена")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Введите название зоны")
+    dup = db.scalar(select(NightZone).where(NightZone.name == name, NightZone.id != zone_id))
+    if dup is not None:
+        raise HTTPException(status_code=409, detail="Такая зона уже есть")
+    old = {"name": zone.name, "sort_order": zone.sort_order, "active": zone.active}
+    zone.name = name[:160]
+    zone.sort_order = payload.sort_order
+    zone.active = payload.active
+    # название зоны в открытых отчётах — снимок: обновляем только ещё не закрытые смены,
+    # чтобы переименование зоны не переписывало историю
+    for sec in db.scalars(select(NightAreaSection)
+                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
+                          .where(NightAreaSection.zone_id == zone.id, NightReport.status == "open")):
+        sec.zone_name = zone.name
+    audit(db, principal, "night_zone_update", f"zone:{zone.id}", {"old": old, "new": payload.model_dump()})
+    db.commit()
+    return {"ok": True, "zone": zone_dict(zone)}
+
+
+@router.delete("/zones/{zone_id}")
+def delete_zone(zone_id: int, principal: Principal = Depends(require_manager),
+                db: Session = Depends(get_db)):
+    """Отключение зоны (мягкое): объекты и история смен сохраняются.
+
+    Объекты зоны остаются на месте (у каждого свой признак active) — зона просто
+    перестаёт предлагаться в справочниках. В уже созданных отчётах название зоны
+    хранится снимком (night_area_sections.zone_name).
+    """
+    zone = db.get(NightZone, zone_id)
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Зона не найдена")
+    zone.active = False
+    areas = len(list(db.scalars(select(NightArea.id).where(NightArea.zone_id == zone.id,
+                                                           NightArea.active.is_(True)))))
+    audit(db, principal, "night_zone_delete", f"zone:{zone_id}", {"areas_left": areas})
+    db.commit()
+    return {"ok": True, "areas_left": areas}
+
+
+@router.get("/zones/{zone_id}/items")
+def zone_items(zone_id: int, principal: Principal = Depends(require_perm("night.view")),
+               db: Session = Depends(get_db)):
+    """Шаблон чек-листа зоны + объекты зоны (для экрана настроек)."""
+    zone = db.get(NightZone, zone_id)
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Зона не найдена")
+    areas = [{"id": a.id, "name": a.name, "active": bool(a.active)}
+             for a in db.scalars(select(NightArea).where(NightArea.zone_id == zone_id)
+                                 .order_by(NightArea.sort_order, NightArea.id))]
+    area_ids = [a["id"] for a in areas]
+    ovs = dict(db.execute(select(ChecklistOverride.zone_item_id, func.count(ChecklistOverride.id))
+                          .where(ChecklistOverride.area_id.in_(area_ids))
+                          .group_by(ChecklistOverride.zone_item_id)).all()) if area_ids else {}
+    items = []
+    for i in db.scalars(select(ZoneChecklistItem).where(ZoneChecklistItem.zone_id == zone_id)
+                        .order_by(ZoneChecklistItem.sort_order, ZoneChecklistItem.id)):
+        items.append({"id": i.id, "text": i.text, "sort_order": i.sort_order,
+                      "active": bool(i.active), "overrides": ovs.get(i.id, 0)})
+    return {"zone": zone_dict(zone, areas_total=len(areas),
+                              items_total=len([i for i in items if i["active"]])),
+            "items": items, "areas": areas}
+
+
+@router.post("/zones/{zone_id}/items")
+def add_zone_item(zone_id: int, payload: ZoneItemIn,
+                  principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+    """Пункт шаблона зоны: попадает в чек-листы ВСЕХ объектов зоны.
+
+    В открытых сменах пункт добавляется только к ещё НЕ начатым объектам
+    (status="free") — как у пунктов отдельного объекта: начатые не перекраиваем.
+    """
+    zone = db.get(NightZone, zone_id)
+    if zone is None:
+        raise HTTPException(status_code=404, detail="Зона не найдена")
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Введите текст пункта")
+    item = ZoneChecklistItem(zone_id=zone.id, text=text[:300], sort_order=payload.sort_order,
+                             active=payload.active)
+    db.add(item)
+    db.flush()
+    refreshed = 0
+    for area in db.scalars(select(NightArea).where(NightArea.zone_id == zone.id,
+                                                   NightArea.active.is_(True))):
+        refreshed += refresh_free_section(db, area)
+    audit(db, principal, "night_zone_item_create", f"zone:{zone.id}",
+          {**payload.model_dump(), "sections_refreshed": refreshed})
+    db.commit()
+    return {"ok": True, "id": item.id, "sections_refreshed": refreshed}
+
+
+def _remove_zone_item_from_open(db: Session, item: ZoneChecklistItem) -> int:
+    """Убрать пункт шаблона из незакрытых областей (отмеченные не трогаем)."""
+    removed = 0
+    for ni in db.scalars(select(NightCheckItem)
+                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
+                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
+                         .where(NightCheckItem.zone_item_id == item.id, NightReport.status == "open",
+                                NightAreaSection.status != "done", NightCheckItem.answer == "")):
+        snap = json.loads(ni.section.snapshot_json or "[]")
+        ni.section.snapshot_json = json.dumps(
+            [x for x in snap if not (x.get("src") == "zone" and x.get("id") == item.id)],
+            ensure_ascii=False)
+        db.delete(ni)
+        removed += 1
+    return removed
+
+
+@router.put("/zone-items/{item_id}")
+def update_zone_item(item_id: int, payload: ZoneItemIn,
+                     principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+    """Правка пункта шаблона зоны: текст уезжает во все незакрытые снимки объектов зоны."""
+    item = db.get(ZoneChecklistItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Пункт не найден")
+    old_text = item.text
+    item.text = payload.text.strip()[:300] or item.text
+    item.sort_order = payload.sort_order
+    item.active = payload.active
+    for ni in db.scalars(select(NightCheckItem)
+                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
+                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
+                         .where(NightCheckItem.zone_item_id == item.id, NightReport.status == "open",
+                                NightAreaSection.status != "done")):
+        ni.text = item.text
+        ni.sort_order = item.sort_order
+    removed = _remove_zone_item_from_open(db, item) if not item.active else 0
+    audit(db, principal, "night_zone_item_update", f"zone_item:{item.id}",
+          {"old_text": old_text, **payload.model_dump(), "removed_from_open": removed})
+    db.commit()
+    return {"ok": True, "removed_from_open": removed}
+
+
+@router.delete("/zone-items/{item_id}")
+def delete_zone_item(item_id: int, principal: Principal = Depends(require_manager),
+                     db: Session = Depends(get_db)):
+    """Мягкое удаление пункта шаблона: в незакрытых сменах исчезает, в закрытых остаётся."""
+    item = db.get(ZoneChecklistItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Пункт не найден")
+    item.active = False
+    removed = _remove_zone_item_from_open(db, item)
+    audit(db, principal, "night_zone_item_delete", f"zone_item:{item_id}",
+          {"removed_from_open": removed})
+    db.commit()
+    return {"ok": True, "removed_from_open": removed}
+
+
+@router.get("/areas/{area_id}/checklist")
+def area_checklist(area_id: int, principal: Principal = Depends(require_perm("night.view")),
+                   db: Session = Depends(get_db)):
+    """Чек-лист объекта для настроек: шаблон зоны с правками + свои пункты + итог."""
+    area = db.get(NightArea, area_id)
+    if area is None:
+        raise HTTPException(status_code=404, detail="Область не найдена")
+    zone = db.get(NightZone, area.zone_id) if area.zone_id else None
+    ovs = {o.zone_item_id: o for o in db.scalars(select(ChecklistOverride)
+                                                 .where(ChecklistOverride.area_id == area.id))}
+    zone_items = []
+    if zone is not None:
+        for i in db.scalars(select(ZoneChecklistItem)
+                            .where(ZoneChecklistItem.zone_id == zone.id,
+                                   ZoneChecklistItem.active.is_(True))
+                            .order_by(ZoneChecklistItem.sort_order, ZoneChecklistItem.id)):
+            ov = ovs.get(i.id)
+            zone_items.append({
+                "id": i.id, "text": i.text, "sort_order": i.sort_order,
+                "override_text": ov.text if ov else "", "disabled": bool(ov.disabled) if ov else False,
+                "effective_text": (ov.text if ov and ov.text else i.text),
+                "in_checklist": not (ov.disabled if ov else False)})
+    own = [{"id": i.id, "text": i.text, "sort_order": i.sort_order, "active": bool(i.active)}
+           for i in db.scalars(select(ChecklistItem)
+                               .where(ChecklistItem.area_id == area.id, ChecklistItem.active.is_(True))
+                               .order_by(ChecklistItem.sort_order, ChecklistItem.id))]
+    return {"area": {"id": area.id, "name": area.name, "zone_id": area.zone_id,
+                     "zone_name": zone.name if zone else (area.category or ""),
+                     "active": bool(area.active)},
+            "zone_items": zone_items, "own_items": own,
+            "effective": effective_items(db, area)}
+
+
+@router.put("/areas/{area_id}/overrides/{zone_item_id}")
+def set_override(area_id: int, zone_item_id: int, payload: OverrideIn,
+                 principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+    """Индивидуальная правка пункта шаблона зоны у объекта (своя формулировка / отключить).
+
+    Пустая формулировка и снятое отключение означают «как в шаблоне зоны» — запись
+    правки удаляется. Применяется к ещё НЕ начатым объектам в открытых сменах.
+    """
+    area = db.get(NightArea, area_id)
+    if area is None:
+        raise HTTPException(status_code=404, detail="Область не найдена")
+    item = db.get(ZoneChecklistItem, zone_item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Пункт шаблона зоны не найден")
+    if item.zone_id != area.zone_id:
+        raise HTTPException(status_code=400,
+                            detail="Пункт не из шаблона зоны этого объекта")
+    text = payload.text.strip()[:300]
+    ov = db.scalar(select(ChecklistOverride).where(ChecklistOverride.area_id == area.id,
+                                                  ChecklistOverride.zone_item_id == item.id))
+    if not text and not payload.disabled:
+        if ov is not None:
+            db.delete(ov)
+    elif ov is None:
+        db.add(ChecklistOverride(area_id=area.id, zone_item_id=item.id, text=text,
+                                 disabled=bool(payload.disabled)))
+    else:
+        ov.text = text
+        ov.disabled = bool(payload.disabled)
+    db.flush()
+    touched = refresh_free_section(db, area)
+    audit(db, principal, "night_override_set", f"area:{area.id}",
+          {"zone_item_id": item.id, "text": text, "disabled": bool(payload.disabled),
+           "sections_refreshed": touched})
+    db.commit()
+    return {"ok": True, "sections_refreshed": touched, "effective": effective_items(db, area)}
+
+
+@router.delete("/areas/{area_id}/overrides/{zone_item_id}")
+def reset_override(area_id: int, zone_item_id: int,
+                   principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+    """Сброс правки: пункт у объекта снова как в шаблоне зоны."""
+    area = db.get(NightArea, area_id)
+    if area is None:
+        raise HTTPException(status_code=404, detail="Область не найдена")
+    ov = db.scalar(select(ChecklistOverride).where(ChecklistOverride.area_id == area.id,
+                                                  ChecklistOverride.zone_item_id == zone_item_id))
+    if ov is not None:
+        db.delete(ov)
+        # сессия без autoflush: фиксируем удаление ДО пересчёта чек-листа,
+        # иначе снимок пересоберётся по ещё не удалённой правке
+        db.flush()
+    touched = refresh_free_section(db, area) if ov is not None else 0
+    audit(db, principal, "night_override_reset", f"area:{area.id}",
+          {"zone_item_id": zone_item_id, "sections_refreshed": touched})
+    db.commit()
+    return {"ok": True, "sections_refreshed": touched}
 
 
 # ─────────────────────────── ход смены ───────────────────────────

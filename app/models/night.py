@@ -24,14 +24,40 @@ from ..deps import now_local
 # (Europe/Moscow, naive) — как Punch.ts. Для этого нужен now_local(), а не utcnow().
 
 
-class NightArea(Base):
-    """Справочник областей ночной проверки (виллы, спа, бассейн, ресепшн…).
+class NightZone(Base):
+    """Зона обхода — ПЕРВЫЙ уровень навигации ночного отчёта (v2, 19.10.2026).
 
-    name       — отображаемое название («Вилла VEG 4001», «Спа»);
-    category   — категория области («VEG», «VPS», «Офис»): пункты чек-листа
-                 привязаны к категории, поэтому у всех вилл одной категории
-                 список пунктов одинаковый;
-    active     — выключенные области не попадают в новые ночные отчёты
+    Зоны выросли из текстовых «категорий» областей: «Семейные виллы»,
+    «Президентские винные виллы», «Офисы». Внутри зоны — объекты (NightArea):
+    «Вилла 4001»…«Вилла 4012»; чек-лист задаётся НА ЗОНУ (ChecklistItem.zone_id),
+    поэтому у всех однотипных объектов он одинаковый, а индивидуальные особенности
+    объекта правятся точечно (ChecklistOverride).
+
+    sort_order — порядок зон в обходе; active=False — зона не предлагается новым
+    объектам и не попадает в новые отчёты (созданные ранее не меняются: там снимок).
+    """
+
+    __tablename__ = "night_zones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+    areas: Mapped[list[NightArea]] = relationship(back_populates="zone")
+
+
+class NightArea(Base):
+    """Объект ночной проверки — ВТОРОЙ уровень навигации (вилла, спа, офис…).
+
+    name       — отображаемое название («Вилла 4001», «Зона SPA»);
+    zone_id    — зона обхода (NightZone): чек-лист зоны действует для всех её объектов;
+    category   — ИСТОРИЧЕСКАЯ текстовая группа («общие зоны», «служебные»). Зоны v2
+                 созданы из этих категорий миграцией migrate_night_zones(); поле
+                 сохранено, чтобы закрытые отчёты и выгрузки не потеряли группировку;
+    active     — выключенные объекты не попадают в новые ночные отчёты
                  (созданные ранее отчёты не меняются: там лежит снимок).
     """
 
@@ -39,15 +65,50 @@ class NightArea(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(160), unique=True)
+    zone_id: Mapped[Optional[int]] = mapped_column(ForeignKey("night_zones.id"), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(80), default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
 
+    zone: Mapped[Optional[NightZone]] = relationship(back_populates="areas")
+
+
+class ZoneChecklistItem(Base):
+    """Пункт ШАБЛОНА ЗОНЫ (v2, 19.10.2026): действует для всех объектов зоны.
+
+    Основной режим чек-листа: «Витражи закрыты», «Свет выключен» задаются один раз
+    на зону «Семейные виллы» и попадают в чек-лист всех 12 вилл. Индивидуальные
+    особенности объекта (своя формулировка, отключение) — ChecklistOverride, а свой
+    пункт только одного объекта — ChecklistItem(area_id=…).
+
+    Отдельная таблица (а не zone_id в checklist_items) — сознательно: в существующих
+    базах checklist_items.area_id NOT NULL, и ослабление потребовало бы пересоздания
+    таблицы вместе с FK (на PostgreSQL — с каскадом). Проект держится «лёгких»
+    миграций (ADD COLUMN / CREATE TABLE), поэтому шаблон зоны живёт своей таблицей.
+    """
+
+    __tablename__ = "zone_checklist_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    zone_id: Mapped[int] = mapped_column(ForeignKey("night_zones.id"), index=True)
+    text: Mapped[str] = mapped_column(String(300))
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+    zone: Mapped[NightZone] = relationship()
+
 
 class ChecklistItem(Base):
-    """Пункт чек-листа области (ведётся админом/менеджером). Привязан к категории."""
+    """Пункт чек-листа ОТДЕЛЬНОГО объекта (индивидуальный, не из шаблона зоны).
+
+    Пример: «Детская кроватка установлена» только у «Виллы 4001». Общие для зоны
+    пункты — ZoneChecklistItem; правка пункта шаблона у конкретного объекта —
+    ChecklistOverride.
+    """
 
     __tablename__ = "checklist_items"
 
@@ -60,6 +121,32 @@ class ChecklistItem(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
 
     area: Mapped[NightArea] = relationship()
+
+
+class ChecklistOverride(Base):
+    """Индивидуальные особенности объекта: шаблон зоны остаётся общим (v2).
+
+    area_id + zone_item_id — у какого объекта правится какой пункт шаблона зоны;
+    disabled=True — пункт у этого объекта не проверяется (не попадает в отчёт);
+    text          — своя формулировка ('' = как в шаблоне зоны).
+
+    Свои пункты объекта хранятся не здесь, а как ChecklistItem(area_id=…) —
+    отдельная сущность для них не нужна.
+    """
+
+    __tablename__ = "checklist_overrides"
+    __table_args__ = (UniqueConstraint("area_id", "zone_item_id", name="uq_checklist_override_area_item"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    area_id: Mapped[int] = mapped_column(ForeignKey("night_areas.id"), index=True)
+    zone_item_id: Mapped[int] = mapped_column(ForeignKey("zone_checklist_items.id"), index=True)
+    text: Mapped[str] = mapped_column(String(300), default="")
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+    area: Mapped[NightArea] = relationship()
+    zone_item: Mapped[ZoneChecklistItem] = relationship()
 
 
 class NightReport(Base):
@@ -88,8 +175,10 @@ class NightReport(Base):
 class NightAreaSection(Base):
     """Область внутри ночного отчёта — снимок справочника на момент создания отчёта.
 
-    snapshot_json — [{"id": <item_id>, "text": "..."}]: правки справочников после
-    создания отчёта его не ломают.
+    snapshot_json — [{"id": <item_id|zone_item_id>, "src": "zone"|"area", "text": "...",
+    "overridden": bool}]: эффективный чек-лист объекта (шаблон зоны + свои пункты −
+    отключённые у объекта, со своими формулировками) фиксируется при создании отчёта,
+    поэтому правки справочников позже его не ломают.
     """
 
     __tablename__ = "night_area_sections"
@@ -100,6 +189,9 @@ class NightAreaSection(Base):
     area_id: Mapped[Optional[int]] = mapped_column(ForeignKey("night_areas.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(160))
     category: Mapped[str] = mapped_column(String(80), default="")
+    # зона снимком (id + название): переименование/отключение зоны не меняет прошлые смены
+    zone_id: Mapped[Optional[int]] = mapped_column(ForeignKey("night_zones.id"), nullable=True)
+    zone_name: Mapped[str] = mapped_column(String(160), default="")
     snapshot_json: Mapped[str] = mapped_column(Text, default="[]")
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     # кто ведёт проверку области сейчас
@@ -123,6 +215,9 @@ class NightCheckItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     section_id: Mapped[int] = mapped_column(ForeignKey("night_area_sections.id"), index=True)
     item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("checklist_items.id"), nullable=True)
+    # пункт из шаблона зоны (v2): item_id и zone_item_id — ровно один из двух
+    zone_item_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("zone_checklist_items.id"), nullable=True)
     text: Mapped[str] = mapped_column(String(300))
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     answer: Mapped[str] = mapped_column(String(8), default="")   # '' (не отмечено) | ok | bad

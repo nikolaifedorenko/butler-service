@@ -22,7 +22,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .deps import now_local
-from .models import Car, ChecklistItem, NightArea, NightAreaSection, NightCheckItem, NightInterception, NightReport
+from .models import (
+    Car,
+    ChecklistItem,
+    ChecklistOverride,
+    NightArea,
+    NightAreaSection,
+    NightCheckItem,
+    NightInterception,
+    NightReport,
+    NightZone,
+    ZoneChecklistItem,
+)
 
 SHIFT_START = dt.time(20, 0)   # начало ночной смены
 SHIFT_END = dt.time(8, 0)      # автозакрытие
@@ -45,6 +56,40 @@ def current_shift_date(now: Optional[dt.datetime] = None) -> dt.date:
 def close_deadline(shift_d: dt.date) -> dt.datetime:
     """Момент автозакрытия отчёта за смену D — 08:00 следующих суток."""
     return dt.datetime.combine(shift_d + dt.timedelta(days=1), SHIFT_END)
+
+
+def effective_items(db: Session, area: NightArea) -> list[dict]:
+    """Эффективный чек-лист объекта (v2): шаблон зоны + свои пункты − отключённые.
+
+    Порядок: сначала пункты шаблона зоны (ZoneChecklistItem), затем свои пункты
+    объекта (ChecklistItem.area_id) — внутри групп по sort_order. Для пункта шаблона
+    учитываются индивидуальные правки объекта (ChecklistOverride): disabled — пункт
+    не проверяется у этого объекта, text — своя формулировка.
+
+    Возвращает снимок для отчёта: [{"id", "src": "zone"|"area", "text", "overridden"}],
+    где id — id пункта шаблона зоны или своего пункта (различаются по src).
+    """
+    out: list[dict] = []
+    if area.zone_id:
+        zone_items = list(db.scalars(
+            select(ZoneChecklistItem)
+            .where(ZoneChecklistItem.zone_id == area.zone_id, ZoneChecklistItem.active.is_(True))
+            .order_by(ZoneChecklistItem.sort_order, ZoneChecklistItem.id)))
+        ovs = ({o.zone_item_id: o for o in db.scalars(
+            select(ChecklistOverride).where(ChecklistOverride.area_id == area.id))}
+            if zone_items else {})
+        for it in zone_items:
+            ov = ovs.get(it.id)
+            if ov is not None and ov.disabled:
+                continue                       # у этого объекта пункт не проверяется
+            out.append({"id": it.id, "src": "zone", "text": (ov.text if ov is not None and ov.text
+                                                             else it.text),
+                        "overridden": bool(ov is not None and ov.text)})
+    for it in db.scalars(select(ChecklistItem)
+                         .where(ChecklistItem.area_id == area.id, ChecklistItem.active.is_(True))
+                         .order_by(ChecklistItem.sort_order, ChecklistItem.id)):
+        out.append({"id": it.id, "src": "area", "text": it.text, "overridden": False})
+    return out
 
 
 def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> Optional[NightReport]:
@@ -71,20 +116,21 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
     order = 10
     areas = list(db.scalars(select(NightArea).where(NightArea.active.is_(True))
                             .order_by(NightArea.sort_order, NightArea.id)))
+    zones = {z.id: z.name for z in db.scalars(select(NightZone))}
     for area in areas:
-        snap = [{"id": it.id, "text": it.text} for it in
-                db.scalars(select(ChecklistItem)
-                           .where(ChecklistItem.area_id == area.id,
-                                  ChecklistItem.active.is_(True))
-                           .order_by(ChecklistItem.sort_order, ChecklistItem.id))]
+        # чек-лист объекта = шаблон зоны + свои пункты − отключённые (снимком в отчёт)
+        snap = effective_items(db, area)
         section = NightAreaSection(
             report_id=report.id, area_id=area.id, name=area.name, category=area.category,
+            zone_id=area.zone_id, zone_name=zones.get(area.zone_id, area.category or ""),
             snapshot_json=json.dumps(snap, ensure_ascii=False), sort_order=order)
         db.add(section)
         db.flush()
         for i, s in enumerate(snap):
-            db.add(NightCheckItem(section_id=section.id, item_id=s["id"], text=s["text"],
-                                  sort_order=(i + 1) * 10))
+            db.add(NightCheckItem(section_id=section.id,
+                                  item_id=s["id"] if s["src"] == "area" else None,
+                                  zone_item_id=s["id"] if s["src"] == "zone" else None,
+                                  text=s["text"], sort_order=(i + 1) * 10))
         order += 10
 
     if cars_step:
@@ -177,6 +223,8 @@ def section_dict(sec: NightAreaSection, *, with_items: bool = True) -> dict:
     answered = sum(1 for i in items if i.answer)
     data = {
         "id": sec.id, "area_id": sec.area_id, "name": sec.name, "category": sec.category,
+        # зона — снимком: у старых отчётов zone_name пустой, тогда группируем по категории
+        "zone_id": sec.zone_id, "zone_name": sec.zone_name or sec.category or "",
         "is_cars": sec.area_id is None and sec.category == "cars",
         "status": sec.status, "status_title": SECTION_TITLES.get(sec.status, sec.status),
         "taken_by": sec.taken_by, "taken_by_name": sec.taken_by_name or "",
@@ -189,6 +237,71 @@ def section_dict(sec: NightAreaSection, *, with_items: bool = True) -> dict:
     if with_items:
         data["items"] = [item_dict(i) for i in items]
     return data
+
+
+def refresh_free_section(db: Session, area: NightArea) -> int:
+    """Пересобрать чек-лист объекта в ОТКРЫТЫХ сменах, где объект ещё не взят в работу.
+
+    Применяется после правок шаблона зоны и индивидуальных правок объекта: там, где
+    батлер ещё не начал проверку (status="free"), снимок безопасно пересобрать целиком;
+    начатые и закрытые области не трогаем — иначе потерялись бы отметки. Возвращает
+    число пересобранных областей.
+    """
+    snap = effective_items(db, area)
+    touched = 0
+    for sec in db.scalars(select(NightAreaSection)
+                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
+                          .where(NightAreaSection.area_id == area.id,
+                                 NightReport.status == "open",
+                                 NightAreaSection.status == "free")):
+        sec.snapshot_json = json.dumps(snap, ensure_ascii=False)
+        for ni in list(sec.items):
+            db.delete(ni)
+        db.flush()
+        for i, item in enumerate(snap):
+            db.add(NightCheckItem(section_id=sec.id,
+                                  item_id=item["id"] if item["src"] == "area" else None,
+                                  zone_item_id=item["id"] if item["src"] == "zone" else None,
+                                  text=item["text"], sort_order=(i + 1) * 10))
+        touched += 1
+    return touched
+
+
+def zones_progress(section_dicts: list[dict]) -> list[dict]:
+    """Прогресс по зонам — считается из уже сериализованных областей отчёта (без SQL).
+
+    Зона «Без зоны» (zone_id None) собирается для объектов, у которых зона не задана;
+    шаг «Проверка электрокаров» в зоны не входит — это отдельный шаг.
+    """
+    order: list = []
+    by: dict = {}
+    for s in section_dicts:
+        if s.get("is_cars"):
+            continue
+        zid = s.get("zone_id")
+        z = by.get(zid)
+        if z is None:
+            z = by[zid] = {"zone_id": zid, "name": s.get("zone_name") or "Без зоны",
+                           "areas_total": 0, "done": 0, "taken": 0, "free": 0,
+                           "items_total": 0, "items_answered": 0, "items_bad": 0,
+                           "items_unanswered": 0}
+            order.append(zid)
+        z["areas_total"] += 1
+        if s.get("status") in ("done", "taken", "free"):
+            z[s["status"]] += 1
+        z["items_total"] += s.get("items_total", 0)
+        z["items_answered"] += s.get("items_answered", 0)
+        z["items_bad"] += s.get("items_bad", 0)
+        z["items_unanswered"] += s.get("items_unanswered", 0)
+    return [by[k] for k in order]
+
+
+def zone_dict(zone: NightZone, *, areas_total: int = 0, items_total: int = 0) -> dict:
+    """Зона справочника (для экрана настроек и списка зон)."""
+    return {"id": zone.id, "name": zone.name, "sort_order": zone.sort_order,
+            "active": bool(zone.active), "areas_total": areas_total,
+            "items_total": items_total,
+            "created_at": zone.created_at.isoformat(timespec="seconds") if zone.created_at else None}
 
 
 def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
@@ -246,6 +359,7 @@ def report_dict(rep: NightReport, *, with_items: bool = True, db=None) -> dict:
         "progress": prog,
         "areas": [section_dict(s, with_items=with_items) for s in sections],
     }
+    data["zones"] = zones_progress(data["areas"])
     if db is not None:
         data["car_checks"], data["interceptions"] = car_checks_of(db, rep)
     return data

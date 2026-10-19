@@ -46,6 +46,7 @@ from .migrations import (
     migrate_engine_v7,
     migrate_manual_replaces_generated,
     migrate_night_cars,
+    migrate_night_zones,
     migrate_schedule_dict_simplify,
     migrate_settings_value_text,
     migrate_shift_tabel_codes,
@@ -84,6 +85,7 @@ def init_db() -> None:
     migrate_time_off_template()
     migrate_shift_tabel_codes()
     migrate_night_cars()
+    migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
     from .night import sync_reports
     from .photos import cleanup_photos
