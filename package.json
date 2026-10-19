@@ -5,16 +5,17 @@
   "description": "Инструменты фронтенда: линтер, смоук интерфейса в jsdom, снимки разделов",
   "type": "module",
   "scripts": {
-    "lint": "eslint static/js static/sw.js",
     "globals": "python3 tools/gen_js_globals.py",
     "globals:check": "python3 tools/gen_js_globals.py --check",
+    "lint": "eslint static/js static/sw.js",
     "smoke": "./tools/run_ui_check.sh",
     "smoke:employee": "./tools/run_ui_check.sh 8198 ivanov",
-    "smoke:settings": "./tools/run_settings_scenario.sh",
-    "smoke:norms": "./tools/run_norms_scenario.sh",
     "smoke:layers": "./tools/run_layers_scenario.sh",
     "smoke:nightcars": "./tools/run_night_cars_scenario.sh",
     "smoke:nightzones": "./tools/run_night_zones_scenario.sh",
+    "smoke:norms": "./tools/run_norms_scenario.sh",
+    "smoke:proto": "node docs/prototypes/night-report-v2.smoke.mjs",
+    "smoke:settings": "./tools/run_settings_scenario.sh",
     "snapshot": "./tools/run_snapshot.sh"
   },
   "devDependencies": {
