@@ -248,7 +248,8 @@ async function main() {
   console.log('\n6 · Справочник — зоны');
   click($('#night-dict'));
   check('справочник открылся', await waitFor(() => !!$('[data-dtab="zones"]')));
-  check('вкладки справочника', $$('[data-dtab]').length === 3);
+  check('вкладки справочника', $$('[data-dtab]').length === 4,
+    $$('[data-dtab]').map(b => b.textContent.trim()).join('/'));
   check('зоны в списке', $$('#dict-host .rule-row').length >= 4, String($$('#dict-host .rule-row').length));
   input($('#nz-name'), 'Сценарная зона');
   click($('#nz-add'));
@@ -325,13 +326,125 @@ async function main() {
   click($('#modal-backdrop'));
 
   /* ── 9. Выгрузка DOCX ── */
-  console.log('\n9 · Выгрузка DOCX');
+  console.log('\n9 · Выгрузка DOCX (зоны и службы)');
   const docx = await api('GET', `/api/night/reports/${reportId}/export.docx`);
   check('DOCX отдаётся', docx.status === 200 && docx.raw.length > 5000,
     `${docx.status}, ${docx.raw.length} байт`);
   /* содержимое .docx — архив: текст проверяют тесты Python (tests/test_night_zones.py),
      здесь достаточно валидного OOXML-пакета */
   check('DOCX — валидный OOXML-пакет', docx.raw.subarray(0, 2).toString() === 'PK');
+
+  /* ── 10. Ответственные службы (этап 3) ── */
+  console.log('\n10 · Ответственные службы');
+  click($('#night-dict'));
+  check('вкладка «Службы» в справочнике', await waitFor(() => !!$('[data-dtab="services"]')));
+  click($('[data-dtab="services"]'));
+  /* ждём именно ОТРИСОВКИ вкладки: «Батлер-сервис» виден и на вкладке чек-листов
+     (бейдж службы у пункта), поэтому waitFor по тексту сработал бы на старой разметке */
+  check('службы из демо-данных видны', await waitFor(() => !!$('#dict-host [data-sedit]'))
+    && /Батлер-сервис/.test(text('#dict-host')) && /Хозяйственная служба/.test(text('#dict-host'))
+    && /Техническая служба/.test(text('#dict-host')));
+  check('у службы видны каналы и готовность', /каналы:/.test(text('#dict-host')));
+  check('не готовая к отправке служба помечена', /не готова к отправке/.test(text('#dict-host')));
+  check('подсказка про общие настройки', /Настройки → Чаты и Почта/.test(text('#dict-host')));
+
+  const svcBtn = $$('#dict-host [data-sedit]')[0];
+  click(svcBtn);
+  check('карточка службы открылась', await waitFor(() => !!$('#sv-name') && !!$('#sv-tg') && !!$('#sv-mail')));
+  check('каналы — чекбоксы «чат» и «письмо»', !!$('#sv-tg') && !!$('#sv-mail'));
+  check('чат закрепляется из общего каталога (подсказка)', /общего каталога/.test(text('#modal')));
+  /* карточка службы открывается поверх справочника (одна модалка на приложение),
+     поэтому сохраняем — после «Сохранить» справочник перерисовывается сам */
+  click($('#modal .modal-foot [data-ok]'));
+  check('справочник служб перерисован после сохранения',
+    await waitFor(() => !!$('#dict-host [data-sedit]')));
+
+  /* служба у пункта шаблона зоны */
+  click($('[data-dtab="items"]'));
+  check('вкладка «Чек-листы» открылась', await waitFor(() => !!$('[data-ziedit]')));
+  const ziBtn = $$('#dict-host [data-ziedit]')[0];
+  click(ziBtn);
+  check('у пункта шаблона выбирается служба', await waitFor(() => !!$('#zi-service'))
+    && $$('#zi-service option').length >= 6, String($$('#zi-service option').length));
+  const svcId = Number($$('#zi-service option').find(o => o.value).value);
+  change($('#zi-service'), String(svcId));
+  const ziText = $('#zi-text').value;
+  click($('#modal .modal-foot [data-ok]'));
+  check('служба закреплена за пунктом шаблона', await waitFor(() =>
+    $$('#dict-host .rule-row').some(r => r.textContent.includes(ziText) && /⚖/.test(r.textContent))));
+
+  const services = (await (await api('GET', '/api/night/services')).json()).services;
+  const svcName = services.find(x => x.id === svcId).name;
+  check('служба уехала в снимок открытой смены',
+    (await (await api('GET', `/api/night/reports/${reportId}`)).json()).report.areas
+      .some(a => (a.items || []).some(i => i.text === ziText && i.service_name === svcName)),
+    `ожидали «${svcName}» у пункта «${ziText}»`);
+
+  /* своя служба у объекта — в индивидуальной правке */
+  const areaSel2 = $('#di-area');
+  if (areaSel2) {
+    const a2 = (await (await api('GET', '/api/night/areas')).json()).areas
+      .find(a => a.name === 'Вилла 4008' || a.name === 'Вилла 4001');
+    change(areaSel2, String(a2.id));
+    await rerendered(areaSel2, '#di-area', el => el.value === String(a2.id));
+    click($$('#dict-host [data-ov]')[0]);
+    check('в правке объекта можно задать свою службу', await waitFor(() => !!$('#ov-service')));
+    check('вариант «как в шаблоне зоны» сохранён',
+      /как в шаблоне зоны/i.test($$('#ov-service option')[0].textContent));
+    /* сохраняем правку (не отменяем): «Отмена» закрыла бы и справочник —
+       модалка в приложении одна, а дальше сценарий уходит в настройки */
+    click($('#modal .modal-foot [data-ok]'));
+    await waitFor(() => !!$('#dict-host [data-ov]'));
+  }
+
+  /* ── 11. Общие настройки доставки (этап 4) ── */
+  console.log('\n11 · Общие настройки «Чаты и Почта»');
+  window.navigate('settings');
+  await waitFor(() => window.location.hash.startsWith('#/settings/'));
+  check('экран в общих настройках, не в справочнике обхода',
+    $$('#st-nav [data-st]').some(b => b.dataset.st === 'notify'));
+  window.settingsGo('notify');
+  check('экран «Чаты и Почта» открылся', await waitFor(() =>
+    window.location.hash === '#/settings/notify' && /Чаты и Почта/.test(text('#st-body'))),
+    window.location.hash);
+  check('это общие настройки доставки', /Общие настройки доставки/i.test(text('#st-body')));
+  check('видно, какие разделы используют доставку', /Кто использует доставку/.test(text('#st-body'))
+    && /Электрокары/.test(text('#st-body')) && /График и Табель/.test(text('#st-body')));
+  check('панель Telegram: токен паролем', !!$('#nt-token') && $('#nt-token').type === 'password');
+  check('панель почты (MS Exchange)', !!$('#ne-host') && !!$('#ne-sec')
+    && /Exchange/.test(text('#st-body')));
+  check('каталог чатов обновляется кнопкой', !!$('#nt-chats'));
+  check('шаблоны — свои у каждого раздела', $$('#np-domain option').length === 2
+    && /\{items\}/.test($('#np-text').value));
+  check('лимиты медиа ведут в правила объекта', !!$('#nt-rules') && /50 МБ/.test(text('#st-body')));
+
+  input($('#nt-token'), 'SCENARIO-TOKEN-9876543210');
+  click($('#nt-save'));
+  check('токен сохранён', await waitFor(() => /токен сохранён/i.test(text('#st-body'))),
+    text('#st-body').slice(0, 120));
+  /* токен нигде не показывается: поле пустое, в placeholder — маска с последними 4 знаками */
+  check('в разметке токена нет — только маска',
+    !text('#st-body').includes('SCENARIO-TOKEN-9876543210')
+    && $('#nt-token').value === ''
+    && ($('#nt-token').placeholder || '').endsWith('3210'),
+    $('#nt-token').placeholder || '—');
+  const cfg = await (await api('GET', '/api/notify/config')).json();
+  check('API тоже не отдаёт токен', JSON.stringify(cfg).indexOf('SCENARIO-TOKEN-9876543210') === -1
+    && cfg.config.telegram.token_set === true);
+
+  input($('#np-text'), 'Служба {service}: {items}');
+  click($('#np-save'));
+  await sleep(500);
+  const tpls = (await (await api('GET', '/api/notify/templates')).json()).templates;
+  check('шаблон раздела сохранён', tpls.find(t => t.domain === 'night').customized === true);
+  const bad = await api('PUT', '/api/notify/templates/night', { text: 'Срок: {deadline}' });
+  check('неизвестный плейсхолдер отклоняется', bad.status === 400, String(bad.status));
+
+  /* возвращаем демо-состояние: шаблон по умолчанию и пустой токен */
+  await api('PUT', '/api/notify/templates/night', { text: '' });
+  await api('PUT', '/api/notify/config', { notify_telegram_token: 'clear' });
+  const cfg2 = await (await api('GET', '/api/notify/config')).json();
+  check('токен очищается явной командой', cfg2.config.telegram.token_set === false);
 
   return finish();
 }

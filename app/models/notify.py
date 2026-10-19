@@ -59,3 +59,45 @@ class ResponsibilityService(Base):
     note: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+
+class NotifyChat(Base):
+    """Общий каталог чатов Telegram (этап 4).
+
+    Список чатов НЕ вводится руками: бота добавляют в группы служб, и каталог
+    обновляется через getUpdates («Настройки → Чаты и Почта»). Закрепление чата
+    за службой — в карточке службы (ResponsibilityService.chat_ids), поэтому здесь
+    только справочные данные: id, название, тип и когда чат видели последний раз.
+
+    Таблица общая для всех разделов: чат «Техслужба» может быть получателем и
+    недостатков ночного обхода, и замечаний по электрокарам.
+    """
+
+    __tablename__ = "notify_chats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)   # id чата Telegram
+    title: Mapped[str] = mapped_column(String(255), default="")
+    username: Mapped[str] = mapped_column(String(120), default="")            # @username, если есть
+    kind: Mapped[str] = mapped_column(String(24), default="group")            # group | supergroup | channel | private
+    first_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+
+
+class NotifyTemplate(Base):
+    """Шаблон сообщения раздела (этап 4).
+
+    Транспорт общий, а текст у каждого раздела свой: ночной отчёт пишет службам
+    про недостатки, электрокары — про замечания при возврате. Плейсхолдеры
+    ({date}, {service}, {items}, {duty}, …) подставляет app/notify/templates.py;
+    список допустимых плейсхолдеров у раздела свой и показывается в настройках.
+
+    Отсутствующая запись означает «текст по умолчанию» (DEFAULT_TEMPLATES).
+    """
+
+    __tablename__ = "notify_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(32), unique=True, index=True)   # night | cars | …
+    text: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)

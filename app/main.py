@@ -30,6 +30,7 @@ from .api import (
     fact_api,
     mgmt_api,
     night_api,
+    notify_api,
     photos_api,
     presence_api,
     punches,
@@ -350,6 +351,7 @@ app.include_router(docs_api.router)
 app.include_router(doublepay.router)
 app.include_router(night_api.router)
 app.include_router(cars_api.router)
+app.include_router(notify_api.router)
 app.include_router(photos_api.router)
 
 

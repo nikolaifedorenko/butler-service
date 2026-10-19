@@ -630,6 +630,123 @@
         "title": "CloseSectionIn",
         "type": "object"
       },
+      "ConfigIn": {
+        "description": "Параметры доставки. Пустая строка у секрета означает «не менять».",
+        "properties": {
+          "notify_email_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Email From"
+          },
+          "notify_email_reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Email Reply To"
+          },
+          "notify_smtp_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Host"
+          },
+          "notify_smtp_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Password"
+          },
+          "notify_smtp_port": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Port"
+          },
+          "notify_smtp_security": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp Security"
+          },
+          "notify_smtp_user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Smtp User"
+          },
+          "notify_telegram_api": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Telegram Api"
+          },
+          "notify_telegram_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Telegram Token"
+          },
+          "notify_timeout": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Timeout"
+          }
+        },
+        "title": "ConfigIn",
+        "type": "object"
+      },
       "ContactIn": {
         "properties": {
           "name": {
@@ -907,6 +1024,24 @@
           }
         },
         "title": "DocIn",
+        "type": "object"
+      },
+      "EmailTestIn": {
+        "properties": {
+          "subject": {
+            "default": "",
+            "title": "Subject",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to"
+        ],
+        "title": "EmailTestIn",
         "type": "object"
       },
       "EmployeeIn": {
@@ -2192,6 +2327,51 @@
           }
         },
         "title": "TakeIn",
+        "type": "object"
+      },
+      "TelegramCheckIn": {
+        "properties": {
+          "api": {
+            "default": "",
+            "title": "Api",
+            "type": "string"
+          },
+          "token": {
+            "default": "",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "title": "TelegramCheckIn",
+        "type": "object"
+      },
+      "TelegramTestIn": {
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "integer"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id"
+        ],
+        "title": "TelegramTestIn",
+        "type": "object"
+      },
+      "TemplateIn": {
+        "properties": {
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "title": "TemplateIn",
         "type": "object"
       },
       "ValidationError": {
@@ -7571,6 +7751,346 @@
         "summary": "Add Zone Item",
         "tags": [
           "night"
+        ]
+      }
+    },
+    "/api/notify/chats": {
+      "get": {
+        "description": "Каталог чатов для карточки службы: какие чаты найдены и кем уже используются.",
+        "operationId": "get_chats_api_notify_chats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Chats",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/config": {
+      "get": {
+        "description": "Параметры доставки (секреты маскированы) + готовность каналов и каталог чатов.",
+        "operationId": "get_config_api_notify_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "description": "Сохранить параметры доставки. В аудит попадают имена ключей, не значения.",
+        "operationId": "put_config_api_notify_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Config",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/email/test": {
+      "post": {
+        "description": "Тестовое письмо: проверяет коннектор Exchange, отправителя и адрес получателя.",
+        "operationId": "email_test_api_notify_email_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Email Test",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/telegram/chats": {
+      "post": {
+        "description": "Обновить общий каталог чатов (getUpdates).\n\nБот должен быть добавлен в группы служб, и в группе должно появиться хотя бы\nодно сообщение — иначе Telegram не отдаст чат в обновлениях.",
+        "operationId": "telegram_chats_api_notify_telegram_chats_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Telegram Chats",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/telegram/check": {
+      "post": {
+        "description": "getMe: проверить токен (можно ещё не сохранённый) и увидеть username бота.",
+        "operationId": "telegram_check_api_notify_telegram_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramCheckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Telegram Check",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/telegram/test": {
+      "post": {
+        "description": "Тестовое сообщение в выбранный чат — проверка, что бот добавлен и пишет.",
+        "operationId": "telegram_test_api_notify_telegram_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Telegram Test",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates": {
+      "get": {
+        "description": "Шаблоны сообщений по разделам (свои у каждого раздела приложения).",
+        "operationId": "get_templates_api_notify_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Templates",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates/{domain}": {
+      "put": {
+        "description": "Сохранить шаблон раздела. Пустой текст — вернуть вариант по умолчанию.",
+        "operationId": "put_template_api_notify_templates__domain__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "title": "Domain",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Template",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates/{domain}/preview": {
+      "post": {
+        "description": "Предпросмотр: тот же рендер, что при отправке, но на образцовых данных.",
+        "operationId": "preview_template_api_notify_templates__domain__preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "title": "Domain",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Template",
+        "tags": [
+          "notify"
         ]
       }
     },
