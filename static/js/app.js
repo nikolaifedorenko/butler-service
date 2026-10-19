@@ -242,12 +242,24 @@ function startView() {
   return order.find(v => tabs.includes(v)) || tabs[0] || 'me';
 }
 
-async function enterApp() {
-  /* выход не перезагружает страницу: состояние вкладок «Факта» и кэш
-     сотрудников не должны доставаться следующему пользователю (16.10.2026) */
+/* Сброс состояния при смене пользователя (вход, вход/выход из режима
+   «посмотреть глазами сотрудника»): выход не перезагружает страницу, поэтому
+   кэши и DOM разделов не должны доставаться следующему пользователю (16.10.2026).
+   «График» добавлен 19.10.2026: стартовый экран батлера — «Мои отметки», и без
+   сброса в DOM оставались бы вкладки слоёв предыдущего пользователя (например,
+   админские Табель/УТ, на которые у сотрудника нет прав). loadGrafik перерисует
+   полосы по правам при первом открытии раздела. */
+function resetUserViewState() {
   state.factMode = null; state.factMonth = null; state.factDay = null;
   state.factEmp = null; state.factFrom = null; state.factTo = null;
   state.employees = [];
+  state.grafikLayer = null;
+  const grafikTabs = $('#grafik-tabs');
+  if (grafikTabs) grafikTabs.innerHTML = '';
+}
+
+async function enterApp() {
+  resetUserViewState();
   $('#login-screen').classList.add('hidden');
   $('#app').classList.remove('hidden');
   await loadPerms();
@@ -353,7 +365,8 @@ $('#change-pass-btn').onclick = () => openModal({
 });
 $('#stop-impersonation').onclick = async () => {
   const r = await api('/api/auth/impersonate/stop', { method: 'POST' });
-  state.user = r.user; renderUserChip(); await loadPerms(); navigate(startView());
+  state.user = r.user; renderUserChip(); await loadPerms();
+  resetUserViewState(); navigate(startView());
   toast('Вы вернулись в свой интерфейс', 'ok');
 };
 

@@ -357,6 +357,9 @@ async function main() {
   check('вход выполнен (ivanov)', await login('ivanov'));
   await sleep(600);
   check('пункт «График» виден сотруднику', navIds().includes('grafik'));
+  /* стартовый экран сотрудника — «Мои отметки» (19.10.2026), поэтому вкладки
+     «Графика» перерисовываются при открытии раздела: заходим явно */
+  window.navigate('grafik');
   check('слои без прав скрыты (остались План/График и Факт)',
     await waitFor(() => $$('#grafik-tabs .layer-tab').length === 2)
     && $$('#grafik-tabs .layer-tab').map(b => b.dataset.layer).join(',') === 'schedule,fact',

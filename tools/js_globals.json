@@ -218,6 +218,7 @@
   "renderTabel": "readonly",
   "renderUserChip": "readonly",
   "reopenReport": "readonly",
+  "resetUserViewState": "readonly",
   "scheduleShell": "readonly",
   "scrollGridToToday": "readonly",
   "scrollTabelToToday": "readonly",
@@ -540,6 +541,7 @@
   "renderTabel": "section_v4.js",
   "renderUserChip": "app.js",
   "reopenReport": "section_night.js",
+  "resetUserViewState": "app.js",
   "scheduleShell": "section_grid.js",
   "scrollGridToToday": "section_grid.js",
   "scrollTabelToToday": "section_v4.js",
@@ -651,6 +653,7 @@
    "navigate",
    "poll",
    "renderUserChip",
+   "resetUserViewState",
    "showLogin"
   ],
   "core.js": [
