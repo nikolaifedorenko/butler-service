@@ -990,6 +990,34 @@
         "title": "DepartmentIn",
         "type": "object"
       },
+      "DispatchIn": {
+        "description": "Ручная отправка недостатков службам (этап 5).\n\nmode=\"all\" — всё, что ещё не отправлено; \"selected\" — только item_ids.\nservice_ids сужает отправку до выбранных служб (кнопка «Отправить службе»).\nАвтоотправки нет: ни закрытие объекта, ни закрытие смены ничего не шлют.",
+        "properties": {
+          "item_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "all",
+            "title": "Mode",
+            "type": "string"
+          },
+          "service_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Service Ids",
+            "type": "array"
+          }
+        },
+        "title": "DispatchIn",
+        "type": "object"
+      },
       "DocIn": {
         "properties": {
           "company": {
@@ -6992,6 +7020,200 @@
         ]
       }
     },
+    "/api/night/reports/{report_id}/defects": {
+      "get": {
+        "description": "Недостатки смены: позиции, группы по службам, журнал, шаблон сообщения.",
+        "operationId": "report_defects_api_night_reports__report_id__defects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Defects",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/reports/{report_id}/defects/preview": {
+      "post": {
+        "description": "Предпросмотр сообщений: что именно уйдёт каждой службе (без отправки).",
+        "operationId": "preview_defects_api_night_reports__report_id__defects_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Defects",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/reports/{report_id}/dispatch": {
+      "post": {
+        "description": "Отправить недостатки службам: всё скопом или выбранное (только вручную).",
+        "operationId": "dispatch_report_api_night_reports__report_id__dispatch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dispatch Report",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/reports/{report_id}/dispatches": {
+      "get": {
+        "description": "Журнал отправок смены — строки общего журнала раздела «Ночной отчёт».",
+        "operationId": "report_dispatches_api_night_reports__report_id__dispatches_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Dispatches",
+        "tags": [
+          "night"
+        ]
+      }
+    },
     "/api/night/reports/{report_id}/export.docx": {
       "get": {
         "operationId": "export_docx_api_night_reports__report_id__export_docx_get",
@@ -7827,6 +8049,99 @@
           }
         },
         "summary": "Put Config",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/dispatches": {
+      "get": {
+        "description": "Общий журнал отправок приложения (фильтр по разделу).\n\nИстория не редактируется: видно, какой раздел, кто, кому и что отправил,\nстатус доставки и ошибку. Журнал доступен менеджменту; в разделе «Ночной\nотчёт» есть своя обёртка /api/night/reports/{id}/dispatches для батлеров.",
+        "operationId": "list_dispatches_api_notify_dispatches_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Domain",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Dispatches",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/dispatches/{dispatch_id}/resend": {
+      "post": {
+        "description": "Повторить неудачную доставку тем же текстом и составом (журнал не переписывается).",
+        "operationId": "resend_dispatch_api_notify_dispatches__dispatch_id__resend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dispatch_id",
+            "required": true,
+            "schema": {
+              "title": "Dispatch Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Dispatch",
         "tags": [
           "notify"
         ]

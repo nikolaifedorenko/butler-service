@@ -237,6 +237,12 @@ class NightCheckItem(Base):
     answered_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     answered_by_name: Mapped[str] = mapped_column(String(120), default="")
     answered_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    # отправка недостатка службе (этап 5): отправленное помечается и повторно не шлётся.
+    # Если пункт исправили ПОСЛЕ отправки, ничего не отправляем и не отзываем —
+    # в интерфейсе это видно как «исправлено после отправки».
+    dispatch_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("notify_dispatches.id"), nullable=True)
+    dispatched_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
     section: Mapped[NightAreaSection] = relationship(back_populates="items")
 

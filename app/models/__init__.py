@@ -40,7 +40,12 @@ from .night import (  # noqa: F401
     NightZone,
     ZoneChecklistItem,
 )
-from .notify import NotifyChat, NotifyTemplate, ResponsibilityService  # noqa: F401
+from .notify import (  # noqa: F401
+    NotifyChat,
+    NotifyDispatch,
+    NotifyTemplate,
+    ResponsibilityService,
+)
 from .punch import Punch  # noqa: F401
 from .schedule import ScheduleAbsence, ScheduleShift, ShiftRevision, ShiftType  # noqa: F401
 

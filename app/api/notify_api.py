@@ -196,6 +196,53 @@ def email_test(payload: EmailTestIn, principal: Principal = Depends(EDIT),
     return {"ok": True, "message_id": message_id}
 
 
+@router.get("/dispatches")
+def list_dispatches(domain: str = "", limit: int = 100,
+                    principal: Principal = Depends(require_manager),
+                    db: Session = Depends(get_db)):
+    """Общий журнал отправок приложения (фильтр по разделу).
+
+    История не редактируется: видно, какой раздел, кто, кому и что отправил,
+    статус доставки и ошибку. Журнал доступен менеджменту; в разделе «Ночной
+    отчёт» есть своя обёртка /api/night/reports/{id}/dispatches для батлеров.
+    """
+    from ..notify.dispatch import dispatch_dict, journal_of
+
+    rows = journal_of(db, domain, None, limit=limit) if domain else []
+    if not domain:
+        from sqlalchemy import select as _select
+
+        from ..models import NotifyDispatch
+        rows = list(db.scalars(_select(NotifyDispatch)
+                               .order_by(NotifyDispatch.ts.desc(), NotifyDispatch.id.desc())
+                               .limit(max(1, min(limit, 500)))))
+    return {"dispatches": [dispatch_dict(d) for d in rows]}
+
+
+@router.post("/dispatches/{dispatch_id}/resend")
+def resend_dispatch(dispatch_id: int, principal: Principal = Depends(require_manager),
+                    db: Session = Depends(get_db)):
+    """Повторить неудачную доставку тем же текстом и составом (журнал не переписывается)."""
+    from ..models import NotifyDispatch
+    from ..notify.config import load_config
+    from ..notify.dispatch import dispatch_dict, resend
+
+    row = db.get(NotifyDispatch, dispatch_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Запись журнала не найдена")
+    if row.status == "sent":
+        raise HTTPException(status_code=409, detail="Эта доставка уже отправлена")
+    try:
+        resend(db, row, cfg=load_config(db))
+    except TransportError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    audit(db, principal, "notify_dispatch_resend", f"dispatch:{row.id}",
+          {"domain": row.domain, "channel": row.channel, "attempts": row.attempts,
+           "status": row.status})
+    db.commit()
+    return {"ok": True, "dispatch": dispatch_dict(row)}
+
+
 @router.get("/templates")
 def get_templates(principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
     """Шаблоны сообщений по разделам (свои у каждого раздела приложения)."""

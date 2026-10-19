@@ -446,6 +446,51 @@ async function main() {
   const cfg2 = await (await api('GET', '/api/notify/config')).json();
   check('токен очищается явной командой', cfg2.config.telegram.token_set === false);
 
+  /* ── 12. Недостатки смены: экран консолидированной отправки (этап 5) ── */
+  console.log('\n12 · Недостатки смены и ручная отправка');
+  window.navigate('night');
+  check('кнопка «Недостатки» в разделе', await waitFor(() =>
+    !!$('#night-defects') && !$('#night-defects').classList.contains('hidden')));
+  click($('#night-defects'));
+  check('экран недостатков открылся', await waitFor(() => /Недостатки смены/.test(text('#modal'))));
+  check('ночные батлеры смены в подзаголовке', /Ночные батлеры смены:/.test(text('#modal')));
+  check('позиции сгруппированы по службам', $$('.defect-group').length >= 1,
+    String($$('.defect-group').length));
+  check('«Не проверено» включено в отчёт', /Не проверено/.test(text('#modal')));
+  check('замечание батлера видно в позиции', /Не ОК/.test(text('#modal')));
+  check('неготовая служба показывает причину', /Нельзя отправить/.test(text('#modal')));
+  check('доставка не настроена — предупреждение', /Доставка не настроена/.test(text('#modal'))
+    && /Чаты и Почта/.test(text('#modal')));
+
+  const cb = $('[data-def]:not([disabled])');
+  check('позиции можно выбирать', !!cb);
+  if (cb) {
+    cb.checked = true;
+    cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+    check('счётчик выбранного обновился', /Отправить выбранное \(1\)/.test(text('#modal')),
+      text('#df-sel') || '');
+  }
+  const before = (await (await api('GET', `/api/night/reports/${reportId}/dispatches`)).json()).dispatches.length;
+  click($('#df-preview'));
+  check('предпросмотр показывает текст сообщения', await waitFor(() => /Предпросмотр сообщений/.test(text('#modal'))));
+  check('плейсхолдеры в предпросмотре подставлены', !/\{items\}/.test(text('#modal'))
+    && !/\{service\}/.test(text('#modal')));
+  click($('#modal .modal-foot [data-cancel]'));
+  await waitFor(() => !!$('#df-all'));
+  const after = (await (await api('GET', `/api/night/reports/${reportId}/dispatches`)).json()).dispatches.length;
+  check('предпросмотр ничего не отправляет', after === before, `${before} → ${after}`);
+
+  /* отправка без настроенной доставки отклоняется: только вручную и только куда есть */
+  click($('#df-all'));
+  check('отправка «всё» спрашивает подтверждение', await waitFor(() => !!$('[data-yes]')));
+  click($('[data-yes]'));
+  check('без настроенной доставки отправка отклонена', await waitFor(() =>
+    /Доставка не настроена/.test(text('.toast') || '') || /Доставка не настроена/.test(text('#toasts') || '')),
+    text('#toasts') || '—');
+  const after2 = (await (await api('GET', `/api/night/reports/${reportId}/dispatches`)).json()).dispatches.length;
+  check('в журнале отправок не появилось записей', after2 === before);
+  click($('#modal-backdrop'));
+
   return finish();
 }
 

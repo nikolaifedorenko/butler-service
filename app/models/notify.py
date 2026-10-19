@@ -18,8 +18,9 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -101,3 +102,44 @@ class NotifyTemplate(Base):
     domain: Mapped[str] = mapped_column(String(32), unique=True, index=True)   # night | cars | …
     text: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+
+class NotifyDispatch(Base):
+    """ОБЩИЙ журнал отправок приложения (этап 5).
+
+    Один журнал на все разделы: ``domain`` + ``ref_id`` указывают, откуда отправка
+    (night → night_reports.id, cars → car_history.id и т. д.), поэтому экран журнала
+    и повторная отправка работают одинаково для любого раздела.
+
+    История не редактируется: запись создаётся один раз при отправке и хранит
+    СНЯТОК того, что ушло (текст, получатель, состав недостатков, число вложений).
+    Правки чек-листа после отправки запись не меняют — это и позволяет показать
+    «исправлено после отправки» и ничего повторно не слать (решение владельца).
+
+    status: sent | failed; при повторе растёт attempts, а ошибка прошлой попытки
+    остаётся в error. external_id — идентификатор во внешней системе
+    (message_id Telegram или Message-ID письма): по нему отправку находит поддержка.
+    """
+
+    __tablename__ = "notify_dispatches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(32), index=True)      # night | cars | …
+    ref_id: Mapped[int] = mapped_column(Integer, index=True)         # id записи раздела
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, index=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    actor_name: Mapped[str] = mapped_column(String(120), default="")
+    recipient_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("responsibility_services.id"), nullable=True, index=True)
+    recipient_name: Mapped[str] = mapped_column(String(160), default="")
+    channel: Mapped[str] = mapped_column(String(16), default="")     # telegram | email
+    target: Mapped[str] = mapped_column(String(200), default="")     # chat_id или e-mail
+    subject: Mapped[str] = mapped_column(String(200), default="")    # тема письма
+    message: Mapped[str] = mapped_column(Text, default="")           # текст как ушёл
+    items_json: Mapped[str] = mapped_column(Text, default="[]")      # снимок состава отправки
+    media_json: Mapped[str] = mapped_column(Text, default="[]")      # id вложений (для повтора)
+    media_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="sent")  # sent | failed
+    error: Mapped[str] = mapped_column(Text, default="")
+    external_id: Mapped[str] = mapped_column(String(120), default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=1)

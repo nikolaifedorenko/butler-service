@@ -352,6 +352,93 @@ def zone_dict(zone: NightZone, *, areas_total: int = 0, items_total: int = 0) ->
             "created_at": zone.created_at.isoformat(timespec="seconds") if zone.created_at else None}
 
 
+def duty_of(rep: NightReport) -> str:
+    """Ночные батлеры смены для плейсхолдера {duty} в сообщении службам.
+
+    Берём тех, кто реально вёл обход: закреплял области и отмечал пункты. График
+    здесь не источник истины — смену мог подменить другой батлер (перехват области),
+    а получателю важно, к кому идти с вопросом.
+    """
+    names = {s.taken_by_name for s in rep.areas if s.taken_by_name}
+    for sec in rep.areas:
+        for it in sec.items:
+            if it.answered_by_name:
+                names.add(it.answered_by_name)
+    return ", ".join(sorted(names)) or "—"
+
+
+def defects_of(db: Session, rep: NightReport) -> dict:
+    """Недостатки смены для консолидированной отправки службам (этап 5).
+
+    В отчёт попадают три рода позиций:
+      * «Не ОК» — батлер отметил замечание (комментарий обязателен по смыслу обхода,
+        но не по схеме: отправляем и без него);
+      * «Не проверено» — пункт остался без ответа (решение владельца: включать
+        в отчёт отдельным блоком);
+      * «Исправлено после отправки» — пункт уже уходил службе, а потом батлер
+        отметил «ОК». Из отчёта такая позиция НЕ исчезает (иначе получатель
+        остался бы с неизвестно чем), но повторно ничего не отправляем и сообщение
+        не отзываем — решение владельца от 19.10.2026.
+
+    Отправленное помечается (dispatched_at/dispatch_id) и повторно не уходит.
+
+    Возвращает {"items": [...], "counts": {...}}; группировку по службам делает
+    app/notify/recipients.py — домен не знает про транспорт.
+    """
+    from .photos import photos_of
+
+    sections = [s for s in sorted(rep.areas, key=lambda x: (x.sort_order, x.id))
+                if not (s.area_id is None and s.category == "cars")]
+    rows: list[NightCheckItem] = []
+    for sec in sections:
+        rows.extend(sorted(sec.items, key=lambda x: (x.sort_order, x.id)))
+    media = photos_of(db, "night_item", [r.id for r in rows]) or {}
+
+    items: list[dict] = []
+    for ni in rows:
+        unchecked = not ni.answer
+        dispatched = bool(ni.dispatched_at)
+        if ni.answer != "bad" and not unchecked and not dispatched:
+            continue
+        fixed_after = bool(dispatched and ni.answer == "ok")
+        kind = "bad" if ni.answer == "bad" else ("unchecked" if unchecked else "fixed")
+        items.append({
+            "id": ni.id,
+            "kind": kind,
+            "kind_title": {"bad": "Не ОК", "unchecked": "Не проверено",
+                           "fixed": "Исправлено после отправки"}[kind],
+            "section_id": ni.section_id,
+            "area_id": ni.section.area_id if ni.section else None,
+            "area": ni.section.name if ni.section else "",
+            "zone": (ni.section.zone_name or ni.section.category or "") if ni.section else "",
+            "text": ni.text,
+            "comment": ni.comment or "",
+            "service_id": ni.service_id,
+            "service_name": ni.service_name or "",
+            "answered_by_name": ni.answered_by_name or "",
+            "answered_at": ni.answered_at.isoformat(timespec="seconds") if ni.answered_at else None,
+            "media": media.get(ni.id, []),
+            "dispatched": dispatched,
+            "dispatched_at": ni.dispatched_at.isoformat(timespec="seconds") if ni.dispatched_at else None,
+            "dispatch_id": ni.dispatch_id,
+            "fixed_after_dispatch": fixed_after,
+            # отправляем только то, что ещё не уходило и не исправлено после отправки
+            "sendable": not dispatched and not fixed_after,
+        })
+    return {
+        "items": items,
+        "counts": {
+            "total": len(items),
+            "bad": sum(1 for i in items if i["kind"] == "bad"),
+            "unchecked": sum(1 for i in items if i["kind"] == "unchecked"),
+            "fixed_after_dispatch": sum(1 for i in items if i["kind"] == "fixed"),
+            "sendable": sum(1 for i in items if i["sendable"]),
+            "dispatched": sum(1 for i in items if i["dispatched"]),
+            "without_service": sum(1 for i in items if i["sendable"] and not i["service_id"]),
+        },
+    }
+
+
 def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
     """Снимок обхода электрокаров за смену + перехваты (нужны и API, и выгрузке DOCX)."""
     from .models import CarNightCheck  # локально — не раздуваем импорт модуля

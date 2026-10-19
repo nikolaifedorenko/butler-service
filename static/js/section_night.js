@@ -13,7 +13,9 @@
    areaId: id объекта, чей чек-лист открыт (null — список объектов). */
 const nightState = { reportId: null, today: null, areas: null, canEditDict: false,
   zoneId: null, areaId: null, q: '', filter: 'all',
-  dictTab: 'zones', dictZone: null, dictArea: null };
+  dictTab: 'zones', dictZone: null, dictArea: null,
+  /* экран «Недостатки смены»: выбор позиций и показ отправленных/исправленных */
+  defectsSelected: new Set(), defectsShowSent: false };
 
 /* dateRu() из app.js рассчитан на «YYYY-MM-DD»; для datetime берём только дату */
 const dRu = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
@@ -34,6 +36,7 @@ async function loadNight() {
       <button class="btn btn-sm" id="night-refresh">Обновить</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-today-btn">К текущей смене</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-archive">Архив</button>
+      <button class="btn btn-sm btn-ghost hidden" id="night-defects">Недостатки</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-dict">Справочник</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-docx">DOCX</button>
       <button class="btn btn-sm btn-ghost hidden" id="night-pdf">PDF</button>
@@ -46,6 +49,7 @@ async function loadNight() {
   $('#night-today-btn').onclick = () => { nightState.reportId = null; fetchNight(); };
   $('#night-archive').onclick = () => nightArchiveModal();
   $('#night-dict').onclick = () => nightDictModal();
+  $('#night-defects').onclick = () => nightDefectsModal();
   $('#night-docx').onclick = () => exportNight('docx');
   $('#night-pdf').onclick = () => exportNight('pdf');
   $('#night-close').onclick = () => closeReportModal();
@@ -145,6 +149,14 @@ function renderNight(rep, note) {
   const show = (id, on) => $(id)?.classList.toggle('hidden', !on);
   show('#night-archive', true);
   show('#night-dict', true);
+  show('#night-defects', !!rep);
+  /* счётчик недостатков, которые можно отправить: видно до открытия экрана */
+  const dfBtn = $('#night-defects');
+  if (dfBtn && rep) {
+    const sendable = (rep.areas || []).reduce((n, a) => n
+      + (a.items || []).filter(i => i.answer === 'bad' && !i.dispatched_at).length, 0);
+    dfBtn.textContent = sendable ? `Недостатки · ${sendable}` : 'Недостатки';
+  }
   show('#night-today-btn', !!nightState.reportId);
   show('#night-docx', !!rep);
   show('#night-pdf', !!rep);
@@ -1337,4 +1349,192 @@ async function nightItemsModal(a, after) {
     });
   };
   await renderItems();
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   НЕДОСТАТКИ СМЕНЫ: консолидированная отправка службам (этап 5)
+   ══════════════════════════════════════════════════════════════════ */
+/* «Не ОК» и «Не проверено» группируются по ответственным службам и отправляются
+   вручную — всё скопом или выборочно. Отправленное помечается и повторно не
+   уходит; если пункт исправили ПОСЛЕ отправки, ничего не отправляем и не отзываем.
+   Транспорт и шаблоны — общие настройки приложения («Настройки → Чаты и Почта»). */
+
+function defectRow(d, selected) {
+  const media = (d.media || []).filter(x => x.url);
+  const badges = [
+    d.kind === 'bad' ? '<span class="badge danger">Не ОК</span>'
+      : d.kind === 'fixed' ? '<span class="badge info">было в отправке</span>'
+        : '<span class="badge muted">Не проверено</span>',
+    d.fixed_after_dispatch ? '<span class="badge info" title="Ничего не отправляем и не отзываем">исправлено после отправки</span>'
+      : (d.dispatched ? `<span class="badge ok" title="Отправлено ${esc(d.dispatched_at || '')}">отправлено${d.dispatched_at ? ' ' + esc(hhmm(d.dispatched_at)) : ''}</span>` : ''),
+    media.length ? `<span class="badge info" title="вложений: ${media.length}">📎 ${media.length}</span>` : '',
+  ].join(' ');
+  return `<label class="rule-row defect-row${d.sendable ? '' : ' sent'}" style="grid-template-columns:auto 1fr">
+    <input type="checkbox" data-def="${d.id}" ${selected ? 'checked' : ''} ${d.sendable ? '' : 'disabled'}
+      title="${d.sendable ? 'включить в отправку' : 'уже отправлено или исправлено после отправки'}">
+    <div>
+      <div class="lbl">${esc(d.area)} <span class="muted">· ${esc(d.zone || '')}</span> ${badges}</div>
+      <div class="desc">${esc(d.text)}${d.comment ? ` — <i>${esc(d.comment)}</i>` : ''}
+        ${d.answered_by_name ? `<span class="muted">· ${esc(d.answered_by_name)}${d.answered_at ? ' ' + esc(hhmm(d.answered_at)) : ''}</span>` : ''}</div>
+      ${media.length ? `<div class="thumbs">${media.map(photoThumb).join('')}</div>` : ''}
+    </div></label>`;
+}
+
+function defectGroup(g, selectedIds) {
+  const problems = (g.problems || []).map(esc).join('; ');
+  const ch = (g.channels || []).map(c => c === 'telegram'
+    ? `<span class="badge info">чат · ${g.chat_ids.length}</span>`
+    : `<span class="badge info">письмо · ${esc((g.email_to || []).join(', '))}</span>`).join(' ');
+  return `<div class="panel defect-group${g.ready ? '' : ' not-ready'}">
+    <h3 class="panel-title">⚖ ${esc(g.service_name)}
+      <span class="badge ${g.counts.sendable ? 'warn' : 'muted'}">к отправке: ${g.counts.sendable}</span>
+      ${g.counts.dispatched ? `<span class="badge ok">отправлено: ${g.counts.dispatched}</span>` : ''}
+      ${g.counts.fixed_after_dispatch ? `<span class="badge info">исправлено после отправки: ${g.counts.fixed_after_dispatch}</span>` : ''}
+      ${ch}</h3>
+    ${problems ? `<p class="hint" style="color:var(--danger);margin:0 0 8px">Нельзя отправить: ${problems}</p>` : ''}
+    ${g.note ? `<p class="hint" style="margin:0 0 8px">${esc(g.note)}</p>` : ''}
+    <div class="check-list" style="max-height:34vh">${g.defects.map(d => defectRow(d, selectedIds.has(d.id))).join('')}</div>
+    ${g.counts.sendable && g.ready ? `<div class="row-actions" style="margin-top:8px">
+      <button class="btn btn-sm btn-primary" data-send-service="${g.service_id}">Отправить службе</button></div>` : ''}
+  </div>`;
+}
+
+function defectJournal(rows) {
+  if (!rows.length) return '<div class="empty">Отправок пока не было</div>';
+  return `<div class="table-wrap"><table class="data"><thead><tr>
+      <th>Время</th><th>Кто</th><th>Служба</th><th>Канал</th><th>Получатель</th>
+      <th>Позиций</th><th>Вложений</th><th>Статус</th><th></th></tr></thead><tbody>
+    ${rows.map(d => `<tr>
+      <td>${esc(d.ts ? d.ts.slice(5, 16).replace('T', ' ') : '')}</td>
+      <td>${esc(d.actor_name)}</td><td>${esc(d.recipient_name)}</td>
+      <td>${esc(d.channel_title)}</td><td><code>${esc(d.target)}</code></td>
+      <td class="num">${d.items_count}</td><td class="num">${d.media_count}</td>
+      <td>${d.status === 'sent' ? `<span class="badge ok">отправлено${d.attempts > 1 ? ` (попыток: ${d.attempts})` : ''}</span>`
+        : `<span class="badge danger" title="${esc(d.error)}">ошибка</span>`}</td>
+      <td class="num">${d.status === 'sent'
+        ? `<button class="btn btn-sm btn-ghost" data-msg="${d.id}">текст</button>`
+        : `<button class="btn btn-sm btn-ghost" data-msg="${d.id}">текст</button>
+           <button class="btn btn-sm" data-retry="${d.id}">повторить</button>`}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function nightDefectsModal() {
+  /* смена — как в остальном разделе: выбранная в архиве или текущая */
+  const reportId = nightState.reportId || nightState.today?.report?.id;
+  if (!reportId) return toast('Сначала откройте смену', 'warn');
+  const sel = nightState.defectsSelected;
+
+  const render = async () => {
+    let d;
+    try { d = await api(`/api/night/reports/${reportId}/defects`); }
+    catch (e) { return toast(e.message, 'err'); }
+    const c = d.counts || {};
+    const transport = d.transport || {};
+    const groups = d.groups || [];
+    const sendableGroups = groups.filter(g => g.counts.sendable > 0);
+    openModal({
+      title: `Недостатки смены · ${dateRu(d.report.date)}`,
+      subtitle: `Ночные батлеры смены: ${esc(d.duty)} · к отправке ${c.sendable || 0} из ${c.total || 0}`
+        + ` · отправлено ${c.dispatched || 0}` + (c.fixed_after_dispatch ? ` · исправлено после отправки ${c.fixed_after_dispatch}` : ''),
+      wide: true,
+      body: `
+        ${(!transport.telegram && !transport.email) ? `<p class="hint" style="color:var(--danger);margin:0 0 10px">
+          Доставка не настроена: заполните токен бота и/или почту в «Настройки → Чаты и Почта».</p>` : ''}
+        <div class="toolbar" style="margin-bottom:10px">
+          <button class="btn btn-sm btn-primary" id="df-all" ${c.sendable ? '' : 'disabled'}>Отправить всё (${c.sendable || 0})</button>
+          <button class="btn btn-sm" id="df-sel" ${sel.size ? '' : 'disabled'}>Отправить выбранное (${sel.size})</button>
+          <button class="btn btn-sm" id="df-preview">Предпросмотр</button>
+          <label class="chk" style="margin:0"><input type="checkbox" id="df-sent" ${nightState.defectsShowSent ? 'checked' : ''}>
+            показывать отправленные и исправленные</label>
+          <div class="spacer"></div>
+          <span class="hint" style="margin:0">«Не проверено» включается в отчёт</span>
+        </div>
+        ${sendableGroups.length ? '' : '<div class="empty">Недостатков к отправке нет</div>'}
+        ${groups.filter(g => nightState.defectsShowSent || g.counts.sendable > 0)
+          .map(g => defectGroup(g, sel)).join('')}
+        <div class="opt-group-title">Журнал отправок смены</div>
+        ${defectJournal(d.dispatches || [])}`,
+      footer: `<button class="btn btn-ghost" data-cancel>Закрыть</button>`,
+      onMount(m) {
+        m.querySelector('[data-cancel]').onclick = closeModal;
+        $$('[data-def]', m).forEach(cb => cb.onchange = () => {
+          const id = Number(cb.dataset.def);
+          if (cb.checked) sel.add(id); else sel.delete(id);
+          const btn = $('#df-sel');
+          if (btn) { btn.textContent = `Отправить выбранное (${sel.size})`; btn.disabled = !sel.size; }
+        });
+        const sent = $('#df-sent', m);
+        if (sent) sent.onchange = () => { nightState.defectsShowSent = sent.checked; render(); };
+        const send = async (body, okText) => {
+          loading(true);
+          try {
+            const r = await api(`/api/night/reports/${reportId}/dispatch`, { method: 'POST', body });
+            const warn = [];
+            if (r.failed) warn.push(`ошибок доставки: ${r.failed}`);
+            (r.skipped || []).forEach(s => warn.push(`${s.service_name}: ${s.problems.join('; ')}`));
+            toast(`${okText}: отправлено ${r.sent}, отмечено позиций ${r.marked}`
+              + (warn.length ? ` · ${warn.join(' · ')}` : ''), warn.length ? 'warn' : 'ok', warn);
+            sel.clear();
+            await render();
+            fetchNight(true);
+          } catch (e) { toast(e.message, 'err'); }
+          finally { loading(false); }
+        };
+        const allBtn = $('#df-all', m);
+        if (allBtn) allBtn.onclick = () => confirmDialog('Отправить все недостатки?',
+          `Службам уйдёт ${c.sendable} позиц(ии): «Не ОК» и «Не проверено». Отправленное повторно не уходит; `
+          + 'если недостаток исправят после отправки, уведомлений не будет.',
+          () => send({ mode: 'all' }, 'Отправлено всё'), 'Отправить всё', false);
+        const selBtn = $('#df-sel', m);
+        if (selBtn) selBtn.onclick = () => send({ mode: 'selected', item_ids: [...sel] }, 'Отправлено выбранное');
+        $$('[data-send-service]', m).forEach(b => b.onclick = () => {
+          const sid = Number(b.dataset.sendService);
+          const g = groups.find(x => x.service_id === sid);
+          confirmDialog(`Отправить службе «${g.service_name}»?`,
+            `Позиций: ${g.counts.sendable}. Каналы: ${(g.channels || []).join(', ') || '—'}.`,
+            () => send({ mode: 'all', service_ids: [sid] }, 'Отправлено службе'), 'Отправить', false);
+        });
+        const prev = $('#df-preview', m);
+        if (prev) prev.onclick = async () => {
+          const body = sel.size ? { mode: 'selected', item_ids: [...sel] } : { mode: 'all' };
+          try {
+            const r = await api(`/api/night/reports/${reportId}/defects/preview`, { method: 'POST', body });
+            openModal({
+              title: 'Предпросмотр сообщений', wide: true,
+              subtitle: `${(r.messages || []).length} получател(ям) · ${sel.size ? 'выбранное' : 'всё к отправке'}`,
+              body: (r.messages || []).map(msg => `<div class="panel">
+                  <h3 class="panel-title">⚖ ${esc(msg.service_name)}
+                    <span class="badge info">${esc((msg.channels || []).join(', ') || 'каналы не заполнены')}</span></h3>
+                  ${msg.problems && msg.problems.length
+                    ? `<p class="hint" style="color:var(--danger);margin:0 0 8px">${esc(msg.problems.join('; '))}</p>` : ''}
+                  <pre style="white-space:pre-wrap;font:inherit;margin:0">${esc(msg.message)}</pre></div>`).join('')
+                || '<div class="empty">Отправлять нечего</div>',
+              footer: '<button class="btn btn-ghost" data-cancel>Закрыть</button>',
+              onMount(mm) { mm.querySelector('[data-cancel]').onclick = () => { closeModal(); render(); }; },
+            });
+          } catch (e) { toast(e.message, 'err'); }
+        };
+        $$('[data-msg]', m).forEach(b => b.onclick = () => {
+          const row = (d.dispatches || []).find(x => x.id === Number(b.dataset.msg));
+          if (!row) return;
+          openModal({ title: 'Отправленное сообщение', subtitle: `${row.recipient_name} · ${row.channel_title} · ${row.target}`,
+            body: `<pre style="white-space:pre-wrap;font:inherit;margin:0">${esc(row.message)}</pre>
+              ${row.error ? `<p class="hint" style="color:var(--danger)">Ошибка: ${esc(row.error)}</p>` : ''}`,
+            footer: '<button class="btn btn-ghost" data-cancel>Закрыть</button>',
+            onMount(mm) { mm.querySelector('[data-cancel]').onclick = () => { closeModal(); render(); }; } });
+        });
+        $$('[data-retry]', m).forEach(b => b.onclick = async () => {
+          try {
+            const r = await api(`/api/notify/dispatches/${b.dataset.retry}/resend`, { method: 'POST' });
+            toast(r.dispatch.status === 'sent' ? 'Доставлено при повторе' : `Повтор не удался: ${r.dispatch.error}`,
+              r.dispatch.status === 'sent' ? 'ok' : 'err');
+            render();
+          } catch (e) { toast(e.message, 'err'); }
+        });
+        bindPhotoDelete(m, null);
+      },
+    });
+  };
+  await render();
 }
