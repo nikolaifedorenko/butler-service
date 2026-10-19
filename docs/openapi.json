@@ -92,6 +92,17 @@
           "start": {
             "title": "Start",
             "type": "integer"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
           }
         },
         "required": [
@@ -122,6 +133,17 @@
             "default": 100,
             "title": "Sort Order",
             "type": "integer"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
           }
         },
         "required": [
@@ -1457,6 +1479,23 @@
         "title": "NoteIn",
         "type": "object"
       },
+      "OverrideIn": {
+        "description": "Индивидуальная правка пункта шаблона зоны у конкретного объекта.",
+        "properties": {
+          "disabled": {
+            "default": false,
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "title": "OverrideIn",
+        "type": "object"
+      },
       "PatternIn": {
         "properties": {
           "cycle": {
@@ -2142,6 +2181,52 @@
           "end_date"
         ],
         "title": "VipIn",
+        "type": "object"
+      },
+      "ZoneIn": {
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "default": 100,
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ZoneIn",
+        "type": "object"
+      },
+      "ZoneItemIn": {
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "default": 100,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ZoneItemIn",
         "type": "object"
       }
     }
@@ -5876,6 +5961,47 @@
         ]
       }
     },
+    "/api/night/areas/{area_id}/checklist": {
+      "get": {
+        "description": "Чек-лист объекта для настроек: шаблон зоны с правками + свои пункты + итог.",
+        "operationId": "area_checklist_api_night_areas__area_id__checklist_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "area_id",
+            "required": true,
+            "schema": {
+              "title": "Area Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Area Checklist",
+        "tags": [
+          "night"
+        ]
+      }
+    },
     "/api/night/areas/{area_id}/items": {
       "post": {
         "operationId": "add_item_api_night_areas__area_id__items_post",
@@ -5921,6 +6047,114 @@
           }
         },
         "summary": "Add Item",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/areas/{area_id}/overrides/{zone_item_id}": {
+      "delete": {
+        "description": "Сброс правки: пункт у объекта снова как в шаблоне зоны.",
+        "operationId": "reset_override_api_night_areas__area_id__overrides__zone_item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "area_id",
+            "required": true,
+            "schema": {
+              "title": "Area Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "zone_item_id",
+            "required": true,
+            "schema": {
+              "title": "Zone Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Override",
+        "tags": [
+          "night"
+        ]
+      },
+      "put": {
+        "description": "Индивидуальная правка пункта шаблона зоны у объекта (своя формулировка / отключить).\n\nПустая формулировка и снятое отключение означают «как в шаблоне зоны» — запись\nправки удаляется. Применяется к ещё НЕ начатым объектам в открытых сменах.",
+        "operationId": "set_override_api_night_areas__area_id__overrides__zone_item_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "area_id",
+            "required": true,
+            "schema": {
+              "title": "Area Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "zone_item_id",
+            "required": true,
+            "schema": {
+              "title": "Zone Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverrideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Override",
         "tags": [
           "night"
         ]
@@ -6772,6 +7006,332 @@
           }
         },
         "summary": "Today Report",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/zone-items/{item_id}": {
+      "delete": {
+        "description": "Мягкое удаление пункта шаблона: в незакрытых сменах исчезает, в закрытых остаётся.",
+        "operationId": "delete_zone_item_api_night_zone_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Zone Item",
+        "tags": [
+          "night"
+        ]
+      },
+      "put": {
+        "description": "Правка пункта шаблона зоны: текст уезжает во все незакрытые снимки объектов зоны.",
+        "operationId": "update_zone_item_api_night_zone_items__item_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ZoneItemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Zone Item",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/zones": {
+      "get": {
+        "description": "Справочник зон обхода: сколько в зоне объектов и пунктов шаблона.\n\nВидно всем ролям (зоны нужны батлерам для обхода). Счётчики — агрегатами,\nчтобы список не масштабировался запросами на зону.",
+        "operationId": "list_zones_api_night_zones_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Zones",
+        "tags": [
+          "night"
+        ]
+      },
+      "post": {
+        "operationId": "create_zone_api_night_zones_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ZoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Zone",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/zones/{zone_id}": {
+      "delete": {
+        "description": "Отключение зоны (мягкое): объекты и история смен сохраняются.\n\nОбъекты зоны остаются на месте (у каждого свой признак active) — зона просто\nперестаёт предлагаться в справочниках. В уже созданных отчётах название зоны\nхранится снимком (night_area_sections.zone_name).",
+        "operationId": "delete_zone_api_night_zones__zone_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "zone_id",
+            "required": true,
+            "schema": {
+              "title": "Zone Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Zone",
+        "tags": [
+          "night"
+        ]
+      },
+      "put": {
+        "operationId": "update_zone_api_night_zones__zone_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "zone_id",
+            "required": true,
+            "schema": {
+              "title": "Zone Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ZoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Zone",
+        "tags": [
+          "night"
+        ]
+      }
+    },
+    "/api/night/zones/{zone_id}/items": {
+      "get": {
+        "description": "Шаблон чек-листа зоны + объекты зоны (для экрана настроек).",
+        "operationId": "zone_items_api_night_zones__zone_id__items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "zone_id",
+            "required": true,
+            "schema": {
+              "title": "Zone Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Zone Items",
+        "tags": [
+          "night"
+        ]
+      },
+      "post": {
+        "description": "Пункт шаблона зоны: попадает в чек-листы ВСЕХ объектов зоны.\n\nВ открытых сменах пункт добавляется только к ещё НЕ начатым объектам\n(status=\"free\") — как у пунктов отдельного объекта: начатые не перекраиваем.",
+        "operationId": "add_zone_item_api_night_zones__zone_id__items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "zone_id",
+            "required": true,
+            "schema": {
+              "title": "Zone Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ZoneItemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Zone Item",
         "tags": [
           "night"
         ]

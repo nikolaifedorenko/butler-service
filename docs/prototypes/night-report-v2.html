@@ -1,0 +1,1876 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ночной отчёт v2 — прототип (зоны · объекты · службы · рассылка)</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   ПРОТОТИП «Ночной отчёт v2». Дизайн-токены и компоненты взяты из
+   static/css/app.css (фирменный стиль курорта «Мрия»), чтобы макет
+   выглядел как продукт. Файл автономен: ни сети, ни внешних шрифтов.
+   ══════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#f4f0ed; --bg-soft:#faf8f5; --panel:#fff; --panel-2:#f4eeeb;
+  --line:#e2d9ce; --line-soft:#ece5dc;
+  --text:#141a25; --muted:#6e6459; --muted-2:#a2968a;
+  --primary:#94583a; --primary-dark:#683e29; --primary-soft:#9a7060;
+  --gold:#cbb05b; --gold-deep:#a8893a;
+  --navy:#141a25; --navy-2:#202530;
+  --accent:#3d7a52; --accent-dark:#2f6242; --danger:#b81818; --warn:#c96d00; --info:#1d7e94;
+  --r-lg:10px; --r-md:6px; --r-sm:4px;
+  --shadow:0 10px 28px rgba(20,26,37,.08); --shadow-lg:0 22px 60px rgba(20,26,37,.18);
+  --head-h:60px; --side-w:236px;
+  --font-body:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PT Sans','Noto Sans',Arial,sans-serif;
+  --font-display:'Playfair Display','SangBleu Kingdom',Georgia,'Times New Roman',serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:var(--font-body);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+.hidden{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+code{background:#f4eeeb;padding:1px 6px;border-radius:4px;color:var(--primary);font-size:.92em}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#d3c6b6;border-radius:8px;border:2px solid var(--bg)}
+
+/* ── топбар ── */
+.topbar{position:fixed;inset:0 0 auto 0;height:var(--head-h);z-index:50;display:flex;align-items:center;
+  gap:12px;padding:0 16px;background:linear-gradient(100deg,var(--navy) 0%,var(--navy-2) 100%);color:#f3ede2;
+  border-bottom:1px solid #0d121b;box-shadow:0 6px 20px rgba(20,26,37,.18)}
+.topbar .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-size:18px;letter-spacing:.2px}
+.topbar .brand small{display:block;font-family:var(--font-body);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--gold);font-weight:700}
+.topbar .spacer{flex:1}
+.topbar .shift{font-size:12.5px;color:#cfc6b8;text-align:right;line-height:1.3}
+.topbar .shift b{color:#f3ede2;font-weight:700}
+.user-chip{display:flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid rgba(203,176,91,.4);
+  border-radius:var(--r-md);background:rgba(255,255,255,.05)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--gold);color:var(--navy);display:grid;
+  place-items:center;font-weight:800;font-size:12px}
+.user-chip .n{font-size:12.5px;font-weight:700;line-height:1.15}
+.user-chip .r{font-size:10.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em}
+.proto-tag{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  background:var(--gold);color:var(--navy);padding:4px 8px;border-radius:3px}
+
+/* ── раскладка ── */
+.app{position:fixed;inset:var(--head-h) 0 0 0;display:flex}
+.sidenav{width:var(--side-w);flex:0 0 var(--side-w);background:var(--bg-soft);border-right:1px solid var(--line);
+  overflow:auto;padding:14px 10px 40px}
+.nav-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted-2);
+  font-weight:800;margin:16px 8px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 11px;margin-bottom:3px;
+  background:none;border:1px solid transparent;border-radius:var(--r-md);cursor:pointer;font-size:13.5px;
+  color:var(--muted);font-weight:600}
+.nav-item:hover{background:#efe8df;color:var(--text)}
+.nav-item.active{background:var(--panel-2);color:var(--primary-dark);border-color:#d9c4b4;font-weight:800}
+.nav-item .cnt{margin-left:auto;font-size:11px;font-weight:800;background:#f9ebea;color:#a02020;
+  border:1px solid #eec8c5;border-radius:20px;padding:1px 7px}
+.nav-item .cnt.info{background:#e4eef1;color:#1d6e80;border-color:#c3d9e0}
+.main{flex:1;overflow:auto;padding:20px 22px 60px}
+
+/* ── компоненты ── */
+.page-head{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.page-head h2{margin:0;font-family:var(--font-display);font-size:24px;font-weight:600;letter-spacing:.2px}
+.page-head .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+.page-head .spacer{flex:1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:14px;
+  box-shadow:var(--shadow)}
+.panel-title{font-size:11.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:800;
+  margin:0 0 10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;border-radius:var(--r-sm);
+  border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text)}
+.btn:hover{border-color:var(--primary-soft);background:#faf6f1}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700;letter-spacing:.03em}
+.btn-primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn-accent:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
+.btn-danger{background:#f9ebea;border-color:#e8c8c4;color:#8f1d1d}
+.btn-danger:hover{background:#f4dcda;border-color:#dda9a3}
+.btn-ghost{background:transparent}
+.btn-sm{padding:6px 11px;font-size:12.5px}
+.btn-block{width:100%;padding:12px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:3px;font-size:11px;
+  font-weight:700;border:1px solid var(--line);background:var(--panel-2);color:var(--muted);letter-spacing:.02em}
+.badge.ok{background:#e9f0e6;color:#3d6b45;border-color:#cddcc7}
+.badge.warn{background:#faf0dc;color:#8a5a10;border-color:#ecd9ae}
+.badge.danger{background:#f9ebea;color:#a02020;border-color:#eec8c5}
+.badge.muted{background:#f1ece5;color:var(--muted);border-color:#e0d8cd}
+.badge.info{background:#e4eef1;color:#1d6e80;border-color:#c3d9e0}
+.badge.gold{background:#f7f0da;color:var(--gold-deep);border-color:#e6d6a8}
+.stat-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(146px,1fr));margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px}
+.stat .k{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-weight:800}
+.stat .v{font-family:var(--font-display);font-size:26px;font-weight:600;margin-top:4px;line-height:1.1}
+.stat .v small{font-family:var(--font-body);font-size:12.5px;color:var(--muted);font-weight:600}
+.stat.accent .v{color:var(--accent)} .stat.warn .v{color:var(--warn)}
+.stat.danger .v{color:var(--danger)} .stat.info .v{color:var(--info)}
+.toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+.seg{display:inline-flex;background:#ece5db;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg button{background:none;border:none;color:var(--muted);padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:700}
+.seg button.active{background:var(--navy);color:#f3ede2}
+input[type=text],input[type=search],input[type=number],input[type=password],input[type=email],select,textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;font-size:13.5px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary-soft);box-shadow:0 0 0 3px rgba(148,88,58,.12)}
+.field{display:block;margin-bottom:14px}
+.field>span{display:block;font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;
+  letter-spacing:.1em;font-weight:800}
+.hint{color:var(--muted-2);font-size:12.5px;margin:10px 0 0}
+.empty{text-align:center;color:var(--muted);padding:36px 20px;font-size:14px}
+.chk{display:flex;align-items:center;gap:8px;padding:6px;font-size:13.5px;cursor:pointer}
+.chk input{width:17px;height:17px;accent-color:var(--primary);flex:none}
+.check-list{display:grid;gap:6px;padding:4px;background:#f8f5f0;border:1px solid var(--line-soft);
+  border-radius:var(--r-md)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.opt-group-title{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:800;
+  margin:18px 0 8px}
+.thumbs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.thumb{display:block;width:56px;height:56px;border-radius:var(--r-sm);overflow:hidden;border:1px solid var(--line);position:relative}
+.thumb img,.thumb .ph{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .ph{display:grid;place-items:center;font-size:20px;background:linear-gradient(140deg,#e7dfd4,#cfc3b4)}
+.thumb-del{position:absolute;right:2px;top:2px;background:rgba(20,26,37,.72);color:#fff;border:none;border-radius:3px;
+  font-size:11px;padding:1px 5px;cursor:pointer}
+.rule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 4px;
+  border-bottom:1px solid var(--line-soft)}
+.rule-row:last-child{border-bottom:none}
+.rule-row .lbl{font-size:13.5px;font-weight:700}
+.rule-row .desc{font-size:12px;color:var(--muted);margin-top:2px}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* ── зоны / объекты / чек-лист ── */
+.crumb{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+.crumb a{color:var(--primary);cursor:pointer;font-weight:700;text-decoration:none;border-bottom:1px dotted rgba(148,88,58,.5)}
+.crumb .sep{color:var(--muted-2)}
+.zone-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.zone-card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--gold);
+  border-radius:var(--r-md);padding:14px;cursor:pointer;transition:.12s}
+.zone-card:hover{border-color:var(--primary-soft);box-shadow:var(--shadow)}
+.zone-card.done{border-left-color:var(--accent)}
+.zone-card.bad{border-left-color:var(--danger)}
+.zone-card h3{margin:0;font-family:var(--font-display);font-size:19px;font-weight:600}
+.zone-card .meta{font-size:12px;color:var(--muted);margin-top:3px}
+.bar{height:6px;border-radius:4px;background:#ece5db;overflow:hidden;margin:10px 0 8px;display:flex}
+.bar i{display:block;height:100%}
+.bar .ok{background:var(--accent)} .bar .bad{background:var(--danger)} .bar .todo{background:#ddd3c6}
+.obj-list{display:grid;gap:8px}
+.obj{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--panel);
+  border:1px solid var(--line);border-left:3px solid var(--line);border-radius:var(--r-md);padding:12px 14px}
+.obj.taken{border-left-color:var(--warn)} .obj.done{border-left-color:var(--accent)} .obj.bad{border-left-color:var(--danger)}
+.obj .t{font-size:15px;font-weight:700}
+.obj .d{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.night-item{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:11px 13px}
+.night-item.ok{background:#eff5ec;border-color:#cfdfc8}
+.night-item.bad{background:#f9efee;border-color:#e8cfcd}
+.night-item .head{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.night-item .txt{font-size:14.5px;font-weight:700}
+.night-item .sub{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.night-item .body{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+.cmt{width:100%;font-size:12.5px;color:var(--muted);border-left:3px solid var(--line);padding:6px 9px;
+  background:#fbf9f7;border-radius:0 var(--r-sm) var(--r-sm) 0;margin-top:8px}
+
+/* ── рассылка ── */
+.dsp-group{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:12px;overflow:hidden}
+.dsp-head{display:flex;gap:12px;align-items:center;padding:12px 14px;background:var(--panel-2);
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.dsp-head .n{font-weight:800;font-size:14.5px}
+.dsp-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;padding:11px 14px;
+  border-bottom:1px solid var(--line-soft);align-items:start}
+.dsp-item:last-child{border-bottom:none}
+.dsp-item.sent{opacity:.55}
+.preview{background:#fbf9f7;border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;
+  font-size:13px;white-space:pre-wrap;line-height:1.5}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.tab{padding:6px 12px;border:1px solid var(--line);border-radius:20px;background:#fff;cursor:pointer;
+  font-size:12.5px;font-weight:700;color:var(--muted)}
+.tab.active{background:var(--navy);color:#f3ede2;border-color:var(--navy)}
+.result-row{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
+
+/* ── модалка / тосты ── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(20,26,37,.5);z-index:100;display:grid;place-items:center;padding:20px;overflow:auto}
+.modal{background:var(--bg-soft);border:1px solid var(--line);border-radius:var(--r-lg);width:100%;max-width:560px;
+  box-shadow:var(--shadow-lg);max-height:92vh;display:flex;flex-direction:column}
+.modal.wide{max-width:860px}
+.modal-head{display:flex;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.modal-head h3{margin:0;font-family:var(--font-display);font-size:19px;font-weight:600}
+.modal-head p{margin:3px 0 0;font-size:12.5px;color:var(--muted)}
+.modal-body{padding:18px;overflow:auto}
+.modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
+.x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
+.toast-host{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:200;display:grid;gap:8px}
+.toast{background:var(--navy);color:#f3ede2;padding:11px 16px;border-radius:var(--r-md);box-shadow:var(--shadow-lg);
+  font-size:13.5px;max-width:88vw;border-left:3px solid var(--gold)}
+.toast.err{border-left-color:#e07a72} .toast.warn{border-left-color:var(--warn)} .toast.ok{border-left-color:#7fc79a}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+table.tbl th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+  border-bottom:1px solid var(--line);padding:8px 9px;font-weight:800}
+table.tbl td{border-bottom:1px solid var(--line-soft);padding:9px;vertical-align:top}
+@media(max-width:900px){
+  .app{flex-direction:column}.sidenav{width:100%;flex:0 0 auto;display:flex;gap:6px;overflow:auto;padding:8px}
+  .nav-group{display:none}.nav-item{white-space:nowrap;width:auto;margin:0}.main{padding:14px}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+      <rect width="32" height="32" rx="6" fill="#141a25"/>
+      <circle cx="16" cy="15.2" r="8.4" stroke="#cbb05b" stroke-width="1.3" fill="none"/>
+      <path d="M16 10.4V16l4 2.6" stroke="#cbb05b" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path d="M8.5 25.5h15" stroke="#94583a" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    <div>Батлер Сервис<small>Ночной отчёт · v2</small></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="shift">Смена <b>19.10.2026</b> · 20:00–08:00<br>автозакрытие в 08:00 · осталось <b id="tb-left">6 ч 12 мин</b></div>
+  <select id="role-switch" title="Роль в прототипе" style="width:auto;padding:6px 9px;font-size:12px;font-weight:700;
+    background:rgba(255,255,255,.07);color:#f3ede2;border:1px solid rgba(203,176,91,.45);border-radius:4px">
+    <option value="supervisor">Роль: Супервайзер</option>
+    <option value="butler">Роль: Батлер</option>
+  </select>
+  <div class="user-chip">
+    <div class="avatar" id="u-ini">ГО</div>
+    <div><div class="n" id="u-name">Громова О.П.</div><div class="r" id="u-role">Супервайзер</div></div>
+  </div>
+  <span class="proto-tag">прототип</span>
+</header>
+
+<div class="app">
+  <aside class="sidenav" id="sidenav"></aside>
+  <main class="main" id="main"></main>
+</div>
+
+<div id="modal-backdrop" class="modal-backdrop hidden"><div id="modal" class="modal"></div></div>
+<div id="toast-host" class="toast-host"></div>
+
+<script>
+'use strict';
+/* ══════════════════════════════════════════════════════════════════════
+   ДЕМО-ДАННЫЕ (в реальности — из API: /api/night/zones, /api/notify/services…)
+   ══════════════════════════════════════════════════════════════════════ */
+/* Роль переключается в топбаре. Отправлять недостатки может ЛЮБОЙ пользователь
+   (решение владельца 19.10.2026), а справочники — только менеджмент (settings.edit). */
+const USERS = {
+  supervisor: { key: 'supervisor', name: 'Громова О.П.', role: 'Супервайзер', ini: 'ГО', canSettings: true },
+  butler:     { key: 'butler',     name: 'Иванов И.И.',  role: 'Батлер',      ini: 'ИИ', canSettings: false },
+};
+let ME = USERS.supervisor;
+
+const SERVICES = [
+  { id: 1, name: 'Батлер-сервис', notify_chat: true, notify_email: true,
+    email: 'butler@mriyaresort.ru', cc: 'duty-manager@mriyaresort.ru',
+    chats: [{ id: '-1001234567890', title: 'Батлер-сервис · ночная смена' }], active: true },
+  { id: 2, name: 'Хозяйственная служба', notify_chat: true, notify_email: false,
+    email: 'hk@mriyaresort.ru', cc: '',
+    chats: [{ id: '-1009876543210', title: 'Хозяйственная служба · Мрия' }], active: true },
+  { id: 3, name: 'Техническая служба', notify_chat: true, notify_email: true,
+    email: 'tech@mriyaresort.ru', cc: '',
+    chats: [{ id: '-1005550001112', title: 'Техслужба · Мрия' },
+            { id: '-1005550009998', title: 'Дежурные инженеры (ночь)' }], active: true },
+  { id: 4, name: 'IT-департамент', notify_chat: false, notify_email: true,
+    email: 'it@mriyaresort.ru', cc: 'noc@mriyaresort.ru', chats: [], active: true },
+];
+
+/* шаблоны пунктов: общие на зону (в реальности — checklist_items.zone_id) */
+const TPL_VILLA = [
+  { id: 'vit',   text: 'Витражи закрыты',        service: 3 },
+  { id: 'light', text: 'Свет выключен',          service: 3 },
+  { id: 'clean', text: 'Вилла убрана',           service: 2 },
+  { id: 'kit',   text: 'Вилла укомплектована',   service: 1 },
+  { id: 'wifi',  text: 'ТВ и Wi-Fi работают',    service: 4 },
+];
+const TPL_OFFICE = [
+  { id: 'equip', text: 'Оборудование выключено',      service: 4 },
+  { id: 'food',  text: 'Продукты подписаны и убраны', service: 2 },
+  { id: 'hood',  text: 'Вытяжка проверена',           service: 3 },
+  { id: 'clean', text: 'Уборка завершена',            service: 2 },
+  { id: 'lock',  text: 'Двери и сейфы закрыты',       service: 1 },
+];
+
+const ZONES = [
+  { id: 1, name: 'Семейные виллы',            default_service: 1, tpl: TPL_VILLA,
+    objects: seq('Вилла', 4001, 12) },
+  { id: 2, name: 'Президентские виллы',       default_service: 1,
+    tpl: TPL_VILLA.concat([{ id: 'pool', text: 'Бассейн накрыт', service: 2 }]),
+    objects: seq('Вилла', 5001, 8) },
+  { id: 3, name: 'Императорские виллы',       default_service: 1,
+    tpl: TPL_VILLA.concat([{ id: 'safe', text: 'Сейф и сигнализация', service: 1 }]),
+    objects: seq('Вилла', 6001, 4) },
+  { id: 4, name: 'Семейные винные виллы',     default_service: 1, tpl: TPL_VILLA,
+    objects: seq('Винная вилла', 7001, 10) },
+  { id: 5, name: 'Президентские винные виллы', default_service: 1,
+    tpl: TPL_VILLA.concat([{ id: 'pool', text: 'Бассейн накрыт', service: 2 }]),
+    objects: seq('Винная вилла', 8001, 6) },
+  { id: 6, name: 'Офисы',                     default_service: 1, tpl: TPL_OFFICE,
+    objects: ['Офис батлер-сервиса', 'Офис хозяйственной службы', 'Кухня', 'Кладовая белья', 'Серверная'] },
+];
+
+function seq(prefix, start, count) {
+  return Array.from({ length: count }, (_, i) => `${prefix} ${start + i}`);
+}
+
+const TAKEN_BY = { '1-7': 'Иванов И.И.', '1-8': 'Петров П.П.', '2-5': 'Громова О.П.', '6-5': 'Громова О.П.' };
+
+/* заранее заполненные ответы, чтобы прототип был «живым» */
+const DEFECTS = [
+  { z: 1, o: 3, i: 'vit',   by: 'Иванов И.И.',  at: '23:41', media: ['photo', 'photo'],
+    comment: 'Не закрыт витраж в гостиной, сломана ручка — дует' },
+  { z: 1, o: 3, i: 'light', by: 'Иванов И.И.',  at: '23:44', media: [],
+    comment: 'Свет на террасе не выключается с пульта' },
+  { z: 1, o: 7, i: 'kit',   by: 'Иванов И.И.',  at: '00:20', media: ['photo'],
+    comment: 'Нет комплекта полотенец в гостевой спальне' },
+  { z: 1, o: 8, i: 'clean', by: 'Петров П.П.',  at: '00:35', media: [],
+    comment: 'Не убрана гостиная, посуда на столе' },
+  { z: 2, o: 2, i: 'pool',  by: 'Громова О.П.', at: '00:48', media: ['photo', 'video'],
+    comment: 'Бассейн не накрыт, тент сдуло ветром' },
+  { z: 2, o: 5, i: 'wifi',  by: 'Громова О.П.', at: '01:02', media: [],
+    comment: 'Нет Wi-Fi в спальне 2, роутер мигает красным' },
+  { z: 4, o: 1, i: 'clean', by: 'Сидорова С.С.', at: '01:15', media: ['photo'],
+    comment: 'Не убрана кухня, посуда в мойке' },
+  { z: 5, o: 3, i: 'vit',   by: 'Сидорова С.С.', at: '01:30', media: [],
+    comment: 'Витраж приоткрыт, ветер хлопает', dispatched: { ts: '01:35', id: 1 } },
+  { z: 6, o: 3, i: 'hood',  by: 'Иванов И.И.',  at: '01:44', media: [],
+    comment: 'Вытяжка не выключена, шумит' },
+  { z: 6, o: 5, i: 'equip', by: 'Громова О.П.', at: '02:05', media: ['photo'],
+    comment: 'Серверная: мигает порт коммутатора, температура 27°' },
+];
+const ALL_OK = [[1, 1], [1, 2], [1, 4], [1, 5], [1, 6], [3, 1], [3, 2], [3, 3], [3, 4], [6, 1], [6, 2]];
+
+let DISPATCHES = [
+  { id: 1, ts: '01:35', actor: 'Громова О.П.', service: 'Техническая служба', channel: 'telegram',
+    target: 'Техслужба · Мрия (-1005550001112)', items: 1, status: 'sent', external: 'msg 4417' },
+  { id: 2, ts: '01:36', actor: 'Громова О.П.', service: 'Техническая служба', channel: 'email',
+    target: 'tech@mriyaresort.ru', items: 1, status: 'failed', error: 'SMTP: authentication failed' },
+];
+
+const SETTINGS = {
+  telegram_token: '7123456789:AAHfakeTokenForPrototypeOnly4f2a', telegram_bot: '',
+  /* общий каталог чатов, найденных через getUpdates (настройки Telegram);
+     за службой чаты закрепляются в карточке службы — выбор из этого списка */
+  telegram_chats: [
+    { id: '-1001234567890', title: 'Батлер-сервис · ночная смена' },
+    { id: '-1009876543210', title: 'Хозяйственная служба · Мрия' },
+    { id: '-1005550001112', title: 'Техслужба · Мрия' },
+    { id: '-1005550009998', title: 'Дежурные инженеры (ночь)' },
+    { id: '-1007770003334', title: 'IT · дежурная линия' },
+  ],
+  smtp_host: 'smtp.mriyaresort.ru', smtp_port: '465', smtp_ssl: 'ssl', smtp_user: 'night-bot@mriyaresort.ru',
+  smtp_pass: '••••••••', smtp_from: 'Батлер Сервис <night-bot@mriyaresort.ru>', smtp_relay: false,
+  template: 'Ночной отчёт · смена {date} · {shift}\n{service}: прошу исправить:\n{items}\n\nНочные батлеры смены: {duty}\nОтметил: {author}, {time}. Фото/видео — во вложении.',
+  retention_days: '30', photo_max_mb: '12', video_max_mb: '50',
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   СОСТОЯНИЕ ОТЧЁТА
+   ══════════════════════════════════════════════════════════════════════ */
+const A = {};                       // A[`${zoneId}-${objIdx}`][itemId] = {answer, comment, media, by, at, dispatched}
+function key(z, o) { return `${z}-${o}`; }
+function zoneById(id) { return ZONES.find(z => z.id === id); }
+function svc(id) { return SERVICES.find(s => s.id === id) || { name: 'не назначен', notify_chat: false, notify_email: false, chats: [], email: '' }; }
+
+function seed() {
+  ALL_OK.forEach(([z, o]) => {
+    A[key(z, o)] = {};
+    itemsOf(z, o).forEach(it => {
+      A[key(z, o)][it.id] = { answer: 'ok', comment: '', media: [], by: 'Иванов И.И.', at: '23:30', dispatched: null };
+    });
+  });
+  DEFECTS.forEach(d => {
+    const k = key(d.z, d.o);
+    A[k] = A[k] || {};
+    A[k][d.i] = { answer: 'bad', comment: d.comment, media: d.media.map((t, i) => ({
+      type: t, name: t === 'photo' ? `IMG_${1000 + i}.jpg` : `VID_${2000 + i}.mp4`, url: '' })),
+      by: d.by, at: d.at, dispatched: d.dispatched || null };
+  });
+  Object.keys(TAKEN_BY).forEach(k => {
+    const [z, o] = k.split('-').map(Number);
+    A[k] = A[k] || {};
+    itemsOf(z, o).forEach(it => { if (!A[k][it.id]) A[k][it.id] = { answer: 'ok', comment: '', media: [], by: TAKEN_BY[k], at: '00:10', dispatched: null }; });
+    if (k === '1-8') delete A[k]['kit'];            // объект в работе, не всё отмечено
+    if (k === '6-5') { A[k] = {}; A[k]['equip'] = { answer: 'bad', comment: 'Серверная: мигает порт коммутатора, температура 27°', media: [{ type: 'photo', name: 'IMG_1003.jpg', url: '' }], by: 'Громова О.П.', at: '02:05', dispatched: null }; }
+  });
+}
+
+/* Шаблон пунктов задаётся НА ЗОНУ, но у конкретного объекта его можно править:
+   своя формулировка, своя ответственная служба, отключить пункт, добавить свой
+   (в данных — таблица checklist_item_overrides: area_id + item_id). */
+const OVERRIDES = {
+  '1-1': { extra: [{ id: 'crib', text: 'Детская кроватка установлена и исправна', service: 1 }],
+           byItem: { clean: { text: 'Вилла убрана (включая детскую комнату)' } } },
+  '1-2': { byItem: { wifi: { disabled: true } } },
+};
+function itemsOf(zid, oid) {
+  const z = zoneById(zid);
+  const ov = OVERRIDES[key(zid, oid)] || {};
+  const byItem = ov.byItem || {};
+  const list = z.tpl.map(it => {
+    const o = byItem[it.id] || {};
+    return { id: it.id, text: o.text || it.text,
+      service: o.service || it.service || z.default_service,
+      overridden: !!(o.text || o.service), disabled: !!o.disabled };
+  });
+  return list.filter(it => !it.disabled).concat((ov.extra || []).map(x => Object.assign({ extra: true }, x)));
+}
+function objStat(z, o) {
+  const rec = A[key(z, o)] || {}, items = itemsOf(z, o);
+  const total = items.length;
+  const answered = items.filter(it => rec[it.id] && rec[it.id].answer).length;
+  const bad = items.filter(it => rec[it.id] && rec[it.id].answer === 'bad').length;
+  const status = answered === total && total > 0 ? 'done' : (answered > 0 || TAKEN_BY[key(z, o)]) ? 'taken' : 'free';
+  return { total, answered, bad, status, taken_by: TAKEN_BY[key(z, o)] || (status !== 'free' ? ME.name : '') };
+}
+function zoneStat(z) {
+  const s = { objects: z.objects.length, done: 0, taken: 0, free: 0, bad: 0, answered: 0, total: 0 };
+  z.objects.forEach((_, i) => {
+    const st = objStat(z.id, i + 1);
+    s[st.status]++; s.bad += st.bad; s.answered += st.answered; s.total += st.total;
+  });
+  return s;
+}
+function allDefects() {
+  const out = [];
+  ZONES.forEach(z => z.objects.forEach((name, i) => {
+    const o = i + 1, rec = A[key(z.id, o)] || {};
+    itemsOf(z.id, o).forEach(it => {
+      const r = rec[it.id];
+      if (r && r.answer === 'bad') {
+        out.push({ zone: z, object: name, zid: z.id, oid: o, item: it, rec: r,
+          service: svc(it.service), sid: it.service });
+      }
+    });
+  }));
+  return out;
+}
+/* «Не отмечено» — тоже попадает в консолидированный отчёт (решение владельца) */
+function allUnanswered() {
+  const out = [];
+  ZONES.forEach(z => z.objects.forEach((name, i) => {
+    const o = i + 1, rec = A[key(z.id, o)] || {};
+    itemsOf(z.id, o).forEach(it => {
+      const r = rec[it.id];
+      if (!r || !r.answer) out.push({ zone: z, object: name, zid: z.id, oid: o, item: it,
+        rec: r || null, service: svc(it.service), sid: it.service });
+    });
+  }));
+  return out;
+}
+/* кто вёл обход этой ночью — подставляется в текст сообщения ({duty}) */
+function dutyNames() {
+  const names = new Set([ME.name]);
+  Object.values(A).forEach(rec => Object.values(rec).forEach(r => { if (r && r.by) names.add(r.by); }));
+  Object.values(TAKEN_BY).forEach(n => names.add(n));
+  return [...names].sort((a, b) => a.localeCompare(b)).join(', ');
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   УТИЛИТЫ
+   ══════════════════════════════════════════════════════════════════════ */
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+function esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'ok');
+  el.textContent = msg;
+  $('#toast-host').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 3200);
+  setTimeout(() => el.remove(), 3700);
+}
+function openModal(o) {
+  const m = $('#modal');
+  m.className = 'modal' + (o.wide ? ' wide' : '');
+  m.innerHTML = `<div class="modal-head"><div><h3>${esc(o.title)}</h3>${o.subtitle ? `<p>${esc(o.subtitle)}</p>` : ''}</div>
+      <button class="x" data-x aria-label="Закрыть">✕</button></div>
+    <div class="modal-body">${o.body}</div>
+    ${o.footer ? `<div class="modal-foot">${o.footer}</div>` : ''}`;
+  $('#modal-backdrop').classList.remove('hidden');
+  $('[data-x]', m).onclick = closeModal;
+  if (o.onMount) o.onMount(m);
+  return m;
+}
+function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').innerHTML = ''; }
+$('#modal-backdrop').addEventListener('click', e => { if (e.target.id === 'modal-backdrop') closeModal(); });
+function bar(st) {
+  const ok = st.answered - st.bad, w = n => (st.total ? (n / st.total * 100) : 0);
+  return `<div class="bar" title="отмечено ${st.answered} из ${st.total}">
+    <i class="ok" style="width:${w(ok)}%"></i><i class="bad" style="width:${w(st.bad)}%"></i>
+    <i class="todo" style="width:${w(st.total - st.answered)}%"></i></div>`;
+}
+function mediaThumb(m, onDel) {
+  const icon = m.type === 'video' ? '🎬' : '🖼';
+  return `<span class="thumb" title="${esc(m.name)}">
+    <span class="ph">${m.url ? `<img src="${esc(m.url)}" alt="">` : icon}</span>
+    ${onDel ? `<button class="thumb-del" data-del-media="${esc(m.name)}">✕</button>` : ''}</span>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   НАВИГАЦИЯ
+   ══════════════════════════════════════════════════════════════════════ */
+const state = { view: 'zones', zoneId: null, z: null, o: null, q: '', filter: 'all',
+  stTab: 'zones', dspChannel: {}, selection: new Set(), usel: new Set(), onlyNew: true,
+  openItem: null, ovZone: 1, ovObj: 1 };
+
+const NAV = [
+  { group: 'Ночной отчёт' },
+  { id: 'zones', t: 'Зоны обхода', icon: '▦' },
+  { id: 'defects', t: 'Недостатки смены', icon: '⚑', count: () => allDefects().filter(d => !d.rec.dispatched).length },
+  { id: 'journal', t: 'Журнал отправок', icon: '⇶', count: () => DISPATCHES.length, kind: 'info' },
+  { group: 'Настройки' },
+  { id: 'set:zones', t: 'Зоны и объекты', icon: '⌂' },
+  { id: 'set:items', t: 'Пункты чек-листа', icon: '☰' },
+  { id: 'set:services', t: 'Ответственные службы', icon: '⚖' },
+  { id: 'set:integrations', t: 'Интеграции и шаблоны', icon: '⚙' },
+  { group: '' },
+  { id: 'about', t: 'О прототипе', icon: '?' },
+];
+
+function renderNav() {
+  const canSet = ME.canSettings;
+  const rows = NAV.filter(n => n.group === undefined
+    ? !(n.id.startsWith('set:') && !canSet)
+    : (n.group !== 'Настройки' || canSet));
+  $('#sidenav').innerHTML = rows.map(n => {
+    if (n.group !== undefined) return n.group ? `<div class="nav-group">${esc(n.group)}</div>` : '<div class="nav-group">Прочее</div>';
+    const c = n.count ? n.count() : 0;
+    return `<button class="nav-item ${state.view === n.id ? 'active' : ''}" data-nav="${n.id}">
+      <span>${n.icon}</span> ${esc(n.t)}${c ? `<span class="cnt ${n.kind || ''}">${c}</span>` : ''}</button>`;
+  }).join('');
+  $$('[data-nav]').forEach(b => b.onclick = () => go(b.dataset.nav));
+}
+function applyRole() {
+  $('#u-ini').textContent = ME.ini; $('#u-name').textContent = ME.name; $('#u-role').textContent = ME.role;
+  if (state.view === 'settings' && !ME.canSettings) state.view = 'zones';
+}
+function go(view, opts) {
+  Object.assign(state, opts || {});
+  if (view.startsWith('set:')) { state.view = 'settings'; state.stTab = view.slice(4); }
+  else { state.view = view; }
+  /* зону помним там, где она осмысленна: обход и настройки зон/пунктов */
+  const keepsZone = ['objects', 'checklist', 'set:zones', 'set:items'].includes(view);
+  if (!keepsZone) state.zoneId = null;
+  render();
+}
+function render() {
+  renderNav();
+  const v = state.view;
+  const html = v === 'zones' ? viewZones() : v === 'objects' ? viewObjects() : v === 'checklist' ? viewChecklist()
+    : v === 'defects' ? viewDefects() : v === 'journal' ? viewJournal()
+    : v === 'settings' ? viewSettings() : viewAbout();
+  $('#main').innerHTML = html;
+  bind();
+  $('#main').scrollTop = 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЭКРАН 1 · ЗОНЫ
+   ══════════════════════════════════════════════════════════════════════ */
+function viewZones() {
+  const tot = ZONES.reduce((a, z) => { const s = zoneStat(z); return {
+    objects: a.objects + s.objects, done: a.done + s.done, taken: a.taken + s.taken,
+    bad: a.bad + s.bad, answered: a.answered + s.answered, total: a.total + s.total }; },
+    { objects: 0, done: 0, taken: 0, bad: 0, answered: 0, total: 0 });
+  const undispatched = allDefects().filter(d => !d.rec.dispatched).length;
+  return `
+  <div class="page-head">
+    <div><h2>Ночной отчёт · зоны обхода</h2>
+      <div class="sub">Смена 19.10.2026 · 20:00–08:00 · шаг «Проверка электрокаров»: <b>готово</b></div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-sm" data-act="refresh">Обновить</button>
+    <button class="btn btn-sm btn-ghost" data-act="docx">DOCX</button>
+    <button class="btn btn-sm btn-ghost" data-act="pdf">PDF</button>
+    <button class="btn btn-sm btn-primary" data-act="to-defects">Недостатки: ${undispatched} → отправить</button>
+    <button class="btn btn-sm btn-danger" data-act="close-shift">Закрыть смену</button>
+  </div>
+  <div class="stat-grid">
+    <div class="stat"><div class="k">Зон</div><div class="v">${ZONES.length}</div></div>
+    <div class="stat"><div class="k">Объектов</div><div class="v">${tot.objects}</div></div>
+    <div class="stat accent"><div class="k">Объектов закрыто</div><div class="v">${tot.done} <small>/ ${tot.objects}</small></div></div>
+    <div class="stat warn"><div class="k">В работе</div><div class="v">${tot.taken}</div></div>
+    <div class="stat danger"><div class="k">Замечаний</div><div class="v">${tot.bad}</div></div>
+    <div class="stat info"><div class="k">Пунктов отмечено</div><div class="v">${tot.answered} <small>/ ${tot.total}</small></div></div>
+  </div>
+  <div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <h3 class="panel-title" style="margin-bottom:4px">Шаг «Проверка электрокаров»</h3>
+      <div class="hint" style="margin:0">Отдельный шаг, как сейчас (не зона): обход всего активного парка —
+      место, заряд, тент, состояние, «кар найден на месте», перепарковка и фото.</div></div>
+    <span class="badge ok">готово · 02:14</span>
+    <span class="badge muted">5 каров</span>
+    <button class="btn btn-sm" data-act="cars-step">Посмотреть обход</button>
+  </div>
+  <div class="zone-grid">
+    ${ZONES.map(z => {
+      const s = zoneStat(z);
+      const cls = s.bad ? 'bad' : (s.done === s.objects ? 'done' : '');
+      return `<div class="zone-card ${cls}" data-zone="${z.id}">
+        <h3>${esc(z.name)}</h3>
+        <div class="meta">${s.objects} объектов · чек-лист из ${z.tpl.length} пунктов</div>
+        ${bar(s)}
+        <div class="row-actions">
+          <span class="badge ok">закрыто ${s.done}</span>
+          ${s.taken ? `<span class="badge warn">в работе ${s.taken}</span>` : ''}
+          ${s.bad ? `<span class="badge danger">замечаний ${s.bad}</span>` : ''}
+          ${s.free ? `<span class="badge muted">свободно ${s.free}</span>` : ''}
+          <span class="badge gold">${esc(svc(z.default_service).name)}</span>
+        </div>
+      </div>`; }).join('')}
+  </div>
+  <p class="hint">Зона → объект → чек-лист. Зоны, объекты, пункты и ответственные службы настраиваются
+  в разделе «Настройки». Механика обхода прежняя: объект ведёт один человек, чужой — через подтверждение (перехват).</p>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЭКРАН 2 · ОБЪЕКТЫ ЗОНЫ
+   ══════════════════════════════════════════════════════════════════════ */
+function viewObjects() {
+  const z = zoneById(state.zoneId);
+  if (!z) return '<div class="empty">Зона не выбрана</div>';
+  const list = z.objects.map((name, i) => ({ name, o: i + 1, st: objStat(z.id, i + 1) }))
+    .filter(x => {
+      if (state.q && !x.name.toLowerCase().includes(state.q.toLowerCase())) return false;
+      if (state.filter === 'all') return true;
+      if (state.filter === 'bad') return x.st.bad > 0;
+      return x.st.status === state.filter;
+    });
+  const s = zoneStat(z);
+  return `
+  <div class="crumb"><a data-nav="zones">Ночной отчёт</a><span class="sep">/</span><b>${esc(z.name)}</b></div>
+  <div class="page-head">
+    <div><h2>${esc(z.name)}</h2><div class="sub">${s.objects} объектов · закрыто ${s.done} · замечаний ${s.bad}
+      · шаблон зоны: ${z.tpl.map(t => t.text).join(', ')}${Object.keys(OVERRIDES).some(k => k.startsWith(z.id + '-'))
+        ? ' · у части объектов есть индивидуальные правки' : ''}</div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-sm" data-act="first-free">К первому незакрытому</button>
+    <button class="btn btn-sm btn-ghost" data-act="edit-zone">Настройки зоны</button>
+  </div>
+  ${bar(s)}
+  <div class="toolbar">
+    <div class="seg">
+      ${[['all', 'Все'], ['free', 'Свободны'], ['taken', 'В работе'], ['done', 'Закрыты'], ['bad', 'С замечаниями']]
+        .map(([k, t]) => `<button data-filter="${k}" class="${state.filter === k ? 'active' : ''}">${t}</button>`).join('')}
+    </div>
+    <input type="search" id="obj-q" placeholder="Поиск: Вилла 4007…" value="${esc(state.q)}" style="max-width:260px">
+    <div class="spacer"></div>
+    <span class="hint" style="margin:0">показано ${list.length} из ${s.objects}</span>
+  </div>
+  <div class="obj-list">
+    ${list.map(x => `<div class="obj ${x.st.status} ${x.st.bad ? 'bad' : ''}">
+      <div><div class="t">${esc(x.name)}</div>
+        <div class="d">
+          <span class="badge ${x.st.status === 'done' ? 'ok' : x.st.status === 'taken' ? 'warn' : 'muted'}">
+            ${x.st.status === 'done' ? 'закрыт' : x.st.status === 'taken' ? 'в работе' : 'свободен'}</span>
+          <span>пунктов ${x.st.answered} / ${x.st.total}</span>
+          ${x.st.bad ? `<span class="badge danger">Не ОК: ${x.st.bad}</span>` : ''}
+          ${x.st.taken_by ? `<span class="badge info">${esc(x.st.taken_by)}</span>` : ''}
+        </div></div>
+      <div class="row-actions">
+        ${x.st.status === 'done'
+          ? `<button class="btn btn-sm btn-ghost" data-open="${x.o}">Посмотреть</button>
+             <button class="btn btn-sm btn-ghost" data-reopen="${x.o}">Переоткрыть</button>`
+          : `<button class="btn btn-sm ${x.st.status === 'taken' ? 'btn-primary' : 'btn-accent'}" data-open="${x.o}">
+               ${x.st.status === 'taken' ? 'Продолжить' : 'Взять в работу'}</button>
+             <button class="btn btn-sm" data-close="${x.o}">Завершить</button>`}
+      </div></div>`).join('') || '<div class="empty">Ничего не найдено</div>'}
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЭКРАН 3 · ЧЕК-ЛИСТ ОБЪЕКТА
+   ══════════════════════════════════════════════════════════════════════ */
+function viewChecklist() {
+  const z = zoneById(state.zoneId), o = state.o;
+  if (!z || !o) return '<div class="empty">Объект не выбран</div>';
+  const name = z.objects[o - 1], st = objStat(z.id, o);
+  const rec = A[key(z.id, o)] || (A[key(z.id, o)] = {});
+  const mine = st.taken_by === ME.name;
+  return `
+  <div class="crumb"><a data-nav="zones">Ночной отчёт</a><span class="sep">/</span>
+    <a data-zone="${z.id}">${esc(z.name)}</a><span class="sep">/</span><b>${esc(name)}</b></div>
+  <div class="page-head">
+    <div><h2>${esc(name)}</h2>
+      <div class="sub">
+        <span class="badge ${st.status === 'done' ? 'ok' : st.status === 'taken' ? 'warn' : 'muted'}">
+          ${st.status === 'done' ? 'закрыт' : st.status === 'taken' ? 'в работе' : 'свободен'}</span>
+        пунктов ${st.answered} / ${st.total} ${st.bad ? `· <b style="color:var(--danger)">Не ОК: ${st.bad}</b>` : ''}
+        ${st.taken_by ? `· ведёт ${esc(st.taken_by)}` : ''}</div></div>
+    <div class="spacer"></div>
+    ${st.status !== 'done' ? `<button class="btn btn-sm ${mine ? 'btn-ghost' : 'btn-accent'}" data-take>
+      ${st.status === 'taken' && !mine ? 'Перехватить' : mine ? 'Объект за вами' : 'Взять в работу'}</button>` : ''}
+    <button class="btn btn-sm btn-primary" data-finish>Завершить объект</button>
+  </div>
+  <div style="display:grid;gap:8px">
+    ${itemsOf(z.id, o).map(it => {
+      const r = rec[it.id] || {};
+      const sv = svc(it.service);
+      const open = state.openItem === it.id;
+      return `<div class="night-item ${r.answer || ''}">
+        <div class="head">
+          <div style="flex:1;min-width:200px">
+            <div class="txt">${esc(it.text)}</div>
+            <div class="sub">
+              <span class="badge gold" title="Ответственная служба">${esc(sv.name)}</span>
+              ${it.extra ? '<span class="badge info" title="пункт добавлен только для этого объекта">пункт объекта</span>' : ''}
+              ${it.overridden ? '<span class="badge warn" title="формулировка или служба изменены для объекта">индивидуально</span>' : ''}
+              ${sv.notify_chat ? '<span class="badge info">чат</span>' : ''}
+              ${sv.notify_email ? '<span class="badge muted">письмо</span>' : ''}
+              ${r.by ? `<span>${esc(r.by)}${r.at ? ' · ' + esc(r.at) : ''}</span>` : '<span>не отмечено</span>'}
+              ${r.dispatched ? `<span class="badge ok">отправлено ${esc(r.dispatched.ts)}</span>` : ''}
+              ${r.dispatched && r.answer === 'ok' ? '<span class="badge info" title="после отправки недостаток устранили — уведомление не уходит">исправлено после отправки</span>' : ''}
+            </div>
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-sm ${r.answer === 'ok' ? 'btn-accent' : 'btn-ghost'}" data-ans="ok" data-item="${it.id}">ОК</button>
+            <button class="btn btn-sm ${r.answer === 'bad' ? 'btn-danger' : 'btn-ghost'}" data-ans="bad" data-item="${it.id}">Не ОК</button>
+            <button class="btn btn-sm btn-ghost" data-expand="${it.id}">${open ? 'Свернуть' : 'Комментарий / медиа'}</button>
+          </div>
+        </div>
+        ${r.comment && !open ? `<div class="cmt">${esc(r.comment)}</div>` : ''}
+        ${!open && r.media && r.media.length ? `<div class="thumbs">${r.media.map(m => mediaThumb(m)).join('')}</div>` : ''}
+        ${open ? `<div class="body">
+          <label class="field"><span>Комментарий (что не так, что сделали, кому сообщили)</span>
+            <textarea id="cmt-${it.id}" rows="3" maxlength="2000" placeholder="Например: витраж не закрыт, сообщили в техслужбу в 23:40">${esc(r.comment || '')}</textarea></label>
+          <div class="field"><span>Медиа (фото и видео, оригиналы)</span>
+            <div class="row-actions">
+              <label class="btn btn-sm">📷 Снять фото<input type="file" accept="image/*" capture="environment" hidden data-media="photo" data-item="${it.id}"></label>
+              <label class="btn btn-sm">🎬 Снять видео<input type="file" accept="video/*" capture="camcorder" hidden data-media="video" data-item="${it.id}"></label>
+              <label class="btn btn-sm btn-ghost">Из галереи<input type="file" accept="image/*,video/*" hidden data-media="auto" data-item="${it.id}"></label>
+              <button class="btn btn-sm btn-ghost" data-demo="photo" data-item="${it.id}">+ демо-фото</button>
+              <button class="btn btn-sm btn-ghost" data-demo="video" data-item="${it.id}">+ демо-видео</button>
+            </div>
+            <div class="thumbs" id="thumbs-${it.id}">${(r.media || []).map(m => mediaThumb(m, true)).join('')
+              || '<span class="hint" style="margin:0">медиа не приложены</span>'}</div>
+            <p class="hint">Лимиты: фото до ${esc(SETTINGS.photo_max_mb)} МБ, видео до ${esc(SETTINGS.video_max_mb)} МБ
+            (ограничение Telegram Bot API). Срок хранения — ${esc(SETTINGS.retention_days)} дней.</p>
+          </div>
+          <div class="row-actions"><button class="btn btn-sm btn-primary" data-save="${it.id}">Сохранить пункт</button>
+            <span class="hint" style="margin:0">ответ «Не ОК» попадёт в «Недостатки смены» и уйдёт в ${esc(sv.name)}</span></div>
+        </div>` : ''}
+      </div>`; }).join('')}
+  </div>
+  <p class="hint">Закрыть объект можно и с неотмеченными пунктами — после подтверждения; пункты останутся
+  как «не отмечено». Замечания видны супервайзеру на экране «Недостатки смены».</p>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЭКРАН 4 · НЕДОСТАТКИ СМЕНЫ И ОТПРАВКА
+   ══════════════════════════════════════════════════════════════════════ */
+function defectGroups() {
+  const map = new Map();
+  allDefects().forEach(d => {
+    if (state.onlyNew && d.rec.dispatched) return;
+    if (!map.has(d.sid)) map.set(d.sid, { service: d.service, sid: d.sid, items: [] });
+    map.get(d.sid).items.push(d);
+  });
+  return [...map.values()].sort((a, b) => a.service.name.localeCompare(b.service.name));
+}
+function selKey(sid, z, o, i) { return `${sid}|${z}|${o}|${i}`; }
+function uKey(d) { return `u|${d.sid}|${d.zid}|${d.oid}|${d.item.id}`; }
+function selUn(sid) { return allUnanswered().filter(d => d.sid === sid && state.usel.has(uKey(d))); }
+/* Текст сообщения по шаблону из настроек. {duty} — ночные батлеры смены
+   (решение владельца: в теле письма отмечать, кто вёл обход). */
+function messageFor(g, un) {
+  const lines = g.items.map((d, n) =>
+    `${n + 1}. ${d.object} — ${d.item.text}: ${d.rec.comment || 'без комментария'}`
+    + (d.rec.media.length ? ` (медиа: ${d.rec.media.length})` : '')
+    + ` · ${d.rec.by}, ${d.rec.at}`).join('\n');
+  const unLines = (un || []).map((d, n) => `${n + 1}. ${d.object} — ${d.item.text}`).join('\n');
+  const items = [lines, unLines ? `Не проверено (не отмечено батлером):\n${unLines}` : '']
+    .filter(Boolean).join('\n\n');
+  return SETTINGS.template
+    .replace('{date}', '19.10.2026').replace('{shift}', '20:00–08:00')
+    .replace('{service}', g.service.name)
+    .replace('{items}', items || '—')
+    .replace('{duty}', dutyNames())
+    .replace('{author}', ME.name).replace('{time}', '02:48');
+}
+/* план отправки: служба → недостатки + выбранные «не проверено» */
+function dispatchPlan(all) {
+  const plan = new Map();
+  const ensure = (sid, service) => {
+    if (!plan.has(sid)) plan.set(sid, { service, sid, items: [], un: [] });
+    return plan.get(sid);
+  };
+  defectGroups().forEach(g => {
+    const items = g.items.filter(d => all || state.selection.has(selKey(g.sid, d.zid, d.oid, d.item.id)));
+    if (items.length) ensure(g.sid, g.service).items = items;
+  });
+  allUnanswered().forEach(d => { if (state.usel.has(uKey(d))) ensure(d.sid, d.service).un.push(d); });
+  return [...plan.values()].filter(e => e.items.length || e.un.length);
+}
+function viewDefects() {
+  const groups = defectGroups();
+  const total = groups.reduce((a, g) => a + g.items.length, 0);
+  const sentToday = allDefects().filter(d => d.rec.dispatched).length;
+  return `
+  <div class="crumb"><a data-nav="zones">Ночной отчёт</a><span class="sep">/</span><b>Недостатки смены</b></div>
+  <div class="page-head">
+    <div><h2>Недостатки смены</h2>
+      <div class="sub">Все «Не ОК» за смену, сгруппированы по ответственным службам.
+      Отправьте всё скопом или выберите, что уходит.</div></div>
+    <div class="spacer"></div>
+    <label class="chk" style="margin:0"><input type="checkbox" id="only-new" ${state.onlyNew ? 'checked' : ''}>
+      только не отправленные</label>
+    <button class="btn btn-sm" data-act="select-all">Выбрать всё</button>
+    <button class="btn btn-sm btn-ghost" data-act="select-none">Снять выбор</button>
+    <button class="btn btn-sm btn-primary" data-act="send-selected"
+      ${total || state.usel.size ? '' : 'disabled'}>
+      Отправить выбранное (${state.selection.size + state.usel.size})</button>
+  </div>
+  <div class="stat-grid">
+    <div class="stat danger"><div class="k">Недостатков к отправке</div><div class="v">${total}</div></div>
+    <div class="stat"><div class="k">Служб затронуто</div><div class="v">${groups.length}</div></div>
+    <div class="stat ok"><div class="k">Отправлено ранее</div><div class="v">${sentToday}</div></div>
+    <div class="stat warn"><div class="k">Не проверено пунктов</div><div class="v">${allUnanswered().length}</div></div>
+    <div class="stat info"><div class="k">Медиа во вложении</div>
+      <div class="v">${groups.reduce((a, g) => a + g.items.reduce((x, d) => x + d.rec.media.length, 0), 0)}</div></div>
+  </div>
+  ${groups.length ? groups.map(g => {
+    const ch = state.dspChannel[g.sid] || { chat: g.service.notify_chat, email: g.service.notify_email };
+    state.dspChannel[g.sid] = ch;
+    const targets = [];
+    if (ch.chat) g.service.chats.forEach(c => targets.push(`чат «${c.title}»`));
+    if (ch.email && g.service.email) targets.push(`письмо ${g.service.email}`);
+    return `<div class="dsp-group">
+      <div class="dsp-head">
+        <label class="chk" style="margin:0"><input type="checkbox" data-group="${g.sid}"
+          ${g.items.every(d => state.selection.has(selKey(g.sid, d.zid, d.oid, d.item.id))) ? 'checked' : ''}>
+          <b class="n">${esc(g.service.name)}</b></label>
+        <span class="badge danger">${g.items.length}</span>
+        <span class="hint" style="margin:0">доставка:</span>
+        <label class="chk" style="margin:0"><input type="checkbox" data-ch="chat" data-sid="${g.sid}"
+          ${ch.chat ? 'checked' : ''} ${g.service.notify_chat ? '' : 'disabled'}> Чат (Telegram)</label>
+        <label class="chk" style="margin:0"><input type="checkbox" data-ch="email" data-sid="${g.sid}"
+          ${ch.email ? 'checked' : ''} ${g.service.notify_email ? '' : 'disabled'}> Письмо (e-mail)</label>
+        <div class="spacer" style="flex:1"></div>
+        <span class="hint" style="margin:0">${targets.length ? esc(targets.join(' · ')) : 'канал не выбран — доставка не уйдёт'}</span>
+      </div>
+      ${g.items.map(d => {
+        const k = selKey(g.sid, d.zid, d.oid, d.item.id);
+        return `<div class="dsp-item ${d.rec.dispatched ? 'sent' : ''}">
+          <input type="checkbox" data-sel="${esc(k)}" ${state.selection.has(k) ? 'checked' : ''}>
+          <div><div style="font-weight:700;font-size:13.5px">${esc(d.zone.name)} · ${esc(d.object)} — ${esc(d.item.text)}</div>
+            <div class="hint" style="margin:3px 0 0">${esc(d.rec.comment || 'без комментария')}</div>
+            <div class="row-actions" style="margin-top:6px">
+              <span class="badge muted">${esc(d.rec.by)} · ${esc(d.rec.at)}</span>
+              ${d.rec.media.length ? `<span class="badge info">📷 ${d.rec.media.filter(m => m.type === 'photo').length}
+                🎬 ${d.rec.media.filter(m => m.type === 'video').length}</span>` : ''}
+              ${d.rec.dispatched ? `<span class="badge ok">отправлено ${esc(d.rec.dispatched.ts)}</span>` : ''}
+            </div></div>
+          <div class="row-actions"><button class="btn btn-sm btn-ghost" data-goto="${d.zid}|${d.oid}">К объекту</button></div>
+        </div>`; }).join('')}
+      <div style="padding:12px 14px;background:var(--bg-soft);border-top:1px solid var(--line)">
+        <div class="panel-title" style="margin-bottom:6px">Предпросмотр сообщения · ${esc(g.service.name)}</div>
+        <div class="preview">${esc(messageFor(g, selUn(g.sid)))}</div>
+        ${ch.email && g.service.email ? `<div class="hint">Тема письма: «Ночной отчёт 19.10.2026 — замечания (${esc(g.service.name)})»
+          · получатели: ${esc(g.service.email)}${g.service.cc ? ', копия: ' + esc(g.service.cc) : ''}
+          · вложений: ${g.items.reduce((x, d) => x + d.rec.media.length, 0)}</div>` : ''}
+      </div>
+    </div>`; }).join('')
+    : `<div class="panel"><div class="empty">Недостатков нет — все пункты «ОК» или уже отправлены.</div></div>`}
+  ${(() => {
+    const un = allUnanswered();
+    if (!un.length) return '';
+    return `<div class="panel">
+      <h3 class="panel-title">Не проверено (не отмечено батлером) · ${un.length}</h3>
+      <label class="chk" style="margin-bottom:8px"><input type="checkbox" id="un-all"
+        ${un.every(d => state.usel.has(uKey(d))) ? 'checked' : ''}> Включить все в рассылку</label>
+      <div class="obj-list">${un.map(d => `<div class="obj">
+        <div><div class="t">${esc(d.zone.name)} · ${esc(d.object)} — ${esc(d.item.text)}</div>
+          <div class="d"><span class="badge gold">${esc(d.service.name)}</span>
+            <span class="badge muted">не отмечено</span></div></div>
+        <div class="row-actions">
+          <label class="chk" style="margin:0"><input type="checkbox" data-usel="${esc(uKey(d))}"
+            ${state.usel.has(uKey(d)) ? 'checked' : ''}> в рассылку</label>
+          <button class="btn btn-sm btn-ghost" data-goto="${d.zid}|${d.oid}">К объекту</button>
+        </div></div>`).join('')}</div>
+      <p class="hint">Неотмеченные пункты тоже включаются в консолидированный отчёт — отдельным блоком
+      «Не проверено» в тексте сообщения и отдельной таблицей в DOCX/PDF.</p></div>`;
+  })()}
+  <p class="hint">Отправить может любой пользователь обхода (не только супервайзер): факт отправки
+  помечается у пункта и пишется в журнал. Отправка — только вручную. Каждая запись создаётся
+  на канал и получателя (если один чат закреплён за несколькими службами — каждая служба шлёт
+  своё сообщение, не объединяем). Если недостаток исправили после отправки — дополнительно ничего
+  не уходит: ни «исправлено», ни отзыва сообщения; в обходе такой пункт помечается
+  «исправлено после отправки». Пункты помечаются как
+  «отправлено» и прикрепляет медиа. При ошибке (например, SMTP) запись остаётся со статусом «сбой» и кнопкой «Повторить».</p>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЭКРАН 5 · ЖУРНАЛ ОТПРАВОК
+   ══════════════════════════════════════════════════════════════════════ */
+function viewJournal() {
+  return `
+  <div class="crumb"><a data-nav="zones">Ночной отчёт</a><span class="sep">/</span><b>Журнал отправок</b></div>
+  <div class="page-head"><div><h2>Журнал отправок</h2>
+    <div class="sub">История не редактируется: видно, кто, кому и что отправил, и чем это закончилось.</div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-sm btn-ghost" data-act="export-log">Выгрузить CSV</button></div>
+  <div class="panel" style="padding:6px 14px">
+    <table class="tbl"><thead><tr>
+      <th>Время</th><th>Кто</th><th>Служба</th><th>Канал</th><th>Получатель</th>
+      <th>Недостатков</th><th>Статус</th><th></th></tr></thead>
+      <tbody>${DISPATCHES.slice().reverse().map(d => `<tr>
+        <td>${esc(d.ts)}</td><td>${esc(d.actor)}</td><td>${esc(d.service)}</td>
+        <td><span class="badge ${d.channel === 'telegram' ? 'info' : 'muted'}">${d.channel === 'telegram' ? 'чат Telegram' : 'e-mail'}</span></td>
+        <td>${esc(d.target)}</td>
+        <td>${d.items}${d.un ? ` <span class="badge muted" title="неотмеченные пункты">+${d.un} не проверено</span>` : ''}</td>
+        <td>${d.status === 'sent' ? `<span class="badge ok">отправлено</span> <span class="hint">${esc(d.external || '')}</span>`
+          : `<span class="badge danger">сбой</span> <span class="hint">${esc(d.error || '')}</span>`}</td>
+        <td><div class="row-actions">
+          ${d.status === 'failed' ? `<button class="btn btn-sm" data-resend="${d.id}">Повторить</button>` : ''}
+          <button class="btn btn-sm btn-ghost" data-show-msg="${d.id}">Текст</button></div></td>
+      </tr>`).join('') || '<tr><td colspan="8"><div class="empty">Отправок пока не было</div></td></tr>'}</tbody></table>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЭКРАН 6 · НАСТРОЙКИ
+   ══════════════════════════════════════════════════════════════════════ */
+const ST_TABS = [['zones', 'Зоны и объекты'], ['items', 'Пункты чек-листа'],
+                 ['services', 'Ответственные службы'], ['integrations', 'Интеграции и шаблоны']];
+function viewSettings() {
+  const body = state.stTab === 'zones' ? stZones() : state.stTab === 'items' ? stItems()
+    : state.stTab === 'services' ? stServices() : stIntegrations();
+  return `
+  <div class="page-head"><div><h2>Настройки ночного обхода</h2>
+    <div class="sub">Зоны, объекты, шаблоны пунктов, ответственные службы и каналы доставки.</div></div></div>
+  <div class="tabs">${ST_TABS.map(([k, t]) =>
+    `<button class="tab ${state.stTab === k ? 'active' : ''}" data-st="${k}">${t}</button>`).join('')}</div>
+  ${body}`;
+}
+function stZones() {
+  const z = state.zoneId ? zoneById(state.zoneId) : null;
+  return `
+  <div class="panel">
+    <h3 class="panel-title">Зоны обхода</h3>
+    ${ZONES.map(zz => {
+      const s = zoneStat(zz);
+      return `<div class="rule-row"><div><div class="lbl">${esc(zz.name)}</div>
+        <div class="desc">${s.objects} объектов · пунктов в шаблоне: ${zz.tpl.length}
+          · служба по умолчанию: ${esc(svc(zz.default_service).name)} · порядок ${zz.id * 10}</div></div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-ghost" data-objects="${zz.id}">Объекты</button>
+          <button class="btn btn-sm btn-ghost" data-zone-edit="${zz.id}">Править</button>
+          <button class="btn btn-sm btn-ghost" data-zone-del="${zz.id}">Отключить</button>
+        </div></div>`; }).join('')}
+    <div class="opt-group-title">Новая зона</div>
+    <div class="grid-3">
+      <label class="field"><span>Название</span><input type="text" id="nz-name" placeholder="Семейные виллы"></label>
+      <label class="field"><span>Служба по умолчанию</span><select id="nz-svc">
+        ${SERVICES.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>Порядок</span><input type="number" id="nz-order" value="100"></label>
+    </div>
+    <button class="btn btn-sm btn-primary" id="nz-add">Добавить зону</button>
+  </div>
+  ${z ? `<div class="panel"><h3 class="panel-title">Объекты зоны «${esc(z.name)}»</h3>
+    <div class="obj-list">${z.objects.map((n, i) => `<div class="obj"><div><div class="t">${esc(n)}</div>
+      <div class="d">порядок ${(i + 1) * 10}</div></div>
+      <div class="row-actions"><button class="btn btn-sm btn-ghost" data-obj-edit="${z.id}|${i + 1}">Править</button>
+      <button class="btn btn-sm btn-ghost" data-obj-del="${z.id}|${i + 1}">Удалить</button></div></div>`).join('')}</div>
+    <div class="opt-group-title">Добавить объекты</div>
+    <div class="grid-3">
+      <label class="field"><span>Один объект</span><input type="text" id="no-name" placeholder="Вилла 4013"></label>
+      <label class="field"><span>…или серия: префикс и номер</span>
+        <input type="text" id="no-prefix" placeholder="Вилла " value="Вилла "></label>
+      <label class="field"><span>первый номер / количество</span>
+        <div style="display:flex;gap:8px"><input type="number" id="no-start" value="4013">
+        <input type="number" id="no-count" value="6" min="1" max="200"></div></label>
+    </div>
+    <div class="row-actions"><button class="btn btn-sm btn-primary" id="no-add">Добавить объект</button>
+      <button class="btn btn-sm" id="no-bulk">Создать серию</button></div>
+    <p class="hint">Серия создаёт объекты подряд: «Вилла 4013» … «Вилла 4018». Удаление объекта не ломает
+    закрытые смены: в отчёте хранится снимок.</p></div>` : ''}`;
+}
+function stItems() {
+  const z = zoneById(state.zoneId || 1);
+  return `
+  <div class="panel">
+    <h3 class="panel-title">Пункты чек-листа — шаблон зоны</h3>
+    <div class="tabs">${ZONES.map(zz => `<button class="tab ${zz.id === z.id ? 'active' : ''}"
+      data-items-zone="${zz.id}">${esc(zz.name)}</button>`).join('')}</div>
+    <p class="hint" style="margin-top:0">Чек-лист задаётся <b>на зону</b> — у всех её объектов он одинаковый.
+    Индивидуальные особенности объекта (своя формулировка, своя служба, отключить пункт, добавить свой)
+    настраиваются ниже, в панели «Индивидуальные особенности объекта».</p>
+    ${z.tpl.map((it, i) => `<div class="rule-row">
+      <div><div class="lbl">${esc(it.text)}</div>
+        <div class="desc">порядок ${(i + 1) * 10} · зона: ${esc(z.name)}</div></div>
+      <div class="row-actions" style="align-items:center">
+        <select data-svc-of="${it.id}" style="width:210px">
+          ${SERVICES.map(s => `<option value="${s.id}" ${s.id === (it.service || z.default_service) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+          <option value="">не назначен</option></select>
+        <button class="btn btn-sm btn-ghost" data-item-edit="${it.id}">Править</button>
+        <button class="btn btn-sm btn-ghost" data-item-del="${it.id}">Удалить</button>
+      </div></div>`).join('')}
+    <div class="opt-group-title">Новый пункт</div>
+    <div class="grid-3">
+      <label class="field"><span>Текст пункта</span><input type="text" id="ni-text" placeholder="Витражи закрыты"></label>
+      <label class="field"><span>Ответственная служба</span><select id="ni-svc">
+        ${SERVICES.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>Порядок</span><input type="number" id="ni-order" value="100"></label>
+    </div>
+    <div class="row-actions"><button class="btn btn-sm btn-primary" id="ni-add">Добавить в зону</button>
+      <span class="hint" style="margin:0">попадёт в чек-лист всех объектов зоны (и в новые отчёты)</span></div>
+  </div>
+  ${stOverrides()}
+  <div class="panel"><h3 class="panel-title">Как это работает</h3>
+    <p class="hint" style="margin-top:0">Служба пункта определяет, куда уйдёт недостаток: в её чат(ы) Telegram
+    и/или на её e-mail. Ответственная служба фиксируется в отчёте снимком — правка справочника позже
+    не меняет историю закрытых смен.</p></div>`;
+}
+function stOverrides() {
+  const z = zoneById(state.ovZone) || ZONES[0];
+  const oid = Math.max(1, Math.min(state.ovObj || 1, z.objects.length || 1));
+  const name = z.objects[oid - 1] || '—';
+  const k = key(z.id, oid);
+  const ov = OVERRIDES[k] || (OVERRIDES[k] = { byItem: {}, extra: [] });
+  ov.byItem = ov.byItem || {}; ov.extra = ov.extra || [];
+  return `<div class="panel">
+    <h3 class="panel-title">Индивидуальные особенности объекта</h3>
+    <div class="grid-2">
+      <label class="field"><span>Зона</span><select id="ov-zone">
+        ${ZONES.map(zz => `<option value="${zz.id}" ${zz.id === z.id ? 'selected' : ''}>${esc(zz.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>Объект</span><select id="ov-obj">
+        ${z.objects.map((n, i) => `<option value="${i + 1}" ${i + 1 === oid ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+    </div>
+    <p class="hint" style="margin-top:0">Шаблон зоны действует для «${esc(name)}» как есть; здесь — точечные
+    правки только этого объекта. В чек-листе они помечаются бейджами «индивидуально» и «пункт объекта».</p>
+    ${z.tpl.map(it => {
+      const o = ov.byItem[it.id] || {};
+      return `<div class="rule-row">
+        <div><div class="lbl">${esc(o.text || it.text)}
+            ${o.text ? '<span class="badge warn">своя формулировка</span>' : ''}</div>
+          <div class="desc">служба: ${esc(svc(o.service || it.service || z.default_service).name)}
+            ${o.service ? '<span class="badge warn">изменена для объекта</span>' : ''}
+            ${o.disabled ? ' · <span class="badge muted">отключён у объекта</span>' : ''}</div></div>
+        <div class="row-actions">
+          <label class="chk" style="margin:0"><input type="checkbox" data-ov-dis="${it.id}"
+            ${o.disabled ? 'checked' : ''}> отключить</label>
+          <button class="btn btn-sm btn-ghost" data-ov-text="${it.id}">Формулировка</button>
+          <button class="btn btn-sm btn-ghost" data-ov-svc="${it.id}">Служба</button>
+          ${(o.text || o.service || o.disabled) ? `<button class="btn btn-sm btn-ghost" data-ov-reset="${it.id}">Сбросить</button>` : ''}
+        </div></div>`; }).join('')}
+    ${ov.extra.length ? `<div class="opt-group-title">Свои пункты объекта</div>
+      ${ov.extra.map(x => `<div class="rule-row">
+        <div><div class="lbl">${esc(x.text)} <span class="badge info">пункт объекта</span></div>
+          <div class="desc">служба: ${esc(svc(x.service).name)}</div></div>
+        <div class="row-actions"><button class="btn btn-sm btn-ghost" data-ov-del="${x.id}">Удалить</button></div>
+      </div>`).join('')}` : ''}
+    <div class="row-actions" style="margin-top:10px">
+      <button class="btn btn-sm btn-primary" id="ov-add">+ Свой пункт объекта</button>
+      <span class="hint" style="margin:0">в данных — <code>checklist_item_overrides</code> (area_id + item_id):
+      шаблон зоны остаётся общим</span></div>
+  </div>`;
+}
+function stServices() {
+  return `
+  <div class="panel">
+    <h3 class="panel-title">Ответственные службы</h3>
+    ${SERVICES.map(s => `<div class="rule-row">
+      <div><div class="lbl">${esc(s.name)} ${s.active ? '' : '<span class="badge muted">отключена</span>'}</div>
+        <div class="desc">доставка: ${[s.notify_chat ? 'чат Telegram' : '', s.notify_email ? 'письмо' : ''].filter(Boolean).join(' + ') || 'не настроена'}
+          ${s.notify_email && s.email ? ` · ${esc(s.email)}${s.cc ? ' (копия: ' + esc(s.cc) + ')' : ''}` : ''}
+          ${s.notify_chat && s.chats.length ? ' · ' + s.chats.map(c => esc(c.title)).join(', ') : ''}</div>
+        <div class="desc">пунктов закреплено: ${ZONES.reduce((a, z) => a + z.tpl.filter(t => (t.service || z.default_service) === s.id).length, 0)}</div></div>
+      <div class="row-actions">
+        <button class="btn btn-sm btn-ghost" data-svc-edit="${s.id}">Править</button>
+        <button class="btn btn-sm btn-ghost" data-svc-test="${s.id}">Тест доставки</button>
+        <button class="btn btn-sm btn-ghost" data-svc-del="${s.id}">Отключить</button>
+      </div></div>`).join('')}
+    <div class="row-actions" style="margin-top:12px">
+      <button class="btn btn-sm btn-primary" data-svc-add>+ Добавить службу</button>
+      <span class="hint" style="margin:0">службы можно добавлять: Батлер-сервис, Хозяйственная служба,
+      Техническая служба, IT-департамент, Служба безопасности…</span></div>
+  </div>
+  <div class="panel"><h3 class="panel-title">Правила доставки</h3>
+    <p class="hint" style="margin-top:0">Служба получает только те недостатки, пункты которых закреплены за ней.
+    Каналы — чекбоксы «Чат (Telegram)» и «Письмо (e-mail)»: можно оба, можно один. Чатов у службы может быть
+    несколько (например, «Техслужба» и «Дежурные инженеры»). Перед отправкой супервайзер видит предпросмотр
+    и может снять галочки с отдельных недостатков.</p></div>`;
+}
+function stIntegrations() {
+  const masked = SETTINGS.telegram_token ? '••••••••' + SETTINGS.telegram_token.slice(-4) : 'не задан';
+  return `
+  <div class="grid-2">
+    <div class="panel">
+      <h3 class="panel-title">Telegram · Bot API</h3>
+      <label class="field"><span>Токен бота</span>
+        <div style="display:flex;gap:8px"><input type="password" id="tg-token" value="" autocomplete="off"
+            placeholder="${esc(masked)} — сохранён, введите новый для замены">
+          <button class="btn btn-sm btn-ghost" id="tg-show">Показать</button></div></label>
+      <div class="row-actions">
+        <button class="btn btn-sm btn-primary" id="tg-check">Проверить токен</button>
+        <button class="btn btn-sm" id="tg-chats">Обновить список чатов</button>
+        <button class="btn btn-sm btn-ghost" id="tg-save">Сохранить</button></div>
+      <p class="hint">Токен хранится в настройках объекта и в интерфейсе маскируется (${esc(masked)}).
+      «Проверить» вызывает <code>getMe</code>, «Обновить список чатов» — <code>getUpdates</code>: бота нужно
+      добавить в группу и написать в неё сообщение, тогда чат появится в этом списке. Закрепление найденного
+      чата за службой — в карточке службы (раздел «Ответственные службы»). Ограничения Telegram: 50 МБ на файл,
+      до 10 медиа в альбоме, ~20 сообщений в минуту на группу.</p>
+      <div class="opt-group-title">Список чатов (получаем здесь, закрепляем — в службе)</div>
+      <div class="check-list" style="max-height:none">
+        ${SETTINGS.telegram_chats.map(c => {
+          const users = SERVICES.filter(sv => sv.chats.some(x => x.id === c.id));
+          return `<label class="chk"><span style="flex:1">${esc(c.title)}
+            <small style="color:var(--muted-2)">${esc(c.id)}</small></span>
+            ${users.length ? users.map(u => `<span class="badge info">${esc(u.name)}</span>`).join(' ')
+              : '<span class="badge muted">не закреплён</span>'}</label>`; }).join('')
+          || '<div class="empty">чатов пока нет — нажмите «Обновить список чатов»</div>'}
+      </div>
+    </div>
+    <div class="panel">
+      <h3 class="panel-title">E-mail · SMTP (MS Exchange)</h3>
+      <div class="grid-2">
+        <label class="field"><span>Хост</span><input type="text" id="sm-host" value="${esc(SETTINGS.smtp_host)}"></label>
+        <label class="field"><span>Порт</span><input type="number" id="sm-port" value="${esc(SETTINGS.smtp_port)}"></label>
+      </div>
+      <label class="field"><span>Шифрование</span><select id="sm-ssl">
+        <option value="ssl" ${SETTINGS.smtp_ssl === 'ssl' ? 'selected' : ''}>SSL (465)</option>
+        <option value="starttls" ${SETTINGS.smtp_ssl === 'starttls' ? 'selected' : ''}>STARTTLS (587)</option>
+        <option value="none" ${SETTINGS.smtp_ssl === 'none' ? 'selected' : ''}>без шифрования</option></select></label>
+      <label class="chk" style="margin-bottom:10px"><input type="checkbox" id="sm-relay"
+        ${SETTINGS.smtp_relay ? 'checked' : ''}> Отправка через внутренний релей Exchange (без логина и пароля)</label>
+      <div id="sm-auth-box" class="${SETTINGS.smtp_relay ? 'hidden' : ''}">
+        <label class="field"><span>Логин</span><input type="text" id="sm-user" value="${esc(SETTINGS.smtp_user)}"></label>
+        <label class="field"><span>Пароль</span><input type="password" id="sm-pass" value="" autocomplete="off"
+          placeholder="${esc(SETTINGS.smtp_pass)} — сохранён, введите новый для замены"></label>
+      </div>
+      <label class="field"><span>Отправитель (From)</span><input type="text" id="sm-from" value="${esc(SETTINGS.smtp_from)}"></label>
+      <div class="row-actions"><button class="btn btn-sm btn-primary" id="sm-test">Тестовое письмо</button>
+        <button class="btn btn-sm btn-ghost" id="sm-save">Сохранить</button></div>
+      <p class="hint">Письмо уходит на ящик службы и в копию; тема — «Ночной отчёт 19.10.2026 — замечания (служба)».
+      Вложения (фото/видео) — до 20 МБ суммарно, сверх — ссылки на файлы, требующие входа.</p>
+      <p class="hint">Приложение будет включено в домен <b>MS Exchange</b>: тогда отправка идёт через внутренний
+      релей (587 STARTTLS, авторизация не нужна — галочка выше) либо по SMTP AUTH. Позже возможен переход на
+      Microsoft Graph / EWS: добавится режим, поля не поменяются. Адрес отправителя должен быть разрешён
+      на коннекторе Exchange (SPF/DKIM).</p>
+    </div>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Шаблон сообщения</h3>
+    <label class="field"><span>Текст (общий для чата и письма)</span>
+      <textarea id="tpl" rows="7">${esc(SETTINGS.template)}</textarea></label>
+    <p class="hint">Плейсхолдеры: <code>{date}</code> <code>{shift}</code> <code>{service}</code>
+      <code>{items}</code> <code>{author}</code> <code>{time}</code> <code>{deadline}</code></p>
+    <div class="row-actions"><button class="btn btn-sm btn-primary" id="tpl-save">Сохранить шаблон</button>
+      <button class="btn btn-sm" id="tpl-preview">Предпросмотр</button></div>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Медиа и хранение</h3>
+    <div class="grid-3">
+      <label class="field"><span>Срок хранения, дней</span><input type="number" id="md-ret" value="${esc(SETTINGS.retention_days)}"></label>
+      <label class="field"><span>Фото, МБ</span><input type="number" id="md-photo" value="${esc(SETTINGS.photo_max_mb)}"></label>
+      <label class="field"><span>Видео, МБ</span><input type="number" id="md-video" value="${esc(SETTINGS.video_max_mb)}"></label>
+    </div>
+    <div class="row-actions"><button class="btn btn-sm btn-primary" id="md-save">Сохранить</button></div>
+    <p class="hint">Оригиналы не перекодируются. По истечении срока файл удаляется, запись и комментарий
+    остаются (в интерфейсе — «фото недоступно»).</p>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЭКРАН 7 · О ПРОТОТИПЕ
+   ══════════════════════════════════════════════════════════════════════ */
+function viewAbout() {
+  return `
+  <div class="page-head"><div><h2>О прототипе</h2>
+    <div class="sub">Что здесь настоящее, что имитировано и какие решения нужно подтвердить.</div></div></div>
+  <div class="grid-2">
+    <div class="panel"><h3 class="panel-title">Сценарий владельца</h3>
+      <p class="hint" style="margin-top:0">1. Список зон → 2. объекты внутри зоны → 3. чек-лист объекта:
+      комментарий и медиа у каждого пункта → 4. у пункта ответственная служба → 5. у службы способ доставки
+      (чат и/или письмо, чаты и ящик) → 6. консолидированная отправка недостатков (всё скопом или выбранное)
+      → 7. токен Telegram в настройках.</p>
+      <p class="hint">Всё перечисленное кликабельно в этом макете: ответы ОК/Не ОК меняют счётчики зон,
+      «Не ОК» попадают в «Недостатки смены», выбор и отправка обновляют журнал, справочники редактируются.</p></div>
+    <div class="panel"><h3 class="panel-title">Что имитировано</h3>
+      <p class="hint" style="margin-top:0">Данные — в памяти страницы (перезагрузка сбрасывает). Отправка
+      в Telegram и письмо не выполняются: показывается результат и запись в журнале. «Проверить токен»,
+      «Определить чаты» и «Тестовое письмо» — заглушки ответов. Видео/фото можно приложить с устройства
+      (покажется миниатюра) или кнопкой «демо-фото/демо-видео».</p></div>
+    <div class="panel"><h3 class="panel-title">Как ляжет на код</h3>
+      <p class="hint" style="margin-top:0">Новые таблицы: <code>night_zones</code>, <code>responsibility_services</code>,
+      <code>night_dispatches</code>. Расширения: <code>night_areas.zone_id</code>,
+      <code>checklist_items.zone_id/service_id</code>, <code>night_check_items.service_id/dispatch_id</code>,
+      <code>photos.media_type</code>. Миграция — из текущих «категорий» областей в зоны, пункты объектов
+      сворачиваются в шаблон зоны. Токены — в <code>settings</code> (маскируются), право <code>settings.edit</code>;
+      отправка — новое право <code>night.dispatch</code>. Транспорт: Telegram Bot API (httpx или stdlib) и
+      SMTP (stdlib). Подробнее — <code>PROPOSAL.md</code>.</p></div>
+    <div class="panel"><h3 class="panel-title">Решения владельца (19.10.2026)</h3>
+      <ol style="margin:0;padding-left:20px;color:var(--muted);font-size:13px;line-height:1.65">
+        <li><b>Чек-лист — общий на зону</b>, но с правками под объект: своя формулировка, своя служба,
+          отключить пункт, добавить свой (панель «Индивидуальные особенности объекта»).</li>
+        <li><b>Лимиты видео — в настройках</b>, как у фото: размер и срок хранения.</li>
+        <li><b>Отправлять может любой</b> пользователь обхода; отправленное помечается у пункта
+          и пишется в журнал.</li>
+        <li><b>Отправка только вручную</b> — автоматически при закрытии объекта или смены ничего не уходит.</li>
+        <li><b>Личные уведомления сотрудникам не нужны</b>; в теле сообщения указываются ночные батлеры смены
+          (плейсхолдер <code>{duty}</code>). <code>{deadline}</code> убран.</li>
+        <li><b>«Не отмечено» включается</b> в консолидированный отчёт — отдельным блоком «Не проверено»
+          (и отдельной таблицей в DOCX/PDF).</li>
+        <li><b>Электрокары — отдельным шагом</b>, в зоны не переносим.</li>
+        <li><b>Список чатов получаем в настройках Telegram</b> (getUpdates), а закрепляем найденный чат
+          в карточке службы.</li>
+      <li><b>Почта — через MS Exchange</b>: приложение позже включат в домен, поэтому отправка
+          через внутренний релей (без логина/пароля) или SMTP AUTH; в перспективе — Graph/EWS.</li>
+        <li><b>Если недостаток исправили — ничего не отправляем</b>: ни «исправлено», ни отзыва
+          сообщения. Факт остаётся в журнале, в обходе пункт помечается «исправлено после отправки».</li>
+        <li><b>Размер видео — 50 МБ</b> (лимит Telegram Bot API), как в настройках.</li>
+        <li><b>Общих чатов у служб не предполагаем</b>; если так вышло — каждая служба отправляет
+          своё сообщение всем своим получателям (не объединяем и не дедуплицируем).</li>
+      </ol>
+      <p class="hint">Открытых вопросов нет — можно брать в реализацию (этапы ниже).</p></div>
+  </div>
+  <div class="panel"><h3 class="panel-title">Этапы внедрения</h3>
+    <table class="tbl"><thead><tr><th>Этап</th><th>Содержание</th><th>Оценка</th></tr></thead><tbody>
+      <tr><td>1</td><td>Зоны + миграция из категорий, трёхуровневая навигация, прогресс по зонам</td><td>2–3 дня</td></tr>
+      <tr><td>2</td><td>Медиа: видео, лимиты, альбомы, отдача с Range</td><td>1 день</td></tr>
+      <tr><td>3</td><td>Ответственные службы, служба у пункта, снимок в отчёте, экраны настроек</td><td>1–2 дня</td></tr>
+      <tr><td>4</td><td>Интеграции: Telegram (токен, чаты), SMTP, шаблон, маскирование токенов</td><td>2 дня</td></tr>
+      <tr><td>5</td><td>«Недостатки», журнал отправок, ретраи, право night.dispatch</td><td>2 дня</td></tr>
+      <tr><td>6</td><td>DOCX/PDF с зонами и службами, тесты и сценарий jsdom, документация</td><td>1–2 дня</td></tr>
+    </tbody></table></div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ДЕЙСТВИЯ
+   ══════════════════════════════════════════════════════════════════════ */
+function bind() {
+  const m = $('#main');
+  $$('[data-nav]', m).forEach(b => b.onclick = () => go(b.dataset.nav));
+  $$('[data-zone]', m).forEach(b => b.onclick = () => go('objects', { zoneId: Number(b.dataset.zone), filter: 'all', q: '' }));
+  $$('[data-filter]', m).forEach(b => b.onclick = () => { state.filter = b.dataset.filter; render(); });
+  $$('[data-st]', m).forEach(b => b.onclick = () => { state.stTab = b.dataset.st; render(); });
+  $$('[data-items-zone]', m).forEach(b => b.onclick = () => { state.zoneId = Number(b.dataset.itemsZone); render(); });
+  $$('[data-objects]', m).forEach(b => b.onclick = () => { state.zoneId = Number(b.dataset.objects); render(); });
+  const q = $('#obj-q'); if (q) q.oninput = e => { state.q = e.target.value.trim(); render(); const el = $('#obj-q'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } };
+
+  /* объекты */
+  $$('[data-open]', m).forEach(b => b.onclick = () => {
+    const o = Number(b.dataset.open);
+    if (!TAKEN_BY[key(state.zoneId, o)] || TAKEN_BY[key(state.zoneId, o)] === ME.name) TAKEN_BY[key(state.zoneId, o)] = ME.name;
+    go('checklist', { o, openItem: null });
+  });
+  $$('[data-reopen]', m).forEach(b => b.onclick = () => {
+    const o = Number(b.dataset.reopen), k = key(state.zoneId, o);
+    const z = zoneById(state.zoneId);
+    TAKEN_BY[k] = ME.name;
+    A[k] = A[k] || {};
+    z.tpl.forEach(it => { if (A[k][it.id]) A[k][it.id].answer = ''; });
+    toast('Объект переоткрыт — отметки сброшены', 'warn'); render();
+  });
+  $$('[data-close]', m).forEach(b => b.onclick = () => closeObject(Number(b.dataset.close)));
+  const take = $('[data-take]', m);
+  if (take) take.onclick = () => {
+    const k = key(state.zoneId, state.o), prev = TAKEN_BY[k];
+    if (prev && prev !== ME.name) {
+      openModal({ title: 'Объект уже ведут', subtitle: prev,
+        body: `<p style="margin:0;color:var(--muted)">Этот объект проверяет ${esc(prev)}. Перехватить?
+          Отметка перейдёт вам, факт перехвата попадёт в отчёт.</p>`,
+        footer: `<button class="btn btn-ghost" data-no>Отмена</button><button class="btn btn-danger" data-yes>Перехватить</button>`,
+        onMount(mm) { $('[data-no]', mm).onclick = closeModal;
+          $('[data-yes]', mm).onclick = () => { TAKEN_BY[k] = ME.name; closeModal(); toast('Объект перехвачен', 'warn'); render(); }; } });
+    } else { TAKEN_BY[k] = ME.name; toast('Объект за вами', 'ok'); render(); }
+  };
+  const fin = $('[data-finish]', m);
+  if (fin) fin.onclick = () => closeObject(state.o);
+
+  /* пункты чек-листа */
+  $$('[data-ans]', m).forEach(b => b.onclick = () => {
+    const it = b.dataset.item, k = key(state.zoneId, state.o);
+    A[k] = A[k] || {};
+    const r = A[k][it] = A[k][it] || { answer: '', comment: '', media: [], by: '', at: '', dispatched: null };
+    r.answer = r.answer === b.dataset.ans ? '' : b.dataset.ans;
+    r.by = ME.name; r.at = '02:48';
+    if (!TAKEN_BY[k]) TAKEN_BY[k] = ME.name;
+    if (r.answer === 'bad') { state.openItem = it; toast('Отметка «Не ОК» — добавьте комментарий и медиа', 'warn'); }
+    render();
+  });
+  $$('[data-expand]', m).forEach(b => b.onclick = () => {
+    state.openItem = state.openItem === b.dataset.expand ? null : b.dataset.expand; render();
+  });
+  $$('[data-save]', m).forEach(b => b.onclick = () => {
+    const it = b.dataset.save, k = key(state.zoneId, state.o);
+    const ta = $(`#cmt-${it}`, m);
+    A[k] = A[k] || {}; A[k][it] = A[k][it] || { answer: '', media: [], dispatched: null };
+    A[k][it].comment = ta ? ta.value.trim() : '';
+    A[k][it].by = ME.name; A[k][it].at = '02:48';
+    if (!A[k][it].answer) A[k][it].answer = 'ok';
+    if (!TAKEN_BY[k]) TAKEN_BY[k] = ME.name;
+    state.openItem = null; toast('Пункт сохранён', 'ok'); render();
+  });
+  $$('[data-demo]', m).forEach(b => b.onclick = () => {
+    const it = b.dataset.item, k = key(state.zoneId, state.o), type = b.dataset.demo;
+    A[k] = A[k] || {}; A[k][it] = A[k][it] || { answer: '', comment: '', media: [], dispatched: null };
+    const n = A[k][it].media.filter(x => x.type === type).length + 1;
+    A[k][it].media.push({ type, name: type === 'photo' ? `IMG_${1000 + n}.jpg` : `VID_${2000 + n}.mp4`, url: '' });
+    if (!A[k][it].answer) A[k][it].answer = 'bad';
+    A[k][it].by = ME.name; A[k][it].at = '02:48';
+    render(); toast(type === 'photo' ? 'Демо-фото приложено' : 'Демо-видео приложено', 'ok');
+  });
+  $$('[data-media]', m).forEach(inp => inp.onchange = () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    const it = inp.dataset.item, k = key(state.zoneId, state.o);
+    const type = inp.dataset.media === 'auto' ? (f.type.startsWith('video') ? 'video' : 'photo') : inp.dataset.media;
+    A[k] = A[k] || {}; A[k][it] = A[k][it] || { answer: '', comment: '', media: [], dispatched: null };
+    const push = url => {
+      A[k][it].media.push({ type, name: f.name, url: url || '' });
+      if (!A[k][it].answer) A[k][it].answer = 'bad';
+      A[k][it].by = ME.name; A[k][it].at = '02:48';
+      render(); toast('Медиа приложено: ' + f.name, 'ok');
+    };
+    try {
+      const rd = new FileReader();
+      rd.onload = () => push(type === 'photo' ? String(rd.result) : '');
+      rd.onerror = () => push('');
+      if (type === 'photo') rd.readAsDataURL(f); else push('');
+    } catch (e) { push(''); }
+  });
+  $$('[data-del-media]', m).forEach(b => b.onclick = () => {
+    const it = state.openItem, k = key(state.zoneId, state.o);
+    if (it && A[k] && A[k][it]) {
+      A[k][it].media = A[k][it].media.filter(x => x.name !== b.dataset.delMedia);
+      render(); toast('Медиа удалено', 'warn');
+    }
+  });
+
+  /* недостатки и отправка */
+  const onlyNew = $('#only-new', m); if (onlyNew) onlyNew.onchange = () => { state.onlyNew = onlyNew.checked; render(); };
+  $$('[data-sel]', m).forEach(cb => cb.onchange = () => {
+    const k = cb.dataset.sel;
+    if (cb.checked) state.selection.add(k); else state.selection.delete(k);
+    const btn = $('[data-act="send-selected"]', m);
+    if (btn) btn.textContent = `Отправить выбранное (${state.selection.size})`;
+    const g = groupsById();
+    Object.keys(g).forEach(sid => {
+      const head = $(`[data-group="${sid}"]`, m);
+      if (head) head.checked = g[sid].every(k2 => state.selection.has(k2));
+    });
+  });
+  $$('[data-group]', m).forEach(cb => cb.onchange = () => {
+    const sid = Number(cb.dataset.group);
+    allDefects().filter(d => (d.sid) === sid && (!state.onlyNew || !d.rec.dispatched))
+      .forEach(d => { const k = selKey(sid, d.zid, d.oid, d.item.id);
+        if (cb.checked) state.selection.add(k); else state.selection.delete(k); });
+    render();
+  });
+  $$('[data-ch]', m).forEach(cb => cb.onchange = () => {
+    const sid = Number(cb.dataset.sid);
+    state.dspChannel[sid] = state.dspChannel[sid] || {};
+    state.dspChannel[sid][cb.dataset.ch] = cb.checked; render();
+  });
+  const unAll = $('#un-all', m);
+  if (unAll) unAll.onchange = () => {
+    allUnanswered().forEach(d => { if (unAll.checked) state.usel.add(uKey(d)); else state.usel.delete(uKey(d)); });
+    render();
+  };
+  $$('[data-usel]', m).forEach(cb => cb.onchange = () => {
+    if (cb.checked) state.usel.add(cb.dataset.usel); else state.usel.delete(cb.dataset.usel);
+    render();
+  });
+  $$('[data-goto]', m).forEach(b => b.onclick = () => {
+    const [z, o] = b.dataset.goto.split('|').map(Number);
+    go('checklist', { zoneId: z, o, openItem: null });
+  });
+  $$('[data-act]', m).forEach(b => b.onclick = () => act(b.dataset.act));
+  $$('[data-resend]', m).forEach(b => b.onclick = () => {
+    const d = DISPATCHES.find(x => x.id === Number(b.dataset.resend));
+    d.status = 'sent'; d.error = ''; d.external = 'msg ' + (4400 + d.id); d.ts = '02:52';
+    toast('Повторная отправка выполнена', 'ok'); render();
+  });
+  $$('[data-show-msg]', m).forEach(b => b.onclick = () => {
+    const d = DISPATCHES.find(x => x.id === Number(b.dataset.showMsg));
+    openModal({ title: 'Отправленный текст', subtitle: `${d.service} · ${d.channel} · ${d.ts}`,
+      body: `<div class="preview">${esc(messageFor({ service: { name: d.service }, items: [
+          { object: 'Винная вилла 8003', item: { text: 'Витражи закрыты' },
+            rec: { comment: 'витраж приоткрыт, ветер хлопает', media: [], by: 'Сидорова С.С.', at: '01:30' } }] }, []))}</div>
+        <p class="hint">Получатель: ${esc(d.target)} · недостатков: ${d.items}${d.un ? ` · не проверено: ${d.un}` : ''}
+        · статус: ${d.status === 'sent' ? 'отправлено' : 'сбой'}
+        ${d.external ? ' · ' + esc(d.external) : ''}${d.error ? ' · ' + esc(d.error) : ''}
+        ${d.note ? ' · комментарий: ' + esc(d.note) : ''}</p>`,
+      footer: `<button class="btn btn-ghost" data-x2>Закрыть</button>`,
+      onMount(mm) { $('[data-x2]', mm).onclick = closeModal; } });
+  });
+
+  /* настройки: службы */
+  $$('[data-svc-add]', m).forEach(b => b.onclick = () => serviceModal(null));
+  $$('[data-svc-edit]', m).forEach(b => b.onclick = () => serviceModal(svc(Number(b.dataset.svcEdit))));
+  $$('[data-svc-test]', m).forEach(b => b.onclick = () => testDelivery(svc(Number(b.dataset.svcTest))));
+  $$('[data-svc-del]', m).forEach(b => b.onclick = () => {
+    const s = svc(Number(b.dataset.svcDel)); s.active = false;
+    toast(`Служба «${s.name}» отключена`, 'warn'); render();
+  });
+  $$('[data-svc-of]', m).forEach(sel => sel.onchange = () => {
+    const z = zoneById(state.zoneId || 1), it = z.tpl.find(t => t.id === sel.dataset.svcOf);
+    it.service = Number(sel.value) || null;
+    toast(`«${it.text}» → ${svc(it.service || z.default_service).name}`, 'ok');
+  });
+
+  /* настройки: зоны / объекты / пункты */
+  const nzAdd = $('#nz-add', m); if (nzAdd) nzAdd.onclick = () => {
+    const name = $('#nz-name', m).value.trim();
+    if (!name) return toast('Введите название зоны', 'warn');
+    ZONES.push({ id: ZONES.length + 1, name, default_service: Number($('#nz-svc', m).value),
+      tpl: TPL_VILLA.map(t => Object.assign({}, t)), objects: [] });
+    toast(`Зона «${name}» добавлена`, 'ok'); render();
+  };
+  $$('[data-zone-edit]', m).forEach(b => b.onclick = () => {
+    const z = zoneById(Number(b.dataset.zoneEdit));
+    openModal({ title: 'Зона: ' + z.name,
+      body: `<label class="field"><span>Название</span><input type="text" id="ze-name" value="${esc(z.name)}"></label>
+        <label class="field"><span>Служба по умолчанию</span><select id="ze-svc">
+          ${SERVICES.map(s => `<option value="${s.id}" ${s.id === z.default_service ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+        <p class="hint">Объектов в зоне: ${z.objects.length}. Пунктов в шаблоне: ${z.tpl.length}.</p>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-ok>Сохранить</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal;
+        $('[data-ok]', mm).onclick = () => { z.name = $('#ze-name', mm).value.trim() || z.name;
+          z.default_service = Number($('#ze-svc', mm).value); closeModal(); toast('Зона сохранена', 'ok'); render(); }; } });
+  });
+  $$('[data-zone-del]', m).forEach(b => b.onclick = () => {
+    const z = zoneById(Number(b.dataset.zoneDel));
+    openModal({ title: 'Отключить зону?',
+      body: `<p style="margin:0;color:var(--muted)">«${esc(z.name)}» перестанет попадать в новые отчёты.
+        Закрытые смены сохранятся как снимок.</p>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-danger" data-ok>Отключить</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal;
+        $('[data-ok]', mm).onclick = () => { const i = ZONES.indexOf(z); ZONES.splice(i, 1);
+          closeModal(); toast('Зона отключена', 'warn'); render(); }; } });
+  });
+  const noAdd = $('#no-add', m); if (noAdd) noAdd.onclick = () => {
+    const z = zoneById(state.zoneId), name = $('#no-name', m).value.trim();
+    if (!name) return toast('Введите название объекта', 'warn');
+    z.objects.push(name); toast(`Объект «${name}» добавлен`, 'ok'); render();
+  };
+  const noBulk = $('#no-bulk', m); if (noBulk) noBulk.onclick = () => {
+    const z = zoneById(state.zoneId);
+    const p = $('#no-prefix', m).value, st = Number($('#no-start', m).value) || 1, n = Number($('#no-count', m).value) || 1;
+    z.objects = z.objects.concat(seq(p.trim(), st, n));
+    toast(`Создано объектов: ${n}`, 'ok'); render();
+  };
+  const niAdd = $('#ni-add', m); if (niAdd) niAdd.onclick = () => {
+    const z = zoneById(state.zoneId || 1), text = $('#ni-text', m).value.trim();
+    if (!text) return toast('Введите текст пункта', 'warn');
+    z.tpl.push({ id: 'x' + Date.now(), text, service: Number($('#ni-svc', m).value) });
+    toast(`Пункт добавлен во все объекты зоны «${z.name}»`, 'ok'); render();
+  };
+  /* индивидуальные правки чек-листа конкретного объекта */
+  const ovOf = () => {
+    const z = zoneById(state.ovZone) || ZONES[0];
+    const oid = Math.max(1, Math.min(state.ovObj || 1, z.objects.length || 1));
+    const k = key(z.id, oid);
+    const ov = OVERRIDES[k] || (OVERRIDES[k] = { byItem: {}, extra: [] });
+    ov.byItem = ov.byItem || {}; ov.extra = ov.extra || [];
+    return { z, oid, ov };
+  };
+  const ovZone = $('#ov-zone', m);
+  if (ovZone) ovZone.onchange = () => { state.ovZone = Number(ovZone.value); state.ovObj = 1; render(); };
+  const ovObj = $('#ov-obj', m);
+  if (ovObj) ovObj.onchange = () => { state.ovObj = Number(ovObj.value); render(); };
+  $$('[data-ov-dis]', m).forEach(cb => cb.onchange = () => {
+    const { ov } = ovOf(), id = cb.dataset.ovDis;
+    ov.byItem[id] = ov.byItem[id] || {};
+    ov.byItem[id].disabled = cb.checked;
+    if (!cb.checked && !ov.byItem[id].text && !ov.byItem[id].service) delete ov.byItem[id];
+    render(); toast(cb.checked ? 'Пункт отключён у этого объекта' : 'Пункт снова из шаблона зоны', 'ok');
+  });
+  $$('[data-ov-text]', m).forEach(b => b.onclick = () => {
+    const { z, oid, ov } = ovOf(), id = b.dataset.ovText;
+    const it = z.tpl.find(t => t.id === id), cur = (ov.byItem[id] || {}).text || it.text;
+    openModal({ title: 'Своя формулировка', subtitle: `${z.objects[oid - 1]} · ${it.text}`,
+      body: `<label class="field"><span>Текст пункта у этого объекта</span>
+          <input type="text" id="ovt-text" value="${esc(cur)}" maxlength="300"></label>
+        <p class="hint">В шаблоне зоны текст останется прежним — правка касается только «${esc(z.objects[oid - 1])}».</p>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-ok>Сохранить</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal;
+        $('[data-ok]', mm).onclick = () => {
+          const t = $('#ovt-text', mm).value.trim();
+          if (!t) return toast('Введите текст', 'warn');
+          ov.byItem[id] = Object.assign({}, ov.byItem[id], { text: t === it.text ? undefined : t });
+          if (!ov.byItem[id].text) delete ov.byItem[id].text;
+          if (!Object.keys(ov.byItem[id]).length) delete ov.byItem[id];
+          closeModal(); toast('Формулировка сохранена для объекта', 'ok'); render(); }; } });
+  });
+  $$('[data-ov-svc]', m).forEach(b => b.onclick = () => {
+    const { z, oid, ov } = ovOf(), id = b.dataset.ovSvc;
+    const it = z.tpl.find(t => t.id === id);
+    openModal({ title: 'Ответственная служба', subtitle: `${z.objects[oid - 1]} · ${it.text}`,
+      body: `<label class="field"><span>Служба (только для этого объекта)</span><select id="ovs-svc">
+          <option value="">как в шаблоне зоны — ${esc(svc(it.service || z.default_service).name)}</option>
+          ${SERVICES.map(sv => `<option value="${sv.id}" ${(ov.byItem[id] || {}).service === sv.id ? 'selected' : ''}>${esc(sv.name)}</option>`).join('')}
+        </select></label>
+        <p class="hint">Недостаток этого пункта у выбранного объекта пойдёт в другую службу.</p>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-ok>Сохранить</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal;
+        $('[data-ok]', mm).onclick = () => {
+          const v = Number($('#ovs-svc', mm).value) || null;
+          ov.byItem[id] = Object.assign({}, ov.byItem[id], { service: v });
+          if (!ov.byItem[id].service) delete ov.byItem[id].service;
+          if (!Object.keys(ov.byItem[id]).length) delete ov.byItem[id];
+          closeModal(); toast('Служба для объекта сохранена', 'ok'); render(); }; } });
+  });
+  $$('[data-ov-reset]', m).forEach(b => b.onclick = () => {
+    const { ov } = ovOf(); delete ov.byItem[b.dataset.ovReset];
+    render(); toast('Пункт снова как в шаблоне зоны', 'ok');
+  });
+  $$('[data-ov-del]', m).forEach(b => b.onclick = () => {
+    const { ov } = ovOf();
+    ov.extra = ov.extra.filter(x => x.id !== b.dataset.ovDel);
+    render(); toast('Свой пункт объекта удалён', 'warn');
+  });
+  const ovAdd = $('#ov-add', m); if (ovAdd) ovAdd.onclick = () => {
+    const { z, oid, ov } = ovOf();
+    openModal({ title: 'Свой пункт объекта', subtitle: z.objects[oid - 1],
+      body: `<label class="field"><span>Текст пункта</span>
+          <input type="text" id="ova-text" placeholder="Детская кроватка установлена"></label>
+        <label class="field"><span>Ответственная служба</span><select id="ova-svc">
+          ${SERVICES.map(sv => `<option value="${sv.id}">${esc(sv.name)}</option>`).join('')}</select></label>
+        <p class="hint">Пункт появится только в чек-листе «${esc(z.objects[oid - 1])}» (бейдж «пункт объекта»).</p>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-ok>Добавить</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal;
+        $('[data-ok]', mm).onclick = () => {
+          const t = $('#ova-text', mm).value.trim();
+          if (!t) return toast('Введите текст пункта', 'warn');
+          ov.extra.push({ id: 'x' + Date.now(), text: t, service: Number($('#ova-svc', mm).value) });
+          closeModal(); toast('Пункт добавлен для объекта', 'ok'); render(); }; } });
+  };
+  $$('[data-item-edit]', m).forEach(b => b.onclick = () => {
+    const z = zoneById(state.zoneId || 1), it = z.tpl.find(t => t.id === b.dataset.itemEdit);
+    openModal({ title: 'Пункт чек-листа', subtitle: z.name,
+      body: `<label class="field"><span>Текст</span><input type="text" id="ie-text" value="${esc(it.text)}"></label>
+        <label class="field"><span>Ответственная служба</span><select id="ie-svc">
+          ${SERVICES.map(s => `<option value="${s.id}" ${s.id === (it.service || z.default_service) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+          <option value="">не назначен</option></select></label>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-ok>Сохранить</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal;
+        $('[data-ok]', mm).onclick = () => { it.text = $('#ie-text', mm).value.trim() || it.text;
+          it.service = Number($('#ie-svc', mm).value) || null; closeModal(); toast('Пункт сохранён', 'ok'); render(); }; } });
+  });
+  $$('[data-item-del]', m).forEach(b => b.onclick = () => {
+    const z = zoneById(state.zoneId || 1), i = z.tpl.findIndex(t => t.id === b.dataset.itemDel);
+    const it = z.tpl[i];
+    openModal({ title: 'Удалить пункт?',
+      body: `<p style="margin:0;color:var(--muted)">«${esc(it.text)}» исчезнет из чек-листа зоны «${esc(z.name)}»
+        (${z.objects.length} объектов). В закрытых сменах останется — отчёт хранит снимок.</p>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-danger" data-ok>Удалить</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal;
+        $('[data-ok]', mm).onclick = () => { z.tpl.splice(i, 1); closeModal(); toast('Пункт удалён', 'warn'); render(); }; } });
+  });
+
+  /* настройки: интеграции */
+  const tgShow = $('#tg-show', m); if (tgShow) tgShow.onclick = () => {
+    const i = $('#tg-token', m); i.type = i.type === 'password' ? 'text' : 'password';
+  };
+  const tgCheck = $('#tg-check', m); if (tgCheck) tgCheck.onclick = () => {
+    const t = $('#tg-token', m).value.trim() || SETTINGS.telegram_token;
+    if (!t) return toast('Токен не задан', 'warn');
+    SETTINGS.telegram_token = t; SETTINGS.telegram_bot = '@mriya_night_bot';
+    openModal({ title: 'Токен принят', subtitle: 'getMe → ok',
+      body: `<div class="preview">{
+  "ok": true,
+  "result": {
+    "id": 7123456789,
+    "is_bot": true,
+    "first_name": "Мрия · ночной обход",
+    "username": "mriya_night_bot"
+  }
+}</div><p class="hint">Бот может писать только в те чаты, куда его добавили.
+Для групп: добавьте бота участником и напишите в группу любое сообщение — чат появится в «Определить чаты».</p>`,
+      footer: `<button class="btn btn-primary" data-ok>Отлично</button>`,
+      onMount(mm) { $('[data-ok]', mm).onclick = closeModal; } });
+    toast('Бот: @mriya_night_bot', 'ok');
+  };
+  const tgChats = $('#tg-chats', m); if (tgChats) tgChats.onclick = () => {
+    /* имитация getUpdates: бот увидел новый чат, куда его добавили */
+    const fresh = [{ id: '-1007770003334', title: 'IT · дежурная линия' },
+      { id: '-1004440005556', title: 'Служба безопасности · ночь' },
+      { id: '-1002220007778', title: 'Ночная смена · общий' }];
+    const added = fresh.filter(c => !SETTINGS.telegram_chats.some(x => x.id === c.id));
+    SETTINGS.telegram_chats = SETTINGS.telegram_chats.concat(added);
+    render();
+    toast(added.length ? `getUpdates: найдено новых чатов — ${added.length}` : 'Список чатов актуален',
+      added.length ? 'ok' : 'warn');
+  };
+  const tgSave = $('#tg-save', m); if (tgSave) tgSave.onclick = () => {
+    const t = $('#tg-token', m).value.trim();
+    if (!t) return toast('Поле пустое — сохранённый токен не меняется', 'warn');
+    SETTINGS.telegram_token = t; $('#tg-token', m).value = '';
+    toast('Токен сохранён (в интерфейсе маскируется)', 'ok'); render();
+  };
+  const smTest = $('#sm-test', m); if (smTest) smTest.onclick = () => {
+    SETTINGS.smtp_host = $('#sm-host', m).value; SETTINGS.smtp_port = $('#sm-port', m).value;
+    openModal({ title: 'Тестовое письмо отправлено',
+      body: `<div class="preview">Кому: it@mriyaresort.ru
+Тема: [Батлер Сервис] тестовое письмо
+Тело: Настройки SMTP работают. Ночной отчёт · смена 19.10.2026.</div>
+      <p class="hint">Прототип: реальная отправка пойдёт через <code>smtplib</code> (SSL/STARTTLS из настроек).</p>`,
+      footer: `<button class="btn btn-primary" data-ok>Закрыть</button>`,
+      onMount(mm) { $('[data-ok]', mm).onclick = closeModal; } });
+    toast('Тестовое письмо «отправлено»', 'ok');
+  };
+  const smRelay = $('#sm-relay', m);
+  if (smRelay) smRelay.onchange = () => {
+    SETTINGS.smtp_relay = smRelay.checked;
+    $('#sm-auth-box', m).classList.toggle('hidden', smRelay.checked);
+    toast(smRelay.checked ? 'Режим: внутренний релей Exchange (без авторизации)'
+      : 'Режим: SMTP с логином и паролем', 'ok');
+  };
+  const smSave = $('#sm-save', m); if (smSave) smSave.onclick = () => {
+    SETTINGS.smtp_host = $('#sm-host', m).value; SETTINGS.smtp_port = $('#sm-port', m).value;
+    SETTINGS.smtp_ssl = $('#sm-ssl', m).value; SETTINGS.smtp_user = $('#sm-user', m).value;
+    SETTINGS.smtp_from = $('#sm-from', m).value;
+    SETTINGS.smtp_relay = $('#sm-relay', m).checked;
+    const pass = $('#sm-pass', m).value.trim();
+    if (pass) SETTINGS.smtp_pass = '••••••••';        // пароль не храним в открытом виде в макете
+    toast('Настройки SMTP сохранены', 'ok'); render();
+  };
+  const tplSave = $('#tpl-save', m); if (tplSave) tplSave.onclick = () => {
+    SETTINGS.template = $('#tpl', m).value; toast('Шаблон сохранён', 'ok'); render();
+  };
+  const tplPrev = $('#tpl-preview', m); if (tplPrev) tplPrev.onclick = () => {
+    SETTINGS.template = $('#tpl', m).value;
+    const g = defectGroups()[0];
+    openModal({ title: 'Предпросмотр сообщения', subtitle: g ? g.service.name : 'нет недостатков', wide: true,
+      body: `<div class="preview">${esc(g ? messageFor(g) : 'Недостатков нет — сообщение пустое.')}</div>`,
+      footer: `<button class="btn btn-ghost" data-ok>Закрыть</button>`,
+      onMount(mm) { $('[data-ok]', mm).onclick = closeModal; } });
+  };
+  const mdSave = $('#md-save', m); if (mdSave) mdSave.onclick = () => {
+    SETTINGS.retention_days = $('#md-ret', m).value; SETTINGS.photo_max_mb = $('#md-photo', m).value;
+    SETTINGS.video_max_mb = $('#md-video', m).value; toast('Лимиты медиа сохранены', 'ok'); render();
+  };
+}
+
+function groupsById() {
+  const g = {};
+  allDefects().forEach(d => {
+    if (state.onlyNew && d.rec.dispatched) return;
+    (g[d.sid] = g[d.sid] || []).push(selKey(d.sid, d.zid, d.oid, d.item.id));
+  });
+  return g;
+}
+function closeObject(o) {
+  const z = zoneById(state.zoneId), st = objStat(z.id, o);
+  const doClose = () => {
+    const k = key(z.id, o); A[k] = A[k] || {}; TAKEN_BY[k] = TAKEN_BY[k] || ME.name;
+    z.tpl.forEach(it => { if (!A[k][it.id] || !A[k][it.id].answer) A[k][it.id] = { answer: 'ok', comment: '', media: [], by: ME.name, at: '02:50', dispatched: null }; });
+    toast(`«${z.objects[o - 1]}» закрыт`, 'ok');
+    go('objects', { o: null });
+  };
+  if (st.answered < st.total) {
+    openModal({ title: 'Есть неотмеченные пункты', subtitle: z.objects[o - 1],
+      body: `<p style="margin:0;color:var(--muted)">Отмечено ${st.answered} из ${st.total}.
+        Закрыть объект всё равно? Неотмеченные пункты останутся как «не отмечено» и будут видны супервайзеру.</p>`,
+      footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-danger" data-ok>Закрыть всё равно</button>`,
+      onMount(mm) { $('[data-c]', mm).onclick = closeModal; $('[data-ok]', mm).onclick = () => { closeModal(); doClose(); }; } });
+  } else doClose();
+}
+function testDelivery(s) {
+  const chans = [];
+  if (s.notify_chat) s.chats.forEach(c => chans.push(`Telegram → «${c.title}» (${c.id})`));
+  if (s.notify_email && s.email) chans.push(`Письмо → ${s.email}${s.cc ? ' (копия ' + s.cc + ')' : ''}`);
+  openModal({ title: 'Тест доставки: ' + s.name,
+    body: chans.length ? `<div class="preview">${chans.map(c => '✓ ' + c).join('\n')}</div>
+      <p class="hint">Прототип: сообщение «[тест] Батлер Сервис — проверка канала» имитировано.
+      В продукте уйдёт реально и запишется в журнал со статусом.</p>`
+      : `<div class="empty">У службы не настроен ни один канал доставки</div>`,
+    footer: `<button class="btn btn-ghost" data-c>Закрыть</button>`,
+    onMount(mm) { $('[data-c]', mm).onclick = closeModal; } });
+}
+function serviceModal(s) {
+  const isNew = !s;
+  const d = s || { name: '', notify_chat: true, notify_email: false, email: '', cc: '', chats: [], active: true };
+  openModal({ title: isNew ? 'Новая ответственная служба' : 'Служба: ' + d.name, wide: true,
+    body: `<label class="field"><span>Название</span>
+        <input type="text" id="sv-name" value="${esc(d.name)}" placeholder="Например: Служба безопасности"></label>
+      <div class="opt-group-title" style="margin-top:6px">Способ доставки сообщений</div>
+      <div class="check-list" style="max-height:none">
+        <label class="chk"><input type="checkbox" id="sv-chat" ${d.notify_chat ? 'checked' : ''}> Чат (Telegram)</label>
+        <label class="chk"><input type="checkbox" id="sv-email" ${d.notify_email ? 'checked' : ''}> Письмо (e-mail)</label>
+      </div>
+      <div id="sv-email-box" class="${d.notify_email ? '' : 'hidden'}" style="margin-top:12px">
+        <div class="grid-2">
+          <label class="field"><span>Почтовый ящик</span><input type="email" id="sv-email" value="${esc(d.email)}" placeholder="tech@mriyaresort.ru"></label>
+          <label class="field"><span>Копия (через запятую)</span><input type="text" id="sv-cc" value="${esc(d.cc)}" placeholder="duty@mriyaresort.ru"></label>
+        </div>
+      </div>
+      <div id="sv-chat-box" class="${d.notify_chat ? '' : 'hidden'}" style="margin-top:6px">
+        <div class="opt-group-title">Чаты Telegram — закрепляем найденные</div>
+        <div class="check-list" id="sv-chats" style="max-height:none">
+          ${SETTINGS.telegram_chats.map(c => `<label class="chk">
+            <input type="checkbox" data-pick-chat="${esc(c.id)}"
+              ${(d.chats || []).some(x => x.id === c.id) ? 'checked' : ''}>
+            <span style="flex:1">${esc(c.title)} <small style="color:var(--muted-2)">${esc(c.id)}</small></span></label>`).join('')
+            || '<div class="hint" style="margin:0">Список чатов пуст — сначала «Обновить список чатов» в разделе «Интеграции и шаблоны».</div>'}
+        </div>
+        <p class="hint">Список общий: он формируется в настройках Telegram (getUpdates). Здесь чаты только
+          закрепляются за службой. <a href="#" id="sv-manual-link" style="color:var(--primary)">Нет нужного чата? добавить по id</a></p>
+        <div id="sv-manual" class="hidden">
+          <div class="grid-2">
+            <label class="field"><span>Название чата</span><input type="text" id="sv-chat-title" placeholder="Техслужба · Мрия"></label>
+            <label class="field"><span>chat_id</span><input type="text" id="sv-chat-id" placeholder="-1001234567890"></label>
+          </div>
+          <button class="btn btn-sm" id="sv-chat-add">Добавить в общий список</button>
+        </div>
+      </div>
+      <p class="hint">Служба получит только те недостатки, пункты которых закреплены за ней (в настройках
+      пунктов чек-листа). Можно включить оба канала — тогда уйдут и чат, и письмо.</p>`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-primary" data-ok>${isNew ? 'Добавить службу' : 'Сохранить'}</button>`,
+    onMount(mm) {
+      const sync = () => {
+        $('#sv-email-box', mm).classList.toggle('hidden', !$('#sv-email', mm).checked);
+        $('#sv-chat-box', mm).classList.toggle('hidden', !$('#sv-chat', mm).checked);
+      };
+      $('#sv-chat', mm).onchange = sync; $('#sv-email', mm).onchange = sync;
+      $('[data-c]', mm).onclick = closeModal;
+      $('#sv-manual-link', mm).onclick = e => { e.preventDefault(); $('#sv-manual', mm).classList.remove('hidden'); };
+      $('#sv-chat-add', mm).onclick = () => {
+        const t = $('#sv-chat-title', mm).value.trim(), id = $('#sv-chat-id', mm).value.trim();
+        if (!id) return toast('Укажите chat_id', 'warn');
+        if (!SETTINGS.telegram_chats.some(c => c.id === id)) SETTINGS.telegram_chats.push({ id, title: t || id });
+        $('#sv-chats', mm).insertAdjacentHTML('beforeend', `<label class="chk">
+          <input type="checkbox" data-pick-chat="${esc(id)}" checked>
+          <span style="flex:1">${esc(t || id)} <small style="color:var(--muted-2)">${esc(id)}</small></span></label>`);
+        $('#sv-chat-title', mm).value = ''; $('#sv-chat-id', mm).value = '';
+        toast('Чат добавлен в общий список и отмечен', 'ok');
+      };
+      $('[data-ok]', mm).onclick = () => {
+        const name = $('#sv-name', mm).value.trim();
+        if (!name) return toast('Введите название службы', 'warn');
+        const ids = $$('[data-pick-chat]', mm).filter(cb => cb.checked).map(cb => cb.dataset.pickChat);
+        const chats = SETTINGS.telegram_chats.filter(c => ids.includes(c.id));
+        const data = { name, notify_chat: $('#sv-chat', mm).checked, notify_email: $('#sv-email', mm).checked,
+          email: $('#sv-email', mm).value.trim(), cc: $('#sv-cc', mm).value.trim(), chats, active: true };
+        if (data.notify_chat && !chats.length) return toast('Выберите хотя бы один чат или снимите галочку «Чат»', 'warn');
+        if (data.notify_email && !data.email) return toast('Укажите почтовый ящик или снимите галочку «Письмо»', 'warn');
+        if (isNew) { data.id = Math.max(0, ...SERVICES.map(x => x.id)) + 1; SERVICES.push(data); }
+        else Object.assign(d, data);
+        closeModal(); toast(isNew ? `Служба «${name}» добавлена` : 'Служба сохранена', 'ok'); render();
+      };
+    } });
+}
+
+function act(a) {
+  if (a === 'refresh') { toast('Данные обновлены (в продукте — опрос каждые 60 с)', 'ok'); render(); }
+  else if (a === 'docx' || a === 'pdf') toast('Выгрузка ' + a.toUpperCase() + ': зоны, объекты, пункты, служба и медиа', 'ok');
+  else if (a === 'to-defects') go('defects');
+  else if (a === 'cars-step') openModal({ title: 'Проверка электрокаров', wide: true,
+    subtitle: 'Отдельный шаг обхода — как в текущей версии (не зона)',
+    body: `<div class="obj-list">
+        ${[['1', 'свободен', 'Парковка у главного входа', 'полный', 'проверен 01:52'],
+           ['2', 'занят', 'Навес у служебного входа', 'половина', 'проверен 01:54'],
+           ['3', 'на зарядке', 'Место с зарядкой у корпуса B', 'разряжен', 'проверен 01:55'],
+           ['4', 'свободен', 'Навес у служебного входа', 'полный', 'перепаркован → Парковка у главного входа'],
+           ['5', 'на обслуживании', 'Гараж', '—', 'не найден на месте']]
+          .map(c => `<div class="obj"><div><div class="t">Кар №${c[0]}</div>
+            <div class="d"><span class="badge ${c[1] === 'свободен' ? 'ok' : c[1] === 'занят' ? 'warn' : c[1] === 'на обслуживании' ? 'danger' : 'info'}">${c[1]}</span>
+            ${esc(c[2])} · заряд: ${esc(c[3])} · ${esc(c[4])}</div></div>
+            <div class="row-actions"><span class="badge muted">📷 1</span></div></div>`).join('')}
+      </div>
+      <p class="hint">Окно отметки кара уже приведено к окну возврата (PR #43): чекбокс «Кар найден на месте»,
+      «Где нашёл» → «Куда переставил» при перепарковке, чекбоксы состояния, фото. В v2 этот шаг остаётся
+      отдельным — в зоны не переносится.</p>`,
+    footer: `<button class="btn btn-ghost" data-c>Закрыть</button>`,
+    onMount(mm) { $('[data-c]', mm).onclick = closeModal; } });
+  else if (a === 'close-shift') openModal({ title: 'Закрыть ночную смену?',
+    body: `<p style="margin:0;color:var(--muted)">Смена станет доступна только для чтения. Неотправленные
+      недостатки (${allDefects().filter(d => !d.rec.dispatched).length}) останутся в журнале обхода —
+      отправить можно и после закрытия?</p><p class="hint">В продукте: отправка после закрытия — по праву
+      <code>night.dispatch</code>, факт пишется в аудит.</p>`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button><button class="btn btn-danger" data-ok>Закрыть смену</button>`,
+    onMount(m) { $('[data-c]', m).onclick = closeModal;
+      $('[data-ok]', m).onclick = () => { closeModal(); toast('Смена закрыта (прототип)', 'warn'); }; } });
+  else if (a === 'first-free') {
+    const z = zoneById(state.zoneId);
+    const i = z.objects.findIndex((_, idx) => objStat(z.id, idx + 1).status !== 'done');
+    if (i < 0) return toast('Все объекты зоны закрыты', 'ok');
+    TAKEN_BY[key(z.id, i + 1)] = ME.name;
+    go('checklist', { o: i + 1, openItem: null });
+  }
+  else if (a === 'edit-zone') { state.stTab = 'zones'; go('set:zones'); }
+  else if (a === 'select-all') {
+    allDefects().forEach(d => { if (!state.onlyNew || !d.rec.dispatched) state.selection.add(selKey(d.sid, d.zid, d.oid, d.item.id)); });
+    render(); toast('Выбраны все недостатки', 'ok');
+  }
+  else if (a === 'select-none') { state.selection.clear(); render(); }
+  else if (a === 'send-selected') sendDispatch(false);
+  else if (a === 'export-log') toast('CSV журнала выгружен (прототип)', 'ok');
+}
+
+function sendDispatch(all) {
+  const plan = dispatchPlan(all);
+  if (!plan.length) return toast(all ? 'Нет недостатков к отправке' : 'Выберите недостатки и канал доставки', 'warn');
+  const rows = [];
+  plan.forEach(e => {
+    const ch = state.dspChannel[e.sid] || { chat: e.service.notify_chat, email: e.service.notify_email };
+    if (ch.chat) e.service.chats.forEach(t => rows.push({ e, kind: 'telegram', target: `${t.title} (${t.id})` }));
+    if (ch.email && e.service.email) rows.push({ e, kind: 'email', target: e.service.email });
+  });
+  if (!rows.length) return toast('У выбранных служб не настроены получатели: включите канал, чат или ящик', 'warn');
+  const cnt = plan.reduce((a, e) => a + e.items.length, 0);
+  const unCnt = plan.reduce((a, e) => a + e.un.length, 0);
+  openModal({
+    title: all ? 'Отправить все недостатки?' : `Отправить выбранное (${cnt + unCnt})`,
+    subtitle: `недостатков: ${cnt}${unCnt ? ` · не проверено: ${unCnt}` : ''} · отправок: ${rows.length}`,
+    wide: true,
+    body: `<p class="hint" style="margin-top:0">По одной записи на каждый канал и получателя. Отправленные
+      пункты помечаются, всё попадает в журнал. Отправка только вручную — автоматически ничего не уходит.</p>
+      ${rows.map(r => `<div class="result-row">
+        <span class="badge ${r.kind === 'telegram' ? 'info' : 'muted'}">${r.kind === 'telegram' ? 'чат' : 'письмо'}</span>
+        <b>${esc(r.e.service.name)}</b> → ${esc(r.target)}
+        <span class="hint" style="margin:0">недостатков: ${r.e.items.length}${r.e.un.length ? ` · не проверено: ${r.e.un.length}` : ''}
+        · медиа: ${r.e.items.reduce((x, d) => x + d.rec.media.length, 0)}</span></div>`).join('')}
+      <div class="opt-group-title">Предпросмотр сообщения · ${esc(plan[0].service.name)}</div>
+      <div class="preview">${esc(messageFor(plan[0], plan[0].un))}</div>
+      <div class="opt-group-title">Комментарий к отправке (необязательно)</div>
+      <textarea id="dsp-note" rows="2" placeholder="Например: прошу отписаться в чат после устранения"></textarea>`,
+    footer: `<button class="btn btn-ghost" data-c>Отмена</button>
+      <button class="btn btn-primary" data-ok>Отправить (${rows.length})</button>`,
+    onMount(mm) {
+      $('[data-c]', mm).onclick = closeModal;
+      $('[data-ok]', mm).onclick = () => {
+        const note = $('#dsp-note', mm).value.trim();
+        $('[data-ok]', mm).disabled = true; $('[data-ok]', mm).textContent = 'Отправляем…';
+        setTimeout(() => {
+          let sent = 0, failed = 0;
+          rows.forEach((r, i) => {
+            const fail = r.kind === 'email' && SETTINGS.smtp_pass === 'broken';
+            fail ? failed++ : sent++;
+            DISPATCHES.push({ id: DISPATCHES.length + 1, ts: '02:5' + (i % 10), actor: ME.name,
+              service: r.e.service.name, channel: r.kind, target: r.target,
+              items: r.e.items.length, un: r.e.un.length,
+              status: fail ? 'failed' : 'sent', error: fail ? 'SMTP: authentication failed' : '',
+              external: fail ? '' : (r.kind === 'telegram' ? 'msg ' + (4500 + i) : 'Message-ID …' + i), note });
+            if (!fail) r.e.items.forEach(d => { d.rec.dispatched = { ts: '02:5' + (i % 10), id: DISPATCHES.length }; });
+          });
+          state.selection.clear(); state.usel.clear();
+          closeModal();
+          toast(`Отправок: ${sent}${failed ? `, сбоев: ${failed}` : ''} · отправил ${ME.name}`, failed ? 'warn' : 'ok');
+          go('journal');
+        }, 700);
+      };
+    } });
+}
+
+/* ══════════════════════════════════════════════════════════════════════ */
+seed();
+applyRole();
+$('#role-switch').onchange = e => {
+  ME = USERS[e.target.value];
+  applyRole(); render();
+  toast(`Роль: ${ME.role}. ` + (ME.canSettings
+    ? 'Справочники и отправка недостатков доступны'
+    : 'Справочники скрыты (нет settings.edit), обход и отправка недостатков доступны'), 'warn');
+};
+render();
+setInterval(() => {
+  const el = $('#tb-left'); if (!el) return;
+  const t = new Date(Date.now() + 6 * 3600e3 + 12 * 60e3);
+  el.textContent = `${t.getUTCHours()} ч ${t.getUTCMinutes()} мин`;
+}, 30000);
+</script>
+</body>
+</html>

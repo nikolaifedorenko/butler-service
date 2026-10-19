@@ -14,6 +14,7 @@
     "smoke:norms": "./tools/run_norms_scenario.sh",
     "smoke:layers": "./tools/run_layers_scenario.sh",
     "smoke:nightcars": "./tools/run_night_cars_scenario.sh",
+    "smoke:nightzones": "./tools/run_night_zones_scenario.sh",
     "snapshot": "./tools/run_snapshot.sh"
   },
   "devDependencies": {
