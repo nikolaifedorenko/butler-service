@@ -16,7 +16,7 @@ const vc = new VirtualConsole();
 vc.on('jsdomError', e => errors.push('[jsdomError] ' + String(e.stack || e.message).split('\n')[0]));
 vc.on('error', (...a) => errors.push('[console.error] ' + a.map(String).join(' ')));
 
-const html = fs.readFileSync(path.join(HERE, 'prototype.html'), 'utf8');
+const html = fs.readFileSync(path.join(HERE, 'night-report-v2.html'), 'utf8');
 const dom = new JSDOM(html, { url: 'http://localhost/', runScripts: 'dangerously',
   pretendToBeVisual: true, virtualConsole: vc });
 const { window } = dom;
@@ -141,7 +141,8 @@ check('фильтр «только не отправленные» снимае�
 
 console.log('\n5 · Журнал');
 navTo('journal');
-check('таблица журнала', $$('table.tbl th').length === 8, String($$('table.tbl th').length));
+check('таблица журнала', $$('table.tbl th').length === 9, String($$('table.tbl th').length));
+check('в журнале виден раздел', /Ночной отчёт/.test(txt('#main')));
 check('есть сбой и кнопка «Повторить»', /сбой/.test(txt('#main')) && !!$('[data-resend]'));
 click($('[data-resend]'));
 check('повтор меняет статус', /отправлено/.test(txt('#main')));
@@ -210,7 +211,7 @@ click($('[data-svc-test]'));
 check('тест доставки показывает каналы', /Telegram →|Письмо →/.test(txt('.modal-body')), txt('.modal-body').slice(0, 100));
 click($('[data-c]'));
 
-navTo('set:integrations');
+navTo('notify');
 check('токен не светится в поле', $('#tg-token').type === 'password' && $('#tg-token').value === ''
   && /••••/.test($('#tg-token').placeholder), $('#tg-token').placeholder);
 click($('#tg-show'));
@@ -229,6 +230,10 @@ click($('#sm-test'));
 check('тест письма', /Тестовое письмо отправлено/.test(txt('.modal-head')));
 click($('[data-ok]'));
 check('SMTP-поля', !!$('#sm-host') && !!$('#sm-ssl') && !!$('#sm-from'));
+check('это общие настройки приложения', /Настройки приложения/.test(txt('.crumb'))
+  && /Уведомления: Telegram и почта/.test(txt('#main h2')), txt('#main h2'));
+check('видно, какие разделы используют доставку', /Кто использует доставку/.test(txt('#main'))
+  && /Электрокары/.test(txt('#main')) && /График и Табель/.test(txt('#main')));
 check('почта — через MS Exchange', /MS Exchange/.test(txt('#main')));
 const relay = $('#sm-relay');
 check('есть режим внутреннего релея', !!relay && !relay.checked);
@@ -236,7 +241,15 @@ relay.checked = true; relay.dispatchEvent(new window.Event('change', { bubbles: 
 check('релей скрывает логин и пароль', $('#sm-auth-box').classList.contains('hidden'));
 relay.checked = false; relay.dispatchEvent(new window.Event('change', { bubbles: true }));
 check('SMTP AUTH возвращает поля авторизации', !$('#sm-auth-box').classList.contains('hidden'));
-check('шаблон с плейсхолдерами', /\{items\}/.test($('#tpl').value));
+check('шаблоны — свои у каждого раздела', !!$('#tpl-domain')
+  && $$('#tpl-domain option').length === 2);
+check('шаблон ночного отчёта с плейсхолдерами', /\{items\}/.test($('#tpl').value)
+  && /\{duty\}/.test($('#tpl').value) && !/\{deadline\}/.test($('#tpl').value));
+const tplSel = $('#tpl-domain');
+tplSel.value = 'cars'; tplSel.dispatchEvent(new window.Event('change', { bubbles: true }));
+check('переключение на шаблон другого раздела', /замечания при возврате/i.test($('#tpl').value)
+  || /Электрокары/.test($('#tpl').value), $('#tpl').value.slice(0, 60));
+tplSel.value = 'night'; tplSel.dispatchEvent(new window.Event('change', { bubbles: true }));
 click($('#tpl-preview'));
 check('предпросмотр шаблона', /Ночной отчёт|Недостатков нет/.test(txt('.modal-body')));
 click($('[data-ok]'));
@@ -245,15 +258,19 @@ console.log('\n7 · Роль «Батлер»: отправлять может �
 const roleSel = $('#role-switch');
 roleSel.value = 'butler'; roleSel.dispatchEvent(new window.Event('change', { bubbles: true }));
 check('имя и роль в топбаре сменились', txt('#u-name') === 'Иванов И.И.' && txt('#u-role') === 'Батлер');
-check('справочники скрыты у батлера', $$('[data-nav^="set:"]').length === 0
-  || $$('[data-nav]').filter(b => b.dataset.nav.startsWith('set:')).length === 0);
+check('справочники скрыты у батлера',
+  $$('[data-nav]').filter(b => b.dataset.nav.startsWith('set:')).length === 0);
+check('общие настройки уведомлений скрыты у батлера', ! $('[data-nav="notify"]'));
+check('журнал отправок батлеру виден', !!$('[data-nav="journal"]'));
 check('обход доступен батлеру', !!$('[data-nav="zones"]'));
 navTo('defects');
 check('отправка недостатков доступна батлеру', !!$('[data-act="send-selected"]'));
 navTo('zones');
 roleSel.value = 'supervisor'; roleSel.dispatchEvent(new window.Event('change', { bubbles: true }));
 check('возврат к роли супервайзера', txt('#u-role') === 'Супервайзер'
-  && $$('[data-nav]').filter(b => b.dataset.nav.startsWith('set:')).length >= 4);
+  && $$('[data-nav]').filter(b => b.dataset.nav.startsWith('set:')).length >= 3);
+check('общие настройки видны менеджменту', !!$('[data-nav="notify"]'));
+check('журнал виден и батлеру, и супервайзеру', !!$('[data-nav="journal"]'));
 
 console.log('\n8 · Шаг «Проверка электрокаров» — отдельно от зон');
 check('панель шага на экране зон', /Шаг «Проверка электрокаров»/.test(txt('#main')));
@@ -292,6 +309,7 @@ check('решения зафиксированы', /Чек-лист — общи
   && /Отправка только вручную/.test(txt('#main')) && /Электрокары — отдельным шагом/.test(txt('#main')));
 check('решения по Exchange, видео и чатам', /MS Exchange/.test(txt('#main'))
   && /Размер видео — 50 МБ/.test(txt('#main')) && /не объединяем и не дедуплицируем|каждая служба отправляет/.test(txt('#main')));
+check('решение: доставка — в общих настройках', /Telegram и почта — в общих настройках приложения/.test(txt('#main')));
 check('открытых вопросов не осталось', /Открытых вопросов нет/.test(txt('#main')));
 check('нет мусора в DOM', !/undefined|\[object Object\]/.test($('#main').innerHTML));
 

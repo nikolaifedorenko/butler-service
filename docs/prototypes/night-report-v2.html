@@ -361,7 +361,12 @@ const SETTINGS = {
   ],
   smtp_host: 'smtp.mriyaresort.ru', smtp_port: '465', smtp_ssl: 'ssl', smtp_user: 'night-bot@mriyaresort.ru',
   smtp_pass: '••••••••', smtp_from: 'Батлер Сервис <night-bot@mriyaresort.ru>', smtp_relay: false,
-  template: 'Ночной отчёт · смена {date} · {shift}\n{service}: прошу исправить:\n{items}\n\nНочные батлеры смены: {duty}\nОтметил: {author}, {time}. Фото/видео — во вложении.',
+  /* шаблон сообщения — свой у каждого раздела приложения (общий транспорт, разные тексты) */
+  templates: {
+    night: 'Ночной отчёт · смена {date} · {shift}\n{service}: прошу исправить:\n{items}\n\nНочные батлеры смены: {duty}\nОтметил: {author}, {time}. Фото/видео — во вложении.',
+    cars: 'Электрокары · {date}\nЗамечания при возврате кара №{car} ({service}):\n{items}\n\nОтметил: {author}, {time}. Фото — во вложении.',
+  },
+  template: '',
   retention_days: '30', photo_max_mb: '12', video_max_mb: '50',
 };
 
@@ -513,27 +518,31 @@ function mediaThumb(m, onDel) {
    ══════════════════════════════════════════════════════════════════════ */
 const state = { view: 'zones', zoneId: null, z: null, o: null, q: '', filter: 'all',
   stTab: 'zones', dspChannel: {}, selection: new Set(), usel: new Set(), onlyNew: true,
-  openItem: null, ovZone: 1, ovObj: 1 };
+  openItem: null, ovZone: 1, ovObj: 1, tplDomain: 'night' };
 
 const NAV = [
   { group: 'Ночной отчёт' },
   { id: 'zones', t: 'Зоны обхода', icon: '▦' },
   { id: 'defects', t: 'Недостатки смены', icon: '⚑', count: () => allDefects().filter(d => !d.rec.dispatched).length },
+  { group: 'Настройки приложения' },
+  { id: 'notify', t: 'Уведомления (Telegram · почта)', icon: '✉' },
   { id: 'journal', t: 'Журнал отправок', icon: '⇶', count: () => DISPATCHES.length, kind: 'info' },
-  { group: 'Настройки' },
+  { group: 'Настройки ночного обхода' },
   { id: 'set:zones', t: 'Зоны и объекты', icon: '⌂' },
   { id: 'set:items', t: 'Пункты чек-листа', icon: '☰' },
   { id: 'set:services', t: 'Ответственные службы', icon: '⚖' },
-  { id: 'set:integrations', t: 'Интеграции и шаблоны', icon: '⚙' },
   { group: '' },
   { id: 'about', t: 'О прототипе', icon: '?' },
 ];
 
 function renderNav() {
   const canSet = ME.canSettings;
+  /* общие настройки доставки и справочники обхода — только менеджмент (settings.edit);
+     журнал отправок виден всем, кто может отправлять (решение владельца: шлёт любой) */
+  const mgrOnly = id => id.startsWith('set:') || id === 'notify';
   const rows = NAV.filter(n => n.group === undefined
-    ? !(n.id.startsWith('set:') && !canSet)
-    : (n.group !== 'Настройки' || canSet));
+    ? !(mgrOnly(n.id) && !canSet)
+    : !(n.group.startsWith('Настройки') && !canSet));
   $('#sidenav').innerHTML = rows.map(n => {
     if (n.group !== undefined) return n.group ? `<div class="nav-group">${esc(n.group)}</div>` : '<div class="nav-group">Прочее</div>';
     const c = n.count ? n.count() : 0;
@@ -560,7 +569,7 @@ function render() {
   const v = state.view;
   const html = v === 'zones' ? viewZones() : v === 'objects' ? viewObjects() : v === 'checklist' ? viewChecklist()
     : v === 'defects' ? viewDefects() : v === 'journal' ? viewJournal()
-    : v === 'settings' ? viewSettings() : viewAbout();
+    : v === 'notify' ? viewNotify() : v === 'settings' ? viewSettings() : viewAbout();
   $('#main').innerHTML = html;
   bind();
   $('#main').scrollTop = 0;
@@ -781,7 +790,7 @@ function messageFor(g, un) {
   const unLines = (un || []).map((d, n) => `${n + 1}. ${d.object} — ${d.item.text}`).join('\n');
   const items = [lines, unLines ? `Не проверено (не отмечено батлером):\n${unLines}` : '']
     .filter(Boolean).join('\n\n');
-  return SETTINGS.template
+  return (SETTINGS.templates.night || '')
     .replace('{date}', '19.10.2026').replace('{shift}', '20:00–08:00')
     .replace('{service}', g.service.name)
     .replace('{items}', items || '—')
@@ -907,15 +916,17 @@ function viewJournal() {
   return `
   <div class="crumb"><a data-nav="zones">Ночной отчёт</a><span class="sep">/</span><b>Журнал отправок</b></div>
   <div class="page-head"><div><h2>Журнал отправок</h2>
-    <div class="sub">История не редактируется: видно, кто, кому и что отправил, и чем это закончилось.</div></div>
+    <div class="sub">Общий для всего приложения: видно, какой раздел, кто, кому и что отправил,
+    и чем это закончилось. История не редактируется.</div></div>
     <div class="spacer"></div>
     <button class="btn btn-sm btn-ghost" data-act="export-log">Выгрузить CSV</button></div>
   <div class="panel" style="padding:6px 14px">
     <table class="tbl"><thead><tr>
-      <th>Время</th><th>Кто</th><th>Служба</th><th>Канал</th><th>Получатель</th>
-      <th>Недостатков</th><th>Статус</th><th></th></tr></thead>
+      <th>Время</th><th>Раздел</th><th>Кто</th><th>Получатель</th><th>Канал</th><th>Кому</th>
+      <th>Позиций</th><th>Статус</th><th></th></tr></thead>
       <tbody>${DISPATCHES.slice().reverse().map(d => `<tr>
-        <td>${esc(d.ts)}</td><td>${esc(d.actor)}</td><td>${esc(d.service)}</td>
+        <td>${esc(d.ts)}</td><td><span class="badge muted">${esc(d.domain || 'Ночной отчёт')}</span></td>
+        <td>${esc(d.actor)}</td><td>${esc(d.service)}</td>
         <td><span class="badge ${d.channel === 'telegram' ? 'info' : 'muted'}">${d.channel === 'telegram' ? 'чат Telegram' : 'e-mail'}</span></td>
         <td>${esc(d.target)}</td>
         <td>${d.items}${d.un ? ` <span class="badge muted" title="неотмеченные пункты">+${d.un} не проверено</span>` : ''}</td>
@@ -924,7 +935,7 @@ function viewJournal() {
         <td><div class="row-actions">
           ${d.status === 'failed' ? `<button class="btn btn-sm" data-resend="${d.id}">Повторить</button>` : ''}
           <button class="btn btn-sm btn-ghost" data-show-msg="${d.id}">Текст</button></div></td>
-      </tr>`).join('') || '<tr><td colspan="8"><div class="empty">Отправок пока не было</div></td></tr>'}</tbody></table>
+      </tr>`).join('') || '<tr><td colspan="9"><div class="empty">Отправок пока не было</div></td></tr>'}</tbody></table>
   </div>`;
 }
 
@@ -932,13 +943,14 @@ function viewJournal() {
    ЭКРАН 6 · НАСТРОЙКИ
    ══════════════════════════════════════════════════════════════════════ */
 const ST_TABS = [['zones', 'Зоны и объекты'], ['items', 'Пункты чек-листа'],
-                 ['services', 'Ответственные службы'], ['integrations', 'Интеграции и шаблоны']];
+                 ['services', 'Ответственные службы']];
 function viewSettings() {
   const body = state.stTab === 'zones' ? stZones() : state.stTab === 'items' ? stItems()
-    : state.stTab === 'services' ? stServices() : stIntegrations();
+    : stServices();
   return `
   <div class="page-head"><div><h2>Настройки ночного обхода</h2>
-    <div class="sub">Зоны, объекты, шаблоны пунктов, ответственные службы и каналы доставки.</div></div></div>
+    <div class="sub">Зоны, объекты, шаблоны пунктов и ответственные службы. Токены, каналы доставки,
+    каталог чатов и шаблоны сообщений — в общих настройках приложения: «Уведомления».</div></div></div>
   <div class="tabs">${ST_TABS.map(([k, t]) =>
     `<button class="tab ${state.stTab === k ? 'active' : ''}" data-st="${k}">${t}</button>`).join('')}</div>
   ${body}`;
@@ -1090,11 +1102,46 @@ function stServices() {
     <p class="hint" style="margin-top:0">Служба получает только те недостатки, пункты которых закреплены за ней.
     Каналы — чекбоксы «Чат (Telegram)» и «Письмо (e-mail)»: можно оба, можно один. Чатов у службы может быть
     несколько (например, «Техслужба» и «Дежурные инженеры»). Перед отправкой супервайзер видит предпросмотр
-    и может снять галочки с отдельных недостатков.</p></div>`;
+    и может снять галочки с отдельных недостатков.</p>
+    <p class="hint">Токен бота, список найденных чатов, SMTP/Exchange, шаблоны и лимиты медиа настраиваются
+    в <b>общих настройках приложения</b> — «Уведомления (Telegram · почта)»: транспорт один на всё приложение,
+    здесь только привязка получателей к службе.</p></div>`;
 }
-function stIntegrations() {
+/* ОБЩИЙ экран настроек доставки: Telegram, почта (MS Exchange), шаблоны и лимиты медиа.
+   Намеренно не внутри «Ночного отчёта»: транспорт один на приложение, а разделы
+   подключаются к нему со своими шаблонами и правилами выбора получателей. */
+const NOTIFY_CONSUMERS = [
+  { area: 'Ночной отчёт', what: 'недостатки смены по ответственным службам', to: 'службы: чат и/или письмо', on: true },
+  { area: 'Электрокары', what: 'замечания при возврате кара, «кар не найден»', to: 'служба парка, супервайзер', on: false },
+  { area: 'График и Табель', what: 'заявления сотрудников, закрытие периода', to: 'руководитель, HR', on: false },
+  { area: 'Отметки', what: 'опоздания и пропущенные отметки за смену', to: 'руководитель смены', on: false },
+];
+
+function viewNotify() {
   const masked = SETTINGS.telegram_token ? '••••••••' + SETTINGS.telegram_token.slice(-4) : 'не задан';
+  const dom = state.tplDomain || 'night';
+  const DOMAINS = [['night', 'Ночной отчёт — недостатки смены'], ['cars', 'Электрокары — замечания при возврате']];
   return `
+  <div class="crumb"><b>Настройки приложения</b><span class="sep">/</span><b>Уведомления</b></div>
+  <div class="page-head">
+    <div><h2>Уведомления: Telegram и почта</h2>
+      <div class="sub">Общие настройки доставки для всего приложения: учётные данные, каналы,
+      каталог чатов, шаблоны сообщений и лимиты медиа. Разделы подключаются к ним со своими
+      правилами выбора получателей.</div></div>
+    <div class="spacer"></div>
+    <span class="badge gold">право settings.edit</span>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Кто использует доставку</h3>
+    <table class="tbl"><thead><tr><th>Раздел</th><th>Что отправляет</th><th>Получатели</th><th>Статус</th></tr></thead>
+      <tbody>${NOTIFY_CONSUMERS.map(c => `<tr><td><b>${esc(c.area)}</b></td><td>${esc(c.what)}</td>
+        <td>${esc(c.to)}</td>
+        <td>${c.on ? '<span class="badge ok">работает</span>' : '<span class="badge muted">запланировано</span>'}</td></tr>`).join('')}
+      </tbody></table>
+    <p class="hint">Транспорт и учётные данные — общие (один бот, один почтовый ящик), поэтому настройки
+    вынесены сюда: новый раздел подключается к доставке, не заводя своих токенов. Журнал отправок
+    тоже общий — в нём видно раздел, получателя и статус.</p>
+  </div>
   <div class="grid-2">
     <div class="panel">
       <h3 class="panel-title">Telegram · Bot API</h3>
@@ -1151,13 +1198,24 @@ function stIntegrations() {
     </div>
   </div>
   <div class="panel">
-    <h3 class="panel-title">Шаблон сообщения</h3>
+    <h3 class="panel-title">Шаблоны сообщений — по разделам</h3>
+    <label class="field"><span>Раздел</span><select id="tpl-domain">
+      ${DOMAINS.map(([k, t]) => `<option value="${k}" ${k === dom ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+    </select></label>
     <label class="field"><span>Текст (общий для чата и письма)</span>
-      <textarea id="tpl" rows="7">${esc(SETTINGS.template)}</textarea></label>
+      <textarea id="tpl" rows="7">${esc(SETTINGS.templates[dom] || '')}</textarea></label>
     <p class="hint">Плейсхолдеры: <code>{date}</code> <code>{shift}</code> <code>{service}</code>
-      <code>{items}</code> <code>{author}</code> <code>{time}</code> <code>{deadline}</code></p>
+      <code>{items}</code> <code>{duty}</code> <code>{author}</code> <code>{time}</code>
+      <span class="muted">(у раздела «Электрокары» — также <code>{car}</code>)</span></p>
     <div class="row-actions"><button class="btn btn-sm btn-primary" id="tpl-save">Сохранить шаблон</button>
       <button class="btn btn-sm" id="tpl-preview">Предпросмотр</button></div>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Журнал и повторная отправка</h3>
+    <div class="row-actions">
+      <button class="btn btn-sm" data-nav="journal">Открыть журнал отправок</button>
+      <span class="hint" style="margin:0">общий для всех разделов: раздел, получатель, канал, статус,
+      ошибка доставки и кнопка «Повторить»</span></div>
   </div>
   <div class="panel">
     <h3 class="panel-title">Медиа и хранение</h3>
@@ -1193,13 +1251,20 @@ function viewAbout() {
       «Определить чаты» и «Тестовое письмо» — заглушки ответов. Видео/фото можно приложить с устройства
       (покажется миниатюра) или кнопкой «демо-фото/демо-видео».</p></div>
     <div class="panel"><h3 class="panel-title">Как ляжет на код</h3>
-      <p class="hint" style="margin-top:0">Новые таблицы: <code>night_zones</code>, <code>responsibility_services</code>,
-      <code>night_dispatches</code>. Расширения: <code>night_areas.zone_id</code>,
-      <code>checklist_items.zone_id/service_id</code>, <code>night_check_items.service_id/dispatch_id</code>,
-      <code>photos.media_type</code>. Миграция — из текущих «категорий» областей в зоны, пункты объектов
-      сворачиваются в шаблон зоны. Токены — в <code>settings</code> (маскируются), право <code>settings.edit</code>;
-      отправка — новое право <code>night.dispatch</code>. Транспорт: Telegram Bot API (httpx или stdlib) и
-      SMTP (stdlib). Подробнее — <code>PROPOSAL.md</code>.</p></div>
+      <p class="hint" style="margin-top:0"><b>Этап 1 уже в коде</b> (ветка <code>feat/night-zones-v2</code>,
+      PR #44): <code>night_zones</code>, <code>zone_checklist_items</code> (шаблон зоны),
+      <code>checklist_overrides</code> (индивидуальные правки объекта), <code>night_areas.zone_id</code>,
+      снимок зоны и чек-листа в отчёте.</p>
+      <p class="hint"><b>Дальше:</b> <code>responsibility_services</code> (службы и каналы),
+      <code>notify_dispatches</code> — ОБЩИЙ журнал отправок с колонкой «раздел»,
+      <code>photos.media_type</code> (видео). Общий слой доставки — пакет <code>app/notify/</code>
+      (транспорт Telegram Bot API и SMTP/Exchange + шаблоны), учётные данные в <code>settings</code>
+      (маскируются, право <code>settings.edit</code>), экран — <b>Настройки → Уведомления</b>
+      (<code>#/settings/notify</code>), а не внутри ночного отчёта: транспорт один на приложение,
+      разделы подключаются со своими шаблонами и правилами выбора получателей. Новое право
+      <code>night.dispatch</code> не вводим: отправляет любой (решение владельца).</p>
+      <p class="hint">Подробнее — <code>docs/PROPOSAL-NIGHT-REPORT-V2.md</code> и
+      <code>docs/CHANGES-2026-10-19-night-report-v2.md</code>.</p></div>
     <div class="panel"><h3 class="panel-title">Решения владельца (19.10.2026)</h3>
       <ol style="margin:0;padding-left:20px;color:var(--muted);font-size:13px;line-height:1.65">
         <li><b>Чек-лист — общий на зону</b>, но с правками под объект: своя формулировка, своя служба,
@@ -1222,6 +1287,10 @@ function viewAbout() {
         <li><b>Размер видео — 50 МБ</b> (лимит Telegram Bot API), как в настройках.</li>
         <li><b>Общих чатов у служб не предполагаем</b>; если так вышло — каждая служба отправляет
           своё сообщение всем своим получателям (не объединяем и не дедуплицируем).</li>
+        <li><b>Telegram и почта — в общих настройках приложения</b> («Уведомления», <code>#/settings/notify</code>),
+          а не внутри ночного отчёта: доставка понадобится и другим разделам (электрокары, заявления,
+          закрытие периода, отметки). Общие — токены, каталог чатов, SMTP/Exchange, лимиты медиа и журнал
+          отправок; у каждого раздела — свой шаблон и свои получатели.</li>
       </ol>
       <p class="hint">Открытых вопросов нет — можно брать в реализацию (этапы ниже).</p></div>
   </div>
@@ -1627,14 +1696,28 @@ function bind() {
     if (pass) SETTINGS.smtp_pass = '••••••••';        // пароль не храним в открытом виде в макете
     toast('Настройки SMTP сохранены', 'ok'); render();
   };
+  const tplDomain = $('#tpl-domain', m);
+  if (tplDomain) tplDomain.onchange = () => {
+    SETTINGS.templates[state.tplDomain || 'night'] = $('#tpl', m).value;
+    state.tplDomain = tplDomain.value; render();
+  };
   const tplSave = $('#tpl-save', m); if (tplSave) tplSave.onclick = () => {
-    SETTINGS.template = $('#tpl', m).value; toast('Шаблон сохранён', 'ok'); render();
+    SETTINGS.templates[state.tplDomain || 'night'] = $('#tpl', m).value;
+    toast(`Шаблон сохранён (${state.tplDomain === 'cars' ? 'Электрокары' : 'Ночной отчёт'})`, 'ok'); render();
   };
   const tplPrev = $('#tpl-preview', m); if (tplPrev) tplPrev.onclick = () => {
-    SETTINGS.template = $('#tpl', m).value;
+    SETTINGS.templates[state.tplDomain || 'night'] = $('#tpl', m).value;
+    const isCars = (state.tplDomain || 'night') === 'cars';
     const g = defectGroups()[0];
-    openModal({ title: 'Предпросмотр сообщения', subtitle: g ? g.service.name : 'нет недостатков', wide: true,
-      body: `<div class="preview">${esc(g ? messageFor(g) : 'Недостатков нет — сообщение пустое.')}</div>`,
+    const sample = (SETTINGS.templates.cars || '')
+      .replace('{date}', '19.10.2026').replace('{car}', '7')
+      .replace('{service}', 'Техническая служба')
+      .replace('{items}', '1. спущено левое колесо; 2. не заряжен (разъём не подключён)')
+      .replace('{author}', ME.name).replace('{time}', '02:48');
+    openModal({ title: 'Предпросмотр сообщения',
+      subtitle: isCars ? 'Электрокары · замечания при возврате' : (g ? g.service.name : 'нет недостатков'),
+      wide: true,
+      body: `<div class="preview">${esc(isCars ? sample : (g ? messageFor(g) : 'Недостатков нет — сообщение пустое.'))}</div>`,
       footer: `<button class="btn btn-ghost" data-ok>Закрыть</button>`,
       onMount(mm) { $('[data-ok]', mm).onclick = closeModal; } });
   };
@@ -1840,7 +1923,7 @@ function sendDispatch(all) {
             const fail = r.kind === 'email' && SETTINGS.smtp_pass === 'broken';
             fail ? failed++ : sent++;
             DISPATCHES.push({ id: DISPATCHES.length + 1, ts: '02:5' + (i % 10), actor: ME.name,
-              service: r.e.service.name, channel: r.kind, target: r.target,
+              domain: 'Ночной отчёт', service: r.e.service.name, channel: r.kind, target: r.target,
               items: r.e.items.length, un: r.e.un.length,
               status: fail ? 'failed' : 'sent', error: fail ? 'SMTP: authentication failed' : '',
               external: fail ? '' : (r.kind === 'telegram' ? 'msg ' + (4500 + i) : 'Message-ID …' + i), note });
