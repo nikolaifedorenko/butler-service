@@ -1454,6 +1454,9 @@ async function nightDefectsModal() {
         ${groups.filter(g => nightState.defectsShowSent || g.counts.sendable > 0)
           .map(g => defectGroup(g, sel)).join('')}
         <div class="opt-group-title">Журнал отправок смены</div>
+        <div class="row-actions" style="margin-bottom:6px">
+          <button class="btn btn-sm btn-ghost" id="df-csv">Выгрузить журнал (CSV)</button>
+          <span class="hint" style="margin:0">журнал общий для всех разделов приложения</span></div>
         ${defectJournal(d.dispatches || [])}`,
       footer: `<button class="btn btn-ghost" data-cancel>Закрыть</button>`,
       onMount(m) {
@@ -1524,6 +1527,9 @@ async function nightDefectsModal() {
             footer: '<button class="btn btn-ghost" data-cancel>Закрыть</button>',
             onMount(mm) { mm.querySelector('[data-cancel]').onclick = () => { closeModal(); render(); }; } });
         });
+        const csv = $('#df-csv', m);
+        if (csv) csv.onclick = () => downloadBlob(
+          `/api/notify/dispatches/export.csv?domain=night`, `otpravki-${d.report.date}.csv`);
         $$('[data-retry]', m).forEach(b => b.onclick = async () => {
           try {
             const r = await api(`/api/notify/dispatches/${b.dataset.retry}/resend`, { method: 'POST' });

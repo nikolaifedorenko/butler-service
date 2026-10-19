@@ -2230,6 +2230,12 @@ async function settingsScreenNotify(host) {
       (экран «Расчёт» → прочие правила: photo_max_mb, video_max_mb, photo_retention_days,
       video_retention_days). Видео ограничено 50 МБ — это предел загрузки файла в Telegram Bot API.</p>
       <div class="row-actions"><button class="btn btn-sm" id="nt-rules">Открыть правила объекта</button></div>`)}
+
+    ${settingsPanel('Журнал отправок', `
+      <p class="hint" style="margin-top:0">Журнал общий для всех разделов: раздел, получатель, канал,
+      состав отправки снимком, статус, ошибка и число попыток. Неудачную доставку можно повторить
+      из раздела-владельца (например, из экрана «Недостатки смены»).</p>
+      <div class="row-actions"><button class="btn btn-sm" id="nt-csv">Выгрузить журнал (CSV)</button></div>`)}
   `;
 
   /* ── Telegram ── */
@@ -2332,4 +2338,5 @@ async function settingsScreenNotify(host) {
       }, 'Вернуть');
   });
   settingsOn('#nt-rules', host, () => settingsGo('calc'));
+  settingsOn('#nt-csv', host, () => downloadBlob('/api/notify/dispatches/export.csv', 'otpravki.csv'));
 }

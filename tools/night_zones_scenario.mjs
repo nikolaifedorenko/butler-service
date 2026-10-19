@@ -401,50 +401,57 @@ async function main() {
   console.log('\n11 · Общие настройки «Чаты и Почта»');
   window.navigate('settings');
   await waitFor(() => window.location.hash.startsWith('#/settings/'));
-  check('экран в общих настройках, не в справочнике обхода',
-    $$('#st-nav [data-st]').some(b => b.dataset.st === 'notify'));
-  window.settingsGo('notify');
-  check('экран «Чаты и Почта» открылся', await waitFor(() =>
-    window.location.hash === '#/settings/notify' && /Чаты и Почта/.test(text('#st-body'))),
-    window.location.hash);
-  check('это общие настройки доставки', /Общие настройки доставки/i.test(text('#st-body')));
-  check('видно, какие разделы используют доставку', /Кто использует доставку/.test(text('#st-body'))
-    && /Электрокары/.test(text('#st-body')) && /График и Табель/.test(text('#st-body')));
-  check('панель Telegram: токен паролем', !!$('#nt-token') && $('#nt-token').type === 'password');
-  check('панель почты (MS Exchange)', !!$('#ne-host') && !!$('#ne-sec')
-    && /Exchange/.test(text('#st-body')));
-  check('каталог чатов обновляется кнопкой', !!$('#nt-chats'));
-  check('шаблоны — свои у каждого раздела', $$('#np-domain option').length === 2
-    && /\{items\}/.test($('#np-text').value));
-  check('лимиты медиа ведут в правила объекта', !!$('#nt-rules') && /50 МБ/.test(text('#st-body')));
+  const hasNotifyScreen = $$('#st-nav [data-st]').some(b => b.dataset.st === 'notify');
+  if (!hasNotifyScreen) {
+    /* сценарий можно запускать под любой ролью: без settings.edit (супервайзер, батлер)
+       экран общих настроек доставки не показывается — это и проверяем */
+    check('без права settings.edit экран «Чаты и Почта» скрыт', true, LOGIN);
+  } else {
+    check('экран в общих настройках, не в справочнике обхода',
+      $$('#st-nav [data-st]').some(b => b.dataset.st === 'notify'));
+    window.settingsGo('notify');
+    check('экран «Чаты и Почта» открылся', await waitFor(() =>
+      window.location.hash === '#/settings/notify' && /Чаты и Почта/.test(text('#st-body'))),
+      window.location.hash);
+    check('это общие настройки доставки', /Общие настройки доставки/i.test(text('#st-body')));
+    check('видно, какие разделы используют доставку', /Кто использует доставку/.test(text('#st-body'))
+      && /Электрокары/.test(text('#st-body')) && /График и Табель/.test(text('#st-body')));
+    check('панель Telegram: токен паролем', !!$('#nt-token') && $('#nt-token').type === 'password');
+    check('панель почты (MS Exchange)', !!$('#ne-host') && !!$('#ne-sec')
+      && /Exchange/.test(text('#st-body')));
+    check('каталог чатов обновляется кнопкой', !!$('#nt-chats'));
+    check('шаблоны — свои у каждого раздела', $$('#np-domain option').length === 2
+      && /\{items\}/.test($('#np-text').value));
+    check('лимиты медиа ведут в правила объекта', !!$('#nt-rules') && /50 МБ/.test(text('#st-body')));
 
-  input($('#nt-token'), 'SCENARIO-TOKEN-9876543210');
-  click($('#nt-save'));
-  check('токен сохранён', await waitFor(() => /токен сохранён/i.test(text('#st-body'))),
-    text('#st-body').slice(0, 120));
-  /* токен нигде не показывается: поле пустое, в placeholder — маска с последними 4 знаками */
-  check('в разметке токена нет — только маска',
-    !text('#st-body').includes('SCENARIO-TOKEN-9876543210')
-    && $('#nt-token').value === ''
-    && ($('#nt-token').placeholder || '').endsWith('3210'),
-    $('#nt-token').placeholder || '—');
-  const cfg = await (await api('GET', '/api/notify/config')).json();
-  check('API тоже не отдаёт токен', JSON.stringify(cfg).indexOf('SCENARIO-TOKEN-9876543210') === -1
-    && cfg.config.telegram.token_set === true);
+    input($('#nt-token'), 'SCENARIO-TOKEN-9876543210');
+    click($('#nt-save'));
+    check('токен сохранён', await waitFor(() => /токен сохранён/i.test(text('#st-body'))),
+      text('#st-body').slice(0, 120));
+    /* токен нигде не показывается: поле пустое, в placeholder — маска с последними 4 знаками */
+    check('в разметке токена нет — только маска',
+      !text('#st-body').includes('SCENARIO-TOKEN-9876543210')
+      && $('#nt-token').value === ''
+      && ($('#nt-token').placeholder || '').endsWith('3210'),
+      $('#nt-token').placeholder || '—');
+    const cfg = await (await api('GET', '/api/notify/config')).json();
+    check('API тоже не отдаёт токен', JSON.stringify(cfg).indexOf('SCENARIO-TOKEN-9876543210') === -1
+      && cfg.config.telegram.token_set === true);
 
-  input($('#np-text'), 'Служба {service}: {items}');
-  click($('#np-save'));
-  await sleep(500);
-  const tpls = (await (await api('GET', '/api/notify/templates')).json()).templates;
-  check('шаблон раздела сохранён', tpls.find(t => t.domain === 'night').customized === true);
-  const bad = await api('PUT', '/api/notify/templates/night', { text: 'Срок: {deadline}' });
-  check('неизвестный плейсхолдер отклоняется', bad.status === 400, String(bad.status));
+    input($('#np-text'), 'Служба {service}: {items}');
+    click($('#np-save'));
+    await sleep(500);
+    const tpls = (await (await api('GET', '/api/notify/templates')).json()).templates;
+    check('шаблон раздела сохранён', tpls.find(t => t.domain === 'night').customized === true);
+    const bad = await api('PUT', '/api/notify/templates/night', { text: 'Срок: {deadline}' });
+    check('неизвестный плейсхолдер отклоняется', bad.status === 400, String(bad.status));
 
-  /* возвращаем демо-состояние: шаблон по умолчанию и пустой токен */
-  await api('PUT', '/api/notify/templates/night', { text: '' });
-  await api('PUT', '/api/notify/config', { notify_telegram_token: 'clear' });
-  const cfg2 = await (await api('GET', '/api/notify/config')).json();
-  check('токен очищается явной командой', cfg2.config.telegram.token_set === false);
+    /* возвращаем демо-состояние: шаблон по умолчанию и пустой токен */
+    await api('PUT', '/api/notify/templates/night', { text: '' });
+    await api('PUT', '/api/notify/config', { notify_telegram_token: 'clear' });
+    const cfg2 = await (await api('GET', '/api/notify/config')).json();
+    check('токен очищается явной командой', cfg2.config.telegram.token_set === false);
+  }
 
   /* ── 12. Недостатки смены: экран консолидированной отправки (этап 5) ── */
   console.log('\n12 · Недостатки смены и ручная отправка');

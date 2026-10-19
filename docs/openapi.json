@@ -8106,6 +8106,58 @@
         ]
       }
     },
+    "/api/notify/dispatches/export.csv": {
+      "get": {
+        "description": "Выгрузка общего журнала отправок в CSV (разборы, отчёт руководству).\n\nЖурнал общий для всех разделов: колонка «Раздел» показывает, откуда отправка\n(night — ночной отчёт, cars — электрокары и т. д.). Состав позиции хранится\nснимком, поэтому выгрузка закрытой смены не меняется со временем.",
+        "operationId": "export_dispatches_csv_api_notify_dispatches_export_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Domain",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 2000,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Dispatches Csv",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
     "/api/notify/dispatches/{dispatch_id}/resend": {
       "post": {
         "description": "Повторить неудачную доставку тем же текстом и составом (журнал не переписывается).",

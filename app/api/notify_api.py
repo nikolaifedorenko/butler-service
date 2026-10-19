@@ -219,6 +219,53 @@ def list_dispatches(domain: str = "", limit: int = 100,
     return {"dispatches": [dispatch_dict(d) for d in rows]}
 
 
+@router.get("/dispatches/export.csv")
+def export_dispatches_csv(domain: str = "", limit: int = 2000,
+                          principal: Principal = Depends(require_manager),
+                          db: Session = Depends(get_db)):
+    """Выгрузка общего журнала отправок в CSV (разборы, отчёт руководству).
+
+    Журнал общий для всех разделов: колонка «Раздел» показывает, откуда отправка
+    (night — ночной отчёт, cars — электрокары и т. д.). Состав позиции хранится
+    снимком, поэтому выгрузка закрытой смены не меняется со временем.
+    """
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    from ..deps import safe_sheet_cell
+    from ..notify.dispatch import dispatch_dict, journal_of
+
+    rows = journal_of(db, domain or "", None, limit=limit) if domain else []
+    if not domain:
+        from sqlalchemy import select as _select
+
+        from ..models import NotifyDispatch
+        rows = list(db.scalars(_select(NotifyDispatch)
+                               .order_by(NotifyDispatch.ts.desc(), NotifyDispatch.id.desc())
+                               .limit(max(1, min(limit, 20000)))))
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    w.writerow(["Время", "Раздел", "Кто отправил", "Получатель", "Канал", "Адрес", "Тема",
+                "Позиций", "Вложений", "Статус", "Ошибок доставки", "Попыток",
+                "Внешний id", "Состав отправки"])
+    for row in rows:
+        d = dispatch_dict(row)
+        items = "; ".join(f"{i.get('area') or '—'} · {i.get('text') or ''}"
+                          + (f" ({i.get('comment')})" if i.get("comment") else "")
+                          for i in d["items"])
+        w.writerow([d["ts"] or "", d["domain"], safe_sheet_cell(d["actor_name"]),
+                    safe_sheet_cell(d["recipient_name"]), d["channel_title"], d["target"],
+                    safe_sheet_cell(d["subject"]), d["items_count"], d["media_count"],
+                    "отправлено" if d["status"] == "sent" else "ошибка",
+                    safe_sheet_cell(d["error"]), d["attempts"], d["external_id"],
+                    safe_sheet_cell(items)])
+    data = io.BytesIO(("\ufeff" + buf.getvalue()).encode("utf-8"))
+    return StreamingResponse(data, media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": 'attachment; filename="notify-dispatches.csv"'})
+
+
 @router.post("/dispatches/{dispatch_id}/resend")
 def resend_dispatch(dispatch_id: int, principal: Principal = Depends(require_manager),
                     db: Session = Depends(get_db)):
