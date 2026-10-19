@@ -293,8 +293,10 @@ async function nightCarsModal(rep, section, after) {
           <div><div class="lbl">№${esc(c.number)}
               <span class="badge ${(typeof CAR_BADGE !== 'undefined' ? CAR_BADGE[c.status] : '') || 'muted'}">${esc(c.status_title)}</span>
               ${e.checked ? (k.found ? '<span class="badge ok">проверен</span>' : '<span class="badge danger">не найден</span>') : '<span class="badge muted">не проверен</span>'}
-              ${k?.taken_after_check ? '<span class="badge warn">взят после проверки</span>' : ''}</div>
-            <div class="desc">${esc(c.location || 'место не указано')} · заряд: ${esc(k ? (k.charge || '—') : (c.charge_title || '—'))}
+              ${k?.taken_after_check ? '<span class="badge warn">взят после проверки</span>' : ''}
+              ${k?.moved ? '<span class="badge info" title="батлер переставил кар">перепаркован</span>' : ''}
+              ${k?.photos?.length ? `<span class="badge info" title="фото отметки">📷 ${k.photos.length}</span>` : ''}</div>
+            <div class="desc">${esc(nightCarPlace(c, k))} · заряд: ${esc(k ? (k.charge || '—') : (c.charge_title || '—'))}
               ${k ? ` · ${esc(hhmm(k.checked_at || ''))} ${esc(k.checker_name || '')}` : ''}
               ${k?.comment ? ` · ${esc(k.comment)}` : ''}</div></div>
           <div style="display:flex;gap:6px;align-items:center">
@@ -307,8 +309,10 @@ async function nightCarsModal(rep, section, after) {
                ${rep.readonly ? '' : `<button class="btn btn-primary" data-finish>${st.cars_step_done ? 'Шаг завершён · отметить снова' : 'Завершить шаг'}</button>`}`,
       onMount(m) {
         m.querySelector('[data-cancel]').onclick = closeModal;
-        $$('[data-car-check]', m).forEach(b => b.onclick = () =>
-          nightCarCheckModal(rep, st.list.find(x => x.car.id === Number(b.dataset.carCheck)), render));
+        $$('[data-car-check]', m).forEach(b => b.onclick = async () => {
+          try { await nightCarCheckModal(rep, Number(b.dataset.carCheck), render); }
+          catch (err) { toast(err.message || String(err), 'err'); }
+        });
         const fin = m.querySelector('[data-finish]');
         if (fin) fin.onclick = () => carsFinish(rep, st.unchecked, async () => { closeModal(); if (after) await after(); });
       },
@@ -317,41 +321,115 @@ async function nightCarsModal(rep, section, after) {
   await render();
 }
 
-function nightCarCheckModal(rep, entry, after) {
-  const c = entry.car, k = entry.check || {};
+/* Место кара в списке обхода: при перепарковке показываем переход
+   «где нашёл → куда переставил», иначе — где кар стоит сейчас. */
+function nightCarPlace(c, k) {
+  if (!k) return c.location || 'место не указано';
+  if (k.moved && k.location) return `${k.found_location || '—'} → ${k.location}`;
+  return k.found_location || k.location || c.location || 'место не указано';
+}
+
+/* Окно отметки кара в ночном обходе приведено к виду окна возврата кара
+   («Электрокары» → «Вернул»): те же чекбоксы состояния, место — выпадающим
+   списком из справочника, заряд, комментарий и фото (камера/галерея).
+   Сверху — чекбокс «Кар найден на месте»: без него отметка уходит в замечания
+   супервайзеру, а карточка кара не меняется. Данные берём свежими (отметку
+   мог изменить второй батлер), поэтому окно само загружает состояние обхода. */
+async function nightCarCheckModal(rep, carId, after) {
+  const [st] = await Promise.all([api(`/api/night/reports/${rep.id}/cars`), ensureCarLocations()]);
+  const entry = st.list.find(x => x.car.id === carId);
+  if (!entry) return toast('Кар не найден в обходе — обновите список', 'warn');
+  const c = entry.car, k = entry.check || null;
+  /* первая отметка — значения из карточки кара, повторная — уже сохранённые в отметке */
+  const pick = (carVal, checkVal) => (k ? checkVal : carVal);
+  /* места два: где батлер нашёл кар и куда переставил (у отметок до 19.10.2026
+     было одно поле location — берём его как «где нашёл», если перепарковки не было) */
+  const foundLoc = k ? (k.found_location || (k.moved ? '' : k.location) || '') : (c.location || '');
+  const newLoc = k?.moved ? (k.location || '') : '';
+  const reopen = () => nightCarCheckModal(rep, carId, after);
+
   openModal({
     title: `Кар №${c.number} — ночной обход`,
-    subtitle: `${c.status_title} · ${c.location || 'место не указано'}`,
+    subtitle: `${c.status_title}${c.holder_name ? ' · держит ' + c.holder_name : ''} · ${c.location || 'место не указано'}`,
     wide: true,
     body: `
-      <div class="check-list" style="max-height:none">
-        <label class="chk"><input type="checkbox" id="nc-found" ${k.found === undefined ? 'checked' : (k.found ? 'checked' : '')}> Кар найден на месте</label>
-        <label class="chk"><input type="checkbox" id="nc-canopy" ${k.canopy === undefined ? (c.canopy ? 'checked' : '') : (k.canopy ? 'checked' : '')}> Тент на месте</label>
-        <label class="chk"><input type="checkbox" id="nc-oncharge" ${k.on_charge === undefined ? (c.on_charge ? 'checked' : '') : (k.on_charge ? 'checked' : '')}> Стоит на зарядке</label>
-        <label class="chk"><input type="checkbox" id="nc-trash" ${k.trash ? 'checked' : ''}> В салоне мусор</label>
-        <label class="chk"><input type="checkbox" id="nc-clean" ${k.clean === undefined ? (c.clean ? 'checked' : '') : (k.clean ? 'checked' : '')}> Салон убран</label>
-        <label class="chk"><input type="radio" name="nc-cond" value="ok" ${(k.condition || c.condition || 'ok') !== 'bad' ? 'checked' : ''}> Технически исправен</label>
-        <label class="chk"><input type="radio" name="nc-cond" value="bad" ${(k.condition || c.condition) === 'bad' ? 'checked' : ''}> Есть замечания (уйдёт «на обслуживании»)</label>
+      <div class="check-list" style="max-height:none;margin-bottom:10px">
+        <label class="chk"><input type="checkbox" id="nc-found" ${!k || k.found ? 'checked' : ''}> Кар найден на месте</label>
       </div>
-      <div class="grid-2" style="margin-top:12px">
-        <label class="field"><span>Где стоит</span><input type="text" id="nc-location" maxlength="160" value="${esc(k.location || c.location || '')}"></label>
-        <label class="field"><span>Заряд</span><select id="nc-charge">
-          <option value="">— не отмечать —</option>
-          ${CHARGE_OPTS.map(([v, t]) => `<option value="${v}" ${(k.charge || c.charge) === v ? 'selected' : ''}>${t}</option>`).join('')}
-        </select></label>
+      <p class="hint hidden" id="nc-notfound" style="margin:0 0 10px;color:var(--danger)">Кар не найден — отметка
+      уйдёт в замечания супервайзеру, карточка кара не изменится. Напишите в комментарии, где кар (если известно).</p>
+      <div class="grid-2">
+        <label class="field"><span id="nc-found-loc-label">Где нашёл</span>
+          <select id="nc-found-location"><option value="">— не указывать —</option>${locationOptions(foundLoc)}</select></label>
+        <label class="field"><span>Заряд</span>
+          <select id="nc-charge"><option value="">— не отмечать —</option>${CHARGE_OPTS.map(([v, t]) =>
+            `<option value="${v}" ${v === pick(c.charge, k?.charge) ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       </div>
-      <label class="field"><span>Комментарий</span><textarea id="nc-comment" rows="2" maxlength="2000">${esc(k.comment || '')}</textarea></label>`,
+      <label class="chk" id="nc-moved-row" style="margin-top:8px">
+        <input type="checkbox" id="nc-moved" ${newLoc ? 'checked' : ''}> Перепаркован на другое место</label>
+      <label class="field hidden" id="nc-newloc-row"><span>Куда переставил</span>
+        <select id="nc-location"><option value="">— не указывать —</option>${locationOptions(newLoc)}</select></label>
+      <div class="opt-group-title">Состояние кара</div>
+      <div class="check-list" id="nc-state" style="max-height:none">
+        <label class="chk"><input type="checkbox" id="nc-ok" ${pick(c.condition, k?.condition) !== 'bad' ? 'checked' : ''}> Технически исправен</label>
+        <label class="chk"><input type="checkbox" id="nc-clean" ${pick(c.clean, k?.clean) ? 'checked' : ''}> Чистый</label>
+        <label class="chk"><input type="checkbox" id="nc-things" ${pick(c.trash, k?.trash) ? 'checked' : ''}> В салоне вещи</label>
+        <label class="chk"><input type="checkbox" id="nc-canopy" ${pick(c.canopy, k?.canopy) ? 'checked' : ''}> Тент</label>
+        <label class="chk"><input type="checkbox" id="nc-oncharge" ${pick(c.on_charge, k?.on_charge) ? 'checked' : ''}> Заряжается</label>
+      </div>
+      <label class="field" style="margin-top:12px"><span>Комментарий (что случилось, куда поставили)</span>
+        <textarea id="nc-comment" rows="2" maxlength="2000" placeholder="Например: кар не на месте, тент снят, оставлен у главного входа">${esc(k?.comment || '')}</textarea></label>
+      ${k?.photos?.length ? `<div class="field" style="margin-top:12px"><span>Фото отметки</span>
+        <div class="thumbs">${k.photos.map(photoThumb).join('')}</div></div>` : ''}
+      ${photoPickHtml('nc')}
+      <p class="hint">Снятая галочка «Технически исправен» переводит кар в статус «на обслуживании»
+      (снимает менеджер или администратор); «кар не найден» и «не исправен» попадают в замечания
+      супервайзеру. «В салоне вещи», «Тент», «Заряжается» — факты: они видны в карточке кара.
+      «Перепаркован на другое место» — тоже факт: место в карточке кара обновится, а переход
+      «где нашёл → куда переставил» супервайзер увидит в обходе и в выгрузке DOCX/PDF.
+      Новый снимок добавляется к отметке, прежние удаляются крестиком.</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Сохранить отметку</button>`,
     onMount(m) {
       m.querySelector('[data-cancel]').onclick = closeModal;
+      /* «Кар найден на месте» подсказывает, что отметка не изменит карточку кара;
+         нет кара — нет и перепарковки, а место имеет смысл только «если известно» */
+      const found = m.querySelector('#nc-found'), nf = m.querySelector('#nc-notfound');
+      const moved = m.querySelector('#nc-moved'), movedRow = m.querySelector('#nc-moved-row');
+      const newLocRow = m.querySelector('#nc-newloc-row');
+      const foundLocLabel = m.querySelector('#nc-found-loc-label');
+      const syncMoved = () => newLocRow.classList.toggle('hidden', !(found.checked && moved.checked));
+      const syncFound = () => {
+        nf.classList.toggle('hidden', found.checked);
+        movedRow.classList.toggle('hidden', !found.checked);
+        foundLocLabel.textContent = found.checked ? 'Где нашёл' : 'Место (если известно)';
+        syncMoved();
+      };
+      moved.onchange = syncMoved;
+      found.onchange = syncFound; syncFound();
+      bindPhotoDelete(m, reopen);
+      const pickPhoto = bindPhotoPick(m, 'nc');
       m.querySelector('[data-ok]').onclick = async () => {
+        const wantMove = found.checked && moved.checked;
+        if (wantMove && !$('#nc-location').value) {
+          return toast('Укажите место, куда переставили кар', 'warn');
+        }
+        const fd = new FormData();
+        fd.append('found', found.checked ? 'true' : 'false');
+        fd.append('found_location', $('#nc-found-location').value || '');
+        fd.append('moved', wantMove ? 'true' : 'false');
+        fd.append('location', wantMove ? ($('#nc-location').value || '') : '');
+        fd.append('charge', $('#nc-charge').value || '');
+        fd.append('canopy', $('#nc-canopy').checked ? 'true' : 'false');
+        fd.append('condition', $('#nc-ok').checked ? 'ok' : 'bad');
+        fd.append('trash', $('#nc-things').checked ? 'true' : 'false');
+        fd.append('clean', $('#nc-clean').checked ? 'true' : 'false');
+        fd.append('on_charge', $('#nc-oncharge').checked ? 'true' : 'false');
+        fd.append('comment', $('#nc-comment').value.trim());
+        const photo = pickPhoto();
+        if (photo) fd.append('file', photo, photo.name || 'photo.jpg');
         try {
-          await api(`/api/night/reports/${rep.id}/cars/${c.id}/check`, { method: 'POST', body: {
-            found: $('#nc-found').checked, location: $('#nc-location').value.trim(),
-            canopy: $('#nc-canopy').checked, charge: $('#nc-charge').value,
-            on_charge: $('#nc-oncharge').checked, condition: ($('[name=nc-cond]:checked') || {}).value || 'ok',
-            trash: $('#nc-trash').checked, clean: $('#nc-clean').checked, comment: $('#nc-comment').value.trim() } });
+          await multipartApi(`/api/night/reports/${rep.id}/cars/${c.id}/check`, fd);
           closeModal(); toast(`Кар №${c.number} отмечен`, 'ok');
           if (after) await after();
         } catch (e) { toast(e.message, 'err'); }

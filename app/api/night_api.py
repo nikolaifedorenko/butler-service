@@ -9,8 +9,9 @@
 from __future__ import annotations
 
 import json
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -72,16 +73,9 @@ class CloseSectionIn(BaseModel):
     force_unanswered: bool = False   # закрыть область с неотмеченными пунктами (ТЗ разрешает)
 
 
-class CarCheckIn(BaseModel):
-    found: bool = True
-    location: str = ""
-    canopy: bool = True
-    charge: str = ""          # full | half | empty | ''
-    on_charge: bool = False
-    condition: str = "ok"     # ok | bad
-    trash: bool = False
-    clean: bool = True
-    comment: str = ""
+# Отметка кара в ночном обходе приходит multipart-формой (поля + фото), как возврат
+# кара в разделе «Электрокары» — поэтому входной Pydantic-модели здесь нет:
+# поля объявлены в сигнатуре report_car_check() через Form(...).
 
 
 # ─────────────────────────── служебное ───────────────────────────
@@ -503,10 +497,30 @@ def report_cars(report_id: int, principal: Principal = Depends(require_perm("nig
 
 
 @router.post("/reports/{report_id}/cars/{car_id}/check")
-def report_car_check(report_id: int, car_id: int, payload: CarCheckIn,
-                     principal: Principal = Depends(current_principal),
-                     db: Session = Depends(get_db)):
+async def report_car_check(report_id: int, car_id: int,
+                           found: bool = Form(True),
+                           found_location: str = Form(""),
+                           moved: bool = Form(False),
+                           location: str = Form(""),
+                           canopy: bool = Form(True),
+                           charge: str = Form(""),        # full | half | empty | ''
+                           on_charge: bool = Form(False),
+                           condition: str = Form("ok"),   # ok | bad
+                           trash: bool = Form(False),
+                           clean: bool = Form(True),
+                           comment: str = Form(""),
+                           file: Optional[UploadFile] = File(None),
+                           principal: Principal = Depends(current_principal),
+                           db: Session = Depends(get_db)):
     """Отметить кар в ходе ночного обхода (перезапись — last write wins).
+
+    Форма та же, что у окна возврата кара («Электрокары» → «Вернул»): место из
+    справочника, заряд, чекбоксы состояния, комментарий и фото-доказательство
+    (оригинал, до 12 МБ) — плюс чекбокс «Кар найден на месте».
+
+    Места два: `found_location` — где батлер нашёл кар, `location` — куда
+    переставил (`moved=True`): кар мог стоять не там, что в карточке, а найденный
+    кар батлер мог перепарковать. Перепарковка — факт, не замечание.
 
     Отметки пишутся в общую базу: состояние карточки кара обновляется.
     «Не ОК» и «кар не найден» идут в замечания супервайзеру; отсутствие тента —
@@ -516,6 +530,14 @@ def report_car_check(report_id: int, car_id: int, payload: CarCheckIn,
     from ..cars import CarOpError, check_car_night
     from ..models import Car
 
+    blobs: list[tuple[str, bytes]] = []
+    if file is not None:
+        blob = await file.read(MAX_PHOTO_BYTES + 1)
+        if len(blob) > MAX_PHOTO_BYTES:
+            raise HTTPException(status_code=413, detail="Файл больше 12 МБ")
+        if blob:
+            blobs.append((file.filename or "photo.jpg", blob))
+
     rep = _get_report(db, report_id)
     _guard_open(rep)
     car = db.get(Car, car_id)
@@ -523,13 +545,16 @@ def report_car_check(report_id: int, car_id: int, payload: CarCheckIn,
         raise HTTPException(status_code=404, detail="Кар не найден")
     sec = _cars_section(rep)
     try:
-        res = check_car_night(db, rep, car, principal, found=payload.found,
-                              location=payload.location, canopy=payload.canopy,
-                              charge=payload.charge, on_charge=payload.on_charge,
-                              condition=payload.condition, trash=payload.trash,
-                              clean=payload.clean, comment=payload.comment)
+        res = check_car_night(db, rep, car, principal, found=found,
+                              found_location=found_location, moved=moved,
+                              location=location, canopy=canopy,
+                              charge=charge, on_charge=on_charge,
+                              condition=condition, trash=trash,
+                              clean=clean, comment=comment, blob_photos=blobs)
     except CarOpError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:       # не-картинка в фото
+        raise HTTPException(status_code=400, detail=str(e))
     # если область-шаг ещё не закреплена за кем-то — закрепляем (как при ответе на пункт)
     if sec.status == "free":
         sec.status = "taken"

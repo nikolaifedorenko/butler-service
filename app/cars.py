@@ -454,9 +454,11 @@ def night_cars_state(db: Session, report) -> dict:
     (т.е. свободные на момент проверки). Отметка фиксирует фактическое время — если
     кар возьмут после проверки, супервайзер увидит это (taken_after_check)."""
     from .models import CarNightCheck
+    from .photos import photos_of
 
     checked = {c.car_id: c for c in db.scalars(
         select(CarNightCheck).where(CarNightCheck.report_id == report.id))}
+    pmap = photos_of(db, "car_check", [c.id for c in checked.values()])
     out = []
     for car in db.scalars(select(Car).where(Car.active.is_(True)).order_by(Car.number)):
         ch = checked.get(car.id)
@@ -464,6 +466,7 @@ def night_cars_state(db: Session, report) -> dict:
         if ch is not None:
             entry["check"] = {
                 "id": ch.id, "found": bool(ch.found), "location": ch.location or "",
+                "found_location": ch.found_location or "", "moved": bool(ch.moved),
                 "canopy": bool(ch.canopy), "charge": ch.charge or "",
                 "on_charge": bool(ch.on_charge), "condition": ch.condition or "ok",
                 "trash": bool(ch.trash), "clean": bool(ch.clean), "comment": ch.comment or "",
@@ -471,6 +474,7 @@ def night_cars_state(db: Session, report) -> dict:
                 "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None,
                 "taken_after_check": bool(car.last_taken_at and ch.checked_at
                                           and car.last_taken_at > ch.checked_at),
+                "photos": pmap.get(ch.id, []),
             }
         out.append(entry)
     total = len(out)
@@ -483,12 +487,25 @@ def night_cars_state(db: Session, report) -> dict:
 
 def check_car_night(db: Session, report, car: Car, principal, *, found: bool, location: str,
                     canopy: bool, charge: str, on_charge: bool, condition: str,
-                    trash: bool, clean: bool, comment: str) -> dict:
+                    trash: bool, clean: bool, comment: str,
+                    blob_photos: Optional[list[tuple[str, bytes]]] = None,
+                    found_location: str = "", moved: bool = False) -> dict:
     """Отметка по кару в ходе ночного обхода (перезапись — last write wins).
 
     Замечания супервайзеру: «Не ОК» по техсостоянию и «кар не найден». Отсутствие
     тента — просто факт, в замечания не идёт. Отметки пишутся в общую базу: состояние
-    карточки кара обновляется автоматически."""
+    карточки кара обновляется автоматически.
+
+    Два места (19.10.2026): `found_location` — где батлер нашёл кар, `location` —
+    где оставил. Кар мог стоять не там, что в карточке (её место устарело), а найденный
+    кар батлер мог ПЕРЕПАРКОВАТЬ — тогда `moved=True`, и место в карточке кара
+    меняется на новое. Перепарковка — факт, а не замечание: в счётчик «замечаний»
+    не попадает, но видна в обходе, в истории кара (прежнее место → новое) и в выгрузке.
+
+    `blob_photos` — снимки с телефона (как в окне возврата кара): оригиналы
+    сохраняются в хранилище фото с kind="car_check" и привязываются к отметке.
+    Отметка одна на смену, поэтому повторное сохранение добавляет новый снимок
+    к прежним (старые можно удалить крестиком в окне отметки)."""
     from .models import CarNightCheck
 
     if report.status == "closed":
@@ -504,7 +521,10 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     ch.checker_user_id = principal.user.id
     ch.checker_name = principal.name
     ch.found = bool(found)
+    ch.found_location = (found_location or "").strip()[:160]
     ch.location = (location or "").strip()[:160]
+    # перепарковка имеет смысл, только если кар найден и указано новое место
+    ch.moved = bool(moved) and ch.found and bool(ch.location)
     ch.canopy = bool(canopy)
     ch.charge = charge if charge in ("full", "half", "empty") else ""
     ch.on_charge = bool(on_charge)
@@ -512,8 +532,9 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     ch.trash = bool(trash)
     ch.clean = bool(clean)
     ch.comment = (comment or "")[:2000]
+    place_before = car.location or ""
     if ch.found:      # «не найден» состояние карточки не меняет
-        car.location = ch.location or car.location
+        car.location = (ch.location if ch.moved else ch.found_location) or car.location
         car.canopy = ch.canopy
         car.charge = ch.charge or car.charge
         car.on_charge = ch.on_charge
@@ -523,10 +544,18 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
         if ch.condition == "bad" and car.status in ("free", "charging"):
             car.status = "maintenance"
         car.last_checked_at = ch.checked_at or now_local()
-    add_history(db, car, "check", principal, person=principal.name, location=ch.location,
+    add_history(db, car, "check", principal, person=principal.name, location=car.location,
                 details={"found": ch.found, "charge": ch.charge, "condition": ch.condition,
-                         "trash": ch.trash, "clean": ch.clean, "comment": ch.comment})
-    db.flush()
+                         "trash": ch.trash, "clean": ch.clean, "comment": ch.comment,
+                         "photos": len(blob_photos or []),
+                         # перепарковка: где нашёл → где оставил (прежнее место карточки)
+                         "moved": ch.moved, "found_location": ch.found_location,
+                         "location_from": place_before if ch.moved else ""})
+    db.flush()          # нужен id отметки — фото привязываются к ней (kind="car_check")
+    for fname, fbytes in (blob_photos or []):
+        from .photos import save_photo
+        save_photo(db, kind="car_check", ref_id=ch.id, filename=fname, blob=fbytes,
+                   user_id=principal.user.id, user_name=principal.name)
     return {"id": ch.id, "found": ch.found,
             "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None}
 

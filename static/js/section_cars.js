@@ -47,10 +47,7 @@ async function fetchCars(silent) {
     ]);
     carsState.data = data;
     carsState.meta = meta;
-    if (!carsState.locations.length) {
-      try { carsState.locations = (await api('/api/cars/locations', { silent: true })).locations || []; }
-      catch { carsState.locations = []; }
-    }
+    await ensureCarLocations();
     $('#cars-add')?.classList.toggle('hidden', !meta.can_manage);
     renderCars();
   } catch (e) {
@@ -237,6 +234,16 @@ function personFieldValue(prefix) {
   return { employee_id: id || null, name };
 }
 
+/* Справочник мест стоянки нужен не только разделу «Электрокары», но и ночному
+   обходу (место там — выпадающий список, как в окне возврата). Грузим один раз. */
+async function ensureCarLocations() {
+  if (!carsState.locations.length) {
+    try { carsState.locations = (await api('/api/cars/locations', { silent: true })).locations || []; }
+    catch { carsState.locations = []; }
+  }
+  return carsState.locations;
+}
+
 function locationOptions(selected) {
   const names = [...new Set([...(carsState.locations || []).filter(l => l.active).map(l => l.name),
                              ...(selected ? [selected] : [])].filter(Boolean))];
@@ -244,6 +251,39 @@ function locationOptions(selected) {
 }
 
 const CHARGE_OPTS = [['full', 'полный'], ['half', 'половина'], ['empty', 'разряжен']];
+
+/* ─────────── выбор фото: съёмка камерой смартфона или из галереи ───────────
+   Блок общий для окна возврата кара и отметки ночного обхода (камера — с
+   18.10.2026, в обходе — с 19.10.2026): на смартфоне «Снять на камеру» открывает
+   камеру сразу со съёмкой (capture=environment), «Из галереи» — готовый снимок.
+   bindPhotoPick() возвращает функцию-геттер выбранного файла для FormData. */
+function photoPickHtml(prefix) {
+  return `<div class="field" style="margin-top:12px"><span>Фото (необязательно, до 12 МБ, хранится оригинал)</span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label class="btn btn-sm">📷 Снять на камеру
+        <input type="file" id="${prefix}-cam" accept="image/*" capture="environment" hidden></label>
+      <label class="btn btn-sm btn-ghost">Выбрать из галереи
+        <input type="file" id="${prefix}-file" accept="image/*" hidden></label>
+      <span class="hint" id="${prefix}-file-name" style="margin:0">файл не выбран</span>
+    </div>
+    <div class="hint" style="margin-top:4px">На смартфоне «Снять на камеру» открывает камеру
+      сразу со съёмкой; «Из галереи» — выбор готового снимка.</div></div>`;
+}
+
+function bindPhotoPick(m, prefix) {
+  let pendingPhoto = null;
+  const showName = () => {
+    const el = m.querySelector(`#${prefix}-file-name`);
+    if (el) el.textContent = pendingPhoto
+      ? `${pendingPhoto.name || 'снимок камеры'} (${Math.round((pendingPhoto.size || 0) / 1024)} КБ)`
+      : 'файл не выбран';
+  };
+  [`#${prefix}-cam`, `#${prefix}-file`].forEach(sel => {
+    const inp = m.querySelector(sel);
+    if (inp) inp.onchange = () => { pendingPhoto = inp.files?.[0] || null; showName(); };
+  });
+  return () => pendingPhoto;
+}
 
 /* ─────────────────── возврат кара (multipart + фото) ─────────────────── */
 function carReturnModal(car, after) {
@@ -261,7 +301,7 @@ function carReturnModal(car, after) {
       </div>
       ${state.user?.role !== 'employee' ? personFieldHtml('cr') : ''}
       <div class="opt-group-title">Состояние при возврате</div>
-      <div class="check-list" style="max-height:none">
+      <div class="check-list" id="cr-state" style="max-height:none">
         <label class="chk"><input type="checkbox" id="cr-ok" ${car.condition !== 'bad' ? 'checked' : ''}> Технически исправен</label>
         <label class="chk"><input type="checkbox" id="cr-clean" ${car.clean ? 'checked' : ''}> Чистый</label>
         <label class="chk"><input type="checkbox" id="cr-things" ${car.trash ? 'checked' : ''}> В салоне вещи</label>
@@ -271,16 +311,7 @@ function carReturnModal(car, after) {
       ${car.has_key ? '<label class="chk" style="margin-top:8px"><input type="checkbox" id="cr-key" checked> Ключ сдал</label>' : ''}
       <label class="field" style="margin-top:12px"><span>Комментарий (что случилось, куда поставили)</span>
         <textarea id="cr-comment" rows="2" maxlength="255" placeholder="Например: оставил у главного входа, левое колесо спущено">${esc(car.note || '')}</textarea></label>
-      <div class="field" style="margin-top:12px"><span>Фото (необязательно, до 12 МБ, хранится оригинал)</span>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <label class="btn btn-sm">📷 Снять на камеру
-            <input type="file" id="cr-cam" accept="image/*" capture="environment" hidden></label>
-          <label class="btn btn-sm btn-ghost">Выбрать из галереи
-            <input type="file" id="cr-file" accept="image/*" hidden></label>
-          <span class="hint" id="cr-file-name" style="margin:0">файл не выбран</span>
-        </div>
-        <div class="hint" style="margin-top:4px">На смартфоне «Снять на камеру» открывает камеру
-          сразу со съёмкой; «Из галереи» — выбор готового снимка.</div></label>
+      ${photoPickHtml('cr')}
       <p class="hint">Снятый с галочки «Технически исправен», а также «В салоне вещи» или не «Чистый»
       автоматически переводят кар в статус «на обслуживании». Оставить на зарядке можно кар
       с любым зарядом, включая полный.</p>`,
@@ -289,11 +320,7 @@ function carReturnModal(car, after) {
     onMount(m) {
       m.querySelector('[data-cancel]').onclick = closeModal;
       /* фото: съёмка камерой смартфона (capture) или выбор из галереи (18.10.2026) */
-      let pendingPhoto = null;
-      const showName = () => { $('#cr-file-name').textContent = pendingPhoto
-        ? `${pendingPhoto.name || 'снимок камеры'} (${Math.round((pendingPhoto.size || 0) / 1024)} КБ)`
-        : 'файл не выбран'; };
-      ['#cr-cam', '#cr-file'].forEach(sel => { const inp = m.querySelector(sel); if (inp) inp.onchange = () => { pendingPhoto = inp.files?.[0] || null; showName(); }; });
+      const pickPhoto = bindPhotoPick(m, 'cr');
       m.querySelector('[data-ok]').onclick = async () => {
         const charge = $('#cr-charge').value;
         const onCharge = $('#cr-oncharge').checked;
@@ -310,6 +337,7 @@ function carReturnModal(car, after) {
         fd.append('on_charge', onCharge ? 'true' : 'false');
         if ($('#cr-key')) fd.append('key_returned', $('#cr-key').checked ? 'true' : 'false');
         fd.append('comment', $('#cr-comment').value.trim());
+        const pendingPhoto = pickPhoto();
         if (pendingPhoto) fd.append('file', pendingPhoto, pendingPhoto.name || 'photo.jpg');
         try {
           await multipartApi(`/api/cars/${car.id}/return`, fd);
