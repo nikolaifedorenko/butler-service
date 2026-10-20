@@ -55,9 +55,6 @@ if ! "$PY" -c 'import fastapi, uvicorn, sqlalchemy, docx, openpyxl, httpx' 2>/de
     [ $ok -eq 1 ] || fail "Часть пакетов не установилась. Проверьте интернет и повторите: ./.venv/bin/pip install -r requirements.txt"
   fi
 fi
-# bcrypt — желателен, но не критичен (есть запасной pbkdf2-sha256)
-"$PY" -c 'import bcrypt' 2>/dev/null || "$PY" -m pip install -q bcrypt passlib 2>/dev/null \
-  || say "  (bcrypt не установился — пароли будут на pbkdf2-sha256, это нормально)"
 
 # ── 4. Необязательный PDF-движок (не блокирует запуск) ────────────────────
 # PDF=off ./run.sh — вообще не пытаться ставить PDF-движок (быстрый старт)

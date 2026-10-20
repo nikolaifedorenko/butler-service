@@ -393,11 +393,6 @@ def pdf_available() -> bool:
     return pdf_mode() != "none"
 
 
-def pdf_mode() -> str:
-    from .pdf_render import pdf_mode as _mode
-    return _mode()
-
-
 def pdf_status() -> dict:
     from .pdf_render import native_error
     from .pdf_render import pdf_mode as _mode
@@ -409,7 +404,3 @@ def pdf_status() -> dict:
             "error": "" if mode != "none" else (native_error() or "нет ни LibreOffice, ни reportlab")}
 
 
-def docx_to_pdf(docx_bytes: bytes, filename: str = "document.pdf") -> Optional[bytes]:
-    from .pdf_render import docx_to_pdf as _to_pdf
-    data, _mode = _to_pdf(docx_bytes, filename)
-    return data

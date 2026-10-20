@@ -48,7 +48,7 @@ from ..models import (
 )
 from ..names import suggest_genitive
 from ..permissions import require_perm
-from ..schedule_patterns import pattern_list, validate_pattern
+from ..schedule_patterns import pattern_list, validate_cycle_string
 from ..services.engine_common import (
     color_lookups,
     covers_window,
@@ -966,7 +966,7 @@ def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_perm
         raise HTTPException(status_code=422,
                             detail="Укажите значение рабочего дня (код и часы, «Я 10,75»)")
     try:
-        validate_pattern(payload.pattern, payload.cycle)
+        validate_cycle_string(payload.pattern, payload.cycle)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     emps = [db.get(Employee, i) for i in payload.employee_ids]

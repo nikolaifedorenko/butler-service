@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, audit, can_manage_user
-from ..base_schedule import dump_pattern, validate_pattern
+from ..base_schedule import dump_pattern, validate_pattern_label
 from ..deps import local_date
 from ..employment import close_period, open_period, periods_of
 from ..groups import GROUP_META, normalize_group
@@ -172,7 +172,7 @@ def build_pattern_json(data: BlockChange) -> str:
     if data.label.strip():
         pattern["label"] = data.label.strip()
     try:
-        label = validate_pattern(pattern)
+        label = validate_pattern_label(pattern)
     except ValueError as exc:
         raise Validation(str(exc))
     if not pattern.get("label"):

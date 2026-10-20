@@ -100,7 +100,7 @@ def pattern_list() -> list[dict]:
         {"id": "custom", "title": "Произвольный цикл (РРВВВВРР…) — любые переходы смена/выходной"}]
 
 
-def validate_pattern(pattern: str, cycle: str = "") -> None:
+def validate_cycle_string(pattern: str, cycle: str = "") -> None:
     """Бросает ValueError с человекочитаемым текстом, если график задан неверно."""
     if pattern.lower() in ("custom", "произвольный", ""):
         parse_custom_cycle(cycle)

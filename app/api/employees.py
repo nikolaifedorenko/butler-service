@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..auth import Principal, audit, can_manage_user, current_principal, require_manager
-from ..base_schedule import validate_pattern
+from ..base_schedule import validate_pattern_label
 from ..db import get_db
 from ..deps import local_date, normalize_hex_color, slugify_username
 from ..employment import open_period, periods_of
@@ -502,7 +502,7 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_pe
         if not pat:
             return ""
         try:
-            return validate_pattern(pat)
+            return validate_pattern_label(pat)
         except ValueError:
             return ""
 
