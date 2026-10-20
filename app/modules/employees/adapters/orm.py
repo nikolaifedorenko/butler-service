@@ -3,9 +3,10 @@
 Выделены из app/models/directory.py (фаза C2) и timesheet/adapters/orm.py
 (фаза C4, EXECUTION-SPEC-v2 §7 фаза 6): Employee, Department, Subdivision,
 StatementKind, EmergencyContact, PositionHistory, EmploymentPeriod. Классы
-перенесены без изменений. Кросс-модульные связи: User (core.identity) и Car
-(модуль cars, с C4c) — строками/TYPE_CHECKING через реестр SQLAlchemy (R6);
-публичная поверхность для других модулей — application/catalog.py (R3).
+перенесены без изменений. Связь с core: Employee.user → User (core.identity) — module→core допустим
+(R6, батч 20.10.2026: кросс-модульных relationship больше нет — закреплённый
+кар читается запросом Car.assigned_to на стороне потребителей). Публичная
+поверхность для других модулей — application/catalog.py (R3).
 
 Блоки графика, банк часов и двойные оплаты (BlockAssignment, BankAdjustment,
 DoublePayDay, VipDoublePay) остались в timesheet — это домен Табеля/Графика.
@@ -13,7 +14,7 @@ DoublePayDay, VipDoublePay) остались в timesheet — это домен 
 from __future__ import annotations
 
 import datetime as dt
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy import (
     Boolean,
@@ -30,9 +31,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 from app.core.identity import User  # noqa: F401 — связь Employee.user
 from app.core.time import utcnow  # noqa: F401 — default created_at
-
-if TYPE_CHECKING:
-    from app.modules.cars.application.catalog import Car
 
 
 class Department(Base):
@@ -109,13 +107,11 @@ class Employee(Base):
     deleted_at: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)  # «полное удаление»: скрыт, но в истории
 
     department: Mapped[Optional[Department]] = relationship(back_populates="employees")
-    user: Mapped[Optional[User]] = relationship(back_populates="employee", uselist=False)
+    # R6 (батч 20.10.2026): связь с core — односторонняя (User.employee удалён);
+    # user_id — строковый FK на users, маппер разрешает цель по реестру.
+    user: Mapped[Optional[User]] = relationship(uselist=False)
     contacts: Mapped[list[EmergencyContact]] = relationship(
         cascade="all, delete-orphan", order_by="EmergencyContact.id")
-    # закреплённый электрокар (рекомендательное закрепление): связь нужна, чтобы
-    # карточка сотрудника не открывала отдельную сессию на каждого (см. api/employees.py)
-    assigned_car: Mapped[Optional[Car]] = relationship(
-        back_populates="assigned_employee", uselist=False, foreign_keys="Car.assigned_to")
 
     @property
     def display_name(self) -> str:

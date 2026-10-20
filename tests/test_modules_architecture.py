@@ -1,7 +1,7 @@
 """Архитектурные тесты ВСЕХ модулей (EXECUTION-SPEC-v2, DoD фазы 9/C7):
 структура 5 слоёв, правила §3 (R1 изоляция домена, направления слоёв),
-R6 (кросс-модульные FK строкой; relationship — внутри модуля, кросс-граница —
-только явный задокументированный allowlist) и публичная граница notify (R4).
+R6 (кросс-модульные FK строкой; relationship — только внутри модуля или
+на core; кросс-модульных связей нет — allowlist пуст с 20.10.2026) и публичная граница notify (R4).
 
 Обобщение эталонных проверок модуля notify (tests/test_notify_module.py, фаза
 C3) на все 9 модулей + core. Законы расчётного движка v7.1 (чистота домена,
@@ -40,26 +40,12 @@ ORM_FILES = [
     "app/modules/notify/adapters/orm.py",
 ]
 
-# R6-долг (задокументирован в docs/CHANGES-2026-10-20-stage-c4-modules.md §2 и
-# §15 EXECUTION-SPEC-v2): кросс-границ relationship() сохранены намеренно —
-# удаление изменило бы бюджеты запросов (test_query_budget) и поведение
-# lazy=joined. Замена навигации на порты/DTO — отдельный продуктовый батч.
-# Ключ: (unit-владелец файла, Class.attr) → цель. Список ТОЧНЫЙ: добавление или
-# удаление связи обязано обновить его сознательно.
-CROSS_RELATIONSHIPS = {
-    ("core", "User.employee"): "Employee",
-    ("core", "AuditLog.actor"): "User",
-    ("employees", "Employee.user"): "User",
-    ("employees", "Employee.assigned_car"): "Car",
-    ("timesheet", "BlockAssignment.employee"): "Employee",
-    ("timesheet", "BankAdjustment.employee"): "Employee",
-    ("timesheet", "VipDoublePay.employee"): "Employee",
-    ("timesheet", "Punch.employee"): "Employee",
-    ("timesheet", "ScheduleShift.employee"): "Employee",
-    ("timesheet", "ScheduleAbsence.employee"): "Employee",
-    ("cars", "Car.assigned_employee"): "Employee",
-    ("cars", "CarNightCheck.report"): "NightReport",
-}
+# R6 (батч 20.10.2026 — долг ЗАКРЫТ): кросс-модульных relationship() больше нет.
+# Допустимы: связи внутри своего unit (модуль; для core — весь core как одна
+# инфраструктурная единица) и связи модуль → core (core импортируется всеми
+# легально; R5 ограничивает лишь обратное направление). Список ниже ПУСТ и
+# обязан таким оставаться: новая кросс-модульная связь падает тестом.
+CROSS_RELATIONSHIPS: dict[tuple[str, str], str] = {}
 
 # Исключения СВОЕГО модуля (не кросс-модульные — те легальны по R3 и прикрыты
 # private-контрактами import-linter). Всё — изначальная архитектура движка v7.1,
@@ -230,11 +216,19 @@ def _unit_of(path: pathlib.Path) -> str:
 
 def test_r6_fk_are_strings_and_relationships_allowlisted():
     found_cross: dict[tuple[str, str], str] = {}
+    # классы unit'а: core — все core-файлы (одна инфраструктурная единица),
+    # модуль — его orm; цели «свой unit» и «core» легальны для всех
+    unit_classes: dict[str, set] = {}
+    for rel in ORM_FILES:
+        tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
+        unit_classes.setdefault(_unit_of(ROOT / rel), set()).update(
+            n.name for n in tree.body if isinstance(n, ast.ClassDef))
+    core_classes = unit_classes.get("core", set())
     for rel in ORM_FILES:
         path = ROOT / rel
         tree = ast.parse(path.read_text(encoding="utf-8"))
         unit = _unit_of(path)
-        local = {n.name for n in tree.body if isinstance(n, ast.ClassDef)}
+        local = unit_classes[unit] | core_classes
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
@@ -257,8 +251,8 @@ def test_r6_fk_are_strings_and_relationships_allowlisted():
                     continue
                 found_cross[(unit, f"{cls.name}.{st.target.id}")] = target
     assert found_cross == CROSS_RELATIONSHIPS, (
-        "кросс-границ связи изменились — обновите CROSS_RELATIONSHIPS сознательно "
-        f"(R6-долг, см. CHANGES C4 §2): расхождение {found_cross.keys() ^ CROSS_RELATIONSHIPS.keys()}")
+        "появились кросс-модульные relationship (R6 закрыт батчем 20.10.2026 — "
+        f"список обязан быть пустым): {found_cross}")
 
 
 # ── R4: публичная граница notify сохраняет поверхность бывшей app/notify ─────

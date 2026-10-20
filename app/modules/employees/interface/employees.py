@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload, object_session, selectinload
 
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
@@ -95,12 +95,13 @@ def _emp_dict(e: Employee, with_user: bool = False, car=_CAR_UNSET) -> dict:
     if with_user:
         data["username"] = e.user.username if e.user else None
         data["role"] = e.user.role if e.user else None
-    # закреплённый электрокар (для карточки сотрудника): берём из предзагруженной
-    # карты (список сотрудников) или через ORM-связь — в сессии текущего запроса.
-    # Раньше здесь открывалась ОТДЕЛЬНАЯ SessionLocal на каждого сотрудника:
-    # чтение вне транзакции запроса + лишнее соединение на каждой строке списка.
+    # закреплённый электрокар (для карточки сотрудника): из предзагруженной карты
+    # (список сотрудников — батч cars_by_employee) или одним запросом в сессии.
+    # R6 (батч 20.10.2026): связь Employee.assigned_car удалена (кросс-модульная) —
+    # вместо неё запрос по Car.assigned_to == e.id.
     if car is _CAR_UNSET:
-        car = e.assigned_car
+        sess = object_session(e)
+        car = sess.scalar(select(Car).where(Car.assigned_to == e.id)) if sess is not None else None
     data["assigned_car_id"] = car.id if car else None
     data["assigned_car_number"] = car.number if car else ""
     return data

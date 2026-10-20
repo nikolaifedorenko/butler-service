@@ -35,6 +35,13 @@ def catalog(principal: Principal = Depends(require_perm("access.manage")), db: S
     for m in db.scalars(select(AccessGroupMember)):
         members.setdefault(m.group_id, []).append(m.user_id)
     users = list(db.scalars(select(User).order_by(User.username)))
+    # R6 (батч 20.10.2026): User.employee (core→модуль) удалён — сотрудники
+    # пользователей одним батч-запросом через границу employees.application.
+    from app.modules.employees.application import Employee
+
+    emp_ids = {u.employee_id for u in users if u.employee_id}
+    emps = {e.id: e for e in db.scalars(select(Employee).where(Employee.id.in_(emp_ids)))} \
+        if emp_ids else {}
     return {
         "permissions": PERMISSIONS,
         "roles": [{"role": r, "title": ROLE_TITLES[r], "defaults": sorted(ROLE_DEFAULTS[r]),
@@ -44,7 +51,7 @@ def catalog(principal: Principal = Depends(require_perm("access.manage")), db: S
                     "grants": _grants(db.scalars(select(AccessGrant).where(AccessGrant.group_id == g.id)))}
                    for g in groups],
         "users": [{"id": u.id, "username": u.username, "role": u.role, "active": u.is_active,
-                   "name": u.employee.full_name if u.employee else u.username,
+                   "name": emps[u.employee_id].full_name if u.employee_id in emps else u.username,
                    "groups": [g for g, ms in members.items() if u.id in ms],
                    "grants": _grants(db.scalars(select(AccessGrant).where(AccessGrant.user_id == u.id))),
                    "effective": sorted(effective_permissions(db, u.id, u.role))} for u in users],

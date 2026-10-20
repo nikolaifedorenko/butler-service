@@ -89,7 +89,15 @@ def _day_dict(d: DoublePayDay) -> dict:
 
 
 def _vip_dict(v: VipDoublePay) -> dict:
-    emp = v.employee
+    # R6 (батч 20.10.2026): VipDoublePay.employee (кросс-модульная связь) удалён —
+    # сотрудник достается из сессии объекта по employee_id (identity map:
+    # повторные обращения в списке бесплатны).
+    from sqlalchemy.orm import object_session
+
+    from app.modules.employees.application import Employee
+
+    sess = object_session(v)
+    emp = sess.get(Employee, v.employee_id) if sess is not None else None
     days = (v.end_date - v.start_date).days + 1
     return {"id": v.id, "employee_id": v.employee_id,
             "employee_name": (emp.display_name if emp else f"#{v.employee_id}"),

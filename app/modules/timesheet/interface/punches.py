@@ -353,7 +353,7 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
                  employee_id: Optional[int] = None, principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Журнал отметок. Сотрудник видит только свои, менеджер — всех."""
-    stmt = select(Punch).order_by(Punch.ts.desc())   # employee подгружается JOIN'ом (lazy="joined")
+    stmt = select(Punch).order_by(Punch.ts.desc())
     limit = 2000
     # журнал всех сотрудников — по ключу punches.view_all (бывш. is_manager, §5.2)
     if "punches.view_all" not in principal_permissions(db, principal):
@@ -374,10 +374,15 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
         limit = 500   # без фильтра по дате — только последние отметки
 
     punches = db.scalars(stmt.limit(limit)).all()
+    # R6 (батч 20.10.2026): вместо relationship Punch.employee (lazy=joined) —
+    # один батч-запрос сотрудников на страницу журнала.
+    emp_ids = {p.employee_id for p in punches if p.employee_id}
+    emps = {e.id: e for e in db.scalars(select(Employee).where(Employee.id.in_(emp_ids)))} \
+        if emp_ids else {}
     return [{
         "id": p.id, "employee_id": p.employee_id,
-        "employee": p.employee.display_name if p.employee else "",
-        "position": p.employee.position if p.employee else "",
+        "employee": emps[p.employee_id].display_name if p.employee_id in emps else "",
+        "position": emps[p.employee_id].position if p.employee_id in emps else "",
         "ts": p.ts.isoformat(timespec="minutes"), "kind": p.kind,
         "source": p.source, "note": p.note,
         "created_by": p.created_by,

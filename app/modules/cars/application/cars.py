@@ -19,7 +19,7 @@ import json
 from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.core.time import now_local
 from app.modules.employees.application import Employee
@@ -140,6 +140,17 @@ def history_dict(h: CarHistory, photos: dict[int, list[dict]]) -> dict:
     }
 
 
+def _assigned_name(car: Car) -> str:
+    """Имя закреплённого сотрудника (R6, батч 20.10.2026: вместо кросс-модульной
+    связи Car.assigned_employee — db.get по assigned_to из сессии объекта;
+    identity map делает повторные чтения в списке бесплатными)."""
+    if not car.assigned_to:
+        return ""
+    sess = object_session(car)
+    emp = sess.get(Employee, car.assigned_to) if sess is not None else None
+    return _emp_label(emp) if emp else ""
+
+
 def car_dict(car: Car, *, extra: Optional[dict] = None) -> dict:
     data = {
         "id": car.id, "number": car.number, "status": car.status,
@@ -151,7 +162,7 @@ def car_dict(car: Car, *, extra: Optional[dict] = None) -> dict:
         "has_key": bool(car.has_key),
         "holder_user_id": car.holder_user_id, "holder_name": car.holder_name or "",
         "assigned_to": car.assigned_to,
-        "assigned_name": _emp_label(car.assigned_employee) if car.assigned_employee else "",
+        "assigned_name": _assigned_name(car),
         "note": car.note or "",
         "last_checked_at": car.last_checked_at.isoformat(timespec="seconds") if car.last_checked_at else None,
         "last_taken_at": car.last_taken_at.isoformat(timespec="seconds") if car.last_taken_at else None,
@@ -196,7 +207,7 @@ def take_car(db: Session, car: Car, principal, *, ack_assigned: bool = False) ->
     if other:
         raise CarOpError(f"У вас уже есть кар №{other.number} — по правилу «один сотрудник — один кар» "
                          f"сначала верните его")
-    assigned_emp = car.assigned_employee if car.assigned_to else None
+    assigned_emp = db.get(Employee, car.assigned_to) if car.assigned_to else None
     if assigned_emp is not None and (principal.employee is None or assigned_emp.id != principal.employee.id):
         if not ack_assigned:
             raise CarInterceptAssigned(assigned_emp.display_name)
@@ -362,7 +373,7 @@ def assign_employee(db: Session, car: Car, principal, employee_id: Optional[int]
         if other:
             raise CarOpError(f"За {emp.display_name} уже закреплён кар №{other.number} "
                              f"(один сотрудник — один кар). Сначала снимите его.")
-    old_name = _emp_label(car.assigned_employee) if car.assigned_employee else ""
+    old_name = _assigned_name(car)
     car.assigned_to = emp.id if emp else None
     add_history(db, car, "assign", principal, person=_emp_label(emp),
                 details={"from": old_name, "to": _emp_label(emp)})
