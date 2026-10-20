@@ -12,12 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from .api import (
-    access_api,
-    audit_api,
-    auth_routes,
-    photos_api,
-)
+from .api import audit_api, photos_api
 from .bootstrap import registry
 from .bootstrap.migrations import (
     migrate_db,
@@ -39,6 +34,7 @@ from .core.config import settings
 from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.time import now_local
+from .modules.access.interface import access_api, auth_routes
 from .modules.cars.interface import cars_api
 from .modules.docs.interface import docs_api
 from .modules.employees.interface import employees

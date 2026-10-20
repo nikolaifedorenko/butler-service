@@ -41,9 +41,7 @@ ignore_imports =
 name = API-модули не импортируют друг друга (общее — только services/core)
 type = independence
 modules =
-    app.api.access_api
     app.api.audit_api
-    app.api.auth_routes
     app.api.photos_api
 
 [importlinter:contract:timesheet-isolation]
@@ -104,7 +102,6 @@ ignore_imports =
     app.models -> app.modules.employees.adapters.orm
     ; До C4: легаси-потребители модулей через их границы (R3-направление).
     ; Строки исчезают по мере переноса владельцев.
-    app.api.auth_routes -> app.modules.timesheet.application.punch_plan
     app.models -> app.modules.night.adapters.orm
     app.models -> app.modules.cars.adapters.orm
 
@@ -141,6 +138,7 @@ source_modules =
     app.modules.night
     app.modules.cars
     app.modules.settings
+    app.modules.access
 forbidden_modules =
     app.modules.timesheet.domain
     app.modules.timesheet.adapters
@@ -158,6 +156,7 @@ source_modules =
     app.modules.night
     app.modules.cars
     app.modules.settings
+    app.modules.access
 forbidden_modules =
     app.modules.employees.domain
     app.modules.employees.adapters
@@ -238,3 +237,27 @@ forbidden_modules =
     app.modules.settings.adapters
     app.modules.settings.interface
 allow_indirect_imports = True
+
+[importlinter:contract:access-private]
+name = R3: domain/adapters/interface access приватны
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.notify
+    app.modules.night
+    app.modules.cars
+    app.modules.docs
+    app.modules.settings
+forbidden_modules =
+    app.modules.access.domain
+    app.modules.access.adapters
+    app.modules.access.interface
+allow_indirect_imports = True
+
+[importlinter:contract:access-interface-independence]
+name = Роутеры access.interface не импортируют друг друга
+type = independence
+modules =
+    app.modules.access.interface.access_api
+    app.modules.access.interface.auth_routes

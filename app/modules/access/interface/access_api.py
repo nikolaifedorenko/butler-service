@@ -6,10 +6,11 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ..core.audit import audit
-from ..core.auth import Principal
-from ..core.db import get_db
-from ..core.permissions import (
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.db import get_db
+from app.core.identity import AccessGrant, AccessGroup, AccessGroupMember, User
+from app.core.permissions import (
     ALL_KEYS,
     PERMISSIONS,
     ROLE_DEFAULTS,
@@ -18,7 +19,6 @@ from ..core.permissions import (
     require_perm,
     role_permissions,
 )
-from ..models import AccessGrant, AccessGroup, AccessGroupMember, User
 
 router = APIRouter(prefix="/api/access", tags=["access"])
 EFFECTS = ("allow", "deny")

@@ -129,8 +129,8 @@ def test_impersonation_flag_respected(app_stack):
 def test_client_ip_xff_only_when_trusted(app_stack):
     from types import SimpleNamespace
 
-    from app.api.auth_routes import _client_ip
     from app.core.config import settings
+    from app.modules.access.interface.auth_routes import _client_ip
 
     req = SimpleNamespace(headers={"x-forwarded-for": "1.2.3.4"},
                           client=SimpleNamespace(host="9.9.9.9"))

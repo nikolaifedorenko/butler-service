@@ -11,14 +11,15 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..core.audit import audit
-from ..core.auth import Principal, current_principal
-from ..core.config import settings
-from ..core.db import get_db
-from ..core.permissions import require_perm
-from ..core.security import create_token, hash_password, needs_rehash, verify_password
-from ..core.time import local_date
-from ..models import Employee, User
+from app.core.audit import audit
+from app.core.auth import Principal, current_principal
+from app.core.config import settings
+from app.core.db import get_db
+from app.core.identity import User
+from app.core.permissions import require_perm
+from app.core.security import create_token, hash_password, needs_rehash, verify_password
+from app.core.time import local_date
+from app.modules.employees.application import Employee
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -175,12 +176,12 @@ def logout(response: Response, principal: Principal = Depends(current_principal)
 def me(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     """Текущий пользователь + его план на сегодня (для личного кабинета)."""
     emp = principal.employee
-    from ..core.permissions import principal_permissions
+    from app.core.permissions import principal_permissions
 
     data = {"user": principal.to_dict(), "today": None,
             "permissions": sorted(principal_permissions(db, principal))}
     if emp:
-        from ..modules.timesheet.application.punch_plan import plan_for_date, to_local
+        from app.modules.timesheet.application.punch_plan import plan_for_date, to_local
         today = local_date()
         shift, p_start, p_end, _plan_date, subs = plan_for_date(db, emp.id, today)
         data["today"] = {
