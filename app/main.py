@@ -17,7 +17,6 @@ from .api import (
     audit_api,
     auth_routes,
     photos_api,
-    settings_api,
 )
 from .bootstrap import registry
 from .bootstrap.migrations import (
@@ -45,6 +44,7 @@ from .modules.docs.interface import docs_api
 from .modules.employees.interface import employees
 from .modules.night.interface import night_api
 from .modules.notify.interface import notify_api
+from .modules.settings.interface import settings_api
 from .modules.timesheet.application.errors import ApplicationError
 from .modules.timesheet.domain.types.errors import ConfigError, DomainError
 from .modules.timesheet.interface import (

@@ -45,7 +45,6 @@ modules =
     app.api.audit_api
     app.api.auth_routes
     app.api.photos_api
-    app.api.settings_api
 
 [importlinter:contract:timesheet-isolation]
 name = Модуль timesheet (движок v7.1) не знает про api/services/main/bootstrap
@@ -103,13 +102,8 @@ ignore_imports =
     app.models -> app.modules.timesheet.adapters.orm
     app.models -> app.modules.notify.adapters.orm
     app.models -> app.modules.employees.adapters.orm
-    ; До C4e (settings): экран «Шаблоны документов» — через границу docs (R3).
-    app.api.settings_api -> app.modules.docs.application.doc_templates
     ; До C4: легаси-потребители модулей через их границы (R3-направление).
-    ; Строки исчезают по мере переноса владельцев (employees — перенесён в C4a).
-    app.api.settings_api -> app.modules.timesheet.application.base_schedule
-    app.api.settings_api -> app.modules.timesheet.application.schedule_helpers
-    app.api.settings_api -> app.modules.timesheet.adapters.sql_settings
+    ; Строки исчезают по мере переноса владельцев.
     app.api.auth_routes -> app.modules.timesheet.application.punch_plan
     app.models -> app.modules.night.adapters.orm
     app.models -> app.modules.cars.adapters.orm
@@ -146,6 +140,7 @@ source_modules =
     app.modules.notify
     app.modules.night
     app.modules.cars
+    app.modules.settings
 forbidden_modules =
     app.modules.timesheet.domain
     app.modules.timesheet.adapters
@@ -162,6 +157,7 @@ source_modules =
     app.modules.notify
     app.modules.night
     app.modules.cars
+    app.modules.settings
 forbidden_modules =
     app.modules.employees.domain
     app.modules.employees.adapters
@@ -175,6 +171,7 @@ source_modules =
     app.modules.timesheet
     app.modules.employees
     app.modules.notify
+    app.modules.settings
 forbidden_modules =
     app.modules.night.domain
     app.modules.night.adapters
@@ -188,6 +185,7 @@ source_modules =
     app.modules.timesheet
     app.modules.employees
     app.modules.night
+    app.modules.settings
 forbidden_modules =
     app.modules.notify.domain
     app.modules.notify.adapters
@@ -202,6 +200,7 @@ source_modules =
     app.modules.employees
     app.modules.notify
     app.modules.night
+    app.modules.settings
 forbidden_modules =
     app.modules.cars.domain
     app.modules.cars.adapters
@@ -217,8 +216,25 @@ source_modules =
     app.modules.notify
     app.modules.night
     app.modules.cars
+    app.modules.settings
 forbidden_modules =
     app.modules.docs.domain
     app.modules.docs.adapters
     app.modules.docs.interface
+allow_indirect_imports = True
+
+[importlinter:contract:settings-private]
+name = R3: domain/adapters/interface settings приватны
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.notify
+    app.modules.night
+    app.modules.cars
+    app.modules.docs
+forbidden_modules =
+    app.modules.settings.domain
+    app.modules.settings.adapters
+    app.modules.settings.interface
 allow_indirect_imports = True

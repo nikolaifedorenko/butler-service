@@ -9,25 +9,24 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.db import get_db
+from app.core.identity import User
+from app.core.permissions import require_perm
+from app.core.settings_store import Setting
+from app.core.time import local_date
 from app.modules.docs.application.doc_templates import load_doc_templates, save_doc_templates
-
-from ..core.audit import audit
-from ..core.auth import Principal
-from ..core.db import get_db
-from ..core.permissions import require_perm
-from ..core.time import local_date
-from ..models import (
-    Employee,
+from app.modules.employees.application import Employee
+from app.modules.timesheet.application.base_schedule import DEFAULT_BASE, load_base_config, save_base_config
+from app.modules.timesheet.application.catalog import (
     EngineSettingsVersion,
     PeriodClosing,
     Punch,
     ScheduleShift,
-    Setting,
     TabelDay,
-    User,
 )
-from ..modules.timesheet.application.base_schedule import DEFAULT_BASE, load_base_config, save_base_config
-from ..modules.timesheet.application.schedule_helpers import DEFAULT_RULES, load_rules, rule_options
+from app.modules.timesheet.application.schedule_helpers import DEFAULT_RULES, load_rules, rule_options
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -50,7 +49,7 @@ DEFAULT_HINTS = {
 
 def defaults_of(db: Session, on: dt.date) -> dict:
     """Глобальные значения модификаторов и лимиты из версии, действующей на дату `on`."""
-    from ..modules.timesheet.adapters.sql_settings import base_version
+    from app.modules.timesheet.application.catalog import base_version
 
     ver = base_version(db, on)
     payload = json.loads(ver.payload_json) if ver else {}
@@ -127,7 +126,7 @@ def update_base(payload: BaseIn, principal: Principal = Depends(require_perm("se
     """Базовый цикл объекта: какие дни рабочие у Смены 1 / Смены 2 / Администрации — на все месяцы."""
     import datetime as _dt
 
-    from ..modules.timesheet.application.base_schedule import working_flag
+    from app.modules.timesheet.application.base_schedule import working_flag
 
     try:
         _dt.date.fromisoformat(payload.anchor)
