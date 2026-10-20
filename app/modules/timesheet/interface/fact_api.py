@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.permissions import require_perm
+from app.core.permissions import principal_permissions, require_perm
 from app.core.time import TZ
 from app.modules.employees.application import Employee
 
@@ -51,7 +51,8 @@ def sessions(employee_id: int, first: dt.date, last: dt.date,
              db: Session = Depends(get_db)):
     if last < first or (last - first).days > 92:
         raise HTTPException(status_code=422, detail="Диапазон: не более 92 дней")
-    if not principal.is_manager:
+    # скоуп «Факта» — по ключу fact.view_all (бывш. ролевое is_manager, долг §5.2)
+    if "fact.view_all" not in principal_permissions(db, principal):
         own = principal.employee.id if principal.employee else None
         if own is None or own != employee_id:
             raise HTTPException(status_code=403,
@@ -88,7 +89,8 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
     period = month_period(year, month)
     st = _settings_for_period(db, period)
     emps = period_employees(db, period.start, period.end)
-    if not principal.is_manager:
+    view_all = "fact.view_all" in principal_permissions(db, principal)
+    if not view_all:
         own = principal.employee.id if principal.employee else None
         emps = [e for e in emps if e.id == own]
     ports = engine_ports(db, principal, now_utc())
@@ -297,7 +299,8 @@ def day_grid(date: dt.date,
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     period = period_containing(date, st.period_granularity)
     emps = period_employees(db, date, date)
-    if not principal.is_manager:
+    view_all = "fact.view_all" in principal_permissions(db, principal)
+    if not view_all:
         own = principal.employee.id if principal.employee else None
         emps = [e for e in emps if own is not None and e.id == own]
     tz = st.tz
@@ -317,5 +320,5 @@ def day_grid(date: dt.date,
             "granularity": st.period_granularity,
             "step_minutes": st.step_minutes,
             "tz": str(tz),
-            "all_employees": principal.is_manager,
+            "all_employees": view_all,
             "rows": rows}

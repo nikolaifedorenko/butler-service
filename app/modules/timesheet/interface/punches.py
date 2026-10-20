@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
 from app.core.db import get_db
-from app.core.permissions import has_perm, require_perm
+from app.core.permissions import has_perm, principal_permissions, require_perm
 from app.core.time import TZ, local_date, now_local
 from app.modules.employees.application import Employee, employed_on, ensure_periods, periods_of
 
@@ -84,7 +84,8 @@ def _employed_on(db: Session, emp: Employee, date: dt.date) -> bool:
 
 
 def _resolve_employee(principal: Principal, employee_id: Optional[int], db: Session) -> Employee:
-    if principal.is_manager and employee_id:
+    # отметка за другого — по ключу punches.punch_for_others (бывш. is_manager, §5.2)
+    if employee_id and has_perm(db, principal, "punches.punch_for_others"):
         emp = db.get(Employee, employee_id)
         if not emp:
             raise HTTPException(status_code=404, detail="Сотрудник не найден")
@@ -245,9 +246,12 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
     backfill = False
     ts = now
 
+    perms = principal_permissions(db, principal)
     if payload.ts:
-        if not principal.is_manager:
-            raise HTTPException(status_code=403, detail="Отметку задним числом может поставить только менеджер")
+        if "punches.backfill" not in perms:
+            raise HTTPException(status_code=403,
+                                detail="Отметка задним числом требует права "
+                                       "«Отметки: отметка задним числом»")
         try:
             ts = dt.datetime.fromisoformat(payload.ts.replace("Z", ""))
         except ValueError:
@@ -313,7 +317,8 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
 
     # Ворот отметок нет (RUL-ALL-MARKS-COUNTED): все реальные отметки участвуют в расчёте.
 
-    source = "manual" if backfill or (principal.is_manager and payload.employee_id
+    source = "manual" if backfill or ("punches.punch_for_others" in perms
+                                      and payload.employee_id
                                       and payload.employee_id !=
                                       (principal.employee.id if principal.employee else None)) \
         else "web"
@@ -350,7 +355,8 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
     """Журнал отметок. Сотрудник видит только свои, менеджер — всех."""
     stmt = select(Punch).order_by(Punch.ts.desc())   # employee подгружается JOIN'ом (lazy="joined")
     limit = 2000
-    if not principal.is_manager:
+    # журнал всех сотрудников — по ключу punches.view_all (бывш. is_manager, §5.2)
+    if "punches.view_all" not in principal_permissions(db, principal):
         if not principal.employee:
             raise HTTPException(status_code=403, detail="Нет привязанного сотрудника")
         stmt = stmt.where(Punch.employee_id == principal.employee.id)
@@ -403,7 +409,8 @@ def set_punch_note(punch_id: int, payload: NoteIn,
     p = db.get(Punch, punch_id)
     if not p:
         raise HTTPException(status_code=404, detail="Отметка не найдена")
-    if not principal.is_manager and (not principal.employee or principal.employee.id != p.employee_id):
+    if ("punches.view_all" not in principal_permissions(db, principal)
+            and (not principal.employee or principal.employee.id != p.employee_id)):
         raise HTTPException(status_code=403, detail="Можно комментировать только свои отметки")
     p.note = payload.note.strip()[:500]
     audit(db, principal, "punch_note", f"punch:{punch_id}", {"note": p.note})

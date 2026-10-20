@@ -16,9 +16,15 @@ PERMISSIONS. Новые ключи: `night.close` (закрытие/переот
   для управления привязана к `cars.manage`.
 Оба ужесточения снимаются грантом в «Настройках → Права доступа».
 
-Inline-ветвления `principal.is_manager` (fact_api, punches, schedule, photos)
-этапом B НЕ трогались — они переводятся на ключи в модульных фазах (этап C).
+Inline-ветвления `principal.is_manager` этапом B не трогались; долг закрыт
+батчем 20.10.2026 (docs/CHANGES-2026-10-20-debt1-scope-perms.md): fact.view_all,
+punches.view_all / punches.punch_for_others / punches.backfill,
+schedule.view_all (+ schedule.edit для readonly сетки). Базовая аудитория
+ключей = прежняя ролевая (MANAGER_ROLES), поведение ролей не изменилось.
+Ниже — страж: в модулях не осталось чтений `is_manager`.
 """
+
+
 from __future__ import annotations
 
 import datetime as dt
@@ -157,3 +163,25 @@ def test_neaktivnye_kary_vidny_tolko_upravleniyu_parkom(admin_client, manager_cl
         assert cid in mgr_ids and cid in adm_ids
     finally:
         assert admin_client.put(f"/api/cars/{cid}", json={"active": True}).status_code == 200
+
+
+def test_inline_is_manager_v_modulyah_bolshe_net():
+    """Страж долга §5.2: экранная авторизация — только ключи каталога.
+
+    Свойство Principal.is_manager живёт в core/auth как утилита ролевой
+    иерархии (can_manage_user), но НИ ОДИН модуль не решает по нему доступ.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules"
+    rx = re.compile(r"\.is_manager\b")
+    offenders = []
+    for path in sorted(root.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if rx.search(code):
+                offenders.append(f"{path.relative_to(root.parent.parent)}:{i}")
+    assert offenders == [], f"is_manager в модулях: {offenders}"

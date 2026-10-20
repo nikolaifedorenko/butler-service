@@ -23,12 +23,27 @@ PERMISSIONS: list[dict] = [
     {"key": "presence.view", "section": "Кто на работе / Посещения", "title": "Просмотр присутствия"},
     {"key": "schedule.view", "section": "График", "title": "Просмотр графика"},
     {"key": "schedule.edit", "section": "График", "title": "Редактирование графика"},
+    {"key": "schedule.view_all", "section": "График",
+     "title": "Полные данные сетки (заметки и id записей в ячейках)"},
+    {"key": "fact.view_all", "section": "Факт",
+     "title": "Сессии и сетка «Номера» всех сотрудников"},
     {"key": "tabel.view", "section": "Табель", "title": "Просмотр Табеля"},
     {"key": "tabel.edit", "section": "Табель", "title": "Редактирование Табеля"},
     {"key": "mgmt.view", "section": "Управленческий табель", "title": "Просмотр (view)"},
     {"key": "mgmt.close", "section": "Управленческий табель", "title": "Закрытие периода (close)"},
     {"key": "mgmt.recalculate", "section": "Управленческий табель", "title": "Пересчёт последнего закрытого"},
     {"key": "punches.manage", "section": "Отметки", "title": "Ручные отметки и отмена отметок"},
+    # Долг §5.2 закрыт (батч 20.10.2026): inline-ветвления роли is_manager в
+    # punches/fact/schedule переведены на ключи каталога. Базовая аудитория —
+    # прежняя ролевая (MANAGER_ROLES = admin/manager/supervisor входят в
+    # ROLE_DEFAULTS автоматически), поведение ролей не меняется; гранты
+    # управляют выдачей/снятием в «Правах доступа».
+    {"key": "punches.view_all", "section": "Отметки",
+     "title": "Журнал отметок всех сотрудников и комментарии к чужим"},
+    {"key": "punches.punch_for_others", "section": "Отметки",
+     "title": "Отметка за другого сотрудника"},
+    {"key": "punches.backfill", "section": "Отметки",
+     "title": "Отметка задним числом (произвольное время)"},
     {"key": "employees.view", "section": "Сотрудники", "title": "Просмотр сотрудников"},
     {"key": "employees.edit", "section": "Сотрудники", "title": "Редактирование сотрудников и банка"},
     # employees.impersonate (этап B, 20.10.2026): «посмотреть глазами сотрудника»

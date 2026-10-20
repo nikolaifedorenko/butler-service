@@ -577,10 +577,13 @@ C4+C5 (PR #58), C6 (PR #59), C7 (PR #60). Батчи — `docs/CHANGES-2026-10-2
       catch → 422 сохранены как задокументированное разрешение конфликта §5.3/§11.1
       (статусы закреплены тестами — CHANGES C2 §2).
 - [x] **Права — только `require_perm`**; `require_manager`/`require_supervisor`
-      удалены (B); `can_manage_user` не тронут (core/auth_guards).
-      Зарегистрированный продуктовый долг: 11 inline-ветвлений `principal.is_manager`
-      (fact_api/punches/schedule) — перевод на права требует решения владельца
-      по семантике видимости каждого экрана (§5.2, CHANGES C4 §2).
+      удалены (B); `can_manage_user` не тронут (core/auth_guards). Долг §5.2
+      закрыт батчем 20.10.2026 (`docs/CHANGES-2026-10-20-debt1-scope-perms.md`):
+      11 inline-ветвлений `principal.is_manager` переведены на 5 ключей каталога
+      (fact.view_all; punches.view_all/punch_for_others/backfill;
+      schedule.view_all + schedule.edit для readonly); аудитория базово прежняя
+      (MANAGER_ROLES), управляемость — грантами; страж: в модулях нет чтений
+      `is_manager` (тест).
 - [x] **TZ/now — `core/time.py`** (долг закрыт батчем 20.10.2026,
       `docs/CHANGES-2026-10-20-debt3-local-date.md`): все `dt.date.today()` в
       timesheet/bootstrap/migrations переведены на `local_date()`; `now_utc()` —
