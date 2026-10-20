@@ -96,7 +96,7 @@ def dump_pattern(pattern: Optional[dict]) -> str:
     return json.dumps(clean, ensure_ascii=False) if clean else ""
 
 
-def validate_pattern(pattern: dict) -> str:
+def validate_pattern_label(pattern: dict) -> str:
     """Проверка индивидуального шаблона; возвращает человекочитаемое описание."""
     kind = pattern.get("kind") or "base"
     value = (pattern.get("value") or "").strip()
