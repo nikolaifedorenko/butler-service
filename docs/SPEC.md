@@ -27,9 +27,15 @@
 Пять слоёв, зависимости только вниз (спека 2.1):
 
 ```
-interface (static/js, app/api/*) → application (app/engine/application) → domain (app/engine/domain)
-        adapters (app/engine/adapters) реализуют ports (app/engine/ports) поверх БД (app/models)
+interface (static/js/modules, modules/timesheet/interface) → application → domain
+        adapters реализуют ports поверх БД (adapters/orm.py модулей + core)
 ```
+
+Пути — по модульной структуре (ADR-0010, фазы C1–C7): приложение = `app/core/`
+(инфраструктура) + `app/bootstrap/` и `app/main.py` (composition root) + 9 модулей
+`app/modules/*` (timesheet, employees, night, cars, docs, notify, settings, access,
+audit), каждый — пять слоёв `domain/application/ports/adapters/interface`.
+Ниже расчётный контур описан на примере модуля **timesheet**.
 
 * `domain` — чистые функции и справочники: нет времени, I/O, текстов для человека;
   одна функция — один файл (каталог 8.1); поведение из данных CFG-*, не из веток по кодам.
@@ -38,12 +44,13 @@ interface (static/js, app/api/*) → application (app/engine/application) → do
   `months`, `bank_adjustment`, `load_inputs` (выборка отметок с запасом в шаг + opening_mark, 7.4).
 * `ports` — 13 Protocol'ов; контрактные dataclass'ы (`PeriodState`, `ClosingInputs`,
   `Employment`) живут в `domain/types/entities.py` (F-06). `ClockPort` не вводится (F-15):
-  системное время снимается в composition root (`app/api/engine_common.now_utc`).
+  системное время снимается в composition root (`modules/timesheet/application/engine_common.now_utc`).
 * `adapters` — SQL-реализации: стабильный порядок отметок и первая линия чередования
   (sanitize), валидация уровня 3 при чтении Графика, непрерывность банка
   (opening = closing предыдущего периода цепочки), замена переносов при сохранении.
-* `interface` — HTTP-роутеры `app/api/*` и SPA `static/js/*`; единственное место
-  человекочитаемых текстов (`app/engine/interface/formatting.py` + роутеры).
+* `interface` — HTTP-роутеры `modules/*/interface/` и SPA `static/js/modules/*`;
+  единственное место человекочитаемых текстов (`modules/timesheet/interface/formatting.py`
+  — тексты флагов/трассы и `error_text` ошибок движка — и роутеры).
 
 Четыре независимых расчёта (16.1): `settle()`, `evaluate_flags()`, `assemble_board()`,
 история сессий (`pair_marks`). Тяжёлый конвейер запускает только вкладка
@@ -77,7 +84,7 @@ access_grants` (права), `departments`, `subdivisions`, `shift_types` (+`shi
 Удалены вместе со старым движком: `timesheet_rows` (расчётные строки legacy),
 `schedule_entries` (ячейки старого графика); `deferred_carry.reason_code` не мапится.
 
-## 4. Движок расчёта (app/engine)
+## 4. Движок расчёта (app/modules/timesheet)
 
 Конвейер часов `settle()` — 14 стадий (спека 6.3): валидация входа (уровень 2) →
 нормализация входящих остатков при смене шага (`OPENING_ROUNDED`) → округление отметок
@@ -255,7 +262,7 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
   сравнение результата в канонической форме), юниты каталога 8.1, валидация 3 уровней,
   property-based инварианты и детерминизм (hypothesis), архитектура (граф импортов,
   чистота, независимость конвейеров), truth table режимов, R35–R40, атомарность.
-  Покрытие `app/engine/domain` ≥ 95 %.
+  Покрытие `app/modules/timesheet/domain` ≥ 95 %.
 * `tests/test_api.py`, `test_features.py`, `test_v4_api.py`, `test_readonly_pdf.py`,
   `test_query_budget.py` и др. — интеграция: роли и права, вкладки, документы,
   бюджет запросов (доска — константа; сетка не растёт со штатом; УТ — линейно

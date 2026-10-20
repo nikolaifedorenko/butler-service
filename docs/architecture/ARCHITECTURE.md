@@ -18,8 +18,21 @@ SQL-запросов (`SQLAlchemy before_cursor_execute`, `tests/test_query_budg
 закрытие/пересчёт периодов, доска «кто сейчас на работе», история сессий, заявления
 DOCX/PDF + два независимых поддомена (ночные отчёты, электрокары).
 
+Приложение — **модульный монолит** (ADR-0010, фазы C1–C7 исполнены 20.10.2026):
+`app/core/` (инфраструктура: config, db-сессия, время, ошибки, безопасность,
+права, идентичность, аудит, медиа, key-value хранилище, рендер-транспорт) +
+`app/bootstrap/` и `app/main.py` (composition root — единственное место, знающее
+все модули) + **9 бизнес-модулей** `app/modules/*` (timesheet, employees, night,
+cars, docs, notify, settings, access, audit), каждый — гексагон из пяти слоёв
+`domain / application / ports / adapters / interface`. Границы закреплены
+инструментально: 14 контрактов `.importlinter` (R5, R3-приватность слоёв,
+независимость роутеров) + AST-тесты (`tests/engine/test_architecture.py` —
+законы движка, `tests/test_modules_architecture.py` — все модули). Межмодульные
+импорты — только чужие `application`/`ports` (R3), модели — через
+`application/catalog.py` владельца.
+
 Главная ценность и главная защита проекта — **расчётный движок v7.1**
-(`app/engine/`, ~5 700 строк): чистая архитектура из пяти слоёв, детерминированные
+(`app/modules/timesheet/`, ~11 400 строк в модуле): чистая архитектура из пяти слоёв, детерминированные
 чистые функции «данные → данные», поведение из справочников CFG-* (ни одной ветки
 по строковым кодам), трассируемость каждого действия (`Reason`/`Cut`/`Flag` с
 исчерпывающим составом данных), 21 инвариант, проверяемый внутри расчёта, и 55
@@ -34,13 +47,14 @@ DOCX/PDF + два независимых поддомена (ночные отч
 | N+1 в сетке месяца (966 запросов на 11 сотрудниках) | батч-загрузка: сетка ~15 запросов, не растёт со штатом (тест-страж) |
 | `recalc-all` 11 820 запросов синхронно | удалён: живой `view` считается на один период/сотрудника (6–8 запросов + конвейер, 16.1 п.5); закрытие — атомарная транзакция |
 | Два источника правды о схеме (models + selfcheck) | модели — единственный источник; `migrate_engine_v7` идемпотентна; расчётные данные v4 очищены маркером |
-| Логика расчёта в API-слое (`factview`, пересчёты в роутерах) | расчёт — только `app/engine/domain`; API тонкие; тяжёлый конвейер вызывает одна вкладка |
+| Логика расчёта в API-слое (`factview`, пересчёты в роутерах) | расчёт — только домен движка (ныне `app/modules/timesheet/domain`); API тонкие; тяжёлый конвейер вызывает одна вкладка |
 | Иллюзорная изоляция тестов на одной БД | движковые тесты (317+) вообще не трогают БД (чистый домен + in-memory порты); интеграция — одна сидируемая база |
 | Противоречивая документация (4 копии разделов) | норматив — `docs/overtime_spec_v7_1_final.md` (монолит v7.1); SPEC/README синхронизированы |
 
 Остались осознанные компромиссы: самодельные миграции (Alembic — точка роста),
 линейный по штату бюджет УТ (по спеке: конвейер на сотрудника), SPA без сборки
-(один `app.js` ~2 400 строк + секционные файлы).
+(оболочка `app.js` + 9 файлов разделов в `static/js/modules/`), кросс-модульные
+`relationship()` на каталог (R6-долг — см. §7).
 
 ---
 
@@ -63,48 +77,70 @@ DOCX/PDF + два независимых поддомена (ночные отч
 * **Долг — часть периода**: гасится банком и каскадом кодов при закрытии; остаток
   переносится минусом банка; коды переносятся только вперёд.
 
-### 2.2 Поддомены в монолите
+### 2.2 Поддомены = модули (структура §2 EXECUTION-SPEC-v2)
 
-| Поддомен | Модули | Связь с ядром |
+| Модуль (`app/modules/`) | Поддомен | Публичная граница |
 |---|---|---|
-| **Учёт рабочего времени** (ядро) | `app/engine/*`, `api/{schedule,tabel,mgmt,presence,fact,punches,engine_settings}`, `base_schedule`, `schedule_patterns`, `tabel_fill`, `shiftrev`, `employment`, `groups`, `doublepay` | — |
-| **Ночные отчёты** | `night`, `night_export`, `photos`, `api/night_api` | только общие `models/db/auth`; к движку не обращается |
-| **Электрокары** | `cars`, `api/cars_api` (+`photos`) | то же |
-| **Документы** | `doc_templates`, `doc_render`, `grid_docx`, `pdf_render`, `names`, `api/docs_api` | читает Табель/отсутствия и карточки сотрудников |
+| **timesheet** | Учёт рабочего времени: движок v7.1, Табель, График, отметки, доска, УТ, двойные, engine-настройки | `application` (use case'ы движка, engine_common, base_schedule, tabel_fill, shiftrev, catalog моделей) |
+| **employees** | Каталог персонала, трудоустройство, жизненный цикл, группы графика, имена | `application` (catalog: Employee/Department/…, employment, groups/names-реэкспорт) |
+| **night** | Ночной отчёт v2: зоны, объекты, чек-листы, недостатки, журнал, выгрузки | `application` (night, night_export, night_notify, catalog) |
+| **cars** | Электрокары: парк, заряд/возврат, места, ночная проверка | `application` (cars, catalog) |
+| **docs** | Заявления DOCX/PDF, сетка Графика в Excel, шаблоны | `application` (doc_render, grid_docx, doc_templates) |
+| **notify** | Общая доставка: Telegram + почта, каталог чатов, журнал отправок | `application` (config, dispatch, recipients, chats, catalog), `ports` (TransportError) |
+| **settings** | Единый центр настроек (агрегирует границы timesheet/docs) | `interface` (своей логики нет) |
+| **access** | Вход/сессии/impersonation, экран «Права доступа» | `interface` (модели — core/identity) |
+| **audit** | Журнал действий + CSV | `interface` (модель и audit() — core/audit) |
 
-### 2.3 Цифры (11.10.2026)
+Кросс-модульное: медиа (Photo) и роутер photos — `core/media*`; ключ-значение
+`Setting` — `core/settings_store`; транспорт рендера — `core/render`;
+`can_manage_user` — `core/auth_guards` (ролевой страж, не право).
+
+### 2.3 Цифры (20.10.2026, фаза C7)
 
 | Показатель | Значение |
 |---|---|
-| Движок `app/engine/` | ~5 700 строк: domain 3 530 · adapters 947 · application 700 · interface 354 · ports 195 |
-| API-слой `app/api/` | ~5 200 строк, 17 роутеров, ~140 маршрутов |
-| Фронтенд `static/js` | ~4 600 строк (core, app, section_v4, section_night, section_cars) |
-| Тесты | ~7 100 строк, **436 тестов**: движок (EX-01…55, юниты, валидация, property, архитектура, application) + интеграция |
-| Покрытие `app/engine/domain` | ≥ 95 % (DoD спеки) |
-| Таблиц БД | 28 (движковые: tabel_days, schedule_shifts, schedule_absences, punches, engine_settings_versions, day_modifiers, period_closings, deferred_carry, bank_adjustments, employment_periods) |
+| Модуль timesheet | ~11 400 строк: domain 3 583 · interface 4 125 (8 роутеров + views/formatting) · application 1 950 · adapters 1 339 · ports 195 · bootstrap |
+| Прочие 8 модулей | employees 1 776 · night 2 591 · cars 1 090 · docs 1 200 · notify 1 595 · settings 186 · access 445 · audit 102 строк |
+| `app/core/` + composition root | 1 762 (18 файлов) + bootstrap/main 1 640 строк |
+| API | 18 роутеров по модулям, **156 путей OpenAPI** (`docs/openapi.json` сверяется в CI) |
+| Фронтенд `static/js` | ~8 850 строк, 11 файлов: core.js, app.js + 9 разделов в `modules/` |
+| Тесты | ~12 500 строк, **~650 тестов**: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
+| Покрытие `timesheet/domain` | ≥ 95 % (DoD спеки) |
+| Таблиц БД | **45** (реестр `bootstrap/registry.py`, `/api/selfcheck` сверяет схему с `Base.metadata`) |
 | Приёмочных примеров спеки | 55 (EX-01…EX-55) — каждый в автотестах |
 
 ---
 
 ## 3. Слои и модули
 
+Каждый модуль — гексагон (§3 EXECUTION-SPEC-v2); на примере timesheet:
+
 ```
-static/js (SPA)  ─HTTP→  app/api/* (interface-слой)
-                              │  now = now_utc() (composition root, F-15)
-                              ▼
-                     app/engine/application  ── знает domain + ports
-                              │
-             ┌────────────────┼──────────────────┐
-             ▼                ▼                  ▼
-   app/engine/domain   app/engine/ports   app/engine/interface
-   (чистое ядро)       (13 Protocol'ов)   (тексты, serialize, views)
-                              ▲
-                     app/engine/adapters (SQL поверх app/models)
+static/js/modules/* (SPA) ─HTTP→ main.py (composition root: роутеры, хэндлеры
+                                     ошибок, middleware из core/observability)
+                                          │
+                       modules/timesheet/interface (8 роутеров + views/formatting)
+                                          │  now = now_utc() (composition-параметр, F-15)
+                                          ▼
+                       modules/timesheet/application ── знает domain + ports
+                                          │        (и catalog — публичная поверхность моделей)
+             ┌────────────────────────────┼──────────────────────┐
+             ▼                            ▼                      ▼
+   timesheet/domain              timesheet/ports        timesheet/adapters
+   (чистое ядро, 18 пакетов)     (13 Protocol'ов)       (SQL + ORM-модели orm.py)
+                                                                │
+                                                                ▼
+                                             app/core (db-сессия, время, ошибки,
+                                             identity, media, settings_store, render)
 ```
 
-Схема: [`diagrams/01-layers.svg`](diagrams/01-layers.svg).
+Между модулями — только чужие `application`/`ports` (R3), модели — через
+`application/catalog.py` владельца; `core` не знает модулей (R5), composition
+root (`main.py`, `bootstrap/`) — единственный, кто знает всё. Контракты:
+`.importlinter` (14) + AST-тесты. Схема: [`diagrams/01-layers.svg`](diagrams/01-layers.svg)
+(историческая, до модульной перестройки; актуальный текст — выше).
 
-### 3.1 Домен (`app/engine/domain/`, 3 530 строк, ~120 файлов)
+### 3.1 Домен (`app/modules/timesheet/domain/`, 3 583 строки, ~120 файлов)
 
 Одна функция — один файл (каталог спеки 8.1); пакеты по стадиям конвейера:
 
@@ -133,7 +169,7 @@ static/js (SPA)  ─HTTP→  app/api/* (interface-слой)
 `settle()` не импортирует `flags/`; флаги не знают DayCard/SettleResult (вход —
 `Mapping[date, bool]`); `board/` и `sessions/` не импортируют тяжёлые пакеты.
 
-### 3.2 Application (`app/engine/application/`, 700 строк)
+### 3.2 Application (`app/modules/timesheet/application/`, 1 950 строк)
 
 `view_period / close_period / recalculate` (с параметром `now`, эффективный период,
 типованные отказы до домена: R35 → RUL-VIEW-AFTER-PREVIOUS → права закрытия),
@@ -144,7 +180,7 @@ static/js (SPA)  ─HTTP→  app/api/* (interface-слой)
 перегенерация дня ±1), `months` (гранулярность R36, цепочка), `bank_adjustment`
 (правила посева R37), `period_view` (PeriodView + day_views с информационным планом R39).
 
-### 3.3 Адаптеры (`app/engine/adapters/`, 947 строк)
+### 3.3 Адаптеры (`app/modules/timesheet/adapters/`, 1 339 строк + `orm.py`)
 
 По файлу на источник поверх существующей БД: `sql_timesheet` (группа по дням из
 истории блоков — RUL-GROUP-PER-DAY, без N+1), `sql_punch` (naive-local → UTC-aware,
@@ -159,22 +195,31 @@ double_pay/vip с дедупликацией), `sql_closings` (PeriodState с pr
 
 ### 3.4 Interface
 
-`app/engine/interface/`: formatting (тексты флагов/трассы — единственное место),
-serialize/deserialize (сохранение и чтение SettleResult/FlagsResult), views (payload
-вкладок). `app/api/*`: тонкие роутеры; `now` снимается в `engine_common.now_utc()`
-(composition root) и передаётся параметром — ClockPort не вводится (F-15).
+`app/modules/timesheet/interface/`: formatting (тексты флагов/трассы и `error_text`
+— единственное место человекочитаемых текстов ошибок движка), serialize/deserialize
+(сохранение и чтение SettleResult/FlagsResult), views (payload вкладок) + 8 тонких
+роутеров (tabel, mgmt, fact, presence, punches, doublepay, schedule,
+engine_settings). `now` снимается в `application/engine_common.now_utc()`
+(composition-параметр) и передаётся параметром — ClockPort не вводится (F-15).
+Доменные ошибки маппятся в HTTP центральными хэндлерами `main.py`
+(ConfigError → 409, DomainError → 422, ApplicationError → 409; три
+задокументированных локальных catch — валидация ввода 422, см. CHANGES C2 §2).
 
 ### 3.5 Клиент
 
-SPA без сборки: `core.js` (утилиты/api/модалки), `app.js` (оболочка, меню 7 разделов,
-График-слои, Мои отметки), `section_v4.js` (Отметки-доска, Факт, Табель, УТ, Права,
-Аудит, справочники CFG-*), `section_settings.js` (реестр экранов «Настроек» — единого
-центра конфигурации, группы «Расчёт / Персонал и смены / Объект / Доставка /
-Администрирование»), `section_night.js` и `section_cars.js` (операционные разделы
-и свои справочные экраны `renderNightDictScreen` / `renderCarsDictScreen`, которые
-подключаются в реестр настроек; deep-link'и из разделов — `settingsOpen`). Контракты:
-`tools/check_api_contract.py` (JS-вызовы ↔ OpenAPI), `tools/gen_js_globals.py`
-(no-undef по списку глобальных имён), `tools/bump_version.py` (версии кэша + sw.js).
+SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки), `app.js` (оболочка,
+меню, роутинг) и **`static/js/modules/`** — 9 файлов разделов, имена соответствуют
+модулям бэкенда (фаза C6): `timesheet_layers.js` (сетка Графика), `timesheet_v4.js`
+(Отметки-доска, Факт, Табель, УТ, Права, Аудит, CFG-*), `me.js`, `employees.js`,
+`night.js`, `cars.js`, `docs.js`, `dicts.js`, `settings.js` (реестр экранов единого
+центра конфигурации; подключается ПОСЛЕ timesheet_v4/cars/night). Глобальные функции
+сохранены: межфайловые вызовы через глобальную область, границы держат
+`tools/gen_js_globals.py` (рекурсивный скан `static/js/**` → `js_globals.json`) и
+ESLint `no-undef` — отказ от `window.App.modules.*` отклонён (property-доступ не
+проверяется статически; прецедент — регрессия loadNight/loadCars). Порядок
+`<script>` в index.html фиксирует зависимости (cars → night → v4 → settings).
+Контракты: `tools/check_api_contract.py` (JS-вызовы ↔ OpenAPI, rglob),
+`tools/bump_version.py` (версии кэша + SHELL `sw.js` c файлами `modules/`, rglob).
 
 ## 4. Модель данных
 
@@ -232,13 +277,27 @@ POST /api/punches: сериализация по сотруднику (lock) →
 
 ## 6. Карта зависимостей
 
-* `domain` не импортирует никого (тест `test_domain_imports_nothing_above`).
-* `application` → `domain` + `ports`; не импортирует `adapters`/`interface`/`app.*`.
-* `ports` → только `typing` + `domain`.
-* `adapters` → `ports`(контракты) + `domain` + `app.models`.
-* `app/api` → `application` + `adapters.factory` (композиция) + `interface`.
-* Циклических импортов внутри `app/engine` нет (проверяется запуском тестов и
-  графом импортов в `test_architecture.py`).
+Внутри модуля (§3 спеки; AST-тесты `tests/test_modules_architecture.py`):
+
+* `domain` не импортирует никого, кроме stdlib и своего домена (R1);
+* `application` → `domain` + `ports` + `core.errors`; не импортирует `interface`;
+* `ports` → только stdlib + `domain` + `core`;
+* `adapters` → `ports` + `domain` + `core` + ORM; не импортируют `interface`
+  (исключения — изначальная архитектура движка: `factory.py`, `sql_closings.py`
+  и др. — явный allowlist в AST-тесте, кандидаты на продуктовый батч);
+* `interface` → `application` + `ports` + `core` (+ свой `adapters.orm` —
+  задокументированный прагматизм до финальных контрактов).
+
+Между модулями (R3; private-контракты `.importlinter` ×9):
+
+* чужие `domain`/`adapters`/`interface` — запрещены; публичны только
+  `application`/`ports`; модели — через `application/catalog.py` владельца;
+* `core` не импортирует модули (R5; единственная TYPE_CHECKING-аннотация
+  `core.auth → employees.catalog`, в runtime — инъекция `set_employee_loader`);
+* composition root (`main.py`, `bootstrap/`) — единственный импортёр всего
+  (реестр моделей `registry.ensure_models()` — явные импорты всех `adapters.orm`);
+* циклов нет: кросс-модульные импорты идут в чужие `application`-границы, которые
+  не импортируют чужие модули обратно (проверяется запуском + контрактами).
 
 ## 7. Риски и точки роста
 
@@ -246,18 +305,26 @@ POST /api/punches: сериализация по сотруднику (lock) →
 |---|---|---|
 | Самодельные миграции (raw DDL при старте) | 🟠 | Alembic: autogenerate + версионирование; `migrate_engine_v7` — образец идемпотентного шага |
 | Бюджет УТ линейный по штату (по спеке) | 🟡 | батч-порты `load_inputs` на группу сотрудников; кэш Settings уже есть |
-| SPA без сборки, один app.js ~2 400 строк | 🟢 закрыт 15.10.2026 | app.js 2262 → 369 строк: разделы вынесены в section_grid/docs/me/employees/dicts.js; границы держат gen_js_globals + ESLint no-undef + смоуки (ADR-0008); esbuild — при росте команды |
+| SPA без сборки, один app.js ~2 400 строк | 🟢 закрыт 15.10.2026 | app.js 2262 → 369 строк: разделы — 9 файлов `static/js/modules/` (C6); границы держат gen_js_globals + ESLint no-undef + смоуки (ADR-0008); esbuild — при росте команды |
+| Кросс-модульные `relationship()` на каталог (R6-долг): `Punch.employee` (lazy=joined) и ещё 10 связей — точный allowlist в `tests/test_modules_architecture.py` | 🟡 зафиксировано C4 | продуктовый батч «навигация → порты/DTO»: замена на явные joins/словари во владельцах экранов; бюджеты запросов под тестом-стражем |
+| `dt.date.today()` в 7 местах timesheet interface/bootstrap (системная TZ вместо `core/time.local_date()`) | 🟡 | точечный батч с проверкой поведения у полуночи (DoD «TZ/now — только core/time») |
 | SQLite в проде | 🟢 закрыт 15.10.2026 | прод-профиль `docker-compose.prod.yml`: PostgreSQL 16 + nginx (TLS) + бэкапы; драйвер в образе |
 | Настройки движка правятся JSON-в-текстарея | 🟡 | форма-редактор справочников (валидация уже сообщает все нарушения разом) |
 | Демо-сид завязан на «сегодня» | 🔵 | фиксация даты сида переменной окружения для скриншот-тестов |
 
 ## 8. Онбординг-маршрут
 
-1. `README.md` → «Правила расчёта — модель v7/v7.1» (10 пунктов).
-2. `docs/overtime_spec_v7_1_final.md`: разделы 2 (законы), 4 (модель), 6.3 (стадии
+1. `README.md` → «Структура» и «Правила расчёта — модель v7/v7.1» (10 пунктов).
+2. `docs/EXECUTION-SPEC-v2.md` §2–§3 — целевая структура и правила слоёв R1–R6;
+   `docs/adr/0010-modular-monolith-core-modules.md` — почему модульный монолит.
+3. `docs/overtime_spec_v7_1_final.md`: разделы 2 (законы), 4 (модель), 6.3 (стадии
    settle), 7.2 (truth table режимов), 16 (вкладки).
-3. Код по стадиям: `domain/pipeline/settle.py` → пакеты стадий → `application/view_period.py`.
-4. `tests/engine/test_ex_01_15.py` — как читать приёмочные примеры (вход/выход/контроли).
-5. `app/api/mgmt_api.py` + `static/js/section_v4.js (loadMgmt)` — вертикальный срез вкладки.
-6. `docs/CHANGES-2026-10-18-settings-simplify.md` — упрощение настроек 18.10.2026
-   (независимые справочники, значение рабочего дня у сотрудника).
+4. Код по стадиям: `app/modules/timesheet/domain/pipeline/settle.py` → пакеты
+   стадий → `application/view_period.py`.
+5. `tests/engine/test_ex_01_15.py` — как читать приёмочные примеры (вход/выход/контроли).
+6. Вертикальный срез вкладки: `app/modules/timesheet/interface/mgmt_api.py` +
+   `static/js/modules/timesheet_v4.js (loadMgmt)`.
+7. Границы: `.importlinter` (14 контрактов) + `tests/test_modules_architecture.py`
+   (AST-законы всех модулей) — что можно импортировать и откуда.
+8. `docs/CHANGES-2026-10-20-stage-c*.md` — как и почему прошла модульная
+   перестройка (C1–C7), включая задокументированные долги.
