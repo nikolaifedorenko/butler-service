@@ -517,8 +517,8 @@ def _seed_night_dirs(db: Session) -> None:
 
 
 def _seed_cars(db: Session, by_name: dict) -> None:
-    from ..cars import create_car
     from ..models import CarLocation, User
+    from ..modules.cars.application.cars import create_car
 
     admin = db.scalar(select(User).where(User.username == "admin"))
     principal = None

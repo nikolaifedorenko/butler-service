@@ -19,6 +19,7 @@ from ..core.media import Photo  # noqa: F401
 from ..core.roles import MANAGER_ROLES, ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR  # noqa: F401
 from ..core.settings_store import Setting  # noqa: F401 — фаза C3: кросс-модульное key-value
 from ..core.time import utcnow  # noqa: F401
+from ..modules.cars.adapters.orm import Car, CarHistory, CarLocation, CarNightCheck  # noqa: F401 — фаза C4
 
 # Фаза C2 (20.10.2026): модели Табеля/Графика/движка и каталога переехали в
 # app/modules/timesheet/adapters/orm.py — фасад ре-экспортирует их (транзитный
@@ -66,7 +67,6 @@ from ..modules.timesheet.adapters.orm import (  # noqa: F401
     TabelDay,
     VipDoublePay,
 )
-from .cars import Car, CarHistory, CarLocation, CarNightCheck  # noqa: F401
 
 __all__ = [
     "Base",

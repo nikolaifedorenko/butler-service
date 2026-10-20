@@ -1117,7 +1117,7 @@ def _cars_section(rep: NightReport) -> NightAreaSection:
 def report_cars(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
     """Состояние обхода электрокаров за смену (список каров + отметки)."""
-    from app.cars import night_cars_state
+    from app.modules.cars.application.cars import night_cars_state
 
     rep = _get_report(db, report_id)
     return night_cars_state(db, rep)
@@ -1154,8 +1154,8 @@ async def report_car_check(report_id: int, car_id: int,
     просто факт, в замечания не входит."""
     from sqlalchemy.exc import IntegrityError
 
-    from app.cars import CarOpError, check_car_night
     from app.models import Car
+    from app.modules.cars.application.cars import CarOpError, check_car_night
 
     blobs: list[tuple[str, bytes]] = []
     if file is not None:
@@ -1202,7 +1202,7 @@ def report_cars_finish(report_id: int, payload: InterceptionAck,
                        principal: Principal = Depends(current_principal),
                        db: Session = Depends(get_db)):
     """Завершить шаг «Проверка электрокаров». Незакрытые кары — только после подтверждения."""
-    from app.cars import CarOpError, finish_cars_step, night_cars_state
+    from app.modules.cars.application.cars import CarOpError, finish_cars_step, night_cars_state
 
     rep = _get_report(db, report_id)
     _guard_open(rep)

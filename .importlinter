@@ -44,7 +44,6 @@ modules =
     app.api.access_api
     app.api.audit_api
     app.api.auth_routes
-    app.api.cars_api
     app.api.docs_api
     app.api.photos_api
     app.api.settings_api
@@ -72,7 +71,6 @@ forbidden_modules =
     app.modules
     app.bootstrap
     app.main
-    app.cars
     app.doc_render
     app.doc_templates
     app.grid_docx
@@ -102,7 +100,6 @@ source_modules =
     app.api
     app.services
     app.models
-    app.cars
     app.doc_render
     app.doc_templates
     app.grid_docx
@@ -115,7 +112,6 @@ ignore_imports =
     app.models -> app.modules.timesheet.adapters.orm
     app.models -> app.modules.notify.adapters.orm
     app.models -> app.modules.employees.adapters.orm
-    app.models.cars -> app.modules.employees.application.catalog
     ; docs/grid_docx и doc_render потребляют names/groups через границу employees (до C4d)
     app.doc_render -> app.modules.employees.application
     app.grid_docx -> app.modules.employees.application
@@ -126,7 +122,7 @@ ignore_imports =
     app.api.settings_api -> app.modules.timesheet.adapters.sql_settings
     app.api.auth_routes -> app.modules.timesheet.application.punch_plan
     app.models -> app.modules.night.adapters.orm
-    app.models.cars -> app.modules.night.application.catalog
+    app.models -> app.modules.cars.adapters.orm
 
 [importlinter:contract:notify-isolation]
 name = Эталон (C3): notify не знает про legacy-приложение и composition root
@@ -159,6 +155,7 @@ source_modules =
     app.modules.employees
     app.modules.notify
     app.modules.night
+    app.modules.cars
 forbidden_modules =
     app.modules.timesheet.domain
     app.modules.timesheet.adapters
@@ -174,6 +171,7 @@ source_modules =
     app.modules.timesheet
     app.modules.notify
     app.modules.night
+    app.modules.cars
 forbidden_modules =
     app.modules.employees.domain
     app.modules.employees.adapters
@@ -204,4 +202,18 @@ forbidden_modules =
     app.modules.notify.domain
     app.modules.notify.adapters
     app.modules.notify.interface
+allow_indirect_imports = True
+
+[importlinter:contract:cars-private]
+name = R3: domain/adapters/interface cars приватны (другие модули — только application/ports)
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.notify
+    app.modules.night
+forbidden_modules =
+    app.modules.cars.domain
+    app.modules.cars.adapters
+    app.modules.cars.interface
 allow_indirect_imports = True

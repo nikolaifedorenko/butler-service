@@ -16,6 +16,7 @@ def ensure_models() -> None:
 
     # Фаза C2: ORM-модели Табеля/Графика/движка живут в модуле timesheet —
     # импортируем явно (G4: реестр не полагается только на фасад).
+    from app.modules.cars.adapters import orm as cars_orm  # noqa: F401
     from app.modules.employees.adapters import orm as employees_orm  # noqa: F401
     from app.modules.night.adapters import orm as night_orm  # noqa: F401
     from app.modules.notify.adapters import orm as notify_orm  # noqa: F401

@@ -16,7 +16,6 @@ from .api import (
     access_api,
     audit_api,
     auth_routes,
-    cars_api,
     docs_api,
     photos_api,
     settings_api,
@@ -42,6 +41,7 @@ from .core.config import settings
 from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.time import now_local
+from .modules.cars.interface import cars_api
 from .modules.employees.interface import employees
 from .modules.night.interface import night_api
 from .modules.notify.interface import notify_api

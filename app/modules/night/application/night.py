@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import now_local
-from app.models import Car  # транзит G3: до модуля cars (фаза C4c)
+from app.modules.cars.application.catalog import Car
 from app.modules.notify.application.catalog import ResponsibilityService
 
 from ..adapters.orm import (
@@ -443,7 +443,7 @@ def defects_of(db: Session, rep: NightReport) -> dict:
 def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
     """Снимок обхода электрокаров за смену + перехваты (нужны и API, и выгрузке DOCX)."""
     from app.core.media import photos_of
-    from app.models import CarNightCheck  # транзит G3: до модуля cars (C4c)
+    from app.modules.cars.application.catalog import CarNightCheck
 
     out = []
     checks = list(db.scalars(select(CarNightCheck).where(CarNightCheck.report_id == rep.id)

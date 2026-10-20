@@ -32,7 +32,7 @@ from app.core.identity import User  # noqa: F401 — связь Employee.user
 from app.core.time import utcnow  # noqa: F401 — default created_at
 
 if TYPE_CHECKING:
-    from app.models.cars import Car
+    from app.modules.cars.application.catalog import Car
 
 
 class Department(Base):

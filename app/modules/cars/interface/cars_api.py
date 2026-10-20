@@ -18,7 +18,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..cars import (
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.db import get_db
+from app.core.media import max_upload_bytes, photos_of
+from app.core.permissions import principal_permissions, require_perm
+
+from ..adapters.orm import CarHistory
+from ..application.cars import (
     ACTION_TITLES,
     STATUS_TITLES,
     CarInterceptAssigned,
@@ -38,12 +45,6 @@ from ..cars import (
     take_car,
     update_location,
 )
-from ..core.audit import audit
-from ..core.auth import Principal
-from ..core.db import get_db
-from ..core.media import max_upload_bytes, photos_of
-from ..core.permissions import principal_permissions, require_perm
-from ..models import CarHistory
 
 router = APIRouter(prefix="/api/cars", tags=["cars"])
 
@@ -106,7 +107,7 @@ class LocationEditIn(BaseModel):
 @router.get("/meta")
 def meta(db: Session = Depends(get_db), principal: Principal = Depends(require_perm("cars.view"))):
     """Справочные словари для интерфейса + права."""
-    from ..cars import CHARGE_TITLES
+    from ..application.cars import CHARGE_TITLES
     perms = principal_permissions(db, principal)
 
     return {
@@ -128,7 +129,7 @@ def location_delete(loc_id: int, db: Session = Depends(get_db),
     """Удаление места стоянки (18.10.2026): запрещено, пока место указано у активных
     каров — им нужно сначала сменить место; история хранит места текстом, поэтому
     удалённое место не ломает прошлые записи."""
-    from ..models import Car, CarLocation
+    from ..adapters.orm import Car, CarLocation
 
     loc = db.get(CarLocation, loc_id)
     if loc is None:
@@ -179,7 +180,7 @@ def location_update(loc_id: int, payload: LocationEditIn, db: Session = Depends(
 @router.get("")
 def park(db: Session = Depends(get_db), principal: Principal = Depends(require_perm("cars.view"))):
     """Парк целиком (видно всем ролям). my_car_id — кар текущего пользователя."""
-    from ..models import Car
+    from ..adapters.orm import Car
 
     # Видимость неактивных каров и can_manage — по одному ключу cars.manage
     # (этап B, 20.10.2026): раньше фильтр был ролевым (is_manager) и супервайзер
@@ -230,13 +231,13 @@ def car_edit(car_id: int, payload: CarEditIn, db: Session = Depends(get_db),
 def car_history(car_id: int, limit: int = 200, db: Session = Depends(get_db),
                 principal: Principal = Depends(require_perm("cars.view"))):
     """История кара: только добавление новых записей — правок и удалений нет."""
-    from ..models import Car
+    from ..adapters.orm import Car
 
     if db.get(Car, car_id) is None:
         raise HTTPException(status_code=404, detail="Кар не найден")
     rows = list(db.scalars(select(CarHistory).where(CarHistory.car_id == car_id)
                            .order_by(CarHistory.id.desc()).limit(min(limit, 500))))
-    from ..cars import history_dict
+    from ..application.cars import history_dict
     # history_dict() принимает КАРТУ фото {ref_id: [...]} и сам достаёт нужные:
     # раньше сюда передавался уже раскрытый список (pmap.get(h.id, [])), из-за чего
     # любой запрос истории кара падал в AttributeError → 500.

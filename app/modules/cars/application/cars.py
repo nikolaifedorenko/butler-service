@@ -21,8 +21,10 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .core.time import now_local
-from .models import Car, CarHistory, CarLocation, Employee
+from app.core.time import now_local
+from app.modules.employees.application import Employee
+
+from ..adapters.orm import Car, CarHistory, CarLocation
 
 STATUS_TITLES = {
     "free": "свободен",
@@ -318,7 +320,7 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
                                "key_returned": key_returned, "comment": comment,
                                "auto_maintenance": bad})
     for fname, fbytes in blob_photos:
-        from .core.media import save_photo
+        from app.core.media import save_photo
         save_photo(db, kind="car_return", ref_id=rec.id, filename=fname, blob=fbytes,
                    user_id=principal.user.id, user_name=principal.name)
     return car_dict(car)
@@ -453,8 +455,9 @@ def night_cars_state(db: Session, report) -> dict:
     В обход попадают ВСЕ активные кары; батлер отмечает только те, что смог взять
     (т.е. свободные на момент проверки). Отметка фиксирует фактическое время — если
     кар возьмут после проверки, супервайзер увидит это (taken_after_check)."""
-    from .core.media import photos_of
-    from .models import CarNightCheck
+    from app.core.media import photos_of
+
+    from ..adapters.orm import CarNightCheck
 
     checked = {c.car_id: c for c in db.scalars(
         select(CarNightCheck).where(CarNightCheck.report_id == report.id))}
@@ -506,7 +509,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     сохраняются в хранилище фото с kind="car_check" и привязываются к отметке.
     Отметка одна на смену, поэтому повторное сохранение добавляет новый снимок
     к прежним (старые можно удалить крестиком в окне отметки)."""
-    from .models import CarNightCheck
+    from ..adapters.orm import CarNightCheck
 
     if report.status == "closed":
         raise CarOpError("Смена закрыта — правки недоступны")
@@ -553,7 +556,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
                          "location_from": place_before if ch.moved else ""})
     db.flush()          # нужен id отметки — фото привязываются к ней (kind="car_check")
     for fname, fbytes in (blob_photos or []):
-        from .core.media import save_photo
+        from app.core.media import save_photo
         save_photo(db, kind="car_check", ref_id=ch.id, filename=fname, blob=fbytes,
                    user_id=principal.user.id, user_name=principal.name)
     return {"id": ch.id, "found": ch.found,
