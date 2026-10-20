@@ -288,9 +288,10 @@ def _photo_payload(db: Session, photos: dict[int, list[dict]]) -> dict[int, list
 def render_night_report_docx(db: Session, report_id: int, *, company: str = "",
                              photos_map: Optional[dict[int, list[dict]]] = None) -> bytes:
     """DOCX ночного отчёта (зоны и объекты + кары + недостатки + отправки + перехваты)."""
+    from app.modules.notify.application.dispatch import dispatch_dict, journal_of
+
     from .models import NightReport
     from .night import defects_of, duty_of
-    from .notify.dispatch import dispatch_dict, journal_of
 
     rep = db.get(NightReport, report_id)
     if rep is None:

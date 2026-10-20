@@ -23,8 +23,8 @@ from typing import Optional
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ..core.db import Base
-from ..core.time import now_local
+from app.core.db import Base
+from app.core.time import now_local
 
 
 class ResponsibilityService(Base):

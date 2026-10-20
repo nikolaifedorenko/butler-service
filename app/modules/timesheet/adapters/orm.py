@@ -405,19 +405,6 @@ class ScheduleAbsence(Base):
 # ────
 
 
-class Setting(Base):
-    """Ключ/значение — правила расчёта, редактируются в веб-интерфейсе."""
-
-    __tablename__ = "settings"
-
-    key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    # Text, не String(255): здесь же хранятся шаблоны документов (tpl_*) — они длиннее
-    # 255 символов, и PostgreSQL отклонял запись («value too long»), см. миграцию
-    # migrate_settings_value_text (16.10.2026)
-    value: Mapped[str] = mapped_column(Text, default="")
-    description: Mapped[str] = mapped_column(String(255), default="")
-
-
 # ═══════════════════════ НОЧНОЙ ОТЧЁТ + ЭЛЕКТРОКАРЫ ═══════════════════════
 # Времена событий (created_at/taken_at/…) хранятся в ЛОКАЛЬНОМ времени объекта
 # (Europe/Moscow, naive) — как Punch.ts. Для этого нужен now_local(), а не utcnow().

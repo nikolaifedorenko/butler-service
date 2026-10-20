@@ -22,12 +22,14 @@ from typing import Optional, Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..core.time import now_local
-from ..models import NotifyDispatch, Photo
+from app.core.media import Photo
+from app.core.time import now_local
+
+from ..adapters.orm import NotifyDispatch
+from ..adapters.transports.email import send_mail
+from ..adapters.transports.telegram import TelegramBot
+from ..ports.transports import TransportError
 from .config import NotifyConfig
-from .transports import TransportError
-from .transports.email import send_mail
-from .transports.telegram import TelegramBot
 
 # Telegram-альбом ограничен 10 файлами; шлём поштучно, но без фанатизма —
 # остальное упоминаем в тексте, чтобы сообщение не уезжало минутами.
@@ -46,7 +48,7 @@ class Attachment:
 def attachments_of(db: Session, photo_ids: Sequence) -> list[Attachment]:
     """Файлы вложений из хранилища. Удалённые по сроку хранения пропускаем:
     сообщение уходит без них, а в журнале остаётся фактическое число вложений."""
-    from ..core.media import ALLOWED_EXT, ALLOWED_VIDEO_EXT, BASE_DIR
+    from app.core.media import ALLOWED_EXT, ALLOWED_VIDEO_EXT, BASE_DIR
 
     out: list[Attachment] = []
     for pid in photo_ids or []:

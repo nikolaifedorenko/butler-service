@@ -17,7 +17,14 @@ from ..core.db import Base  # noqa: F401 — исторически Base имп�
 from ..core.identity import AccessGrant, AccessGroup, AccessGroupMember, User  # noqa: F401
 from ..core.media import Photo  # noqa: F401
 from ..core.roles import MANAGER_ROLES, ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR  # noqa: F401
+from ..core.settings_store import Setting  # noqa: F401 — фаза C3: кросс-модульное key-value
 from ..core.time import utcnow  # noqa: F401
+from ..modules.notify.adapters.orm import (  # noqa: F401 — фаза C3: транзитный re-export
+    NotifyChat,
+    NotifyDispatch,
+    NotifyTemplate,
+    ResponsibilityService,
+)
 
 # Фаза C2 (20.10.2026): модели Табеля/Графика/движка и каталога переехали в
 # app/modules/timesheet/adapters/orm.py — фасад ре-экспортирует их (транзитный
@@ -39,7 +46,6 @@ from ..modules.timesheet.adapters.orm import (  # noqa: F401
     Punch,
     ScheduleAbsence,
     ScheduleShift,
-    Setting,
     ShiftRevision,
     ShiftType,
     StatementKind,
@@ -58,12 +64,6 @@ from .night import (  # noqa: F401
     NightReport,
     NightZone,
     ZoneChecklistItem,
-)
-from .notify import (  # noqa: F401
-    NotifyChat,
-    NotifyDispatch,
-    NotifyTemplate,
-    ResponsibilityService,
 )
 
 __all__ = [

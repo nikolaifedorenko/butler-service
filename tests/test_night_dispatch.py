@@ -39,7 +39,7 @@ def fake_telegram(monkeypatch):
             return {"ok": True, "result": []}
         return {"ok": True, "result": {"message_id": 1000 + len(calls)}}
 
-    monkeypatch.setattr("app.notify.transports.telegram.http_sender", sender)
+    monkeypatch.setattr("app.modules.notify.adapters.transports.telegram.http_sender", sender)
     return {"calls": calls, "state": state}
 
 
@@ -50,13 +50,13 @@ def fake_smtp(monkeypatch):
 
     def mailer(cfg, msg):
         if state["fail"]:
-            from app.notify.transports import TransportError
+            from app.modules.notify.ports.transports import TransportError
             raise TransportError("Почтовый сервер недоступен: SMTPException")
         sent.append({"to": msg["To"], "cc": msg["Cc"], "subject": msg["Subject"],
                      "body": msg.get_content(), "message_id": msg["Message-ID"],
                      "attachments": len(list(msg.iter_attachments()))})
 
-    monkeypatch.setattr("app.notify.transports.email.smtp_mailer", mailer)
+    monkeypatch.setattr("app.modules.notify.adapters.transports.email.smtp_mailer", mailer)
     return {"sent": sent, "state": state}
 
 

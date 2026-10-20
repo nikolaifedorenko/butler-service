@@ -20,7 +20,6 @@ from .api import (
     docs_api,
     employees,
     night_api,
-    notify_api,
     photos_api,
     settings_api,
 )
@@ -45,6 +44,7 @@ from .core.config import settings
 from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.time import now_local
+from .modules.notify.interface import notify_api
 from .modules.timesheet.application.errors import ApplicationError
 from .modules.timesheet.domain.types.errors import ConfigError, DomainError
 from .modules.timesheet.interface import (

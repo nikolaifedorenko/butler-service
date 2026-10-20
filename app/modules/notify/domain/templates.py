@@ -1,19 +1,15 @@
-"""Шаблоны сообщений по разделам и подстановка плейсхолдеров.
+"""Шаблоны сообщений по разделам и подстановка плейсхолдеров — домен notify.
+
+Чистая половина бывшей app/notify/templates.py (фаза C3): тексты разделов,
+реестр плейсхолдеров, подстановка значений и блок списка недостатков. I/O нет
+(R1); действующий текст с учётом переопределений из БД — application/templates.py.
 
 Транспорт один на приложение, а текст у каждого раздела свой: ночной отчёт пишет
 службам про недостатки смены, электрокары — про замечания при возврате кара.
-Шаблон хранится в ``notify_templates`` (domain = «night», «cars», …); пока записи
-нет — действует текст по умолчанию из ``DEFAULT_TEMPLATES``.
-
 Плейсхолдеры подставляются простой заменой: неизвестные остаются в тексте как есть,
 чтобы опечатку было видно в предпросмотре, а не в отправленном сообщении.
 """
 from __future__ import annotations
-
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from ..models import NotifyTemplate
 
 DOMAIN_TITLES = {
     "night": "Ночной отчёт — недостатки смены",
@@ -58,41 +54,3 @@ def items_block(rows: list[dict], *, numbered: bool = True) -> str:
         line = f"{where}{' — ' + comment if comment else ''}"
         lines.append(f"{i}. {line}" if numbered else f"• {line}")
     return "\n".join(lines) or "—"
-
-
-def template_of(db: Session, domain: str) -> str:
-    """Действующий текст шаблона раздела: свой, иначе по умолчанию."""
-    row = db.scalar(select(NotifyTemplate).where(NotifyTemplate.domain == domain))
-    if row is not None and row.text.strip():
-        return row.text
-    return DEFAULT_TEMPLATES.get(domain, "")
-
-
-def save_template(db: Session, domain: str, text: str) -> NotifyTemplate:
-    """Сохранить текст шаблона раздела. Пустой текст = вернуть вариант по умолчанию."""
-    if domain not in DOMAIN_TITLES:
-        raise ValueError("Неизвестный раздел уведомлений")
-    row = db.scalar(select(NotifyTemplate).where(NotifyTemplate.domain == domain))
-    clean = (text or "").strip()
-    if row is None:
-        if not clean or clean == DEFAULT_TEMPLATES[domain]:
-            return NotifyTemplate(domain=domain, text="")     # не храним текст по умолчанию
-        row = NotifyTemplate(domain=domain, text=clean)
-        db.add(row)
-    else:
-        row.text = "" if clean == DEFAULT_TEMPLATES[domain] else clean
-    db.flush()
-    return row
-
-
-def templates_payload(db: Session) -> list[dict]:
-    """Шаблоны всех разделов для экрана настроек (с признаком «изменён»)."""
-    stored = {t.domain: t.text for t in db.scalars(select(NotifyTemplate))}
-    out = []
-    for domain, title in DOMAIN_TITLES.items():
-        text = stored.get(domain, "").strip() or DEFAULT_TEMPLATES[domain]
-        out.append({"domain": domain, "title": title, "text": text,
-                    "default": DEFAULT_TEMPLATES[domain],
-                    "customized": bool(stored.get(domain, "").strip()),
-                    "placeholders": PLACEHOLDERS.get(domain, [])})
-    return out

@@ -44,7 +44,7 @@ def fake_telegram(monkeypatch):
             return queue[method]
         return {"ok": True, "result": []}
 
-    monkeypatch.setattr("app.notify.transports.telegram.http_sender", sender)
+    monkeypatch.setattr("app.modules.notify.adapters.transports.telegram.http_sender", sender)
     return {"calls": calls, "queue": queue}
 
 
@@ -59,7 +59,7 @@ def fake_smtp(monkeypatch):
                      "subject": msg["Subject"], "body": msg.get_content(),
                      "message_id": msg["Message-ID"], "attachments": len(list(msg.iter_attachments()))})
 
-    monkeypatch.setattr("app.notify.transports.email.smtp_mailer", mailer)
+    monkeypatch.setattr("app.modules.notify.adapters.transports.email.smtp_mailer", mailer)
     return sent
 
 
@@ -287,9 +287,9 @@ def test_shablony_svoy_u_kazhdogo_razdela(admin_client):
 
 def test_render_i_katalog_bez_seti():
     """Рендер шаблона, список недостатков и разбор getUpdates — без сети и БД."""
-    from app.notify.chats import chats_from_updates
-    from app.notify.templates import items_block, render_template
-    from app.notify.transports.email import split_addresses
+    from app.modules.notify.adapters.transports.email import split_addresses
+    from app.modules.notify.application.chats import chats_from_updates
+    from app.modules.notify.domain.templates import items_block, render_template
 
     assert render_template("{service}: {items}", {"service": "Техслужба", "items": ""}) \
         == "Техслужба: —"                       # пустое значение не оставляет дыру

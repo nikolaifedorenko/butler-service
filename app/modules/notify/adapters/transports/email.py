@@ -23,7 +23,7 @@ from email.message import EmailMessage
 from email.utils import formatdate
 from typing import Callable, Optional, Sequence
 
-from . import TransportError
+from ...ports.transports import TransportError
 
 # (cfg, message) → None
 Mailer = Callable[[object, EmailMessage], None]

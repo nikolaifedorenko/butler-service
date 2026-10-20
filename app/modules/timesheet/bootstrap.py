@@ -33,7 +33,9 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .adapters.orm import Employee, EngineSettingsVersion, Setting, TabelDay
+from app.core.settings_store import Setting
+
+from .adapters.orm import Employee, EngineSettingsVersion, TabelDay
 from .adapters.settings_codec import to_payload
 from .domain.settings.defaults import default_settings
 

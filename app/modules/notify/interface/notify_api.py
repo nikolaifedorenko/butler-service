@@ -21,14 +21,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..core.audit import audit
-from ..core.auth import Principal
-from ..core.db import get_db
-from ..core.permissions import require_perm
-from ..core.time import now_local
-from ..notify.chats import list_chats, refresh_chats
-from ..notify.config import load_config, public_config, save_config
-from ..notify.templates import (
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.db import get_db
+from app.core.permissions import require_perm
+from app.core.time import now_local
+
+from ..adapters.transports.email import send_mail, split_addresses
+from ..adapters.transports.telegram import TelegramBot
+from ..application.chats import list_chats, refresh_chats
+from ..application.config import load_config, public_config, save_config
+from ..application.templates import (
     DEFAULT_TEMPLATES,
     DOMAIN_TITLES,
     PLACEHOLDERS,
@@ -37,9 +40,7 @@ from ..notify.templates import (
     template_of,
     templates_payload,
 )
-from ..notify.transports import TransportError
-from ..notify.transports.email import send_mail, split_addresses
-from ..notify.transports.telegram import TelegramBot
+from ..ports.transports import TransportError
 
 router = APIRouter(prefix="/api/notify", tags=["notify"])
 
@@ -208,13 +209,13 @@ def list_dispatches(domain: str = "", limit: int = 100,
     статус доставки и ошибку. Журнал доступен менеджменту; в разделе «Ночной
     отчёт» есть своя обёртка /api/night/reports/{id}/dispatches для батлеров.
     """
-    from ..notify.dispatch import dispatch_dict, journal_of
+    from ..application.dispatch import dispatch_dict, journal_of
 
     rows = journal_of(db, domain, None, limit=limit) if domain else []
     if not domain:
         from sqlalchemy import select as _select
 
-        from ..models import NotifyDispatch
+        from ..adapters.orm import NotifyDispatch
         rows = list(db.scalars(_select(NotifyDispatch)
                                .order_by(NotifyDispatch.ts.desc(), NotifyDispatch.id.desc())
                                .limit(max(1, min(limit, 500)))))
@@ -236,14 +237,15 @@ def export_dispatches_csv(domain: str = "", limit: int = 2000,
 
     from fastapi.responses import StreamingResponse
 
-    from ..core.format import safe_sheet_cell
-    from ..notify.dispatch import dispatch_dict, journal_of
+    from app.core.format import safe_sheet_cell
+
+    from ..application.dispatch import dispatch_dict, journal_of
 
     rows = journal_of(db, domain or "", None, limit=limit) if domain else []
     if not domain:
         from sqlalchemy import select as _select
 
-        from ..models import NotifyDispatch
+        from ..adapters.orm import NotifyDispatch
         rows = list(db.scalars(_select(NotifyDispatch)
                                .order_by(NotifyDispatch.ts.desc(), NotifyDispatch.id.desc())
                                .limit(max(1, min(limit, 20000)))))
@@ -272,9 +274,9 @@ def export_dispatches_csv(domain: str = "", limit: int = 2000,
 def resend_dispatch(dispatch_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                     db: Session = Depends(get_db)):
     """Повторить неудачную доставку тем же текстом и составом (журнал не переписывается)."""
-    from ..models import NotifyDispatch
-    from ..notify.config import load_config
-    from ..notify.dispatch import dispatch_dict, resend
+    from ..adapters.orm import NotifyDispatch
+    from ..application.config import load_config
+    from ..application.dispatch import dispatch_dict, resend
 
     row = db.get(NotifyDispatch, dispatch_id)
     if row is None:

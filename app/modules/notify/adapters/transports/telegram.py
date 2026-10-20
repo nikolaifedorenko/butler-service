@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from . import TransportError
+from ...ports.transports import TransportError
 
 # (url, payload, files, timeout) → ответ Bot API как dict
 Sender = Callable[[str, Optional[dict], Optional[dict], float], dict]
