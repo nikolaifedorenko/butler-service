@@ -40,6 +40,7 @@ from ..domain.sessions.pair_marks import pair_marks
 from ..domain.time.to_calc_mark import to_calc_mark
 from ..domain.types.errors import DomainError
 from .formatting import error_text, hm, local_hm
+from .period_params import ensure_period
 from .views import flag_dict, session_view_dict
 
 router = APIRouter(prefix="/api/fact", tags=["fact"])
@@ -84,8 +85,7 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
     from ..adapters.orm import ScheduleAbsence, ScheduleShift, ShiftType, TabelDay
     from ..application.engine_common import color_lookups, covers_window, pick_cell_color
 
-    if not (1 <= month <= 12 and 1 <= year <= 9999):
-        raise HTTPException(status_code=422, detail="year должен быть 1..9999, month — 1..12")
+    ensure_period(year, month)
     period = month_period(year, month)
     st = _settings_for_period(db, period)
     emps = period_employees(db, period.start, period.end)

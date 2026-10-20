@@ -160,13 +160,3 @@ def double_map_for(db: Session, emp_ids, start: dt.date, end: dt.date,
             if scope_applies(db, emp, cdate, scope, cfg):
                 out[key] = REASON_CALENDAR
     return out
-
-
-def recalc_double_rows(db: Session, start: dt.date, end: dt.date,
-                       employee_ids: Optional[list[int]] = None, commit: bool = True) -> int:
-    """Совместимость: движок v4 считает УТ при чтении (view), хранимых строк табеля нет —
-    правка календаря сразу отражается в расчёте. Закрытые периоды не меняются (пересчёт —
-    только явный, для последнего закрытого периода)."""
-    if commit:
-        db.commit()
-    return 0

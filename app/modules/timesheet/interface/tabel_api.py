@@ -39,11 +39,12 @@ from ..application.engine_common import (
     period_employees,
 )
 from ..application.months import half_month_period, month_period
-from ..application.schedule_view import rebuild_generated_schedule
+from ..application.schedule_view import rebuild_generated_for_days, rebuild_generated_schedule
 from ..application.tabel_fill import fill_timesheet_from_cycles
 from ..domain.day_card.fmt_hours import fmt_hours
 from ..domain.types.entities import Period
 from .formatting import hm
+from .period_params import ensure_period
 
 router = APIRouter(prefix="/api/tabel", tags=["tabel"])
 
@@ -75,8 +76,7 @@ def _code_colors(db: Session) -> dict[str, str]:
 def get_tabel(year: int, month: int, half: Optional[int] = None,
               principal: Principal = Depends(require_perm("tabel.view")),
               db: Session = Depends(get_db)):
-    if not (1 <= month <= 12 and 1 <= year <= 9999):
-        raise HTTPException(status_code=422, detail="year должен быть 1..9999, month — 1..12")
+    ensure_period(year, month)
     granularity = _granularity(db, month_period(year, month))
     period = _period_of(db, year, month, half)
     st = _settings(db, period)
@@ -147,11 +147,18 @@ class BulkIn(BaseModel):
 
 
 def _apply_cell(db: Session, principal: Principal, emp_id: int, day: dt.date, code: str,
-                hours: float, note: str) -> Optional[str]:
+                hours: float, note: str, *, rebuild: bool = True) -> Optional[str]:
+    """Запись одной ячейки Табеля (+ заметка, аудит, предупреждения).
+
+    `rebuild=False` — массовый режим (P0-3 ревью 20.10.2026): График перегенерирует
+    вызывающий код один раз на затронутый месяц, поэтому `manual_shifts_dropped`
+    здесь пуст, а удалённые ручные смены собирает пакетная перегенерация.
+    """
     p = ports(db, principal)
     minutes = int(round(hours * 60)) if code else None
     try:
-        outcome = timesheet_edit.save_timesheet_day(str(emp_id), day, code.strip(), minutes, p)
+        outcome = timesheet_edit.save_timesheet_day(str(emp_id), day, code.strip(), minutes, p,
+                                                    rebuild=rebuild)
     except ValueError as exc:
         # ApplicationError → 409 и DomainError → 422 маппят центральные хэндлеры
         # (main.py, §5.3); ValueError — ошибка разбора входных значений (R2).
@@ -187,14 +194,24 @@ def bulk(payload: BulkIn, principal: Principal = Depends(require_perm("tabel.edi
         raise HTTPException(status_code=422,
                             detail="Слишком большой запрос (максимум 500 сотрудников и 366 дат)")
     warns, errors = set(), []
+    # записанные дни по сотрудникам: График перегенерируется ОДИН раз на затронутый
+    # месяц после всей массовки, а не на каждую ячейку (P0-3 ревью 20.10.2026 —
+    # 500×366 ячеек иначе делали сотни тысяч DELETE+INSERT generated-строк)
+    touched: dict[int, list[dt.date]] = {}
     for d in payload.dates:
         for eid in payload.employee_ids:
             try:
-                w = _apply_cell(db, principal, eid, d, payload.code, payload.hours, "")
+                w = _apply_cell(db, principal, eid, d, payload.code, payload.hours, "",
+                                rebuild=False)
                 if w:
                     warns.add(w)
+                touched.setdefault(eid, []).append(d)
             except HTTPException as exc:
                 errors.append({"employee_id": eid, "date": d.isoformat(), "detail": exc.detail})
+    for eid, days in touched.items():
+        outcome = rebuild_generated_for_days(str(eid), days, ports(db, principal))
+        if outcome.manual_dropped:
+            warns.add("Ручные смены удалены: код дня больше не принимает коды УТ")
     db.commit()
     return {"ok": not errors, "cells": len(payload.dates) * len(payload.employee_ids),
             "warnings": sorted(warns), "errors": errors}
@@ -212,6 +229,7 @@ def fill(payload: FillIn, principal: Principal = Depends(require_perm("tabel.edi
          db: Session = Depends(get_db)):
     """Циклы графика заполняют Табель (инструмент ввода, решение владельца); График
     перегенерируется из Табеля (16.3). Закрытые периоды не трогаются (16.5)."""
+    ensure_period(payload.year, payload.month)
     period = month_period(payload.year, payload.month)
     st = _settings(db, period)
     p = ports(db, principal)
@@ -290,6 +308,7 @@ def reset(payload: ResetIn, principal: Principal = Depends(require_perm("tabel.e
 
     Пересчёт часов не запускается (16.1 п.2): итоги периода обновятся при чтении УТ.
     """
+    ensure_period(payload.year, payload.month)
     period = _period_of(db, payload.year, payload.month, payload.half)
     st = _settings(db, period)
     p = ports(db, principal)

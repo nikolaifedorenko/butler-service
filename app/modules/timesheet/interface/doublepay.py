@@ -9,8 +9,12 @@
 ВИП-гостем») и действуют вместе с календарём без перемножения: день двойной,
 если он есть в календаре ИЛИ покрыт ВИП-периодом.
 
-Любая правка сразу пересчитывает затронутые строки табеля (только те, где есть
-часы к выплате), поэтому реестр «Переработки к выплате» всегда актуален.
+Хранимых строк переработок нет: движок v7.1 собирает УТ при чтении (view), поэтому
+правка календаря или ВИП-периода видна в расчёте сразу — отдельный пересчёт не
+нужен и не выполняется (P0-4 ревью 20.10.2026: заглушка `recalc_double_rows`
+и поле `recalculated` в ответах удалены — они обещали то, чего не происходит).
+Закрытые периоды при этом не меняются: их результат пересчитывает только явный
+`POST /api/mgmt/recalculate` (7.2, v7/R28).
 """
 from __future__ import annotations
 
@@ -32,7 +36,7 @@ from app.core.time import WD_SHORT, utcnow
 from app.modules.employees.application import Employee
 
 from ..adapters.orm import DoublePayDay, VipDoublePay
-from ..application.doublepay import REASON_TITLES, SCOPE_ALL, SCOPE_TITLES, SCOPES, recalc_double_rows
+from ..application.doublepay import REASON_TITLES, SCOPE_ALL, SCOPE_TITLES, SCOPES
 
 router = APIRouter(prefix="/api/doublepay", tags=["doublepay"])
 
@@ -186,8 +190,7 @@ def add_days(payload: DaysIn, principal: Principal = Depends(require_perm("setti
            "scope": payload.scope, "note": note,
            "dates": [d.isoformat() for d in dates[:80]]})
     db.commit()
-    recalculated = recalc_double_rows(db, dates[0], dates[-1])
-    return {"ok": True, "added": added, "updated": updated, "recalculated": recalculated,
+    return {"ok": True, "added": added, "updated": updated,
             "days": [_day_dict(d) for d in db.scalars(select(DoublePayDay).where(
                 DoublePayDay.date.in_(dates)).order_by(DoublePayDay.date))]}
 
@@ -204,8 +207,7 @@ def delete_day(day_id: int, principal: Principal = Depends(require_perm("setting
     db.delete(row)
     audit(db, principal, "doublepay_day_delete", date.isoformat(), data)
     db.commit()
-    recalculated = recalc_double_rows(db, date, date)
-    return {"ok": True, "deleted": data, "recalculated": recalculated}
+    return {"ok": True, "deleted": data}
 
 
 class VipIn(BaseModel):
@@ -242,8 +244,7 @@ def add_vip(payload: VipIn, principal: Principal = Depends(require_perm("setting
            "employee": emp.full_name})
     db.commit()
     db.refresh(vip)
-    recalculated = recalc_double_rows(db, start, end, employee_ids=[emp.id])
-    return {"ok": True, "item": _vip_dict(vip), "recalculated": recalculated}
+    return {"ok": True, "item": _vip_dict(vip)}
 
 
 @router.delete("/vip/{vip_id}")
@@ -254,9 +255,8 @@ def delete_vip(vip_id: int, principal: Principal = Depends(require_perm("setting
     if vip is None:
         raise HTTPException(status_code=404, detail="Период не найден")
     data = _vip_dict(vip)
-    emp_id, start, end = vip.employee_id, vip.start_date, vip.end_date
+    emp_id = vip.employee_id
     db.delete(vip)
     audit(db, principal, "vip_doublepay_delete", f"employee:{emp_id}", data)
     db.commit()
-    recalculated = recalc_double_rows(db, start, end, employee_ids=[emp_id])
-    return {"ok": True, "deleted": data, "recalculated": recalculated}
+    return {"ok": True, "deleted": data}

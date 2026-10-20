@@ -1811,8 +1811,8 @@ previous_step_minutes  = SettingsPort.load(previous_period).step_minutes
 | `period_view.py` | `PeriodView`, `day_views` — склейка `SettleResult`/`FlagsResult` с `days` и `employment` (информационный план — 16.6, R39; «не в штате» — 7.1) |
 | `presence_board.py` | `presence_board` — вкладка «Отметки» (16.2); популяция — `active_employees`, фильтрация до `assemble_board` (R38) |
 | `view_sessions.py` | `view_sessions` — вкладка «Факт» (16.4) |
-| `schedule_view.py` | `view_schedule`, `save_schedule_day`, `rebuild_generated_schedule` — вкладка «График» (16.3) |
-| `timesheet_edit.py` | `save_timesheet_day` — вкладка «Табель» (16.5) |
+| `schedule_view.py` | `view_schedule`, `save_schedule_day`, `rebuild_generated_schedule`, `rebuild_generated_for_days` (пакетная перегенерация после массовой записи Табеля — один проход на затронутый месяц) — вкладка «График» (16.3) |
+| `timesheet_edit.py` | `save_timesheet_day` (параметр `rebuild=False` — массовая запись без по-ячеечной перегенерации) — вкладка «Табель» (16.5) |
 | `months.py` | `month_period`, `half_month_period`, `close_month`, `recalculate_month` — обёртки по настройке гранулярности (16.1 п.7, v7.1/R36); пробрасывают `now` (v7) |
 
 ### 8.3 Порты: `ports/`

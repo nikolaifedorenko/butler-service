@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Iterable, Sequence
 
 from ..domain.day_card.accepts_ut import accepts_ut
 from ..domain.day_card.window_of_day import window_of_day
@@ -14,7 +14,7 @@ from ..domain.settings.types import Settings
 from ..domain.types.entities import Day, Period, Shift, ShiftEntry
 from .context import EnginePorts
 from .errors import ScheduleDayNotEditableError
-from .months import period_containing
+from .months import month_period, period_containing
 
 
 def view_schedule(period: Period, employee_id: str | None,
@@ -105,3 +105,24 @@ def rebuild_generated_schedule(employee_id: str, period: Period,
     for day in dropped:
         ports.schedule_store.drop_manual(employee_id, day)
     return RebuildOutcome(len(entries), dropped)
+
+
+def rebuild_generated_for_days(employee_id: str, days: Iterable[dt.date],
+                               ports: EnginePorts) -> RebuildOutcome:
+    """Пакетная перегенерация Графика после МАССОВОЙ записи Табеля (P0-3).
+
+    `days` — дни, которые операция действительно записала. Вместо перегенерации на
+    каждую ячейку (DELETE+INSERT generated-строк на каждый день) — один проход на
+    каждый затронутый месяц. Результат тот же: `rebuild_generated_schedule` заменяет
+    generated-строки периода целиком и не трогает дни с ручной сменой (16.3), а
+    повторный вызов идемпотентен.
+
+    Соседние дни за границей записи не перегенерируются: их строки Табеля не менялись,
+    а generated-строки дня D пересоздаются вместе с месяцем D.
+    """
+    generated, dropped = 0, set()
+    for year, month in sorted({(d.year, d.month) for d in days}):
+        out = rebuild_generated_schedule(employee_id, month_period(year, month), ports)
+        generated += out.generated
+        dropped.update(out.manual_dropped)
+    return RebuildOutcome(generated, tuple(sorted(dropped)))
