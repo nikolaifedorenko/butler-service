@@ -80,24 +80,12 @@ def optional_principal(request: Request, db: Session = Depends(get_db)) -> Optio
         return None
 
 
-def require_manager(principal: Principal = Depends(current_principal)) -> Principal:
-    if not principal.is_manager:
-        raise HTTPException(status_code=403, detail="Недостаточно прав: раздел для менеджеров и старших")
-    return principal
-
-
-def require_admin(principal: Principal = Depends(current_principal)) -> Principal:
-    if not principal.is_admin:
-        raise HTTPException(status_code=403, detail="Недостаточно прав: только администратор")
-    return principal
-
-
-def require_supervisor(principal: Principal = Depends(current_principal)) -> Principal:
-    """Супервайзер и выше (supervisor / manager / admin) — закрытие и переоткрытие смен,
-    закрепление электрокаров, ручные операции над чужими карами."""
-    if principal.role not in (ROLE_ADMIN, ROLE_MANAGER, ROLE_SUPERVISOR):
-        raise HTTPException(status_code=403, detail="Недостаточно прав: раздел для супервайзера и старших")
-    return principal
+# Ролевые зависимости require_manager/require_supervisor/require_admin удалены
+# (этап B унификации прав, 20.10.2026 — см. docs/EXECUTION-SPEC-v2.md §5.2):
+# единственный вход проверки прав — require_perm("<ключ>") из app/permissions.py.
+# Свойство Principal.is_manager сохранено для inline-ветвлений «менеджерской
+# видимости» (fact_api, punches, schedule, photos) — их перевод на ключи
+# выполняется в модульных фазах (этап C), список — в CHANGES-документе этапа B.
 
 
 def can_manage_user(principal: Principal, target_user: Optional[User], new_role: Optional[str] = None) -> None:

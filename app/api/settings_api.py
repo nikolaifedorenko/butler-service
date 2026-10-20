@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, require_manager
+from ..auth import Principal, audit
 from ..base_schedule import DEFAULT_BASE, load_base_config, save_base_config
 from ..db import get_db
 from ..deps import local_date
@@ -24,6 +24,7 @@ from ..models import (
     TabelDay,
     User,
 )
+from ..permissions import require_perm
 from ..schedule_helpers import DEFAULT_RULES, load_rules, rule_options
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -65,7 +66,7 @@ def defaults_of(db: Session, on: dt.date) -> dict:
 
 
 @router.get("")
-def get_settings_api(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def get_settings_api(principal: Principal = Depends(require_perm("settings.view")), db: Session = Depends(get_db)):
     rules = load_rules(db)
     meta = {o["key"]: o for o in rule_options()}
     items = [{"key": k, "value": rules[k], "default": DEFAULT_RULES[k],
@@ -103,7 +104,7 @@ class DocIn(BaseModel):
 
 
 @router.put("/doc")
-def update_doc(payload: DocIn, principal: Principal = Depends(require_manager),
+def update_doc(payload: DocIn, principal: Principal = Depends(require_perm("settings.edit")),
                db: Session = Depends(get_db)):
     """Шаблоны заявлений и реквизиты организации для печати документов."""
     doc = save_doc_templates(db, payload.model_dump())
@@ -119,7 +120,7 @@ class BaseIn(BaseModel):
 
 
 @router.put("/base")
-def update_base(payload: BaseIn, principal: Principal = Depends(require_manager),
+def update_base(payload: BaseIn, principal: Principal = Depends(require_perm("settings.edit")),
                 db: Session = Depends(get_db)):
     """Базовый цикл объекта: какие дни рабочие у Смены 1 / Смены 2 / Администрации — на все месяцы."""
     import datetime as _dt
@@ -149,7 +150,7 @@ class RuleIn(BaseModel):
 
 
 @router.put("")
-def update_settings(payload: list[RuleIn], principal: Principal = Depends(require_manager),
+def update_settings(payload: list[RuleIn], principal: Principal = Depends(require_perm("settings.edit")),
                     db: Session = Depends(get_db)):
     """Сохранить правила расчёта (доступно администратору)."""
     changed = {}

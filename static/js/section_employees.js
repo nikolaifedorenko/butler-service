@@ -125,11 +125,12 @@ async function employeeCard(emp) {
       ${canBank ? '<button class="btn btn-ghost" data-bank>Корректировка банка</button>' : ''}
       <button class="btn btn-ghost" data-block>Перевод в блок</button>
       <button class="btn btn-ghost" data-pos>Перевод на должность</button>
-      <button class="btn btn-ghost" data-imp>Войти как сотрудник</button>
+      ${can('employees.impersonate') ? '<button class="btn btn-ghost" data-imp>Войти как сотрудник</button>' : ''}
       <button class="btn btn-primary" data-edit>Изменить</button>`,
     onMount(m) {
       m.querySelector('[data-edit]').onclick = () => { closeModal(); employeeModal(emp); };
-      m.querySelector('[data-imp]').onclick = async () => {
+      const impBtn = m.querySelector('[data-imp]');
+      if (impBtn) impBtn.onclick = async () => {
         await api('/api/auth/impersonate', { method: 'POST', body: { employee_id: emp.id } });
         const me = await api('/api/auth/me');
         state.user = me.user; state.perms = me.permissions || []; renderUserChip(); closeModal();

@@ -123,5 +123,7 @@ def test_csv_obshchego_zhurnala(admin_client, employee_client, manager_client, o
     assert night and any("Техническая служба" in line for line in night)
     assert any("не горит" in line for line in night)          # состав отправки снимком
     assert any("отправлено" in line for line in night)
-    # супервайзеру выгрузка журнала доступна (require_manager)
-    assert manager_client.get("/api/notify/dispatches/export.csv").status_code == 200
+    # этап B (20.10.2026): общий журнал — экран «Настройки → Чаты и Почта»,
+    # выгрузка по settings.edit; у супервайзера ключа нет (экран он тоже не видит).
+    # При необходимости право выдаётся грантом — см. test_grant_vozvrashchaet_supervisoru_zapis.
+    assert manager_client.get("/api/notify/dispatches/export.csv").status_code == 403

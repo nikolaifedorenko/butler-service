@@ -11,11 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_manager
+from ..auth import Principal, audit, current_principal
 from ..config import settings
 from ..db import get_db
 from ..deps import local_date
 from ..models import Employee, User
+from ..permissions import require_perm
 from ..security import create_token, hash_password, needs_rehash, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -223,7 +224,7 @@ class ImpersonateIn(BaseModel):
 
 @router.post("/impersonate")
 def impersonate(payload: ImpersonateIn, response: Response,
-                principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                principal: Principal = Depends(require_perm("employees.impersonate")), db: Session = Depends(get_db)):
     """Демо-режим: менеджер смотрит интерфейс глазами сотрудника (без пароля)."""
     if not settings.allow_impersonation:
         raise HTTPException(status_code=403, detail="Вход от имени сотрудника отключён")
@@ -251,7 +252,7 @@ def stop_impersonate(response: Response, principal: Principal = Depends(current_
 
 
 @router.get("/employees-for-demo")
-def employees_for_demo(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def employees_for_demo(principal: Principal = Depends(require_perm("employees.impersonate")), db: Session = Depends(get_db)):
     """Список сотрудников для быстрого переключения в демо-режиме."""
     emps = db.scalars(select(Employee).where(Employee.active.is_(True)).order_by(Employee.full_name)).all()
     return [{"id": e.id, "full_name": e.full_name, "short_name": e.display_name, "position": e.position} for e in emps]

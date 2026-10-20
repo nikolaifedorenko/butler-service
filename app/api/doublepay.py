@@ -23,11 +23,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, require_manager
+from ..auth import Principal, audit
 from ..db import get_db
 from ..deps import WD_SHORT
 from ..doublepay import REASON_TITLES, SCOPE_ALL, SCOPE_TITLES, SCOPES, recalc_double_rows
 from ..models import ROLE_ADMIN, ROLE_MANAGER, DoublePayDay, Employee, VipDoublePay, utcnow
+from ..permissions import require_perm
 
 router = APIRouter(prefix="/api/doublepay", tags=["doublepay"])
 
@@ -94,7 +95,7 @@ def _vip_dict(v: VipDoublePay) -> dict:
 
 
 @router.get("")
-def get_doublepay(year: Optional[int] = None, principal: Principal = Depends(require_manager),
+def get_doublepay(year: Optional[int] = None, principal: Principal = Depends(require_perm("settings.view")),
                   db: Session = Depends(get_db)):
     """Календарь двойных дней (за год или весь) + ВИП-периоды."""
     q = select(DoublePayDay).order_by(DoublePayDay.date)
@@ -122,7 +123,7 @@ class DaysIn(BaseModel):
 
 
 @router.post("/days")
-def add_days(payload: DaysIn, principal: Principal = Depends(require_manager),
+def add_days(payload: DaysIn, principal: Principal = Depends(require_perm("settings.edit")),
              db: Session = Depends(get_db)):
     """Добавить дни двойной оплаты: списком дат или периодом (можно с фильтром
     по дням недели — например все субботы года для пятидневки).
@@ -180,7 +181,7 @@ def add_days(payload: DaysIn, principal: Principal = Depends(require_manager),
 
 
 @router.delete("/days/{day_id}")
-def delete_day(day_id: int, principal: Principal = Depends(require_manager),
+def delete_day(day_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                db: Session = Depends(get_db)):
     _guard(principal)
     row = db.get(DoublePayDay, day_id)
@@ -203,7 +204,7 @@ class VipIn(BaseModel):
 
 
 @router.post("/vip")
-def add_vip(payload: VipIn, principal: Principal = Depends(require_manager),
+def add_vip(payload: VipIn, principal: Principal = Depends(require_perm("settings.edit")),
             db: Session = Depends(get_db)):
     """Назначить сотруднику период двойных переработок (работа с ВИП-гостем)."""
     _guard(principal)
@@ -234,7 +235,7 @@ def add_vip(payload: VipIn, principal: Principal = Depends(require_manager),
 
 
 @router.delete("/vip/{vip_id}")
-def delete_vip(vip_id: int, principal: Principal = Depends(require_manager),
+def delete_vip(vip_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                db: Session = Depends(get_db)):
     _guard(principal)
     vip = db.get(VipDoublePay, vip_id)

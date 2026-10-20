@@ -23,9 +23,6 @@ const dRu = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
 const NIGHT_SECTION_BADGE = { free: 'muted', taken: 'warn', done: 'ok' };
 const NIGHT_ANSWER_BADGE = { ok: 'ok', bad: 'danger', '': 'muted' };
 
-function nightIsSupervisor() {
-  return ['supervisor', 'manager', 'admin'].includes(state.user?.role);
-}
 
 /* ─────────────────────────── раздел ─────────────────────────── */
 async function loadNight() {
@@ -162,8 +159,10 @@ function renderNight(rep, note) {
   show('#night-today-btn', !!nightState.reportId);
   show('#night-docx', !!rep);
   show('#night-pdf', !!rep);
-  show('#night-close', !!rep && !rep.readonly && nightIsSupervisor());
-  show('#night-reopen', !!rep && rep.readonly && nightIsSupervisor());
+  /* закрытие/переоткрытие смены — право night.close из каталога (этап B, 20.10.2026),
+     а не проверка роли: базово оно у supervisor+, но выдаётся и снимается грантами */
+  show('#night-close', !!rep && !rep.readonly && can('night.close'));
+  show('#night-reopen', !!rep && rep.readonly && can('night.close'));
 
   if (!rep) {
     $('#night-sub').textContent = 'Смена 20:00–08:00 · отчёт относится к дате начала смены';
