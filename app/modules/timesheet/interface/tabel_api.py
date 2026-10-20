@@ -24,8 +24,9 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import principal_permissions, require_perm
+from app.modules.employees.application import Employee
 
-from ..adapters.orm import Employee, TabelDay
+from ..adapters.orm import TabelDay
 from ..adapters.sql_settings import SqlSettingsAdapter, base_version
 from ..application import timesheet_edit
 from ..application.engine_common import (
@@ -240,7 +241,7 @@ def _uncovered(db: Session, emps: list[Employee], period: Period) -> list[dict]:
     расчёт УТ не запустится. Список возвращается интерфейсу, чтобы «Сбросить» не
     выглядел «успешным», оставив дыры.
     """
-    from app.employment import employed_on, periods_of
+    from app.modules.employees.application import employed_on, periods_of
 
     if not emps:
         return []

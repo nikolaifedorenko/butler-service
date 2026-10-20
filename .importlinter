@@ -46,7 +46,6 @@ modules =
     app.api.auth_routes
     app.api.cars_api
     app.api.docs_api
-    app.api.employees
     app.api.night_api
     app.api.photos_api
     app.api.settings_api
@@ -77,14 +76,10 @@ forbidden_modules =
     app.cars
     app.doc_render
     app.doc_templates
-    app.employment
     app.grid_docx
-    app.groups
-    app.names
     app.night
     app.night_export
     app.pdf_render
-    app.shiftrev
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee: в runtime Employee загружается
     ; внедрённым bootstrap'ом колбэком (set_employee_loader), импорта моделей нет.
@@ -113,14 +108,10 @@ source_modules =
     app.cars
     app.doc_render
     app.doc_templates
-    app.employment
     app.grid_docx
-    app.groups
-    app.names
     app.night
     app.night_export
     app.pdf_render
-    app.shiftrev
 forbidden_modules =
     app.modules
 ignore_imports =
@@ -128,18 +119,17 @@ ignore_imports =
     ; фазы 4–5). Уменьшается в C4–C6, удаляется вместе с пакетом app/models/.
     app.models -> app.modules.timesheet.adapters.orm
     app.models -> app.modules.notify.adapters.orm
-    ; До C4 (employees): легаси-потребители таймшита через границу модуля (R3).
-    ; В C4 сотрудники/настройки/access перейдут на modules.* и строки исчезнут.
-    app.api.employees -> app.modules.timesheet.application.bank_adjustment
-    app.api.employees -> app.modules.timesheet.application.engine_common
-    app.api.employees -> app.modules.timesheet.application.base_schedule
-    app.api.employees -> app.modules.timesheet.adapters.sql_settings
-    app.api.employees -> app.modules.timesheet.application.months
+    app.models -> app.modules.employees.adapters.orm
+    app.models.cars -> app.modules.employees.application.catalog
+    ; docs/grid_docx и doc_render потребляют names/groups через границу employees (до C4d)
+    app.doc_render -> app.modules.employees.application
+    app.grid_docx -> app.modules.employees.application
+    ; До C4: легаси-потребители модулей через их границы (R3-направление).
+    ; Строки исчезают по мере переноса владельцев (employees — перенесён в C4a).
     app.api.settings_api -> app.modules.timesheet.application.base_schedule
     app.api.settings_api -> app.modules.timesheet.application.schedule_helpers
     app.api.settings_api -> app.modules.timesheet.adapters.sql_settings
     app.api.auth_routes -> app.modules.timesheet.application.punch_plan
-    app.services.employee_lifecycle -> app.modules.timesheet.application.base_schedule
     ; До C4 (night): ночной отчёт — потребитель доставки через границу notify.application (R3).
     app.services.night_notify -> app.modules.notify.application.config
     app.services.night_notify -> app.modules.notify.application.dispatch
@@ -163,14 +153,10 @@ forbidden_modules =
     app.cars
     app.doc_render
     app.doc_templates
-    app.employment
     app.grid_docx
-    app.groups
-    app.names
     app.night
     app.night_export
     app.pdf_render
-    app.shiftrev
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee — ребро core → фасад моделей,
     ; а не зависимость notify (в runtime Employee загружается колбэком, C1);
@@ -191,3 +177,34 @@ ignore_imports =
     app.core.auth -> app.models
     app.models -> app.modules.timesheet.adapters.orm
     app.models -> app.modules.notify.adapters.orm
+    app.models -> app.modules.employees.adapters.orm
+    app.models.cars -> app.modules.employees.application.catalog
+    ; docs/grid_docx и doc_render потребляют names/groups через границу employees (до C4d)
+    app.doc_render -> app.modules.employees.application
+    app.grid_docx -> app.modules.employees.application
+
+[importlinter:contract:timesheet-private]
+name = R3: domain/adapters/interface timesheet приватны (другие модули — только application/ports)
+type = forbidden
+source_modules =
+    app.modules.employees
+    app.modules.notify
+forbidden_modules =
+    app.modules.timesheet.domain
+    app.modules.timesheet.adapters
+    app.modules.timesheet.interface
+; R3 — про ПРЯМЫЕ импорты: внутри чужого модуля application → domain — его
+; собственное дело, транзитивная цепочка через application легальна.
+allow_indirect_imports = True
+
+[importlinter:contract:employees-private]
+name = R3: domain/adapters/interface employees приватны (другие модули — только application/ports)
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.notify
+forbidden_modules =
+    app.modules.employees.domain
+    app.modules.employees.adapters
+    app.modules.employees.interface
+allow_indirect_imports = True

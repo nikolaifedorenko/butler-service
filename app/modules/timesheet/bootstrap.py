@@ -34,8 +34,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.settings_store import Setting
+from app.modules.employees.application import Employee
 
-from .adapters.orm import Employee, EngineSettingsVersion, TabelDay
+from .adapters.orm import EngineSettingsVersion, TabelDay
 from .adapters.settings_codec import to_payload
 from .domain.settings.defaults import default_settings
 

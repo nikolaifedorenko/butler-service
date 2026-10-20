@@ -17,21 +17,19 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..core.audit import audit
-from ..core.auth import Principal
-from ..core.auth_guards import can_manage_user
-from ..core.errors import Conflict, NotFound, Validation
-from ..core.time import local_date
-from ..employment import close_period, open_period, periods_of
-from ..groups import GROUP_META, normalize_group
-from ..models import (
-    ROLE_EMPLOYEE,
-    BlockAssignment,
-    Car,
-    Employee,
-    PositionHistory,
-)
-from ..modules.timesheet.application.base_schedule import dump_pattern, validate_pattern_label
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.auth_guards import can_manage_user
+from app.core.errors import Conflict, NotFound, Validation
+from app.core.roles import ROLE_EMPLOYEE
+from app.core.time import local_date
+from app.models import Car  # транзит G3: до модуля cars (фаза C4c)
+from app.modules.timesheet.application.base_schedule import dump_pattern, validate_pattern_label
+from app.modules.timesheet.application.catalog import BlockAssignment
+
+from ..adapters.orm import Employee, PositionHistory
+from ..domain.groups import GROUP_META, normalize_group
+from .employment import close_period, open_period, periods_of
 
 
 @dataclass

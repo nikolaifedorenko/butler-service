@@ -22,7 +22,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor
 
-from .groups import sorted_groups
+from app.modules.employees.application import sorted_groups
 
 # ── геометрия страницы: альбомная A4, узкие поля — влезает весь месяц ──
 PAGE_W_MM, PAGE_H_MM = 297.0, 210.0

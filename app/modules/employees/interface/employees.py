@@ -12,55 +12,43 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ..core.audit import audit
-from ..core.auth import Principal, current_principal
-from ..core.auth_guards import can_manage_user
-from ..core.db import get_db
-from ..core.format import normalize_hex_color
-from ..core.permissions import require_perm
-from ..core.security import hash_password
-from ..core.time import local_date
-from ..employment import open_period, periods_of
-from ..groups import group_choices as group_choices_list
-from ..groups import normalize_group
-from ..models import (
-    ROLE_ADMIN,
-    ROLE_EMPLOYEE,
-    ROLE_MANAGER,
-    BankAdjustment,
-    BlockAssignment,
-    Car,
-    Department,
-    EmergencyContact,
-    Employee,
-    PositionHistory,
-    ShiftType,
-    Subdivision,
-    User,
-    utcnow,
-)
-from ..modules.timesheet.application.base_schedule import validate_pattern_label
-from ..modules.timesheet.application.engine_common import (
+from app.core.audit import audit
+from app.core.auth import Principal, current_principal
+from app.core.auth_guards import can_manage_user
+from app.core.db import get_db
+from app.core.format import normalize_hex_color
+from app.core.identity import User
+from app.core.permissions import require_perm
+from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER
+from app.core.security import hash_password
+from app.core.time import local_date, utcnow
+from app.models import Car  # транзит G3: до модуля cars (фаза C4c)
+from app.modules.timesheet.application.base_schedule import validate_pattern_label
+from app.modules.timesheet.application.catalog import BankAdjustment, BlockAssignment, ShiftType
+from app.modules.timesheet.application.engine_common import (
     day_code_rows,
     engine_ports,
     last_closed_bank,
     now_utc,
 )
-from ..names import slugify_username, suggest_genitive
-from ..services import employee_lifecycle as lifecycle
-from ..services.employee_lifecycle import (
+from app.modules.timesheet.application.shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
+
+from ..adapters.orm import Department, EmergencyContact, Employee, PositionHistory, Subdivision
+from ..application import group_choices as group_choices_list
+from ..application import lifecycle, normalize_group, slugify_username, suggest_genitive
+from ..application.employment import open_period, periods_of
+from ..application.lifecycle import (
     normalize_block_history,
 )
-from ..services.employee_lifecycle import (
+from ..application.lifecycle import (
     parse_date as _parse_date,
 )
-from ..services.employee_lifecycle import (
+from ..application.lifecycle import (
     touch_block as _touch_block,
 )
-from ..services.employee_lifecycle import (
+from ..application.lifecycle import (
     touch_position as _touch_position,
 )
-from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
 
 router = APIRouter(prefix="/api", tags=["directory"])
 
@@ -439,7 +427,7 @@ def bank_adjust(employee_id: int, payload: BankAdjustIn,
     eff = _parse_date(payload.date) or local_date()
     # точка ввода корректировок (7.2, v7.1/R37): посев — только первый период;
     # закрытый период — только через пересчёт
-    from ..modules.timesheet.application import bank_adjustment
+    from app.modules.timesheet.application import bank_adjustment
     # ApplicationError → 409 — централизованный хэндлер main.py (§5.3)
     bank_adjustment.validate_adjustment_entry(str(emp.id), eff,
                                               payload.reason_code or "manual",
@@ -502,7 +490,7 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_pe
         BankAdjustment.effective_date.desc(), BankAdjustment.id.desc())).all()
 
     def _block_label(b: BlockAssignment) -> str:
-        from ..modules.timesheet.application.base_schedule import parse_pattern
+        from app.modules.timesheet.application.base_schedule import parse_pattern
         pat = parse_pattern(b.pattern_json)
         if not pat:
             return ""
@@ -529,8 +517,8 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_pe
 
 
 def _current_value(db: Session, emp: Employee) -> str:
-    from ..core.time import local_date
-    from ..modules.timesheet.application.base_schedule import load_base_config, pattern_for_date
+    from app.core.time import local_date
+    from app.modules.timesheet.application.base_schedule import load_base_config, pattern_for_date
     try:
         pat = pattern_for_date(db, emp, local_date(), cfg=load_base_config(db))
         return (pat.get("value") or "").strip()
@@ -733,10 +721,10 @@ def tabel_values(principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода
     (18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
-    from ..core.time import local_date
-    from ..modules.timesheet.adapters.sql_settings import SqlSettingsAdapter
-    from ..modules.timesheet.application.engine_common import day_code_rows
-    from ..modules.timesheet.application.months import month_period
+    from app.core.time import local_date
+    from app.modules.timesheet.application.catalog import SqlSettingsAdapter
+    from app.modules.timesheet.application.engine_common import day_code_rows
+    from app.modules.timesheet.application.months import month_period
 
     _today = local_date()
     st = SqlSettingsAdapter(db).load(month_period(_today.year, _today.month))
@@ -764,7 +752,7 @@ def list_shift_types(include_archived: bool = False,
     """Словарь смен. Архивные (удалённые) скрыты: в прошлом они продолжают считаться,
     но в новых ячейках недоступны. include_archived=true — показать и их.
     Чтение — любому вошедшему (нужно батлерам для легенды графика), правки — менеджерам."""
-    from ..models import ShiftRevision
+    from app.modules.timesheet.application.catalog import ShiftRevision
 
     stmt = select(ShiftType).order_by(ShiftType.sort_order, ShiftType.id)
     if not include_archived:
@@ -834,7 +822,7 @@ def update_shift_type(type_id: int, payload: ShiftTypeIn,
     """Правка смены НЕ ломает прошлое: старые значения фиксируются ревизией,
     новые действуют с `effective_from` (по умолчанию — с сегодняшнего дня).
     Отработанные смены в прошлых месяцах считаются по прежним часам."""
-    from ..models import ShiftRevision
+    from app.modules.timesheet.application.catalog import ShiftRevision
 
     st = db.get(ShiftType, type_id)
     if not st:
@@ -916,7 +904,7 @@ def restore_shift_type(type_id: int, principal: Principal = Depends(require_perm
 def shift_revisions(type_id: int, principal: Principal = Depends(require_perm("settings.view")),
                     db: Session = Depends(get_db)):
     """История значений смены: какие часы действовали в прошлом."""
-    from ..models import ShiftRevision
+    from app.modules.timesheet.application.catalog import ShiftRevision
 
     st = db.get(ShiftType, type_id)
     if not st:

@@ -12,7 +12,9 @@ from typing import Iterable, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Employee, EmploymentPeriod, utcnow
+from app.core.time import utcnow
+
+from ..adapters.orm import Employee, EmploymentPeriod
 
 
 def ensure_periods(db: Session, emp: Employee) -> list[EmploymentPeriod]:

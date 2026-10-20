@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
-from app.names import suggest_genitive  # noqa: E402
+from app.modules.employees.application import suggest_genitive  # noqa: E402
 
 init_db()
 client = TestClient(app)

@@ -11,11 +11,10 @@ import datetime as dt
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.employment import ensure_periods
+from app.modules.employees.application import Employee, EmploymentPeriod, ensure_periods
 
 from ..domain.types.entities import Employment, Period
 from ._db import emp_pk
-from .orm import Employee, EmploymentPeriod
 
 
 class SqlEmploymentAdapter:

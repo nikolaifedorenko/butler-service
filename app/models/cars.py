@@ -18,7 +18,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..core.db import Base
 
 if TYPE_CHECKING:
-    from .directory import Employee
+    from app.modules.employees.application.catalog import Employee
+
     from .night import NightReport
 from ..core.time import now_local
 

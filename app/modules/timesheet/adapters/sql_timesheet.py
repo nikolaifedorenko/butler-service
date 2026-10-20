@@ -9,12 +9,12 @@ import datetime as dt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.groups import GROUP_OTHER, normalize_group
+from app.modules.employees.application import GROUP_OTHER, Employee, normalize_group
 
 from ..application.base_schedule import BlockIndex, group_for_date
 from ..domain.types.entities import Day, Period
 from ._db import emp_pk
-from .orm import BlockAssignment, Employee, TabelDay
+from .orm import BlockAssignment, TabelDay
 
 
 class SqlTimesheetAdapter:

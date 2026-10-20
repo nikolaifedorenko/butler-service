@@ -27,8 +27,8 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 from app.core.time import TZ
+from app.modules.employees.application import Employee
 
-from ..adapters.orm import Employee
 from ..application.engine_common import emp_brief, engine_ports, now_utc, period_employees
 from ..application.errors import ApplicationError
 from ..application.months import month_period, period_containing

@@ -28,14 +28,21 @@ from app.core.format import safe_sheet_cell
 from app.core.permissions import require_perm
 from app.core.time import TZ, now_local, utc_to_local
 from app.doc_render import hours_text
-from app.employment import employed_on, periods_of, ranges_from_periods
-from app.groups import GROUP_ORDER, group_index, group_kind, normalize_group
-from app.names import suggest_genitive
+from app.modules.employees.application import (
+    GROUP_ORDER,
+    Employee,
+    EmploymentPeriod,
+    employed_on,
+    group_index,
+    group_kind,
+    normalize_group,
+    periods_of,
+    ranges_from_periods,
+    suggest_genitive,
+)
 
 from ..adapters.orm import (
     BlockAssignment,
-    Employee,
-    EmploymentPeriod,
     ScheduleAbsence,
     ScheduleShift,
     ShiftType,
@@ -172,7 +179,7 @@ DOC_PARTIAL_SHIFT = "time_off_request"
 
 
 def _statement_kind_exists(db: Session, code: str) -> bool:
-    from ..adapters.orm import StatementKind
+    from app.modules.employees.application import StatementKind
 
     return db.scalar(select(StatementKind.id).where(StatementKind.code == code)) is not None
 

@@ -12,11 +12,10 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.employment import employed_on
-from app.groups import group_index, normalize_group
+from app.modules.employees.application import Employee, EmploymentPeriod, employed_on, group_index, normalize_group
 
 from ..adapters.factory import build_ports
-from ..adapters.orm import Employee, EmploymentPeriod, PeriodClosing
+from ..adapters.orm import PeriodClosing
 from ..adapters.sql_settings import base_version
 from ..domain.types.entities import Period
 

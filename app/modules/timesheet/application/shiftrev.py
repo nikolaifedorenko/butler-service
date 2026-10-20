@@ -14,8 +14,9 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .core.time import local_date
-from .models import ShiftRevision, ShiftType
+from app.core.time import local_date
+
+from ..adapters.orm import ShiftRevision, ShiftType
 
 REV_FIELDS = ("code", "name", "kind", "start_time",
               "end_time", "overnight", "color", "is_working", "counts_as_worked",
