@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
+from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.modules.employees.application.catalog import Employee  # noqa: E402
 from app.modules.timesheet.application.catalog import (  # noqa: E402
@@ -58,13 +59,17 @@ class TestHealth(unittest.TestCase):
     def setUpClass(cls):
         cls.admin = _login("admin")
         cls.emp = _login("ivanov")
-        cls.today = dt.date.today()
+        cls.today = local_date()
 
     def test_01_passport(self):
+        before = local_date()
         r = self.admin.get("/api/engine-settings/health")
+        after = local_date()
         self.assertEqual(r.status_code, 200, r.text)
         d = r.json()
-        self.assertEqual(d["on"], self.today.isoformat())
+        # «on» — дата ОБЪЕКТА на момент запроса; окно из двух дат — на случай, если
+        # запрос пересёк полночь объекта (прогон длится минуты, а не миллисекунды)
+        self.assertIn(d["on"], {before.isoformat(), after.isoformat()})
         self.assertIsNotNone(d["version"]["id"])
         s = d["stats"]
         for key in ("tz", "step_minutes", "period_granularity", "late_limit_minutes",
@@ -190,7 +195,7 @@ class TestResolver(unittest.TestCase):
         cls.admin = _login("admin")
         cls.emp = _login("ivanov")
         cls.db = SessionLocal()
-        cls.today = dt.date.today()
+        cls.today = local_date()
         cls.first = cls.today.replace(day=1)
         e = _employee(cls.db, "Смена 1")
         assert e is not None, "в демо-базе нет сотрудника группы «Смена 1»"
