@@ -27,6 +27,10 @@
   документы, выгрузки.
 * [`docs/openapi.json`](docs/openapi.json) — контракт API (экспорт OpenAPI; сверяется
   с кодом в CI, обновление: `python tools/export_openapi.py`).
+* [`docs/EXECUTION-SPEC-v2.md`](docs/EXECUTION-SPEC-v2.md) — спецификация модульной
+  перестройки (правила R1–R6, фазы, находки G1–G9) + приложения §12–§17 с итогами фаз;
+  батчи — `docs/CHANGES-2026-10-20-stage-*.md` (C1 core, C2 timesheet, C3 notify,
+  C4 модули, C6 фронтенд, C7 документация).
 * [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — архитектурный
   разбор (слои, потоки, риски).
 * [`docs/adr/`](docs/adr/) — записи архитектурных решений (ADR): миграции, хеширование
@@ -391,73 +395,73 @@ R34/RUL-PLAN-BELOW-WINDOW). Отдельной сущности «зарплат
 
 ## Структура
 
+Модульный монолит (ADR-0010): `core/` — инфраструктура, `modules/` — 9 бизнес-
+гексагонов, `bootstrap/` + `main.py` — composition root (единственное место,
+которое знает всё). Границы закреплены `.importlinter` (14 контрактов) и
+AST-тестами; между модулями — только чужие `application`/`ports` (R3),
+модели — через `application/catalog.py` владельца.
+
 ```
 butler-service/
 ├── app/
-│   ├── main.py               # сборка FastAPI, lifespan, раздача SPA, health/selfcheck
-│   ├── migrations.py         # миграции схемы (идемпотентные) + migrate_engine_v7
-│   ├── models/               # таблицы (пакет по поддоменам, фасад __init__):
-│   │                         #   directory (Employee, User, EmploymentPeriod,
-│   │                         #   BankAdjustment, …), schedule (ShiftType+ревизии,
-│   │                         #   ScheduleShift/Absence), engine_store (TabelDay,
-│   │                         #   PeriodClosing, DeferredCarry, DayModifier, …),
-│   │                         #   punch, night, cars, media, audit, access, common
-│   ├── engine/               # ДВИЖОК v7.1 — чистая архитектура (спека 2.1, 8.1–8.4)
-│   │   ├── domain/           #   чистое ядро: types, codes_registry, settings (defaults,
-│   │   │                     #   validate, checks/*), validation/* (стадия 1), time/*,
-│   │   │                     #   sessions/ (pair_marks + CHK-PUNCH-SEQUENCE), presence/*,
-│   │   │                     #   day_card/*, placement/* (Codes, размещение), opening/*,
-│   │   │                     #   bank/* (каскад, гранулы), schedule/* (отрезки, отсутствия),
-│   │   │                     #   flags/* (3 флага), board/* (доска), checks/* (инварианты),
-│   │   │                     #   reports/* (УТ, exceptions, trace), pipeline/settle.py
-│   │   ├── application/      #   use case'ы: view/close/recalculate, load_inputs (7.4),
-│   │   │                     #   presence_board, view_sessions, schedule_view,
-│   │   │                     #   timesheet_edit, months (гранулярность), bank_adjustment
-│   │   ├── ports/            #   13 Protocol'ов (без ClockPort — now параметром, F-15)
-│   │   ├── adapters/         #   SQL-адаптеры поверх БД прототипа + factory
-│   │   └── interface/        #   человекочитаемые тексты (formatting), serialize/deserialize, views
-│   ├── api/                  # роутеры (тонкие): schedule (График), tabel, mgmt (УТ),
-│   │                         #   presence (доска), fact (сессии), punches, employees,
-│   │                         #   engine_settings, access, audit, settings, docs,
-│   │                         #   doublepay, night, cars, photos
-│   ├── services/             # use-case'и (без FastAPI): employee_lifecycle, punch_plan,
-│   │                         #   engine_common (мост к движку), errors (→ HTTP в main.py).
-│   │                         #   Границы: .importlinter (api → services → models)
-│   ├── base_schedule.py      # блоки и циклы (инструмент заполнения Табеля)
-│   ├── schedule_patterns.py  # циклы N/M, 5/2, произвольные «РРВВРВ»
-│   ├── tabel_fill.py         # заполнение Табеля из циклов (дробление ночных на 2 значения)
-│   ├── shiftrev.py           # ревизии словаря смен, ShiftCatalog
-│   ├── employment.py         # периоды работы: приём → увольнение → повторный приём
-│   ├── groups.py doublepay.py names.py night.py cars.py photos.py
-│   ├── doc_templates.py doc_render.py grid_docx.py pdf_render.py
-│   ├── auth.py security.py permissions.py config.py db.py deps.py
-│   ├── engine_bootstrap.py   # стартовая версия справочников CFG-* (+строки приложения)
-│   └── seed.py               # демо-данные v7.1: посев OPENING_SEED, Табель из циклов,
-│                             #   График из Табеля, отметки
+│   ├── main.py               # composition root: роутеры, хэндлеры ошибок (включая
+│   │                         #   ConfigError/DomainError/ApplicationError движка),
+│   │                         #   middleware из core/observability, раздача SPA, health/selfcheck
+│   ├── bootstrap/            # seed.py (демо-данные), migrations.py (идемпотентные),
+│   │                         #   registry.py — реестр моделей (G4) + инъекция провайдеров в core
+│   ├── core/                 # инфраструктура (R5: не знает о модулях):
+│   │                         #   config, db (engine/SessionLocal/Base), time (TZ/now — единственный
+│   │                         #   источник), errors (ServiceError-иерархия), security (pbkdf2),
+│   │                         #   auth (Principal/сессии), auth_guards (can_manage_user), permissions
+│   │                         #   (каталог прав + require_perm), identity (User/гранты), audit
+│   │                         #   (AuditLog + audit()), media (Photo + хранилище) + media_api
+│   │                         #   (роутер /api/photos), settings_store (key-value Setting),
+│   │                         #   render (транспорт LibreOffice/reportlab), format, roles, observability
+│   └── modules/              # каждый: domain / application / ports / adapters / interface
+│       ├── timesheet/        # ДВИЖОК v7.1 + Табель/График/отметки/доска/УТ/двойные:
+│       │   ├── domain/       #   чистое ядро (спека 8.1): types, codes_registry, settings,
+│       │   │                 #   validation, time, sessions, presence, day_card, placement,
+│       │   │                 #   opening, bank, schedule, flags, board, checks, reports, pipeline/settle
+│       │   ├── application/  #   use case'ы view/close/recalculate, engine_common (мост),
+│       │   │                 #   base_schedule, tabel_fill, schedule_patterns, shiftrev,
+│       │   │                 #   punch_plan, doublepay, catalog (публичная поверхность моделей)
+│       │   ├── ports/        #   13 Protocol'ов (без ClockPort — now параметром, F-15)
+│       │   ├── adapters/     #   SQL-адаптеры + factory + orm.py (TabelDay, ScheduleShift,
+│       │   │                 #   Punch, PeriodClosing, BlockAssignment, BankAdjustment, …)
+│       │   ├── interface/    #   8 роутеров (tabel, mgmt, fact, presence, punches, doublepay,
+│       │   │                 #   schedule, engine_settings) + formatting/serialize/views
+│       │   └── bootstrap.py  #   стартовая версия справочников CFG-*
+│       ├── employees/        # каталог персонала (Employee, Department, EmploymentPeriod…),
+│       │                     #   трудоустройство, жизненный цикл, группы графика, имена (domain)
+│       ├── night/            # ночной отчёт v2: зоны/объекты/чек-листы, журнал, выгрузки DOCX/PDF
+│       ├── cars/             # электрокары: парк, заряд/возврат, места, ночная проверка
+│       ├── docs/             # заявления DOCX/PDF, сетка Графика (grid_docx), шаблоны документов
+│       ├── notify/           # доставка Telegram/почта: config, dispatch, recipients, chats;
+│       │                     #   ports.TransportError; transports — единственные выходы в сеть
+│       ├── settings/         # единый центр «Настройки» (агрегирует границы timesheet/docs)
+│       ├── access/           # login/logout/impersonation (auth_routes) + «Права доступа»
+│       └── audit/            # «Журнал» + CSV (модель и audit() — в core)
 ├── static/
-│   ├── index.html            # оболочка SPA + экран входа
-│   ├── js/core.js app.js     # ядро (api/модалки/утилиты) + навигация/вход/слои Графика
-│   ├── js/section_grid.js    # сетка Графика, редакторы ячейки/периода, печать сетки
-│   ├── js/section_docs.js    # заявления и печать: шаблоны, скачивание DOCX/PDF
-│   ├── js/section_me.js      # «Мои отметки» (личный кабинет, PWA)
-│   ├── js/section_employees.js # «Сотрудники»: список → карточка → редактор
-│   ├── js/section_dicts.js   # Настройки: справочники, виды заявлений, двойные, смены
-│   ├── js/section_v4.js      # Отметки (доска) · Факт · Табель · УТ · Права · Аудит · CFG-*
-│   ├── js/section_settings.js # Настройки: под-разделы, черновик версии, правила, проверитель
-│   ├── js/section_night.js section_cars.js
+│   ├── index.html            # оболочка SPA + экран входа (порядок <script> фиксирует зависимости)
+│   ├── js/core.js app.js     # ядро (api/модалки/утилиты) + оболочка/меню/роутинг
+│   ├── js/modules/           # разделы 1:1 (глобальные функции сохранены — ADR-0008):
+│   │                         #   timesheet_layers (График-сетка), timesheet_v4 (Отметки·Факт·
+│   │                         #   Табель·УТ·Права·Аудит·CFG-*), me, employees, night, cars,
+│   │                         #   docs, dicts, settings (реестр экранов настроек)
 │   └── css/ fonts/ icons/ sw.js manifest.webmanifest
 ├── tests/
 │   ├── engine/               # движок: EX-01…EX-55 (test_ex_*), юниты каталога 8.1,
 │   │                         #   валидация 3 уровней, property-инварианты (hypothesis),
-│   │                         #   архитектура (граф импортов, чистота, независимость),
-│   │                         #   application (4 режима 7.2, R35–R40, атомарность)
+│   │                         #   AST-законы движка, application (4 режима 7.2, R35–R40)
+│   ├── test_modules_architecture.py  # структура/R1/R3/R6 всех 9 модулей + core
 │   └── test_api.py test_features.py test_v4_api.py …   # интеграция приложения
-├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки
-├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, ADR, CHANGES
+├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки/сценарии
+├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, EXECUTION-SPEC-v2, ADR, CHANGES
 └── requirements*.txt
 ```
 
 API: http://127.0.0.1:8000/api/docs (Swagger).
+
 
 ## Продакшен-заметки
 

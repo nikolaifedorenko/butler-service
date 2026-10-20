@@ -551,3 +551,50 @@ push+мерж до этапа A, иначе конфликты переноса.
   index.html); `docs/prototypes/*.smoke.mjs` не затрагивались.
 * Порядок подключений в index.html сохранён (cars → night → v4 → settings);
   смоуки на трёх ролях (admin/ivanov/gromova) и все пять сценариев зелёные.
+
+---
+
+## 17. Итоги исполнения и статус Definition of Done (§9) — фаза C7, 20.10.2026
+
+Все фазы исполнены: A (PR #52), B (PR #54), C1 (PR #55), C2 (PR #56), C3 (PR #57),
+C4+C5 (PR #58), C6 (PR #59), C7 (PR #60). Батчи — `docs/CHANGES-2026-10-20-stage-c*.md`;
+уточнения фаз — приложения §12–§17. DoD:
+
+- [x] **Структура §2**: `core/` (18 файлов — сверх §2 добавлены roles, identity,
+      format, auth_guards (§12), settings_store (§14), render (§15/G2), media_api
+      (§15/G1)) + `bootstrap/` (seed, migrations, registry) + **9 модулей**;
+      `app/api`, `app/services`, `app/models`, `app/engine` — удалены (C4h).
+- [x] **§7.1 зелёный целиком**, включая «ночной» прогон pytest (faketime 05:30 Мск:
+      700 passed / 4 skipped) и сценарии (settings 76/76, night_zones 87/87,
+      night_cars, layers, norms) и ui-смоуки на трёх ролях (C6).
+- [x] **`.importlinter`: финальные контракты** — 14 (R5 core, изоляции timesheet/
+      notify, независимость роутеров ×2, R3-private ×9); транзитных нет (сняты в C4h).
+- [x] **AST-тесты покрывают все модули**: `tests/test_modules_architecture.py`
+      (65 проверок: структура, R1, направления §3, R6 с точным allowlist,
+      публичная граница notify) + `tests/engine/test_architecture.py` (законы движка).
+- [x] **Ошибки маппятся в `main.py`** (ConfigError→409, DomainError→422,
+      ApplicationError→409); `domain_error_text` удалена (C2). Три локальных
+      catch → 422 сохранены как задокументированное разрешение конфликта §5.3/§11.1
+      (статусы закреплены тестами — CHANGES C2 §2).
+- [x] **Права — только `require_perm`**; `require_manager`/`require_supervisor`
+      удалены (B); `can_manage_user` не тронут (core/auth_guards).
+      Зарегистрированный продуктовый долг: 11 inline-ветвлений `principal.is_manager`
+      (fact_api/punches/schedule) — перевод на права требует решения владельца
+      по семантике видимости каждого экрана (§5.2, CHANGES C4 §2).
+- [~] **TZ/now — `core/time.py`**: `now_local/local_date/utc_to_local/TZ` — только
+      core; `now_utc()` — в `timesheet/application/engine_common` как
+      composition-параметр движка (§5.1/F-15 — так и предписано спекой).
+      Технический долг: 7× `dt.date.today()` в timesheet interface/bootstrap —
+      перевод на `local_date()` отдельным батчем (риск полуночного поведения).
+- [x] **Фронтенд**: `static/js/modules/*.js` (9 разделов 1:1), глобалы + `no-undef`
+      сохранены (ADR-0008), SHELL `sw.js` включает новые пути (`rglob` в
+      bump_version), версия поднята: **2026-10-20a**.
+- [x] **`docs/openapi.json`** — без дельты к коду на всех фазах (156 путей).
+- [x] **Документы фазы 9 обновлены** (C7): ARCHITECTURE.md (§1/2.2/2.3/3/3.5/6/7/8),
+      README (структура, документация), SPEC.md (пути), ADR-0010 — «принят,
+      исполнен полностью», ADR-0006 — superseded (C1).
+- [x] **Мёртвый код/зависимости §8 удалены** (A); лок перегенерирован (A).
+- [x] **R6**: кросс-модульные FK — только строками (AST-проверка всех ORM);
+      кросс-границ `relationship()` — 11 связей в точном allowlist
+      (`Punch.employee` lazy=joined и др.): задокументированный долг до
+      продуктового батча «навигация → порты/DTO» (CHANGES C4 §2, ARCHITECTURE §7).
