@@ -41,7 +41,6 @@ ignore_imports =
 name = API-модули не импортируют друг друга (общее — только services/core)
 type = independence
 modules =
-    app.api.audit_api
     app.api.photos_api
 
 [importlinter:contract:timesheet-isolation]
@@ -139,6 +138,7 @@ source_modules =
     app.modules.cars
     app.modules.settings
     app.modules.access
+    app.modules.audit
 forbidden_modules =
     app.modules.timesheet.domain
     app.modules.timesheet.adapters
@@ -157,6 +157,7 @@ source_modules =
     app.modules.cars
     app.modules.settings
     app.modules.access
+    app.modules.audit
 forbidden_modules =
     app.modules.employees.domain
     app.modules.employees.adapters
@@ -171,6 +172,7 @@ source_modules =
     app.modules.employees
     app.modules.notify
     app.modules.settings
+    app.modules.audit
 forbidden_modules =
     app.modules.night.domain
     app.modules.night.adapters
@@ -185,6 +187,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.settings
+    app.modules.audit
 forbidden_modules =
     app.modules.notify.domain
     app.modules.notify.adapters
@@ -200,6 +203,7 @@ source_modules =
     app.modules.notify
     app.modules.night
     app.modules.settings
+    app.modules.audit
 forbidden_modules =
     app.modules.cars.domain
     app.modules.cars.adapters
@@ -216,6 +220,7 @@ source_modules =
     app.modules.night
     app.modules.cars
     app.modules.settings
+    app.modules.audit
 forbidden_modules =
     app.modules.docs.domain
     app.modules.docs.adapters
@@ -232,6 +237,7 @@ source_modules =
     app.modules.night
     app.modules.cars
     app.modules.docs
+    app.modules.audit
 forbidden_modules =
     app.modules.settings.domain
     app.modules.settings.adapters
@@ -249,6 +255,7 @@ source_modules =
     app.modules.cars
     app.modules.docs
     app.modules.settings
+    app.modules.audit
 forbidden_modules =
     app.modules.access.domain
     app.modules.access.adapters
@@ -261,3 +268,21 @@ type = independence
 modules =
     app.modules.access.interface.access_api
     app.modules.access.interface.auth_routes
+
+[importlinter:contract:audit-private]
+name = R3: domain/adapters/interface audit приватны
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.notify
+    app.modules.night
+    app.modules.cars
+    app.modules.docs
+    app.modules.settings
+    app.modules.access
+forbidden_modules =
+    app.modules.audit.domain
+    app.modules.audit.adapters
+    app.modules.audit.interface
+allow_indirect_imports = True
