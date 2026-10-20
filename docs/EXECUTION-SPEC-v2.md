@@ -123,8 +123,9 @@ app/
 
 ### 5.2 Права (фаза 2, до переносов)
 Единственный вход — `require_perm(...)` из `core/permissions.py`. Перед удалением
-`require_manager`/`require_supervisor` (52 вызова в 8 файлах) каталог дополняется
-ключами, которых не хватает:
+`require_manager`/`require_supervisor` (**44 вызова** на main@b929007 после мержа
+PR #50; на старте фазы перепроверить grep'ом) каталог дополняется ключами,
+которых не хватает:
 
 | Было | Становится |
 |------|-----------|
@@ -132,8 +133,8 @@ app/
 | `require_manager` — settings/docs/doublepay/notify | существующие `settings.edit` |
 | `require_manager` — сотрудники | существующий `employees.edit` |
 | `require_manager` — график/отметки | существующие `schedule.edit`, `punches.manage` |
-| `principal.is_manager` в ветвлениях (readonly-флаги, `fact_api`, `schedule.py`) | `has_perm(db, principal, <ключ>)` по смыслу ветки |
-| `require_manager` в `auth_routes` (impersonation) | `can_manage_user` (остаётся) + ключ не нужен |
+| `require_manager` в `auth_routes` — impersonation и список сотрудников для него (×2) | **новый ключ `employees.impersonate`** (базово supervisor+); `can_manage_user` остаётся вторым стражем внутри обработчика |
+| inline-ветвления `principal.is_manager` (14 шт.: `fact_api` ×4, `punches` ×5, `schedule` ×2, `cars_api` ×1, `photos` ×1) | в этой фазе переводится только ветвление с ключом 1:1 (`cars_api`: видимость неактивных каров → `cars.manage`); остальные — **явно откладываются** списком в фазы 4–6, где каждый модуль сам решает семантику «менеджерской видимости» (иначе фаза разрастается) |
 
 Образец — `night.edit` (PR #50): базовые права ролей не меняются, управляемость появляется.
 
@@ -182,7 +183,9 @@ static/js/
 
 ## 7. Фазы (строго последовательно; после каждой — проверки §7.1 и отдельный коммит/PR)
 
-**Фаза 0 — подготовка.** Мерж PR #50. Заморозка веток, трогающих `app/api`, `static/js`.
+**Фаза 0 — подготовка.** Мерж PR #50 — **выполнен** (main@b929007). Осталось:
+push+мерж локальной ветки `feat/tabel-cell-code-chips` (на origin её нет — проверено;
+упомянута в ревизии внешнего ревьюера) и заморозка веток, трогающих `app/api`, `static/js`.
 Базовая фиксация: полный прогон §7.1 зелёный на main (ночной прогон pytest обязателен —
 см. `open_shift`-герметичность из PR #50).
 
@@ -300,3 +303,95 @@ npm run globals:check && npm run lint
 фаза 8 — ~0,5 дня; фаза 9 — ~0,5 дня. Итого 4–6 рабочих дней, ~15–25 коммитов.
 Диффы — преимущественно renames; логика не меняется (кроме §5.2/§5.3 — они покрыты
 тестами прав и сценариями).
+
+---
+
+## 11. Приложение (2026-10-20): слияние с ревизией внешнего ревьюера + новые находки
+
+Внешний ревьюер выпустил свою редакцию (`1_EXECUTION-SPEC.md`, «v2»), принявшую
+большинство замечаний §0 настоящего документа. Его упаковка в этапы **A** (чистка) /
+**B** (права) / **C** (модули, только после ADR-0010) принимается как верхнеуровневая:
+A = фаза 1, B = фаза 2, C = фазы 3–9. Ниже — дельта: подтверждённые факты и пробелы,
+которые не закрыты НИ в v1, НИ в ревизии ревьюера. При расхождении приоритет у
+более конкретного текста.
+
+### 11.1 Утверждения ревизии ревьюера — проверены grep'ом, верны
+
+* `pillow` мёртв: ноль вхождений `PIL`/`ImageReader` в app/tests/tools; PDF-экспорт
+  текстовый (в `pdf_render.py` нет кода изображений).
+* Обёртки `doc_render.pdf_mode`/`docx_to_pdf` мертвы, включая тесты:
+  `test_readonly_pdf` мокает `app.pdf_render.docx_to_pdf` (настоящую);
+  `pdf_available`/`pdf_status` живы (`docs_api`) — оставить.
+* Список импортёров `validate_pattern` полон: `api/employees.py:16`,
+  `services/employee_lifecycle.py:21` (→ `validate_pattern_label`),
+  `api/schedule.py:51` (→ `validate_cycle_string`); тесты не ссылаются.
+* `domain_error_text` — ровно 29 вызовов в api-роутерах; в центральный маппинг нужно
+  направить не только `ConfigError`, но и `DomainError`/`ApplicationError` движка —
+  с побайтовым сохранением статусов и текстов ответов (на них завязаны тесты и openapi).
+* `PyYAML` — действий в репозитории не требует (никогда не объявлялся).
+
+### 11.2 Новые пробелы (G1–G9)
+
+**G1. Файлы без адреса в карте переноса** (§3.4 ревизии не покрывает):
+
+| Файл | Куда |
+|------|------|
+| `api/photos_api.py` | роутер при `core/media` (`core/media_api.py`): бизнес-логики нет, только проверка владения |
+| `api/auth_routes.py` | `modules/access/interface/` (login/logout/impersonation) |
+| `services/punch_plan.py`, `services/engine_common.py` | `modules/timesheet/application/`; `punch_plan` импортирует `auth_routes` → access потребляет его через `timesheet.application` (R3-легально, зафиксировать) |
+| `models/common.py` (роли, `MANAGER_ROLES`, `utcnow`) | `core/` — нужен auth/permissions/bootstrap |
+| `base_schedule.py` | `modules/timesheet`; `employee_lifecycle` его уже импортирует → employees потребляет через `timesheet.application` (R3) |
+
+**G2. Модуль `docs` — кросс-модульная инфраструктура рендеринга.** Проверено:
+`pdf_render.docx_to_pdf` импортируют `night_api:1300` и `schedule:1283`; `grid_docx` —
+`schedule:1238,1283`; `doc_render.hours_text` — `schedule:27`; `DOC_TYPES` — `migrations:322`.
+Если оставить всё в `docs`, то timesheet/night зависят от `docs.application` (R3), но
+timesheet переезжает РАНЬШЕ (фаза C2) — модуля docs ещё нет. Решение: чистый транспорт
+рендера (`pdf_render` — конвейер LibreOffice/reportlab) → `core/render.py`; бизнес
+документов (`doc_render` — виды заявлений, `grid_docx`, `doc_templates`) → модуль `docs`
+с application-фасадом.
+
+**G3. Транзитные импорты между фазами не легализованы.** В C2–C6 модули будут
+импортировать ещё не перенесённый legacy (`app.models`, `app.grid_docx`, …). Нужен
+явный транзитный контракт `.importlinter`: `modules.* → app.*` разрешён, пока
+владеющий модуль не перенесён; `app.* → modules.*` запрещён (кроме bootstrap/main).
+Без него `lint-imports` либо красный в середине фазы, либо контракты врут.
+
+**G4. Реестр моделей не назначен.** `schema_report()` (самодиагностика `/api/selfcheck`)
+считает `Base.metadata.sorted_tables`: если `adapters/orm` модуля не импортирован
+в момент `create_all`, таблица молча выпадает. Нужен `bootstrap/registry.py` — явный
+импорт всех ORM-моделей, вызывается из main до `init_db()`; в DoD — число таблиц
+совпадает с дорефакторным.
+
+**G5. В правилах ревизии (§3.3) нет R5 и R6** (см. §3 настоящего документа):
+R5 «core не импортирует modules» подразумевается, но не законтрактован;
+R6 «cross-module FK только строкой, `relationship()` внутри модуля, AST-контроль» —
+отсутствует. Текущие кросс-модульные FK (night → responsibility_services, night → users)
+уже строковые и без relationship — R6 фиксирует существующую практику как закон.
+
+**G6. Чек-лист фазы (§3.6) неполон.** Добавить: `python tools/export_openapi.py --check`
+(при переезде роутеров дрейфуют теги/operationId), `npm run globals:check` и
+`npm run lint` (с фазы C6), смоук `run_ui_check` на трёх ролях + сценарии
+(`run_settings_scenario`, `run_night_zones_scenario`, …) по затрагиваемому модулю,
+и **ночной** прогон pytest как обязательный (герметичность `open_shift` из PR #50 —
+ночная flaky-зона, из-за которой этот документ вообще появился).
+
+**G7. Детали этапа B.** `require_manager` в `auth_routes` стережёт impersonation (×2) —
+простое удаление оставит эндпоинты без гейта: нужен ключ `employees.impersonate`
+(базово supervisor+), `can_manage_user` остаётся вторым стражем. Inline-ветвления
+`principal.is_manager` (14 шт.) не покрываются лозунгом «удалить require_*» —
+политика в §5.2. Счётчик вызовов: 44 (не 52/54) — перепроверить grep'ом на старте.
+
+**G8. Precondition.** PR #50 смержен (b929007) — готово. Ветка `feat/tabel-cell-code-chips`
+на origin отсутствует (проверено `git branch -r`) — она локальная у заказчика/ревьюера:
+push+мерж до этапа A, иначе конфликты переноса.
+
+**G9. `bootstrap/` пакетом** (seed.py + migrations.py) — принимается; туда же
+`registry.py` (G4).
+
+### 11.3 Итоговая рекомендация
+
+Ревизия ревьюера пригодна как исполнительный документ ПОСЛЕ внесения G1–G9
+(в настоящем файле они уже учтены в §2, §3, §5.2, §7). Этапы A и B не требуют ADR и
+могут стартовать немедленно отдельными PR; этап C — после принятия ADR-0010
+(`docs/adr/0010-modular-monolith-core-modules.md`) и закрытия G8.
