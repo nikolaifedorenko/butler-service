@@ -291,7 +291,7 @@ class TestApi(unittest.TestCase):
     def test_16b_change_password_flow(self):
         # верный старый пароль → смена; неверный старый → 400; вход с новым паролем работает
         from app.core.db import SessionLocal
-        from app.models import User
+        from app.core.identity import User
         old_session = TestClient(app)
         self.assertEqual(old_session.post("/api/auth/login",
                                           json={"username": "ivanov", "password": "demo1234"}).status_code, 200)

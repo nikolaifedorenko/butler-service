@@ -9,6 +9,6 @@ StatementKind/EmergencyContact/PositionHistory/EmploymentPeriod), interface
 Публичная поверхность (R3/R4): другие модули импортируют только
 ``employees.application`` (модели — через ``application.catalog``). Корневой
 ``__init__`` намеренно НЕ ре-экспортирует application: ``lifecycle`` импортирует
-транзитный фасад ``app.models`` (Car, до фазы C4c), и ранний импорт application
-из фасада создал бы цикл инициализации.
+границу timesheet (base_schedule/catalog), а timesheet — границу employees;
+ранний ре-экспорт создал бы цикл инициализации пакетов.
 """

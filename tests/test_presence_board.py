@@ -126,7 +126,7 @@ def test_board_route_shift_today_hm_end_to_end(app_stack, manager_client):
     """Сквозная проверка маршрута: ручная смена 08:00–20:00 MSC в БД, отметка
     «пришёл» — карточка Отметок обязана показать окно в поясе объекта."""
     from app.core.time import TZ
-    from app.models import ScheduleShift
+    from app.modules.timesheet.application.catalog import ScheduleShift
 
     c = manager_client
     eid = _new_employee(c)

@@ -206,8 +206,14 @@ def open_shift(db, freeze):
 
     from sqlalchemy import select
 
-    from app.core.media import unlink_photo
-    from app.models import CarNightCheck, NightAreaSection, NightCheckItem, NightInterception, NightReport, Photo
+    from app.core.media import Photo, unlink_photo
+    from app.modules.cars.application.catalog import CarNightCheck
+    from app.modules.night.application.catalog import (
+        NightAreaSection,
+        NightCheckItem,
+        NightInterception,
+        NightReport,
+    )
     from app.modules.night.application.night import ensure_report
 
     @_cm

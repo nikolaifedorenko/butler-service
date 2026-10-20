@@ -22,7 +22,7 @@ from app.core.permissions import require_perm
 from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER
 from app.core.security import hash_password
 from app.core.time import local_date, utcnow
-from app.models import Car  # транзит G3: до модуля cars (фаза C4c)
+from app.modules.cars.application.catalog import Car
 from app.modules.timesheet.application.base_schedule import validate_pattern_label
 from app.modules.timesheet.application.catalog import BankAdjustment, BlockAssignment, ShiftType
 from app.modules.timesheet.application.engine_common import (

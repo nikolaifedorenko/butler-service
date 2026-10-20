@@ -35,7 +35,11 @@ from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
 from app.main import app, init_db  # noqa: E402
-from app.models import EngineSettingsVersion, ShiftType, TabelDay  # noqa: E402
+from app.modules.timesheet.application.catalog import (  # noqa: E402
+    EngineSettingsVersion,
+    ShiftType,
+    TabelDay,  # noqa: E402,
+)
 from app.modules.timesheet.bootstrap import REMOVED_DAY_CODES, strip_removed_day_codes  # noqa: E402
 
 init_db()
@@ -103,7 +107,7 @@ class TestTimesheetCodeNorm(unittest.TestCase):
         db = SessionLocal()
         try:
             # сотрудник на суточных сменах (демо-сид: «Смена 2», цикл 1/3)
-            from app.models import Employee
+            from app.modules.employees.application.catalog import Employee
             emp = db.scalar(select(Employee).where(Employee.full_name.like("Петров%")))
             self.assertIsNotNone(emp)
             rows = {r.date: r for r in db.scalars(select(TabelDay).where(
@@ -166,7 +170,7 @@ class TestTimesheetCodeNorm(unittest.TestCase):
         """Пока код стоит в Табеле, справочник не трогается: иначе расчёт остановится."""
         db = SessionLocal()
         try:
-            from app.models import Employee
+            from app.modules.employees.application.catalog import Employee
             emp = db.scalars(select(Employee).where(Employee.deleted_at.is_(None))).first()
             day = dt.date(2001, 6, 1)
             db.add(TabelDay(employee_id=emp.id, date=day, code="С", plan_minutes=960,
@@ -276,7 +280,7 @@ class TestTimeoffHours(unittest.TestCase):
         assert r.status_code == 200, r.text
 
     def test_06_hours_from_employee_window(self):
-        from app.models import Employee
+        from app.modules.employees.application.catalog import Employee
         db = SessionLocal()
         try:
             emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
@@ -306,7 +310,7 @@ class TestTimeoffHours(unittest.TestCase):
 
     def test_07_day_off_statement_carries_hours(self):
         """Заявление «выходной за часы» печатается с часами, а не с нулём."""
-        from app.models import Employee
+        from app.modules.employees.application.catalog import Employee
         db = SessionLocal()
         try:
             emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
@@ -400,7 +404,7 @@ class TestPayRulesAndConflicts(unittest.TestCase):
 
     def test_10_config_error_is_409_not_500(self):
         """Повреждённая конфигурация — типизированный отказ 409 с человеческим текстом."""
-        from app.models import DayModifier
+        from app.modules.timesheet.application.catalog import DayModifier
         day = dt.date.today() + dt.timedelta(days=2)
         db = SessionLocal()
         try:

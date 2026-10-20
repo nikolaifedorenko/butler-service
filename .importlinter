@@ -1,78 +1,66 @@
 ; Контракты импортов (lint-imports) — Python-аналог архитектурных тестов движка
-; (tests/engine/test_architecture.py) для остального приложения.
+; (tests/engine/test_architecture.py).
 ;
-; Ред. 20.10.2026 (фаза C3, EXECUTION-SPEC-v2): второй модуль — app.modules.notify
-; (эталон: 5 слоёв, R1–R6 без транзитных послаблений внутри модуля); Setting
-; (кросс-модульное key-value хранилище) переехал в app/core/settings_store.py.
-; Ред. 20.10.2026 (фаза C2, EXECUTION-SPEC-v2): создан первый модуль —
-; app.modules.timesheet (бывший app/engine + табельные роутеры + хелперы +
-; ORM-модели punch/schedule/engine_store/directory). Контракты:
-;   1) слои legacy-приложения (api → services → models → core);
-;   2) независимость api-модулей;
-;   3) изоляция timesheet (бывшая изоляция движка): модуль не знает про
-;      api/services/composition root;
-;   4) R5 — core не импортирует приложение;
-;   5) независимость роутеров внутри timesheet.interface (правопреемник п.2);
-;   6) ТРАНЗИТНЫЙ контракт (§11.2 G3): legacy app.* не импортирует modules.*,
-;      кроме composition root (main/bootstrap — не в источниках) и явных
-;      исключений, которые сокращаются по мере переноса модулей (C4–C6).
-; Направление modules.* → app.* (ещё не перенесённый legacy: groups, employment,
-; doc_render, grid_docx, pdf_render, models.night/notify/cars) разрешено транзитным
-; контрактом G3 — до переноса владеющих модулей.
+; Ред. 20.10.2026 (фаза C4 — финал модульного переноса): legacy-пакеты app/api,
+; app/services, app/models удалены; приложение = core/ + bootstrap/ + main +
+; 9 модулей (timesheet, employees, night, cars, docs, notify, settings, access,
+; audit). Транзитные контракты G3 сняты — все потребители ходят через границы
+; application/ports (R3). Контракты:
+;   1) R5 — core не импортирует модули и composition root;
+;   2) изоляции timesheet/notify — модули не знают composition root;
+;   3) независимость роутеров внутри timesheet.interface и access.interface;
+;   4) R3 — приватные слои каждого модуля (domain/adapters/interface) не
+;      импортируются другими модулями; публичны только application/ports.
+; Финальная доводка R1–R6 (AST-покрытие всех модулей) — фаза C7 (DoD).
 
 [importlinter]
 root_packages =
     app
 
-[importlinter:contract:app-layers]
-name = Слои приложения: api над services, services над models, models над core
-type = layers
-layers =
-    app.api
-    app.services
-    app.models
-    app.core
-ignore_imports =
-    ; TYPE_CHECKING-аннотация Principal.employee (runtime — db.get("Employee", …)),
-    ; см. пояснение в contract:core-independence
-    app.core.auth -> app.models
-
-[importlinter:contract:api-independence]
-name = API-модули не импортируют друг друга (общее — только services/core)
-type = independence
-modules =
-    app.api.photos_api
-
-[importlinter:contract:timesheet-isolation]
-name = Модуль timesheet (движок v7.1) не знает про api/services/main/bootstrap
-type = forbidden
-source_modules =
-    app.modules.timesheet
-forbidden_modules =
-    app.api
-    app.services
-    app.bootstrap
-    app.main
-
 [importlinter:contract:core-independence]
-name = R5 — core не знает о приложении (модули, legacy-корень, composition root)
+name = R5 — core не знает о модулях и composition root
 type = forbidden
 source_modules =
     app.core
 forbidden_modules =
-    app.api
-    app.services
-    app.models
     app.modules
     app.bootstrap
     app.main
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee: в runtime Employee загружается
     ; внедрённым bootstrap'ом колбэком (set_employee_loader), импорта моделей нет.
-    app.core.auth -> app.models
+    app.core.auth -> app.modules.employees.application.catalog
+
+[importlinter:contract:timesheet-isolation]
+name = Модуль timesheet (движок v7.1) не знает про composition root
+type = forbidden
+source_modules =
+    app.modules.timesheet
+forbidden_modules =
+    app.bootstrap
+    app.main
+allow_indirect_imports = True
+
+[importlinter:contract:notify-isolation]
+name = Эталон (C3): notify не знает про composition root и другие модули
+type = forbidden
+source_modules =
+    app.modules.notify
+forbidden_modules =
+    app.bootstrap
+    app.main
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.night
+    app.modules.cars
+    app.modules.docs
+    app.modules.settings
+    app.modules.access
+    app.modules.audit
+allow_indirect_imports = True
 
 [importlinter:contract:timesheet-interface-independence]
-name = Роутеры timesheet.interface не импортируют друг друга (правопреемник api-independence)
+name = Роутеры timesheet.interface не импортируют друг друга
 type = independence
 modules =
     app.modules.timesheet.interface.doublepay
@@ -84,58 +72,22 @@ modules =
     app.modules.timesheet.interface.schedule
     app.modules.timesheet.interface.tabel_api
 
-[importlinter:contract:transit-app-to-modules]
-name = Транзит (G3): legacy app.* не импортирует modules.* кроме объявленных исключений
-type = forbidden
-source_modules =
-    app.api
-    app.services
-    app.models
-forbidden_modules =
-    app.modules
-ignore_imports =
-    ; Фасад app/models: транзитный re-export переехавших ORM-моделей (спека §7
-    ; фазы 4–5). Уменьшается в C4–C6, удаляется вместе с пакетом app/models/.
-    app.models -> app.modules.timesheet.adapters.orm
-    app.models -> app.modules.notify.adapters.orm
-    app.models -> app.modules.employees.adapters.orm
-    ; До C4: легаси-потребители модулей через их границы (R3-направление).
-    ; Строки исчезают по мере переноса владельцев.
-    app.models -> app.modules.night.adapters.orm
-    app.models -> app.modules.cars.adapters.orm
-
-[importlinter:contract:notify-isolation]
-name = Эталон (C3): notify не знает про legacy-приложение и composition root
-type = forbidden
-source_modules =
-    app.modules.notify
-forbidden_modules =
-    app.api
-    app.services
-    app.models
-    app.bootstrap
-    app.main
-    app.modules.timesheet
-    app.cars
-    app.doc_render
-    app.doc_templates
-    app.grid_docx
-    app.pdf_render
-ignore_imports =
-    ; TYPE_CHECKING-аннотация Principal.employee — ребро core → фасад моделей,
-    ; а не зависимость notify (в runtime Employee загружается колбэком, C1);
-    ; фасад app/models — транзитный re-export (удаляется в C6 вместе с фасадом).
-    app.core.auth -> app.models
-    app.models -> app.modules.timesheet.adapters.orm
+[importlinter:contract:access-interface-independence]
+name = Роутеры access.interface не импортируют друг друга
+type = independence
+modules =
+    app.modules.access.interface.access_api
+    app.modules.access.interface.auth_routes
 
 [importlinter:contract:timesheet-private]
-name = R3: domain/adapters/interface timesheet приватны (другие модули — только application/ports)
+name = R3: domain/adapters/interface timesheet приватны
 type = forbidden
 source_modules =
     app.modules.employees
-    app.modules.notify
     app.modules.night
     app.modules.cars
+    app.modules.docs
+    app.modules.notify
     app.modules.settings
     app.modules.access
     app.modules.audit
@@ -143,18 +95,17 @@ forbidden_modules =
     app.modules.timesheet.domain
     app.modules.timesheet.adapters
     app.modules.timesheet.interface
-; R3 — про ПРЯМЫЕ импорты: внутри чужого модуля application → domain — его
-; собственное дело, транзитивная цепочка через application легальна.
 allow_indirect_imports = True
 
 [importlinter:contract:employees-private]
-name = R3: domain/adapters/interface employees приватны (другие модули — только application/ports)
+name = R3: domain/adapters/interface employees приватны
 type = forbidden
 source_modules =
     app.modules.timesheet
-    app.modules.notify
     app.modules.night
     app.modules.cars
+    app.modules.docs
+    app.modules.notify
     app.modules.settings
     app.modules.access
     app.modules.audit
@@ -165,13 +116,16 @@ forbidden_modules =
 allow_indirect_imports = True
 
 [importlinter:contract:night-private]
-name = R3: domain/adapters/interface night приватны (другие модули — только application/ports)
+name = R3: domain/adapters/interface night приватны
 type = forbidden
 source_modules =
     app.modules.timesheet
     app.modules.employees
+    app.modules.cars
+    app.modules.docs
     app.modules.notify
     app.modules.settings
+    app.modules.access
     app.modules.audit
 forbidden_modules =
     app.modules.night.domain
@@ -179,30 +133,17 @@ forbidden_modules =
     app.modules.night.interface
 allow_indirect_imports = True
 
-[importlinter:contract:notify-private]
-name = R3: domain/adapters/interface notify приватны (другие модули — только application/ports)
-type = forbidden
-source_modules =
-    app.modules.timesheet
-    app.modules.employees
-    app.modules.night
-    app.modules.settings
-    app.modules.audit
-forbidden_modules =
-    app.modules.notify.domain
-    app.modules.notify.adapters
-    app.modules.notify.interface
-allow_indirect_imports = True
-
 [importlinter:contract:cars-private]
-name = R3: domain/adapters/interface cars приватны (другие модули — только application/ports)
+name = R3: domain/adapters/interface cars приватны
 type = forbidden
 source_modules =
     app.modules.timesheet
     app.modules.employees
-    app.modules.notify
     app.modules.night
+    app.modules.docs
+    app.modules.notify
     app.modules.settings
+    app.modules.access
     app.modules.audit
 forbidden_modules =
     app.modules.cars.domain
@@ -211,20 +152,39 @@ forbidden_modules =
 allow_indirect_imports = True
 
 [importlinter:contract:docs-private]
-name = R3: domain/adapters/interface docs приватны (другие модули — только application/ports)
+name = R3: domain/adapters/interface docs приватны
 type = forbidden
 source_modules =
     app.modules.timesheet
     app.modules.employees
-    app.modules.notify
     app.modules.night
     app.modules.cars
+    app.modules.notify
     app.modules.settings
+    app.modules.access
     app.modules.audit
 forbidden_modules =
     app.modules.docs.domain
     app.modules.docs.adapters
     app.modules.docs.interface
+allow_indirect_imports = True
+
+[importlinter:contract:notify-private]
+name = R3: domain/adapters/interface notify приватны
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.night
+    app.modules.cars
+    app.modules.docs
+    app.modules.settings
+    app.modules.access
+    app.modules.audit
+forbidden_modules =
+    app.modules.notify.domain
+    app.modules.notify.adapters
+    app.modules.notify.interface
 allow_indirect_imports = True
 
 [importlinter:contract:settings-private]
@@ -233,10 +193,11 @@ type = forbidden
 source_modules =
     app.modules.timesheet
     app.modules.employees
-    app.modules.notify
     app.modules.night
     app.modules.cars
     app.modules.docs
+    app.modules.notify
+    app.modules.access
     app.modules.audit
 forbidden_modules =
     app.modules.settings.domain
@@ -250,10 +211,10 @@ type = forbidden
 source_modules =
     app.modules.timesheet
     app.modules.employees
-    app.modules.notify
     app.modules.night
     app.modules.cars
     app.modules.docs
+    app.modules.notify
     app.modules.settings
     app.modules.audit
 forbidden_modules =
@@ -262,23 +223,16 @@ forbidden_modules =
     app.modules.access.interface
 allow_indirect_imports = True
 
-[importlinter:contract:access-interface-independence]
-name = Роутеры access.interface не импортируют друг друга
-type = independence
-modules =
-    app.modules.access.interface.access_api
-    app.modules.access.interface.auth_routes
-
 [importlinter:contract:audit-private]
 name = R3: domain/adapters/interface audit приватны
 type = forbidden
 source_modules =
     app.modules.timesheet
     app.modules.employees
-    app.modules.notify
     app.modules.night
     app.modules.cars
     app.modules.docs
+    app.modules.notify
     app.modules.settings
     app.modules.access
 forbidden_modules =

@@ -1154,8 +1154,8 @@ async def report_car_check(report_id: int, car_id: int,
     просто факт, в замечания не входит."""
     from sqlalchemy.exc import IntegrityError
 
-    from app.models import Car
     from app.modules.cars.application.cars import CarOpError, check_car_night
+    from app.modules.cars.application.catalog import Car
 
     blobs: list[tuple[str, bytes]] = []
     if file is not None:

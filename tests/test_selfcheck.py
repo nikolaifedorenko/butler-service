@@ -18,7 +18,7 @@ def test_selfcheck_ok_na_svezhei_baze(admin_client):
 
 
 def test_selfcheck_ozhidaet_vse_tablicy_iz_modealey(admin_client):
-    from app.models import Base
+    from app.core.db import Base
 
     data = admin_client.get("/api/selfcheck").json()
     expected = {t.name for t in Base.metadata.sorted_tables}

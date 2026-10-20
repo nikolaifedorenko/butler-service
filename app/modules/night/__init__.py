@@ -6,6 +6,6 @@
 adapters (orm — модели night_*), interface (роутер night_api), domain/ports —
 тривиальные (код перенесён «как есть», вытаскивание домена — отдельная задача).
 
-Доставка — через notify.application (R3); электрокары — через cars (C4c,
-пока транзитом G3 через app.cars/app.models).
+Доставка — через notify.application (R3); электрокары — через cars.application
+(R3, фаза C4c).
 """

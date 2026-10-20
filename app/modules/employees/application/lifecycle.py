@@ -23,7 +23,7 @@ from app.core.auth_guards import can_manage_user
 from app.core.errors import Conflict, NotFound, Validation
 from app.core.roles import ROLE_EMPLOYEE
 from app.core.time import local_date
-from app.models import Car  # транзит G3: до модуля cars (фаза C4c)
+from app.modules.cars.application.catalog import Car
 from app.modules.timesheet.application.base_schedule import dump_pattern, validate_pattern_label
 from app.modules.timesheet.application.catalog import BlockAssignment
 

@@ -29,10 +29,10 @@ from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
 from app.main import app, init_db  # noqa: E402
-from app.models import (  # noqa: E402
-    DayModifier,
+from app.modules.employees.application.catalog import Employee  # noqa: E402
+from app.modules.timesheet.application.catalog import (  # noqa: E402
+    DayModifier,  # noqa: E402
     DoublePayDay,
-    Employee,
     ShiftType,
 )
 

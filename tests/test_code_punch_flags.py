@@ -36,7 +36,7 @@ from sqlalchemy import select  # noqa: E402
 from app.core.db import SessionLocal  # noqa: E402
 from app.core.time import local_date, now_local  # noqa: E402
 from app.main import app, init_db  # noqa: E402
-from app.models import EngineSettingsVersion  # noqa: E402
+from app.modules.timesheet.application.catalog import EngineSettingsVersion  # noqa: E402
 
 init_db()
 client = TestClient(app)          # администратор

@@ -60,7 +60,7 @@ def test_schedule_grid_does_not_scale_with_headcount(admin_client, db, sql_count
     Добавляем 12 сотрудников и сравниваем бюджет сетки: допустим небольшой рост
     (пакетные запросы те же), но не пропорциональный числу ячеек.
     """
-    from app.models import Employee
+    from app.modules.employees.application.catalog import Employee
 
     with sql_counter() as before:
         r1 = admin_client.get("/api/schedule", params=_month(admin_client))

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 
 def _punch_count(app_stack) -> int:
-    from app.models import Punch
+    from app.modules.timesheet.application.catalog import Punch
 
     db = app_stack["SessionLocal"]()
     try:

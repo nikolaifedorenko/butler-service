@@ -11,11 +11,13 @@ from __future__ import annotations
 
 
 def ensure_models() -> None:
-    """Импортировать все ORM-модели (регистрация в Base.metadata). Идемпотентно."""
-    from app import models  # noqa: F401 — фасад тянет все подмодули и core-модели
+    """Импортировать все ORM-модели (регистрация в Base.metadata). Идемпотентно.
 
-    # Фаза C2: ORM-модели Табеля/Графика/движка живут в модуле timesheet —
-    # импортируем явно (G4: реестр не полагается только на фасад).
+    Явный реестр (G4, фаза C4): core-модели (identity/audit/media/settings_store)
+    + adapters.orm всех пяти модулей с моделями. Фасад app/models удалён —
+    порядок импортов больше не зависит от него.
+    """
+    from app.core import audit, identity, media, settings_store  # noqa: F401
     from app.modules.cars.adapters import orm as cars_orm  # noqa: F401
     from app.modules.employees.adapters import orm as employees_orm  # noqa: F401
     from app.modules.night.adapters import orm as night_orm  # noqa: F401

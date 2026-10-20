@@ -319,7 +319,8 @@ def seed_statement_kinds() -> None:
     заполнен — не вмешиваемся (удалённые пользователем виды не воскрешаем)."""
     from sqlalchemy import func, select
 
-    from ..models import StatementKind
+    from app.modules.employees.application.catalog import StatementKind
+
     from ..modules.docs.application.doc_render import DOC_TYPES
     from ..modules.docs.application.doc_templates import load_doc_templates
 
@@ -444,7 +445,9 @@ def migrate_time_off_template() -> None:
     """
     from sqlalchemy import select
 
-    from ..models import Setting, StatementKind
+    from app.core.settings_store import Setting
+    from app.modules.employees.application.catalog import StatementKind
+
     from ..modules.docs.application.doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
 
     db = SessionLocal()

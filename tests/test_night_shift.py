@@ -35,7 +35,7 @@ def _cleanup(db, dates: set[dt.date]) -> None:
     """Удалить отчёты, созданные тестом (каскад убирает области и пункты)."""
     from sqlalchemy import select
 
-    from app.models import NightReport
+    from app.modules.night.application.catalog import NightReport
 
     for rep in db.scalars(select(NightReport).where(NightReport.date.in_(dates))):
         db.delete(rep)
@@ -94,7 +94,7 @@ def test_sync_reports_zakryvaet_nastupivshii_dedlain(freeze, db):
     """После 08:00 отчёт закрывается сам; незакрытые области дают итог «неполный»."""
     from sqlalchemy import select
 
-    from app.models import NightReport
+    from app.modules.night.application.catalog import NightReport
 
     created: set[dt.date] = set()
     try:
@@ -147,7 +147,7 @@ def test_today_report_dostupen_vo_vremya_smeny(freeze, manager_client, db):
     """
     from sqlalchemy import select
 
-    from app.models import NightReport
+    from app.modules.night.application.catalog import NightReport
 
     def dates() -> set[dt.date]:
         return {d for (d,) in db.execute(select(NightReport.date))}

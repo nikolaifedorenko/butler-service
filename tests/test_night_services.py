@@ -28,7 +28,13 @@ def _uborka(db):
     yield
     from sqlalchemy import select, update
 
-    from app.models import ChecklistItem, ChecklistOverride, NightCheckItem, ResponsibilityService, ZoneChecklistItem
+    from app.modules.night.application.catalog import (
+        ChecklistItem,
+        ChecklistOverride,
+        NightCheckItem,
+        ZoneChecklistItem,
+    )
+    from app.modules.notify.application.catalog import ResponsibilityService
 
     ids = [s.id for s in db.scalars(select(ResponsibilityService)
                                     .where(ResponsibilityService.name.like(f"{TEST_PREFIX}%")))]
@@ -279,7 +285,7 @@ def test_pravka_tolko_sluzhby_sohranyaet_pravku(manager_client):
 # ═════════════════ снимок: переименование и закрытые смены ═════════════════
 
 def test_pereimenovanie_sluzhby_ne_menyaet_zakrytye_smeny(manager_client, db, open_shift):
-    from app.models import NightReport
+    from app.modules.night.application.catalog import NightReport
 
     zone_id = _zone_id(manager_client)
     item = _zone_item(manager_client, zone_id, "Свет выключен")

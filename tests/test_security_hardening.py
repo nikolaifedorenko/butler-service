@@ -28,8 +28,8 @@ def test_login_rehashes_legacy_password(app_stack):
     from fastapi.testclient import TestClient
     from sqlalchemy import select
 
+    from app.core.identity import User
     from app.core.security import _ITERATIONS
-    from app.models import User
 
     salt = "11" * 16
     digest = hashlib.pbkdf2_hmac("sha256", b"demo1234", salt.encode(), 120_000).hex()

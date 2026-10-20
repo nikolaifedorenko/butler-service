@@ -98,7 +98,7 @@ class TestDicts(unittest.TestCase):
         from sqlalchemy import select
 
         from app.core.db import SessionLocal
-        from app.models import Employee, Subdivision
+        from app.modules.employees.application.catalog import Employee, Subdivision
 
         db = SessionLocal()
         try:

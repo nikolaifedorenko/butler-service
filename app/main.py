@@ -12,7 +12,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from .api import photos_api
 from .bootstrap import registry
 from .bootstrap.migrations import (
     migrate_db,
@@ -28,7 +27,7 @@ from .bootstrap.migrations import (
     seed_statement_kinds,
 )
 from .bootstrap.seed import seed_if_empty
-from .core import observability
+from .core import media_api, observability
 from .core.auth import Principal, optional_principal
 from .core.config import settings
 from .core.db import Base, SessionLocal, engine
@@ -221,14 +220,14 @@ app.include_router(doublepay.router)
 app.include_router(night_api.router)
 app.include_router(cars_api.router)
 app.include_router(notify_api.router)
-app.include_router(photos_api.router)
+app.include_router(media_api.router)
 
 
 def schema_report() -> dict:
     """Полный отчёт о расхождении схемы БД с моделями (для админа и CI)."""
     from sqlalchemy import inspect
 
-    from .models import Base
+    from .core.db import Base
 
     insp = inspect(engine)
     db_tables = set(insp.get_table_names())

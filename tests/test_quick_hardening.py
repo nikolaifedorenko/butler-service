@@ -85,7 +85,7 @@ def test_migraciya_v7_ne_udalyaet_dannye_bez_markera(app_stack):
 
     from app.bootstrap.migrations import migrate_engine_v7
     from app.core.db import engine
-    from app.models import TabelDay
+    from app.modules.timesheet.application.catalog import TabelDay
 
     S = app_stack["SessionLocal"]
     with S() as db:
