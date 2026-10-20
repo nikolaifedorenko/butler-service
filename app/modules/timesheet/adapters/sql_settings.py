@@ -9,7 +9,7 @@ import json
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.groups import GROUP_FIVEDAY, GROUP_OTHER, GROUP_SHIFT1, GROUP_SHIFT2
+from app.modules.employees.application import GROUP_FIVEDAY, GROUP_OTHER, GROUP_SHIFT1, GROUP_SHIFT2
 
 from ..domain.settings.types import MOD_DOUBLE, Settings
 from ..domain.settings.validate import validate_settings

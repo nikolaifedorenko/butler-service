@@ -26,9 +26,9 @@ from app.core.auth import Principal, current_principal
 from app.core.db import get_db
 from app.core.permissions import has_perm, require_perm
 from app.core.time import TZ, local_date, now_local
-from app.employment import employed_on, ensure_periods, periods_of
+from app.modules.employees.application import Employee, employed_on, ensure_periods, periods_of
 
-from ..adapters.orm import Employee, Punch, ScheduleAbsence, TabelDay
+from ..adapters.orm import Punch, ScheduleAbsence, TabelDay
 from ..application.engine_common import day_code_rows, last_closed_bank
 from ..application.punch_plan import (
     plan_for_date as _plan_for_date,

@@ -5,6 +5,12 @@
 модулям и legacy-коду, импортируется отсюда или из подмодулей application.*.
 """
 from ..domain.templates import items_block  # noqa: F401
+from .catalog import (  # noqa: F401
+    NotifyChat,
+    NotifyDispatch,
+    NotifyTemplate,
+    ResponsibilityService,
+)
 from .chats import chats_from_updates, list_chats, refresh_chats  # noqa: F401
 from .config import (  # noqa: F401
     NOTIFY_KEYS,

@@ -109,7 +109,7 @@ def test_sekrety_maskiruyutsya_i_ne_popadayut_v_audit(admin_client, db):
     # в аудит попадают имена изменённых ключей, а не значения
     from sqlalchemy import select
 
-    from app.models import AuditLog
+    from app.core.audit import AuditLog
     rows = list(db.scalars(select(AuditLog).where(AuditLog.action == "notify_config_update")
                            .order_by(AuditLog.id.desc()).limit(3)))
     assert rows, "изменение настроек доставки не попало в аудит"

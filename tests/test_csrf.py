@@ -11,7 +11,7 @@ from __future__ import annotations
 
 
 def _punch_count(app_stack) -> int:
-    from app.models import Punch
+    from app.modules.timesheet.application.catalog import Punch
 
     db = app_stack["SessionLocal"]()
     try:
@@ -87,7 +87,7 @@ def test_csrf_cookie_issued_on_denied_request(app_stack):
 def test_login_rate_limit(app_stack):
     from fastapi.testclient import TestClient
 
-    from app.api import auth_routes
+    from app.modules.access.interface import auth_routes
 
     auth_routes._login_failures.clear()
     try:

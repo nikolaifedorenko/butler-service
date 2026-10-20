@@ -12,17 +12,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from .api import (
-    access_api,
-    audit_api,
-    auth_routes,
-    cars_api,
-    docs_api,
-    employees,
-    night_api,
-    photos_api,
-    settings_api,
-)
 from .bootstrap import registry
 from .bootstrap.migrations import (
     migrate_db,
@@ -38,13 +27,20 @@ from .bootstrap.migrations import (
     seed_statement_kinds,
 )
 from .bootstrap.seed import seed_if_empty
-from .core import observability
+from .core import media_api, observability
 from .core.auth import Principal, optional_principal
 from .core.config import settings
 from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.time import now_local
+from .modules.access.interface import access_api, auth_routes
+from .modules.audit.interface import audit_api
+from .modules.cars.interface import cars_api
+from .modules.docs.interface import docs_api
+from .modules.employees.interface import employees
+from .modules.night.interface import night_api
 from .modules.notify.interface import notify_api
+from .modules.settings.interface import settings_api
 from .modules.timesheet.application.errors import ApplicationError
 from .modules.timesheet.domain.types.errors import ConfigError, DomainError
 from .modules.timesheet.interface import (
@@ -90,7 +86,7 @@ def init_db() -> None:
     migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
     from .core.media import cleanup_photos
-    from .night import sync_reports
+    from .modules.night.application.night import sync_reports
 
     db = SessionLocal()
     try:
@@ -224,14 +220,14 @@ app.include_router(doublepay.router)
 app.include_router(night_api.router)
 app.include_router(cars_api.router)
 app.include_router(notify_api.router)
-app.include_router(photos_api.router)
+app.include_router(media_api.router)
 
 
 def schema_report() -> dict:
     """Полный отчёт о расхождении схемы БД с моделями (для админа и CI)."""
     from sqlalchemy import inspect
 
-    from .models import Base
+    from .core.db import Base
 
     insp = inspect(engine)
     db_tables = set(insp.get_table_names())

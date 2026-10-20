@@ -165,8 +165,7 @@ def test_limit_deystvuet_na_svoy_tip(admin_client, employee_client, open_shift):
 # ═══════════════════════ срок хранения: свой у видео ═══════════════════════
 
 def test_srok_hraneniya_svoy_u_foto_i_video(admin_client, employee_client, db):
-    from app.core.media import cleanup_photos, media_limits, photos_of, retention_days, save_photo
-    from app.models import Photo
+    from app.core.media import Photo, cleanup_photos, media_limits, photos_of, retention_days, save_photo
 
     _set_rules(admin_client, photo_retention_days=90, video_retention_days=0)
     db.expire_all()

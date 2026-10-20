@@ -18,12 +18,16 @@ DIRTY_CALLS = {"now", "today"}          # datetime.now() / date.today()
 
 # Фаза C2 (EXECUTION-SPEC-v2 §7, §11.2 G3): легаси-хелперы, поглощённые модулем
 # «как есть» (логика не переписывалась). Им разрешены ТРАНЗИТНЫЕ импорты:
-# собственный слой adapters (ORM-модели) и ещё не перенесённые app-модули
-# (groups/employment — уедут в modules/employees в фазе C4, тогда список пустеет).
-# Файлы самого движка остаются полностью чистыми: закон для них не ослаблен.
+# собственный слой adapters (ORM-модели) и публичные границы других модулей
+# (app.modules.employees.application — каталог/группы/трудоустройство; с C4
+# группы и employment живут в модуле employees). Файлы самого движка остаются
+# полностью чистыми: закон для них не ослаблен.
+# catalog.py — публичная данных-поверхность модуля (граница R3/R4): намеренный
+# re-export из adapters для ДРУГИХ модулей; не легаси, а проектное решение C4.
 TRANSIT_APPLICATION_FILES = {"base_schedule.py", "tabel_fill.py", "schedule_helpers.py",
-                             "doublepay.py", "engine_common.py", "punch_plan.py"}
-TRANSIT_APP_PREFIXES = ("app.groups", "app.employment")
+                             "doublepay.py", "engine_common.py", "punch_plan.py",
+                             "shiftrev.py", "catalog.py"}
+TRANSIT_APP_PREFIXES = ("app.modules.employees",)
 
 
 def _py_files(root: pathlib.Path):

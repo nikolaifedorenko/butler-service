@@ -32,9 +32,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import utcnow
-from app.employment import periods_of
+from app.modules.employees.application import Employee, periods_of
 
-from ..adapters.orm import Employee, TabelDay
+from ..adapters.orm import TabelDay
 from ..adapters.sql_settings import SqlSettingsAdapter
 from ..domain.settings.types import Settings
 from .base_schedule import BlockIndex, load_base_config, pattern_for_date, working_flag
@@ -93,7 +93,7 @@ def fill_timesheet_from_cycles(db: Session, employees: list[Employee], first: dt
         TabelDay.date <= last))} if employees else {}
     written, skipped, warnings = 0, 0, []
 
-    from app.employment import employed_on
+    from app.modules.employees.application import employed_on
     for emp in employees:
         day = first
         while day <= last:

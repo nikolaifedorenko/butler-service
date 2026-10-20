@@ -19,25 +19,25 @@ import random
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..core.security import hash_password
-from ..core.time import local_date, now_local
-from ..models import (
-    ROLE_ADMIN,
-    ROLE_EMPLOYEE,
-    ROLE_MANAGER,
-    ROLE_SUPERVISOR,
-    BankAdjustment,
-    BlockAssignment,
+from app.core.identity import User
+from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
+from app.core.settings_store import Setting
+from app.modules.employees.application.catalog import (
     Department,
     Employee,
     EmploymentPeriod,
     PositionHistory,
+)
+from app.modules.timesheet.application.catalog import (
+    BankAdjustment,
+    BlockAssignment,
     Punch,
     ScheduleAbsence,
-    Setting,
     ShiftType,
-    User,
 )
+
+from ..core.security import hash_password
+from ..core.time import local_date, now_local
 from ..modules.timesheet.application.base_schedule import save_base_config
 from ..modules.timesheet.application.schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
 
@@ -197,7 +197,7 @@ def seed_if_empty(db: Session) -> bool:
         employees.append((emp, pattern, offset))
     db.flush()
 
-    from ..models import EmergencyContact
+    from app.modules.employees.application.catalog import EmergencyContact
     demo_contacts = {
         "Иванов": [("Иванова Мария Ивановна", "+7 916 100-20-33", "мать"),
                    ("Иванов Сергей Иванович", "+7 916 100-20-40", "брат")],
@@ -249,7 +249,8 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── планируемые отсутствия текущего месяца — коды Табеля ─────────────────────
-    from ..models import TabelDay
+    from app.modules.timesheet.application.catalog import TabelDay
+
     from ..modules.timesheet.domain.settings.defaults import default_settings
     defaults = default_settings()
 
@@ -464,14 +465,14 @@ def _seed_night_dirs(db: Session) -> None:
 
     from sqlalchemy import select
 
-    from ..models import (
+    from app.modules.night.application.catalog import (
         ChecklistItem,
         ChecklistOverride,
         NightArea,
         NightZone,
-        ResponsibilityService,
         ZoneChecklistItem,
     )
+    from app.modules.notify.application.catalog import ResponsibilityService
 
     services: dict[str, int] = {}
     for name, order, tg, mail, email_to, email_copy, note in NIGHT_SERVICES_DEMO:
@@ -517,8 +518,10 @@ def _seed_night_dirs(db: Session) -> None:
 
 
 def _seed_cars(db: Session, by_name: dict) -> None:
-    from ..cars import create_car
-    from ..models import CarLocation, User
+    from app.core.identity import User
+    from app.modules.cars.application.catalog import CarLocation
+
+    from ..modules.cars.application.cars import create_car
 
     admin = db.scalar(select(User).where(User.username == "admin"))
     principal = None

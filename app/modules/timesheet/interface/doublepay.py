@@ -29,8 +29,9 @@ from app.core.db import get_db
 from app.core.permissions import require_perm
 from app.core.roles import ROLE_ADMIN, ROLE_MANAGER
 from app.core.time import WD_SHORT, utcnow
+from app.modules.employees.application import Employee
 
-from ..adapters.orm import DoublePayDay, Employee, VipDoublePay
+from ..adapters.orm import DoublePayDay, VipDoublePay
 from ..application.doublepay import REASON_TITLES, SCOPE_ALL, SCOPE_TITLES, SCOPES, recalc_double_rows
 
 router = APIRouter(prefix="/api/doublepay", tags=["doublepay"])

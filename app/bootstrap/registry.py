@@ -11,11 +11,16 @@ from __future__ import annotations
 
 
 def ensure_models() -> None:
-    """Импортировать все ORM-модели (регистрация в Base.metadata). Идемпотентно."""
-    from app import models  # noqa: F401 — фасад тянет все подмодули и core-модели
+    """Импортировать все ORM-модели (регистрация в Base.metadata). Идемпотентно.
 
-    # Фаза C2: ORM-модели Табеля/Графика/движка живут в модуле timesheet —
-    # импортируем явно (G4: реестр не полагается только на фасад).
+    Явный реестр (G4, фаза C4): core-модели (identity/audit/media/settings_store)
+    + adapters.orm всех пяти модулей с моделями. Фасад app/models удалён —
+    порядок импортов больше не зависит от него.
+    """
+    from app.core import audit, identity, media, settings_store  # noqa: F401
+    from app.modules.cars.adapters import orm as cars_orm  # noqa: F401
+    from app.modules.employees.adapters import orm as employees_orm  # noqa: F401
+    from app.modules.night.adapters import orm as night_orm  # noqa: F401
     from app.modules.notify.adapters import orm as notify_orm  # noqa: F401
     from app.modules.timesheet.adapters import orm  # noqa: F401
 
@@ -26,7 +31,7 @@ def wire() -> None:
     ensure_models()
     from app.core import auth as core_auth
     from app.core import media
-    from app.models import Employee
+    from app.modules.employees.adapters.orm import Employee
     from app.modules.timesheet.application import schedule_helpers
     media.set_rules_provider(schedule_helpers.load_rules)
     core_auth.set_employee_loader(lambda db, pk: db.get(Employee, pk))

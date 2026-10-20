@@ -503,3 +503,32 @@ push+мерж до этапа A, иначе конфликты переноса.
   (транспорты/orm) напрямую, interface импортирует `send_mail`/`TelegramBot`/orm
   — наследие плоского пакета; формальный ports-контракт отправителя и строгие
   слои — в C7 вместе с финальными контрактами R1–R6.
+
+---
+
+## 15. Уточнения по итогам фазы C4 (20.10.2026)
+
+Все 9 модулей созданы, legacy-пакеты `app/api|services|models` удалены,
+структура §2 достигнута (детали — `docs/CHANGES-2026-10-20-stage-c4-modules.md`):
+
+* **Паттерн `application/catalog.py`** — публичная поверхность данных модуля
+  (ре-экспорт ORM из adapters): единственная R3-легальная форма доступа к чужим
+  моделям; есть у employees, timesheet, night, cars, notify.
+* **Отступление: `shiftrev.py` — в timesheet/application**, не в employees
+  (оперирует только ShiftType/ShiftRevision; устраняет межмодульное ребро).
+* **R6 — осознанный долг**: кросс-модульные `relationship()` (Punch.employee
+  lazy=joined, Employee.assigned_car, CarNightCheck.report и др.) сохранены —
+  аннотации разрешаются реестром SQLAlchemy, импорты TYPE_CHECKING через
+  catalog владельцев. Удаление = изменение бюджетов запросов и поведения
+  (test_query_budget) — продуктовый батч «навигация → порты/DTO» после C7.
+  Строковые FK соответствуют R6 уже сейчас.
+* **G1/G2 закрыты**: photos_api → `core/media_api.py`; pdf_render →
+  `core/render.py`; doc_render/grid_docx/doc_templates → `docs.application`.
+* **Фаза 7 выполнена в составе C4**: транзитные контракты G3 сняты вместе с
+  фасадом; `.importlinter` — 14 контрактов финальной формы (R5, изоляции,
+  независимость роутеров ×2, R3-private ×9 с allow_indirect_imports).
+* **§5.2 inline `principal.is_manager`** (11 ветвлений в fact_api/punches/
+  schedule) перенесены «как есть» — перевод на права требует продуктового
+  решения по каждому экрану (список — в CHANGES C4 §2); механически не делается.
+* Реестр моделей (G4): `registry.ensure_models()` — явные импорты core-моделей
+  и пяти `adapters.orm`; 45 таблиц идентичны дорефакторным.

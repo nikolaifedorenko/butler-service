@@ -51,8 +51,8 @@ from app.bootstrap.migrations import (  # noqa: E402
 from app.core.db import SessionLocal  # noqa: E402
 from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
-from app.models import (  # noqa: E402
-    ScheduleAbsence,
+from app.modules.timesheet.application.catalog import (  # noqa: E402
+    ScheduleAbsence,  # noqa: E402
     ScheduleShift,
     ShiftType,
     TabelDay,
@@ -387,8 +387,9 @@ class TestIntervalStatements(unittest.TestCase):
     def test_06_migration_updates_pristine_template(self):
         """Старая база: нетронутый шаблон заменяется на версию с {intervals};
         отредактированный вручную — не трогается. Идемпотентно."""
-        from app.doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
-        from app.models import Setting, StatementKind
+        from app.core.settings_store import Setting
+        from app.modules.docs.application.doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
+        from app.modules.employees.application.catalog import StatementKind
 
         def _texts():
             db = SessionLocal()

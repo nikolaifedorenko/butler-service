@@ -27,15 +27,22 @@ from app.core.db import get_db
 from app.core.format import safe_sheet_cell
 from app.core.permissions import require_perm
 from app.core.time import TZ, now_local, utc_to_local
-from app.doc_render import hours_text
-from app.employment import employed_on, periods_of, ranges_from_periods
-from app.groups import GROUP_ORDER, group_index, group_kind, normalize_group
-from app.names import suggest_genitive
+from app.modules.docs.application.doc_render import hours_text
+from app.modules.employees.application import (
+    GROUP_ORDER,
+    Employee,
+    EmploymentPeriod,
+    employed_on,
+    group_index,
+    group_kind,
+    normalize_group,
+    periods_of,
+    ranges_from_periods,
+    suggest_genitive,
+)
 
 from ..adapters.orm import (
     BlockAssignment,
-    Employee,
-    EmploymentPeriod,
     ScheduleAbsence,
     ScheduleShift,
     ShiftType,
@@ -172,7 +179,7 @@ DOC_PARTIAL_SHIFT = "time_off_request"
 
 
 def _statement_kind_exists(db: Session, code: str) -> bool:
-    from ..adapters.orm import StatementKind
+    from app.modules.employees.application import StatementKind
 
     return db.scalar(select(StatementKind.id).where(StatementKind.code == code)) is not None
 
@@ -1246,7 +1253,7 @@ def export_xlsx(year: int, month: int, principal: Principal = Depends(require_pe
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    from app.grid_docx import cell_plan_text, tint_hex
+    from app.modules.docs.application.grid_docx import cell_plan_text, tint_hex
     data = get_grid(year, month, principal, db)
     wb = Workbook()
     ws = wb.active
@@ -1291,8 +1298,8 @@ def export_pdf(year: int, month: int, principal: Principal = Depends(require_per
     DOCX → PDF (LibreOffice или встроенный движок); без движка — 501 с подсказкой."""
     from fastapi.responses import Response
 
-    from app.grid_docx import pdf_unavailable_detail, schedule_docx
-    from app.pdf_render import docx_to_pdf
+    from app.core.render import docx_to_pdf
+    from app.modules.docs.application.grid_docx import pdf_unavailable_detail, schedule_docx
     data = get_grid(year, month, principal, db)
     pdf, how = docx_to_pdf(schedule_docx(data), f"grafik_{year}-{month:02d}.pdf")
     if pdf is None:

@@ -25,7 +25,9 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import DoublePayDay, Employee, VipDoublePay
+from app.modules.employees.application import Employee
+
+from ..adapters.orm import DoublePayDay, VipDoublePay
 from .base_schedule import pattern_for_date
 
 SCOPE_SHIFT = "shift"     # сменные графики (2/2, 3/3, сутки через трое…)

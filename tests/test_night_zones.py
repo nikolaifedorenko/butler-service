@@ -49,8 +49,8 @@ def _smena(db, freeze, shift_d: dt.date = SHIFT_D):
     """
     from sqlalchemy import select
 
-    from app.models import NightAreaSection, NightCheckItem, NightReport
-    from app.night import ensure_report
+    from app.modules.night.application.catalog import NightAreaSection, NightCheckItem, NightReport
+    from app.modules.night.application.night import ensure_report
 
     with freeze(f"{shift_d.isoformat()} 23:00:00"):      # 02:00 МСК следующих суток — смена идёт
         rep = ensure_report(db, shift_d)
@@ -119,7 +119,7 @@ def test_prava_na_spravochnik_zon(employee_client, manager_client):
         assert next(z for z in _zones(manager_client) if z["id"] == zone_id)["active"] is False
     finally:
         from app.core.db import SessionLocal
-        from app.models import NightZone
+        from app.modules.night.application.catalog import NightZone
         db = SessionLocal()
         try:
             z = db.get(NightZone, zone_id)
@@ -136,7 +136,7 @@ def test_migraciya_zon_iz_kategoriy_idempotentna(db):
     from sqlalchemy import func, select
 
     from app.bootstrap.migrations import migrate_night_zones
-    from app.models import NightArea, NightZone
+    from app.modules.night.application.catalog import NightArea, NightZone
 
     migrate_night_zones()
     first = db.scalar(select(func.count()).select_from(NightZone))
@@ -349,7 +349,7 @@ def test_pereimenovanie_zony_ne_trogaet_zakrytuyu_smenu(manager_client, db, free
         manager_client.delete(f"/api/night/areas/{area_id}")
         manager_client.delete(f"/api/night/zones/{zone_id}")
         from app.core.db import SessionLocal
-        from app.models import NightArea, NightZone
+        from app.modules.night.application.catalog import NightArea, NightZone
         dbx = SessionLocal()
         try:
             a = dbx.get(NightArea, area_id)
@@ -387,7 +387,7 @@ def test_seriya_obektov_poluchaet_shablon_zony(manager_client, db, freeze):
         for a in created:
             manager_client.delete(f"/api/night/areas/{a['id']}")
         from app.core.db import SessionLocal
-        from app.models import NightArea
+        from app.modules.night.application.catalog import NightArea
         dbx = SessionLocal()
         try:
             for a in created:
