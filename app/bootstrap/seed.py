@@ -19,7 +19,6 @@ import random
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..base_schedule import save_base_config
 from ..core.security import hash_password
 from ..core.time import local_date, now_local
 from ..models import (
@@ -39,7 +38,8 @@ from ..models import (
     ShiftType,
     User,
 )
-from ..schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
+from ..modules.timesheet.application.base_schedule import save_base_config
+from ..modules.timesheet.application.schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
 
 DEFAULT_PASSWORD = "demo1234"
 
@@ -249,8 +249,8 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── планируемые отсутствия текущего месяца — коды Табеля ─────────────────────
-    from ..engine.domain.settings.defaults import default_settings
     from ..models import TabelDay
+    from ..modules.timesheet.domain.settings.defaults import default_settings
     defaults = default_settings()
 
     def set_absence_code(emp: Employee, d1: int, d2: int, code: str, note: str = "") -> None:
@@ -275,11 +275,11 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── Табель из циклов + График из Табеля (движок v7.1) ─────────────────────
-    from ..engine.adapters.factory import build_ports
-    from ..engine.application.schedule_view import rebuild_generated_schedule
-    from ..engine.domain.types.entities import Period
-    from ..engine_bootstrap import bootstrap_engine
-    from ..tabel_fill import fill_timesheet_from_cycles
+    from ..modules.timesheet.adapters.factory import build_ports
+    from ..modules.timesheet.application.schedule_view import rebuild_generated_schedule
+    from ..modules.timesheet.application.tabel_fill import fill_timesheet_from_cycles
+    from ..modules.timesheet.bootstrap import bootstrap_engine
+    from ..modules.timesheet.domain.types.entities import Period
     bootstrap_engine(db)                                  # версия справочников v7.1
     fill_result = fill_timesheet_from_cycles(
         db, [e for e, _, _ in employees], acc_start, today + dt.timedelta(days=40))
@@ -318,7 +318,12 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── отметки прихода/ухода (от acc_start до сегодня) ─────────────────────
-    from ..base_schedule import BlockIndex, load_base_config, pattern_for_date, working_flag
+    from ..modules.timesheet.application.base_schedule import (
+        BlockIndex,
+        load_base_config,
+        pattern_for_date,
+        working_flag,
+    )
     base_cfg = load_base_config(db)
     block_index = BlockIndex.load(db, [e.id for e, _, _ in employees])
     now = now_local()

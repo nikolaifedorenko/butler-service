@@ -13,10 +13,10 @@ from hypothesis import given
 from hypothesis import settings as hsettings
 from hypothesis import strategies as hst
 
-from app.engine.domain.flags.evaluate_flags import evaluate_flags
-from app.engine.domain.pipeline.settle import settle
-from app.engine.domain.settings.types import MOD_DOUBLE, MOD_PAYS, MOD_PLAN_EQUALS_FACT, ModifierEntry
-from app.engine.domain.types.entities import Adjustment, Day, DeferredBlock, Mark, Period
+from app.modules.timesheet.domain.flags.evaluate_flags import evaluate_flags
+from app.modules.timesheet.domain.pipeline.settle import settle
+from app.modules.timesheet.domain.settings.types import MOD_DOUBLE, MOD_PAYS, MOD_PLAN_EQUALS_FACT, ModifierEntry
+from app.modules.timesheet.domain.types.entities import Adjustment, Day, DeferredBlock, Mark, Period
 
 from .helpers import EMP, TZ, UTC, Y, midnight_after, shifts_from_days
 
@@ -85,7 +85,7 @@ def inputs(draw):
     placement = tuple(random.Random(draw(hst.integers(0, 10**6))).sample(TARIFFS, len(TARIFFS)))
     import dataclasses
 
-    from app.engine.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.settings.defaults import default_settings
     st = dataclasses.replace(default_settings(), step_minutes=step, modifiers=tuple(modifiers),
                              weights=weights, cascade_order=cascade, placement_order=placement)
     return dict(prd=prd, rows=rows, marks=marks, opening=opening, bank=bank,
@@ -192,8 +192,8 @@ def test_minutes_conserved_fuzz_placement_cascade_replacement(inp):
 
 
 def _normalized_deferred(inp):
-    from app.engine.domain.opening.normalize_deferred import normalize_deferred
-    from app.engine.domain.placement.canonical_order import sort_deferred
+    from app.modules.timesheet.domain.opening.normalize_deferred import normalize_deferred
+    from app.modules.timesheet.domain.placement.canonical_order import sort_deferred
     blocks, _ = normalize_deferred(sort_deferred(inp["deferred_in"], inp["st"]),
                                    inp["prev_step"], inp["st"].step_minutes)
     return blocks

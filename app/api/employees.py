@@ -12,7 +12,6 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ..base_schedule import validate_pattern_label
 from ..core.audit import audit
 from ..core.auth import Principal, current_principal
 from ..core.auth_guards import can_manage_user
@@ -40,6 +39,13 @@ from ..models import (
     User,
     utcnow,
 )
+from ..modules.timesheet.application.base_schedule import validate_pattern_label
+from ..modules.timesheet.application.engine_common import (
+    day_code_rows,
+    engine_ports,
+    last_closed_bank,
+    now_utc,
+)
 from ..names import slugify_username, suggest_genitive
 from ..services import employee_lifecycle as lifecycle
 from ..services.employee_lifecycle import (
@@ -54,7 +60,6 @@ from ..services.employee_lifecycle import (
 from ..services.employee_lifecycle import (
     touch_position as _touch_position,
 )
-from ..services.engine_common import day_code_rows, domain_error_text, engine_ports, last_closed_bank, now_utc
 from ..shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
 
 router = APIRouter(prefix="/api", tags=["directory"])
@@ -434,14 +439,11 @@ def bank_adjust(employee_id: int, payload: BankAdjustIn,
     eff = _parse_date(payload.date) or local_date()
     # точка ввода корректировок (7.2, v7.1/R37): посев — только первый период;
     # закрытый период — только через пересчёт
-    from ..engine.application import bank_adjustment
-    from ..engine.application.errors import ApplicationError
-    try:
-        bank_adjustment.validate_adjustment_entry(str(emp.id), eff,
-                                                  payload.reason_code or "manual",
-                                                  engine_ports(db, principal, now_utc()))
-    except ApplicationError as exc:
-        raise HTTPException(status_code=409, detail=domain_error_text(exc))
+    from ..modules.timesheet.application import bank_adjustment
+    # ApplicationError → 409 — централизованный хэндлер main.py (§5.3)
+    bank_adjustment.validate_adjustment_entry(str(emp.id), eff,
+                                              payload.reason_code or "manual",
+                                              engine_ports(db, principal, now_utc()))
     adj = BankAdjustment(employee_id=emp.id, hours=hours, effective_date=eff,
                          note=payload.note.strip(), reason_code=(payload.reason_code or "manual"),
                          author_id=principal.user.id,
@@ -500,7 +502,7 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_pe
         BankAdjustment.effective_date.desc(), BankAdjustment.id.desc())).all()
 
     def _block_label(b: BlockAssignment) -> str:
-        from ..base_schedule import parse_pattern
+        from ..modules.timesheet.application.base_schedule import parse_pattern
         pat = parse_pattern(b.pattern_json)
         if not pat:
             return ""
@@ -527,8 +529,8 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_pe
 
 
 def _current_value(db: Session, emp: Employee) -> str:
-    from ..base_schedule import load_base_config, pattern_for_date
     from ..core.time import local_date
+    from ..modules.timesheet.application.base_schedule import load_base_config, pattern_for_date
     try:
         pat = pattern_for_date(db, emp, local_date(), cfg=load_base_config(db))
         return (pat.get("value") or "").strip()
@@ -732,9 +734,9 @@ def tabel_values(principal: Principal = Depends(current_principal),
     """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода
     (18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
     from ..core.time import local_date
-    from ..engine.adapters.sql_settings import SqlSettingsAdapter
-    from ..engine.application.months import month_period
-    from ..services.engine_common import day_code_rows
+    from ..modules.timesheet.adapters.sql_settings import SqlSettingsAdapter
+    from ..modules.timesheet.application.engine_common import day_code_rows
+    from ..modules.timesheet.application.months import month_period
 
     _today = local_date()
     st = SqlSettingsAdapter(db).load(month_period(_today.year, _today.month))

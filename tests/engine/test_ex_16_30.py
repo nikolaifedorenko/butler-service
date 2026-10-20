@@ -1,7 +1,7 @@
 """Приёмочные примеры EX-16…EX-30 (base 11)."""
 from __future__ import annotations
 
-from app.engine.domain.codes_registry.reason_codes import UNPAID_CREDITED
+from app.modules.timesheet.domain.codes_registry.reason_codes import UNPAID_CREDITED
 
 from .helpers import (
     IN,

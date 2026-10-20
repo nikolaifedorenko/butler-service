@@ -5,17 +5,17 @@ import datetime as dt
 
 import pytest
 
-from app.engine.domain.codes_registry.reason_codes import CODE_PLACED, PLAN_EQUALS_FACT
-from app.engine.domain.settings.resolve_modifier import resolve_modifier
-from app.engine.domain.settings.types import (
+from app.modules.timesheet.domain.codes_registry.reason_codes import CODE_PLACED, PLAN_EQUALS_FACT
+from app.modules.timesheet.domain.settings.resolve_modifier import resolve_modifier
+from app.modules.timesheet.domain.settings.types import (
     MOD_DOUBLE,
     MOD_PAYS,
     ModifierEntry,
     Window,
 )
-from app.engine.domain.settings.validate import validate_settings
-from app.engine.domain.types.entities import Day
-from app.engine.domain.types.errors import ConfigError, IncompletePeriodError
+from app.modules.timesheet.domain.settings.validate import validate_settings
+from app.modules.timesheet.domain.types.entities import Day
+from app.modules.timesheet.domain.types.errors import ConfigError, IncompletePeriodError
 
 from .helpers import (
     IN,
@@ -47,7 +47,7 @@ Y = 2026
 
 
 def _windows_1075():
-    from app.engine.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.settings.defaults import default_settings
     windows = dict(default_settings().windows)
     windows["Я 10,75"] = Window(8 * 60, 20 * 60)
     return windows
@@ -357,7 +357,7 @@ def test_ex_44_window_off_grid_step_60():
 
 
 def _base_windows():
-    from app.engine.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.settings.defaults import default_settings
     return default_settings().windows
 
 

@@ -10,10 +10,10 @@ import dataclasses
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from app.engine.domain.flags.evaluate_flags import evaluate_flags
-from app.engine.domain.pipeline.settle import settle
-from app.engine.domain.settings.defaults import default_settings
-from app.engine.domain.settings.types import (
+from app.modules.timesheet.domain.flags.evaluate_flags import evaluate_flags
+from app.modules.timesheet.domain.pipeline.settle import settle
+from app.modules.timesheet.domain.settings.defaults import default_settings
+from app.modules.timesheet.domain.settings.types import (
     MOD_COUNTS_IN_UT,
     MOD_DOUBLE,
     MOD_PAYS,
@@ -24,7 +24,7 @@ from app.engine.domain.settings.types import (
     ModifierEntry,
     Settings,
 )
-from app.engine.domain.types.entities import (
+from app.modules.timesheet.domain.types.entities import (
     Absence,
     Adjustment,
     Day,
@@ -140,7 +140,7 @@ def shifts_from_days(rows, st: Settings | None = None) -> tuple[Shift, ...]:
     st = st or default_settings()
     out = []
     for row in rows:
-        from app.engine.domain.day_card.window_of_day import window_of_day
+        from app.modules.timesheet.domain.day_card.window_of_day import window_of_day
         w = window_of_day(row, st)
         if w is None:
             continue

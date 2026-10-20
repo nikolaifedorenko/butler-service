@@ -18,19 +18,11 @@ from .api import (
     auth_routes,
     cars_api,
     docs_api,
-    doublepay,
     employees,
-    engine_settings_api,
-    fact_api,
-    mgmt_api,
     night_api,
     notify_api,
     photos_api,
-    presence_api,
-    punches,
-    schedule,
     settings_api,
-    tabel_api,
 )
 from .bootstrap import registry
 from .bootstrap.migrations import (
@@ -53,6 +45,19 @@ from .core.config import settings
 from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.time import now_local
+from .modules.timesheet.application.errors import ApplicationError
+from .modules.timesheet.domain.types.errors import ConfigError, DomainError
+from .modules.timesheet.interface import (
+    doublepay,
+    engine_settings_api,
+    fact_api,
+    mgmt_api,
+    presence_api,
+    punches,
+    schedule,
+    tabel_api,
+)
+from .modules.timesheet.interface.formatting import error_text
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -69,7 +74,7 @@ def init_db() -> None:
     db = SessionLocal()
     try:
         seed_if_empty(db)
-        from .engine_bootstrap import bootstrap_engine
+        from .modules.timesheet.bootstrap import bootstrap_engine
         bootstrap_engine(db)
         db.commit()
     finally:
@@ -165,6 +170,36 @@ async def _gone_handler(request: Request, exc: Gone):
 async def _payload_too_large_handler(request: Request, exc: PayloadTooLarge):
     """Файл больше настроенного лимита (фото/видео) → 413."""
     return JSONResponse({"detail": str(exc)}, status_code=413)
+
+
+# ── маппинг типизированных ошибок расчётного движка (EXECUTION-SPEC-v2 §5.3) ──
+# Домены модулей бросают типизированные исключения (DomainError/ConfigError/
+# ApplicationError); человеческий текст собирается в interface-слое модуля
+# (error_text), роутерам запрещается ловить доменные ошибки «для красивого
+# текста». Статусы:
+#   ConfigError → 409 — повреждённая конфигурация есть СОСТОЯНИЕ системы
+#     (типизированный отказ вкладок, не 500; закреплено
+#     tests/test_timesheet_norm.py::test_10_config_error_is_409_not_500).
+#     Редактор настроек (PUT /api/engine-settings) валидирует ВВОД и оставляет
+#     локальный catch → 422 (закреплено test_v4_api::test_engine_settings_validation);
+#   DomainError → 422 — невалидные входные данные запроса;
+#   ApplicationError → 409 — конфликт состояния (период закрыт и т.п.).
+# Прим.: §5.3 спеки предписывал 422 для ConfigError, но §11.1 требует побайтового
+# сохранения статусов, закреплённых тестами; приоритет у более конкретного текста
+# (тесты) — см. docs/CHANGES-2026-10-20-stage-c2-timesheet.md.
+@app.exception_handler(ConfigError)
+async def _engine_config_error_handler(request: Request, exc: ConfigError):
+    return JSONResponse({"detail": error_text(exc)}, status_code=409)
+
+
+@app.exception_handler(DomainError)
+async def _engine_domain_error_handler(request: Request, exc: DomainError):
+    return JSONResponse({"detail": error_text(exc)}, status_code=422)
+
+
+@app.exception_handler(ApplicationError)
+async def _engine_application_error_handler(request: Request, exc: ApplicationError):
+    return JSONResponse({"detail": error_text(exc)}, status_code=409)
 
 # Middleware (CSRF, заголовки безопасности/CSP, request-id/лог/метрики) и /metrics
 # переехали в core/observability.py (фаза C1): main.py — composition root.

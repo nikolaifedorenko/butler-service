@@ -9,9 +9,9 @@ import datetime as dt
 
 import pytest
 
-from app.engine.application import bank_adjustment, schedule_view, timesheet_edit, view_sessions
-from app.engine.application.close_period import close_period
-from app.engine.application.errors import (
+from app.modules.timesheet.application import bank_adjustment, schedule_view, timesheet_edit, view_sessions
+from app.modules.timesheet.application.close_period import close_period
+from app.modules.timesheet.application.errors import (
     AdjustmentClosedPeriodError,
     PeriodAlreadyClosedError,
     PeriodNotClosedError,
@@ -22,8 +22,8 @@ from app.engine.application.errors import (
     SeedNotAllowedError,
     TimesheetLockedError,
 )
-from app.engine.application.load_inputs import load_inputs
-from app.engine.application.months import (
+from app.modules.timesheet.application.load_inputs import load_inputs
+from app.modules.timesheet.application.months import (
     close_month,
     half_month_period,
     is_first_period,
@@ -33,12 +33,12 @@ from app.engine.application.months import (
     previous_period,
     recalculate_month,
 )
-from app.engine.application.period_view import day_views
-from app.engine.application.presence_board import presence_board
-from app.engine.application.recalculate import recalculate
-from app.engine.application.view_period import view_period
-from app.engine.domain.settings.types import GRANULARITY_HALF_MONTH
-from app.engine.domain.types.entities import (
+from app.modules.timesheet.application.period_view import day_views
+from app.modules.timesheet.application.presence_board import presence_board
+from app.modules.timesheet.application.recalculate import recalculate
+from app.modules.timesheet.application.view_period import view_period
+from app.modules.timesheet.domain.settings.types import GRANULARITY_HALF_MONTH
+from app.modules.timesheet.domain.types.entities import (
     Day,
     DeferredBlock,
     Employment,
@@ -46,7 +46,7 @@ from app.engine.domain.types.entities import (
     Period,
     Shift,
 )
-from app.engine.domain.types.errors import (
+from app.modules.timesheet.domain.types.errors import (
     IncompletePeriodError,
     IncompleteTimesheetError,
     InvalidInputDataError,
@@ -64,7 +64,7 @@ ST_MS = settings()          # default_settings c tz Europe/Moscow
 
 
 def _st():
-    from app.engine.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.settings.defaults import default_settings
     return default_settings()
 
 
@@ -117,7 +117,7 @@ def test_view_allowed_with_opening_seed():
 
 
 def _spy_settle(monkeypatch):
-    import app.engine.application._pipeline as pipeline
+    import app.modules.timesheet.application._pipeline as pipeline
     calls = {"settle": 0}
     original = pipeline.settle
 
@@ -479,7 +479,7 @@ def test_board_uses_only_batch_methods_and_no_heavy_pipeline(monkeypatch):
 # ── карточка УТ: два плана (R39) ──────────────────────────────────────────────
 
 def test_day_views_carry_informational_timesheet_plan():
-    from app.engine.domain.settings.types import Window
+    from app.modules.timesheet.domain.settings.types import Window
     st = dataclasses.replace(_st(), windows={**dict(_st().windows), "Я 10,75": Window(480, 1200)})
     db = FakeDb(settings=st)
     db.timesheet_rows = [Day(d(1), "Я", 645, EMP, "Смена 1"), Day(d(2), "В", 0, EMP, "Смена 1")]

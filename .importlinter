@@ -1,12 +1,21 @@
 ; Контракты импортов (lint-imports) — Python-аналог архитектурных тестов движка
 ; (tests/engine/test_architecture.py) для остального приложения.
 ;
-; Ред. 20.10.2026 (фаза C1, EXECUTION-SPEC-v2): добавлен слой app.core —
-; инфраструктурное ядро (config/db/time/errors/security/auth/permissions/audit/
-; media/identity/format/observability). Правило R5: core не импортирует ничего
-; из приложения; composition root (main, bootstrap) — единственные всезнающие слои.
-; Законы ADR-0006 для остального сохранены: api → services → models; api-модули
-; независимы; движок изолирован от HTTP-слоя и сервисов.
+; Ред. 20.10.2026 (фаза C2, EXECUTION-SPEC-v2): создан первый модуль —
+; app.modules.timesheet (бывший app/engine + табельные роутеры + хелперы +
+; ORM-модели punch/schedule/engine_store/directory). Контракты:
+;   1) слои legacy-приложения (api → services → models → core);
+;   2) независимость api-модулей;
+;   3) изоляция timesheet (бывшая изоляция движка): модуль не знает про
+;      api/services/composition root;
+;   4) R5 — core не импортирует приложение;
+;   5) независимость роутеров внутри timesheet.interface (правопреемник п.2);
+;   6) ТРАНЗИТНЫЙ контракт (§11.2 G3): legacy app.* не импортирует modules.*,
+;      кроме composition root (main/bootstrap — не в источниках) и явных
+;      исключений, которые сокращаются по мере переноса модулей (C4–C6).
+; Направление modules.* → app.* (ещё не перенесённый legacy: groups, employment,
+; doc_render, grid_docx, pdf_render, models.night/notify/cars) разрешено транзитным
+; контрактом G3 — до переноса владеющих модулей.
 
 [importlinter]
 root_packages =
@@ -34,25 +43,17 @@ modules =
     app.api.auth_routes
     app.api.cars_api
     app.api.docs_api
-    app.api.doublepay
     app.api.employees
-    app.api.engine_settings_api
-    app.api.fact_api
-    app.api.mgmt_api
     app.api.night_api
     app.api.notify_api
     app.api.photos_api
-    app.api.presence_api
-    app.api.punches
-    app.api.schedule
     app.api.settings_api
-    app.api.tabel_api
 
-[importlinter:contract:engine-isolation]
-name = Движок v7.1 не знает про api/services/main/bootstrap
+[importlinter:contract:timesheet-isolation]
+name = Модуль timesheet (движок v7.1) не знает про api/services/main/bootstrap
 type = forbidden
 source_modules =
-    app.engine
+    app.modules.timesheet
 forbidden_modules =
     app.api
     app.services
@@ -60,7 +61,7 @@ forbidden_modules =
     app.main
 
 [importlinter:contract:core-independence]
-name = R5 — core не знает о приложении (модули, модели каталога, composition root)
+name = R5 — core не знает о приложении (модули, legacy-корень, composition root)
 type = forbidden
 source_modules =
     app.core
@@ -68,28 +69,73 @@ forbidden_modules =
     app.api
     app.services
     app.models
-    app.engine
+    app.modules
     app.notify
     app.bootstrap
     app.main
-    app.base_schedule
     app.cars
     app.doc_render
     app.doc_templates
-    app.doublepay
     app.employment
-    app.engine_bootstrap
     app.grid_docx
     app.groups
     app.names
     app.night
     app.night_export
     app.pdf_render
-    app.schedule_helpers
-    app.schedule_patterns
     app.shiftrev
-    app.tabel_fill
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee: в runtime Employee загружается
     ; внедрённым bootstrap'ом колбэком (set_employee_loader), импорта моделей нет.
     app.core.auth -> app.models
+
+[importlinter:contract:timesheet-interface-independence]
+name = Роутеры timesheet.interface не импортируют друг друга (правопреемник api-independence)
+type = independence
+modules =
+    app.modules.timesheet.interface.doublepay
+    app.modules.timesheet.interface.engine_settings_api
+    app.modules.timesheet.interface.fact_api
+    app.modules.timesheet.interface.mgmt_api
+    app.modules.timesheet.interface.presence_api
+    app.modules.timesheet.interface.punches
+    app.modules.timesheet.interface.schedule
+    app.modules.timesheet.interface.tabel_api
+
+[importlinter:contract:transit-app-to-modules]
+name = Транзит (G3): legacy app.* не импортирует modules.* кроме объявленных исключений
+type = forbidden
+source_modules =
+    app.api
+    app.services
+    app.models
+    app.notify
+    app.cars
+    app.doc_render
+    app.doc_templates
+    app.employment
+    app.grid_docx
+    app.groups
+    app.names
+    app.night
+    app.night_export
+    app.pdf_render
+    app.shiftrev
+forbidden_modules =
+    app.modules
+ignore_imports =
+    ; Фасад app/models: транзитный re-export переехавших ORM-моделей (спека §7
+    ; фаза 4). Уменьшается в C4–C6, удаляется вместе с пакетом app/models/.
+    app.models -> app.modules.timesheet.adapters.orm
+    ; До C4 (employees): легаси-потребители таймшита через границу модуля (R3).
+    ; В C4 сотрудники/настройки/access перейдут на modules.* и строки исчезнут.
+    app.api.employees -> app.modules.timesheet.application.bank_adjustment
+    app.api.employees -> app.modules.timesheet.application.engine_common
+    app.api.employees -> app.modules.timesheet.application.base_schedule
+    app.api.employees -> app.modules.timesheet.adapters.sql_settings
+    app.api.employees -> app.modules.timesheet.application.months
+    app.api.settings_api -> app.modules.timesheet.application.base_schedule
+    app.api.settings_api -> app.modules.timesheet.application.schedule_helpers
+    app.api.settings_api -> app.modules.timesheet.adapters.sql_settings
+    app.api.auth_routes -> app.modules.timesheet.application.punch_plan
+    app.services.employee_lifecycle -> app.modules.timesheet.application.base_schedule
