@@ -1299,7 +1299,7 @@ def export_docx(report_id: int, principal: Principal = Depends(require_perm("nig
 @router.get("/reports/{report_id}/export.pdf")
 def export_pdf(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                db: Session = Depends(get_db)):
-    from app.pdf_render import docx_to_pdf
+    from app.core.render import docx_to_pdf
 
     from ..application.night_export import render_night_report_docx
 

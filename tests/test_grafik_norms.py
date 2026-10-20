@@ -387,8 +387,8 @@ class TestIntervalStatements(unittest.TestCase):
     def test_06_migration_updates_pristine_template(self):
         """Старая база: нетронутый шаблон заменяется на версию с {intervals};
         отредактированный вручную — не трогается. Идемпотентно."""
-        from app.doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
         from app.models import Setting, StatementKind
+        from app.modules.docs.application.doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
 
         def _texts():
             db = SessionLocal()

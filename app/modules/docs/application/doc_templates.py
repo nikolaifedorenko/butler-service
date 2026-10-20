@@ -18,7 +18,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Setting
+from app.core.settings_store import Setting
 
 DEFAULT_COMPANY = "ООО «Батлер Сервис»"
 DEFAULT_DIRECTOR = "Генеральному директору ООО «Батлер Сервис»"

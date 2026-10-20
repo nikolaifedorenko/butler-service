@@ -17,11 +17,15 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..core.audit import audit
-from ..core.auth import Principal
-from ..core.db import get_db
-from ..core.permissions import require_perm
-from ..doc_render import (
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.db import get_db
+from app.core.permissions import require_perm
+from app.core.render import docx_to_pdf
+from app.modules.employees.application import Employee, StatementKind
+from app.modules.timesheet.application.catalog import ShiftType
+
+from ..application.doc_render import (
     CODE_RE,
     PLACEHOLDER_HELP,
     build_sample_docx,
@@ -35,9 +39,7 @@ from ..doc_render import (
     scan_placeholders,
     template_path,
 )
-from ..doc_templates import load_doc_templates
-from ..models import Employee, ShiftType, StatementKind
-from ..pdf_render import docx_to_pdf
+from ..application.doc_templates import load_doc_templates
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 

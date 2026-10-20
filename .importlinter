@@ -44,7 +44,6 @@ modules =
     app.api.access_api
     app.api.audit_api
     app.api.auth_routes
-    app.api.docs_api
     app.api.photos_api
     app.api.settings_api
 
@@ -71,10 +70,6 @@ forbidden_modules =
     app.modules
     app.bootstrap
     app.main
-    app.doc_render
-    app.doc_templates
-    app.grid_docx
-    app.pdf_render
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee: в runtime Employee загружается
     ; внедрённым bootstrap'ом колбэком (set_employee_loader), импорта моделей нет.
@@ -100,10 +95,6 @@ source_modules =
     app.api
     app.services
     app.models
-    app.doc_render
-    app.doc_templates
-    app.grid_docx
-    app.pdf_render
 forbidden_modules =
     app.modules
 ignore_imports =
@@ -112,9 +103,8 @@ ignore_imports =
     app.models -> app.modules.timesheet.adapters.orm
     app.models -> app.modules.notify.adapters.orm
     app.models -> app.modules.employees.adapters.orm
-    ; docs/grid_docx и doc_render потребляют names/groups через границу employees (до C4d)
-    app.doc_render -> app.modules.employees.application
-    app.grid_docx -> app.modules.employees.application
+    ; До C4e (settings): экран «Шаблоны документов» — через границу docs (R3).
+    app.api.settings_api -> app.modules.docs.application.doc_templates
     ; До C4: легаси-потребители модулей через их границы (R3-направление).
     ; Строки исчезают по мере переноса владельцев (employees — перенесён в C4a).
     app.api.settings_api -> app.modules.timesheet.application.base_schedule
@@ -216,4 +206,19 @@ forbidden_modules =
     app.modules.cars.domain
     app.modules.cars.adapters
     app.modules.cars.interface
+allow_indirect_imports = True
+
+[importlinter:contract:docs-private]
+name = R3: domain/adapters/interface docs приватны (другие модули — только application/ports)
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.notify
+    app.modules.night
+    app.modules.cars
+forbidden_modules =
+    app.modules.docs.domain
+    app.modules.docs.adapters
+    app.modules.docs.interface
 allow_indirect_imports = True

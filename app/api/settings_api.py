@@ -9,12 +9,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.modules.docs.application.doc_templates import load_doc_templates, save_doc_templates
+
 from ..core.audit import audit
 from ..core.auth import Principal
 from ..core.db import get_db
 from ..core.permissions import require_perm
 from ..core.time import local_date
-from ..doc_templates import load_doc_templates, save_doc_templates
 from ..models import (
     Employee,
     EngineSettingsVersion,

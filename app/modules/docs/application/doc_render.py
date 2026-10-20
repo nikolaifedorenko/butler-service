@@ -19,9 +19,8 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
+from app.core.time import local_date
 from app.modules.employees.application import suggest_genitive
-
-from .core.time import local_date
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -390,13 +389,13 @@ def build_sample_docx(doc_type: str, body_text: str = "") -> bytes:
 # Реализация вынесена в app/pdf_render.py: сначала пробуем LibreOffice (точный вид бланка),
 # затем встроенный рендер reportlab (работает везде, кириллица — шрифты DejaVu из assets/fonts).
 def pdf_available() -> bool:
-    from .pdf_render import pdf_mode
+    from app.core.render import pdf_mode
     return pdf_mode() != "none"
 
 
 def pdf_status() -> dict:
-    from .pdf_render import native_error
-    from .pdf_render import pdf_mode as _mode
+    from app.core.render import native_error
+    from app.core.render import pdf_mode as _mode
     mode = _mode()
     return {"mode": mode,
             "title": {"libreoffice": "LibreOffice (точный вид бланка)",

@@ -18,9 +18,9 @@ if "DATABASE_URL" not in os.environ:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.core.render import pdf_mode  # noqa: E402
 from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
-from app.pdf_render import pdf_mode  # noqa: E402
 
 init_db()
 client = TestClient(app)          # администратор
@@ -166,7 +166,7 @@ class TestPdfExport(unittest.TestCase):
 
     def test_docx_builds_without_engine(self):
         # DOCX-макеты собираются даже там, где PDF-движка нет (python-docx — ядро)
-        from app.grid_docx import schedule_docx
+        from app.modules.docs.application.grid_docx import schedule_docx
 
         grid = client.get("/api/schedule", params={"year": YEAR, "month": MONTH}).json()
         self.assertTrue(schedule_docx(grid).startswith(b"PK"))
@@ -179,7 +179,7 @@ class TestPdfHint(unittest.TestCase):
         from unittest import mock
 
         # эндпоинт импортирует docx_to_pdf в момент запроса — подмена сработает
-        with mock.patch("app.pdf_render.docx_to_pdf",
+        with mock.patch("app.core.render.docx_to_pdf",
                         return_value=(None, "reportlab не установлен, LibreOffice не найден")):
             r = client.get("/api/schedule/pdf", params={"year": YEAR, "month": MONTH})
         self.assertEqual(r.status_code, 501, r.text)
