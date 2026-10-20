@@ -277,6 +277,7 @@ def seed_if_empty(db: Session) -> bool:
 
     # ───────────────────── Табель из циклов + График из Табеля (движок v7.1) ─────────────────────
     from ..modules.timesheet.adapters.factory import build_ports
+    from ..modules.timesheet.application.engine_common import now_utc
     from ..modules.timesheet.application.schedule_view import rebuild_generated_schedule
     from ..modules.timesheet.application.tabel_fill import fill_timesheet_from_cycles
     from ..modules.timesheet.bootstrap import bootstrap_engine
@@ -312,7 +313,7 @@ def seed_if_empty(db: Session) -> bool:
                            note="Отпросился с 14:00 до 16:00 (заявление)"))
     db.flush()
 
-    ports = build_ports(db, dt.datetime.now(dt.timezone.utc), "system")
+    ports = build_ports(db, now_utc(), "system")
     for emp, _, _ in employees:
         rebuild_generated_schedule(str(emp.id), Period(acc_start, today + dt.timedelta(days=40)),
                                    ports)

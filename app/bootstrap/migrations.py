@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 
 from ..core.db import SessionLocal, engine
+from ..core.time import local_date
 
 
 def migrate_db() -> None:
@@ -623,7 +624,6 @@ def migrate_schedule_dict_simplify() -> None:
       механически (домен bank/ флаг не читал).
     Миграция идемпотентна: ориентируется на наличие столбцов и видов.
     """
-    import datetime as dt
     import json
 
     from sqlalchemy import inspect, text
@@ -638,7 +638,7 @@ def migrate_schedule_dict_simplify() -> None:
     cols = {c["name"] for c in insp.get_columns("shift_types")}
     if "tzh_code" not in cols:
         return                                    # миграция уже выполнена
-    today = dt.date.today()
+    today = local_date()
     windows = {}
     try:
         session = SessionLocal()

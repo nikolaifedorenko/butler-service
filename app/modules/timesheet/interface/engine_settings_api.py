@@ -15,6 +15,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.format import normalize_hex_color
 from app.core.permissions import require_perm
+from app.core.time import local_date
 
 from ..adapters.orm import DayModifier, EngineSettingsVersion
 from ..adapters.settings_codec import from_payload, to_payload
@@ -39,7 +40,7 @@ MODIFIER_TITLES = {"double_overtime": "Двойные переработки", "
 @router.get("")
 def get_settings(on: Optional[dt.date] = None, principal: Principal = Depends(require_perm("settings.view")),
                  db: Session = Depends(get_db)):
-    day = on or dt.date.today()
+    day = on or local_date()
     ver = base_version(db, day)
     payload = json.loads(ver.payload_json) if ver else to_payload(default_settings())
     versions = db.scalars(select(EngineSettingsVersion).order_by(EngineSettingsVersion.valid_from.desc(),
@@ -133,7 +134,7 @@ def _guard_removed_day_codes(payload: dict, db: Session) -> None:
     from ..adapters.orm import TabelDay
 
     new_codes = set((payload.get("day_code_policy") or {}).keys())
-    prev = base_version(db, dt.date.today())
+    prev = base_version(db, local_date())
     if prev is None:
         return
     try:
@@ -243,7 +244,7 @@ def add_modifier(data: ModifierIn, principal: Principal = Depends(require_perm("
         raise HTTPException(status_code=422, detail="Укажите либо день, либо период (1-е число месяца)")
     if data.employee_id and data.group:
         raise HTTPException(status_code=422, detail="Область — сотрудник ИЛИ группа")
-    granularity = _granularity(db, data.period_start or data.date or dt.date.today())
+    granularity = _granularity(db, data.period_start or data.date or local_date())
     period = None if data.date else Period(data.period_start,
                                            _period_end_of(data.period_start, granularity))
     conflict = _conflicting(db, data, period, granularity)
@@ -439,7 +440,7 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
     from ..application.months import period_containing
     from .formatting import config_violation_text
 
-    day = on or dt.date.today()
+    day = on or local_date()
     ver = base_version(db, day)
     payload = json.loads(ver.payload_json) if ver else to_payload(default_settings())
     checks: list[dict] = []

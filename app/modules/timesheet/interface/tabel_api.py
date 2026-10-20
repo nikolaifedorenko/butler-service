@@ -24,6 +24,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import principal_permissions, require_perm
+from app.core.time import local_date
 from app.modules.employees.application import Employee
 
 from ..adapters.orm import TabelDay
@@ -59,7 +60,7 @@ def _granularity(db: Session, period: Period) -> str:
 def _code_titles(db: Session) -> dict[str, str]:
     """Человеческие подписи кодов CFG-DAY-CODES — данные приложения в payload версии
     (домен Settings их не знает, 8.4: тексты — слой interface/приложение)."""
-    version = base_version(db, dt.date.today())
+    version = base_version(db, local_date())
     payload = json.loads(version.payload_json) if version else {}
     return {code: row.get("title", "") for code, row in payload.get("day_code_policy", {}).items()}
 

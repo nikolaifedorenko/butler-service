@@ -581,11 +581,12 @@ C4+C5 (PR #58), C6 (PR #59), C7 (PR #60). Батчи — `docs/CHANGES-2026-10-2
       Зарегистрированный продуктовый долг: 11 inline-ветвлений `principal.is_manager`
       (fact_api/punches/schedule) — перевод на права требует решения владельца
       по семантике видимости каждого экрана (§5.2, CHANGES C4 §2).
-- [~] **TZ/now — `core/time.py`**: `now_local/local_date/utc_to_local/TZ` — только
-      core; `now_utc()` — в `timesheet/application/engine_common` как
-      composition-параметр движка (§5.1/F-15 — так и предписано спекой).
-      Технический долг: 7× `dt.date.today()` в timesheet interface/bootstrap —
-      перевод на `local_date()` отдельным батчем (риск полуночного поведения).
+- [x] **TZ/now — `core/time.py`** (долг закрыт батчем 20.10.2026,
+      `docs/CHANGES-2026-10-20-debt3-local-date.md`): все `dt.date.today()` в
+      timesheet/bootstrap/migrations переведены на `local_date()`; `now_utc()` —
+      в `timesheet/application/engine_common` как composition-параметр движка
+      (§5.1/F-15 — так и предписано спекой); AST-страж запрещает системное время
+      в модулях; граничные тесты полуночи — `tests/test_tz_local_date.py`.
 - [x] **Фронтенд**: `static/js/modules/*.js` (9 разделов 1:1), глобалы + `no-undef`
       сохранены (ADR-0008), SHELL `sw.js` включает новые пути (`rglob` в
       bump_version), версия поднята: **2026-10-20a**.

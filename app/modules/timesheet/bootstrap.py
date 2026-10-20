@@ -34,6 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.settings_store import Setting
+from app.core.time import local_date
 from app.modules.employees.application import Employee
 
 from .adapters.orm import EngineSettingsVersion, TabelDay
@@ -215,7 +216,7 @@ def bootstrap_engine(db: Session, first: dt.date | None = None, last: dt.date | 
     db.execute(delete(Setting).where(Setting.key.in_(OBSOLETE_RULES)))
     if not db.scalar(select(TabelDay.id)):
         from .application.tabel_fill import fill_timesheet_from_cycles
-        today = dt.date.today()
+        today = local_date()
         fill_timesheet_from_cycles(db, list(db.scalars(select(Employee).where(
             Employee.deleted_at.is_(None)))),
             first or (today.replace(day=1) - dt.timedelta(days=62)).replace(day=1),
