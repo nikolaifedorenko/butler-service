@@ -46,7 +46,6 @@ modules =
     app.api.auth_routes
     app.api.cars_api
     app.api.docs_api
-    app.api.night_api
     app.api.photos_api
     app.api.settings_api
 
@@ -77,8 +76,6 @@ forbidden_modules =
     app.doc_render
     app.doc_templates
     app.grid_docx
-    app.night
-    app.night_export
     app.pdf_render
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee: в runtime Employee загружается
@@ -109,8 +106,6 @@ source_modules =
     app.doc_render
     app.doc_templates
     app.grid_docx
-    app.night
-    app.night_export
     app.pdf_render
 forbidden_modules =
     app.modules
@@ -130,13 +125,8 @@ ignore_imports =
     app.api.settings_api -> app.modules.timesheet.application.schedule_helpers
     app.api.settings_api -> app.modules.timesheet.adapters.sql_settings
     app.api.auth_routes -> app.modules.timesheet.application.punch_plan
-    ; До C4 (night): ночной отчёт — потребитель доставки через границу notify.application (R3).
-    app.services.night_notify -> app.modules.notify.application.config
-    app.services.night_notify -> app.modules.notify.application.dispatch
-    app.services.night_notify -> app.modules.notify.application.recipients
-    app.services.night_notify -> app.modules.notify.application.templates
-    app.api.night_api -> app.modules.notify.application.recipients
-    app.night_export -> app.modules.notify.application.dispatch
+    app.models -> app.modules.night.adapters.orm
+    app.models.cars -> app.modules.night.application.catalog
 
 [importlinter:contract:notify-isolation]
 name = Эталон (C3): notify не знает про legacy-приложение и composition root
@@ -154,8 +144,6 @@ forbidden_modules =
     app.doc_render
     app.doc_templates
     app.grid_docx
-    app.night
-    app.night_export
     app.pdf_render
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee — ребро core → фасад моделей,
@@ -164,31 +152,13 @@ ignore_imports =
     app.core.auth -> app.models
     app.models -> app.modules.timesheet.adapters.orm
 
-[importlinter:contract:modules-independence]
-name = R3 в зачатке: модули не импортируют друг друга (ослабится до application/ports в C7)
-type = independence
-modules =
-    app.modules.timesheet
-    app.modules.notify
-ignore_imports =
-    ; Транзитный фасад app/models (re-export ORM обоих модулей) и TYPE_CHECKING-
-    ; аннотация core.auth — технические рёбра фаз C2–C6, не связь модулей.
-    ; В C6 фасад удаляется, строки исчезают вместе с ним.
-    app.core.auth -> app.models
-    app.models -> app.modules.timesheet.adapters.orm
-    app.models -> app.modules.notify.adapters.orm
-    app.models -> app.modules.employees.adapters.orm
-    app.models.cars -> app.modules.employees.application.catalog
-    ; docs/grid_docx и doc_render потребляют names/groups через границу employees (до C4d)
-    app.doc_render -> app.modules.employees.application
-    app.grid_docx -> app.modules.employees.application
-
 [importlinter:contract:timesheet-private]
 name = R3: domain/adapters/interface timesheet приватны (другие модули — только application/ports)
 type = forbidden
 source_modules =
     app.modules.employees
     app.modules.notify
+    app.modules.night
 forbidden_modules =
     app.modules.timesheet.domain
     app.modules.timesheet.adapters
@@ -203,8 +173,35 @@ type = forbidden
 source_modules =
     app.modules.timesheet
     app.modules.notify
+    app.modules.night
 forbidden_modules =
     app.modules.employees.domain
     app.modules.employees.adapters
     app.modules.employees.interface
+allow_indirect_imports = True
+
+[importlinter:contract:night-private]
+name = R3: domain/adapters/interface night приватны (другие модули — только application/ports)
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.notify
+forbidden_modules =
+    app.modules.night.domain
+    app.modules.night.adapters
+    app.modules.night.interface
+allow_indirect_imports = True
+
+[importlinter:contract:notify-private]
+name = R3: domain/adapters/interface notify приватны (другие модули — только application/ports)
+type = forbidden
+source_modules =
+    app.modules.timesheet
+    app.modules.employees
+    app.modules.night
+forbidden_modules =
+    app.modules.notify.domain
+    app.modules.notify.adapters
+    app.modules.notify.interface
 allow_indirect_imports = True

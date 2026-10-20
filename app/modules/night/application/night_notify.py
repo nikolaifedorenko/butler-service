@@ -25,17 +25,17 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.errors import Conflict, Validation
+from app.core.time import now_local
 from app.modules.notify.application.config import load_config
 from app.modules.notify.application.dispatch import attachments_of, dispatch_dict, journal_of, send_group
 from app.modules.notify.application.recipients import group_by_service, message_context
 from app.modules.notify.application.templates import PLACEHOLDERS, render_template, template_of
 
-from ..core.audit import audit
-from ..core.auth import Principal
-from ..core.errors import Conflict, Validation
-from ..core.time import now_local
-from ..models import NightCheckItem, NightReport
-from ..night import defects_of, duty_of
+from ..adapters.orm import NightCheckItem, NightReport
+from .night import defects_of, duty_of
 
 DOMAIN = "night"
 

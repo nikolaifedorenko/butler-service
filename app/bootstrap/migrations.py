@@ -487,7 +487,7 @@ def migrate_night_cars() -> None:
                 con.execute(text(idx))
     # шаг «Проверка электрокаров» для старых открытых смен, где его не было
     if insp.has_table("night_reports") and insp.has_table("night_area_sections"):
-        from ..night import CAR_AREA_NAME
+        from ..modules.night.application.night import CAR_AREA_NAME
 
         with engine.begin() as con:
             con.execute(text("""

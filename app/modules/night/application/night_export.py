@@ -21,8 +21,9 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from .core.media import BASE_DIR
-from .core.time import WD_SHORT
+from app.core.media import BASE_DIR
+from app.core.time import WD_SHORT
+
 from .night import report_dict
 
 
@@ -274,7 +275,7 @@ def _autosize(table, widths) -> None:
 
 def _photo_payload(db: Session, photos: dict[int, list[dict]]) -> dict[int, list[dict]]:
     """Добавляем в ответ фото абсолютный путь для вставки в .docx."""
-    from .models import Photo
+    from app.core.media import Photo
 
     ids = [p["id"] for items in photos.values() for p in items]
     by_id = {p.id: p for p in db.query(Photo).filter(Photo.id.in_(ids)).all()} if ids else {}
@@ -290,7 +291,7 @@ def render_night_report_docx(db: Session, report_id: int, *, company: str = "",
     """DOCX ночного отчёта (зоны и объекты + кары + недостатки + отправки + перехваты)."""
     from app.modules.notify.application.dispatch import dispatch_dict, journal_of
 
-    from .models import NightReport
+    from ..adapters.orm import NightReport
     from .night import defects_of, duty_of
 
     rep = db.get(NightReport, report_id)

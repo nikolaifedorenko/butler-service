@@ -17,14 +17,17 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..core.audit import audit
-from ..core.auth import Principal, current_principal
-from ..core.db import get_db
-from ..core.media import delete_photo as delete_photo_usecase
-from ..core.media import max_upload_bytes, photos_of, resolve_photo_file, save_photo
-from ..core.permissions import has_perm, require_perm
-from ..core.time import now_local
-from ..models import (
+from app.core.audit import audit
+from app.core.auth import Principal, current_principal
+from app.core.db import get_db
+from app.core.media import delete_photo as delete_photo_usecase
+from app.core.media import max_upload_bytes, photos_of, resolve_photo_file, save_photo
+from app.core.permissions import has_perm, require_perm
+from app.core.settings_store import Setting
+from app.core.time import now_local
+from app.modules.notify.application.catalog import ResponsibilityService
+
+from ..adapters.orm import (
     ChecklistItem,
     ChecklistOverride,
     NightArea,
@@ -33,11 +36,9 @@ from ..models import (
     NightInterception,
     NightReport,
     NightZone,
-    ResponsibilityService,
-    Setting,
     ZoneChecklistItem,
 )
-from ..night import (
+from ..application.night import (
     current_shift_date,
     defects_of,
     effective_items,
@@ -1027,7 +1028,7 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
 def report_defects(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                    db: Session = Depends(get_db)):
     """Недостатки смены: позиции, группы по службам, журнал, шаблон сообщения."""
-    from ..services.night_notify import defects_payload
+    from ..application.night_notify import defects_payload
 
     rep = _get_report(db, report_id)
     return defects_payload(db, rep)
@@ -1038,7 +1039,7 @@ def dispatch_report(report_id: int, payload: DispatchIn,
                     principal: Principal = Depends(require_perm("night.view")),
                     db: Session = Depends(get_db)):
     """Отправить недостатки службам: всё скопом или выбранное (только вручную)."""
-    from ..services.night_notify import dispatch_defects
+    from ..application.night_notify import dispatch_defects
 
     rep = _get_report(db, report_id)
     res = dispatch_defects(db, rep, principal, mode=payload.mode,
@@ -1051,7 +1052,7 @@ def report_dispatches(report_id: int, limit: int = 50,
                       principal: Principal = Depends(require_perm("night.view")),
                       db: Session = Depends(get_db)):
     """Журнал отправок смены — строки общего журнала раздела «Ночной отчёт»."""
-    from ..services.night_notify import report_journal
+    from ..application.night_notify import report_journal
 
     rep = _get_report(db, report_id)
     return {"dispatches": report_journal(db, rep, limit=limit)}
@@ -1064,7 +1065,7 @@ def preview_defects(report_id: int, payload: DispatchIn,
     """Предпросмотр сообщений: что именно уйдёт каждой службе (без отправки)."""
     from app.modules.notify.application.recipients import group_by_service
 
-    from ..services.night_notify import DOMAIN, preview_message
+    from ..application.night_notify import DOMAIN, preview_message
 
     rep = _get_report(db, report_id)
     data = defects_of(db, rep)
@@ -1116,7 +1117,7 @@ def _cars_section(rep: NightReport) -> NightAreaSection:
 def report_cars(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
     """Состояние обхода электрокаров за смену (список каров + отметки)."""
-    from ..cars import night_cars_state
+    from app.cars import night_cars_state
 
     rep = _get_report(db, report_id)
     return night_cars_state(db, rep)
@@ -1153,8 +1154,8 @@ async def report_car_check(report_id: int, car_id: int,
     просто факт, в замечания не входит."""
     from sqlalchemy.exc import IntegrityError
 
-    from ..cars import CarOpError, check_car_night
-    from ..models import Car
+    from app.cars import CarOpError, check_car_night
+    from app.models import Car
 
     blobs: list[tuple[str, bytes]] = []
     if file is not None:
@@ -1201,7 +1202,7 @@ def report_cars_finish(report_id: int, payload: InterceptionAck,
                        principal: Principal = Depends(current_principal),
                        db: Session = Depends(get_db)):
     """Завершить шаг «Проверка электрокаров». Незакрытые кары — только после подтверждения."""
-    from ..cars import CarOpError, finish_cars_step, night_cars_state
+    from app.cars import CarOpError, finish_cars_step, night_cars_state
 
     rep = _get_report(db, report_id)
     _guard_open(rep)
@@ -1283,7 +1284,7 @@ def _company(db: Session) -> str:
 @router.get("/reports/{report_id}/export.docx")
 def export_docx(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
-    from ..night_export import render_night_report_docx
+    from ..application.night_export import render_night_report_docx
 
     rep = _get_report(db, report_id)
     item_ids = [i.id for s in rep.areas for i in s.items]
@@ -1298,8 +1299,9 @@ def export_docx(report_id: int, principal: Principal = Depends(require_perm("nig
 @router.get("/reports/{report_id}/export.pdf")
 def export_pdf(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                db: Session = Depends(get_db)):
-    from ..night_export import render_night_report_docx
-    from ..pdf_render import docx_to_pdf
+    from app.pdf_render import docx_to_pdf
+
+    from ..application.night_export import render_night_report_docx
 
     rep = _get_report(db, report_id)
     item_ids = [i.id for s in rep.areas for i in s.items]

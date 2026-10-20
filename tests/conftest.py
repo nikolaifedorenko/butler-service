@@ -208,7 +208,7 @@ def open_shift(db, freeze):
 
     from app.core.media import unlink_photo
     from app.models import CarNightCheck, NightAreaSection, NightCheckItem, NightInterception, NightReport, Photo
-    from app.night import ensure_report
+    from app.modules.night.application.night import ensure_report
 
     @_cm
     def _open():

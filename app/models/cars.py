@@ -19,8 +19,7 @@ from ..core.db import Base
 
 if TYPE_CHECKING:
     from app.modules.employees.application.catalog import Employee
-
-    from .night import NightReport
+    from app.modules.night.application.catalog import NightReport
 from ..core.time import now_local
 
 

@@ -18,7 +18,6 @@ from .api import (
     auth_routes,
     cars_api,
     docs_api,
-    night_api,
     photos_api,
     settings_api,
 )
@@ -44,6 +43,7 @@ from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.time import now_local
 from .modules.employees.interface import employees
+from .modules.night.interface import night_api
 from .modules.notify.interface import notify_api
 from .modules.timesheet.application.errors import ApplicationError
 from .modules.timesheet.domain.types.errors import ConfigError, DomainError
@@ -90,7 +90,7 @@ def init_db() -> None:
     migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
     from .core.media import cleanup_photos
-    from .night import sync_reports
+    from .modules.night.application.night import sync_reports
 
     db = SessionLocal()
     try:

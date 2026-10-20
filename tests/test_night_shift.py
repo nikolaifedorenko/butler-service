@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime as dt
 
 from app.core.time import now_local
-from app.night import (
+from app.modules.night.application.night import (
     SHIFT_END,
     SHIFT_START,
     close_deadline,

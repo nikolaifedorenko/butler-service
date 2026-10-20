@@ -391,8 +391,8 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
 
 def _night_checks(db: Session) -> list[dict]:
     """Сверки справочника ночного обхода для экрана «Обзор»."""
-    from app.models import ResponsibilityService
-    from app.models.night import NightArea, NightZone, ZoneChecklistItem
+    from app.modules.night.application.catalog import NightArea, NightZone, ZoneChecklistItem
+    from app.modules.notify.application.catalog import ResponsibilityService
 
     out: list[dict] = []
     zones = {z.id: z.name for z in db.scalars(

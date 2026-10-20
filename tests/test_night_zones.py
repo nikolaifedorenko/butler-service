@@ -50,7 +50,7 @@ def _smena(db, freeze, shift_d: dt.date = SHIFT_D):
     from sqlalchemy import select
 
     from app.models import NightAreaSection, NightCheckItem, NightReport
-    from app.night import ensure_report
+    from app.modules.night.application.night import ensure_report
 
     with freeze(f"{shift_d.isoformat()} 23:00:00"):      # 02:00 МСК следующих суток — смена идёт
         rep = ensure_report(db, shift_d)

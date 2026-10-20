@@ -33,6 +33,17 @@ from ..modules.employees.adapters.orm import (  # noqa: F401 — фаза C4: т
     StatementKind,
     Subdivision,
 )
+from ..modules.night.adapters.orm import (  # noqa: F401 — фаза C4: транзитный re-export
+    ChecklistItem,
+    ChecklistOverride,
+    NightArea,
+    NightAreaSection,
+    NightCheckItem,
+    NightInterception,
+    NightReport,
+    NightZone,
+    ZoneChecklistItem,
+)
 from ..modules.notify.adapters.orm import (  # noqa: F401 — фаза C3: транзитный re-export
     NotifyChat,
     NotifyDispatch,
@@ -56,17 +67,6 @@ from ..modules.timesheet.adapters.orm import (  # noqa: F401
     VipDoublePay,
 )
 from .cars import Car, CarHistory, CarLocation, CarNightCheck  # noqa: F401
-from .night import (  # noqa: F401
-    ChecklistItem,
-    ChecklistOverride,
-    NightArea,
-    NightAreaSection,
-    NightCheckItem,
-    NightInterception,
-    NightReport,
-    NightZone,
-    ZoneChecklistItem,
-)
 
 __all__ = [
     "Base",
