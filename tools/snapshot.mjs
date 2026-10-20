@@ -212,7 +212,7 @@ body{font:15px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#10182
 <div class="gal-head">
   <h1>Батлер Сервис — снимки интерфейса после исправлений</h1>
   <p>Разделы отрисованы <b>настоящим кодом приложения</b> (<code>static/js/app.js</code>,
-     <code>section_night.js</code>, <code>section_cars.js</code>) против живого сервера
+     <code>modules/night.js</code>, <code>modules/cars.js</code>) против живого сервера
      с демо-данными, затем DOM сериализован вместе со штатными стилями <code>app.css</code>.</p>
   <p>Это не скриншоты и не макет: разметка и стили — те самые, что отдаёт сервер.
      Клики не работают (скрипты из снимка удалены), прокрутка внутри кадра — работает.</p>

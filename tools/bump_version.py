@@ -27,12 +27,16 @@ VERSION_RE = re.compile(r"\?v=([\w.\-]+)")
 
 
 def local_assets() -> list[str]:
-    """Все локальные css/js из static/, которые нужно кэшировать оболочке."""
+    """Все локальные css/js из static/, которые нужно кэшировать оболочке.
+
+    Рекурсивно (rglob): разделы живут в static/js/modules/ (фаза C6,
+    EXECUTION-SPEC-v2 §6) — нерекурсивный glob оставлял бы PWA без оболочки.
+    """
     out = []
     for sub in ("css", "js"):
-        for p in sorted((ASSETS_DIR / sub).glob("*")):
+        for p in sorted((ASSETS_DIR / sub).rglob("*")):
             if p.suffix in (".css", ".js"):
-                out.append(f"/static/{sub}/{p.name}")
+                out.append("/static/" + p.relative_to(ASSETS_DIR).as_posix())
     return out
 
 

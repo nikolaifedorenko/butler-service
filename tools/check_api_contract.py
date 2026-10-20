@@ -51,7 +51,7 @@ def frontend_calls() -> dict[str, set[str]]:
     иначе считаем вызов «ANY» и сопоставляем с любым методом маршрута.
     """
     calls: dict[str, set[str]] = {}
-    for js in sorted(JS_DIR.glob("*.js")):
+    for js in sorted(JS_DIR.rglob("*.js")):
         text = js.read_text(encoding="utf-8")
         for m in CALL_RE.finditer(text):
             raw = m.group(1)

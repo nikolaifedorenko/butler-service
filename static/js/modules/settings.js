@@ -19,7 +19,7 @@
 
    Зависит от core.js ($, api, state, esc, openModal, toast, …), app.js (can,
    renderDicts, refreshDoublePay, shiftModal, openKindModal, loadDirectory,
-   DEFAULT_TITLES, fmtGdValue) и section_v4.js (renderEngineSettings — режим эксперта).
+   DEFAULT_TITLES, fmtGdValue) и modules/timesheet_v4.js (renderEngineSettings — режим эксперта).
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -46,7 +46,7 @@ const SETTINGS_ICONS = {
    docs/PROPOSAL-SETTINGS-IA-2026-10-19.md): группы «Расчёт», «Персонал и смены»,
    «Объект» (ночной обход, электрокары, документы), «Доставка», «Администрирование».
    Экраны группы «Объект» реализованы в файлах своих разделов (renderNightDictScreen —
-   section_night.js, renderCarsDictScreen — section_cars.js; порядок подключения
+   modules/night.js, renderCarsDictScreen — modules/cars.js; порядок подключения
    в index.html это гарантирует): справочник один, а код рядом со своим доменом.
    `external` — переход в самостоятельный view приложения: «Права доступа» и
    «Журнал аудита» убраны из верхнего меню (19.10.2026) и открываются отсюда.
