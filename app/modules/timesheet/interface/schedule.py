@@ -25,7 +25,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.format import safe_sheet_cell
-from app.core.permissions import require_perm
+from app.core.permissions import principal_permissions, require_perm
 from app.core.time import TZ, now_local, utc_to_local
 from app.modules.docs.application.doc_render import hours_text
 from app.modules.employees.application import (
@@ -305,6 +305,7 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
 
     today = now_local().date()
     dbl_cal = calendar_map(db, first, last)
+    perms = principal_permissions(db, principal)
     rows = []
     for emp in employees:
         periods = per_emp_periods.get(emp.id) or []
@@ -375,11 +376,12 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
                  for d in days],
         "rows": rows,
         "today": today.isoformat(),
-        "readonly": not principal.is_manager,
+        "readonly": "schedule.edit" not in perms,
         "colors": {"out_of_block": OUT_OF_BLOCK_COLOR, "worked_off": WORKED_OFF_COLOR,
                    "inactive": INACTIVE_COLOR},
     }
-    if not principal.is_manager:
+    if "schedule.view_all" not in perms:
+        # скоуп сетки — по ключу schedule.view_all (бывш. is_manager, §5.2)
         _strip_to_plan(payload)
     return payload
 

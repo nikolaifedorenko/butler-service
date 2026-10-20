@@ -104,15 +104,12 @@ def optional_principal(request: Request, db: Session = Depends(get_db)) -> Optio
 
 # Ролевые зависимости require_manager/require_supervisor/require_admin удалены
 # (этап B унификации прав, 20.10.2026 — см. docs/EXECUTION-SPEC-v2.md §5.2):
-# единственный вход проверки прав — require_perm("<ключ>") из app/permissions.py.
-# Свойство Principal.is_manager сохранено для inline-ветвлений «менеджерской
-# видимости» (fact_api, punches, schedule, photos) — их перевод на ключи
-# выполняется в модульных фазах (этап C), список — в CHANGES-документе этапа B.
-
-
-# can_manage_user переехал в core/auth_guards.py, audit() — в core/audit.py
-# (фаза C1, 20.10.2026). Ролевые зависимости require_manager/require_supervisor/
-# require_admin удалены этапом B: единственный вход прав — require_perm
-# ("<ключ>") из core/permissions.py. Свойство Principal.is_manager сохранено
-# для inline-ветвлений «менеджерской видимости» (fact_api, punches, schedule,
-# photos) — их перевод на ключи выполняется в модульных фазах (этап C).
+# единственный вход проверки прав — require_perm("<ключ>") из core/permissions.py.
+# Inline-ветвления «менеджерской видимости» переведены на ключи каталога
+# (батч 20.10.2026: fact.view_all, punches.view_all/punch_for_others/backfill,
+# schedule.view_all/edit) — в модулях обращений к is_manager не осталось
+# (страж: tests/test_permissions_unification.py). Свойство Principal.is_manager
+# сохранено как утилита ролевой иерархии (рядом с can_manage_user в
+# core/auth_guards.py) и для совместимости; для прав экранов его использовать
+# не следует — только каталог PERMISSIONS. can_manage_user переехал в
+# core/auth_guards.py, audit() — в core/audit.py (фаза C1, 20.10.2026).
