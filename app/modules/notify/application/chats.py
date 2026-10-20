@@ -16,10 +16,11 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..core.time import now_local
-from ..models import NotifyChat
+from app.core.time import now_local
+
+from ..adapters.orm import NotifyChat
+from ..adapters.transports.telegram import TelegramBot
 from .config import NotifyConfig
-from .transports.telegram import TelegramBot
 
 # из каких полей обновления Telegram достаём чат (личные сообщения, группы, каналы)
 _CHAT_SOURCES = ("message", "edited_message", "channel_post", "edited_channel_post",
@@ -69,7 +70,7 @@ def list_chats(db: Session) -> list[dict]:
     """Каталог чатов + какие службы их используют (видно, кому чат уже закреплён)."""
     import json
 
-    from ..models import ResponsibilityService
+    from ..adapters.orm import ResponsibilityService
 
     usage: dict[int, list[str]] = {}
     for svc in db.scalars(select(ResponsibilityService)):

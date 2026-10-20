@@ -21,9 +21,10 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.settings_store import Setting
 from app.groups import GROUP_META, normalize_group
 
-from ..adapters.orm import BlockAssignment, Employee, Setting
+from ..adapters.orm import BlockAssignment, Employee
 from .schedule_patterns import parse_custom_cycle
 
 DEFAULT_BASE = {

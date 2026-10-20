@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Setting
+from app.core.settings_store import Setting
 
 # ключ → (значение по умолчанию, секрет?, подпись для интерфейса)
 NOTIFY_KEYS: dict[str, tuple[str, bool, str]] = {

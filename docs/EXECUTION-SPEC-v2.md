@@ -469,3 +469,37 @@ push+мерж до этапа A, иначе конфликты переноса.
   lazy=joined и др.) — предмет решения по R6 в C4 (строковые FK уже соответствуют).
 * Реестр моделей (G4): `registry.ensure_models()` импортирует орм модуля явно;
   число таблиц `Base.metadata` — 45, сверено с main, без изменений.
+
+---
+
+## 14. Уточнения по итогам фазы C3 (20.10.2026)
+
+Фактический состав `modules/notify/` (детали —
+`docs/CHANGES-2026-10-20-stage-c3-notify.md`):
+
+* Эталон подтверждён механически: `tests/test_notify_module.py` — 8 AST-проверок
+  (слои, чистота domain/ports, направления §3, R6, публичный `__all__` =
+  поверхность бывшей `app/notify`). В C7 файл — шаблон для всех модулей (DoD
+  «AST-тесты покрывают все модули»).
+* Единственный разделённый файл — `templates.py`: чистое (константы,
+  `render_template`, `items_block`) → `domain/`, БД-чтение (`template_of`,
+  `save_template`, `templates_payload`) → `application/`. Остальное — перенос
+  файлов целиком, логика не переписывалась.
+* `TransportError` — в `ports/transports.py` (контракт сбоя); транспорты
+  (email/telegram) — `adapters/transports/` (единственные выходы в сеть);
+  инъекция `bot=`/`mailer=` сохранена (тесты подменяют leaf-функции
+  `http_sender`/`smtp_mailer` — пути monkeypatch обновлены).
+* **`Setting` переехал в `core/settings_store.py`** (сверх §2, по прецеденту
+  `Photo`/core-media): таблицу `settings` используют timesheet, notify, docs и
+  будущий settings — владение одним модулем ломало бы R3 у потребителей.
+  R5/R6 соблюдены (FK/relationship нет). Состав `engine_store` в timesheet
+  уменьшился на Setting.
+* `.importlinter` — 8 контрактов: **notify-isolation** (эталон не знает legacy
+  и composition root) и **modules-independence** (timesheet ⊥ notify — R3
+  механически; транзитные рёбра фасада `app.models` игнорируются до C6).
+  Транзитный контракт G3: legacy-потребители доставки (`services/night_notify`,
+  `api/night_api`, `night_export`) ходят только в `notify.application.*`.
+* Долг (зафиксирован, не правится): application notify вызывает adapters
+  (транспорты/orm) напрямую, interface импортирует `send_mail`/`TelegramBot`/orm
+  — наследие плоского пакета; формальный ports-контракт отправителя и строгие
+  слои — в C7 вместе с финальными контрактами R1–R6.

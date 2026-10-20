@@ -11,7 +11,9 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import Setting, ShiftType
+from app.core.settings_store import Setting
+
+from ..adapters.orm import ShiftType
 
 # прочие правила объекта, не относящиеся к расчёту часов
 DEFAULT_RULES = {

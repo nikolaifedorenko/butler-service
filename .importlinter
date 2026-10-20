@@ -1,6 +1,9 @@
 ; Контракты импортов (lint-imports) — Python-аналог архитектурных тестов движка
 ; (tests/engine/test_architecture.py) для остального приложения.
 ;
+; Ред. 20.10.2026 (фаза C3, EXECUTION-SPEC-v2): второй модуль — app.modules.notify
+; (эталон: 5 слоёв, R1–R6 без транзитных послаблений внутри модуля); Setting
+; (кросс-модульное key-value хранилище) переехал в app/core/settings_store.py.
 ; Ред. 20.10.2026 (фаза C2, EXECUTION-SPEC-v2): создан первый модуль —
 ; app.modules.timesheet (бывший app/engine + табельные роутеры + хелперы +
 ; ORM-модели punch/schedule/engine_store/directory). Контракты:
@@ -45,7 +48,6 @@ modules =
     app.api.docs_api
     app.api.employees
     app.api.night_api
-    app.api.notify_api
     app.api.photos_api
     app.api.settings_api
 
@@ -70,7 +72,6 @@ forbidden_modules =
     app.services
     app.models
     app.modules
-    app.notify
     app.bootstrap
     app.main
     app.cars
@@ -109,7 +110,6 @@ source_modules =
     app.api
     app.services
     app.models
-    app.notify
     app.cars
     app.doc_render
     app.doc_templates
@@ -125,8 +125,9 @@ forbidden_modules =
     app.modules
 ignore_imports =
     ; Фасад app/models: транзитный re-export переехавших ORM-моделей (спека §7
-    ; фаза 4). Уменьшается в C4–C6, удаляется вместе с пакетом app/models/.
+    ; фазы 4–5). Уменьшается в C4–C6, удаляется вместе с пакетом app/models/.
     app.models -> app.modules.timesheet.adapters.orm
+    app.models -> app.modules.notify.adapters.orm
     ; До C4 (employees): легаси-потребители таймшита через границу модуля (R3).
     ; В C4 сотрудники/настройки/access перейдут на modules.* и строки исчезнут.
     app.api.employees -> app.modules.timesheet.application.bank_adjustment
@@ -139,3 +140,54 @@ ignore_imports =
     app.api.settings_api -> app.modules.timesheet.adapters.sql_settings
     app.api.auth_routes -> app.modules.timesheet.application.punch_plan
     app.services.employee_lifecycle -> app.modules.timesheet.application.base_schedule
+    ; До C4 (night): ночной отчёт — потребитель доставки через границу notify.application (R3).
+    app.services.night_notify -> app.modules.notify.application.config
+    app.services.night_notify -> app.modules.notify.application.dispatch
+    app.services.night_notify -> app.modules.notify.application.recipients
+    app.services.night_notify -> app.modules.notify.application.templates
+    app.api.night_api -> app.modules.notify.application.recipients
+    app.night_export -> app.modules.notify.application.dispatch
+
+[importlinter:contract:notify-isolation]
+name = Эталон (C3): notify не знает про legacy-приложение и composition root
+type = forbidden
+source_modules =
+    app.modules.notify
+forbidden_modules =
+    app.api
+    app.services
+    app.models
+    app.bootstrap
+    app.main
+    app.modules.timesheet
+    app.cars
+    app.doc_render
+    app.doc_templates
+    app.employment
+    app.grid_docx
+    app.groups
+    app.names
+    app.night
+    app.night_export
+    app.pdf_render
+    app.shiftrev
+ignore_imports =
+    ; TYPE_CHECKING-аннотация Principal.employee — ребро core → фасад моделей,
+    ; а не зависимость notify (в runtime Employee загружается колбэком, C1);
+    ; фасад app/models — транзитный re-export (удаляется в C6 вместе с фасадом).
+    app.core.auth -> app.models
+    app.models -> app.modules.timesheet.adapters.orm
+
+[importlinter:contract:modules-independence]
+name = R3 в зачатке: модули не импортируют друг друга (ослабится до application/ports в C7)
+type = independence
+modules =
+    app.modules.timesheet
+    app.modules.notify
+ignore_imports =
+    ; Транзитный фасад app/models (re-export ORM обоих модулей) и TYPE_CHECKING-
+    ; аннотация core.auth — технические рёбра фаз C2–C6, не связь модулей.
+    ; В C6 фасад удаляется, строки исчезают вместе с ним.
+    app.core.auth -> app.models
+    app.models -> app.modules.timesheet.adapters.orm
+    app.models -> app.modules.notify.adapters.orm

@@ -16,8 +16,8 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import ResponsibilityService
-from .transports.email import split_addresses
+from ..adapters.orm import ResponsibilityService
+from ..adapters.transports.email import split_addresses
 
 
 def service_chat_ids(svc: ResponsibilityService) -> list[int]:
@@ -103,7 +103,7 @@ def group_by_service(db: Session, rows: list[dict]) -> list[dict]:
 
 def message_context(rep_dict: dict, group: dict, duty: str, author: str) -> dict:
     """Контекст плейсхолдеров для шаблона раздела «Ночной отчёт»."""
-    from .templates import items_block
+    from ..domain.templates import items_block
 
     return {
         "date": rep_dict.get("date") or "",

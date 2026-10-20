@@ -1062,7 +1062,8 @@ def preview_defects(report_id: int, payload: DispatchIn,
                     principal: Principal = Depends(require_perm("night.view")),
                     db: Session = Depends(get_db)):
     """Предпросмотр сообщений: что именно уйдёт каждой службе (без отправки)."""
-    from ..notify.recipients import group_by_service
+    from app.modules.notify.application.recipients import group_by_service
+
     from ..services.night_notify import DOMAIN, preview_message
 
     rep = _get_report(db, report_id)
