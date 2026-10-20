@@ -34,7 +34,16 @@ def lock_state(employee_id: str, day: dt.date, ports: EnginePorts) -> str:
 
 
 def save_timesheet_day(employee_id: str, day: dt.date, code: str, plan_minutes: int | None,
-                       ports: EnginePorts) -> TimesheetEditOutcome:
+                       ports: EnginePorts, *, rebuild: bool = True) -> TimesheetEditOutcome:
+    """Запись ячейки Табеля (доменные проверки F-16) + перегенерация Графика дня.
+
+    `rebuild=False` — режим массовой операции (P0-3 ревью 20.10.2026): перегенерация
+    Графика на каждую ячейку — это DELETE+INSERT generated-строк на каждый день, то
+    есть сотни тысяч запросов на массовке 500×366. Вызывающий код ОБЯЗАН после записи
+    всех ячеек вызвать `schedule_view.rebuild_generated_for_days` по записанным дням:
+    без этого График останется stale. `manual_shifts_dropped` в таком режиме пуст —
+    удалённые ручные смены возвращает пакетная перегенерация.
+    """
     employment = ports.employment.employment(employee_id, Period(day, day))
     if day < employment.start or (employment.end is not None and day > employment.end):
         raise TimesheetOutsideEmploymentError(f"{employee_id}:{day}")
@@ -47,8 +56,10 @@ def save_timesheet_day(employee_id: str, day: dt.date, code: str, plan_minutes: 
         check_plan_minutes([row], st)
         check_day_values([row], st)
     ports.timesheet_store.save_day(employee_id, day, code, plan_minutes)
-    # перегенерация дня D и соседей: смена через полночь даёт отрезки двум дням (16.3)
-    outcome = rebuild_generated_schedule(
-        employee_id, Period(day - dt.timedelta(days=1), day + dt.timedelta(days=1)), ports)
-    return TimesheetEditOutcome(lock_state(employee_id, day, ports) == "last_closed",
-                                outcome.manual_dropped)
+    dropped: tuple[dt.date, ...] = ()
+    if rebuild:
+        # перегенерация дня D и соседей: смена через полночь даёт отрезки двум дням (16.3)
+        outcome = rebuild_generated_schedule(
+            employee_id, Period(day - dt.timedelta(days=1), day + dt.timedelta(days=1)), ports)
+        dropped = outcome.manual_dropped
+    return TimesheetEditOutcome(lock_state(employee_id, day, ports) == "last_closed", dropped)

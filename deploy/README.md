@@ -41,7 +41,7 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 | `TRUST_PROXY_HEADERS` | `1` | IP для rate-limit берётся из X-Forwarded-For (доверяем своему nginx) |
 | `LOG_JSON` | `1` | структурированный access-лог (uvicorn стартует с `--no-access-log`) |
 | `METRICS_ENABLED` | `1` | `/metrics` для внутреннего скрейпера |
-| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). Rate-limit входа считается per-worker — при жёстких требованиях выносите в Redis (ADR-0005) |
+| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (инициализация схемы — под замком `app/core/startup_lock.py`: `pg_advisory_lock`, второй воркер ждёт первого; замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). Rate-limit входа считается per-worker — при жёстких требованиях выносите в Redis (ADR-0005) |
 | `CSP_REPORT_ONLY` | `0` | при раскатке можно временно `1` — браузер предупреждает, но не блокирует |
 
 ## 4. Бэкапы и восстановление

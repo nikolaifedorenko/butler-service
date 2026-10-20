@@ -115,8 +115,12 @@ jobs:
           cache: pip
 
       - name: Синтаксис всех скриптов интерфейса
+        # find, а не `static/js/*.js`: разделы переехали в static/js/modules/
+        # (фаза C6), и нераскрывающийся глоб оставлял их без проверки синтаксиса
+        # (находка ревью 20.10.2026, P1-frontend). eslint ниже и так ходит по
+        # каталогу рекурсивно — здесь закрываем именно node --check.
         run: |
-          for f in static/js/*.js static/sw.js; do
+          for f in $(find static/js static/sw.js -name '*.js' | sort); do
             echo "node --check $f"; node --check "$f";
           done
 

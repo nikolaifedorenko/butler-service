@@ -49,8 +49,10 @@ services:
       LOG_JSON: "1"
       METRICS_ENABLED: ${METRICS_ENABLED:-1}
       CSRF_ENABLED: "1"
-    # несколько воркеров допустимы: замок отметок — строка БД (SELECT … FOR UPDATE),
-    # rate-limit входа per-worker (при жёстких требованиях — вынести в Redis, ADR-0005)
+    # несколько воркеров допустимы: инициализация схемы сериализована замком
+    # (app/core/startup_lock.py — pg_advisory_lock), замок отметок — строка БД
+    # (SELECT … FOR UPDATE), rate-limit входа per-worker (при жёстких требованиях —
+    # вынести в Redis, ADR-0005)
     command: >
       python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
       --workers ${UVICORN_WORKERS:-2} --proxy-headers --forwarded-allow-ips "*"

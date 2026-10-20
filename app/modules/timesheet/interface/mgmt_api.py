@@ -39,6 +39,7 @@ from ..domain.time.local_midnight import next_midnight
 from ..domain.types.entities import Employment, Period
 from ..domain.types.errors import DomainError
 from .formatting import error_text
+from .period_params import ensure_period
 from .serialize import plain
 from .views import period_view_dict
 
@@ -89,6 +90,7 @@ def _context(db: Session, principal: Optional[Principal], year: int, month: int,
     и где это чинить. Раньше исключение всплывало до обработчика и отдавало
     «Internal Server Error» на весь период.
     """
+    ensure_period(year, month)   # единая проверка для get/close/recalculate/xlsx (P0-5)
     now = now_utc()
     ports = engine_ports(db, principal, now)
     try:
@@ -105,8 +107,6 @@ def _context(db: Session, principal: Optional[Principal], year: int, month: int,
 def get_mgmt(year: int, month: int, half: Optional[int] = None, employee_id: Optional[int] = None,
              detail: bool = False, principal: Principal = Depends(require_perm("mgmt.view")),
              db: Session = Depends(get_db)):
-    if not (1 <= month <= 12 and 1 <= year <= 9999):
-        raise HTTPException(status_code=422, detail="year должен быть 1..9999, month — 1..12")
     now, ports, granularity, period, emps = _context(db, principal, year, month, half,
                                                      [employee_id] if employee_id else None)
     if employee_id and not emps:

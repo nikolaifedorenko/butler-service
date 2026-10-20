@@ -410,7 +410,8 @@ butler-service/
 │   ├── bootstrap/            # seed.py (демо-данные), migrations.py (идемпотентные),
 │   │                         #   registry.py — реестр моделей (G4) + инъекция провайдеров в core
 │   ├── core/                 # инфраструктура (R5: не знает о модулях):
-│   │                         #   config, db (engine/SessionLocal/Base), time (TZ/now — единственный
+│   │                         #   config, db (engine/SessionLocal/Base), startup_lock (сериализация
+│   │                         #   init_db между воркерами), time (TZ/now — единственный
 │   │                         #   источник), errors (ServiceError-иерархия), security (pbkdf2),
 │   │                         #   auth (Principal/сессии), auth_guards (can_manage_user), permissions
 │   │                         #   (каталог прав + require_perm), identity (User/гранты), audit
@@ -429,7 +430,7 @@ butler-service/
 │       │   ├── adapters/     #   SQL-адаптеры + factory + orm.py (TabelDay, ScheduleShift,
 │       │   │                 #   Punch, PeriodClosing, BlockAssignment, BankAdjustment, …)
 │       │   ├── interface/    #   8 роутеров (tabel, mgmt, fact, presence, punches, doublepay,
-│       │   │                 #   schedule, engine_settings) + formatting/serialize/views
+│       │   │                 #   schedule, engine_settings) + formatting/serialize/views/period_params
 │       │   └── bootstrap.py  #   стартовая версия справочников CFG-*
 │       ├── employees/        # каталог персонала (Employee, Department, EmploymentPeriod…),
 │       │                     #   трудоустройство, жизненный цикл, группы графика, имена (domain)

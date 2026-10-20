@@ -31,6 +31,7 @@ from ..domain.settings.validate import validate_settings
 from ..domain.types.entities import Period
 from ..domain.types.errors import ConfigError
 from .formatting import error_text
+from .period_params import ensure_period
 
 router = APIRouter(prefix="/api/engine-settings", tags=["engine-settings"])
 MODIFIER_TITLES = {"double_overtime": "Двойные переработки", "pays_overtime": "Оплачиваются ли переработки",
@@ -157,6 +158,7 @@ def _guard_removed_day_codes(payload: dict, db: Session) -> None:
 @router.get("/modifiers")
 def list_modifiers(year: int, month: int, principal: Principal = Depends(require_perm("settings.view")),
                    db: Session = Depends(get_db)):
+    ensure_period(year, month)
     first = dt.date(year, month, 1)
     last = dt.date(year + (month == 12), month % 12 + 1, 1) - dt.timedelta(days=1)
     rows = db.scalars(select(DayModifier).where(

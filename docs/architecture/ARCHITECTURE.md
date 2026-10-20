@@ -95,16 +95,16 @@ cars, docs, notify, settings, access, audit), каждый — гексагон 
 `Setting` — `core/settings_store`; транспорт рендера — `core/render`;
 `can_manage_user` — `core/auth_guards` (ролевой страж, не право).
 
-### 2.3 Цифры (20.10.2026, фаза C7)
+### 2.3 Цифры (20.10.2026, батч review-P0)
 
 | Показатель | Значение |
 |---|---|
-| Модуль timesheet | ~11 400 строк: domain 3 583 · interface 4 125 (8 роутеров + views/formatting) · application 1 950 · adapters 1 339 · ports 195 · bootstrap |
+| Модуль timesheet | ~11 500 строк: domain 3 583 · interface 4 219 (8 роутеров + views/formatting/period_params) · application 1 971 · adapters 1 329 · ports 195 · bootstrap |
 | Прочие 8 модулей | employees 1 776 · night 2 591 · cars 1 090 · docs 1 200 · notify 1 595 · settings 186 · access 445 · audit 102 строк |
-| `app/core/` + composition root | 1 762 (18 файлов) + bootstrap/main 1 640 строк |
+| `app/core/` + composition root | 1 920 (19 файлов) + bootstrap/main 1 673 строк |
 | API | 18 роутеров по модулям, **156 путей OpenAPI** (`docs/openapi.json` сверяется в CI) |
 | Фронтенд `static/js` | ~8 850 строк, 11 файлов: core.js, app.js + 9 разделов в `modules/` |
-| Тесты | ~12 500 строк, **~650 тестов**: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
+| Тесты | ~13 100 строк, **754 теста**: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
 | Покрытие `timesheet/domain` | ≥ 95 % (DoD спеки) |
 | Таблиц БД | **45** (реестр `bootstrap/registry.py`, `/api/selfcheck` сверяет схему с `Base.metadata`) |
 | Приёмочных примеров спеки | 55 (EX-01…EX-55) — каждый в автотестах |
@@ -176,8 +176,9 @@ root (`main.py`, `bootstrap/`) — единственный, кто знает �
 `load_inputs` (выборка 7.4: запас в шаг, opening_mark, Табель полным периодом — R27),
 `presence_board` (фильтр active_employees до домена — R38, ≤ 5 запросов),
 `view_sessions`, `schedule_view` (генерация из Табеля, manual-якорь accepts_ut,
-логические отсутствия), `timesheet_edit` (валидация доменными checks — F-16,
-перегенерация дня ±1), `months` (гранулярность R36, цепочка), `bank_adjustment`
+логические отсутствия; `rebuild_generated_for_days` — пакетная перегенерация после
+массовой записи), `timesheet_edit` (валидация доменными checks — F-16,
+перегенерация дня ±1, `rebuild=False` для массовок), `months` (гранулярность R36, цепочка), `bank_adjustment`
 (правила посева R37), `period_view` (PeriodView + day_views с информационным планом R39).
 
 ### 3.3 Адаптеры (`app/modules/timesheet/adapters/`, 1 339 строк + `orm.py`)
@@ -197,8 +198,9 @@ double_pay/vip с дедупликацией), `sql_closings` (PeriodState с pr
 
 `app/modules/timesheet/interface/`: formatting (тексты флагов/трассы и `error_text`
 — единственное место человекочитаемых текстов ошибок движка), serialize/deserialize
-(сохранение и чтение SettleResult/FlagsResult), views (payload вкладок) + 8 тонких
-роутеров (tabel, mgmt, fact, presence, punches, doublepay, schedule,
+(сохранение и чтение SettleResult/FlagsResult), views (payload вкладок),
+period_params (единая валидация `year`/`month` всех точек ввода — 422 вместо 500)
++ 8 тонких роутеров (tabel, mgmt, fact, presence, punches, doublepay, schedule,
 engine_settings). `now` снимается в `application/engine_common.now_utc()`
 (composition-параметр) и передаётся параметром — ClockPort не вводится (F-15).
 Доменные ошибки маппятся в HTTP центральными хэндлерами `main.py`
@@ -303,7 +305,10 @@ POST /api/punches: сериализация по сотруднику (lock) →
 
 | Риск | Статус | Что делать при росте |
 |---|---|---|
-| Самодельные миграции (raw DDL при старте) | 🟠 | Alembic: autogenerate + версионирование; `migrate_engine_v7` — образец идемпотентного шага |
+| Самодельные миграции (raw DDL при старте) | 🟠 | Alembic: autogenerate + версионирование; `migrate_engine_v7` — образец идемпотентного шага. Гонку одновременного старта воркеров закрывает `core/startup_lock` (20.10.2026); следующий шаг — таблица версий шагов и отдельная команда миграций до uvicorn |
+| Гонка DDL при старте нескольких воркеров (`duplicate column name`, IntegrityError `night_reports.date`) | 🟢 закрыт 20.10.2026 | `init_db()` целиком под замком `core/startup_lock`: PostgreSQL — сеансовый `pg_advisory_lock` (держит и несколько контейнеров), SQLite — `flock` на файле рядом с БД; `suppress(Exception)` вокруг DDL заменён явной проверкой таблиц (на PostgreSQL сбой DDL портил транзакцию шага). Стражи: `tests/test_review_p0.py` |
+| Массовые операции перегенерировали График по-ячеечно | 🟢 закрыт 20.10.2026 | `bulk` / `range-absence` / `copy` пишут Табель с `rebuild=False` и делают ОДНУ перегенерацию на затронутый месяц (`schedule_view.rebuild_generated_for_days`): 12 ячеек — 373 → 265 запросов, перегенераций 13 → 1; на пределе 500×366 экономия ~1,6 млн запросов |
+| `year`/`month` без валидации → 500 на запросе клиента | 🟢 закрыт 20.10.2026 | единый `interface/period_params.ensure_period` во всех 14 точках ввода периода (422 + `{"detail": …}`); параметризованный страж `test_bad_period_is_422_not_500` |
 | Бюджет УТ линейный по штату (по спеке) | 🟡 | батч-порты `load_inputs` на группу сотрудников; кэш Settings уже есть |
 | SPA без сборки, один app.js ~2 400 строк | 🟢 закрыт 15.10.2026 | app.js 2262 → 369 строк: разделы — 9 файлов `static/js/modules/` (C6); границы держат gen_js_globals + ESLint no-undef + смоуки (ADR-0008); esbuild — при росте команды |
 | Кросс-модульные `relationship()` на каталог (R6) | 🟢 закрыт 20.10.2026 | все 9 связей удалены, навигации → батч-словари/`db.get` через identity map; allowlist в `tests/test_modules_architecture.py` пуст и охраняется тестом (`docs/CHANGES-2026-10-20-debt2-r6-relationships.md`) |

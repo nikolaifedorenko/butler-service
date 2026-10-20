@@ -21,8 +21,6 @@ raw-DDL и переносов данных, и в точке входа её б�
 """
 from __future__ import annotations
 
-import contextlib
-
 from ..core.db import SessionLocal, engine
 from ..core.time import local_date
 
@@ -474,20 +472,30 @@ def migrate_night_cars() -> None:
     from sqlalchemy import text
 
     insp = sa_inspect(engine)
+    existing = set(insp.get_table_names())
     with engine.begin() as con:
-        for idx in (
-            "CREATE INDEX IF NOT EXISTS ix_night_sections_report ON night_area_sections (report_id)",
-            "CREATE INDEX IF NOT EXISTS ix_night_items_section ON night_check_items (section_id)",
-            "CREATE INDEX IF NOT EXISTS ix_car_history_car_ts ON car_history (car_id, ts)",
-            "CREATE INDEX IF NOT EXISTS ix_photos_kind_ref ON photos (kind, ref_id)",
+        for table, idx in (
+            ("night_area_sections",
+             "CREATE INDEX IF NOT EXISTS ix_night_sections_report ON night_area_sections (report_id)"),
+            ("night_check_items",
+             "CREATE INDEX IF NOT EXISTS ix_night_items_section ON night_check_items (section_id)"),
+            ("car_history",
+             "CREATE INDEX IF NOT EXISTS ix_car_history_car_ts ON car_history (car_id, ts)"),
+            ("photos",
+             "CREATE INDEX IF NOT EXISTS ix_photos_kind_ref ON photos (kind, ref_id)"),
             # ответственные службы (этап 3): поиск пунктов и снимков отчёта по службе
-            "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_service"
-            " ON zone_checklist_items (service_id)",
-            "CREATE INDEX IF NOT EXISTS ix_night_check_items_service"
-            " ON night_check_items (service_id)",
+            ("zone_checklist_items",
+             "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_service"
+             " ON zone_checklist_items (service_id)"),
+            ("night_check_items",
+             "CREATE INDEX IF NOT EXISTS ix_night_check_items_service"
+             " ON night_check_items (service_id)"),
         ):
-            # таблица ещё не создана — create_all разберётся сам
-            with contextlib.suppress(Exception):
+            # Таблицы ещё нет — её вместе с индексами модели создаст create_all.
+            # Раньше здесь стоял contextlib.suppress(Exception): на PostgreSQL любой
+            # сбой DDL портит транзакцию, и следующий шаг в этом же engine.begin()
+            # ронял старт (P0-2 ревью 20.10.2026) — теперь пропускаем явно.
+            if table in existing:
                 con.execute(text(idx))
     # шаг «Проверка электрокаров» для старых открытых смен, где его не было
     if insp.has_table("night_reports") and insp.has_table("night_area_sections"):
@@ -526,17 +534,25 @@ def migrate_night_zones() -> None:
     if not (insp.has_table("night_areas") and insp.has_table("night_zones")):
         return                      # таблицы ещё не созданы — create_all разберётся сам
     ts = now_local()
+    existing = set(insp.get_table_names())
     with engine.begin() as con:
-        for idx in (
-            "CREATE INDEX IF NOT EXISTS ix_night_areas_zone_id ON night_areas (zone_id)",
-            "CREATE INDEX IF NOT EXISTS ix_night_area_sections_zone ON night_area_sections (zone_id)",
-            "CREATE INDEX IF NOT EXISTS ix_night_check_items_zone_item ON night_check_items (zone_item_id)",
-            "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_zone ON zone_checklist_items (zone_id)",
-            "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_area ON checklist_overrides (area_id)",
-            "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_zone_item ON checklist_overrides (zone_item_id)",
+        for table, idx in (
+            ("night_areas",
+             "CREATE INDEX IF NOT EXISTS ix_night_areas_zone_id ON night_areas (zone_id)"),
+            ("night_area_sections",
+             "CREATE INDEX IF NOT EXISTS ix_night_area_sections_zone ON night_area_sections (zone_id)"),
+            ("night_check_items",
+             "CREATE INDEX IF NOT EXISTS ix_night_check_items_zone_item ON night_check_items (zone_item_id)"),
+            ("zone_checklist_items",
+             "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_zone ON zone_checklist_items (zone_id)"),
+            ("checklist_overrides",
+             "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_area ON checklist_overrides (area_id)"),
+            ("checklist_overrides",
+             "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_zone_item ON checklist_overrides (zone_item_id)"),
         ):
             # таблицы шаблона зоны/правок может ещё не быть — не мешаем create_all
-            with contextlib.suppress(Exception):
+            # (явная проверка вместо suppress(Exception): см. migrate_night_cars)
+            if table in existing:
                 con.execute(text(idx))
         cats = [r[0] for r in con.execute(text(
             "SELECT DISTINCT COALESCE(category, '') FROM night_areas WHERE zone_id IS NULL"))]

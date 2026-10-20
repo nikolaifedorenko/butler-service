@@ -295,7 +295,7 @@ async function refreshDoublePay() {
         return toast('Введите список дат или период', 'warn');
       try {
         const r = await api('/api/doublepay/days', { method: 'POST', body: payload });
-        toast(`Добавлено: ${r.added}, обновлено: ${r.updated}. Пересчитано строк табеля: ${r.recalculated}`, 'ok');
+        toast(`Добавлено: ${r.added}, обновлено: ${r.updated}. Переработки этих дней считаются двойными`, 'ok');
         refreshDoublePay();
       } catch (e) { toast(e.message, 'err'); }
     };
@@ -311,18 +311,18 @@ async function refreshDoublePay() {
         return toast('Выберите сотрудника и укажите даты периода', 'warn');
       try {
         const r = await api('/api/doublepay/vip', { method: 'POST', body: payload });
-        toast(`Назначены двойные переработки: ${r.item.days} ${plural(r.item.days, 'день', 'дня', 'дней')}. Пересчитано строк: ${r.recalculated}`, 'ok');
+        toast(`Назначены двойные переработки: ${r.item.days} ${plural(r.item.days, 'день', 'дня', 'дней')}`, 'ok');
         refreshDoublePay();
       } catch (e) { toast(e.message, 'err'); }
     };
   }
   body.querySelectorAll('[data-day-del]').forEach(b => b.onclick = () => {
     confirmDialog('Удалить день двойной оплаты?',
-      'Переработки этого дня снова будут считаться одинарными (ДЯ/ДН). Табель пересчитается автоматически.',
+      'Переработки этого дня снова будут считаться одинарными (ДЯ/ДН). Расчёт подхватит изменение сразу.',
       async () => {
         try {
-          const r = await api(`/api/doublepay/days/${b.dataset.dayDel}`, { method: 'DELETE' });
-          toast(`День удалён. Пересчитано строк табеля: ${r.recalculated}`, 'ok');
+          await api(`/api/doublepay/days/${b.dataset.dayDel}`, { method: 'DELETE' });
+          toast('День удалён. Переработки этого дня снова считаются одинарными', 'ok');
           refreshDoublePay();
         } catch (e) { toast(e.message, 'err'); }
       }, 'Удалить');
@@ -332,8 +332,8 @@ async function refreshDoublePay() {
       'Переработки сотрудника в эти дни вернутся к обычному тарифу (если день не остался в календаре двойной оплаты).',
       async () => {
         try {
-          const r = await api(`/api/doublepay/vip/${b.dataset.vipDel}`, { method: 'DELETE' });
-          toast(`Период удалён. Пересчитано строк табеля: ${r.recalculated}`, 'ok');
+          await api(`/api/doublepay/vip/${b.dataset.vipDel}`, { method: 'DELETE' });
+          toast('Период удалён. Переработки вернулись к обычному тарифу', 'ok');
           refreshDoublePay();
         } catch (e) { toast(e.message, 'err'); }
       }, 'Удалить');

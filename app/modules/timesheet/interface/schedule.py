@@ -62,13 +62,14 @@ from ..application.engine_common import (
 from ..application.errors import ApplicationError
 from ..application.months import month_period
 from ..application.schedule_patterns import pattern_list, validate_cycle_string
-from ..application.schedule_view import rebuild_generated_schedule
+from ..application.schedule_view import rebuild_generated_for_days, rebuild_generated_schedule
 from ..application.tabel_fill import fill_timesheet_from_cycles
 from ..domain.day_card.fmt_hours import fmt_hours
 from ..domain.settings.types import Settings
 from ..domain.types.entities import Period, Shift
 from ..domain.types.errors import DomainError
 from .formatting import error_text
+from .period_params import ensure_period
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 _HHMM = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
@@ -247,10 +248,7 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
              db: Session = Depends(get_db)):
     """Сетка Графика: ФИО × дни месяца; ячейка — Табель-код, отрезки смен (generated/
     manual) и согласованные отсутствия (логический разрез)."""
-    if not (1 <= month <= 12):
-        raise HTTPException(status_code=422, detail="month должен быть 1..12")
-    if not (1 <= year <= 9999):
-        raise HTTPException(status_code=422, detail="year должен быть 1..9999")
+    ensure_period(year, month)
     first, last = _month_bounds(year, month)
     period = month_period(year, month)
     days = [first + dt.timedelta(days=i) for i in range((last - first).days + 1)]
@@ -754,6 +752,10 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
                             detail="Код несёт плановые часы — это не отсутствие")
     ports = engine_ports(db, principal, now_utc())
     written, skipped, errors = 0, 0, []
+    # дни, которые ДЕЙСТВИТЕЛЬНО записаны: График перегенерируется один раз на
+    # затронутый месяц после цикла, а не на каждую ячейку (P0-3 ревью 20.10.2026 —
+    # на пределе 500×366 по-ячеечная перегенерация давала сотни тысяч запросов)
+    touched: dict[int, list[dt.date]] = {}
     for employee_id in payload.employee_ids:
         periods = periods_of(db, employee_id)
         day = payload.first
@@ -772,17 +774,21 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
                     day += dt.timedelta(days=1)
                     continue
             try:
-                timesheet_edit.save_timesheet_day(str(employee_id), day, code, None, ports)
+                timesheet_edit.save_timesheet_day(str(employee_id), day, code, None, ports,
+                                                  rebuild=False)
                 row = db.scalar(select(TabelDay).where(TabelDay.employee_id == employee_id,
                                                        TabelDay.date == day))
                 if row is not None and payload.note:
                     row.note = payload.note[:255]
                 written += 1
+                touched.setdefault(employee_id, []).append(day)
             except (DomainError, ApplicationError) as exc:
                 # не HTTP-ошибка: массовая операция, отказ дня — в payload (200)
                 errors.append({"employee_id": employee_id, "date": day.isoformat(),
                                "error": error_text(exc)})
             day += dt.timedelta(days=1)
+    for employee_id, days in touched.items():
+        rebuild_generated_for_days(str(employee_id), days, ports)
     audit(db, principal, "schedule_range_absence", f"{payload.first}..{payload.last}",
           {"employees": payload.employee_ids, "code": code, "written": written})
     db.commit()
@@ -1082,6 +1088,7 @@ def continue_schedule(payload: ContinueIn, principal: Principal = Depends(requir
                       db: Session = Depends(get_db)):
     """«Продолжить график»: заполняет Табель следующего месяца по циклам и
     перегенерирует График."""
+    ensure_period(payload.year, payload.month)
     first, last = _month_bounds(payload.year, payload.month)
     emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
     emps = [e for e in emps if e is not None and e.deleted_at is None]
@@ -1109,6 +1116,8 @@ def copy_period(payload: CopyIn, principal: Principal = Depends(require_perm("sc
     """Копирование ячеек Табеля месяц-в-месяц (по дням месяца); закрытые периоды
     не трогаются (16.5)."""
     from ..application import timesheet_edit
+    ensure_period(payload.src_year, payload.src_month)
+    ensure_period(payload.dst_year, payload.dst_month)
     src_first, src_last = _month_bounds(payload.src_year, payload.src_month)
     dst_first, dst_last = _month_bounds(payload.dst_year, payload.dst_month)
     ports = engine_ports(db, principal, now_utc())
@@ -1119,6 +1128,7 @@ def copy_period(payload: CopyIn, principal: Principal = Depends(require_perm("sc
         TabelDay.employee_id.in_([e.id for e in emps]), TabelDay.date >= src_first,
         TabelDay.date <= src_last))} if emps else {}
     copied, skipped, errors = 0, 0, []
+    touched: dict[int, list[dt.date]] = {}   # пакетная перегенерация Графика (P0-3)
     for emp in emps:
         if timesheet_edit.lock_state(str(emp.id), dst_first, ports) == "locked":
             skipped += 1
@@ -1136,12 +1146,15 @@ def copy_period(payload: CopyIn, principal: Principal = Depends(require_perm("sc
             try:
                 timesheet_edit.save_timesheet_day(
                     str(emp.id), dst_day, src.code,
-                    src.plan_minutes or None, ports)
+                    src.plan_minutes or None, ports, rebuild=False)
                 copied += 1
+                touched.setdefault(emp.id, []).append(dst_day)
             except (DomainError, ApplicationError) as exc:
                 # не HTTP-ошибка: массовое копирование, отказ дня — в payload (200)
                 errors.append({"employee_id": emp.id, "date": dst_day.isoformat(),
                                "error": error_text(exc)})
+    for emp_id, days in touched.items():
+        rebuild_generated_for_days(str(emp_id), days, ports)
     audit(db, principal, "schedule_copy",
           f"{payload.src_year}-{payload.src_month:02d}→{payload.dst_year}-{payload.dst_month:02d}",
           {"copied": copied})
@@ -1162,6 +1175,7 @@ def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
     """Очистка Табеля месяца (и сгенерированного Графика); manual-строки — только с
     флагом manual_too. Закрытые периоды не трогаются."""
     from ..application import timesheet_edit
+    ensure_period(payload.year, payload.month)
     first, last = _month_bounds(payload.year, payload.month)
     ports = engine_ports(db, principal, now_utc())
     emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
@@ -1203,10 +1217,7 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
     Записи удаляются с аудитом; напечатанные ранее заявления остаются в истории
     журнала. Закрытые периоды не трогаются (RUL-CLOSED-PERIOD-IMMUTABLE)."""
     from ..application import timesheet_edit
-    if not (1 <= payload.month <= 12):
-        raise HTTPException(status_code=422, detail="month должен быть 1..12")
-    if not (1 <= payload.year <= 9999):
-        raise HTTPException(status_code=422, detail="year должен быть 1..9999")
+    ensure_period(payload.year, payload.month)
     first, last = _month_bounds(payload.year, payload.month)
     ports = engine_ports(db, principal, now_utc())
     emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]

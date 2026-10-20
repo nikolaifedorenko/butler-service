@@ -32,6 +32,7 @@ from .core.auth import Principal, optional_principal
 from .core.config import settings
 from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
+from .core.startup_lock import startup_lock
 from .core.time import now_local
 from .modules.access.interface import access_api, auth_routes
 from .modules.audit.interface import audit_api
@@ -59,7 +60,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
 def init_db() -> None:
-    """Создать таблицы, прогнать миграцию и заполнить демо-данными при первом запуске."""
+    """Создать таблицы, прогнать миграцию и заполнить демо-данными при первом запуске.
+
+    Шаги сериализованы замком (core.startup_lock): прод-профиль поднимает несколько
+    воркеров uvicorn (docker-compose.prod.yml), а без сериализации они одновременно
+    делают `ALTER TABLE … ADD COLUMN` («duplicate column name» → падение воркера) и
+    `sync_reports(force=True)` (IntegrityError по night_reports.date unique) —
+    P0-2 ревью 20.10.2026. Второй воркер ждёт первого и повторяет те же идемпотентные
+    шаги (секунды); в PostgreSQL замок — advisory-lock, он же держит и несколько
+    контейнеров приложения.
+    """
+    with startup_lock():
+        _init_db_steps()
+
+
+def _init_db_steps() -> None:
+    """Тело инициализации схемы — вызывается ТОЛЬКО под замком startup_lock."""
     registry.wire()   # реестр моделей + провайдеры core (R5: core не импортирует модули)
     Base.metadata.create_all(bind=engine)
     migrate_db()
