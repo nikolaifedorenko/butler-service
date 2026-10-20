@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from .auth import Principal, current_principal
 from .db import get_db
-from .models import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR, AccessGrant, AccessGroupMember
+from .identity import AccessGrant, AccessGroupMember
+from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 
 PERMISSIONS: list[dict] = [
     {"key": "presence.view", "section": "Кто на работе / Посещения", "title": "Просмотр присутствия"},

@@ -19,8 +19,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..db import Base
-from .common import ROLE_EMPLOYEE, utcnow
+from ..core.db import Base
+from ..core.identity import User  # noqa: F401 — связь Employee.user
+from ..core.time import utcnow
 
 if TYPE_CHECKING:
     from .cars import Car
@@ -236,18 +237,8 @@ class VipDoublePay(Base):
     employee: Mapped[Employee] = relationship()
 
 
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(256))
-    role: Mapped[str] = mapped_column(String(20), default=ROLE_EMPLOYEE)
-    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
-    token_version: Mapped[int] = mapped_column(Integer, default=0)
-
-    employee: Mapped[Optional[Employee]] = relationship(back_populates="user")
+# User переехал в core/identity.py (фаза C1, 20.10.2026): учётные записи —
+# фундамент аутентификации и прав. Employee.user разрешается реестром SQLAlchemy
+# (импорт User ниже — для аннотации и явной связи).
 
 

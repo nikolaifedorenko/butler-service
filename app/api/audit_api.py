@@ -11,11 +11,12 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal
-from ..db import get_db
-from ..deps import safe_sheet_cell, utc_to_local
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.format import safe_sheet_cell
+from ..core.permissions import require_perm
+from ..core.time import utc_to_local
 from ..models import AuditLog
-from ..permissions import require_perm
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 

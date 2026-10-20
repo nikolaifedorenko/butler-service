@@ -65,7 +65,7 @@ def _set_rules(admin_client, **rules) -> None:
     (b"\xff\xd8\xff\xe0" + b"\x00" * 64, "shot.jpg", ("photo", "jpg")),
 ])
 def test_sniff_media_opredelyaet_tip_po_baytam(blob, name, expected):
-    from app.photos import sniff_media
+    from app.core.media import sniff_media
 
     assert sniff_media(blob, name) == expected
 
@@ -77,7 +77,7 @@ def test_sniff_media_opredelyaet_tip_po_baytam(blob, name, expected):
     (b"\x00" * 64, "video.mp4"),                # имя не спасает: содержимое не медиа
 ])
 def test_ne_media_ne_prinimaem(blob, name):
-    from app.photos import sniff_media
+    from app.core.media import sniff_media
 
     assert sniff_media(blob, name) == ("", "")
 
@@ -165,8 +165,8 @@ def test_limit_deystvuet_na_svoy_tip(admin_client, employee_client, open_shift):
 # ═══════════════════════ срок хранения: свой у видео ═══════════════════════
 
 def test_srok_hraneniya_svoy_u_foto_i_video(admin_client, employee_client, db):
+    from app.core.media import cleanup_photos, media_limits, photos_of, retention_days, save_photo
     from app.models import Photo
-    from app.photos import cleanup_photos, media_limits, photos_of, retention_days, save_photo
 
     _set_rules(admin_client, photo_retention_days=90, video_retention_days=0)
     db.expire_all()
@@ -198,7 +198,7 @@ def test_srok_hraneniya_svoy_u_foto_i_video(admin_client, employee_client, db):
     finally:
         # сначала убираем файлы и записи своей сессией, потом возвращаем правила
         # через API: иначе два незакоммиченных соединения блокируют SQLite
-        from app.photos import unlink_photo
+        from app.core.media import unlink_photo
         for p in (photo, video):
             fresh = db.get(Photo, p.id)
             if fresh is not None:
@@ -213,7 +213,7 @@ def test_srok_hraneniya_svoy_u_foto_i_video(admin_client, employee_client, db):
 
 def test_video_nelzya_prislat_kak_foto(db):
     """media_type, заявленный вызывающим кодом, обязан совпасть с содержимым."""
-    from app.photos import save_photo
+    from app.core.media import save_photo
 
     with pytest.raises(ValueError):
         save_photo(db, kind="night_item", ref_id=1, filename="a.mp4", blob=MP4,

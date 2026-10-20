@@ -12,7 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..db import Base
+from ..core.db import Base
 
 if TYPE_CHECKING:
     from .directory import Employee

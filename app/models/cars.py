@@ -15,12 +15,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..db import Base
+from ..core.db import Base
 
 if TYPE_CHECKING:
     from .directory import Employee
     from .night import NightReport
-from ..deps import now_local
+from ..core.time import now_local
 
 
 class CarLocation(Base):

@@ -27,7 +27,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from app.db import SessionLocal  # noqa: E402
+from app.core.db import SessionLocal  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.models import (  # noqa: E402
     DayModifier,
@@ -152,7 +152,7 @@ class TestHealth(unittest.TestCase):
     def test_07_missing_shifts_migration_is_noop(self):
         """18.10.2026: _migrate_missing_shifts — историческая миграция, no-op.
         Виды отсутствий удалены из сида и модели; словарём правит владелец."""
-        from app.migrations import _migrate_missing_shifts
+        from app.bootstrap.migrations import _migrate_missing_shifts
 
         _migrate_missing_shifts()
         _migrate_missing_shifts()          # идемпотентно
@@ -167,7 +167,7 @@ class TestHealth(unittest.TestCase):
         """16.10.2026: «НБ» — артефакт; 18.10.2026: все виды отсутствий, кроме
         системного «Отпросился», удалены миграцией упрощения. Историческая
         _migrate_remove_sick_unpaid — no-op, идемпотентна."""
-        from app.migrations import _migrate_remove_sick_unpaid
+        from app.bootstrap.migrations import _migrate_remove_sick_unpaid
 
         _migrate_remove_sick_unpaid()
         _migrate_remove_sick_unpaid()

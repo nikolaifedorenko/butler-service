@@ -12,10 +12,15 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ..auth import Principal, audit, can_manage_user, current_principal
 from ..base_schedule import validate_pattern_label
-from ..db import get_db
-from ..deps import local_date, normalize_hex_color, slugify_username
+from ..core.audit import audit
+from ..core.auth import Principal, current_principal
+from ..core.auth_guards import can_manage_user
+from ..core.db import get_db
+from ..core.format import normalize_hex_color
+from ..core.permissions import require_perm
+from ..core.security import hash_password
+from ..core.time import local_date
 from ..employment import open_period, periods_of
 from ..groups import group_choices as group_choices_list
 from ..groups import normalize_group
@@ -35,9 +40,7 @@ from ..models import (
     User,
     utcnow,
 )
-from ..names import suggest_genitive
-from ..permissions import require_perm
-from ..security import hash_password
+from ..names import slugify_username, suggest_genitive
 from ..services import employee_lifecycle as lifecycle
 from ..services.employee_lifecycle import (
     normalize_block_history,
@@ -525,7 +528,7 @@ def employee_history(employee_id: int, principal: Principal = Depends(require_pe
 
 def _current_value(db: Session, emp: Employee) -> str:
     from ..base_schedule import load_base_config, pattern_for_date
-    from ..deps import local_date
+    from ..core.time import local_date
     try:
         pat = pattern_for_date(db, emp, local_date(), cfg=load_base_config(db))
         return (pat.get("value") or "").strip()
@@ -728,7 +731,7 @@ def tabel_values(principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода
     (18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
-    from ..deps import local_date
+    from ..core.time import local_date
     from ..engine.adapters.sql_settings import SqlSettingsAdapter
     from ..engine.application.months import month_period
     from ..services.engine_common import day_code_rows

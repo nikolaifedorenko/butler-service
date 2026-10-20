@@ -21,9 +21,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
-from ..db import get_db
-from ..deps import now_local
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.permissions import require_perm
+from ..core.time import now_local
 from ..notify.chats import list_chats, refresh_chats
 from ..notify.config import load_config, public_config, save_config
 from ..notify.templates import (
@@ -38,7 +40,6 @@ from ..notify.templates import (
 from ..notify.transports import TransportError
 from ..notify.transports.email import send_mail, split_addresses
 from ..notify.transports.telegram import TelegramBot
-from ..permissions import require_perm
 
 router = APIRouter(prefix="/api/notify", tags=["notify"])
 
@@ -235,7 +236,7 @@ def export_dispatches_csv(domain: str = "", limit: int = 2000,
 
     from fastapi.responses import StreamingResponse
 
-    from ..deps import safe_sheet_cell
+    from ..core.format import safe_sheet_cell
     from ..notify.dispatch import dispatch_dict, journal_of
 
     rows = journal_of(db, domain or "", None, limit=limit) if domain else []

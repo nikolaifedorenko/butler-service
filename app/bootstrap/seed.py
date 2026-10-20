@@ -19,9 +19,10 @@ import random
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .base_schedule import save_base_config
-from .deps import local_date, now_local
-from .models import (
+from ..base_schedule import save_base_config
+from ..core.security import hash_password
+from ..core.time import local_date, now_local
+from ..models import (
     ROLE_ADMIN,
     ROLE_EMPLOYEE,
     ROLE_MANAGER,
@@ -38,8 +39,7 @@ from .models import (
     ShiftType,
     User,
 )
-from .schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
-from .security import hash_password
+from ..schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
 
 DEFAULT_PASSWORD = "demo1234"
 
@@ -197,7 +197,7 @@ def seed_if_empty(db: Session) -> bool:
         employees.append((emp, pattern, offset))
     db.flush()
 
-    from .models import EmergencyContact
+    from ..models import EmergencyContact
     demo_contacts = {
         "Иванов": [("Иванова Мария Ивановна", "+7 916 100-20-33", "мать"),
                    ("Иванов Сергей Иванович", "+7 916 100-20-40", "брат")],
@@ -249,8 +249,8 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── планируемые отсутствия текущего месяца — коды Табеля ─────────────────────
-    from .engine.domain.settings.defaults import default_settings
-    from .models import TabelDay
+    from ..engine.domain.settings.defaults import default_settings
+    from ..models import TabelDay
     defaults = default_settings()
 
     def set_absence_code(emp: Employee, d1: int, d2: int, code: str, note: str = "") -> None:
@@ -275,11 +275,11 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── Табель из циклов + График из Табеля (движок v7.1) ─────────────────────
-    from .engine.adapters.factory import build_ports
-    from .engine.application.schedule_view import rebuild_generated_schedule
-    from .engine.domain.types.entities import Period
-    from .engine_bootstrap import bootstrap_engine
-    from .tabel_fill import fill_timesheet_from_cycles
+    from ..engine.adapters.factory import build_ports
+    from ..engine.application.schedule_view import rebuild_generated_schedule
+    from ..engine.domain.types.entities import Period
+    from ..engine_bootstrap import bootstrap_engine
+    from ..tabel_fill import fill_timesheet_from_cycles
     bootstrap_engine(db)                                  # версия справочников v7.1
     fill_result = fill_timesheet_from_cycles(
         db, [e for e, _, _ in employees], acc_start, today + dt.timedelta(days=40))
@@ -301,7 +301,7 @@ def seed_if_empty(db: Session) -> bool:
         away_day -= dt.timedelta(days=1)
 
     def _utc_naive(local: dt.datetime) -> dt.datetime:
-        from .deps import TZ
+        from ..core.time import TZ
         return local.replace(tzinfo=TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
 
     db.add(ScheduleAbsence(employee_id=ivanov.id,
@@ -318,7 +318,7 @@ def seed_if_empty(db: Session) -> bool:
     db.flush()
 
     # ───────────────────── отметки прихода/ухода (от acc_start до сегодня) ─────────────────────
-    from .base_schedule import BlockIndex, load_base_config, pattern_for_date, working_flag
+    from ..base_schedule import BlockIndex, load_base_config, pattern_for_date, working_flag
     base_cfg = load_base_config(db)
     block_index = BlockIndex.load(db, [e.id for e, _, _ in employees])
     now = now_local()
@@ -459,7 +459,7 @@ def _seed_night_dirs(db: Session) -> None:
 
     from sqlalchemy import select
 
-    from .models import (
+    from ..models import (
         ChecklistItem,
         ChecklistOverride,
         NightArea,
@@ -512,13 +512,13 @@ def _seed_night_dirs(db: Session) -> None:
 
 
 def _seed_cars(db: Session, by_name: dict) -> None:
-    from .cars import create_car
-    from .models import CarLocation, User
+    from ..cars import create_car
+    from ..models import CarLocation, User
 
     admin = db.scalar(select(User).where(User.username == "admin"))
     principal = None
     if admin is not None:
-        from .auth import Principal
+        from ..core.auth import Principal
         principal = Principal(user=admin, employee=None)
     for i, loc_name in enumerate(CAR_LOCATIONS, start=10):
         db.add(CarLocation(name=loc_name, sort_order=i, builtin=True))

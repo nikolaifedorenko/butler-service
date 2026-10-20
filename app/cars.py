@@ -21,7 +21,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .deps import now_local
+from .core.time import now_local
 from .models import Car, CarHistory, CarLocation, Employee
 
 STATUS_TITLES = {
@@ -318,7 +318,7 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
                                "key_returned": key_returned, "comment": comment,
                                "auto_maintenance": bad})
     for fname, fbytes in blob_photos:
-        from .photos import save_photo
+        from .core.media import save_photo
         save_photo(db, kind="car_return", ref_id=rec.id, filename=fname, blob=fbytes,
                    user_id=principal.user.id, user_name=principal.name)
     return car_dict(car)
@@ -453,8 +453,8 @@ def night_cars_state(db: Session, report) -> dict:
     В обход попадают ВСЕ активные кары; батлер отмечает только те, что смог взять
     (т.е. свободные на момент проверки). Отметка фиксирует фактическое время — если
     кар возьмут после проверки, супервайзер увидит это (taken_after_check)."""
+    from .core.media import photos_of
     from .models import CarNightCheck
-    from .photos import photos_of
 
     checked = {c.car_id: c for c in db.scalars(
         select(CarNightCheck).where(CarNightCheck.report_id == report.id))}
@@ -553,7 +553,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
                          "location_from": place_before if ch.moved else ""})
     db.flush()          # нужен id отметки — фото привязываются к ней (kind="car_check")
     for fname, fbytes in (blob_photos or []):
-        from .photos import save_photo
+        from .core.media import save_photo
         save_photo(db, kind="car_check", ref_id=ch.id, filename=fname, blob=fbytes,
                    user_id=principal.user.id, user_name=principal.name)
     return {"id": ch.id, "found": ch.found,

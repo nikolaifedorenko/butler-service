@@ -3,7 +3,7 @@
 Вынесено из app/api/employees.py по образцу app/cars.py + тонкого cars_api.py
 (ADR-0006): роутер занимается только HTTP (права, DTO, статусы), обработка и
 бизнес-правила — здесь. Сервис не знает про FastAPI: ошибки — исключения
-services.errors (main.py маппит их в статусы, тело ответа {"detail": …} не
+core.errors (main.py маппит их в статусы, тело ответа {"detail": …} не
 меняется); audit и commit — часть use-case'а. Данные передаются примитивами и
 dataclass'ом BlockChange, а не pydantic-DTO из api-слоя — направление
 зависимостей api → services (контракт import-linter).
@@ -17,9 +17,12 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, can_manage_user
 from ..base_schedule import dump_pattern, validate_pattern_label
-from ..deps import local_date
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.auth_guards import can_manage_user
+from ..core.errors import Conflict, NotFound, Validation
+from ..core.time import local_date
 from ..employment import close_period, open_period, periods_of
 from ..groups import GROUP_META, normalize_group
 from ..models import (
@@ -29,7 +32,6 @@ from ..models import (
     Employee,
     PositionHistory,
 )
-from .errors import Conflict, NotFound, Validation
 
 
 @dataclass

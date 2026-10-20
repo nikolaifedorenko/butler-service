@@ -12,7 +12,7 @@ import hashlib
 
 
 def test_password_hash_current_params():
-    from app.security import _ITERATIONS, hash_password, needs_rehash
+    from app.core.security import _ITERATIONS, hash_password, needs_rehash
 
     assert _ITERATIONS >= 600_000, "OWASP: PBKDF2-SHA256 не ниже 600 000 итераций"
     h = hash_password("x")
@@ -28,8 +28,8 @@ def test_login_rehashes_legacy_password(app_stack):
     from fastapi.testclient import TestClient
     from sqlalchemy import select
 
+    from app.core.security import _ITERATIONS
     from app.models import User
-    from app.security import _ITERATIONS
 
     salt = "11" * 16
     digest = hashlib.pbkdf2_hmac("sha256", b"demo1234", salt.encode(), 120_000).hex()
@@ -74,7 +74,7 @@ def test_security_headers_present(app_stack):
 def test_csp_report_only_toggle(app_stack):
     from fastapi.testclient import TestClient
 
-    from app.config import settings
+    from app.core.config import settings
 
     c = TestClient(app_stack["app"])
     settings.csp_report_only = True
@@ -89,7 +89,7 @@ def test_csp_report_only_toggle(app_stack):
 def test_hsts_only_over_https(app_stack):
     from fastapi.testclient import TestClient
 
-    from app.config import settings
+    from app.core.config import settings
 
     c = TestClient(app_stack["app"])
     assert "strict-transport-security" not in c.get("/api/health").headers
@@ -111,7 +111,7 @@ def test_impersonation_flag_respected(app_stack):
     15.10.2026), при ALLOW_IMPERSONATION=0 маршрут отдаёт 403."""
     from fastapi.testclient import TestClient
 
-    from app.config import Settings, settings
+    from app.core.config import Settings, settings
 
     assert Settings.model_fields["allow_impersonation"].default is True, \
         "демо-вход нужен по умолчанию (решение владельца 15.10.2026)"
@@ -130,7 +130,7 @@ def test_client_ip_xff_only_when_trusted(app_stack):
     from types import SimpleNamespace
 
     from app.api.auth_routes import _client_ip
-    from app.config import settings
+    from app.core.config import settings
 
     req = SimpleNamespace(headers={"x-forwarded-for": "1.2.3.4"},
                           client=SimpleNamespace(host="9.9.9.9"))

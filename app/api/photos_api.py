@@ -21,10 +21,10 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, current_principal
-from ..db import get_db
-from ..photos import delete_photo as delete_photo_usecase
-from ..photos import media_limits, resolve_photo_file
+from ..core.auth import Principal, current_principal
+from ..core.db import get_db
+from ..core.media import delete_photo as delete_photo_usecase
+from ..core.media import media_limits, resolve_photo_file
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
 

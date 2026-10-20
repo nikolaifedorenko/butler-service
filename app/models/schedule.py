@@ -16,8 +16,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..db import Base
-from .common import utcnow
+from ..core.db import Base
+from ..core.time import utcnow
 
 if TYPE_CHECKING:
     from .directory import Employee

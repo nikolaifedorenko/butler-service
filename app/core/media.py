@@ -24,16 +24,45 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import DateTime, ForeignKey, Integer, String, select
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .auth import audit
-from .deps import now_local
-from .models import Photo
-from .services.errors import Forbidden, Gone, NotFound, PayloadTooLarge
+from .audit import audit
+from .db import Base
+from .errors import Forbidden, Gone, NotFound, PayloadTooLarge
+from .time import now_local
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# app/core/media.py → корень проекта на ДВА уровня выше app (был app/photos.py —
+# на один). data/uploads живёт в корне проекта — путь критичен для уже загруженных файлов.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 UPLOAD_ROOT = BASE_DIR / "data" / "uploads"
+
+
+class Photo(Base):
+    """Фото и видео (комментарии к «Не ОК», замечания по возврату кара).
+
+    Храним оригиналы на диске в data/uploads/YYYY/MM/, путь относительно BASE_DIR.
+    media_type — "photo" (по умолчанию) или "video": у видео свой лимит размера
+    (video_max_mb; 50 МБ — предел загрузки в Telegram Bot API) и свой срок хранения
+    (video_retention_days). Колонка добавлена позже фото, поэтому у старых записей
+    она пустая и трактуется как "photo".
+
+    Срок хранения настраивается: старые файлы удаляет cleanup_photos() при старте
+    сервера; запись остаётся (url пустой, missing=True) — комментарии не теряются.
+    """
+
+    __tablename__ = "photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)   # night_item | car_return | car_check
+    ref_id: Mapped[int] = mapped_column(Integer, index=True)    # id связанной записи
+    filename: Mapped[str] = mapped_column(String(255), default="")
+    path: Mapped[str] = mapped_column(String(400), default="")  # относительный путь от корня проекта
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    media_type: Mapped[str] = mapped_column(String(8), default="photo")   # photo | video
+    uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    uploaded_by_name: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
 
 ALLOWED_EXT = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
                "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp"}
@@ -99,11 +128,22 @@ def sniff_media(blob: bytes, filename: str = "") -> tuple[str, str]:
     return "", ""
 
 
+# Лимиты медиа хранятся в «прочих правилах объекта» (таблица settings), которой
+# владеет прикладной слой. core не импортирует модули (R5), поэтому правила
+# читаются через провайдера: bootstrap/registry.py регистрирует schedule_helpers.
+# load_rules при старте; без провайдера действуют значения по умолчанию.
+_RULES_PROVIDER = None
+
+
+def set_rules_provider(fn) -> None:
+    """Регистрирует функцию (db) -> dict «прочих правил объекта» (composition root)."""
+    global _RULES_PROVIDER
+    _RULES_PROVIDER = fn
+
+
 def media_limits(db: Session) -> dict:
     """Настроенные объектом лимиты медиа: размер (МБ) и срок хранения (дни)."""
-    from .schedule_helpers import load_rules
-
-    r = load_rules(db)
+    r = _RULES_PROVIDER(db) if _RULES_PROVIDER is not None else {}
     return {"photo_max_mb": r.get("photo_max_mb", 12), "video_max_mb": r.get("video_max_mb", 50),
             "photo_retention_days": r.get("photo_retention_days", 180),
             "video_retention_days": r.get("video_retention_days", 180)}

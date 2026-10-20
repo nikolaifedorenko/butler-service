@@ -17,9 +17,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
-from ..db import get_db
-from ..deps import safe_sheet_cell
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.format import safe_sheet_cell
+from ..core.permissions import principal_permissions, require_perm
 from ..engine.application.close_period import close_period
 from ..engine.application.errors import ApplicationError
 from ..engine.application.months import (
@@ -36,7 +38,6 @@ from ..engine.domain.types.entities import Employment, Period
 from ..engine.domain.types.errors import DomainError
 from ..engine.interface.serialize import plain
 from ..engine.interface.views import period_view_dict
-from ..permissions import principal_permissions, require_perm
 from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
 
 router = APIRouter(prefix="/api/mgmt", tags=["mgmt-timesheet"])

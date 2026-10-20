@@ -5,7 +5,7 @@ Use-case'ы экрана «Недостатки смены»: собрать п�
 
 Границы: домен (``app/night.py``) не знает про транспорт, транспорт
 (``app/notify``) — про ночной отчёт; связывает их этот сервис. Ошибки —
-исключения ``services.errors`` (main.py маппит их в статусы), audit и commit —
+исключения ``core.errors`` (main.py маппит их в статусы), audit и commit —
 часть use-case'а (ADR-0006).
 
 Правила отправки (решения владельца от 19.10.2026):
@@ -25,15 +25,16 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
-from ..deps import now_local
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.errors import Conflict, Validation
+from ..core.time import now_local
 from ..models import NightCheckItem, NightReport
 from ..night import defects_of, duty_of
 from ..notify.config import load_config
 from ..notify.dispatch import attachments_of, dispatch_dict, journal_of, send_group
 from ..notify.recipients import group_by_service, message_context
 from ..notify.templates import PLACEHOLDERS, render_template, template_of
-from .errors import Conflict, Validation
 
 DOMAIN = "night"
 

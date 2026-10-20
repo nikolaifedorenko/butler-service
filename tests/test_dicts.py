@@ -97,7 +97,7 @@ class TestDicts(unittest.TestCase):
         """Значение из карточки, которого нет в справочнике, попадает туда при миграции."""
         from sqlalchemy import select
 
-        from app.db import SessionLocal
+        from app.core.db import SessionLocal
         from app.models import Employee, Subdivision
 
         db = SessionLocal()

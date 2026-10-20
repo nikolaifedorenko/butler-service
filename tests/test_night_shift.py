@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from app.deps import now_local
+from app.core.time import now_local
 from app.night import (
     SHIFT_END,
     SHIFT_START,

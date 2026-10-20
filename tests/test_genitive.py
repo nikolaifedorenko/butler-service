@@ -20,7 +20,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.deps import local_date  # noqa: E402
+from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.names import suggest_genitive  # noqa: E402
 

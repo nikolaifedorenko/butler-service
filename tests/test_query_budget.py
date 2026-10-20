@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from app.deps import local_date
+from app.core.time import local_date
 
 SCHEDULE_BUDGET = 40        # сетка Графика: батч-запросы, не зависит от штата
 BOARD_BUDGET = 20           # доска «Отметки»: 4 батч-порта + разрешение Settings (16.2)

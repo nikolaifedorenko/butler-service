@@ -17,8 +17,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
-from ..db import get_db
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.permissions import require_perm
 from ..doc_render import (
     CODE_RE,
     PLACEHOLDER_HELP,
@@ -36,7 +38,6 @@ from ..doc_render import (
 from ..doc_templates import load_doc_templates
 from ..models import Employee, ShiftType, StatementKind
 from ..pdf_render import docx_to_pdf
-from ..permissions import require_perm
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 

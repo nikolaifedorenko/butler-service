@@ -25,7 +25,7 @@ def _login(app, username: str) -> TestClient:
 def test_logout_otzyvaet_skopirovannuyu_cookie(app_stack, admin_client):
     """Отдельный пользователь: logout отзывает ВСЕ сессии пользователя, и общий
     демо-логин сломал бы сессии других тестов."""
-    from app.config import settings
+    from app.core.config import settings
 
     r = admin_client.post("/api/employees", json={
         "full_name": "Выходов Тест Тестович", "username": "logout.test",
@@ -45,7 +45,7 @@ def test_logout_otzyvaet_skopirovannuyu_cookie(app_stack, admin_client):
 
 
 def test_srok_sessii_po_umolchaniyu_ne_bolee_48_chasov():
-    from app.config import Settings
+    from app.core.config import Settings
 
     assert Settings.model_fields["session_ttl_hours"].default <= 48
 
@@ -67,7 +67,7 @@ def test_cvet_tipa_smeny_tolko_hex(admin_client, bad):
 
 
 def test_normalize_hex_color():
-    from app.deps import normalize_hex_color
+    from app.core.format import normalize_hex_color
 
     assert normalize_hex_color("#ABCDEF", "#000") == "#abcdef"
     assert normalize_hex_color("#abc", "#000") == "#abc"
@@ -83,8 +83,8 @@ def test_migraciya_v7_ne_udalyaet_dannye_bez_markera(app_stack):
     """Восстановили бэкап без маркера engine_v7_reset → данные Табеля обязаны уцелеть."""
     from sqlalchemy import func, select, text
 
-    from app.db import engine
-    from app.migrations import migrate_engine_v7
+    from app.bootstrap.migrations import migrate_engine_v7
+    from app.core.db import engine
     from app.models import TabelDay
 
     S = app_stack["SessionLocal"]

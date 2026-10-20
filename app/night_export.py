@@ -21,9 +21,9 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from .deps import WD_SHORT
+from .core.media import BASE_DIR
+from .core.time import WD_SHORT
 from .night import report_dict
-from .photos import BASE_DIR
 
 
 def _fmt_ts(iso: Optional[str]) -> str:

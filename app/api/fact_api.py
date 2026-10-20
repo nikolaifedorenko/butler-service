@@ -23,9 +23,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal
-from ..db import get_db
-from ..deps import TZ
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.permissions import require_perm
+from ..core.time import TZ
 from ..engine.application.errors import ApplicationError
 from ..engine.application.months import month_period, period_containing
 from ..engine.application.period_view import day_views
@@ -38,7 +39,6 @@ from ..engine.domain.types.errors import ConfigError, DomainError
 from ..engine.interface.formatting import hm, local_hm
 from ..engine.interface.views import flag_dict, session_view_dict
 from ..models import Employee
-from ..permissions import require_perm
 from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc, period_employees
 
 router = APIRouter(prefix="/api/fact", tags=["fact"])
