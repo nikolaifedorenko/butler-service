@@ -714,7 +714,7 @@ function exportNight(fmt) {
    night.edit: ключ каталога прав вместо прежней ролевой проверки is_manager
    (базово выдан admin/manager/supervisor — поведение не изменилось, но право
    можно выдать/снять грантом в «Настройках → Права доступа»).
-   Вызывается из реестра section_settings.js (подключается после этого файла). */
+   Вызывается из реестра modules/settings.js (подключается после этого файла). */
 async function renderNightDictScreen(host) {
   const render = async () => {
     const [zr, ar, sr] = await Promise.all([api('/api/night/zones'), api('/api/night/areas'),

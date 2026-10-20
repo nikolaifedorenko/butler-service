@@ -34,13 +34,14 @@ DECL = re.compile(
 def collect() -> dict[str, str]:
     names: dict[str, str] = {}
     dupes: dict[str, list[str]] = {}
-    for js in sorted(JS_DIR.glob("*.js")):
+    for js in sorted(JS_DIR.rglob("*.js")):   # рекурсивно: разделы — в js/modules/ (фаза C6)
+        rel = js.relative_to(JS_DIR).as_posix()
         text = js.read_text(encoding="utf-8")
         for m in DECL.finditer(text):
             name = next(g for g in m.groups() if g)
-            if name in names and names[name] != js.name:
-                dupes.setdefault(name, [names[name]]).append(js.name)
-            names.setdefault(name, js.name)
+            if name in names and names[name] != rel:
+                dupes.setdefault(name, [names[name]]).append(rel)
+            names.setdefault(name, rel)
     if dupes:
         # const/let с одинаковым именем в двух классических скриптах — это
         # «Identifier has already been declared»: второй файл не выполнится ЦЕЛИКОМ
@@ -57,7 +58,8 @@ def used_elsewhere(names: dict[str, str]) -> dict[str, list[str]]:
     имена мёртвыми. Список позволяет не отключать правило целиком — по-настоящему
     неиспользуемые функции (мёртвый код) продолжают находиться.
     """
-    texts = {js.name: js.read_text(encoding="utf-8") for js in JS_DIR.glob("*.js")}
+    texts = {js.relative_to(JS_DIR).as_posix(): js.read_text(encoding="utf-8")
+             for js in JS_DIR.rglob("*.js")}
     out: dict[str, list[str]] = {fname: [] for fname in texts}
     for name, owner in names.items():
         pattern = re.compile(r"(?<![\w$.])" + re.escape(name) + r"(?![\w$])")
@@ -101,7 +103,7 @@ def main() -> int:
         print(f"✓ js_globals.json актуален ({len(names)} имён)")
         return 0
     OUT.write_text(text, encoding="utf-8")
-    print(f"✓ tools/js_globals.json: {len(names)} имён из {len(list(JS_DIR.glob('*.js')))} файлов")
+    print(f"✓ tools/js_globals.json: {len(names)} имён из {len(list(JS_DIR.rglob('*.js')))} файлов")
     return 0
 
 

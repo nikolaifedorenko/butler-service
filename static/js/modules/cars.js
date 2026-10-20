@@ -577,7 +577,7 @@ function bindPhotoDelete(root, after) {
    сюда (settingsOpen). Прежняя модалка «Места стоянки» заменена этим экраном.
 
    Права: видимость экрана — cars.view (+ вход в «Настройки»), правки — cars.manage.
-   Вызывается из реестра section_settings.js (подключается после этого файла). */
+   Вызывается из реестра modules/settings.js (подключается после этого файла). */
 async function renderCarsDictScreen(host) {
   const render = async () => {
     const [data, meta, locs] = await Promise.all([
