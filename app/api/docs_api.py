@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, require_manager
+from ..auth import Principal, audit
 from ..db import get_db
 from ..doc_render import (
     CODE_RE,
@@ -36,6 +36,7 @@ from ..doc_render import (
 from ..doc_templates import load_doc_templates
 from ..models import Employee, ShiftType, StatementKind
 from ..pdf_render import docx_to_pdf
+from ..permissions import require_perm
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 
@@ -84,7 +85,7 @@ def _kind_dict(k: StatementKind) -> dict:
 
 # ─────────────────────────── виды заявлений (CRUD) ───────────────────────────
 @router.get("/kinds")
-def list_kinds(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def list_kinds(principal: Principal = Depends(require_perm("settings.view")), db: Session = Depends(get_db)):
     kinds = db.scalars(select(StatementKind).order_by(
         StatementKind.sort_order, StatementKind.name)).all()
     return {"kinds": [_kind_dict(k) for k in kinds],
@@ -106,7 +107,7 @@ class KindUpdate(BaseModel):
 
 
 @router.post("/kinds")
-def create_kind(payload: KindIn, principal: Principal = Depends(require_manager),
+def create_kind(payload: KindIn, principal: Principal = Depends(require_perm("settings.edit")),
                 db: Session = Depends(get_db)):
     code = payload.code.strip().lower()
     if not CODE_RE.match(code):
@@ -126,7 +127,7 @@ def create_kind(payload: KindIn, principal: Principal = Depends(require_manager)
 
 @router.put("/kinds/{kind_id}")
 def update_kind(kind_id: int, payload: KindUpdate,
-                principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                principal: Principal = Depends(require_perm("settings.edit")), db: Session = Depends(get_db)):
     kind = db.get(StatementKind, kind_id)
     if not kind:
         raise HTTPException(status_code=404, detail="Вид заявления не найден")
@@ -142,7 +143,7 @@ def update_kind(kind_id: int, payload: KindUpdate,
 
 
 @router.delete("/kinds/{kind_id}")
-def delete_kind(kind_id: int, principal: Principal = Depends(require_manager),
+def delete_kind(kind_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                 db: Session = Depends(get_db)):
     """Удалить вид заявления: у привязанных смен словаря doc_type очищается,
     фирменный бланк (если был загружен) удаляется с диска."""
@@ -162,7 +163,7 @@ def delete_kind(kind_id: int, principal: Principal = Depends(require_manager),
 
 # ─────────────────────────── фирменные бланки .docx ───────────────────────────
 @router.get("/templates")
-def get_templates(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def get_templates(principal: Principal = Depends(require_perm("settings.view")), db: Session = Depends(get_db)):
     """Сводка по бланкам: какие виды есть, у каких загружен фирменный .docx."""
     kinds = db.scalars(select(StatementKind).order_by(
         StatementKind.sort_order, StatementKind.name)).all()
@@ -174,7 +175,7 @@ def get_templates(principal: Principal = Depends(require_manager), db: Session =
 
 
 @router.get("/sample")
-def sample_template(type: str, principal: Principal = Depends(require_manager),
+def sample_template(type: str, principal: Principal = Depends(require_perm("settings.view")),
                     db: Session = Depends(get_db)):
     """Образец .docx с плейсхолдерами — скачать, оформить под фирменный бланк и загрузить."""
     kind = _kind_or_422(db, type)
@@ -185,7 +186,7 @@ def sample_template(type: str, principal: Principal = Depends(require_manager),
 
 @router.post("/templates")
 async def upload_template(type: str, file: UploadFile,
-                          principal: Principal = Depends(require_manager),
+                          principal: Principal = Depends(require_perm("settings.edit")),
                           db: Session = Depends(get_db)):
     _kind_or_422(db, type)
     # читаем с запасом в 1 байт: так лимит работает ДО того, как файл целиком окажется
@@ -203,7 +204,7 @@ async def upload_template(type: str, file: UploadFile,
 
 
 @router.delete("/templates")
-def remove_template(type: str, principal: Principal = Depends(require_manager),
+def remove_template(type: str, principal: Principal = Depends(require_perm("settings.edit")),
                     db: Session = Depends(get_db)):
     _kind_or_422(db, type)
     removed = delete_template(type)
@@ -228,7 +229,7 @@ class RenderIn(BaseModel):
 
 
 @router.post("/render")
-def render(payload: RenderIn, principal: Principal = Depends(require_manager),
+def render(payload: RenderIn, principal: Principal = Depends(require_perm("settings.view")),
            db: Session = Depends(get_db)):
     kind = _kind_or_422(db, payload.type)
     emp = db.get(Employee, payload.employee_id)

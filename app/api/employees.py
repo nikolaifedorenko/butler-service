@@ -12,7 +12,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ..auth import Principal, audit, can_manage_user, current_principal, require_manager
+from ..auth import Principal, audit, can_manage_user, current_principal
 from ..base_schedule import validate_pattern_label
 from ..db import get_db
 from ..deps import local_date, normalize_hex_color, slugify_username
@@ -193,7 +193,7 @@ def list_employees(include_deleted: bool = False, principal: Principal = Depends
 
 
 @router.get("/group-choices")
-def group_choices(principal: Principal = Depends(require_manager)):
+def group_choices(principal: Principal = Depends(require_perm("employees.view"))):
     """Блоки графика: Смена 1 / Смена 2 / Пятидневка / Другие смены.
 
     kind — какой шаблон задаётся при переводе сотрудника в блок:
@@ -206,7 +206,7 @@ class SuggestGenitiveIn(BaseModel):
 
 
 @router.post("/employees/suggest-genitive")
-def suggest_genitive_api(payload: SuggestGenitiveIn, principal: Principal = Depends(require_manager)):
+def suggest_genitive_api(payload: SuggestGenitiveIn, principal: Principal = Depends(require_perm("employees.view"))):
     """Подсказка родительного падежа по ФИО («от Иванова Ивана Ивановича»).
     Результат — лишь предложение: в карточке его можно исправить вручную."""
     return {"genitive": suggest_genitive(payload.full_name.strip())}
@@ -577,7 +577,7 @@ def delete_employee(employee_id: int, principal: Principal = Depends(require_per
 
 # ─────────────────────────────── подразделения ───────────────────────────────
 @router.get("/departments")
-def list_departments(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def list_departments(principal: Principal = Depends(require_perm("employees.view")), db: Session = Depends(get_db)):
     deps = db.scalars(select(Department).order_by(Department.name)).all()
     return [{"id": d.id, "name": d.name} for d in deps]
 
@@ -587,7 +587,7 @@ class DepartmentIn(BaseModel):
 
 
 @router.post("/departments")
-def create_department(payload: DepartmentIn, principal: Principal = Depends(require_manager),
+def create_department(payload: DepartmentIn, principal: Principal = Depends(require_perm("settings.edit")),
                       db: Session = Depends(get_db)):
     name = payload.name.strip()
     if not name:
@@ -603,7 +603,7 @@ def create_department(payload: DepartmentIn, principal: Principal = Depends(requ
 
 @router.put("/departments/{dep_id}")
 def rename_department(dep_id: int, payload: DepartmentIn,
-                      principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                      principal: Principal = Depends(require_perm("settings.edit")), db: Session = Depends(get_db)):
     dep = db.get(Department, dep_id)
     if not dep:
         raise HTTPException(status_code=404, detail="Департамент не найден")
@@ -621,7 +621,7 @@ def rename_department(dep_id: int, payload: DepartmentIn,
 
 
 @router.delete("/departments/{dep_id}")
-def delete_department(dep_id: int, principal: Principal = Depends(require_manager),
+def delete_department(dep_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                       db: Session = Depends(get_db)):
     """Удалить департамент: у привязанных сотрудников поле очищается (история остаётся)."""
     dep = db.get(Department, dep_id)
@@ -639,7 +639,7 @@ def delete_department(dep_id: int, principal: Principal = Depends(require_manage
 
 # ──────────────────────── службы/подразделения (справочник) ────────────────────────
 @router.get("/subdivisions")
-def list_subdivisions(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def list_subdivisions(principal: Principal = Depends(require_perm("employees.view")), db: Session = Depends(get_db)):
     subs = db.scalars(select(Subdivision).order_by(Subdivision.name)).all()
     return [{"id": s.id, "name": s.name} for s in subs]
 
@@ -649,7 +649,7 @@ class SubdivisionIn(BaseModel):
 
 
 @router.post("/subdivisions")
-def create_subdivision(payload: SubdivisionIn, principal: Principal = Depends(require_manager),
+def create_subdivision(payload: SubdivisionIn, principal: Principal = Depends(require_perm("settings.edit")),
                        db: Session = Depends(get_db)):
     name = payload.name.strip()
     if not name:
@@ -665,7 +665,7 @@ def create_subdivision(payload: SubdivisionIn, principal: Principal = Depends(re
 
 @router.put("/subdivisions/{sub_id}")
 def rename_subdivision(sub_id: int, payload: SubdivisionIn,
-                       principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                       principal: Principal = Depends(require_perm("settings.edit")), db: Session = Depends(get_db)):
     """Переименовать службу — у сотрудников значение обновляется следом."""
     sub = db.get(Subdivision, sub_id)
     if not sub:
@@ -689,7 +689,7 @@ def rename_subdivision(sub_id: int, payload: SubdivisionIn,
 
 
 @router.delete("/subdivisions/{sub_id}")
-def delete_subdivision(sub_id: int, principal: Principal = Depends(require_manager),
+def delete_subdivision(sub_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                        db: Session = Depends(get_db)):
     """Удалить службу: у сотрудников, где она указана, поле очищается."""
     sub = db.get(Subdivision, sub_id)
@@ -810,7 +810,7 @@ class ShiftTypeIn(BaseModel):
 
 
 @router.post("/shift-types")
-def create_shift_type(payload: ShiftTypeIn, principal: Principal = Depends(require_manager),
+def create_shift_type(payload: ShiftTypeIn, principal: Principal = Depends(require_perm("settings.edit")),
                       db: Session = Depends(get_db)):
     if db.scalar(select(ShiftType).where(ShiftType.code == payload.code)):
         raise HTTPException(status_code=409, detail="Такой код смены уже существует")
@@ -825,7 +825,7 @@ def create_shift_type(payload: ShiftTypeIn, principal: Principal = Depends(requi
 
 @router.put("/shift-types/{type_id}")
 def update_shift_type(type_id: int, payload: ShiftTypeIn,
-                      principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+                      principal: Principal = Depends(require_perm("settings.edit")), db: Session = Depends(get_db)):
     """Правка смены НЕ ломает прошлое: старые значения фиксируются ревизией,
     новые действуют с `effective_from` (по умолчанию — с сегодняшнего дня).
     Отработанные смены в прошлых месяцах считаются по прежним часам."""
@@ -873,7 +873,7 @@ def update_shift_type(type_id: int, payload: ShiftTypeIn,
 
 
 @router.delete("/shift-types/{type_id}")
-def delete_shift_type(type_id: int, principal: Principal = Depends(require_manager),
+def delete_shift_type(type_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                       db: Session = Depends(get_db)):
     """«Удаление» смены из словаря = АРХИВАЦИЯ: прошлые графики и табели продолжают
     считаться по ней, но в новых ячейках она недоступна."""
@@ -894,7 +894,7 @@ def delete_shift_type(type_id: int, principal: Principal = Depends(require_manag
 
 
 @router.post("/shift-types/{type_id}/restore")
-def restore_shift_type(type_id: int, principal: Principal = Depends(require_manager),
+def restore_shift_type(type_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                        db: Session = Depends(get_db)):
     """Вернуть смену из архива в словарь."""
     st = db.get(ShiftType, type_id)
@@ -908,7 +908,7 @@ def restore_shift_type(type_id: int, principal: Principal = Depends(require_mana
 
 
 @router.get("/shift-types/{type_id}/revisions")
-def shift_revisions(type_id: int, principal: Principal = Depends(require_manager),
+def shift_revisions(type_id: int, principal: Principal = Depends(require_perm("settings.view")),
                     db: Session = Depends(get_db)):
     """История значений смены: какие часы действовали в прошлом."""
     from ..models import ShiftRevision

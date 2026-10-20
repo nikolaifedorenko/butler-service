@@ -6,8 +6,9 @@
 к доставке со своими шаблонами и получателями.
 
 Права: чтение и правка параметров — ``settings.edit`` (администратор и менеджер
-объекта: здесь токены и пароли); каталог чатов доступен и старшему батлеру
-(``require_manager``) — он закрепляет чаты за службами в справочнике ночного обхода.
+объекта: здесь токены и пароли); каталог чатов доступен также держателям
+``night.edit`` — они закрепляют чаты за службами в справочнике ночного обхода
+(``require_perm("settings.edit", "night.edit")`` — достаточно одного из прав).
 
 Секреты наружу не отдаются: в ответах только маска и признак «значение задано»,
 в аудит пишутся имена изменённых ключей, а не их значения.
@@ -20,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, require_manager
+from ..auth import Principal, audit
 from ..db import get_db
 from ..deps import now_local
 from ..notify.chats import list_chats, refresh_chats
@@ -151,7 +152,7 @@ def telegram_chats(principal: Principal = Depends(EDIT), db: Session = Depends(g
 
 
 @router.get("/chats")
-def get_chats(principal: Principal = Depends(require_manager), db: Session = Depends(get_db)):
+def get_chats(principal: Principal = Depends(require_perm("settings.edit", "night.edit")), db: Session = Depends(get_db)):
     """Каталог чатов для карточки службы: какие чаты найдены и кем уже используются."""
     return {"chats": list_chats(db)}
 
@@ -198,7 +199,7 @@ def email_test(payload: EmailTestIn, principal: Principal = Depends(EDIT),
 
 @router.get("/dispatches")
 def list_dispatches(domain: str = "", limit: int = 100,
-                    principal: Principal = Depends(require_manager),
+                    principal: Principal = Depends(require_perm("settings.edit")),
                     db: Session = Depends(get_db)):
     """Общий журнал отправок приложения (фильтр по разделу).
 
@@ -221,7 +222,7 @@ def list_dispatches(domain: str = "", limit: int = 100,
 
 @router.get("/dispatches/export.csv")
 def export_dispatches_csv(domain: str = "", limit: int = 2000,
-                          principal: Principal = Depends(require_manager),
+                          principal: Principal = Depends(require_perm("settings.edit")),
                           db: Session = Depends(get_db)):
     """Выгрузка общего журнала отправок в CSV (разборы, отчёт руководству).
 
@@ -267,7 +268,7 @@ def export_dispatches_csv(domain: str = "", limit: int = 2000,
 
 
 @router.post("/dispatches/{dispatch_id}/resend")
-def resend_dispatch(dispatch_id: int, principal: Principal = Depends(require_manager),
+def resend_dispatch(dispatch_id: int, principal: Principal = Depends(require_perm("settings.edit")),
                     db: Session = Depends(get_db)):
     """Повторить неудачную доставку тем же текстом и составом (журнал не переписывается)."""
     from ..models import NotifyDispatch

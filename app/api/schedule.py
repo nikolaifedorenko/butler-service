@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, require_manager
+from ..auth import Principal, audit
 from ..db import get_db
 from ..deps import TZ, now_local, safe_sheet_cell, utc_to_local
 from ..doc_render import hours_text
@@ -1226,7 +1226,7 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
 # ── печать и экспорт ──────────────────────────────────────────────────────────
 
 @router.get("/xlsx")
-def export_xlsx(year: int, month: int, principal: Principal = Depends(require_manager),
+def export_xlsx(year: int, month: int, principal: Principal = Depends(require_perm("schedule.edit")),
                 db: Session = Depends(get_db)):
     """График в Excel: тот же вид ячейки, что на экране (16.10.2026) — время смены
     (отрезки по строкам), плашка «Выходной за часы», цвет из словаря «Смены и

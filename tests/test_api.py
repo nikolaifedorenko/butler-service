@@ -383,7 +383,9 @@ class TestApi(unittest.TestCase):
         today = local_date()
         st = client.get("/api/settings").json()
         self.assertIn("{date_from}", st["doc"]["vacation"])
-        r = client.put("/api/settings/doc", json={
+        # запись настроек — settings.edit (этап B, 20.10.2026): у супервайзера
+        # (client = gromova) его нет, реквизиты правит админ
+        r = self.admin.put("/api/settings/doc", json={
             "company": "ООО «Ромашка»", "director": "Директору Ромашкину",
             "vacation": st["doc"]["vacation"], "vacation_unpaid": st["doc"]["vacation_unpaid"]})
         self.assertEqual(r.status_code, 200, r.text)
@@ -450,7 +452,7 @@ class TestApi(unittest.TestCase):
     def test_15f_base_anchor_robust_and_clear_month(self):
         today = local_date()
         # опорная дата в будущем не ломает сетку
-        r = client.put("/api/settings/base", json={
+        r = self.admin.put("/api/settings/base", json={
             "cycle": "2/2", "anchor": (today + dt.timedelta(days=40)).isoformat(),
             "groups": {"Смена 1": {"value": "Я 12"},
                        "Смена 2": {"value": "Я 12"},
@@ -460,8 +462,8 @@ class TestApi(unittest.TestCase):
         g = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
         self.assertGreater(len(g["rows"]), 0)
         # невалидная опорная дата отклоняется
-        bad = client.put("/api/settings/base", json={"cycle": "2/2", "anchor": "не-дата",
-                                                     "groups": {}})
+        bad = self.admin.put("/api/settings/base", json={"cycle": "2/2", "anchor": "не-дата",
+                                                         "groups": {}})
         self.assertEqual(bad.status_code, 422)
         # обнуление месяца: ручной код Табеля исчезает вместе с генерацией Графика.
         # День и сотрудника берём трудоустроенными: Табель за дни вне периода работы

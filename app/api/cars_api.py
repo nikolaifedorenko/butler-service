@@ -180,10 +180,15 @@ def park(db: Session = Depends(get_db), principal: Principal = Depends(require_p
     """Парк целиком (видно всем ролям). my_car_id — кар текущего пользователя."""
     from ..models import Car
 
+    # Видимость неактивных каров и can_manage — по одному ключу cars.manage
+    # (этап B, 20.10.2026): раньше фильтр был ролевым (is_manager) и супервайзер
+    # видел отключённые кары, не имея прав управления парком.
+    perms = principal_permissions(db, principal)
+    can_manage = "cars.manage" in perms
     cars = []
     for car in db.scalars(select(Car).order_by(Car.number)):
-        if not car.active and not principal.is_manager:
-            continue              # отключённые кары («не видно») — только менеджменту
+        if not car.active and not can_manage:
+            continue              # отключённые кары («не видно») — только управлению парком
         cars.append(car_dict(car))
     mine = None
     if principal.employee is not None:
@@ -192,10 +197,7 @@ def park(db: Session = Depends(get_db), principal: Principal = Depends(require_p
                               if c["holder_user_id"] == principal.user.id), None),
                "free_recommended": free.id if free else None,
                "assigned": next((c["id"] for c in cars if c["assigned_to"] == principal.employee.id), None)}
-    # can_manage — по ключу cars.manage (как в /meta), а не по роли: иначе интерфейс
-    # показывал бы кнопки правки тому, кому сервер ответит 403 (19.10.2026)
-    return {"cars": cars, "me": mine,
-            "can_manage": "cars.manage" in principal_permissions(db, principal)}
+    return {"cars": cars, "me": mine, "can_manage": can_manage}
 
 
 @router.post("")

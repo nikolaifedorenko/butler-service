@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal, require_supervisor
+from ..auth import Principal, audit, current_principal
 from ..db import get_db
 from ..deps import now_local
 from ..models import (
@@ -952,7 +952,7 @@ def close_section(section_id: int, payload: CloseSectionIn | None = None,
 
 
 @router.post("/sections/{section_id}/reopen")
-def reopen_section(section_id: int, principal: Principal = Depends(require_supervisor),
+def reopen_section(section_id: int, principal: Principal = Depends(require_perm("night.close")),
                    db: Session = Depends(get_db)):
     sec = _get_section(db, section_id)
     rep = _get_report(db, sec.report_id)
@@ -1227,7 +1227,7 @@ def report_cars_finish(report_id: int, payload: InterceptionAck,
 
 @router.post("/reports/{report_id}/close")
 def close_report(report_id: int, payload: CloseSectionIn | None = None,
-                 principal: Principal = Depends(require_supervisor),
+                 principal: Principal = Depends(require_perm("night.close")),
                  db: Session = Depends(get_db)):
     rep = _get_report(db, report_id)
     if rep.status == "closed":
@@ -1251,7 +1251,7 @@ def close_report(report_id: int, payload: CloseSectionIn | None = None,
 
 
 @router.post("/reports/{report_id}/reopen")
-def reopen_report(report_id: int, principal: Principal = Depends(require_supervisor),
+def reopen_report(report_id: int, principal: Principal = Depends(require_perm("night.close")),
                   db: Session = Depends(get_db)):
     rep = _get_report(db, report_id)
     rep.status = "open"
