@@ -44,13 +44,13 @@ if "DATABASE_URL" not in os.environ:
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from app.db import SessionLocal  # noqa: E402
-from app.deps import local_date  # noqa: E402
-from app.main import app, init_db  # noqa: E402
-from app.migrations import (  # noqa: E402
+from app.bootstrap.migrations import (  # noqa: E402
     migrate_time_off_template,
     migrate_timeoff_entity,
 )
+from app.core.db import SessionLocal  # noqa: E402
+from app.core.time import local_date  # noqa: E402
+from app.main import app, init_db  # noqa: E402
 from app.models import (  # noqa: E402
     ScheduleAbsence,
     ScheduleShift,
@@ -555,7 +555,7 @@ class TestManualReplacesGenerated(unittest.TestCase):
 
     def test_04_migration_cleans_legacy_duplicates(self):
         """Старая база: дубль generated+manual чистится миграцией, идемпотентно."""
-        from app.migrations import migrate_manual_replaces_generated
+        from app.bootstrap.migrations import migrate_manual_replaces_generated
 
         day = _work_days(self.emp["id"])[1]
         db = SessionLocal()

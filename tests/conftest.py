@@ -69,7 +69,7 @@ def app_stack():
     """
     from fastapi.testclient import TestClient  # noqa: F401
 
-    from app.db import SessionLocal
+    from app.core.db import SessionLocal
     from app.main import app, init_db
 
     init_db()
@@ -134,7 +134,7 @@ def _counting():
     """Контекст: сколько SQL-операторов выполнено (см. fixture sql_counter)."""
     from sqlalchemy import event
 
-    from app.db import engine
+    from app.core.db import engine
 
     state = {"total": 0, "select": 0, "by_statement": {}}
 
@@ -206,9 +206,9 @@ def open_shift(db, freeze):
 
     from sqlalchemy import select
 
+    from app.core.media import unlink_photo
     from app.models import CarNightCheck, NightAreaSection, NightCheckItem, NightInterception, NightReport, Photo
     from app.night import ensure_report
-    from app.photos import unlink_photo
 
     @_cm
     def _open():

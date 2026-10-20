@@ -20,8 +20,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
-from ..db import get_db
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.permissions import principal_permissions, require_perm
 from ..engine.adapters.sql_settings import SqlSettingsAdapter, base_version
 from ..engine.application import timesheet_edit
 from ..engine.application.errors import ApplicationError
@@ -32,7 +34,6 @@ from ..engine.domain.types.entities import Period
 from ..engine.domain.types.errors import ConfigError, DomainError
 from ..engine.interface.formatting import hm
 from ..models import Employee, TabelDay
-from ..permissions import principal_permissions, require_perm
 from ..services.engine_common import (
     day_code_colors,
     day_code_rows,

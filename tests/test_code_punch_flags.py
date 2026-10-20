@@ -33,8 +33,8 @@ from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from app.db import SessionLocal  # noqa: E402
-from app.deps import local_date, now_local  # noqa: E402
+from app.core.db import SessionLocal  # noqa: E402
+from app.core.time import local_date, now_local  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.models import EngineSettingsVersion  # noqa: E402
 

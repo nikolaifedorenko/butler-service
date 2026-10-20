@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import contextlib
 
-from .db import SessionLocal, engine
+from ..core.db import SessionLocal, engine
 
 
 def migrate_db() -> None:
@@ -319,9 +319,9 @@ def seed_statement_kinds() -> None:
     заполнен — не вмешиваемся (удалённые пользователем виды не воскрешаем)."""
     from sqlalchemy import func, select
 
-    from .doc_render import DOC_TYPES
-    from .doc_templates import load_doc_templates
-    from .models import StatementKind
+    from ..doc_render import DOC_TYPES
+    from ..doc_templates import load_doc_templates
+    from ..models import StatementKind
 
     db = SessionLocal()
     try:
@@ -367,7 +367,7 @@ def migrate_timeoff_entity() -> None:
     """
     from sqlalchemy import inspect, text
 
-    from .deps import local_date
+    from ..core.time import local_date
 
     insp = inspect(engine)
     if not (insp.has_table("shift_types") and insp.has_table("schedule_absences")):
@@ -444,8 +444,8 @@ def migrate_time_off_template() -> None:
     """
     from sqlalchemy import select
 
-    from .doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
-    from .models import Setting, StatementKind
+    from ..doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
+    from ..models import Setting, StatementKind
 
     db = SessionLocal()
     try:
@@ -487,7 +487,7 @@ def migrate_night_cars() -> None:
                 con.execute(text(idx))
     # шаг «Проверка электрокаров» для старых открытых смен, где его не было
     if insp.has_table("night_reports") and insp.has_table("night_area_sections"):
-        from .night import CAR_AREA_NAME
+        from ..night import CAR_AREA_NAME
 
         with engine.begin() as con:
             con.execute(text("""
@@ -516,7 +516,7 @@ def migrate_night_zones() -> None:
     from sqlalchemy import inspect as sa_inspect
     from sqlalchemy import text
 
-    from .deps import now_local
+    from ..core.time import now_local
 
     insp = sa_inspect(engine)
     if not (insp.has_table("night_areas") and insp.has_table("night_zones")):
@@ -625,8 +625,8 @@ def migrate_schedule_dict_simplify() -> None:
 
     from sqlalchemy import inspect, text
 
-    from .engine.adapters.sql_settings import SqlSettingsAdapter
-    from .engine.application.months import month_period
+    from ..engine.adapters.sql_settings import SqlSettingsAdapter
+    from ..engine.application.months import month_period
 
     insp = inspect(engine)
     existing = set(insp.get_table_names())

@@ -16,8 +16,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..db import Base
-from ..deps import now_local
+from ..core.db import Base
+from ..core.time import now_local
 
 # ═══════════════════════ НОЧНОЙ ОТЧЁТ + ЭЛЕКТРОКАРЫ ═══════════════════════
 # Времена событий (created_at/taken_at/…) хранятся в ЛОКАЛЬНОМ времени объекта

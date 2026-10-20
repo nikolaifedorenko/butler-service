@@ -27,7 +27,7 @@ def test_request_id_roundtrip(app_stack):
 def test_health_deep(app_stack):
     from fastapi.testclient import TestClient
 
-    from app.config import settings
+    from app.core.config import settings
 
     c = TestClient(app_stack["app"])
     r = c.get("/api/health")
@@ -48,7 +48,7 @@ def test_metrics_disabled_by_default(app_stack):
 def test_metrics_enabled_by_flag(app_stack):
     from fastapi.testclient import TestClient
 
-    from app.config import settings
+    from app.core.config import settings
 
     c = TestClient(app_stack["app"])
     settings.metrics_enabled = True

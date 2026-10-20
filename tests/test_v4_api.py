@@ -9,7 +9,7 @@ import datetime as dt
 
 import pytest
 
-from app.deps import local_date
+from app.core.time import local_date
 
 TODAY = local_date()
 PREV_END = TODAY.replace(day=1) - dt.timedelta(days=1)

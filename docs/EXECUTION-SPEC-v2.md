@@ -395,3 +395,34 @@ push+мерж до этапа A, иначе конфликты переноса.
 (в настоящем файле они уже учтены в §2, §3, §5.2, §7). Этапы A и B не требуют ADR и
 могут стартовать немедленно отдельными PR; этап C — после принятия ADR-0010
 (`docs/adr/0010-modular-monolith-core-modules.md`) и закрытия G8.
+
+---
+
+## 12. Уточнения по итогам фазы C1 (20.10.2026)
+
+Фактический состав `core/` и приёмы, применённые при переносе (дополнение к §2;
+детали — `docs/CHANGES-2026-10-20-stage-c1-core.md`):
+
+* `core/` = config, db, errors, security, time, format, roles, identity, auth,
+  auth_guards, permissions, audit, media, observability. Добавлены сверх §2:
+  **roles** (константы ролей из models/common), **identity** (User + AccessGroup/
+  AccessGroupMember/AccessGrant — фундамент аутентификации и прав; управление ими
+  останется в модуле access), **format** (safe_sheet_cell, normalize_hex_color —
+  из deps.py), **auth_guards** (can_manage_user).
+* `utcnow()` переехал из models/common в `core/time`; `slugify_username` — в
+  `app/names.py` (домен имен, не время).
+* `bootstrap/` — пакет: seed.py, migrations.py, **registry.py** (реестр моделей +
+  инъекция провайдеров в core).
+* **Инъекция вместо импорта (R5 в действии)**: `core/media.py` получает «прочие
+  правила объекта» через `set_rules_provider(load_rules)` (регистрирует bootstrap),
+  `core/auth.py` — загрузчик Employee через `set_employee_loader` (runtime-импорта
+  моделей каталога в core нет; аннотация — TYPE_CHECKING, единственная строка
+  ignore_imports в контракте core-independence).
+* Модели User/AccessGroup(Member)/AccessGrant/AuditLog/Photo физически живут в
+  core (identity/audit/media); фасад `app/models/__init__` ре-экспортирует их —
+  существующие импорты `from ..models import X` не сломались.
+* Контракты `.importlinter` (4): слои api→services→models→core; независимость
+  api-модулей; изоляция движка (+bootstrap); **core-independence (R5)** — core не
+  импортирует приложение.
+* `core/media.BASE_DIR` — на один `.parent` глубже (файл переехал из app/ в
+  app/core/): data/uploads остаётся в корне проекта.

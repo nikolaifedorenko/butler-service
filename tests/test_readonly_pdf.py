@@ -18,7 +18,7 @@ if "DATABASE_URL" not in os.environ:
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.deps import local_date  # noqa: E402
+from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.pdf_render import pdf_mode  # noqa: E402
 

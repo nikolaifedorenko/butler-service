@@ -13,7 +13,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..deps import TZ, now_local
+from ..core.time import TZ, now_local
 from ..models import ScheduleAbsence, ScheduleShift
 
 

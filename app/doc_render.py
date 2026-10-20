@@ -19,7 +19,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
-from .deps import local_date
+from .core.time import local_date
 from .names import suggest_genitive
 
 BASE_DIR = Path(__file__).resolve().parent.parent

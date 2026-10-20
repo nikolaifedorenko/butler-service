@@ -10,9 +10,11 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
-from ..db import get_db
-from ..deps import normalize_hex_color
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.format import normalize_hex_color
+from ..core.permissions import require_perm
 from ..engine.adapters.settings_codec import from_payload, to_payload
 from ..engine.adapters.sql_settings import SCOPE_GROUPS, SqlSettingsAdapter, base_version
 from ..engine.domain.settings.defaults import default_settings
@@ -26,7 +28,6 @@ from ..engine.domain.settings.validate import validate_settings
 from ..engine.domain.types.entities import Period
 from ..engine.domain.types.errors import ConfigError
 from ..models import DayModifier, EngineSettingsVersion
-from ..permissions import require_perm
 from ..services.engine_common import domain_error_text
 
 router = APIRouter(prefix="/api/engine-settings", tags=["engine-settings"])
@@ -340,7 +341,7 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
     # Значение рабочего дня — атрибут сотрудника (18.10.2026): без него цикл
     # не заполнит рабочие дни, поэтому подсвечиваем таких сотрудников заранее.
     from ..base_schedule import BlockIndex, pattern_for_date
-    from ..deps import local_date
+    from ..core.time import local_date
     emps = list(db.scalars(select(Employee).where(Employee.deleted_at.is_(None))))
     if emps:
         cfg = load_base_config(db)
@@ -426,7 +427,7 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
     те же CHK-*, что останавливают расчёт, но показанные ДО сохранения;
     (2) прикладные сверки (группы ↔ блоки, коды ↔ словарь смен, коды ↔ окна).
     """
-    from ..deps import utc_to_local
+    from ..core.time import utc_to_local
     from ..engine.application.months import period_containing
     from ..engine.interface.formatting import config_violation_text
     from ..models import AuditLog

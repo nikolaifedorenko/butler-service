@@ -23,7 +23,7 @@ def _punch_count(app_stack) -> int:
 def test_csrf_requires_token_header(app_stack):
     from fastapi.testclient import TestClient
 
-    from app.config import settings
+    from app.core.config import settings
 
     settings.csrf_enabled = True
     try:
@@ -69,7 +69,7 @@ def test_csrf_cookie_issued_on_denied_request(app_stack):
     после обновления страницы клиент сможет повторить запрос с токеном."""
     from fastapi.testclient import TestClient
 
-    from app.config import settings
+    from app.core.config import settings
 
     settings.csrf_enabled = True
     try:

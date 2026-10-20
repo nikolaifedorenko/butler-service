@@ -18,7 +18,6 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
 from ..cars import (
     ACTION_TITLES,
     STATUS_TITLES,
@@ -39,10 +38,12 @@ from ..cars import (
     take_car,
     update_location,
 )
-from ..db import get_db
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.media import max_upload_bytes, photos_of
+from ..core.permissions import principal_permissions, require_perm
 from ..models import CarHistory
-from ..permissions import principal_permissions, require_perm
-from ..photos import max_upload_bytes, photos_of
 
 router = APIRouter(prefix="/api/cars", tags=["cars"])
 

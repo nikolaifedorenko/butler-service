@@ -21,7 +21,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .deps import now_local
+from .core.time import now_local
 from .models import (
     Car,
     ChecklistItem,
@@ -385,7 +385,7 @@ def defects_of(db: Session, rep: NightReport) -> dict:
     Возвращает {"items": [...], "counts": {...}}; группировку по службам делает
     app/notify/recipients.py — домен не знает про транспорт.
     """
-    from .photos import photos_of
+    from .core.media import photos_of
 
     sections = [s for s in sorted(rep.areas, key=lambda x: (x.sort_order, x.id))
                 if not (s.area_id is None and s.category == "cars")]
@@ -441,8 +441,8 @@ def defects_of(db: Session, rep: NightReport) -> dict:
 
 def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
     """Снимок обхода электрокаров за смену + перехваты (нужны и API, и выгрузке DOCX)."""
+    from .core.media import photos_of
     from .models import CarNightCheck  # локально — не раздуваем импорт модуля
-    from .photos import photos_of
 
     out = []
     checks = list(db.scalars(select(CarNightCheck).where(CarNightCheck.report_id == rep.id)

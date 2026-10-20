@@ -8,11 +8,17 @@ SQLAlchemy разрешает межмодульные relationship() по им�
 реестре — важно лишь, чтобы все подмодули были импортированы (фасад это
 гарантирует) до конфигурации мапперов.
 """
-from ..db import Base  # noqa: F401 — исторически Base импортировали и из models
-from .access import AccessGrant, AccessGroup, AccessGroupMember  # noqa: F401
-from .audit import AuditLog  # noqa: F401
+# Ядро (фаза C1, 20.10.2026): Base, идентичность (User, гранты), аудит и медиа
+# переехали в app/core — фасад ре-экспортирует их, поэтому существующие импорты
+# `from ..models import X` продолжают работать, а все модели регистрируются в
+# общем реестре Base.metadata до create_all.
+from ..core.audit import AuditLog  # noqa: F401
+from ..core.db import Base  # noqa: F401 — исторически Base импортировали и из models
+from ..core.identity import AccessGrant, AccessGroup, AccessGroupMember, User  # noqa: F401
+from ..core.media import Photo  # noqa: F401
+from ..core.roles import MANAGER_ROLES, ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR  # noqa: F401
+from ..core.time import utcnow  # noqa: F401
 from .cars import Car, CarHistory, CarLocation, CarNightCheck  # noqa: F401
-from .common import MANAGER_ROLES, ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR, utcnow  # noqa: F401
 from .directory import (  # noqa: F401
     BankAdjustment,
     BlockAssignment,
@@ -24,11 +30,9 @@ from .directory import (  # noqa: F401
     PositionHistory,
     StatementKind,
     Subdivision,
-    User,
     VipDoublePay,
 )
 from .engine_store import DayModifier, DeferredCarry, EngineSettingsVersion, PeriodClosing, Setting, TabelDay  # noqa: F401
-from .media import Photo  # noqa: F401
 from .night import (  # noqa: F401
     ChecklistItem,
     ChecklistOverride,

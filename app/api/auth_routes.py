@@ -11,13 +11,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit, current_principal
-from ..config import settings
-from ..db import get_db
-from ..deps import local_date
+from ..core.audit import audit
+from ..core.auth import Principal, current_principal
+from ..core.config import settings
+from ..core.db import get_db
+from ..core.permissions import require_perm
+from ..core.security import create_token, hash_password, needs_rehash, verify_password
+from ..core.time import local_date
 from ..models import Employee, User
-from ..permissions import require_perm
-from ..security import create_token, hash_password, needs_rehash, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -174,7 +175,7 @@ def logout(response: Response, principal: Principal = Depends(current_principal)
 def me(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     """Текущий пользователь + его план на сегодня (для личного кабинета)."""
     emp = principal.employee
-    from ..permissions import principal_permissions
+    from ..core.permissions import principal_permissions
 
     data = {"user": principal.to_dict(), "today": None,
             "permissions": sorted(principal_permissions(db, principal))}

@@ -21,9 +21,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal, audit
-from ..db import get_db
-from ..deps import TZ, now_local, safe_sheet_cell, utc_to_local
+from ..core.audit import audit
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.format import safe_sheet_cell
+from ..core.permissions import require_perm
+from ..core.time import TZ, now_local, utc_to_local
 from ..doc_render import hours_text
 from ..doublepay import SCOPE_TITLES, calendar_map
 from ..employment import employed_on, periods_of, ranges_from_periods
@@ -47,7 +50,6 @@ from ..models import (
     TabelDay,
 )
 from ..names import suggest_genitive
-from ..permissions import require_perm
 from ..schedule_patterns import pattern_list, validate_cycle_string
 from ..services.engine_common import (
     color_lookups,
@@ -356,7 +358,7 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
             "totals": {"planned_hours": round(planned_total, 2), "work_days": work_days},
         })
 
-    from ..deps import month_name
+    from ..core.time import month_name
     payload = {
         "year": year, "month": month, "month_name": month_name(month),
         "days": [{"date": d.isoformat(), "day": d.day,

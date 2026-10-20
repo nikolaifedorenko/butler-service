@@ -14,7 +14,7 @@ os.environ["SECRET_KEY"] = "test-secret-key"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.deps import local_date  # noqa: E402
+from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 
 init_db()
@@ -34,7 +34,7 @@ class TestApi(unittest.TestCase):
         assert r.status_code == 200, r.text
         # демо-цепочка: последовательно закрыть месяцы от старта учёта до прошлого
         # (RUL-SEQUENTIAL-CLOSING) — иначе view/close текущего месяца отклоняются
-        from app.seed import accounting_start
+        from app.bootstrap.seed import accounting_start
         today = local_date()
         m = accounting_start(today)
         while (m.year, m.month) < (today.year, today.month):
@@ -290,7 +290,7 @@ class TestApi(unittest.TestCase):
 
     def test_16b_change_password_flow(self):
         # верный старый пароль → смена; неверный старый → 400; вход с новым паролем работает
-        from app.db import SessionLocal
+        from app.core.db import SessionLocal
         from app.models import User
         old_session = TestClient(app)
         self.assertEqual(old_session.post("/api/auth/login",

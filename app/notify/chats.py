@@ -16,7 +16,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..deps import now_local
+from ..core.time import now_local
 from ..models import NotifyChat
 from .config import NotifyConfig
 from .transports.telegram import TelegramBot

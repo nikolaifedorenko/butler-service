@@ -10,6 +10,9 @@
 """
 from __future__ import annotations
 
+import re
+import unicodedata
+
 # Мужские имена на -а/-я: склоняются по «женскому» типу (Никита → Никиты),
 # но пол сотрудника от них не определяется.
 _MALE_A_NAMES = {"никита", "илья", "фома", "кузьма", "лука", "савва",
@@ -108,3 +111,25 @@ def suggest_genitive(full_name: str) -> str:
     kinds = ["last", "first", "middle"][:len(tokens)]
     kinds += ["other"] * max(0, len(tokens) - 3)
     return " ".join(_decline(t, k, female) for t, k in zip(tokens, kinds, strict=False))
+
+
+# ─────────────── транслитерация логина (перенесено из app/deps.py, фаза C1) ───────────────
+TRANSLIT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh", "з": "z",
+    "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
+    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "sch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def slugify_username(full_name: str, fallback: str = "user") -> str:
+    """«Иванов Иван Иванович» → «ivanov.ivan.ivanovich»."""
+    name = unicodedata.normalize("NFKD", (full_name or "").strip().lower())
+    parts = [p for p in re.split(r"[\s\-.]+", name) if p]
+    out = []
+    for part in parts:
+        translit = "".join(TRANSLIT.get(ch, ch if ch.isascii() and ch.isalnum() else "") for ch in part)
+        if translit:
+            out.append(translit)
+    login = ".".join(out) if out else fallback
+    return re.sub(r"[^a-z0-9._-]", "", login)[:48] or fallback

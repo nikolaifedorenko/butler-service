@@ -36,7 +36,7 @@ def _with_color(payload, color):
 
 
 def _delete_version(app_stack, version_id: int) -> None:
-    from app.db import SessionLocal
+    from app.core.db import SessionLocal
     from app.models import EngineSettingsVersion
 
     db = SessionLocal()
@@ -59,7 +59,7 @@ def test_code_color_bad_rejected(admin_client, bad):
 
 
 def test_code_color_valid_normalized_to_lowercase(admin_client, app_stack):
-    from app.db import SessionLocal
+    from app.core.db import SessionLocal
     from app.models import EngineSettingsVersion
 
     payload, code = _with_color(_current_payload(admin_client), "#AABB00")

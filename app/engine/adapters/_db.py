@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from ...config import settings as app_settings
+from ...core.config import settings as app_settings
 
 TZ_NAME = app_settings.app_tz
 TZ = ZoneInfo(TZ_NAME)

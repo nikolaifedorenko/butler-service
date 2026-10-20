@@ -22,7 +22,7 @@ from typing import Optional, Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..deps import now_local
+from ..core.time import now_local
 from ..models import NotifyDispatch, Photo
 from .config import NotifyConfig
 from .transports import TransportError
@@ -46,7 +46,7 @@ class Attachment:
 def attachments_of(db: Session, photo_ids: Sequence) -> list[Attachment]:
     """Файлы вложений из хранилища. Удалённые по сроку хранения пропускаем:
     сообщение уходит без них, а в журнале остаётся фактическое число вложений."""
-    from ..photos import ALLOWED_EXT, ALLOWED_VIDEO_EXT, BASE_DIR
+    from ..core.media import ALLOWED_EXT, ALLOWED_VIDEO_EXT, BASE_DIR
 
     out: list[Attachment] = []
     for pid in photo_ids or []:

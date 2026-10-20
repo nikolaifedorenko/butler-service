@@ -118,7 +118,7 @@ def test_prava_na_spravochnik_zon(employee_client, manager_client):
         assert r.status_code == 200 and r.json()["ok"] is True
         assert next(z for z in _zones(manager_client) if z["id"] == zone_id)["active"] is False
     finally:
-        from app.db import SessionLocal
+        from app.core.db import SessionLocal
         from app.models import NightZone
         db = SessionLocal()
         try:
@@ -135,7 +135,7 @@ def test_migraciya_zon_iz_kategoriy_idempotentna(db):
     """migrate_night_zones(): зоны из «категорий» областей, повторный вызов ничего не плодит."""
     from sqlalchemy import func, select
 
-    from app.migrations import migrate_night_zones
+    from app.bootstrap.migrations import migrate_night_zones
     from app.models import NightArea, NightZone
 
     migrate_night_zones()
@@ -348,7 +348,7 @@ def test_pereimenovanie_zony_ne_trogaet_zakrytuyu_smenu(manager_client, db, free
     finally:
         manager_client.delete(f"/api/night/areas/{area_id}")
         manager_client.delete(f"/api/night/zones/{zone_id}")
-        from app.db import SessionLocal
+        from app.core.db import SessionLocal
         from app.models import NightArea, NightZone
         dbx = SessionLocal()
         try:
@@ -386,7 +386,7 @@ def test_seriya_obektov_poluchaet_shablon_zony(manager_client, db, freeze):
     finally:
         for a in created:
             manager_client.delete(f"/api/night/areas/{a['id']}")
-        from app.db import SessionLocal
+        from app.core.db import SessionLocal
         from app.models import NightArea
         dbx = SessionLocal()
         try:

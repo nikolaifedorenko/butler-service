@@ -11,15 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import Principal
-from ..db import get_db
-from ..deps import utc_to_local
+from ..core.auth import Principal
+from ..core.db import get_db
+from ..core.permissions import require_perm
+from ..core.time import utc_to_local
 from ..engine.application.months import month_period
 from ..engine.application.presence_board import presence_board
 from ..engine.domain.types.errors import DomainError
 from ..engine.interface.views import board_dict
 from ..models import Employee
-from ..permissions import require_perm
 from ..services.engine_common import domain_error_text, emp_brief, engine_ports, now_utc
 
 router = APIRouter(prefix="/api/presence", tags=["presence"])

@@ -37,10 +37,16 @@ def test_novye_klyuchi_v_kataloge(admin_client):
 
 
 def test_rolevyh_zavisimostey_bolshe_net():
-    """require_manager/require_supervisor/require_admin удалены — только require_perm."""
-    import app.auth as auth
+    """require_manager/require_supervisor/require_admin удалены — только require_perm.
+
+    Фаза C1 (20.10.2026): модуль переехал в app/core/auth.py — проверяем и новый
+    путь, и отсутствие старого."""
+    import importlib.util
+
+    import app.core.auth as auth
     for name in ("require_manager", "require_supervisor", "require_admin"):
-        assert not hasattr(auth, name), f"app/auth.{name} должен быть удалён"
+        assert not hasattr(auth, name), f"app/core/auth.{name} должен быть удалён"
+    assert importlib.util.find_spec("app.auth") is None, "app/auth.py не должно существовать"
 
 
 # ───────────────────────── ночная смена: night.close ─────────────────────────

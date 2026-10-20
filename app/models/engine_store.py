@@ -16,8 +16,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ..db import Base
-from .common import utcnow
+from ..core.db import Base
+from ..core.time import utcnow
 
 
 class Setting(Base):

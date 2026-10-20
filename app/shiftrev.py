@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .deps import local_date
+from .core.time import local_date
 from .models import ShiftRevision, ShiftType
 
 REV_FIELDS = ("code", "name", "kind", "start_time",

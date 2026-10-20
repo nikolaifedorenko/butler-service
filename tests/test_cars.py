@@ -46,9 +46,9 @@ def _nochnaya_smena(db, freeze, shift_d: dt.date):
     """
     from sqlalchemy import select
 
+    from app.core.media import unlink_photo
     from app.models import CarNightCheck, NightReport, Photo
     from app.night import ensure_report
-    from app.photos import unlink_photo
 
     with freeze(f"{shift_d.isoformat()} 23:00:00"):      # 02:00 МСК следующих суток — смена идёт
         rep = ensure_report(db, shift_d)

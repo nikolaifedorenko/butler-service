@@ -225,7 +225,7 @@ def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
     """
     import json
 
-    from ..deps import local_date
+    from ..core.time import local_date
     from ..engine.adapters.sql_settings import base_version
 
     ver = base_version(db, day or local_date())

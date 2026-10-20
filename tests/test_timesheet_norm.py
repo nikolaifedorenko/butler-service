@@ -33,7 +33,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from app.db import SessionLocal  # noqa: E402
+from app.core.db import SessionLocal  # noqa: E402
 from app.engine_bootstrap import REMOVED_DAY_CODES, strip_removed_day_codes  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.models import EngineSettingsVersion, ShiftType, TabelDay  # noqa: E402
@@ -211,7 +211,7 @@ class TestDailyShiftExample(unittest.TestCase):
     def setUpClass(cls):
         r = client.post("/api/auth/login", json={"username": "admin", "password": "demo1234"})
         assert r.status_code == 200, r.text
-        from app.seed import accounting_start
+        from app.bootstrap.seed import accounting_start
         cls.emp_id = 4
         month = accounting_start(dt.date.today())
         while (month.year, month.month) < (2026, 10):
