@@ -4,15 +4,15 @@
 punch.py (отметки), schedule.py (график и смены), engine_store.py (хранилище
 движка) и таймшит-часть directory.py (BlockAssignment, BankAdjustment,
 DoublePayDay, VipDoublePay). Каталог персонала (Employee, Department, …) в
-фазе C4 переехал в modules/employees/adapters/orm.py; аннотации Mapped[Employee]
-разрешаются реестром SQLAlchemy (импорт — TYPE_CHECKING через публичную
-границу employees.application.catalog, R3). Кросс-модульные FK — строками (R6).
+фазе C4 переехал в modules/employees/adapters/orm.py. R6 выполнен полностью
+(батч 20.10.2026): кросс-модульных relationship нет — FK строками, сотрудники
+достаются по employee_id через employees.application (батч-словари в экранах).
 Публичная поверхность для других модулей — application/catalog.py.
 """
 from __future__ import annotations
 
 import datetime as dt
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy import (
     Boolean,
@@ -31,10 +31,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 from app.core.identity import User  # noqa: F401 — связь Employee.user
 from app.core.time import utcnow  # noqa: F401 — default created_at/updated_at
-
-if TYPE_CHECKING:
-    from app.modules.employees.application.catalog import Employee
-
 
 # ────
 # ── Блоки графика, банк часов, двойные оплаты (таймшит-часть бывш. directory.py;
@@ -62,7 +58,6 @@ class BlockAssignment(Base):
     # пустая строка — шаблон берётся из общих настроек блока (базовый цикл объекта)
     pattern_json: Mapped[str] = mapped_column(Text, default="")
 
-    employee: Mapped[Employee] = relationship()
 
 
 class BankAdjustment(Base):
@@ -82,7 +77,6 @@ class BankAdjustment(Base):
     author_name: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
-    employee: Mapped[Employee] = relationship()
 
 
 class DoublePayDay(Base):
@@ -119,7 +113,6 @@ class VipDoublePay(Base):
     created_by_name: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
-    employee: Mapped[Employee] = relationship()
 
 
 # User переехал в core/identity.py (фаза C1, 20.10.2026): учётные записи —
@@ -144,7 +137,6 @@ class Punch(Base):
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(255), default="")
 
-    employee: Mapped[Employee] = relationship(lazy="joined")
 # ────
 # ── График и смены (бывш. models/schedule.py) ──
 # ────
@@ -243,7 +235,6 @@ class ScheduleShift(Base):
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
-    employee: Mapped[Employee] = relationship(lazy="joined")
 
 
 class ScheduleAbsence(Base):
@@ -270,7 +261,6 @@ class ScheduleAbsence(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     kind: Mapped[Optional[ShiftType]] = relationship(lazy="joined")
-    employee: Mapped[Employee] = relationship(lazy="joined")
 # ────
 # ── Хранилище расчётного движка (бывш. models/engine_store.py) ──
 # ────

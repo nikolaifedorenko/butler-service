@@ -6,10 +6,11 @@
 Управление грантами (интерфейс «Права доступа») — модуль access (этап C4),
 он импортирует эти модели из core (направление «модуль → core» разрешено).
 
-Связь User.employee объявлена строкой и разрешается реестром SQLAlchemy:
-Employee живёт в моделях каталога (будущий модуль employees), core его не
-импортирует (R5). Фасад app/models/__init__ гарантирует, что все модели
-зарегистрированы до конфигурации мапперов.
+Обратной связи User.employee НЕТ (R5/R6, батч 20.10.2026): core не знает
+модули — сотрудник пользователя находится запросом Employee.user_id (см.
+access, employees); односторонняя связь Employee.user живёт в модуле employees.
+Реестр моделей — bootstrap/registry.ensure_models() (гарантирует регистрацию
+всех таблиц до конфигурации мапперов).
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
 from .roles import ROLE_EMPLOYEE
@@ -43,7 +44,6 @@ class User(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     token_version: Mapped[int] = mapped_column(Integer, default=0)
 
-    employee: Mapped[Optional[Employee]] = relationship(back_populates="user")  # noqa: F821
 
 
 class AccessGroup(Base):

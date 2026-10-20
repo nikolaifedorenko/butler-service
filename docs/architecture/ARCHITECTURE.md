@@ -53,8 +53,8 @@ cars, docs, notify, settings, access, audit), каждый — гексагон 
 
 Остались осознанные компромиссы: самодельные миграции (Alembic — точка роста),
 линейный по штату бюджет УТ (по спеке: конвейер на сотрудника), SPA без сборки
-(оболочка `app.js` + 9 файлов разделов в `static/js/modules/`), кросс-модульные
-`relationship()` на каталог (R6-долг — см. §7).
+(оболочка `app.js` + 9 файлов разделов в `static/js/modules/`). R6 выполнен
+полностью (батч 20.10.2026): кросс-модульных `relationship()` нет.
 
 ---
 
@@ -306,7 +306,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
 | Самодельные миграции (raw DDL при старте) | 🟠 | Alembic: autogenerate + версионирование; `migrate_engine_v7` — образец идемпотентного шага |
 | Бюджет УТ линейный по штату (по спеке) | 🟡 | батч-порты `load_inputs` на группу сотрудников; кэш Settings уже есть |
 | SPA без сборки, один app.js ~2 400 строк | 🟢 закрыт 15.10.2026 | app.js 2262 → 369 строк: разделы — 9 файлов `static/js/modules/` (C6); границы держат gen_js_globals + ESLint no-undef + смоуки (ADR-0008); esbuild — при росте команды |
-| Кросс-модульные `relationship()` на каталог (R6-долг): `Punch.employee` (lazy=joined) и ещё 10 связей — точный allowlist в `tests/test_modules_architecture.py` | 🟡 зафиксировано C4 | продуктовый батч «навигация → порты/DTO»: замена на явные joins/словари во владельцах экранов; бюджеты запросов под тестом-стражем |
+| Кросс-модульные `relationship()` на каталог (R6) | 🟢 закрыт 20.10.2026 | все 9 связей удалены, навигации → батч-словари/`db.get` через identity map; allowlist в `tests/test_modules_architecture.py` пуст и охраняется тестом (`docs/CHANGES-2026-10-20-debt2-r6-relationships.md`) |
 | `dt.date.today()` в timesheet (системная TZ вместо `core/time.local_date()`) | 🟢 закрыт 20.10.2026 | все 9 вызовов переведены на `local_date()`/`now_utc()`; AST-страж `test_no_system_time_reads_in_modules` запрещает `today()/now()` в модулях (allowlist: `now_utc()` — composition-параметр F-15); граничные тесты у полуночи (`tests/test_tz_local_date.py`) |
 | SQLite в проде | 🟢 закрыт 15.10.2026 | прод-профиль `docker-compose.prod.yml`: PostgreSQL 16 + nginx (TLS) + бэкапы; драйвер в образе |
 | Настройки движка правятся JSON-в-текстарея | 🟡 | форма-редактор справочников (валидация уже сообщает все нарушения разом) |

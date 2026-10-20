@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy import (
     Boolean,
@@ -16,10 +16,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
-
-if TYPE_CHECKING:
-    from app.modules.employees.application.catalog import Employee
-    from app.modules.night.application.catalog import NightReport
 from app.core.time import now_local
 
 
@@ -73,8 +69,6 @@ class Car(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
 
-    assigned_employee: Mapped[Optional[Employee]] = relationship(
-        back_populates="assigned_car", foreign_keys=[assigned_to])
 
 
 class CarHistory(Base):
@@ -132,6 +126,5 @@ class CarNightCheck(Base):
     clean: Mapped[bool] = mapped_column(Boolean, default=True)
     comment: Mapped[str] = mapped_column(Text, default="")
 
-    report: Mapped[NightReport] = relationship()
 
 
