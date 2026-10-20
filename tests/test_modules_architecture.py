@@ -272,3 +272,31 @@ def test_notify_public_init_keeps_legacy_surface():
     assert set(notify.__all__) == expected
     for name in expected:
         assert getattr(notify, name, None) is not None, name
+
+
+# ── DoD «TZ/now — только core/time.py»: системное время в модулях запрещено ──
+
+# Единственное разрешённое чтение системного времени в модулях: now_utc() —
+# composition-параметр движка (§5.1/F-15: `now` снимается здесь и передаётся
+# в use case'ы параметром). Всё остальное — local_date()/now_local()/utc_to_local()
+# из app.core.time (TZ объекта из APP_TZ, а не TZ сервера).
+SYSTEM_TIME_ALLOWLIST = {
+    "app/modules/timesheet/application/engine_common.py": {"now"},
+}
+
+
+@pytest.mark.parametrize("mod", MODULES)
+def test_no_system_time_reads_in_modules(mod):
+    offenders = []
+    for path in _py_files(_mod_root(mod)):
+        allowed = SYSTEM_TIME_ALLOWLIST.get(path.relative_to(ROOT).as_posix(), set())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr in ("now", "today") \
+                    and node.func.attr not in allowed:
+                offenders.append((path.relative_to(ROOT).as_posix(), node.func.attr,
+                                  node.lineno))
+    assert offenders == [], (
+        "системное время мимо core/time (долг №3 закрыт 20.10.2026 — не открывать): "
+        f"{offenders}")

@@ -12,6 +12,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.time import local_date
 from app.modules.employees.application import Employee, EmploymentPeriod, employed_on, group_index, normalize_group
 
 from ..adapters.factory import build_ports
@@ -78,7 +79,7 @@ def day_code_colors(db: Session) -> dict[str, str]:
     """Цвета кодов Табеля — блок presentation версии справочников (данные приложения;
     домен цветов не знает, 2.4). Общий источник Табеля и Графика: пустой словарь —
     потребители берут свою подстраховку."""
-    ver = base_version(db, dt.date.today())
+    ver = base_version(db, local_date())
     if ver is None:
         return {}
     try:
@@ -155,8 +156,6 @@ def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
     а не «кодов нет»: вызывающий код в этом случае проверку пропускает.
     """
     import json
-
-    from app.core.time import local_date
 
     from ..adapters.sql_settings import base_version
 

@@ -307,7 +307,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
 | Бюджет УТ линейный по штату (по спеке) | 🟡 | батч-порты `load_inputs` на группу сотрудников; кэш Settings уже есть |
 | SPA без сборки, один app.js ~2 400 строк | 🟢 закрыт 15.10.2026 | app.js 2262 → 369 строк: разделы — 9 файлов `static/js/modules/` (C6); границы держат gen_js_globals + ESLint no-undef + смоуки (ADR-0008); esbuild — при росте команды |
 | Кросс-модульные `relationship()` на каталог (R6-долг): `Punch.employee` (lazy=joined) и ещё 10 связей — точный allowlist в `tests/test_modules_architecture.py` | 🟡 зафиксировано C4 | продуктовый батч «навигация → порты/DTO»: замена на явные joins/словари во владельцах экранов; бюджеты запросов под тестом-стражем |
-| `dt.date.today()` в 7 местах timesheet interface/bootstrap (системная TZ вместо `core/time.local_date()`) | 🟡 | точечный батч с проверкой поведения у полуночи (DoD «TZ/now — только core/time») |
+| `dt.date.today()` в timesheet (системная TZ вместо `core/time.local_date()`) | 🟢 закрыт 20.10.2026 | все 9 вызовов переведены на `local_date()`/`now_utc()`; AST-страж `test_no_system_time_reads_in_modules` запрещает `today()/now()` в модулях (allowlist: `now_utc()` — composition-параметр F-15); граничные тесты у полуночи (`tests/test_tz_local_date.py`) |
 | SQLite в проде | 🟢 закрыт 15.10.2026 | прод-профиль `docker-compose.prod.yml`: PostgreSQL 16 + nginx (TLS) + бэкапы; драйвер в образе |
 | Настройки движка правятся JSON-в-текстарея | 🟡 | форма-редактор справочников (валидация уже сообщает все нарушения разом) |
 | Демо-сид завязан на «сегодня» | 🔵 | фиксация даты сида переменной окружения для скриншот-тестов |
