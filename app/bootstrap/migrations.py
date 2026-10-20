@@ -230,7 +230,7 @@ def _apply_timesheet_code_normative(con) -> None:
       в Табеле остаётся явка, недостачу гасит банк часов (паттерн EX-29).
 
     Правим только словарь (shift_types), историю Табеля не переписываем: версии
-    справочников очищает engine_bootstrap.strip_removed_day_codes, и только если
+    справочников очищает timesheet-bootstrap (strip_removed_day_codes), и только если
     в Табеле не осталось строк с этими кодами.
     """
 
@@ -625,8 +625,8 @@ def migrate_schedule_dict_simplify() -> None:
 
     from sqlalchemy import inspect, text
 
-    from ..engine.adapters.sql_settings import SqlSettingsAdapter
-    from ..engine.application.months import month_period
+    from ..modules.timesheet.adapters.sql_settings import SqlSettingsAdapter
+    from ..modules.timesheet.application.months import month_period
 
     insp = inspect(engine)
     existing = set(insp.get_table_names())

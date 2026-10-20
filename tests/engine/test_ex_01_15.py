@@ -6,14 +6,14 @@ import datetime as dt
 
 import pytest
 
-from app.engine.domain.codes_registry.reason_codes import (
+from app.modules.timesheet.domain.codes_registry.reason_codes import (
     CODE_PLACED,
     PLAN_EQUALS_FACT,
 )
-from app.engine.domain.settings.checks.window_key import CHK_WINDOW_KEY
-from app.engine.domain.settings.checks.window_plan import CHK_WINDOW_PLAN
-from app.engine.domain.settings.types import Window
-from app.engine.domain.types.errors import ConfigError, InvalidInputDataError
+from app.modules.timesheet.domain.settings.checks.window_key import CHK_WINDOW_KEY
+from app.modules.timesheet.domain.settings.checks.window_plan import CHK_WINDOW_PLAN
+from app.modules.timesheet.domain.settings.types import Window
+from app.modules.timesheet.domain.types.errors import ConfigError, InvalidInputDataError
 
 from .helpers import (
     IN,
@@ -210,14 +210,14 @@ def test_ex_11_day_limit_skips_full_day():
 # ── EX-12 · Некорректная длина окна ───────────────────────────────────────────
 
 def _windows_with(key: str, window: Window) -> dict:
-    from app.engine.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.settings.defaults import default_settings
     windows = dict(default_settings().windows)
     windows[key] = window
     return windows
 
 
 def test_ex_12_wrong_window_length():
-    from app.engine.domain.settings.validate import validate_settings
+    from app.modules.timesheet.domain.settings.validate import validate_settings
     st = settings(windows=_windows_with("Я 12", Window(8 * 60, 14 * 60)))
     with pytest.raises(ConfigError) as exc:
         validate_settings(st)
@@ -225,7 +225,7 @@ def test_ex_12_wrong_window_length():
 
 
 def test_ex_12_control_non_canonical_window_key_dot():
-    from app.engine.domain.settings.validate import validate_settings
+    from app.modules.timesheet.domain.settings.validate import validate_settings
     st = settings(windows=_windows_with("Я 10.75", Window(8 * 60, 20 * 60)))
     with pytest.raises(ConfigError) as exc:
         validate_settings(st)
@@ -233,7 +233,7 @@ def test_ex_12_control_non_canonical_window_key_dot():
 
 
 def test_ex_12_control_non_canonical_window_key_no_space():
-    from app.engine.domain.settings.validate import validate_settings
+    from app.modules.timesheet.domain.settings.validate import validate_settings
     st = settings(windows=_windows_with("Я12", Window(8 * 60, 20 * 60)))
     with pytest.raises(ConfigError) as exc:
         validate_settings(st)
@@ -313,8 +313,8 @@ def test_ex_13_variant_group_change_per_day():
 
 
 def test_ex_13_variant_chk_defaults_missing_global():
-    from app.engine.domain.settings.types import GlobalDefaults
-    from app.engine.domain.settings.validate import validate_settings
+    from app.modules.timesheet.domain.settings.types import GlobalDefaults
+    from app.modules.timesheet.domain.settings.validate import validate_settings
     st = settings(global_defaults=GlobalDefaults(double_overtime=False, pays_overtime=True,
                                                  plan_equals_fact=None))
     with pytest.raises(ConfigError) as exc:
@@ -385,9 +385,9 @@ def test_ex_14_control_3_opening_out_ignored():
     Пример в спецификации исправлен по нормативной модели (правка v7.1/F-20,
     подтверждение владельца 11.10.2026, А.11).
     """
-    from app.engine.domain.sessions.pair_marks import pair_marks
-    from app.engine.domain.settings.defaults import default_settings
-    from app.engine.domain.time.to_calc_mark import to_calc_mark
+    from app.modules.timesheet.domain.sessions.pair_marks import pair_marks
+    from app.modules.timesheet.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.time.to_calc_mark import to_calc_mark
 
     st = default_settings()
     opening = Mark_(29, 7, "out", 10)
@@ -415,7 +415,7 @@ WINDOWS_1075 = None
 
 
 def _settings_1075():
-    from app.engine.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.settings.defaults import default_settings
     windows = dict(default_settings().windows)
     windows["Я 10,75"] = Window(8 * 60, 20 * 60)
     return settings(windows=windows)

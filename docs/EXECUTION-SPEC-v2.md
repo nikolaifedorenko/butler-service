@@ -426,3 +426,46 @@ push+мерж до этапа A, иначе конфликты переноса.
   импортирует приложение.
 * `core/media.BASE_DIR` — на один `.parent` глубже (файл переехал из app/ в
   app/core/): data/uploads остаётся в корне проекта.
+
+---
+
+## 13. Уточнения по итогам фазы C2 (20.10.2026)
+
+Фактический состав `modules/timesheet/` и приёмы переноса (детали —
+`docs/CHANGES-2026-10-20-stage-c2-timesheet.md`):
+
+* Состав: `domain/ports/adapters/interface` — бывшие слои `app/engine` (перенос
+  «как есть») + `application/` пополнен поглощёнными legacy-хелперами
+  (engine_common, punch_plan, base_schedule, tabel_fill, schedule_helpers,
+  schedule_patterns, doublepay) + `adapters/orm.py` (слияние
+  models/{directory,punch,schedule,engine_store}) + `interface/` пополнен
+  8 роутерами + `bootstrap.py` (бывший engine_bootstrap).
+* `schedule_patterns` — в **application**, не domain: AST-закон 2.4 запрещает
+  кириллицу в домене, а там кодовые наборы «р»/«в»/«вых» и тексты ValueError.
+* **§5.3 исполнена с поправкой на §11.1 (приоритет конкретного):** центральный
+  `ConfigError → 409` (не 422) — статус закреплён
+  `test_10_config_error_is_409_not_500` для вкладок; 422 остался у редактора
+  настроек (PUT /api/engine-settings) и записи Графика (shift/absence,
+  CHK-* уровня 3) — три задокументированных локальных catch на `error_text`.
+  `DomainError → 422`, `ApplicationError → 409`. `domain_error_text` удалена;
+  тексты — `interface/formatting.error_text` (2.4). Суффиксы-подсказки
+  «Исправьте в разделе «Настройки»…» поглощены единым текстом ConfigError
+  (тестами/openapi/фронтом не закреплены).
+* AST-закон application-слоя: транзит-allowlist из 6 legacy-файлов (свои
+  adapters + app.groups/app.employment до C4); `app.core.*` разрешён всем
+  (§3); файлы движка — по-прежнему полностью чистые.
+* `.importlinter` — 6 контрактов: добавлены timesheet-isolation (правопреемник
+  engine-isolation), timesheet-interface-independence и транзитный контракт G3
+  (legacy `app.*` ✗ `modules.*`; 11 именованных исключений: фасад models,
+  api/employees, api/settings_api, api/auth_routes, services/employee_lifecycle;
+  сокращаются в C4–C6). `modules → app-legacy` (groups/employment/doc_render/
+  grid_docx/pdf_render/models.night|notify) легализовано тем же G3 до переноса
+  владельцев.
+* **G2 отложен до C4:** `pdf_render → core/render.py` не выполнялся — транзит
+  G3 покрывает зависимость timesheet от app-легаси без срочного переноса.
+* **Employee — в `timesheet/adapters/orm.py`** (directory.py перенесён целиком,
+  фаза 4 буквально). В C4 классы каталога переезжают в `employees/adapters/orm.py`;
+  кросс-модульные `relationship()` таймшита на Employee (Punch.employee
+  lazy=joined и др.) — предмет решения по R6 в C4 (строковые FK уже соответствуют).
+* Реестр моделей (G4): `registry.ensure_models()` импортирует орм модуля явно;
+  число таблиц `Base.metadata` — 45, сверено с main, без изменений.

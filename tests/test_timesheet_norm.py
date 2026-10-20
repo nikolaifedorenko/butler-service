@@ -34,9 +34,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
-from app.engine_bootstrap import REMOVED_DAY_CODES, strip_removed_day_codes  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.models import EngineSettingsVersion, ShiftType, TabelDay  # noqa: E402
+from app.modules.timesheet.bootstrap import REMOVED_DAY_CODES, strip_removed_day_codes  # noqa: E402
 
 init_db()
 client = TestClient(app)

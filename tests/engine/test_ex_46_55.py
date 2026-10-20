@@ -6,9 +6,9 @@ import datetime as dt
 
 import pytest
 
-from app.engine.domain.codes_registry.reason_codes import OPENING_ROUNDED
-from app.engine.domain.settings.types import Window
-from app.engine.domain.types.errors import InvalidInputDataError
+from app.modules.timesheet.domain.codes_registry.reason_codes import OPENING_ROUNDED
+from app.modules.timesheet.domain.settings.types import Window
+from app.modules.timesheet.domain.types.errors import InvalidInputDataError
 
 from .helpers import (
     IN,
@@ -40,7 +40,7 @@ SEP29 = dt.date(Y, 9, 29)
 
 
 def _windows_1075():
-    from app.engine.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.settings.defaults import default_settings
     windows = dict(default_settings().windows)
     windows["Я 10,75"] = Window(8 * 60, 20 * 60)
     return windows
@@ -94,9 +94,9 @@ def test_ex_47_rounding_collision_keeps_order():
 def test_ex_47_control_resorted_marks_would_raise():
     """Контроль: пересортировка «пришёл раньше ушёл» при равенстве моментов дала бы
     нарушение чередования — домен так делать не должен (4.5, 12.22)."""
-    from app.engine.domain.sessions.pair_marks import pair_marks
-    from app.engine.domain.settings.defaults import default_settings
-    from app.engine.domain.time.to_calc_mark import to_calc_mark
+    from app.modules.timesheet.domain.sessions.pair_marks import pair_marks
+    from app.modules.timesheet.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.time.to_calc_mark import to_calc_mark
 
     st = default_settings()
     marks = [IN(1, 7), OUT(1, 8, 10), IN(1, 8, 20), OUT(1, 9)]

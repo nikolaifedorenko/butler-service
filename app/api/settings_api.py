@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..base_schedule import DEFAULT_BASE, load_base_config, save_base_config
 from ..core.audit import audit
 from ..core.auth import Principal
 from ..core.db import get_db
@@ -26,7 +25,8 @@ from ..models import (
     TabelDay,
     User,
 )
-from ..schedule_helpers import DEFAULT_RULES, load_rules, rule_options
+from ..modules.timesheet.application.base_schedule import DEFAULT_BASE, load_base_config, save_base_config
+from ..modules.timesheet.application.schedule_helpers import DEFAULT_RULES, load_rules, rule_options
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -49,7 +49,7 @@ DEFAULT_HINTS = {
 
 def defaults_of(db: Session, on: dt.date) -> dict:
     """Глобальные значения модификаторов и лимиты из версии, действующей на дату `on`."""
-    from ..engine.adapters.sql_settings import base_version
+    from ..modules.timesheet.adapters.sql_settings import base_version
 
     ver = base_version(db, on)
     payload = json.loads(ver.payload_json) if ver else {}
@@ -126,7 +126,7 @@ def update_base(payload: BaseIn, principal: Principal = Depends(require_perm("se
     """Базовый цикл объекта: какие дни рабочие у Смены 1 / Смены 2 / Администрации — на все месяцы."""
     import datetime as _dt
 
-    from ..base_schedule import working_flag
+    from ..modules.timesheet.application.base_schedule import working_flag
 
     try:
         _dt.date.fromisoformat(payload.anchor)

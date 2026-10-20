@@ -7,7 +7,7 @@ import datetime as dt
 
 import pytest
 
-from app.engine.domain.settings.types import (
+from app.modules.timesheet.domain.settings.types import (
     MOD_PAYS,
     MOD_PLAN_EQUALS_FACT,
     Category,
@@ -15,9 +15,9 @@ from app.engine.domain.settings.types import (
     ModifierEntry,
     Window,
 )
-from app.engine.domain.settings.validate import validate_settings
-from app.engine.domain.types.entities import Adjustment, Day, DeferredBlock, Period
-from app.engine.domain.types.errors import (
+from app.modules.timesheet.domain.settings.validate import validate_settings
+from app.modules.timesheet.domain.types.entities import Adjustment, Day, DeferredBlock, Period
+from app.modules.timesheet.domain.types.errors import (
     ConfigError,
     IncompletePeriodError,
     IncompleteTimesheetError,

@@ -180,7 +180,7 @@ def me(principal: Principal = Depends(current_principal), db: Session = Depends(
     data = {"user": principal.to_dict(), "today": None,
             "permissions": sorted(principal_permissions(db, principal))}
     if emp:
-        from ..services.punch_plan import plan_for_date, to_local
+        from ..modules.timesheet.application.punch_plan import plan_for_date, to_local
         today = local_date()
         shift, p_start, p_end, _plan_date, subs = plan_for_date(db, emp.id, today)
         data["today"] = {

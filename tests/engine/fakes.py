@@ -6,11 +6,11 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
-from app.engine.application.context import EnginePorts
-from app.engine.application.months import previous_period
-from app.engine.domain.settings.defaults import default_settings
-from app.engine.domain.settings.types import Settings
-from app.engine.domain.types.entities import (
+from app.modules.timesheet.application.context import EnginePorts
+from app.modules.timesheet.application.months import previous_period
+from app.modules.timesheet.domain.settings.defaults import default_settings
+from app.modules.timesheet.domain.settings.types import Settings
+from app.modules.timesheet.domain.types.entities import (
     Adjustment,
     Day,
     Employment,

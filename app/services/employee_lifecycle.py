@@ -17,7 +17,6 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..base_schedule import dump_pattern, validate_pattern_label
 from ..core.audit import audit
 from ..core.auth import Principal
 from ..core.auth_guards import can_manage_user
@@ -32,6 +31,7 @@ from ..models import (
     Employee,
     PositionHistory,
 )
+from ..modules.timesheet.application.base_schedule import dump_pattern, validate_pattern_label
 
 
 @dataclass

@@ -149,7 +149,7 @@ class TestCodePunchFlags(unittest.TestCase):
 
     def test_07_publish_guard_removal(self):
         """Публикация версии: код из Табеля / от живой смены удалить нельзя."""
-        from app.api.engine_settings_api import _guard_removed_day_codes
+        from app.modules.timesheet.interface.engine_settings_api import _guard_removed_day_codes
 
         base = client.get("/api/engine-settings").json()["active"]["payload"]
         db = SessionLocal()
@@ -171,7 +171,7 @@ class TestCodePunchFlags(unittest.TestCase):
 
     def test_08_apply_code_app_defaults_idempotent(self):
         """apply_code_app_defaults добирает недостающие app-поля и не трогает остальные."""
-        from app.engine_bootstrap import apply_code_app_defaults
+        from app.modules.timesheet.bootstrap import apply_code_app_defaults
 
         db = SessionLocal()
         try:

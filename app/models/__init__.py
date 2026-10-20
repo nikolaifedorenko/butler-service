@@ -18,21 +18,36 @@ from ..core.identity import AccessGrant, AccessGroup, AccessGroupMember, User  #
 from ..core.media import Photo  # noqa: F401
 from ..core.roles import MANAGER_ROLES, ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR  # noqa: F401
 from ..core.time import utcnow  # noqa: F401
-from .cars import Car, CarHistory, CarLocation, CarNightCheck  # noqa: F401
-from .directory import (  # noqa: F401
+
+# Фаза C2 (20.10.2026): модели Табеля/Графика/движка и каталога переехали в
+# app/modules/timesheet/adapters/orm.py — фасад ре-экспортирует их (транзитный
+# re-export по EXECUTION-SPEC-v2 §7 фаза 4; уменьшится в фазах C4–C6 и будет
+# удалён вместе с пакетом app/models/).
+from ..modules.timesheet.adapters.orm import (  # noqa: F401
     BankAdjustment,
     BlockAssignment,
+    DayModifier,
+    DeferredCarry,
     Department,
     DoublePayDay,
     EmergencyContact,
     Employee,
     EmploymentPeriod,
+    EngineSettingsVersion,
+    PeriodClosing,
     PositionHistory,
+    Punch,
+    ScheduleAbsence,
+    ScheduleShift,
+    Setting,
+    ShiftRevision,
+    ShiftType,
     StatementKind,
     Subdivision,
+    TabelDay,
     VipDoublePay,
 )
-from .engine_store import DayModifier, DeferredCarry, EngineSettingsVersion, PeriodClosing, Setting, TabelDay  # noqa: F401
+from .cars import Car, CarHistory, CarLocation, CarNightCheck  # noqa: F401
 from .night import (  # noqa: F401
     ChecklistItem,
     ChecklistOverride,
@@ -50,8 +65,6 @@ from .notify import (  # noqa: F401
     NotifyTemplate,
     ResponsibilityService,
 )
-from .punch import Punch  # noqa: F401
-from .schedule import ScheduleAbsence, ScheduleShift, ShiftRevision, ShiftType  # noqa: F401
 
 __all__ = [
     "Base",

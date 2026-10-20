@@ -2,7 +2,7 @@
 
 Конфигурация, БД-сессия, время, ошибки, безопасность, права, аудит, медиа,
 идентичность (User/гранты). Правило R5: core НЕ импортирует модули приложения
-(app.api, app.services, app.models, app.engine, app.modules.*) — только stdlib,
+(app.api, app.services, app.models, app.modules.*) — только stdlib,
 сторонние библиотеки и сам core. Composition root (main.py, bootstrap/) —
 единственное место, которое знает все слои.
 """

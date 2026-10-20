@@ -6,60 +6,60 @@ import datetime as dt
 
 import pytest
 
-from app.engine.domain.bank.close_bank import close_bank
-from app.engine.domain.bank.granules_that_fit import granules_that_fit
-from app.engine.domain.bank.minutes_to_cut import minutes_to_cut
-from app.engine.domain.bank.pay_with_bank import pay_debt_with_bank
-from app.engine.domain.board.assemble_board import assemble_board
-from app.engine.domain.board.expected_arrivals import expected_arrivals
-from app.engine.domain.board.expected_now import expected_now
-from app.engine.domain.board.open_sessions import open_sessions
-from app.engine.domain.day_card.apply_plan_equals_fact import apply_plan_equals_fact
-from app.engine.domain.day_card.category_of import category_of
-from app.engine.domain.day_card.codes_of_day import codes_of_day
-from app.engine.domain.day_card.cut_working_time import cut_working_time
-from app.engine.domain.day_card.debt_of_day import debt_of_day
-from app.engine.domain.day_card.fmt_hours import fmt_hours
-from app.engine.domain.day_card.has_presence_event import has_presence_event
-from app.engine.domain.day_card.overtime_parts import overtime_parts
-from app.engine.domain.day_card.plan_of_day import plan_of_day
-from app.engine.domain.day_card.resolve_plan_equals_fact import resolve_plan_equals_fact
-from app.engine.domain.day_card.split_by_category import split_by_category
-from app.engine.domain.day_card.value_of import value_of
-from app.engine.domain.day_card.window_of_day import window_of_day
-from app.engine.domain.flags.drop_suppressed_lates import drop_suppressed_lates
-from app.engine.domain.flags.early import early_flag
-from app.engine.domain.flags.late import late_flag
-from app.engine.domain.flags.off_shift import off_shift_flag
-from app.engine.domain.flags.present_at import present_at
-from app.engine.domain.opening.normalize_bank import normalize_opening_bank
-from app.engine.domain.opening.normalize_deferred import normalize_deferred
-from app.engine.domain.opening.round_signed import round_signed
-from app.engine.domain.placement.codes import Codes
-from app.engine.domain.placement.free_capacity import free_capacity
-from app.engine.domain.presence.presence_intervals import presence_intervals
-from app.engine.domain.presence.raw_presence_intervals import raw_presence_intervals
-from app.engine.domain.presence.split_by_day import split_by_day
-from app.engine.domain.schedule.expected_subintervals import expected_subintervals
-from app.engine.domain.schedule.merge_absences import merge_absences
-from app.engine.domain.schedule.shift_segments import merge_spans, shift_segments
-from app.engine.domain.sessions.pair_marks import pair_marks
-from app.engine.domain.settings.defaults import default_settings
-from app.engine.domain.settings.resolve_modifier import resolve_modifier
-from app.engine.domain.settings.types import (
+from app.modules.timesheet.domain.bank.close_bank import close_bank
+from app.modules.timesheet.domain.bank.granules_that_fit import granules_that_fit
+from app.modules.timesheet.domain.bank.minutes_to_cut import minutes_to_cut
+from app.modules.timesheet.domain.bank.pay_with_bank import pay_debt_with_bank
+from app.modules.timesheet.domain.board.assemble_board import assemble_board
+from app.modules.timesheet.domain.board.expected_arrivals import expected_arrivals
+from app.modules.timesheet.domain.board.expected_now import expected_now
+from app.modules.timesheet.domain.board.open_sessions import open_sessions
+from app.modules.timesheet.domain.day_card.apply_plan_equals_fact import apply_plan_equals_fact
+from app.modules.timesheet.domain.day_card.category_of import category_of
+from app.modules.timesheet.domain.day_card.codes_of_day import codes_of_day
+from app.modules.timesheet.domain.day_card.cut_working_time import cut_working_time
+from app.modules.timesheet.domain.day_card.debt_of_day import debt_of_day
+from app.modules.timesheet.domain.day_card.fmt_hours import fmt_hours
+from app.modules.timesheet.domain.day_card.has_presence_event import has_presence_event
+from app.modules.timesheet.domain.day_card.overtime_parts import overtime_parts
+from app.modules.timesheet.domain.day_card.plan_of_day import plan_of_day
+from app.modules.timesheet.domain.day_card.resolve_plan_equals_fact import resolve_plan_equals_fact
+from app.modules.timesheet.domain.day_card.split_by_category import split_by_category
+from app.modules.timesheet.domain.day_card.value_of import value_of
+from app.modules.timesheet.domain.day_card.window_of_day import window_of_day
+from app.modules.timesheet.domain.flags.drop_suppressed_lates import drop_suppressed_lates
+from app.modules.timesheet.domain.flags.early import early_flag
+from app.modules.timesheet.domain.flags.late import late_flag
+from app.modules.timesheet.domain.flags.off_shift import off_shift_flag
+from app.modules.timesheet.domain.flags.present_at import present_at
+from app.modules.timesheet.domain.opening.normalize_bank import normalize_opening_bank
+from app.modules.timesheet.domain.opening.normalize_deferred import normalize_deferred
+from app.modules.timesheet.domain.opening.round_signed import round_signed
+from app.modules.timesheet.domain.placement.codes import Codes
+from app.modules.timesheet.domain.placement.free_capacity import free_capacity
+from app.modules.timesheet.domain.presence.presence_intervals import presence_intervals
+from app.modules.timesheet.domain.presence.raw_presence_intervals import raw_presence_intervals
+from app.modules.timesheet.domain.presence.split_by_day import split_by_day
+from app.modules.timesheet.domain.schedule.expected_subintervals import expected_subintervals
+from app.modules.timesheet.domain.schedule.merge_absences import merge_absences
+from app.modules.timesheet.domain.schedule.shift_segments import merge_spans, shift_segments
+from app.modules.timesheet.domain.sessions.pair_marks import pair_marks
+from app.modules.timesheet.domain.settings.defaults import default_settings
+from app.modules.timesheet.domain.settings.resolve_modifier import resolve_modifier
+from app.modules.timesheet.domain.settings.types import (
     MOD_COUNTS_IN_UT,
     MOD_DOUBLE,
     ModifierEntry,
     Window,
 )
-from app.engine.domain.time.calc_horizon import calc_horizon
-from app.engine.domain.time.calc_now import calc_now
-from app.engine.domain.time.local_minute import local_minute
-from app.engine.domain.time.period_days import period_days
-from app.engine.domain.time.round_moment import round_moment
-from app.engine.domain.time.to_calc_mark import to_calc_mark
-from app.engine.domain.time.today_of import today_of
-from app.engine.domain.types.entities import (
+from app.modules.timesheet.domain.time.calc_horizon import calc_horizon
+from app.modules.timesheet.domain.time.calc_now import calc_now
+from app.modules.timesheet.domain.time.local_minute import local_minute
+from app.modules.timesheet.domain.time.period_days import period_days
+from app.modules.timesheet.domain.time.round_moment import round_moment
+from app.modules.timesheet.domain.time.to_calc_mark import to_calc_mark
+from app.modules.timesheet.domain.time.today_of import today_of
+from app.modules.timesheet.domain.types.entities import (
     Absence,
     Day,
     DeferredBlock,
@@ -70,7 +70,7 @@ from app.engine.domain.types.entities import (
     Session,
     Shift,
 )
-from app.engine.domain.types.errors import InvalidInputDataError
+from app.modules.timesheet.domain.types.errors import InvalidInputDataError
 
 from .helpers import IN, OUT, PEF_AUTO_, PEF_YES_, at, d, day, pef, settings
 
@@ -477,7 +477,7 @@ def test_codes_take_only_positive():
 
 
 def test_free_capacity_from_window_with_plan_equals_fact_day():
-    from app.engine.domain.types.results import DayCard
+    from app.modules.timesheet.domain.types.results import DayCard
     card = DayCard(day=d(2), timesheet_value="К 12", plan_minutes=0, full_fact_minutes=0,
                    work_minutes=0, overtime_minutes=0, debt_minutes=0, codes={},
                    pays_overtime=True, plan_equals_fact_applied=True)
@@ -486,7 +486,7 @@ def test_free_capacity_from_window_with_plan_equals_fact_day():
 
 
 def test_free_capacity_no_window():
-    from app.engine.domain.types.results import DayCard
+    from app.modules.timesheet.domain.types.results import DayCard
     card = DayCard(day=d(1), timesheet_value="В", plan_minutes=0, full_fact_minutes=0,
                    work_minutes=0, overtime_minutes=0, debt_minutes=0, codes={},
                    pays_overtime=True, plan_equals_fact_applied=False)
@@ -659,7 +659,7 @@ def test_off_shift_flag_requires_no_subintervals_and_presence():
 
 
 def test_drop_suppressed_lates_only_none_actual():
-    from app.engine.domain.types.results import Flag
+    from app.modules.timesheet.domain.types.results import Flag
     late_none = Flag(d(1), "LATE", {"expected_at": at(1, 8), "actual_at": None})
     late_real = Flag(d(1), "LATE", {"expected_at": at(1, 8), "actual_at": at(1, 9)})
     assert drop_suppressed_lates([late_none, late_real], True) == (late_real,)
@@ -752,7 +752,7 @@ def test_result_collections_are_readonly():
 
 
 def test_reason_data_readonly():
-    from app.engine.domain.types.results import Reason
+    from app.modules.timesheet.domain.types.results import Reason
     r = Reason("bank", "BANK_APPLIED", {"used": 60})
     with pytest.raises(TypeError):
         r.data["used"] = 0

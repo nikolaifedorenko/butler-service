@@ -98,10 +98,10 @@ def test_board_card_shift_today_hm_in_object_tz():
     (08:00–20:00 MSC показывались как 05:00–17:00). Доска отдаёт готовые
     shift_today_hm в часовом поясе объекта; UTC-моменты shift_today остаются
     источником для расчётов и не меняются."""
-    from app.engine.domain.board.assemble_board import assemble_board
-    from app.engine.domain.settings.defaults import default_settings
-    from app.engine.domain.types.entities import Mark, Shift
-    from app.engine.interface.views import board_dict
+    from app.modules.timesheet.domain.board.assemble_board import assemble_board
+    from app.modules.timesheet.domain.settings.defaults import default_settings
+    from app.modules.timesheet.domain.types.entities import Mark, Shift
+    from app.modules.timesheet.interface.views import board_dict
 
     utc = dt.timezone.utc
     day = dt.date.today()

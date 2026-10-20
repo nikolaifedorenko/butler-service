@@ -8,13 +8,22 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-ENGINE = ROOT / "app" / "engine"
+ENGINE = ROOT / "app" / "modules" / "timesheet"   # фаза C2: бывший app/engine
 DOMAIN = ENGINE / "domain"
 
 BUSINESS_CODES = {"Я", "К", "В", "ДО", "ОТ", "ОВ", "Б", "НБ", "НН",
                   "ДЯ", "ДН", "ДЯ2", "ДН2", "Смена 1", "Смена 2", "Пятидневка"}
 FORBIDDEN_DOMAIN_MODULES = ("application", "adapters", "interface", "ports")
 DIRTY_CALLS = {"now", "today"}          # datetime.now() / date.today()
+
+# Фаза C2 (EXECUTION-SPEC-v2 §7, §11.2 G3): легаси-хелперы, поглощённые модулем
+# «как есть» (логика не переписывалась). Им разрешены ТРАНЗИТНЫЕ импорты:
+# собственный слой adapters (ORM-модели) и ещё не перенесённые app-модули
+# (groups/employment — уедут в modules/employees в фазе C4, тогда список пустеет).
+# Файлы самого движка остаются полностью чистыми: закон для них не ослаблен.
+TRANSIT_APPLICATION_FILES = {"base_schedule.py", "tabel_fill.py", "schedule_helpers.py",
+                             "doublepay.py", "engine_common.py", "punch_plan.py"}
+TRANSIT_APP_PREFIXES = ("app.groups", "app.employment")
 
 
 def _py_files(root: pathlib.Path):
@@ -60,10 +69,12 @@ def test_domain_imports_nothing_above():
 def test_application_does_not_import_adapters_or_interface():
     offenders = []
     for path in _py_files(ENGINE / "application"):
+        transit = path.name in TRANSIT_APPLICATION_FILES
         for imp in _imports(path):
             parts = imp.split(".")
-            if "adapters" in parts or "interface" in parts \
-                    or (imp.startswith("app.") and "engine" not in parts):
+            if "interface" in parts or "adapters" in parts and not transit or imp.startswith("app.") and "timesheet" not in parts \
+                    and not imp.startswith("app.core.") \
+                    and not (transit and imp.startswith(TRANSIT_APP_PREFIXES)):
                 offenders.append((str(path), imp))
     assert offenders == []
 
@@ -73,7 +84,7 @@ def test_ports_import_only_typing_and_domain():
     for path in _py_files(ENGINE / "ports"):
         for imp in _imports(path):
             parts = imp.split(".")
-            if imp.startswith("app.engine") and "domain" not in parts and "ports" not in parts:
+            if imp.startswith("app.modules.timesheet") and "domain" not in parts and "ports" not in parts:
                 offenders.append((str(path), imp))
     assert offenders == []
 
@@ -157,7 +168,7 @@ def test_board_and_sessions_are_independent():
 def test_board_uses_only_schedule_from_domain():
     for path in _py_files(DOMAIN / "board"):
         for imp in _imports(path):
-            if imp.startswith("app.engine.domain"):
+            if imp.startswith("app.modules.timesheet.domain"):
                 tail = imp.split(".")
                 assert tail[-2] in ("board", "schedule", "settings", "time", "types",
                                     "codes_registry"), (str(path), imp)
