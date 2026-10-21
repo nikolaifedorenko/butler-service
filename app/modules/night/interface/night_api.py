@@ -21,8 +21,15 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
 from app.core.db import get_db
+from app.core.media import (
+    UploadRef,
+    max_upload_bytes,
+    photos_of,
+    read_upload_streaming,
+    resolve_photo_file,
+    save_photo_ref,
+)
 from app.core.media import delete_photo as delete_photo_usecase
-from app.core.media import max_upload_bytes, photos_of, resolve_photo_file, save_photo
 from app.core.permissions import has_perm, require_perm
 from app.core.settings_store import Setting
 from app.core.time import now_local
@@ -1014,14 +1021,15 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
     rep = _get_report(db, sec.report_id)
     _guard_open(rep)
     limit = max_upload_bytes(db)
-    blob = await file.read(limit + 1)
-    if len(blob) > limit:
-        raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
+    # потоковая загрузка: файл идёт на диск чанками, не в память (P1 20.10.2026)
+    ref = await read_upload_streaming(file, limit)
     try:
-        photo = save_photo(db, kind="night_item", ref_id=ni.id, filename=file.filename or "photo.jpg",
-                           blob=blob, user_id=principal.user.id, user_name=_principal_name(principal))
+        photo = save_photo_ref(db, kind="night_item", ref_id=ni.id, ref=ref,
+                               user_id=principal.user.id, user_name=_principal_name(principal))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        ref.discard()   # после save_photo_ref файла уже нет (перенесён/удалён) — missing_ok
     db.commit()
     return {"ok": True, "photo": {"id": photo.id, "url": f"/api/photos/{photo.id}/file",
                                   "media_type": photo.media_type or "photo"}}
@@ -1166,32 +1174,36 @@ async def report_car_check(report_id: int, car_id: int,
     from app.modules.cars.application.cars import CarOpError, check_car_night
     from app.modules.cars.application.catalog import Car
 
-    blobs: list[tuple[str, bytes]] = []
-    if file is not None:
-        limit = max_upload_bytes(db)
-        blob = await file.read(limit + 1)
-        if len(blob) > limit:
-            raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
-        if blob:
-            blobs.append((file.filename or "photo.jpg", blob))
-
     rep = _get_report(db, report_id)
     _guard_open(rep)
     car = db.get(Car, car_id)
     if car is None:
         raise HTTPException(status_code=404, detail="Кар не найден")
     sec = _cars_section(rep)
+
+    refs: list[UploadRef] = []
     try:
+        if file is not None:
+            limit = max_upload_bytes(db)
+            # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
+            ref = await read_upload_streaming(file, limit)
+            if ref.size:
+                refs.append(ref)
+            else:
+                ref.discard()      # пустой файл не сохраняем (прежнее поведение: if blob)
         res = check_car_night(db, rep, car, principal, found=found,
                               found_location=found_location, moved=moved,
                               location=location, canopy=canopy,
                               charge=charge, on_charge=on_charge,
                               condition=condition, trash=trash,
-                              clean=clean, comment=comment, blob_photos=blobs)
+                              clean=clean, comment=comment, photo_refs=refs)
     except CarOpError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:       # не-картинка в фото
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        for ref in refs:
+            ref.discard()   # не потреблённые при ошибке; потреблённые уже перенесены (missing_ok)
     # если область-шаг ещё не закреплена за кем-то — закрепляем (как при ответе на пункт)
     if sec.status == "free":
         sec.status = "taken"

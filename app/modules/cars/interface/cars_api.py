@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.media import max_upload_bytes, photos_of
+from app.core.media import UploadRef, max_upload_bytes, photos_of, read_upload_streaming
 from app.core.permissions import principal_permissions, require_perm
 
 from ..adapters.orm import CarHistory
@@ -305,26 +305,30 @@ async def car_return(car_id: int,
                      db: Session = Depends(get_db),
                      principal: Principal = Depends(require_perm("cars.use"))):
     """Возврат кара (multipart): состояние + фото доказательств (оригиналы)."""
-    blobs: list[tuple[str, bytes]] = []
-    if file is not None:
-        limit = max_upload_bytes(db)
-        blob = await file.read(limit + 1)
-        if len(blob) > limit:
-            raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
-        if blob:
-            blobs.append((file.filename or "photo.jpg", blob))
+    refs: list[UploadRef] = []
     try:
         car = get_car(db, car_id)
         was_with_key = car.has_key
+        if file is not None:
+            limit = max_upload_bytes(db)
+            # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
+            ref = await read_upload_streaming(file, limit)
+            if ref.size:
+                refs.append(ref)
+            else:
+                ref.discard()
         out = return_car(db, car, principal, by_employee_id=by_employee_id, by_name=by_name,
                          location=location, charge=charge, canopy=canopy, condition=condition,
                          trash=trash, clean=clean, on_charge=on_charge,
                          key_returned=key_returned, was_with_key=was_with_key,
-                         comment=comment, blob_photos=blobs)
+                         comment=comment, photo_refs=refs)
     except CarOpError as e:
         raise _err(e)
     except ValueError as e:       # не-картинка в фото
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        for ref in refs:
+            ref.discard()   # не потреблённые при ошибке; потреблённые уже перенесены (missing_ok)
     audit(db, principal, "car_return", f"car:{car_id}",
           {"condition": condition, "on_charge": on_charge, "comment": comment})
     db.commit()
