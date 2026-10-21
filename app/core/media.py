@@ -19,8 +19,12 @@ cleanup_photos() при старте сервера; запись в БД ост
 from __future__ import annotations
 
 import datetime as dt
+import os
+import shutil
 import struct
+import tempfile
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -166,26 +170,119 @@ def max_upload_bytes(db: Session) -> int:
     return max(caps) * 1024 * 1024
 
 
-def save_photo(db: Session, *, kind: str, ref_id: int, filename: str, blob: bytes,
-               user_id: Optional[int], user_name: str, media_type: str = "") -> Photo:
-    """Сохранить оригинал фото или видео на диск и зарегистрировать в БД.
+# ── потоковая загрузка (ревью 20.10.2026, P1-misc-4) ──────────────────────────
+# Раньше интерфейсы делали `await file.read(limit + 1)` — до HARD_MAX_MB (500 МБ)
+# в ОПЕРАТИВНОЙ памяти на запрос; несколько параллельных загрузок видео с телефона
+# съедали память воркера. Теперь поток читается чанками сразу на диск, в памяти
+# только первые SNIFF_BYTES для определения типа по магическим байтам.
 
-    media_type можно не передавать — тип определится по содержимому; если передан,
-    он обязан совпасть с определённым (защита от «видео, присланного как фото»).
-    Размер проверяется по лимиту своего типа: PayloadTooLarge → 413.
+SNIFF_BYTES = 64 * 1024          # магические байты всех поддерживаемых контейнеров — в начале
+STREAM_CHUNK = 1024 * 1024         # 1 МБ
+
+
+@dataclass(frozen=True)
+class UploadRef:
+    """Загруженный файл во временном каталоге: путь, размер и начало содержимого.
+
+    Владеет файлом вызывающий код: save_photo_ref() переносит его в хранилище
+    (или удаляет при отказе); при отказе ДО сохранения интерфейс обязан вызвать
+    discard() (в try/finally — unlink(missing_ok=True) безопасен и после переноса).
     """
-    detected, ext = sniff_media(blob, filename)
+
+    filename: str
+    tmp_path: Path
+    size: int
+    head: bytes        # первые SNIFF_BYTES — вход sniff_media
+
+    def discard(self) -> None:
+        Path(self.tmp_path).unlink(missing_ok=True)
+
+
+async def read_upload_streaming(file, limit: int) -> UploadRef:
+    """UploadFile (duck-typed: async .read(size), .filename) → временный файл.
+
+    Превышение limit прерывает чтение СРАЗУ (PayloadTooLarge → 413, текст прежний —
+    «Файл больше N МБ»); при любой ошибке временный файл удаляется.
+    """
+    fd, name = tempfile.mkstemp(prefix="butler-upload-")
+    tmp = Path(name)
+    head = b""
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = await file.read(STREAM_CHUNK)
+                if not chunk:
+                    break
+                if len(head) < SNIFF_BYTES:
+                    head += chunk[:SNIFF_BYTES - len(head)]
+                size += len(chunk)
+                if size > limit:
+                    raise PayloadTooLarge(f"Файл больше {limit // (1024 * 1024)} МБ")
+                out.write(chunk)
+        return UploadRef(filename=file.filename or "photo.jpg", tmp_path=tmp,
+                         size=size, head=head)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _sniff_and_limit(db: Session, head: bytes, filename: str, size: int,
+                     media_type: str) -> tuple[str, str]:
+    """Общая проверка save_photo/save_photo_ref: тип по содержимому + лимит своего типа."""
+    detected, ext = sniff_media(head, filename)
     if not detected:
         raise ValueError("Можно загружать только изображения (JPG, PNG, GIF, WEBP, BMP) "
                          "или видео (MP4, MOV, WEBM, MKV, 3GP)")
     if media_type and media_type != detected:
         raise ValueError(f"Файл не похож на {MEDIA_TITLES.get(media_type, media_type)}")
     limit_mb = media_limits(db)["video_max_mb" if detected == "video" else "photo_max_mb"]
-    if limit_mb > 0 and len(blob) > limit_mb * 1024 * 1024:
+    if limit_mb > 0 and size > limit_mb * 1024 * 1024:
         raise PayloadTooLarge(f"Файл больше {limit_mb} МБ")
+    return detected, ext
+
+
+def _upload_dir() -> tuple[Path, Path]:
+    """(абсолютный каталог, относительный от BASE_DIR) загрузок текущего месяца."""
     rel_dir = Path("data") / "uploads" / f"{now_local():%Y}" / f"{now_local():%m}"
     target_dir = BASE_DIR / rel_dir
     target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir, rel_dir
+
+
+def save_photo_ref(db: Session, *, kind: str, ref_id: int, ref: UploadRef,
+                   user_id: Optional[int], user_name: str, media_type: str = "") -> Photo:
+    """Сохранить загруженный ПОТОКОМ файл (UploadRef): без копирования через память —
+    временный файл ПЕРЕНОСИТСЯ в data/uploads/ (shutil.move). При любом отказе
+    временный файл удаляется."""
+    try:
+        detected, ext = _sniff_and_limit(db, ref.head, ref.filename, ref.size, media_type)
+        target_dir, rel_dir = _upload_dir()
+        name = f"{uuid.uuid4().hex}.{ext}"
+        shutil.move(str(ref.tmp_path), str(target_dir / name))
+    except BaseException:
+        ref.discard()
+        raise
+    photo = Photo(kind=kind, ref_id=ref_id, filename=Path(ref.filename or name).name[:200],
+                  path=str(rel_dir / name), size=ref.size, media_type=detected,
+                  uploaded_by=user_id, uploaded_by_name=user_name)
+    db.add(photo)
+    db.flush()
+    return photo
+
+
+def save_photo(db: Session, *, kind: str, ref_id: int, filename: str, blob: bytes,
+               user_id: Optional[int], user_name: str, media_type: str = "") -> Photo:
+    """Сохранить оригинал фото или видео на диск и зарегистрировать в БД (из байтов
+    в памяти — тесты и мелкие файлы; продуктовые загрузки идут через
+    read_upload_streaming + save_photo_ref).
+
+    media_type можно не передавать — тип определится по содержимому; если передан,
+    он обязан совпасть с определённым (защита от «видео, присланного как фото»).
+    Размер проверяется по лимиту своего типа: PayloadTooLarge → 413.
+    """
+    detected, ext = _sniff_and_limit(db, blob, filename, len(blob), media_type)
+    target_dir, rel_dir = _upload_dir()
     name = f"{uuid.uuid4().hex}.{ext}"
     (target_dir / name).write_bytes(blob)
     photo = Photo(kind=kind, ref_id=ref_id, filename=Path(filename or name).name[:200],

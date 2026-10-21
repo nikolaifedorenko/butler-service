@@ -21,8 +21,15 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
 from app.core.db import get_db
+from app.core.media import (
+    UploadRef,
+    max_upload_bytes,
+    photos_of,
+    read_upload_streaming,
+    resolve_photo_file,
+    save_photo_ref,
+)
 from app.core.media import delete_photo as delete_photo_usecase
-from app.core.media import max_upload_bytes, photos_of, resolve_photo_file, save_photo
 from app.core.permissions import has_perm, require_perm
 from app.core.settings_store import Setting
 from app.core.time import now_local
@@ -213,6 +220,7 @@ def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(requir
     """Массовое создание однотипных областей («Вилла VEG », 4001, 12 шт → 4001…4012)."""
     if payload.count < 1 or payload.count > 200:
         raise HTTPException(status_code=400, detail="Количество должно быть от 1 до 200")
+    _check_zone(db, payload.zone_id)
     created = []
     for n in range(payload.start, payload.start + payload.count):
         name = f"{payload.prefix}{n}".strip()
@@ -236,6 +244,7 @@ def create_area(payload: AreaIn, principal: Principal = Depends(require_perm("ni
         raise HTTPException(status_code=400, detail="Введите название области")
     if db.scalar(select(NightArea).where(NightArea.name == name)):
         raise HTTPException(status_code=409, detail="Такая область уже есть")
+    _check_zone(db, payload.zone_id)
     area = NightArea(name=name, category=payload.category.strip(), zone_id=payload.zone_id,
                      sort_order=payload.sort_order, active=payload.active)
     db.add(area)
@@ -251,9 +260,16 @@ def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(re
     area = db.get(NightArea, area_id)
     if area is None:
         raise HTTPException(status_code=404, detail="Область не найдена")
+    name = payload.name.strip()
+    # уникальность имени при переименовании (P1-misc-3): раньше проверялась только
+    # при создании — дубль имени падал в IntegrityError (500)
+    if name and name != area.name and db.scalar(
+            select(NightArea).where(NightArea.name == name, NightArea.id != area_id)):
+        raise HTTPException(status_code=409, detail="Такая область уже есть")
+    _check_zone(db, payload.zone_id)
     old = {"name": area.name, "category": area.category, "active": area.active,
            "zone_id": area.zone_id}
-    area.name = payload.name.strip() or area.name
+    area.name = name or area.name
     area.category = payload.category.strip()
     zone_changed = payload.zone_id != area.zone_id
     area.zone_id = payload.zone_id
@@ -385,6 +401,16 @@ def _check_service(db: Session, service_id: Optional[int]) -> None:
         return
     if db.get(ResponsibilityService, service_id) is None:
         raise HTTPException(status_code=400, detail="Ответственная служба не найдена")
+
+
+def _check_zone(db: Session, zone_id: Optional[int]) -> None:
+    """Зона обхода обязана существовать (ревью 20.10.2026, P1-misc-3): zone_id —
+    внешний ключ области; битый id на PostgreSQL давал IntegrityError (500), а на
+    SQLite (FK не включены) молча писал область-сироту."""
+    if not zone_id:
+        return
+    if db.get(NightZone, zone_id) is None:
+        raise HTTPException(status_code=400, detail="Зона обхода не найдена")
 
 
 def _service_name_taken(db: Session, name: str, exclude_id: Optional[int] = None) -> bool:
@@ -1014,14 +1040,15 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
     rep = _get_report(db, sec.report_id)
     _guard_open(rep)
     limit = max_upload_bytes(db)
-    blob = await file.read(limit + 1)
-    if len(blob) > limit:
-        raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
+    # потоковая загрузка: файл идёт на диск чанками, не в память (P1 20.10.2026)
+    ref = await read_upload_streaming(file, limit)
     try:
-        photo = save_photo(db, kind="night_item", ref_id=ni.id, filename=file.filename or "photo.jpg",
-                           blob=blob, user_id=principal.user.id, user_name=_principal_name(principal))
+        photo = save_photo_ref(db, kind="night_item", ref_id=ni.id, ref=ref,
+                               user_id=principal.user.id, user_name=_principal_name(principal))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        ref.discard()   # после save_photo_ref файла уже нет (перенесён/удалён) — missing_ok
     db.commit()
     return {"ok": True, "photo": {"id": photo.id, "url": f"/api/photos/{photo.id}/file",
                                   "media_type": photo.media_type or "photo"}}
@@ -1166,32 +1193,36 @@ async def report_car_check(report_id: int, car_id: int,
     from app.modules.cars.application.cars import CarOpError, check_car_night
     from app.modules.cars.application.catalog import Car
 
-    blobs: list[tuple[str, bytes]] = []
-    if file is not None:
-        limit = max_upload_bytes(db)
-        blob = await file.read(limit + 1)
-        if len(blob) > limit:
-            raise HTTPException(status_code=413, detail=f"Файл больше {limit // (1024 * 1024)} МБ")
-        if blob:
-            blobs.append((file.filename or "photo.jpg", blob))
-
     rep = _get_report(db, report_id)
     _guard_open(rep)
     car = db.get(Car, car_id)
     if car is None:
         raise HTTPException(status_code=404, detail="Кар не найден")
     sec = _cars_section(rep)
+
+    refs: list[UploadRef] = []
     try:
+        if file is not None:
+            limit = max_upload_bytes(db)
+            # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
+            ref = await read_upload_streaming(file, limit)
+            if ref.size:
+                refs.append(ref)
+            else:
+                ref.discard()      # пустой файл не сохраняем (прежнее поведение: if blob)
         res = check_car_night(db, rep, car, principal, found=found,
                               found_location=found_location, moved=moved,
                               location=location, canopy=canopy,
                               charge=charge, on_charge=on_charge,
                               condition=condition, trash=trash,
-                              clean=clean, comment=comment, blob_photos=blobs)
+                              clean=clean, comment=comment, photo_refs=refs)
     except CarOpError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:       # не-картинка в фото
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        for ref in refs:
+            ref.discard()   # не потреблённые при ошибке; потреблённые уже перенесены (missing_ok)
     # если область-шаг ещё не закреплена за кем-то — закрепляем (как при ответе на пункт)
     if sec.status == "free":
         sec.status = "taken"

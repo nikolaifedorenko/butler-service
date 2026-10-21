@@ -16,7 +16,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.format import safe_sheet_cell
 from app.core.permissions import require_perm
-from app.core.time import utc_to_local
+from app.core.time import TZ, utc_to_local
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -38,6 +38,18 @@ ACTION_TITLES = {
 }
 
 
+def _utc_bound(d: dt.date) -> dt.datetime:
+    """Локальная полночь даты `d` → наивный UTC.
+
+    `AuditLog.ts` хранится в UTC (core/audit пишет utcnow()), а фильтр задаёт
+    пользователь ЛОКАЛЬНЫМИ датами объекта. Раньше date_from сдвигался на
+    захардкоженные 3 часа (московский офсет), а date_to не конвертировался
+    вовсе: границы были асимметричны и ломались при любом APP_TZ ≠ +3
+    (ревью 20.10.2026, P1-misc-1).
+    """
+    return dt.datetime.combine(d, dt.time(0), TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
+
+
 def _query(q, action, actor, date_from, date_to):
     stmt = select(AuditLog)
     if q:
@@ -49,9 +61,9 @@ def _query(q, action, actor, date_from, date_to):
     if actor:
         stmt = stmt.where(AuditLog.actor_name.ilike(f"%{actor}%"))
     if date_from:
-        stmt = stmt.where(AuditLog.ts >= dt.datetime.combine(date_from, dt.time(0)) - dt.timedelta(hours=3))
+        stmt = stmt.where(AuditLog.ts >= _utc_bound(date_from))
     if date_to:
-        stmt = stmt.where(AuditLog.ts < dt.datetime.combine(date_to + dt.timedelta(days=1), dt.time(0)))
+        stmt = stmt.where(AuditLog.ts < _utc_bound(date_to + dt.timedelta(days=1)))
     return stmt
 
 

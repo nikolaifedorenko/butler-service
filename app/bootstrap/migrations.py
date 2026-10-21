@@ -127,6 +127,11 @@ def migrate_db() -> None:
             ("found_location", "VARCHAR(160) DEFAULT ''"),
             ("moved", "BOOLEAN DEFAULT 0"),
         ],
+        # журнал отправок (ревью 20.10.2026, P1): снимок адресатов копии письма —
+        # resend() обязан повторять отправку ТЕМ ЖЕ составом, cc не должен теряться
+        "notify_dispatches": [
+            ("cc_json", "TEXT DEFAULT ''"),
+        ],
         "users": [
             ("token_version", "INTEGER DEFAULT 0"),
         ],

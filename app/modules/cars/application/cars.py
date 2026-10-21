@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
@@ -25,6 +25,9 @@ from app.core.time import now_local
 from app.modules.employees.application import Employee
 
 from ..adapters.orm import Car, CarHistory, CarLocation
+
+if TYPE_CHECKING:
+    from app.core.media import UploadRef
 
 STATUS_TITLES = {
     "free": "свободен",
@@ -279,7 +282,7 @@ def give_car(db: Session, car: Car, principal, *, employee_id: Optional[int], na
 def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int],
                by_name: str, location: str, charge: str, canopy: bool, condition: str,
                trash: bool, clean: bool, on_charge: bool, key_returned: Optional[bool],
-               was_with_key: Optional[bool], comment: str, blob_photos: list[tuple[str, bytes]],
+               was_with_key: Optional[bool], comment: str, photo_refs: list[UploadRef],
                force: bool = False) -> dict:
     """Возврат кара на парковку.
 
@@ -330,10 +333,12 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
                                "trash": trash, "clean": clean, "on_charge": bool(car.on_charge),
                                "key_returned": key_returned, "comment": comment,
                                "auto_maintenance": bad})
-    for fname, fbytes in blob_photos:
-        from app.core.media import save_photo
-        save_photo(db, kind="car_return", ref_id=rec.id, filename=fname, blob=fbytes,
-                   user_id=principal.user.id, user_name=principal.name)
+    for ref in photo_refs:
+        # потоковая загрузка (P1 20.10.2026): файл уже на диске во временном каталоге,
+        # save_photo_ref переносит его в хранилище без чтения в память
+        from app.core.media import save_photo_ref
+        save_photo_ref(db, kind="car_return", ref_id=rec.id, ref=ref,
+                       user_id=principal.user.id, user_name=principal.name)
     return car_dict(car)
 
 
@@ -502,7 +507,7 @@ def night_cars_state(db: Session, report) -> dict:
 def check_car_night(db: Session, report, car: Car, principal, *, found: bool, location: str,
                     canopy: bool, charge: str, on_charge: bool, condition: str,
                     trash: bool, clean: bool, comment: str,
-                    blob_photos: Optional[list[tuple[str, bytes]]] = None,
+                    photo_refs: Optional[list[UploadRef]] = None,
                     found_location: str = "", moved: bool = False) -> dict:
     """Отметка по кару в ходе ночного обхода (перезапись — last write wins).
 
@@ -516,7 +521,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     меняется на новое. Перепарковка — факт, а не замечание: в счётчик «замечаний»
     не попадает, но видна в обходе, в истории кара (прежнее место → новое) и в выгрузке.
 
-    `blob_photos` — снимки с телефона (как в окне возврата кара): оригиналы
+    `photo_refs` — снимки с телефона (как в окне возврата кара): оригиналы
     сохраняются в хранилище фото с kind="car_check" и привязываются к отметке.
     Отметка одна на смену, поэтому повторное сохранение добавляет новый снимок
     к прежним (старые можно удалить крестиком в окне отметки)."""
@@ -565,15 +570,15 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     add_history(db, car, "check", principal, person=principal.name, location=car.location,
                 details={"found": ch.found, "charge": ch.charge, "condition": ch.condition,
                          "trash": ch.trash, "clean": ch.clean, "comment": ch.comment,
-                         "photos": len(blob_photos or []),
+                         "photos": len(photo_refs or []),
                          # перепарковка: где нашёл → где оставил (прежнее место карточки)
                          "moved": ch.moved, "found_location": ch.found_location,
                          "location_from": place_before if ch.moved else ""})
     db.flush()          # нужен id отметки — фото привязываются к ней (kind="car_check")
-    for fname, fbytes in (blob_photos or []):
-        from app.core.media import save_photo
-        save_photo(db, kind="car_check", ref_id=ch.id, filename=fname, blob=fbytes,
-                   user_id=principal.user.id, user_name=principal.name)
+    for ref in (photo_refs or []):
+        from app.core.media import save_photo_ref
+        save_photo_ref(db, kind="car_check", ref_id=ch.id, ref=ref,
+                       user_id=principal.user.id, user_name=principal.name)
     return {"id": ch.id, "found": ch.found,
             "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None}
 
