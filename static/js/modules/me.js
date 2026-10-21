@@ -87,8 +87,14 @@ function renderMe(s, me) {
 
   const btn = $('#punch-btn');
   if (btn && !btn.disabled) btn.onclick = doPunch;
-  loadMyHistory();
-  bindCarStrip();
+  /* История — с catch (ревью 20.10.2026, P1-fe-5): без него сбой запроса
+     (/api/punches) уходил в unhandledrejection и пугал общим тостом «Ошибка
+     интерфейса… обновите страницу»; причина показывается в самой панели. */
+  loadMyHistory().catch(e => {
+    const h = $('#me-history');
+    if (h) h.innerHTML = `<div class="empty">Историю отметок не загрузить: ${esc(e && e.message || e)}</div>`;
+  });
+  bindCarStrip();   // свой try/catch внутри — «Раздел недоступен»
 }
 
 /* ── полоска «Мой электрокар» в «Моих отметках»: держу / закреплён / взять свободный ── */

@@ -285,7 +285,13 @@ async function rehireModal(emp) {
   const today = todayISO();
   let groups = [];
   try { groups = await api('/api/group-choices'); } catch { groups = []; }
-  const workShifts = state.shiftTypes.filter(x => x.kind === 'work');
+  /* «Значение рабочего дня» — из /api/tabel-values (код + окно CFG-WINDOWS,
+     форма {value,title,start_hm,end_hm}), как в модалке перевода блока (da):
+     patternFieldsHtml ждёт именно их. Раньше сюда передавали workShifts
+     (словарь типов смен) — селектор рисовал пустые option «undefined · undefined»
+     (ревью 20.10.2026, P1-fe-2). */
+  let values = [];
+  try { values = (await api('/api/tabel-values', { silent: true })).values || []; } catch { values = []; }
   openModal({
     title: 'Принять обратно',
     subtitle: `${emp.full_name}${emp.dismissed_at ? ' · уволен(а), последний рабочий день ' + dateRu(emp.dismissed_at) : ''}`,
@@ -313,7 +319,7 @@ async function rehireModal(emp) {
       if (sel) sel.onchange = () => {
         const g = groups.find(x => x.name === sel.value) || {};
         kind = sel.value ? (g.kind || 'base') : '';
-        host.innerHTML = sel.value ? patternFieldsHtml('rh', kind, workShifts, today) : '';
+        host.innerHTML = sel.value ? patternFieldsHtml('rh', kind, values, today) : '';
       };
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-ok]').onclick = async () => {

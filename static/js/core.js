@@ -104,6 +104,31 @@ function getCookie(name) {
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
   return m ? decodeURIComponent(m[1]) : '';
 }
+/* Ошибка HTTP-ответа → Error с человеческим текстом (ревью 20.10.2026, P1-fe-4).
+   FastAPI на 422 (pydantic-валидация) отдаёт detail МАССИВОМ {loc, msg, type} —
+   раньше он попадал в тост сырым JSON («[{"loc":["body","year"]…»). Теперь:
+   «year: Input should be a valid integer» — поле и причина. Структурные 409
+   ({message, …} — «перехват области», «всё равно закрыть?») сохраняют прежний
+   контракт: e.message = msg.message, e.payload/e.status для логики вызывающего. */
+function httpError(msg, status) {
+  if (msg && typeof msg === 'object') {
+    if (Array.isArray(msg)) {
+      const parts = msg.map(p => {
+        const field = Array.isArray(p && p.loc)
+          ? p.loc.filter(x => x !== 'body').join('.') : '';
+        const text = String((p && p.msg) || JSON.stringify(p));
+        return field ? `${field}: ${text}` : text;
+      });
+      const e = new Error(parts.filter(Boolean).join('; ') || `Ошибка ${status}`);
+      e.payload = msg; e.status = status;
+      return e;
+    }
+    const e = new Error(msg.message || JSON.stringify(msg));
+    e.payload = msg; e.status = status;
+    return e;
+  }
+  return new Error(String(msg));
+}
 async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', credentials: 'same-origin', headers: {} };
   if (opts.body !== undefined) {
@@ -132,13 +157,8 @@ async function api(path, opts = {}) {
     try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
-      if (msg && typeof msg === 'object') {
-        // структурированная ошибка: 409-предупреждения (перехват области, «всё равно закрыть?»)
-        const e = new Error(msg.message || JSON.stringify(msg));
-        e.payload = msg; e.status = res.status;
-        throw e;
-      }
-      throw new Error(String(msg));
+      // единый разбор ошибок (в т.ч. 422-массив pydantic и структурные 409) — httpError
+      throw httpError(msg, res.status);
     }
     return data;
   } finally {
@@ -166,9 +186,8 @@ async function multipartApi(path, formData, { timeout = 60000 } = {}) {
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
     if (!res.ok) {
-      let msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
-      if (msg && typeof msg === 'object') msg = msg.message || JSON.stringify(msg);
-      throw new Error(String(msg));
+      const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
+      throw httpError(msg, res.status);   // тот же разбор, что в api() (P1-fe-4)
     }
     return data;
   } finally { loading(false); }

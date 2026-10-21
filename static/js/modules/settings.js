@@ -306,9 +306,21 @@ function settingsGo(id) {
   settingsRenderScreen();
 }
 
+/* Поколение рендера экрана настроек (ревью 20.10.2026, P1-fe-6): при быстром
+   переключении экранов медленный render прежнего экрана возвращался ПОСЛЕ
+   нового и перезаписывал #st-body чужим содержимым (nav подсвечивал один
+   экран, показывался другой). */
+let settingsRenderGen = 0;
+
 async function settingsRenderScreen() {
-  const body = $('#st-body');
-  if (!body) return;
+  const gen = ++settingsRenderGen;
+  const old = $('#st-body');
+  if (!old) return;
+  /* Рендерим в СВЕЖИЙ узел: запоздалый render предыдущего экрана пишет в уже
+     отсоединённый старый узел и невидим; id/class сохраняются (cloneNode),
+     поэтому $('#st-body') везде указывает на актуальный узел. */
+  const body = old.cloneNode(false);
+  old.replaceWith(body);
   /* fallback — «Обзор», а не SETTINGS_SCREENS[1]: после перегруппировки (19.10.2026)
      под этим индексом может оказаться запись группы без render */
   const item = SETTINGS_SCREENS.find(s => s.id && s.id === settingsUI.screen)
@@ -321,9 +333,12 @@ async function settingsRenderScreen() {
   try {
     await item.render(body);
   } catch (e) {
-    console.error('экран настроек', item.id, e);
-    settingsFail(body, e);
+    if (gen === settingsRenderGen) {
+      console.error('экран настроек', item.id, e);
+      settingsFail(body, e);
+    }
   }
+  if (gen !== settingsRenderGen) return;   // пока ждали, открыли другой экран — не мешаем
   settingsUpdateDraftBars();
 }
 
