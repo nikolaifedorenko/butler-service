@@ -135,6 +135,7 @@ class NotifyDispatch(Base):
     channel: Mapped[str] = mapped_column(String(16), default="")     # telegram | email
     target: Mapped[str] = mapped_column(String(200), default="")     # chat_id или e-mail
     subject: Mapped[str] = mapped_column(String(200), default="")    # тема письма
+    cc_json: Mapped[str] = mapped_column(Text, default="")           # снимок адресатов копии (для resend, P1 20.10.2026)
     message: Mapped[str] = mapped_column(Text, default="")           # текст как ушёл
     items_json: Mapped[str] = mapped_column(Text, default="[]")      # снимок состава отправки
     media_json: Mapped[str] = mapped_column(Text, default="[]")      # id вложений (для повтора)

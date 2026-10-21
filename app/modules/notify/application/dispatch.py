@@ -165,6 +165,8 @@ def send_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int]
             actor_user_id=actor_id, actor_name=actor_name,
             recipient_id=group.get("service_id"), recipient_name=group.get("service_name") or "",
             channel=channel, target=target, subject=subj, message=message,
+            # снимок копии — resend() повторяет отправку тем же составом (P1 20.10.2026)
+            cc_json=json.dumps(list(cc)),
             items_json=snapshot, media_json=json.dumps(media_ids),
             media_count=len(attachments), attempts=1)
         try:
@@ -193,7 +195,14 @@ def resend(db: Session, row: NotifyDispatch, *, cfg: Optional[NotifyConfig] = No
     except ValueError:
         media_ids = []
     attachments = attachments_of(db, media_ids)
-    cc: tuple = ()
+    # Копия письма — из снимка строки журнала (cc_json, P1 20.10.2026): раньше
+    # здесь был хардкод cc=(), и повторная отправка теряла адресатов копии.
+    # У строк, сохранённых до миграции, cc_json пуст — повторят отправку без
+    # копии, как и прежде (снимка нет — восстановить его неоткуда).
+    try:
+        cc = tuple(json.loads(row.cc_json or "[]"))
+    except ValueError:
+        cc = ()
     try:
         row.external_id = deliver(cfg=conf, channel=row.channel, target=row.target,
                                   message=row.message, subject=row.subject,
