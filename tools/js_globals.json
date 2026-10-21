@@ -126,6 +126,7 @@
   "groupOrder": "readonly",
   "hhmm": "readonly",
   "hours": "readonly",
+  "httpError": "readonly",
   "initials": "readonly",
   "itemCommentModal": "readonly",
   "loadAccess": "readonly",
@@ -268,6 +269,7 @@
   "settingsPayload": "readonly",
   "settingsPublishModal": "readonly",
   "settingsRefresh": "readonly",
+  "settingsRenderGen": "readonly",
   "settingsRenderNav": "readonly",
   "settingsRenderScreen": "readonly",
   "settingsResolverModal": "readonly",
@@ -448,6 +450,7 @@
   "groupOrder": "modules/timesheet_layers.js",
   "hhmm": "core.js",
   "hours": "core.js",
+  "httpError": "core.js",
   "initials": "core.js",
   "itemCommentModal": "modules/night.js",
   "loadAccess": "modules/timesheet_v4.js",
@@ -590,6 +593,7 @@
   "settingsPayload": "modules/settings.js",
   "settingsPublishModal": "modules/settings.js",
   "settingsRefresh": "modules/settings.js",
+  "settingsRenderGen": "modules/settings.js",
   "settingsRenderNav": "modules/settings.js",
   "settingsRenderScreen": "modules/settings.js",
   "settingsResolverModal": "modules/settings.js",
@@ -696,6 +700,7 @@
    "bindPhotoPick",
    "carHandoverModal",
    "carReturnModal",
+   "carsState",
    "ensureCarLocations",
    "loadCars",
    "locationOptions",
@@ -725,13 +730,15 @@
   ],
   "modules/night.js": [
    "loadNight",
+   "nightState",
    "renderNightDictScreen"
   ],
   "modules/settings.js": [
    "loadSettings",
    "settingsHead",
    "settingsOpen",
-   "settingsPanel"
+   "settingsPanel",
+   "settingsUI"
   ],
   "modules/timesheet_layers.js": [
    "loadSchedule",
