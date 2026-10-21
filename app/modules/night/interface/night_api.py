@@ -220,6 +220,7 @@ def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(requir
     """Массовое создание однотипных областей («Вилла VEG », 4001, 12 шт → 4001…4012)."""
     if payload.count < 1 or payload.count > 200:
         raise HTTPException(status_code=400, detail="Количество должно быть от 1 до 200")
+    _check_zone(db, payload.zone_id)
     created = []
     for n in range(payload.start, payload.start + payload.count):
         name = f"{payload.prefix}{n}".strip()
@@ -243,6 +244,7 @@ def create_area(payload: AreaIn, principal: Principal = Depends(require_perm("ni
         raise HTTPException(status_code=400, detail="Введите название области")
     if db.scalar(select(NightArea).where(NightArea.name == name)):
         raise HTTPException(status_code=409, detail="Такая область уже есть")
+    _check_zone(db, payload.zone_id)
     area = NightArea(name=name, category=payload.category.strip(), zone_id=payload.zone_id,
                      sort_order=payload.sort_order, active=payload.active)
     db.add(area)
@@ -258,9 +260,16 @@ def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(re
     area = db.get(NightArea, area_id)
     if area is None:
         raise HTTPException(status_code=404, detail="Область не найдена")
+    name = payload.name.strip()
+    # уникальность имени при переименовании (P1-misc-3): раньше проверялась только
+    # при создании — дубль имени падал в IntegrityError (500)
+    if name and name != area.name and db.scalar(
+            select(NightArea).where(NightArea.name == name, NightArea.id != area_id)):
+        raise HTTPException(status_code=409, detail="Такая область уже есть")
+    _check_zone(db, payload.zone_id)
     old = {"name": area.name, "category": area.category, "active": area.active,
            "zone_id": area.zone_id}
-    area.name = payload.name.strip() or area.name
+    area.name = name or area.name
     area.category = payload.category.strip()
     zone_changed = payload.zone_id != area.zone_id
     area.zone_id = payload.zone_id
@@ -392,6 +401,16 @@ def _check_service(db: Session, service_id: Optional[int]) -> None:
         return
     if db.get(ResponsibilityService, service_id) is None:
         raise HTTPException(status_code=400, detail="Ответственная служба не найдена")
+
+
+def _check_zone(db: Session, zone_id: Optional[int]) -> None:
+    """Зона обхода обязана существовать (ревью 20.10.2026, P1-misc-3): zone_id —
+    внешний ключ области; битый id на PostgreSQL давал IntegrityError (500), а на
+    SQLite (FK не включены) молча писал область-сироту."""
+    if not zone_id:
+        return
+    if db.get(NightZone, zone_id) is None:
+        raise HTTPException(status_code=400, detail="Зона обхода не найдена")
 
 
 def _service_name_taken(db: Session, name: str, exclude_id: Optional[int] = None) -> bool:

@@ -214,6 +214,15 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
                     db: Session = Depends(get_db)):
     _guard_supervisor(principal, payload.role, None)
     hired = _parse_date(payload.hired_at) or local_date()
+    # FK department_id — валиден ДО вставки (P1-misc-3): битый id на PostgreSQL
+    # давал IntegrityError (500), на SQLite (FK не включены) — сотрудника-сироту.
+    # (update_employee уже проверял департамент; здесь — та же гарантия на создание.)
+    department_id = None
+    if payload.department_id:
+        dep = db.get(Department, payload.department_id)
+        if dep is None:
+            raise HTTPException(status_code=422, detail="Департамент не найден")
+        department_id = dep.id
     emp = Employee(
         full_name=payload.full_name.strip(), short_name=payload.short_name.strip(),
         full_name_genitive=payload.full_name_genitive.strip(),
@@ -222,7 +231,7 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
         emergency_name=payload.emergency_name.strip(), emergency_phone=payload.emergency_phone.strip(),
         telegram=payload.telegram.strip(), email=payload.email.strip(),
         nationality=payload.nationality.strip(), subdivision=payload.subdivision.strip(),
-        department_id=payload.department_id,
+        department_id=department_id,
         schedule_group=normalize_group(payload.schedule_group.strip()),
         group_color=payload.group_color,
         schedule_pattern="", balance_hours=payload.balance_hours,

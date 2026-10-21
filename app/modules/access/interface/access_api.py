@@ -111,8 +111,14 @@ def update_group(group_id: int, payload: GroupIn, principal: Principal = Depends
     g = db.get(AccessGroup, group_id)
     if not g:
         raise HTTPException(status_code=404, detail="Группа не найдена")
+    name = payload.name.strip() or g.name
+    # уникальность имени при переименовании (P1-misc-3): create_group имя проверял,
+    # rename — нет, дубль падал в IntegrityError (500)
+    if name != g.name and db.scalar(select(AccessGroup).where(
+            AccessGroup.name == name, AccessGroup.id != group_id)):
+        raise HTTPException(status_code=409, detail="Группа с таким названием уже есть")
     before = {"name": g.name, "description": g.description}
-    g.name, g.description = payload.name.strip() or g.name, payload.description.strip()
+    g.name, g.description = name, payload.description.strip()
     audit(db, principal, "access_group_update", f"group:{g.id}", {"before": before, "after": payload.model_dump()})
     db.commit()
     return {"ok": True}
@@ -153,8 +159,16 @@ def put_members(group_id: int, payload: MembersIn, principal: Principal = Depend
                 db: Session = Depends(get_db)):
     if not db.get(AccessGroup, group_id):
         raise HTTPException(status_code=404, detail="Группа не найдена")
-    db.execute(delete(AccessGroupMember).where(AccessGroupMember.group_id == group_id))
     ids = sorted(set(payload.user_ids))
+    # FK user_id — валидны ДО перезаписи состава (P1-misc-3): битый id на
+    # PostgreSQL давал IntegrityError (500), на SQLite — участника-призрака
+    if ids:
+        found = set(db.scalars(select(User.id).where(User.id.in_(ids))))
+        missing = [i for i in ids if i not in found]
+        if missing:
+            raise HTTPException(status_code=422,
+                                detail=f"Пользователи не найдены: {', '.join(map(str, missing))}")
+    db.execute(delete(AccessGroupMember).where(AccessGroupMember.group_id == group_id))
     db.add_all([AccessGroupMember(group_id=group_id, user_id=u) for u in ids])
     audit(db, principal, "access_group_members", f"group:{group_id}", {"user_ids": ids})
     db.commit()
