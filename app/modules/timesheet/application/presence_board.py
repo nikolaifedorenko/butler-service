@@ -14,7 +14,7 @@ from .months import settings_for_now
 def presence_board(now: dt.datetime, ports: EnginePorts) -> PresenceBoard:
     # Settings — для месяца, содержащего ЛОКАЛЬНОЕ «сегодня» (16.2; P1-ts-4:
     # прежняя загрузка по UTC-дню на границе месяцев брала справочники прошлого
-    # месяца). Второй load при совпадении месяцев — hit кэша адаптера.
+    # месяца). В обычном случае один load; на границе — второй, для нового месяца.
     st, today = settings_for_now(now, ports)                          # разрешение Settings
     active = set(ports.employment.active_employees(today))                 # запрос 1
     last_marks = [m for m in ports.punch.last_marks(now)                   # запрос 2

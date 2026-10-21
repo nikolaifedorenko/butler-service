@@ -33,20 +33,24 @@ def settings_for_now(now: dt.datetime, ports):
 
     «Сегодня» — по tz объекта (§4.4), а tz сам живёт в Settings: двухшаговое
     уточнение — месяц по UTC-дню даёт tz, по нему считается локальный день,
-    итоговая версия справочников грузится для месяца локального дня. При
-    совпадении месяцев второй load — hit кэша адаптера (ноль доп. запросов);
-    на границе месяцев доска/вкладка берёт версию нового месяца, а не прошлого
-    (ревью 20.10.2026, P1-ts-4: раньше Settings грузились по UTC-дню).
-    Уточнение однократное (без цикла до неподвижной точки): смена tz между
-    версиями на самой границе — крайний случай, достаточный по прецеденту
-    /periods. Возврат: (settings, today).
+    итоговая версия справочников грузится для месяца локального дня. В обычном
+    случае (месяцы совпали) второго load нет вовсе; на границе месяцев
+    доска/вкладка берёт версию нового месяца, а не прошлого (ревью 20.10.2026,
+    P1-ts-4: раньше Settings грузились по UTC-дню). Уточнение однократное
+    (без цикла до неподвижной точки): смена tz между версиями на самой границе —
+    крайний случай, достаточный по прецеденту /periods. Возврат: (settings, today).
     """
     from ..domain.time.today_of import today_of
 
     utc_day = now.astimezone(dt.timezone.utc).date()
-    st = ports.settings.load(month_period(utc_day.year, utc_day.month))
+    utc_period = month_period(utc_day.year, utc_day.month)
+    st = ports.settings.load(utc_period)
     today = today_of(now, st)
-    st = ports.settings.load(month_period(today.year, today.month))
+    local_period = month_period(today.year, today.month)
+    if local_period != utc_period:
+        # обычный случай — тот же месяц: второй load не выполняем вовсе (бюджет
+        # «≤ 5 батч-запросов», 16.1 п.5, не растёт даже у порта без кэша)
+        st = ports.settings.load(local_period)
     return st, today
 
 

@@ -30,7 +30,7 @@ def board(principal: Principal = Depends(require_perm("presence.view")),
     ports = engine_ports(db, principal, now)
     try:
         # Settings месяца ЛОКАЛЬНОГО «сегодня» (16.2, P1-ts-4) — двухшаговое уточнение
-        # то же, что внутри use case presence_board (второй load — hit кэша адаптера).
+        # то же, что внутри use case presence_board (общий хелпер settings_for_now).
         st, today = settings_for_now(now, ports)
     except ValueError as exc:
         # ConfigError/DomainError → централизованный хэндлер main.py (§5.3):
