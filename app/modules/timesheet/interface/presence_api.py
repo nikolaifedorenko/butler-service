@@ -5,8 +5,6 @@
 Тяжёлый конвейер не вызывается; ≤ 5 батч-запросов (16.1 п.4–5)."""
 from __future__ import annotations
 
-import datetime as dt
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,7 +16,7 @@ from app.core.time import utc_to_local
 from app.modules.employees.application import Employee
 
 from ..application.engine_common import emp_brief, engine_ports, now_utc
-from ..application.months import month_period
+from ..application.months import settings_for_now
 from ..application.presence_board import presence_board
 from .views import board_dict
 
@@ -30,9 +28,10 @@ def board(principal: Principal = Depends(require_perm("presence.view")),
           db: Session = Depends(get_db)):
     now = now_utc()
     ports = engine_ports(db, principal, now)
-    utc_today = now.astimezone(dt.timezone.utc).date()
     try:
-        st = ports.settings.load(month_period(utc_today.year, utc_today.month))
+        # Settings месяца ЛОКАЛЬНОГО «сегодня» (16.2, P1-ts-4) — двухшаговое уточнение
+        # то же, что внутри use case presence_board (второй load — hit кэша адаптера).
+        st, today = settings_for_now(now, ports)
     except ValueError as exc:
         # ConfigError/DomainError → централизованный хэндлер main.py (§5.3):
         # текст нарушений конфигурации включает коды CHK-* и место правки.
@@ -48,4 +47,4 @@ def board(principal: Principal = Depends(require_perm("presence.view")),
     for item in payload["yet_to_come"]:
         item["employee"] = emps.get(item["employee_id"], {})
     return {"now": utc_to_local(now).isoformat(timespec="minutes"),
-            "today": now.astimezone(st.tz).date().isoformat(), **payload}
+            "today": today.isoformat(), **payload}

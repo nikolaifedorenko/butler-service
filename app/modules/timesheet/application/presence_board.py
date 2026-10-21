@@ -6,21 +6,21 @@ from __future__ import annotations
 import datetime as dt
 
 from ..domain.board.assemble_board import assemble_board
-from ..domain.time.today_of import today_of
 from ..domain.types.results import PresenceBoard
 from .context import EnginePorts
-from .months import month_period
+from .months import settings_for_now
 
 
 def presence_board(now: dt.datetime, ports: EnginePorts) -> PresenceBoard:
-    utc_day = now.astimezone(dt.timezone.utc).date()
-    st = ports.settings.load(month_period(utc_day.year, utc_day.month))   # запрос 1 (16.2:
-    today = today_of(now, st)                       # Settings грузятся для месяца «сегодня»)
-    active = set(ports.employment.active_employees(today))                 # запрос 2
-    last_marks = [m for m in ports.punch.last_marks(now)                   # запрос 3
+    # Settings — для месяца, содержащего ЛОКАЛЬНОЕ «сегодня» (16.2; P1-ts-4:
+    # прежняя загрузка по UTC-дню на границе месяцев брала справочники прошлого
+    # месяца). Второй load при совпадении месяцев — hit кэша адаптера.
+    st, today = settings_for_now(now, ports)                          # разрешение Settings
+    active = set(ports.employment.active_employees(today))                 # запрос 1
+    last_marks = [m for m in ports.punch.last_marks(now)                   # запрос 2
                   if m.employee_id in active]
-    shifts = [s for s in ports.shift.shifts_on_day(today)                  # запрос 4
+    shifts = [s for s in ports.shift.shifts_on_day(today)                  # запрос 3
               if s.employee_id in active]
-    absences = [a for a in ports.absence.absences_on_day(today)            # запрос 5
+    absences = [a for a in ports.absence.absences_on_day(today)            # запрос 4
                 if a.employee_id in active]
     return assemble_board(last_marks, shifts, absences, now, st)

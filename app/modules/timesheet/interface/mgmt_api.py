@@ -31,6 +31,7 @@ from ..application.months import (
     month_period,
     next_period,
     period_containing,
+    settings_for_now,
 )
 from ..application.recalculate import recalculate
 from ..application.view_period import view_period
@@ -181,12 +182,11 @@ def periods(principal: Principal = Depends(require_perm("mgmt.view")),
     """Цепочка периодов сотрудника для навигации (16.1 п.7, R35/R36): granularity +
     границы по трудоустройству каждого сотрудника."""
     now = now_utc()
-    utc_today = now.astimezone(dt.timezone.utc).date()
     ports = engine_ports(db, principal, now)
     try:
-        st = ports.settings.load(month_period(utc_today.year, utc_today.month))
-        today = now.astimezone(st.tz).date()
-        st = ports.settings.load(month_period(today.year, today.month))
+        # Settings месяца ЛОКАЛЬНОГО «сегодня» (16.1 п.7): двухшаговое уточнение —
+        # общий хелпер (P1-ts-4, прежде тот же паттерн был здесь inline).
+        st, today = settings_for_now(now, ports)
     except ValueError as exc:
         # ConfigError/DomainError → централизованный хэндлер main.py (§5.3)
         raise HTTPException(status_code=409, detail=str(exc)) from exc

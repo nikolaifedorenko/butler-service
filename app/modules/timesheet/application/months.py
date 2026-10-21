@@ -27,6 +27,29 @@ def period_containing(day: dt.date, granularity: str, half: int | None = None) -
     return half_month_period(day.year, day.month, 1 if day.day <= 15 else 2)
 
 
+def settings_for_now(now: dt.datetime, ports):
+    """Settings месяца, содержащего ЛОКАЛЬНОЕ «сегодня», и это «сегодня» (16.2,
+    16.1 п.7; паттерн mgmt/periods).
+
+    «Сегодня» — по tz объекта (§4.4), а tz сам живёт в Settings: двухшаговое
+    уточнение — месяц по UTC-дню даёт tz, по нему считается локальный день,
+    итоговая версия справочников грузится для месяца локального дня. При
+    совпадении месяцев второй load — hit кэша адаптера (ноль доп. запросов);
+    на границе месяцев доска/вкладка берёт версию нового месяца, а не прошлого
+    (ревью 20.10.2026, P1-ts-4: раньше Settings грузились по UTC-дню).
+    Уточнение однократное (без цикла до неподвижной точки): смена tz между
+    версиями на самой границе — крайний случай, достаточный по прецеденту
+    /periods. Возврат: (settings, today).
+    """
+    from ..domain.time.today_of import today_of
+
+    utc_day = now.astimezone(dt.timezone.utc).date()
+    st = ports.settings.load(month_period(utc_day.year, utc_day.month))
+    today = today_of(now, st)
+    st = ports.settings.load(month_period(today.year, today.month))
+    return st, today
+
+
 def next_period(period: Period, granularity: str) -> Period:
     if granularity != GRANULARITY_HALF_MONTH:
         nxt = period.end + dt.timedelta(days=1)
