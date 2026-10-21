@@ -43,7 +43,7 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 | `TRUST_PROXY_HEADERS` | `1` | IP для rate-limit берётся из X-Forwarded-For (доверяем своему nginx) |
 | `LOG_JSON` | `1` | структурированный access-лог (uvicorn стартует с `--no-access-log`) |
 | `METRICS_ENABLED` | `1` | `/metrics` для внутреннего скрейпера |
-| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (инициализация схемы — под замком `app/core/startup_lock.py`: `pg_advisory_lock`, второй воркер ждёт первого; фоновая синхронизация ночных отчётов — один раунд на всех под неблокирующим `try_lock("night-sync")`; отправка недостатков службам — по одной под `try_lock("night-dispatch")`; замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). Rate-limit входа считается per-worker — при жёстких требованиях выносите в Redis (ADR-0005) |
+| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (инициализация схемы — под замком `app/core/startup_lock.py`: `pg_advisory_lock`, второй воркер ждёт первого; фоновая синхронизация ночных отчётов — один раунд на всех под неблокирующим `try_lock("night-sync")`; очередь отправки службам — под `try_lock("night-dispatch")`, доотправка очереди (outbox) — один процесс под `try_lock("notify-outbox")`; замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). Rate-limit входа считается per-worker — при жёстких требованиях выносите в Redis (ADR-0005) |
 | `NIGHT_SYNC_ENABLED` | `1` | фоновая синхронизация ночных отчётов (досоздание смен, автозакрытие в 08:00): поток в lifespan, GET-запросы разделов — чистое чтение. `0` — выключить поток (останется только стартовый прогон `init_db`) |
 | `NIGHT_SYNC_SECONDS` | `60` | период фонового раунда (минимум 5). Автозакрытие и появление отчёта в 20:00 запаздывают не больше чем на период |
 | `CSP_REPORT_ONLY` | `0` | при раскатке можно временно `1` — браузер предупреждает, но не блокирует |
@@ -105,3 +105,19 @@ curl -k https://localhost/api/health   # version должен совпасть �
 Схема БД мигрируется при старте автоматически: ревизии Alembic
 `app/bootstrap/alembic/versions`. Базу, созданную до 21.10.2026, первый старт новой версии
 доводит прежними шагами и штампует (ADR-0002). Перед обновлением сделайте бэкап.
+
+## 6. Приложение в контейнере — не от root
+
+С 22.10.2026 приложение работает от пользователя `app` (uid 10001). Новые тома
+(`app_data` и `app_templates`, в `docker-compose.yml` — `tt_data` и `tt_templates`) получают
+этого владельца из образа сами. Тома, созданные раньше, принадлежат root: приложение не
+стартует и пишет в лог «Нет прав на запись в …». Передайте их один раз:
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm --user root app \
+  chown -R app:app /srv/timetrack/data /srv/timetrack/templates
+```
+
+Для `docker-compose.yml` — та же команда без `-f docker-compose.prod.yml` и с сервисом
+`timetrack` вместо `app`. Если вместо томов смонтированы каталоги хоста:
+`sudo chown -R 10001:10001 ./data ./templates`.

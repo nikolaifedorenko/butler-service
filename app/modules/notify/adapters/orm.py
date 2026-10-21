@@ -117,8 +117,9 @@ class NotifyDispatch(Base):
     Правки чек-листа после отправки запись не меняют — это и позволяет показать
     «исправлено после отправки» и ничего повторно не слать (решение владельца).
 
-    status: sent | failed; при повторе растёт attempts, а ошибка прошлой попытки
-    остаётся в error. external_id — идентификатор во внешней системе
+    status: queued | sending | sent | failed (outbox, 22.10.2026: строка пишется до сети,
+    sending_at — когда её взяли в отправку); attempts — число попыток доставки,
+    ошибка прошлой попытки остаётся в error. external_id — идентификатор во внешней системе
     (message_id Telegram или Message-ID письма): по нему отправку находит поддержка.
     """
 
@@ -136,12 +137,13 @@ class NotifyDispatch(Base):
     channel: Mapped[str] = mapped_column(String(16), default="")     # telegram | email
     target: Mapped[str] = mapped_column(String(200), default="")     # chat_id или e-mail
     subject: Mapped[str] = mapped_column(String(200), default="")    # тема письма
-    cc_json: Mapped[str] = mapped_column(Text, default="")           # снимок адресатов копии (для resend, P1 20.10.2026)
+    cc_json: Mapped[str] = mapped_column(Text, default="")           # снимок адресатов копии (для повтора, P1 20.10.2026)
     message: Mapped[str] = mapped_column(Text, default="")           # текст как ушёл
     items_json: Mapped[str] = mapped_column(Text, default="[]")      # снимок состава отправки
     media_json: Mapped[str] = mapped_column(Text, default="[]")      # id вложений (для повтора)
     media_count: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(16), default="sent")  # sent | failed
+    status: Mapped[str] = mapped_column(String(16), default="sent")  # queued | sending | sent | failed
+    sending_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     error: Mapped[str] = mapped_column(Text, default="")
     external_id: Mapped[str] = mapped_column(String(120), default="")
     attempts: Mapped[int] = mapped_column(Integer, default=1)

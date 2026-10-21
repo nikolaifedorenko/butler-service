@@ -87,6 +87,30 @@ def run_media_cleanup_if_due() -> int | None:
     return removed
 
 
+def run_outbox_once() -> int | None:
+    """Доотправка очереди уведомлений (outbox, CONC-02): строки, которые запрос не успел
+    отправить (упал процесс), и пометка застрявших в sending. Один процесс на раунд —
+    под try_lock. None — раунд выполняет другой процесс."""
+    from ..core.db import SessionLocal
+    from ..core.startup_lock import try_lock
+    from ..modules.notify.application.dispatch import fail_stale_sending, run_outbox
+
+    with try_lock("notify-outbox") as got:
+        if not got:
+            return None
+        db = SessionLocal()
+        try:
+            stale = fail_stale_sending(db)
+            sent = run_outbox(db)
+        finally:
+            db.close()
+    if stale:
+        log.warning("notify_outbox: доставок со статусом «неизвестно» (прерваны перезапуском): %d", stale)
+    if sent:
+        log.info("notify_outbox: доотправлено из очереди: %d", len(sent))
+    return len(sent)
+
+
 def _loop(period: float) -> None:
     while not _stop.wait(period):
         try:
@@ -97,6 +121,10 @@ def _loop(period: float) -> None:
             run_media_cleanup_if_due()
         except Exception:
             log.exception("media_cleanup: чистка медиа завершилась ошибкой")
+        try:
+            run_outbox_once()
+        except Exception:
+            log.exception("notify_outbox: доотправка очереди завершилась ошибкой")
 
 
 def start_night_sync() -> None:

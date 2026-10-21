@@ -1441,11 +1441,10 @@ function defectJournal(rows) {
       <td>${esc(d.channel_title)}</td><td><code>${esc(d.target)}</code></td>
       <td class="num">${d.items_count}</td><td class="num">${d.media_count}</td>
       <td>${d.status === 'sent' ? `<span class="badge ok">отправлено${d.attempts > 1 ? ` (попыток: ${d.attempts})` : ''}</span>`
-        : `<span class="badge danger" title="${esc(d.error)}">ошибка</span>`}</td>
-      <td class="num">${d.status === 'sent'
-        ? `<button class="btn btn-sm btn-ghost" data-msg="${d.id}">текст</button>`
-        : `<button class="btn btn-sm btn-ghost" data-msg="${d.id}">текст</button>
-           <button class="btn btn-sm" data-retry="${d.id}">повторить</button>`}</td></tr>`).join('')}
+        : d.status === 'failed' ? `<span class="badge danger" title="${esc(d.error)}">ошибка</span>`
+        : `<span class="badge warn">${esc(d.status_title)}</span>`}</td>
+      <td class="num"><button class="btn btn-sm btn-ghost" data-msg="${d.id}">текст</button>
+        ${d.can_retry ? `<button class="btn btn-sm" data-retry="${d.id}">повторить</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div>`;
 }
 
@@ -1508,6 +1507,7 @@ async function nightDefectsModal() {
             const r = await api(`/api/night/reports/${reportId}/dispatch`, { method: 'POST', body, timeout: 300000 });
             const warn = [];
             if (r.failed) warn.push(`ошибок доставки: ${r.failed}`);
+            if (r.queued) warn.push(`ещё отправляется: ${r.queued} — статус появится в журнале`);
             (r.skipped || []).forEach(s => warn.push(`${s.service_name}: ${s.problems.join('; ')}`));
             toast(`${okText}: отправлено ${r.sent}, отмечено позиций ${r.marked}`
               + (warn.length ? ` · ${warn.join(' · ')}` : ''), warn.length ? 'warn' : 'ok', warn);

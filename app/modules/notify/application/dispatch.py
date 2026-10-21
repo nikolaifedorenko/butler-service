@@ -15,11 +15,12 @@
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.media import Photo
@@ -36,6 +37,15 @@ from .config import NotifyConfig
 MAX_FILES_PER_MESSAGE = 10
 
 CHANNEL_TITLES = {"telegram": "чат Telegram", "email": "письмо"}
+
+# Outbox (аудит 22.10.2026, CONC-02): строка журнала пишется ДО сети —
+# queued → sending → sent | failed. Падение процесса не теряет отправку и не дублирует её.
+QUEUED, SENDING = "queued", "sending"
+STATUS_TITLES = {QUEUED: "в очереди", SENDING: "отправляется", "sent": "отправлено", "failed": "ошибка"}
+# одна доставка не идёт дольше: таймаут канала ≤ 300 с, у Telegram — до двух запросов
+STALE_SENDING = dt.timedelta(minutes=30)
+UNKNOWN_DELIVERY = ("Статус доставки неизвестен: отправку прервал перезапуск сервера. "
+                    "Проверьте у получателя, прежде чем повторять")
 
 
 @dataclass
@@ -114,7 +124,8 @@ def dispatch_dict(d: NotifyDispatch) -> dict:
         "channel": d.channel, "channel_title": CHANNEL_TITLES.get(d.channel, d.channel),
         "target": d.target, "subject": d.subject or "", "message": d.message or "",
         "items": items, "items_count": len(items), "media_count": d.media_count,
-        "status": d.status, "error": d.error or "", "external_id": d.external_id or "",
+        "status": d.status, "status_title": STATUS_TITLES.get(d.status, d.status),
+        "error": d.error or "", "external_id": d.external_id or "",
         "attempts": d.attempts or 1,
         "can_retry": d.status == "failed",
     }
@@ -130,23 +141,18 @@ def journal_of(db: Session, domain: str, ref_id: Optional[int] = None,
                            .limit(max(1, min(limit, 500)))))
 
 
-def send_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int],
-               actor_name: str, group: dict, message: str, subject: str = "",
-               attachments: Sequence[Attachment] = (), items_snapshot: Optional[list] = None,
-               cfg: Optional[NotifyConfig] = None, bot=None, mailer=None) -> list[NotifyDispatch]:
-    """Отправить группе недостатков всем её получателям: по строке журнала на доставку.
+def queue_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int],
+                actor_name: str, group: dict, message: str, subject: str = "") -> list[NotifyDispatch]:
+    """Поставить сообщения группы недостатков в очередь (outbox): по строке журнала на
+    доставку, status=queued, без сети. Отправляет run_outbox() после commit очереди.
 
     Каналы службы независимы: чат и письмо уходят оба, если включены (решение
     владельца). Сбой одного канала не отменяет другой — статус пишется по каждой
     доставке отдельно.
     """
-    from .config import load_config
-
-    conf = cfg or load_config(db)
-    snapshot = json.dumps(items_snapshot if items_snapshot is not None
-                          else [{"id": d["id"], "area": d.get("area"), "text": d.get("text"),
-                                 "comment": d.get("comment"), "kind": d.get("kind")}
-                                for d in group.get("defects", []) if d.get("sendable")],
+    snapshot = json.dumps([{"id": d["id"], "area": d.get("area"), "text": d.get("text"),
+                            "comment": d.get("comment"), "kind": d.get("kind")}
+                           for d in group.get("defects", []) if d.get("sendable")],
                           ensure_ascii=False)
     media_ids = [p["id"] for d in group.get("defects", []) if d.get("sendable")
                  for p in (d.get("media") or [])]
@@ -165,28 +171,31 @@ def send_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int]
             actor_user_id=actor_id, actor_name=actor_name,
             recipient_id=group.get("service_id"), recipient_name=group.get("service_name") or "",
             channel=channel, target=target, subject=subj, message=message,
-            # снимок копии — resend() повторяет отправку тем же составом (P1 20.10.2026)
+            # снимок копии — повтор отправляет тем же составом (P1 20.10.2026)
             cc_json=json.dumps(list(cc)),
             items_json=snapshot, media_json=json.dumps(media_ids),
-            media_count=len(attachments), attempts=1)
-        try:
-            row.external_id = deliver(cfg=conf, channel=channel, target=target, message=message,
-                                      subject=subj, attachments=attachments, cc=cc,
-                                      bot=bot, mailer=mailer)
-            row.status = "sent"
-            row.error = ""
-        except (TransportError, ValueError) as e:
-            row.status = "failed"
-            row.error = str(e)[:2000]
+            media_count=len(media_ids), status=QUEUED, attempts=0)
         db.add(row)
-        db.flush()
         rows.append(row)
+    db.flush()
     return rows
 
 
-def resend(db: Session, row: NotifyDispatch, *, cfg: Optional[NotifyConfig] = None,
-           bot=None, mailer=None) -> NotifyDispatch:
-    """Повторить неудачную доставку тем же текстом и составом (журнал не переписываем)."""
+def claim(db: Session, row_id: int, from_status: str) -> bool:
+    """Взять строку журнала в отправку: from_status → sending одним UPDATE и commit ДО сети.
+    Второй отправитель (двойной повтор, фоновая доотправка, другой воркер) получит False."""
+    taken = db.execute(update(NotifyDispatch)
+                       .where(NotifyDispatch.id == row_id, NotifyDispatch.status == from_status)
+                       .values(status=SENDING, sending_at=now_local())
+                       .execution_options(synchronize_session=False)).rowcount
+    db.commit()
+    return taken == 1
+
+
+def deliver_row(db: Session, row: NotifyDispatch, *, cfg: Optional[NotifyConfig] = None,
+                bot=None, mailer=None) -> NotifyDispatch:
+    """Доставить строку журнала, взятую claim(): текст, копия и вложения — из её снимка.
+    Первая отправка и ручной повтор идут одним путём (журнал не переписываем)."""
     from .config import load_config
 
     conf = cfg or load_config(db)
@@ -196,7 +205,7 @@ def resend(db: Session, row: NotifyDispatch, *, cfg: Optional[NotifyConfig] = No
         media_ids = []
     attachments = attachments_of(db, media_ids)
     # Копия письма — из снимка строки журнала (cc_json, P1 20.10.2026): раньше
-    # здесь был хардкод cc=(), и повторная отправка теряла адресатов копии.
+    # повторная отправка теряла адресатов копии.
     # У строк, сохранённых до миграции, cc_json пуст — повторят отправку без
     # копии, как и прежде (снимка нет — восстановить его неоткуда).
     try:
@@ -216,3 +225,38 @@ def resend(db: Session, row: NotifyDispatch, *, cfg: Optional[NotifyConfig] = No
     row.media_count = len(attachments)
     db.flush()
     return row
+
+
+def run_outbox(db: Session, *, ids: Optional[Sequence[int]] = None,
+               cfg: Optional[NotifyConfig] = None, bot=None, mailer=None) -> list[NotifyDispatch]:
+    """Отправить очередь: строки ids — сразу из запроса, без ids — все queued (фоновая
+    доотправка, bootstrap/night_sync). Каждая строка коммитится дважды: sending до сети
+    и sent | failed после — повторно её не возьмёт никто."""
+    from .config import load_config
+
+    q = select(NotifyDispatch).where(NotifyDispatch.status == QUEUED)
+    if ids is not None:
+        q = q.where(NotifyDispatch.id.in_(list(ids)))
+    rows = list(db.scalars(q.order_by(NotifyDispatch.id)))
+    conf = (cfg or load_config(db)) if rows else None
+    done: list[NotifyDispatch] = []
+    for row in rows:
+        if claim(db, row.id, QUEUED):
+            deliver_row(db, row, cfg=conf, bot=bot, mailer=mailer)
+            db.commit()
+            done.append(row)
+    return done
+
+
+def fail_stale_sending(db: Session) -> int:
+    """Строки, застрявшие в sending (процесс упал посреди доставки): дошло ли сообщение —
+    неизвестно. Автоматически не повторяем — дубль службе хуже; помечаем ошибкой, чтобы
+    повторить вручную после проверки."""
+    n = db.execute(update(NotifyDispatch)
+                   .where(NotifyDispatch.status == SENDING,
+                          NotifyDispatch.sending_at < now_local() - STALE_SENDING)
+                   .values(status="failed", error=UNKNOWN_DELIVERY,
+                           attempts=NotifyDispatch.attempts + 1)
+                   .execution_options(synchronize_session=False)).rowcount
+    db.commit()
+    return n

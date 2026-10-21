@@ -12,6 +12,11 @@ COPY app ./app
 COPY static ./static
 COPY assets ./assets
 ENV PYTHONUNBUFFERED=1
+# не от root (OPS-02): данные и бланки — пользователя app; chown до VOLUME, иначе он не сохранится.
+# Новые тома получают этого владельца из образа, старые (созданные от root) — deploy/README.md §6
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p data templates && chown app:app data templates
+USER app
 EXPOSE 8000
 VOLUME ["/srv/timetrack/data", "/srv/timetrack/templates"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -188,6 +188,8 @@ sudo certbot --nginx -d time.example.ru        # выпустит сертифи
 DEMO_SEED=1 docker compose up -d --build   # демо: SQLite в томе tt_data, порт 8000, пароль demo1234
 ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SECURE=1 docker compose up -d --build
 ```
+Приложение в контейнере работает не от root (пользователь `app`). Тома, созданные до
+22.10.2026, нужно один раз передать этому пользователю — команда в `deploy/README.md` §6.
 
 ### 2.7. Эксплуатация
 * **Бэкапы:** SQLite — копия файла `timetrack.db` (лучше через `sqlite3 db ".backup …"`);

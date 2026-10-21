@@ -31,7 +31,14 @@ from app.core.errors import Conflict, Validation
 from app.core.startup_lock import try_lock
 from app.core.time import now_local
 from app.modules.notify.application.config import load_config
-from app.modules.notify.application.dispatch import attachments_of, dispatch_dict, journal_of, send_group
+from app.modules.notify.application.dispatch import (
+    QUEUED,
+    SENDING,
+    dispatch_dict,
+    journal_of,
+    queue_group,
+    run_outbox,
+)
 from app.modules.notify.application.recipients import group_by_service, message_context
 from app.modules.notify.application.templates import PLACEHOLDERS, render_template, template_of
 
@@ -76,27 +83,48 @@ def dispatch_defects(db: Session, rep: NightReport, principal: Principal, *,
                      bot=None, mailer=None) -> dict:
     """Отправить недостатки службам вручную: всё скопом (mode="all") или выбранное.
 
-    Возвращает {"sent", "failed", "marked", "dispatches", "skipped"}: skipped —
-    группы, которым отправить нельзя (нет канала/получателя, служба отключена),
-    с причинами — их показывает интерфейс, а не прячет в ошибку.
+    Возвращает {"sent", "failed", "queued", "marked", "dispatches", "skipped"}: queued —
+    доставки, которые ещё идут (их взял фоновый отправщик); skipped — группы, которым
+    отправить нельзя (нет канала/получателя, служба отключена), с причинами — их
+    показывает интерфейс, а не прячет в ошибку.
 
-    CONC-02: двойной клик, повтор клиента после таймаута, второй супервайзер — отправка
-    идёт по одной; повтор после неё уже не найдёт неотправленного (пометки коммитятся
-    до снятия замка).
+    CONC-02 (outbox): под замком — только очередь: строки журнала queued и пометки
+    «отправлено» одним commit ДО сети. Двойной клик, повтор после таймаута и второй
+    супервайзер получат 409 или «всё уже отправлено»; падение процесса посреди доставки
+    не дублирует сообщения (строка остаётся в sending → «статус неизвестен»).
     """
-    # shortcut: падение процесса между отправкой и commit даёт повтор при следующей отправке;
-    # outbox с фоновым отправщиком — если повторы станут проблемой. Замок один на все смены.
     with try_lock("night-dispatch") as got:
         if not got:
             raise Conflict("Отправка недостатков уже идёт — дождитесь её и обновите экран")
         db.expire_all()     # пометки «отправлено» читаем после замка, не из загруженного до него
-        return _dispatch_locked(db, rep, principal, mode=mode, item_ids=item_ids,
-                                service_ids=service_ids, bot=bot, mailer=mailer)
+        cfg, plan, skipped = _queue_defects(db, rep, principal, mode=mode, item_ids=item_ids,
+                                            service_ids=service_ids)
+    # сеть — вне замка: очередь закоммичена, позиции помечены
+    run_outbox(db, ids=[r.id for _, rows in plan for r in rows], cfg=cfg, bot=bot, mailer=mailer)
+    sent = failed = queued = marked = 0
+    dispatches: list[dict] = []
+    for ids, rows in plan:
+        dispatches += [dispatch_dict(r) for r in rows]
+        sent += sum(r.status == "sent" for r in rows)
+        failed += sum(r.status == "failed" for r in rows)
+        queued += sum(r.status in (QUEUED, SENDING) for r in rows)
+        if all(r.status == "failed" for r in rows):
+            # ни один канал службы не доставил — позиции снова к отправке (как до outbox)
+            for ni in db.scalars(select(NightCheckItem).where(NightCheckItem.id.in_(ids),
+                                                              NightCheckItem.dispatch_id == rows[0].id)):
+                ni.dispatch_id = None
+                ni.dispatched_at = None
+        else:
+            marked += len(ids)
+    db.commit()
+    return {"ok": True, "sent": sent, "failed": failed, "queued": queued, "marked": marked,
+            "dispatches": dispatches, "skipped": skipped}
 
 
-def _dispatch_locked(db: Session, rep: NightReport, principal: Principal, *, mode: str,
-                     item_ids: Optional[list[int]], service_ids: Optional[list[int]],
-                     bot, mailer) -> dict:
+def _queue_defects(db: Session, rep: NightReport, principal: Principal, *, mode: str,
+                   item_ids: Optional[list[int]], service_ids: Optional[list[int]]):
+    """Очередь отправки и пометки позиций одним commit; сети здесь нет.
+    Возвращает (cfg, [(id позиций, строки журнала группы)], skipped)."""
     cfg = load_config(db)
     if not cfg.telegram_ready and not cfg.email_ready:
         raise Conflict("Доставка не настроена: заполните токен бота или почту "
@@ -117,14 +145,12 @@ def _dispatch_locked(db: Session, rep: NightReport, principal: Principal, *, mod
         raise Validation("Не выбрано ни одного недостатка для отправки "
                          "(возможно, всё уже отправлено или исправлено после отправки)")
 
-    groups = group_by_service(db, rows)
     author = principal.actor_label
     ts = now_local()
-    sent = failed = marked = 0
-    dispatches: list[dict] = []
+    plan: list[tuple[list[int], list]] = []
     skipped: list[dict] = []
 
-    for group in groups:
+    for group in group_by_service(db, rows):
         sendable = [d for d in group["defects"] if d["sendable"]]
         if not sendable:
             continue
@@ -134,36 +160,23 @@ def _dispatch_locked(db: Session, rep: NightReport, principal: Principal, *, mod
                             "defects": len(sendable),
                             "problems": group["problems"] or ["канал доставки не заполнен"]})
             continue
-        message = preview_message(db, rep, group, author)
-        subject = f"Ночной отчёт {rep.date:%d.%m.%Y} · {group['service_name']}"
-        media_ids = [p["id"] for d in sendable for p in (d.get("media") or [])]
-        attachments = attachments_of(db, media_ids)
-        rows_journal = send_group(db, domain=DOMAIN, ref_id=rep.id,
-                                  actor_id=principal.user.id, actor_name=author,
-                                  group=group, message=message, subject=subject,
-                                  attachments=attachments, cfg=cfg, bot=bot, mailer=mailer)
-        ok = [r for r in rows_journal if r.status == "sent"]
-        for r in rows_journal:
-            dispatches.append(dispatch_dict(r))
-            if r.status == "sent":
-                sent += 1
-            else:
-                failed += 1
-        if ok:
-            # отправленное помечаем: повторно эти позиции не уйдут
-            first_id = ok[0].id
-            ids = [d["id"] for d in sendable]
-            for ni in db.scalars(select(NightCheckItem).where(NightCheckItem.id.in_(ids))):
-                ni.dispatch_id = first_id
-                ni.dispatched_at = ts
-            marked += len(ids)
-    db.flush()
+        journal = queue_group(db, domain=DOMAIN, ref_id=rep.id, actor_id=principal.user.id,
+                              actor_name=author, group=group,
+                              message=preview_message(db, rep, group, author),
+                              subject=f"Ночной отчёт {rep.date:%d.%m.%Y} · {group['service_name']}")
+        if not journal:
+            continue
+        ids = [d["id"] for d in sendable]
+        for ni in db.scalars(select(NightCheckItem).where(NightCheckItem.id.in_(ids))):
+            ni.dispatch_id = journal[0].id
+            ni.dispatched_at = ts
+        plan.append((ids, journal))
     audit(db, principal, "night_dispatch", f"report:{rep.id}",
-          {"mode": mode, "sent": sent, "failed": failed, "marked": marked,
+          {"mode": mode, "queued": sum(len(j) for _, j in plan),
+           "items": sum(len(i) for i, _ in plan),
            "skipped": [s["service_name"] for s in skipped]})
     db.commit()
-    return {"ok": True, "sent": sent, "failed": failed, "marked": marked,
-            "dispatches": dispatches, "skipped": skipped}
+    return cfg, plan, skipped
 
 
 def report_journal(db: Session, rep: NightReport, limit: int = 50) -> list[dict]:

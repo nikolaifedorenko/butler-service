@@ -22,8 +22,9 @@ from docx.oxml.ns import qn
 from app.core.time import local_date
 from app.modules.employees.application import suggest_genitive
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = BASE_DIR / "templates"
+# templates/ в корне проекта — том в compose. После переноса модуля (C4d, 20.10.2026) путь
+# съехал в app/modules/docs/templates, мимо тома: бланки пропадали при пересборке образа.
+TEMPLATES_DIR = Path(__file__).resolve().parents[4] / "templates"
 TEMPLATES_DIR.mkdir(exist_ok=True)
 
 PH_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")

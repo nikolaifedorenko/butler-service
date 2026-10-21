@@ -84,7 +84,7 @@ def test_misc1_no_hardcoded_utc_offset():
 
 def test_misc2_resend_uses_saved_cc(db, monkeypatch):
     from app.modules.notify.adapters.orm import NotifyDispatch
-    from app.modules.notify.application.dispatch import resend
+    from app.modules.notify.application.dispatch import deliver_row
 
     captured: dict = {}
 
@@ -100,7 +100,7 @@ def test_misc2_resend_uses_saved_cc(db, monkeypatch):
                          media_json="[]")
     db.add(row)
     try:
-        out = resend(db, row, cfg=object())     # cfg-заглушка: deliver перехвачен
+        out = deliver_row(db, row, cfg=object())     # cfg-заглушка: deliver перехвачен
         assert captured["cc"] == ("copy1@example.com", "copy2@example.com")
         assert out.status == "sent" and out.external_id == "ext-guard-1"
         assert out.attempts == 2

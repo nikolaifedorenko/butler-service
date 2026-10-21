@@ -430,3 +430,33 @@ def test_parallelnaya_otpravka_poluchaet_409(employee_client, admin_client, open
         assert not [c for c in fake_telegram["calls"] if c["method"] == "sendMessage"]
         r = employee_client.post(f"/api/night/reports/{rep.id}/dispatch", json=body)
         assert r.status_code == 200 and r.json()["sent"] == 1, r.text
+
+
+def test_padenie_posle_ocheredi_ne_dubliruet(employee_client, admin_client, open_shift, db,
+                                             channels, fake_telegram, fake_smtp, monkeypatch):
+    """CONC-02 (outbox): процесс упал после постановки в очередь, до сети. Повторная
+    отправка не находит неотправленного, фоновый отправщик доставляет ровно один раз."""
+    from app.modules.night.application import night_notify
+    from app.modules.notify.application.dispatch import run_outbox
+
+    def crash(*args, **kwargs):
+        raise RuntimeError("процесс упал до сети")
+
+    with open_shift() as rep:
+        item_id = _report_item_ids(employee_client, rep, "Вилла 4003")[TECH_IDX]["id"]
+        _answer(employee_client, item_id, "bad", "не горит")
+        body = {"mode": "selected", "item_ids": [item_id]}
+        monkeypatch.setattr(night_notify, "run_outbox", crash)
+        with pytest.raises(RuntimeError):
+            employee_client.post(f"/api/night/reports/{rep.id}/dispatch", json=body)
+        monkeypatch.setattr(night_notify, "run_outbox", run_outbox)
+
+        again = employee_client.post(f"/api/night/reports/{rep.id}/dispatch", json=body)
+        assert again.status_code == 422, again.text                # позиция уже в очереди
+        sent = lambda: [c for c in fake_telegram["calls"] if c["method"] == "sendMessage"]  # noqa: E731
+        assert not sent()
+        run_outbox(db)          # фоновая доотправка (bootstrap/night_sync)
+        run_outbox(db)
+        assert len(sent()) == 1
+        journal = employee_client.get(f"/api/night/reports/{rep.id}/dispatches").json()["dispatches"]
+        assert journal[0]["status"] == "sent"

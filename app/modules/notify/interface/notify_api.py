@@ -261,7 +261,7 @@ def export_dispatches_csv(domain: str = "", limit: int = 2000,
         w.writerow([d["ts"] or "", d["domain"], safe_sheet_cell(d["actor_name"]),
                     safe_sheet_cell(d["recipient_name"]), d["channel_title"], d["target"],
                     safe_sheet_cell(d["subject"]), d["items_count"], d["media_count"],
-                    "отправлено" if d["status"] == "sent" else "ошибка",
+                    d["status_title"],
                     safe_sheet_cell(d["error"]), d["attempts"], d["external_id"],
                     safe_sheet_cell(items)])
     data = io.BytesIO(("\ufeff" + buf.getvalue()).encode("utf-8"))
@@ -275,15 +275,16 @@ def resend_dispatch(dispatch_id: int, principal: Principal = Depends(require_per
     """Повторить неудачную доставку тем же текстом и составом (журнал не переписывается)."""
     from ..adapters.orm import NotifyDispatch
     from ..application.config import load_config
-    from ..application.dispatch import dispatch_dict, resend
+    from ..application.dispatch import claim, deliver_row, dispatch_dict
 
     row = db.get(NotifyDispatch, dispatch_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Запись журнала не найдена")
-    if row.status == "sent":
-        raise HTTPException(status_code=409, detail="Эта доставка уже отправлена")
+    # только неудачную, и одним повтором: двойной клик второй раз не отправит (outbox)
+    if row.status != "failed" or not claim(db, row.id, "failed"):
+        raise HTTPException(status_code=409, detail="Эта доставка уже отправлена или отправляется")
     try:
-        resend(db, row, cfg=load_config(db))
+        deliver_row(db, row, cfg=load_config(db))
     except TransportError as e:
         raise HTTPException(status_code=502, detail=str(e))
     audit(db, principal, "notify_dispatch_resend", f"dispatch:{row.id}",

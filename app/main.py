@@ -149,11 +149,28 @@ def _check_secret_key() -> None:
         raise RuntimeError(msg)
 
 
+def _check_writable_dirs() -> None:
+    """Каталоги данных доступны на запись. Контейнер работает не от root (22.10.2026), а тома,
+    созданные раньше, принадлежат root: объясняем, что сделать, вместо непонятной ошибки
+    на первой записи в базу SQLite или загрузке фото."""
+    import os
+
+    from .core.media import UPLOAD_ROOT
+    from .modules.docs.application.doc_render import TEMPLATES_DIR
+
+    bad = [str(d) for d in (UPLOAD_ROOT.parent, TEMPLATES_DIR) if d.exists() and not os.access(d, os.W_OK)]
+    if bad:
+        raise RuntimeError(f"Нет прав на запись в {', '.join(bad)}. Тома, созданные до запуска "
+                           "приложения не от root, один раз передайте пользователю app — "
+                           "команда в deploy/README.md §6")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     from .bootstrap.night_sync import start_night_sync, stop_night_sync
 
     _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
+    _check_writable_dirs()
     init_db()
     # обслуживание ночных отчётов (досоздание смен, автозакрытие в 08:00) больше не
     # выполняется в GET-запросах — его делает фоновый поток (ревью 20.10.2026, P1);
