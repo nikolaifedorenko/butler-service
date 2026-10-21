@@ -77,7 +77,6 @@ class ConfigIn(BaseModel):
 
 class TelegramCheckIn(BaseModel):
     token: str = ""          # не пустой — проверить ещё не сохранённый токен
-    api: str = ""
 
 
 class TelegramTestIn(BaseModel):
@@ -123,9 +122,9 @@ def telegram_check(payload: TelegramCheckIn, principal: Principal = Depends(EDIT
     """getMe: проверить токен (можно ещё не сохранённый) и увидеть username бота."""
     cfg = load_config(db)
     token = payload.token.strip() or cfg.telegram_token
-    api = payload.api.strip() or cfg.telegram_api
     try:
-        me = TelegramBot(token, api, cfg.timeout).get_me()
+        # адрес — только настроенный: из запроса он уводил бы токен на чужой хост (SEC-03)
+        me = TelegramBot(token, cfg.telegram_api, cfg.timeout).get_me()
     except TransportError as e:
         raise HTTPException(status_code=502, detail=str(e))
     audit(db, principal, "notify_telegram_check", "notify", {"username": me.get("username", "")})

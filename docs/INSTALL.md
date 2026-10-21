@@ -185,8 +185,8 @@ sudo certbot --nginx -d time.example.ru        # выпустит сертифи
 
 ### 2.6. Docker (альтернатива)
 ```bash
-docker compose up -d --build        # SQLite в томе tt_data, порт 8000
-SECRET_KEY=$(openssl rand -hex 32) COOKIE_SECURE=1 docker compose up -d --build
+DEMO_SEED=1 docker compose up -d --build   # демо: SQLite в томе tt_data, порт 8000, пароль demo1234
+ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SECURE=1 docker compose up -d --build
 ```
 
 ### 2.7. Эксплуатация
@@ -202,7 +202,8 @@ SECRET_KEY=$(openssl rand -hex 32) COOKIE_SECURE=1 docker compose up -d --build
 ---
 
 ## 3. Первый вход и настройка под себя
-1. Войдите под `admin`, смените демо-пароли: «Сотрудники» → «Изменить» → новый пароль.
+1. Войдите под `admin` (пароль — `ADMIN_PASSWORD` первого старта; на демо-базе `demo1234` —
+   тогда смените демо-пароли: «Сотрудники» → «Изменить» → новый пароль).
 2. Задайте сотрудников, группы графика («Смена 1», «Смена 2», «Администрация») и цвета должностей.
 3. В «Настройках» добавьте нужные смены (часы) и проверьте правила расчёта (округление, окна отметок).
 4. Заполните график на месяц («Заполнить графиком»: цикл, сдвиг фазы, только пустые ячейки).

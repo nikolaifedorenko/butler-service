@@ -17,6 +17,9 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
       # демо-вход «как сотрудник» включён по умолчанию (решение владельца); 0 — выключить
       ALLOW_IMPERSONATION: ${ALLOW_IMPERSONATION:-1}
+      # пустая база: пароль администратора admin; DEMO_SEED=1 — демо-данные (пароль demo1234)
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      DEMO_SEED: ${DEMO_SEED:-0}
       # за своим reverse-proxy (docker-compose.prod.yml) — 1, иначе 0
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-0}
       CSP_REPORT_ONLY: ${CSP_REPORT_ONLY:-0}

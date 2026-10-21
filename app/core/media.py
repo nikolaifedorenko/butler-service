@@ -394,14 +394,23 @@ def cleanup_photos(db: Session, days: Optional[int] = None) -> int:
 # night_api импортировал роут-функции photos_api (api → api), теперь оба
 # модуля вызывают сервис (контракт import-linter «api-модули независимы»).
 
-def resolve_photo_file(db: Session, photo_id: int):
+# фото видно тому, кто видит раздел-владелец (аудит 21.10.2026, AUTHZ-07)
+_VIEW_PERMS = {"night_item": ("night.view",), "car_return": ("cars.view",),
+               "car_check": ("night.view", "cars.view")}
+
+
+def resolve_photo_file(db: Session, photo_id: int, principal):
     """(фото, путь, mime) для отдачи оригинала.
 
-    NotFound — фото нет в БД; Gone — файл удалён по сроку хранения (запись
-    в БД остаётся, комментарии и история не теряются)."""
+    NotFound — фото нет в БД; Forbidden — нет права раздела, которому принадлежит фото;
+    Gone — файл удалён по сроку хранения (запись в БД остаётся)."""
+    from .permissions import principal_permissions
+
     p, path, mime = get_photo_file(db, photo_id)
     if p is None:
         raise NotFound("Фото не найдено")
+    if not set(_VIEW_PERMS.get(p.kind, ())) & principal_permissions(db, principal):
+        raise Forbidden("Нет доступа к этому фото")
     if path is None:
         raise Gone("Файл удалён по сроку хранения")
     return p, path, mime

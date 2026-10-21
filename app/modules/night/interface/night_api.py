@@ -923,7 +923,7 @@ def _report_payload(db: Session, rep: NightReport) -> dict:
 
 @router.post("/sections/{section_id}/take")
 def take_section(section_id: int, payload: InterceptionAck,
-                 principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+                 principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Взять область в работу. Если её уже ведёт другой — предупреждаем и пишем перехват."""
     sec = _get_section(db, section_id)
     rep = _get_report(db, sec.report_id)
@@ -964,7 +964,7 @@ def take_section(section_id: int, payload: InterceptionAck,
 
 @router.post("/sections/{section_id}/close")
 def close_section(section_id: int, payload: CloseSectionIn | None = None,
-                  principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+                  principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Завершить проверку области.
 
     По ТЗ закрыть можно и с незаполненными пунктами (останутся «не отмечено») —
@@ -1002,7 +1002,7 @@ def reopen_section(section_id: int, principal: Principal = Depends(require_perm(
 
 
 @router.put("/items/{item_id}/answer")
-def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(current_principal),
+def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
     """Отметить пункт: ОК / Не ОК (+ комментарий). Перезапись — last write wins."""
     ni = db.get(NightCheckItem, item_id)
@@ -1031,7 +1031,7 @@ def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(
 
 @router.post("/items/{item_id}/photo")
 async def add_item_photo(item_id: int, file: UploadFile = File(...),
-                         principal: Principal = Depends(current_principal),
+                         principal: Principal = Depends(require_perm("night.view")),
                          db: Session = Depends(get_db)):
     ni = db.get(NightCheckItem, item_id)
     if ni is None:
@@ -1134,7 +1134,7 @@ def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
 
     Маршрут сохранён для совместимости со старыми ссылками; реализация общая
     (см. app/api/photos_api.py), чтобы поведение не могло разъехаться."""
-    p, path, mime = resolve_photo_file(db, photo_id)
+    p, path, mime = resolve_photo_file(db, photo_id, principal)
     return FileResponse(str(path), media_type=mime or "application/octet-stream",
                         filename=p.filename or None,
                         headers={"Cache-Control": "private, max-age=86400"})
@@ -1173,7 +1173,7 @@ async def report_car_check(report_id: int, car_id: int,
                            clean: bool = Form(True),
                            comment: str = Form(""),
                            file: Optional[UploadFile] = File(None),
-                           principal: Principal = Depends(current_principal),
+                           principal: Principal = Depends(require_perm("night.view")),
                            db: Session = Depends(get_db)):
     """Отметить кар в ходе ночного обхода (перезапись — last write wins).
 
@@ -1239,7 +1239,7 @@ async def report_car_check(report_id: int, car_id: int,
 
 @router.post("/reports/{report_id}/cars/finish")
 def report_cars_finish(report_id: int, payload: InterceptionAck,
-                       principal: Principal = Depends(current_principal),
+                       principal: Principal = Depends(require_perm("night.view")),
                        db: Session = Depends(get_db)):
     """Завершить шаг «Проверка электрокаров». Незакрытые кары — только после подтверждения."""
     from app.modules.cars.application.cars import CarOpError, finish_cars_step, night_cars_state

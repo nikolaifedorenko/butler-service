@@ -100,4 +100,6 @@ say "    на этом компьютере : http://127.0.0.1:${PORT}"
 say ""
 say "  Остановить — Ctrl+C"
 say ""
+# локальный запуск — с демо-данными (docs/INSTALL.md); DEMO_SEED=0 — пустая база с ADMIN_PASSWORD
+export DEMO_SEED="${DEMO_SEED:-1}"
 exec "$PY" -m uvicorn app.main:app --host "$HOST" --port "$PORT"

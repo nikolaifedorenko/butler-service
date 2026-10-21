@@ -1165,9 +1165,15 @@
             "type": "string"
           },
           "role": {
-            "default": "employee",
-            "title": "Role",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
           },
           "schedule_group": {
             "default": "",
@@ -2359,11 +2365,6 @@
       },
       "TelegramCheckIn": {
         "properties": {
-          "api": {
-            "default": "",
-            "title": "Api",
-            "type": "string"
-          },
           "token": {
             "default": "",
             "title": "Token",

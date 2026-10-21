@@ -42,7 +42,9 @@ def audit(db: Session, principal: Optional[Principal], action: str, target: str 
     """Запись в журнал аудита (без commit — вызывающий код сам коммитит)."""
     db.add(AuditLog(
         actor_id=principal.user.id if principal else None,
-        actor_name=(principal.name + (" (как сотрудник)" if principal.impersonated else "")) if principal else "system",
+        # «как сотрудник»: в журнал — кто вошёл на самом деле (actor_id — его же), аудит SEC/AUTHZ-01
+        actor_name=((f"{principal.user.username} → как {principal.name}" if principal.impersonated
+                     else principal.name) if principal else "system"),
         action=action, target=target, payload_json=json.dumps(payload or {}, ensure_ascii=False, default=str),
         ts=utcnow(),
     ))

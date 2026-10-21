@@ -84,8 +84,12 @@ def _employed_on(db: Session, emp: Employee, date: dt.date) -> bool:
 
 
 def _resolve_employee(principal: Principal, employee_id: Optional[int], db: Session) -> Employee:
-    # отметка за другого — по ключу punches.punch_for_others (бывш. is_manager, §5.2)
-    if employee_id and has_perm(db, principal, "punches.punch_for_others"):
+    # отметка за другого — по ключу punches.punch_for_others (бывш. is_manager, §5.2);
+    # без права — 403, а не молча своя отметка (аудит 21.10.2026, AUTHZ-02)
+    if employee_id and employee_id != (principal.employee.id if principal.employee else None):
+        if not has_perm(db, principal, "punches.punch_for_others"):
+            raise HTTPException(status_code=403,
+                                detail="Недостаточно прав: отметка за другого сотрудника")
         emp = db.get(Employee, employee_id)
         if not emp:
             raise HTTPException(status_code=404, detail="Сотрудник не найден")

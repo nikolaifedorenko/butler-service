@@ -104,6 +104,14 @@ function getCookie(name) {
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
   return m ? decodeURIComponent(m[1]) : '';
 }
+/* Тело ответа: JSON, иначе текст. Ошибка без JSON — это страница прокси (nginx: 413, 502):
+   вместо её разметки в тосте — понятный текст (аудит 21.10.2026, OPS-01). */
+function parseBody(text, status) {
+  try { return text ? JSON.parse(text) : null; } catch {
+    if (status < 400) return { detail: text };
+    return { detail: status === 413 ? 'Файл слишком большой для загрузки' : `Ошибка ${status}` };
+  }
+}
 /* Ошибка HTTP-ответа → Error с человеческим текстом (ревью 20.10.2026, P1-fe-4).
    FastAPI на 422 (pydantic-валидация) отдаёт detail МАССИВОМ {loc, msg, type} —
    раньше он попадал в тост сырым JSON («[{"loc":["body","year"]…»). Теперь:
@@ -152,9 +160,7 @@ async function api(path, opts = {}) {
         : 'Не удалось связаться с сервером — проверьте связь и повторите');
     }
     if (res.status === 401 && !opts.allow401) { showLogin(); throw new Error('Требуется вход'); }
-    const text = await res.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
+    const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
       // единый разбор ошибок (в т.ч. 422-массив pydantic и структурные 409) — httpError
@@ -182,9 +188,7 @@ async function multipartApi(path, formData, { timeout = 60000 } = {}) {
       throw new Error('Не удалось связаться с сервером — проверьте связь и повторите');
     } finally { clearTimeout(timer); }
     if (res.status === 401) { showLogin(); throw new Error('Требуется вход'); }
-    const text = await res.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
+    const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
       throw httpError(msg, res.status);   // тот же разбор, что в api() (P1-fe-4)

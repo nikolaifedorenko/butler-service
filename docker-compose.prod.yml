@@ -4,6 +4,7 @@
 #   1. .env рядом с этим файлом:
 #        SECRET_KEY=$(openssl rand -hex 32)     # обязателен — без него приложение не стартует
 #        POSTGRES_PASSWORD=<надёжный пароль>
+#        ADMIN_PASSWORD=<пароль admin>         # нужен только первому старту на пустой базе
 #   2. сертификаты: ./certs/fullchain.pem и ./certs/privkey.pem (Let's Encrypt).
 #      Для первого выпуска сертификата можно временно оставить только сервер :80
 #      (location /.well-known/acme-challenge/ в deploy/nginx.conf уже настроен).
@@ -45,6 +46,8 @@ services:
       # по умолчанию (решение владельца 15.10.2026), 0 — выключить
       COOKIE_SECURE: "1"
       ALLOW_IMPERSONATION: ${ALLOW_IMPERSONATION:-1}
+      # первый старт на пустой базе: пароль администратора admin (демо-данных в проде нет)
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       TRUST_PROXY_HEADERS: "1"
       LOG_JSON: "1"
       METRICS_ENABLED: ${METRICS_ENABLED:-1}

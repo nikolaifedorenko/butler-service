@@ -13,11 +13,12 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
+from app.core.auth_guards import can_manage_user
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.identity import User
 from app.core.permissions import require_perm
-from app.core.security import create_token, hash_password, needs_rehash, verify_password
+from app.core.security import MIN_PASSWORD_LEN, create_token, hash_password, needs_rehash, verify_password
 from app.core.time import local_date
 from app.modules.employees.application import Employee
 
@@ -25,7 +26,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 _DUMMY_HASH = hash_password("dummy-password-for-timing")
-MIN_PASSWORD_LEN = 8
 
 # ── rate-limit входа: не более MAX неудач с одного IP за WINDOW секунд ──────────
 _LOGIN_WINDOW_SECONDS = 300
@@ -43,7 +43,9 @@ def _client_ip(request: Request) -> str:
     if settings.trust_proxy_headers:
         xff = request.headers.get("x-forwarded-for", "")
         if xff:
-            return xff.split(",")[0].strip()
+            # правый адрес дописал наш nginx ($proxy_add_x_forwarded_for); левые присылает
+            # клиент — по ним лимит обходился сменой заголовка (аудит 21.10.2026, SEC-01)
+            return xff.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -51,7 +53,10 @@ def _too_many_attempts(ip: str) -> bool:
     now = time.time()
     with _login_lock:
         recent = [t for t in _login_failures.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
-        _login_failures[ip] = recent
+        if recent:
+            _login_failures[ip] = recent
+        else:
+            _login_failures.pop(ip, None)   # словарь не растёт от адресов без свежих неудач
         return len(recent) >= _LOGIN_MAX_ATTEMPTS
 
 
@@ -233,6 +238,8 @@ def impersonate(payload: ImpersonateIn, response: Response,
     emp = db.get(Employee, payload.employee_id)
     if not emp or not emp.active:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
+    # иерархия ролей: supervisor не входит «как» manager/admin (аудит 21.10.2026, AUTHZ-01)
+    can_manage_user(principal, db.scalar(select(User).where(User.employee_id == emp.id)))
     token = _token(principal.user, emp.id, imp=True)
     _set_cookie(response, token)
     audit(db, principal, "impersonate", f"employee:{emp.id}", {"employee": emp.full_name})

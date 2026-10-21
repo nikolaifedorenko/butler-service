@@ -139,5 +139,8 @@ def test_client_ip_xff_only_when_trusted(app_stack):
         assert _client_ip(req) == "9.9.9.9", "без доверия к прокси XFF игнорируется"
         settings.trust_proxy_headers = True
         assert _client_ip(req) == "1.2.3.4"
+        # левый адрес присылает клиент, правый дописывает nginx: подмена не обходит лимит
+        req.headers["x-forwarded-for"] = "6.6.6.6, 1.2.3.4"
+        assert _client_ip(req) == "1.2.3.4"
     finally:
         settings.trust_proxy_headers = False

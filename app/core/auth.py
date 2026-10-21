@@ -92,6 +92,8 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
     emp_id = payload.get("emp_id")
     if emp_id and _EMPLOYEE_LOADER is not None:
         employee = _EMPLOYEE_LOADER(db, emp_id)
+    if payload.get("imp") and (employee is None or not employee.active):
+        raise _unauthorized()          # «как сотрудник» за уволенного/удалённого — сессия кончилась
     return Principal(user=user, employee=employee, impersonated=bool(payload.get("imp")))
 
 

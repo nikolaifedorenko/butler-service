@@ -41,7 +41,7 @@ def photo_limits(principal: Principal = Depends(current_principal),
 def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
                db: Session = Depends(get_db)):
     """Отдача оригинала фото. Только авторизованным; HEAD — для проверки доступности."""
-    p, path, mime = resolve_photo_file(db, photo_id)
+    p, path, mime = resolve_photo_file(db, photo_id, principal)
     return FileResponse(str(path), media_type=mime or "application/octet-stream",
                         filename=p.filename or None,
                         headers={"Cache-Control": "private, max-age=86400"})

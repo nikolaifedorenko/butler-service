@@ -15,7 +15,7 @@ cd "$ROOT" || exit 1
 # Ключ ≥16 символов: приложение отказывается стартовать со слабым SECRET_KEY (app/main.py).
 # CSRF здесь НЕ отключаем: смоук идёт через jsdom и настоящий api() из core.js —
 # заодно проверяется вся цепочка double-submit (cookie + заголовок X-CSRF-Token).
-export DATABASE_URL="sqlite:///$DB" SECRET_KEY="harness-secret-key-0123456789abcdef" APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
+export DEMO_SEED=1 DATABASE_URL="sqlite:///$DB" SECRET_KEY="harness-secret-key-0123456789abcdef" APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >/tmp/ui_server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT

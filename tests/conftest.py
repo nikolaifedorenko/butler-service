@@ -39,6 +39,8 @@ TEST_DB = pathlib.Path(tempfile.gettempdir()) / "tt_test.db"
 # DATABASE_URL можно задать извне: CI-джоб postgres гоняет тот же набор на PostgreSQL 16
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{TEST_DB}")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+# тесты опираются на демо-сотрудников и пароль demo1234 (см. app/bootstrap/seed.py)
+os.environ.setdefault("DEMO_SEED", "1")
 os.environ.setdefault("APP_TZ", "Europe/Moscow")
 # CSRF-защита — браузерный механизм (cookie + заголовок); TestClient её не имитирует,
 # поэтому в тестах отключаем. Сам механизм покрыт отдельно (см. tests/test_csrf.py).

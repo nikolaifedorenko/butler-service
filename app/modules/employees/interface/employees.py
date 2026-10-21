@@ -20,7 +20,7 @@ from app.core.format import normalize_hex_color
 from app.core.identity import User
 from app.core.permissions import require_perm
 from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER
-from app.core.security import hash_password
+from app.core.security import MIN_PASSWORD_LEN, hash_password
 from app.core.time import local_date, utcnow
 from app.modules.cars.application.catalog import Car
 from app.modules.timesheet.application.base_schedule import validate_pattern_label
@@ -54,6 +54,13 @@ router = APIRouter(prefix="/api", tags=["directory"])
 
 # Алфавит без визуально похожих символов (0/O, 1/l/I) — чтобы пароль легко продиктовать.
 _PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _check_password(password: Optional[str]) -> None:
+    """Пароль, который задаёт руководитель, — по тому же правилу, что смена своего (AUTHZ-04)."""
+    if password and len(password) < MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=422,
+                            detail=f"Пароль слишком короткий (минимум {MIN_PASSWORD_LEN} символов)")
 
 
 def _initial_password() -> str:
@@ -151,7 +158,7 @@ class EmployeeIn(BaseModel):
     balance_hours: float = 0.0
     username: Optional[str] = None
     password: Optional[str] = None
-    role: str = ROLE_EMPLOYEE
+    role: Optional[str] = None     # не передана — при правке роль не меняется (AUTHZ-03)
 
     @field_validator("group_color", mode="before")
     @classmethod
@@ -212,7 +219,9 @@ def suggest_genitive_api(payload: SuggestGenitiveIn, principal: Principal = Depe
 @router.post("/employees")
 def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_perm("employees.edit")),
                     db: Session = Depends(get_db)):
-    _guard_supervisor(principal, payload.role, None)
+    role = payload.role or ROLE_EMPLOYEE
+    _guard_supervisor(principal, role, None)
+    _check_password(payload.password)
     hired = _parse_date(payload.hired_at) or local_date()
     # FK department_id — валиден ДО вставки (P1-misc-3): битый id на PostgreSQL
     # давал IntegrityError (500), на SQLite (FK не включены) — сотрудника-сироту.
@@ -251,10 +260,10 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
         username = f"{username}{emp.id}"
     password = payload.password or _initial_password()
     db.add(User(username=username, password_hash=hash_password(password),
-                role=payload.role, employee_id=emp.id))
+                role=role, employee_id=emp.id))
     _sync_contacts(db, emp, payload.contacts)
     audit(db, principal, "employee_create", f"employee:{emp.id}",
-          {"full_name": emp.full_name, "username": username, "role": payload.role})
+          {"full_name": emp.full_name, "username": username, "role": role})
     db.commit()
     data = _emp_dict(emp, with_user=True)
     data["initial_password"] = password
@@ -268,6 +277,8 @@ def update_employee(employee_id: int, payload: EmployeeIn,
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
     _guard_supervisor(principal, payload.role, emp.user)
+    _check_password(payload.password)
+    changes: dict = {}
 
     today = local_date()
     emp.full_name = payload.full_name.strip()
@@ -302,16 +313,23 @@ def update_employee(employee_id: int, payload: EmployeeIn,
                     user_id=principal.user.id)
 
     if emp.user:
-        emp.user.role = payload.role
+        if payload.role and payload.role != emp.user.role:
+            changes["role"] = [emp.user.role, payload.role]
+            emp.user.role = payload.role
         if payload.username and payload.username.strip().lower() != emp.user.username:
             new_username = payload.username.strip().lower()
             if db.scalar(select(User).where(User.username == new_username, User.id != emp.user.id)):
                 raise HTTPException(status_code=409, detail="Такой логин уже занят")
+            changes["username"] = [emp.user.username, new_username]
             emp.user.username = new_username
         if payload.password:
             emp.user.password_hash = hash_password(payload.password)
+            changes["password_changed"] = True
+        if "role" in changes or "password_changed" in changes:
+            # прежние сессии (в т.ч. украденная cookie) больше не действуют (AUTHZ-04)
+            emp.user.token_version = int(emp.user.token_version or 0) + 1
     _sync_contacts(db, emp, payload.contacts)
-    audit(db, principal, "employee_update", f"employee:{emp.id}", {"full_name": emp.full_name})
+    audit(db, principal, "employee_update", f"employee:{emp.id}", {"full_name": emp.full_name, **changes})
     db.commit()
     return _emp_dict(emp, with_user=True)
 

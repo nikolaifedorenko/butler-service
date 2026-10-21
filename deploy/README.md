@@ -11,6 +11,7 @@ cp .env.example .env
 # в .env обязательно:
 #   SECRET_KEY=$(openssl rand -hex 32)
 #   POSTGRES_PASSWORD=<надёжный пароль>
+#   ADMIN_PASSWORD=<пароль admin>   # первый старт на пустой базе; демо-учёток в проде нет
 mkdir -p certs backups certbot-www
 # сертификаты Let's Encrypt:
 #   certs/fullchain.pem, certs/privkey.pem
