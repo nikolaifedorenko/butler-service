@@ -456,7 +456,14 @@ def put_manual_shift(payload: ManualShiftIn, principal: Principal = Depends(requ
         raise HTTPException(status_code=422, detail=error_text(exc))
     for row, iv in zip(db.scalars(select(ScheduleShift).where(
             ScheduleShift.employee_id == payload.employee_id,
-            ScheduleShift.date == payload.date, ScheduleShift.source == "manual")),
+            ScheduleShift.date == payload.date, ScheduleShift.source == "manual")
+            # ORDER BY обязателен: zip расставляет ноты по интервалам запроса, а без
+            # порядка БД строки возвращаются как угодно (PostgreSQL порядок не
+            # гарантирует) — ноты ложились бы на чужие смены (ревью 20.10.2026,
+            # P1-ts-2). id назначаются в порядке вставки одним flush в save_manual,
+            # т.е. порядок id = порядок intervals (start не годится: интервалы
+            # запроса могут быть вне хронологии).
+            .order_by(ScheduleShift.id)),
                      intervals, strict=False):
         row.note = iv.note[:255]
         row.updated_by = principal.user.id
