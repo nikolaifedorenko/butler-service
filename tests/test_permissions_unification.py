@@ -62,8 +62,14 @@ def test_zakrytie_i_pereotkrytie_smeny(manager_client, employee_client, open_shi
         rid = rep.id
         assert employee_client.post(f"/api/night/reports/{rid}/close").status_code == 403
         assert employee_client.post(f"/api/night/reports/{rid}/reopen").status_code == 403
-        # супервайзер: переоткрытие открытого отчёта идемпотентно и разрешено
+        # супервайзеру разрешено и то, и другое (ключ night.close)
+        assert manager_client.post(f"/api/night/reports/{rid}/close",
+                                   json={"force_unanswered": True}).status_code == 200
         assert manager_client.post(f"/api/night/reports/{rid}/reopen").status_code == 200
+        # переоткрытие ОТКРЫТОГО отчёта — 409, симметрично закрытию уже закрытого:
+        # no-op проставил бы reopened_at и навсегда выключил автозакрытие смены
+        # (ревью 20.10.2026, P1; до фикса был «идемпотентный» 200 с записью)
+        assert manager_client.post(f"/api/night/reports/{rid}/reopen").status_code == 409
         # переоткрытие объекта — тот же ключ
         secs = manager_client.get(f"/api/night/reports/{rid}").json()["report"]["areas"]
         assert secs, "в отчёте нет объектов"

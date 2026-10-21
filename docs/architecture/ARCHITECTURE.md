@@ -83,7 +83,7 @@ cars, docs, notify, settings, access, audit), каждый — гексагон 
 |---|---|---|
 | **timesheet** | Учёт рабочего времени: движок v7.1, Табель, График, отметки, доска, УТ, двойные, engine-настройки | `application` (use case'ы движка, engine_common, base_schedule, tabel_fill, shiftrev, catalog моделей) |
 | **employees** | Каталог персонала, трудоустройство, жизненный цикл, группы графика, имена | `application` (catalog: Employee/Department/…, employment, groups/names-реэкспорт) |
-| **night** | Ночной отчёт v2: зоны, объекты, чек-листы, недостатки, журнал, выгрузки | `application` (night, night_export, night_notify, catalog) |
+| **night** | Ночной отчёт v2: зоны, объекты, чек-листы, недостатки, журнал, выгрузки. Обслуживание (досоздание смен, автозакрытие в 08:00) — стартовый прогон + фоновый поток `bootstrap/night_sync` под лидер-замком `try_lock`, НЕ в GET-запросах | `application` (night, night_export, night_notify, catalog) |
 | **cars** | Электрокары: парк, заряд/возврат, места, ночная проверка | `application` (cars, catalog) |
 | **docs** | Заявления DOCX/PDF, сетка Графика в Excel, шаблоны | `application` (doc_render, grid_docx, doc_templates) |
 | **notify** | Общая доставка: Telegram + почта, каталог чатов, журнал отправок | `application` (config, dispatch, recipients, chats, catalog), `ports` (TransportError) |
@@ -95,16 +95,16 @@ cars, docs, notify, settings, access, audit), каждый — гексагон 
 `Setting` — `core/settings_store`; транспорт рендера — `core/render`;
 `can_manage_user` — `core/auth_guards` (ролевой страж, не право).
 
-### 2.3 Цифры (20.10.2026, батч review-P0)
+### 2.3 Цифры (20.10.2026, батч review-P1 night/cars)
 
 | Показатель | Значение |
 |---|---|
 | Модуль timesheet | ~11 500 строк: domain 3 583 · interface 4 219 (8 роутеров + views/formatting/period_params) · application 1 971 · adapters 1 329 · ports 195 · bootstrap |
-| Прочие 8 модулей | employees 1 776 · night 2 591 · cars 1 090 · docs 1 200 · notify 1 595 · settings 186 · access 445 · audit 102 строк |
-| `app/core/` + composition root | 1 920 (19 файлов) + bootstrap/main 1 673 строк |
+| Прочие 8 модулей | employees 1 776 · night 2 639 · cars 1 098 · docs 1 200 · notify 1 595 · settings 186 · access 445 · audit 102 строк |
+| `app/core/` + composition root | 1 996 (19 файлов) + bootstrap/main 1 795 строк |
 | API | 18 роутеров по модулям, **156 путей OpenAPI** (`docs/openapi.json` сверяется в CI) |
-| Фронтенд `static/js` | ~8 850 строк, 11 файлов: core.js, app.js + 9 разделов в `modules/` |
-| Тесты | ~13 100 строк, **754 теста**: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
+| Фронтенд `static/js` | ~8 900 строк, 11 файлов: core.js, app.js + 9 разделов в `modules/` |
+| Тесты | ~13 600 строк, **767 тестов**: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
 | Покрытие `timesheet/domain` | ≥ 95 % (DoD спеки) |
 | Таблиц БД | **45** (реестр `bootstrap/registry.py`, `/api/selfcheck` сверяет схему с `Base.metadata`) |
 | Приёмочных примеров спеки | 55 (EX-01…EX-55) — каждый в автотестах |
@@ -297,7 +297,8 @@ POST /api/punches: сериализация по сотруднику (lock) →
 * `core` не импортирует модули (R5; единственная TYPE_CHECKING-аннотация
   `core.auth → employees.catalog`, в runtime — инъекция `set_employee_loader`);
 * composition root (`main.py`, `bootstrap/`) — единственный импортёр всего
-  (реестр моделей `registry.ensure_models()` — явные импорты всех `adapters.orm`);
+  (реестр моделей `registry.ensure_models()` — явные импорты всех `adapters.orm`;
+  фоновый поток `bootstrap/night_sync` — обслуживание ночных отчётов вне запросов);
 * циклов нет: кросс-модульные импорты идут в чужие `application`-границы, которые
   не импортируют чужие модули обратно (проверяется запуском + контрактами).
 
@@ -307,6 +308,8 @@ POST /api/punches: сериализация по сотруднику (lock) →
 |---|---|---|
 | Самодельные миграции (raw DDL при старте) | 🟠 | Alembic: autogenerate + версионирование; `migrate_engine_v7` — образец идемпотентного шага. Гонку одновременного старта воркеров закрывает `core/startup_lock` (20.10.2026); следующий шаг — таблица версий шагов и отдельная команда миграций до uvicorn |
 | Гонка DDL при старте нескольких воркеров (`duplicate column name`, IntegrityError `night_reports.date`) | 🟢 закрыт 20.10.2026 | `init_db()` целиком под замком `core/startup_lock`: PostgreSQL — сеансовый `pg_advisory_lock` (держит и несколько контейнеров), SQLite — `flock` на файле рядом с БД; `suppress(Exception)` вокруг DDL заменён явной проверкой таблиц (на PostgreSQL сбой DDL портил транзакцию шага). Стражи: `tests/test_review_p0.py` |
+| GET `/api/night/*` с побочными записями; переоткрытие отчёта закрывалось обратно ≤ 120 с | 🟢 закрыт 20.10.2026 | `sync_reports` убран из роутеров: обслуживание — старт (под `startup_lock`) + фоновый поток `bootstrap/night_sync` (каждые `NIGHT_SYNC_SECONDS`, по умолчанию 60); в нескольких воркерах раунд выполняет один процесс под неблокирующим `core/startup_lock.try_lock("night-sync")`. Переоткрытый отчёт (`night_reports.reopened_at`) автозакрытием больше не закрывается; reopen открытого — 409. Окно досоздания смен — честная константа `BACKFILL_DAYS=31` вместо `min(len(have)+31, 31)`. Стражи: `tests/test_review_p1_night_cars.py` |
+| Автозакрытие смены не проставляло `close_reason` (DOCX подписывал закрытый отчёт «Открыт · закроется 08:00»); повторная отметка кара не обновляла `checked_at` | 🟢 закрыт 20.10.2026 | `finalize_report(rep, reason="auto"|"manual")` — причина закрытия пишется всегда; `check_car_night` обновляет `ch.checked_at` при каждом сохранении (last write wins) — `car.last_checked_at` и флаг «взяли после проверки» свежие. Стражи: `tests/test_review_p1_night_cars.py` |
 | Массовые операции перегенерировали График по-ячеечно | 🟢 закрыт 20.10.2026 | `bulk` / `range-absence` / `copy` пишут Табель с `rebuild=False` и делают ОДНУ перегенерацию на затронутый месяц (`schedule_view.rebuild_generated_for_days`): 12 ячеек — 373 → 265 запросов, перегенераций 13 → 1; на пределе 500×366 экономия ~1,6 млн запросов |
 | `year`/`month` без валидации → 500 на запросе клиента | 🟢 закрыт 20.10.2026 | единый `interface/period_params.ensure_period` во всех 14 точках ввода периода (422 + `{"detail": …}`); параметризованный страж `test_bad_period_is_422_not_500` |
 | Бюджет УТ линейный по штату (по спеке) | 🟡 | батч-порты `load_inputs` на группу сотрудников; кэш Settings уже есть |

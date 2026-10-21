@@ -172,6 +172,11 @@ class NightReport(Base):
     status: Mapped[str] = mapped_column(String(16), default="open")   # open | closed
     closed_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     close_reason: Mapped[str] = mapped_column(String(16), default="")  # auto | manual
+    # момент ручного переоткрытия (ревью 20.10.2026, P1): пока он проставлен,
+    # фоновая синхронизация НЕ закрывает отчёт автоматически — переоткрытую смену
+    # закрывает вручную тот, кто её переоткрыл. Раньше ближайший sync_reports
+    # (вызывался из каждого GET) закрывал отчёт снова, и переоткрытие «жило» < 2 минут.
+    reopened_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     result: Mapped[str] = mapped_column(String(16), default="")        # full | partial ('' пока открыт)
     cars_step_done: Mapped[bool] = mapped_column(Boolean, default=False)  # шаг «Проверка электрокаров» завершён
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)

@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # разрешить запуск со слабым/пустым SECRET_KEY — ТОЛЬКО для локальной разработки.
     # В остальных случаях приложение откажется стартовать (см. app/main.py).
     allow_insecure_dev_secret: bool = False
+    # фоновая синхронизация ночных отчётов (bootstrap/night_sync.py): досоздание
+    # наступивших смен и автозакрытие в 08:00 больше НЕ выполняются в GET-запросах
+    # (ревью 20.10.2026, P1) — их делает фоновый поток с периодом night_sync_seconds.
+    # Несколько воркеров: в раунде работает один (замок core.startup_lock.try_lock).
+    night_sync_enabled: bool = True
+    night_sync_seconds: int = 60
 
 
 @lru_cache

@@ -8,7 +8,12 @@
   * закрепление области за батлером рекомендательное: второй может «перехватить»,
     система предупредит и запишет факт перехвата в историю;
   * в 08:00 следующего дня отчёт закрывается сам: все области закрыты → «полный»,
-    есть незакрытые → «неполный». После закрытия отчёт только для чтения.
+    есть незакрытые → «неполный». После закрытия отчёт только для чтения;
+  * менеджер может переоткрыть закрытый отчёт (например, чтобы исправить отметки):
+    автозакрытие для такого отчёта выключается (reopened_at), и он закрывается
+    вручную повторно — фоновая синхронизация его больше не трогает;
+  * обслуживание (досоздание смен и автозакрытие) работает при старте сервера и
+    фоновым потоком (bootstrap/night_sync.py), а НЕ в GET-запросах раздела.
 
 Время смены хранится в локальном времени объекта (naive), как Punch.ts.
 """
@@ -40,6 +45,11 @@ from ..adapters.orm import (
 SHIFT_START = dt.time(20, 0)   # начало ночной смены
 SHIFT_END = dt.time(8, 0)      # автозакрытие
 CAR_AREA_NAME = "Проверка электрокаров"   # специальная область обхода каров
+# насколько глубоко sync_reports() досоздаёт пропущенные смены «задним числом».
+# Если сервер пролежал дольше — более старые смены НЕ восстанавливаются (осознанное
+# ограничение). Раньше здесь стояла формула min(len(have) + 31, 31), которая всегда
+# давала 31 и лишь имитировала более умное поведение (ревью 20.10.2026, P1).
+BACKFILL_DAYS = 31
 
 
 def shift_date_at(ts: dt.datetime) -> dt.date:
@@ -185,20 +195,25 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
     return report
 
 
-# sync_reports() дёргается на каждый запрос раздела (в т.ч. на каждый тик поллинга),
-# а работа у него «разовая»: досоздать пропущенные смены и закрыть наступившие.
-# Поэтому внутри процесса повторяем не чаще раза в интервал — иначе каждый запрос
-# платит за несколько выборок и, на SQLite, конкурирует за блокировку с отметками.
+# sync_reports() — обслуживание раздела: раньше он выполнялся прямо в GET /today и
+# GET /reports (на каждый тик поллинга), теперь (ревью 20.10.2026, P1) GET-запросы
+# читают базу без побочных записей, а синхронизация работает:
+#   * при старте сервера — init_db() под замком startup_lock (app/main.py);
+#   * фоновым потоком каждые settings.night_sync_seconds — bootstrap/night_sync.py
+#     (несколько воркеров: раунд выполняет один процесс под try_lock("night-sync")).
+# Внутренний троттлинг оставлен страховкой от частых РУЧНЫХ вызовов (force=True
+# его пропускает — стартовый прогон, фоновые раунды и тесты).
 SYNC_INTERVAL_SECONDS = 120
 _last_sync: dict[str, float] = {"ts": 0.0}
 
 
 def sync_reports(db: Session, *, force: bool = False) -> dict:
-    """Обслуживание отчётов при обращении к разделу / при старте сервера:
-    досоздать пропущенные смены (сервер был выключен) и закрыть наступившие.
+    """Обслуживание отчётов (старт сервера / фоновый раунд): досоздать пропущенные
+    смены (сервер был выключен) и закрыть наступившие.
 
-    Повторные вызовы чаще SYNC_INTERVAL_SECONDS пропускаются (force=True — пропустить
-    ограничение: используется при старте сервера и в тестах)."""
+    Вручную переоткрытые отчёты (reopened_at) НЕ закрываются: автозакрытие для них
+    выключено до следующего ручного закрытия. Повторные вызовы чаще
+    SYNC_INTERVAL_SECONDS пропускаются (force=True — пропустить ограничение)."""
     import time
 
     now_ts = time.monotonic()
@@ -208,8 +223,8 @@ def sync_reports(db: Session, *, force: bool = False) -> dict:
     closed: list[str] = []
     today = current_shift_date()
     have = {d for (d,) in db.execute(select(NightReport.date).where(NightReport.date <= today))}
-    # подтягиваем максимум последних 31 смены («задним числом»)
-    start = max(today - dt.timedelta(days=31), today - dt.timedelta(days=min(len(have) + 31, 31)))
+    # «задним числом» досоздаём максимум последних BACKFILL_DAYS смен
+    start = today - dt.timedelta(days=BACKFILL_DAYS)
     d = start
     while d <= today:
         if d not in have:
@@ -219,6 +234,8 @@ def sync_reports(db: Session, *, force: bool = False) -> dict:
         d += dt.timedelta(days=1)
     now = now_local()
     for rep in db.scalars(select(NightReport).where(NightReport.status == "open")):
+        if rep.reopened_at is not None:
+            continue            # переоткрыт вручную — автозакрытие выключено
         if now >= close_deadline(rep.date):
             finalize_report(rep)
             closed.append(rep.date.isoformat())
@@ -228,10 +245,15 @@ def sync_reports(db: Session, *, force: bool = False) -> dict:
     return {"created": created, "closed": closed}
 
 
-def finalize_report(rep: NightReport) -> str:
-    """Закрыть отчёт: посчитать результат full/partial. Возвращает result."""
+def finalize_report(rep: NightReport, *, reason: str = "auto") -> str:
+    """Закрыть отчёт: посчитать результат full/partial. Возвращает result.
+
+    reason — причина закрытия ("auto" | "manual") для архива и DOCX-выгрузки:
+    автозакрытие по дедлайну 08:00 раньше не проставляло close_reason, и выгрузка
+    подписывала закрытый отчёт «Открыт · закроется 08:00» (ревью 20.10.2026, P1)."""
     rep.status = "closed"
     rep.closed_at = now_local()
+    rep.close_reason = reason
     unfinished = [s for s in rep.areas if s.status != "done"]
     if unfinished or not rep.cars_step_done:
         rep.result = "partial"
@@ -489,6 +511,8 @@ def report_dict(rep: NightReport, *, with_items: bool = True, db=None) -> dict:
         "result_title": {"full": "полный", "partial": "неполный"}.get(rep.result, "—"),
         "closed_at": rep.closed_at.isoformat(timespec="seconds") if rep.closed_at else None,
         "close_reason": rep.close_reason,
+        # переоткрыт вручную → автозакрытие выключено (интерфейс и DOCX это показывают)
+        "reopened_at": rep.reopened_at.isoformat(timespec="seconds") if rep.reopened_at else None,
         "deadline": close_deadline(rep.date).isoformat(timespec="seconds"),
         "readonly": rep.status == "closed",
         "cars_step_done": rep.cars_step_done,

@@ -172,7 +172,10 @@ function renderNight(rep, note) {
     return;
   }
 
-  $('#night-sub').textContent = `Смена ${dateRu(rep.date)} · ${rep.shift_label || ''} · автозакрытие ${hhmm(rep.deadline)}`;
+  /* переоткрытый вручную отчёт автоматически не закроется — не обещаем дедлайн */
+  $('#night-sub').textContent = rep.reopened_at
+    ? `Смена ${dateRu(rep.date)} · ${rep.shift_label || ''} · переоткрыта вручную — автозакрытие отключено`
+    : `Смена ${dateRu(rep.date)} · ${rep.shift_label || ''} · автозакрытие ${hhmm(rep.deadline)}`;
   const p = rep.progress || { total: 0, done: 0, taken: 0, free: 0 };
   const areas = (rep.areas || []).filter(a => !a.is_cars);
   const carsSection = (rep.areas || []).find(a => a.is_cars);
@@ -660,7 +663,8 @@ function closeReportModal() {
 async function reopenReport() {
   const id = nightState.reportId || nightState.today?.report?.id;
   if (!id) return;
-  confirmDialog('Переоткрыть смену?', 'Отчёт снова станет доступным для правок; итог будет пересчитан при закрытии.',
+  confirmDialog('Переоткрыть смену?',
+    'Отчёт снова станет доступным для правок; итог будет пересчитан при закрытии. Автозакрытие в 08:00 для него отключится — закройте смену вручную, когда закончите правки.',
     async () => {
       try { await api(`/api/night/reports/${id}/reopen`, { method: 'POST' }); toast('Смена переоткрыта', 'ok'); fetchNight(); }
       catch (e) { toast(e.message, 'err'); }
@@ -678,7 +682,7 @@ async function nightArchiveModal() {
         <thead><tr><th>Дата</th><th>Статус</th><th>Итог</th><th>Области</th><th>Электрокары</th><th>Закрыт</th><th></th></tr></thead>
         <tbody>${reports.map(r => `<tr>
           <td data-label="Дата"><b>${esc(dateRu(r.date))}</b><small>${esc(r.shift_label || '')}</small></td>
-          <td data-label="Статус"><span class="badge ${r.status === 'closed' ? 'ok' : 'warn'}">${r.status === 'closed' ? 'закрыт' : 'открыт'}</span></td>
+          <td data-label="Статус"><span class="badge ${r.status === 'closed' ? 'ok' : 'warn'}">${r.status === 'closed' ? 'закрыт' : (r.reopened_at ? 'открыт · переоткрыт' : 'открыт')}</span></td>
           <td data-label="Итог">${esc(r.result_title || '—')}</td>
           <td data-label="Области" class="num">${r.progress?.done || 0} / ${r.progress?.total || 0}</td>
           <td data-label="Электрокары">${r.cars_step_done ? '<span class="badge ok">готово</span>' : '<span class="badge muted">—</span>'}</td>
