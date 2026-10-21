@@ -41,9 +41,8 @@ from ..application.engine_common import (
 from ..application.months import half_month_period, month_period
 from ..application.schedule_view import rebuild_generated_for_days, rebuild_generated_schedule
 from ..application.tabel_fill import fill_timesheet_from_cycles
-from ..domain.day_card.fmt_hours import fmt_hours
 from ..domain.types.entities import Period
-from .formatting import hm
+from .formatting import fmt_hours_strict, hm
 from .period_params import ensure_period
 
 router = APIRouter(prefix="/api/tabel", tags=["tabel"])
@@ -97,7 +96,7 @@ def get_tabel(year: int, month: int, half: Optional[int] = None,
             r = rows.get((e.id, d))
             if r:
                 policy = st.day_code_policy.get(r.code)
-                value = (f"{r.code} {fmt_hours(r.plan_minutes)}"
+                value = (f"{r.code} {fmt_hours_strict(r.plan_minutes, e.id, d)}"
                          if policy and policy.carries_hours else r.code)
                 cells[d.isoformat()] = {"code": r.code, "hours": r.plan_minutes / 60,
                                         "source": r.source, "note": r.note, "value": value}

@@ -48,6 +48,24 @@ def hours_text(minutes: int) -> str:
     return fmt_hours(minutes)
 
 
+def fmt_hours_strict(minutes: int, employee_id, day) -> str:
+    """Часы строки Табеля для ОТКРЫТИЯ вкладок (P1-ts-3, строгий вариант).
+
+    Доменный fmt_hours канонически строг (§3.3): план обязан быть кратен 15
+    (CHK-PLAN-FORMAT), иначе значение непредставимо. Конвейер отбраковывает такие
+    строки на стадии 1, а дисплейные пути читают Табель напрямую — легаси/битая
+    строка роняла вкладку сырым ValueError (500). Здесь отказ типизирован:
+    TimesheetRowCorruptError (409) с указанием сотрудника, дня и значения —
+    вкладка честно сообщает о повреждении данных.
+    """
+    from ..application.errors import TimesheetRowCorruptError
+    from ..domain.day_card.fmt_hours import fmt_hours
+    try:
+        return fmt_hours(minutes)
+    except ValueError as exc:
+        raise TimesheetRowCorruptError(employee_id, day, minutes) from exc
+
+
 def code_with_hours(tariff: str, minutes: int) -> str:
     """Нотация отображения кода УТ (CFG-WEIGHTS): «ДЯ2 3» — ровно один пробел."""
     return f"{tariff} {hours(minutes)}"

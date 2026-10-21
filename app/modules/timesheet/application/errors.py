@@ -73,3 +73,21 @@ class AdjustmentClosedPeriodError(ApplicationError):
     """Корректировки закрытого периода невозможны — только через recalculate (7.2)."""
 
     code = "ADJUSTMENT_CLOSED_PERIOD"
+
+
+class TimesheetRowCorruptError(ApplicationError):
+    """Строка Табеля повреждена: план не представим в нотации значения (не кратен 15,
+    CHK-PLAN-FORMAT, 3.3). Конвейер такое отбраковывает на стадии 1 типизированно,
+    а ОТКРЫТИЕ вкладки с легаси/битой строкой — типизированный отказ (409) вместо
+    сырого ValueError → 500 (ревью 20.10.2026, P1-ts-3; решение владельца — строгий
+    вариант: вкладка честно сообщает о повреждении, а не показывает приблизительное
+    значение). Текст — сообщение исключения (error_text: str-fallback)."""
+
+    code = "TIMESHEET_ROW_CORRUPT"
+
+    def __init__(self, employee_id, day: dt.date, plan_minutes: int):
+        self.employee_id, self.day, self.plan_minutes = employee_id, day, plan_minutes
+        super().__init__(
+            f"Повреждённая строка Табеля (сотрудник {employee_id}, {day:%d.%m.%Y}): "
+            f"план {plan_minutes} мин не кратен 15 минутам (CHK-PLAN-FORMAT) — "
+            "исправьте значение в разделе «Табель»")
