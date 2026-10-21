@@ -110,7 +110,7 @@ function renderGrid() {
   } else {
     const head = `<tr><th class="corner">ФИО</th>${g.days.map(d =>
       `<th class="${d.is_weekend ? 'weekend' : ''} ${d.is_today ? 'today' : ''}${d.double_scope ? ' double-day' : ''}"
-        title="${dateRu(d.date)}${d.double_scope ? ' · день двойной оплаты (' + (d.double_title || '') + '): переработки идут кодами ДЯ2/ДН2' : ''}">
+        title="${dateRu(d.date)}${d.double_scope ? ' · день двойной оплаты (' + esc(d.double_title || '') + '): переработки идут кодами ДЯ2/ДН2' : ''}">
         <span class="dow">${esc(d.weekday)}</span>${d.day}${d.double_scope ? '<span class="dbl-mark">×2</span>' : ''}</th>`).join('')}</tr>`;
 
     /* блоки: Смена 1, Смена 2, Пятидневка, Другие смены; сотрудник виден в каждом своём блоке */
