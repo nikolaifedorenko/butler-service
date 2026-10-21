@@ -577,6 +577,27 @@ def migrate_night_zones() -> None:
         """))
 
 
+def migrate_night_reopened_at() -> None:
+    """Колонка ``night_reports.reopened_at`` — ручное переоткрытие отчёта.
+
+    Ревью 20.10.2026 (P1): переоткрытый отчёт больше не закрывается автоматически
+    (фоновая синхронизация пропускает его), поэтому момент переоткрытия нужно
+    хранить. Базам, где ``night_reports`` создана до появления колонки, докладываем
+    её через ADD COLUMN; новые базы создаёт ``Base.metadata.create_all`` уже с ней.
+    Идемпотентна (проверено tests/test_review_p1_night_cars.py)."""
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    insp = sa_inspect(engine)
+    if not insp.has_table("night_reports"):
+        return                      # таблицы ещё нет — create_all создаст её с колонкой
+    cols = {c["name"] for c in insp.get_columns("night_reports")}
+    if "reopened_at" in cols:
+        return
+    with engine.begin() as con:
+        con.execute(text("ALTER TABLE night_reports ADD COLUMN reopened_at DATETIME"))
+
+
 def migrate_engine_v7() -> None:
     """Миграция на движок v7.1 (base 15 «Миграция прототипа» + решение владельца:
     расчётные данные v4 были тестовыми — удаляются).

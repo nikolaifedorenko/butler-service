@@ -154,7 +154,11 @@ def test_pravki_sluzhb_tolko_u_menedzhmenta(employee_client):
 def test_demo_sluzhby_zakrepleny_za_punktami_shablona(employee_client):
     """В демо-данных у каждого пункта шаблона зоны задана служба — иначе отправка невозможна."""
     zone_id = _zone_id(employee_client)
-    items = employee_client.get(f"/api/night/zones/{zone_id}/items").json()["items"]
+    # только ДЕЙСТВУЮЩИЕ пункты: удаление пункта шаблона мягкое (active=False),
+    # а GET /zones/{id}/items возвращает и выключенные — без фильтра тест ловил
+    # «Тест: …»-пункты, мягко удалённые test_night_zones при запуске раньше него
+    items = [i for i in employee_client.get(f"/api/night/zones/{zone_id}/items").json()["items"]
+             if i["active"]]
     assert items, "шаблон зоны пуст"
     without = [i["text"] for i in items if not i["service_id"]]
     assert not without, f"пункты без службы: {without}"

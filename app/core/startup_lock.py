@@ -26,6 +26,12 @@
 идемпотентные шаги — дёшево (секунды) и без отдельной команды миграций в compose.
 Отдельный шаг `python -m app.bootstrap.migrate` до uvicorn и таблица версий шагов
 (мост к Alembic, ADR-0002) — осознанно вне этой правки.
+
+Рядом живёт `try_lock(name)` — НЕблокирующий именованный замок для фоновых задач
+(ревью 20.10.2026, P1): каждый воркер может запускать свою фоновую задачу, но
+работу в конкретном раунде выполняет только один процесс — остальные сразу
+получают False и пропускают раунд (например, фоновая синхронизация ночных
+отчётов `bootstrap/night_sync.py`, которая раньше висела в GET-запросах).
 """
 from __future__ import annotations
 
@@ -137,10 +143,74 @@ def _file_lock(timeout: float) -> Iterator[None]:
 
 
 def _lock_path() -> Path:
+    """Файл замка инициализации: см. `_lock_path_for`."""
+    return _lock_path_for("startup")
+
+
+def _lock_path_for(name: str) -> Path:
     """Файл замка: рядом с файлом БД, а для не-файловых URL — в tempdir по хешу URL."""
     url = engine.url
     database = url.database or ""
     if url.get_backend_name() == "sqlite" and database and database != ":memory:":
-        return Path(database + ".startup.lock")
+        return Path(f"{database}.{name}.lock")
     digest = hashlib.sha256(str(url).encode()).hexdigest()[:16]
-    return Path(tempfile.gettempdir()) / f"butler-startup-{digest}.lock"
+    return Path(tempfile.gettempdir()) / f"butler-{name}-{digest}.lock"
+
+
+# ─────────────────── неблокирующий замок фоновых задач ───────────────────
+
+def _advisory_key(name: str) -> int:
+    """Стабильный int64-ключ advisory-lock по имени замка (для PostgreSQL)."""
+    digest = hashlib.sha256(name.encode()).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
+@contextlib.contextmanager
+def try_lock(name: str) -> Iterator[bool]:
+    """Неблокирующий межпроцессный замок: True — взяли, False — держит сосед.
+
+    Для фоновых задач в нескольких воркерах (uvicorn) / контейнерах: раунд работы
+    выполняет тот, кто успел взять замок, остальные пропускают раунд без ожидания.
+    Механизм тот же, что у `startup_lock()`: PostgreSQL — сеансовый
+    `pg_try_advisory_lock` (ключ — хеш имени), SQLite и прочие — `flock` на файле
+    `<БД>.<name>.lock` рядом с базой. Без `fcntl` (Windows, один воркер) замок
+    считается взятым — как и в `startup_lock()`.
+    """
+    if engine.url.get_backend_name() == "postgresql":
+        from sqlalchemy import text
+
+        key = _advisory_key(name)
+        with engine.connect() as con:
+            got = bool(con.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": key}).scalar())
+            con.commit()        # advisory-lock сеансовый — транзакцию открытой не держим
+            try:
+                yield got
+            finally:
+                if got:
+                    con.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
+                    con.commit()
+        return
+
+    try:
+        import fcntl
+    except ImportError:                       # pragma: no cover — Windows
+        log.warning("try_lock(%s): файловый замок недоступен (нет fcntl) — считаем, что взят",
+                    name)
+        yield True
+        return
+
+    path = _lock_path_for(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = path.open("a+")                      # не truncate: файл общий
+    try:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            yield False                       # замок у соседа — пропускаем раунд
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    finally:
+        fh.close()

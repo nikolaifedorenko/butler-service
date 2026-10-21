@@ -73,6 +73,13 @@ def app_stack():
     from app.main import app, init_db
 
     init_db()
+    # FastAPI строит pydantic-схемы маршрутов ЛЕНИВО (при первом матчинге запроса).
+    # Если первая сборка попадает внутрь freeze_time, аннотация dt.date подменена на
+    # FakeDate и построение падает (см. tests/test_tz_local_date.py) — тесты становятся
+    # зависимыми от порядка запуска. Прогрев всех маршрутов на старте сессии (вне
+    # любой заморозки) делает порядок безразличным: app.openapi() обращается к
+    # dependant каждого маршрута и кэширует схемы.
+    app.openapi()
     return {"app": app, "SessionLocal": SessionLocal}
 
 
@@ -220,13 +227,15 @@ def open_shift(db, freeze):
     def _open():
         shift_d = dt.date.today()
         existed = db.scalar(select(NightReport).where(NightReport.date == shift_d))
-        prev_state = (existed.status, existed.closed_at) if existed else None
+        prev_state = ((existed.status, existed.closed_at, existed.close_reason,
+                       existed.reopened_at) if existed else None)
         with freeze(f"{shift_d.isoformat()} 23:00:00"):
             rep = ensure_report(db, shift_d)
         assert rep is not None, "отчёт смены не создан"
         created = existed is None
         rep.status, rep.closed_at = "open", None        # тесту нужен открытый отчёт
         rep.close_reason, rep.result, rep.cars_step_done = "", "", False
+        rep.reopened_at = None     # «чистая смена»: автозакрытие не выключено
         # сброс к «чистой смене» — см. докстринг (герметичность при прогоне ночью)
         secs = list(db.scalars(select(NightAreaSection)
                                .where(NightAreaSection.report_id == rep.id)))
@@ -280,7 +289,8 @@ def open_shift(db, freeze):
                 if fresh is not None:
                     db.delete(fresh)
             else:
-                rep.status, rep.closed_at = prev_state
+                (rep.status, rep.closed_at, rep.close_reason,
+                 rep.reopened_at) = prev_state
             db.flush()
             db.commit()
 

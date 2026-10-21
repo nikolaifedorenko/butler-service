@@ -18,6 +18,7 @@ from .bootstrap.migrations import (
     migrate_engine_v7,
     migrate_manual_replaces_generated,
     migrate_night_cars,
+    migrate_night_reopened_at,
     migrate_night_zones,
     migrate_schedule_dict_simplify,
     migrate_settings_value_text,
@@ -100,6 +101,7 @@ def _init_db_steps() -> None:
     migrate_shift_tabel_codes()
     migrate_night_cars()
     migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
+    migrate_night_reopened_at()     # момент ручного переоткрытия отчёта (P1 20.10.2026)
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
     from .core.media import cleanup_photos
     from .modules.night.application.night import sync_reports
@@ -138,9 +140,18 @@ def _check_secret_key() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from .bootstrap.night_sync import start_night_sync, stop_night_sync
+
     _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
     init_db()
-    yield
+    # обслуживание ночных отчётов (досоздание смен, автозакрытие в 08:00) больше не
+    # выполняется в GET-запросах — его делает фоновый поток (ревью 20.10.2026, P1);
+    # несколько воркеров: раунд выполняет один процесс под замком try_lock
+    start_night_sync()
+    try:
+        yield
+    finally:
+        stop_night_sync()
 
 
 app = FastAPI(title=settings.app_name, version=settings.app_version, docs_url="/api/docs",

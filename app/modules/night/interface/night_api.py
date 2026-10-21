@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 from typing import Optional
 
@@ -39,6 +40,7 @@ from ..adapters.orm import (
     ZoneChecklistItem,
 )
 from ..application.night import (
+    SHIFT_START,
     current_shift_date,
     defects_of,
     effective_items,
@@ -48,7 +50,6 @@ from ..application.night import (
     section_dict,
     service_dict,
     services_map,
-    sync_reports,
     zone_dict,
 )
 
@@ -844,23 +845,31 @@ def delete_service(service_id: int, principal: Principal = Depends(require_perm(
 
 @router.get("/today")
 def today_report(principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
-    """Актуальный отчёт текущей ночной смены (создаёт, если пора; закрывает наступившие)."""
-    sync_reports(db)
+    """Актуальный отчёт текущей ночной смены.
+
+    GET без побочных записей (ревью 20.10.2026, P1): обслуживание — досоздание
+    наступивших смен и автозакрытие в 08:00 — выполняет фоновая синхронизация
+    (bootstrap/night_sync.py, период settings.night_sync_seconds) и стартовый
+    прогон init_db(), а не каждый запрос раздела."""
     shift_d = current_shift_date()
     rep = db.scalar(select(NightReport).where(NightReport.date == shift_d))
     if rep is None:
-        # после исправления ensure_report это возможно только до начала смены (до 20:00)
-        return {"available": False, "shift_date": shift_d.isoformat(),
-                "note": f"Ночная смена {shift_d.strftime('%d.%m.%Y')} ещё не началась — "
-                        f"отчёт появится в 20:00. Прошлые смены — в «Архиве»."}
+        # до 20:00 смена действительно ещё не началась; после — отчёт вот-вот
+        # создаст фоновый раунд (или стартовый прогон, если сервер только поднялся)
+        if now_local() < dt.datetime.combine(shift_d, SHIFT_START):
+            note = (f"Ночная смена {shift_d.strftime('%d.%m.%Y')} ещё не началась — "
+                    f"отчёт появится в 20:00. Прошлые смены — в «Архиве».")
+        else:
+            note = (f"Ночная смена {shift_d.strftime('%d.%m.%Y')} началась — отчёт создаётся; "
+                    f"обновите страницу через минуту. Прошлые смены — в «Архиве».")
+        return {"available": False, "shift_date": shift_d.isoformat(), "note": note}
     return {"available": True, "report": _report_payload(db, rep)}
 
 
 @router.get("/reports")
 def list_reports(limit: int = 60, principal: Principal = Depends(require_perm("night.view")),
                  db: Session = Depends(get_db)):
-    """Архив ночных отчётов (супервайзер и выше): список с итогами."""
-    sync_reports(db)
+    """Архив ночных отчётов (супервайзер и выше): список с итогами (чистое чтение)."""
     out = []
     for rep in db.scalars(select(NightReport).order_by(NightReport.date.desc()).limit(min(limit, 365))):
         d = report_dict(rep, with_items=False)
@@ -1246,8 +1255,7 @@ def close_report(report_id: int, payload: CloseSectionIn | None = None,
         raise HTTPException(status_code=409, detail={
             "unanswered": len(unfinished),
             "message": "Смена будет неполной (" + ", ".join(parts) + "). Закрыть всё равно?"})
-    finalize_report(rep)
-    rep.close_reason = "manual"
+    finalize_report(rep, reason="manual")
     audit(db, principal, "night_report_close", f"report:{rep.id}", {"result": rep.result})
     db.commit()
     return {"ok": True, "report": _report_payload(db, rep)}
@@ -1256,11 +1264,20 @@ def close_report(report_id: int, payload: CloseSectionIn | None = None,
 @router.post("/reports/{report_id}/reopen")
 def reopen_report(report_id: int, principal: Principal = Depends(require_perm("night.close")),
                   db: Session = Depends(get_db)):
+    """Переоткрыть закрытый отчёт для правок.
+
+    Автозакрытие для переоткрытого отчёта выключается (reopened_at): фоновая
+    синхронизация больше его не закрывает — иначе переоткрытие «жило» бы меньше
+    двух минут, а правки падали в 409 «Смена закрыта» (ревью 20.10.2026, P1).
+    Повторно закрывает смену сам менеджер («Закрыть смену»)."""
     rep = _get_report(db, report_id)
+    if rep.status != "closed":
+        raise HTTPException(status_code=409, detail="Отчёт не закрыт — переоткрывать нечего")
     rep.status = "open"
     rep.result = ""
     rep.closed_at = None
     rep.close_reason = ""
+    rep.reopened_at = now_local()
     audit(db, principal, "night_report_reopen", f"report:{rep.id}", {})
     db.commit()
     return {"ok": True, "report": _report_payload(db, rep)}

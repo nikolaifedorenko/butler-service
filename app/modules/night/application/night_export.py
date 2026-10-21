@@ -61,6 +61,8 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
                 + (f" · {company}" if company else ""))
     status_line = ("Закрыт вручную" if data["close_reason"] == "manual"
                    else "Закрыт автоматически в 08:00" if data["close_reason"] == "auto"
+                   else "Открыт · переоткрыт вручную — автозакрытие отключено"
+                   if data.get("reopened_at")
                    else f"Открыт · закроется {_fmt_ts(data['deadline'])}")
     p = doc.add_paragraph()
     p.add_run("Итог: ").bold = True

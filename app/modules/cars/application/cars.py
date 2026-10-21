@@ -531,6 +531,10 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     if ch is None:
         ch = CarNightCheck(report_id=report.id, car_id=car.id, car_number=car.number)
         db.add(ch)
+    # время отметки обновляется при КАЖДОМ сохранении (перезапись — last write wins):
+    # иначе повторная отметка оставалась с checked_at первой, а вместе с ней старели
+    # car.last_checked_at и флаг «кар взяли после проверки» (ревью 20.10.2026, P1)
+    ch.checked_at = now_local()
     ch.car_number = car.number
     ch.checker_user_id = principal.user.id
     ch.checker_name = principal.name
@@ -557,7 +561,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
         car.clean = ch.clean
         if ch.condition == "bad" and car.status in ("free", "charging"):
             car.status = "maintenance"
-        car.last_checked_at = ch.checked_at or now_local()
+        car.last_checked_at = ch.checked_at   # свежее время отметки (см. выше)
     add_history(db, car, "check", principal, person=principal.name, location=car.location,
                 details={"found": ch.found, "charge": ch.charge, "condition": ch.condition,
                          "trash": ch.trash, "clean": ch.clean, "comment": ch.comment,
