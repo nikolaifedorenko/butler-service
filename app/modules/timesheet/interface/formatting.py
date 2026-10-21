@@ -132,6 +132,7 @@ def reason_text(code: str, data: dict) -> str:
 # Тексты проверок уровня 1 (5.3): домен возвращает (код, минимальный контекст),
 # а человекочитаемое сообщение собирается только здесь (2.4, 12.13).
 CONFIG_TITLES = {
+    "CFG-TZ": "Некорректный часовой пояс (tz) в сохранённых настройках",
     "CHK-WINDOW-PLAN": "Информационный план значения больше длины окна",
     "CHK-WINDOW-BOUNDS": "Некорректные границы окна",
     "CHK-WINDOW-KEY": "Некорректный ключ строки окон",
@@ -194,6 +195,9 @@ def config_violation_text(code: str, data: dict | None = None) -> str:
     """Одно нарушение конфигурации — одной фразой, с указание на что править."""
     data = data or {}
     title = CONFIG_TITLES.get(code, code)
+    if code == "CFG-TZ":
+        return (f"{title}: «{data.get('tz')}» — укажите существующий часовой пояс "
+                "(например, Europe/Moscow) в редакторе настроек движка")
     if code == "CHK-MODIFIER-CONFLICT":
         scopes = data.get("scopes") or ({}, {})
         level = data.get("level")
