@@ -12,6 +12,7 @@ cp .env.example .env
 #   SECRET_KEY=$(openssl rand -hex 32)
 #   POSTGRES_PASSWORD=<надёжный пароль>
 #   ADMIN_PASSWORD=<пароль admin>   # первый старт на пустой базе; демо-учёток в проде нет
+#   BACKUP_AGE_RECIPIENT=age1…      # открытый ключ шифрования бэкапов, BACKUP_REMOTE — второй сервер (§4)
 mkdir -p certs backups certbot-www
 # сертификаты Let's Encrypt:
 #   certs/fullchain.pem, certs/privkey.pem
@@ -50,19 +51,45 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 ## 4. Бэкапы и восстановление
 
 Сервис `backup` раз в сутки (`BACKUP_INTERVAL`, по умолчанию 86400 с) делает
-`pg_dumpall | gzip` в `./backups/`, хранит последние `BACKUP_KEEP` (14) копий.
+`pg_dumpall | gzip`, **шифрует** копию ключом age и кладёт в `./backups/` (последние
+`BACKUP_KEEP` = 14), затем копирует на **второй сервер** (`deploy/backup.sh`). На боевом
+сервере лежит только открытый ключ: им копию можно зашифровать, но нельзя прочитать.
+Без `BACKUP_AGE_RECIPIENT` сервис не стартует — незашифрованных копий нет.
 
-Восстановление:
+**Подготовка (один раз):**
+
+1. Ключ шифрования — на своём компьютере, не на сервере (`brew install age` / `apt install age`):
+   ```bash
+   age-keygen -o butler-backup-key.txt     # закрытый ключ: в сейф / менеджер паролей, копию — офлайн
+   age-keygen -y butler-backup-key.txt     # открытый ключ age1… → в .env: BACKUP_AGE_RECIPIENT=age1…
+   ```
+   **Без закрытого ключа копию не восстановить никак.** Потеряли ключ — потеряли все копии.
+2. Второй сервер: пользователь с доступом только по SSH-ключу и каталог под копии, на нём
+   нужен `rsync`. На боевом сервере:
+   ```bash
+   mkdir -p deploy/backup-ssh && ssh-keygen -t ed25519 -N "" -f deploy/backup-ssh/id_ed25519
+   ssh-keyscan backup-host > deploy/backup-ssh/known_hosts      # сверьте отпечаток вручную
+   # содержимое deploy/backup-ssh/id_ed25519.pub — в ~/.ssh/authorized_keys пользователя на втором сервере
+   ```
+   В `.env`: `BACKUP_REMOTE=user@backup-host:/srv/butler-backups/`. Каталог `deploy/backup-ssh/`
+   в git не попадает. На втором сервере остаются те же 14 последних копий (`rsync --delete`).
+
+**Проверка восстановления — раз в месяц**, там, где лежит закрытый ключ:
 
 ```bash
-gunzip -c backups/timetrack-2026-10-15-030000.sql.gz | \
+deploy/restore_check.sh timetrack-2026-10-21-030000.sql.gz.age butler-backup-key.txt
+```
+
+Скрипт поднимает временный PostgreSQL, восстанавливает копию и показывает число
+пользователей, сотрудников, отметок и ревизию схемы.
+
+**Восстановление боевой базы** (копию и ключ принести на сервер временно, ключ потом удалить):
+
+```bash
+age -d -i butler-backup-key.txt timetrack-2026-10-21-030000.sql.gz.age | gunzip | \
   docker compose -f docker-compose.prod.yml exec -T db psql -U timetrack -d postgres
 docker compose -f docker-compose.prod.yml restart app
 ```
-
-Каталог `./backups` регулярно копируйте **на другой носитель/хост** — бэкап рядом
-с базой не защищает от потери диска. В базе персональные данные: храните копии
-зашифрованными (например, `age`/`gpg` поверх `.sql.gz`).
 
 Загруженные бланки заявлений и фото живут в томах `app_templates`/`app_data` —
 их резервное копирование настройте средствами хоста (docker run --rm -v …  tar).

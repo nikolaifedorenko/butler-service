@@ -152,9 +152,9 @@ class CloseSectionIn(BaseModel):
 # ─────────────────────────── служебное ───────────────────────────
 
 def _principal_name(pr: Principal) -> str:
-    if pr.employee is not None:
-        return pr.employee.display_name
-    return pr.user.username
+    name = pr.employee.display_name if pr.employee is not None else pr.user.username
+    # «как сотрудник» — с пометкой, кто вошёл на самом деле (решение владельца В-3)
+    return f"{pr.user.username} → как {name}" if pr.impersonated else name
 
 
 def _get_report(db: Session, report_id: int) -> NightReport:

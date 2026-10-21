@@ -321,14 +321,16 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
 
     # Ворот отметок нет (RUL-ALL-MARKS-COUNTED): все реальные отметки участвуют в расчёте.
 
-    source = "manual" if backfill or ("punches.punch_for_others" in perms
-                                      and payload.employee_id
-                                      and payload.employee_id !=
-                                      (principal.employee.id if principal.employee else None)) \
+    source = "manual" if backfill or principal.impersonated or (
+        "punches.punch_for_others" in perms and payload.employee_id
+        and payload.employee_id != (principal.employee.id if principal.employee else None)) \
         else "web"
+    note = payload.note or ("корректировка менеджером" if backfill else "")
+    if principal.impersonated:
+        # «как сотрудник» — отметка ручная, с автором (решение владельца В-3)
+        note = f"поставил {principal.user.username} в режиме «как сотрудник»" + (f": {note}" if note else "")
     p = Punch(employee_id=emp.id, ts=ts, kind=kind, source=source,
-              created_by=principal.user.id,
-              note=payload.note or ("корректировка менеджером" if backfill else ""))
+              created_by=principal.user.id, note=note[:255])
     db.add(p)
     audit(db, principal, "punch_" + kind.lower() + ("_backfill" if backfill else ""),
           f"employee:{emp.id}", {"ts": ts.isoformat(timespec="minutes"), "source": source})

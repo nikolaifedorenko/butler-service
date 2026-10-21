@@ -35,6 +35,8 @@ log = logging.getLogger("uvicorn.error")
 
 LOCK_NAME = "night-sync"
 MIN_PERIOD_SECONDS = 5          # защита от опечатки в NIGHT_SYNC_SECONDS=1
+CLEANUP_PERIOD_SECONDS = 24 * 3600   # чистка медиа по сроку хранения (решение владельца В-8)
+_last_cleanup = {"ts": 0.0}
 
 _thread: threading.Thread | None = None
 _stop = threading.Event()
@@ -60,12 +62,41 @@ def run_sync_once() -> dict:
             db.close()
 
 
+def run_media_cleanup_if_due() -> int | None:
+    """Раз в сутки удалить фото и видео старше срока хранения (раньше — только при
+    старте сервера). Один процесс на раунд — под try_lock. None — ещё рано или занято."""
+    import time
+
+    from ..core.db import SessionLocal
+    from ..core.media import cleanup_photos
+    from ..core.startup_lock import try_lock
+
+    if time.monotonic() - _last_cleanup["ts"] < CLEANUP_PERIOD_SECONDS:
+        return None
+    with try_lock("media-cleanup") as got:
+        if not got:
+            return None
+        db = SessionLocal()
+        try:
+            removed = cleanup_photos(db)
+        finally:
+            db.close()
+    _last_cleanup["ts"] = time.monotonic()
+    if removed:
+        log.info("media_cleanup: удалено файлов по сроку хранения: %d", removed)
+    return removed
+
+
 def _loop(period: float) -> None:
     while not _stop.wait(period):
         try:
             run_sync_once()
         except Exception:                       # раунд не должен ронять поток
             log.exception("night_sync: раунд фоновой синхронизации завершился ошибкой")
+        try:
+            run_media_cleanup_if_due()
+        except Exception:
+            log.exception("media_cleanup: чистка медиа завершилась ошибкой")
 
 
 def start_night_sync() -> None:
@@ -79,6 +110,8 @@ def start_night_sync() -> None:
     if _thread is not None and _thread.is_alive():
         return
     period = max(MIN_PERIOD_SECONDS, int(settings.night_sync_seconds))
+    import time
+    _last_cleanup["ts"] = time.monotonic()      # init_db только что почистил медиа
     _stop.clear()
     _thread = threading.Thread(target=_loop, args=(period,), name=LOCK_NAME, daemon=True)
     _thread.start()

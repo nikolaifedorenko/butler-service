@@ -100,7 +100,7 @@ def dispatch_defects(db: Session, rep: NightReport, principal: Principal, *,
                          "(возможно, всё уже отправлено или исправлено после отправки)")
 
     groups = group_by_service(db, rows)
-    author = principal.name
+    author = principal.actor_label
     ts = now_local()
     sent = failed = marked = 0
     dispatches: list[dict] = []

@@ -146,6 +146,16 @@ def set_rules_provider(fn) -> None:
     _RULES_PROVIDER = fn
 
 
+# «Это фото удалять нельзя» решает модуль-владелец (закрытый ночной отчёт, решение
+# владельца В-4): fn(db, photo) -> причина отказа или None; регистрирует composition root.
+_DELETE_GUARD = None
+
+
+def set_delete_guard(fn) -> None:
+    global _DELETE_GUARD
+    _DELETE_GUARD = fn
+
+
 def media_limits(db: Session) -> dict:
     """Настроенные объектом лимиты медиа: размер (МБ) и срок хранения (дни)."""
     r = _RULES_PROVIDER(db) if _RULES_PROVIDER is not None else {}
@@ -372,7 +382,12 @@ def cleanup_photos(db: Session, days: Optional[int] = None) -> int:
     limits = {"photo": lim["photo_retention_days"], "video": lim["video_retention_days"]}
     if days is not None:
         limits = {"photo": days, "video": days}
-    oldest = now_local() - dt.timedelta(days=max(limits.values()))
+    positive = [d for d in limits.values() if d > 0]
+    if not positive:
+        return 0                                # всё хранится бессрочно
+    # кандидаты — старше САМОГО КОРОТКОГО срока; каждый файл ниже сверяется со своим
+    # (было max(): при фото 30 / видео 180 дней фото жили 180, аудит BUG-01)
+    oldest = now_local() - dt.timedelta(days=min(positive))
     removed = 0
     for p in db.scalars(select(Photo).where(Photo.created_at < oldest)):
         keep = limits.get(p.media_type or "photo", 0)
@@ -423,6 +438,9 @@ def delete_photo(db: Session, principal, photo_id: int) -> None:
         raise NotFound("Фото не найдено")
     if photo.uploaded_by != principal.user.id and not principal.is_manager:
         raise Forbidden("Можно удалять только свои фото")
+    reason = _DELETE_GUARD(db, photo) if _DELETE_GUARD is not None else None
+    if reason:
+        raise Forbidden(reason)
     unlink_photo(photo)
     db.delete(photo)
     audit(db, principal, "photo_delete", f"photo:{photo_id}",

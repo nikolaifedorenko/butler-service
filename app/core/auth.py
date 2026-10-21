@@ -48,6 +48,12 @@ class Principal:
             return self.employee.full_name
         return self.user.username
 
+    @property
+    def actor_label(self) -> str:
+        """Автор действия для журналов и историй: «как сотрудник» — кто вошёл на самом деле
+        (решение владельца В-3: действовать в этом режиме можно, но с пометкой)."""
+        return f"{self.user.username} → как {self.name}" if self.impersonated else self.name
+
     def to_dict(self) -> dict:
         return {
             "id": self.user.id,

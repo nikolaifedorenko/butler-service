@@ -191,3 +191,42 @@ def test_smtp_host_change_requires_password(admin_client):
         assert put(notify_smtp_host="smtp.evil.example", notify_smtp_password="p@ss-2").status_code == 200
     finally:
         assert put(notify_smtp_host="", notify_smtp_password="clear").status_code == 200
+
+
+def test_impersonated_punch_is_marked_manual(admin_client, db):
+    """В-3: действовать «как сотрудник» можно, но отметка ручная и подписана, кто вошёл."""
+    from app.modules.timesheet.adapters.orm import Punch
+
+    emp_id = _emp_id(db, "fedorov")
+    assert admin_client.post("/api/auth/impersonate", json={"employee_id": emp_id}).status_code == 200
+    r = admin_client.post("/api/punches", json={"kind": "auto"})
+    assert r.status_code == 200, r.text
+    assert r.json()["punch"]["source"] == "manual"
+    p = db.get(Punch, r.json()["punch"]["id"])
+    assert p.note.startswith("поставил admin в режиме «как сотрудник»"), p.note
+
+
+def test_photo_of_closed_night_report_cannot_be_deleted(app_stack, db):
+    """В-4: фото закрытого ночного отчёта не удаляется; после переоткрытия — можно."""
+    from app.core.identity import User
+    from app.core.media import save_photo
+    from app.modules.night.adapters.orm import NightAreaSection, NightCheckItem, NightReport
+
+    item = db.scalars(select(NightCheckItem).limit(1)).first()
+    rep = db.get(NightReport, db.get(NightAreaSection, item.section_id).report_id)
+    status_before = rep.status
+    photo = save_photo(db, kind="night_item", ref_id=item.id, filename="proof.png",
+                       blob=b"\x89PNG\r\n\x1a\n" + b"\x00" * 64, user_name="Волков",
+                       user_id=db.scalar(select(User.id).where(User.username == "volkov")))
+    rep.status = "closed"
+    db.commit()
+    try:
+        c = _login(app_stack, "volkov")
+        r = c.delete(f"/api/photos/{photo.id}")
+        assert r.status_code == 403 and "переоткройте" in r.json()["detail"], r.text
+        rep.status = "open"
+        db.commit()
+        assert c.delete(f"/api/photos/{photo.id}").status_code == 200
+    finally:
+        rep.status = status_before
+        db.commit()

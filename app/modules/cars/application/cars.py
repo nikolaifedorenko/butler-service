@@ -182,7 +182,7 @@ def add_history(db: Session, car: Car, action: str, principal, *, person: str = 
     rec = CarHistory(
         car_id=car.id, ts=now_local(), action=action,
         actor_user_id=principal.user.id if principal else None,
-        actor_name=(principal.name if principal else "system"),
+        actor_name=(principal.actor_label if principal else "system"),
         person=person, with_key=with_key, location=location,
         details_json=json.dumps(details or {}, ensure_ascii=False, default=str))
     db.add(rec)
@@ -338,7 +338,7 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
         # save_photo_ref переносит его в хранилище без чтения в память
         from app.core.media import save_photo_ref
         save_photo_ref(db, kind="car_return", ref_id=rec.id, ref=ref,
-                       user_id=principal.user.id, user_name=principal.name)
+                       user_id=principal.user.id, user_name=principal.actor_label)
     return car_dict(car)
 
 
@@ -542,7 +542,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     ch.checked_at = now_local()
     ch.car_number = car.number
     ch.checker_user_id = principal.user.id
-    ch.checker_name = principal.name
+    ch.checker_name = principal.actor_label
     ch.found = bool(found)
     ch.found_location = (found_location or "").strip()[:160]
     ch.location = (location or "").strip()[:160]
@@ -578,7 +578,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     for ref in (photo_refs or []):
         from app.core.media import save_photo_ref
         save_photo_ref(db, kind="car_check", ref_id=ch.id, ref=ref,
-                       user_id=principal.user.id, user_name=principal.name)
+                       user_id=principal.user.id, user_name=principal.actor_label)
     return {"id": ch.id, "found": ch.found,
             "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None}
 
