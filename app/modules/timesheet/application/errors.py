@@ -91,3 +91,23 @@ class TimesheetRowCorruptError(ApplicationError):
             f"Повреждённая строка Табеля (сотрудник {employee_id}, {day:%d.%m.%Y}): "
             f"план {plan_minutes} мин не кратен 15 минутам (CHK-PLAN-FORMAT) — "
             "исправьте значение в разделе «Табель»")
+
+
+class StoredResultCorruptError(ApplicationError):
+    """Сохранённый результат закрытого периода отсутствует или повреждён
+    (RUL-CLOSED-PERIOD-IMMUTABLE читает его без пересчёта — 7.2).
+
+    Состояние хранилища, а не ввод запроса → 409 (центральный хэндлер); в mgmt-вкладке
+    — ошибка в payload строки (200 + "error"). Единая ошибка на два случая (ревью
+    20.10.2026, P1-ts-6/7): deserialize раньше проверял шаг расчёта assert'ом
+    (исчезает под python -O, иначе AssertionError → 500), view_period обращался к
+    saved[0] вслепую (None при рассинхроне состояния → TypeError → 500).
+    Текст — сообщение исключения (error_text: str-fallback)."""
+
+    code = "STORED_RESULT_CORRUPT"
+
+    def __init__(self, what: str):
+        self.what = what
+        super().__init__(
+            f"Сохранённый результат закрытого периода {what} — выполните «Пересчитать» "
+            "либо обратитесь к администратору")
