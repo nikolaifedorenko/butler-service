@@ -74,5 +74,6 @@ docker compose -f docker-compose.prod.yml up -d --build
 curl -k https://localhost/api/health   # version должен совпасть с тегом
 ```
 
-Схема БД мигрируется при старте автоматически (идемпотентные шаги
-`app/migrations.py`; переход на Alembic запланирован — ADR-0002).
+Схема БД мигрируется при старте автоматически: ревизии Alembic
+`app/bootstrap/alembic/versions`. Базу, созданную до 21.10.2026, первый старт новой версии
+доводит прежними шагами и штампует (ADR-0002). Перед обновлением сделайте бэкап.

@@ -20,7 +20,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -77,7 +77,8 @@ class NotifyChat(Base):
     __tablename__ = "notify_chats"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    chat_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)   # id чата Telegram
+    # id чатов Telegram (-100…) больше 2³¹: в PostgreSQL нужен BIGINT (DB-06, 21.10.2026)
+    chat_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     title: Mapped[str] = mapped_column(String(255), default="")
     username: Mapped[str] = mapped_column(String(120), default="")            # @username, если есть
     kind: Mapped[str] = mapped_column(String(24), default="group")            # group | supergroup | channel | private

@@ -9,7 +9,7 @@ import unittest
 tmp_db = os.path.join(tempfile.gettempdir(), "tt_test.db")
 if os.path.exists(tmp_db):
     os.remove(tmp_db)
-os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{tmp_db}")
 os.environ["SECRET_KEY"] = "test-secret-key"
 
 from fastapi.testclient import TestClient  # noqa: E402

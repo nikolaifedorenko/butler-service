@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, select
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .audit import audit
@@ -56,6 +56,7 @@ class Photo(Base):
     """
 
     __tablename__ = "photos"
+    __table_args__ = (Index("ix_photos_kind_ref", "kind", "ref_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(32), index=True)   # night_item | car_return | car_check
