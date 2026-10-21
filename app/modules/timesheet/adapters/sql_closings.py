@@ -10,6 +10,7 @@ import json
 from typing import Sequence
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.time import utcnow
@@ -19,6 +20,7 @@ from ..domain.types.entities import ClosingInputs, DeferredBlock, Period, Period
 from ..domain.types.results import FlagsResult, SettleResult
 from ..interface.deserialize import flags_from_dict, result_from_dict
 from ..interface.serialize import flags_to_dict, result_to_dict
+from ..ports.unit_of_work import StorageConflictError
 from ._db import emp_pk
 from .orm import DeferredCarry, PeriodClosing
 from .sql_bank import opening_seed_set
@@ -94,7 +96,13 @@ class SqlSettlementStore:
         row.closing_bank_minutes = result.bank_closed_minutes
         row.revision = (row.revision or 0) + 1
         row.closed_by_name, row.closed_at = self.actor, utcnow()
-        self.db.flush()   # уникальный ключ (сотрудник, период) исключает конкурентное закрытие
+        try:
+            self.db.flush()   # уникальный ключ (сотрудник, период) исключает конкурентное закрытие
+        except IntegrityError as exc:
+            # конкурентное закрытие (7.3): проверка права прошла до коммита соперника,
+            # гонку закрыл уникальный ключ — контрактный сигнал порта, use case
+            # переведёт его в PeriodAlreadyClosedError (409, P1-ts-1). Откатывает UoW.
+            raise StorageConflictError(str(getattr(exc, "orig", exc))) from exc
 
     def load_result(self, employee_id: str, period: Period) -> tuple[SettleResult, FlagsResult] | None:
         row = self._row(employee_id, period)
