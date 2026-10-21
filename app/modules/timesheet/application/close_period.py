@@ -9,6 +9,7 @@ import datetime as dt
 
 from ..domain.types.entities import Period
 from ..domain.validation.check_close_allowed import check_close_allowed
+from ..ports.unit_of_work import StorageConflictError
 from ._pipeline import run_pipeline
 from .context import EnginePorts
 from .employment import require_effective
@@ -33,13 +34,21 @@ def close_period(employee_id: str, period: Period, now: dt.datetime,
     _require_right(employee_id, period, ports)
     inp = load_inputs(employee_id, period, ports)
     check_close_allowed(effective, now, "close", inp.st)      # домен не вызывается (7.2)
-    with ports.unit_of_work():
-        _require_right(employee_id, period, ports)            # конкурентное закрытие
-        view = run_pipeline(inp, now, "close")
-        ports.store.save_result(employee_id, period, view.settle, view.flags,
-                                inp.snapshot, inp.st.versions, inp.st.step_minutes)
-        ports.bank_write.save_closing_bank(employee_id, period, view.settle.bank_closed_minutes)
-        ports.carry_over.save_deferred(
-            employee_id, next_period(period, inp.st.period_granularity),
-            view.settle.deferred_blocks)
+    try:
+        with ports.unit_of_work():
+            _require_right(employee_id, period, ports)        # конкурентное закрытие
+            view = run_pipeline(inp, now, "close")
+            ports.store.save_result(employee_id, period, view.settle, view.flags,
+                                    inp.snapshot, inp.st.versions, inp.st.step_minutes)
+            ports.bank_write.save_closing_bank(employee_id, period, view.settle.bank_closed_minutes)
+            ports.carry_over.save_deferred(
+                employee_id, next_period(period, inp.st.period_granularity),
+                view.settle.deferred_blocks)
+    except StorageConflictError as exc:
+        # Оптимистическая конкурентность (7.3): повторная проверка права — check-then-act,
+        # настоящую гонку закрывает уникальный ключ (сотрудник, период). Соперник успел
+        # закоммититься между нашей проверкой и flush — период закрыт ДРУГОЙ транзакцией;
+        # UoW откатил наши записи (атомарность, тест-план 15). Типизированный конфликт
+        # состояния → 409 (найдено ревью 20.10.2026, P1-ts-1: раньше — IntegrityError → 500).
+        raise PeriodAlreadyClosedError(f"{employee_id}:{period.start}") from exc
     return view

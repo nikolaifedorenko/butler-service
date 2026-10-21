@@ -19,6 +19,7 @@ from ..adapters.factory import build_ports
 from ..adapters.orm import PeriodClosing
 from ..adapters.sql_settings import base_version
 from ..domain.types.entities import Period
+from .errors import TimesheetRowCorruptError
 
 
 def covers_window(st, row, day, start_local, end_local) -> bool:
@@ -36,7 +37,13 @@ def covers_window(st, row, day, start_local, end_local) -> bool:
     policy = st.day_code_policy.get(row.code)
     if policy is None or not policy.carries_hours or not row.plan_minutes:
         return False
-    window = st.windows.get(f"{row.code} {fmt_hours(row.plan_minutes)}")
+    try:
+        hours = fmt_hours(row.plan_minutes)
+    except ValueError as exc:
+        # Битая строка Табеля (план не кратен 15, CHK-PLAN-FORMAT): типизированный
+        # отказ (409) вместо сырого ValueError → 500 (ревью 20.10.2026, P1-ts-3).
+        raise TimesheetRowCorruptError(row.employee_id, day, row.plan_minutes) from exc
+    window = st.windows.get(f"{row.code} {hours}")
     if window is None:
         return False
     midnight = dt.datetime.combine(day, dt.time(0), st.tz)

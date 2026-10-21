@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from ..application.errors import StoredResultCorruptError
 from ..domain.codes_registry.reason_codes import ALL_STEPS
 from ..domain.types.entities import DeferredBlock
 from ..domain.types.results import Cut, DayCard, Flag, FlagsResult, Reason, SettleResult
@@ -25,7 +26,12 @@ def _reason(d: dict) -> Reason:
     for key in ("expected_at", "actual_at", "first_presence_at"):
         if isinstance(data.get(key), str):
             data[key] = _dt(data[key])
-    assert d["step"] in ALL_STEPS
+    if d["step"] not in ALL_STEPS:
+        # Не assert: он исчезает под python -O (битые данные молча проходят), а без -O
+        # даёт AssertionError → 500. Путь горячий — каждое чтение закрытого периода
+        # (7.2, RUL-CLOSED-PERIOD-IMMUTABLE). Типизированный отказ состояния → 409
+        # (ревью 20.10.2026, P1-ts-6).
+        raise StoredResultCorruptError(f"повреждён: неизвестный шаг расчёта «{d['step']}»")
     return Reason(d["step"], d["code"], data)
 
 

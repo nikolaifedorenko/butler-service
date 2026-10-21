@@ -64,11 +64,10 @@ from ..application.months import month_period
 from ..application.schedule_patterns import pattern_list, validate_cycle_string
 from ..application.schedule_view import rebuild_generated_for_days, rebuild_generated_schedule
 from ..application.tabel_fill import fill_timesheet_from_cycles
-from ..domain.day_card.fmt_hours import fmt_hours
 from ..domain.settings.types import Settings
 from ..domain.types.entities import Period, Shift
 from ..domain.types.errors import DomainError
-from .formatting import error_text
+from .formatting import error_text, fmt_hours_strict
 from .period_params import ensure_period
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -318,7 +317,7 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
             policy = st.day_code_policy.get(trow.code) if trow else None
             value = None
             if trow:
-                value = (f"{trow.code} {fmt_hours(trow.plan_minutes)}"
+                value = (f"{trow.code} {fmt_hours_strict(trow.plan_minutes, emp.id, d)}"
                          if policy and policy.carries_hours else trow.code)
             planned = (trow.plan_minutes / 60) if trow else 0.0
             planned_total += planned
@@ -456,7 +455,14 @@ def put_manual_shift(payload: ManualShiftIn, principal: Principal = Depends(requ
         raise HTTPException(status_code=422, detail=error_text(exc))
     for row, iv in zip(db.scalars(select(ScheduleShift).where(
             ScheduleShift.employee_id == payload.employee_id,
-            ScheduleShift.date == payload.date, ScheduleShift.source == "manual")),
+            ScheduleShift.date == payload.date, ScheduleShift.source == "manual")
+            # ORDER BY обязателен: zip расставляет ноты по интервалам запроса, а без
+            # порядка БД строки возвращаются как угодно (PostgreSQL порядок не
+            # гарантирует) — ноты ложились бы на чужие смены (ревью 20.10.2026,
+            # P1-ts-2). id назначаются в порядке вставки одним flush в save_manual,
+            # т.е. порядок id = порядок intervals (start не годится: интервалы
+            # запроса могут быть вне хронологии).
+            .order_by(ScheduleShift.id)),
                      intervals, strict=False):
         row.note = iv.note[:255]
         row.updated_by = principal.user.id
@@ -577,7 +583,7 @@ def standard_day_hours(db: Session, st, emp, day: dt.date) -> tuple[Optional[flo
         policy = st.day_code_policy.get(row.code)
         if policy is None or not policy.carries_hours or not row.plan_minutes:
             return None
-        window = st.windows.get(f"{row.code} {fmt_hours(row.plan_minutes)}")
+        window = st.windows.get(f"{row.code} {fmt_hours_strict(row.plan_minutes, row.employee_id, row.date)}")
         return None if window is None else window.length / 60
 
     own = window_hours(db.scalar(select(TabelDay).where(TabelDay.employee_id == emp.id,
@@ -648,7 +654,8 @@ def _day_window_hhmm(db: Session, st, employee_id: int, day: dt.date) -> tuple[s
     if row is not None:
         policy = st.day_code_policy.get(row.code)
         if policy is not None and policy.carries_hours:
-            value = f"{row.code} {fmt_hours(row.plan_minutes)}" if row.plan_minutes else row.code
+            value = (f"{row.code} {fmt_hours_strict(row.plan_minutes, row.employee_id, row.date)}"
+                     if row.plan_minutes else row.code)
             window = st.windows.get(value)
             if window is not None:
                 return (f"{window.start_minute // 60:02d}:{window.start_minute % 60:02d}",

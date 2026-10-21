@@ -35,11 +35,10 @@ from ..application.months import month_period, period_containing
 from ..application.period_view import day_views
 from ..application.view_period import view_period
 from ..application.view_sessions import view_sessions
-from ..domain.day_card.fmt_hours import fmt_hours
 from ..domain.sessions.pair_marks import pair_marks
 from ..domain.time.to_calc_mark import to_calc_mark
 from ..domain.types.errors import DomainError
-from .formatting import error_text, hm, local_hm
+from .formatting import error_text, fmt_hours_strict, hm, local_hm
 from .period_params import ensure_period
 from .views import flag_dict, session_view_dict
 
@@ -161,7 +160,7 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
             window = None
             value = None
             if trow:
-                value = (f"{trow.code} {fmt_hours(trow.plan_minutes)}"
+                value = (f"{trow.code} {fmt_hours_strict(trow.plan_minutes, e.id, d)}"
                          if policy and policy.carries_hours else trow.code)
                 if policy and policy.carries_hours:
                     w = st.windows.get(value)

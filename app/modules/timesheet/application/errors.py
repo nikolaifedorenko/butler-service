@@ -73,3 +73,41 @@ class AdjustmentClosedPeriodError(ApplicationError):
     """Корректировки закрытого периода невозможны — только через recalculate (7.2)."""
 
     code = "ADJUSTMENT_CLOSED_PERIOD"
+
+
+class TimesheetRowCorruptError(ApplicationError):
+    """Строка Табеля повреждена: план не представим в нотации значения (не кратен 15,
+    CHK-PLAN-FORMAT, 3.3). Конвейер такое отбраковывает на стадии 1 типизированно,
+    а ОТКРЫТИЕ вкладки с легаси/битой строкой — типизированный отказ (409) вместо
+    сырого ValueError → 500 (ревью 20.10.2026, P1-ts-3; решение владельца — строгий
+    вариант: вкладка честно сообщает о повреждении, а не показывает приблизительное
+    значение). Текст — сообщение исключения (error_text: str-fallback)."""
+
+    code = "TIMESHEET_ROW_CORRUPT"
+
+    def __init__(self, employee_id, day: dt.date, plan_minutes: int):
+        self.employee_id, self.day, self.plan_minutes = employee_id, day, plan_minutes
+        super().__init__(
+            f"Повреждённая строка Табеля (сотрудник {employee_id}, {day:%d.%m.%Y}): "
+            f"план {plan_minutes} мин не кратен 15 минутам (CHK-PLAN-FORMAT) — "
+            "исправьте значение в разделе «Табель»")
+
+
+class StoredResultCorruptError(ApplicationError):
+    """Сохранённый результат закрытого периода отсутствует или повреждён
+    (RUL-CLOSED-PERIOD-IMMUTABLE читает его без пересчёта — 7.2).
+
+    Состояние хранилища, а не ввод запроса → 409 (центральный хэндлер); в mgmt-вкладке
+    — ошибка в payload строки (200 + "error"). Единая ошибка на два случая (ревью
+    20.10.2026, P1-ts-6/7): deserialize раньше проверял шаг расчёта assert'ом
+    (исчезает под python -O, иначе AssertionError → 500), view_period обращался к
+    saved[0] вслепую (None при рассинхроне состояния → TypeError → 500).
+    Текст — сообщение исключения (error_text: str-fallback)."""
+
+    code = "STORED_RESULT_CORRUPT"
+
+    def __init__(self, what: str):
+        self.what = what
+        super().__init__(
+            f"Сохранённый результат закрытого периода {what} — выполните «Пересчитать» "
+            "либо обратитесь к администратору")

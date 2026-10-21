@@ -10,7 +10,7 @@ from ..domain.types.entities import Period
 from ._pipeline import run_pipeline
 from .context import EnginePorts
 from .employment import require_effective
-from .errors import PreviousPeriodNotClosedError
+from .errors import PreviousPeriodNotClosedError, StoredResultCorruptError
 from .load_inputs import load_inputs
 from .period_view import PeriodView
 
@@ -23,6 +23,12 @@ def view_period(employee_id: str, period: Period, now: dt.datetime,
     days = tuple(ports.timesheet.days(employee_id, period))
     if state.closed:
         saved = ports.store.load_result(employee_id, period)
+        if saved is None:
+            # Контракт порта — tuple | None: closed=True без сохранённой строки
+            # (гонка с удалением, рассинхрон хранилища). Типизированный отказ (409)
+            # вместо слепого saved[0] → TypeError → 500 (ревью 20.10.2026, P1-ts-7).
+            raise StoredResultCorruptError(
+                f"отсутствует ({employee_id}, период с {period.start})")
         return PeriodView(saved[0], saved[1], employment, days)
     if not state.previous_closed and not state.opening_bank_set:
         raise PreviousPeriodNotClosedError(f"{employee_id}:{period.start}")

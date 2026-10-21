@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..domain.settings.defaults import default_settings
 from ..domain.settings.types import (
@@ -20,6 +21,7 @@ from ..domain.settings.types import (
     Window,
 )
 from ..domain.types.entities import Period
+from ..domain.types.errors import ConfigError
 
 
 def _bool(raw) -> bool:
@@ -37,9 +39,19 @@ def _value(name: str, raw):
 def from_payload(payload: dict) -> Settings:
     base = default_settings()
     tz = payload.get("tz") or str(base.tz)
-    from zoneinfo import ZoneInfo
+    try:
+        tzinfo = ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        # Битый tz сохранённого payload — повреждённое СОСТОЯНИЕ системы:
+        # ConfigError → 409 на вкладках (редактор настроек ловит его локально
+        # и валидирует ВВОД → 422). Раньше ZoneInfoNotFoundError (KeyError!)
+        # не ловилась ничем и роняла каждый запрос 500-й (ревью 20.10.2026,
+        # P1-ts-5). ZoneInfoNotFoundError — KeyError, поэтому в редакционном
+        # catch (KeyError, ValueError, TypeError) она тонула в нетипизированном
+        # «Некорректный формат настроек».
+        raise ConfigError([("CFG-TZ", {"tz": str(tz)})]) from exc
     return Settings(
-        tz=ZoneInfo(tz),
+        tz=tzinfo,
         period_granularity=payload.get("period_granularity", base.period_granularity),
         step_minutes=int(payload.get("step_minutes", base.step_minutes)),
         late_limit_minutes=int(payload.get("late_limit_minutes", base.late_limit_minutes)),
