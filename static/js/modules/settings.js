@@ -553,7 +553,8 @@ function settingsPublishModal() {
         if (!from.value) return toast('Укажите дату вступления', 'warn');
         try {
           const r = await api('/api/engine-settings', { method: 'PUT', body: {
-            valid_from: from.value, payload: settingsUI.draft, note: note.value.trim() } });
+            valid_from: from.value, payload: settingsUI.draft, note: note.value.trim(),
+            base_version_id: settingsUI.engine?.latest_id ?? null } });
           closeModal();
           toast(`Версия #${r.id} опубликована · применится с ${dateRu(r.applies_from)}`
             + (r.period?.closed ? ' (период закрыт — нужен пересчёт)' : ''), 'ok');
@@ -732,9 +733,6 @@ function settingsVersionsModal() {
    Три блока с РАЗНОЙ механикой вступления в силу (план §3.2).
    ══════════════════════════════════════════════════════════════════════ */
 const SETTINGS_STEPS = [15, 30, 60];
-const SETTINGS_TZ = ['Europe/Moscow', 'Europe/Simferopol', 'Europe/Kaliningrad', 'Europe/Samara',
-  'Asia/Yekaterinburg', 'Asia/Novosibirsk', 'Asia/Krasnoyarsk', 'Asia/Irkutsk', 'Asia/Yakutsk',
-  'Asia/Vladivostok', 'Asia/Magadan', 'Asia/Kamchatka'];
 
 async function settingsScreenCalc(host) {
   const [engine, health] = await Promise.all([settingsEngine(), settingsHealth().catch(() => null)]);
@@ -744,7 +742,6 @@ async function settingsScreenCalc(host) {
   const edit = can('settings.edit');
   const dayCat = (d.categories || []).find(c => c.code === 'ДЯ') || { start_minute: 360, end_minute: 1320 };
   const nightCat = (d.categories || []).find(c => c.code === 'ДН') || null;
-  const tzList = [...new Set([d.tz, ...SETTINGS_TZ].filter(Boolean))];
   const applies = settingsAppliesFrom(todayISO(), d.period_granularity);
 
   host.innerHTML = `
@@ -766,10 +763,9 @@ async function settingsScreenCalc(host) {
     ${settingsPanel('Б · Каркас расчёта — публикуется версией', `
       <div class="grid-2">
         <label class="field"><span>Часовой пояс объекта</span>
-          <select id="cl-tz" ${edit ? '' : 'disabled'}>${tzList.map(t =>
-            `<option value="${esc(t)}" ${t === d.tz ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-          <div class="hint">Должен совпадать с <code>APP_TZ</code> сервера. DST намеренно не поддерживается:
-            локальные сутки = 1440 мин (R24)</div></label>
+          <input type="text" id="cl-tz" value="${esc(state.appTz || d.tz || '')}" disabled>
+          <div class="hint">Пояс объекта задаётся при установке (<code>APP_TZ</code>) и здесь не меняется
+            (решение владельца 21.10.2026). DST намеренно не поддерживается: локальные сутки = 1440 мин (R24)</div></label>
         <label class="field"><span>Период расчёта</span>
           <div class="seg" id="cl-gran" style="margin-top:4px">
             <button data-v="month" class="${d.period_granularity === 'month' ? 'active' : ''}" ${edit ? '' : 'disabled'}>месяц</button>
@@ -835,7 +831,6 @@ async function settingsScreenCalc(host) {
   if (!edit) return;
   const touch = () => settingsUpdateDraftBars();
   $('#cl-late').onchange = e => { d.late_limit_minutes = Math.max(0, Number(e.target.value) || 0); touch(); };
-  $('#cl-tz').onchange = e => { d.tz = e.target.value; touch(); };
   const seg = (sel, key, isNum) => $$(sel, host).forEach(b => b.onclick = () => {
     d[key] = isNum ? Number(b.dataset.v) : b.dataset.v;
     $$(sel, host).forEach(x => x.classList.toggle('active', x === b));
@@ -2323,7 +2318,8 @@ async function settingsScreenNotify(host) {
     const out = $('#nt-result');
     out.textContent = 'проверяем…';
     try {
-      const r = await api('/api/notify/telegram/check', { method: 'POST',
+      // таймаут канала в настройках — до 300 с, обычные 20 с клиента обрывали бы проверку (UI-03)
+      const r = await api('/api/notify/telegram/check', { method: 'POST', timeout: 300000,
         body: { token: $('#nt-token').value.trim(), api: $('#nt-api').value.trim() } });
       out.textContent = `бот: @${r.bot.username || '—'} (${r.bot.first_name || ''})`;
       toast('Токен принят Telegram', 'ok');
@@ -2363,7 +2359,7 @@ async function settingsScreenNotify(host) {
     const to = $('#ne-test-to').value.trim();
     if (!to) return toast('Укажите адрес получателя', 'warn');
     try {
-      const r = await api('/api/notify/email/test', { method: 'POST', body: { to } });
+      const r = await api('/api/notify/email/test', { method: 'POST', body: { to }, timeout: 300000 });
       toast(`Письмо отправлено (${r.message_id || 'без Message-ID'})`, 'ok');
     } catch (e) { toast(e.message, 'err'); }
   });

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.auth import Principal
+from app.core.config import settings as app_settings
 from app.core.db import get_db
 from app.core.format import normalize_hex_color
 from app.core.permissions import require_perm
@@ -48,6 +49,7 @@ def get_settings(on: Optional[dt.date] = None, principal: Principal = Depends(re
                                                                  EngineSettingsVersion.id.desc()).limit(50))
     return {"active": {"id": ver.id if ver else None, "valid_from": ver.valid_from.isoformat() if ver else None,
                        "payload": payload},
+            "latest_id": db.scalar(select(func.max(EngineSettingsVersion.id))),
             "versions": [{"id": v.id, "valid_from": v.valid_from.isoformat(), "note": v.note,
                           "created_by": v.created_by_name, "created_at": v.created_at.isoformat()} for v in versions],
             "modifier_names": [{"name": n, "title": MODIFIER_TITLES[n]} for n in MODIFIER_NAMES]}
@@ -57,6 +59,8 @@ class SettingsIn(BaseModel):
     valid_from: dt.date
     payload: dict
     note: str = ""
+    # CONC-03: последняя версия, которую видел редактор (latest_id из GET); None — не сверяем
+    base_version_id: Optional[int] = None
 
 
 def applies_from(valid_from: dt.date, granularity: str) -> dt.date:
@@ -111,7 +115,20 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
             except ValueError as exc:
                 raise HTTPException(status_code=422,
                                     detail=f"Цвет кода Табеля «{code}»: {exc}")
+    # HARD-01 (решение владельца В-10): пояс расчёта — только пояс объекта APP_TZ; иначе
+    # отметки переводятся по одному поясу, а сутки режутся по другому — сдвиг часов без ошибки
+    if data.payload.get("tz") not in (None, "", app_settings.app_tz):
+        raise HTTPException(status_code=422, detail=(
+            f"Часовой пояс расчёта — только пояс объекта {app_settings.app_tz} (задаётся APP_TZ "
+            f"при установке), а не {data.payload['tz']}"))
+    data.payload["tz"] = app_settings.app_tz
     _guard_removed_day_codes(data.payload, db)
+    # shortcut: сверка и вставка не атомарны — публикации в одну и ту же долю секунды пройдут обе
+    latest = db.scalar(select(func.max(EngineSettingsVersion.id)))
+    if data.base_version_id is not None and latest != data.base_version_id:
+        raise HTTPException(status_code=409, detail=(
+            f"Пока вы редактировали, опубликована версия #{latest} — обновите страницу и "
+            "внесите изменения заново (иначе её правки потерялись бы)"))
     v = EngineSettingsVersion(valid_from=data.valid_from, payload_json=json.dumps(data.payload, ensure_ascii=False),
                               note=data.note[:255], created_by_name=principal.name)
     db.add(v)

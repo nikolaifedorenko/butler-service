@@ -18,7 +18,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
 from app.core.time import now_local
@@ -55,6 +56,10 @@ CHARGE_TITLES = {"full": "полный", "half": "половина", "empty": "�
 
 class CarOpError(ValueError):
     """Ошибка операции с каром (текст показываем пользователю)."""
+
+
+class CarConflict(CarOpError):
+    """Кар изменил параллельный запрос (CONC-01) — 409, клиенту обновить экран."""
 
 
 class CarInterceptAssigned(CarOpError):
@@ -186,7 +191,13 @@ def add_history(db: Session, car: Car, action: str, principal, *, person: str = 
         person=person, with_key=with_key, location=location,
         details_json=json.dumps(details or {}, ensure_ascii=False, default=str))
     db.add(rec)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as e:
+        # ux_cars_holder_user_id: параллельный запрос уже дал этому человеку другой кар
+        if "holder_user_id" not in str(e.orig):
+            raise
+        raise CarConflict("У сотрудника уже есть кар (один сотрудник — один кар) — обновите экран") from e
     return rec
 
 
@@ -215,6 +226,11 @@ def take_car(db: Session, car: Car, principal, *, ack_assigned: bool = False) ->
         if not ack_assigned:
             raise CarInterceptAssigned(assigned_emp.display_name)
     was_charging = car.status == "charging"
+    # CONC-01: два «взять» одного кара — проходит тот, чей UPDATE первым застал прочитанный статус
+    claimed = db.execute(update(Car).where(Car.id == car.id, Car.status == car.status)
+                         .values(status="busy").execution_options(synchronize_session=False))
+    if claimed.rowcount != 1:
+        raise CarConflict("Кар только что взял другой сотрудник — обновите экран")
     car.status = "busy"
     car.on_charge = False
     car.holder_user_id = holder_uid

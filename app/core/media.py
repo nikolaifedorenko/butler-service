@@ -209,8 +209,11 @@ class UploadRef:
         Path(self.tmp_path).unlink(missing_ok=True)
 
 
-async def read_upload_streaming(file, limit: int) -> UploadRef:
-    """UploadFile (duck-typed: async .read(size), .filename) → временный файл.
+def read_upload_streaming(file, limit: int) -> UploadRef:
+    """UploadFile (duck-typed: .file — синхронный файловый объект, .filename) → временный файл.
+
+    Синхронно (CONC-04): обработчики загрузок — обычные `def`, FastAPI выполняет их в пуле
+    потоков, и запись на диск, БД и commit не держат event loop воркера.
 
     Превышение limit прерывает чтение СРАЗУ (PayloadTooLarge → 413, текст прежний —
     «Файл больше N МБ»); при любой ошибке временный файл удаляется.
@@ -222,7 +225,7 @@ async def read_upload_streaming(file, limit: int) -> UploadRef:
     try:
         with os.fdopen(fd, "wb") as out:
             while True:
-                chunk = await file.read(STREAM_CHUNK)
+                chunk = file.file.read(STREAM_CHUNK)
                 if not chunk:
                     break
                 if len(head) < SNIFF_BYTES:

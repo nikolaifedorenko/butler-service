@@ -10,7 +10,7 @@ Use-case'ы экрана «Недостатки смены»: собрать п�
 
 Правила отправки (решения владельца от 19.10.2026):
   * только вручную: ни закрытие объекта, ни закрытие смены ничего не отправляют;
-  * отправить может любой пользователь обхода (нового права не вводили);
+  * отправка — право night.dispatch, по умолчанию у всех ролей (В-5, 21.10.2026);
   * отправленное помечается и повторно не уходит;
   * если недостаток исправили ПОСЛЕ отправки — не отправляем ничего
     (ни «исправлено», ни отзыва сообщения);
@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.errors import Conflict, Validation
+from app.core.startup_lock import try_lock
 from app.core.time import now_local
 from app.modules.notify.application.config import load_config
 from app.modules.notify.application.dispatch import attachments_of, dispatch_dict, journal_of, send_group
@@ -78,7 +79,24 @@ def dispatch_defects(db: Session, rep: NightReport, principal: Principal, *,
     Возвращает {"sent", "failed", "marked", "dispatches", "skipped"}: skipped —
     группы, которым отправить нельзя (нет канала/получателя, служба отключена),
     с причинами — их показывает интерфейс, а не прячет в ошибку.
+
+    CONC-02: двойной клик, повтор клиента после таймаута, второй супервайзер — отправка
+    идёт по одной; повтор после неё уже не найдёт неотправленного (пометки коммитятся
+    до снятия замка).
     """
+    # shortcut: падение процесса между отправкой и commit даёт повтор при следующей отправке;
+    # outbox с фоновым отправщиком — если повторы станут проблемой. Замок один на все смены.
+    with try_lock("night-dispatch") as got:
+        if not got:
+            raise Conflict("Отправка недостатков уже идёт — дождитесь её и обновите экран")
+        db.expire_all()     # пометки «отправлено» читаем после замка, не из загруженного до него
+        return _dispatch_locked(db, rep, principal, mode=mode, item_ids=item_ids,
+                                service_ids=service_ids, bot=bot, mailer=mailer)
+
+
+def _dispatch_locked(db: Session, rep: NightReport, principal: Principal, *, mode: str,
+                     item_ids: Optional[list[int]], service_ids: Optional[list[int]],
+                     bot, mailer) -> dict:
     cfg = load_config(db)
     if not cfg.telegram_ready and not cfg.email_ready:
         raise Conflict("Доставка не настроена: заполните токен бота или почту "

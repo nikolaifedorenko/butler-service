@@ -188,13 +188,13 @@ def sample_template(type: str, principal: Principal = Depends(require_perm("sett
 
 
 @router.post("/templates")
-async def upload_template(type: str, file: UploadFile,
-                          principal: Principal = Depends(require_perm("settings.edit")),
-                          db: Session = Depends(get_db)):
+def upload_template(type: str, file: UploadFile,
+                    principal: Principal = Depends(require_perm("settings.edit")),
+                    db: Session = Depends(get_db)):
     _kind_or_422(db, type)
     # читаем с запасом в 1 байт: так лимит работает ДО того, как файл целиком окажется
     # в памяти (раньше read() без аргумента буферизовал всё тело любого размера)
-    data = await file.read(5 * 1024 * 1024 + 1)
+    data = file.file.read(5 * 1024 * 1024 + 1)
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Файл больше 5 МБ")
     try:

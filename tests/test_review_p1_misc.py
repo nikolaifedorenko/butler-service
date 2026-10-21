@@ -23,7 +23,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import base64
 import datetime as dt
 import io
@@ -201,14 +200,11 @@ def test_misc3_members_bad_user_rejected_and_roster_kept(admin_client, db):
 # ── P1-misc-4: потоковая загрузка медиа ───────────────────────────────────────
 
 class _FakeUpload:
-    """Мини-UploadFile: async read(size) + filename (duck-typing core/media)."""
+    """Мини-UploadFile: синхронный .file + filename (duck-typing core/media)."""
 
     def __init__(self, data: bytes, filename: str = "photo.png"):
-        self._buf = io.BytesIO(data)
+        self.file = io.BytesIO(data)
         self.filename = filename
-
-    async def read(self, size: int = -1) -> bytes:
-        return self._buf.read(size)
 
 
 def _temp_leftovers() -> set:
@@ -217,7 +213,7 @@ def _temp_leftovers() -> set:
 
 def test_misc4_streaming_reads_to_disk_and_enforces_limit():
     data = PNG * 4096                      # ~280 КБ — больше одного чанка не нужно, но и не крошечный
-    ref = asyncio.run(read_upload_streaming(_FakeUpload(data), 10 * 1024 * 1024))
+    ref = read_upload_streaming(_FakeUpload(data), 10 * 1024 * 1024)
     try:
         assert ref.size == len(data)
         assert ref.head.startswith(b"\x89PNG")
@@ -227,13 +223,13 @@ def test_misc4_streaming_reads_to_disk_and_enforces_limit():
 
     before = _temp_leftovers()
     with pytest.raises(PayloadTooLarge):
-        asyncio.run(read_upload_streaming(_FakeUpload(data), 10))   # лимит 10 байт
+        read_upload_streaming(_FakeUpload(data), 10)   # лимит 10 байт
     assert _temp_leftovers() <= before, "временный файл не удалён после отказа"
 
 
 def test_misc4_save_photo_ref_moves_file_and_rejects_non_media(db):
 
-    ref = asyncio.run(read_upload_streaming(_FakeUpload(PNG), 10 * 1024 * 1024))
+    ref = read_upload_streaming(_FakeUpload(PNG), 10 * 1024 * 1024)
     photo = save_photo_ref(db, kind="night_item", ref_id=1, ref=ref,
                            user_id=None, user_name="p1-misc-guard")
     try:
@@ -245,7 +241,7 @@ def test_misc4_save_photo_ref_moves_file_and_rejects_non_media(db):
         (BASE / photo.path).unlink(missing_ok=True)
         db.rollback()
 
-    bad = asyncio.run(read_upload_streaming(_FakeUpload(b"%PDF-1.4 not media"), 1024))
+    bad = read_upload_streaming(_FakeUpload(b"%PDF-1.4 not media"), 1024)
     with pytest.raises(ValueError):
         save_photo_ref(db, kind="night_item", ref_id=1, ref=bad,
                        user_id=None, user_name="p1-misc-guard")
@@ -261,3 +257,18 @@ def test_misc4_interfaces_do_not_read_uploads_into_memory():
         src = (BASE / rel).read_text(encoding="utf-8")
         assert "await file.read(" not in src, rel
         assert "read_upload_streaming" in src, rel
+
+
+def test_conc04_route_handlers_are_sync():
+    """CONC-04 (аудит 21.10.2026): обработчик `async def` с синхронными БД и диском держал
+    event loop воркера — пока один телефон грузил фото, ждали все запросы. Обработчики
+    маршрутов — только `def` (FastAPI выполняет их в пуле потоков)."""
+    import ast
+
+    offenders = []
+    for path in sorted((BASE / "app").rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.AsyncFunctionDef) and any(
+                    "router." in ast.unparse(d) for d in node.decorator_list):
+                offenders.append(f"{path.relative_to(BASE)}:{node.lineno} {node.name}")
+    assert not offenders, offenders

@@ -1425,7 +1425,7 @@ function defectGroup(g, selectedIds) {
     ${problems ? `<p class="hint" style="color:var(--danger);margin:0 0 8px">Нельзя отправить: ${problems}</p>` : ''}
     ${g.note ? `<p class="hint" style="margin:0 0 8px">${esc(g.note)}</p>` : ''}
     <div class="check-list" style="max-height:34vh">${g.defects.map(d => defectRow(d, selectedIds.has(d.id))).join('')}</div>
-    ${g.counts.sendable && g.ready ? `<div class="row-actions" style="margin-top:8px">
+    ${g.counts.sendable && g.ready && can('night.dispatch') ? `<div class="row-actions" style="margin-top:8px">
       <button class="btn btn-sm btn-primary" data-send-service="${g.service_id}">Отправить службе</button></div>` : ''}
   </div>`;
 }
@@ -1463,6 +1463,7 @@ async function nightDefectsModal() {
     const transport = d.transport || {};
     const groups = d.groups || [];
     const sendableGroups = groups.filter(g => g.counts.sendable > 0);
+    const canSend = can('night.dispatch');
     openModal({
       title: `Недостатки смены · ${dateRu(d.report.date)}`,
       subtitle: `Ночные батлеры смены: ${esc(d.duty)} · к отправке ${c.sendable || 0} из ${c.total || 0}`
@@ -1472,13 +1473,14 @@ async function nightDefectsModal() {
         ${(!transport.telegram && !transport.email) ? `<p class="hint" style="color:var(--danger);margin:0 0 10px">
           Доставка не настроена: заполните токен бота и/или почту в «Настройки → Чаты и Почта».</p>` : ''}
         <div class="toolbar" style="margin-bottom:10px">
-          <button class="btn btn-sm btn-primary" id="df-all" ${c.sendable ? '' : 'disabled'}>Отправить всё (${c.sendable || 0})</button>
-          <button class="btn btn-sm" id="df-sel" ${sel.size ? '' : 'disabled'}>Отправить выбранное (${sel.size})</button>
+          <button class="btn btn-sm btn-primary" id="df-all" ${c.sendable && canSend ? '' : 'disabled'}>Отправить всё (${c.sendable || 0})</button>
+          <button class="btn btn-sm" id="df-sel" ${sel.size && canSend ? '' : 'disabled'}>Отправить выбранное (${sel.size})</button>
           <button class="btn btn-sm" id="df-preview">Предпросмотр</button>
           <label class="chk" style="margin:0"><input type="checkbox" id="df-sent" ${nightState.defectsShowSent ? 'checked' : ''}>
             показывать отправленные и исправленные</label>
           <div class="spacer"></div>
-          <span class="hint" style="margin:0">«Не проверено» включается в отчёт</span>
+          <span class="hint" style="margin:0">${canSend ? '«Не проверено» включается в отчёт'
+            : 'Отправка службам — право <b>night.dispatch</b> («Настройки → Права доступа»)'}</span>
         </div>
         ${sendableGroups.length ? '' : '<div class="empty">Недостатков к отправке нет</div>'}
         ${groups.filter(g => nightState.defectsShowSent || g.counts.sendable > 0)
@@ -1495,14 +1497,15 @@ async function nightDefectsModal() {
           const id = Number(cb.dataset.def);
           if (cb.checked) sel.add(id); else sel.delete(id);
           const btn = $('#df-sel');
-          if (btn) { btn.textContent = `Отправить выбранное (${sel.size})`; btn.disabled = !sel.size; }
+          if (btn) { btn.textContent = `Отправить выбранное (${sel.size})`; btn.disabled = !sel.size || !canSend; }
         });
         const sent = $('#df-sent', m);
         if (sent) sent.onchange = () => { nightState.defectsShowSent = sent.checked; render(); };
         const send = async (body, okText) => {
           loading(true);
           try {
-            const r = await api(`/api/night/reports/${reportId}/dispatch`, { method: 'POST', body });
+            // службы и каналы идут по очереди, у каждого канала свой таймаут до 300 с (UI-03)
+            const r = await api(`/api/night/reports/${reportId}/dispatch`, { method: 'POST', body, timeout: 300000 });
             const warn = [];
             if (r.failed) warn.push(`ошибок доставки: ${r.failed}`);
             (r.skipped || []).forEach(s => warn.push(`${s.service_name}: ${s.problems.join('; ')}`));
@@ -1562,7 +1565,7 @@ async function nightDefectsModal() {
           `/api/notify/dispatches/export.csv?domain=night`, `otpravki-${d.report.date}.csv`);
         $$('[data-retry]', m).forEach(b => b.onclick = async () => {
           try {
-            const r = await api(`/api/notify/dispatches/${b.dataset.retry}/resend`, { method: 'POST' });
+            const r = await api(`/api/notify/dispatches/${b.dataset.retry}/resend`, { method: 'POST', timeout: 300000 });
             toast(r.dispatch.status === 'sent' ? 'Доставлено при повторе' : `Повтор не удался: ${r.dispatch.error}`,
               r.dispatch.status === 'sent' ? 'ok' : 'err');
             render();

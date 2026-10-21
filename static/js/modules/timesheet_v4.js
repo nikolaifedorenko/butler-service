@@ -951,7 +951,8 @@ async function mgmtAction(kind, empId) {
     try {
       const body = { year: d.year, month: d.month, half: d.half };
       if (empId) body.employee_ids = [empId];
-      const r = await api(`/api/mgmt/${kind}`, { method: 'POST', body });
+      // закрытие и пересчёт всего штата за период — дольше обычных 20 с (UI-03)
+      const r = await api(`/api/mgmt/${kind}`, { method: 'POST', body, timeout: 300000 });
       closeModal();
       const msg = kind === 'close' ? `Закрыто: ${r.done.length}` : `Пересчитано: ${r.done.length}`;
       toast(msg + (r.errors.length ? `, ошибок: ${r.errors.length}` : ''), r.errors.length ? 'warn' : 'ok',
@@ -1320,7 +1321,7 @@ async function renderEngineSettings(host) {
     $('#es-save').onclick = async () => {
       let payload;
       try { payload = JSON.parse($('#es-json').value); } catch (e) { toast('JSON с ошибкой: ' + e.message, 'err'); return; }
-      try { await api('/api/engine-settings', { method: 'PUT', body: { valid_from: $('#es-from').value, payload, note: $('#es-note').value } });
+      try { await api('/api/engine-settings', { method: 'PUT', body: { valid_from: $('#es-from').value, payload, note: $('#es-note').value, base_version_id: data.latest_id ?? null } });
         toast('Новая версия справочников сохранена', 'ok'); renderEngineSettings(host); } catch (e) { toast(e.message, 'err'); }
     };
     $('#md-add').onclick = async () => {

@@ -3,7 +3,7 @@
 Правила (решения владельца от 19.10.2026), которые здесь закреплены тестами:
   * в отчёт попадают «Не ОК» И «Не проверено» (отдельный блок);
   * отправка только вручную: всё скопом или выборочно;
-  * отправить может любой пользователь обхода (нового права нет);
+  * отправка — право night.dispatch, по умолчанию у всех ролей (В-5, 21.10.2026);
   * отправленное помечается и повторно не уходит;
   * если недостаток исправили ПОСЛЕ отправки — ничего не отправляем (ни «исправлено»,
     ни отзыва);
@@ -355,7 +355,7 @@ def test_obshchiy_zhurnal_dlya_razdelov(admin_client, employee_client, open_shif
 
 def test_otpravit_mozhet_lyuboy_polzovatel_obhoda(employee_client, admin_client, open_shift,
                                                   channels, fake_telegram, fake_smtp):
-    """Нового права не вводили: отправляет тот, кто ведёт обход (решение владельца)."""
+    """night.dispatch по умолчанию у всех ролей: отправляет тот, кто ведёт обход (В-5)."""
     with open_shift() as rep:
         items = _report_item_ids(employee_client, rep, "Вилла 4003")
         item_id = items[TECH_IDX]["id"]
@@ -391,3 +391,42 @@ def test_vlozheniya_uhodyat_vmeste_s_soobshcheniem(employee_client, admin_client
         journal = employee_client.get(f"/api/night/reports/{rep.id}/dispatches").json()["dispatches"]
         tech_row = next(x for x in journal if x["recipient_name"] == "Техническая служба")
         assert tech_row["media_count"] == 1
+
+
+def test_bez_prava_night_dispatch_otpravit_nelzya(employee_client, db, open_shift):
+    """В-5: право снято индивидуально — отправка 403, а смотреть недостатки можно."""
+    from sqlalchemy import select
+
+    from app.core.identity import AccessGrant, User
+
+    grant = AccessGrant(user_id=db.scalar(select(User.id).where(User.username == "ivanov")),
+                        permission="night.dispatch", effect="deny")
+    db.add(grant)
+    db.commit()
+    try:
+        with open_shift() as rep:
+            assert employee_client.get(f"/api/night/reports/{rep.id}/defects").status_code == 200
+            r = employee_client.post(f"/api/night/reports/{rep.id}/dispatch", json={"mode": "all"})
+            assert r.status_code == 403, r.text
+    finally:
+        db.delete(grant)
+        db.commit()
+
+
+def test_parallelnaya_otpravka_poluchaet_409(employee_client, admin_client, open_shift,
+                                              channels, fake_telegram, fake_smtp):
+    """CONC-02: пока идёт одна отправка (замок взят), вторая — 409 и ничего не шлёт;
+    после неё отправка проходит."""
+    from app.core.startup_lock import try_lock
+
+    with open_shift() as rep:
+        item_id = _report_item_ids(employee_client, rep, "Вилла 4003")[TECH_IDX]["id"]
+        _answer(employee_client, item_id, "bad", "не горит")
+        body = {"mode": "selected", "item_ids": [item_id]}
+        with try_lock("night-dispatch") as got:
+            assert got
+            r = employee_client.post(f"/api/night/reports/{rep.id}/dispatch", json=body)
+            assert r.status_code == 409, r.text
+        assert not [c for c in fake_telegram["calls"] if c["method"] == "sendMessage"]
+        r = employee_client.post(f"/api/night/reports/{rep.id}/dispatch", json=body)
+        assert r.status_code == 200 and r.json()["sent"] == 1, r.text

@@ -56,6 +56,9 @@ PERMISSIONS: list[dict] = [
     {"key": "audit.view", "section": "Журнал аудита", "title": "Просмотр журнала аудита"},
     {"key": "me.punch", "section": "Мои отметки", "title": "Отмечаться «Пришёл/Ушёл»"},
     {"key": "night.view", "section": "Ночной отчёт", "title": "Ночной отчёт"},
+    # night.dispatch (решение владельца В-5, 21.10.2026): отправка недостатков службам —
+    # отдельный ключ, по умолчанию у всех ролей; снять можно в «Правах доступа».
+    {"key": "night.dispatch", "section": "Ночной отчёт", "title": "Отправка недостатков службам"},
     # night.edit (19.10.2026): справочник обхода (зоны, объекты, чек-листы, службы)
     # жил в модалке раздела и проверялся РОЛЬЮ (is_manager) — единственный такой случай.
     # Теперь это ключ каталога: выдаётся/снимается через «Права доступа» как остальные.
@@ -70,7 +73,8 @@ PERMISSIONS: list[dict] = [
 ]
 ALL_KEYS = [p["key"] for p in PERMISSIONS]
 
-_EMPLOYEE = {"presence.view", "schedule.view", "me.punch", "night.view", "cars.view", "cars.use"}
+_EMPLOYEE = {"presence.view", "schedule.view", "me.punch", "night.view", "night.dispatch",
+             "cars.view", "cars.use"}
 _SUPERVISOR = set(ALL_KEYS) - {"access.manage", "settings.edit", "mgmt.recalculate", "cars.manage"}
 ROLE_DEFAULTS: dict[str, set[str]] = {
     ROLE_ADMIN: set(ALL_KEYS),

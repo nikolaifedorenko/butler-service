@@ -178,12 +178,10 @@ function renderCars() {
     </div>
     <p class="hint">Правила: один сотрудник — один кар; вернуть может тот, кто брал (внешнего — любой);
     замечания при возврате автоматически переводят кар в «на обслуживании», снять — менеджер или администратор.
-    Время всех операций — часовому поясу объекта (${esc(APP_TZ_LABEL)}).</p>`;
+    Время всех операций — по часовому поясу объекта${state.appTz ? ` (${esc(state.appTz)})` : ''}.</p>`;
 
   bindCarActions($('#cars-body'));
 }
-
-const APP_TZ_LABEL = 'Europe/Moscow';
 
 function bindCarActions(root) {
   const byId = id => (carsState.data?.cars || []).find(c => c.id === Number(id));

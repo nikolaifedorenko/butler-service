@@ -2168,6 +2168,17 @@
       },
       "SettingsIn": {
         "properties": {
+          "base_version_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
           "note": {
             "default": "",
             "title": "Note",

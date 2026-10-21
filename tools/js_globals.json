@@ -3,7 +3,6 @@
  "globals": {
   "$": "readonly",
   "$$": "readonly",
-  "APP_TZ_LABEL": "readonly",
   "AUDIT_PAGE": "readonly",
   "CAR_BADGE": "readonly",
   "CHARGE_OPTS": "readonly",
@@ -34,7 +33,6 @@
   "SETTINGS_SCREENS": "readonly",
   "SETTINGS_STEPS": "readonly",
   "SETTINGS_TITLES": "readonly",
-  "SETTINGS_TZ": "readonly",
   "V4_CODE_COLORS": "readonly",
   "V4_FLAG_CLASS": "readonly",
   "V4_MOD_TITLES": "readonly",
@@ -328,7 +326,6 @@
  "by_file": {
   "$": "core.js",
   "$$": "core.js",
-  "APP_TZ_LABEL": "modules/cars.js",
   "AUDIT_PAGE": "modules/timesheet_v4.js",
   "CAR_BADGE": "modules/cars.js",
   "CHARGE_OPTS": "modules/cars.js",
@@ -359,7 +356,6 @@
   "SETTINGS_SCREENS": "modules/settings.js",
   "SETTINGS_STEPS": "modules/settings.js",
   "SETTINGS_TITLES": "modules/settings.js",
-  "SETTINGS_TZ": "modules/settings.js",
   "V4_CODE_COLORS": "modules/timesheet_v4.js",
   "V4_FLAG_CLASS": "modules/timesheet_v4.js",
   "V4_MOD_TITLES": "modules/timesheet_v4.js",

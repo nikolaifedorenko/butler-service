@@ -65,3 +65,36 @@ def test_legacy_base_is_stamped_and_upgraded(db):
     assert current == head
     init_db()
     assert _revisions() == (head, head)
+
+
+def test_cars_holder_index_skipped_when_holder_has_two_cars(db):
+    """Ревизия 0004 (CONC-01) на базе, где человек уже держит два кара: данные не трогаем,
+    индекс не создаём, старт не падает. После возврата лишнего кара индекс создаётся."""
+    from alembic import command
+
+    from app.bootstrap.schema_version import config
+    from app.core.db import engine
+    from app.core.identity import User
+    from app.modules.cars.application.catalog import Car
+
+    def has_index():
+        return "ux_cars_holder_user_id" in {i["name"] for i in inspect(engine).get_indexes("cars")}
+
+    cars = db.scalars(select(Car).where(Car.holder_user_id.is_(None)).order_by(Car.id)).all()[:2]
+    uid = db.scalar(select(User.id).where(User.id.not_in(
+        select(Car.holder_user_id).where(Car.holder_user_id.is_not(None)))))
+    db.rollback()       # открытое чтение cars держало бы DROP INDEX на PostgreSQL
+    command.downgrade(config(), "0003")
+    try:
+        for car in cars:
+            car.holder_user_id = uid
+        db.commit()
+        command.upgrade(config(), "head")
+        assert not has_index()
+    finally:
+        for car in cars:
+            car.holder_user_id = None
+        db.commit()
+        command.downgrade(config(), "0003")
+        command.upgrade(config(), "head")
+    assert has_index()

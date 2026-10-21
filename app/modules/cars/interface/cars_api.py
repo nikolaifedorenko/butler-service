@@ -28,6 +28,7 @@ from ..adapters.orm import CarHistory
 from ..application.cars import (
     ACTION_TITLES,
     STATUS_TITLES,
+    CarConflict,
     CarInterceptAssigned,
     CarOpError,
     add_location,
@@ -54,7 +55,7 @@ router = APIRouter(prefix="/api/cars", tags=["cars"])
 def _err(e: CarOpError) -> HTTPException:
     if isinstance(e, CarInterceptAssigned):
         return HTTPException(status_code=409, detail={"interception": True, "message": str(e)})
-    return HTTPException(status_code=400, detail=str(e))
+    return HTTPException(status_code=409 if isinstance(e, CarConflict) else 400, detail=str(e))
 
 
 class TakeIn(BaseModel):
@@ -289,21 +290,21 @@ def car_give(car_id: int, payload: GiveIn, db: Session = Depends(get_db),
 
 
 @router.post("/{car_id}/return")
-async def car_return(car_id: int,
-                     by_employee_id: Optional[int] = Form(None),
-                     by_name: str = Form(""),
-                     location: str = Form(""),
-                     charge: str = Form("full"),
-                     canopy: bool = Form(True),
-                     condition: str = Form("ok"),
-                     trash: bool = Form(False),
-                     clean: bool = Form(True),
-                     on_charge: bool = Form(False),
-                     key_returned: Optional[bool] = Form(None),
-                     comment: str = Form(""),
-                     file: Optional[UploadFile] = File(None),
-                     db: Session = Depends(get_db),
-                     principal: Principal = Depends(require_perm("cars.use"))):
+def car_return(car_id: int,
+               by_employee_id: Optional[int] = Form(None),
+               by_name: str = Form(""),
+               location: str = Form(""),
+               charge: str = Form("full"),
+               canopy: bool = Form(True),
+               condition: str = Form("ok"),
+               trash: bool = Form(False),
+               clean: bool = Form(True),
+               on_charge: bool = Form(False),
+               key_returned: Optional[bool] = Form(None),
+               comment: str = Form(""),
+               file: Optional[UploadFile] = File(None),
+               db: Session = Depends(get_db),
+               principal: Principal = Depends(require_perm("cars.use"))):
     """Возврат кара (multipart): состояние + фото доказательств (оригиналы)."""
     refs: list[UploadRef] = []
     try:
@@ -312,7 +313,7 @@ async def car_return(car_id: int,
         if file is not None:
             limit = max_upload_bytes(db)
             # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
-            ref = await read_upload_streaming(file, limit)
+            ref = read_upload_streaming(file, limit)
             if ref.size:
                 refs.append(ref)
             else:

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
@@ -897,7 +897,11 @@ def list_reports(limit: int = 60, principal: Principal = Depends(require_perm("n
                  db: Session = Depends(get_db)):
     """Архив ночных отчётов (супервайзер и выше): список с итогами (чистое чтение)."""
     out = []
-    for rep in db.scalars(select(NightReport).order_by(NightReport.date.desc()).limit(min(limit, 365))):
+    # PERF-01: области и пункты — тремя запросами на весь архив, а не по запросу на отчёт и область
+    q = (select(NightReport)
+         .options(selectinload(NightReport.areas).selectinload(NightAreaSection.items))
+         .order_by(NightReport.date.desc()).limit(min(limit, 365)))
+    for rep in db.scalars(q):
         d = report_dict(rep, with_items=False)
         out.append(d)
     return {"reports": out}
@@ -1030,9 +1034,9 @@ def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(
 
 
 @router.post("/items/{item_id}/photo")
-async def add_item_photo(item_id: int, file: UploadFile = File(...),
-                         principal: Principal = Depends(require_perm("night.view")),
-                         db: Session = Depends(get_db)):
+def add_item_photo(item_id: int, file: UploadFile = File(...),
+                   principal: Principal = Depends(require_perm("night.view")),
+                   db: Session = Depends(get_db)):
     ni = db.get(NightCheckItem, item_id)
     if ni is None:
         raise HTTPException(status_code=404, detail="Пункт не найден")
@@ -1041,7 +1045,7 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
     _guard_open(rep)
     limit = max_upload_bytes(db)
     # потоковая загрузка: файл идёт на диск чанками, не в память (P1 20.10.2026)
-    ref = await read_upload_streaming(file, limit)
+    ref = read_upload_streaming(file, limit)
     try:
         photo = save_photo_ref(db, kind="night_item", ref_id=ni.id, ref=ref,
                                user_id=principal.user.id, user_name=_principal_name(principal))
@@ -1058,7 +1062,7 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
 # Экран консолидированной отправки: «Не ОК» и «Не проверено» группируются по
 # ответственным службам, отправляются вручную (всё или выбранное), отправленное
 # помечается. Исправленное ПОСЛЕ отправки повторно не уходит и не отзывается.
-# Отправить может любой пользователь обхода — нового права не вводили.
+# Отправка — право night.dispatch (В-5), по умолчанию у всех ролей.
 
 @router.get("/reports/{report_id}/defects")
 def report_defects(report_id: int, principal: Principal = Depends(require_perm("night.view")),
@@ -1070,9 +1074,9 @@ def report_defects(report_id: int, principal: Principal = Depends(require_perm("
     return defects_payload(db, rep)
 
 
-@router.post("/reports/{report_id}/dispatch")
+@router.post("/reports/{report_id}/dispatch", dependencies=[Depends(require_perm("night.view"))])
 def dispatch_report(report_id: int, payload: DispatchIn,
-                    principal: Principal = Depends(require_perm("night.view")),
+                    principal: Principal = Depends(require_perm("night.dispatch")),
                     db: Session = Depends(get_db)):
     """Отправить недостатки службам: всё скопом или выбранное (только вручную)."""
     from ..application.night_notify import dispatch_defects
@@ -1160,21 +1164,21 @@ def report_cars(report_id: int, principal: Principal = Depends(require_perm("nig
 
 
 @router.post("/reports/{report_id}/cars/{car_id}/check")
-async def report_car_check(report_id: int, car_id: int,
-                           found: bool = Form(True),
-                           found_location: str = Form(""),
-                           moved: bool = Form(False),
-                           location: str = Form(""),
-                           canopy: bool = Form(True),
-                           charge: str = Form(""),        # full | half | empty | ''
-                           on_charge: bool = Form(False),
-                           condition: str = Form("ok"),   # ok | bad
-                           trash: bool = Form(False),
-                           clean: bool = Form(True),
-                           comment: str = Form(""),
-                           file: Optional[UploadFile] = File(None),
-                           principal: Principal = Depends(require_perm("night.view")),
-                           db: Session = Depends(get_db)):
+def report_car_check(report_id: int, car_id: int,
+                     found: bool = Form(True),
+                     found_location: str = Form(""),
+                     moved: bool = Form(False),
+                     location: str = Form(""),
+                     canopy: bool = Form(True),
+                     charge: str = Form(""),        # full | half | empty | ''
+                     on_charge: bool = Form(False),
+                     condition: str = Form("ok"),   # ok | bad
+                     trash: bool = Form(False),
+                     clean: bool = Form(True),
+                     comment: str = Form(""),
+                     file: Optional[UploadFile] = File(None),
+                     principal: Principal = Depends(require_perm("night.view")),
+                     db: Session = Depends(get_db)):
     """Отметить кар в ходе ночного обхода (перезапись — last write wins).
 
     Форма та же, что у окна возврата кара («Электрокары» → «Вернул»): место из
@@ -1205,7 +1209,7 @@ async def report_car_check(report_id: int, car_id: int,
         if file is not None:
             limit = max_upload_bytes(db)
             # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
-            ref = await read_upload_streaming(file, limit)
+            ref = read_upload_streaming(file, limit)
             if ref.size:
                 refs.append(ref)
             else:

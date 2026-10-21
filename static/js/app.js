@@ -410,7 +410,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 
 async function bootApp() {
   api('/api/health', { silent: true, allow401: true })
-    .then(h => syncServerClock(h?.server_time_local)).catch(() => {});
+    .then(h => { syncServerClock(h?.server_time_local); state.appTz = h?.tz || ''; }).catch(() => {});
   const loginErr = new URLSearchParams(location.search).get('login_error');
   if (loginErr) history.replaceState(null, '', location.pathname + location.hash);
   try {
