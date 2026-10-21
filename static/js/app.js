@@ -245,17 +245,40 @@ function startView() {
 /* Сброс состояния при смене пользователя (вход, вход/выход из режима
    «посмотреть глазами сотрудника»): выход не перезагружает страницу, поэтому
    кэши и DOM разделов не должны доставаться следующему пользователю (16.10.2026).
-   «График» добавлен 19.10.2026: стартовый экран батлера — «Мои отметки», и без
-   сброса в DOM оставались бы вкладки слоёв предыдущего пользователя (например,
-   админские Табель/УТ, на которые у сотрудника нет прав). loadGrafik перерисует
-   полосы по правам при первом открытии раздела. */
+   Полнота сброса — ревью 20.10.2026, P1-fe-1: раньше чистились только
+   fact-поля, employees, grafikLayer и вкладки «Графика», а кэши справочников,
+   сетки, фильтры, позиция UI и состояния модулей (carsState/nightState/
+   settingsUI) переживали смену пользователя. loadDirectory и загрузчики
+   разделов наполнят всё заново при входе. */
 function resetUserViewState() {
   state.factMode = null; state.factMonth = null; state.factDay = null;
   state.factEmp = null; state.factFrom = null; state.factTo = null;
   state.employees = [];
+  /* Кэши справочников: у сотрудника loadDirectory не вызывается — в памяти не
+     должно оставаться данных предыдущего менеджера. */
+  state.shiftTypes = []; state.departments = []; state.subdivisions = [];
+  state.docKinds = []; state.docPlaceholders = {}; state.tabelCodes = [];
+  state.grid = null; state.timesheet = null; state.status = null;
+  state.filterDept = 'all'; state.filterText = ''; state.expanded = new Set();
+  /* Позиция UI — на «сегодня» по часам объекта (serverShiftMs из core). */
+  const nowObj = new Date(Date.now() + serverShiftMs);
+  state.year = nowObj.getFullYear(); state.month = nowObj.getMonth() + 1;
+  state.attDate = todayISO(); state.dpYear = nowObj.getFullYear();
   state.grafikLayer = null;
-  const grafikTabs = $('#grafik-tabs');
-  if (grafikTabs) grafikTabs.innerHTML = '';
+  /* Состояния модулей (ADR-0008: межфайловые вызовы через глобальную область).
+     settingsUI.searchBound НЕ сбрасываем: флаг стережёт одноразовую привязку
+     document-листнера ⌘K, которая не снимается — сброс удвоил бы обработчик. */
+  Object.assign(carsState, { data: null, meta: null, locations: [], filter: 'all', q: '' });
+  Object.assign(nightState, { reportId: null, today: null, areas: null, zoneId: null,
+    areaId: null, q: '', filter: 'all', dictTab: 'zones', dictZone: null,
+    dictArea: null, defectsSelected: new Set(), defectsShowSent: false });
+  Object.assign(settingsUI, { screen: null, data: null, health: null, engine: null,
+    draft: null, calYear: 0, calMonth: 0, shiftTab: 'work', payFilter: '' });
+  /* DOM разделов — в начальное пустое состояние: в index.html все .view пустые,
+     их рисуют загрузчики при открытии; каркас #view-grafik восстановит
+     grafikSkeleton() (loadGrafik проверяет #grafik-tabs). Прежняя очистка одного
+     #grafik-tabs оставляла чужую разметку остальных разделов до первого открытия. */
+  $$('.view').forEach(v => { v.innerHTML = ''; });
 }
 
 async function enterApp() {
