@@ -222,13 +222,13 @@ SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки
 `timesheet_layers.js` (сетка Графика), `timesheet_common.js` (общее для экранов движка),
 `marks.js` (доска «Отметки»), `fact.js`, `tabel.js`, `mgmt.js` (УТ), `access.js`, `audit.js`,
 `engine_settings.js` (CFG-*), `me.js`, `employees.js`, `night.js`, `cars.js`, `docs.js`,
-`dicts.js`, `settings.js` (реестр экранов единого центра конфигурации; подключается ПОСЛЕ
-engine_settings/cars/night). До 22.10.2026 семь экранов движка жили в `timesheet_v4.js`. Глобальные функции
+`dicts.js`, `settings.js` (оболочка единого центра конфигурации) и `settings_<экран>.js` —
+по файлу на экран Настроек (с 22.10.2026; порядок подключения файлов не важен, ADR-0008). До 22.10.2026 семь экранов движка жили в `timesheet_v4.js`. Глобальные функции
 сохранены: межфайловые вызовы через глобальную область, границы держат
 `tools/gen_js_globals.py` (рекурсивный скан `static/js/**` → `js_globals.json`) и
 ESLint `no-undef` — отказ от `window.App.modules.*` отклонён (property-доступ не
-проверяется статически; прецедент — регрессия loadNight/loadCars). Порядок
-`<script>` в index.html фиксирует зависимости (cars → night → v4 → settings).
+проверяется статически; прецедент — регрессия loadNight/loadCars). Список `<script>` в
+index.html генерирует `tools/bump_version.py` (core, app, затем `modules/*.js` по алфавиту).
 Контракты: `tools/check_api_contract.py` (JS-вызовы ↔ OpenAPI, rglob),
 `tools/bump_version.py` (версии кэша + SHELL `sw.js` c файлами `modules/`, rglob).
 

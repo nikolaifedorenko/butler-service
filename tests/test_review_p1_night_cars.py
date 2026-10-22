@@ -252,11 +252,14 @@ def test_get_today_i_reports_ne_pishut_v_bazu(manager_client, db, freeze):
 
 def test_night_api_bolshe_ne_vyzyvaet_sync_reports():
     """Страж-исходник: из интерфейса ночного модуля sync_reports исчез целиком."""
-    from app.modules.night.interface import night_api
+    import pathlib
 
-    src = inspect.getsource(night_api)
-    assert "sync_reports" not in src, \
-        "sync_reports вернулся в night_api — обслуживание снова выполняется в запросах"
+    from app.modules.night import interface
+
+    # маршруты разложены по файлам (шаг 6.5) — проверяем весь пакет interface
+    for f in pathlib.Path(interface.__file__).parent.glob("*.py"):
+        assert "sync_reports" not in f.read_text(encoding="utf-8"), \
+            f"sync_reports вернулся в {f.name} — обслуживание снова выполняется в запросах"
 
 
 # ─────────────────────── P1-night-3: фоновый раунд и замок лидера ───────────────────────

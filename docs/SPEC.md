@@ -182,7 +182,8 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 
 Раздел «Настройки» — **единый центр конфигурации** (ред. 19.10.2026,
 `docs/archive/changes/CHANGES-2026-10-19-settings-ia.md`): область с под-разделами
-(`static/js/modules/settings.js`), у каждого собственный адрес `#/settings/<экран>`.
+(оболочка — `static/js/modules/settings.js`, экраны — `settings_<экран>.js`), у каждого
+собственный адрес `#/settings/<экран>`.
 Группы: «Расчёт» — Обзор, Расчёт, Правила оплаты, Коды Табеля, Календарь правил;
 «Персонал и смены» — Группы и графики, Смены и отсутствия; **«Объект»** — Ночной обход
 (зоны, объекты, чек-листы, службы), Электрокары (парк, места стоянки), Документы и
@@ -194,8 +195,9 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 модалками в «Электрокарах». Разделы остались рабочими местами (обход, отметки,
 операции с карами), а их кнопки «Справочник ↗», «+ Кар ↗», «Места ↗» стали deep-link'ами
 на экраны Настроек (`settingsOpen`). Рендер экранов живёт в файлах своих разделов
-(`renderNightDictScreen` — `section_night.js`, `renderCarsDictScreen` — `section_cars.js`;
-подключаются до `section_settings.js`, реестр ссылается на них напрямую).
+(`renderNightDictScreen` — `modules/night.js`, `renderCarsDictScreen` — `modules/cars.js`);
+каждый файл регистрирует свой экран через `registerModule`, а состав, порядок и права экранов
+задают манифесты модулей (ADR-0012, дополнение к ADR-0008).
 
 Права: видимость экрана — `perm` записи реестра (`night.view`, `cars.view`,
 `settings.edit`, `access.manage`, `audit.view`), право правки экраны проверяют сами

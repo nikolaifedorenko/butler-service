@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Sequence
 
 from sqlalchemy import select, update
@@ -50,8 +51,11 @@ UNKNOWN_DELIVERY = ("Статус доставки неизвестен: отп�
 
 @dataclass
 class Attachment:
+    """Вложение — путь к файлу, а не байты (PERF-04): Telegram получает файл потоком с диска,
+    письмо читает его только при сборке. Раньше все вложения рассылки (до 10 видео по 50 МБ)
+    читались в память заранее."""
     name: str
-    blob: bytes
+    path: Path
     mime: str
 
 
@@ -73,11 +77,19 @@ def attachments_of(db: Session, photo_ids: Sequence) -> list[Attachment]:
             continue
         ext = path.suffix.lower().lstrip(".")
         mime = ALLOWED_EXT.get(ext) or ALLOWED_VIDEO_EXT.get(ext) or "application/octet-stream"
+        out.append(Attachment(name=photo.filename or path.name, path=path, mime=mime))
+    return out
+
+
+def _email_parts(attachments: Sequence[Attachment]) -> list[tuple[str, bytes, str]]:
+    """Письмо собирается целиком в памяти (base64) — читаем файлы только здесь; пропавший
+    после выборки файл пропускаем, как и раньше."""
+    out = []
+    for a in attachments:
         try:
-            blob = path.read_bytes()
+            out.append((a.name, a.path.read_bytes(), a.mime))
         except OSError:
             continue
-        out.append(Attachment(name=photo.filename or path.name, blob=blob, mime=mime))
     return out
 
 
@@ -93,7 +105,7 @@ def deliver(*, cfg: NotifyConfig, channel: str, target: str, message: str,
     if channel == "telegram":
         client = bot or TelegramBot(cfg.telegram_token, cfg.telegram_api, cfg.timeout)
         chat_id = int(target)
-        files = [(a.name, a.blob, a.mime) for a in attachments]
+        files = [(a.name, a.path, a.mime) for a in attachments]
         note = ""
         if len(files) > MAX_FILES_PER_MESSAGE:
             note = f"\n\n(вложений {len(files)}, отправлены первые {MAX_FILES_PER_MESSAGE})"
@@ -105,7 +117,7 @@ def deliver(*, cfg: NotifyConfig, channel: str, target: str, message: str,
     if channel == "email":
         return send_mail(cfg, to=[target], cc=list(cc or ()), subject=subject or "Уведомление",
                          body=message,
-                         attachments=[(a.name, a.blob, a.mime) for a in attachments],
+                         attachments=_email_parts(attachments),
                          mailer=mailer)
     raise TransportError(f"Неизвестный канал доставки: {channel}")
 

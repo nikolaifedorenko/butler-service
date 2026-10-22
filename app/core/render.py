@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -127,22 +128,38 @@ def pdf_mode() -> str:
     return "none"
 
 
+# PERF-04 (аудит, шаг 6.6): не больше двух LibreOffice на процесс. Конвертация идёт до 180 с,
+# а кнопка «повторить» плодила процессы. Нет свободного слота за LO_WAIT_S — документ соберёт
+# встроенный рендер (как без LibreOffice), а не очередной процесс.
+# shortcut: лимит на процесс, а не на сервер (2 воркера → до 4 LibreOffice), общий — через try_lock.
+LO_SLOTS = threading.BoundedSemaphore(2)
+LO_WAIT_S = 30.0
+
+
 def docx_to_pdf_libreoffice(docx_bytes: bytes) -> Optional[bytes]:
     exe = shutil.which("soffice") or shutil.which("libreoffice")
     if not exe:
         return None
-    with tempfile.TemporaryDirectory() as tmp:
-        src = Path(tmp) / "doc.docx"
-        src.write_bytes(docx_bytes)
-        try:
-            proc = subprocess.run([exe, "--headless", "--convert-to", "pdf",
-                                   "--outdir", tmp, str(src)], capture_output=True, timeout=180)
-        except subprocess.TimeoutExpired:
-            return None
-        out = Path(tmp) / "doc.pdf"
-        if proc.returncode != 0 or not out.exists():
-            return None
-        return out.read_bytes()
+    if not LO_SLOTS.acquire(timeout=LO_WAIT_S):
+        return None
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "doc.docx"
+            src.write_bytes(docx_bytes)
+            # свой профиль на каждый запуск: два soffice с общим профилем не работают параллельно
+            profile = Path(tmp, "profile").as_uri()
+            try:
+                proc = subprocess.run([exe, f"-env:UserInstallation={profile}", "--headless",
+                                       "--convert-to", "pdf", "--outdir", tmp, str(src)],
+                                      capture_output=True, timeout=180)
+            except subprocess.TimeoutExpired:
+                return None
+            out = Path(tmp) / "doc.pdf"
+            if proc.returncode != 0 or not out.exists():
+                return None
+            return out.read_bytes()
+    finally:
+        LO_SLOTS.release()
 
 
 # ─────────────────────────── разбор заполненного .docx ───────────────────────────
