@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 
-from .bootstrap import registry, schema_version
+from .bootstrap import modules, registry, schema_version
 from .bootstrap.migrations import (
     migrate_db,
     migrate_engine_v7,
@@ -27,33 +27,15 @@ from .bootstrap.migrations import (
     seed_statement_kinds,
 )
 from .bootstrap.seed import seed_if_empty
-from .core import media_api, observability
+from .core import observability
 from .core.auth import Principal, optional_principal
 from .core.config import settings
 from .core.db import Base, SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.startup_lock import startup_lock
 from .core.time import now_local
-from .modules.access.interface import access_api, auth_routes
-from .modules.audit.interface import audit_api
-from .modules.cars.interface import cars_api
-from .modules.docs.interface import docs_api
-from .modules.employees.interface import employees
-from .modules.night.interface import night_api
-from .modules.notify.interface import notify_api
-from .modules.settings.interface import settings_api
 from .modules.timesheet.application.errors import ApplicationError
 from .modules.timesheet.domain.types.errors import ConfigError, DomainError
-from .modules.timesheet.interface import (
-    doublepay,
-    engine_settings_api,
-    fact_api,
-    mgmt_api,
-    presence_api,
-    punches,
-    schedule,
-    tabel_api,
-)
 from .modules.timesheet.interface.formatting import error_text
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -266,24 +248,8 @@ async def _engine_application_error_handler(request: Request, exc: ApplicationEr
 observability.register(app)
 
 
-app.include_router(auth_routes.router)
-app.include_router(employees.router)
-app.include_router(schedule.router)
-app.include_router(punches.router)
-app.include_router(tabel_api.router)
-app.include_router(mgmt_api.router)
-app.include_router(presence_api.router)
-app.include_router(fact_api.router)
-app.include_router(access_api.router)
-app.include_router(audit_api.router)
-app.include_router(engine_settings_api.router)
-app.include_router(settings_api.router)
-app.include_router(docs_api.router)
-app.include_router(doublepay.router)
-app.include_router(night_api.router)
-app.include_router(cars_api.router)
-app.include_router(notify_api.router)
-app.include_router(media_api.router)
+# роутеры — из манифестов модулей (ADR-0012), в порядке order
+modules.include_routers(app, modules.discover())
 
 
 def schema_report() -> dict:

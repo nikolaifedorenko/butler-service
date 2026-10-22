@@ -180,10 +180,18 @@ def logout(response: Response, principal: Principal = Depends(current_principal)
 def me(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     """Текущий пользователь + его план на сегодня (для личного кабинета)."""
     emp = principal.employee
+    from app.core import manifest
+    from app.core.auth_guards import assignable_roles, roles_catalog
     from app.core.permissions import principal_permissions
 
+    perms = set(principal_permissions(db, principal))
     data = {"user": principal.to_dict(), "today": None,
-            "permissions": sorted(principal_permissions(db, principal))}
+            "permissions": sorted(perms),
+            # роли как данные (ADR-0011): названия для экранов и роли, которые можно назначать
+            "roles": [{"code": r.code, "title": r.title} for r in roles_catalog(db)],
+            "assignable_roles": assignable_roles(db, principal),
+            # меню и экраны Настроек из манифестов модулей, уже по правам (шаг 5.4)
+            **manifest.ui_for(perms)}
     if emp:
         from app.modules.timesheet.application.punch_plan import plan_for_date, to_local
         today = local_date()
@@ -238,7 +246,7 @@ def impersonate(payload: ImpersonateIn, response: Response,
     if not emp or not emp.active:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
     # иерархия ролей: supervisor не входит «как» manager/admin (аудит 21.10.2026, AUTHZ-01)
-    can_manage_user(principal, db.scalar(select(User).where(User.employee_id == emp.id)))
+    can_manage_user(db, principal, db.scalar(select(User).where(User.employee_id == emp.id)))
     token = _token(principal.user, emp.id, imp=True)
     _set_cookie(response, token)
     audit(db, principal, "impersonate", f"employee:{emp.id}", {"employee": emp.full_name})

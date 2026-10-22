@@ -9,6 +9,9 @@
 --check сверяет и содержимое: bump записывает в sw.js хеш css/js оболочки и index.html
 (без ?v=), и правка JS без новой версии ловится в CI (UI-04, аудит 22.10.2026).
 
+Список <script> в index.html тоже собирается здесь (шаг 5.4): core.js, app.js и все
+static/js/modules/*.js — файл раздела нового модуля подключается без правки index.html.
+
 Использование:
     python3 tools/bump_version.py                 # версия = сегодняшняя дата + буква a
     python3 tools/bump_version.py 2026-10-02b     # задать явно
@@ -29,6 +32,7 @@ ASSETS_DIR = BASE / "static"
 
 VERSION_RE = re.compile(r"\?v=([\w.\-]+)")
 HASH_RE = re.compile(r"// содержимое оболочки: ([0-9a-f]+)")
+SCRIPTS_RE = re.compile(r"(<!-- скрипты:.*?-->\n).*?(<!-- /скрипты -->)", re.S)
 
 
 def local_assets() -> list[str]:
@@ -43,6 +47,17 @@ def local_assets() -> list[str]:
             if p.suffix in (".css", ".js"):
                 out.append("/static/" + p.relative_to(ASSETS_DIR).as_posix())
     return out
+
+
+def scripts_block(version: str) -> str:
+    """Теги <script> оболочки: ядро, затем файлы разделов (их порядок не важен, ADR-0008)."""
+    mods = sorted((ASSETS_DIR / "js" / "modules").glob("*.js"))
+    srcs = ["js/core.js", "js/app.js"] + [f"js/modules/{p.name}" for p in mods]
+    return "".join(f'<script src="/static/{s}?v={version}"></script>\n' for s in srcs)
+
+
+def with_scripts(html: str, version: str) -> str:
+    return SCRIPTS_RE.sub(lambda m: m.group(1) + scripts_block(version) + m.group(2), html)
 
 
 def assets_hash() -> str:
@@ -79,6 +94,9 @@ def check() -> int:
                         f"sw.js: {sorted(set(found['sw.js']))})")
     if missing:
         problems.append(f"в SHELL (sw.js) нет файлов: {missing}")
+    idx = INDEX.read_text(encoding="utf-8")
+    if not SCRIPTS_RE.search(idx) or with_scripts(idx, all_v[0]) != idx:
+        problems.append("список <script> в index.html не совпадает с static/js/modules/*.js")
     stamp = HASH_RE.search(SW.read_text(encoding="utf-8"))
     if not stamp or stamp.group(1) != assets_hash():
         problems.append("css/js или index.html изменились после последнего bump — "
@@ -98,8 +116,8 @@ def bump(version: str) -> int:
         print(f"✗ Некорректная версия: {version!r} (только буквы, цифры, точка, дефис)")
         return 2
 
-    # 1) index.html: все ?v=…
-    idx = INDEX.read_text(encoding="utf-8")
+    # 1) index.html: список <script> и все ?v=…
+    idx = with_scripts(INDEX.read_text(encoding="utf-8"), version)
     idx_new, n_idx = VERSION_RE.subn(f"?v={version}", idx)
     INDEX.write_text(idx_new, encoding="utf-8")
 

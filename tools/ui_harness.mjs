@@ -170,6 +170,11 @@ async function main() {
     const items = [...window.document.querySelectorAll('#st-nav [data-st]')]
       .filter(b => !b.textContent.includes('↗'));
     if (!items.length) { failed++; console.log('  ❌ под-навигация настроек не отрисована'); }
+    /* экраны приходят из манифестов (/api/auth/me): в навигации должны быть все, а не часть */
+    const expected = window.eval('(state.settingsScreens || []).filter(s => !s.external).length');
+    if (items.length !== expected) {
+      failed++; console.log(`  ❌ в под-навигации ${items.length} экранов из ${expected}`);
+    }
     for (const btn of items) {
       const id = btn.dataset.st;
       const before = consoleErrors.length;

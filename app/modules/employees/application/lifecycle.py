@@ -230,7 +230,7 @@ def dismiss(db: Session, principal: Principal, employee_id: int,
     emp = db.get(Employee, employee_id)
     if not emp:
         raise NotFound("Сотрудник не найден")
-    can_manage_user(principal, emp.user, ROLE_EMPLOYEE)
+    can_manage_user(db, principal, emp.user, ROLE_EMPLOYEE)
     since = parse_date(date) or local_date()
     emp.dismissed_at = since
     emp.active = False

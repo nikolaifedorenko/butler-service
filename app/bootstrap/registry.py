@@ -1,11 +1,11 @@
-"""Реестр моделей и инъекция провайдеров в core (composition root).
+"""Реестр модулей и инъекция провайдеров в core (composition root).
 
-Зачем: SQLAlchemy создаёт таблицы по Base.metadata — если модель не импортирована
-до create_all, её таблица молча не создастся. Фасад app/models импортирует все
-модули моделей (включая переехавшие в core: identity/audit/media), поэтому
-одного импорта фасада достаточно. wire() дополнительно регистрирует провайдеры,
-которые core не может импортировать сам (R5): «прочие правила объекта» для
-лимитов медиа.
+SQLAlchemy создаёт таблицы по Base.metadata — если модель не импортирована до create_all,
+её таблица молча не создастся. Модели, роутеры, права, заголовки аудита и разделы
+уведомлений модули объявляют в манифестах (ADR-0012, bootstrap/modules.py); wire()
+регистрирует их в core и дополнительно внедряет провайдеры, которые core не может
+импортировать сам (R5): «прочие правила объекта» для лимитов медиа, запрет удаления фото
+закрытого отчёта, загрузчик сотрудника.
 """
 from __future__ import annotations
 
@@ -13,16 +13,11 @@ from __future__ import annotations
 def ensure_models() -> None:
     """Импортировать все ORM-модели (регистрация в Base.metadata). Идемпотентно.
 
-    Явный реестр (G4, фаза C4): core-модели (identity/audit/media/settings_store)
-    + adapters.orm всех пяти модулей с моделями. Фасад app/models удалён —
-    порядок импортов больше не зависит от него.
+    Список моделей — из манифестов модулей (ADR-0012): ядро + `models` каждого модуля.
     """
-    from app.core import audit, identity, media, settings_store  # noqa: F401
-    from app.modules.cars.adapters import orm as cars_orm  # noqa: F401
-    from app.modules.employees.adapters import orm as employees_orm  # noqa: F401
-    from app.modules.night.adapters import orm as night_orm  # noqa: F401
-    from app.modules.notify.adapters import orm as notify_orm  # noqa: F401
-    from app.modules.timesheet.adapters import orm  # noqa: F401
+    from . import modules
+
+    modules.import_models(modules.discover())
 
 
 def wire() -> None:
@@ -30,6 +25,13 @@ def wire() -> None:
     main.py при импорте и из init_db (тесты/скрипты)."""
     ensure_models()
     from app.core import auth as core_auth
+    from app.core import manifest, permissions
+
+    from . import modules
+
+    found = modules.discover()
+    manifest.register(found)
+    permissions.load_catalog(p for m in found for p in m.permissions)
     from app.core import media
     from app.modules.employees.adapters.orm import Employee
     from app.modules.night.application.night import photo_delete_blocker

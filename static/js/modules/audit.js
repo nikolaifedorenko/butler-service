@@ -6,6 +6,8 @@
 state.auditQ = state.auditQ || { q: '', action: '', actor: '', date_from: '', date_to: '', offset: 0 };
 const AUDIT_PAGE = 100;
 
+registerModule({ views: { audit: loadAudit }, screens: { audit: { icon: 'list' } } });
+
 async function loadAudit() {
   const f = state.auditQ;
   $('#view-audit').innerHTML = `

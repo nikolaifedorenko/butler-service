@@ -3,20 +3,43 @@
 Прикладная половина бывшей app/notify/templates.py (фаза C3): template_of /
 save_template / templates_payload читают и пишут notify_templates (domain =
 «night», «cars», …); пока записи нет — действует текст из DEFAULT_TEMPLATES
-(домен notify).
+(манифест модуля-владельца раздела).
 """
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..adapters.orm import NotifyTemplate
-from ..domain.templates import (  # noqa: F401 — публичная граница
-    DEFAULT_TEMPLATES,
-    DOMAIN_TITLES,
-    PLACEHOLDERS,
-    render_template,
-)
+from ..domain.templates import render_template  # noqa: F401 — публичная граница
+
+
+class _ByDomain(Mapping):
+    """Разделы уведомлений объявляют модули в манифестах (ADR-0012); чтение — на лету."""
+
+    def __init__(self, pick):
+        self._pick = pick
+
+    def _data(self) -> dict:
+        from app.core.manifest import notify_domains
+
+        return {k: self._pick(v) for k, v in notify_domains().items()}
+
+    def __getitem__(self, key):
+        return self._data()[key]
+
+    def __iter__(self):
+        return iter(self._data())
+
+    def __len__(self) -> int:
+        return len(self._data())
+
+
+DOMAIN_TITLES = _ByDomain(lambda d: d.title)
+DEFAULT_TEMPLATES = _ByDomain(lambda d: d.template)
+PLACEHOLDERS = _ByDomain(lambda d: list(d.placeholders))
 
 
 def template_of(db: Session, domain: str) -> str:

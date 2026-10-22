@@ -38,3 +38,13 @@ def test_flag_is_not_written_as_version(tool, monkeypatch):
         monkeypatch.setattr("sys.argv", ["bump_version.py", flag])
         tool.main()
     assert tool.SW.read_text(encoding="utf-8") == before
+
+
+def test_new_module_script_is_added_by_bump(tool):
+    """Шаг 5.4: файл раздела нового модуля попадает в index.html без ручной правки."""
+    (tool.ASSETS_DIR / "js" / "modules" / "zz_probe.js").write_text("'use strict';\n", encoding="utf-8")
+    assert tool.check() == 1
+    assert tool.bump("2099-01-01a") == 0
+    assert '<script src="/static/js/modules/zz_probe.js?v=2099-01-01a"></script>' in \
+        tool.INDEX.read_text(encoding="utf-8")
+    assert tool.check() == 0

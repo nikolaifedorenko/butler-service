@@ -11,6 +11,8 @@
 ;   3) независимость роутеров внутри timesheet.interface и access.interface;
 ;   4) R3 — приватные слои каждого модуля (domain/adapters/interface) не
 ;      импортируются другими модулями; публичны только application/ports.
+; Контракты, где перечислены модули (изоляция notify и R3), генерирует
+; tools/gen_importlinter.py из манифестов (шаг 5.4, 22.10.2026) — ниже маркера.
 ; Финальная доводка R1–R6 (AST-покрытие всех модулей) — фаза C7 (DoD).
 
 [importlinter]
@@ -41,24 +43,6 @@ forbidden_modules =
     app.main
 allow_indirect_imports = True
 
-[importlinter:contract:notify-isolation]
-name = Эталон (C3): notify не знает про composition root и другие модули
-type = forbidden
-source_modules =
-    app.modules.notify
-forbidden_modules =
-    app.bootstrap
-    app.main
-    app.modules.timesheet
-    app.modules.employees
-    app.modules.night
-    app.modules.cars
-    app.modules.docs
-    app.modules.settings
-    app.modules.access
-    app.modules.audit
-allow_indirect_imports = True
-
 [importlinter:contract:timesheet-interface-independence]
 name = Роутеры timesheet.interface не импортируют друг друга
 type = independence
@@ -79,144 +63,38 @@ modules =
     app.modules.access.interface.access_api
     app.modules.access.interface.auth_routes
 
-[importlinter:contract:timesheet-private]
-name = R3: domain/adapters/interface timesheet приватны
+; ── ниже — генерирует tools/gen_importlinter.py из app/modules/*/manifest.py, руками не править ──
+
+[importlinter:contract:notify-isolation]
+name = Эталон (C3): notify не знает про composition root и другие модули
 type = forbidden
 source_modules =
-    app.modules.employees
-    app.modules.night
+    app.modules.notify
+forbidden_modules =
+    app.bootstrap
+    app.main
+    app.modules.access
+    app.modules.audit
     app.modules.cars
     app.modules.docs
-    app.modules.notify
-    app.modules.settings
-    app.modules.access
-    app.modules.audit
-forbidden_modules =
-    app.modules.timesheet.domain
-    app.modules.timesheet.adapters
-    app.modules.timesheet.interface
-allow_indirect_imports = True
-
-[importlinter:contract:employees-private]
-name = R3: domain/adapters/interface employees приватны
-type = forbidden
-source_modules =
-    app.modules.timesheet
-    app.modules.night
-    app.modules.cars
-    app.modules.docs
-    app.modules.notify
-    app.modules.settings
-    app.modules.access
-    app.modules.audit
-forbidden_modules =
-    app.modules.employees.domain
-    app.modules.employees.adapters
-    app.modules.employees.interface
-allow_indirect_imports = True
-
-[importlinter:contract:night-private]
-name = R3: domain/adapters/interface night приватны
-type = forbidden
-source_modules =
-    app.modules.timesheet
-    app.modules.employees
-    app.modules.cars
-    app.modules.docs
-    app.modules.notify
-    app.modules.settings
-    app.modules.access
-    app.modules.audit
-forbidden_modules =
-    app.modules.night.domain
-    app.modules.night.adapters
-    app.modules.night.interface
-allow_indirect_imports = True
-
-[importlinter:contract:cars-private]
-name = R3: domain/adapters/interface cars приватны
-type = forbidden
-source_modules =
-    app.modules.timesheet
     app.modules.employees
     app.modules.night
-    app.modules.docs
-    app.modules.notify
     app.modules.settings
-    app.modules.access
-    app.modules.audit
-forbidden_modules =
-    app.modules.cars.domain
-    app.modules.cars.adapters
-    app.modules.cars.interface
-allow_indirect_imports = True
-
-[importlinter:contract:docs-private]
-name = R3: domain/adapters/interface docs приватны
-type = forbidden
-source_modules =
     app.modules.timesheet
-    app.modules.employees
-    app.modules.night
-    app.modules.cars
-    app.modules.notify
-    app.modules.settings
-    app.modules.access
-    app.modules.audit
-forbidden_modules =
-    app.modules.docs.domain
-    app.modules.docs.adapters
-    app.modules.docs.interface
-allow_indirect_imports = True
-
-[importlinter:contract:notify-private]
-name = R3: domain/adapters/interface notify приватны
-type = forbidden
-source_modules =
-    app.modules.timesheet
-    app.modules.employees
-    app.modules.night
-    app.modules.cars
-    app.modules.docs
-    app.modules.settings
-    app.modules.access
-    app.modules.audit
-forbidden_modules =
-    app.modules.notify.domain
-    app.modules.notify.adapters
-    app.modules.notify.interface
-allow_indirect_imports = True
-
-[importlinter:contract:settings-private]
-name = R3: domain/adapters/interface settings приватны
-type = forbidden
-source_modules =
-    app.modules.timesheet
-    app.modules.employees
-    app.modules.night
-    app.modules.cars
-    app.modules.docs
-    app.modules.notify
-    app.modules.access
-    app.modules.audit
-forbidden_modules =
-    app.modules.settings.domain
-    app.modules.settings.adapters
-    app.modules.settings.interface
 allow_indirect_imports = True
 
 [importlinter:contract:access-private]
 name = R3: domain/adapters/interface access приватны
 type = forbidden
 source_modules =
-    app.modules.timesheet
-    app.modules.employees
-    app.modules.night
+    app.modules.audit
     app.modules.cars
     app.modules.docs
+    app.modules.employees
+    app.modules.night
     app.modules.notify
     app.modules.settings
-    app.modules.audit
+    app.modules.timesheet
 forbidden_modules =
     app.modules.access.domain
     app.modules.access.adapters
@@ -227,16 +105,142 @@ allow_indirect_imports = True
 name = R3: domain/adapters/interface audit приватны
 type = forbidden
 source_modules =
-    app.modules.timesheet
-    app.modules.employees
-    app.modules.night
+    app.modules.access
     app.modules.cars
     app.modules.docs
+    app.modules.employees
+    app.modules.night
     app.modules.notify
     app.modules.settings
-    app.modules.access
+    app.modules.timesheet
 forbidden_modules =
     app.modules.audit.domain
     app.modules.audit.adapters
     app.modules.audit.interface
+allow_indirect_imports = True
+
+[importlinter:contract:cars-private]
+name = R3: domain/adapters/interface cars приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.docs
+    app.modules.employees
+    app.modules.night
+    app.modules.notify
+    app.modules.settings
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.cars.domain
+    app.modules.cars.adapters
+    app.modules.cars.interface
+allow_indirect_imports = True
+
+[importlinter:contract:docs-private]
+name = R3: domain/adapters/interface docs приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.employees
+    app.modules.night
+    app.modules.notify
+    app.modules.settings
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.docs.domain
+    app.modules.docs.adapters
+    app.modules.docs.interface
+allow_indirect_imports = True
+
+[importlinter:contract:employees-private]
+name = R3: domain/adapters/interface employees приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.night
+    app.modules.notify
+    app.modules.settings
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.employees.domain
+    app.modules.employees.adapters
+    app.modules.employees.interface
+allow_indirect_imports = True
+
+[importlinter:contract:night-private]
+name = R3: domain/adapters/interface night приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.notify
+    app.modules.settings
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.night.domain
+    app.modules.night.adapters
+    app.modules.night.interface
+allow_indirect_imports = True
+
+[importlinter:contract:notify-private]
+name = R3: domain/adapters/interface notify приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.night
+    app.modules.settings
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.notify.domain
+    app.modules.notify.adapters
+    app.modules.notify.interface
+allow_indirect_imports = True
+
+[importlinter:contract:settings-private]
+name = R3: domain/adapters/interface settings приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.night
+    app.modules.notify
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.settings.domain
+    app.modules.settings.adapters
+    app.modules.settings.interface
+allow_indirect_imports = True
+
+[importlinter:contract:timesheet-private]
+name = R3: domain/adapters/interface timesheet приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.night
+    app.modules.notify
+    app.modules.settings
+forbidden_modules =
+    app.modules.timesheet.domain
+    app.modules.timesheet.adapters
+    app.modules.timesheet.interface
 allow_indirect_imports = True

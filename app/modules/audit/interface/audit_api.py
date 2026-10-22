@@ -20,22 +20,11 @@ from app.core.time import TZ, utc_to_local
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
-ACTION_TITLES = {
-    "login": "Вход", "logout": "Выход", "punch_in": "Отметка «Пришёл»", "punch_out": "Отметка «Ушёл»",
-    "punch_in_backfill": "Приход задним числом", "punch_out_backfill": "Уход задним числом",
-    "punch_delete": "Отмена отметки", "punch_note": "Описание переработки",
-    "tabel_cell": "Табель: ячейка", "tabel_fill_from_schedule": "Табель: заполнение из Графика",
-    "tabel_fill_from_cycles": "Табель: заполнение из циклов",
-    "tabel_reset": "Табель: сброс к автозаполнению",
-    "schedule_reset_month": "График: сброс месяца (ручные смены)",
-    "period_close": "УТ: закрытие периода", "period_recalculate": "УТ: пересчёт периода",
-    "engine_settings": "Настройки движка", "day_modifier_create": "Модификатор дня: добавлен",
-    "day_modifier_delete": "Модификатор дня: удалён",
-    "access_role": "Права роли", "access_group_create": "Группа доступа: создана",
-    "access_group_update": "Группа доступа: изменена", "access_group_delete": "Группа доступа: удалена",
-    "access_group_grants": "Права группы", "access_group_members": "Состав группы",
-    "access_user_grants": "Индивидуальные права",
-}
+def _titles() -> dict[str, str]:
+    """Названия действий журнала — из манифестов модулей (ADR-0012)."""
+    from app.core.manifest import audit_titles
+
+    return audit_titles()
 
 
 def _utc_bound(d: dt.date) -> dt.datetime:
@@ -69,7 +58,7 @@ def _query(q, action, actor, date_from, date_to):
 
 def _item(r: AuditLog) -> dict:
     return {"id": r.id, "ts": utc_to_local(r.ts).isoformat(timespec="seconds"), "actor": r.actor_name,
-            "action": r.action, "action_title": ACTION_TITLES.get(r.action, r.action),
+            "action": r.action, "action_title": _titles().get(r.action, r.action),
             "target": r.target, "payload": r.payload_json}
 
 
@@ -83,7 +72,7 @@ def list_audit(q: str = "", action: str = "", actor: str = "", date_from: Option
                       .limit(max(1, min(limit, 500))).offset(max(0, offset))).all()
     actions = sorted(db.scalars(select(AuditLog.action).distinct()))
     return {"total": total, "items": [_item(r) for r in rows],
-            "actions": [{"action": a, "title": ACTION_TITLES.get(a, a)} for a in actions]}
+            "actions": [{"action": a, "title": _titles().get(a, a)} for a in actions]}
 
 
 @router.get("/csv")

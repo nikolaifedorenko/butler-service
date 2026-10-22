@@ -5,6 +5,8 @@
    ══════════════════════════════════════════════════════════════════ */
 state.accessTab = state.accessTab || 'roles';
 
+registerModule({ views: { access: loadAccess }, screens: { access: { icon: 'shield' } } });
+
 async function loadAccess() {
   const host = $('#view-access');
   host.innerHTML = `
@@ -50,13 +52,63 @@ function collectMatrix(root) {
   return out;
 }
 
+/* Свои роли (ADR-0011): уровень решает, кто управляет учётками с этой ролью, а «назначает» —
+   с какими учётками может работать сама роль. Числа — уровни встроенных ролей. */
+const ROLE_RANKS = [[10, 'как у сотрудника — учётками управляют супервайзер и выше'],
+                    [60, 'как у супервайзера — учётками управляют менеджер и администратор'],
+                    [80, 'как у менеджера — учётками управляет только администратор']];
+const ROLE_ASSIGNS = [[-1, 'никем — учётками не управляет'], [10, 'сотрудниками'],
+                      [60, 'сотрудниками и супервайзерами'], [80, 'всеми, кроме администраторов']];
+
+function roleSettingsModal(r) {
+  const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  openModal({
+    title: r ? `Настройки роли «${r.title}»` : 'Новая роль',
+    body: `<label class="field"><span>Название</span><input type="text" id="rl-title" maxlength="80"
+             value="${esc(r?.title || '')}" placeholder="Например: Ночной супервайзер"></label>
+      <label class="field"><span>Уровень роли</span><select id="rl-rank">${opts(ROLE_RANKS, r ? r.rank : 10)}</select></label>
+      <label class="field"><span>Управляет учётками</span><select id="rl-assign">${opts(ROLE_ASSIGNS, r ? r.max_assignable_rank : -1)}</select></label>
+      <p class="hint">Права новой роли пустые — после создания нажмите «Изменить права роли».</p>`,
+    footer: `<button class="btn btn-ghost" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
+    onMount(m) {
+      m.querySelector('[data-cancel]').onclick = closeModal;
+      m.querySelector('[data-save]').onclick = async () => {
+        const body = { title: $('#rl-title').value.trim(), rank: +$('#rl-rank').value,
+                       max_assignable_rank: +$('#rl-assign').value };
+        try {
+          await api(r ? `/api/access/roles/${r.role}/settings` : '/api/access/roles', { method: r ? 'PUT' : 'POST', body });
+          closeModal(); toast(r ? 'Роль сохранена' : 'Роль создана', 'ok');
+          await loadPerms(); loadAccess();   // названия и назначаемые роли — для формы сотрудника
+        } catch (e) { toast(e.message, 'err'); }
+      };
+    },
+  });
+}
+
 function renderAccessRoles() {
   const a = state.access;
-  $('#ac-body').innerHTML = a.roles.map(r => `
-    <div class="panel"><h3 class="panel-title">${esc(r.title)} · ${r.effective.length} из ${a.permissions.length}</h3>
+  $('#ac-body').innerHTML = `<div class="panel"><button class="btn btn-primary" id="rl-add">Новая роль</button>
+      <span class="hint" style="margin-left:8px">своя роль — например «Ночной супервайзер» или «Бухгалтерия»</span></div>`
+    + a.roles.map(r => `
+    <div class="panel"><h3 class="panel-title">${esc(r.title)} · ${r.effective.length} из ${a.permissions.length}
+      <span class="badge ${r.builtin ? 'muted' : 'info'}">${r.builtin ? 'встроенная' : 'своя'} · пользователей ${r.users}</span></h3>
       <div class="v4-chips">${a.permissions.map(p => `<span class="badge ${r.effective.includes(p.key) ? 'ok' : 'muted'}">${esc(p.title)}</span>`).join(' ')}</div>
-      <button class="btn btn-sm" data-role="${r.role}" style="margin-top:10px">Изменить права роли</button></div>`).join('')
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-sm" data-role="${esc(r.role)}">Изменить права роли</button>
+        ${r.builtin ? '' : `<button class="btn btn-sm" data-role-set="${esc(r.role)}">Настройки роли</button>
+        <button class="btn btn-sm btn-ghost" data-role-del="${esc(r.role)}" style="color:var(--danger)">Удалить</button>`}</div></div>`).join('')
     + '<p class="hint">Права роли — базовые для всех пользователей с этой ролью. Изменения применяются сразу.</p>';
+  $('#rl-add').onclick = () => roleSettingsModal(null);
+  $$('#ac-body [data-role-set]').forEach(b => b.onclick = () => roleSettingsModal(a.roles.find(x => x.role === b.dataset.roleSet)));
+  $$('#ac-body [data-role-del]').forEach(b => b.onclick = () => {
+    const r = a.roles.find(x => x.role === b.dataset.roleDel);
+    confirmDialog(`Удалить роль «${r.title}»?`, r.users ? `Роль назначена пользователям (${r.users}) — сначала смените им роль.`
+        : 'Права роли тоже будут удалены.',
+      async () => {
+        try { await api(`/api/access/roles/${r.role}`, { method: 'DELETE' }); toast('Роль удалена', 'ok'); await loadPerms(); loadAccess(); }
+        catch (e) { toast(e.message, 'err'); }
+      }, 'Удалить', true);
+  });
   $$('#ac-body [data-role]').forEach(b => b.onclick = () => {
     const r = a.roles.find(x => x.role === b.dataset.role);
     openModal({
@@ -113,7 +165,7 @@ function renderAccessGroups() {
     openModal({ title: `Состав группы «${g.name}»`,
       body: `<input type="text" id="agm-q" placeholder="Поиск" style="width:100%;margin-bottom:8px">
         <div style="max-height:50vh;overflow:auto">${a.users.map(u => `<label class="v4-user-check" data-n="${esc((u.name + ' ' + u.username).toLowerCase())}">
-          <input type="checkbox" value="${u.id}" ${g.members.includes(u.id) ? 'checked' : ''}> ${esc(u.name)} <small>${esc(u.username)} · ${esc(ROLE_TITLES[u.role] || u.role)}</small></label>`).join('')}</div>`,
+          <input type="checkbox" value="${u.id}" ${g.members.includes(u.id) ? 'checked' : ''}> ${esc(u.name)} <small>${esc(u.username)} · ${esc(roleTitle(u.role))}</small></label>`).join('')}</div>`,
       footer: `<button class="btn btn-ghost" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
       onMount(m) {
         $('#agm-q').oninput = e => $$('.v4-user-check', m).forEach(l => { l.style.display = l.dataset.n.includes(e.target.value.toLowerCase()) ? '' : 'none'; });
@@ -137,7 +189,7 @@ function renderAccessUsers() {
       <th>Индивидуально</th><th>Итого прав</th><th></th></tr></thead><tbody>
     ${a.users.map(u => `<tr data-n="${esc((u.name + ' ' + u.username).toLowerCase())}">
       <td class="who" data-label="Пользователь">${esc(u.name)}<small>${esc(u.username)}${u.active ? '' : ' · отключён'}</small></td>
-      <td data-label="Роль">${esc(ROLE_TITLES[u.role] || u.role)}</td>
+      <td data-label="Роль">${esc(roleTitle(u.role))}</td>
       <td data-label="Группы">${u.groups.map(g => `<span class="badge muted">${esc(gname(g))}</span>`).join(' ')}</td>
       <td data-label="Индивидуально">${Object.entries(u.grants).map(([k, v]) => `<span class="badge ${v === 'allow' ? 'ok' : 'danger'}">${v === 'allow' ? '+' : '−'} ${esc(k)}</span>`).join(' ')}</td>
       <td class="num" data-label="Итого">${u.effective.length}</td>

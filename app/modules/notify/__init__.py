@@ -29,12 +29,12 @@ from .application.config import (
     public_config,
     save_config,
 )
-from .application.templates import template_of
-from .domain.templates import (
+from .application.templates import (
     DEFAULT_TEMPLATES,
     DOMAIN_TITLES,
     PLACEHOLDERS,
     render_template,
+    template_of,
 )
 
 __all__ = [

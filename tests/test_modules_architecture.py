@@ -18,8 +18,8 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MODULES = ("timesheet", "employees", "night", "cars", "docs", "notify",
-           "settings", "access", "audit")
+# модули — по манифестам (ADR-0012): новый модуль попадает в проверки без правки этого файла
+MODULES = tuple(sorted(p.parent.name for p in (ROOT / "app" / "modules").glob("*/manifest.py")))
 LAYERS = ("domain", "application", "ports", "adapters", "interface")
 
 # stdlib-корни, разрешённые домену/портам (sqlalchemy/fastapi/httpx/smtplib —
@@ -294,3 +294,49 @@ def test_no_system_time_reads_in_modules(mod):
     assert offenders == [], (
         "системное время мимо core/time (долг №3 закрыт 20.10.2026 — не открывать): "
         f"{offenders}")
+
+
+# ── ADR-0012: каждый модуль описан манифестом, и регистрация берёт всё из него ──
+
+def test_every_module_has_manifest_and_registers_itself():
+    from app.bootstrap import modules, registry
+    from app.core import manifest
+    from app.core.permissions import ALL_KEYS
+
+    registry.wire()
+
+    packages = {p.name for p in (ROOT / "app" / "modules").iterdir()
+                if p.is_dir() and (p / "__init__.py").exists()}
+    assert set(MODULES) == packages, "у модуля нет manifest.py"
+    found = modules.discover()
+    assert {m.name for m in found} == packages | {"core"}
+    keys = [p.key for m in found for p in m.permissions]
+    assert len(keys) == len(set(keys)), "одно право объявлено двумя модулями"
+    assert keys == ALL_KEYS and manifest.registered() == found
+
+
+def test_menu_and_settings_screens_match_frontend():
+    """Шаг 5.4: пункты меню и экраны Настроек объявлены в манифестах. Их права есть в каталоге,
+    id не повторяются, экраны одной группы идут подряд, и у каждого пункта есть регистрация
+    во фронтенде (registerModule) — иначе пункт открыл бы заглушку «Раздел не найден»."""
+    import itertools
+    import re
+
+    from app.bootstrap import registry
+    from app.core import manifest
+    from app.core.permissions import ALL_KEYS
+
+    registry.wire()
+    ui = manifest.ui_for(set(ALL_KEYS))
+    menu, screens = ui["menu"], ui["settings_screens"]
+    used = {p for i in menu for p in i["perms"]} | {s["perm"] for s in screens if s["perm"]}
+    assert used <= set(ALL_KEYS), used - set(ALL_KEYS)
+    groups = [g for g, _ in itertools.groupby(s["group"] for s in screens)]
+    assert len(groups) == len(set(groups)), f"группа экранов разорвана: {groups}"
+    js = "".join(p.read_text(encoding="utf-8") for p in (ROOT / "static" / "js").rglob("*.js"))
+    calls = "".join(re.findall(r"registerModule\(\{.*?\}\);", js, re.S))
+    for kind, items in (("views", menu), ("screens", screens)):
+        ids = [i["id"] for i in items]
+        assert len(ids) == len(set(ids)), f"{kind}: повтор id"
+        missing = [i for i in ids if not re.search(rf"\b{i}\s*:", calls)]
+        assert not missing, f"{kind} без registerModule во фронтенде: {missing}"

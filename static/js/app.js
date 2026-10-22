@@ -1,8 +1,9 @@
 /* ══════════════════════════════════════════════════════════════════════
    TimeTrack — веб-интерфейс (SPA без сборки), светлая тема
-   Разделы (7): График · Отметки · Сотрудники · Мои отметки · Ночной отчёт ·
-   Электрокары · Настройки. Права доступа и Журнал аудита — экраны Настроек
-   (группа «Администрирование»), navigate('access'/'audit') продолжает работать.
+   Состав меню и экранов Настроек — из манифестов модулей (app/modules/<имя>/manifest.py,
+   приходит в /api/auth/me уже по правам); файлы разделов регистрируют свои загрузчики
+   через registerModule (шаг 5.4 аудита, дополнение к ADR-0008). Права доступа и Журнал
+   аудита — экраны Настроек (группа «Администрирование»), navigate('access'/'audit') работает.
    Ядро (утилиты, api, состояние, модалки) вынесено в core.js — подключается раньше этого файла.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
@@ -29,6 +30,16 @@ const ICONS = {
 /* Права приходят с сервера (/api/auth/me → permissions): роль + группы + индивидуальные. */
 function can(perm) { return (state.perms || []).includes(perm); }
 
+/* Реестр разделов: файл модуля сообщает загрузчики разделов (views: id → load) и экраны
+   Настроек (screens: id → {render, icon}). Подписи, порядок и права пунктов — в манифесте
+   модуля на сервере. Иконку пункта меню файл модуля может добавить в ICONS. */
+const MODULE_VIEWS = {};
+const MODULE_SCREENS = {};
+function registerModule({ views = {}, screens = {} }) {
+  Object.assign(MODULE_VIEWS, views);
+  Object.assign(MODULE_SCREENS, screens);
+}
+
 /* T5 (норматив 12.10.2026): «График» — ОДИН пункт меню с четырьмя слоями внутри
    (Q2): 0 Табель · 1 План/График · 2 Факт · 3 Управленческий Табель. Пункт виден,
    если есть право хотя бы на один слой; сами слои фильтруются по правам в
@@ -43,22 +54,8 @@ const GRAFIK_LAYERS = [
    работать (переходы из модалок, сценарии, смоук harness) */
 const GRAFIK_ALIAS = { timesheet: 'grafik', schedule: 'grafik', fact: 'grafik', mgmt: 'grafik' };
 
-function visibleTabs() {
-  /* 7 пунктов (19.10.2026, docs/PROPOSAL-SETTINGS-IA-2026-10-19.md): «Права доступа»
-     и «Журнал аудита» убраны из верхнего меню — они живут в «Настройках»
-     (группа «Администрирование»); navigate('access'/'audit') по-прежнему работает.
-     «Настройки» видны, если есть право хотя бы на один их экран. */
-  const all = [
-    { id: 'grafik', title: 'График', anyPerm: GRAFIK_LAYERS.map(l => l.perm) },
-    { id: 'marks', title: 'Отметки', perm: 'presence.view' },
-    { id: 'employees', title: 'Сотрудники', perm: 'employees.view' },
-    { id: 'me', title: 'Мои отметки', perm: 'me.punch' },
-    { id: 'night', title: 'Ночной отчёт', perm: 'night.view' },
-    { id: 'cars', title: 'Электрокары', perm: 'cars.view' },
-    { id: 'settings', title: 'Настройки', anyPerm: ['settings.view', 'access.manage', 'audit.view'] },
-  ];
-  return all.filter(t => t.anyPerm ? t.anyPerm.some(can) : can(t.perm));
-}
+/* Пункты меню — из манифестов модулей (MenuItem), сервер уже отфильтровал их по правам. */
+function visibleTabs() { return state.menu || []; }
 
 function renderNav() {
   const tabs = visibleTabs();
@@ -71,12 +68,12 @@ function renderNav() {
     const b = document.createElement('button');
     b.className = 'nav-item' + (activeView === t.id ? ' active' : '');
     b.dataset.view = t.id;
-    b.innerHTML = `${ICONS[t.id]}<span>${esc(t.title)}</span>`;
+    b.innerHTML = `${ICONS[t.id] || ''}<span>${esc(t.title)}</span>`;
     b.onclick = () => navigate(t.id);
     $('#sidenav').insertBefore(b, foot);
   });
   $('#tabbar').innerHTML = tabs.slice(0, 5).map(t =>
-    `<button data-view="${t.id}" class="${activeView === t.id ? 'active' : ''}">${ICONS[t.id]}<span>${esc(t.title)}</span></button>`
+    `<button data-view="${t.id}" class="${activeView === t.id ? 'active' : ''}">${ICONS[t.id] || ''}<span>${esc(t.title)}</span></button>`
   ).join('');
   $$('#tabbar button').forEach(b => b.onclick = () => navigate(b.dataset.view));
   if (tabs.length > 5) {
@@ -98,28 +95,20 @@ function navigate(view) {
   state.view = view;
   $('#sidenav').classList.remove('open');
   $$('.view').forEach(v => v.classList.remove('active'));
-  const el = $(`#view-${view}`);
+  let el = $(`#view-${view}`);
+  if (!el && MODULE_VIEWS[view]) {     // раздел нового модуля: контейнер не нужно вписывать в index.html
+    el = document.createElement('section');
+    el.id = `view-${view}`; el.className = 'view';
+    $('main.content').appendChild(el);
+  }
   if (el) el.classList.add('active');
   renderNav();
   clearTimers();
-  /* Загрузчики разделов ищем по имени в глобальной области, а не прямыми ссылками:
-     если функция раздела не загрузилась (старый кэш, ошибка в файле раздела), интерфейс
-     не падает целиком — показывается внятная заглушка вместо пустого экрана. */
-  /* Загрузчики разделов — ленивые обёртки, а не строковые имена.
-     Карта строится всегда (даже если функция раздела отсутствует), а ошибка
-     всплывает в момент ВЫЗОВА и обрабатывается catch'ем ниже: вместо пустого
-     экрана пользователь видит заглушку с причиной. Прямые ссылки нужны ещё и
-     затем, чтобы линтер ловил отсутствующую функцию статически (no-undef):
-     раньше здесь был `window[fnName]`, и потерянный loadNight не видел ни один
-     инструмент — интерфейс просто молча пустел. */
-  const LOADERS = {
-    grafik: () => loadGrafik(), marks: () => loadMarks(),
-    access: () => loadAccess(), audit: () => loadAudit(),
-    employees: () => loadEmployees(), me: () => loadMe(),
-    night: () => loadNight(), cars: () => loadCars(),
-    settings: () => loadSettings(),
-  };
-  const run = LOADERS[view] || (() => {
+  /* Загрузчики регистрируют файлы разделов (registerModule) прямыми ссылками — линтер ловит
+     отсутствующую функцию (no-undef); раньше здесь был `window[fnName]`, и потерянный
+     loadNight не видел ни один инструмент. Если файл раздела не загрузился (старый кэш,
+     ошибка в файле) или загрузчик упал — вместо пустого экрана заглушка с причиной. */
+  const run = MODULE_VIEWS[view] || (() => {
     if (!el) return;
     el.innerHTML = `<div class="panel"><h3 class="panel-title">Раздел не найден</h3>
       <p class="hint">Неизвестный раздел <code>${esc(view)}</code>. Обновите страницу
@@ -154,6 +143,8 @@ function grafikSkeleton() {
     <section id="view-fact" class="layer-pane"></section>
     <section id="view-mgmt" class="layer-pane"></section>`;
 }
+
+registerModule({ views: { grafik: loadGrafik } });
 
 async function loadGrafik() {
   if (!document.getElementById('grafik-tabs')) grafikSkeleton();
@@ -227,11 +218,18 @@ function showLogin() {
   $('#login-password').value = '';   // после выхода форма логина пустая (16.10.2026)
 }
 
+/* Ответ /api/auth/me → права и роли. Роли — данные сервера (ADR-0011): названия своих ролей
+   и список ролей, которые пользователь вправе назначать (иерархия считается там же). */
+function applyMe(me) {
+  state.perms = me.permissions || [];
+  state.menu = me.menu || [];
+  state.settingsScreens = me.settings_screens || [];
+  state.roleTitles = Object.fromEntries((me.roles || []).map(r => [r.code, r.title]));
+  state.assignableRoles = me.assignable_roles || [];
+}
+
 async function loadPerms() {
-  try {
-    const me = await api('/api/auth/me', { silent: true });
-    state.perms = me.permissions || [];
-  } catch { state.perms = []; }
+  try { applyMe(await api('/api/auth/me', { silent: true })); } catch { applyMe({}); }
 }
 
 function startView() {
@@ -311,7 +309,7 @@ async function enterApp() {
 function renderUserChip() {
   const u = state.user;
   $('#user-name').textContent = u.name;
-  $('#user-role').textContent = ROLE_TITLES[u.role] || u.role;
+  $('#user-role').textContent = roleTitle(u.role);
   $('#user-avatar').textContent = initials(u.name);
   $('#impersonation-bar').classList.toggle('hidden', !u.impersonated);
 }

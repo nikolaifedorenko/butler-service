@@ -45,36 +45,41 @@ const SETTINGS_ICONS = {
 /* Состав раздела (ред. 19.10.2026 — единый центр конфигурации,
    docs/PROPOSAL-SETTINGS-IA-2026-10-19.md): группы «Расчёт», «Персонал и смены»,
    «Объект» (ночной обход, электрокары, документы), «Доставка», «Администрирование».
-   Экраны группы «Объект» реализованы в файлах своих разделов (renderNightDictScreen —
-   modules/night.js, renderCarsDictScreen — modules/cars.js; порядок подключения
-   в index.html это гарантирует): справочник один, а код рядом со своим доменом.
-   `external` — переход в самостоятельный view приложения: «Права доступа» и
-   «Журнал аудита» убраны из верхнего меню (19.10.2026) и открываются отсюда.
-   `perm` — право ВИДИМОСТИ экрана; право правки экраны проверяют сами
-   (night.edit, cars.manage, settings.edit). */
-const SETTINGS_SCREENS = [
-  { id: 'overview', title: 'Обзор', icon: 'home', render: settingsScreenOverview },
-  { group: 'Расчёт' },
-  { id: 'calc', title: 'Расчёт', icon: 'calc', render: settingsScreenCalc, edit: true },
-  { id: 'pay', title: 'Правила оплаты', icon: 'money', render: settingsScreenPay },
-  { id: 'codes', title: 'Коды Табеля', icon: 'codes', render: settingsScreenCodes, edit: true },
-  { id: 'calendar', title: 'Календарь правил', icon: 'cal', render: settingsScreenCalendar },
-  { group: 'Персонал и смены' },
-  { id: 'groups', title: 'Группы и графики', icon: 'people', render: settingsScreenGroups, edit: true },
-  { id: 'shifts', title: 'Смены и отсутствия', icon: 'shift', render: settingsScreenShifts, edit: true },
-  { group: 'Объект' },
-  { id: 'night', title: 'Ночной обход', icon: 'moon', render: renderNightDictScreen, perm: 'night.view' },
-  { id: 'cars', title: 'Электрокары', icon: 'car', render: renderCarsDictScreen, perm: 'cars.view' },
-  { id: 'docs', title: 'Документы и справочники', icon: 'doc', render: settingsScreenDocs, edit: true },
-  { group: 'Доставка' },
-  { id: 'notify', title: 'Чаты и Почта', icon: 'mail', render: settingsScreenNotify, perm: 'settings.edit' },
-  { group: 'Администрирование' },
-  { id: 'access', title: 'Права доступа', icon: 'shield', external: 'access', perm: 'access.manage' },
-  { id: 'audit', title: 'Журнал аудита', icon: 'list', external: 'audit', perm: 'audit.view' },
-  { id: 'system', title: 'Система', icon: 'gear', render: settingsScreenSystem },
-  { id: 'expert', title: 'Режим эксперта (JSON)', icon: 'code', render: settingsScreenExpert, edit: true },
-];
-const SETTINGS_TITLES = Object.fromEntries(SETTINGS_SCREENS.filter(s => s.id).map(s => [s.id, s.title]));
+   Подписи, группы, порядок и право ВИДИМОСТИ экранов объявляют манифесты модулей (Screen,
+   шаг 5.4) — список приходит в /api/auth/me уже по правам; рендер и иконку регистрирует
+   файл, где живёт экран (registerModule): справочники «Объекта» — modules/night.js и
+   modules/cars.js, рядом со своим доменом. `external` — переход в самостоятельный view:
+   «Права доступа» и «Журнал аудита» убраны из верхнего меню (19.10.2026) и открываются
+   отсюда. Право правки экраны проверяют сами (night.edit, cars.manage, settings.edit). */
+registerModule({
+  views: { settings: loadSettings },
+  screens: {
+    overview: { render: settingsScreenOverview, icon: 'home' },
+    calc: { render: settingsScreenCalc, icon: 'calc' },
+    pay: { render: settingsScreenPay, icon: 'money' },
+    codes: { render: settingsScreenCodes, icon: 'codes' },
+    calendar: { render: settingsScreenCalendar, icon: 'cal' },
+    groups: { render: settingsScreenGroups, icon: 'people' },
+    shifts: { render: settingsScreenShifts, icon: 'shift' },
+    docs: { render: settingsScreenDocs, icon: 'doc' },
+    notify: { render: settingsScreenNotify, icon: 'mail' },
+    system: { render: settingsScreenSystem, icon: 'gear' },
+    expert: { render: settingsScreenExpert, icon: 'code' },
+  },
+});
+
+/* Экраны в порядке манифестов, с записями групп ({ group }) перед первым экраном группы. */
+function settingsScreens() {
+  const out = [];
+  let group = null;
+  (state.settingsScreens || []).forEach(({ group: g, ...s }) => {
+    if (g && g !== group) out.push({ group: g });
+    group = g;
+    out.push({ ...s, ...MODULE_SCREENS[s.id] });   // без group: запись с group — заголовок
+  });
+  return out;
+}
+function settingsTitle(id) { return settingsScreens().find(s => s.id === id)?.title; }
 
 /* Открыть конкретный экран Настроек из другого раздела (deep-link 19.10.2026):
    «Справочник» в «Ночном отчёте» и «+ Кар»/«Места» в «Электрокарах» больше не
@@ -214,7 +219,7 @@ function settingsScreenAllowed(id) {
   /* id обязателен: у записей групп ({ group: … }) его нет, и find по undefined
      матчил бы группу — экран «undefined» вместо «Обзора» (найдено сценарием) */
   if (!id) return false;
-  const item = SETTINGS_SCREENS.find(s => s.id === id);
+  const item = settingsScreens().find(s => s.id === id);
   return !!item && !item.external && (!item.perm || can(item.perm));
 }
 
@@ -273,7 +278,7 @@ function settingsRenderNav(health, errors) {
     shifts: { n: (state.shiftTypes || []).filter(x => !x.archived).length },
     calendar: s.rules_upcoming ? { n: s.rules_upcoming } : null,
   };
-  nav.innerHTML = SETTINGS_SCREENS.filter(x => !x.perm || can(x.perm)).map(item => {
+  nav.innerHTML = settingsScreens().filter(x => !x.perm || can(x.perm)).map(item => {
     if (item.group) return `<div class="nav-group">${esc(item.group)}</div>`;
     const active = item.id === settingsUI.screen ? ' active' : '';
     const c = counters[item.id];
@@ -291,7 +296,7 @@ function settingsRenderNav(health, errors) {
 }
 
 function settingsGo(id) {
-  const item = SETTINGS_SCREENS.find(s => s.id === id);
+  const item = settingsScreens().find(s => s.id === id);
   if (!item) return;
   if (item.external) { navigate(item.external); return; }
   if (item.perm && !can(item.perm)) { toast(`Нет права на экран «${item.title}»`, 'warn'); return; }
@@ -321,10 +326,10 @@ async function settingsRenderScreen() {
      поэтому $('#st-body') везде указывает на актуальный узел. */
   const body = old.cloneNode(false);
   old.replaceWith(body);
-  /* fallback — «Обзор», а не SETTINGS_SCREENS[1]: после перегруппировки (19.10.2026)
+  /* fallback — «Обзор», а не settingsScreens()[1]: после перегруппировки (19.10.2026)
      под этим индексом может оказаться запись группы без render */
-  const item = SETTINGS_SCREENS.find(s => s.id && s.id === settingsUI.screen)
-    || SETTINGS_SCREENS.find(s => s.id === 'overview');
+  const item = settingsScreens().find(s => s.id && s.id === settingsUI.screen)
+    || settingsScreens().find(s => s.id === 'overview');
   settingsUI.screen = item.id;
   if (history.replaceState) history.replaceState(null, '', `#/settings/${item.id}`);
   $$('#st-nav [data-st]').forEach(b => b.classList.toggle('active', b.dataset.st === item.id));
@@ -582,7 +587,7 @@ function settingsHealthBanner(health) {
     <ul>${checks.slice(0, 12).map(c => `<li>
       <span>${c.level === 'error' ? '⛔' : '⚠'} ${esc(c.text)}
         <span class="spec-ref">[${esc(c.code)}]</span></span>
-      <button data-go="${esc(c.screen)}">${esc(SETTINGS_TITLES[c.screen] || c.screen)} →</button></li>`).join('')}
+      <button data-go="${esc(c.screen)}">${esc(settingsTitle(c.screen) || c.screen)} →</button></li>`).join('')}
       ${checks.length > 12 ? `<li><span>… и ещё ${checks.length - 12}</span></li>` : ''}</ul></div>`;
 }
 function settingsBindHealth(host) {
@@ -2061,7 +2066,7 @@ async function settingsScreenExpert(host) {
    ══════════════════════════════════════════════════════════════════════ */
 function settingsSearchIndex() {
   const out = [];
-  SETTINGS_SCREENS.filter(s => s.id).forEach(s => out.push({
+  settingsScreens().filter(s => s.id).forEach(s => out.push({
     title: s.title, hint: s.external ? 'отдельная вкладка приложения' : 'под-раздел настроек',
     screen: s.id, external: s.external || null }));
   const p = settingsPayload();
@@ -2116,7 +2121,7 @@ function settingsSearchPalette() {
       const draw = list => {
         res.innerHTML = list.slice(0, 40).map((x, i) => `<button data-i="${i}" class="${i === 0 ? 'sel' : ''}">
           <span><b>${esc(x.title)}</b><br><small style="color:var(--muted-2)">${esc(x.hint || '')}</small></span>
-          <small>${esc(SETTINGS_TITLES[x.screen] || '')}${x.external ? ' ↗' : ''}</small></button>`).join('')
+          <small>${esc(settingsTitle(x.screen) || '')}${x.external ? ' ↗' : ''}</small></button>`).join('')
           || '<p class="hint" style="padding:10px">Ничего не найдено</p>';
         $$('[data-i]', res).forEach(b => b.onclick = () => pick(list[+b.dataset.i]));
       };
@@ -2130,7 +2135,7 @@ function settingsSearchPalette() {
       const filter = () => {
         const s = q.value.trim().toLowerCase();
         draw(!s ? index : index.filter(x =>
-          `${x.title} ${x.hint || ''} ${SETTINGS_TITLES[x.screen] || ''}`.toLowerCase().includes(s)));
+          `${x.title} ${x.hint || ''} ${settingsTitle(x.screen) || ''}`.toLowerCase().includes(s)));
       };
       q.oninput = filter;
       q.onkeydown = e => {
