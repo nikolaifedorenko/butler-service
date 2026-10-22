@@ -36,7 +36,9 @@ log = logging.getLogger("uvicorn.error")
 LOCK_NAME = "night-sync"
 MIN_PERIOD_SECONDS = 5          # защита от опечатки в NIGHT_SYNC_SECONDS=1
 CLEANUP_PERIOD_SECONDS = 24 * 3600   # чистка медиа по сроку хранения (решение владельца В-8)
-_last_cleanup = {"ts": 0.0}
+# None — чистки ещё не было: monotonic() считает от старта машины, и 0.0 на свежем сервере
+# (меньше суток аптайма) выглядел бы как «чистили недавно»
+_last_cleanup: dict[str, float | None] = {"ts": None}
 
 _thread: threading.Thread | None = None
 _stop = threading.Event()
@@ -71,7 +73,8 @@ def run_media_cleanup_if_due() -> int | None:
     from ..core.media import cleanup_photos
     from ..core.startup_lock import try_lock
 
-    if time.monotonic() - _last_cleanup["ts"] < CLEANUP_PERIOD_SECONDS:
+    last = _last_cleanup["ts"]
+    if last is not None and time.monotonic() - last < CLEANUP_PERIOD_SECONDS:
         return None
     with try_lock("media-cleanup") as got:
         if not got:

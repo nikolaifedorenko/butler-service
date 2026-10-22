@@ -29,7 +29,7 @@ def test_media_cleanup_runs_once_a_day(app_stack, monkeypatch):
 
     calls: list[int] = []
     monkeypatch.setattr("app.core.media.cleanup_photos", lambda db: calls.append(1) or 0)
-    monkeypatch.setitem(night_sync._last_cleanup, "ts", 0.0)
+    monkeypatch.setitem(night_sync._last_cleanup, "ts", None)     # чистки ещё не было
     assert night_sync.run_media_cleanup_if_due() == 0
     assert night_sync.run_media_cleanup_if_due() is None     # сутки ещё не прошли
     assert calls == [1]
