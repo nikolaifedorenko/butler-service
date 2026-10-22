@@ -133,30 +133,3 @@ def calendar_map(db: Session, start: dt.date, end: dt.date) -> dict[dt.date, str
     return {d.date: (d.scope or SCOPE_ALL) for d in db.scalars(select(DoublePayDay).where(
         DoublePayDay.date >= start, DoublePayDay.date <= end))}
 
-
-def double_map_for(db: Session, emp_ids, start: dt.date, end: dt.date,
-                   cfg: Optional[dict] = None) -> dict[tuple[int, str], str]:
-    """(employee_id, ISO-дата) → 'vip' | 'calendar' — для маркеров в табеле за месяц.
-    Считается «вживую» по календарю и ВИП-периодам, поэтому всегда актуально."""
-    cal = calendar_map(db, start, end)
-    vips = db.scalars(select(VipDoublePay).where(
-        VipDoublePay.start_date <= end, VipDoublePay.end_date >= start)).all()
-    out: dict[tuple[int, str], str] = {}
-    for emp_id in emp_ids:
-        emp = db.get(Employee, emp_id)
-        if emp is None:
-            continue
-        for v in vips:
-            if v.employee_id != emp.id:
-                continue
-            d = max(v.start_date, start)
-            while d <= min(v.end_date, end):
-                out[(emp.id, d.isoformat())] = REASON_VIP
-                d += dt.timedelta(days=1)
-        for cdate, scope in cal.items():
-            key = (emp.id, cdate.isoformat())
-            if key in out:
-                continue
-            if scope_applies(db, emp, cdate, scope, cfg):
-                out[key] = REASON_CALENDAR
-    return out

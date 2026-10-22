@@ -6,6 +6,9 @@
 Раньше версию меняли руками в пяти местах — этот скрипт делает то же одной командой
 и умеет проверять согласованность (режим --check, используется в CI).
 
+--check сверяет и содержимое: bump записывает в sw.js хеш css/js оболочки и index.html
+(без ?v=), и правка JS без новой версии ловится в CI (UI-04, аудит 22.10.2026).
+
 Использование:
     python3 tools/bump_version.py                 # версия = сегодняшняя дата + буква a
     python3 tools/bump_version.py 2026-10-02b     # задать явно
@@ -14,6 +17,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -24,6 +28,7 @@ SW = BASE / "static" / "sw.js"
 ASSETS_DIR = BASE / "static"
 
 VERSION_RE = re.compile(r"\?v=([\w.\-]+)")
+HASH_RE = re.compile(r"// содержимое оболочки: ([0-9a-f]+)")
 
 
 def local_assets() -> list[str]:
@@ -38,6 +43,16 @@ def local_assets() -> list[str]:
             if p.suffix in (".css", ".js"):
                 out.append("/static/" + p.relative_to(ASSETS_DIR).as_posix())
     return out
+
+
+def assets_hash() -> str:
+    """Хеш оболочки: css/js из SHELL и index.html без ?v= (их меняет сам bump)."""
+    h = hashlib.sha256()
+    for a in local_assets():
+        h.update(a.encode())
+        h.update((ASSETS_DIR / a.removeprefix("/static/")).read_bytes())
+    h.update(VERSION_RE.sub("?v=", INDEX.read_text(encoding="utf-8")).encode())
+    return h.hexdigest()[:16]
 
 
 def current_versions() -> dict[str, list[str]]:
@@ -64,11 +79,15 @@ def check() -> int:
                         f"sw.js: {sorted(set(found['sw.js']))})")
     if missing:
         problems.append(f"в SHELL (sw.js) нет файлов: {missing}")
+    stamp = HASH_RE.search(SW.read_text(encoding="utf-8"))
+    if not stamp or stamp.group(1) != assets_hash():
+        problems.append("css/js или index.html изменились после последнего bump — "
+                        "без новой версии браузеры останутся на старой оболочке")
     if problems:
         print("✗ Версионирование статики не согласовано:")
         for p in problems:
             print("   -", p)
-        print("  Исправление: python3 tools/bump_version.py")
+        print("  Исправление: python3 tools/bump_version.py <дата><буква>")
         return 1
     print(f"✓ Версия статики согласована: {all_v[0]} (файлов в SHELL: {len(shell)})")
     return 0
@@ -93,6 +112,9 @@ def bump(version: str) -> int:
                     "  '/static/icons/icon-512.png'"]
     block = "const SHELL = [\n" + ",\n".join(shell_items) + ",\n];"
     sw_new, n_shell = re.subn(r"const SHELL = \[.*?\];", block, sw_new, flags=re.S)
+    stamp = f"// содержимое оболочки: {assets_hash()}"
+    sw_new = HASH_RE.sub(stamp, sw_new) if HASH_RE.search(sw_new) else \
+        sw_new.replace("\nconst SHELL = [", f"\n{stamp}\nconst SHELL = [", 1)
     SW.write_text(sw_new, encoding="utf-8")
 
     print(f"✓ Версия статики: {version}")
@@ -105,6 +127,12 @@ def main() -> int:
     args = sys.argv[1:]
     if args and args[0] == "--check":
         return check()
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    if args and args[0].startswith("-"):      # раньше «--help» записывался как версия
+        print(f"✗ Неизвестный ключ: {args[0]}\n{__doc__}")
+        return 2
     if args:
         return bump(args[0])
     today = dt.date.today().isoformat()

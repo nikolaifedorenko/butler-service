@@ -105,3 +105,16 @@ def test_mgmt_view_query_budget(admin_client, sql_counter):
     assert c["total"] <= budget, (
         f"УТ месяца сделал {c['total']} запросов на {employees} сотрудниках (бюджет {budget}); "
         f"топ: {sorted(c['by_statement'].items(), key=lambda x: -x[1])[:3]}")
+
+
+NIGHT_ARCHIVE_BUDGET = 10   # PERF-01: было ~24 SQL на отчёт (ленивые области и пункты)
+
+
+def test_night_archive_query_budget(manager_client, sql_counter):
+    with sql_counter() as c:
+        r = manager_client.get("/api/night/reports", params={"limit": 365})
+    assert r.status_code == 200, r.text
+    assert r.json()["reports"], "в демо-данных нет ночных отчётов — тест ничего не проверяет"
+    assert c["total"] <= NIGHT_ARCHIVE_BUDGET, (
+        f"архив ночи сделал {c['total']} запросов на {len(r.json()['reports'])} отчётов "
+        f"(бюджет {NIGHT_ARCHIVE_BUDGET}) — похоже на N+1")

@@ -15,7 +15,7 @@ cd "$ROOT" || exit 1
 # Ключ ≥16 символов (см. app/main.py); CSRF отключён, как в tests/conftest.py:
 # сценарий дёргает API напрямую из node, без браузерной пары «cookie + заголовок».
 # Сам механизм CSRF покрыт tests/test_csrf.py и смоуком интерфейса (run_ui_check.sh).
-export DATABASE_URL="sqlite:///$DB" SECRET_KEY="scenario-secret-key-0123456789abcdef" CSRF_ENABLED=0 APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
+export DEMO_SEED=1 DATABASE_URL="sqlite:///$DB" SECRET_KEY="scenario-secret-key-0123456789abcdef" CSRF_ENABLED=0 APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >/tmp/norms_scenario_server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT

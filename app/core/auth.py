@@ -48,6 +48,12 @@ class Principal:
             return self.employee.full_name
         return self.user.username
 
+    @property
+    def actor_label(self) -> str:
+        """Автор действия для журналов и историй: «как сотрудник» — кто вошёл на самом деле
+        (решение владельца В-3: действовать в этом режиме можно, но с пометкой)."""
+        return f"{self.user.username} → как {self.name}" if self.impersonated else self.name
+
     def to_dict(self) -> dict:
         return {
             "id": self.user.id,
@@ -92,6 +98,8 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
     emp_id = payload.get("emp_id")
     if emp_id and _EMPLOYEE_LOADER is not None:
         employee = _EMPLOYEE_LOADER(db, emp_id)
+    if payload.get("imp") and (employee is None or not employee.active):
+        raise _unauthorized()          # «как сотрудник» за уволенного/удалённого — сессия кончилась
     return Principal(user=user, employee=employee, impersonated=bool(payload.get("imp")))
 
 
@@ -107,8 +115,10 @@ def optional_principal(request: Request, db: Session = Depends(get_db)) -> Optio
 # единственный вход проверки прав — require_perm("<ключ>") из core/permissions.py.
 # Inline-ветвления «менеджерской видимости» переведены на ключи каталога
 # (батч 20.10.2026: fact.view_all, punches.view_all/punch_for_others/backfill,
-# schedule.view_all/edit) — в модулях обращений к is_manager не осталось
-# (страж: tests/test_permissions_unification.py). Свойство Principal.is_manager
+# schedule.view_all/edit), последние восемь ролевых проверок — на employees.bank,
+# settings.doublepay, cars.override, cars.maintenance, night.reopen_any, media.delete_any
+# (AUTHZ-05, 22.10.2026). Вне ядра прав роль не читает никто (страж:
+# tests/test_permissions_unification.py). Свойство Principal.is_manager
 # сохранено как утилита ролевой иерархии (рядом с can_manage_user в
 # core/auth_guards.py) и для совместимости; для прав экранов его использовать
 # не следует — только каталог PERMISSIONS. can_manage_user переехал в

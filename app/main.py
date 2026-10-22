@@ -10,9 +10,9 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
-from .bootstrap import registry
+from .bootstrap import registry, schema_version
 from .bootstrap.migrations import (
     migrate_db,
     migrate_engine_v7,
@@ -22,7 +22,6 @@ from .bootstrap.migrations import (
     migrate_night_zones,
     migrate_schedule_dict_simplify,
     migrate_settings_value_text,
-    migrate_shift_tabel_codes,
     migrate_time_off_template,
     migrate_timeoff_entity,
     seed_statement_kinds,
@@ -78,11 +77,19 @@ def init_db() -> None:
 def _init_db_steps() -> None:
     """Тело инициализации схемы — вызывается ТОЛЬКО под замком startup_lock."""
     registry.wire()   # реестр моделей + провайдеры core (R5: core не импортирует модули)
-    Base.metadata.create_all(bind=engine)
-    migrate_db()
-    migrate_settings_value_text()   # PostgreSQL: шаблоны документов длиннее VARCHAR(255)
-    migrate_engine_v7()
-    migrate_schedule_dict_simplify()
+    tables = set(inspect(engine).get_table_names())
+    # база до перехода на Alembic (ADR-0002): прежние шаги, затем штамп baseline
+    legacy = bool(tables) and "alembic_version" not in tables
+    if legacy:
+        # shortcut: прежние шаги + create_all текущих моделей верны, пока ревизии после
+        # 0001 не создают таблиц и колонок; с первой такой ревизией legacy-ветку удалить
+        Base.metadata.create_all(bind=engine)
+        migrate_db()
+        migrate_settings_value_text()   # PostgreSQL: шаблоны документов длиннее VARCHAR(255)
+        migrate_engine_v7()
+        migrate_schedule_dict_simplify()
+    else:
+        schema_version.upgrade()        # пустая база — целиком из ревизий, под Alembic — новые
     seed_statement_kinds()
     db = SessionLocal()
     try:
@@ -92,16 +99,18 @@ def _init_db_steps() -> None:
         db.commit()
     finally:
         db.close()
-    # норматив 12.10.2026 (T1/T4): «код в табеле» у смен — только коды словаря Табеля,
-    # «отпросился» и «выходной за часы» — одна запись словаря. Обе миграции идемпотентны
-    # и идут ПОСЛЕ bootstrap: первой нужен действующий справочник CFG-DAY-CODES.
-    migrate_timeoff_entity()
-    migrate_manual_replaces_generated()
-    migrate_time_off_template()
-    migrate_shift_tabel_codes()
-    migrate_night_cars()
-    migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
-    migrate_night_reopened_at()     # момент ручного переоткрытия отчёта (P1 20.10.2026)
+    if legacy:
+        # норматив 12.10.2026 (T1/T4): «код в табеле» у смен — только коды словаря Табеля,
+        # «отпросился» и «выходной за часы» — одна запись словаря. Обе миграции идемпотентны
+        # и идут ПОСЛЕ bootstrap: первой нужен действующий справочник CFG-DAY-CODES.
+        migrate_timeoff_entity()
+        migrate_manual_replaces_generated()
+        migrate_time_off_template()
+        migrate_night_cars()
+        migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
+        migrate_night_reopened_at()     # момент ручного переоткрытия отчёта (P1 20.10.2026)
+        schema_version.stamp_baseline()
+        schema_version.upgrade()        # ревизии после baseline
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
     from .core.media import cleanup_photos
     from .modules.night.application.night import sync_reports
@@ -138,11 +147,28 @@ def _check_secret_key() -> None:
         raise RuntimeError(msg)
 
 
+def _check_writable_dirs() -> None:
+    """Каталоги данных доступны на запись. Контейнер работает не от root (22.10.2026), а тома,
+    созданные раньше, принадлежат root: объясняем, что сделать, вместо непонятной ошибки
+    на первой записи в базу SQLite или загрузке фото."""
+    import os
+
+    from .core.media import UPLOAD_ROOT
+    from .modules.docs.application.doc_render import TEMPLATES_DIR
+
+    bad = [str(d) for d in (UPLOAD_ROOT.parent, TEMPLATES_DIR) if d.exists() and not os.access(d, os.W_OK)]
+    if bad:
+        raise RuntimeError(f"Нет прав на запись в {', '.join(bad)}. Тома, созданные до запуска "
+                           "приложения не от root, один раз передайте пользователю app — "
+                           "команда в deploy/README.md §6")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     from .bootstrap.night_sync import start_night_sync, stop_night_sync
 
     _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
+    _check_writable_dirs()
     init_db()
     # обслуживание ночных отчётов (досоздание смен, автозакрытие в 08:00) больше не
     # выполняется в GET-запросах — его делает фоновый поток (ревью 20.10.2026, P1);
@@ -154,8 +180,15 @@ async def lifespan(_: FastAPI):
         stop_night_sync()
 
 
-app = FastAPI(title=settings.app_name, version=settings.app_version, docs_url="/api/docs",
-              openapi_url="/api/openapi.json", lifespan=lifespan)
+def _docs_urls() -> dict:
+    """Swagger и схема API — только при API_DOCS=1; ReDoc не используется (OPS-04)."""
+    on = settings.api_docs
+    return {"docs_url": "/api/docs" if on else None,
+            "openapi_url": "/api/openapi.json" if on else None, "redoc_url": None}
+
+
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan,
+              **_docs_urls())
 
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 registry.wire()   # реестр моделей + провайдеры core — до первого запроса (и для тестов без init_db)
@@ -204,7 +237,7 @@ async def _payload_too_large_handler(request: Request, exc: PayloadTooLarge):
 #     (типизированный отказ вкладок, не 500; закреплено
 #     tests/test_timesheet_norm.py::test_10_config_error_is_409_not_500).
 #     Редактор настроек (PUT /api/engine-settings) валидирует ВВОД и оставляет
-#     локальный catch → 422 (закреплено test_v4_api::test_engine_settings_validation);
+#     локальный catch → 422 (закреплено test_engine_api::test_engine_settings_validation);
 #   DomainError → 422 — невалидные входные данные запроса;
 #   ApplicationError → 409 — конфликт состояния (период закрыт и т.п.).
 # Прим.: §5.3 спеки предписывал 422 для ConfigError, но §11.1 требует побайтового

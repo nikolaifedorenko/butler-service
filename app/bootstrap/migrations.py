@@ -61,18 +61,6 @@ def migrate_db() -> None:
             ("nationality", "VARCHAR(120) DEFAULT ''"),
             ("subdivision", "VARCHAR(160) DEFAULT ''"),
         ],
-        "timesheet_rows": [
-            ("pay_ot_day", "FLOAT DEFAULT 0"),
-            ("pay_ot_night", "FLOAT DEFAULT 0"),
-            ("late_hours", "FLOAT DEFAULT 0"),
-            ("early_hours", "FLOAT DEFAULT 0"),
-            ("unused_hours", "FLOAT DEFAULT 0"),
-            ("gap_hours", "FLOAT DEFAULT 0"),
-            ("auth_hours", "FLOAT DEFAULT 0"),
-            ("pay_ot_day2", "FLOAT DEFAULT 0"),
-            ("pay_ot_night2", "FLOAT DEFAULT 0"),
-            ("double_reason", "VARCHAR(16) DEFAULT ''"),
-        ],
         "zone_checklist_items": [
             ("service_id", "INTEGER"),
         ],
@@ -90,18 +78,15 @@ def migrate_db() -> None:
         "shift_types": [
             ("doc_type", "VARCHAR(40) DEFAULT ''"),
             ("archived_at", "DATE"),
-            ("punch_in_allowed", "BOOLEAN DEFAULT 1"),
-            ("punch_out_allowed", "BOOLEAN DEFAULT 1"),
-        ],
-        "schedule_entries": [
-            ("partial_shift_id", "INTEGER"),
-            ("from_time", "VARCHAR(5) DEFAULT ''"),
-            ("until_time", "VARCHAR(5) DEFAULT ''"),
-            ("punch_in_override", "BOOLEAN"),
-            ("punch_out_override", "BOOLEAN"),
+            ("punch_in_allowed", "BOOLEAN DEFAULT TRUE"),
+            ("punch_out_allowed", "BOOLEAN DEFAULT TRUE"),
         ],
         "block_assignments": [
             ("pattern_json", "TEXT DEFAULT ''"),
+        ],
+        # выбранный шаблон заявления (18.10.2026): без колонки ORM-запросы отсутствий падают
+        "schedule_absences": [
+            ("doc_type", "VARCHAR(40) DEFAULT ''"),
         ],
         # ночной отчёт v2 (19.10.2026): зоны обхода — первый уровень навигации,
         # снимок зоны в отчёте и ссылка ответа на пункт шаблона зоны
@@ -119,13 +104,13 @@ def migrate_db() -> None:
             ("service_name", "VARCHAR(160) DEFAULT ''"),
             # отправка недостатка службе, этап 5: отправленное повторно не шлётся
             ("dispatch_id", "INTEGER"),
-            ("dispatched_at", "DATETIME"),
+            ("dispatched_at", "TIMESTAMP"),
         ],
         # ночная отметка кара (19.10.2026): где батлер нашёл кар и факт перепарковки
         # («кар был на месте, но его переставили» — место в карточке могло устареть)
         "car_night_checks": [
             ("found_location", "VARCHAR(160) DEFAULT ''"),
-            ("moved", "BOOLEAN DEFAULT 0"),
+            ("moved", "BOOLEAN DEFAULT FALSE"),
         ],
         # журнал отправок (ревью 20.10.2026, P1): снимок адресатов копии письма —
         # resend() обязан повторять отправку ТЕМ ЖЕ составом, cc не должен теряться
@@ -178,7 +163,6 @@ def migrate_db() -> None:
                 con.execute(text("UPDATE shift_types SET doc_type=:dt "
                                  "WHERE code=:c AND (doc_type IS NULL OR doc_type='')"),
                             {"dt": doc_type, "c": code})
-            _apply_timesheet_code_normative(con)
 
         # сотрудники без записей блоков получают открытую запись от даты приёма
         if insp.has_table("employees") and insp.has_table("block_assignments"):
@@ -199,46 +183,12 @@ def migrate_db() -> None:
                   AND NOT EXISTS (SELECT 1 FROM subdivisions s WHERE s.name = e.subdivision)
             """))
 
-    # «НБ» — артефакт: вид SICK_UNPAID (добавлялся 16.10.2026) убираем из словаря
-    _migrate_remove_sick_unpaid()
-    # старым базам докладываем новые смены словаря из сида
-    _migrate_missing_shifts()
     # периоды работы (приём → увольнение → повторный приём)
     _migrate_employment_periods()
     # индивидуальный шаблон пятидневки: берём выходные из общих настроек (как было раньше)
     _migrate_fiveday_patterns()
     # общий шаблон блоков в настройках: переименовываем ключ «Администрация»
     _migrate_base_groups_key()
-
-
-def _migrate_remove_sick_unpaid() -> None:
-    """Историческая миграция (16.10.2026): вид «НБ»/SICK_UNPAID. С 18.10.2026 все
-    виды отсутствий словаря, кроме системного «Отпросился», удаляет
-    migrate_schedule_dict_simplify — здесь делать нечего."""
-    return
-
-
-def _migrate_missing_shifts() -> None:
-    """Историческая миграция: докладывала старым базам смены из старого сида.
-    Словарь смен 18.10.2026 изменился (только добавляемые смены и «Отпросился»),
-    свежие базы заполняет сид, старым базам состав правит владелец."""
-    return
-
-
-def _apply_timesheet_code_normative(con) -> None:
-    """Норматив от 12.10.2026: коды Табеля «С» и «НВ» из справочника исключены.
-
-    * суточная смена (SUTKI) — графиковая смена: в Табеле обычная явка «Я», по факту
-      сотрудник работает через полночь, а часы вне окна расчёт относит к переработке;
-    * «выходной за ранее отработанные часы» (TIMEOFF_HOURS) — отсутствие в Графике:
-      в Табеле остаётся явка, недостачу гасит банк часов (паттерн EX-29).
-
-    Правим только словарь (shift_types), историю Табеля не переписываем: версии
-    справочников очищает timesheet-bootstrap (strip_removed_day_codes), и только если
-    в Табеле не осталось строк с этими кодами.
-    """
-
-    # связка «смена → код Табеля» (tzh_code) удалена 18.10.2026: править нечего
 
 
 def _migrate_employment_periods() -> None:
@@ -253,7 +203,7 @@ def _migrate_employment_periods() -> None:
             INSERT INTO employment_periods (employee_id, start_date, end_date, note, created_at)
             SELECT e.id,
                    COALESCE(e.hired_at, '2020-01-01'),
-                   CASE WHEN e.dismissed_at IS NOT NULL AND e.active = 0 THEN e.dismissed_at ELSE NULL END,
+                   CASE WHEN e.dismissed_at IS NOT NULL AND e.active = FALSE THEN e.dismissed_at ELSE NULL END,
                    'восстановлено по дате приёма/увольнения',
                    CURRENT_TIMESTAMP
             FROM employees e
@@ -265,7 +215,7 @@ def _migrate_employment_periods() -> None:
             SET end_date = (SELECT e.dismissed_at FROM employees e WHERE e.id = block_assignments.employee_id)
             WHERE end_date IS NULL
               AND employee_id IN (SELECT id FROM employees
-                                  WHERE dismissed_at IS NOT NULL AND active = 0 AND deleted_at IS NULL)
+                                  WHERE dismissed_at IS NOT NULL AND active = FALSE AND deleted_at IS NULL)
         """))
 
 
@@ -349,12 +299,6 @@ def seed_statement_kinds() -> None:
         db.close()
 
 
-def migrate_shift_tabel_codes() -> None:
-    """Историческая миграция T1 (12.10.2026): чистила «код в табеле» у смен.
-    Поле tzh_code удалено 18.10.2026 вместе со связкой справочников."""
-    return
-
-
 TIMEOFF_UNIFIED_CODE = "TIMEOFF_HOURS"
 TIMEOFF_UNIFIED_NAME = "Отпросился (выходной за часы)"
 TIMEOFF_MERGED_CODES = ("AWAY_HOURS",)
@@ -398,7 +342,7 @@ def migrate_timeoff_entity() -> None:
                 continue
             con.execute(text("UPDATE schedule_absences SET kind_id=:t WHERE kind_id=:d"),
                         {"t": target[0], "d": dup[0]})
-            con.execute(text("UPDATE shift_types SET active=0, archived_at=:d WHERE id=:i "
+            con.execute(text("UPDATE shift_types SET active=FALSE, archived_at=:d WHERE id=:i "
                              "AND archived_at IS NULL"), {"d": today, "i": dup[0]})
 
 
@@ -480,21 +424,12 @@ def migrate_night_cars() -> None:
     existing = set(insp.get_table_names())
     with engine.begin() as con:
         for table, idx in (
-            ("night_area_sections",
-             "CREATE INDEX IF NOT EXISTS ix_night_sections_report ON night_area_sections (report_id)"),
-            ("night_check_items",
-             "CREATE INDEX IF NOT EXISTS ix_night_items_section ON night_check_items (section_id)"),
+            ("checklist_items",
+             "CREATE INDEX IF NOT EXISTS ix_checklist_items_service_id ON checklist_items (service_id)"),
             ("car_history",
              "CREATE INDEX IF NOT EXISTS ix_car_history_car_ts ON car_history (car_id, ts)"),
             ("photos",
              "CREATE INDEX IF NOT EXISTS ix_photos_kind_ref ON photos (kind, ref_id)"),
-            # ответственные службы (этап 3): поиск пунктов и снимков отчёта по службе
-            ("zone_checklist_items",
-             "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_service"
-             " ON zone_checklist_items (service_id)"),
-            ("night_check_items",
-             "CREATE INDEX IF NOT EXISTS ix_night_check_items_service"
-             " ON night_check_items (service_id)"),
         ):
             # Таблицы ещё нет — её вместе с индексами модели создаст create_all.
             # Раньше здесь стоял contextlib.suppress(Exception): на PostgreSQL любой
@@ -548,12 +483,6 @@ def migrate_night_zones() -> None:
              "CREATE INDEX IF NOT EXISTS ix_night_area_sections_zone ON night_area_sections (zone_id)"),
             ("night_check_items",
              "CREATE INDEX IF NOT EXISTS ix_night_check_items_zone_item ON night_check_items (zone_item_id)"),
-            ("zone_checklist_items",
-             "CREATE INDEX IF NOT EXISTS ix_zone_checklist_items_zone ON zone_checklist_items (zone_id)"),
-            ("checklist_overrides",
-             "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_area ON checklist_overrides (area_id)"),
-            ("checklist_overrides",
-             "CREATE INDEX IF NOT EXISTS ix_checklist_overrides_zone_item ON checklist_overrides (zone_item_id)"),
         ):
             # таблицы шаблона зоны/правок может ещё не быть — не мешаем create_all
             # (явная проверка вместо suppress(Exception): см. migrate_night_cars)
@@ -566,7 +495,7 @@ def migrate_night_zones() -> None:
             row = con.execute(text("SELECT id FROM night_zones WHERE name = :n"), {"n": name}).first()
             if row is None:
                 con.execute(text("INSERT INTO night_zones (name, sort_order, active, created_at, updated_at) "
-                                 "VALUES (:n, 100, 1, :ts, :ts)"), {"n": name, "ts": ts})
+                                 "VALUES (:n, 100, TRUE, :ts, :ts)"), {"n": name, "ts": ts})
                 row = con.execute(text("SELECT id FROM night_zones WHERE name = :n"), {"n": name}).first()
             con.execute(text("UPDATE night_areas SET zone_id = :z WHERE zone_id IS NULL "
                              "AND COALESCE(category, '') = :cat"), {"z": row[0], "cat": cat})
@@ -600,7 +529,7 @@ def migrate_night_reopened_at() -> None:
     if "reopened_at" in cols:
         return
     with engine.begin() as con:
-        con.execute(text("ALTER TABLE night_reports ADD COLUMN reopened_at DATETIME"))
+        con.execute(text("ALTER TABLE night_reports ADD COLUMN reopened_at TIMESTAMP"))
 
 
 def migrate_engine_v7() -> None:
@@ -611,8 +540,7 @@ def migrate_engine_v7() -> None:
     * bank_adjustments.reason_code — маркер OPENING_SEED (v7.1/R37);
     * period_closings.flags_json — снимок флагов при закрытии (7.2);
     * legacy-таблицы timesheet_rows и schedule_entries удаляются вместе со старым движком;
-    * расчётные данные автоматически НЕ очищаются (раньше — однократно по маркеру
-      в settings); маркер только записывается, очистка демо-базы — вручную.
+    * расчётные данные автоматически НЕ очищаются; демо-базу пересоздают вручную.
     """
     from sqlalchemy import inspect, text
 
@@ -630,27 +558,8 @@ def migrate_engine_v7() -> None:
         for legacy in ("timesheet_rows", "schedule_entries"):
             if legacy in existing:
                 con.execute(text(f"DROP TABLE IF EXISTS {legacy}"))
-        # Раньше при отсутствии маркера здесь выполнялся DELETE FROM по семи расчётным
-        # таблицам (Табель, смены, закрытия периодов…). Переход v4 → v7.1 уже выполнен
-        # на всех стендах, а автоматическое удаление на старте опасно: восстановление
-        # бэкапа без этой строки в settings молча стирало бы боевые данные.
-        # Теперь маркер только фиксируется; демо-базу при необходимости пересоздают
-        # вручную (удалить timetrack.db — сид заполнит её заново).
-        marker = con.execute(text(
-            "SELECT value FROM settings WHERE key = 'engine_v7_reset'")).scalar() \
-            if "settings" in existing else "n/a"
-        has_data = "tabel_days" in existing and con.execute(
-            text("SELECT 1 FROM tabel_days LIMIT 1")).first() is not None
-        if marker is None:
-            import logging
-            if has_data:  # на свежей базе предупреждать не о чем
-                logging.getLogger("uvicorn.error").warning(
-                    "migrate_engine_v7: маркер engine_v7_reset не найден — данные НЕ очищаются "
-                    "(автоочистка отключена), маркер записан")
-            con.execute(text(
-                "INSERT INTO settings (key, value, description) VALUES "
-                "('engine_v7_reset', '1', 'Движок v7.1: маркер миграции (автоочистка отключена)')"))
-
+        # Расчётные данные v4 автоматически не очищаются (раньше — однократно по маркеру
+        # engine_v7_reset): восстановление бэкапа без маркера молча стирало бы данные.
 
 def migrate_schedule_dict_simplify() -> None:
     """Упрощение словаря смен и базового цикла (решения владельца 18.10.2026).
@@ -751,11 +660,11 @@ def migrate_schedule_dict_simplify() -> None:
                 "INSERT INTO shift_types (code, name, kind, start_time, end_time, overnight,"
                 " color, sort_order, is_working, counts_as_worked, is_default_off, doc_type,"
                 " punch_in_allowed, punch_out_allowed, active)"
-                " VALUES ('TIMEOFF_HOURS', 'Отпросился (выходной за часы)', 'absence', '', '', 0,"
-                " '#0e9aa7', 110, 0, 0, 0, '', 1, 1, 1)"))
+                " VALUES ('TIMEOFF_HOURS', 'Отпросился (выходной за часы)', 'absence', '', '', FALSE,"
+                " '#0e9aa7', 110, FALSE, FALSE, FALSE, '', TRUE, TRUE, TRUE)"))
             asked = con.execute(text("SELECT id FROM shift_types WHERE code = 'TIMEOFF_HOURS'")).first()
-        doomed = [r["id"] for r in con.execute(text(
-            "SELECT id FROM shift_types WHERE kind = 'absence' AND code <> 'TIMEOFF_HOURS'"))]
+        doomed = list(con.execute(text(
+            "SELECT id FROM shift_types WHERE kind = 'absence' AND code <> 'TIMEOFF_HOURS'")).scalars())
         if doomed:
             ids = ", ".join(str(i) for i in doomed)
             con.execute(text(f"UPDATE schedule_absences SET kind_id = {asked[0]} "

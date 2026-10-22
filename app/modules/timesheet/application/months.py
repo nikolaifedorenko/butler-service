@@ -79,11 +79,6 @@ def is_first_period(period: Period, employment: Employment, granularity: str) ->
     return previous_period(period, granularity).end < employment.start
 
 
-def chain_last_period(period: Period, employment: Employment, granularity: str) -> bool:
-    """Последний период цепочки — содержащий Employment.end (R35)."""
-    return employment.end is None or next_period(period, granularity).start > employment.end
-
-
 def close_month(employee_id: str, year: int, month: int, now, ports):
     """Обёртка «Закрыть месяц» (16.6): пробрасывает now (v7/R10)."""
     from .close_period import close_period

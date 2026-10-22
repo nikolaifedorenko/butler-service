@@ -5,11 +5,11 @@
 ответ загрузки). До появления этого модуля маршрут существовал только как
 `/api/night/photos/{id}/file` — то есть каждая фотография отдавалась 404.
 
-Маршруты-дубли в `/api/night/photos/*` оставлены для совместимости со старыми
-ссылками и вызывают те же функции.
+Дубли `/api/night/photos/*` удалены (DEAD-02, 22.10.2026): ни интерфейс, ни выгрузки,
+ни сообщения службам на них не ссылаются.
 
-Доступ: любой авторизованный пользователь (фото ночного отчёта и возврата кара
-не содержат персональных данных третьих лиц); удаление — автор либо менеджер и выше.
+Доступ: просмотр — право раздела, к которому относится фото (night.view, cars.view);
+удаление — автор либо право media.delete_any; фото закрытого ночного отчёта не удаляется.
 
 Здесь же — `/api/photos/limits`: настроенные объектом лимиты медиа (размер фото и
 видео, сроки хранения). Они нужны интерфейсу для подсказок у кнопок загрузки во
@@ -41,7 +41,7 @@ def photo_limits(principal: Principal = Depends(current_principal),
 def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
                db: Session = Depends(get_db)):
     """Отдача оригинала фото. Только авторизованным; HEAD — для проверки доступности."""
-    p, path, mime = resolve_photo_file(db, photo_id)
+    p, path, mime = resolve_photo_file(db, photo_id, principal)
     return FileResponse(str(path), media_type=mime or "application/octet-stream",
                         filename=p.filename or None,
                         headers={"Cache-Control": "private, max-age=86400"})

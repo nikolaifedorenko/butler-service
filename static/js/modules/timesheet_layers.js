@@ -7,8 +7,8 @@
 async function loadSchedule() {
   $('#view-schedule').innerHTML = scheduleShell();
   bindScheduleToolbar();
-  if (state.user?.role === 'employee' && !state.shiftTypes.length) {
-    // легенде сетки нужен словарь смен (справочник сотрудников батлерам недоступен)
+  if (!state.shiftTypes.length) {
+    // легенде сетки нужен словарь смен (без employees.view справочник не грузится — app.js)
     try { state.shiftTypes = await api('/api/shift-types', { silent: true }); } catch { state.shiftTypes = []; }
   }
   const data = await api(`/api/schedule?year=${state.year}&month=${state.month}`);
@@ -137,7 +137,7 @@ function renderGrid() {
     }).join('');
 
     $('#grid-host').innerHTML = `<table class="sched"><thead>${head}</thead><tbody>${body}</tbody></table>`;
-    if (state.user?.role === 'employee') {
+    if (!can('schedule.edit')) {             // UI-02: право, а не роль — как у тулбара
       $('#grid-host').classList.add('ro');   // только просмотр: клики по ячейкам отключены
     } else {
       $$('#grid-host .cellbtn:not([disabled])').forEach(btn => btn.onclick = () => openCellModal(+btn.dataset.emp, btn.dataset.date));

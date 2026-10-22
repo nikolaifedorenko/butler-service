@@ -3,8 +3,8 @@
 Статус: **на согласовании у владельца** (концепт, до реализации).
 Инициатива владельца: «все настройки — добавление электрокаров, зон, чек-листов и т.п. —
 в разделе Настройки».
-Кликабельный концепт: [`docs/prototypes/settings-ia.html`](prototypes/settings-ia.html)
-(открыть в браузере; смоук — `npm run smoke:proto:settings`).
+Кликабельный концепт (реализован, в архиве): [`docs/archive/prototypes/settings-ia.html`](archive/prototypes/settings-ia.html)
+(открыть в браузере; смоук — `node docs/archive/prototypes/settings-ia.smoke.mjs`).
 
 **Профили использования (решение владельца 19.10.2026):**
 

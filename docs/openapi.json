@@ -770,90 +770,6 @@
         "title": "ContactIn",
         "type": "object"
       },
-      "ContinueIn": {
-        "properties": {
-          "employee_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Employee Ids"
-          },
-          "month": {
-            "title": "Month",
-            "type": "integer"
-          },
-          "only_empty": {
-            "default": true,
-            "title": "Only Empty",
-            "type": "boolean"
-          },
-          "year": {
-            "title": "Year",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "year",
-          "month"
-        ],
-        "title": "ContinueIn",
-        "type": "object"
-      },
-      "CopyIn": {
-        "properties": {
-          "dst_month": {
-            "title": "Dst Month",
-            "type": "integer"
-          },
-          "dst_year": {
-            "title": "Dst Year",
-            "type": "integer"
-          },
-          "employee_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Employee Ids"
-          },
-          "only_empty": {
-            "default": true,
-            "title": "Only Empty",
-            "type": "boolean"
-          },
-          "src_month": {
-            "title": "Src Month",
-            "type": "integer"
-          },
-          "src_year": {
-            "title": "Src Year",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "src_year",
-          "src_month",
-          "dst_year",
-          "dst_month"
-        ],
-        "title": "CopyIn",
-        "type": "object"
-      },
       "DatedAction": {
         "properties": {
           "anchor": {
@@ -1074,11 +990,6 @@
       },
       "EmployeeIn": {
         "properties": {
-          "balance_hours": {
-            "default": 0.0,
-            "title": "Balance Hours",
-            "type": "number"
-          },
           "contacts": {
             "default": [],
             "items": {
@@ -1165,9 +1076,15 @@
             "type": "string"
           },
           "role": {
-            "default": "employee",
-            "title": "Role",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
           },
           "schedule_group": {
             "default": "",
@@ -1681,97 +1598,6 @@
         "title": "OverrideIn",
         "type": "object"
       },
-      "PatternIn": {
-        "properties": {
-          "cycle": {
-            "default": "",
-            "title": "Cycle",
-            "type": "string"
-          },
-          "employee_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Employee Ids",
-            "type": "array"
-          },
-          "end_date": {
-            "format": "date",
-            "title": "End Date",
-            "type": "string"
-          },
-          "off_shift_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Off Shift Id"
-          },
-          "off_weekdays": {
-            "default": [
-              5,
-              6
-            ],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Off Weekdays",
-            "type": "array"
-          },
-          "offset": {
-            "default": 0,
-            "title": "Offset",
-            "type": "integer"
-          },
-          "only_empty": {
-            "default": false,
-            "title": "Only Empty",
-            "type": "boolean"
-          },
-          "pattern": {
-            "default": "2/2",
-            "title": "Pattern",
-            "type": "string"
-          },
-          "start_date": {
-            "format": "date",
-            "title": "Start Date",
-            "type": "string"
-          },
-          "sync_blocks": {
-            "default": true,
-            "title": "Sync Blocks",
-            "type": "boolean"
-          },
-          "value": {
-            "default": "",
-            "title": "Value",
-            "type": "string"
-          },
-          "work_shift_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Work Shift Id"
-          }
-        },
-        "required": [
-          "employee_ids",
-          "start_date",
-          "end_date"
-        ],
-        "title": "PatternIn",
-        "type": "object"
-      },
       "PeriodAction": {
         "properties": {
           "employee_ids": {
@@ -2162,6 +1988,17 @@
       },
       "SettingsIn": {
         "properties": {
+          "base_version_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
           "note": {
             "default": "",
             "title": "Note",
@@ -2359,11 +2196,6 @@
       },
       "TelegramCheckIn": {
         "properties": {
-          "api": {
-            "default": "",
-            "title": "Api",
-            "type": "string"
-          },
           "token": {
             "default": "",
             "title": "Token",
@@ -3126,26 +2958,6 @@
           }
         },
         "summary": "Change Password",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/auth/employees-for-demo": {
-      "get": {
-        "description": "Список сотрудников для быстрого переключения в демо-режиме.",
-        "operationId": "employees_for_demo_api_auth_employees_for_demo_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Employees For Demo",
         "tags": [
           "auth"
         ]
@@ -4382,24 +4194,6 @@
           "docs"
         ]
       },
-      "get": {
-        "description": "Сводка по бланкам: какие виды есть, у каких загружен фирменный .docx.",
-        "operationId": "get_templates_api_docs_templates_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Templates",
-        "tags": [
-          "docs"
-        ]
-      },
       "post": {
         "operationId": "upload_template_api_docs_templates_post",
         "parameters": [
@@ -4871,46 +4665,6 @@
           }
         },
         "summary": "Bank Adjust",
-        "tags": [
-          "directory"
-        ]
-      }
-    },
-    "/api/employees/{employee_id}/bank-adjustments": {
-      "get": {
-        "operationId": "bank_adjustments_api_employees__employee_id__bank_adjustments_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "employee_id",
-            "required": true,
-            "schema": {
-              "title": "Employee Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Bank Adjustments",
         "tags": [
           "directory"
         ]
@@ -6648,88 +6402,6 @@
         ]
       }
     },
-    "/api/night/photos/{photo_id}": {
-      "delete": {
-        "description": "Удалить фото — алиас канонического `DELETE /api/photos/{id}`.",
-        "operationId": "delete_photo_api_night_photos__photo_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "photo_id",
-            "required": true,
-            "schema": {
-              "title": "Photo Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Photo",
-        "tags": [
-          "night"
-        ]
-      }
-    },
-    "/api/night/photos/{photo_id}/file": {
-      "get": {
-        "description": "Отдача оригинала фото — алиас канонического `/api/photos/{id}/file`.\n\nМаршрут сохранён для совместимости со старыми ссылками; реализация общая\n(см. app/api/photos_api.py), чтобы поведение не могло разъехаться.",
-        "operationId": "photo_file_night_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "photo_id",
-            "required": true,
-            "schema": {
-              "title": "Photo Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Photo File",
-        "tags": [
-          "night"
-        ]
-      }
-    },
     "/api/night/reports": {
       "get": {
         "description": "Архив ночных отчётов (супервайзер и выше): список с итогами (чистое чтение).",
@@ -8055,58 +7727,6 @@
         ]
       }
     },
-    "/api/notify/dispatches": {
-      "get": {
-        "description": "Общий журнал отправок приложения (фильтр по разделу).\n\nИстория не редактируется: видно, какой раздел, кто, кому и что отправил,\nстатус доставки и ошибку. Журнал доступен менеджменту; в разделе «Ночной\nотчёт» есть своя обёртка /api/night/reports/{id}/dispatches для батлеров.",
-        "operationId": "list_dispatches_api_notify_dispatches_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "domain",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Domain",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Dispatches",
-        "tags": [
-          "notify"
-        ]
-      }
-    },
     "/api/notify/dispatches/export.csv": {
       "get": {
         "description": "Выгрузка общего журнала отправок в CSV (разборы, отчёт руководству).\n\nЖурнал общий для всех разделов: колонка «Раздел» показывает, откуда отправка\n(night — ночной отчёт, cars — электрокары и т. д.). Состав позиции хранится\nснимком, поэтому выгрузка закрытой смены не меняется со временем.",
@@ -9022,185 +8642,6 @@
           }
         },
         "summary": "Remove Absence",
-        "tags": [
-          "schedule"
-        ]
-      }
-    },
-    "/api/schedule/clear-month": {
-      "post": {
-        "description": "Очистка Табеля месяца (и сгенерированного Графика); manual-строки — только с\nфлагом manual_too. Закрытые периоды не трогаются.",
-        "operationId": "clear_month_api_schedule_clear_month_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClearMonthIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Clear Month",
-        "tags": [
-          "schedule"
-        ]
-      }
-    },
-    "/api/schedule/continue": {
-      "post": {
-        "description": "«Продолжить график»: заполняет Табель следующего месяца по циклам и\nперегенерирует График.",
-        "operationId": "continue_schedule_api_schedule_continue_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ContinueIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Continue Schedule",
-        "tags": [
-          "schedule"
-        ]
-      }
-    },
-    "/api/schedule/copy": {
-      "post": {
-        "description": "Копирование ячеек Табеля месяц-в-месяц (по дням месяца); закрытые периоды\nне трогаются (16.5).",
-        "operationId": "copy_period_api_schedule_copy_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CopyIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Copy Period",
-        "tags": [
-          "schedule"
-        ]
-      }
-    },
-    "/api/schedule/fill-pattern": {
-      "post": {
-        "description": "Шаблон блока/цикла: сохраняет назначение блока и ЗАПОЛНЯЕТ ТАБЕЛЬ по циклу;\nГрафик перегенерируется из Табеля (16.3).",
-        "operationId": "fill_pattern_api_schedule_fill_pattern_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PatternIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Fill Pattern",
-        "tags": [
-          "schedule"
-        ]
-      }
-    },
-    "/api/schedule/patterns": {
-      "get": {
-        "operationId": "get_patterns_api_schedule_patterns_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Patterns",
         "tags": [
           "schedule"
         ]

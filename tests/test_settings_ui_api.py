@@ -154,39 +154,6 @@ class TestHealth(unittest.TestCase):
         d = self.admin.get("/api/engine-settings/health").json()
         self.assertEqual([c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"], [])
 
-    def test_07_missing_shifts_migration_is_noop(self):
-        """18.10.2026: _migrate_missing_shifts — историческая миграция, no-op.
-        Виды отсутствий удалены из сида и модели; словарём правит владелец."""
-        from app.bootstrap.migrations import _migrate_missing_shifts
-
-        _migrate_missing_shifts()
-        _migrate_missing_shifts()          # идемпотентно
-        db = SessionLocal()
-        try:
-            st = db.scalars(select(ShiftType).where(ShiftType.code == "ABSENT_UNKNOWN")).first()
-            self.assertIsNone(st, "виды отсутствий в словарь не возвращаются")
-        finally:
-            db.close()
-
-    def test_08_sick_unpaid_migration_idempotent(self):
-        """16.10.2026: «НБ» — артефакт; 18.10.2026: все виды отсутствий, кроме
-        системного «Отпросился», удалены миграцией упрощения. Историческая
-        _migrate_remove_sick_unpaid — no-op, идемпотентна."""
-        from app.bootstrap.migrations import _migrate_remove_sick_unpaid
-
-        _migrate_remove_sick_unpaid()
-        _migrate_remove_sick_unpaid()
-        db = SessionLocal()
-        try:
-            st = db.scalars(select(ShiftType).where(ShiftType.code == "SICK_UNPAID")).first()
-            self.assertIsNone(st)
-            absence = db.scalars(select(ShiftType).where(
-                ShiftType.kind == "absence", ShiftType.archived_at.is_(None),
-                ShiftType.active.is_(True))).all()
-            self.assertEqual([k.code for k in absence], ["TIMEOFF_HOURS"])
-        finally:
-            db.close()
-
 class TestResolver(unittest.TestCase):
     """«Проверитель»: какое значение подействовало и на каком уровне приоритета."""
 

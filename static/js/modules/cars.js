@@ -38,7 +38,7 @@ async function loadCars() {
   $('#cars-add').onclick = () => settingsOpen('cars');
   $('#cars-q').oninput = e => { carsState.q = e.target.value.trim().toLowerCase(); renderCars(); };
   await fetchCars();
-  poll('cars', () => { if (state.view === 'cars') fetchCars(true); }, 60000);
+  poll('cars', () => { if (state.view === 'cars') fetchCars(true); });
 }
 
 async function fetchCars(silent) {
@@ -178,12 +178,10 @@ function renderCars() {
     </div>
     <p class="hint">Правила: один сотрудник — один кар; вернуть может тот, кто брал (внешнего — любой);
     замечания при возврате автоматически переводят кар в «на обслуживании», снять — менеджер или администратор.
-    Время всех операций — часовому поясу объекта (${esc(APP_TZ_LABEL)}).</p>`;
+    Время всех операций — по часовому поясу объекта${state.appTz ? ` (${esc(state.appTz)})` : ''}.</p>`;
 
   bindCarActions($('#cars-body'));
 }
-
-const APP_TZ_LABEL = 'Europe/Moscow';
 
 function bindCarActions(root) {
   const byId = id => (carsState.data?.cars || []).find(c => c.id === Number(id));
@@ -310,7 +308,7 @@ function carReturnModal(car, after) {
           <select id="cr-charge">${CHARGE_OPTS.map(([v, t]) =>
             `<option value="${v}" ${v === car.charge ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       </div>
-      ${state.user?.role !== 'employee' ? personFieldHtml('cr') : ''}
+      ${can('cars.issue') ? personFieldHtml('cr') : ''}
       <div class="opt-group-title">Состояние при возврате</div>
       <div class="check-list" id="cr-state" style="max-height:none">
         <label class="chk"><input type="checkbox" id="cr-ok" ${car.condition !== 'bad' ? 'checked' : ''}> Технически исправен</label>
@@ -336,7 +334,8 @@ function carReturnModal(car, after) {
         const charge = $('#cr-charge').value;
         const onCharge = $('#cr-oncharge').checked;
         const fd = new FormData();
-        const person = state.user?.role !== 'employee' ? personFieldValue('cr') : { employee_id: null, name: '' };
+        // «кто вернул» за другого — только с правом выдачи (решение владельца В-11)
+        const person = can('cars.issue') ? personFieldValue('cr') : { employee_id: null, name: '' };
         if (person.employee_id) fd.append('by_employee_id', String(person.employee_id));
         if (person.name) fd.append('by_name', person.name);
         fd.append('location', $('#cr-location').value || '');

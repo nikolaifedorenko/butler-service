@@ -22,12 +22,13 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.media import UploadRef, max_upload_bytes, photos_of, read_upload_streaming
-from app.core.permissions import principal_permissions, require_perm
+from app.core.permissions import has_perm, principal_permissions, require_perm
 
 from ..adapters.orm import CarHistory
 from ..application.cars import (
     ACTION_TITLES,
     STATUS_TITLES,
+    CarConflict,
     CarInterceptAssigned,
     CarOpError,
     add_location,
@@ -54,7 +55,7 @@ router = APIRouter(prefix="/api/cars", tags=["cars"])
 def _err(e: CarOpError) -> HTTPException:
     if isinstance(e, CarInterceptAssigned):
         return HTTPException(status_code=409, detail={"interception": True, "message": str(e)})
-    return HTTPException(status_code=400, detail=str(e))
+    return HTTPException(status_code=409 if isinstance(e, CarConflict) else 400, detail=str(e))
 
 
 class TakeIn(BaseModel):
@@ -147,7 +148,7 @@ def location_delete(loc_id: int, db: Session = Depends(get_db),
 
 @router.get("/locations")
 def locations(db: Session = Depends(get_db), principal: Principal = Depends(require_perm("cars.view"))):
-    show_all = principal.role in ("admin", "manager", "supervisor")
+    show_all = has_perm(db, principal, "cars.issue")     # неактивные места — супервайзеру и выше
     rows = list_locations(db)
     return {"locations": [r for r in rows if r["active"] or show_all]}
 
@@ -289,22 +290,26 @@ def car_give(car_id: int, payload: GiveIn, db: Session = Depends(get_db),
 
 
 @router.post("/{car_id}/return")
-async def car_return(car_id: int,
-                     by_employee_id: Optional[int] = Form(None),
-                     by_name: str = Form(""),
-                     location: str = Form(""),
-                     charge: str = Form("full"),
-                     canopy: bool = Form(True),
-                     condition: str = Form("ok"),
-                     trash: bool = Form(False),
-                     clean: bool = Form(True),
-                     on_charge: bool = Form(False),
-                     key_returned: Optional[bool] = Form(None),
-                     comment: str = Form(""),
-                     file: Optional[UploadFile] = File(None),
-                     db: Session = Depends(get_db),
-                     principal: Principal = Depends(require_perm("cars.use"))):
+def car_return(car_id: int,
+               by_employee_id: Optional[int] = Form(None),
+               by_name: str = Form(""),
+               location: str = Form(""),
+               charge: str = Form("full"),
+               canopy: bool = Form(True),
+               condition: str = Form("ok"),
+               trash: bool = Form(False),
+               clean: bool = Form(True),
+               on_charge: bool = Form(False),
+               key_returned: Optional[bool] = Form(None),
+               comment: str = Form(""),
+               file: Optional[UploadFile] = File(None),
+               db: Session = Depends(get_db),
+               principal: Principal = Depends(require_perm("cars.use"))):
     """Возврат кара (multipart): состояние + фото доказательств (оригиналы)."""
+    # BUG-03 (решение владельца В-11): «кто вернул» за другого — только с правом выдачи
+    if (by_employee_id or by_name.strip()) and not has_perm(db, principal, "cars.issue"):
+        raise HTTPException(status_code=403, detail="Указать, кто вернул кар, может только "
+                                                    "сотрудник с правом выдачи каров")
     refs: list[UploadRef] = []
     try:
         car = get_car(db, car_id)
@@ -312,7 +317,7 @@ async def car_return(car_id: int,
         if file is not None:
             limit = max_upload_bytes(db)
             # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
-            ref = await read_upload_streaming(file, limit)
+            ref = read_upload_streaming(file, limit)
             if ref.size:
                 refs.append(ref)
             else:

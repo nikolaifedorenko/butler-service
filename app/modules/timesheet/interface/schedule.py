@@ -29,12 +29,10 @@ from app.core.permissions import principal_permissions, require_perm
 from app.core.time import TZ, now_local, utc_to_local
 from app.modules.docs.application.doc_render import hours_text
 from app.modules.employees.application import (
-    GROUP_ORDER,
     Employee,
     EmploymentPeriod,
     employed_on,
     group_index,
-    group_kind,
     normalize_group,
     periods_of,
     ranges_from_periods,
@@ -61,9 +59,7 @@ from ..application.engine_common import (
 )
 from ..application.errors import ApplicationError
 from ..application.months import month_period
-from ..application.schedule_patterns import pattern_list, validate_cycle_string
-from ..application.schedule_view import rebuild_generated_for_days, rebuild_generated_schedule
-from ..application.tabel_fill import fill_timesheet_from_cycles
+from ..application.schedule_view import rebuild_generated_for_days
 from ..domain.settings.types import Settings
 from ..domain.types.entities import Period, Shift
 from ..domain.types.errors import DomainError
@@ -966,248 +962,11 @@ def _kind_brief(kind: ShiftType) -> dict:
             "color": kind.color, "doc_type": kind.doc_type or ""}
 
 
-# ── циклы: инструмент заполнения Табеля (решение владельца) ───────────────────
-
-class PatternIn(BaseModel):
-    employee_ids: list[int]
-    start_date: dt.date
-    end_date: dt.date
-    value: str = ""               # значение рабочего дня («Я 10,75») — ключ CFG-WINDOWS
-    work_shift_id: Optional[int] = None   # легаси-параметр, игнорируется (18.10.2026)
-    off_shift_id: Optional[int] = None
-    pattern: str = "2/2"
-    cycle: str = ""
-    off_weekdays: list[int] = [5, 6]
-    offset: int = 0
-    only_empty: bool = False
-    sync_blocks: bool = True
-
-
-@router.get("/patterns")
-def get_patterns(principal: Principal = Depends(require_perm("schedule.edit"))):
-    return {"patterns": pattern_list(), "groups": GROUP_ORDER}
-
-
-@router.post("/fill-pattern")
-def fill_pattern(payload: PatternIn, principal: Principal = Depends(require_perm("schedule.edit")),
-                 db: Session = Depends(get_db)):
-    """Шаблон блока/цикла: сохраняет назначение блока и ЗАПОЛНЯЕТ ТАБЕЛЬ по циклу;
-    График перегенерируется из Табеля (16.3)."""
-    value = (payload.value or "").strip()
-    if not value:
-        raise HTTPException(status_code=422,
-                            detail="Укажите значение рабочего дня (код и часы, «Я 10,75»)")
-    try:
-        validate_cycle_string(payload.pattern, payload.cycle)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    emps = [db.get(Employee, i) for i in payload.employee_ids]
-    emps = [e for e in emps if e is not None and e.deleted_at is None]
-    if payload.sync_blocks:
-        for emp in emps:
-            _assign_block(db, emp, payload, value)
-    res = _fill_and_rebuild(db, emps, payload.start_date, payload.end_date,
-                            payload.only_empty, principal)
-    audit(db, principal, "schedule_fill_pattern",
-          f"{payload.start_date}..{payload.end_date}",
-          {"employees": payload.employee_ids, "pattern": payload.pattern,
-           "cycle": payload.cycle, **{k: res[k] for k in ("written", "skipped")}})
-    db.commit()
-    return res
-
-
-def _assign_block(db: Session, emp: Employee, payload: PatternIn, value: str) -> None:
-    import json
-    group = normalize_group(emp.schedule_group) or "Другие смены"
-    kind = group_kind(group)
-    if payload.cycle or payload.pattern == "custom":
-        cycle = (payload.cycle or "").strip()
-        if cycle and not re.fullmatch(r"\d+\s*/\s*\d+", cycle):
-            cycle = "custom:" + cycle          # произвольная последовательность «ВВРРРРВВ»
-        pattern_json = json.dumps({"kind": "cycle",
-                                   "cycle": cycle or payload.pattern,
-                                   "value": value,
-                                   "anchor": payload.start_date.isoformat(),
-                                   "label": f"{payload.cycle or payload.pattern} {value}"},
-                                  ensure_ascii=False)
-    elif kind == "week5" or payload.pattern == "5/2":
-        pattern_json = json.dumps({"kind": "week5", "off_weekdays": payload.off_weekdays,
-                                   "value": value,
-                                   "label": f"{payload.pattern}, вых. "
-                                            f"{'/'.join(str(x) for x in payload.off_weekdays)}"},
-                                  ensure_ascii=False)
-    else:
-        pattern_json = json.dumps({"kind": "base", "value": value,
-                                   "invert": bool(payload.offset)},
-                                  ensure_ascii=False)
-    existing = db.scalar(select(BlockAssignment).where(
-        BlockAssignment.employee_id == emp.id, BlockAssignment.group == group,
-        BlockAssignment.start_date == payload.start_date).limit(1))
-    if existing is not None:
-        existing.pattern_json = pattern_json          # повторное заполнение той же даты
-        for ba in db.scalars(select(BlockAssignment).where(
-                BlockAssignment.employee_id == emp.id, BlockAssignment.end_date.is_(None),
-                BlockAssignment.id != existing.id)):
-            ba.end_date = payload.start_date - dt.timedelta(days=1)
-    else:
-        for ba in db.scalars(select(BlockAssignment).where(
-                BlockAssignment.employee_id == emp.id, BlockAssignment.end_date.is_(None))):
-            ba.end_date = payload.start_date - dt.timedelta(days=1)
-        db.add(BlockAssignment(employee_id=emp.id, group=group,
-                               start_date=payload.start_date, end_date=None,
-                               pattern_json=pattern_json))
-    emp.schedule_pattern = payload.cycle or payload.pattern
-    emp.schedule_anchor = payload.start_date
-    db.flush()
-
-
-def _fill_and_rebuild(db: Session, emps: list[Employee], first: dt.date, last: dt.date,
-                      only_empty: bool, principal: Principal) -> dict:
-    st = _settings(db, month_period(first.year, first.month))
-    res = fill_timesheet_from_cycles(db, emps, first, last, st, overwrite=not only_empty,
-                                     actor_id=principal.user.id)
-    ports = engine_ports(db, principal, now_utc())
-    months = _months_between(first, last)
-    for emp in emps:
-        for m in months:
-            rebuild_generated_schedule(str(emp.id), m, ports)
-    return res
-
-
-def _months_between(first: dt.date, last: dt.date) -> list[Period]:
-    out = []
-    y, m = first.year, first.month
-    while (y, m) <= (last.year, last.month):
-        out.append(month_period(y, m))
-        y, m = (y + (m == 12), m % 12 + 1)
-    return out
-
-
-class ContinueIn(BaseModel):
-    employee_ids: Optional[list[int]] = None
-    year: int
-    month: int
-    only_empty: bool = True
-
-
-@router.post("/continue")
-def continue_schedule(payload: ContinueIn, principal: Principal = Depends(require_perm("schedule.edit")),
-                      db: Session = Depends(get_db)):
-    """«Продолжить график»: заполняет Табель следующего месяца по циклам и
-    перегенерирует График."""
-    ensure_period(payload.year, payload.month)
-    first, last = _month_bounds(payload.year, payload.month)
-    emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
-    emps = [e for e in emps if e is not None and e.deleted_at is None]
-    if not emps:
-        emps = _visible_employees(db, first, last)[0]
-    res = _fill_and_rebuild(db, emps, first, last, payload.only_empty, principal)
-    audit(db, principal, "schedule_continue", f"{payload.year}-{payload.month:02d}",
-          {"employees": len(emps), **{k: res[k] for k in ("written", "skipped")}})
-    db.commit()
-    return res
-
-
-class CopyIn(BaseModel):
-    employee_ids: Optional[list[int]] = None
-    src_year: int
-    src_month: int
-    dst_year: int
-    dst_month: int
-    only_empty: bool = True
-
-
-@router.post("/copy")
-def copy_period(payload: CopyIn, principal: Principal = Depends(require_perm("schedule.edit")),
-                db: Session = Depends(get_db)):
-    """Копирование ячеек Табеля месяц-в-месяц (по дням месяца); закрытые периоды
-    не трогаются (16.5)."""
-    from ..application import timesheet_edit
-    ensure_period(payload.src_year, payload.src_month)
-    ensure_period(payload.dst_year, payload.dst_month)
-    src_first, src_last = _month_bounds(payload.src_year, payload.src_month)
-    dst_first, dst_last = _month_bounds(payload.dst_year, payload.dst_month)
-    ports = engine_ports(db, principal, now_utc())
-    emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
-    emps = [e for e in emps if e is not None and e.deleted_at is None] or \
-        _visible_employees(db, dst_first, dst_last)[0]
-    src_rows = {(r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
-        TabelDay.employee_id.in_([e.id for e in emps]), TabelDay.date >= src_first,
-        TabelDay.date <= src_last))} if emps else {}
-    copied, skipped, errors = 0, 0, []
-    touched: dict[int, list[dt.date]] = {}   # пакетная перегенерация Графика (P0-3)
-    for emp in emps:
-        if timesheet_edit.lock_state(str(emp.id), dst_first, ports) == "locked":
-            skipped += 1
-            continue
-        for offset in range(min((src_last - src_first).days, (dst_last - dst_first).days) + 1):
-            src = src_rows.get((emp.id, src_first + dt.timedelta(days=offset)))
-            if src is None:
-                continue
-            dst_day = dst_first + dt.timedelta(days=offset)
-            dst_row = db.scalar(select(TabelDay).where(TabelDay.employee_id == emp.id,
-                                                       TabelDay.date == dst_day))
-            if dst_row is not None and payload.only_empty:
-                skipped += 1
-                continue
-            try:
-                timesheet_edit.save_timesheet_day(
-                    str(emp.id), dst_day, src.code,
-                    src.plan_minutes or None, ports, rebuild=False)
-                copied += 1
-                touched.setdefault(emp.id, []).append(dst_day)
-            except (DomainError, ApplicationError) as exc:
-                # не HTTP-ошибка: массовое копирование, отказ дня — в payload (200)
-                errors.append({"employee_id": emp.id, "date": dst_day.isoformat(),
-                               "error": error_text(exc)})
-    for emp_id, days in touched.items():
-        rebuild_generated_for_days(str(emp_id), days, ports)
-    audit(db, principal, "schedule_copy",
-          f"{payload.src_year}-{payload.src_month:02d}→{payload.dst_year}-{payload.dst_month:02d}",
-          {"copied": copied})
-    db.commit()
-    return {"ok": not errors, "copied": copied, "skipped": skipped, "errors": errors[:20]}
-
-
 class ClearMonthIn(BaseModel):
     employee_ids: Optional[list[int]] = None
     year: int
     month: int
     manual_too: bool = False
-
-
-@router.post("/clear-month")
-def clear_month(payload: ClearMonthIn, principal: Principal = Depends(require_perm("schedule.edit")),
-                db: Session = Depends(get_db)):
-    """Очистка Табеля месяца (и сгенерированного Графика); manual-строки — только с
-    флагом manual_too. Закрытые периоды не трогаются."""
-    from ..application import timesheet_edit
-    ensure_period(payload.year, payload.month)
-    first, last = _month_bounds(payload.year, payload.month)
-    ports = engine_ports(db, principal, now_utc())
-    emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
-    emps = [e for e in emps if e is not None and e.deleted_at is None] or \
-        _visible_employees(db, first, last)[0]
-    cleared, skipped = 0, 0
-    for emp in emps:
-        if timesheet_edit.lock_state(str(emp.id), first, ports) == "locked":
-            skipped += 1
-            continue
-        q = select(TabelDay).where(TabelDay.employee_id == emp.id, TabelDay.date >= first,
-                                   TabelDay.date <= last)
-        if not payload.manual_too:
-            q = q.where(TabelDay.source != "manual")
-        rows = list(db.scalars(q))
-        for row in rows:
-            db.delete(row)
-            cleared += 1
-        db.flush()      # rebuild читает ту же сессию (autoflush off) — не должен видеть удалённое
-        schedule_view.rebuild_generated_schedule(str(emp.id), month_period(payload.year,
-                                                                          payload.month), ports)
-    audit(db, principal, "schedule_clear_month", f"{payload.year}-{payload.month:02d}",
-          {"cleared": cleared})
-    db.commit()
-    return {"ok": True, "cleared": cleared, "skipped_employees": skipped}
 
 
 @router.post("/reset-month")

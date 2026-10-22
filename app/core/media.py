@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, select
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .audit import audit
@@ -56,6 +56,7 @@ class Photo(Base):
     """
 
     __tablename__ = "photos"
+    __table_args__ = (Index("ix_photos_kind_ref", "kind", "ref_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(32), index=True)   # night_item | car_return | car_check
@@ -145,6 +146,16 @@ def set_rules_provider(fn) -> None:
     _RULES_PROVIDER = fn
 
 
+# «Это фото удалять нельзя» решает модуль-владелец (закрытый ночной отчёт, решение
+# владельца В-4): fn(db, photo) -> причина отказа или None; регистрирует composition root.
+_DELETE_GUARD = None
+
+
+def set_delete_guard(fn) -> None:
+    global _DELETE_GUARD
+    _DELETE_GUARD = fn
+
+
 def media_limits(db: Session) -> dict:
     """Настроенные объектом лимиты медиа: размер (МБ) и срок хранения (дни)."""
     r = _RULES_PROVIDER(db) if _RULES_PROVIDER is not None else {}
@@ -198,8 +209,11 @@ class UploadRef:
         Path(self.tmp_path).unlink(missing_ok=True)
 
 
-async def read_upload_streaming(file, limit: int) -> UploadRef:
-    """UploadFile (duck-typed: async .read(size), .filename) → временный файл.
+def read_upload_streaming(file, limit: int) -> UploadRef:
+    """UploadFile (duck-typed: .file — синхронный файловый объект, .filename) → временный файл.
+
+    Синхронно (CONC-04): обработчики загрузок — обычные `def`, FastAPI выполняет их в пуле
+    потоков, и запись на диск, БД и commit не держат event loop воркера.
 
     Превышение limit прерывает чтение СРАЗУ (PayloadTooLarge → 413, текст прежний —
     «Файл больше N МБ»); при любой ошибке временный файл удаляется.
@@ -211,7 +225,7 @@ async def read_upload_streaming(file, limit: int) -> UploadRef:
     try:
         with os.fdopen(fd, "wb") as out:
             while True:
-                chunk = await file.read(STREAM_CHUNK)
+                chunk = file.file.read(STREAM_CHUNK)
                 if not chunk:
                     break
                 if len(head) < SNIFF_BYTES:
@@ -371,7 +385,12 @@ def cleanup_photos(db: Session, days: Optional[int] = None) -> int:
     limits = {"photo": lim["photo_retention_days"], "video": lim["video_retention_days"]}
     if days is not None:
         limits = {"photo": days, "video": days}
-    oldest = now_local() - dt.timedelta(days=max(limits.values()))
+    positive = [d for d in limits.values() if d > 0]
+    if not positive:
+        return 0                                # всё хранится бессрочно
+    # кандидаты — старше САМОГО КОРОТКОГО срока; каждый файл ниже сверяется со своим
+    # (было max(): при фото 30 / видео 180 дней фото жили 180, аудит BUG-01)
+    oldest = now_local() - dt.timedelta(days=min(positive))
     removed = 0
     for p in db.scalars(select(Photo).where(Photo.created_at < oldest)):
         keep = limits.get(p.media_type or "photo", 0)
@@ -393,26 +412,40 @@ def cleanup_photos(db: Session, days: Optional[int] = None) -> int:
 # night_api импортировал роут-функции photos_api (api → api), теперь оба
 # модуля вызывают сервис (контракт import-linter «api-модули независимы»).
 
-def resolve_photo_file(db: Session, photo_id: int):
+# фото видно тому, кто видит раздел-владелец (аудит 21.10.2026, AUTHZ-07)
+_VIEW_PERMS = {"night_item": ("night.view",), "car_return": ("cars.view",),
+               "car_check": ("night.view", "cars.view")}
+
+
+def resolve_photo_file(db: Session, photo_id: int, principal):
     """(фото, путь, mime) для отдачи оригинала.
 
-    NotFound — фото нет в БД; Gone — файл удалён по сроку хранения (запись
-    в БД остаётся, комментарии и история не теряются)."""
+    NotFound — фото нет в БД; Forbidden — нет права раздела, которому принадлежит фото;
+    Gone — файл удалён по сроку хранения (запись в БД остаётся)."""
+    from .permissions import principal_permissions
+
     p, path, mime = get_photo_file(db, photo_id)
     if p is None:
         raise NotFound("Фото не найдено")
+    if not set(_VIEW_PERMS.get(p.kind, ())) & principal_permissions(db, principal):
+        raise Forbidden("Нет доступа к этому фото")
     if path is None:
         raise Gone("Файл удалён по сроку хранения")
     return p, path, mime
 
 
 def delete_photo(db: Session, principal, photo_id: int) -> None:
-    """Удалить фото: своё — любой пользователь, чужое — менеджер и выше."""
+    """Удалить фото: своё — любой пользователь, чужое — право media.delete_any (супервайзер+)."""
+    from .permissions import has_perm
+
     photo = db.get(Photo, photo_id)
     if photo is None:
         raise NotFound("Фото не найдено")
-    if photo.uploaded_by != principal.user.id and not principal.is_manager:
+    if photo.uploaded_by != principal.user.id and not has_perm(db, principal, "media.delete_any"):
         raise Forbidden("Можно удалять только свои фото")
+    reason = _DELETE_GUARD(db, photo) if _DELETE_GUARD is not None else None
+    if reason:
+        raise Forbidden(reason)
     unlink_photo(photo)
     db.delete(photo)
     audit(db, principal, "photo_delete", f"photo:{photo_id}",

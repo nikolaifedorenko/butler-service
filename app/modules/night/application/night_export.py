@@ -214,7 +214,7 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
             row[3].text = d.get("channel_title") or d.get("channel") or "—"
             row[4].text = d.get("target") or "—"
             tail = f"{d.get('items_count', 0)} / {d.get('media_count', 0)} / " \
-                   f"{'отправлено' if d.get('status') == 'sent' else 'ОШИБКА'}"
+                   f"{'ОШИБКА' if d.get('status') == 'failed' else d.get('status_title', '')}"
             if d.get("attempts", 1) > 1:
                 tail += f" (попыток: {d['attempts']})"
             if d.get("error"):

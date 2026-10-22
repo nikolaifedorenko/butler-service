@@ -32,6 +32,8 @@ def wire() -> None:
     from app.core import auth as core_auth
     from app.core import media
     from app.modules.employees.adapters.orm import Employee
+    from app.modules.night.application.night import photo_delete_blocker
     from app.modules.timesheet.application import schedule_helpers
     media.set_rules_provider(schedule_helpers.load_rules)
+    media.set_delete_guard(photo_delete_blocker)
     core_auth.set_employee_loader(lambda db, pk: db.get(Employee, pk))

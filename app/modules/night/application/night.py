@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import now_local
-from app.modules.cars.application.catalog import Car
+from app.modules.cars.application.catalog import Car, CarNightCheck
 from app.modules.notify.application.catalog import ResponsibilityService
 
 from ..adapters.orm import (
@@ -523,3 +523,20 @@ def report_dict(rep: NightReport, *, with_items: bool = True, db=None) -> dict:
     if db is not None:
         data["car_checks"], data["interceptions"] = car_checks_of(db, rep)
     return data
+
+
+def photo_delete_blocker(db: Session, photo) -> Optional[str]:
+    """Фото закрытого ночного отчёта не удаляется (решение владельца В-4): ошибочное —
+    сначала переоткрыть отчёт. None — удалять можно (core/media.delete_photo)."""
+    report_id = None
+    if photo.kind == "night_item":
+        item = db.get(NightCheckItem, photo.ref_id)
+        sec = db.get(NightAreaSection, item.section_id) if item else None
+        report_id = sec.report_id if sec else None
+    elif photo.kind == "car_check":
+        check = db.get(CarNightCheck, photo.ref_id)
+        report_id = check.report_id if check else None
+    rep = db.get(NightReport, report_id) if report_id else None
+    if rep is not None and rep.status == "closed":
+        return f"Отчёт за {rep.date:%d.%m.%Y} закрыт — переоткройте его, чтобы удалить фото"
+    return None

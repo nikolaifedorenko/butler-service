@@ -6,14 +6,11 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.settings_store import Setting
-
-from ..adapters.orm import ShiftType
 
 # прочие правила объекта, не относящиеся к расчёту часов
 DEFAULT_RULES = {
@@ -67,22 +64,3 @@ def at(day: dt.date, hhmm: str, plus_days: int = 0) -> dt.datetime:
     h, m = parse_hhmm(hhmm)
     return dt.datetime(day.year, day.month, day.day, h, m) + dt.timedelta(days=plus_days)
 
-
-def shift_window(shift: Optional[ShiftType], date: dt.date, rules: Optional[dict] = None):
-    """Плановое окно смены Графика (локальное naive): (начало, конец); для отсутствий — (None, None)."""
-    if not shift or shift.kind != "work" or not shift.start_time or not shift.end_time:
-        return None, None
-    start = at(date, shift.start_time)
-    s_min = parse_hhmm(shift.start_time)[0] * 60 + parse_hhmm(shift.start_time)[1]
-    e_min = parse_hhmm(shift.end_time)[0] * 60 + parse_hhmm(shift.end_time)[1]
-    plus = 1 if (shift.overnight or e_min <= s_min) else 0
-    return start, at(date, shift.end_time, plus)
-
-
-
-
-
-def month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:
-    first = dt.date(year, month, 1)
-    nxt = dt.date(year + (month == 12), month % 12 + 1, 1)
-    return first, nxt - dt.timedelta(days=1)

@@ -1,21 +1,29 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-10-21a';
+const VERSION = 'tt-2026-10-22d';
+// содержимое оболочки: e7d96dad7174c3ec
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-10-21a',
-  '/static/js/app.js?v=2026-10-21a',
-  '/static/js/core.js?v=2026-10-21a',
-  '/static/js/modules/cars.js?v=2026-10-21a',
-  '/static/js/modules/dicts.js?v=2026-10-21a',
-  '/static/js/modules/docs.js?v=2026-10-21a',
-  '/static/js/modules/employees.js?v=2026-10-21a',
-  '/static/js/modules/me.js?v=2026-10-21a',
-  '/static/js/modules/night.js?v=2026-10-21a',
-  '/static/js/modules/settings.js?v=2026-10-21a',
-  '/static/js/modules/timesheet_layers.js?v=2026-10-21a',
-  '/static/js/modules/timesheet_v4.js?v=2026-10-21a',
+  '/static/css/app.css?v=2026-10-22d',
+  '/static/js/app.js?v=2026-10-22d',
+  '/static/js/core.js?v=2026-10-22d',
+  '/static/js/modules/access.js?v=2026-10-22d',
+  '/static/js/modules/audit.js?v=2026-10-22d',
+  '/static/js/modules/cars.js?v=2026-10-22d',
+  '/static/js/modules/dicts.js?v=2026-10-22d',
+  '/static/js/modules/docs.js?v=2026-10-22d',
+  '/static/js/modules/employees.js?v=2026-10-22d',
+  '/static/js/modules/engine_settings.js?v=2026-10-22d',
+  '/static/js/modules/fact.js?v=2026-10-22d',
+  '/static/js/modules/marks.js?v=2026-10-22d',
+  '/static/js/modules/me.js?v=2026-10-22d',
+  '/static/js/modules/mgmt.js?v=2026-10-22d',
+  '/static/js/modules/night.js?v=2026-10-22d',
+  '/static/js/modules/settings.js?v=2026-10-22d',
+  '/static/js/modules/tabel.js?v=2026-10-22d',
+  '/static/js/modules/timesheet_common.js?v=2026-10-22d',
+  '/static/js/modules/timesheet_layers.js?v=2026-10-22d',
   '/manifest.webmanifest',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',

@@ -9,6 +9,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -195,7 +196,8 @@ class NightAreaSection(Base):
     """
 
     __tablename__ = "night_area_sections"
-    __table_args__ = (UniqueConstraint("report_id", "area_id", name="uq_night_section_area"),)
+    __table_args__ = (UniqueConstraint("report_id", "area_id", name="uq_night_section_area"),
+                      Index("ix_night_area_sections_zone", "zone_id"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
     report_id: Mapped[int] = mapped_column(ForeignKey("night_reports.id"), index=True)
@@ -224,6 +226,7 @@ class NightCheckItem(Base):
     """Пункт чек-листа области в конкретном отчёте (снимок + ответ батлера)."""
 
     __tablename__ = "night_check_items"
+    __table_args__ = (Index("ix_night_check_items_zone_item", "zone_item_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     section_id: Mapped[int] = mapped_column(ForeignKey("night_area_sections.id"), index=True)

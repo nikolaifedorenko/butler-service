@@ -214,7 +214,7 @@ async function refreshDoublePay() {
     body.innerHTML = `<div class="empty">Не загрузилось: ${esc(e.message || e)}</div>`;
     return;
   }
-  const canWrite = can('settings.edit');   // право, а не роль: гранты и группы учитываются
+  const canWrite = can('settings.doublepay');   // право, а не роль: гранты и группы учитываются
   const scopeShort = { shift: 'сменщики', week5: 'пятидневка', all: 'все' };
   const byMonth = {};
   data.days.forEach(d => { (byMonth[d.month] ||= []).push(d); });

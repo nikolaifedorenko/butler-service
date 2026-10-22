@@ -22,8 +22,9 @@ from docx.oxml.ns import qn
 from app.core.time import local_date
 from app.modules.employees.application import suggest_genitive
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = BASE_DIR / "templates"
+# templates/ в корне проекта — том в compose. После переноса модуля (C4d, 20.10.2026) путь
+# съехал в app/modules/docs/templates, мимо тома: бланки пропадали при пересборке образа.
+TEMPLATES_DIR = Path(__file__).resolve().parents[4] / "templates"
 TEMPLATES_DIR.mkdir(exist_ok=True)
 
 PH_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
@@ -130,18 +131,6 @@ def date_ru(d: dt.date) -> str:
 def template_path(doc_type: str) -> Optional[Path]:
     p = TEMPLATES_DIR / f"{doc_type}.docx"
     return p if p.exists() else None
-
-
-def list_templates() -> list[dict]:
-    out = []
-    for key, title in DOC_TYPES.items():
-        p = template_path(key)
-        item = {"type": key, "title": title, "uploaded": p is not None,
-                "filename": p.name if p else None,
-                "size": p.stat().st_size if p else 0,
-                "placeholders": sorted(scan_placeholders(p)) if p else []}
-        out.append(item)
-    return out
 
 
 _MAX_UNCOMPRESSED = 50 * 1024 * 1024   # распакованный docx не больше 50 МБ

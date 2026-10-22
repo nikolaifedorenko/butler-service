@@ -36,8 +36,11 @@ import pytest
 
 # ── окружение задаётся ДО импорта app.* ────────────────────────────────────────
 TEST_DB = pathlib.Path(tempfile.gettempdir()) / "tt_test.db"
-os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
+# DATABASE_URL можно задать извне: CI-джоб postgres гоняет тот же набор на PostgreSQL 16
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{TEST_DB}")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+# тесты опираются на демо-сотрудников и пароль demo1234 (см. app/bootstrap/seed.py)
+os.environ.setdefault("DEMO_SEED", "1")
 os.environ.setdefault("APP_TZ", "Europe/Moscow")
 # CSRF-защита — браузерный механизм (cookie + заголовок); TestClient её не имитирует,
 # поэтому в тестах отключаем. Сам механизм покрыт отдельно (см. tests/test_csrf.py).
@@ -51,6 +54,16 @@ DEMO_PASSWORD = "demo1234"
 
 
 def _drop_db() -> None:
+    url = os.environ["DATABASE_URL"]
+    if url.startswith("postgresql"):
+        from sqlalchemy import create_engine, text
+
+        eng = create_engine(url)
+        with eng.begin() as con:
+            con.execute(text("DROP SCHEMA public CASCADE"))
+            con.execute(text("CREATE SCHEMA public"))
+        eng.dispose()
+        return
     for suffix in ("", "-wal", "-shm"):
         p = pathlib.Path(str(TEST_DB) + suffix)
         if p.exists():

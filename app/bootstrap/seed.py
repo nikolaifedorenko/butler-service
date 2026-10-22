@@ -19,6 +19,7 @@ import random
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.identity import User
 from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 from app.core.settings_store import Setting
@@ -36,7 +37,7 @@ from app.modules.timesheet.application.catalog import (
     ShiftType,
 )
 
-from ..core.security import hash_password
+from ..core.security import MIN_PASSWORD_LEN, hash_password
 from ..core.time import local_date, now_local
 from ..modules.timesheet.application.base_schedule import save_base_config
 from ..modules.timesheet.application.schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
@@ -139,6 +140,17 @@ def seed_if_empty(db: Session) -> bool:
         db.add(st)
         shifts[code] = st
     db.flush()
+
+    if not settings.demo_seed:
+        # боевой старт: справочники выше + администратор, без демо-людей и известного пароля
+        if len(settings.admin_password) < MIN_PASSWORD_LEN:
+            raise RuntimeError(
+                "Пустая база: задайте ADMIN_PASSWORD (не короче "
+                f"{MIN_PASSWORD_LEN} символов) — пароль администратора admin, "
+                "или DEMO_SEED=1 для демо-данных")
+        db.add(User(username="admin", password_hash=hash_password(settings.admin_password),
+                    role=ROLE_ADMIN))
+        return True
 
     # администратор: полный доступ, сам в график не встаёт
     db.add(User(username="admin", password_hash=hash_password(DEFAULT_PASSWORD), role=ROLE_ADMIN))

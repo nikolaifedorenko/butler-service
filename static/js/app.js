@@ -201,7 +201,10 @@ function clearTimers() {
 /* Периодическое обновление раздела. Создавать ОДИН раз при открытии раздела (не в render/fetch —
    иначе каждый тик добавляет новый интервал и их число удваивается). В фоне не опрашиваем. */
 const pollers = [];
-function poll(view, fn, ms = 30000) {
+/* Интервалы опроса разделов, мс (HARD-02: раньше числа были разбросаны по модулям).
+   Доска и «Мои отметки» живые — 30 с; ночной обход и кары меняются реже — 60 с. */
+const POLL_MS = { marks: 30000, me: 30000, night: 60000, cars: 60000 };
+function poll(view, fn, ms = POLL_MS[view] || 30000) {
   if (pollers.some(x => x.view === view)) return;   // повторный вызов loadX() не плодит интервалы
   const tick = () => { if (state.view === view && !document.hidden) fn(); };
   state.timers.push(setInterval(tick, ms));
@@ -293,7 +296,7 @@ async function enterApp() {
       toast('Внимание: схема БД отстаёт от кода. ' + (chk.hint || ''), 'err', chk.missing.slice(0, 6));
     }
   } catch { /* самодиагностика недоступна — не критично */ }
-  if (state.user.role !== 'employee') {
+  if (can('employees.view')) {        // справочник — по праву, а не по роли (UI-02)
     try {
       await loadDirectory();
     } catch (e) {
@@ -338,7 +341,8 @@ async function loadDirectory() {
    ГРАФИК: блоки смен, цвета должностей, произвольные циклы
    ══════════════════════════════════════════════════════════════════ */
 /* Разделы «Отметки» (доска), «Факт» (история сессий), «Табель», «Управленческий табель»,
-   «Права доступа» и «Журнал аудита» — в modules/timesheet_v4.js (движок v7.1). */
+   «Права доступа» и «Журнал аудита» — по файлу на экран: modules/marks.js, fact.js,
+   tabel.js, mgmt.js, access.js, audit.js (движок v7.1). */
 
 
 
@@ -410,7 +414,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 
 async function bootApp() {
   api('/api/health', { silent: true, allow401: true })
-    .then(h => syncServerClock(h?.server_time_local)).catch(() => {});
+    .then(h => { syncServerClock(h?.server_time_local); state.appTz = h?.tz || ''; }).catch(() => {});
   const loginErr = new URLSearchParams(location.search).get('login_error');
   if (loginErr) history.replaceState(null, '', location.pathname + location.hash);
   try {

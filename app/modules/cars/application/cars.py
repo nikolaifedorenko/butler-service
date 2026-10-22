@@ -18,9 +18,11 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
+from app.core.permissions import has_perm
 from app.core.time import now_local
 from app.modules.employees.application import Employee
 
@@ -55,6 +57,10 @@ CHARGE_TITLES = {"full": "полный", "half": "половина", "empty": "�
 
 class CarOpError(ValueError):
     """Ошибка операции с каром (текст показываем пользователю)."""
+
+
+class CarConflict(CarOpError):
+    """Кар изменил параллельный запрос (CONC-01) — 409, клиенту обновить экран."""
 
 
 class CarInterceptAssigned(CarOpError):
@@ -182,11 +188,17 @@ def add_history(db: Session, car: Car, action: str, principal, *, person: str = 
     rec = CarHistory(
         car_id=car.id, ts=now_local(), action=action,
         actor_user_id=principal.user.id if principal else None,
-        actor_name=(principal.name if principal else "system"),
+        actor_name=(principal.actor_label if principal else "system"),
         person=person, with_key=with_key, location=location,
         details_json=json.dumps(details or {}, ensure_ascii=False, default=str))
     db.add(rec)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as e:
+        # ux_cars_holder_user_id: параллельный запрос уже дал этому человеку другой кар
+        if "holder_user_id" not in str(e.orig):
+            raise
+        raise CarConflict("У сотрудника уже есть кар (один сотрудник — один кар) — обновите экран") from e
     return rec
 
 
@@ -215,6 +227,11 @@ def take_car(db: Session, car: Car, principal, *, ack_assigned: bool = False) ->
         if not ack_assigned:
             raise CarInterceptAssigned(assigned_emp.display_name)
     was_charging = car.status == "charging"
+    # CONC-01: два «взять» одного кара — проходит тот, чей UPDATE первым застал прочитанный статус
+    claimed = db.execute(update(Car).where(Car.id == car.id, Car.status == car.status)
+                         .values(status="busy").execution_options(synchronize_session=False))
+    if claimed.rowcount != 1:
+        raise CarConflict("Кар только что взял другой сотрудник — обновите экран")
     car.status = "busy"
     car.on_charge = False
     car.holder_user_id = holder_uid
@@ -237,9 +254,9 @@ def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int]
     принявший (любой пользователь, если принял внешний)."""
     if car.status not in ("busy", "charging"):
         raise CarOpError("Передать можно занятый кар (или стоящий на зарядке у держателя)")
-    # как и возврат: передаёт тот, у кого кар сейчас, либо супервайзер/менеджер/админ
-    manager = principal.role in ("supervisor", "manager", "admin")
-    if not manager and car.holder_user_id and car.holder_user_id != principal.user.id:
+    # как и возврат: передаёт тот, у кого кар сейчас, либо право cars.override (супервайзер+)
+    override = has_perm(db, principal, "cars.override")
+    if not override and car.holder_user_id and car.holder_user_id != principal.user.id:
         raise CarOpError("Передать кар может сотрудник, у которого он сейчас "
                          "(или супервайзер/менеджер/администратор)")
     uid, label = resolve_person(db, employee_id=employee_id, name=name)
@@ -263,6 +280,11 @@ def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int]
 def give_car(db: Session, car: Car, principal, *, employee_id: Optional[int], name: str,
              with_key: bool = True) -> dict:
     """Выдать кар сотруднику (менеджер/супервайзер/админ). Внешним — по ФИО, без учётной записи."""
+    # BUG-02: «выдать» обходило правило «снять с обслуживания — менеджер» и выдавало отключённый
+    if car.status == "maintenance":
+        raise CarOpError("Кар на обслуживании — выдать нельзя (снять с обслуживания может менеджер)")
+    if car.status == "disabled":
+        raise CarOpError("Кар отключён — выдать нельзя")
     uid, label = resolve_person(db, employee_id=employee_id, name=name)
     if uid:
         other = db.scalar(select(Car).where(Car.holder_user_id == uid, Car.id != car.id))
@@ -291,8 +313,8 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
     Статус после возврата: замечания → «на обслуживании»; иначе на зарядке → «на зарядке»;
     иначе «свободен». Замечания (condition != ok или мусор/не убран) всегда приоритетнее.
     """
-    manager = principal.role in ("supervisor", "manager", "admin")
-    if not manager and not force:
+    override = has_perm(db, principal, "cars.override")
+    if not override and not force:
         if car.holder_user_id and car.holder_user_id != principal.user.id:
             raise CarOpError("Возврат отмечает сотрудник, который брал кар "
                              "(или супервайзер/менеджер/администратор)")
@@ -338,7 +360,7 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
         # save_photo_ref переносит его в хранилище без чтения в память
         from app.core.media import save_photo_ref
         save_photo_ref(db, kind="car_return", ref_id=rec.id, ref=ref,
-                       user_id=principal.user.id, user_name=principal.name)
+                       user_id=principal.user.id, user_name=principal.actor_label)
     return car_dict(car)
 
 
@@ -349,12 +371,11 @@ def set_status(db: Session, car: Car, principal, status: str, note: str = "") ->
         raise CarOpError("Нельзя сделать кар «занят» без держателя — используйте «выдать»")
     if status in ("free", "disabled", "maintenance") and car.holder_user_id:
         raise CarOpError("Сначала оформите возврат: кар держит сотрудник")
-    if status == "maintenance":
-        if principal.role not in ("manager", "admin"):
-            raise CarOpError("Завести кар на обслуживание может только менеджер или администратор")
-    if car.status == "maintenance" and status != "maintenance":
-        if principal.role not in ("manager", "admin"):
-            raise CarOpError("Снять кар с обслуживания может только менеджер или администратор")
+    maintenance = has_perm(db, principal, "cars.maintenance")      # менеджер и администратор
+    if status == "maintenance" and not maintenance:
+        raise CarOpError("Завести кар на обслуживание может только менеджер или администратор")
+    if car.status == "maintenance" and status != "maintenance" and not maintenance:
+        raise CarOpError("Снять кар с обслуживания может только менеджер или администратор")
     old = car.status
     car.status = status
     if status == "charging":
@@ -542,7 +563,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     ch.checked_at = now_local()
     ch.car_number = car.number
     ch.checker_user_id = principal.user.id
-    ch.checker_name = principal.name
+    ch.checker_name = principal.actor_label
     ch.found = bool(found)
     ch.found_location = (found_location or "").strip()[:160]
     ch.location = (location or "").strip()[:160]
@@ -578,7 +599,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     for ref in (photo_refs or []):
         from app.core.media import save_photo_ref
         save_photo_ref(db, kind="car_check", ref_id=ch.id, ref=ref,
-                       user_id=principal.user.id, user_name=principal.name)
+                       user_id=principal.user.id, user_name=principal.actor_label)
     return {"id": ch.id, "found": ch.found,
             "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None}
 

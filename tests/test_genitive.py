@@ -87,7 +87,7 @@ class TestGenitiveApi(unittest.TestCase):
                                              "tab_number", "telegram", "email")}
         body.update({"full_name": "Тестов Пётр Ильич", "full_name_genitive": "Тестова Петра",
                      "hired_at": emp2["hired_at"], "schedule_group": emp2["schedule_group"],
-                     "group_color": emp2["group_color"], "balance_hours": emp2["balance_hours"],
+                     "group_color": emp2["group_color"],
                      "role": emp2["role"] or "employee", "username": emp2["username"]})
         r = self.admin.put(f"/api/employees/{emp2['id']}", json=body)
         self.assertEqual(r.status_code, 200, r.text)
@@ -126,7 +126,7 @@ class TestGenitiveApi(unittest.TestCase):
                                             "wordprocessingml.document")})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertIn("full_name_genitive", r.json()["placeholders"])
-        info = self.admin.get("/api/docs/templates").json()
+        info = self.admin.get("/api/docs/kinds").json()
         self.assertIn("full_name_genitive", info["placeholders"])   # справка по плейсхолдерам
 
         emp_manual = self._create("Ручной Иван Петрович", "Ручного Ивана Петровича (сверено)")

@@ -6,6 +6,8 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
+from app.core.config import settings as app_settings
+
 from ..application.period_view import PeriodView, day_views
 from ..domain.types.results import DayView
 from .formatting import flag_hint, flag_text, hours, reason_text
@@ -52,7 +54,7 @@ def _out_of_staff_days(view: PeriodView, requested) -> list[str]:
 
 
 def period_view_dict(view: PeriodView, requested, tz=None, detail: bool = False) -> dict:
-    tz = tz or "Europe/Moscow"
+    tz = tz or app_settings.app_tz      # пояс объекта, а не константа (HARD-02)
     s = view.settle
     return {
         "effective_period": {"start": s.cards[0].day.isoformat() if s.cards else None,

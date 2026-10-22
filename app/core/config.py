@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     log_json: bool = False
     # /metrics (Prometheus): по умолчанию выключен — метрики не должны быть публичными
     metrics_enabled: bool = False
+    # Swagger /api/docs и схема /api/openapi.json; в проде 0 — полная карта API без входа
+    # облегчает разведку (OPS-04). Схему для разработки отдаёт tools/export_openapi.py.
+    api_docs: bool = True
     # семантическая версия приложения: bump при релизе (тег + docs/CHANGES-*.md)
     app_version: str = "0.1.0"
     # разрешить запуск со слабым/пустым SECRET_KEY — ТОЛЬКО для локальной разработки.
@@ -48,6 +51,13 @@ class Settings(BaseSettings):
     # Несколько воркеров: в раунде работает один (замок core.startup_lock.try_lock).
     night_sync_enabled: bool = True
     night_sync_seconds: int = 60
+    # пустая база: DEMO_SEED=1 — демо-сотрудники с паролем demo1234 (локально, тесты, сценарии);
+    # иначе только справочники и администратор admin с паролем ADMIN_PASSWORD (аудит, SEC-02)
+    demo_seed: bool = False
+    admin_password: str = ""
+    # адрес Telegram Bot API (корпоративный прокси); из UI не меняется — иначе токен бота
+    # уходит на любой хост (аудит 21.10.2026, SEC-03). Пусто — сохранённый или api.telegram.org
+    notify_telegram_api: str = ""
 
 
 @lru_cache

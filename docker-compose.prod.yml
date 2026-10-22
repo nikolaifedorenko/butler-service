@@ -4,13 +4,15 @@
 #   1. .env рядом с этим файлом:
 #        SECRET_KEY=$(openssl rand -hex 32)     # обязателен — без него приложение не стартует
 #        POSTGRES_PASSWORD=<надёжный пароль>
+#        ADMIN_PASSWORD=<пароль admin>         # нужен только первому старту на пустой базе
+#        BACKUP_AGE_RECIPIENT=age1…            # открытый ключ бэкапов; BACKUP_REMOTE — второй сервер
 #   2. сертификаты: ./certs/fullchain.pem и ./certs/privkey.pem (Let's Encrypt).
 #      Для первого выпуска сертификата можно временно оставить только сервер :80
 #      (location /.well-known/acme-challenge/ в deploy/nginx.conf уже настроен).
 #
 # Запуск:   docker compose -f docker-compose.prod.yml up -d --build
 # Логи:     docker compose -f docker-compose.prod.yml logs -f app
-# Бэкапы:   ./backups/timetrack-<дата>.sql.gz (ежесуточно, хранение 14 шт.)
+# Бэкапы:   ./backups/timetrack-<дата>.sql.gz.age (ежесуточно, шифрование age, 14 шт.) + копия на второй сервер
 # Подробно: deploy/README.md
 
 services:
@@ -45,9 +47,13 @@ services:
       # по умолчанию (решение владельца 15.10.2026), 0 — выключить
       COOKIE_SECURE: "1"
       ALLOW_IMPERSONATION: ${ALLOW_IMPERSONATION:-1}
+      # первый старт на пустой базе: пароль администратора admin (демо-данных в проде нет)
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       TRUST_PROXY_HEADERS: "1"
       LOG_JSON: "1"
       METRICS_ENABLED: ${METRICS_ENABLED:-1}
+      # Swagger и схема API наружу не отдаются (OPS-04); для отладки — API_DOCS=1 в .env
+      API_DOCS: ${API_DOCS:-0}
       CSRF_ENABLED: "1"
     # несколько воркеров допустимы: инициализация схемы сериализована замком
     # (app/core/startup_lock.py — pg_advisory_lock), фоновая синхронизация ночных
@@ -86,7 +92,11 @@ services:
       - ./certbot-www:/var/www/certbot:ro
 
   backup:
-    image: postgres:16-alpine
+    # pg_dumpall → gzip → шифрование age → ./backups → копия на второй сервер (deploy/backup.sh);
+    # без BACKUP_AGE_RECIPIENT сервис не стартует — незашифрованных копий нет (решение В-12)
+    build:
+      context: .
+      dockerfile: deploy/backup.Dockerfile
     restart: unless-stopped
     depends_on:
       db:
@@ -97,23 +107,11 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       BACKUP_INTERVAL: ${BACKUP_INTERVAL:-86400}
       BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}     # открытый ключ age (age1…)
+      BACKUP_REMOTE: ${BACKUP_REMOTE:-}                   # user@backup-host:/srv/butler-backups/
     volumes:
       - ./backups:/backups
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        mkdir -p /backups
-        while true; do
-          f=/backups/timetrack-$$(date +%F-%H%M%S).sql.gz
-          if pg_dumpall --clean --if-exists | gzip > "$$f"; then
-            echo "backup ok: $$f"
-          else
-            echo "backup FAILED" >&2
-            rm -f "$$f"
-          fi
-          ls -1t /backups/timetrack-*.sql.gz 2>/dev/null | tail -n +$$(( $${BACKUP_KEEP:-14} + 1 )) | xargs -r rm --
-          sleep $${BACKUP_INTERVAL:-86400}
-        done
+      - ./deploy/backup-ssh:/run/backup-ssh:ro            # id_ed25519 + known_hosts второго сервера
 
 volumes:
   pg_data:

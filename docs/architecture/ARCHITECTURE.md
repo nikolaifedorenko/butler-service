@@ -210,11 +210,12 @@ engine_settings). `now` снимается в `application/engine_common.now_utc
 ### 3.5 Клиент
 
 SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки), `app.js` (оболочка,
-меню, роутинг) и **`static/js/modules/`** — 9 файлов разделов, имена соответствуют
-модулям бэкенда (фаза C6): `timesheet_layers.js` (сетка Графика), `timesheet_v4.js`
-(Отметки-доска, Факт, Табель, УТ, Права, Аудит, CFG-*), `me.js`, `employees.js`,
-`night.js`, `cars.js`, `docs.js`, `dicts.js`, `settings.js` (реестр экранов единого
-центра конфигурации; подключается ПОСЛЕ timesheet_v4/cars/night). Глобальные функции
+меню, роутинг) и **`static/js/modules/`** — 16 файлов разделов, по файлу на экран:
+`timesheet_layers.js` (сетка Графика), `timesheet_common.js` (общее для экранов движка),
+`marks.js` (доска «Отметки»), `fact.js`, `tabel.js`, `mgmt.js` (УТ), `access.js`, `audit.js`,
+`engine_settings.js` (CFG-*), `me.js`, `employees.js`, `night.js`, `cars.js`, `docs.js`,
+`dicts.js`, `settings.js` (реестр экранов единого центра конфигурации; подключается ПОСЛЕ
+engine_settings/cars/night). До 22.10.2026 семь экранов движка жили в `timesheet_v4.js`. Глобальные функции
 сохранены: межфайловые вызовы через глобальную область, границы держат
 `tools/gen_js_globals.py` (рекурсивный скан `static/js/**` → `js_globals.json`) и
 ESLint `no-undef` — отказ от `window.App.modules.*` отклонён (property-доступ не
@@ -306,7 +307,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
 
 | Риск | Статус | Что делать при росте |
 |---|---|---|
-| Самодельные миграции (raw DDL при старте) | 🟠 | Alembic: autogenerate + версионирование; `migrate_engine_v7` — образец идемпотентного шага. Гонку одновременного старта воркеров закрывает `core/startup_lock` (20.10.2026); следующий шаг — таблица версий шагов и отдельная команда миграций до uvicorn |
+| Самодельные миграции (raw DDL при старте) | 🟢 закрыт 21.10.2026 | Alembic (ADR-0002 пересмотрен): ревизии `app/bootstrap/alembic/versions`, `alembic check` в тестах, CI на PostgreSQL 16; `migrations.py` заморожен — только путь баз, созданных до перехода |
 | Гонка DDL при старте нескольких воркеров (`duplicate column name`, IntegrityError `night_reports.date`) | 🟢 закрыт 20.10.2026 | `init_db()` целиком под замком `core/startup_lock`: PostgreSQL — сеансовый `pg_advisory_lock` (держит и несколько контейнеров), SQLite — `flock` на файле рядом с БД; `suppress(Exception)` вокруг DDL заменён явной проверкой таблиц (на PostgreSQL сбой DDL портил транзакцию шага). Стражи: `tests/test_review_p0.py` |
 | GET `/api/night/*` с побочными записями; переоткрытие отчёта закрывалось обратно ≤ 120 с | 🟢 закрыт 20.10.2026 | `sync_reports` убран из роутеров: обслуживание — старт (под `startup_lock`) + фоновый поток `bootstrap/night_sync` (каждые `NIGHT_SYNC_SECONDS`, по умолчанию 60); в нескольких воркерах раунд выполняет один процесс под неблокирующим `core/startup_lock.try_lock("night-sync")`. Переоткрытый отчёт (`night_reports.reopened_at`) автозакрытием больше не закрывается; reopen открытого — 409. Окно досоздания смен — честная константа `BACKFILL_DAYS=31` вместо `min(len(have)+31, 31)`. Стражи: `tests/test_review_p1_night_cars.py` |
 | Автозакрытие смены не проставляло `close_reason` (DOCX подписывал закрытый отчёт «Открыт · закроется 08:00»); повторная отметка кара не обновляла `checked_at` | 🟢 закрыт 20.10.2026 | `finalize_report(rep, reason="auto"|"manual")` — причина закрытия пишется всегда; `check_car_night` обновляет `ch.checked_at` при каждом сохранении (last write wins) — `car.last_checked_at` и флаг «взяли после проверки» свежие. Стражи: `tests/test_review_p1_night_cars.py` |
@@ -341,7 +342,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
    стадий → `application/view_period.py`.
 5. `tests/engine/test_ex_01_15.py` — как читать приёмочные примеры (вход/выход/контроли).
 6. Вертикальный срез вкладки: `app/modules/timesheet/interface/mgmt_api.py` +
-   `static/js/modules/timesheet_v4.js (loadMgmt)`.
+   `static/js/modules/mgmt.js (loadMgmt)`.
 7. Границы: `.importlinter` (14 контрактов) + `tests/test_modules_architecture.py`
    (AST-законы всех модулей) — что можно импортировать и откуда.
 8. `docs/CHANGES-2026-10-20-stage-c*.md` — как и почему прошла модульная

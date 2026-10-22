@@ -12,6 +12,7 @@ from typing import Optional
 from .config import settings
 
 _ITERATIONS = 600_000   # рекомендация OWASP для PBKDF2-HMAC-SHA256 (было 120 000)
+MIN_PASSWORD_LEN = 8    # одно правило для смены своего пароля, учёток и администратора сида
 
 
 def hash_password(password: str) -> str:

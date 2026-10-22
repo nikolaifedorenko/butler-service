@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +48,10 @@ class Car(Base):
     """
 
     __tablename__ = "cars"
+    # один сотрудник — один кар и при параллельных запросах (CONC-01)
+    __table_args__ = (Index("ux_cars_holder_user_id", "holder_user_id", unique=True,
+                            sqlite_where=text("holder_user_id IS NOT NULL"),
+                            postgresql_where=text("holder_user_id IS NOT NULL")),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     number: Mapped[str] = mapped_column(String(40), unique=True, index=True)

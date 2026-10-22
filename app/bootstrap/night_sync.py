@@ -35,6 +35,10 @@ log = logging.getLogger("uvicorn.error")
 
 LOCK_NAME = "night-sync"
 MIN_PERIOD_SECONDS = 5          # защита от опечатки в NIGHT_SYNC_SECONDS=1
+CLEANUP_PERIOD_SECONDS = 24 * 3600   # чистка медиа по сроку хранения (решение владельца В-8)
+# None — чистки ещё не было: monotonic() считает от старта машины, и 0.0 на свежем сервере
+# (меньше суток аптайма) выглядел бы как «чистили недавно»
+_last_cleanup: dict[str, float | None] = {"ts": None}
 
 _thread: threading.Thread | None = None
 _stop = threading.Event()
@@ -60,12 +64,70 @@ def run_sync_once() -> dict:
             db.close()
 
 
+def run_media_cleanup_if_due() -> int | None:
+    """Раз в сутки удалить фото и видео старше срока хранения (раньше — только при
+    старте сервера). Один процесс на раунд — под try_lock. None — ещё рано или занято."""
+    import time
+
+    from ..core.db import SessionLocal
+    from ..core.media import cleanup_photos
+    from ..core.startup_lock import try_lock
+
+    last = _last_cleanup["ts"]
+    if last is not None and time.monotonic() - last < CLEANUP_PERIOD_SECONDS:
+        return None
+    with try_lock("media-cleanup") as got:
+        if not got:
+            return None
+        db = SessionLocal()
+        try:
+            removed = cleanup_photos(db)
+        finally:
+            db.close()
+    _last_cleanup["ts"] = time.monotonic()
+    if removed:
+        log.info("media_cleanup: удалено файлов по сроку хранения: %d", removed)
+    return removed
+
+
+def run_outbox_once() -> int | None:
+    """Доотправка очереди уведомлений (outbox, CONC-02): строки, которые запрос не успел
+    отправить (упал процесс), и пометка застрявших в sending. Один процесс на раунд —
+    под try_lock. None — раунд выполняет другой процесс."""
+    from ..core.db import SessionLocal
+    from ..core.startup_lock import try_lock
+    from ..modules.notify.application.dispatch import fail_stale_sending, run_outbox
+
+    with try_lock("notify-outbox") as got:
+        if not got:
+            return None
+        db = SessionLocal()
+        try:
+            stale = fail_stale_sending(db)
+            sent = run_outbox(db)
+        finally:
+            db.close()
+    if stale:
+        log.warning("notify_outbox: доставок со статусом «неизвестно» (прерваны перезапуском): %d", stale)
+    if sent:
+        log.info("notify_outbox: доотправлено из очереди: %d", len(sent))
+    return len(sent)
+
+
 def _loop(period: float) -> None:
     while not _stop.wait(period):
         try:
             run_sync_once()
         except Exception:                       # раунд не должен ронять поток
             log.exception("night_sync: раунд фоновой синхронизации завершился ошибкой")
+        try:
+            run_media_cleanup_if_due()
+        except Exception:
+            log.exception("media_cleanup: чистка медиа завершилась ошибкой")
+        try:
+            run_outbox_once()
+        except Exception:
+            log.exception("notify_outbox: доотправка очереди завершилась ошибкой")
 
 
 def start_night_sync() -> None:
@@ -79,6 +141,8 @@ def start_night_sync() -> None:
     if _thread is not None and _thread.is_alive():
         return
     period = max(MIN_PERIOD_SECONDS, int(settings.night_sync_seconds))
+    import time
+    _last_cleanup["ts"] = time.monotonic()      # init_db только что почистил медиа
     _stop.clear()
     _thread = threading.Thread(target=_loop, args=(period,), name=LOCK_NAME, daemon=True)
     _thread.start()

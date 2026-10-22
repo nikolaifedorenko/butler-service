@@ -13,23 +13,22 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.audit import audit
-from app.core.auth import Principal, current_principal
+from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.media import (
     UploadRef,
+    delete_photo_files,
     max_upload_bytes,
     photos_of,
     read_upload_streaming,
-    resolve_photo_file,
     save_photo_ref,
 )
-from app.core.media import delete_photo as delete_photo_usecase
 from app.core.permissions import has_perm, require_perm
 from app.core.settings_store import Setting
 from app.core.time import now_local
@@ -152,9 +151,9 @@ class CloseSectionIn(BaseModel):
 # ─────────────────────────── служебное ───────────────────────────
 
 def _principal_name(pr: Principal) -> str:
-    if pr.employee is not None:
-        return pr.employee.display_name
-    return pr.user.username
+    name = pr.employee.display_name if pr.employee is not None else pr.user.username
+    # «как сотрудник» — с пометкой, кто вошёл на самом деле (решение владельца В-3)
+    return f"{pr.user.username} → как {name}" if pr.impersonated else name
 
 
 def _get_report(db: Session, report_id: int) -> NightReport:
@@ -296,6 +295,8 @@ def delete_area(area_id: int, principal: Principal = Depends(require_perm("night
         sec = db.scalar(select(NightAreaSection).where(NightAreaSection.report_id == rep.id,
                                                        NightAreaSection.area_id == area_id))
         if sec is not None:
+            # пункты уходят каскадом — их фото вместе с файлами, иначе сироты (DEAD-01)
+            delete_photo_files(db, "night_item", [i.id for i in sec.items])
             db.delete(sec)
             touched += 1
     area.active = False
@@ -897,7 +898,11 @@ def list_reports(limit: int = 60, principal: Principal = Depends(require_perm("n
                  db: Session = Depends(get_db)):
     """Архив ночных отчётов (супервайзер и выше): список с итогами (чистое чтение)."""
     out = []
-    for rep in db.scalars(select(NightReport).order_by(NightReport.date.desc()).limit(min(limit, 365))):
+    # PERF-01: области и пункты — тремя запросами на весь архив, а не по запросу на отчёт и область
+    q = (select(NightReport)
+         .options(selectinload(NightReport.areas).selectinload(NightAreaSection.items))
+         .order_by(NightReport.date.desc()).limit(min(limit, 365)))
+    for rep in db.scalars(q):
         d = report_dict(rep, with_items=False)
         out.append(d)
     return {"reports": out}
@@ -923,7 +928,7 @@ def _report_payload(db: Session, rep: NightReport) -> dict:
 
 @router.post("/sections/{section_id}/take")
 def take_section(section_id: int, payload: InterceptionAck,
-                 principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+                 principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Взять область в работу. Если её уже ведёт другой — предупреждаем и пишем перехват."""
     sec = _get_section(db, section_id)
     rep = _get_report(db, sec.report_id)
@@ -945,7 +950,7 @@ def take_section(section_id: int, payload: InterceptionAck,
     if sec.status == "done":
         # по ТЗ область ведёт один человек: закрыть её может кто угодно, а переоткрыть —
         # только тот, кто закрыл (или супервайзер и выше)
-        if principal.user.id != sec.closed_by and principal.role not in ("supervisor", "manager", "admin"):
+        if principal.user.id != sec.closed_by and not has_perm(db, principal, "night.reopen_any"):
             raise HTTPException(status_code=409,
                                 detail=f"Область закрыта в {sec.closed_at:%H:%M} — переоткрыть может "
                                        f"тот, кто её закрыл, или супервайзер")
@@ -964,7 +969,7 @@ def take_section(section_id: int, payload: InterceptionAck,
 
 @router.post("/sections/{section_id}/close")
 def close_section(section_id: int, payload: CloseSectionIn | None = None,
-                  principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+                  principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
     """Завершить проверку области.
 
     По ТЗ закрыть можно и с незаполненными пунктами (останутся «не отмечено») —
@@ -1002,7 +1007,7 @@ def reopen_section(section_id: int, principal: Principal = Depends(require_perm(
 
 
 @router.put("/items/{item_id}/answer")
-def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(current_principal),
+def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
     """Отметить пункт: ОК / Не ОК (+ комментарий). Перезапись — last write wins."""
     ni = db.get(NightCheckItem, item_id)
@@ -1030,9 +1035,9 @@ def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(
 
 
 @router.post("/items/{item_id}/photo")
-async def add_item_photo(item_id: int, file: UploadFile = File(...),
-                         principal: Principal = Depends(current_principal),
-                         db: Session = Depends(get_db)):
+def add_item_photo(item_id: int, file: UploadFile = File(...),
+                   principal: Principal = Depends(require_perm("night.view")),
+                   db: Session = Depends(get_db)):
     ni = db.get(NightCheckItem, item_id)
     if ni is None:
         raise HTTPException(status_code=404, detail="Пункт не найден")
@@ -1041,7 +1046,7 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
     _guard_open(rep)
     limit = max_upload_bytes(db)
     # потоковая загрузка: файл идёт на диск чанками, не в память (P1 20.10.2026)
-    ref = await read_upload_streaming(file, limit)
+    ref = read_upload_streaming(file, limit)
     try:
         photo = save_photo_ref(db, kind="night_item", ref_id=ni.id, ref=ref,
                                user_id=principal.user.id, user_name=_principal_name(principal))
@@ -1058,7 +1063,7 @@ async def add_item_photo(item_id: int, file: UploadFile = File(...),
 # Экран консолидированной отправки: «Не ОК» и «Не проверено» группируются по
 # ответственным службам, отправляются вручную (всё или выбранное), отправленное
 # помечается. Исправленное ПОСЛЕ отправки повторно не уходит и не отзывается.
-# Отправить может любой пользователь обхода — нового права не вводили.
+# Отправка — право night.dispatch (В-5), по умолчанию у всех ролей.
 
 @router.get("/reports/{report_id}/defects")
 def report_defects(report_id: int, principal: Principal = Depends(require_perm("night.view")),
@@ -1070,9 +1075,9 @@ def report_defects(report_id: int, principal: Principal = Depends(require_perm("
     return defects_payload(db, rep)
 
 
-@router.post("/reports/{report_id}/dispatch")
+@router.post("/reports/{report_id}/dispatch", dependencies=[Depends(require_perm("night.view"))])
 def dispatch_report(report_id: int, payload: DispatchIn,
-                    principal: Principal = Depends(require_perm("night.view")),
+                    principal: Principal = Depends(require_perm("night.dispatch")),
                     db: Session = Depends(get_db)):
     """Отправить недостатки службам: всё скопом или выбранное (только вручную)."""
     from ..application.night_notify import dispatch_defects
@@ -1125,21 +1130,6 @@ def preview_defects(report_id: int, payload: DispatchIn,
 
 # ─────────────────────────── отдача файлов фото ───────────────────────────
 
-@router.get("/photos/{photo_id}/file", operation_id="photo_file_night_get")
-@router.head("/photos/{photo_id}/file", operation_id="photo_file_night_head",
-             include_in_schema=False)
-def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
-               db: Session = Depends(get_db)):
-    """Отдача оригинала фото — алиас канонического `/api/photos/{id}/file`.
-
-    Маршрут сохранён для совместимости со старыми ссылками; реализация общая
-    (см. app/api/photos_api.py), чтобы поведение не могло разъехаться."""
-    p, path, mime = resolve_photo_file(db, photo_id)
-    return FileResponse(str(path), media_type=mime or "application/octet-stream",
-                        filename=p.filename or None,
-                        headers={"Cache-Control": "private, max-age=86400"})
-
-
 # ─────────────────────────── шаг «Проверка электрокаров» ───────────────────────────
 
 def _cars_section(rep: NightReport) -> NightAreaSection:
@@ -1160,21 +1150,21 @@ def report_cars(report_id: int, principal: Principal = Depends(require_perm("nig
 
 
 @router.post("/reports/{report_id}/cars/{car_id}/check")
-async def report_car_check(report_id: int, car_id: int,
-                           found: bool = Form(True),
-                           found_location: str = Form(""),
-                           moved: bool = Form(False),
-                           location: str = Form(""),
-                           canopy: bool = Form(True),
-                           charge: str = Form(""),        # full | half | empty | ''
-                           on_charge: bool = Form(False),
-                           condition: str = Form("ok"),   # ok | bad
-                           trash: bool = Form(False),
-                           clean: bool = Form(True),
-                           comment: str = Form(""),
-                           file: Optional[UploadFile] = File(None),
-                           principal: Principal = Depends(current_principal),
-                           db: Session = Depends(get_db)):
+def report_car_check(report_id: int, car_id: int,
+                     found: bool = Form(True),
+                     found_location: str = Form(""),
+                     moved: bool = Form(False),
+                     location: str = Form(""),
+                     canopy: bool = Form(True),
+                     charge: str = Form(""),        # full | half | empty | ''
+                     on_charge: bool = Form(False),
+                     condition: str = Form("ok"),   # ok | bad
+                     trash: bool = Form(False),
+                     clean: bool = Form(True),
+                     comment: str = Form(""),
+                     file: Optional[UploadFile] = File(None),
+                     principal: Principal = Depends(require_perm("night.view")),
+                     db: Session = Depends(get_db)):
     """Отметить кар в ходе ночного обхода (перезапись — last write wins).
 
     Форма та же, что у окна возврата кара («Электрокары» → «Вернул»): место из
@@ -1205,7 +1195,7 @@ async def report_car_check(report_id: int, car_id: int,
         if file is not None:
             limit = max_upload_bytes(db)
             # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
-            ref = await read_upload_streaming(file, limit)
+            ref = read_upload_streaming(file, limit)
             if ref.size:
                 refs.append(ref)
             else:
@@ -1239,7 +1229,7 @@ async def report_car_check(report_id: int, car_id: int,
 
 @router.post("/reports/{report_id}/cars/finish")
 def report_cars_finish(report_id: int, payload: InterceptionAck,
-                       principal: Principal = Depends(current_principal),
+                       principal: Principal = Depends(require_perm("night.view")),
                        db: Session = Depends(get_db)):
     """Завершить шаг «Проверка электрокаров». Незакрытые кары — только после подтверждения."""
     from app.modules.cars.application.cars import CarOpError, finish_cars_step, night_cars_state
@@ -1312,14 +1302,6 @@ def reopen_report(report_id: int, principal: Principal = Depends(require_perm("n
     audit(db, principal, "night_report_reopen", f"report:{rep.id}", {})
     db.commit()
     return {"ok": True, "report": _report_payload(db, rep)}
-
-
-@router.delete("/photos/{photo_id}")
-def delete_photo(photo_id: int, principal: Principal = Depends(current_principal),
-                 db: Session = Depends(get_db)):
-    """Удалить фото — алиас канонического `DELETE /api/photos/{id}`."""
-    delete_photo_usecase(db, principal, photo_id)
-    return {"ok": True}
 
 
 # ─────────────────────────── выгрузка ───────────────────────────

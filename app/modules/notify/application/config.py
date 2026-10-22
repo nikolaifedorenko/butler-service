@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.settings_store import Setting
 
 # ключ → (значение по умолчанию, секрет?, подпись для интерфейса)
@@ -76,7 +77,8 @@ def load_config(db: Session) -> NotifyConfig:
     values = {k: rows.get(k, default) or default for k, (default, _, _) in NOTIFY_KEYS.items()}
     return NotifyConfig(
         telegram_token=values["notify_telegram_token"].strip(),
-        telegram_api=(values["notify_telegram_api"].strip() or "https://api.telegram.org").rstrip("/"),
+        telegram_api=(settings.notify_telegram_api.strip() or values["notify_telegram_api"].strip()
+                      or "https://api.telegram.org").rstrip("/"),
         smtp_host=values["notify_smtp_host"].strip(),
         smtp_port=_int(values["notify_smtp_port"], 587, 1, 65535),
         smtp_security=values["notify_smtp_security"] if values["notify_smtp_security"] in SMTP_SECURITY
@@ -115,6 +117,17 @@ def save_config(db: Session, values: dict, *, allow_secrets: bool = True) -> dic
     токен, поэтому пустое поле означает «оставить прежним». Очистить секрет можно
     явным значением "clear" — иначе убрать забытый токен было бы невозможно.
     """
+    # SEC-03: куда уходят токен бота и пароль SMTP — не меняется из интерфейса незаметно
+    cur = load_config(db)
+    api = str(values.get("notify_telegram_api") or "").strip().rstrip("/")
+    if api and api != cur.telegram_api:
+        raise ValueError("Адрес Bot API задаётся переменной окружения NOTIFY_TELEGRAM_API "
+                         "(защита токена бота)")
+    moved = any(values.get(k) is not None and str(values[k]).strip() != v
+                for k, v in (("notify_smtp_host", cur.smtp_host), ("notify_smtp_user", cur.smtp_user)))
+    if moved and cur.smtp_password and not str(values.get("notify_smtp_password") or ""):
+        raise ValueError("Сменился сервер или пользователь SMTP — введите пароль заново: "
+                         "сохранённый пароль не отправляется на новый адрес")
     changed: list[str] = []
     for key, (default, secret, _title) in NOTIFY_KEYS.items():
         if key not in values:
