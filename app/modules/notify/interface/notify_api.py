@@ -98,7 +98,7 @@ def get_config(principal: Principal = Depends(EDIT), db: Session = Depends(get_d
     """Параметры доставки (секреты маскированы) + готовность каналов и каталог чатов."""
     cfg = load_config(db)
     return {"config": public_config(cfg), "chats": list_chats(db),
-            "domains": DOMAIN_TITLES, "security_modes": ["none", "starttls", "ssl"]}
+            "domains": dict(DOMAIN_TITLES), "security_modes": ["none", "starttls", "ssl"]}
 
 
 @router.put("/config")

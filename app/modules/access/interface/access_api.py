@@ -3,18 +3,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.identity import AccessGrant, AccessGroup, AccessGroupMember, User
+from app.core.identity import AccessGrant, AccessGroup, AccessGroupMember, Role, User
 from app.core.permissions import (
     ALL_KEYS,
     PERMISSIONS,
     ROLE_DEFAULTS,
-    ROLE_TITLES,
     effective_permissions,
     require_perm,
     role_permissions,
@@ -44,9 +43,12 @@ def catalog(principal: Principal = Depends(require_perm("access.manage")), db: S
         if emp_ids else {}
     return {
         "permissions": PERMISSIONS,
-        "roles": [{"role": r, "title": ROLE_TITLES[r], "defaults": sorted(ROLE_DEFAULTS[r]),
-                   "overrides": _grants(db.scalars(select(AccessGrant).where(AccessGrant.role == r))),
-                   "effective": sorted(role_permissions(db, r))} for r in ROLE_DEFAULTS],
+        "roles": [{"role": r.code, "title": r.title, "rank": r.rank,
+                   "max_assignable_rank": r.max_assignable_rank, "builtin": r.builtin,
+                   "users": sum(1 for u in users if u.role == r.code),
+                   "defaults": sorted(ROLE_DEFAULTS.get(r.code, set())),
+                   "overrides": _grants(db.scalars(select(AccessGrant).where(AccessGrant.role == r.code))),
+                   "effective": sorted(role_permissions(db, r.code))} for r in _roles(db)],
         "groups": [{"id": g.id, "name": g.name, "description": g.description, "members": members.get(g.id, []),
                     "grants": _grants(db.scalars(select(AccessGrant).where(AccessGrant.group_id == g.id)))}
                    for g in groups],
@@ -72,10 +74,82 @@ def _replace_grants(db: Session, where, make, grants: dict[str, str]) -> dict:
     return clean
 
 
+def _roles(db: Session) -> list[Role]:
+    return list(db.scalars(select(Role).order_by(Role.rank.desc(), Role.title)))
+
+
+class RoleIn(BaseModel):
+    title: str
+    rank: int                   # уровень: кто может управлять учётками с этой ролью
+    max_assignable_rank: int    # до какого уровня её обладатель управляет учётками (-1 — никого)
+
+
+def _check_role(db: Session, payload: RoleIn, code: str = "") -> str:
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Укажите название роли")
+    if not 0 < payload.rank < 100:
+        raise HTTPException(status_code=422, detail="Уровень своей роли — от 1 до 99 (100 — администратор)")
+    if not -1 <= payload.max_assignable_rank <= payload.rank:
+        raise HTTPException(status_code=422,
+                            detail="Роль не может назначать роли выше своего уровня")
+    if db.scalar(select(Role).where(Role.title == title, Role.code != code)):
+        raise HTTPException(status_code=409, detail="Роль с таким названием уже есть")
+    return title
+
+
+@router.post("/roles")
+def create_role(payload: RoleIn, principal: Principal = Depends(require_perm("access.manage")),
+                db: Session = Depends(get_db)):
+    """Своя роль (ADR-0011): права по умолчанию пустые — выдаются в «Правах доступа»."""
+    title = _check_role(db, payload)
+    taken = set(db.scalars(select(Role.code)))
+    code = next(f"role_{n}" for n in range(1, len(taken) + 2) if f"role_{n}" not in taken)
+    db.add(Role(code=code, title=title, rank=payload.rank,
+                max_assignable_rank=payload.max_assignable_rank, builtin=False))
+    audit(db, principal, "access_role_create", f"role:{code}", payload.model_dump())
+    db.commit()
+    return {"ok": True, "role": code}
+
+
+def _custom_role(db: Session, code: str) -> Role:
+    role = db.get(Role, code)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Неизвестная роль")
+    if role.builtin:
+        raise HTTPException(status_code=409, detail="Встроенную роль менять и удалять нельзя — только её права")
+    return role
+
+
+@router.put("/roles/{code}/settings")
+def update_role(code: str, payload: RoleIn, principal: Principal = Depends(require_perm("access.manage")),
+                db: Session = Depends(get_db)):
+    role = _custom_role(db, code)
+    role.title = _check_role(db, payload, code)
+    role.rank, role.max_assignable_rank = payload.rank, payload.max_assignable_rank
+    audit(db, principal, "access_role_update", f"role:{code}", payload.model_dump())
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/roles/{code}")
+def delete_role(code: str, principal: Principal = Depends(require_perm("access.manage")),
+                db: Session = Depends(get_db)):
+    role = _custom_role(db, code)
+    used = db.scalar(select(func.count()).select_from(User).where(User.role == code))
+    if used:
+        raise HTTPException(status_code=409, detail=f"Роль назначена пользователям ({used}) — сначала смените им роль")
+    db.execute(delete(AccessGrant).where(AccessGrant.role == code))
+    db.delete(role)
+    audit(db, principal, "access_role_delete", f"role:{code}", {"title": role.title})
+    db.commit()
+    return {"ok": True}
+
+
 @router.put("/roles/{role}")
 def put_role(role: str, payload: GrantsIn, principal: Principal = Depends(require_perm("access.manage")),
              db: Session = Depends(get_db)):
-    if role not in ROLE_DEFAULTS:
+    if db.get(Role, role) is None:
         raise HTTPException(status_code=404, detail="Неизвестная роль")
     clean = _replace_grants(db, AccessGrant.role == role,
                             lambda k, v: AccessGrant(role=role, permission=k, effect=v), payload.grants)

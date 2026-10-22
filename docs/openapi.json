@@ -1911,6 +1911,29 @@
         "title": "ResetIn",
         "type": "object"
       },
+      "RoleIn": {
+        "properties": {
+          "max_assignable_rank": {
+            "title": "Max Assignable Rank",
+            "type": "integer"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "rank",
+          "max_assignable_rank"
+        ],
+        "title": "RoleIn",
+        "type": "object"
+      },
       "RuleIn": {
         "properties": {
           "key": {
@@ -2608,6 +2631,136 @@
           }
         },
         "summary": "Put Members",
+        "tags": [
+          "access"
+        ]
+      }
+    },
+    "/api/access/roles": {
+      "post": {
+        "description": "Своя роль (ADR-0011): права по умолчанию пустые — выдаются в «Правах доступа».",
+        "operationId": "create_role_api_access_roles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Role",
+        "tags": [
+          "access"
+        ]
+      }
+    },
+    "/api/access/roles/{code}": {
+      "delete": {
+        "operationId": "delete_role_api_access_roles__code__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Role",
+        "tags": [
+          "access"
+        ]
+      }
+    },
+    "/api/access/roles/{code}/settings": {
+      "put": {
+        "operationId": "update_role_api_access_roles__code__settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Role",
         "tags": [
           "access"
         ]
@@ -8104,7 +8257,7 @@
     },
     "/api/photos/{photo_id}": {
       "delete": {
-        "description": "Удалить фото: своё — любой пользователь, чужое — менеджер и выше.",
+        "description": "Удалить фото: своё — любой пользователь, чужое — право media.delete_any.",
         "operationId": "photo_delete_api_photos__photo_id__delete",
         "parameters": [
           {

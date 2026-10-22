@@ -66,6 +66,9 @@ jobs:
       - name: Контракт фронтенд ↔ API
         run: python tools/check_api_contract.py
 
+      - name: Контракты импортов согласованы со списком модулей (.importlinter)
+        run: python tools/gen_importlinter.py --check
+
       - name: Лок-файл зависимостей не разошёлся
         if: matrix.python-version == '3.11'
         run: python tools/freeze_requirements.py --check

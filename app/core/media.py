@@ -450,4 +450,3 @@ def delete_photo(db: Session, principal, photo_id: int) -> None:
     db.delete(photo)
     audit(db, principal, "photo_delete", f"photo:{photo_id}",
           {"kind": photo.kind, "ref_id": photo.ref_id})
-    db.commit()

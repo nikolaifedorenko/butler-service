@@ -17,83 +17,30 @@ from sqlalchemy.orm import Session
 from .auth import Principal, current_principal
 from .db import get_db
 from .identity import AccessGrant, AccessGroupMember
+from .manifest import Perm
 from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 
-PERMISSIONS: list[dict] = [
-    {"key": "presence.view", "section": "Кто на работе / Посещения", "title": "Просмотр присутствия"},
-    {"key": "schedule.view", "section": "График", "title": "Просмотр графика"},
-    {"key": "schedule.edit", "section": "График", "title": "Редактирование графика"},
-    {"key": "schedule.view_all", "section": "График",
-     "title": "Полные данные сетки (заметки и id записей в ячейках)"},
-    {"key": "fact.view_all", "section": "Факт",
-     "title": "Сессии и сетка «Номера» всех сотрудников"},
-    {"key": "tabel.view", "section": "Табель", "title": "Просмотр Табеля"},
-    {"key": "tabel.edit", "section": "Табель", "title": "Редактирование Табеля"},
-    {"key": "mgmt.view", "section": "Управленческий табель", "title": "Просмотр (view)"},
-    {"key": "mgmt.close", "section": "Управленческий табель", "title": "Закрытие периода (close)"},
-    {"key": "mgmt.recalculate", "section": "Управленческий табель", "title": "Пересчёт последнего закрытого"},
-    {"key": "punches.manage", "section": "Отметки", "title": "Ручные отметки и отмена отметок"},
-    # Долг §5.2 закрыт (батч 20.10.2026): inline-ветвления роли is_manager в
-    # punches/fact/schedule переведены на ключи каталога. Базовая аудитория —
-    # прежняя ролевая (MANAGER_ROLES = admin/manager/supervisor входят в
-    # ROLE_DEFAULTS автоматически), поведение ролей не меняется; гранты
-    # управляют выдачей/снятием в «Правах доступа».
-    {"key": "punches.view_all", "section": "Отметки",
-     "title": "Журнал отметок всех сотрудников и комментарии к чужим"},
-    {"key": "punches.punch_for_others", "section": "Отметки",
-     "title": "Отметка за другого сотрудника"},
-    {"key": "punches.backfill", "section": "Отметки",
-     "title": "Отметка задним числом (произвольное время)"},
-    {"key": "employees.view", "section": "Сотрудники", "title": "Просмотр сотрудников"},
-    {"key": "employees.edit", "section": "Сотрудники", "title": "Редактирование сотрудников"},
-    # Фаза 3 аудита (22.10.2026, AUTHZ-05, решение владельца В-2): ключи вместо ролевых
-    # проверок в коде, аудитория по умолчанию прежняя — employees.bank, settings.doublepay,
-    # cars.override, cars.maintenance, night.reopen_any, media.delete_any.
-    {"key": "employees.bank", "section": "Сотрудники", "title": "Корректировка банка часов"},
-    # employees.impersonate (этап B, 20.10.2026): «посмотреть глазами сотрудника»
-    # было за ролевым require_manager — ключ повторяет прежнюю аудиторию (supervisor+);
-    # вторым стражем остаётся can_manage_user (иерархия ролей, анти-эскалация).
-    {"key": "employees.impersonate", "section": "Сотрудники", "title": "Войти как сотрудник (имперсонация)"},
-    {"key": "settings.view", "section": "Настройки", "title": "Просмотр настроек"},
-    {"key": "settings.edit", "section": "Настройки", "title": "Изменение настроек и справочников"},
-    {"key": "settings.doublepay", "section": "Настройки", "title": "Дни двойной оплаты"},
-    {"key": "access.manage", "section": "Права доступа", "title": "Управление правами доступа"},
-    {"key": "audit.view", "section": "Журнал аудита", "title": "Просмотр журнала аудита"},
-    {"key": "me.punch", "section": "Мои отметки", "title": "Отмечаться «Пришёл/Ушёл»"},
-    {"key": "night.view", "section": "Ночной отчёт", "title": "Ночной отчёт"},
-    # night.dispatch (решение владельца В-5, 21.10.2026): отправка недостатков службам —
-    # отдельный ключ, по умолчанию у всех ролей; снять можно в «Правах доступа».
-    {"key": "night.dispatch", "section": "Ночной отчёт", "title": "Отправка недостатков службам"},
-    # night.edit (19.10.2026): справочник обхода (зоны, объекты, чек-листы, службы)
-    # жил в модалке раздела и проверялся РОЛЬЮ (is_manager) — единственный такой случай.
-    # Теперь это ключ каталога: выдаётся/снимается через «Права доступа» как остальные.
-    {"key": "night.edit", "section": "Ночной отчёт", "title": "Зоны, объекты, чек-листы, службы"},
-    # night.close (этап B, 20.10.2026): закрытие/переоткрытие смены и объектов было
-    # за ролевым require_supervisor — ключ повторяет прежнюю аудиторию (supervisor+).
-    {"key": "night.close", "section": "Ночной отчёт", "title": "Закрытие и переоткрытие смены/объектов"},
-    {"key": "night.reopen_any", "section": "Ночной отчёт", "title": "Переоткрыть чужую закрытую область обхода"},
-    {"key": "cars.view", "section": "Электрокары", "title": "Просмотр парка и истории"},
-    {"key": "cars.use", "section": "Электрокары", "title": "Взять / вернуть / передать кар"},
-    {"key": "cars.override", "section": "Электрокары", "title": "Передать или вернуть чужой кар"},
-    {"key": "cars.issue", "section": "Электрокары", "title": "Выдать, закрепить, сменить статус"},
-    {"key": "cars.maintenance", "section": "Электрокары", "title": "Поставить на обслуживание и снять с него"},
-    {"key": "cars.manage", "section": "Электрокары", "title": "Парк и места стоянки: создание, правка, удаление"},
-    {"key": "media.delete_any", "section": "Фото и видео", "title": "Удалить чужое фото или видео"},
-]
-ALL_KEYS = [p["key"] for p in PERMISSIONS]
+# Каталог собирают манифесты модулей (ADR-0012, 22.10.2026): load_catalog() вызывает
+# bootstrap/registry.wire(). Объекты заполняются на месте — модули держат на них ссылки.
+PERMISSIONS: list[dict] = []
+ALL_KEYS: list[str] = []
+ROLE_DEFAULTS: dict[str, set[str]] = {ROLE_ADMIN: set(), ROLE_MANAGER: set(),
+                                      ROLE_SUPERVISOR: set(), ROLE_EMPLOYEE: set()}
 
-_EMPLOYEE = {"presence.view", "schedule.view", "me.punch", "night.view", "night.dispatch",
-             "cars.view", "cars.use"}
-_SUPERVISOR = set(ALL_KEYS) - {"access.manage", "settings.edit", "mgmt.recalculate", "cars.manage",
-                               "employees.bank", "settings.doublepay", "cars.maintenance"}
-ROLE_DEFAULTS: dict[str, set[str]] = {
-    ROLE_ADMIN: set(ALL_KEYS),
-    ROLE_MANAGER: set(ALL_KEYS) - {"access.manage"},
-    ROLE_SUPERVISOR: _SUPERVISOR,
-    ROLE_EMPLOYEE: set(_EMPLOYEE),
-}
-ROLE_TITLES = {ROLE_ADMIN: "Администратор", ROLE_MANAGER: "Менеджер",
-               ROLE_SUPERVISOR: "Старший / супервайзер", ROLE_EMPLOYEE: "Сотрудник"}
+
+def load_catalog(perms: Iterable[Perm]) -> None:
+    """Каталог прав и права ролей по умолчанию из манифестов; администратору — все права."""
+    perms = list(perms)
+    PERMISSIONS[:] = [{"key": p.key, "section": p.section, "title": p.title} for p in perms]
+    ALL_KEYS[:] = [p.key for p in perms]
+    for keys in ROLE_DEFAULTS.values():
+        keys.clear()
+    ROLE_DEFAULTS[ROLE_ADMIN].update(ALL_KEYS)
+    for p in perms:
+        for role in p.roles:
+            ROLE_DEFAULTS[role].add(p.key)
+
+
 
 
 def _apply(perms: set[str], grants: Iterable[AccessGrant]) -> set[str]:

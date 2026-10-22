@@ -25,6 +25,9 @@ const NIGHT_ANSWER_BADGE = { ok: 'ok', bad: 'danger', '': 'muted' };
 
 
 /* ─────────────────────────── раздел ─────────────────────────── */
+registerModule({ views: { night: loadNight },
+  screens: { night: { render: renderNightDictScreen, icon: 'moon' } } });
+
 async function loadNight() {
   $('#view-night').innerHTML = `
     <div class="page-head">

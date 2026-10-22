@@ -17,6 +17,8 @@
   "ICONS": "readonly",
   "LAYER_LOADERS": "readonly",
   "LOGIN_ERRORS": "readonly",
+  "MODULE_SCREENS": "readonly",
+  "MODULE_VIEWS": "readonly",
   "MONTHS": "readonly",
   "MONTHS_GEN": "readonly",
   "NIGHT_ANSWER_BADGE": "readonly",
@@ -26,14 +28,14 @@
   "POLL_MS": "readonly",
   "POSITION_COLORS": "readonly",
   "P_NAME_W": "readonly",
+  "ROLE_ASSIGNS": "readonly",
+  "ROLE_RANKS": "readonly",
   "ROLE_TITLES": "readonly",
   "SETTINGS_CODE_FLAGS": "readonly",
   "SETTINGS_ICONS": "readonly",
   "SETTINGS_LEVEL_FORMS": "readonly",
   "SETTINGS_MODS": "readonly",
-  "SETTINGS_SCREENS": "readonly",
   "SETTINGS_STEPS": "readonly",
-  "SETTINGS_TITLES": "readonly",
   "V4_CODE_COLORS": "readonly",
   "V4_FLAG_CLASS": "readonly",
   "V4_MOD_TITLES": "readonly",
@@ -42,6 +44,7 @@
   "absencePeriodInfo": "readonly",
   "accessMatrix": "readonly",
   "api": "readonly",
+  "applyMe": "readonly",
   "bankAdjustModal": "readonly",
   "bindCarActions": "readonly",
   "bindCarStrip": "readonly",
@@ -197,6 +200,7 @@
   "punchInFlight": "readonly",
   "refreshAfterEmployeeChange": "readonly",
   "refreshDoublePay": "readonly",
+  "registerModule": "readonly",
   "rehireModal": "readonly",
   "renameDictModal": "readonly",
   "renderAccessGroups": "readonly",
@@ -219,6 +223,8 @@
   "renderUserChip": "readonly",
   "reopenReport": "readonly",
   "resetUserViewState": "readonly",
+  "roleSettingsModal": "readonly",
+  "roleTitle": "readonly",
   "scheduleShell": "readonly",
   "scrollGridToToday": "readonly",
   "scrollTabelToToday": "readonly",
@@ -285,10 +291,12 @@
   "settingsScreenPay": "readonly",
   "settingsScreenShifts": "readonly",
   "settingsScreenSystem": "readonly",
+  "settingsScreens": "readonly",
   "settingsSearchIndex": "readonly",
   "settingsSearchPalette": "readonly",
   "settingsSnap": "readonly",
   "settingsTimeline": "readonly",
+  "settingsTitle": "readonly",
   "settingsUI": "readonly",
   "settingsUpdateDraftBars": "readonly",
   "settingsVersionsModal": "readonly",
@@ -341,6 +349,8 @@
   "ICONS": "app.js",
   "LAYER_LOADERS": "app.js",
   "LOGIN_ERRORS": "app.js",
+  "MODULE_SCREENS": "app.js",
+  "MODULE_VIEWS": "app.js",
   "MONTHS": "core.js",
   "MONTHS_GEN": "core.js",
   "NIGHT_ANSWER_BADGE": "modules/night.js",
@@ -350,14 +360,14 @@
   "POLL_MS": "app.js",
   "POSITION_COLORS": "core.js",
   "P_NAME_W": "modules/timesheet_layers.js",
+  "ROLE_ASSIGNS": "modules/access.js",
+  "ROLE_RANKS": "modules/access.js",
   "ROLE_TITLES": "core.js",
   "SETTINGS_CODE_FLAGS": "modules/settings.js",
   "SETTINGS_ICONS": "modules/settings.js",
   "SETTINGS_LEVEL_FORMS": "modules/settings.js",
   "SETTINGS_MODS": "modules/settings.js",
-  "SETTINGS_SCREENS": "modules/settings.js",
   "SETTINGS_STEPS": "modules/settings.js",
-  "SETTINGS_TITLES": "modules/settings.js",
   "V4_CODE_COLORS": "modules/timesheet_common.js",
   "V4_FLAG_CLASS": "modules/timesheet_common.js",
   "V4_MOD_TITLES": "modules/engine_settings.js",
@@ -366,6 +376,7 @@
   "absencePeriodInfo": "modules/docs.js",
   "accessMatrix": "modules/access.js",
   "api": "core.js",
+  "applyMe": "app.js",
   "bankAdjustModal": "modules/employees.js",
   "bindCarActions": "modules/cars.js",
   "bindCarStrip": "modules/me.js",
@@ -521,6 +532,7 @@
   "punchInFlight": "modules/me.js",
   "refreshAfterEmployeeChange": "modules/employees.js",
   "refreshDoublePay": "modules/dicts.js",
+  "registerModule": "app.js",
   "rehireModal": "modules/employees.js",
   "renameDictModal": "modules/dicts.js",
   "renderAccessGroups": "modules/access.js",
@@ -543,6 +555,8 @@
   "renderUserChip": "app.js",
   "reopenReport": "modules/night.js",
   "resetUserViewState": "app.js",
+  "roleSettingsModal": "modules/access.js",
+  "roleTitle": "core.js",
   "scheduleShell": "modules/timesheet_layers.js",
   "scrollGridToToday": "modules/timesheet_layers.js",
   "scrollTabelToToday": "modules/tabel.js",
@@ -609,10 +623,12 @@
   "settingsScreenPay": "modules/settings.js",
   "settingsScreenShifts": "modules/settings.js",
   "settingsScreenSystem": "modules/settings.js",
+  "settingsScreens": "modules/settings.js",
   "settingsSearchIndex": "modules/settings.js",
   "settingsSearchPalette": "modules/settings.js",
   "settingsSnap": "modules/settings.js",
   "settingsTimeline": "modules/settings.js",
+  "settingsTitle": "modules/settings.js",
   "settingsUI": "modules/settings.js",
   "settingsUpdateDraftBars": "modules/settings.js",
   "settingsVersionsModal": "modules/settings.js",
@@ -650,10 +666,13 @@
  },
  "used_elsewhere": {
   "app.js": [
+   "applyMe",
    "can",
    "loadDirectory",
+   "loadPerms",
    "navigate",
    "poll",
+   "registerModule",
    "renderUserChip",
    "resetUserViewState",
    "showLogin"
@@ -664,7 +683,6 @@
    "MONTHS",
    "MONTHS_GEN",
    "POSITION_COLORS",
-   "ROLE_TITLES",
    "WD",
    "WD_SHORT",
    "api",
@@ -685,6 +703,7 @@
    "multipartApi",
    "openModal",
    "plural",
+   "roleTitle",
    "serverShiftMs",
    "state",
    "syncServerClock",
@@ -693,12 +712,8 @@
    "todayISO",
    "withAlpha"
   ],
-  "modules/access.js": [
-   "loadAccess"
-  ],
-  "modules/audit.js": [
-   "loadAudit"
-  ],
+  "modules/access.js": [],
+  "modules/audit.js": [],
   "modules/cars.js": [
    "CAR_BADGE",
    "CHARGE_OPTS",
@@ -708,11 +723,9 @@
    "carReturnModal",
    "carsState",
    "ensureCarLocations",
-   "loadCars",
    "locationOptions",
    "photoPickHtml",
-   "photoThumb",
-   "renderCarsDictScreen"
+   "photoThumb"
   ],
   "modules/dicts.js": [
    "DEFAULT_TITLES",
@@ -728,7 +741,6 @@
    "printWindow"
   ],
   "modules/employees.js": [
-   "loadEmployees",
    "openEmployeeCard"
   ],
   "modules/engine_settings.js": [
@@ -737,9 +749,7 @@
   "modules/fact.js": [
    "loadFact"
   ],
-  "modules/marks.js": [
-   "loadMarks"
-  ],
+  "modules/marks.js": [],
   "modules/me.js": [
    "loadMe"
   ],
@@ -748,8 +758,7 @@
   ],
   "modules/night.js": [
    "loadNight",
-   "nightState",
-   "renderNightDictScreen"
+   "nightState"
   ],
   "modules/settings.js": [
    "loadSettings",

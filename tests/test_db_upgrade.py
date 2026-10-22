@@ -98,3 +98,46 @@ def test_cars_holder_index_skipped_when_holder_has_two_cars(db):
         command.downgrade(config(), "0003")
         command.upgrade(config(), "head")
     assert has_index()
+
+
+def test_migrate_command_prepares_empty_base(tmp_path):
+    """5.2 (ADR-0002): `python -m app.bootstrap.migrate` — отдельный шаг деплоя — доводит пустую
+    базу до head и создаёт администратора из ADMIN_PASSWORD."""
+    import os
+    import sqlite3
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    db = tmp_path / "migrate.db"
+    env = {**os.environ, "DATABASE_URL": f"sqlite:///{db}", "DEMO_SEED": "0",
+           "ADMIN_PASSWORD": "admin-pass-123", "NIGHT_SYNC_ENABLED": "0"}
+    r = subprocess.run([sys.executable, "-m", "app.bootstrap.migrate"], env=env,
+                       cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+                       timeout=180)
+    assert r.returncode == 0, r.stderr[-2000:]
+    _, head = _revisions()
+    con = sqlite3.connect(db)
+    try:
+        assert con.execute("SELECT version_num FROM alembic_version").fetchone()[0] == head
+        assert con.execute("SELECT role FROM users WHERE username = 'admin'").fetchone()[0] == "admin"
+    finally:
+        con.close()
+
+
+def test_worker_without_migrate_stops_on_stale_schema(db):
+    """MIGRATE_ON_START=0: воркер не мигрирует, а при отставании схемы останавливается с
+    подсказкой про шаг migrate; на актуальной схеме молчит."""
+    import pytest
+    from alembic import command
+
+    from app.bootstrap import schema_version
+
+    schema_version.ensure_current()
+    db.rollback()
+    command.downgrade(schema_version.config(), "-1")
+    try:
+        with pytest.raises(RuntimeError, match="app.bootstrap.migrate"):
+            schema_version.ensure_current()
+    finally:
+        command.upgrade(schema_version.config(), "head")

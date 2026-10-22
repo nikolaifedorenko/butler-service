@@ -233,6 +233,8 @@ const state = {
 };
 
 const ROLE_TITLES = { admin: 'Администратор', manager: 'Менеджер', supervisor: 'Супервайзер', employee: 'Сотрудник' };
+/* название роли: свои роли приходят с сервера (/api/auth/me), встроенные — запасной вариант */
+function roleTitle(code) { return state.roleTitles?.[code] || ROLE_TITLES[code] || code || '—'; }
 /* палитра цветов должностей */
 const POSITION_COLORS = [
   { c: '#8a94a6', t: 'Батлер (серый)' },

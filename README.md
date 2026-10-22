@@ -411,7 +411,8 @@ butler-service/
 │   │                         #   ConfigError/DomainError/ApplicationError движка),
 │   │                         #   middleware из core/observability, раздача SPA, health/selfcheck
 │   ├── bootstrap/            # seed.py (демо-данные), migrations.py (идемпотентные),
-│   │                         #   registry.py — реестр моделей (G4) + инъекция провайдеров в core
+│   │                         #   modules.py — поиск манифестов модулей (ADR-0012), registry.py —
+│   │                         #   их регистрация + инъекция провайдеров в core
 │   ├── core/                 # инфраструктура (R5: не знает о модулях):
 │   │                         #   config, db (engine/SessionLocal/Base), startup_lock (сериализация
 │   │                         #   init_db между воркерами), time (TZ/now — единственный
@@ -421,7 +422,7 @@ butler-service/
 │   │                         #   (AuditLog + audit()), media (Photo + хранилище) + media_api
 │   │                         #   (роутер /api/photos), settings_store (key-value Setting),
 │   │                         #   render (транспорт LibreOffice/reportlab), format, roles, observability
-│   └── modules/              # каждый: domain / application / ports / adapters / interface
+│   └── modules/              # каждый: manifest.py + domain / application / ports / adapters / interface
 │       ├── timesheet/        # ДВИЖОК v7.1 + Табель/График/отметки/доска/УТ/двойные:
 │       │   ├── domain/       #   чистое ядро (спека 8.1): types, codes_registry, settings,
 │       │   │                 #   validation, time, sessions, presence, day_card, placement,
@@ -446,7 +447,7 @@ butler-service/
 │       ├── access/           # login/logout/impersonation (auth_routes) + «Права доступа»
 │       └── audit/            # «Журнал» + CSV (модель и audit() — в core)
 ├── static/
-│   ├── index.html            # оболочка SPA + экран входа (порядок <script> фиксирует зависимости)
+│   ├── index.html            # оболочка SPA + экран входа (список <script> — tools/bump_version.py)
 │   ├── js/core.js app.js     # ядро (api/модалки/утилиты) + оболочка/меню/роутинг
 │   ├── js/modules/           # разделы 1:1 (глобальные функции сохранены — ADR-0008):
 │   │                         #   timesheet_layers (График-сетка), timesheet_common, marks,

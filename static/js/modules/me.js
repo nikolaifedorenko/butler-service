@@ -7,6 +7,8 @@
 /* ══════════════════════════════════════════════════════════════════
    МОИ ОТМЕТКИ
    ══════════════════════════════════════════════════════════════════ */
+registerModule({ views: { me: loadMe } });
+
 async function loadMe() {
   $('#view-me').innerHTML = '<div class="me-wrap"><div class="empty">Загрузка…</div></div>';
   try {

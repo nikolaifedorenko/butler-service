@@ -77,3 +77,30 @@ class AccessGrant(Base):
     role: Mapped[str] = mapped_column(String(20), default="")       # переопределение базовой роли
     permission: Mapped[str] = mapped_column(String(48))
     effect: Mapped[str] = mapped_column(String(8), default="allow")  # allow | deny
+
+
+class LoginAttempt(Base):
+    """Неудачная попытка входа (ADR-0005, пересмотрен 22.10.2026): лимит общий для всех
+    воркеров и контейнеров, а не словарь в памяти каждого. key — «ip:<адрес>»."""
+
+    __tablename__ = "login_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(80), index=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class Role(Base):
+    """Роль пользователя как данные (ADR-0011, 22.10.2026): встроенные четыре и свои.
+
+    rank — уровень роли; max_assignable_rank — до какого уровня её обладатель управляет
+    учётками и назначает роли (-1 — никого). Права роли — гранты AccessGrant(role=code)
+    поверх прав по умолчанию из манифестов (у своей роли умолчаний нет)."""
+
+    __tablename__ = "roles"
+
+    code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    title: Mapped[str] = mapped_column(String(80))
+    rank: Mapped[int] = mapped_column(Integer)
+    max_assignable_rank: Mapped[int] = mapped_column(Integer)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)

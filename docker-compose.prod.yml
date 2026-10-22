@@ -15,6 +15,26 @@
 # Бэкапы:   ./backups/timetrack-<дата>.sql.gz.age (ежесуточно, шифрование age, 14 шт.) + копия на второй сервер
 # Подробно: deploy/README.md
 
+# общее окружение приложения: его получают и шаг migrate, и воркеры app
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-timetrack}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-timetrack}
+  SECRET_KEY: ${SECRET_KEY:?задайте SECRET_KEY в .env (openssl rand -hex 32)}
+  APP_TZ: ${APP_TZ:-Europe/Moscow}
+  TZ: ${APP_TZ:-Europe/Moscow}
+  # боевые нормы: cookie только по TLS, IP из XFF (приложение стоит за своим
+  # nginx), JSON-лог, метрики для внутреннего скрейпера; демо-вход включён
+  # по умолчанию (решение владельца 15.10.2026), 0 — выключить
+  COOKIE_SECURE: "1"
+  ALLOW_IMPERSONATION: ${ALLOW_IMPERSONATION:-1}
+  # первый старт на пустой базе: пароль администратора admin (демо-данных в проде нет)
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+  TRUST_PROXY_HEADERS: "1"
+  LOG_JSON: "1"
+  METRICS_ENABLED: ${METRICS_ENABLED:-1}
+  # Swagger и схема API наружу не отдаются (OPS-04); для отладки — API_DOCS=1 в .env
+  API_DOCS: ${API_DOCS:-0}
+  CSRF_ENABLED: "1"
+
 services:
   db:
     image: postgres:16-alpine
@@ -31,35 +51,36 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
+  # отдельный шаг деплоя (ADR-0002): миграции схемы, справочники, первый администратор;
+  # завершается — и только тогда стартует app
+  migrate:
     build: .
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-timetrack}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-timetrack}
-      SECRET_KEY: ${SECRET_KEY:?задайте SECRET_KEY в .env (openssl rand -hex 32)}
-      APP_TZ: ${APP_TZ:-Europe/Moscow}
-      TZ: ${APP_TZ:-Europe/Moscow}
-      # боевые нормы: cookie только по TLS, IP из XFF (приложение стоит за своим
-      # nginx), JSON-лог, метрики для внутреннего скрейпера; демо-вход включён
-      # по умолчанию (решение владельца 15.10.2026), 0 — выключить
-      COOKIE_SECURE: "1"
-      ALLOW_IMPERSONATION: ${ALLOW_IMPERSONATION:-1}
-      # первый старт на пустой базе: пароль администратора admin (демо-данных в проде нет)
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      TRUST_PROXY_HEADERS: "1"
-      LOG_JSON: "1"
-      METRICS_ENABLED: ${METRICS_ENABLED:-1}
-      # Swagger и схема API наружу не отдаются (OPS-04); для отладки — API_DOCS=1 в .env
-      API_DOCS: ${API_DOCS:-0}
-      CSRF_ENABLED: "1"
-    # несколько воркеров допустимы: инициализация схемы сериализована замком
-    # (app/core/startup_lock.py — pg_advisory_lock), фоновая синхронизация ночных
+      <<: *app-env
+    command: ["python", "-m", "app.bootstrap.migrate"]
+    volumes:
+      - app_data:/srv/timetrack/data
+      - app_templates:/srv/timetrack/templates
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-env
+      # схему не мигрирует — только сверяет ревизию: миграции сделал сервис migrate
+      MIGRATE_ON_START: "0"
+    # несколько воркеров допустимы: схему готовит сервис migrate (воркеры только сверяют
+    # ревизию; startup_lock — страховка ручного запуска), фоновая синхронизация ночных
     # отчётов (bootstrap/night_sync.py) — один раунд на всех под try_lock,
-    # замок отметок — строка БД (SELECT … FOR UPDATE), rate-limit входа per-worker
-    # (при жёстких требованиях — вынести в Redis, ADR-0005)
+    # замок отметок — строка БД (SELECT … FOR UPDATE), лимит входа — общий, в таблице
+    # login_attempts (ADR-0005)
     command: >
       python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
       --workers ${UVICORN_WORKERS:-2} --proxy-headers --forwarded-allow-ips "*"

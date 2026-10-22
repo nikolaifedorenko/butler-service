@@ -16,6 +16,9 @@ const carsState = { data: null, meta: null, locations: [], filter: 'all', q: '' 
 const dRuCar = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
 
 /* ─────────────────────────── раздел ─────────────────────────── */
+registerModule({ views: { cars: loadCars },
+  screens: { cars: { render: renderCarsDictScreen, icon: 'car' } } });
+
 async function loadCars() {
   $('#view-cars').innerHTML = `
     <div class="page-head">

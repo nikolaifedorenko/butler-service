@@ -7,6 +7,8 @@
 /* ══════════════════════════════════════════════════════════════════
    СОТРУДНИКИ: список → карточка → редактор
    ══════════════════════════════════════════════════════════════════ */
+registerModule({ views: { employees: loadEmployees } });
+
 async function loadEmployees() {
   const host = $('#view-employees');
   await loadDirectory();
@@ -90,7 +92,7 @@ async function employeeCard(emp) {
         <div class="field"><span>Телефон</span><div style="font-weight:600">${esc(emp.phone || '—')}</div></div>
         <div class="field"><span>Рабочая почта</span><div style="font-weight:600">${esc(emp.email || '—')}</div></div>
         <div class="field"><span>Telegram</span><div style="font-weight:600">${esc(emp.telegram || '—')}</div></div>
-        <div class="field"><span>Логин / роль</span><div style="font-weight:600"><code>${esc(emp.username || '—')}</code> · ${esc(ROLE_TITLES[emp.role] || '—')}</div></div>
+        <div class="field"><span>Логин / роль</span><div style="font-weight:600"><code>${esc(emp.username || '—')}</code> · ${esc(roleTitle(emp.role))}</div></div>
         <div class="field"><span>Банк часов (сейчас)</span><div class="${bankNow >= 0 ? 'balance-pos' : 'balance-neg'}" style="font-size:18px">${bankNow >= 0 ? '+' : ''}${hours(bankNow)} ч</div>
           <div class="hint" style="margin-top:2px">итог последнего закрытого периода ± корректировки</div></div>
         <div class="field"><span>Статус</span><div style="font-weight:600">${emp.deleted ? 'удалён (хранится в истории)'
@@ -133,7 +135,7 @@ async function employeeCard(emp) {
       if (impBtn) impBtn.onclick = async () => {
         await api('/api/auth/impersonate', { method: 'POST', body: { employee_id: emp.id } });
         const me = await api('/api/auth/me');
-        state.user = me.user; state.perms = me.permissions || []; renderUserChip(); closeModal();
+        state.user = me.user; applyMe(me); renderUserChip(); closeModal();
         resetUserViewState(); navigate('me');
         toast('Вы смотрите интерфейс глазами сотрудника', 'warn');
       };
@@ -403,11 +405,11 @@ async function employeeModal(emp) {
   try { state.subdivisions = await api('/api/subdivisions', { silent: true }); }
   catch { state.subdivisions = state.subdivisions || []; }
   const isNew = !emp;
-  // Роли, которые текущий пользователь вправе назначать (защита от эскалации прав):
-  // admin — все; manager — без admin; supervisor и ниже — только employee.
-  const roleOptions = state.user?.role === 'admin' ? ['employee', 'supervisor', 'manager', 'admin']
-    : state.user?.role === 'manager' ? ['employee', 'supervisor', 'manager']
-    : ['employee'];
+  // Роли, которые текущий пользователь вправе назначать, — с сервера (иерархия ролей там же,
+  // ADR-0011), от младшей к старшей; новому сотруднику по умолчанию — «Сотрудник».
+  // Текущая роль сотрудника видна всегда: менять её запретит сервер, если нельзя.
+  const roleOptions = [...new Set([...(state.assignableRoles || []).slice().reverse(),
+                                   ...(emp?.role ? [emp.role] : [])])];
   const contacts = emp?.contacts?.length ? emp.contacts
     : (emp?.emergency_name ? [{ name: emp.emergency_name, phone: emp.emergency_phone, relation: '' }] : []);
   openModal({
@@ -448,7 +450,7 @@ async function employeeModal(emp) {
           ${groupList.map(g => `<option value="${esc(g.name)}" ${emp?.schedule_group === g.name ? 'selected' : ''}>${esc(g.title || g.name)}</option>`).join('')}
         </select></label>
         <label class="field"><span>Роль в системе</span><select id="e-role">
-          ${roleOptions.map(r => `<option value="${r}" ${emp?.role === r ? 'selected' : ''}>${ROLE_TITLES[r]}</option>`).join('')}
+          ${roleOptions.map(r => `<option value="${esc(r)}" ${(emp?.role || 'employee') === r ? 'selected' : ''}>${esc(roleTitle(r))}</option>`).join('')}
         </select></label>
         <label class="field"><span>Логин</span><input type="text" id="e-login" value="${esc(emp?.username || '')}" placeholder="создастся автоматически"></label>
       </div>

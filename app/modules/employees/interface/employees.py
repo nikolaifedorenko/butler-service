@@ -122,13 +122,11 @@ def cars_by_employee(db: Session, employee_ids: list[int]) -> dict[int, Car]:
         select(Car).where(Car.assigned_to.in_(employee_ids)))}
 
 
-def _guard_supervisor(principal: Principal, new_role: str, target_user: Optional[User]) -> None:
-    """Супервайзер может управлять только обычными пользователями (employee).
-
-    Правило одно на всё приложение и живёт в app/auth.py:can_manage_user —
-    здесь лишь тонкая обёртка, чтобы не переписывать все места вызова.
-    """
-    can_manage_user(principal, target_user, new_role)
+def _guard_supervisor(db: Session, principal: Principal, new_role: str,
+                      target_user: Optional[User]) -> None:
+    """Иерархия ролей: правило одно на всё приложение — core.auth_guards.can_manage_user;
+    здесь лишь тонкая обёртка, чтобы не переписывать все места вызова."""
+    can_manage_user(db, principal, target_user, new_role)
 
 
 class ContactIn(BaseModel):
@@ -221,7 +219,7 @@ def suggest_genitive_api(payload: SuggestGenitiveIn, principal: Principal = Depe
 def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_perm("employees.edit")),
                     db: Session = Depends(get_db)):
     role = payload.role or ROLE_EMPLOYEE
-    _guard_supervisor(principal, role, None)
+    _guard_supervisor(db, principal, role, None)
     _check_password(payload.password)
     hired = _parse_date(payload.hired_at) or local_date()
     # FK department_id — валиден ДО вставки (P1-misc-3): битый id на PostgreSQL
@@ -277,7 +275,7 @@ def update_employee(employee_id: int, payload: EmployeeIn,
     emp = db.get(Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    _guard_supervisor(principal, payload.role, emp.user)
+    _guard_supervisor(db, principal, payload.role, emp.user)
     _check_password(payload.password)
     changes: dict = {}
 
@@ -360,6 +358,7 @@ def position_change(employee_id: int, payload: DatedAction,
                     principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод/повышение/понижение с произвольной даты."""
     emp = lifecycle.position_change(db, principal, employee_id, payload.position, payload.date)
+    db.commit()
     return _emp_dict(emp)
 
 
@@ -368,6 +367,7 @@ def block_change(employee_id: int, payload: DatedAction,
                  principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод между блоками графика (Смена 1 ↔ Смена 2) с произвольной даты."""
     emp = lifecycle.block_change(db, principal, employee_id, _block_of(payload), payload.date)
+    db.commit()
     return _emp_dict(emp)
 
 
@@ -376,6 +376,7 @@ def dismiss_employee(employee_id: int, payload: DatedAction,
                      principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Увольнение (деактивация) с произвольной даты; история сохраняется."""
     emp = lifecycle.dismiss(db, principal, employee_id, payload.date)
+    db.commit()
     return _emp_dict(emp, with_user=True)
 
 
@@ -400,6 +401,7 @@ def rehire_employee(employee_id: int, payload: RehireIn,
     и активные дни после повторного приёма. Вся прошлая история сохраняется."""
     block = _block_of(payload) if payload.group.strip() else None
     emp = lifecycle.rehire(db, principal, employee_id, payload.date, payload.position, block)
+    db.commit()
     return _emp_dict(emp, with_user=True)
 
 
@@ -543,7 +545,7 @@ def deactivate_employee(employee_id: int, principal: Principal = Depends(require
     emp = db.get(Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    _guard_supervisor(principal, ROLE_EMPLOYEE, emp.user)
+    _guard_supervisor(db, principal, ROLE_EMPLOYEE, emp.user)
     emp.active = active
     if emp.user:
         emp.user.is_active = active
@@ -561,7 +563,7 @@ def delete_employee(employee_id: int, principal: Principal = Depends(require_per
     emp = db.get(Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    _guard_supervisor(principal, ROLE_EMPLOYEE, emp.user)
+    _guard_supervisor(db, principal, ROLE_EMPLOYEE, emp.user)
     if emp.deleted_at:
         raise HTTPException(status_code=409, detail="Сотрудник уже удалён")
     emp.deleted_at = local_date()
