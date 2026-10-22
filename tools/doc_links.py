@@ -29,9 +29,22 @@ def living_docs() -> list[Path]:
     return [ROOT / f for f in out.stdout.split() if not f.startswith(HISTORICAL)]
 
 
+def _tracked() -> set[Path]:
+    """Файлы под git и их каталоги: локальный незакоммиченный файл (например, docs/audit/)
+    в CI отсутствует — ссылка на него битая, хотя у автора проверка прошла бы."""
+    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True)
+    files = {ROOT / f for f in out.stdout.splitlines()}
+    return files | {d for f in files for d in f.parents}
+
+
+TRACKED: set[Path] = set()
+
+
 def _missing(path: Path) -> bool:
-    """Файла нет и он не из .gitignore (ключи бэкапа, .env — их создаёт оператор)."""
-    if path.exists():
+    """Файла нет под git и он не из .gitignore (ключи бэкапа, .env — их создаёт оператор)."""
+    if not TRACKED:
+        TRACKED.update(_tracked())
+    if path.resolve() in TRACKED:
         return False
     # «каталог/» — правило .gitignore для каталога не совпадает с путём без косой черты
     return all(subprocess.run(["git", "check-ignore", "-q", p], cwd=ROOT).returncode != 0
