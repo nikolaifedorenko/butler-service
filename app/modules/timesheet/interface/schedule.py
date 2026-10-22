@@ -993,8 +993,9 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
     hi_utc = dt.datetime.combine(last + dt.timedelta(days=1), dt.time(0),
                                  TZ).astimezone(dt.timezone.utc)
     cleared, absences_cleared, skipped = 0, 0, 0
+    locks = timesheet_edit.lock_states([str(e.id) for e in emps], first, ports)
     for emp in emps:
-        if timesheet_edit.lock_state(str(emp.id), first, ports) == "locked":
+        if locks[str(emp.id)] == "locked":
             skipped += 1
             continue
         manual = list(db.scalars(select(ScheduleShift).where(

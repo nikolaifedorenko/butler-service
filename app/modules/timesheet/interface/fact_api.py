@@ -127,6 +127,8 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
             d0 += dt.timedelta(days=1)
     days = [period.start + dt.timedelta(days=i)
             for i in range((period.end - period.start).days + 1)]
+    ports.punch.prefetch([str(e.id) for e in emps], lo, hi)
+    ports.employment.prefetch([str(e.id) for e in emps])
     rows = []
     for e in emps:
         eid = str(e.id)

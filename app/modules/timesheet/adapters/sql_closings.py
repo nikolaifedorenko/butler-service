@@ -9,7 +9,7 @@ import datetime as dt
 import json
 from typing import Sequence
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -69,6 +69,19 @@ class SqlSettlementStore:
                              or adjacent_prev is not None),
             next_closed=later is not None,
             opening_bank_set=first and opening_seed_set(self.db, employee_id, period))
+
+    def lock_marks(self, employee_ids: Sequence[str],
+                   period: Period) -> dict[str, tuple[bool, bool]]:
+        """closed и next_closed как в period_state, но одним запросом на всех."""
+        pks = {emp_pk(e): e for e in employee_ids}
+        marks = {e: (False, False) for e in employee_ids}
+        for emp, start in self.db.execute(select(PeriodClosing.employee_id, PeriodClosing.period_start)
+                                          .where(PeriodClosing.employee_id.in_(pks),
+                                                 or_(PeriodClosing.period_start == period.start,
+                                                     PeriodClosing.period_start > period.end))):
+            closed, later = marks[pks[emp]]
+            marks[pks[emp]] = (closed or start == period.start, later or start > period.end)
+        return marks
 
     def closing_inputs(self, employee_id: str, period: Period) -> ClosingInputs | None:
         row = self._row(employee_id, period)

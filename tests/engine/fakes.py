@@ -118,6 +118,9 @@ class FakePunch:
     def __init__(self, db: FakeDb):
         self.db = db
 
+    def prefetch(self, employee_ids, from_utc, to_utc):
+        pass
+
     def _emp(self, employee_id):
         return [m for m in self.db.marks if m.employee_id == employee_id]
 
@@ -209,6 +212,9 @@ class FakeEmployment:
     def __init__(self, db: FakeDb):
         self.db = db
 
+    def prefetch(self, employee_ids):
+        pass
+
     def employment(self, employee_id, period):
         self.db.queries.append("employment.employment")
         return self.db.employment.get(employee_id, Employment(dt.date(1900, 1, 1), None))
@@ -246,6 +252,10 @@ class FakeStore:
 
     def _closed(self, emp, start):
         return (emp, start) in self.db.closings
+
+    def lock_marks(self, employee_ids, period):
+        return {e: (s.closed, s.next_closed)
+                for e in employee_ids for s in [self.period_state(e, period)]}
 
     def period_state(self, employee_id, period):
         self.db.queries.append("store.period_state")

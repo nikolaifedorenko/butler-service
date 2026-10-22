@@ -19,6 +19,11 @@ class SettlementStorePort(Protocol):
     def load_result(self, employee_id: str,
                     period: Period) -> tuple[SettleResult, FlagsResult] | None: ...
     def period_state(self, employee_id: str, period: Period) -> PeriodState: ...
+    def lock_marks(self, employee_ids: Sequence[str],
+                   period: Period) -> dict[str, tuple[bool, bool]]:
+        """(closed, next_closed) из period_state для многих сотрудников сразу — экранам
+        Табеля и Графика (без запросов на каждого сотрудника, PERF-02)."""
+        ...
     def closing_inputs(self, employee_id: str, period: Period) -> ClosingInputs | None:
         """Входной снимок закрытия — основа recalculate (7.2, v7/R28: заморожены
         только ClosingInputs)."""

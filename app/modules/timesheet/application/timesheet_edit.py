@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
+from typing import Sequence
 
 from ..domain.types.entities import Day, Period
 from ..domain.validation.check_day_values import check_day_values
@@ -23,14 +24,17 @@ class TimesheetEditOutcome:
     manual_shifts_dropped: tuple[dt.date, ...]
 
 
-def lock_state(employee_id: str, day: dt.date, ports: EnginePorts) -> str:
-    """open — свободная правка; last_closed — с предупреждением; locked — только чтение."""
+def lock_states(employee_ids: Sequence[str], day: dt.date, ports: EnginePorts) -> dict[str, str]:
+    """open — свободная правка; last_closed — с предупреждением; locked — только чтение.
+    Сразу для многих сотрудников: экраны Табеля и Графика не делают запросы на каждого."""
     st = ports.settings.load(period_containing(day, "month"))
     prd = period_containing(day, st.period_granularity)
-    state = ports.store.period_state(employee_id, prd)
-    if not state.closed:
-        return "open"
-    return "locked" if state.next_closed else "last_closed"
+    return {e: ("open" if not closed else "locked" if later else "last_closed")
+            for e, (closed, later) in ports.store.lock_marks(employee_ids, prd).items()}
+
+
+def lock_state(employee_id: str, day: dt.date, ports: EnginePorts) -> str:
+    return lock_states([employee_id], day, ports)[employee_id]
 
 
 def save_timesheet_day(employee_id: str, day: dt.date, code: str, plan_minutes: int | None,

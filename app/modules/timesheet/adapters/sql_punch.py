@@ -43,8 +43,36 @@ def sanitize(marks: Sequence[Mark], opening: Mark | None) -> list[Mark]:
 class SqlPunchAdapter:
     def __init__(self, db: Session, now: dt.datetime):
         self.db, self.now = db, now
+        self._window: tuple[dt.datetime, dt.datetime] | None = None   # окно prefetch()
+        self._pre_rows: dict[int, list[Punch]] = {}
+        self._pre_before: dict[int, Punch | None] = {}
+
+    def prefetch(self, employee_ids: Sequence[str], from_utc: dt.datetime,
+                 to_utc: dt.datetime) -> None:
+        """Отметки многих сотрудников за [from, to) и последняя до from — двумя запросами
+        (Факт за месяц, PERF-02). marks_between и last_mark_before на этом окне берут их
+        отсюда; фильтры те же, что в _rows и last_mark_before."""
+        pks = [emp_pk(e) for e in employee_ids]
+        hi = min(to_utc, self.now + dt.timedelta(microseconds=1))
+        lo_n, hi_n, now_n = (utc_to_local_naive(x) for x in (from_utc, hi, self.now))
+        rows: dict[int, list[Punch]] = {pk: [] for pk in pks}
+        for p in self.db.scalars(select(Punch).where(
+                Punch.employee_id.in_(pks), Punch.ts >= lo_n, Punch.ts < hi_n, Punch.ts <= now_n)
+                .order_by(Punch.ts, Punch.id)):
+            rows[p.employee_id].append(p)
+        rank = func.row_number().over(partition_by=Punch.employee_id,
+                                      order_by=(Punch.ts.desc(), Punch.id.desc())).label("rank")
+        last = select(Punch.id, rank).where(Punch.employee_id.in_(pks), Punch.ts < lo_n,
+                                            Punch.ts <= now_n).subquery()
+        before = {p.employee_id: p for p in self.db.scalars(
+            select(Punch).join(last, Punch.id == last.c.id).where(last.c.rank == 1))}
+        self._window = (from_utc, hi)
+        self._pre_rows = rows
+        self._pre_before = {pk: before.get(pk) for pk in pks}
 
     def _rows(self, employee_id: str, lo: dt.datetime | None, hi: dt.datetime) -> list[Punch]:
+        if self._window == (lo, hi) and emp_pk(employee_id) in self._pre_rows:
+            return list(self._pre_rows[emp_pk(employee_id)])
         q = select(Punch).where(Punch.employee_id == emp_pk(employee_id),
                                 Punch.ts < utc_to_local_naive(hi),
                                 Punch.ts <= utc_to_local_naive(self.now))
@@ -61,6 +89,9 @@ class SqlPunchAdapter:
 
     def last_mark_before(self, employee_id: str, at_utc: dt.datetime) -> Mark | None:
         """Строго at < at_utc (2.6)."""
+        if self._window and at_utc == self._window[0] and emp_pk(employee_id) in self._pre_before:
+            p = self._pre_before[emp_pk(employee_id)]
+            return _mark(p) if p else None
         p = self.db.scalar(select(Punch).where(
             Punch.employee_id == emp_pk(employee_id),
             Punch.ts < utc_to_local_naive(at_utc),
