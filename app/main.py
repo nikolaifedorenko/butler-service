@@ -180,7 +180,7 @@ registry.wire()   # реестр моделей + провайдеры core — 
 
 
 # ── маппинг доменных ошибок сервисного слоя в HTTP ──────────────────────────
-# Сервисы (app/services/*) не знают про FastAPI и бросают services.errors.*;
+# Прикладной слой модулей не знает про FastAPI и бросает ошибки app/core/errors.py;
 # тело ответа прежнее — {"detail": текст}, контракты API и тесты не меняются.
 @app.exception_handler(NotFound)
 async def _not_found_handler(request: Request, exc: NotFound):
@@ -227,7 +227,7 @@ async def _payload_too_large_handler(request: Request, exc: PayloadTooLarge):
 #   ApplicationError → 409 — конфликт состояния (период закрыт и т.п.).
 # Прим.: §5.3 спеки предписывал 422 для ConfigError, но §11.1 требует побайтового
 # сохранения статусов, закреплённых тестами; приоритет у более конкретного текста
-# (тесты) — см. docs/CHANGES-2026-10-20-stage-c2-timesheet.md.
+# (тесты) — см. docs/archive/changes/CHANGES-2026-10-20-stage-c2-timesheet.md.
 @app.exception_handler(ConfigError)
 async def _engine_config_error_handler(request: Request, exc: ConfigError):
     return JSONResponse({"detail": error_text(exc)}, status_code=409)

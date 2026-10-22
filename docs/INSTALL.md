@@ -89,8 +89,8 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 Диагностика одной командой: `./run.sh --reinstall` — пересоздаст окружение и покажет,
 какой пакет не ставится.
-* **UI-смоук:** `python3 tools/smoke_ui.py` (нужен Playwright: `pip install playwright
-  && python3 -m playwright install chromium`).
+* **UI-смоук:** `./tools/run_ui_check.sh 8141 gromova` (нужен Node.js и jsdom:
+  `npm install`).
 * **Swagger API:** http://127.0.0.1:8000/api/docs
 * **Телефон в той же сети:** запустите с `--host 0.0.0.0` и откройте
   `http://<IP-компьютера>:8000` (интерфейс адаптивный, ставится на главный экран как PWA).
@@ -98,108 +98,10 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ---
 
-## 2. Сервер (Ubuntu 22.04/24.04, systemd + nginx + HTTPS)
+## 2. Сервер
 
-### 2.1. Подготовка
-```bash
-sudo apt update && sudo apt install -y python3-venv python3-pip nginx certbot python3-certbot-nginx
-sudo useradd -r -m -d /opt/timetrack -s /usr/sbin/nologin timetrack
-sudo mkdir -p /opt/timetrack && sudo chown timetrack:timetrack /opt/timetrack
-# скопируйте файлы проекта в /opt/timetrack (scp, rsync, git clone…)
-```
-
-### 2.2. Окружение и зависимости
-```bash
-sudo -u timetrack python3 -m venv /opt/timetrack/.venv
-sudo -u timetrack /opt/timetrack/.venv/bin/pip install -r /opt/timetrack/requirements.txt
-sudo -u timetrack cp /opt/timetrack/.env.example /opt/timetrack/.env
-sudo -u timetrack nano /opt/timetrack/.env     # SECRET_KEY=<(openssl rand -hex 32>), APP_TZ
-```
-
-### 2.3. PostgreSQL (рекомендуется для боевого режима)
-```bash
-sudo apt install -y postgresql
-sudo -u postgres psql <<'SQL'
-CREATE USER timetrack WITH PASSWORD 'STRONG_PASSWORD';
-CREATE DATABASE timetrack OWNER timetrack;
-SQL
-sudo -u timetrack /opt/timetrack/.venv/bin/pip install psycopg2-binary
-# в .env:  DATABASE_URL=postgresql+psycopg2://timetrack:STRONG_PASSWORD@127.0.0.1:5432/timetrack
-```
-Таблицы создаются автоматически при старте (`create_all`). Для SQLite ничего делать не нужно.
-
-### 2.4. systemd-сервис
-```ini
-# /etc/systemd/system/timetrack.service
-[Unit]
-Description=Батлер Сервис — учёт рабочего времени
-After=network.target postgresql.service
-
-[Service]
-User=timetrack
-Group=timetrack
-WorkingDirectory=/opt/timetrack
-EnvironmentFile=/opt/timetrack/.env
-ExecStart=/opt/timetrack/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now timetrack
-systemctl status timetrack          # journalctl -u timetrack -f  — логи
-```
-
-### 2.5. nginx + HTTPS
-```nginx
-# /etc/nginx/sites-available/timetrack
-server {
-    listen 80;
-    server_name time.example.ru;
-
-    client_max_body_size 20m;
-
-    location /static/ {
-        alias /opt/timetrack/static/;
-        expires 7d;
-        add_header Cache-Control "public";
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-```bash
-sudo ln -s /etc/nginx/sites-available/timetrack /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d time.example.ru        # выпустит сертификат и включит HTTPS
-# после HTTPS: в .env раскомментируйте COOKIE_SECURE=1 и: sudo systemctl restart timetrack
-```
-
-### 2.6. Docker (альтернатива)
-```bash
-DEMO_SEED=1 docker compose up -d --build   # демо: SQLite в томе tt_data, порт 8000, пароль demo1234
-ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SECURE=1 docker compose up -d --build
-```
-Приложение в контейнере работает не от root (пользователь `app`). Тома, созданные до
-22.10.2026, нужно один раз передать этому пользователю — команда в `deploy/README.md` §6.
-
-### 2.7. Эксплуатация
-* **Бэкапы:** SQLite — копия файла `timetrack.db` (лучше через `sqlite3 db ".backup …"`);
-  PostgreSQL — `pg_dump timetrack > dump.sql` по cron. Храните также `.env` (SECRET_KEY).
-* **Обновление:** заменить файлы → `pip install -r requirements.txt` →
-  `systemctl restart timetrack`. Таблицы добавляются автоматически; при изменении схемы
-  колонок (редко) может понадобиться пересоздание БД из бэкапа — см. «Ограничения» в SPEC.md.
-* **Логи:** `journalctl -u timetrack`; аудит действий пользователей — в разделе «Настройки»
-  и таблице `audit_log`.
-* **Доступ с телефонов:** домен + HTTPS; интерфейс — PWA («Добавить на главный экран»).
+Боевое развёртывание описано в одном месте — [`deploy/README.md`](../deploy/README.md):
+Docker-профиль (§1–6) и установка без Docker — systemd + nginx + HTTPS (§7).
 
 ---
 

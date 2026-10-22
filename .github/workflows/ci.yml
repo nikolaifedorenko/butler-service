@@ -69,6 +69,9 @@ jobs:
       - name: Контракты импортов согласованы со списком модулей (.importlinter)
         run: python tools/gen_importlinter.py --check
 
+      - name: В живых документах нет битых ссылок
+        run: python tools/doc_links.py
+
       - name: Лок-файл зависимостей не разошёлся
         if: matrix.python-version == '3.11'
         run: python tools/freeze_requirements.py --check

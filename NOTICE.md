@@ -10,7 +10,7 @@
 
 | Актив | Где используется | Лицензия |
 |---|---|---|
-| DejaVu Sans / DejaVu Serif (`assets/fonts/*.ttf`) | встроенный PDF-рендер (`app/pdf_render.py`) | Bitstream Vera License (https://dejavu-fonts.github.io/License.html) — свободное использование, копирование и распространение с сохранением уведомлений; торговая марка Bitstream/AML требует согласия только при использовании наименований «Bitstream»/«Vera» |
+| DejaVu Sans / DejaVu Serif (`assets/fonts/*.ttf`) | встроенный PDF-рендер (`app/core/render.py`) | Bitstream Vera License (https://dejavu-fonts.github.io/License.html) — свободное использование, копирование и распространение с сохранением уведомлений; торговая марка Bitstream/AML требует согласия только при использовании наименований «Bitstream»/«Vera» |
 | Manrope (`static/fonts/manrope-*.woff2`) | веб-интерфейс | SIL Open Font License 1.1, © Ivan Zhuravlev |
 | Playfair Display (`static/fonts/playfair-display-*.woff2`) | веб-интерфейс | SIL Open Font License 1.1, © Claus Eggers Sørensen |
 

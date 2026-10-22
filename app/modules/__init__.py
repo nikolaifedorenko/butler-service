@@ -2,5 +2,5 @@
 
 Каждый модуль самодостаточен: domain / application / ports / adapters / interface.
 Правила слоёв R1–R6 и транзитные исключения фаз C2–C6 — см. .importlinter и
-docs/EXECUTION-SPEC-v2.md (§3, §11.2 G3).
+docs/archive/EXECUTION-SPEC-v2.md (§3, §11.2 G3).
 """

@@ -30,6 +30,11 @@ docker compose -f docker-compose.prod.yml ps        # все сервисы heal
 curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "version": …}
 ```
 
+**Обязательно после первого входа:** если база создавалась до 21.10.2026 или с `DEMO_SEED=1`,
+в ней есть демо-учётки с паролем `demo1234` (`admin`, `smirnov` и другие). Проверьте вход под
+ними и смените пароли («Сотрудники» → «Изменить») или увольте лишние учётки. На новой базе без
+`DEMO_SEED` создаётся только `admin` с паролем из `ADMIN_PASSWORD`.
+
 Приложение наружу не публикуется — только через nginx. `/metrics` (Prometheus)
 заблокирован в nginx (`deny all`) и доступен лишь из внутренней сети compose —
 скрейпер поднимайте там же или снимите блокировку для своих IP.
@@ -125,3 +130,137 @@ docker compose -f docker-compose.prod.yml run --rm --user root app \
 Для `docker-compose.yml` — та же команда без `-f docker-compose.prod.yml` и с сервисом
 `timetrack` вместо `app`. Если вместо томов смонтированы каталоги хоста:
 `sudo chown -R 10001:10001 ./data ./templates`.
+
+## 7. Без Docker: Ubuntu 22.04/24.04, systemd + nginx + HTTPS
+
+### 7.1. Подготовка
+```bash
+sudo apt update && sudo apt install -y python3-venv python3-pip nginx certbot python3-certbot-nginx
+sudo useradd -r -m -d /opt/timetrack -s /usr/sbin/nologin timetrack
+sudo mkdir -p /opt/timetrack && sudo chown timetrack:timetrack /opt/timetrack
+# скопируйте файлы проекта в /opt/timetrack (scp, rsync, git clone…)
+```
+
+### 7.2. Окружение и зависимости
+```bash
+sudo -u timetrack python3 -m venv /opt/timetrack/.venv
+sudo -u timetrack /opt/timetrack/.venv/bin/pip install -r /opt/timetrack/requirements.txt
+sudo -u timetrack cp /opt/timetrack/.env.example /opt/timetrack/.env
+sudo -u timetrack nano /opt/timetrack/.env     # SECRET_KEY=<(openssl rand -hex 32>), APP_TZ
+```
+
+### 7.3. PostgreSQL (рекомендуется для боевого режима)
+```bash
+sudo apt install -y postgresql
+sudo -u postgres psql <<'SQL'
+CREATE USER timetrack WITH PASSWORD 'STRONG_PASSWORD';
+CREATE DATABASE timetrack OWNER timetrack;
+SQL
+sudo -u timetrack /opt/timetrack/.venv/bin/pip install psycopg2-binary
+# в .env:  DATABASE_URL=postgresql+psycopg2://timetrack:STRONG_PASSWORD@127.0.0.1:5432/timetrack
+```
+Таблицы создаются автоматически при старте (`create_all`). Для SQLite ничего делать не нужно.
+
+### 7.4. systemd-сервис
+```ini
+# /etc/systemd/system/timetrack.service
+[Unit]
+Description=Батлер Сервис — учёт рабочего времени
+After=network.target postgresql.service
+
+[Service]
+User=timetrack
+Group=timetrack
+WorkingDirectory=/opt/timetrack
+EnvironmentFile=/opt/timetrack/.env
+ExecStart=/opt/timetrack/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now timetrack
+systemctl status timetrack          # journalctl -u timetrack -f  — логи
+```
+
+### 7.5. nginx + HTTPS
+```nginx
+# /etc/nginx/sites-available/timetrack
+server {
+    listen 80;
+    server_name time.example.ru;
+
+    client_max_body_size 20m;
+
+    location /static/ {
+        alias /opt/timetrack/static/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+```bash
+sudo ln -s /etc/nginx/sites-available/timetrack /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d time.example.ru        # выпустит сертификат и включит HTTPS
+# после HTTPS: в .env раскомментируйте COOKIE_SECURE=1 и: sudo systemctl restart timetrack
+```
+
+### 7.6. Docker (альтернатива)
+```bash
+DEMO_SEED=1 docker compose up -d --build   # демо: SQLite в томе tt_data, порт 8000, пароль demo1234
+ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SECURE=1 docker compose up -d --build
+```
+Приложение в контейнере работает не от root (пользователь `app`). Тома, созданные до
+22.10.2026, нужно один раз передать этому пользователю — команда в `deploy/README.md` §6.
+
+### 7.7. Эксплуатация
+* **Бэкапы:** SQLite — копия файла `timetrack.db` (лучше через `sqlite3 db ".backup …"`);
+  PostgreSQL — `pg_dump timetrack > dump.sql` по cron. Храните также `.env` (SECRET_KEY).
+* **Обновление:** заменить файлы → `pip install -r requirements.txt` →
+  `systemctl restart timetrack`. Таблицы добавляются автоматически; при изменении схемы
+  колонок (редко) может понадобиться пересоздание БД из бэкапа — см. «Ограничения» в SPEC.md.
+* **Логи:** `journalctl -u timetrack`; аудит действий пользователей — в разделе «Настройки»
+  и таблице `audit_log`.
+* **Доступ с телефонов:** домен + HTTPS; интерфейс — PWA («Добавить на главный экран»).
+
+## 8. Заметки по эксплуатации
+
+* **Референс-прод-стек**: `docker-compose.prod.yml` — nginx (TLS, gzip, лимиты) +
+  PostgreSQL 16 + приложение в несколько воркеров + ежедневные бэкапы. Пошагово —
+  разделы 1–6 выше. Для знакомства достаточно одиночного
+  `docker-compose.yml` (SQLite), для разработки — `./run.sh`.
+* БД: SQLite по умолчанию (WAL + `busy_timeout`); для боевого режима
+  `DATABASE_URL=postgresql://…` в `.env` (драйвер уже в образе,
+  `requirements-postgres.txt`).
+* Часовой пояс объекта: `APP_TZ` (по умолчанию `Europe/Moscow`) — должен совпадать
+  с `Settings.tz` движка; DST намеренно не поддерживается (локальные сутки = 1440 мин,
+  решение владельца R24).
+* `SECRET_KEY` — обязательно задайте уникальный: с пустым/коротким/примерным ключом
+  приложение **отказывается стартовать** (см. `app/main.py`).
+* Боевые флаги по умолчанию безопасны: CSP блокирующая, `/metrics` выключен.
+  Демо-вход «как сотрудник» включён по умолчанию (решение владельца от
+  15.10.2026) — `ALLOW_IMPERSONATION=0` выключает. За reverse-proxy включите
+  `TRUST_PROXY_HEADERS=1`; при раскатке CSP можно временно перевести в
+  `CSP_REPORT_ONLY=1`.
+* Наблюдаемость: `LOG_JSON=1` — структурированный access-лог; сквозной
+  `X-Request-ID`; `GET /api/health` проверяет БД (503 при недоступности) и
+  возвращает версию; `METRICS_ENABLED=1` — Prometheus-метрики `/metrics`.
+* Атомарность закрытий обеспечивает `UnitOfWork` (commit/rollback); конкурентное
+  повторное закрытие исключает уникальный ключ `(employee_id, period_start)`;
+  отметки при нескольких воркерах защищены строковым замком БД (`FOR UPDATE`).
+* Бэкапы: в прод-профиле — автоматические (`./backups`, pg_dumpall ежесуточно,
+  восстановление — см. `deploy/README.md`); на SQLite регулярно копируйте файл БД.
+  В базе — персональные данные: храните копии зашифрованными.
+* Зарплатный модуль намеренно не ведётся; информационный план строки Табеля —
+  зарплатный атрибут, денежный расчёт добавляется отдельным слоем поверх данных УТ.

@@ -1,4 +1,4 @@
-"""Этап B — унификация прав (20.10.2026, docs/EXECUTION-SPEC-v2.md §5.2).
+"""Этап B — унификация прав (20.10.2026, docs/archive/EXECUTION-SPEC-v2.md §5.2).
 
 Ролевые зависимости require_manager/require_supervisor/require_admin удалены из
 app/auth.py: единственный вход проверки прав — require_perm("<ключ>") из каталога
@@ -17,7 +17,7 @@ PERMISSIONS. Новые ключи: `night.close` (закрытие/переот
 Оба ужесточения снимаются грантом в «Настройках → Права доступа».
 
 Inline-ветвления `principal.is_manager` этапом B не трогались; долг закрыт
-батчем 20.10.2026 (docs/CHANGES-2026-10-20-debt1-scope-perms.md): fact.view_all,
+батчем 20.10.2026 (docs/archive/changes/CHANGES-2026-10-20-debt1-scope-perms.md): fact.view_all,
 punches.view_all / punches.punch_for_others / punches.backfill,
 schedule.view_all (+ schedule.edit для readonly сетки). Базовая аудитория
 ключей = прежняя ролевая (MANAGER_ROLES), поведение ролей не изменилось.
