@@ -169,7 +169,10 @@ async def lifespan(_: FastAPI):
 
     _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
     _check_writable_dirs()
-    init_db()
+    if settings.migrate_on_start:
+        init_db()
+    else:
+        schema_version.ensure_current()   # миграции сделал сервис migrate (ADR-0002)
     # обслуживание ночных отчётов (досоздание смен, автозакрытие в 08:00) больше не
     # выполняется в GET-запросах — его делает фоновый поток (ревью 20.10.2026, P1);
     # несколько воркеров: раунд выполняет один процесс под замком try_lock

@@ -360,6 +360,7 @@ def position_change(employee_id: int, payload: DatedAction,
                     principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод/повышение/понижение с произвольной даты."""
     emp = lifecycle.position_change(db, principal, employee_id, payload.position, payload.date)
+    db.commit()
     return _emp_dict(emp)
 
 
@@ -368,6 +369,7 @@ def block_change(employee_id: int, payload: DatedAction,
                  principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Перевод между блоками графика (Смена 1 ↔ Смена 2) с произвольной даты."""
     emp = lifecycle.block_change(db, principal, employee_id, _block_of(payload), payload.date)
+    db.commit()
     return _emp_dict(emp)
 
 
@@ -376,6 +378,7 @@ def dismiss_employee(employee_id: int, payload: DatedAction,
                      principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
     """Увольнение (деактивация) с произвольной даты; история сохраняется."""
     emp = lifecycle.dismiss(db, principal, employee_id, payload.date)
+    db.commit()
     return _emp_dict(emp, with_user=True)
 
 
@@ -400,6 +403,7 @@ def rehire_employee(employee_id: int, payload: RehireIn,
     и активные дни после повторного приёма. Вся прошлая история сохраняется."""
     block = _block_of(payload) if payload.group.strip() else None
     emp = lifecycle.rehire(db, principal, employee_id, payload.date, payload.position, block)
+    db.commit()
     return _emp_dict(emp, with_user=True)
 
 

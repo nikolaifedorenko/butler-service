@@ -195,7 +195,7 @@ def position_change(db: Session, principal: Principal, employee_id: int,
     emp.position = position.strip()
     audit(db, principal, "position_change", f"employee:{emp.id}",
           {"position": emp.position, "since": since.isoformat()})
-    db.commit()
+    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
     return emp
 
 
@@ -220,7 +220,7 @@ def block_change(db: Session, principal: Principal, employee_id: int,
         emp.schedule_pattern = emp.schedule_pattern or "5/2"
     audit(db, principal, "block_change", f"employee:{emp.id}",
           {"group": emp.schedule_group, "since": since.isoformat(), "pattern": pattern_json})
-    db.commit()
+    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
     return emp
 
 
@@ -243,7 +243,7 @@ def dismiss(db: Session, principal: Principal, employee_id: int,
     close_period(db, emp, until=since, note="увольнение")
     audit(db, principal, "employee_dismiss", f"employee:{emp.id}",
           {"since": since.isoformat(), "note": "дата считается последним рабочим днём"})
-    db.commit()
+    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
     return emp
 
 
@@ -286,5 +286,5 @@ def rehire(db: Session, principal: Principal, employee_id: int, date: Optional[s
         touch_block(db, emp, normalize_group(emp.schedule_group) or "Смена 1", since)
 
     audit(db, principal, "employee_rehire", f"employee:{emp.id}", {"since": since.isoformat()})
-    db.commit()
+    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
     return emp

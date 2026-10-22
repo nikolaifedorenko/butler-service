@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     log_json: bool = False
     # /metrics (Prometheus): по умолчанию выключен — метрики не должны быть публичными
     metrics_enabled: bool = False
+    # 1 — воркер при старте сам мигрирует схему и готовит данные (локально, демо-compose);
+    # 0 — только сверяет ревизию: миграции делает отдельный шаг python -m app.bootstrap.migrate
+    migrate_on_start: bool = True
     # Swagger /api/docs и схема /api/openapi.json; в проде 0 — полная карта API без входа
     # облегчает разведку (OPS-04). Схему для разработки отдаёт tools/export_openapi.py.
     api_docs: bool = True

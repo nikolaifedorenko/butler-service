@@ -84,12 +84,22 @@ def test_csrf_cookie_issued_on_denied_request(app_stack):
         settings.csrf_enabled = False
 
 
+def _clear_login_attempts(app_stack) -> None:
+    from sqlalchemy import delete
+
+    from app.core.identity import LoginAttempt
+
+    with app_stack["SessionLocal"]() as s:
+        s.execute(delete(LoginAttempt))
+        s.commit()
+
+
 def test_login_rate_limit(app_stack):
     from fastapi.testclient import TestClient
 
     from app.modules.access.interface import auth_routes
 
-    auth_routes._login_failures.clear()
+    _clear_login_attempts(app_stack)
     try:
         c = TestClient(app_stack["app"])
         for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS):
@@ -97,4 +107,33 @@ def test_login_rate_limit(app_stack):
         r = c.post("/api/auth/login", json={"username": "admin", "password": "wrong"})
         assert r.status_code == 429
     finally:
-        auth_routes._login_failures.clear()
+        _clear_login_attempts(app_stack)
+
+
+def test_login_rate_limit_is_shared_between_workers(app_stack):
+    """ADR-0005 (пересмотрен 22.10.2026): неудачи, записанные другим воркером или контейнером
+    (здесь — прямо в таблицу), считаются в общий лимит; старше окна — не считаются."""
+    import datetime as dt
+
+    from fastapi.testclient import TestClient
+
+    from app.core.identity import LoginAttempt
+    from app.core.time import utcnow
+    from app.modules.access.interface import auth_routes
+
+    _clear_login_attempts(app_stack)
+    try:
+        c = TestClient(app_stack["app"])      # адрес клиента TestClient — «testclient»
+        old = utcnow() - dt.timedelta(seconds=auth_routes._LOGIN_WINDOW_SECONDS + 60)
+        with app_stack["SessionLocal"]() as s:
+            s.add_all([LoginAttempt(key="ip:testclient", ts=old)
+                       for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS)])
+            s.commit()
+        assert c.post("/api/auth/login", json={"username": "admin", "password": "demo1234"}).status_code == 200
+        with app_stack["SessionLocal"]() as s:
+            s.add_all([LoginAttempt(key="ip:testclient") for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS)])
+            s.commit()
+        r = c.post("/api/auth/login", json={"username": "admin", "password": "demo1234"})
+        assert r.status_code == 429, r.text
+    finally:
+        _clear_login_attempts(app_stack)

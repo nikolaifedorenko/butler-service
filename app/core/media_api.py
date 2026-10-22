@@ -50,6 +50,7 @@ def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
 @router.delete("/{photo_id}")
 def photo_delete(photo_id: int, principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
-    """Удалить фото: своё — любой пользователь, чужое — менеджер и выше."""
+    """Удалить фото: своё — любой пользователь, чужое — право media.delete_any."""
     delete_photo_usecase(db, principal, photo_id)
+    db.commit()
     return {"ok": True}

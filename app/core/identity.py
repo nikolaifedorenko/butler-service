@@ -77,3 +77,14 @@ class AccessGrant(Base):
     role: Mapped[str] = mapped_column(String(20), default="")       # переопределение базовой роли
     permission: Mapped[str] = mapped_column(String(48))
     effect: Mapped[str] = mapped_column(String(8), default="allow")  # allow | deny
+
+
+class LoginAttempt(Base):
+    """Неудачная попытка входа (ADR-0005, пересмотрен 22.10.2026): лимит общий для всех
+    воркеров и контейнеров, а не словарь в памяти каждого. key — «ip:<адрес>»."""
+
+    __tablename__ = "login_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(80), index=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)

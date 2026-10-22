@@ -43,7 +43,8 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 | `TRUST_PROXY_HEADERS` | `1` | IP для rate-limit берётся из X-Forwarded-For (доверяем своему nginx) |
 | `LOG_JSON` | `1` | структурированный access-лог (uvicorn стартует с `--no-access-log`) |
 | `METRICS_ENABLED` | `1` | `/metrics` для внутреннего скрейпера |
-| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (инициализация схемы — под замком `app/core/startup_lock.py`: `pg_advisory_lock`, второй воркер ждёт первого; фоновая синхронизация ночных отчётов — один раунд на всех под неблокирующим `try_lock("night-sync")`; очередь отправки службам — под `try_lock("night-dispatch")`, доотправка очереди (outbox) — один процесс под `try_lock("notify-outbox")`; замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). Rate-limit входа считается per-worker — при жёстких требованиях выносите в Redis (ADR-0005) |
+| `MIGRATE_ON_START` | `0` | воркеры схему не мигрируют, а сверяют ревизию: миграции, справочники и первого администратора готовит сервис `migrate` (`python -m app.bootstrap.migrate`) до старта `app` |
+| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (схему готовит сервис `migrate` до старта воркеров, ручной запуск страхует замок `app/core/startup_lock.py`; фоновая синхронизация ночных отчётов — один раунд на всех под неблокирующим `try_lock("night-sync")`; очередь отправки службам — под `try_lock("night-dispatch")`, доотправка очереди (outbox) — один процесс под `try_lock("notify-outbox")`; замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). лимит входа — общий, в таблице `login_attempts` (ADR-0005) |
 | `NIGHT_SYNC_ENABLED` | `1` | фоновая синхронизация ночных отчётов (досоздание смен, автозакрытие в 08:00): поток в lifespan, GET-запросы разделов — чистое чтение. `0` — выключить поток (останется только стартовый прогон `init_db`) |
 | `NIGHT_SYNC_SECONDS` | `60` | период фонового раунда (минимум 5). Автозакрытие и появление отчёта в 20:00 запаздывают не больше чем на период |
 | `API_DOCS` | `0` | Swagger `/api/docs` и схема `/api/openapi.json` выключены: полная карта API без входа облегчает разведку. Для отладки — `1` |
@@ -103,9 +104,11 @@ docker compose -f docker-compose.prod.yml up -d --build
 curl -k https://localhost/api/health   # version должен совпасть с тегом
 ```
 
-Схема БД мигрируется при старте автоматически: ревизии Alembic
-`app/bootstrap/alembic/versions`. Базу, созданную до 21.10.2026, первый старт новой версии
-доводит прежними шагами и штампует (ADR-0002). Перед обновлением сделайте бэкап.
+Схему БД обновляет сервис `migrate`: он запускается первым (`python -m app.bootstrap.migrate`,
+ревизии Alembic `app/bootstrap/alembic/versions`), и только после его успешного завершения
+стартует `app`. Базу, созданную до 21.10.2026, он доводит прежними шагами и штампует
+(ADR-0002). Если `migrate` упал, `app` не стартует — смотрите
+`docker compose -f docker-compose.prod.yml logs migrate`. Перед обновлением сделайте бэкап.
 
 ## 6. Приложение в контейнере — не от root
 

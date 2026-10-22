@@ -8104,7 +8104,7 @@
     },
     "/api/photos/{photo_id}": {
       "delete": {
-        "description": "Удалить фото: своё — любой пользователь, чужое — менеджер и выше.",
+        "description": "Удалить фото: своё — любой пользователь, чужое — право media.delete_any.",
         "operationId": "photo_delete_api_photos__photo_id__delete",
         "parameters": [
           {

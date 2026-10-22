@@ -103,10 +103,23 @@ def test_seed_only_first_period(admin, emp):
     assert "первого периода" in r.json()["detail"]
 
 
-def test_close_then_recalculate_last_closed(admin, emp):
+def _close_audits(db, emp_id: int) -> int:
+    """Записи аудита закрытия сотрудника: пишутся в его транзакции закрытия (ARCH-01)."""
+    from sqlalchemy import func, select
+
+    from app.core.audit import AuditLog
+
+    db.expire_all()
+    return db.scalar(select(func.count(AuditLog.id)).where(
+        AuditLog.action == "period_close", AuditLog.target == f"employee:{emp_id}"))
+
+
+def test_close_then_recalculate_last_closed(admin, emp, db):
     p = {"year": PREV.year, "month": PREV.month, "employee_ids": [emp["id"]]}
+    before = _close_audits(db, emp["id"])
     r = admin.post("/api/mgmt/close", json=p).json()
     assert r["errors"] == [] and r["done"][0]["bank_closed"] == 0
+    assert _close_audits(db, emp["id"]) == before + 1
     saved = _row(admin, emp["id"])
     assert saved["source"] == "saved" and saved["state"]["closed"]
     # каскад изъял ДЯ 2 ч в погашение недостачи 2 ч → УТ дня d2 пусто
@@ -116,6 +129,7 @@ def test_close_then_recalculate_last_closed(admin, emp):
     # повторное закрытие невозможно
     again = admin.post("/api/mgmt/close", json=p).json()
     assert again["errors"] and "уже закрыт" in again["errors"][0]["error"]
+    assert _close_audits(db, emp["id"]) == before + 1      # отказ записи аудита не оставил
     # правка последнего закрытого периода — с предупреждением о пересчёте (16.5)
     r = admin.put("/api/tabel/cell", json={"employee_id": emp["id"], "date": emp["d1"],
                                            "code": "В"})

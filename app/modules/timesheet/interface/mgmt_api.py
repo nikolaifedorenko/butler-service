@@ -137,18 +137,23 @@ class PeriodAction(BaseModel):
     employee_ids: Optional[list[int]] = None
 
 
-def _run_action(payload: PeriodAction, principal: Principal, db: Session, action) -> dict:
+def _run_action(payload: PeriodAction, principal: Principal, db: Session, action,
+                audit_action: str) -> dict:
     now, ports, _granularity, period, emps = _context(db, principal, payload.year, payload.month,
                                                       payload.half, payload.employee_ids)
     done, errors = [], []
     for emp in emps:
-        # у каждого сотрудника своя транзакция закрытия (UnitOfWork внутри use case)
+        # у каждого сотрудника своя транзакция закрытия (UnitOfWork внутри use case); запись
+        # аудита кладём в сессию ДО неё — UoW закоммитит её вместе с закрытием (ARCH-01)
+        audit(db, principal, audit_action, f"employee:{emp.id}",
+              {"period": f"{period.start.isoformat()}..{period.end.isoformat()}"})
         try:
             view = action(str(emp.id), period, now, ports)
             done.append({"employee_id": emp.id,
                          "bank_closed": round(view.settle.bank_closed_minutes / 60, 2),
                          "deferred": len(view.settle.deferred_blocks)})
         except (DomainError, ApplicationError, ValueError) as exc:
+            db.rollback()       # отказ — и запись аудита этого сотрудника не остаётся в сессии
             # не HTTP-ошибка: массовая операция, отказ сотрудника — в payload (200)
             errors.append({"employee_id": emp.id, "name": emp.display_name,
                            "error": error_text(exc)})
@@ -159,7 +164,7 @@ def _run_action(payload: PeriodAction, principal: Principal, db: Session, action
 @router.post("/close")
 def close(payload: PeriodAction, principal: Principal = Depends(require_perm("mgmt.close")),
           db: Session = Depends(get_db)):
-    out = _run_action(payload, principal, db, close_period)
+    out = _run_action(payload, principal, db, close_period, "period_close")
     audit(db, principal, "period_close", f"{payload.year}-{payload.month:02d}",
           {"employees": [d["employee_id"] for d in out["done"]], "errors": out["errors"]})
     db.commit()
@@ -169,7 +174,7 @@ def close(payload: PeriodAction, principal: Principal = Depends(require_perm("mg
 @router.post("/recalculate")
 def recalc(payload: PeriodAction, principal: Principal = Depends(require_perm("mgmt.recalculate")),
            db: Session = Depends(get_db)):
-    out = _run_action(payload, principal, db, recalculate)
+    out = _run_action(payload, principal, db, recalculate, "period_recalculate")
     audit(db, principal, "period_recalculate", f"{payload.year}-{payload.month:02d}",
           {"employees": [d["employee_id"] for d in out["done"]], "errors": out["errors"]})
     db.commit()

@@ -1,14 +1,12 @@
 """Аутентификация, профиль, «войти как сотрудник» для демонстрации."""
 from __future__ import annotations
 
-import threading
-import time
-from collections import defaultdict
+import datetime as dt
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -16,10 +14,10 @@ from app.core.auth import Principal, current_principal
 from app.core.auth_guards import can_manage_user
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.identity import User
+from app.core.identity import LoginAttempt, User
 from app.core.permissions import require_perm
 from app.core.security import MIN_PASSWORD_LEN, create_token, hash_password, needs_rehash, verify_password
-from app.core.time import local_date
+from app.core.time import local_date, utcnow
 from app.modules.employees.application import Employee
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -28,10 +26,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 _DUMMY_HASH = hash_password("dummy-password-for-timing")
 
 # ── rate-limit входа: не более MAX неудач с одного IP за WINDOW секунд ──────────
+# Счётчик — таблица login_attempts (ADR-0005, пересмотрен 22.10.2026): раньше словарь в
+# памяти каждого воркера, и при N воркерах лимит фактически был ×N (SEC-01).
 _LOGIN_WINDOW_SECONDS = 300
 _LOGIN_MAX_ATTEMPTS = 10
-_login_failures: dict[str, list[float]] = defaultdict(list)
-_login_lock = threading.Lock()
 
 
 def _client_ip(request: Request) -> str:
@@ -49,25 +47,26 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _too_many_attempts(ip: str) -> bool:
-    now = time.time()
-    with _login_lock:
-        recent = [t for t in _login_failures.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
-        if recent:
-            _login_failures[ip] = recent
-        else:
-            _login_failures.pop(ip, None)   # словарь не растёт от адресов без свежих неудач
-        return len(recent) >= _LOGIN_MAX_ATTEMPTS
+def _window_start() -> dt.datetime:
+    return utcnow() - dt.timedelta(seconds=_LOGIN_WINDOW_SECONDS)
 
 
-def _record_login_failure(ip: str) -> None:
-    with _login_lock:
-        _login_failures[ip].append(time.time())
+def _too_many_attempts(db: Session, ip: str) -> bool:
+    n = db.scalar(select(func.count()).select_from(LoginAttempt).where(
+        LoginAttempt.key == f"ip:{ip}", LoginAttempt.ts >= _window_start()))
+    return n >= _LOGIN_MAX_ATTEMPTS
 
 
-def _reset_login_failures(ip: str) -> None:
-    with _login_lock:
-        _login_failures.pop(ip, None)
+def _record_login_failure(db: Session, ip: str) -> None:
+    """Отдельный commit сразу: за ним 401, и без него попытка пропала бы вместе с сессией.
+    Заодно убираем записи старше окна — таблица не растёт, фоновая задача не нужна."""
+    db.execute(delete(LoginAttempt).where(LoginAttempt.ts < _window_start()))
+    db.add(LoginAttempt(key=f"ip:{ip}"))
+    db.commit()
+
+
+def _reset_login_failures(db: Session, ip: str) -> None:
+    db.execute(delete(LoginAttempt).where(LoginAttempt.key == f"ip:{ip}"))
 
 
 def _token(user: User, emp_id, imp: bool = False) -> str:
@@ -95,18 +94,18 @@ def _authenticate(db: Session, request: Request, username: str, password: str):
     """Общая проверка учётных данных для JSON- и форм-входа (rate-limit, постоянный
     хеш для несуществующего логина, ленивый rehash). Возвращает (user, employee)."""
     ip = _client_ip(request)
-    if _too_many_attempts(ip):
+    if _too_many_attempts(db, ip):
         raise HTTPException(status_code=429,
                             detail="Слишком много неудачных попыток входа. Подождите несколько минут.")
     user = db.scalar(select(User).where(User.username == username.strip().lower()))
     # для несуществующего логина тоже считаем хеш — по времени ответа логин не угадать
     stored = user.password_hash if user else _DUMMY_HASH
     if not verify_password(password, stored) or not user:
-        _record_login_failure(ip)
+        _record_login_failure(db, ip)
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Учётная запись отключена")
-    _reset_login_failures(ip)
+    _reset_login_failures(db, ip)
     if needs_rehash(stored):
         # ленивая миграция хеша: старые записи (например, 120k итераций) обновляются
         # на текущие параметры при успешном входе — пароль у нас в этот момент есть

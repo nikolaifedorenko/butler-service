@@ -25,5 +25,22 @@ def upgrade() -> None:
     command.upgrade(config(), "head")
 
 
+def ensure_current() -> None:
+    """Воркер без MIGRATE_ON_START: схема обязана быть на head, иначе старт останавливается.
+    Миграции выполняет отдельный шаг деплоя — python -m app.bootstrap.migrate."""
+    from alembic.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    from app.core.db import engine
+
+    with engine.connect() as con:
+        current = MigrationContext.configure(con).get_current_revision()
+    head = ScriptDirectory.from_config(config()).get_current_head()
+    if current != head:
+        raise RuntimeError(
+            f"Схема базы не обновлена (ревизия {current or 'нет'}, нужна {head}): выполните "
+            "python -m app.bootstrap.migrate — в прод-профиле это сервис migrate (deploy/README.md §5)")
+
+
 def stamp_baseline() -> None:
     command.stamp(config(), BASELINE)
