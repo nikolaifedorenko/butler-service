@@ -252,9 +252,10 @@ def test_misc4_save_photo_ref_moves_file_and_rejects_non_media(db):
 def test_misc4_interfaces_do_not_read_uploads_into_memory():
     """Source-страж: в точках загрузки медиа нет `await file.read(` (прежний
     путь — до HARD_MAX_MB=500 в оперативной памяти на запрос)."""
-    for rel in ("app/modules/night/interface/night_api.py",
-                "app/modules/cars/interface/cars_api.py"):
-        src = (BASE / rel).read_text(encoding="utf-8")
+    for rel in ("app/modules/night/interface", "app/modules/cars/interface/cars_api.py"):
+        path = BASE / rel
+        src = "".join(f.read_text(encoding="utf-8") for f in sorted(path.glob("*.py"))) \
+            if path.is_dir() else path.read_text(encoding="utf-8")
         assert "await file.read(" not in src, rel
         assert "read_upload_streaming" in src, rel
 

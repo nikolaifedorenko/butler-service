@@ -32,6 +32,8 @@ def fake_telegram(monkeypatch):
 
     def sender(url, payload, files, timeout):
         method = url.rsplit("/", 1)[-1]
+        # файл приходит открытым дескриптором (поток с диска) — читаем, как httpx
+        files = {k: (n, f.read(), m) for k, (n, f, m) in (files or {}).items()} or files
         calls.append({"method": method, "payload": payload, "files": files})
         if state["fail"]:
             return {"ok": False, "error_code": 400, "description": "Bad Request: chat not found"}

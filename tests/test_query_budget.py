@@ -2,7 +2,7 @@
 
 Зачем: сборка сетки месяца и пересчёт диапазона исторически делали по три точечных
 запроса на каждую ячейку (N сотрудников × 31 день) — 4 515 запросов на 50 сотрудниках.
-После пакетной загрузки (ShiftCatalog, BlockIndex, DoubleContext, предзагрузка
+После пакетной загрузки (ShiftCatalog, BlockIndex, предзагрузка
 периодов/ячеек/отметок) число запросов перестало зависеть от штата. Эти тесты
 фиксируют такое поведение: если кто-то вернёт запрос внутрь цикла, тест упадёт.
 
@@ -13,12 +13,22 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pytest
+
 from app.core.time import local_date
 
 SCHEDULE_BUDGET = 40        # сетка Графика: батч-запросы, не зависит от штата
 BOARD_BUDGET = 20           # доска «Отметки»: 4 батч-порта + разрешение Settings (16.2)
 EMPLOYEES_BUDGET = 25       # фактически ~5
 MGMT_PER_EMPLOYEE = 40      # УТ: 6–8 запросов + конвейер на ОДНОГО сотрудника (16.1 п.5)
+# PERF-02 (аудит, шаг 6.4): Табель и Факт за месяц — пакетно, не зависят от штата
+TABEL_BUDGET = 60           # фактически 31 (было 96 и +6 на сотрудника)
+FACT_MONTH_BUDGET = 50      # фактически 23 (было 64 и +4 на сотрудника)
+# экраны без проверок до 6.4: фактические значения 8–16, рост штата их не меняет
+FLAT_BUDGETS = {"/api/cars": 30, "/api/cars/meta": 20, "/api/settings": 35,
+                "/api/audit": 20, "/api/engine-settings": 20}
+GRID_BUDGETS = {"/api/schedule": SCHEDULE_BUDGET, "/api/tabel": TABEL_BUDGET,
+                "/api/fact/month": FACT_MONTH_BUDGET}
 
 
 def _month(client) -> dict:
@@ -54,16 +64,18 @@ def test_employees_list_query_budget(manager_client, sql_counter):
         f"список сотрудников сделал {c['total']} запросов (бюджет {EMPLOYEES_BUDGET})")
 
 
-def test_schedule_grid_does_not_scale_with_headcount(admin_client, db, sql_counter):
+@pytest.mark.parametrize("path", GRID_BUDGETS)
+def test_month_grid_does_not_scale_with_headcount(admin_client, db, sql_counter, path):
     """Главная проверка: рост штата НЕ должен умножать число запросов.
 
-    Добавляем 12 сотрудников и сравниваем бюджет сетки: допустим небольшой рост
-    (пакетные запросы те же), но не пропорциональный числу ячеек.
+    Добавляем 12 сотрудников и сравниваем бюджет сетки месяца (График, Табель, Факт):
+    допустим небольшой рост (пакетные запросы те же), но не пропорциональный штату.
     """
-    from app.modules.employees.application.catalog import Employee
+    budget = GRID_BUDGETS[path]
+    from app.modules.employees.application.catalog import Employee, EmploymentPeriod
 
     with sql_counter() as before:
-        r1 = admin_client.get("/api/schedule", params=_month(admin_client))
+        r1 = admin_client.get(path, params=_month(admin_client))
     assert r1.status_code == 200, r1.text
 
     today = local_date()
@@ -73,22 +85,28 @@ def test_schedule_grid_does_not_scale_with_headcount(admin_client, db, sql_count
                        position="Батлер", schedule_group="Смена 1",
                        hired_at=today - dt.timedelta(days=400), active=True)
         db.add(emp)
+        db.flush()
+        # период занятости, как при приёме через сервис (без него GET досоздаёт его каждый раз)
+        db.add(EmploymentPeriod(employee_id=emp.id, start_date=emp.hired_at))
         added.append(emp)
     db.commit()
     try:
         with sql_counter() as after:
-            r2 = admin_client.get("/api/schedule", params=_month(admin_client))
+            r2 = admin_client.get(path, params=_month(admin_client))
         assert r2.status_code == 200, r2.text
         rows_before = len(r1.json()["rows"])
         rows_after = len(r2.json()["rows"])
         assert rows_after > rows_before, "новые сотрудники не попали в сетку — тест не проверяет масштабирование"
         growth = after["total"] - before["total"]
-        assert after["total"] <= SCHEDULE_BUDGET, (
-            f"после роста штата сетка делает {after['total']} запросов (бюджет {SCHEDULE_BUDGET})")
-        assert growth <= 12, (
+        assert after["total"] <= budget, (
+            f"после роста штата {path} делает {after['total']} запросов (бюджет {budget})")
+        # фактически 0: допуск — пара пакетных запросов, но не даже один запрос на сотрудника
+        assert growth <= 3, (
             f"число запросов выросло на {growth} при +12 сотрудниках — запросы снова "
             "считаются по каждому сотруднику/ячейке")
     finally:
+        db.query(EmploymentPeriod).filter(EmploymentPeriod.employee_id.in_([e.id for e in added])) \
+            .delete(synchronize_session=False)
         for emp in added:
             db.delete(emp)
         db.commit()
@@ -118,3 +136,13 @@ def test_night_archive_query_budget(manager_client, sql_counter):
     assert c["total"] <= NIGHT_ARCHIVE_BUDGET, (
         f"архив ночи сделал {c['total']} запросов на {len(r.json()['reports'])} отчётов "
         f"(бюджет {NIGHT_ARCHIVE_BUDGET}) — похоже на N+1")
+
+
+@pytest.mark.parametrize("path", FLAT_BUDGETS)
+def test_screen_query_budget(manager_client, sql_counter, path):
+    with sql_counter() as c:
+        r = manager_client.get(path)
+    assert r.status_code == 200, r.text
+    assert c["total"] <= FLAT_BUDGETS[path], (
+        f"{path} сделал {c['total']} запросов (бюджет {FLAT_BUDGETS[path]}); "
+        f"топ: {sorted(c['by_statement'].items(), key=lambda x: -x[1])[:3]}")

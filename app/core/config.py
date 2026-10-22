@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # Swagger /api/docs и схема /api/openapi.json; в проде 0 — полная карта API без входа
     # облегчает разведку (OPS-04). Схему для разработки отдаёт tools/export_openapi.py.
     api_docs: bool = True
-    # семантическая версия приложения: bump при релизе (тег + docs/CHANGES-*.md)
+    # семантическая версия приложения: bump при релизе (тег + запись в CHANGELOG.md)
     app_version: str = "0.1.0"
     # разрешить запуск со слабым/пустым SECRET_KEY — ТОЛЬКО для локальной разработки.
     # В остальных случаях приложение откажется стартовать (см. app/main.py).

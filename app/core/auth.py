@@ -111,7 +111,7 @@ def optional_principal(request: Request, db: Session = Depends(get_db)) -> Optio
 
 
 # Ролевые зависимости require_manager/require_supervisor/require_admin удалены
-# (этап B унификации прав, 20.10.2026 — см. docs/EXECUTION-SPEC-v2.md §5.2):
+# (этап B унификации прав, 20.10.2026 — см. docs/archive/EXECUTION-SPEC-v2.md §5.2):
 # единственный вход проверки прав — require_perm("<ключ>") из core/permissions.py.
 # Inline-ветвления «менеджерской видимости» переведены на ключи каталога
 # (батч 20.10.2026: fact.view_all, punches.view_all/punch_for_others/backfill,

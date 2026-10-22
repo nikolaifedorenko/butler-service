@@ -2,12 +2,12 @@
 
 **Репозиторий:** https://github.com/nikolaifedorenko/butler-service
 **Редакция:** 11.10.2026 — после переписывания расчётного движка по спецификации v7.1
-(предыдущий разбор от 28.09.2026 описывал legacy-движок `app/timesheet.py` и движок v4;
-история — в `docs/archive/AUDIT-2026-09-27.md` и `docs/CHANGES-*.md`)
+(предыдущий разбор от 28.09.2026 описывал legacy-движок и движок v4, оба удалены;
+история — в [`CHANGELOG.md`](../../CHANGELOG.md))
 **Фокус:** слои и модули, модель данных, ключевые потоки, риски, онбординг
 **Как получен материал:** статический анализ импортов (архитектурные тесты), подсчёт
 SQL-запросов (`SQLAlchemy before_cursor_execute`, `tests/test_query_budget.py`),
-полный прогон тестов (436 тестов)
+полный прогон тестов (`pytest`)
 
 ---
 
@@ -104,7 +104,7 @@ cars, docs, notify, settings, access, audit), каждый — гексагон 
 | `app/core/` + composition root | 1 996 (19 файлов) + bootstrap/main 1 795 строк |
 | API | 18 роутеров по модулям, **156 путей OpenAPI** (`docs/openapi.json` сверяется в CI) |
 | Фронтенд `static/js` | ~8 900 строк, 11 файлов: core.js, app.js + 9 разделов в `modules/` |
-| Тесты | ~13 600 строк, **767 тестов**: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
+| Тесты | `pytest tests/`: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
 | Покрытие `timesheet/domain` | ≥ 95 % (DoD спеки) |
 | Таблиц БД | **45** (реестр `bootstrap/registry.py`, `/api/selfcheck` сверяет схему с `Base.metadata`) |
 | Приёмочных примеров спеки | 55 (EX-01…EX-55) — каждый в автотестах |
@@ -222,13 +222,13 @@ SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки
 `timesheet_layers.js` (сетка Графика), `timesheet_common.js` (общее для экранов движка),
 `marks.js` (доска «Отметки»), `fact.js`, `tabel.js`, `mgmt.js` (УТ), `access.js`, `audit.js`,
 `engine_settings.js` (CFG-*), `me.js`, `employees.js`, `night.js`, `cars.js`, `docs.js`,
-`dicts.js`, `settings.js` (реестр экранов единого центра конфигурации; подключается ПОСЛЕ
-engine_settings/cars/night). До 22.10.2026 семь экранов движка жили в `timesheet_v4.js`. Глобальные функции
+`dicts.js`, `settings.js` (оболочка единого центра конфигурации) и `settings_<экран>.js` —
+по файлу на экран Настроек (с 22.10.2026; порядок подключения файлов не важен, ADR-0008). До 22.10.2026 семь экранов движка жили в `timesheet_v4.js`. Глобальные функции
 сохранены: межфайловые вызовы через глобальную область, границы держат
 `tools/gen_js_globals.py` (рекурсивный скан `static/js/**` → `js_globals.json`) и
 ESLint `no-undef` — отказ от `window.App.modules.*` отклонён (property-доступ не
-проверяется статически; прецедент — регрессия loadNight/loadCars). Порядок
-`<script>` в index.html фиксирует зависимости (cars → night → v4 → settings).
+проверяется статически; прецедент — регрессия loadNight/loadCars). Список `<script>` в
+index.html генерирует `tools/bump_version.py` (core, app, затем `modules/*.js` по алфавиту).
 Контракты: `tools/check_api_contract.py` (JS-вызовы ↔ OpenAPI, rglob),
 `tools/bump_version.py` (версии кэша + SHELL `sw.js` c файлами `modules/`, rglob).
 
@@ -333,7 +333,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
 | Загрузка медиа читала файл ЦЕЛИКОМ в память (`await file.read`, до HARD_MAX_MB=500 на запрос) — параллельные видео с телефонов съедали воркер (OOM) | 🟢 закрыт 21.10.2026 | `read_upload_streaming` — чанки 1 МБ сразу на диск, в памяти 64 КБ для sniff; обрыв по лимиту → 413; `save_photo_ref` — перенос `shutil.move`; `photo_refs: list[UploadRef]` вместо байтов в cars-цепочке; guard'ы отметки кара — до чтения потока. Стражи: там же (P1-misc-4) |
 | Бюджет УТ линейный по штату (по спеке) | 🟡 | батч-порты `load_inputs` на группу сотрудников; кэш Settings уже есть |
 | SPA без сборки, один app.js ~2 400 строк | 🟢 закрыт 15.10.2026 | app.js 2262 → 369 строк: разделы — 9 файлов `static/js/modules/` (C6); границы держат gen_js_globals + ESLint no-undef + смоуки (ADR-0008); esbuild — при росте команды |
-| Кросс-модульные `relationship()` на каталог (R6) | 🟢 закрыт 20.10.2026 | все 9 связей удалены, навигации → батч-словари/`db.get` через identity map; allowlist в `tests/test_modules_architecture.py` пуст и охраняется тестом (`docs/CHANGES-2026-10-20-debt2-r6-relationships.md`) |
+| Кросс-модульные `relationship()` на каталог (R6) | 🟢 закрыт 20.10.2026 | все 9 связей удалены, навигации → батч-словари/`db.get` через identity map; allowlist в `tests/test_modules_architecture.py` пуст и охраняется тестом (`docs/archive/changes/CHANGES-2026-10-20-debt2-r6-relationships.md`) |
 | `dt.date.today()` в timesheet (системная TZ вместо `core/time.local_date()`) | 🟢 закрыт 20.10.2026 | все 9 вызовов переведены на `local_date()`/`now_utc()`; AST-страж `test_no_system_time_reads_in_modules` запрещает `today()/now()` в модулях (allowlist: `now_utc()` — composition-параметр F-15); граничные тесты у полуночи (`tests/test_tz_local_date.py`) |
 | SQLite в проде | 🟢 закрыт 15.10.2026 | прод-профиль `docker-compose.prod.yml`: PostgreSQL 16 + nginx (TLS) + бэкапы; драйвер в образе |
 | Настройки движка правятся JSON-в-текстарея | 🟡 | форма-редактор справочников (валидация уже сообщает все нарушения разом) |
@@ -342,7 +342,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
 ## 8. Онбординг-маршрут
 
 1. `README.md` → «Структура» и «Правила расчёта — модель v7/v7.1» (10 пунктов).
-2. `docs/EXECUTION-SPEC-v2.md` §2–§3 — целевая структура и правила слоёв R1–R6;
+2. `docs/archive/EXECUTION-SPEC-v2.md` §2–§3 — целевая структура и правила слоёв R1–R6;
    `docs/adr/0010-modular-monolith-core-modules.md` — почему модульный монолит.
 3. `docs/overtime_spec_v7_1_final.md`: разделы 2 (законы), 4 (модель), 6.3 (стадии
    settle), 7.2 (truth table режимов), 16 (вкладки).
@@ -353,5 +353,76 @@ POST /api/punches: сериализация по сотруднику (lock) →
    `static/js/modules/mgmt.js (loadMgmt)`.
 7. Границы: `.importlinter` (14 контрактов) + `tests/test_modules_architecture.py`
    (AST-законы всех модулей) — что можно импортировать и откуда.
-8. `docs/CHANGES-2026-10-20-stage-c*.md` — как и почему прошла модульная
+8. `docs/archive/changes/CHANGES-2026-10-20-stage-c*.md` — как и почему прошла модульная
    перестройка (C1–C7), включая задокументированные долги.
+
+## 9. Структура репозитория
+
+Модульный монолит (ADR-0010): `core/` — инфраструктура, `modules/` — 9 бизнес-
+гексагонов, `bootstrap/` + `main.py` — composition root (единственное место,
+которое знает всё). Границы закреплены `.importlinter` (14 контрактов) и
+AST-тестами; между модулями — только чужие `application`/`ports` (R3),
+модели — через `application/catalog.py` владельца.
+
+```
+butler-service/
+├── app/
+│   ├── main.py               # composition root: роутеры, хэндлеры ошибок (включая
+│   │                         #   ConfigError/DomainError/ApplicationError движка),
+│   │                         #   middleware из core/observability, раздача SPA, health/selfcheck
+│   ├── bootstrap/            # seed.py (демо-данные), migrations.py (идемпотентные),
+│   │                         #   modules.py — поиск манифестов модулей (ADR-0012), registry.py —
+│   │                         #   их регистрация + инъекция провайдеров в core
+│   ├── core/                 # инфраструктура (R5: не знает о модулях):
+│   │                         #   config, db (engine/SessionLocal/Base), startup_lock (сериализация
+│   │                         #   init_db между воркерами), time (TZ/now — единственный
+│   │                         #   источник), errors (ServiceError-иерархия), security (pbkdf2),
+│   │                         #   auth (Principal/сессии), auth_guards (can_manage_user), permissions
+│   │                         #   (каталог прав + require_perm), identity (User/гранты), audit
+│   │                         #   (AuditLog + audit()), media (Photo + хранилище) + media_api
+│   │                         #   (роутер /api/photos), settings_store (key-value Setting),
+│   │                         #   render (транспорт LibreOffice/reportlab), format, roles, observability
+│   └── modules/              # каждый: manifest.py + domain / application / ports / adapters / interface
+│       ├── timesheet/        # ДВИЖОК v7.1 + Табель/График/отметки/доска/УТ/двойные:
+│       │   ├── domain/       #   чистое ядро (спека 8.1): types, codes_registry, settings,
+│       │   │                 #   validation, time, sessions, presence, day_card, placement,
+│       │   │                 #   opening, bank, schedule, flags, board, checks, reports, pipeline/settle
+│       │   ├── application/  #   use case'ы view/close/recalculate, engine_common (мост),
+│       │   │                 #   base_schedule, tabel_fill, schedule_patterns, shiftrev,
+│       │   │                 #   punch_plan, doublepay, catalog (публичная поверхность моделей)
+│       │   ├── ports/        #   13 Protocol'ов (без ClockPort — now параметром, F-15)
+│       │   ├── adapters/     #   SQL-адаптеры + factory + orm.py (TabelDay, ScheduleShift,
+│       │   │                 #   Punch, PeriodClosing, BlockAssignment, BankAdjustment, …)
+│       │   ├── interface/    #   8 роутеров (tabel, mgmt, fact, presence, punches, doublepay,
+│       │   │                 #   schedule, engine_settings) + formatting/serialize/views/period_params
+│       │   └── bootstrap.py  #   стартовая версия справочников CFG-*
+│       ├── employees/        # каталог персонала (Employee, Department, EmploymentPeriod…),
+│       │                     #   трудоустройство, жизненный цикл, группы графика, имена (domain)
+│       ├── night/            # ночной отчёт v2: зоны/объекты/чек-листы, журнал, выгрузки DOCX/PDF
+│       ├── cars/             # электрокары: парк, заряд/возврат, места, ночная проверка
+│       ├── docs/             # заявления DOCX/PDF, сетка Графика (grid_docx), шаблоны документов
+│       ├── notify/           # доставка Telegram/почта: config, dispatch, recipients, chats;
+│       │                     #   ports.TransportError; transports — единственные выходы в сеть
+│       ├── settings/         # единый центр «Настройки» (агрегирует границы timesheet/docs)
+│       ├── access/           # login/logout/impersonation (auth_routes) + «Права доступа»
+│       └── audit/            # «Журнал» + CSV (модель и audit() — в core)
+├── static/
+│   ├── index.html            # оболочка SPA + экран входа (список <script> — tools/bump_version.py)
+│   ├── js/core.js app.js     # ядро (api/модалки/утилиты) + оболочка/меню/роутинг
+│   ├── js/modules/           # разделы 1:1 (глобальные функции сохранены — ADR-0008):
+│   │                         #   timesheet_layers (График-сетка), timesheet_common, marks,
+│   │                         #   fact, tabel, mgmt, access, audit, engine_settings (CFG-*),
+│   │                         #   me, employees, night, cars, docs, dicts, settings
+│   └── css/ fonts/ icons/ sw.js manifest.webmanifest
+├── tests/
+│   ├── engine/               # движок: EX-01…EX-55 (test_ex_*), юниты каталога 8.1,
+│   │                         #   валидация 3 уровней, property-инварианты (hypothesis),
+│   │                         #   AST-законы движка, application (4 режима 7.2, R35–R40)
+│   ├── test_modules_architecture.py  # структура/R1/R3/R6 всех 9 модулей + core
+│   └── test_api.py test_features.py test_engine_api.py …   # интеграция приложения
+├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки/сценарии
+├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, EXECUTION-SPEC-v2, ADR, CHANGES
+└── requirements*.txt
+```
+
+API: http://127.0.0.1:8000/api/docs (Swagger).

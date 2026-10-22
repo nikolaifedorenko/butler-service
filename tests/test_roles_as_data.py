@@ -100,3 +100,13 @@ def test_builtin_roles_cannot_be_changed_or_deleted(admin_client, manager_client
         "title": "Менеджер", "rank": 90, "max_assignable_rank": 90}).status_code == 409
     assert manager_client.post("/api/access/roles", json={
         "title": "Без права", "rank": 20, "max_assignable_rank": -1}).status_code == 403   # access.manage
+
+
+def test_unknown_role_is_422(db):
+    from app.core.auth import Principal
+    from app.core.auth_guards import can_manage_user
+    from app.core.identity import User
+
+    with pytest.raises(HTTPException) as exc:
+        can_manage_user(db, Principal(User(username="x", role="admin"), None), None, "superadmin")
+    assert exc.value.status_code == 422

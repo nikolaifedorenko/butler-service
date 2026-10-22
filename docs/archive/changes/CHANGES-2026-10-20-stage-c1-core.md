@@ -1,6 +1,6 @@
 # Изменения 20.10.2026 — этап C, фаза C1: `core/` + composition root
 
-Исполнение `docs/EXECUTION-SPEC-v2.md` (фаза 3; ADR-0010 принят владельцем —
+Исполнение `docs/archive/EXECUTION-SPEC-v2.md` (фаза 3; ADR-0010 принят владельцем —
 PR #51 смержен). Первый шаг модульного рефакторинга: инфраструктурное ядро
 выделено в `app/core/`, composition root — в `app/bootstrap/` + `app/main.py`.
 Поведение приложения и контракты API не изменились (openapi — без дельты).

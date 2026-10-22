@@ -239,7 +239,7 @@ seed, migrations. `main.py` импортирует bootstrap. `.importlinter` �
 
 **Фаза 9 — документация.** ARCHITECTURE.md (§3.5 клиент, §3 слои, онбординг-маршрут),
 README (структура, quick start), SPEC.md (пути), ADR-0010 → «accepted», ADR-0006 →
-«superseded by ADR-0010», `docs/openapi.json` — финальный переэкспорт, `docs/CHANGES-*`
+«superseded by ADR-0010», `docs/openapi.json` — финальный переэкспорт, `docs/archive/changes/CHANGES-*`
 по батчам.
 
 ### 7.1 Проверки после КАЖДОЙ фазы
@@ -401,7 +401,7 @@ push+мерж до этапа A, иначе конфликты переноса.
 ## 12. Уточнения по итогам фазы C1 (20.10.2026)
 
 Фактический состав `core/` и приёмы, применённые при переносе (дополнение к §2;
-детали — `docs/CHANGES-2026-10-20-stage-c1-core.md`):
+детали — `docs/archive/changes/CHANGES-2026-10-20-stage-c1-core.md`):
 
 * `core/` = config, db, errors, security, time, format, roles, identity, auth,
   auth_guards, permissions, audit, media, observability. Добавлены сверх §2:
@@ -432,7 +432,7 @@ push+мерж до этапа A, иначе конфликты переноса.
 ## 13. Уточнения по итогам фазы C2 (20.10.2026)
 
 Фактический состав `modules/timesheet/` и приёмы переноса (детали —
-`docs/CHANGES-2026-10-20-stage-c2-timesheet.md`):
+`docs/archive/changes/CHANGES-2026-10-20-stage-c2-timesheet.md`):
 
 * Состав: `domain/ports/adapters/interface` — бывшие слои `app/engine` (перенос
   «как есть») + `application/` пополнен поглощёнными legacy-хелперами
@@ -475,7 +475,7 @@ push+мерж до этапа A, иначе конфликты переноса.
 ## 14. Уточнения по итогам фазы C3 (20.10.2026)
 
 Фактический состав `modules/notify/` (детали —
-`docs/CHANGES-2026-10-20-stage-c3-notify.md`):
+`docs/archive/changes/CHANGES-2026-10-20-stage-c3-notify.md`):
 
 * Эталон подтверждён механически: `tests/test_notify_module.py` — 8 AST-проверок
   (слои, чистота domain/ports, направления §3, R6, публичный `__all__` =
@@ -509,7 +509,7 @@ push+мерж до этапа A, иначе конфликты переноса.
 ## 15. Уточнения по итогам фазы C4 (20.10.2026)
 
 Все 9 модулей созданы, legacy-пакеты `app/api|services|models` удалены,
-структура §2 достигнута (детали — `docs/CHANGES-2026-10-20-stage-c4-modules.md`):
+структура §2 достигнута (детали — `docs/archive/changes/CHANGES-2026-10-20-stage-c4-modules.md`):
 
 * **Паттерн `application/catalog.py`** — публичная поверхность данных модуля
   (ре-экспорт ORM из adapters): единственная R3-легальная форма доступа к чужим
@@ -538,7 +538,7 @@ push+мерж до этапа A, иначе конфликты переноса.
 ## 16. Уточнения по итогам фазы C6 (20.10.2026)
 
 Фронтенд перенесён в `static/js/modules/` точно по карте §6 (имена 1:1),
-детали — `docs/CHANGES-2026-10-20-stage-c6-frontend.md`:
+детали — `docs/archive/changes/CHANGES-2026-10-20-stage-c6-frontend.md`:
 
 * Глобалы и реестр сохранены (ADR-0008): `gen_js_globals` переведён на `rglob`
   и относительные ключи (`modules/cars.js`), маппинг ESLint `static/js/${file}`
@@ -557,7 +557,7 @@ push+мерж до этапа A, иначе конфликты переноса.
 ## 17. Итоги исполнения и статус Definition of Done (§9) — фаза C7, 20.10.2026
 
 Все фазы исполнены: A (PR #52), B (PR #54), C1 (PR #55), C2 (PR #56), C3 (PR #57),
-C4+C5 (PR #58), C6 (PR #59), C7 (PR #60). Батчи — `docs/CHANGES-2026-10-20-stage-c*.md`;
+C4+C5 (PR #58), C6 (PR #59), C7 (PR #60). Батчи — `docs/archive/changes/CHANGES-2026-10-20-stage-c*.md`;
 уточнения фаз — приложения §12–§17. DoD:
 
 - [x] **Структура §2**: `core/` (18 файлов — сверх §2 добавлены roles, identity,
@@ -578,14 +578,14 @@ C4+C5 (PR #58), C6 (PR #59), C7 (PR #60). Батчи — `docs/CHANGES-2026-10-2
       (статусы закреплены тестами — CHANGES C2 §2).
 - [x] **Права — только `require_perm`**; `require_manager`/`require_supervisor`
       удалены (B); `can_manage_user` не тронут (core/auth_guards). Долг §5.2
-      закрыт батчем 20.10.2026 (`docs/CHANGES-2026-10-20-debt1-scope-perms.md`):
+      закрыт батчем 20.10.2026 (`docs/archive/changes/CHANGES-2026-10-20-debt1-scope-perms.md`):
       11 inline-ветвлений `principal.is_manager` переведены на 5 ключей каталога
       (fact.view_all; punches.view_all/punch_for_others/backfill;
       schedule.view_all + schedule.edit для readonly); аудитория базово прежняя
       (MANAGER_ROLES), управляемость — грантами; страж: в модулях нет чтений
       `is_manager` (тест).
 - [x] **TZ/now — `core/time.py`** (долг закрыт батчем 20.10.2026,
-      `docs/CHANGES-2026-10-20-debt3-local-date.md`): все `dt.date.today()` в
+      `docs/archive/changes/CHANGES-2026-10-20-debt3-local-date.md`): все `dt.date.today()` в
       timesheet/bootstrap/migrations переведены на `local_date()`; `now_utc()` —
       в `timesheet/application/engine_common` как composition-параметр движка
       (§5.1/F-15 — так и предписано спекой); AST-страж запрещает системное время
@@ -599,7 +599,7 @@ C4+C5 (PR #58), C6 (PR #59), C7 (PR #60). Батчи — `docs/CHANGES-2026-10-2
       исполнен полностью», ADR-0006 — superseded (C1).
 - [x] **Мёртвый код/зависимости §8 удалены** (A); лок перегенерирован (A).
 - [x] **R6 выполнен полностью** (долг закрыт батчем 20.10.2026 —
-      `docs/CHANGES-2026-10-20-debt2-r6-relationships.md`): кросс-модульные FK —
+      `docs/archive/changes/CHANGES-2026-10-20-debt2-r6-relationships.md`): кросс-модульные FK —
       только строками; кросс-модульных `relationship()` нет (9 удалены: навигации
       заменены батч-словарями/`db.get` через identity map; бюджеты запросов
       сохранены, сетка Графика стала легче на два постоянных JOIN). Разрешены:

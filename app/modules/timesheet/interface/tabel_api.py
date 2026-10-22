@@ -89,6 +89,7 @@ def get_tabel(year: int, month: int, half: Optional[int] = None,
 
     code_rows = day_code_rows(db)
     p = ports(db, principal)
+    locks = timesheet_edit.lock_states([str(e.id) for e in emps], period.start, p)
     out = []
     for e in emps:
         cells, plan, missing = {}, 0, []
@@ -103,9 +104,8 @@ def get_tabel(year: int, month: int, half: Optional[int] = None,
                 plan += r.plan_minutes
             else:
                 missing.append(d.isoformat())
-        lock = timesheet_edit.lock_state(str(e.id), period.start, p)
         out.append({"employee": emp_brief(e), "cells": cells, "plan_hours": plan / 60,
-                    "missing_days": missing, "lock": lock})
+                    "missing_days": missing, "lock": locks[str(e.id)]})
     perms = principal_permissions(db, principal)
     return {"year": year, "month": month, "half": half, "granularity": granularity,
             "period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
@@ -232,8 +232,9 @@ def fill(payload: FillIn, principal: Principal = Depends(require_perm("tabel.edi
     period = month_period(payload.year, payload.month)
     st = _settings(db, period)
     p = ports(db, principal)
-    emps = [e for e in period_employees(db, period.start, period.end, payload.employee_ids)
-            if timesheet_edit.lock_state(str(e.id), period.start, p) != "locked"]
+    found = period_employees(db, period.start, period.end, payload.employee_ids)
+    locks = timesheet_edit.lock_states([str(e.id) for e in found], period.start, p)
+    emps = [e for e in found if locks[str(e.id)] != "locked"]
     res = fill_timesheet_from_cycles(db, emps, period.start, period.end, st,
                                      payload.overwrite, principal.user.id)
     for e in emps:
@@ -313,8 +314,10 @@ def reset(payload: ResetIn, principal: Principal = Depends(require_perm("tabel.e
     p = ports(db, principal)
     emps: list[Employee] = []
     locked: list[int] = []
-    for e in period_employees(db, period.start, period.end, payload.employee_ids):
-        if timesheet_edit.lock_state(str(e.id), period.start, p) == "locked":
+    found = period_employees(db, period.start, period.end, payload.employee_ids)
+    locks = timesheet_edit.lock_states([str(e.id) for e in found], period.start, p)
+    for e in found:
+        if locks[str(e.id)] == "locked":
             locked.append(e.id)
         else:
             emps.append(e)

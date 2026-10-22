@@ -7,6 +7,7 @@ employment() возвращает интервал трудоустройств�
 from __future__ import annotations
 
 import datetime as dt
+from typing import Sequence
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -20,9 +21,18 @@ from ._db import emp_pk
 class SqlEmploymentAdapter:
     def __init__(self, db: Session):
         self.db = db
+        self._pre: dict[int, list[EmploymentPeriod]] = {}
+
+    def prefetch(self, employee_ids: Sequence[str]) -> None:
+        """Периоды трудоустройства многих сотрудников одним запросом (PERF-02)."""
+        pks = [emp_pk(e) for e in employee_ids]
+        self._pre = {pk: [] for pk in pks}
+        for r in self.db.scalars(select(EmploymentPeriod).where(
+                EmploymentPeriod.employee_id.in_(pks)).order_by(EmploymentPeriod.start_date)):
+            self._pre[r.employee_id].append(r)
 
     def _rows(self, emp: int) -> list[EmploymentPeriod]:
-        rows = list(self.db.scalars(select(EmploymentPeriod).where(
+        rows = self._pre.get(emp) or list(self.db.scalars(select(EmploymentPeriod).where(
             EmploymentPeriod.employee_id == emp).order_by(EmploymentPeriod.start_date)))
         if rows:
             return rows

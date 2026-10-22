@@ -1,6 +1,6 @@
 # Изменения 20.10.2026 — этап B: унификация прав (require_perm вместо ролевых зависимостей)
 
-Исполнение `docs/EXECUTION-SPEC-v2.md` (§5.2, этап B; план — PR #51). Единственный
+Исполнение `docs/archive/EXECUTION-SPEC-v2.md` (§5.2, этап B; план — PR #51). Единственный
 вход проверки прав — `require_perm("<ключ>")` из каталога `PERMISSIONS`; ролевые
 зависимости `require_manager` / `require_supervisor` / `require_admin` удалены из
 `app/auth.py` (require_admin не использовался). Продолжение подхода `night.edit`

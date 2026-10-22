@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, Optional
 
 from ...ports.transports import TransportError
@@ -110,20 +111,25 @@ class TelegramBot:
                                         "disable_web_page_preview": True}).get("result") or {}
         return int(res.get("message_id") or 0)
 
-    def send_media(self, chat_id: int, files: list[tuple[str, bytes, str]],
+    def send_media(self, chat_id: int, files: list[tuple[str, Path, str]],
                    caption: str = "") -> list[int]:
         """Отправить вложения: каждое своим сообщением (подпись — у первого).
 
         sendMediaGroup требует multipart со вложенным JSON и ограничен 10 файлами;
         поштучная отправка проще, надёжнее и работает с любым числом файлов
-        (Telegram сам сложит соседние фото/видео в альбом).
+        (Telegram сам сложит соседние фото/видео в альбом). Файл уходит потоком с диска
+        (httpx читает открытый дескриптор), в память целиком не загружается (PERF-04);
+        пропавший после выборки файл пропускается.
         """
         ids: list[int] = []
-        for i, (name, blob, mime) in enumerate(files):
+        for i, (name, path, mime) in enumerate(files):
             method, field = _media_method(mime)
             payload = {"chat_id": chat_id, "caption": caption[:1024]} if i == 0 and caption \
                 else {"chat_id": chat_id}
-            res = self.call(method, payload, files={field: (name, blob, mime)}).get("result") or {}
+            if not Path(path).is_file():
+                continue
+            with open(path, "rb") as fh:
+                res = self.call(method, payload, files={field: (name, fh, mime)}).get("result") or {}
             ids.append(int(res.get("message_id") or 0))
         return ids
 
