@@ -31,7 +31,6 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
-from app.core.roles import ROLE_ADMIN, ROLE_MANAGER
 from app.core.time import WD_SHORT, utcnow
 from app.modules.employees.application import Employee
 
@@ -39,14 +38,6 @@ from ..adapters.orm import DoublePayDay, VipDoublePay
 from ..application.doublepay import REASON_TITLES, SCOPE_ALL, SCOPE_TITLES, SCOPES
 
 router = APIRouter(prefix="/api/doublepay", tags=["doublepay"])
-
-
-def _guard(principal: Principal) -> None:
-    """Писать календарь оплаты может только администратор или менеджер
-    (как и корректировки банка): данные приходят из C&B."""
-    if principal.role not in (ROLE_ADMIN, ROLE_MANAGER):
-        raise HTTPException(status_code=403,
-                            detail="Менять дни двойной оплаты может только администратор или менеджер")
 
 
 def _author_name(principal: Principal) -> str:
@@ -139,12 +130,11 @@ class DaysIn(BaseModel):
 
 
 @router.post("/days")
-def add_days(payload: DaysIn, principal: Principal = Depends(require_perm("settings.edit")),
+def add_days(payload: DaysIn, principal: Principal = Depends(require_perm("settings.doublepay")),
              db: Session = Depends(get_db)):
     """Добавить дни двойной оплаты: списком дат или периодом (можно с фильтром
     по дням недели — например все субботы года для пятидневки).
     Существующие даты обновляются (scope/примечание)."""
-    _guard(principal)
     if payload.scope not in SCOPES:
         raise HTTPException(status_code=422,
                             detail="scope должен быть одним из: " + ", ".join(SCOPES))
@@ -196,9 +186,8 @@ def add_days(payload: DaysIn, principal: Principal = Depends(require_perm("setti
 
 
 @router.delete("/days/{day_id}")
-def delete_day(day_id: int, principal: Principal = Depends(require_perm("settings.edit")),
+def delete_day(day_id: int, principal: Principal = Depends(require_perm("settings.doublepay")),
                db: Session = Depends(get_db)):
-    _guard(principal)
     row = db.get(DoublePayDay, day_id)
     if row is None:
         raise HTTPException(status_code=404, detail="День не найден")
@@ -218,10 +207,9 @@ class VipIn(BaseModel):
 
 
 @router.post("/vip")
-def add_vip(payload: VipIn, principal: Principal = Depends(require_perm("settings.edit")),
+def add_vip(payload: VipIn, principal: Principal = Depends(require_perm("settings.doublepay")),
             db: Session = Depends(get_db)):
     """Назначить сотруднику период двойных переработок (работа с ВИП-гостем)."""
-    _guard(principal)
     emp = db.get(Employee, payload.employee_id)
     if emp is None or emp.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
@@ -248,9 +236,8 @@ def add_vip(payload: VipIn, principal: Principal = Depends(require_perm("setting
 
 
 @router.delete("/vip/{vip_id}")
-def delete_vip(vip_id: int, principal: Principal = Depends(require_perm("settings.edit")),
+def delete_vip(vip_id: int, principal: Principal = Depends(require_perm("settings.doublepay")),
                db: Session = Depends(get_db)):
-    _guard(principal)
     vip = db.get(VipDoublePay, vip_id)
     if vip is None:
         raise HTTPException(status_code=404, detail="Период не найден")

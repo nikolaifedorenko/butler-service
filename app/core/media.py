@@ -435,11 +435,13 @@ def resolve_photo_file(db: Session, photo_id: int, principal):
 
 
 def delete_photo(db: Session, principal, photo_id: int) -> None:
-    """Удалить фото: своё — любой пользователь, чужое — менеджер и выше."""
+    """Удалить фото: своё — любой пользователь, чужое — право media.delete_any (супервайзер+)."""
+    from .permissions import has_perm
+
     photo = db.get(Photo, photo_id)
     if photo is None:
         raise NotFound("Фото не найдено")
-    if photo.uploaded_by != principal.user.id and not principal.is_manager:
+    if photo.uploaded_by != principal.user.id and not has_perm(db, principal, "media.delete_any"):
         raise Forbidden("Можно удалять только свои фото")
     reason = _DELETE_GUARD(db, photo) if _DELETE_GUARD is not None else None
     if reason:

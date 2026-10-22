@@ -72,8 +72,8 @@ async function employeeCard(emp) {
   const history = await api(`/api/employees/${emp.id}/history`);
   const contacts = emp.contacts?.length ? emp.contacts
     : (emp.emergency_name ? [{ name: emp.emergency_name, phone: emp.emergency_phone, relation: '' }] : []);
-  const canBank = can('employees.edit');   // право, а не роль: гранты и группы учитываются
-  const bankNow = history.bank_now ?? emp.balance_hours;
+  const canBank = can('employees.bank');   // право, а не роль: гранты и группы учитываются
+  const bankNow = history.bank_now ?? 0;
   openModal({
     title: emp.full_name,
     subtitle: `${emp.position || 'должность не указана'} · ${emp.schedule_group || 'без блока'}`,
@@ -92,7 +92,7 @@ async function employeeCard(emp) {
         <div class="field"><span>Telegram</span><div style="font-weight:600">${esc(emp.telegram || '—')}</div></div>
         <div class="field"><span>Логин / роль</span><div style="font-weight:600"><code>${esc(emp.username || '—')}</code> · ${esc(ROLE_TITLES[emp.role] || '—')}</div></div>
         <div class="field"><span>Банк часов (сейчас)</span><div class="${bankNow >= 0 ? 'balance-pos' : 'balance-neg'}" style="font-size:18px">${bankNow >= 0 ? '+' : ''}${hours(bankNow)} ч</div>
-          <div class="hint" style="margin-top:2px">старт ${emp.balance_hours >= 0 ? '+' : ''}${hours(emp.balance_hours)} ч + переработки − отгулы/недоработки ± корректировки</div></div>
+          <div class="hint" style="margin-top:2px">итог последнего закрытого периода ± корректировки</div></div>
         <div class="field"><span>Статус</span><div style="font-weight:600">${emp.deleted ? 'удалён (хранится в истории)'
           : emp.dismissed_at ? `уволен (последний рабочий день ${dateRu(emp.dismissed_at)})` : emp.active ? 'работает' : 'неактивен'}</div></div>
       </div>
@@ -343,7 +343,7 @@ async function rehireModal(emp) {
 /* ── ручная корректировка банка часов (+/−) с причиной и историей ── */
 async function bankAdjustModal(emp, history) {
   const today = todayISO();
-  const bankNow = history?.bank_now ?? emp.balance_hours;
+  const bankNow = history?.bank_now ?? 0;
   openModal({
     title: 'Корректировка банка часов',
     subtitle: `${emp.full_name} · сейчас ${bankNow >= 0 ? '+' : ''}${hours(bankNow)} ч`,
@@ -361,15 +361,15 @@ async function bankAdjustModal(emp, history) {
         <b class="${a.hours >= 0 ? 'balance-pos' : 'balance-neg'}">${a.hours >= 0 ? '+' : ''}${hours(a.hours)} ч</b>
         <span>с ${dateRu(a.date)} — ${esc(a.note)} <small class="muted">(${esc(a.author)})</small></span>
         <button class="btn btn-sm btn-ghost" data-del-adj="${a.id}" title="Удалить корректировку">✕</button></div>`).join('') || '<div class="hint">пока не было</div>'}</div>
-      <p class="hint">Корректировку может сделать только администратор или менеджер; автор, причина и время
-      сохраняются в журнале аудита. Банк = стартовый баланс + переработки − отгулы/недоработки ± корректировки.</p>`,
+      <p class="hint">Корректировка — право «Корректировка банка часов» (по умолчанию администратор и менеджер);
+      автор, причина и время сохраняются в журнале аудита. Банк = итог последнего закрытого периода ± корректировки.</p>`,
     footer: `<button class="btn btn-ghost" data-cancel>Закрыть</button>
              <button class="btn btn-primary" data-ok>Применить корректировку</button>`,
     onMount(m) {
       m.querySelector('[data-cancel]').onclick = closeModal;
       const reopen = async () => {
         const h = await api(`/api/employees/${emp.id}/history`);
-        closeModal(); bankAdjustModal({ ...emp, balance_hours: emp.balance_hours }, h);
+        closeModal(); bankAdjustModal(emp, h);
       };
       $$('[data-del-adj]', m).forEach(b => b.onclick = async () => {
         if (!confirm('Удалить эту корректировку банка?')) return;
@@ -450,7 +450,6 @@ async function employeeModal(emp) {
         <label class="field"><span>Роль в системе</span><select id="e-role">
           ${roleOptions.map(r => `<option value="${r}" ${emp?.role === r ? 'selected' : ''}>${ROLE_TITLES[r]}</option>`).join('')}
         </select></label>
-        <label class="field"><span>Стартовый банк часов</span><input type="number" step="0.5" id="e-balance" value="${emp?.balance_hours ?? 0}"></label>
         <label class="field"><span>Логин</span><input type="text" id="e-login" value="${esc(emp?.username || '')}" placeholder="создастся автоматически"></label>
       </div>
       <div class="opt-group-title">Контакты близких (экстренно) — можно несколько</div>
@@ -515,7 +514,6 @@ async function employeeModal(emp) {
           emergency_name: contactList[0]?.name || '', emergency_phone: contactList[0]?.phone || '',
           contacts: contactList,
           schedule_group: $('#e-group').value, group_color: color,
-          balance_hours: +$('#e-balance').value || 0,
           username: $('#e-login').value.trim() || null, password: pass || null,
           role: $('#e-role').value,
         };

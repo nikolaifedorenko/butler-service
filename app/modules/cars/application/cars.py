@@ -22,6 +22,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
+from app.core.permissions import has_perm
 from app.core.time import now_local
 from app.modules.employees.application import Employee
 
@@ -253,9 +254,9 @@ def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int]
     принявший (любой пользователь, если принял внешний)."""
     if car.status not in ("busy", "charging"):
         raise CarOpError("Передать можно занятый кар (или стоящий на зарядке у держателя)")
-    # как и возврат: передаёт тот, у кого кар сейчас, либо супервайзер/менеджер/админ
-    manager = principal.role in ("supervisor", "manager", "admin")
-    if not manager and car.holder_user_id and car.holder_user_id != principal.user.id:
+    # как и возврат: передаёт тот, у кого кар сейчас, либо право cars.override (супервайзер+)
+    override = has_perm(db, principal, "cars.override")
+    if not override and car.holder_user_id and car.holder_user_id != principal.user.id:
         raise CarOpError("Передать кар может сотрудник, у которого он сейчас "
                          "(или супервайзер/менеджер/администратор)")
     uid, label = resolve_person(db, employee_id=employee_id, name=name)
@@ -279,6 +280,11 @@ def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int]
 def give_car(db: Session, car: Car, principal, *, employee_id: Optional[int], name: str,
              with_key: bool = True) -> dict:
     """Выдать кар сотруднику (менеджер/супервайзер/админ). Внешним — по ФИО, без учётной записи."""
+    # BUG-02: «выдать» обходило правило «снять с обслуживания — менеджер» и выдавало отключённый
+    if car.status == "maintenance":
+        raise CarOpError("Кар на обслуживании — выдать нельзя (снять с обслуживания может менеджер)")
+    if car.status == "disabled":
+        raise CarOpError("Кар отключён — выдать нельзя")
     uid, label = resolve_person(db, employee_id=employee_id, name=name)
     if uid:
         other = db.scalar(select(Car).where(Car.holder_user_id == uid, Car.id != car.id))
@@ -307,8 +313,8 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
     Статус после возврата: замечания → «на обслуживании»; иначе на зарядке → «на зарядке»;
     иначе «свободен». Замечания (condition != ok или мусор/не убран) всегда приоритетнее.
     """
-    manager = principal.role in ("supervisor", "manager", "admin")
-    if not manager and not force:
+    override = has_perm(db, principal, "cars.override")
+    if not override and not force:
         if car.holder_user_id and car.holder_user_id != principal.user.id:
             raise CarOpError("Возврат отмечает сотрудник, который брал кар "
                              "(или супервайзер/менеджер/администратор)")
@@ -365,12 +371,11 @@ def set_status(db: Session, car: Car, principal, status: str, note: str = "") ->
         raise CarOpError("Нельзя сделать кар «занят» без держателя — используйте «выдать»")
     if status in ("free", "disabled", "maintenance") and car.holder_user_id:
         raise CarOpError("Сначала оформите возврат: кар держит сотрудник")
-    if status == "maintenance":
-        if principal.role not in ("manager", "admin"):
-            raise CarOpError("Завести кар на обслуживание может только менеджер или администратор")
-    if car.status == "maintenance" and status != "maintenance":
-        if principal.role not in ("manager", "admin"):
-            raise CarOpError("Снять кар с обслуживания может только менеджер или администратор")
+    maintenance = has_perm(db, principal, "cars.maintenance")      # менеджер и администратор
+    if status == "maintenance" and not maintenance:
+        raise CarOpError("Завести кар на обслуживание может только менеджер или администратор")
+    if car.status == "maintenance" and status != "maintenance" and not maintenance:
+        raise CarOpError("Снять кар с обслуживания может только менеджер или администратор")
     old = car.status
     car.status = status
     if status == "charging":

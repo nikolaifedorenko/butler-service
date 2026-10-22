@@ -45,13 +45,18 @@ PERMISSIONS: list[dict] = [
     {"key": "punches.backfill", "section": "Отметки",
      "title": "Отметка задним числом (произвольное время)"},
     {"key": "employees.view", "section": "Сотрудники", "title": "Просмотр сотрудников"},
-    {"key": "employees.edit", "section": "Сотрудники", "title": "Редактирование сотрудников и банка"},
+    {"key": "employees.edit", "section": "Сотрудники", "title": "Редактирование сотрудников"},
+    # Фаза 3 аудита (22.10.2026, AUTHZ-05, решение владельца В-2): ключи вместо ролевых
+    # проверок в коде, аудитория по умолчанию прежняя — employees.bank, settings.doublepay,
+    # cars.override, cars.maintenance, night.reopen_any, media.delete_any.
+    {"key": "employees.bank", "section": "Сотрудники", "title": "Корректировка банка часов"},
     # employees.impersonate (этап B, 20.10.2026): «посмотреть глазами сотрудника»
     # было за ролевым require_manager — ключ повторяет прежнюю аудиторию (supervisor+);
     # вторым стражем остаётся can_manage_user (иерархия ролей, анти-эскалация).
     {"key": "employees.impersonate", "section": "Сотрудники", "title": "Войти как сотрудник (имперсонация)"},
     {"key": "settings.view", "section": "Настройки", "title": "Просмотр настроек"},
     {"key": "settings.edit", "section": "Настройки", "title": "Изменение настроек и справочников"},
+    {"key": "settings.doublepay", "section": "Настройки", "title": "Дни двойной оплаты"},
     {"key": "access.manage", "section": "Права доступа", "title": "Управление правами доступа"},
     {"key": "audit.view", "section": "Журнал аудита", "title": "Просмотр журнала аудита"},
     {"key": "me.punch", "section": "Мои отметки", "title": "Отмечаться «Пришёл/Ушёл»"},
@@ -66,16 +71,21 @@ PERMISSIONS: list[dict] = [
     # night.close (этап B, 20.10.2026): закрытие/переоткрытие смены и объектов было
     # за ролевым require_supervisor — ключ повторяет прежнюю аудиторию (supervisor+).
     {"key": "night.close", "section": "Ночной отчёт", "title": "Закрытие и переоткрытие смены/объектов"},
+    {"key": "night.reopen_any", "section": "Ночной отчёт", "title": "Переоткрыть чужую закрытую область обхода"},
     {"key": "cars.view", "section": "Электрокары", "title": "Просмотр парка и истории"},
     {"key": "cars.use", "section": "Электрокары", "title": "Взять / вернуть / передать кар"},
+    {"key": "cars.override", "section": "Электрокары", "title": "Передать или вернуть чужой кар"},
     {"key": "cars.issue", "section": "Электрокары", "title": "Выдать, закрепить, сменить статус"},
+    {"key": "cars.maintenance", "section": "Электрокары", "title": "Поставить на обслуживание и снять с него"},
     {"key": "cars.manage", "section": "Электрокары", "title": "Парк и места стоянки: создание, правка, удаление"},
+    {"key": "media.delete_any", "section": "Фото и видео", "title": "Удалить чужое фото или видео"},
 ]
 ALL_KEYS = [p["key"] for p in PERMISSIONS]
 
 _EMPLOYEE = {"presence.view", "schedule.view", "me.punch", "night.view", "night.dispatch",
              "cars.view", "cars.use"}
-_SUPERVISOR = set(ALL_KEYS) - {"access.manage", "settings.edit", "mgmt.recalculate", "cars.manage"}
+_SUPERVISOR = set(ALL_KEYS) - {"access.manage", "settings.edit", "mgmt.recalculate", "cars.manage",
+                               "employees.bank", "settings.doublepay", "cars.maintenance"}
 ROLE_DEFAULTS: dict[str, set[str]] = {
     ROLE_ADMIN: set(ALL_KEYS),
     ROLE_MANAGER: set(ALL_KEYS) - {"access.manage"},

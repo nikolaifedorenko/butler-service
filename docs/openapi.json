@@ -1074,11 +1074,6 @@
       },
       "EmployeeIn": {
         "properties": {
-          "balance_hours": {
-            "default": 0.0,
-            "title": "Balance Hours",
-            "type": "number"
-          },
           "contacts": {
             "default": [],
             "items": {

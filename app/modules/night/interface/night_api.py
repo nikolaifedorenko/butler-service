@@ -949,7 +949,7 @@ def take_section(section_id: int, payload: InterceptionAck,
     if sec.status == "done":
         # по ТЗ область ведёт один человек: закрыть её может кто угодно, а переоткрыть —
         # только тот, кто закрыл (или супервайзер и выше)
-        if principal.user.id != sec.closed_by and principal.role not in ("supervisor", "manager", "admin"):
+        if principal.user.id != sec.closed_by and not has_perm(db, principal, "night.reopen_any"):
             raise HTTPException(status_code=409,
                                 detail=f"Область закрыта в {sec.closed_at:%H:%M} — переоткрыть может "
                                        f"тот, кто её закрыл, или супервайзер")

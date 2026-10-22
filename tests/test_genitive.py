@@ -87,7 +87,7 @@ class TestGenitiveApi(unittest.TestCase):
                                              "tab_number", "telegram", "email")}
         body.update({"full_name": "Тестов Пётр Ильич", "full_name_genitive": "Тестова Петра",
                      "hired_at": emp2["hired_at"], "schedule_group": emp2["schedule_group"],
-                     "group_color": emp2["group_color"], "balance_hours": emp2["balance_hours"],
+                     "group_color": emp2["group_color"],
                      "role": emp2["role"] or "employee", "username": emp2["username"]})
         r = self.admin.put(f"/api/employees/{emp2['id']}", json=body)
         self.assertEqual(r.status_code, 200, r.text)

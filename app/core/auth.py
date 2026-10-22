@@ -115,8 +115,10 @@ def optional_principal(request: Request, db: Session = Depends(get_db)) -> Optio
 # единственный вход проверки прав — require_perm("<ключ>") из core/permissions.py.
 # Inline-ветвления «менеджерской видимости» переведены на ключи каталога
 # (батч 20.10.2026: fact.view_all, punches.view_all/punch_for_others/backfill,
-# schedule.view_all/edit) — в модулях обращений к is_manager не осталось
-# (страж: tests/test_permissions_unification.py). Свойство Principal.is_manager
+# schedule.view_all/edit), последние восемь ролевых проверок — на employees.bank,
+# settings.doublepay, cars.override, cars.maintenance, night.reopen_any, media.delete_any
+# (AUTHZ-05, 22.10.2026). Вне ядра прав роль не читает никто (страж:
+# tests/test_permissions_unification.py). Свойство Principal.is_manager
 # сохранено как утилита ролевой иерархии (рядом с can_manage_user в
 # core/auth_guards.py) и для совместимости; для прав экранов его использовать
 # не следует — только каталог PERMISSIONS. can_manage_user переехал в

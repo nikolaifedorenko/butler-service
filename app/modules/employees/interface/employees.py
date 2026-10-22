@@ -19,7 +19,7 @@ from app.core.db import get_db
 from app.core.format import normalize_hex_color
 from app.core.identity import User
 from app.core.permissions import require_perm
-from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER
+from app.core.roles import ROLE_EMPLOYEE
 from app.core.security import MIN_PASSWORD_LEN, hash_password
 from app.core.time import local_date, utcnow
 from app.modules.cars.application.catalog import Car
@@ -95,7 +95,7 @@ def _emp_dict(e: Employee, with_user: bool = False, car=_CAR_UNSET) -> dict:
         "subdivision": e.subdivision or "",
         "schedule_group": e.schedule_group or "", "group_color": e.group_color or "#8a94a6",
         "schedule_pattern": e.schedule_pattern or "",
-        "balance_hours": e.balance_hours, "active": e.active,
+        "active": e.active,
         "deleted": e.deleted_at is not None,
         "deleted_at": e.deleted_at.isoformat() if e.deleted_at else None,
     }
@@ -155,7 +155,8 @@ class EmployeeIn(BaseModel):
     subdivision: str = ""          # служба/подразделение в официальных документах
     schedule_group: str = ""
     group_color: str = "#8a94a6"
-    balance_hours: float = 0.0
+    # «Стартовый банк часов» убран (UI-01, 22.10.2026): движок v7.1 его не читал. Начальный
+    # банк — корректировка с причиной OPENING_SEED; присланное поле balance_hours игнорируется.
     username: Optional[str] = None
     password: Optional[str] = None
     role: Optional[str] = None     # не передана — при правке роль не меняется (AUTHZ-03)
@@ -243,7 +244,7 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
         department_id=department_id,
         schedule_group=normalize_group(payload.schedule_group.strip()),
         group_color=payload.group_color,
-        schedule_pattern="", balance_hours=payload.balance_hours,
+        schedule_pattern="",
     )
     db.add(emp)
     db.flush()
@@ -299,7 +300,6 @@ def update_employee(employee_id: int, payload: EmployeeIn,
     else:
         emp.department_id = None
     emp.group_color = payload.group_color
-    emp.balance_hours = payload.balance_hours
 
     # должность и блок меняются с фиксацией даты (история / переводы)
     _touch_position(db, emp, payload.position.strip(), today)
@@ -404,12 +404,6 @@ def rehire_employee(employee_id: int, payload: RehireIn,
 
 
 # ─────────────────── ручные корректировки банка часов ───────────────────
-def _guard_bank(principal: Principal) -> None:
-    if principal.role not in (ROLE_ADMIN, ROLE_MANAGER):
-        raise HTTPException(status_code=403,
-                            detail="Корректировать банк часов может только администратор или менеджер")
-
-
 def _author_name(principal: Principal) -> str:
     if principal.employee:
         return principal.employee.display_name
@@ -439,9 +433,8 @@ class BankAdjustIn(BaseModel):
 
 @router.post("/employees/{employee_id}/bank-adjust")
 def bank_adjust(employee_id: int, payload: BankAdjustIn,
-                principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
+                principal: Principal = Depends(require_perm("employees.bank")), db: Session = Depends(get_db)):
     """Ручная корректировка банка часов (+/−) с автором, датой и причиной."""
-    _guard_bank(principal)
     emp = db.get(Employee, employee_id)
     if not emp:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
@@ -482,14 +475,12 @@ def bank_adjustments(employee_id: int, principal: Principal = Depends(require_pe
         BankAdjustment.employee_id == employee_id).order_by(
         BankAdjustment.effective_date.desc(), BankAdjustment.id.desc())).all()
     return {"items": [_adjustment_dict(a) for a in items],
-            "bank_now": bank_as_of(db, emp, local_date()),
-            "start_balance": emp.balance_hours}
+            "bank_now": bank_as_of(db, emp, local_date())}
 
 
 @router.delete("/employees/{employee_id}/bank-adjustments/{adjustment_id}")
 def bank_adjust_delete(employee_id: int, adjustment_id: int,
-                       principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
-    _guard_bank(principal)
+                       principal: Principal = Depends(require_perm("employees.bank")), db: Session = Depends(get_db)):
     adj = db.get(BankAdjustment, adjustment_id)
     if not adj or adj.employee_id != employee_id:
         raise HTTPException(status_code=404, detail="Корректировка не найдена")

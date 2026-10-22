@@ -172,22 +172,59 @@ def test_neaktivnye_kary_vidny_tolko_upravleniyu_parkom(admin_client, manager_cl
 
 
 def test_inline_is_manager_v_modulyah_bolshe_net():
-    """Страж долга §5.2: экранная авторизация — только ключи каталога.
+    """Страж долга §5.2 и AUTHZ-05 (22.10.2026): доступ решают только ключи каталога.
 
-    Свойство Principal.is_manager живёт в core/auth как утилита ролевой
-    иерархии (can_manage_user), но НИ ОДИН модуль не решает по нему доступ.
+    Роль (`principal.role`, `is_manager`, `is_admin`) читают лишь ядро прав —
+    core/auth.py, core/auth_guards.py (иерархия can_manage_user), core/permissions.py —
+    и main.py (подробности selfcheck — только администратору).
     """
     import pathlib
     import re
 
-    root = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules"
-    rx = re.compile(r"\.is_manager\b")
+    app_dir = pathlib.Path(__file__).resolve().parents[1] / "app"
+    allowed = {"core/auth.py", "core/auth_guards.py", "core/permissions.py", "main.py"}
+    rx = re.compile(r"\.is_manager\b|\.is_admin\b|\bprincipal\.role\b")
     offenders = []
-    for path in sorted(root.rglob("*.py")):
-        if "__pycache__" in path.parts:
+    for path in sorted(app_dir.rglob("*.py")):
+        rel = path.relative_to(app_dir).as_posix()
+        if "__pycache__" in path.parts or rel in allowed:
             continue
         for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             code = line.split("#", 1)[0]
             if rx.search(code):
-                offenders.append(f"{path.relative_to(root.parent.parent)}:{i}")
-    assert offenders == [], f"is_manager в модулях: {offenders}"
+                offenders.append(f"app/{rel}:{i}")
+    assert offenders == [], f"проверка роли мимо каталога прав: {offenders}"
+
+
+# ─────────── AUTHZ-05: ключи вместо ролевых проверок, аудитория прежняя (В-2) ───────────
+
+OLD_AUDIENCE = {
+    "employees.bank": {"admin", "manager"},
+    "settings.doublepay": {"admin", "manager"},
+    "cars.maintenance": {"admin", "manager"},
+    "cars.override": {"admin", "manager", "supervisor"},
+    "night.reopen_any": {"admin", "manager", "supervisor"},
+    "media.delete_any": {"admin", "manager", "supervisor"},
+}
+
+
+def test_novye_klyuchi_s_prezhney_auditoriey():
+    """Роли по умолчанию получили новые ключи ровно там, где раньше пускала роль."""
+    from app.core.permissions import ROLE_DEFAULTS
+
+    for key, roles in OLD_AUDIENCE.items():
+        assert {r for r, perms in ROLE_DEFAULTS.items() if key in perms} == roles, key
+
+
+def test_grant_dney_dvoynoy_oplaty_rabotaet(admin_client, manager_client):
+    """EXP-ROLEGRANT: супервайзер с явным allow получал 403 — решала роль, а не право."""
+    uid = next(u["id"] for u in admin_client.get("/api/access").json()["users"]
+               if u["username"] == "gromova")
+    assert manager_client.delete("/api/doublepay/days/999999").status_code == 403
+    try:
+        assert admin_client.put(f"/api/access/users/{uid}/grants",
+                                json={"grants": {"settings.doublepay": "allow"}}).status_code == 200
+        r = manager_client.delete("/api/doublepay/days/999999")
+        assert r.status_code == 404, r.text      # гейт пройден, дня нет
+    finally:
+        admin_client.put(f"/api/access/users/{uid}/grants", json={"grants": {}})

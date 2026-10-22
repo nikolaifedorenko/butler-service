@@ -21,8 +21,7 @@ def _employee(client, emp_id: int) -> dict:
 def _body(e: dict, **extra) -> dict:
     """Тело PUT /api/employees/{id} из карточки (без role, если не передана явно)."""
     body = {"full_name": e["full_name"], "position": e["position"],
-            "schedule_group": e["schedule_group"], "hired_at": e.get("hired_at"),
-            "balance_hours": e.get("balance_hours") or 0}
+            "schedule_group": e["schedule_group"], "hired_at": e.get("hired_at")}
     body.update(extra)
     return body
 

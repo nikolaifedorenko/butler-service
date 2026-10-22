@@ -22,7 +22,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.media import UploadRef, max_upload_bytes, photos_of, read_upload_streaming
-from app.core.permissions import principal_permissions, require_perm
+from app.core.permissions import has_perm, principal_permissions, require_perm
 
 from ..adapters.orm import CarHistory
 from ..application.cars import (
@@ -148,7 +148,7 @@ def location_delete(loc_id: int, db: Session = Depends(get_db),
 
 @router.get("/locations")
 def locations(db: Session = Depends(get_db), principal: Principal = Depends(require_perm("cars.view"))):
-    show_all = principal.role in ("admin", "manager", "supervisor")
+    show_all = has_perm(db, principal, "cars.issue")     # неактивные места — супервайзеру и выше
     rows = list_locations(db)
     return {"locations": [r for r in rows if r["active"] or show_all]}
 
@@ -306,6 +306,10 @@ def car_return(car_id: int,
                db: Session = Depends(get_db),
                principal: Principal = Depends(require_perm("cars.use"))):
     """Возврат кара (multipart): состояние + фото доказательств (оригиналы)."""
+    # BUG-03 (решение владельца В-11): «кто вернул» за другого — только с правом выдачи
+    if (by_employee_id or by_name.strip()) and not has_perm(db, principal, "cars.issue"):
+        raise HTTPException(status_code=403, detail="Указать, кто вернул кар, может только "
+                                                    "сотрудник с правом выдачи каров")
     refs: list[UploadRef] = []
     try:
         car = get_car(db, car_id)

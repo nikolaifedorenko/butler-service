@@ -293,7 +293,7 @@ async function enterApp() {
       toast('Внимание: схема БД отстаёт от кода. ' + (chk.hint || ''), 'err', chk.missing.slice(0, 6));
     }
   } catch { /* самодиагностика недоступна — не критично */ }
-  if (state.user.role !== 'employee') {
+  if (can('employees.view')) {        // справочник — по праву, а не по роли (UI-02)
     try {
       await loadDirectory();
     } catch (e) {

@@ -308,7 +308,7 @@ function carReturnModal(car, after) {
           <select id="cr-charge">${CHARGE_OPTS.map(([v, t]) =>
             `<option value="${v}" ${v === car.charge ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       </div>
-      ${state.user?.role !== 'employee' ? personFieldHtml('cr') : ''}
+      ${can('cars.issue') ? personFieldHtml('cr') : ''}
       <div class="opt-group-title">Состояние при возврате</div>
       <div class="check-list" id="cr-state" style="max-height:none">
         <label class="chk"><input type="checkbox" id="cr-ok" ${car.condition !== 'bad' ? 'checked' : ''}> Технически исправен</label>
@@ -334,7 +334,8 @@ function carReturnModal(car, after) {
         const charge = $('#cr-charge').value;
         const onCharge = $('#cr-oncharge').checked;
         const fd = new FormData();
-        const person = state.user?.role !== 'employee' ? personFieldValue('cr') : { employee_id: null, name: '' };
+        // «кто вернул» за другого — только с правом выдачи (решение владельца В-11)
+        const person = can('cars.issue') ? personFieldValue('cr') : { employee_id: null, name: '' };
         if (person.employee_id) fd.append('by_employee_id', String(person.employee_id));
         if (person.name) fd.append('by_name', person.name);
         fd.append('location', $('#cr-location').value || '');
