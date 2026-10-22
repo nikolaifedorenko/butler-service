@@ -10,7 +10,6 @@ registerModule({ screens: { shifts: { render: settingsScreenShifts, icon: 'shift
    ══════════════════════════════════════════════════════════════════════ */
 async function settingsScreenShifts(host) {
   await settingsEngine();
-  const p = settingsPayload();
   const edit = can('settings.edit');
   let shiftList = state.shiftTypes || [];
   if (settingsUI.showArchived) {
@@ -20,7 +19,6 @@ async function settingsScreenShifts(host) {
   const tab = settingsUI.shiftTab || 'work';
   const shown = shiftList.filter(s => (tab === 'archived' ? !!s.archived
     : !s.archived && (tab === 'work' ? s.kind === 'work' : s.kind !== 'work')));
-  const codes = p?.day_code_policy || {};
 
   host.innerHTML = `
     ${settingsHead('Смены и отсутствия',

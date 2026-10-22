@@ -3,11 +3,11 @@
 
 В requirements*.txt намеренно стоят «>=» (проект ставится на машины заказчика без
 интернета/с разными Python), но для воспроизводимой сборки и CI нужен лок-файл.
-Скрипт обходит граф зависимостей от корней (requirements.txt, -dev, -pdf) через
+Скрипт обходит граф зависимостей от корней (requirements.txt, -dev) через
 метаданные установленных пакетов и фиксирует точные версии.
 
 Использование:
-    pip install -r requirements.txt -r requirements-dev.txt -r requirements-pdf.txt
+    pip install -r requirements.txt -r requirements-dev.txt
     python3 tools/freeze_requirements.py            # записать requirements.lock.txt
     python3 tools/freeze_requirements.py --check    # сверить с текущим окружением (CI)
 """
@@ -19,7 +19,7 @@ from importlib import metadata
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
-ROOTS = ["requirements.txt", "requirements-dev.txt", "requirements-pdf.txt"]
+ROOTS = ["requirements.txt", "requirements-dev.txt"]
 LOCK = BASE / "requirements.lock.txt"
 NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.\-\[\]]+)")
 

@@ -4923,57 +4923,6 @@
         ]
       }
     },
-    "/api/employees/{employee_id}/deactivate": {
-      "post": {
-        "description": "Деактивировать (по умолчанию) или активировать сотрудника — идемпотентно.\n\nРаньше здесь был `active = not active` (переключатель): повторный запрос при таймауте\nсети откатывал состояние обратно. Теперь состояние задаётся явно параметром `active`.",
-        "operationId": "deactivate_employee_api_employees__employee_id__deactivate_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "employee_id",
-            "required": true,
-            "schema": {
-              "title": "Employee Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "active",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Active",
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Deactivate Employee",
-        "tags": [
-          "directory"
-        ]
-      }
-    },
     "/api/employees/{employee_id}/delete": {
       "post": {
         "description": "«Полное удаление»: сотрудник исчезает из списков и графика, но ВСЯ история\n(табель, отметки, аудит) сохраняется — записи помечаются deleted_at.",
@@ -5850,26 +5799,6 @@
           }
         },
         "summary": "Close",
-        "tags": [
-          "mgmt-timesheet"
-        ]
-      }
-    },
-    "/api/mgmt/periods": {
-      "get": {
-        "description": "Цепочка периодов сотрудника для навигации (16.1 п.7, R35/R36): granularity +\nграницы по трудоустройству каждого сотрудника.",
-        "operationId": "periods_api_mgmt_periods_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Periods",
         "tags": [
           "mgmt-timesheet"
         ]
@@ -8802,7 +8731,7 @@
     },
     "/api/schedule/pdf": {
       "get": {
-        "description": "График на месяц в PDF: та же таблица, что в «Печать»/Excel. Собирается через\nDOCX → PDF (LibreOffice или встроенный движок); без движка — 501 с подсказкой.",
+        "description": "График на месяц в PDF: та же таблица, что в «Печать»/Excel. Собирается через\nDOCX → PDF встроенным рендером; если собрать не удалось — 501 с подсказкой.",
         "operationId": "export_pdf_api_schedule_pdf_get",
         "parameters": [
           {
@@ -9121,7 +9050,7 @@
     },
     "/api/selfcheck": {
       "get": {
-        "description": "Самодиагностика: соответствует ли схема БД моделям текущего кода.\n\nСписок таблиц и колонок берётся из Base.metadata (models.py) — единственного\nисточника правды. Раньше здесь был второй рукописный список, который уже\nразошёлся с migrate_db(): шесть добавленных колонок (включая users.token_version)\nне проверялись, и selfcheck не мог заметить отставание схемы.\n\nБез входа (так проверку показывает инструкция по установке) отдаётся только\nитог ok/hint; перечень таблиц и колонок — лишь администратору: схема БД —\nполезная разведка для атакующего.",
+        "description": "Самодиагностика: соответствует ли схема БД моделям текущего кода.\n\nСписок таблиц и колонок берётся из Base.metadata (models.py) — единственного\nисточника правды (раньше был второй рукописный список, и он расходился со схемой).\n\nБез входа (так проверку показывает инструкция по установке) отдаётся только\nитог ok/hint; перечень таблиц и колонок — лишь администратору: схема БД —\nполезная разведка для атакующего.",
         "operationId": "selfcheck_api_selfcheck_get",
         "responses": {
           "200": {

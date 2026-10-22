@@ -6,7 +6,7 @@ Excel/PDF, шаблоны документов (фаза C4, EXECUTION-SPEC-v2 �
 interface (docs_api), domain/ports/adapters — тривиальные (ORM-моделей у модуля
 нет; StatementKind живёт в employees).
 
-G2: чистый транспорт рендера (LibreOffice/reportlab-конвейер, бывший
+G2: чистый транспорт рендера (встроенный PDF на reportlab, бывший
 app/pdf_render.py) — в **core/render.py**: его используют docs, night и
 timesheet (экспорт Графика), не завися друг от друга (R3).
 """

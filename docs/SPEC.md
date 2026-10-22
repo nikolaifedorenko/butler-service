@@ -126,10 +126,10 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 | Вкладка / слой | API | Use case | Домен |
 |---|---|---|---|
 | Отметки (доска) | `GET /api/presence/board` | `presence_board(now)` | `assemble_board` |
-| График (слой 1) | `GET /api/schedule`, `PUT/DELETE /api/schedule/shift`, `POST/DELETE /api/schedule/absence`, `POST /api/schedule/range-absence`, `reset-month`, `xlsx`, `pdf` (массовые `fill-pattern`, `continue`, `copy`, `clear-month` удалены 22.10.2026, В-7) | `view_schedule`, `save_schedule_day`, `drop_manual_day`, `save_absence/drop_absence`, `rebuild_generated_schedule` | `accepts_ut`, окна |
+| График (слой 1) | `GET /api/schedule`, `PUT/DELETE /api/schedule/shift`, `POST/DELETE /api/schedule/absence`, `POST /api/schedule/range-absence`, `reset-month`, `xlsx`, `pdf` (массовые `fill-pattern`, `continue`, `copy`, `clear-month` удалены 22.10.2026, В-7) | `load_entries` порта графика, `save_schedule_day`, `drop_manual_day`, `save_absence/drop_absence`, `rebuild_generated_schedule` | `accepts_ut`, окна |
 | Факт (слой 2) | `GET /api/fact/sessions?employee_id&first&last`, `GET /api/fact/day?date` (сетка «Номера»: отметки + округление `to_calc_mark`, сессии `pair_marks`, карточка дня) | `view_sessions`, `view_period` | `pair_marks`, `settle`/`day_card`, `evaluate_flags` |
 | Табель (слой 0) | `GET /api/tabel`, `PUT /api/tabel/cell`, `POST /api/tabel/bulk`, `POST /api/tabel/fill-from-cycles`, `POST /api/tabel/reset` | `save_timesheet_day` (+валидация доменными checks, F-16) | checks уровня 2 |
-| Управленческий Табель (слой 3) | `GET /api/mgmt[?employee_id&detail&half]`, `POST /api/mgmt/close`, `POST /api/mgmt/recalculate`, `GET /api/mgmt/periods`, `GET /api/mgmt/xlsx` | `view_period` / `close_period` / `recalculate` | `settle` + `evaluate_flags` |
+| Управленческий Табель (слой 3) | `GET /api/mgmt[?employee_id&detail&half]`, `POST /api/mgmt/close`, `POST /api/mgmt/recalculate`, `GET /api/mgmt/xlsx` | `view_period` / `close_period` / `recalculate` | `settle` + `evaluate_flags` |
 | Мои отметки | `GET /api/punches/status`, `POST /api/punches`, `GET /api/punches`, `DELETE /api/punches/{id}`, `PUT /api/punches/{id}/note` | — (лёгкие данные: График + отметки + банк последнего закрытого периода) | — |
 
 Прочие роутеры: `auth`, `employees` (карточки, корректировки банка с правилами посева,
@@ -173,8 +173,8 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
   (`/api/schedule/absence-period` — по непрерывному диапазону кода Табеля либо записи
   отсутствия); плейсхолдеры `{full_name_genitive}`, `{date_from_ru}`, `{days_word}`,
   `{from_time}/{until_time}`, `{hours}`, `{nationality}`, `{subdivision}`, `{department}`…
-* PDF: DOCX → LibreOffice, иначе встроенный рендер (reportlab + DejaVu); без движка —
-  честный 501 с подсказкой; «Печать» и Excel работают всегда.
+* PDF: DOCX → встроенный рендер (reportlab + DejaVu: текст, таблицы, фоны, картинки);
+  если собрать не удалось — честный 501 с подсказкой; «Печать», DOCX и Excel работают всегда.
 * Excel: График («ФИО × дни», значение Табеля + интервалы смен, `*` — отсутствие),
   УТ («ФИО × дни», ячейка «ДЯ2 3 ДН 1», итоги по кодам, недостача, банк, статус).
 

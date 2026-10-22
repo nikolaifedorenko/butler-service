@@ -29,9 +29,6 @@ from ..application.errors import ApplicationError
 from ..application.months import (
     half_month_period,
     month_period,
-    next_period,
-    period_containing,
-    settings_for_now,
 )
 from ..application.recalculate import recalculate
 from ..application.view_period import view_period
@@ -41,7 +38,6 @@ from ..domain.types.entities import Employment, Period
 from ..domain.types.errors import DomainError
 from .formatting import error_text
 from .period_params import ensure_period
-from .serialize import plain
 from .views import period_view_dict
 
 router = APIRouter(prefix="/api/mgmt", tags=["mgmt-timesheet"])
@@ -179,36 +175,6 @@ def recalc(payload: PeriodAction, principal: Principal = Depends(require_perm("m
           {"employees": [d["employee_id"] for d in out["done"]], "errors": out["errors"]})
     db.commit()
     return out
-
-
-@router.get("/periods")
-def periods(principal: Principal = Depends(require_perm("mgmt.view")),
-            db: Session = Depends(get_db)):
-    """Цепочка периодов сотрудника для навигации (16.1 п.7, R35/R36): granularity +
-    границы по трудоустройству каждого сотрудника."""
-    now = now_utc()
-    ports = engine_ports(db, principal, now)
-    try:
-        # Settings месяца ЛОКАЛЬНОГО «сегодня» (16.1 п.7): двухшаговое уточнение —
-        # общий хелпер (P1-ts-4, прежде тот же паттерн был здесь inline).
-        st, today = settings_for_now(now, ports)
-    except ValueError as exc:
-        # ConfigError/DomainError → централизованный хэндлер main.py (§5.3)
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    granularity = st.period_granularity
-    current = period_containing(today, granularity)
-    emps = period_employees(db, current.start, current.end)
-    out = []
-    for emp in emps:
-        employment = ports.employment.employment(str(emp.id), current)
-        out.append({"employee": emp_brief(emp),
-                    "employment": {"start": employment.start.isoformat(),
-                                   "end": employment.end.isoformat() if employment.end else None},
-                    "state": plain(ports.store.period_state(str(emp.id), current))})
-    return {"granularity": granularity, "current": {"start": current.start.isoformat(),
-                                                    "end": current.end.isoformat()},
-            "employees": out,
-            "next": {"start": next_period(current, granularity).start.isoformat()}}
 
 
 @router.get("/xlsx")

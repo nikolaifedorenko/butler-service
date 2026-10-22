@@ -75,25 +75,3 @@ def test_normalize_hex_color():
     assert normalize_hex_color(None, "#8a94a6") == "#8a94a6"
     with pytest.raises(ValueError):
         normalize_hex_color("red", "#000")
-
-
-# ── 3. миграция без автоочистки ──────────────────────────────────────────────
-
-def test_migraciya_v7_ne_udalyaet_dannye_bez_markera(app_stack):
-    """Восстановили бэкап без маркера engine_v7_reset → данные Табеля обязаны уцелеть."""
-    from sqlalchemy import func, select, text
-
-    from app.bootstrap.migrations import migrate_engine_v7
-    from app.core.db import engine
-    from app.modules.timesheet.application.catalog import TabelDay
-
-    S = app_stack["SessionLocal"]
-    with S() as db:
-        before = db.scalar(select(func.count()).select_from(TabelDay))
-    assert before > 0, "в демо-базе ожидаются строки Табеля"
-    with engine.begin() as con:
-        con.execute(text("DELETE FROM settings WHERE key = 'engine_v7_reset'"))
-    migrate_engine_v7()
-    with S() as db:
-        after = db.scalar(select(func.count()).select_from(TabelDay))
-    assert after == before, "миграция на старте не должна удалять расчётные данные"

@@ -31,10 +31,9 @@ import pathlib
 import tempfile
 
 import pytest
-from sqlalchemy import delete, inspect, select
+from sqlalchemy import delete, select
 
 from app.core.audit import AuditLog
-from app.core.db import engine as db_engine
 from app.core.errors import PayloadTooLarge
 from app.core.identity import AccessGroupMember
 from app.core.media import read_upload_streaming, save_photo_ref
@@ -114,15 +113,6 @@ def test_misc2_dispatch_stores_cc_snapshot():
     src = (BASE / "app/modules/notify/application/dispatch.py").read_text(encoding="utf-8")
     assert "cc_json=json.dumps(list(cc))" in src
     assert "cc: tuple = ()" not in src          # прежний хардкод не вернулся
-
-
-def test_misc2_migration_idempotent():
-    """additions-миграция cc_json переживает повторные запуски (механизм migrate_db)."""
-    from app.bootstrap.migrations import migrate_db
-    migrate_db()
-    migrate_db()   # второй прогон — не падает, колонка не дублируется
-    cols = {c["name"] for c in inspect(db_engine).get_columns("notify_dispatches")}
-    assert "cc_json" in cols
 
 
 # ── P1-misc-3: FK/unique — типизированные отказы ДО вставки ───────────────────

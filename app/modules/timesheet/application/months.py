@@ -29,7 +29,7 @@ def period_containing(day: dt.date, granularity: str, half: int | None = None) -
 
 def settings_for_now(now: dt.datetime, ports):
     """Settings месяца, содержащего ЛОКАЛЬНОЕ «сегодня», и это «сегодня» (16.2,
-    16.1 п.7; паттерн mgmt/periods).
+    16.1 п.7).
 
     «Сегодня» — по tz объекта (§4.4), а tz сам живёт в Settings: двухшаговое
     уточнение — месяц по UTC-дню даёт tz, по нему считается локальный день,

@@ -147,7 +147,7 @@ class TestReadonlySchedule(unittest.TestCase):
                                   params={"year": YEAR, "month": MONTH}).status_code, 401)
 
 
-@unittest.skipIf(pdf_mode() == "none", "нет PDF-движка (ни LibreOffice, ни reportlab)")
+@unittest.skipIf(pdf_mode() == "none", "нет PDF-движка (reportlab или шрифта с кириллицей)")
 class TestPdfExport(unittest.TestCase):
     """PDF графика и табеля собирается на сервере (DOCX → PDF)."""
 
@@ -178,11 +178,11 @@ class TestPdfHint(unittest.TestCase):
 
         # эндпоинт импортирует docx_to_pdf в момент запроса — подмена сработает
         with mock.patch("app.core.render.docx_to_pdf",
-                        return_value=(None, "reportlab не установлен, LibreOffice не найден")):
+                        return_value=(None, "reportlab не установлен")):
             r = client.get("/api/schedule/pdf", params={"year": YEAR, "month": MONTH})
         self.assertEqual(r.status_code, 501, r.text)
         detail = r.json()["detail"]
-        self.assertIn("requirements-pdf", detail)
+        self.assertIn("requirements.txt", detail)
         self.assertIn("Печать", detail)
 
 

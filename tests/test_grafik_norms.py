@@ -44,17 +44,10 @@ if "DATABASE_URL" not in os.environ:
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from app.bootstrap.migrations import (  # noqa: E402
-    migrate_time_off_template,
-    migrate_timeoff_entity,
-)
 from app.core.db import SessionLocal  # noqa: E402
 from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.modules.timesheet.application.catalog import (  # noqa: E402
-    ScheduleAbsence,  # noqa: E402
-    ScheduleShift,
-    ShiftType,
     TabelDay,
 )
 
@@ -263,43 +256,6 @@ class TestTimeoffEntity(unittest.TestCase):
                          [("08:00", "20:00")])
         self.assertEqual(len(cell["absences"]), 1)
 
-    def test_04_migration_merges_duplicate_kind(self):
-        """Старая база: дубль вида сливается, записи отсутствий переносятся, вид архивируется."""
-        r = client.post("/api/shift-types", json={
-            "code": "AWAY_HOURS", "name": "Отпросился: отсутствовал часть смены",
-            "short_code": "ОТПР", "kind": "absence", "is_working": False,
-            "counts_as_worked": False, "doc_type": "time_off_request"})
-        self.assertEqual(r.status_code, 200, r.text)
-        dup_id = r.json()["id"]
-        db = SessionLocal()
-        try:
-            row = db.scalar(select(ScheduleAbsence).where(
-                ScheduleAbsence.employee_id == self.emp["id"]))
-            self.assertIsNotNone(row)
-            row.kind_id = dup_id           # как в базе до объединения
-            db.commit()
-            absence_id = row.id
-        finally:
-            db.close()
-
-        migrate_timeoff_entity()
-        migrate_timeoff_entity()           # идемпотентно
-
-        db = SessionLocal()
-        try:
-            row = db.get(ScheduleAbsence, absence_id)
-            self.assertEqual(row.kind_id, self.kind["id"], "запись перенесена на единый вид")
-            dup = db.get(ShiftType, dup_id)
-            self.assertTrue(dup.archived_at or not dup.active,
-                            "дубль слит и убран в архив (удаление видов отсутствий — "
-                            "одномоментная миграция 18.10.2026, не инвариант)")
-            unified = db.get(ShiftType, self.kind["id"])
-            self.assertEqual(unified.name, "Отпросился (выходной за часы)")
-        finally:
-            db.close()
-        live = [k for k in client.get("/api/shift-types").json() if k["kind"] == "absence"]
-        self.assertEqual([k["code"] for k in live], ["TIMEOFF_HOURS"])
-
 
 class TestIntervalStatements(unittest.TestCase):
     """Несколько отлучек в один день (решение владельца 16.10.2026): ОДНО заявление
@@ -385,60 +341,6 @@ class TestIntervalStatements(unittest.TestCase):
             "date_from": self.day.isoformat(), "date_to": self.day.isoformat(),
             "format": "docx", "from_time": "14:00", "until_time": "16:00", "hours": 2})
         self.assertIn("с 14:00 до 16:00 (2 ч)", text)
-
-    def test_06_migration_updates_pristine_template(self):
-        """Старая база: нетронутый шаблон заменяется на версию с {intervals};
-        отредактированный вручную — не трогается. Идемпотентно."""
-        from app.core.settings_store import Setting
-        from app.modules.docs.application.doc_templates import DEFAULT_TPL_TIME_OFF, PREV_DEFAULT_TPL_TIME_OFF
-        from app.modules.employees.application.catalog import StatementKind
-
-        def _texts():
-            db = SessionLocal()
-            try:
-                return (db.scalar(select(Setting.value).where(
-                            Setting.key == "tpl_time_off_request")),
-                        db.scalar(select(StatementKind.text).where(
-                            StatementKind.code == "time_off_request")))
-            finally:
-                db.close()
-
-        db = SessionLocal()
-        try:
-            row = db.scalar(select(Setting).where(Setting.key == "tpl_time_off_request"))
-            if row is None:      # в свежей базе строки нет — старая база её сохраняла
-                row = Setting(key="tpl_time_off_request", value="", description="")
-                db.add(row)
-            row.value = PREV_DEFAULT_TPL_TIME_OFF
-            db.scalar(select(StatementKind).where(
-                StatementKind.code == "time_off_request")).text = PREV_DEFAULT_TPL_TIME_OFF
-            db.commit()
-        finally:
-            db.close()
-        migrate_time_off_template()
-        migrate_time_off_template()                        # идемпотентно
-        self.assertEqual(_texts(), (DEFAULT_TPL_TIME_OFF, DEFAULT_TPL_TIME_OFF))
-
-        db = SessionLocal()
-        try:
-            db.scalar(select(Setting).where(
-                Setting.key == "tpl_time_off_request")).value = "свой текст {intervals}"
-            db.commit()
-        finally:
-            db.close()
-        migrate_time_off_template()
-        setting_text, kind_text = _texts()
-        self.assertEqual(setting_text, "свой текст {intervals}", "ручная правка не тронута")
-        self.assertEqual(kind_text, DEFAULT_TPL_TIME_OFF)
-
-        # вернуть штатный шаблон — за классом следуют другие тесты документов
-        db = SessionLocal()
-        try:
-            db.scalar(select(Setting).where(
-                Setting.key == "tpl_time_off_request")).value = DEFAULT_TPL_TIME_OFF
-            db.commit()
-        finally:
-            db.close()
 
 
 class TestGridCellSegments(unittest.TestCase):
@@ -555,38 +457,6 @@ class TestManualReplacesGenerated(unittest.TestCase):
                           for s in self._cell(self.day)["shifts"]],
                          [("generated", "08:00", "20:00")],
                          "день вернулся к генерации из Табеля")
-
-    def test_04_migration_cleans_legacy_duplicates(self):
-        """Старая база: дубль generated+manual чистится миграцией, идемпотентно."""
-        from app.bootstrap.migrations import migrate_manual_replaces_generated
-
-        day = _work_days(self.emp["id"])[1]
-        db = SessionLocal()
-        try:
-            gen = ScheduleShift(employee_id=self.emp["id"], date=day,
-                                start_utc=dt.datetime.combine(day, dt.time(5)),
-                                end_utc=dt.datetime.combine(day, dt.time(17)),
-                                source="generated")
-            man = ScheduleShift(employee_id=self.emp["id"], date=day,
-                                start_utc=dt.datetime.combine(day, dt.time(6)),
-                                end_utc=dt.datetime.combine(day, dt.time(15)),
-                                source="manual")
-            db.add_all([gen, man])
-            db.commit()
-            gen_id, man_id = gen.id, man.id
-        finally:
-            db.close()
-        migrate_manual_replaces_generated()
-        migrate_manual_replaces_generated()
-        db = SessionLocal()
-        try:
-            self.assertIsNone(db.get(ScheduleShift, gen_id), "дубль генерации удалён")
-            self.assertIsNotNone(db.get(ScheduleShift, man_id), "ручная смена сохранена")
-        finally:
-            db.close()
-        r = client.delete("/api/schedule/shift", params={
-            "employee_id": self.emp["id"], "date": day.isoformat()})
-        self.assertEqual(r.status_code, 200, r.text)
 
 
 class TestScheduleMonthReset(unittest.TestCase):

@@ -11,9 +11,6 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
-# схема main 3801abf (21.10.2026) — сюда штампуются базы, созданные до перехода на Alembic
-BASELINE = "0001"
-
 
 def config() -> Config:
     cfg = Config()
@@ -40,7 +37,3 @@ def ensure_current() -> None:
         raise RuntimeError(
             f"Схема базы не обновлена (ревизия {current or 'нет'}, нужна {head}): выполните "
             "python -m app.bootstrap.migrate — в прод-профиле это сервис migrate (deploy/README.md §5)")
-
-
-def stamp_baseline() -> None:
-    command.stamp(config(), BASELINE)

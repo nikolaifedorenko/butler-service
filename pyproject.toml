@@ -30,7 +30,6 @@ ignore = [
 # видит «переопределение имени» (tests/test_night_export_v2.py берёт транспортные
 # заглушки из tests/test_night_dispatch.py, чтобы не дублировать их).
 "tests/*" = ["B011", "F811"]
-"app/seed.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

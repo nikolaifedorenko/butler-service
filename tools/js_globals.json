@@ -27,6 +27,7 @@
   "NOTIFY_DOMAIN": "readonly",
   "POLL_MS": "readonly",
   "POSITION_COLORS": "readonly",
+  "PUNCH_SOURCES": "readonly",
   "P_NAME_W": "readonly",
   "ROLE_ASSIGNS": "readonly",
   "ROLE_RANKS": "readonly",
@@ -112,6 +113,7 @@
   "fetchFactDay": "readonly",
   "fetchMarks": "readonly",
   "fetchNight": "readonly",
+  "fetchPunchJournal": "readonly",
   "fgBar": "readonly",
   "fgDarken": "readonly",
   "fgHmX": "readonly",
@@ -149,6 +151,7 @@
   "loadMyHistory": "readonly",
   "loadNight": "readonly",
   "loadPerms": "readonly",
+  "loadPunchJournal": "readonly",
   "loadSchedule": "readonly",
   "loadSettings": "readonly",
   "loadTabel": "readonly",
@@ -197,7 +200,9 @@
   "printAbsenceRequest": "readonly",
   "printGrid": "readonly",
   "printWindow": "readonly",
+  "punchForOtherModal": "readonly",
   "punchInFlight": "readonly",
+  "punchJournal": "readonly",
   "refreshAfterEmployeeChange": "readonly",
   "refreshDoublePay": "readonly",
   "registerModule": "readonly",
@@ -359,6 +364,7 @@
   "NOTIFY_DOMAIN": "modules/settings_notify.js",
   "POLL_MS": "app.js",
   "POSITION_COLORS": "core.js",
+  "PUNCH_SOURCES": "modules/punches_journal.js",
   "P_NAME_W": "modules/timesheet_layers.js",
   "ROLE_ASSIGNS": "modules/access.js",
   "ROLE_RANKS": "modules/access.js",
@@ -444,6 +450,7 @@
   "fetchFactDay": "modules/fact.js",
   "fetchMarks": "modules/marks.js",
   "fetchNight": "modules/night.js",
+  "fetchPunchJournal": "modules/punches_journal.js",
   "fgBar": "modules/fact.js",
   "fgDarken": "modules/fact.js",
   "fgHmX": "modules/fact.js",
@@ -481,6 +488,7 @@
   "loadMyHistory": "modules/me.js",
   "loadNight": "modules/night.js",
   "loadPerms": "app.js",
+  "loadPunchJournal": "modules/punches_journal.js",
   "loadSchedule": "modules/timesheet_layers.js",
   "loadSettings": "modules/settings.js",
   "loadTabel": "modules/tabel.js",
@@ -529,7 +537,9 @@
   "printAbsenceRequest": "modules/docs.js",
   "printGrid": "modules/timesheet_layers.js",
   "printWindow": "modules/docs.js",
+  "punchForOtherModal": "modules/punches_journal.js",
   "punchInFlight": "modules/me.js",
+  "punchJournal": "modules/punches_journal.js",
   "refreshAfterEmployeeChange": "modules/employees.js",
   "refreshDoublePay": "modules/dicts.js",
   "registerModule": "app.js",
@@ -749,7 +759,10 @@
   "modules/fact.js": [
    "loadFact"
   ],
-  "modules/marks.js": [],
+  "modules/marks.js": [
+   "fetchMarks",
+   "loadMarks"
+  ],
   "modules/me.js": [
    "loadMe"
   ],
@@ -759,6 +772,9 @@
   "modules/night.js": [
    "loadNight",
    "nightState"
+  ],
+  "modules/punches_journal.js": [
+   "loadPunchJournal"
   ],
   "modules/settings.js": [
    "SETTINGS_LEVEL_FORMS",

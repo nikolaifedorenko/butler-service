@@ -225,9 +225,14 @@ function openOtNoteModal(punchId, current, otHours) {
 async function loadMyHistory() {
   const host = $('#me-history');
   if (!host) return;
+  /* учётка без сотрудника (администратор): без фильтра API вернул бы отметки ВСЕХ
+     сотрудников, и они показывались бы как свои (ревью 22.10.2026) */
+  if (!state.user.employee_id) {
+    host.innerHTML = '<div class="empty">К учётной записи не привязан сотрудник — своих отметок нет</div>';
+    return;
+  }
   const d = new Date();
-  const mine = state.user.employee_id ? `&employee_id=${state.user.employee_id}` : '';
-  const items = await api(`/api/punches?year=${d.getFullYear()}&month=${d.getMonth() + 1}${mine}`);
+  const items = await api(`/api/punches?year=${d.getFullYear()}&month=${d.getMonth() + 1}&employee_id=${state.user.employee_id}`);
   if (!items.length) { host.innerHTML = '<div class="empty">Отметок пока нет</div>'; return; }
   host.innerHTML = items.slice(0, 30).map(p => {
     const dt = new Date(p.ts);

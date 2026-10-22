@@ -56,22 +56,6 @@ if ! "$PY" -c 'import fastapi, uvicorn, sqlalchemy, docx, openpyxl, httpx' 2>/de
   fi
 fi
 
-# ── 4. Необязательный PDF-движок (не блокирует запуск) ────────────────────
-# PDF=off ./run.sh — вообще не пытаться ставить PDF-движок (быстрый старт)
-PDF_TRIED=.venv/.pdf-tried
-if [ "${PDF:-auto}" != "off" ] && [ ! -f "$PDF_TRIED" ] \
-   && ! "$PY" -c 'import reportlab' 2>/dev/null \
-   && ! command -v soffice >/dev/null 2>&1 \
-   && [ ! -x /Applications/LibreOffice.app/Contents/MacOS/soffice ]; then
-  say "Пробую поставить необязательный PDF-движок (reportlab) — один раз, без него тоже всё работает ..."
-  if "$PY" -m pip install -q -r requirements-pdf.txt 2>/dev/null; then
-    say "  ✓ PDF-движок установлен"
-  else
-    say "  – не установился (на новом Python это бывает): документы будут печататься через DOCX/браузер"
-  fi
-  touch "$PDF_TRIED"   # больше не повторяем попытку при каждом запуске
-fi
-
 # ── 4.5 SECRET_KEY: создаём .env с надёжным ключом, если его ещё нет ─────────
 # Приложение откажется стартовать со слабым ключом (см. app/main.py), поэтому
 # при первом запуске генерируем надёжный ключ автоматически — локальный старт

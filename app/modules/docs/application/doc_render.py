@@ -375,8 +375,8 @@ def build_sample_docx(doc_type: str, body_text: str = "") -> bytes:
 
 
 # ─────────────────────────── PDF ───────────────────────────
-# Реализация вынесена в app/pdf_render.py: сначала пробуем LibreOffice (точный вид бланка),
-# затем встроенный рендер reportlab (работает везде, кириллица — шрифты DejaVu из assets/fonts).
+# Реализация — app/core/render.py: встроенный рендер reportlab (работает везде, кириллица —
+# шрифты DejaVu из assets/fonts). Точный вид фирменного бланка даёт DOCX.
 def pdf_available() -> bool:
     from app.core.render import pdf_mode
     return pdf_mode() != "none"
@@ -387,9 +387,8 @@ def pdf_status() -> dict:
     from app.core.render import pdf_mode as _mode
     mode = _mode()
     return {"mode": mode,
-            "title": {"libreoffice": "LibreOffice (точный вид бланка)",
-                      "native": "встроенный рендер (шрифты DejaVu)",
+            "title": {"native": "встроенный рендер (шрифты DejaVu)",
                       "none": "недоступно"}.get(mode, mode),
-            "error": "" if mode != "none" else (native_error() or "нет ни LibreOffice, ни reportlab")}
+            "error": "" if mode != "none" else (native_error() or "не установлен reportlab")}
 
 

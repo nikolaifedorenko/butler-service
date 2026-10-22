@@ -15,8 +15,7 @@ venv/
 *.db-shm
 timetrack.db*
 # замки фоновых/стартовых задач (app/core/startup_lock.py) — рядом с файлом БД
-*.startup.lock
-*.night-sync.lock
+*.lock
 data/
 templates/
 

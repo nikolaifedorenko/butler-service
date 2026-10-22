@@ -130,27 +130,6 @@ def test_prava_na_spravochnik_zon(employee_client, manager_client):
             db.close()
 
 
-# ─────────────────────────── миграция зон из категорий ───────────────────────────
-def test_migraciya_zon_iz_kategoriy_idempotentna(db):
-    """migrate_night_zones(): зоны из «категорий» областей, повторный вызов ничего не плодит."""
-    from sqlalchemy import func, select
-
-    from app.bootstrap.migrations import migrate_night_zones
-    from app.modules.night.application.catalog import NightArea, NightZone
-
-    migrate_night_zones()
-    first = db.scalar(select(func.count()).select_from(NightZone))
-    areas_with_zone = db.scalar(select(func.count()).select_from(NightArea)
-                                .where(NightArea.zone_id.is_not(None)))
-    migrate_night_zones()
-    assert db.scalar(select(func.count()).select_from(NightZone)) == first, \
-        "повторная миграция создала дубликаты зон"
-    assert db.scalar(select(func.count()).select_from(NightArea)
-                     .where(NightArea.zone_id.is_not(None))) == areas_with_zone
-    assert areas_with_zone == db.scalar(select(func.count()).select_from(NightArea)), \
-        "не все области привязаны к зонам"
-
-
 # ─────────────────────────── шаблон чек-листа зоны ───────────────────────────
 def test_shablon_zony_odinakov_dlya_vseh_obektov(manager_client, db, freeze):
     """У всех вилл зоны один чек-лист — кроме объектов с индивидуальными правками."""

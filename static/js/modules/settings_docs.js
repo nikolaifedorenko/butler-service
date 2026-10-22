@@ -37,7 +37,7 @@ async function settingsScreenDocs(host) {
       <p class="hint" style="margin:-4px 0 12px">Виды заявлений — расширяемый справочник: у каждого свой текст
         с плейсхолдерами и (по желанию) фирменный бланк .docx. Вид привязывается к отсутствию в словаре смен —
         документ печатается из ячейки Графика («Печать заявления», DOCX, PDF).
-        ${docsInfo?.pdf_available ? '' : '<br>PDF-конвертация станет доступна после установки LibreOffice на сервер (<code>soffice</code>); DOCX работает всегда.'}</p>
+        ${docsInfo?.pdf_available ? '' : `<br>PDF на сервере недоступен: ${esc(docsInfo?.pdf?.error || 'не установлен reportlab')}. DOCX работает всегда.`}</p>
       <table class="data"><thead><tr><th>Вид заявления</th><th>Код</th><th>Фирменный бланк</th><th></th></tr></thead>
       <tbody>${(docsInfo?.kinds || []).map(k => `<tr>
         <td>${esc(k.name)}${k.builtin ? ' <span class="badge">встроенный</span>' : ''}${k.active ? '' : ' <span class="badge muted">скрыт</span>'}</td>

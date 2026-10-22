@@ -730,7 +730,6 @@ function openCellModal(empId, dateISO) {
         const u = m.querySelector('#cell-abs-until')?.value;
         if (!sh || !f || !u) { box.textContent = ''; return; }
         const min = v => { const [h, mm] = v.split(':').map(Number); return h * 60 + mm; };
-        const hm = v => `${String(Math.floor(v / 60) % 24).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
         const s0 = min(sh.start_hm), e0 = min(sh.end_hm), a = min(f), b = min(u);
         if (!(a < b)) { box.textContent = ''; return; }
         const parts = [];
