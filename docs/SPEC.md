@@ -126,7 +126,7 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 | Вкладка / слой | API | Use case | Домен |
 |---|---|---|---|
 | Отметки (доска) | `GET /api/presence/board` | `presence_board(now)` | `assemble_board` |
-| График (слой 1) | `GET /api/schedule`, `PUT/DELETE /api/schedule/shift`, `POST/DELETE /api/schedule/absence`, `POST /api/schedule/range-absence`, `fill-pattern`, `continue`, `copy`, `clear-month`, `xlsx`, `pdf` | `view_schedule`, `save_schedule_day`, `drop_manual_day`, `save_absence/drop_absence`, `rebuild_generated_schedule` | `accepts_ut`, окна |
+| График (слой 1) | `GET /api/schedule`, `PUT/DELETE /api/schedule/shift`, `POST/DELETE /api/schedule/absence`, `POST /api/schedule/range-absence`, `reset-month`, `xlsx`, `pdf` (массовые `fill-pattern`, `continue`, `copy`, `clear-month` удалены 22.10.2026, В-7) | `view_schedule`, `save_schedule_day`, `drop_manual_day`, `save_absence/drop_absence`, `rebuild_generated_schedule` | `accepts_ut`, окна |
 | Факт (слой 2) | `GET /api/fact/sessions?employee_id&first&last`, `GET /api/fact/day?date` (сетка «Номера»: отметки + округление `to_calc_mark`, сессии `pair_marks`, карточка дня) | `view_sessions`, `view_period` | `pair_marks`, `settle`/`day_card`, `evaluate_flags` |
 | Табель (слой 0) | `GET /api/tabel`, `PUT /api/tabel/cell`, `POST /api/tabel/bulk`, `POST /api/tabel/fill-from-cycles`, `POST /api/tabel/reset` | `save_timesheet_day` (+валидация доменными checks, F-16) | checks уровня 2 |
 | Управленческий Табель (слой 3) | `GET /api/mgmt[?employee_id&detail&half]`, `POST /api/mgmt/close`, `POST /api/mgmt/recalculate`, `GET /api/mgmt/periods`, `GET /api/mgmt/xlsx` | `view_period` / `close_period` / `recalculate` | `settle` + `evaluate_flags` |
@@ -263,7 +263,7 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
   property-based инварианты и детерминизм (hypothesis), архитектура (граф импортов,
   чистота, независимость конвейеров), truth table режимов, R35–R40, атомарность.
   Покрытие `app/modules/timesheet/domain` ≥ 95 %.
-* `tests/test_api.py`, `test_features.py`, `test_v4_api.py`, `test_readonly_pdf.py`,
+* `tests/test_api.py`, `test_features.py`, `test_engine_api.py`, `test_readonly_pdf.py`,
   `test_query_budget.py` и др. — интеграция: роли и права, вкладки, документы,
   бюджет запросов (доска — константа; сетка не растёт со штатом; УТ — линейно
   по сотрудникам согласно 16.1 п.5), миграции и selfcheck схемы.

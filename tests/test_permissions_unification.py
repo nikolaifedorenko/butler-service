@@ -80,10 +80,7 @@ def test_zakrytie_i_pereotkrytie_smeny(manager_client, employee_client, open_shi
 # ───────────────────────── имперсонация: employees.impersonate ─────────────────────────
 
 def test_voiti_kak_sotrudnik(manager_client, employee_client):
-    demo = manager_client.get("/api/auth/employees-for-demo")
-    assert demo.status_code == 200, demo.text
-    ivanov = next(e for e in demo.json() if "Иванов" in e["full_name"])
-    assert employee_client.get("/api/auth/employees-for-demo").status_code == 403
+    ivanov = next(e for e in manager_client.get("/api/employees").json() if "Иванов" in e["full_name"])
     assert employee_client.post("/api/auth/impersonate",
                                 json={"employee_id": ivanov["id"]}).status_code == 403
 

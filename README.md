@@ -62,12 +62,10 @@ pip install -r requirements.txt        # ядро (PDF-движок — отде
 демо-данными: 11 сотрудников, циклы блоков, Табель из циклов, График из Табеля,
 отметки, начальный банк (посев `OPENING_SEED`) у каждого сотрудника.
 
-> **Переход с прежних версий.** Расчётные данные старого движка (закрытия периодов,
-> переносы, версии справочников, Табель, ячейки графика) при старте **очищаются**
-> (однократно, маркер `engine_v7_reset` в таблице `settings`) — модель v7.1
-> несовместима с ними; демо-база пересоздаётся сидом. Отметки, сотрудники, периоды
-> работы, корректировки банка, документы и справочники сохраняются. Порядок переноса
-> боевой базы описан в `docs/INSTALL.md` (раздел бэкапов).
+> **Переход с прежних версий.** Расчётные данные движка v4 (до 15.10.2026) с моделью v7.1
+> несовместимы и автоматически **не** очищаются: демо-базу такого возраста пересоздайте
+> (удалите `timetrack.db` — сид заполнит её заново). Боевых баз на старых версиях нет
+> (решение владельца 21.10.2026); схема дальше обновляется ревизиями Alembic (ADR-0002).
 
 ### Демо-доступы (пароль у всех `demo1234`)
 
@@ -451,16 +449,16 @@ butler-service/
 │   ├── index.html            # оболочка SPA + экран входа (порядок <script> фиксирует зависимости)
 │   ├── js/core.js app.js     # ядро (api/модалки/утилиты) + оболочка/меню/роутинг
 │   ├── js/modules/           # разделы 1:1 (глобальные функции сохранены — ADR-0008):
-│   │                         #   timesheet_layers (График-сетка), timesheet_v4 (Отметки·Факт·
-│   │                         #   Табель·УТ·Права·Аудит·CFG-*), me, employees, night, cars,
-│   │                         #   docs, dicts, settings (реестр экранов настроек)
+│   │                         #   timesheet_layers (График-сетка), timesheet_common, marks,
+│   │                         #   fact, tabel, mgmt, access, audit, engine_settings (CFG-*),
+│   │                         #   me, employees, night, cars, docs, dicts, settings
 │   └── css/ fonts/ icons/ sw.js manifest.webmanifest
 ├── tests/
 │   ├── engine/               # движок: EX-01…EX-55 (test_ex_*), юниты каталога 8.1,
 │   │                         #   валидация 3 уровней, property-инварианты (hypothesis),
 │   │                         #   AST-законы движка, application (4 режима 7.2, R35–R40)
 │   ├── test_modules_architecture.py  # структура/R1/R3/R6 всех 9 модулей + core
-│   └── test_api.py test_features.py test_v4_api.py …   # интеграция приложения
+│   └── test_api.py test_features.py test_engine_api.py …   # интеграция приложения
 ├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки/сценарии
 ├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, EXECUTION-SPEC-v2, ADR, CHANGES
 └── requirements*.txt

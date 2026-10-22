@@ -96,7 +96,4 @@ def test_migraciya_v7_ne_udalyaet_dannye_bez_markera(app_stack):
     migrate_engine_v7()
     with S() as db:
         after = db.scalar(select(func.count()).select_from(TabelDay))
-        marker = db.execute(text(
-            "SELECT value FROM settings WHERE key = 'engine_v7_reset'")).scalar()
     assert after == before, "миграция на старте не должна удалять расчётные данные"
-    assert marker == "1"

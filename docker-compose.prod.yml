@@ -52,6 +52,8 @@ services:
       TRUST_PROXY_HEADERS: "1"
       LOG_JSON: "1"
       METRICS_ENABLED: ${METRICS_ENABLED:-1}
+      # Swagger и схема API наружу не отдаются (OPS-04); для отладки — API_DOCS=1 в .env
+      API_DOCS: ${API_DOCS:-0}
       CSRF_ENABLED: "1"
     # несколько воркеров допустимы: инициализация схемы сериализована замком
     # (app/core/startup_lock.py — pg_advisory_lock), фоновая синхронизация ночных

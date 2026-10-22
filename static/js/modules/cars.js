@@ -38,7 +38,7 @@ async function loadCars() {
   $('#cars-add').onclick = () => settingsOpen('cars');
   $('#cars-q').oninput = e => { carsState.q = e.target.value.trim().toLowerCase(); renderCars(); };
   await fetchCars();
-  poll('cars', () => { if (state.view === 'cars') fetchCars(true); }, 60000);
+  poll('cars', () => { if (state.view === 'cars') fetchCars(true); });
 }
 
 async function fetchCars(silent) {

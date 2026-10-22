@@ -198,29 +198,6 @@ def email_test(payload: EmailTestIn, principal: Principal = Depends(EDIT),
     return {"ok": True, "message_id": message_id}
 
 
-@router.get("/dispatches")
-def list_dispatches(domain: str = "", limit: int = 100,
-                    principal: Principal = Depends(require_perm("settings.edit")),
-                    db: Session = Depends(get_db)):
-    """Общий журнал отправок приложения (фильтр по разделу).
-
-    История не редактируется: видно, какой раздел, кто, кому и что отправил,
-    статус доставки и ошибку. Журнал доступен менеджменту; в разделе «Ночной
-    отчёт» есть своя обёртка /api/night/reports/{id}/dispatches для батлеров.
-    """
-    from ..application.dispatch import dispatch_dict, journal_of
-
-    rows = journal_of(db, domain, None, limit=limit) if domain else []
-    if not domain:
-        from sqlalchemy import select as _select
-
-        from ..adapters.orm import NotifyDispatch
-        rows = list(db.scalars(_select(NotifyDispatch)
-                               .order_by(NotifyDispatch.ts.desc(), NotifyDispatch.id.desc())
-                               .limit(max(1, min(limit, 500)))))
-    return {"dispatches": [dispatch_dict(d) for d in rows]}
-
-
 @router.get("/dispatches/export.csv")
 def export_dispatches_csv(domain: str = "", limit: int = 2000,
                           principal: Principal = Depends(require_perm("settings.edit")),

@@ -165,18 +165,6 @@ def delete_kind(kind_id: int, principal: Principal = Depends(require_perm("setti
 
 
 # ─────────────────────────── фирменные бланки .docx ───────────────────────────
-@router.get("/templates")
-def get_templates(principal: Principal = Depends(require_perm("settings.view")), db: Session = Depends(get_db)):
-    """Сводка по бланкам: какие виды есть, у каких загружен фирменный .docx."""
-    kinds = db.scalars(select(StatementKind).order_by(
-        StatementKind.sort_order, StatementKind.name)).all()
-    return {"types": {k.code: k.name for k in kinds},
-            "placeholders": PLACEHOLDER_HELP,
-            "templates": [_kind_dict(k)["template"] | {"type": k.code, "title": k.name}
-                          for k in kinds],
-            "pdf_available": pdf_available(), "pdf": pdf_status()}
-
-
 @router.get("/sample")
 def sample_template(type: str, principal: Principal = Depends(require_perm("settings.view")),
                     db: Session = Depends(get_db)):

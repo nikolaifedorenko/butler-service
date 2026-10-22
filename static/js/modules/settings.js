@@ -19,7 +19,7 @@
 
    Зависит от core.js ($, api, state, esc, openModal, toast, …), app.js (can,
    renderDicts, refreshDoublePay, shiftModal, openKindModal, loadDirectory,
-   DEFAULT_TITLES, fmtGdValue) и modules/timesheet_v4.js (renderEngineSettings — режим эксперта).
+   DEFAULT_TITLES, fmtGdValue) и modules/engine_settings.js (renderEngineSettings — режим эксперта).
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 

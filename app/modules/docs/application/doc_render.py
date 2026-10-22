@@ -133,18 +133,6 @@ def template_path(doc_type: str) -> Optional[Path]:
     return p if p.exists() else None
 
 
-def list_templates() -> list[dict]:
-    out = []
-    for key, title in DOC_TYPES.items():
-        p = template_path(key)
-        item = {"type": key, "title": title, "uploaded": p is not None,
-                "filename": p.name if p else None,
-                "size": p.stat().st_size if p else 0,
-                "placeholders": sorted(scan_placeholders(p)) if p else []}
-        out.append(item)
-    return out
-
-
 _MAX_UNCOMPRESSED = 50 * 1024 * 1024   # распакованный docx не больше 50 МБ
 _MAX_ZIP_ENTRIES = 2000
 

@@ -156,7 +156,6 @@ def test_photo_needs_section_permission(app_stack, db):
     grant = _deny(db, "volkov", "cars.view")
     try:
         assert c.get(f"/api/photos/{photo.id}/file").status_code == 403
-        assert c.get(f"/api/night/photos/{photo.id}/file").status_code == 403
     finally:
         db.delete(grant)
         db.commit()

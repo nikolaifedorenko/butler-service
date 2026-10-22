@@ -259,9 +259,3 @@ def stop_impersonate(response: Response, principal: Principal = Depends(current_
     db.commit()
     return {"ok": True, "user": Principal(principal.user, emp).to_dict()}
 
-
-@router.get("/employees-for-demo")
-def employees_for_demo(principal: Principal = Depends(require_perm("employees.impersonate")), db: Session = Depends(get_db)):
-    """Список сотрудников для быстрого переключения в демо-режиме."""
-    emps = db.scalars(select(Employee).where(Employee.active.is_(True)).order_by(Employee.full_name)).all()
-    return [{"id": e.id, "full_name": e.full_name, "short_name": e.display_name, "position": e.position} for e in emps]

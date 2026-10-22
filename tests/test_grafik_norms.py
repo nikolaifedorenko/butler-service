@@ -108,16 +108,18 @@ def _month_end(day: dt.date) -> dt.date:
 
 
 def _fill_cycle(emp_id: int) -> None:
-    """Цикл 2/2 сменами 08:00–20:00 на ВЕСЬ месяц: Табель заполнится явками «Я 12».
+    """Цикл 2/2 сменами 08:00–20:00 на ВЕСЬ месяц: явки «Я 12» и выходные «В».
 
-    Месяц закрывается целиком, чтобы «Сбросить» не оставлял хвост незаполненных дней
-    (Табель обязан покрывать период — RUL-TIMESHEET-COVERS-PERIOD).
+    Массовой правкой Табеля, как «Слой 0» в интерфейсе (прежний POST /api/schedule/fill-pattern
+    удалён по решению владельца В-7); График перегенерируется из Табеля. Месяц заполняется
+    целиком: Табель обязан покрывать период (RUL-TIMESHEET-COVERS-PERIOD).
     """
-    r = client.post("/api/schedule/fill-pattern", json={
-        "employee_ids": [emp_id], "start_date": FIRST.isoformat(),
-        "end_date": _month_end(FIRST).isoformat(), "value": "Я 12",
-        "pattern": "2/2", "offset": 0})
-    assert r.status_code == 200, r.text
+    days = [FIRST + dt.timedelta(days=i) for i in range((_month_end(FIRST) - FIRST).days + 1)]
+    for code, hours, part in (("Я", 12, [d for i, d in enumerate(days) if i % 4 < 2]),
+                              ("В", 0, [d for i, d in enumerate(days) if i % 4 >= 2])):
+        r = client.post("/api/tabel/bulk", json={"employee_ids": [emp_id], "code": code,
+                                                 "hours": hours, "dates": [d.isoformat() for d in part]})
+        assert r.status_code == 200 and r.json()["ok"], r.text
 
 
 def _work_days(emp_id: int) -> list[dt.date]:

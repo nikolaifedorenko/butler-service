@@ -5,8 +5,8 @@ SQLAlchemy>=2.0
 # миграции схемы (ADR-0002): ревизии в app/bootstrap/alembic/versions
 alembic>=1.13
 pydantic>=2.7
+# .env читает pydantic-settings (он сам тянет python-dotenv — отдельной строки не нужно)
 pydantic-settings>=2.3
-python-dotenv>=1.0
 openpyxl>=3.1
 python-docx>=1.1
 python-multipart>=0.0.9

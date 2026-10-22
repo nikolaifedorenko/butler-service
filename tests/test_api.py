@@ -109,18 +109,6 @@ class TestApi(unittest.TestCase):
         self.assertEqual(row["cells"][date]["tabel"]["code"], "Б")
         self.assertEqual(row["cells"][date]["shifts"], [])
 
-    def test_06_fill_pattern(self):
-        today = local_date()
-        start = today.replace(day=1)
-        end = start + dt.timedelta(days=6)
-        emps = client.get("/api/employees").json()
-        r = client.post("/api/schedule/fill-pattern", json={
-            "employee_ids": [emps[0]["id"]], "start_date": start.isoformat(),
-            "end_date": end.isoformat(), "value": "Я 12", "pattern": "2/2", "offset": 0})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertGreaterEqual(r.json()["written"], 0)
-        self.assertIn("skipped", r.json())
-
     def test_07_punch_flow_for_manager_herself(self):
         r = client.post("/api/punches", json={"kind": "IN"})
         if r.status_code == 409:
@@ -195,47 +183,6 @@ class TestApi(unittest.TestCase):
         self.assertIn("expected_now", data)
         self.assertIn("yet_to_come", data)
 
-    def test_09b_fill_custom_cycle(self):
-        today = local_date()
-        start = today.replace(day=1)
-        end = start + dt.timedelta(days=7)
-        emps = client.get("/api/employees").json()
-        r = client.post("/api/schedule/fill-pattern", json={
-            "employee_ids": [emps[0]["id"]], "start_date": start.isoformat(),
-            "end_date": end.isoformat(), "value": "Я 12",
-            "pattern": "custom", "cycle": "ВВРРРРВВ"})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertIn("written", r.json())
-        grid = client.get("/api/schedule", params={"year": start.year, "month": start.month}).json()
-        row = next(x for x in grid["rows"] if x["employee"]["id"] == emps[0]["id"])
-        codes = [(row["cells"][(start + dt.timedelta(days=i)).isoformat()]["tabel"] or {}).get("code")
-                 for i in range(8)]
-        # день 0 — «утро» суточной смены 30.09 из прежнего цикла сотрудника (часть дня
-        # от смены с якорем накануне, 4.7): «С»; далее — чистый цикл «ВВРРРРВВ»
-        self.assertEqual(codes[1:], ["В", "Я", "Я", "Я", "Я", "В", "В"])
-        # График перегенерирован из Табеля: в рабочие дни смена 08:00–20:00
-        work_cell = row["cells"][(start + dt.timedelta(days=2)).isoformat()]
-        self.assertTrue(work_cell["shifts"])
-        self.assertEqual(work_cell["shifts"][0]["start_hm"], "08:00")
-
-    def test_09c_fill_52_custom_weekends(self):
-        today = local_date()
-        start = today.replace(day=1)
-        end = start + dt.timedelta(days=6)
-        emps = client.get("/api/employees").json()
-        r = client.post("/api/schedule/fill-pattern", json={
-            "employee_ids": [emps[1]["id"]], "start_date": start.isoformat(),
-            "end_date": end.isoformat(), "value": "Я 9",
-            "pattern": "5/2", "off_weekdays": [0, 1]})     # выходные пн и вт
-        self.assertEqual(r.status_code, 200, r.text)
-        grid = client.get("/api/schedule", params={"year": start.year, "month": start.month}).json()
-        row = next(x for x in grid["rows"] if x["employee"]["id"] == emps[1]["id"])
-        for i in range(7):
-            d = start + dt.timedelta(days=i)
-            code = (row["cells"][d.isoformat()]["tabel"] or {}).get("code")
-            expect = "В" if d.weekday() in (0, 1) else "Я"
-            self.assertEqual(code, expect, f"{d} weekday={d.weekday()}")
-
     def test_10_mgmt_view_and_xlsx(self):
         today = local_date()
         r = client.get("/api/mgmt", params={"year": today.year, "month": today.month, "mode": "view"})
@@ -269,7 +216,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(eng["active"]["payload"]["step_minutes"], 60)
 
     def test_13_impersonation(self):
-        emps = client.get("/api/auth/employees-for-demo").json()
+        emps = client.get("/api/employees").json()
         target = next(e for e in emps if e["full_name"].startswith("Иванов"))
         r = client.post("/api/auth/impersonate", json={"employee_id": target["id"]})
         self.assertEqual(r.status_code, 200, r.text)
@@ -449,7 +396,7 @@ class TestApi(unittest.TestCase):
         row2 = next(x for x in g2["rows"] if x["employee"]["id"] == created["id"])
         self.assertEqual(len(row2["blocks"]), 2)
 
-    def test_15f_base_anchor_robust_and_clear_month(self):
+    def test_15f_base_anchor_robust(self):
         today = local_date()
         # опорная дата в будущем не ломает сетку
         r = self.admin.put("/api/settings/base", json={
@@ -465,33 +412,6 @@ class TestApi(unittest.TestCase):
         bad = self.admin.put("/api/settings/base", json={"cycle": "2/2", "anchor": "не-дата",
                                                          "groups": {}})
         self.assertEqual(bad.status_code, 422)
-        # обнуление месяца: ручной код Табеля исчезает вместе с генерацией Графика.
-        # День и сотрудника берём трудоустроенными: Табель за дни вне периода работы
-        # не ведётся (RUL-EMPLOYMENT-PERIOD), иначе PUT ячейки законно вернёт 409.
-        row = next(r for r in g["rows"] if any(
-            c["employed"] and c["tabel"] for c in r["cells"].values()))
-        emp_id = row["employee"]["id"]
-        day = next(iso for iso, c in row["cells"].items() if c["employed"] and c["tabel"])
-        pr = client.put("/api/tabel/cell", json={"employee_id": emp_id, "date": day,
-                                                 "code": "ОТ", "note": ""})
-        self.assertEqual(pr.status_code, 200, pr.text)
-        g2 = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
-        row2 = next(x for x in g2["rows"] if x["employee"]["id"] == emp_id)
-        self.assertEqual(row2["cells"][day]["tabel"]["code"], "ОТ")
-        cr = client.post("/api/schedule/clear-month", json={
-            "year": today.year, "month": today.month, "manual_too": True})
-        self.assertEqual(cr.status_code, 200, cr.text)
-        self.assertGreater(cr.json()["cleared"], 0)
-        g3 = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
-        row3 = next(x for x in g3["rows"] if x["employee"]["id"] == emp_id)
-        cell = row3["cells"][day]
-        self.assertIsNone(cell["tabel"])
-        self.assertEqual(cell["shifts"], [])
-        # восстановим Табель месяца из циклов — остальные тесты полагаются на покрытие
-        rf = client.post("/api/tabel/fill-from-cycles", json={
-            "year": today.year, "month": today.month, "overwrite": True})
-        self.assertEqual(rf.status_code, 200, rf.text)
-        self.assertGreater(rf.json()["written"], 0)
 
     def test_15g_transfer_keeps_old_block_phase(self):
         """После перевода сотрудник в старом блоке стоит в ФАЗЕ СТАРОГО БЛОКА, в новом — в фазе нового.
@@ -605,9 +525,9 @@ class TestApi(unittest.TestCase):
         doc.save(buf)
         tpl_bytes = buf.getvalue()
 
-        # список типов и справка по плейсхолдерам
-        info = client.get("/api/docs/templates").json()
-        self.assertIn("vacation_paid", info["types"])
+        # список видов и справка по плейсхолдерам (GET /api/docs/kinds, как в интерфейсе)
+        info = client.get("/api/docs/kinds").json()
+        self.assertIn("vacation_paid", {k["code"] for k in info["kinds"]})
         self.assertIn("full_name", info["placeholders"])
 
         # сотрудник не может загружать шаблоны
@@ -658,8 +578,8 @@ class TestApi(unittest.TestCase):
         # удаление шаблона
         r = self.admin.delete("/api/docs/templates", params={"type": "vacation_paid"})
         self.assertEqual(r.status_code, 200)
-        info = client.get("/api/docs/templates").json()
-        t = next(x for x in info["templates"] if x["type"] == "vacation_paid")
+        info = client.get("/api/docs/kinds").json()
+        t = next(x["template"] for x in info["kinds"] if x["code"] == "vacation_paid")
         self.assertFalse(t["uploaded"])
 
         # рендер без шаблона = встроенный текст (fallback)

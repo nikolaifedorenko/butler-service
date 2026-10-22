@@ -68,16 +68,6 @@ class ShiftView:
     def is_archived(self) -> bool:
         return bool(self.archived_at) or not self.active
 
-    def brief(self) -> dict:
-        return {
-            "id": self.id, "code": self.code, "name": self.name, "kind": self.kind,
-            "color": self.color,
-            "start": self.start_time, "end": self.end_time, "overnight": self.overnight,
-            "planned_hours": self.planned_hours, "is_default_off": self.is_default_off,
-            "doc_type": self.doc_type or "",
-            "archived": self.is_archived, "historical": self.is_revision,
-        }
-
     def __repr__(self) -> str:  # pragma: no cover - отладка
         return f"<ShiftView {self.code} {self.start_time}-{self.end_time}{' (историческая)' if self.is_revision else ''}>"
 

@@ -465,19 +465,6 @@ def bank_adjust(employee_id: int, payload: BankAdjustIn,
             "bank_now": bank_as_of(db, emp, local_date())}
 
 
-@router.get("/employees/{employee_id}/bank-adjustments")
-def bank_adjustments(employee_id: int, principal: Principal = Depends(require_perm("employees.view")),
-                     db: Session = Depends(get_db)):
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    items = db.scalars(select(BankAdjustment).where(
-        BankAdjustment.employee_id == employee_id).order_by(
-        BankAdjustment.effective_date.desc(), BankAdjustment.id.desc())).all()
-    return {"items": [_adjustment_dict(a) for a in items],
-            "bank_now": bank_as_of(db, emp, local_date())}
-
-
 @router.delete("/employees/{employee_id}/bank-adjustments/{adjustment_id}")
 def bank_adjust_delete(employee_id: int, adjustment_id: int,
                        principal: Principal = Depends(require_perm("employees.bank")), db: Session = Depends(get_db)):

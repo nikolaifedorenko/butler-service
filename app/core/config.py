@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     log_json: bool = False
     # /metrics (Prometheus): по умолчанию выключен — метрики не должны быть публичными
     metrics_enabled: bool = False
+    # Swagger /api/docs и схема /api/openapi.json; в проде 0 — полная карта API без входа
+    # облегчает разведку (OPS-04). Схему для разработки отдаёт tools/export_openapi.py.
+    api_docs: bool = True
     # семантическая версия приложения: bump при релизе (тег + docs/CHANGES-*.md)
     app_version: str = "0.1.0"
     # разрешить запуск со слабым/пустым SECRET_KEY — ТОЛЬКО для локальной разработки.

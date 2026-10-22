@@ -114,8 +114,6 @@ class TestReadonlySchedule(unittest.TestCase):
         self.assertEqual(emp_client.post("/api/schedule/absence", json={
             "employee_id": EMP["id"], "date": TODAY.replace(day=15).isoformat(),
             "from_time": "14:00", "until_time": "16:00"}).status_code, 403)
-        self.assertEqual(emp_client.post("/api/schedule/clear-month",
-                                         json={"year": YEAR, "month": MONTH}).status_code, 403)
         self.assertEqual(emp_client.get("/api/schedule/xlsx",
                                         params={"year": YEAR, "month": MONTH}).status_code, 403)
         # PDF графика батлеру доступен — но только его же план (200), либо 501 без движка

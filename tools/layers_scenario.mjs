@@ -164,12 +164,15 @@ async function main() {
   let r = await jsend('POST', `/api/employees/${empId}/bank-adjust`, {
     hours: 0, date: first, note: 'начальный банк (сценарий T5)', reason_code: 'OPENING_SEED' });
   check('посев OPENING_SEED принят', r.ok, JSON.stringify(r.json).slice(0, 160));
-  r = await jsend('POST', '/api/schedule/fill-pattern', {
-    employee_ids: [empId], start_date: first,
-    end_date: first.slice(0, 8) + String(new Date(Date.UTC(+first.slice(0, 4),
-      +first.slice(5, 7), 0)).getUTCDate()).padStart(2, '0'),
-    value: 'Я 12', pattern: '2/2', offset: 0 });
-  check('цикл 2/2 заполнил месяц', r.ok, JSON.stringify(r.json).slice(0, 160));
+  /* цикл 2/2 на весь месяц — массовой правкой Табеля, как «Слой 0» в интерфейсе
+     (прежний POST /api/schedule/fill-pattern удалён по решению владельца В-7) */
+  const nDays = new Date(Date.UTC(+first.slice(0, 4), +first.slice(5, 7), 0)).getUTCDate();
+  const monthDays = Array.from({ length: nDays }, (_, i) => first.slice(0, 8) + String(i + 1).padStart(2, '0'));
+  for (const [code, hours, part] of [['Я', 12, monthDays.filter((_, i) => i % 4 < 2)],
+                                     ['В', 0, monthDays.filter((_, i) => i % 4 >= 2)]]) {
+    r = await jsend('POST', '/api/tabel/bulk', { employee_ids: [empId], dates: part, code, hours });
+    check(`цикл 2/2 заполнил месяц: «${code}»`, r.ok && r.json?.ok, JSON.stringify(r.json).slice(0, 160));
+  }
   r = await jsend('PUT', '/api/tabel/cell', { employee_id: empId, date: day,
     code: 'Я', hours: 10.75, note: '' });
   check('день переведён в «Я 10,75»', r.ok, JSON.stringify(r.json).slice(0, 160));

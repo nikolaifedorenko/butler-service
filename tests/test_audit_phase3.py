@@ -27,7 +27,6 @@ def test_start_bank_field_is_gone(admin_client, manager_client, db):
         assert "balance_hours" not in r.json()
     db.expire_all()
     assert db.scalar(select(Employee.balance_hours).where(Employee.id == e["id"])) == before
-    assert "start_balance" not in admin_client.get(f"/api/employees/{e['id']}/bank-adjustments").json()
 
 
 def test_give_does_not_bypass_maintenance(manager_client, db):

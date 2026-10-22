@@ -46,6 +46,3 @@ def month_name(month: int) -> str:
 
 WD_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
-
-def weekday_short(date: dt.date) -> str:
-    return WD_SHORT[date.weekday()]

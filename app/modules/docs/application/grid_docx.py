@@ -82,24 +82,9 @@ def tint_hex(color, factor: float = 0.22) -> str | None:
     return f"{out[0]:02X}{out[1]:02X}{out[2]:02X}"
 
 
-def _fmt_hours(x) -> str:
-    try:
-        return f"{float(x or 0):g}"
-    except (TypeError, ValueError):
-        return "0"
-
-
 def _hex6(color) -> str | None:
     m = _hex_re.match(color or "")
     return m.group(1).upper() if m else None
-
-
-def _tint(color, alpha: float = 0.28, default: str = "FFFFFF") -> str:
-    """Светлая подложка ячейки: цвет смены, смешанный с белым (как на экране)."""
-    h = _hex6(color) or _hex6(default) or "FFFFFF"
-    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
-    mix = lambda c: max(0, min(255, round(c * alpha + 255 * (1 - alpha))))
-    return f"{mix(r):02X}{mix(g):02X}{mix(b):02X}"
 
 
 # ── мелкие помощники python-docx ──────────────────────────────────────────

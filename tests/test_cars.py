@@ -315,9 +315,6 @@ def test_marshrut_otdachi_foto_sushchestvuet(employee_client):
     assert r.status_code == 404, r.text
     assert r.json()["detail"] == "Фото не найдено", \
         f"похоже, маршрута /api/photos/{{id}}/file нет: {r.json()}"
-    # алиас в ночном модуле продолжает работать
-    r2 = employee_client.get("/api/night/photos/999999/file")
-    assert r2.status_code == 404 and r2.json()["detail"] == "Фото не найдено"
 
 
 def test_foto_bez_vhoda_ne_otdayotsya(client):

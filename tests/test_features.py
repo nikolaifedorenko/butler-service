@@ -294,7 +294,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(r.json()["bank_now"], 0.0)
         r = client.post(f"/api/employees/{emp['id']}/bank-adjust", json={"hours": -1.5, "note": ""})
         self.assertEqual(r.status_code, 422, "причина обязательна")
-        items = client.get(f"/api/employees/{emp['id']}/bank-adjustments").json()["items"]
+        items = client.get(f"/api/employees/{emp['id']}/history").json()["bank_adjustments"]
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["note"], "премия за подмену 12.09")
         self.assertEqual(items[0]["reason_code"], "manual")
@@ -309,7 +309,7 @@ class TestNewFeatures(unittest.TestCase):
             "reason_code": "OPENING_SEED"})
         self.assertEqual(r.status_code, 200, r.text)
         # удаление корректировки (с аудитом)
-        items = client.get(f"/api/employees/{emp['id']}/bank-adjustments").json()["items"]
+        items = client.get(f"/api/employees/{emp['id']}/history").json()["bank_adjustments"]
         manual = next(i for i in items if i["reason_code"] == "manual")
         r = client.delete(f"/api/employees/{emp['id']}/bank-adjustments/{manual['id']}")
         self.assertEqual(r.status_code, 200)

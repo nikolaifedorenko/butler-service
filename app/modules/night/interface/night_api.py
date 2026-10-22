@@ -13,23 +13,22 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.audit import audit
-from app.core.auth import Principal, current_principal
+from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.media import (
     UploadRef,
+    delete_photo_files,
     max_upload_bytes,
     photos_of,
     read_upload_streaming,
-    resolve_photo_file,
     save_photo_ref,
 )
-from app.core.media import delete_photo as delete_photo_usecase
 from app.core.permissions import has_perm, require_perm
 from app.core.settings_store import Setting
 from app.core.time import now_local
@@ -296,6 +295,8 @@ def delete_area(area_id: int, principal: Principal = Depends(require_perm("night
         sec = db.scalar(select(NightAreaSection).where(NightAreaSection.report_id == rep.id,
                                                        NightAreaSection.area_id == area_id))
         if sec is not None:
+            # пункты уходят каскадом — их фото вместе с файлами, иначе сироты (DEAD-01)
+            delete_photo_files(db, "night_item", [i.id for i in sec.items])
             db.delete(sec)
             touched += 1
     area.active = False
@@ -1129,21 +1130,6 @@ def preview_defects(report_id: int, payload: DispatchIn,
 
 # ─────────────────────────── отдача файлов фото ───────────────────────────
 
-@router.get("/photos/{photo_id}/file", operation_id="photo_file_night_get")
-@router.head("/photos/{photo_id}/file", operation_id="photo_file_night_head",
-             include_in_schema=False)
-def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
-               db: Session = Depends(get_db)):
-    """Отдача оригинала фото — алиас канонического `/api/photos/{id}/file`.
-
-    Маршрут сохранён для совместимости со старыми ссылками; реализация общая
-    (см. app/api/photos_api.py), чтобы поведение не могло разъехаться."""
-    p, path, mime = resolve_photo_file(db, photo_id, principal)
-    return FileResponse(str(path), media_type=mime or "application/octet-stream",
-                        filename=p.filename or None,
-                        headers={"Cache-Control": "private, max-age=86400"})
-
-
 # ─────────────────────────── шаг «Проверка электрокаров» ───────────────────────────
 
 def _cars_section(rep: NightReport) -> NightAreaSection:
@@ -1316,14 +1302,6 @@ def reopen_report(report_id: int, principal: Principal = Depends(require_perm("n
     audit(db, principal, "night_report_reopen", f"report:{rep.id}", {})
     db.commit()
     return {"ok": True, "report": _report_payload(db, rep)}
-
-
-@router.delete("/photos/{photo_id}")
-def delete_photo(photo_id: int, principal: Principal = Depends(current_principal),
-                 db: Session = Depends(get_db)):
-    """Удалить фото — алиас канонического `DELETE /api/photos/{id}`."""
-    delete_photo_usecase(db, principal, photo_id)
-    return {"ok": True}
 
 
 # ─────────────────────────── выгрузка ───────────────────────────

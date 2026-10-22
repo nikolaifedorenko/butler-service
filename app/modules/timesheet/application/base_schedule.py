@@ -244,15 +244,3 @@ def working_flag(cfg: dict, pat: dict, date: dt.date) -> bool:
     flag = (idx % (work_n + off_n)) < work_n
     return (not flag) if pat.get("invert") else flag
 
-
-def is_working_date(db: Session, emp: Employee, date: dt.date, cfg: Optional[dict] = None,
-                    index: Optional[BlockIndex] = None) -> bool:
-    """Рабочий ли день по графику (без учёта ручных ячеек)."""
-    cfg = cfg or load_base_config(db)
-    pat = pattern_for_date(db, emp, date, cfg, index=index)
-    if pat.get("kind") == "manual":
-        return False
-    try:
-        return working_flag(cfg, pat, date)
-    except ValueError:
-        return False

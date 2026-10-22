@@ -345,11 +345,10 @@ def test_obshchiy_zhurnal_dlya_razdelov(admin_client, employee_client, open_shif
         _answer(employee_client, item_id, "bad", "не горит")
         assert employee_client.post(f"/api/night/reports/{rep.id}/dispatch",
                                     json={"mode": "selected", "item_ids": [item_id]}).status_code == 200
-        rows = admin_client.get("/api/notify/dispatches?domain=night").json()["dispatches"]
-        assert rows and rows[0]["domain"] == "night" and rows[0]["ref_id"] == rep.id
-        assert rows[0]["items_count"] >= 1 and rows[0]["recipient_name"]
+        csv = admin_client.get("/api/notify/dispatches/export.csv?domain=night")
+        assert csv.status_code == 200 and "night" in csv.text and "не горит" in csv.text, csv.text[:300]
         # журнал приложения — менеджменту; батлер видит журнал своей смены
-        assert employee_client.get("/api/notify/dispatches").status_code == 403
+        assert employee_client.get("/api/notify/dispatches/export.csv").status_code == 403
         assert employee_client.get(f"/api/night/reports/{rep.id}/dispatches").status_code == 200
 
 

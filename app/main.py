@@ -22,7 +22,6 @@ from .bootstrap.migrations import (
     migrate_night_zones,
     migrate_schedule_dict_simplify,
     migrate_settings_value_text,
-    migrate_shift_tabel_codes,
     migrate_time_off_template,
     migrate_timeoff_entity,
     seed_statement_kinds,
@@ -107,7 +106,6 @@ def _init_db_steps() -> None:
         migrate_timeoff_entity()
         migrate_manual_replaces_generated()
         migrate_time_off_template()
-        migrate_shift_tabel_codes()
         migrate_night_cars()
         migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
         migrate_night_reopened_at()     # момент ручного переоткрытия отчёта (P1 20.10.2026)
@@ -182,8 +180,15 @@ async def lifespan(_: FastAPI):
         stop_night_sync()
 
 
-app = FastAPI(title=settings.app_name, version=settings.app_version, docs_url="/api/docs",
-              openapi_url="/api/openapi.json", lifespan=lifespan)
+def _docs_urls() -> dict:
+    """Swagger и схема API — только при API_DOCS=1; ReDoc не используется (OPS-04)."""
+    on = settings.api_docs
+    return {"docs_url": "/api/docs" if on else None,
+            "openapi_url": "/api/openapi.json" if on else None, "redoc_url": None}
+
+
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan,
+              **_docs_urls())
 
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 registry.wire()   # реестр моделей + провайдеры core — до первого запроса (и для тестов без init_db)
@@ -232,7 +237,7 @@ async def _payload_too_large_handler(request: Request, exc: PayloadTooLarge):
 #     (типизированный отказ вкладок, не 500; закреплено
 #     tests/test_timesheet_norm.py::test_10_config_error_is_409_not_500).
 #     Редактор настроек (PUT /api/engine-settings) валидирует ВВОД и оставляет
-#     локальный catch → 422 (закреплено test_v4_api::test_engine_settings_validation);
+#     локальный catch → 422 (закреплено test_engine_api::test_engine_settings_validation);
 #   DomainError → 422 — невалидные входные данные запроса;
 #   ApplicationError → 409 — конфликт состояния (период закрыт и т.п.).
 # Прим.: §5.3 спеки предписывал 422 для ConfigError, но §11.1 требует побайтового

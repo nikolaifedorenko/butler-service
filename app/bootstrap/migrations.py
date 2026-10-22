@@ -61,18 +61,6 @@ def migrate_db() -> None:
             ("nationality", "VARCHAR(120) DEFAULT ''"),
             ("subdivision", "VARCHAR(160) DEFAULT ''"),
         ],
-        "timesheet_rows": [
-            ("pay_ot_day", "FLOAT DEFAULT 0"),
-            ("pay_ot_night", "FLOAT DEFAULT 0"),
-            ("late_hours", "FLOAT DEFAULT 0"),
-            ("early_hours", "FLOAT DEFAULT 0"),
-            ("unused_hours", "FLOAT DEFAULT 0"),
-            ("gap_hours", "FLOAT DEFAULT 0"),
-            ("auth_hours", "FLOAT DEFAULT 0"),
-            ("pay_ot_day2", "FLOAT DEFAULT 0"),
-            ("pay_ot_night2", "FLOAT DEFAULT 0"),
-            ("double_reason", "VARCHAR(16) DEFAULT ''"),
-        ],
         "zone_checklist_items": [
             ("service_id", "INTEGER"),
         ],
@@ -92,13 +80,6 @@ def migrate_db() -> None:
             ("archived_at", "DATE"),
             ("punch_in_allowed", "BOOLEAN DEFAULT TRUE"),
             ("punch_out_allowed", "BOOLEAN DEFAULT TRUE"),
-        ],
-        "schedule_entries": [
-            ("partial_shift_id", "INTEGER"),
-            ("from_time", "VARCHAR(5) DEFAULT ''"),
-            ("until_time", "VARCHAR(5) DEFAULT ''"),
-            ("punch_in_override", "BOOLEAN"),
-            ("punch_out_override", "BOOLEAN"),
         ],
         "block_assignments": [
             ("pattern_json", "TEXT DEFAULT ''"),
@@ -182,7 +163,6 @@ def migrate_db() -> None:
                 con.execute(text("UPDATE shift_types SET doc_type=:dt "
                                  "WHERE code=:c AND (doc_type IS NULL OR doc_type='')"),
                             {"dt": doc_type, "c": code})
-            _apply_timesheet_code_normative(con)
 
         # сотрудники без записей блоков получают открытую запись от даты приёма
         if insp.has_table("employees") and insp.has_table("block_assignments"):
@@ -203,46 +183,12 @@ def migrate_db() -> None:
                   AND NOT EXISTS (SELECT 1 FROM subdivisions s WHERE s.name = e.subdivision)
             """))
 
-    # «НБ» — артефакт: вид SICK_UNPAID (добавлялся 16.10.2026) убираем из словаря
-    _migrate_remove_sick_unpaid()
-    # старым базам докладываем новые смены словаря из сида
-    _migrate_missing_shifts()
     # периоды работы (приём → увольнение → повторный приём)
     _migrate_employment_periods()
     # индивидуальный шаблон пятидневки: берём выходные из общих настроек (как было раньше)
     _migrate_fiveday_patterns()
     # общий шаблон блоков в настройках: переименовываем ключ «Администрация»
     _migrate_base_groups_key()
-
-
-def _migrate_remove_sick_unpaid() -> None:
-    """Историческая миграция (16.10.2026): вид «НБ»/SICK_UNPAID. С 18.10.2026 все
-    виды отсутствий словаря, кроме системного «Отпросился», удаляет
-    migrate_schedule_dict_simplify — здесь делать нечего."""
-    return
-
-
-def _migrate_missing_shifts() -> None:
-    """Историческая миграция: докладывала старым базам смены из старого сида.
-    Словарь смен 18.10.2026 изменился (только добавляемые смены и «Отпросился»),
-    свежие базы заполняет сид, старым базам состав правит владелец."""
-    return
-
-
-def _apply_timesheet_code_normative(con) -> None:
-    """Норматив от 12.10.2026: коды Табеля «С» и «НВ» из справочника исключены.
-
-    * суточная смена (SUTKI) — графиковая смена: в Табеле обычная явка «Я», по факту
-      сотрудник работает через полночь, а часы вне окна расчёт относит к переработке;
-    * «выходной за ранее отработанные часы» (TIMEOFF_HOURS) — отсутствие в Графике:
-      в Табеле остаётся явка, недостачу гасит банк часов (паттерн EX-29).
-
-    Правим только словарь (shift_types), историю Табеля не переписываем: версии
-    справочников очищает timesheet-bootstrap (strip_removed_day_codes), и только если
-    в Табеле не осталось строк с этими кодами.
-    """
-
-    # связка «смена → код Табеля» (tzh_code) удалена 18.10.2026: править нечего
 
 
 def _migrate_employment_periods() -> None:
@@ -351,12 +297,6 @@ def seed_statement_kinds() -> None:
         db.commit()
     finally:
         db.close()
-
-
-def migrate_shift_tabel_codes() -> None:
-    """Историческая миграция T1 (12.10.2026): чистила «код в табеле» у смен.
-    Поле tzh_code удалено 18.10.2026 вместе со связкой справочников."""
-    return
 
 
 TIMEOFF_UNIFIED_CODE = "TIMEOFF_HOURS"
@@ -600,8 +540,7 @@ def migrate_engine_v7() -> None:
     * bank_adjustments.reason_code — маркер OPENING_SEED (v7.1/R37);
     * period_closings.flags_json — снимок флагов при закрытии (7.2);
     * legacy-таблицы timesheet_rows и schedule_entries удаляются вместе со старым движком;
-    * расчётные данные автоматически НЕ очищаются (раньше — однократно по маркеру
-      в settings); маркер только записывается, очистка демо-базы — вручную.
+    * расчётные данные автоматически НЕ очищаются; демо-базу пересоздают вручную.
     """
     from sqlalchemy import inspect, text
 
@@ -619,27 +558,8 @@ def migrate_engine_v7() -> None:
         for legacy in ("timesheet_rows", "schedule_entries"):
             if legacy in existing:
                 con.execute(text(f"DROP TABLE IF EXISTS {legacy}"))
-        # Раньше при отсутствии маркера здесь выполнялся DELETE FROM по семи расчётным
-        # таблицам (Табель, смены, закрытия периодов…). Переход v4 → v7.1 уже выполнен
-        # на всех стендах, а автоматическое удаление на старте опасно: восстановление
-        # бэкапа без этой строки в settings молча стирало бы боевые данные.
-        # Теперь маркер только фиксируется; демо-базу при необходимости пересоздают
-        # вручную (удалить timetrack.db — сид заполнит её заново).
-        marker = con.execute(text(
-            "SELECT value FROM settings WHERE key = 'engine_v7_reset'")).scalar() \
-            if "settings" in existing else "n/a"
-        has_data = "tabel_days" in existing and con.execute(
-            text("SELECT 1 FROM tabel_days LIMIT 1")).first() is not None
-        if marker is None:
-            import logging
-            if has_data:  # на свежей базе предупреждать не о чем
-                logging.getLogger("uvicorn.error").warning(
-                    "migrate_engine_v7: маркер engine_v7_reset не найден — данные НЕ очищаются "
-                    "(автоочистка отключена), маркер записан")
-            con.execute(text(
-                "INSERT INTO settings (key, value, description) VALUES "
-                "('engine_v7_reset', '1', 'Движок v7.1: маркер миграции (автоочистка отключена)')"))
-
+        # Расчётные данные v4 автоматически не очищаются (раньше — однократно по маркеру
+        # engine_v7_reset): восстановление бэкапа без маркера молча стирало бы данные.
 
 def migrate_schedule_dict_simplify() -> None:
     """Упрощение словаря смен и базового цикла (решения владельца 18.10.2026).

@@ -78,12 +78,6 @@ _PERIOD_CASES = [
     ("mgmt", "get", "/api/mgmt", {"year": 2026, "month": 13}),
     ("fact", "get", "/api/fact/month", {"year": 2026, "month": 13}),
     ("modifiers", "get", "/api/engine-settings/modifiers", {"year": 2026, "month": 13}),
-    ("continue", "post", "/api/schedule/continue", {"year": 2026, "month": 13}),
-    ("copy-src", "post", "/api/schedule/copy",
-     {"src_year": 2026, "src_month": 13, "dst_year": 2026, "dst_month": 5}),
-    ("copy-dst", "post", "/api/schedule/copy",
-     {"src_year": 2026, "src_month": 5, "dst_year": 2026, "dst_month": 0}),
-    ("clear-month", "post", "/api/schedule/clear-month", {"year": 2026, "month": 13}),
     ("reset-month", "post", "/api/schedule/reset-month", {"year": 2026, "month": 13}),
     ("fill", "post", "/api/tabel/fill-from-cycles", {"year": 2026, "month": 13}),
     ("tabel-reset", "post", "/api/tabel/reset", {"year": 2026, "month": 13}),
@@ -216,24 +210,6 @@ def test_range_absence_cross_month_regeneration_per_month(admin_client, fresh_em
     body = r.json()
     assert body["written"] == 8, body
     assert _rebuild_deletes(c) == 2 * REBUILD_DELETES_PER_MONTH, _rebuild_deletes(c)
-
-
-def test_copy_period_regeneration_is_batched(admin_client, fresh_employee, sql_counter):
-    """`POST /api/schedule/copy`: месяц-в-месяц — одна перегенерация на сотрудника."""
-    src_days = _month_days(6)
-    assert admin_client.post("/api/tabel/bulk", json={
-        "employee_ids": [fresh_employee["id"]], "dates": src_days, "code": "В"}).status_code == 200
-    nxt_first = (MONTH_FIRST + dt.timedelta(days=32)).replace(day=1)
-    with sql_counter() as c:
-        r = admin_client.post("/api/schedule/copy", json={
-            "employee_ids": [fresh_employee["id"]],
-            "src_year": MONTH_FIRST.year, "src_month": MONTH_FIRST.month,
-            "dst_year": nxt_first.year, "dst_month": nxt_first.month})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["errors"] == [], body["errors"]
-    assert body["copied"] == 6, body
-    assert _rebuild_deletes(c) == REBUILD_DELETES_PER_MONTH, _rebuild_deletes(c)
 
 
 def test_single_cell_edit_still_regenerates_neighbours(admin_client, fresh_employee, sql_counter):

@@ -55,7 +55,7 @@ async function loadNight() {
   $('#night-reopen').onclick = () => reopenReport();
 
   await fetchNight();
-  poll('night', () => { if (state.view === 'night') fetchNight(true); }, 60000);
+  poll('night', () => { if (state.view === 'night') fetchNight(true); });
 }
 
 async function fetchNight(silent) {

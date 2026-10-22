@@ -126,7 +126,7 @@ class TestGenitiveApi(unittest.TestCase):
                                             "wordprocessingml.document")})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertIn("full_name_genitive", r.json()["placeholders"])
-        info = self.admin.get("/api/docs/templates").json()
+        info = self.admin.get("/api/docs/kinds").json()
         self.assertIn("full_name_genitive", info["placeholders"])   # справка по плейсхолдерам
 
         emp_manual = self._create("Ручной Иван Петрович", "Ручного Ивана Петровича (сверено)")

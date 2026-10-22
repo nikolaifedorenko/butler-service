@@ -210,11 +210,12 @@ engine_settings). `now` снимается в `application/engine_common.now_utc
 ### 3.5 Клиент
 
 SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки), `app.js` (оболочка,
-меню, роутинг) и **`static/js/modules/`** — 9 файлов разделов, имена соответствуют
-модулям бэкенда (фаза C6): `timesheet_layers.js` (сетка Графика), `timesheet_v4.js`
-(Отметки-доска, Факт, Табель, УТ, Права, Аудит, CFG-*), `me.js`, `employees.js`,
-`night.js`, `cars.js`, `docs.js`, `dicts.js`, `settings.js` (реестр экранов единого
-центра конфигурации; подключается ПОСЛЕ timesheet_v4/cars/night). Глобальные функции
+меню, роутинг) и **`static/js/modules/`** — 16 файлов разделов, по файлу на экран:
+`timesheet_layers.js` (сетка Графика), `timesheet_common.js` (общее для экранов движка),
+`marks.js` (доска «Отметки»), `fact.js`, `tabel.js`, `mgmt.js` (УТ), `access.js`, `audit.js`,
+`engine_settings.js` (CFG-*), `me.js`, `employees.js`, `night.js`, `cars.js`, `docs.js`,
+`dicts.js`, `settings.js` (реестр экранов единого центра конфигурации; подключается ПОСЛЕ
+engine_settings/cars/night). До 22.10.2026 семь экранов движка жили в `timesheet_v4.js`. Глобальные функции
 сохранены: межфайловые вызовы через глобальную область, границы держат
 `tools/gen_js_globals.py` (рекурсивный скан `static/js/**` → `js_globals.json`) и
 ESLint `no-undef` — отказ от `window.App.modules.*` отклонён (property-доступ не
@@ -341,7 +342,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
    стадий → `application/view_period.py`.
 5. `tests/engine/test_ex_01_15.py` — как читать приёмочные примеры (вход/выход/контроли).
 6. Вертикальный срез вкладки: `app/modules/timesheet/interface/mgmt_api.py` +
-   `static/js/modules/timesheet_v4.js (loadMgmt)`.
+   `static/js/modules/mgmt.js (loadMgmt)`.
 7. Границы: `.importlinter` (14 контрактов) + `tests/test_modules_architecture.py`
    (AST-законы всех модулей) — что можно импортировать и откуда.
 8. `docs/CHANGES-2026-10-20-stage-c*.md` — как и почему прошла модульная
