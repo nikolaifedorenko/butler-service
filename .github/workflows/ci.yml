@@ -82,10 +82,12 @@ jobs:
 
       - name: Аудит зависимостей (pip-audit, известные CVE)
         if: matrix.python-version == '3.11'
-        # блокирующий с 22.10.2026: находок нет — новая CVE остановит merge
+        # блокирующий с 22.10.2026: новая CVE в зависимостях проекта остановит merge.
+        # Проверяем lock-файл (то, что ставится в Docker-образ), а не окружение раннера:
+        # в нём старый setuptools из образа Python, к продукту не относящийся
         run: |
           pip install pip-audit
-          pip-audit --desc
+          pip-audit -r requirements.lock.txt --desc
 
       - name: Самодиагностика схемы (/api/selfcheck)
         run: |
