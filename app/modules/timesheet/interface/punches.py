@@ -29,7 +29,8 @@ from app.core.time import TZ, local_date, now_local
 from app.modules.employees.application import Employee, employed_on, ensure_periods, periods_of
 
 from ..adapters.orm import Punch, ScheduleAbsence, TabelDay
-from ..application.engine_common import day_code_rows, last_closed_bank
+from ..application import timesheet_edit
+from ..application.engine_common import day_code_rows, engine_ports, last_closed_bank
 from ..application.punch_plan import (
     plan_for_date as _plan_for_date,
 )
@@ -269,6 +270,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
         backfill = True
 
     target_date = ts.date()
+    timesheet_edit.ensure_unlocked(str(emp.id), target_date, engine_ports(db, principal))
     shift, p_start, _p_end, plan_date, _subs = _plan_for_date(db, emp.id, target_date, at_ts=ts)
     if not _employed_on(db, emp, plan_date):
         raise HTTPException(status_code=409,
@@ -360,7 +362,9 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
                  db: Session = Depends(get_db)):
     """Журнал отметок. Сотрудник видит только свои, менеджер — всех."""
     stmt = select(Punch).order_by(Punch.ts.desc())
-    limit = 2000
+    # день или месяц сами ограничивают объём; раньше месяц обрезался на 2000 строк, и при
+    # ~35 сотрудниках журнал молча терял начало месяца (аудит 22.10.2026)
+    limit = None
     # журнал всех сотрудников — по ключу punches.view_all (бывш. is_manager, §5.2)
     if "punches.view_all" not in principal_permissions(db, principal):
         if not principal.employee:
@@ -402,6 +406,7 @@ def delete_punch(punch_id: int, principal: Principal = Depends(require_perm("pun
     if not p:
         raise HTTPException(status_code=404, detail="Отметка не найдена")
     ts, emp_id = p.ts, p.employee_id
+    timesheet_edit.ensure_unlocked(str(emp_id), ts.date(), engine_ports(db, principal))
     audit(db, principal, "punch_delete", f"punch:{punch_id}",
           {"employee_id": emp_id, "ts": ts.isoformat(timespec="minutes"), "kind": p.kind})
     db.delete(p)

@@ -29,7 +29,8 @@ _DUMMY_HASH = hash_password("dummy-password-for-timing")
 # Счётчик — таблица login_attempts (ADR-0005, пересмотрен 22.10.2026): раньше словарь в
 # памяти каждого воркера, и при N воркерах лимит фактически был ×N (SEC-01).
 _LOGIN_WINDOW_SECONDS = 300
-_LOGIN_MAX_ATTEMPTS = 10
+_LOGIN_MAX_ATTEMPTS = 10        # на пару «адрес + логин»
+_LOGIN_MAX_PER_IP = 50          # на адрес целиком: перебор по разным логинам
 
 
 def _client_ip(request: Request) -> str:
@@ -51,22 +52,31 @@ def _window_start() -> dt.datetime:
     return utcnow() - dt.timedelta(seconds=_LOGIN_WINDOW_SECONDS)
 
 
-def _too_many_attempts(db: Session, ip: str) -> bool:
-    n = db.scalar(select(func.count()).select_from(LoginAttempt).where(
-        LoginAttempt.key == f"ip:{ip}", LoginAttempt.ts >= _window_start()))
-    return n >= _LOGIN_MAX_ATTEMPTS
+def _attempt_key(ip: str, username: str) -> str:
+    """Счётчик — на пару «адрес + логин» (аудит 22.10.2026): раньше общий на адрес, и свой
+    успешный вход сбрасывал его — перебор чужого пароля шёл без остановки, а персонал за
+    одним Wi-Fi блокировал вход друг другу. Колонка — 80 символов, логин в ключе обрезаем."""
+    return f"ip:{ip}|user:{username.strip().lower()[:26]}"
 
 
-def _record_login_failure(db: Session, ip: str) -> None:
+def _too_many_attempts(db: Session, ip: str, username: str) -> bool:
+    recent = select(func.count()).select_from(LoginAttempt).where(LoginAttempt.ts >= _window_start())
+    if db.scalar(recent.where(LoginAttempt.key == _attempt_key(ip, username))) >= _LOGIN_MAX_ATTEMPTS:
+        return True
+    return db.scalar(recent.where(LoginAttempt.key.like(f"ip:{ip}|%"))) >= _LOGIN_MAX_PER_IP
+
+
+def _record_login_failure(db: Session, ip: str, username: str) -> None:
     """Отдельный commit сразу: за ним 401, и без него попытка пропала бы вместе с сессией.
     Заодно убираем записи старше окна — таблица не растёт, фоновая задача не нужна."""
     db.execute(delete(LoginAttempt).where(LoginAttempt.ts < _window_start()))
-    db.add(LoginAttempt(key=f"ip:{ip}"))
+    db.add(LoginAttempt(key=_attempt_key(ip, username)))
     db.commit()
 
 
-def _reset_login_failures(db: Session, ip: str) -> None:
-    db.execute(delete(LoginAttempt).where(LoginAttempt.key == f"ip:{ip}"))
+def _reset_login_failures(db: Session, ip: str, username: str) -> None:
+    """Успешный вход сбрасывает только свою пару: чужие неудачи с этого адреса остаются."""
+    db.execute(delete(LoginAttempt).where(LoginAttempt.key == _attempt_key(ip, username)))
 
 
 def _token(user: User, emp_id, imp: bool = False) -> str:
@@ -94,18 +104,18 @@ def _authenticate(db: Session, request: Request, username: str, password: str):
     """Общая проверка учётных данных для JSON- и форм-входа (rate-limit, постоянный
     хеш для несуществующего логина, ленивый rehash). Возвращает (user, employee)."""
     ip = _client_ip(request)
-    if _too_many_attempts(db, ip):
+    if _too_many_attempts(db, ip, username):
         raise HTTPException(status_code=429,
                             detail="Слишком много неудачных попыток входа. Подождите несколько минут.")
     user = db.scalar(select(User).where(User.username == username.strip().lower()))
     # для несуществующего логина тоже считаем хеш — по времени ответа логин не угадать
     stored = user.password_hash if user else _DUMMY_HASH
     if not verify_password(password, stored) or not user:
-        _record_login_failure(db, ip)
+        _record_login_failure(db, ip, username)
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Учётная запись отключена")
-    _reset_login_failures(db, ip)
+    _reset_login_failures(db, ip, username)
     if needs_rehash(stored):
         # ленивая миграция хеша: старые записи (например, 120k итераций) обновляются
         # на текущие параметры при успешном входе — пароль у нас в этот момент есть

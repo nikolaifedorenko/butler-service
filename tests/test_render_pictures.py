@@ -69,3 +69,27 @@ def test_broken_picture_does_not_break_document():
             dst.writestr(item, b"not an image" if item.filename.startswith("word/media/") else data)
     pdf, _ = docx_to_pdf(out.getvalue(), "broken.pdf")
     assert pdf and pdf.startswith(b"%PDF")
+
+
+def test_unbuildable_document_gives_none_not_exception(monkeypatch):
+    """Если reportlab не собрал документ ни основной, ни запасной сборкой, рендер возвращает None
+    (вызывающий отдаст 501 с подсказкой про DOCX), а не роняет запрос в 500. Сбой вызываем
+    сами: высокую строку таблицы reportlab 5 уже умеет делить по страницам."""
+    from docx import Document
+    from reportlab.platypus import BaseDocTemplate
+
+    from app.core.render import docx_to_pdf, pdf_mode
+
+    if pdf_mode() == "none":
+        pytest.skip("нет шрифта с кириллицей для встроенного рендера")
+
+    def broken_build(self, *args, **kwargs):
+        raise RuntimeError("Flowable too large")
+
+    monkeypatch.setattr(BaseDocTemplate, "build", broken_build)   # SimpleDocTemplate — наследник
+    doc = Document()
+    doc.add_paragraph("Текст")
+    buf = io.BytesIO()
+    doc.save(buf)
+    pdf, how = docx_to_pdf(buf.getvalue(), "broken.pdf")
+    assert pdf is None and how

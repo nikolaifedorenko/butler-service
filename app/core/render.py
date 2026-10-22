@@ -412,8 +412,13 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
     except Exception:
         # запасной вариант: простой документ без колонтитулов
         buf = io.BytesIO()
-        SimpleDocTemplate(buf, pagesize=(page_w, page_h), leftMargin=left, rightMargin=right,
-                          topMargin=top, bottomMargin=bottom, title=filename).build(story)
+        try:
+            SimpleDocTemplate(buf, pagesize=(page_w, page_h), leftMargin=left, rightMargin=right,
+                              topMargin=top, bottomMargin=bottom, title=filename).build(story)
+        except Exception:
+            # не собирается и так (например, строка таблицы выше страницы): None — вызывающий
+            # отдаст 501 с подсказкой про DOCX, а не 500
+            return None
     return buf.getvalue()
 
 

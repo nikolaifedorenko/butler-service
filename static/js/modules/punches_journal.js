@@ -64,8 +64,7 @@ async function fetchPunchJournal() {
       <td>${esc(PUNCH_SOURCES[p.source] || p.source || '')}</td>
       <td>${esc(p.note || '')}</td>
       ${canCancel ? `<td><button class="btn btn-sm btn-ghost" data-pj-del="${p.id}">Отменить</button></td>` : ''}
-    </tr>`).join('')}</tbody></table></div>
-    ${items.length >= 2000 ? '<p class="hint">Показаны первые 2000 отметок — выберите сотрудника.</p>' : ''}`;
+    </tr>`).join('')}</tbody></table></div>`;
   $$('[data-pj-del]', body).forEach(b => b.onclick = () => {
     const p = items.find(x => String(x.id) === b.dataset.pjDel);
     confirmDialog('Отменить отметку?',
