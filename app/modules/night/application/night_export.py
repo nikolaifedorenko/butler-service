@@ -10,8 +10,8 @@
 notify_dispatches), поэтому выгрузка закрытой смены не меняется со временем.
 
 PDF собирается из того же .docx встроенным рендером (app/core/render.py).
-Картинки вставляются оригиналами и масштабируются по ширине колонки; недоступные
-файлы (удалены по сроку хранения) помечаются текстом.
+Картинки вставляются уменьшенной копией (до 1600 px, с поворотом по EXIF) по ширине
+колонки; недоступные файлы (удалены по сроку хранения) помечаются текстом.
 """
 from __future__ import annotations
 
@@ -243,7 +243,7 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
 
 
 def _image_cell(cell, ph: dict, *, width_cm: float = 6.0) -> bool:
-    """Вставить фото (оригинал) в ячейку таблицы; False — файла нет.
+    """Вставить фото (уменьшенную копию) в ячейку таблицы; False — файла нет или это не картинка.
 
     `width_cm` — ширина картинки: в таблице обхода каров колонка «Состояние,
     комментарий» уже, чем у пунктов чек-листа."""
@@ -255,12 +255,34 @@ def _image_cell(cell, ph: dict, *, width_cm: float = 6.0) -> bool:
     target = BASE_DIR / rel
     if not target.is_file():
         return False
+    try:
+        picture = _print_copy(target)
+    except Exception:
+        picture = str(target)         # Pillow не прочитал — как раньше, оригиналом; видео отсеет add_picture
     para = cell.add_paragraph()
     try:
-        para.add_run().add_picture(str(target), width=Cm(width_cm))
+        para.add_run().add_picture(picture, width=Cm(width_cm))
     except Exception:
         return False
     return True
+
+
+PRINT_MAX_PX = 1600   # 6 см в ячейке — это ~700 px при 300 dpi; больше печать не покажет
+
+
+def _print_copy(path) -> io.BytesIO:
+    """Уменьшенная копия фото для документа (аудит 22.10.2026): оригиналы с телефона (до 12 МБ)
+    делали DOCX и PDF отчёта на сотни мегабайт в памяти. Поворот по EXIF применяется сразу —
+    иначе Word и PDF показали бы снимок с телефона лёжа."""
+    from PIL import Image, ImageOps
+
+    with Image.open(path) as im:
+        im = ImageOps.exif_transpose(im)
+        im.thumbnail((PRINT_MAX_PX, PRINT_MAX_PX))
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=85)
+    buf.seek(0)
+    return buf
 
 
 def _autosize(table, widths) -> None:

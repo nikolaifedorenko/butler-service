@@ -126,14 +126,56 @@ def test_login_rate_limit_is_shared_between_workers(app_stack):
         c = TestClient(app_stack["app"])      # адрес клиента TestClient — «testclient»
         old = utcnow() - dt.timedelta(seconds=auth_routes._LOGIN_WINDOW_SECONDS + 60)
         with app_stack["SessionLocal"]() as s:
-            s.add_all([LoginAttempt(key="ip:testclient", ts=old)
+            s.add_all([LoginAttempt(key=auth_routes._attempt_key("testclient", "admin"), ts=old)
                        for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS)])
             s.commit()
         assert c.post("/api/auth/login", json={"username": "admin", "password": "demo1234"}).status_code == 200
         with app_stack["SessionLocal"]() as s:
-            s.add_all([LoginAttempt(key="ip:testclient") for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS)])
+            s.add_all([LoginAttempt(key=auth_routes._attempt_key("testclient", "admin"))
+                       for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS)])
             s.commit()
         r = c.post("/api/auth/login", json={"username": "admin", "password": "demo1234"})
+        assert r.status_code == 429, r.text
+    finally:
+        _clear_login_attempts(app_stack)
+
+
+def test_own_login_does_not_reset_others_failures(app_stack):
+    """Аудит 22.10.2026: свой успешный вход сбрасывал счётчик всего адреса — сотрудник
+    перебирал пароль администратора без остановки. Теперь счётчик на пару «адрес + логин»."""
+    from fastapi.testclient import TestClient
+
+    from app.modules.access.interface import auth_routes
+
+    _clear_login_attempts(app_stack)
+    try:
+        c = TestClient(app_stack["app"])
+        for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS - 1):
+            c.post("/api/auth/login", json={"username": "admin", "password": "wrong"})
+        assert c.post("/api/auth/login", json={"username": "ivanov", "password": "demo1234"}).status_code == 200
+        c.post("/api/auth/login", json={"username": "admin", "password": "wrong"})       # десятая
+        assert c.post("/api/auth/login", json={"username": "admin", "password": "wrong"}).status_code == 429
+        # чужие ошибки с того же адреса не блокируют вход другим сотрудникам
+        assert c.post("/api/auth/login", json={"username": "ivanov", "password": "demo1234"}).status_code == 200
+    finally:
+        _clear_login_attempts(app_stack)
+
+
+def test_spray_over_many_logins_hits_ip_limit(app_stack):
+    """Перебор по разным логинам с одного адреса упирается в общий потолок адреса."""
+    from fastapi.testclient import TestClient
+
+    from app.core.identity import LoginAttempt
+    from app.modules.access.interface import auth_routes
+
+    _clear_login_attempts(app_stack)
+    try:
+        with app_stack["SessionLocal"]() as s:
+            s.add_all([LoginAttempt(key=auth_routes._attempt_key("testclient", f"user{i}"))
+                       for i in range(auth_routes._LOGIN_MAX_PER_IP)])
+            s.commit()
+        r = TestClient(app_stack["app"]).post("/api/auth/login",
+                                             json={"username": "admin", "password": "demo1234"})
         assert r.status_code == 429, r.text
     finally:
         _clear_login_attempts(app_stack)

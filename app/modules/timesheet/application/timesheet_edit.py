@@ -37,6 +37,13 @@ def lock_state(employee_id: str, day: dt.date, ports: EnginePorts) -> str:
     return lock_states([employee_id], day, ports)[employee_id]
 
 
+def ensure_unlocked(employee_id: str, day: dt.date, ports: EnginePorts) -> None:
+    """Исходные данные «замороженного» периода (закрыт он и следующий) не меняются: его
+    итог пересчитать уже нельзя. Одно правило для Табеля и отметок (аудит 22.10.2026)."""
+    if lock_state(employee_id, day, ports) == "locked":
+        raise TimesheetLockedError(f"{employee_id}:{day}")
+
+
 def save_timesheet_day(employee_id: str, day: dt.date, code: str, plan_minutes: int | None,
                        ports: EnginePorts, *, rebuild: bool = True) -> TimesheetEditOutcome:
     """Запись ячейки Табеля (доменные проверки F-16) + перегенерация Графика дня.
@@ -51,8 +58,7 @@ def save_timesheet_day(employee_id: str, day: dt.date, code: str, plan_minutes: 
     employment = ports.employment.employment(employee_id, Period(day, day))
     if day < employment.start or (employment.end is not None and day > employment.end):
         raise TimesheetOutsideEmploymentError(f"{employee_id}:{day}")
-    if lock_state(employee_id, day, ports) == "locked":
-        raise TimesheetLockedError(f"{employee_id}:{day}")
+    ensure_unlocked(employee_id, day, ports)
     st = ports.settings.load(period_containing(day, "month"))
     if code != "":
         row = Day(day, code, plan_minutes or 0, employee_id, "")
