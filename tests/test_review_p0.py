@@ -17,7 +17,6 @@ P0-1 (демо-пароль на пустой базе) закрыт орган�
 """
 from __future__ import annotations
 
-import ast
 import contextlib
 import datetime as dt
 import os
@@ -277,25 +276,6 @@ def test_startup_lock_is_reentrant_in_same_process():
 
     with startup_lock(timeout=5), startup_lock(timeout=0.2):
         pass
-
-
-def test_migrations_have_no_blanket_suppress():
-    """`suppress(Exception)` вокруг DDL на PostgreSQL портит транзакцию всего шага (P0-2).
-
-    Проверяем по AST, а не поиском подстроки: упоминание в комментарии — не код.
-    """
-    src = (BASE / "app/bootstrap/migrations.py").read_text(encoding="utf-8")
-    found = []
-    for node in ast.walk(ast.parse(src)):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-        if name == "suppress" and any(getattr(a, "id", None) == "Exception" for a in node.args):
-            found.append(node.lineno)
-    assert not found, (
-        f"в migrations.py на строках {found} подавляются ВСЕ исключения: на PostgreSQL "
-        "сбой DDL оставляет транзакцию битой, и следующий шаг роняет старт")
 
 
 def test_c4a_scratch_script_is_not_tracked():

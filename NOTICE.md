@@ -21,7 +21,7 @@
 
 fastapi, uvicorn, starlette, pydantic, pydantic-settings, SQLAlchemy,
 python-dotenv, openpyxl, python-docx, python-multipart — MIT; bcrypt — Apache-2.0;
-reportlab (опционально, `requirements-pdf.txt`) — BSD-3-Clause.
+reportlab — BSD-3-Clause; pillow — MIT-CMU (HPND).
 Точный состав и версии фиксирует `requirements.lock.txt`.
 
 ## Зависимости JavaScript (dev, `package.json`)

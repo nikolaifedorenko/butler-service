@@ -9,7 +9,7 @@
 ### Шаги (Linux / macOS)
 ```bash
 # 1. Распакуйте/склонируйте проект и зайдите в папку
-cd timetrack
+cd butler-service
 
 # 2. Виртуальное окружение (рекомендуется)
 python3 -m venv .venv
@@ -36,11 +36,11 @@ cp .env.example .env
 | `PDF=off ./run.sh` | быстрый старт, не пытаясь ставить PDF-движок |
 | `PORT=9000 ./run.sh` | другой порт |
 Откройте **http://127.0.0.1:8000** — при первом запуске создастся `timetrack.db`
-и заполнится демо-данными (10 сотрудников, 3 блока графика, отметки за ~1,5 месяца).
+и заполнится демо-данными (демо-сотрудники, блоки графика, отметки за ~1,5 месяца).
 
 ### Шаги (Windows)
 ```powershell
-cd timetrack
+cd butler-service
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
@@ -56,17 +56,14 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ### Полезное
 * **Сброс демо-данных:** остановите сервер и удалите `timetrack.db`, затем запустите снова.
-* **Тесты:** `python3 -m pytest tests/ -q` (76 проверок: движок, API, новые сценарии).
-* **PDF заявлений — необязательная возможность.** Сервер делает PDF одним из двух способов:
-  1. **LibreOffice** (лучший вариант: PDF получается один в один с вашим .docx-бланком) —
-     `brew install --cask libreoffice` (macOS) / `sudo apt install libreoffice-writer` (Linux);
-  2. **встроенный рендер** — `pip install -r requirements-pdf.txt` (reportlab; шрифты DejaVu
-     уже лежат в `assets/fonts/`).
-
-  Если ни то, ни другое не установлено, приложение **не ломается**: кнопка «DOCX» скачивает готовый
-  документ (открывается в Word/Pages/LibreOffice и печатается напрямую), а «Печать заявления»
-  печатает через браузер. Кнопка «PDF» в этом случае честно сообщает, чего не хватает.
-  Текущий режим виден в Настройки → Шаблоны документов и в `GET /api/docs/kinds` (`pdf`).
+* **Тесты:** `python3 -m pytest tests/ -q` (движок, API, сценарии).
+* **PDF** собирает встроенный рендер (reportlab из `requirements.txt`, шрифты DejaVu уже лежат
+  в `assets/fonts/`) — ничего доустанавливать не нужно. Он передаёт текст, таблицы, фоны ячеек
+  и картинки; точный вид фирменного бланка (подложка, сложная вёрстка) даёт кнопка «DOCX» —
+  документ открывается в Word/Pages/LibreOffice и печатается напрямую. Если PDF собрать не
+  удалось (например, нет шрифта с кириллицей), кнопка «PDF» честно сообщает причину, а «DOCX»
+  и «Печать заявления» работают. Состояние видно в Настройки → Шаблоны документов и в
+  `GET /api/docs/kinds` (`pdf`).
 
   > Почему PDF вынесен отдельно: на самых новых версиях Python (например 3.14) готовых
   > сборок reportlab может не быть, и pip начинает компилировать его из исходников.
@@ -82,7 +79,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 | Ошибка в терминале | Что делать |
 |---|---|
 | `ModuleNotFoundError: No module named 'docx'` (или `fastapi`, `uvicorn`, `openpyxl`) | зависимости не установлены/установлены частично: `./run.sh` (доустановит сам) или `./run.sh --reinstall` |
-| `error: can't combine options ...` / `Failed building wheel for reportlab` | это про **необязательный** PDF-движок: он уже вынесен в `requirements-pdf.txt`, просто пропустите его (`PDF=off ./run.sh`). Печать и DOCX работают без него |
+| `Failed building wheel for reportlab` / `pillow` | на самой новой версии Python готовых сборок может ещё не быть: поставьте Xcode Command Line Tools (`xcode-select --install`) или используйте Python 3.11–3.13 |
 | `Address already in use` | порт занят: `PORT=8010 ./run.sh` или остановите прошлый процесс |
 | `Permission denied` при запуске `./run.sh` | `chmod +x run.sh setup_macos.sh` |
 | Белый экран в браузере | откройте консоль (F12) и `server.log`; чаще всего — кэш, лечится `Cmd+Shift+R` |

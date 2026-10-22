@@ -8,6 +8,28 @@ PR — https://github.com/nikolaifedorenko/butler-service/pull/<номер>.
 
 ## 22.10.2026
 
+### После внешнего ревью: PDF без LibreOffice, журнал отметок, чистка
+* **PDF — один путь, встроенный рендер.** Путь LibreOffice удалён (`core/render.py`, лимит
+  `LO_SLOTS`, подсказки в `run.sh`/`setup_macos.sh`, тест с поддельным soffice). Встроенный
+  рендер научился картинкам из абзацев и ячеек таблиц (размер из документа, не шире колонки):
+  раньше в Docker-образе, где LibreOffice не было, PDF ночного отчёта выходил без фото.
+  `reportlab` и `pillow` — обязательные зависимости (`requirements-pdf.txt` удалён).
+* **Журнал отметок для менеджера** («Отметки» → под доской, `punches_journal.js`): все отметки
+  месяца с фильтром по сотруднику, отметка за сотрудника — сейчас или задним числом (забытый
+  уход), отмена с подтверждением. Бэкенд, права и аудит были готовы — не было кнопок.
+  Проверено вживую: отметка задним числом и её отмена.
+* **«Мои отметки» у учётки без сотрудника** (администратор) больше не показывают отметки всех
+  сотрудников как свои.
+* **Чистка.** Удалены legacy-шаги миграций (`bootstrap/migrations.py`, ветка в `init_db`, штамп
+  baseline и 11 их тестов): база без Alembic теперь не стартует, а объясняет, что делать
+  (`test_base_before_alembic_refuses_to_start`). `seed_statement_kinds` — в `bootstrap/seed.py`.
+  Удалены мёртвые `POST /api/employees/{id}/deactivate`, `GET /api/mgmt/periods`,
+  `view_schedule()`, `ShiftView.is_archived`, шаблон `PREV_DEFAULT_TPL_TIME_OFF`.
+* **Документы и конфиги.** `cd butler-service` вместо `cd timetrack`, пути `app.modules.timesheet…`
+  в GUIDE, без ручных цифр в INSTALL и ARCHITECTURE, ADR-0002 о удалении legacy-пути.
+  `doc_links` проверяет и точечные пути модулей (`app.engine.…`). ESLint — `--max-warnings=0`
+  (два мёртвых имени удалены), `.gitignore` — `*.lock`, мёртвая строка ruff-конфига удалена.
+
 ### Фаза 6 аудита, шаги 6.5–6.6: разрез больших файлов, PDF и вложения рассылки
 * **6.5 (ARCH-02).** `night/interface/night_api.py` (1344 строки) разложен по задачам:
   `night_dicts_api` (справочники), `night_shift_api` (ход смены), `night_dispatch_api`

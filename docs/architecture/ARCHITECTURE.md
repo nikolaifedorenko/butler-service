@@ -53,7 +53,7 @@ cars, docs, notify, settings, access, audit), каждый — гексагон 
 
 Остались осознанные компромиссы: самодельные миграции (Alembic — точка роста),
 линейный по штату бюджет УТ (по спеке: конвейер на сотрудника), SPA без сборки
-(оболочка `app.js` + 9 файлов разделов в `static/js/modules/`). R6 выполнен
+(оболочка `app.js` + файлы разделов в `static/js/modules/`). R6 выполнен
 полностью (батч 20.10.2026): кросс-модульных `relationship()` нет.
 
 ---
@@ -218,7 +218,7 @@ engine_settings). `now` снимается в `application/engine_common.now_utc
 ### 3.5 Клиент
 
 SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки), `app.js` (оболочка,
-меню, роутинг) и **`static/js/modules/`** — 16 файлов разделов, по файлу на экран:
+меню, роутинг) и **`static/js/modules/`** — по файлу на раздел и на экран Настроек:
 `timesheet_layers.js` (сетка Графика), `timesheet_common.js` (общее для экранов движка),
 `marks.js` (доска «Отметки»), `fact.js`, `tabel.js`, `mgmt.js` (УТ), `access.js`, `audit.js`,
 `engine_settings.js` (CFG-*), `me.js`, `employees.js`, `night.js`, `cars.js`, `docs.js`,
@@ -370,7 +370,7 @@ butler-service/
 │   ├── main.py               # composition root: роутеры, хэндлеры ошибок (включая
 │   │                         #   ConfigError/DomainError/ApplicationError движка),
 │   │                         #   middleware из core/observability, раздача SPA, health/selfcheck
-│   ├── bootstrap/            # seed.py (демо-данные), migrations.py (идемпотентные),
+│   ├── bootstrap/            # seed.py (демо-данные), alembic/ (ревизии схемы, ADR-0002),
 │   │                         #   modules.py — поиск манифестов модулей (ADR-0012), registry.py —
 │   │                         #   их регистрация + инъекция провайдеров в core
 │   ├── core/                 # инфраструктура (R5: не знает о модулях):
@@ -381,7 +381,7 @@ butler-service/
 │   │                         #   (каталог прав + require_perm), identity (User/гранты), audit
 │   │                         #   (AuditLog + audit()), media (Photo + хранилище) + media_api
 │   │                         #   (роутер /api/photos), settings_store (key-value Setting),
-│   │                         #   render (транспорт LibreOffice/reportlab), format, roles, observability
+│   │                         #   render (встроенный PDF на reportlab), format, roles, observability
 │   └── modules/              # каждый: manifest.py + domain / application / ports / adapters / interface
 │       ├── timesheet/        # ДВИЖОК v7.1 + Табель/График/отметки/доска/УТ/двойные:
 │       │   ├── domain/       #   чистое ядро (спека 8.1): types, codes_registry, settings,

@@ -49,8 +49,8 @@
 ## Быстрый старт
 
 ```bash
-cd timetrack
-pip install -r requirements.txt        # ядро (PDF-движок — отдельно: requirements-pdf.txt)
+cd butler-service
+pip install -r requirements.txt        # всё, включая PDF (reportlab)
 ./run.sh                      # или: python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 `./run.sh` сам создаёт `.venv`, **доустанавливает недостающие пакеты** и проверяет, что

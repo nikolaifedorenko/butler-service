@@ -18,10 +18,12 @@ async function loadMarks() {
       <span class="badge ok" id="mk-now" style="font-size:13px;padding:7px 12px">—</span>
       <button class="btn btn-sm" id="mk-refresh">Обновить</button>
     </div>
-    <div id="mk-body"><div class="empty">Загрузка…</div></div>`;
+    <div id="mk-body"><div class="empty">Загрузка…</div></div>
+    <div id="mk-journal"></div>`;
   $('#mk-refresh').onclick = () => fetchMarks();
   await fetchMarks();
   poll('marks', () => fetchMarks(true));
+  await loadPunchJournal();          // журнал отметок для менеджера — не опрашивается
 }
 
 async function fetchMarks(silent) {

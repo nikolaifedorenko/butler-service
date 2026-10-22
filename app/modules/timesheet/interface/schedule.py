@@ -1075,7 +1075,7 @@ def export_xlsx(year: int, month: int, principal: Principal = Depends(require_pe
 def export_pdf(year: int, month: int, principal: Principal = Depends(require_perm("schedule.view")),
                db: Session = Depends(get_db)):
     """График на месяц в PDF: та же таблица, что в «Печать»/Excel. Собирается через
-    DOCX → PDF (LibreOffice или встроенный движок); без движка — 501 с подсказкой."""
+    DOCX → PDF встроенным рендером; если собрать не удалось — 501 с подсказкой."""
     from fastapi.responses import Response
 
     from app.core.render import docx_to_pdf

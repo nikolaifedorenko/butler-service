@@ -1,24 +1,19 @@
-"""Генерация PDF на сервере без LibreOffice.
+"""Генерация PDF на сервере: встроенный рендер на reportlab, без внешних программ.
 
-Два пути (выбираются автоматически):
-  1. **LibreOffice** (`soffice --headless --convert-to pdf`) — если установлен:
-     PDF получается один в один как корпоративный .docx-бланк (шрифты, подложка, колонтитулы).
-  2. **Встроенный рендер** (reportlab) — работает всегда: сервер разбирает уже заполненный
-     .docx (параграфы, таблицы, выравнивание, жирный/курсив, поля страницы, колонтитулы)
-     и собирает аккуратный PDF. Кириллица обеспечивается шрифтами DejaVu из `assets/fonts/`
-     (их можно заменить своими: положите TTF в ту же папку или укажите путь в `PDF_FONT`).
+Сервер разбирает уже заполненный .docx (параграфы, таблицы, выравнивание, жирный/курсив,
+фоны ячеек, поля страницы, колонтитулы текстом, картинки) и собирает PDF. Кириллица —
+шрифты DejaVu из `assets/fonts/` (можно заменить своими: TTF в ту же папку или путь в
+`PDF_FONT`). Один путь на Mac, сервере и в Docker; точный вид бланка даёт DOCX.
 
-Так что кнопка «PDF» работает и на Mac без дополнительных установок, и на сервере Ubuntu.
+До 22.10.2026 сначала пробовали LibreOffice: в Docker-образе его не было, и PDF там без
+предупреждения собирался встроенным рендером, который тогда пропускал картинки (фото
+ночного отчёта). Путь LibreOffice удалён, картинки рендер вставляет сам.
 """
 from __future__ import annotations
 
 import contextlib
 import io
 import os
-import shutil
-import subprocess
-import tempfile
-import threading
 from pathlib import Path
 from typing import Optional
 
@@ -67,8 +62,7 @@ def _register_fonts() -> tuple[bool, str]:
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
     except ImportError:
-        _font_error = ("Не установлен PDF-движок. Поставьте LibreOffice (brew install --cask libreoffice) "
-                       "или выполните: pip install -r requirements-pdf.txt. "
+        _font_error = ("Не установлен PDF-движок (reportlab). Выполните: pip install -r requirements.txt. "
                        "DOCX и обычная печать работают всегда.")
         return False, _font_error
 
@@ -115,51 +109,9 @@ def native_error() -> str:
     return err
 
 
-def libreoffice_available() -> bool:
-    return shutil.which("soffice") is not None or shutil.which("libreoffice") is not None
-
-
 def pdf_mode() -> str:
-    """libreoffice | native | none — чем сервер делает PDF."""
-    if libreoffice_available():
-        return "libreoffice"
-    if native_available():
-        return "native"
-    return "none"
-
-
-# PERF-04 (аудит, шаг 6.6): не больше двух LibreOffice на процесс. Конвертация идёт до 180 с,
-# а кнопка «повторить» плодила процессы. Нет свободного слота за LO_WAIT_S — документ соберёт
-# встроенный рендер (как без LibreOffice), а не очередной процесс.
-# shortcut: лимит на процесс, а не на сервер (2 воркера → до 4 LibreOffice), общий — через try_lock.
-LO_SLOTS = threading.BoundedSemaphore(2)
-LO_WAIT_S = 30.0
-
-
-def docx_to_pdf_libreoffice(docx_bytes: bytes) -> Optional[bytes]:
-    exe = shutil.which("soffice") or shutil.which("libreoffice")
-    if not exe:
-        return None
-    if not LO_SLOTS.acquire(timeout=LO_WAIT_S):
-        return None
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            src = Path(tmp) / "doc.docx"
-            src.write_bytes(docx_bytes)
-            # свой профиль на каждый запуск: два soffice с общим профилем не работают параллельно
-            profile = Path(tmp, "profile").as_uri()
-            try:
-                proc = subprocess.run([exe, f"-env:UserInstallation={profile}", "--headless",
-                                       "--convert-to", "pdf", "--outdir", tmp, str(src)],
-                                      capture_output=True, timeout=180)
-            except subprocess.TimeoutExpired:
-                return None
-            out = Path(tmp) / "doc.pdf"
-            if proc.returncode != 0 or not out.exists():
-                return None
-            return out.read_bytes()
-    finally:
-        LO_SLOTS.release()
+    """native | none — может ли сервер делать PDF."""
+    return "native" if native_available() else "none"
 
 
 # ─────────────────────────── разбор заполненного .docx ───────────────────────────
@@ -252,6 +204,49 @@ def _cell_markup(p) -> str:
     return _spaces(_escape(p.text or "")).replace("\n", "<br/>")
 
 
+def _grid_widths(tbl_el, avail: float) -> list[float]:
+    """Ширины колонок пропорционально tblGrid документа (плотные сетки графика иначе не
+    влезали: все колонки получались одинаковыми). [] — сетки нет."""
+    from docx.oxml.ns import qn
+
+    try:
+        grid_el = tbl_el.find(qn("w:tblGrid"))
+        ws = [float(gc.get(qn("w:w")) or 0)
+              for gc in grid_el.findall(qn("w:gridCol"))] if grid_el is not None else []
+    except Exception:
+        return []
+    total = sum(ws)
+    return [avail * w / total for w in ws] if total > 0 else []
+
+
+def _pictures(p, doc, max_w: float, max_h: float) -> list:
+    """Картинки абзаца (w:drawing → a:blip) — размер из wp:extent документа, не шире max_w
+    и не выше max_h, пропорции сохраняются. Нечитаемую картинку пропускаем: документ важнее."""
+    from docx.oxml.ns import qn
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import Image
+
+    out = []
+    for drawing in p._p.iter(qn("w:drawing")):
+        blip = next(drawing.iter(qn("a:blip")), None)
+        rid = blip.get(qn("r:embed")) if blip is not None else None
+        part = doc.part.related_parts.get(rid) if rid else None
+        if part is None:
+            continue
+        try:
+            nat_w, nat_h = ImageReader(io.BytesIO(part.blob)).getSize()   # заодно проверка файла
+        except Exception:
+            continue
+        extent = next(drawing.iter(qn("wp:extent")), None)
+        w, h = ((int(extent.get("cx")) / 12700, int(extent.get("cy")) / 12700)   # EMU → pt
+                if extent is not None else (float(nat_w), float(nat_h)))
+        if w <= 0 or h <= 0:
+            continue
+        k = min(1.0, max_w / w, max_h / h)
+        out.append(Image(io.BytesIO(part.blob), width=w * k, height=h * k))
+    return out
+
+
 def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Optional[bytes]:
     """Собрать PDF из заполненного .docx собственными силами (без внешних программ)."""
     ok, err = _register_fonts()
@@ -311,6 +306,8 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
         except Exception:
             pass
 
+    avail = page_w - left - right
+    frame_h = page_h - top - bottom - 12
     story = []
     body = doc.element.body
     for child in body.iterchildren():
@@ -318,6 +315,10 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
         if tag == "p":
             p = DocxParagraph(child, doc)
             text, size, align, empty = _para_markup(p, base_style.fontSize)
+            pics = _pictures(p, doc, avail, frame_h)
+            story.extend(pics)
+            if empty and pics:
+                continue
             if empty:
                 story.append(Spacer(1, max(4, size * 0.6)))
                 continue
@@ -330,14 +331,20 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
                 story.append(Paragraph(_escape(p.text or ""), base_style))
         elif tag == "tbl":
             tbl = DocxTable(child, doc)
+            grid_w = _grid_widths(child, avail)
             rows = []
             cell_styles = []      # фоны ячеек из w:shd (цветные сетки графика/табеля)
             for r_i, row in enumerate(tbl.rows):
                 cells = []
                 for c_i, cell in enumerate(row.cells):
                     paras = []
+                    cap = (grid_w[c_i] if c_i < len(grid_w) else avail) - 6   # минус поля ячейки
                     for pp in cell.paragraphs:
+                        pics = _pictures(pp, doc, cap, frame_h)
+                        paras.extend(pics)
                         txt = _cell_markup(pp)
+                        if pics and not txt:
+                            continue
                         size, bold, color = _run_look(pp)
                         align = _align_of(str(getattr(pp.alignment, "name", "") or "").upper())
                         paras.append(Paragraph(txt or "&nbsp;", ParagraphStyle(
@@ -357,23 +364,11 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
                 rows.append(cells)
             if not rows:
                 continue
-            avail = page_w - left - right
             n_cols = max(len(r) for r in rows)
             for r in rows:
                 while len(r) < n_cols:
                     r.append([Paragraph("&nbsp;", base_style)])
-            # ширины колонок — пропорционально tblGrid документа (плотные сетки
-            # графика иначе не влезали: все колонки получались одинаковыми)
-            col_w = [avail / n_cols] * n_cols
-            try:
-                grid_el = child.find(qn("w:tblGrid"))
-                ws = [float(gc.get(qn("w:w")) or 0)
-                      for gc in grid_el.findall(qn("w:gridCol"))] if grid_el is not None else []
-                if len(ws) == n_cols and sum(ws) > 0:
-                    total_w = sum(ws)
-                    col_w = [avail * w / total_w for w in ws]
-            except Exception:
-                pass
+            col_w = grid_w if len(grid_w) == n_cols else [avail / n_cols] * n_cols
             t = RLTable(rows, colWidths=col_w, repeatRows=1)
             t.setStyle(TableStyle([
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9aa5b5")),
@@ -424,10 +419,7 @@ def docx_to_pdf_native(docx_bytes: bytes, filename: str = "document.pdf") -> Opt
 
 def docx_to_pdf(docx_bytes: bytes, filename: str = "document.pdf") -> tuple[Optional[bytes], str]:
     """PDF из заполненного DOCX. Возвращает (байты или None, чем сделано/почему не вышло)."""
-    lo = docx_to_pdf_libreoffice(docx_bytes)
-    if lo:
-        return lo, "libreoffice"
     native = docx_to_pdf_native(docx_bytes, filename)
     if native:
         return native, "native"
-    return None, native_error() or "LibreOffice не установлен, встроенный рендер PDF недоступен"
+    return None, native_error() or "встроенный рендер PDF не смог собрать документ"

@@ -72,7 +72,7 @@ function triggerDownload(blob, name) {
 }
 
 /* DOCX/PDF из корпоративного шаблона (Настройки → Шаблоны документов компании).
-   PDF собирается на сервере (LibreOffice или встроенный рендер) и открывается в новой
+   PDF собирается на сервере встроенным рендером и открывается в новой
    вкладке — из неё сразу можно печатать. */
 async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenceId = null) {
   let p;

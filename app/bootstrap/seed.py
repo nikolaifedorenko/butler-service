@@ -557,3 +557,36 @@ def _seed_cars(db: Session, by_name: dict) -> None:
                 if number == "1":
                     car.assigned_to = emp.id
     db.flush()
+
+
+def seed_statement_kinds() -> None:
+    """Словарь видов заявлений: при первом запуске новой версии добавляем встроенные
+    виды (тексты — из сохранённых настроек, иначе дефолтные). Если словарь уже
+    заполнен — не вмешиваемся (удалённые пользователем виды не воскрешаем)."""
+    from sqlalchemy import func, select
+
+    from app.modules.employees.application.catalog import StatementKind
+
+    from ..core.db import SessionLocal
+    from ..modules.docs.application.doc_render import DOC_TYPES
+    from ..modules.docs.application.doc_templates import load_doc_templates
+
+    db = SessionLocal()
+    try:
+        if db.scalar(select(func.count(StatementKind.id))):
+            return
+        doc = load_doc_templates(db)
+        legacy_text = {
+            "vacation_paid": doc["vacation"],
+            "vacation_unpaid": doc["vacation_unpaid"],
+            "day_off_hours": doc["day_off_hours"],
+            "time_off_request": doc["time_off_request"],
+        }
+        order = 10
+        for code, name in DOC_TYPES.items():
+            db.add(StatementKind(code=code, name=name, text=legacy_text.get(code, ""),
+                                 builtin=True, sort_order=order))
+            order += 10
+        db.commit()
+    finally:
+        db.close()

@@ -534,27 +534,6 @@ def _current_value(db: Session, emp: Employee) -> str:
         return ""
 
 
-@router.post("/employees/{employee_id}/deactivate")
-def deactivate_employee(employee_id: int, principal: Principal = Depends(require_perm("employees.edit")),
-                        db: Session = Depends(get_db), active: bool = False):
-    """Деактивировать (по умолчанию) или активировать сотрудника — идемпотентно.
-
-    Раньше здесь был `active = not active` (переключатель): повторный запрос при таймауте
-    сети откатывал состояние обратно. Теперь состояние задаётся явно параметром `active`.
-    """
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    _guard_supervisor(db, principal, ROLE_EMPLOYEE, emp.user)
-    emp.active = active
-    if emp.user:
-        emp.user.is_active = active
-    audit(db, principal, "employee_deactivate" if not active else "employee_activate",
-          f"employee:{emp.id}")
-    db.commit()
-    return _emp_dict(emp, with_user=True)
-
-
 @router.post("/employees/{employee_id}/delete")
 def delete_employee(employee_id: int, principal: Principal = Depends(require_perm("employees.edit")),
                     db: Session = Depends(get_db)):

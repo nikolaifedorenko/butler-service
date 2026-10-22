@@ -14,7 +14,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.main import app, init_db, migrate_db  # noqa: E402
+from app.main import app, init_db  # noqa: E402
 
 init_db()
 client = TestClient(app)
@@ -93,33 +93,6 @@ class TestDicts(unittest.TestCase):
         emp = next(e for e in client.get("/api/employees").json() if e["id"] == self.emp_id)
         self.assertEqual(emp["subdivision"], "")
 
-    def test_04_subdivision_backfill_on_migrate(self):
-        """Значение из карточки, которого нет в справочнике, попадает туда при миграции."""
-        from sqlalchemy import select
-
-        from app.core.db import SessionLocal
-        from app.modules.employees.application.catalog import Employee, Subdivision
-
-        db = SessionLocal()
-        try:
-            emp = db.get(Employee, self.emp_id)
-            emp.subdivision = "Служба ручного бэкфилла"
-            db.commit()
-            existed = db.scalar(select(Subdivision).where(
-                Subdivision.name == "Служба ручного бэкфилла"))
-            self.assertIsNone(existed)
-        finally:
-            db.close()
-
-        migrate_db()
-
-        names = [s["name"] for s in client.get("/api/subdivisions").json()]
-        self.assertIn("Служба ручного бэкфилла", names)
-
-        # вторая миграция не дублирует
-        migrate_db()
-        names = [s["name"] for s in client.get("/api/subdivisions").json()]
-        self.assertEqual(names.count("Служба ручного бэкфилла"), 1)
 
     # ── права ──
     def test_05_employee_forbidden(self):

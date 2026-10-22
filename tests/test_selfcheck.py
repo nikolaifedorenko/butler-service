@@ -1,8 +1,7 @@
 """Самодиагностика схемы: /api/selfcheck обязан строиться из models.py.
 
-Раньше список «обязательных» таблиц и колонок был рукописным и разошёлся с
-migrate_db(): шесть добавленных миграцией колонок (включая users.token_version)
-не проверялись. Теперь selfcheck берёт схему из Base.metadata, поэтому расходиться
+Раньше список «обязательных» таблиц и колонок был рукописным и разошёлся со схемой:
+шесть добавленных колонок (включая users.token_version) не проверялись. Теперь selfcheck берёт схему из Base.metadata, поэтому расходиться
 нечему — эти тесты фиксируют такое поведение.
 """
 from __future__ import annotations
@@ -42,17 +41,3 @@ def test_selfcheck_dostupen_bez_vhoda(client):
 def test_selfcheck_bez_detalei_dlya_ne_admina(employee_client):
     data = employee_client.get("/api/selfcheck").json()
     assert "missing" not in data
-
-
-def test_migraciya_idempotentna(admin_client):
-    """Повторный прогон migrate_db() не ломает схему и не падает.
-
-    Миграция выполняется при каждом старте сервера, поэтому обязана быть идемпотентной:
-    ALTER TABLE ADD COLUMN на уже существующую колонку недопустим.
-    """
-    from app.main import migrate_db
-
-    migrate_db()          # второй раз поверх уже мигрированной базы
-    migrate_db()          # и третий — для надёжности
-    data = admin_client.get("/api/selfcheck").json()
-    assert data["ok"] is True, f"после повторных миграций схема разошлась: {data['missing'][:10]}"

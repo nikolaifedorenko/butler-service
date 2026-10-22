@@ -38,17 +38,6 @@ fi
   || { echo "ОШИБКА: базовые пакеты не установлены. Проверьте интернет и повторите."; exit 1; }
 echo "зависимости установлены"
 
-# PDF-движок — по желанию: без него документы печатаются через DOCX/браузер
-if ! command -v soffice >/dev/null 2>&1 \
-   && [ ! -x /Applications/LibreOffice.app/Contents/MacOS/soffice ]; then
-  echo "Ставлю необязательный PDF-движок (reportlab) ..."
-  ./.venv/bin/python -m pip install --quiet -r requirements-pdf.txt \
-    && echo "PDF-движок установлен" \
-    || echo "  – не установился (бывает на самом новом Python). Не критично:" \
-       "    заявления будут скачиваться в DOCX, а печать работает и без PDF." \
-       "    Точный PDF даёт LibreOffice:  brew install --cask libreoffice"
-fi
-
 echo "── 3/4 Конфигурация .env ───────────────────────────"
 if [ ! -f .env ]; then
   cp .env.example .env

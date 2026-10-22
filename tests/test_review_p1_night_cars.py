@@ -396,21 +396,6 @@ def test_povtornaya_otmetka_kara_obnovlyaet_checked_at(manager_client, db, freez
         assert card2["last_checked_at"] == t2, "карточка кара осталась со старым временем проверки"
 
 
-# ─────────────────────── миграция колонки reopened_at ───────────────────────
-
-def test_migraciya_reopened_at_idempotentna(app_stack):
-    """ADD COLUMN night_reports.reopened_at идемпотентен (старые локальные базы)."""
-    from sqlalchemy import inspect as sa_inspect
-
-    from app.bootstrap.migrations import migrate_night_reopened_at
-    from app.core.db import engine
-
-    migrate_night_reopened_at()
-    migrate_night_reopened_at()     # второй раз поверх уже мигрированной базы
-    cols = {c["name"] for c in sa_inspect(engine).get_columns("night_reports")}
-    assert "reopened_at" in cols
-
-
 def test_settings_nochnoy_sinhronizacii(app_stack):
     """Фоновая синхронизация настраивается и по умолчанию включена (60 с)."""
     from app.bootstrap import night_sync

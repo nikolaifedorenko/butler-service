@@ -64,10 +64,6 @@ class ShiftView:
     def planned_hours(self) -> float:
         return planned_hours_of(self.start_time, self.end_time, self.kind)
 
-    @property
-    def is_archived(self) -> bool:
-        return bool(self.archived_at) or not self.active
-
     def __repr__(self) -> str:  # pragma: no cover - отладка
         return f"<ShiftView {self.code} {self.start_time}-{self.end_time}{' (историческая)' if self.is_revision else ''}>"
 

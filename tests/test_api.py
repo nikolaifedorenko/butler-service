@@ -567,7 +567,7 @@ class TestApi(unittest.TestCase):
         self.assertIn(d1.strftime("%d.%m.%Y"), text)
         self.assertIn("двенадцать", text)              # дни прописью
 
-        # pdf: 200 если на машине есть LibreOffice, иначе честный 501
+        # pdf: 200 (встроенный рендер), без шрифта с кириллицей — честный 501
         r = self.admin.post("/api/docs/render", json={
             "type": "vacation_paid", "employee_id": emp["id"],
             "date_from": d1.isoformat(), "date_to": d2.isoformat(), "format": "pdf"})

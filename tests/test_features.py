@@ -475,7 +475,7 @@ class TestNewFeatures(unittest.TestCase):
             "reason": away["name"], "note": "по семейным обстоятельствам"})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertTrue(r.content.startswith(b"PK"))     # docx — это zip
-        # PDF: 200, если есть LibreOffice или reportlab; иначе честный 501 с подсказкой
+        # PDF: 200 (встроенный рендер); без шрифта с кириллицей — честный 501 с подсказкой
         r = client.post("/api/docs/render", json={
             "type": "time_off_request", "employee_id": emp["id"],
             "date_from": day.isoformat(), "date_to": day.isoformat(), "format": "pdf",

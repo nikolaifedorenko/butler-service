@@ -174,7 +174,7 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Линтер JavaScript (no-undef ловит отсутствующие функции разделов)
-        run: npx eslint static/js static/sw.js
+        run: npx eslint --max-warnings=0 static/js static/sw.js
 
       - name: Список глобальных имён JS не разошёлся с кодом
         run: python tools/gen_js_globals.py --check

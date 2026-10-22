@@ -13,24 +13,11 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 
 from .bootstrap import modules, registry, schema_version
-from .bootstrap.migrations import (
-    migrate_db,
-    migrate_engine_v7,
-    migrate_manual_replaces_generated,
-    migrate_night_cars,
-    migrate_night_reopened_at,
-    migrate_night_zones,
-    migrate_schedule_dict_simplify,
-    migrate_settings_value_text,
-    migrate_time_off_template,
-    migrate_timeoff_entity,
-    seed_statement_kinds,
-)
-from .bootstrap.seed import seed_if_empty
+from .bootstrap.seed import seed_if_empty, seed_statement_kinds
 from .core import observability
 from .core.auth import Principal, optional_principal
 from .core.config import settings
-from .core.db import Base, SessionLocal, engine
+from .core.db import SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.startup_lock import startup_lock
 from .core.time import now_local
@@ -60,18 +47,14 @@ def _init_db_steps() -> None:
     """Тело инициализации схемы — вызывается ТОЛЬКО под замком startup_lock."""
     registry.wire()   # реестр моделей + провайдеры core (R5: core не импортирует модули)
     tables = set(inspect(engine).get_table_names())
-    # база до перехода на Alembic (ADR-0002): прежние шаги, затем штамп baseline
-    legacy = bool(tables) and "alembic_version" not in tables
-    if legacy:
-        # shortcut: прежние шаги + create_all текущих моделей верны, пока ревизии после
-        # 0001 не создают таблиц и колонок; с первой такой ревизией legacy-ветку удалить
-        Base.metadata.create_all(bind=engine)
-        migrate_db()
-        migrate_settings_value_text()   # PostgreSQL: шаблоны документов длиннее VARCHAR(255)
-        migrate_engine_v7()
-        migrate_schedule_dict_simplify()
-    else:
-        schema_version.upgrade()        # пустая база — целиком из ревизий, под Alembic — новые
+    if tables and "alembic_version" not in tables:
+        # база до перехода на Alembic (21.10.2026): прежние шаги обновления удалены 22.10.2026 —
+        # боевых баз на таких версиях нет (решение владельца), демо-базу создают заново
+        raise RuntimeError(
+            "База создана версией до 21.10.2026 (без Alembic) и не обновляется. Демо-базу "
+            "удалите (timetrack.db) — при старте она создастся заново; данные из такой базы "
+            "переносятся вручную.")
+    schema_version.upgrade()            # пустая база — целиком из ревизий, остальные — новыми
     seed_statement_kinds()
     db = SessionLocal()
     try:
@@ -81,18 +64,6 @@ def _init_db_steps() -> None:
         db.commit()
     finally:
         db.close()
-    if legacy:
-        # норматив 12.10.2026 (T1/T4): «код в табеле» у смен — только коды словаря Табеля,
-        # «отпросился» и «выходной за часы» — одна запись словаря. Обе миграции идемпотентны
-        # и идут ПОСЛЕ bootstrap: первой нужен действующий справочник CFG-DAY-CODES.
-        migrate_timeoff_entity()
-        migrate_manual_replaces_generated()
-        migrate_time_off_template()
-        migrate_night_cars()
-        migrate_night_zones()           # зоны обхода (v2): из «категорий» областей
-        migrate_night_reopened_at()     # момент ручного переоткрытия отчёта (P1 20.10.2026)
-        schema_version.stamp_baseline()
-        schema_version.upgrade()        # ревизии после baseline
     # ночные смены, пропущенные пока сервер был выключен, + автозакрытие наступивших
     from .core.media import cleanup_photos
     from .modules.night.application.night import sync_reports
@@ -286,9 +257,7 @@ def selfcheck(principal: Optional[Principal] = Depends(optional_principal)):
     """Самодиагностика: соответствует ли схема БД моделям текущего кода.
 
     Список таблиц и колонок берётся из Base.metadata (models.py) — единственного
-    источника правды. Раньше здесь был второй рукописный список, который уже
-    разошёлся с migrate_db(): шесть добавленных колонок (включая users.token_version)
-    не проверялись, и selfcheck не мог заметить отставание схемы.
+    источника правды (раньше был второй рукописный список, и он расходился со схемой).
 
     Без входа (так проверку показывает инструкция по установке) отдаётся только
     итог ok/hint; перечень таблиц и колонок — лишь администратору: схема БД —

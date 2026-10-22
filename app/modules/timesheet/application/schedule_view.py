@@ -17,11 +17,6 @@ from .errors import ScheduleDayNotEditableError
 from .months import month_period, period_containing
 
 
-def view_schedule(period: Period, employee_id: str | None,
-                  ports: EnginePorts) -> Sequence[ShiftEntry]:
-    return tuple(ports.schedule_store.load_entries(employee_id, period))
-
-
 def _settings_for(day: dt.date, ports: EnginePorts) -> Settings:
     return ports.settings.load(period_containing(day, "month"))
 

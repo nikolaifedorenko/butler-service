@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Битые ссылки в живых документах (шаг 6.1 аудита, DOC-01): пути вида `app/…`, `docs/…`,
-`static/…`, `tools/…`, `tests/…`, `deploy/…` и относительные markdown-ссылки `[…](…)` на файлы,
-которых нет в репозитории.
+`static/…`, `tools/…`, `tests/…`, `deploy/…`, относительные markdown-ссылки `[…](…)` на файлы,
+которых нет в репозитории, и точечные пути модулей `app.x.y[.функция]`, которых нет в коде.
 
 Исторические документы описывают структуру на свою дату и не проверяются: архив, материалы
 аудита, предложения `PROPOSAL-*`, ADR-0006 (заменён) и ADR-0010 (описывает прежнюю структуру).
@@ -21,6 +21,7 @@ HISTORICAL = ("docs/archive/", "docs/audit/", "docs/PROPOSAL-",
               "docs/adr/0006-", "docs/adr/0010-")
 PATH_RE = re.compile(r"(?<![\w/.-])((?:app|docs|static|tools|tests|deploy|templates|assets)/[\w./\-*{}<>]+)")
 LINK_RE = re.compile(r"\]\(([^)\s#]+)(?:#[^)]*)?\)")
+DOTTED_RE = re.compile(r"(?<![\w/.-])(app(?:\.\w+)+)(?![\w/-])")
 
 
 def living_docs() -> list[Path]:
@@ -51,6 +52,19 @@ def _missing(path: Path) -> bool:
                for p in (str(path), f"{path}/"))
 
 
+def _module_missing(dotted: str) -> bool:
+    """app.a.b.name: самая длинная часть — модуль или пакет под git, после неё — не больше одного
+    имени (функция, класс). Так ловятся пути переехавших модулей (`app.engine.…`)."""
+    if not TRACKED:
+        TRACKED.update(_tracked())
+    parts = dotted.split(".")
+    for i in range(len(parts), 0, -1):
+        base = ROOT.joinpath(*parts[:i])
+        if base.with_suffix(".py") in TRACKED or base in TRACKED:
+            return len(parts) - i > 1
+    return True
+
+
 def broken(md: Path) -> list[tuple[int, str]]:
     found = []
     for lineno, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
@@ -61,6 +75,9 @@ def broken(md: Path) -> list[tuple[int, str]]:
             p = p.split(":")[0].split("#")[0]
             if _missing(ROOT / p):
                 found.append((lineno, p))
+        for m in DOTTED_RE.finditer(line):
+            if _module_missing(m.group(1)):
+                found.append((lineno, m.group(1)))
         for m in LINK_RE.finditer(line):
             target = m.group(1)
             if re.match(r"[a-z]+:", target) or target.startswith("/"):
