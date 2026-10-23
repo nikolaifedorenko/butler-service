@@ -186,6 +186,8 @@ jobs:
           ./tools/run_ui_check.sh 8199 gromova
           ./tools/run_ui_check.sh 8198 ivanov
           ./tools/run_ui_check.sh 8197 admin
+          ./tools/run_ui_check.sh 8190 rukovod stays
+          ./tools/run_ui_check.sh 8189 sluzhba stays
 
       - name: Сценарий раздела «Настройки» (клики, мастер, проверитель, публикация версии)
         # Смоук проверяет, что экраны ОТРИСОВАНЫ; этот сценарий — что они РАБОТАЮ:
@@ -234,6 +236,18 @@ jobs:
         # «Недостатки смены». Под другой ролью он тоже проходит — блок общих
         # настроек заменяется проверкой, что экран без settings.edit скрыт.
         run: ./tools/run_night_zones_scenario.sh 8192 admin
+
+      - name: "Сценарий «Шахматки» (бронь с предпросмотром, батлеры, табло; роли)"
+        # Под admin — путь менеджера: бронь формой с предпросмотром, вытеснение чужой
+        # брони, 409 при устаревшей версии, «Перенести», назначение шаблоном, «вне смены» →
+        # «Добавить смену в График», табло дня, ручная правка по дням, загрузка и полный
+        # фонд на 440 объектах. Под ivanov — «Мои гости» и правка своей брони; под sluzhba —
+        # вкладки без единой фамилии гостя; rukovod — просмотр без правки.
+        run: |
+          ./tools/run_stays_scenario.sh 8188 admin
+          ./tools/run_stays_scenario.sh 8187 ivanov
+          ./tools/run_stays_scenario.sh 8186 sluzhba
+          ./tools/run_stays_scenario.sh 8185 rukovod
 
   docker:
     name: Docker-образ собирается

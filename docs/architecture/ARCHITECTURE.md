@@ -22,8 +22,8 @@ DOCX/PDF + два независимых поддомена (ночные отч
 `app/core/` (инфраструктура: config, db-сессия, время, ошибки, безопасность,
 права, идентичность, аудит, медиа, key-value хранилище, рендер-транспорт) +
 `app/bootstrap/` и `app/main.py` (composition root — единственное место, знающее
-все модули) + **9 бизнес-модулей** `app/modules/*` (timesheet, employees, night,
-cars, docs, notify, settings, access, audit), каждый — гексагон из пяти слоёв
+все модули) + **10 бизнес-модулей** `app/modules/*` (timesheet, employees, night,
+cars, docs, notify, settings, access, audit, stays), каждый — гексагон из пяти слоёв
 `domain / application / ports / adapters / interface`. Границы закреплены
 инструментально: 14 контрактов `.importlinter` (R5, R3-приватность слоёв,
 независимость роутеров) + AST-тесты (`tests/engine/test_architecture.py` —
@@ -85,6 +85,7 @@ cars, docs, notify, settings, access, audit), каждый — гексагон 
 | **employees** | Каталог персонала, трудоустройство, жизненный цикл, группы графика, имена | `application` (catalog: Employee/Department/…, employment, groups/names-реэкспорт) |
 | **night** | Ночной отчёт v2: зоны, объекты, чек-листы, недостатки, журнал, выгрузки. Обслуживание (досоздание смен, автозакрытие в 08:00) — стартовый прогон + фоновый поток `bootstrap/night_sync` под лидер-замком `try_lock`, НЕ в GET-запросах | `application` (night, night_export, night_notify, catalog) |
 | **cars** | Электрокары: парк, заряд/возврат, места, ночная проверка | `application` (cars, catalog) |
+| **stays** | «Шахматка»: фонд, гости, брони, автораспределение по объектам, покрытие батлерами, предпросмотр изменений (23.10.2026) | `application` (catalog); График читает через публичный `timesheet.application.roster` |
 | **docs** | Заявления DOCX/PDF, сетка Графика в Excel, шаблоны | `application` (doc_render, grid_docx, doc_templates) |
 | **notify** | Общая доставка: Telegram + почта, каталог чатов, журнал отправок | `application` (config, dispatch, recipients, chats, catalog), `ports` (TransportError) |
 | **settings** | Единый центр настроек (агрегирует границы timesheet/docs) | `interface` (своей логики нет) |

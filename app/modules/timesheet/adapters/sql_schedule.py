@@ -64,6 +64,17 @@ class SqlShiftAdapter:
             .order_by(ScheduleShift.start_utc, ScheduleShift.id))
         return [_shift(r) for r in rows]
 
+    def shifts_for(self, employee_ids, period: Period) -> list[Shift]:
+        """Пакетно на диапазон (публичный запрос Графика для шахматки)."""
+        if not employee_ids:
+            return []
+        lo, hi = self._window(period.start, period.end + DAY)
+        rows = self.db.scalars(select(ScheduleShift).where(
+            ScheduleShift.employee_id.in_([emp_pk(e) for e in employee_ids]),
+            ScheduleShift.start_utc < hi, ScheduleShift.end_utc > lo)
+            .order_by(ScheduleShift.start_utc, ScheduleShift.id))
+        return [_shift(r) for r in rows]
+
     def shifts_on_day(self, day: dt.date) -> list[Shift]:
         lo, hi = self._window(day, day + DAY)
         rows = self.db.scalars(select(ScheduleShift).where(
@@ -84,6 +95,16 @@ class SqlAbsenceAdapter:
         lo, hi = self._window(period.start, period.end + DAY)
         rows = self.db.scalars(select(ScheduleAbsence).where(
             ScheduleAbsence.employee_id == emp_pk(employee_id),
+            ScheduleAbsence.start_utc < hi, ScheduleAbsence.end_utc > lo)
+            .order_by(ScheduleAbsence.start_utc, ScheduleAbsence.id))
+        return [_absence(r) for r in rows]
+
+    def absences_for(self, employee_ids, period: Period) -> list[Absence]:
+        if not employee_ids:
+            return []
+        lo, hi = self._window(period.start, period.end + DAY)
+        rows = self.db.scalars(select(ScheduleAbsence).where(
+            ScheduleAbsence.employee_id.in_([emp_pk(e) for e in employee_ids]),
             ScheduleAbsence.start_utc < hi, ScheduleAbsence.end_utc > lo)
             .order_by(ScheduleAbsence.start_utc, ScheduleAbsence.id))
         return [_absence(r) for r in rows]
