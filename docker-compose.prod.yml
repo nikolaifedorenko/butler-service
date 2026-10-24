@@ -80,10 +80,12 @@ services:
     # ревизию; startup_lock — страховка ручного запуска), фоновая синхронизация ночных
     # отчётов (bootstrap/night_sync.py) — один раунд на всех под try_lock,
     # замок отметок — строка БД (SELECT … FOR UPDATE), лимит входа — общий, в таблице
-    # login_attempts (ADR-0005)
+    # login_attempts (ADR-0005). Заголовки прокси разбирает само приложение (core/net,
+    # TRUST_PROXY_HEADERS): uvicorn их не трогает (--no-proxy-headers) — прежний
+    # --forwarded-allow-ips "*" подставлял клиенту ЛЕВЫЙ адрес X-Forwarded-For
     command: >
       python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-      --workers ${UVICORN_WORKERS:-2} --proxy-headers --forwarded-allow-ips "*"
+      --workers ${UVICORN_WORKERS:-2} --no-proxy-headers
       --no-access-log
     volumes:
       - app_data:/srv/timetrack/data

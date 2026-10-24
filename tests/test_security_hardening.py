@@ -130,7 +130,7 @@ def test_client_ip_xff_only_when_trusted(app_stack):
     from types import SimpleNamespace
 
     from app.core.config import settings
-    from app.modules.access.interface.auth_routes import _client_ip
+    from app.core.net import client_ip as _client_ip
 
     req = SimpleNamespace(headers={"x-forwarded-for": "1.2.3.4"},
                           client=SimpleNamespace(host="9.9.9.9"))
@@ -144,3 +144,39 @@ def test_client_ip_xff_only_when_trusted(app_stack):
         assert _client_ip(req) == "1.2.3.4"
     finally:
         settings.trust_proxy_headers = False
+
+
+def test_client_ip_is_a_valid_address_or_connection_peer(app_stack):
+    """Адрес из XFF — только настоящий IP: «%», «_» и мусор попадали в LIKE лимита входа
+    (чужой бакет), длинная строка — в ключ String(80) (500 на PostgreSQL). Рецензия 22.10.2026."""
+    from types import SimpleNamespace
+
+    from app.core.config import settings
+    from app.core.net import client_ip
+    from app.modules.access.interface.auth_routes import _attempt_key
+
+    def ip(xff):
+        return client_ip(SimpleNamespace(headers={"x-forwarded-for": xff},
+                                         client=SimpleNamespace(host="9.9.9.9")))
+
+    settings.trust_proxy_headers = True
+    try:
+        assert ip("6.6.6.6, 10.0.0.%") == "9.9.9.9"          # не IP — адрес соединения
+        assert ip("1.2.3.4, " + "x" * 500) == "9.9.9.9"
+        assert ip("fe80::1%eth0") == "fe80::1"               # зона IPv6 — не часть адреса
+        assert ip("2001:DB8::1") == "2001:db8::1"            # одна запись на адрес
+        longest = "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"
+        assert len(_attempt_key(ip(longest), "u" * 200)) <= 80
+    finally:
+        settings.trust_proxy_headers = False
+
+
+def test_prod_uvicorn_does_not_trust_any_proxy():
+    """--forwarded-allow-ips "*": при TRUST_PROXY_HEADERS=0 uvicorn сам подставлял клиенту
+    ЛЕВЫЙ адрес X-Forwarded-For (его присылает клиент) — лимит входа снова обходился."""
+    import pathlib
+
+    compose = (pathlib.Path(__file__).resolve().parents[1] / "docker-compose.prod.yml").read_text()
+    code = "\n".join(line.split("#", 1)[0] for line in compose.splitlines())   # без комментариев
+    assert "forwarded-allow-ips" not in code
+    assert "--no-proxy-headers" in code

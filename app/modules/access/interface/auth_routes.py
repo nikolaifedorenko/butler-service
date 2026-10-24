@@ -15,6 +15,7 @@ from app.core.auth_guards import can_manage_user
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.identity import LoginAttempt, User
+from app.core.net import client_ip
 from app.core.permissions import require_perm
 from app.core.security import MIN_PASSWORD_LEN, create_token, hash_password, needs_rehash, verify_password
 from app.core.time import local_date, utcnow
@@ -31,21 +32,6 @@ _DUMMY_HASH = hash_password("dummy-password-for-timing")
 _LOGIN_WINDOW_SECONDS = 300
 _LOGIN_MAX_ATTEMPTS = 10        # на пару «адрес + логин»
 _LOGIN_MAX_PER_IP = 50          # на адрес целиком: перебор по разным логинам
-
-
-def _client_ip(request: Request) -> str:
-    # Без reverse-proxy адрес клиента — адрес соединения. За прокси это адрес прокси
-    # (все клиенты в одном бакете лимита), поэтому X-Forwarded-For читается ТОЛЬКО
-    # при TRUST_PROXY_HEADERS=1 — включайте, когда приложение гарантированно стоит
-    # за своим доверенным прокси (nginx из docker-compose.prod.yml), иначе заголовок
-    # подделывается клиентом и лимит обходится/направляется на чужой IP.
-    if settings.trust_proxy_headers:
-        xff = request.headers.get("x-forwarded-for", "")
-        if xff:
-            # правый адрес дописал наш nginx ($proxy_add_x_forwarded_for); левые присылает
-            # клиент — по ним лимит обходился сменой заголовка (аудит 21.10.2026, SEC-01)
-            return xff.split(",")[-1].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _window_start() -> dt.datetime:
@@ -103,7 +89,7 @@ def _set_cookie(response: Response, token: str) -> None:
 def _authenticate(db: Session, request: Request, username: str, password: str):
     """Общая проверка учётных данных для JSON- и форм-входа (rate-limit, постоянный
     хеш для несуществующего логина, ленивый rehash). Возвращает (user, employee)."""
-    ip = _client_ip(request)
+    ip = client_ip(request)
     if _too_many_attempts(db, ip, username):
         raise HTTPException(status_code=429,
                             detail="Слишком много неудачных попыток входа. Подождите несколько минут.")

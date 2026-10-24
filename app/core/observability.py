@@ -21,6 +21,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from .config import settings
+from .net import client_ip
 from .security import new_csrf_token
 
 # ── CSRF: double-submit cookie (ADR-0004) ────────────────────────────────────
@@ -152,7 +153,7 @@ def _observe(request: Request, status: int, started: float, request_id: str) -> 
             "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds"),
             "method": request.method, "path": request.url.path, "status": status,
             "duration_ms": duration_ms, "route": label, "request_id": request_id,
-            "ip": request.client.host if request.client else "-",
+            "ip": client_ip(request) if request.client else "-",
         }, ensure_ascii=False))
 
 
