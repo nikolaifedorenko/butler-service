@@ -7,7 +7,8 @@ put_user_grants требовал только access.manage: менеджер, �
   * права пользователя старшей роли (admin) менять нельзя — как can_manage_user;
   * выдать право, которого нет у самого, нельзя — ни себе, ни другому;
   * выдать своё право младшему можно;
-  * чужая выдача, сделанная администратором, не мешает менеджеру править другие права.
+  * чужая выдача, сделанная администратором, не мешает менеджеру править другие права;
+  * то же правило — для прав ролей, прав групп, состава и удаления группы.
 """
 from __future__ import annotations
 
@@ -168,3 +169,25 @@ def test_group_members_follow_hierarchy(manager, admin_client, group, db):
     assert client.put(url, json={"user_ids": [ivanov.id]}).status_code == 200
     r = client.put(url, json={"user_ids": [ivanov.id, admin.id]})
     assert r.status_code == 403, r.text
+
+
+def test_delete_group_follows_hierarchy(manager, admin_client, group, db):
+    """Удаление группы — тоже смена прав участников: они теряют её allow и её deny.
+    Снятие чужого deny — расширение; участник старшей роли — не по рангу."""
+    client, me = manager
+    ivanov, admin = _user(db, "ivanov"), _user(db, "admin")
+    missing = _lacking(db, me)
+    url = f"/api/access/groups/{group}"
+
+    assert admin_client.put(f"{url}/members", json={"user_ids": [ivanov.id]}).status_code == 200
+    assert admin_client.put(f"{url}/grants", json={"grants": {missing: "deny"}}).status_code == 200
+    r = client.delete(url)
+    assert r.status_code == 403 and missing in r.json()["detail"], r.text
+
+    assert admin_client.put(f"{url}/grants", json={"grants": {_own(db, me): "deny"}}).status_code == 200
+    assert admin_client.put(f"{url}/members",
+                            json={"user_ids": [ivanov.id, admin.id]}).status_code == 200
+    assert client.delete(url).status_code == 403                  # в группе администратор
+
+    assert admin_client.put(f"{url}/members", json={"user_ids": [ivanov.id]}).status_code == 200
+    assert client.delete(url).status_code == 200                  # своё право, младший участник
