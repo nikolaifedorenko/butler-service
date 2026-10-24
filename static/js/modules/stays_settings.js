@@ -15,8 +15,9 @@ registerModule({ screens: {
 
 const STAYS_FIELD_KINDS = { text: 'текст', choice: 'список', bool: 'да / нет', date: 'дата' };
 
-/* форма-модалка: поля по описанию, кнопка [data-save] вызывает save(значения) */
-function staysForm(title, rows, save) {
+/* форма-модалка: поля по описанию, кнопка [data-save] вызывает save(значения);
+   mount(m) — по желанию, после отрисовки (динамические строки формы) */
+function staysForm(title, rows, save, mount) {
   openModal({
     title,
     body: rows.join(''),
@@ -26,6 +27,7 @@ function staysForm(title, rows, save) {
       m.querySelector('[data-save]').onclick = async () => {
         try { await save(m); closeModal(); } catch (e) { toast(e.message, 'err'); }
       };
+      if (mount) mount(m);
     },
   });
 }

@@ -4,7 +4,8 @@
   1. экраны Настроек: фонд и категории, сопровождение, настраиваемые поля, метки;
   2. шахматка объектов: бронь формой с предпросмотром, вытеснение чужой брони, 409, карточка;
   3. батлеры: назначение шаблоном → «вне смены» → «Добавить смену» → табло дня;
-  4. сводная загрузка, полный фонд на шахматке; под другими логинами — смоук вкладок и «Мои гости».
+  4. сводная загрузка, полный фонд на шахматке; под другими логинами — смоук вкладок и «Мои гости»;
+  5. блок/OOO, совместное проживание, карточка гостя со связями, особые даты, сопровождающие, поля.
 
 Запуск: tools/run_stays_scenario.sh [порт] [логин]   (нужен jsdom: npm i)
 Код возврата: 0 — сценарий пройден, 2 — есть проваленные проверки. */
@@ -384,11 +385,115 @@ async function roleSmoke() {
     if (res) {
       click(res);
       check('батлер: форма брони — даты заперты', await waitFor(() => $('#rf-check-in')?.disabled === true));
+      check('батлер: общий поиск гостей скрыт', $('#rf-guest-q').closest('.sb-toolbar').style.display === 'none');
+      check('батлер: сопровождающих добавить можно', !!$('#rf-comp-add'));
       input($('#rf-note'), 'дописал батлер ' + uniq);
       click($('[data-save]'));
       check('батлер сохранил примечание', await waitFor(() => text('#view-mystays').includes('дописал батлер ' + uniq)));
     }
   }
+}
+
+async function moreForms() {
+  console.log('\n5 · Блоки, совместное проживание, гость, поля');
+  const iso = d => d.toISOString().slice(0, 10);
+  const base = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  const day = n => iso(new Date(base.getTime() + n * 86400000));
+  const code = 'FM' + uniq;
+  const cat = (await apiJson('POST', '/api/stays/categories', { code, title: code, kind: 'villa', escorted: true, weight: 4 })).body;
+  const u1 = (await apiJson('POST', '/api/stays/units', { label: code + '-1', category_id: cat.id })).body;
+  const u2 = (await apiJson('POST', '/api/stays/units', { label: code + '-2', category_id: cat.id })).body;
+  const rField = 'trip' + uniq.toLowerCase(), gField = 'pet' + uniq.toLowerCase();
+  await apiJson('POST', '/api/stays/fields', { target: 'reservation', code: rField, title: 'Откуда', kind: 'text' });
+  await apiJson('POST', '/api/stays/fields', { target: 'guest', code: gField, title: 'Питомец', kind: 'text' });
+  const g = (await apiJson('POST', '/api/stays/guests', { last_name: 'Формин' + uniq })).body;
+  const g2 = (await apiJson('POST', '/api/stays/guests', { last_name: 'Связанов' + uniq })).body;
+  const ra = (await apiJson('POST', '/api/stays/reservations', { number: 'FA' + uniq, check_in: day(10), check_out: day(13),
+    category_id: cat.id, occupants: [{ guest_id: g.id, role: 'main', date_from: day(10), date_to: day(13) }] })).body.result;
+  const rb = (await apiJson('POST', '/api/stays/reservations', { number: 'FB' + uniq, check_in: day(10), check_out: day(13),
+    category_id: cat.id })).body.result;
+
+  window.navigate('stays');
+  await waitFor(() => $$('#sb-cat option').some(o => o.value === String(cat.id)));
+  click($('[data-stab="units"]'));
+  await waitFor(() => $$('#sb-cat option').some(o => o.value === String(cat.id)));
+  change($('#sb-first'), day(9));
+  await waitFor(() => !!$('#sb-cat') && text('#view-stays .sb-head').includes(day(9).slice(8, 10) + '.'));
+  change($('#sb-cat'), String(cat.id));
+  check('объекты категории на шахматке', await waitFor(() => !!$(`[data-unit-row="${u2.id}"]`)));
+
+  /* блок / OOO: клик по объекту → форма с предпросмотром */
+  click($(`[data-unit-row="${u2.id}"] .sb-unit`));
+  check('форма блока открылась', await waitFor(() => !!$('#hf-kind')));
+  change($('#hf-kind'), 'ooo'); change($('#hf-start'), day(14)); change($('#hf-end'), day(15)); input($('#hf-title'), 'Ремонт');
+  click($('#rf-preview'));
+  check('предпросмотр блока', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))));
+  click($('[data-save]'));
+  check('OOO на шахматке', await waitFor(() => !!$(`[data-unit-row="${u2.id}"] [data-hold]`)));
+  click($(`[data-unit-row="${u2.id}"] [data-hold]`));
+  check('правка блока: название подставлено', await waitFor(() => $('#hf-title')?.value === 'Ремонт'));
+  click($('#hf-delete'));
+  check('удаление блока — с предпросмотром', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))));
+  click($('[data-save]'));
+  check('блок удалён', await waitFor(() => !$(`[data-unit-row="${u2.id}"] [data-hold]`)));
+
+  /* совместное проживание из карточки брони */
+  await waitFor(() => !!$(`#view-stays [data-bar="${ra.id}"]`));
+  click($(`#view-stays [data-bar="${ra.id}"]`));
+  check('кнопка «Совместное проживание»', await waitFor(() => !!$('#rc-group')));
+  click($('#rc-group'));
+  check('подходящая бронь в списке', await waitFor(() => !!$(`[data-cohabit="${rb.id}"]`)));
+  $(`[data-cohabit="${rb.id}"]`).checked = true;
+  click($('#rf-preview'));
+  check('предпросмотр совместного проживания', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))));
+  click($('[data-save]'));
+  await sleep(600);
+  const da = (await apiJson('GET', `/api/stays/reservations/${ra.id}`)).body;
+  const db_ = (await apiJson('GET', `/api/stays/reservations/${rb.id}`)).body;
+  check('брони в одной группе и одном объекте', da.group_id && da.group_id === db_.group_id
+    && da.segments[0].unit_id === db_.segments[0].unit_id);
+
+  /* сопровождающие и настраиваемые поля брони */
+  click($(`#view-stays [data-bar="${ra.id}"]`));
+  await waitFor(() => !!$('#rc-edit'));
+  click($('#rc-edit'));
+  check('форма брони: поле «Откуда»', await waitFor(() => !!$(`[data-rf-field="${rField}"]`)));
+  input($(`[data-rf-field="${rField}"]`), 'Москва');
+  click($('#rf-comp-add'));
+  await waitFor(() => !!$('[data-cp-desc="0"]'));
+  change($('[data-cp-kind="0"]'), 'security'); change($('[data-cp-desc="0"]'), 'Охрана 2 чел.');
+  click($('[data-save]'));
+  await sleep(600);
+  const da2 = (await apiJson('GET', `/api/stays/reservations/${ra.id}`)).body;
+  check('поле брони сохранено', da2.fields[rField] === 'Москва', JSON.stringify(da2.fields));
+  check('сопровождающий сохранён', da2.companions.some(c => c.kind === 'security' && c.description === 'Охрана 2 чел.'));
+
+  /* карточка гостя: история, связи, особые даты, поле */
+  click($(`#view-stays [data-bar="${ra.id}"]`));
+  await waitFor(() => !!$(`[data-guest-card="${g.id}"]`));
+  click($(`[data-guest-card="${g.id}"]`));
+  check('карточка гостя: история проживаний', await waitFor(() => text('#gc-history').includes('FA' + uniq)));
+  input($('#gc-link-q'), 'Связанов' + uniq);
+  check('поиск гостя для связи', await waitFor(() => !!$(`[data-link-pick="${g2.id}"]`)));
+  click($(`[data-link-pick="${g2.id}"]`));
+  change($('#gc-link-kind'), 'spouse');
+  click($('#gc-link-add'));
+  check('связь «супруг(а)» в карточке', await waitFor(() => text('#gc-links').includes('Связанов' + uniq)
+    && text('#gc-links').includes('супруг(а)')));
+  click($('#gc-edit'));
+  check('форма гостя: особые даты', await waitFor(() => !!$('#gf-sd-add')));
+  click($('#gf-sd-add'));
+  await waitFor(() => !!$('[data-sd-what="0"]'));
+  change($('[data-sd-date="0"]'), day(30)); change($('[data-sd-what="0"]'), 'юбилей');
+  input($(`[data-gf-field="${gField}"]`), 'кот');
+  click($('[data-save]'));
+  await sleep(600);
+  const gc = (await apiJson('GET', `/api/stays/guests/${g.id}`)).body;
+  check('особая дата сохранена', gc.special_dates.some(x => x.what === 'юбилей' && x.date === day(30)), JSON.stringify(gc.special_dates));
+  check('поле гостя сохранено', gc.fields[gField] === 'кот');
+  check('связь видна в профиле', gc.links.some(l => l.guest_id === g2.id && l.label === 'супруг(а)'));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML + ($('#modal')?.innerHTML || '')));
+  void u1;
 }
 
 async function main() {
@@ -405,6 +510,7 @@ async function main() {
     await unitsBoard();
     await butlersAndDay();
     await occupancyAndFund();
+    await moreForms();
   } else {
     await roleSmoke();
   }

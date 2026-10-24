@@ -70,10 +70,11 @@ def test_setup_forbidden_for_supervisor(manager_client):
     assert r.status_code == 403
 
 
-def test_fund_readable_by_supervisor_not_employee(manager_client, employee_client):
+def test_fund_readable_by_supervisor_and_butler(manager_client, employee_client):
     body = manager_client.get(f"{API}/fund").json()
     assert {"categories", "units", "labels", "fields", "escorts", "settings"} <= set(body)
-    assert employee_client.get(f"{API}/fund").status_code == 403
+    # батлер (stays.edit_mine) читает справочник ради настраиваемых полей; списка сотрудников нет
+    assert "staff" not in employee_client.get(f"{API}/fund").json()
 
 
 def test_escorts_seed_from_position(manager_role_client, db):

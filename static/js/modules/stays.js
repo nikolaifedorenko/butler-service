@@ -124,7 +124,7 @@ async function renderUnitsBoard(body) {
         <div class="sb-track" style="--days:${data.days.length}">
           ${(holdsBy[u.id] || []).map(h => {
             const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
-            return `<div class="sb-hold ${h.kind}" style="left:${l}%;width:${r - l}%">${esc(h.kind === 'ooo' ? 'OOO' : (h.title || 'Блок'))}</div>`;
+            return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.kind === 'ooo' ? 'OOO' : (h.title || 'Блок'))}</div>`;
           }).join('')}
           ${(byUnit[u.id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
         </div></div>`).join('') || '<div class="empty">Объектов по фильтру нет</div>'}
@@ -153,6 +153,17 @@ async function renderUnitsBoard(body) {
   const add = $('#sb-new', body);
   if (add) add.onclick = () => openReservationForm(null, { onSaved: rerender });
   if (names) $$('[data-bar]', body).forEach(el => { el.onclick = () => openReservationCard(Number(el.dataset.bar), rerender); });
+  if (can('stays.edit')) {
+    /* блок / OOO: клик по объекту — новый, по полосе блока — правка или удаление */
+    $$('[data-unit-row] .sb-unit', body).forEach(el => {
+      el.style.cursor = 'pointer';
+      el.title = 'Поставить блок или OOO';
+      el.onclick = () => openHoldForm({ unit_id: Number(el.closest('[data-unit-row]').dataset.unitRow) }, rerender);
+    });
+    $$('[data-hold]', body).forEach(el => {
+      el.onclick = () => openHoldForm(data.holds.find(h => h.id === Number(el.dataset.hold)), rerender);
+    });
+  }
 }
 
 /* ─────────────── Карточка брони ─────────────── */
@@ -171,8 +182,9 @@ async function openReservationCard(rid, onChanged) {
           ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}</div>
         <div><h4>Гости</h4>${card.occupants.map(o => `<div>${o.level !== 'regular' ? esc(STAYS_LEVEL_MARK[o.level]) : ''}${esc(o.guest)}
           <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>
-          ${can('stays.edit') && can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-edit="${o.guest_id}">Профиль</button>` : ''}</div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
+          ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}</div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
       </div>
+      ${card.companions?.length ? `<h4>Сопровождающие</h4>${card.companions.map(c => `<div>${esc(STAYS_COMPANION[c.kind] || c.kind)} — ${esc(c.description)}</div>`).join('')}` : ''}
       ${card.logistics ? `<h4>Логистика</h4>${card.logistics.map(l => `<div>${esc(l.date ? dateRu(l.date) : '')} ${esc(l.time)} ${esc(l.description)}</div>`).join('') || '<span class="muted">нет</span>'}
         ${card.note ? `<h4>Примечание</h4><p>${esc(card.note)}</p>` : ''}` : ''}
       <h4>История изменений</h4>
@@ -180,7 +192,8 @@ async function openReservationCard(rid, onChanged) {
         <div class="muted">${diffText(h.diff)}</div></div>`).join('') || '<span class="muted">записей нет</span>'}</div>`,
     footer: `<button class="btn btn-ghost" data-close>Закрыть</button>
       ${can('stays.assign') && card.status !== 'cancelled' && card.status !== 'no_show' ? '<button class="btn" id="rc-assign">Назначить батлеров</button>' : ''}
-      ${can('stays.edit') ? `<button class="btn" id="rc-status">Статус…</button><button class="btn btn-primary" id="rc-edit">Изменить</button>` : ''}`,
+      ${can('stays.edit') ? `<button class="btn" id="rc-group">Совместное проживание…</button>
+        <button class="btn" id="rc-status">Статус…</button><button class="btn btn-primary" id="rc-edit">Изменить</button>` : ''}`,
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       const edit = $('#rc-edit', m);
@@ -189,7 +202,9 @@ async function openReservationCard(rid, onChanged) {
       if (assign) assign.onclick = () => openCoverageForm(card, onChanged);
       const st = $('#rc-status', m);
       if (st) st.onclick = () => openStatusForm(card, onChanged);
-      $$('[data-guest-edit]', m).forEach(b => { b.onclick = () => openGuestForm(Number(b.dataset.guestEdit), onChanged); });
+      $$('[data-guest-card]', m).forEach(b => { b.onclick = () => openGuestCard(Number(b.dataset.guestCard), onChanged); });
+      const grp = $('#rc-group', m);
+      if (grp) grp.onclick = () => openGroupForm(card, onChanged);
       $$('[data-move-seg]', m).forEach(b => { b.onclick = () => openTransferForm(rid, Number(b.dataset.moveSeg), onChanged); });
     },
   });

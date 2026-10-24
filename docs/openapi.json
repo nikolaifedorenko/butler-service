@@ -1644,6 +1644,24 @@
         "title": "ItemIn",
         "type": "object"
       },
+      "JoinIn": {
+        "properties": {
+          "reservation_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10,
+            "minItems": 2,
+            "title": "Reservation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reservation_ids"
+        ],
+        "title": "JoinIn",
+        "type": "object"
+      },
       "KindIn": {
         "properties": {
           "code": {
@@ -1713,6 +1731,19 @@
           "color"
         ],
         "title": "LabelIn",
+        "type": "object"
+      },
+      "LeaveIn": {
+        "properties": {
+          "reservation_id": {
+            "title": "Reservation Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reservation_id"
+        ],
+        "title": "LeaveIn",
         "type": "object"
       },
       "LinkIn": {
@@ -11596,6 +11627,113 @@
         ]
       }
     },
+    "/api/stays/groups/join": {
+      "post": {
+        "description": "Совместное проживание (§3.3): брони — в одну группу, с предпросмотром размещения.",
+        "operationId": "join_group_api_stays_groups_join_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Join Group",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/groups/leave": {
+      "post": {
+        "operationId": "leave_group_api_stays_groups_leave_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leave Group",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/guest-links/{link_id}": {
       "delete": {
         "operationId": "remove_link_api_stays_guest_links__link_id__delete",
@@ -12460,6 +12598,46 @@
           }
         },
         "summary": "Reservation Card",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/reservations/{rid}/cohabit": {
+      "get": {
+        "operationId": "cohabit_api_stays_reservations__rid__cohabit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cohabit",
         "tags": [
           "stays"
         ]

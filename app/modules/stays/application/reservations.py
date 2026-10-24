@@ -363,3 +363,69 @@ def delete_hold(db: Session, hid: int) -> dict:
 def hold_dict(h: Hold) -> dict:
     return {"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": h.kind,
             "title": h.title}
+
+
+def doc_of(db: Session, r: Reservation, **changes) -> dict:
+    """Документ брони как его прислала бы форма — для операций поверх save_reservation."""
+    d = reservation_dict(db, r)
+    day = dt.date.fromisoformat
+    return {**{k: d[k] for k in SCALARS}, "check_in": day(d["check_in"]), "check_out": day(d["check_out"]),
+            "fields": d["fields"], "pins": None,
+            "moves": [{"move_date": day(m["move_date"]), "category_id": m["category_id"]} for m in d["moves"]],
+            "occupants": [{"id": o["id"], "guest_id": o["guest_id"], "role": o["role"],
+                           "date_from": day(o["date_from"]), "date_to": day(o["date_to"])} for o in d["occupants"]],
+            "companions": d["companions"],
+            "logistics": [{**lg, "date": day(lg["date"]) if lg["date"] else None} for lg in d["logistics"]],
+            **changes}
+
+
+def cohabit_candidates(db: Session, rid: int) -> list[dict]:
+    """С кем бронь может проживать вместе (§3.3): та же категория, даты пересекаются."""
+    r = db.get(Reservation, rid)
+    if r is None:
+        raise ReservationInvalid("Бронь не найдена")
+    rows = list(db.scalars(select(Reservation).where(
+        Reservation.id != rid, Reservation.category_id == r.category_id,
+        Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in < r.check_out,
+        Reservation.check_out > r.check_in).order_by(Reservation.check_in, Reservation.id)))
+    mains = {}
+    if rows:
+        for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_([x.id for x in rows]),
+                                                  Occupant.role == "main").order_by(Occupant.date_from)):
+            mains.setdefault(o.reservation_id, o.guest_id)
+    names = {g.id: short_name(g) for g in db.scalars(select(Guest).where(Guest.id.in_(set(mains.values()))))} \
+        if mains else {}
+    return [{"reservation_id": x.id, "number": x.number, "check_in": _d(x.check_in), "check_out": _d(x.check_out),
+             "group_id": x.group_id, "main_guest": names.get(mains.get(x.id), "")} for x in rows]
+
+
+def join_group(db: Session, rids: list[int]) -> tuple[int, list[tuple[Reservation, dict]]]:
+    """Совместное проживание одной операцией: брони встают в одну группу (существующую у
+    кого-то из них или новую) — тот же путь, что правка брони, с проверками и переездами группы."""
+    res = [db.get(Reservation, rid) for rid in dict.fromkeys(rids)]
+    if len(res) < 2 or any(r is None for r in res):
+        raise ReservationInvalid("Укажите хотя бы две брони")
+    if any(r.status not in allocation.OCCUPYING for r in res):
+        raise ReservationInvalid("Отменённую бронь и «не заехал» в группу не включить")
+    if len({r.category_id for r in res}) > 1:
+        raise ReservationInvalid("Совместное проживание — брони одной категории")
+    gid = next((r.group_id for r in res if r.group_id is not None), None)
+    if gid is None:
+        g = StayGroup(title="")
+        db.add(g)
+        db.flush()
+        gid = g.id
+    saved = []
+    for r in res:
+        if r.group_id != gid:
+            saved.append(save_reservation(db, doc_of(db, r, group_id=gid), r.id, r.version))
+    return gid, saved
+
+
+def leave_group(db: Session, rid: int) -> tuple[Reservation, dict, int | None]:
+    r = db.get(Reservation, rid)
+    if r is None or r.group_id is None:
+        raise ReservationInvalid("Бронь не в группе совместного проживания")
+    old = r.group_id
+    saved, before = save_reservation(db, doc_of(db, r, group_id=None), r.id, r.version)
+    return saved, before, old

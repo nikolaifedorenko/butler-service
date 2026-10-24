@@ -186,6 +186,54 @@ def change_status(rid: int, payload: StatusIn, preview_flag: bool = PREVIEW,
     return run(db, op, preview_flag, window)
 
 
+class JoinIn(BaseModel):
+    reservation_ids: list[int] = Field(min_length=2, max_length=10)
+
+
+class LeaveIn(BaseModel):
+    reservation_id: int
+
+
+@router.get("/reservations/{rid}/cohabit")
+def cohabit(rid: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    try:
+        return reservations.cohabit_candidates(db, rid)
+    except reservations.ReservationInvalid as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+def _span(rs: list[Reservation]) -> tuple[dt.date, dt.date]:
+    return _window(None, *({"check_in": r.check_in, "check_out": r.check_out} for r in rs))
+
+
+@router.post("/groups/join")
+def join_group(payload: JoinIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
+               db: Session = Depends(get_db)):
+    """Совместное проживание (§3.3): брони — в одну группу, с предпросмотром размещения."""
+    found = [r for r in (db.get(Reservation, i) for i in payload.reservation_ids) if r is not None]
+
+    def op():
+        gid, saved = reservations.join_group(db, payload.reservation_ids)
+        for r, before in saved:
+            audit(db, principal, "stays_reservation", f"reservation:{r.id}",
+                  {"diff": reservations.diff_of(before, db, r)})
+        return {"group_id": gid}
+    return run(db, op, preview_flag, _span(found) if found else None)
+
+
+@router.post("/groups/leave")
+def leave_group(payload: LeaveIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
+                db: Session = Depends(get_db)):
+    r0 = db.get(Reservation, payload.reservation_id)
+
+    def op():
+        r, before, old = reservations.leave_group(db, payload.reservation_id)
+        audit(db, principal, "stays_reservation", f"reservation:{r.id}", {"diff": reservations.diff_of(before, db, r)})
+        _cleanup(db, principal, r, old)
+        return _result(db, r)
+    return run(db, op, preview_flag, _span([r0]) if r0 else None)
+
+
 @router.post("/groups")
 def create_group(payload: GroupIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
     g = StayGroup(title=payload.title)

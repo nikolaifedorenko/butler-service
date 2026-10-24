@@ -11,6 +11,35 @@ const STAYS_ROLE = { main: 'главный', guest: 'проживает' };
 const STAYS_STATUS = { tentative: 'предварительная', confirmed: 'подтверждена', in_house: 'заселён',
   checked_out: 'выехал', cancelled: 'отменена', no_show: 'не заехал' };
 
+const STAYS_COMPANION = { security: 'охрана', driver: 'водитель', nanny: 'няня', pet: 'животное', other: 'другое' };
+const STAYS_LINK = { spouse: 'супруг(а)', child: 'ребёнок', relative: 'родственник', assistant: 'ассистент',
+  security: 'охрана', driver: 'водитель', nanny: 'няня', colleague: 'коллега', other: 'другое' };
+
+/* настраиваемые поля (§3.5): элемент ввода по типу поля; attr — data-атрибут с кодом */
+function staysFieldInputs(defs, values, attr) {
+  return defs.map(f => {
+    const v = values?.[f.code];
+    let control;
+    if (f.kind === 'choice') {
+      control = `<select ${attr}="${esc(f.code)}"><option value="">—</option>${f.choices.map(c =>
+        `<option value="${esc(c)}"${c === v ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+    } else if (f.kind === 'bool') {
+      control = `<input type="checkbox" ${attr}="${esc(f.code)}"${v ? ' checked' : ''}>`;
+    } else {
+      control = `<input type="${f.kind === 'date' ? 'date' : 'text'}" ${attr}="${esc(f.code)}" value="${esc(String(v ?? ''))}">`;
+    }
+    return sfRow(f.title, control);
+  }).join('');
+}
+function staysFieldValues(m, attr) {
+  const out = {};
+  $$(`[${attr}]`, m).forEach(el => {
+    const v = el.type === 'checkbox' ? el.checked : el.value;
+    if (v !== '') out[el.getAttribute(attr)] = v;
+  });
+  return out;
+}
+
 function renderPreview(diff, el) {
   const items = [];
   (diff.moved || []).forEach(m => {
@@ -54,7 +83,8 @@ function staysBindFoot(m, flow, onSaved, okText) {
 async function openReservationForm(id, opts = {}) {
   /* opts.mine — батлер дополняет свою бронь: даты, объект, категория, метка, заказчик и главный
      гость заперты (сервер всё равно проверяет, §7 stays.edit_mine) */
-  const fund = opts.mine ? { categories: [], labels: [], units: [], kinds: [] } : await staysFund();
+  const fund = await staysFund();
+  const rFields = fund.fields.filter(f => f.target === 'reservation');
   const r = id ? await api(`/api/stays/reservations/${id}`) : null;
   const form = {
     occupants: (r?.occupants || []).map(o => ({ ...o })),
@@ -91,10 +121,13 @@ async function openReservationForm(id, opts = {}) {
         <button class="btn btn-sm" id="rf-new-add">+ Новый гость</button></div>
       <h4>Переезды</h4><div id="rf-moves"></div><button class="btn btn-sm btn-ghost" id="rf-move-add">+ Переезд</button>
       <h4>Объекты</h4><div id="rf-pins"></div>
+      <div id="rf-linked-box"></div>
       <h4>Логистика</h4><div id="rf-logistics"></div><button class="btn btn-sm btn-ghost" id="rf-log-add">+ Рейс / трансфер / авто</button>
+      <h4>Сопровождающие</h4><div id="rf-companions"></div><button class="btn btn-sm btn-ghost" id="rf-comp-add">+ Охрана / водитель / няня…</button>
+      ${rFields.length ? `<h4>Дополнительно</h4><div class="grid-2">${staysFieldInputs(rFields, r?.fields, 'data-rf-field')}</div>` : ''}
       <div id="rf-preview-out" class="sp-out"></div>`,
     footer: staysFormFoot(),
-    onMount(m) {
+    async onMount(m) {
       const val = sel => $(sel, m).value;
       if (opts.mine) {
         ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-declined',
@@ -149,7 +182,30 @@ async function openReservationForm(id, opts = {}) {
         });
         $$('[data-lg-del]', m).forEach(b => { b.onclick = () => { form.logistics.splice(Number(b.dataset.lgDel), 1); drawLog(); }; });
       };
-      drawOcc(); drawMoves(); drawPins(); drawLog();
+      const drawComp = () => {
+        $('#rf-companions', m).innerHTML = form.companions.map((c, i) => `<div class="sb-line">
+          <select data-cp-kind="${i}">${Object.entries(STAYS_COMPANION).map(([k, t]) => opt(k, t, c.kind)).join('')}</select>
+          <input data-cp-desc="${i}" value="${esc(c.description || '')}" placeholder="Описание">
+          <button class="btn btn-sm btn-ghost" data-cp-del="${i}">×</button></div>`).join('');
+        $$('[data-cp-kind]', m).forEach(x => { x.onchange = () => { form.companions[x.dataset.cpKind].kind = x.value; }; });
+        $$('[data-cp-desc]', m).forEach(x => { x.onchange = () => { form.companions[x.dataset.cpDesc].description = x.value; }; });
+        $$('[data-cp-del]', m).forEach(b => { b.onclick = () => { form.companions.splice(Number(b.dataset.cpDel), 1); drawComp(); }; });
+      };
+      drawOcc(); drawMoves(); drawPins(); drawLog(); drawComp();
+      $('#rf-comp-add', m).onclick = () => { form.companions.push({ kind: 'other', description: '' }); drawComp(); };
+      if (opts.mine) {
+        /* батлер: вместо поиска по всем гостям — гости, связанные «кто кому» с проживающими брони */
+        ['#rf-guest-q', '#rf-new-last', '#rf-new-level', '#rf-new-add'].forEach(sel => { $(sel, m).closest('.sb-toolbar').style.display = 'none'; });
+        const have = new Set(form.occupants.map(o => o.guest_id));
+        const cards = await Promise.all([...have].map(gid => api(`/api/stays/guests/${gid}`, { silent: true }).catch(() => null)));
+        const linked = new Map();
+        cards.filter(Boolean).forEach(c => c.links.forEach(l => { if (!have.has(l.guest_id)) linked.set(l.guest_id, l); }));
+        $('#rf-linked-box', m).innerHTML = linked.size ? `<div class="sb-line"><select id="rf-linked">${[...linked.values()].map(l =>
+          `<option value="${l.guest_id}">${esc(l.name)} · ${esc(l.label)}</option>`).join('')}</select>
+          <button class="btn btn-sm" id="rf-linked-add">+ Добавить связанного гостя</button></div>` : '';
+        const add = $('#rf-linked-add', m);
+        if (add) add.onclick = () => { const l = linked.get(Number(val('#rf-linked'))); addGuest(l.guest_id, l.name); };
+      }
 
       /* даты брони меняются — гости «на весь срок» едут вместе с ними */
       let prev = { ci: val('#rf-check-in'), co: val('#rf-check-out') };
@@ -192,7 +248,7 @@ async function openReservationForm(id, opts = {}) {
         early: $('#rf-early', m).checked, late: $('#rf-late', m).checked, declined_butler: $('#rf-declined', m).checked,
         label_id: opts.mine ? (r?.label_id ?? null) : (val('#rf-label') ? Number(val('#rf-label')) : null),
         customer: val('#rf-customer'), purpose: val('#rf-purpose'), paid_by: val('#rf-paid'), note: val('#rf-note'),
-        group_id: r?.group_id ?? null, fields: r?.fields || {},
+        group_id: r?.group_id ?? null, fields: { ...(r?.fields || {}), ...staysFieldValues(m, 'data-rf-field') },
         occupants: form.occupants.map(({ id: oid, guest_id, role, date_from, date_to }) => ({ id: oid, guest_id, role, date_from, date_to })),
         moves: form.moves.filter(mv => mv.move_date), logistics: form.logistics, companions: form.companions,
         pins: opts.mine ? null : Object.fromEntries([Number(val('#rf-category')), ...form.moves].map((_, i) => [i, form.pins[i] ?? null])),
@@ -311,6 +367,132 @@ async function openCoverageForm(card, onSaved) {
   });
 }
 
+/* ─────────────── Блок / OOO (§3.1, §4.6): создание, правка, удаление — с предпросмотром ─────────────── */
+async function openHoldForm(hold, onSaved) {
+  const fund = await staysFund();
+  const isNew = !hold.id;
+  const first = hold.start || staysState.first || staysToday();
+  openModal({
+    title: isNew ? 'Блок / OOO' : `${hold.kind === 'ooo' ? 'OOO' : 'Блок'} · ${dateRu(hold.start)}–${dateRu(hold.end)}`,
+    subtitle: 'Занимает объект целыми сутками с–по; брони на эти дни перераспределятся',
+    body: `<div class="grid-2">
+        ${sfRow('Объект', sfSelect('hf-unit', fund.units.filter(u => u.active).map(u => [u.id, u.label]), hold.unit_id))}
+        ${sfRow('Тип', sfSelect('hf-kind', [['block', 'блок'], ['ooo', 'OOO — не в продаже']], hold.kind || 'block'))}
+        ${sfRow('С', sfInput('hf-start', first, 'date'))}
+        ${sfRow('По', sfInput('hf-end', hold.end || first, 'date'))}
+      </div>
+      ${sfRow('Название', sfInput('hf-title', hold.title))}
+      <div id="rf-preview-out" class="sp-out"></div>`,
+    footer: `${isNew ? '' : '<button class="btn btn-danger" id="hf-delete">Удалить…</button>'}${staysFormFoot()}`,
+    onMount(m) {
+      const out = () => $('#rf-preview-out', m);
+      const body = () => ({ unit_id: Number($('#hf-unit', m).value), kind: $('#hf-kind', m).value,
+        start: $('#hf-start', m).value, end: $('#hf-end', m).value, title: $('#hf-title', m).value });
+      const edit = previewThenSave({ url: isNew ? '/api/stays/holds' : `/api/stays/holds/${hold.id}`,
+        method: isNew ? 'POST' : 'PUT', body, out });
+      const remove = {
+        async preview() { renderPreview((await api(`/api/stays/holds/${hold.id}?preview=1`, { method: 'DELETE' })).diff, out()); },
+        save: () => api(`/api/stays/holds/${hold.id}`, { method: 'DELETE' }),
+      };
+      let mode = edit;
+      const del = $('#hf-delete', m);
+      if (del) del.onclick = async () => {
+        mode = remove;
+        $('[data-save]', m).textContent = 'Удалить';
+        try { await remove.preview(); } catch (e) { toast(e.message, 'err'); }
+      };
+      staysBindFoot(m, { preview: () => mode.preview(), save: () => mode.save() }, onSaved, 'Готово');
+    },
+  });
+}
+
+/* ─────────────── Совместное проживание (§3.3): одна операция с предпросмотром ─────────────── */
+async function openGroupForm(card, onSaved) {
+  const cands = await api(`/api/stays/reservations/${card.id}/cohabit`);
+  const mates = cands.filter(c => card.group_id && c.group_id === card.group_id);
+  const free = cands.filter(c => !card.group_id || c.group_id !== card.group_id);
+  const row = c => `${esc(c.number || '#' + c.reservation_id)} · ${esc(c.main_guest || 'без гостя')} · ${esc(dateRu(c.check_in))}–${esc(dateRu(c.check_out))}`;
+  openModal({
+    title: `Совместное проживание · ${card.number || '#' + card.id}`,
+    subtitle: 'Брони одной категории в одном объекте, каждая на своего гостя; переезды у группы общие',
+    body: `${mates.length ? `<h4>Уже вместе</h4>${mates.map(c => `<div>${row(c)}</div>`).join('')}
+        ${sfCheck('gr-leave', 'Вывести эту бронь из группы', false)}` : ''}
+      <h4>Проживать вместе с</h4>${free.map(c => `<label class="chk"><input type="checkbox" data-cohabit="${c.reservation_id}"> ${row(c)}
+        ${c.group_id ? '<span class="muted">(в своей группе)</span>' : ''}</label>`).join('') || '<p class="muted">Подходящих броней нет</p>'}
+      <div id="rf-preview-out" class="sp-out"></div>`,
+    footer: staysFormFoot(),
+    onMount(m) {
+      const out = () => $('#rf-preview-out', m);
+      const leave = () => $('#gr-leave', m)?.checked;
+      const join = previewThenSave({ url: '/api/stays/groups/join', method: 'POST', out,
+        body: () => ({ reservation_ids: [card.id, ...$$('[data-cohabit]', m).filter(c => c.checked).map(c => Number(c.dataset.cohabit))] }) });
+      const quit = previewThenSave({ url: '/api/stays/groups/leave', method: 'POST', out, body: () => ({ reservation_id: card.id }) });
+      staysBindFoot(m, { preview: () => (leave() ? quit : join).preview(), save: () => (leave() ? quit : join).save() },
+        onSaved, 'Готово');
+    },
+  });
+}
+
+/* ─────────────── Карточка гостя (§6.5): профиль, связи, история проживаний ─────────────── */
+async function openGuestCard(gid, onChanged) {
+  const [g, fund] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund()]);
+  const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
+  const edit = can('stays.edit');
+  const role = { main: 'главный', guest: 'проживает' };
+  openModal({
+    title: `${STAYS_LEVEL_MARK[g.level] || ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
+    subtitle: [g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
+    body: `<div class="grid-2">
+        <div><h4>Предпочтения</h4>${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('') || '<span class="muted">нет</span>'}
+          ${g.special_dates.length ? `<h4>Особые даты</h4>${g.special_dates.map(d => `<div>${esc(dateRu(d.date))} — ${esc(d.what)}</div>`).join('')}` : ''}
+          ${Object.keys(g.fields).length ? `<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => `<div>${esc(titles[k] || k)}: ${esc(String(v))}</div>`).join('')}` : ''}
+          ${g.note ? `<h4>Примечание</h4><p>${esc(g.note)}</p>` : ''}</div>
+        <div><h4>Связи</h4><div id="gc-links">${g.links.map(l => `<div class="sb-line">${esc(l.name)} <span class="muted">${esc(l.label)}</span>
+            ${edit ? `<button class="btn btn-sm btn-ghost" data-link-del="${l.id}">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}</div>
+          ${edit ? `<div class="sb-line"><input type="search" id="gc-link-q" placeholder="Связать с гостем: фамилия">
+            <select id="gc-link-kind">${Object.entries(STAYS_LINK).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select>
+            <button class="btn btn-sm" id="gc-link-add" disabled>Связать</button></div><div id="gc-link-res"></div>` : ''}</div>
+      </div>
+      <h4>История проживаний</h4>
+      <div id="gc-history" class="sb-history">${g.stays.map(x => `<div><b>${esc(x.number || '#' + x.reservation_id)}</b> · ${esc(x.units.join(' → ') || 'без объекта')}
+        · ${esc(dateRu(x.date_from))}–${esc(dateRu(x.date_to))} · ${esc(role[x.role])} · ${esc(x.status_title)}
+        ${x.butlers.length ? `<div class="muted">вели: ${esc(x.butlers.join(', '))}</div>` : ''}</div>`).join('') || '<span class="muted">проживаний нет</span>'}</div>`,
+    footer: `<button class="btn btn-ghost" data-close>Закрыть</button>${edit ? '<button class="btn btn-primary" id="gc-edit">Изменить профиль</button>' : ''}`,
+    onMount(m) {
+      $('[data-close]', m).onclick = closeModal;
+      const reopen = () => openGuestCard(gid, onChanged);
+      const ed = $('#gc-edit', m);
+      if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); });
+      $$('[data-link-del]', m).forEach(b => {
+        b.onclick = async () => {
+          try { await api(`/api/stays/guest-links/${b.dataset.linkDel}`, { method: 'DELETE' }); reopen(); } catch (e) { toast(e.message, 'err'); }
+        };
+      });
+      const q = $('#gc-link-q', m);
+      if (!q) return;
+      let picked = null;
+      let timer = null;
+      q.oninput = () => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          const found = q.value.trim().length < 2 ? [] : (await api('/api/stays/guests?q=' + encodeURIComponent(q.value.trim()), { silent: true }))
+            .filter(x => x.id !== gid);
+          $('#gc-link-res', m).innerHTML = found.map(x => `<button class="btn btn-sm btn-ghost" data-link-pick="${x.id}">${esc(x.short)}</button>`).join('');
+          $$('[data-link-pick]', m).forEach(b => {
+            b.onclick = () => { picked = Number(b.dataset.linkPick); q.value = b.textContent.trim(); $('#gc-link-add', m).disabled = false; };
+          });
+        }, 300);
+      };
+      $('#gc-link-add', m).onclick = async () => {
+        try {
+          await api(`/api/stays/guests/${gid}/links`, { method: 'POST', body: { guest_id: picked, kind: $('#gc-link-kind', m).value } });
+          toast('Связь добавлена'); reopen();
+        } catch (e) { toast(e.message, 'err'); }
+      };
+    },
+  });
+}
+
 /* ─────────────── Статус брони ─────────────── */
 function openStatusForm(card, onSaved) {
   const today = staysToday();
@@ -333,7 +515,9 @@ function openStatusForm(card, onSaved) {
 
 /* ─────────────── Гость ─────────────── */
 async function openGuestForm(id, onSaved, opts = {}) {
-  const g = id ? await api(`/api/stays/guests/${id}`) : null;
+  const [g, fund] = await Promise.all([id ? api(`/api/stays/guests/${id}`) : null, staysFund()]);
+  const gFields = fund.fields.filter(f => f.target === 'guest');
+  const dates = (g?.special_dates || []).map(d => ({ ...d }));
   const level = { regular: 'обычный', vip: 'VIP', vvip: 'VVIP' };
   /* батлер (opts.mine): анкетные поля только для чтения — менять можно предпочтения и заметки */
   const lock = html => (opts.mine ? html.replace(/<(input|select)/, '<$1 disabled') : html);
@@ -345,14 +529,29 @@ async function openGuestForm(id, onSaved, opts = {}) {
     sfRow('Аллергии', sfInput('gf-allergy', g?.preferences?.allergy)), sfRow('Питание', sfInput('gf-food', g?.preferences?.food)),
     sfRow('Привычки', sfInput('gf-habits', g?.preferences?.habits)),
     sfRow('Примечание', `<textarea id="gf-note" rows="2">${esc(g?.note || '')}</textarea>`),
+    `<h4>Особые даты</h4><div id="gf-dates"></div><button class="btn btn-sm btn-ghost" id="gf-sd-add" type="button">+ Дата</button>`,
+    gFields.length ? `<h4>Дополнительно</h4>${staysFieldInputs(gFields, g?.fields, 'data-gf-field')}` : '',
   ], async m => {
     const v = sel => $(sel, m).value;
     const body = { last_name: v('#gf-last'), first_name: v('#gf-first'), middle_name: v('#gf-middle'),
       phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, level: v('#gf-level'),
-      preferences: { allergy: v('#gf-allergy'), food: v('#gf-food'), habits: v('#gf-habits') },
-      special_dates: g?.special_dates || [], fields: g?.fields || {}, note: v('#gf-note') };
+      preferences: { ...(g?.preferences || {}), allergy: v('#gf-allergy'), food: v('#gf-food'), habits: v('#gf-habits') },
+      special_dates: dates.filter(d => d.date && d.what),
+      fields: { ...(g?.fields || {}), ...staysFieldValues(m, 'data-gf-field') }, note: v('#gf-note') };
     const saved = await api(g ? `/api/stays/guests/${g.id}` : '/api/stays/guests', { method: g ? 'PUT' : 'POST', body });
     toast('Гость сохранён');
     if (onSaved) onSaved(saved);
+  }, m => {
+    const draw = () => {
+      $('#gf-dates', m).innerHTML = dates.map((d, i) => `<div class="sb-line">
+        <input type="date" data-sd-date="${i}" value="${esc(d.date || '')}">
+        <input data-sd-what="${i}" value="${esc(d.what || '')}" placeholder="день рождения, годовщина…">
+        <button class="btn btn-sm btn-ghost" type="button" data-sd-del="${i}">×</button></div>`).join('');
+      $$('[data-sd-date]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdDate].date = x.value; }; });
+      $$('[data-sd-what]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdWhat].what = x.value; }; });
+      $$('[data-sd-del]', m).forEach(b => { b.onclick = () => { dates.splice(Number(b.dataset.sdDel), 1); draw(); }; });
+    };
+    draw();
+    $('#gf-sd-add', m).onclick = () => { dates.push({ date: '', what: '' }); draw(); };
   });
 }
