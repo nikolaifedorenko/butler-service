@@ -57,6 +57,8 @@ def load_rules(db: Session) -> dict:
 
 
 router = APIRouter(prefix="/api/punches", tags=["punches"])
+# как у ячейки Табеля (tabel_api): правка последнего закрытого периода видна через пересчёт
+RECALC_WARNING = "Период закрыт — изменения попадут в результат только через пересчёт"
 
 # повторное нажатие той же кнопки в этот промежуток — дубль (двойной тап, повтор запроса)
 DUPLICATE_WINDOW = dt.timedelta(seconds=60)
@@ -277,7 +279,8 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
         backfill = True
 
     target_date = ts.date()
-    timesheet_edit.ensure_unlocked(str(emp.id), target_date, engine_ports(db, principal))
+    needs_recalculate = timesheet_edit.ensure_unlocked(str(emp.id), target_date,
+                                                       engine_ports(db, principal))
     shift, p_start, _p_end, plan_date, _subs = _plan_for_date(db, emp.id, target_date, at_ts=ts)
     if not _employed_on(db, emp, plan_date):
         raise HTTPException(status_code=409,
@@ -351,6 +354,8 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
     warnings = []
     if backfill:
         warnings.append("Отметка добавлена задним числом — действие записано в журнал аудита")
+    if needs_recalculate:
+        warnings.append(RECALC_WARNING)
     if shift is None:
         warnings.append("По Графику в этот день смены нет — отметка сохранена; работа без плана "
                         "учитывается как переработка (коды ДЯ/ДН), руководитель увидит флаг "
@@ -417,12 +422,15 @@ def delete_punch(punch_id: int, principal: Principal = Depends(require_perm("pun
         raise HTTPException(status_code=404, detail="Отметка не найдена")
     ts, emp_id = p.ts, p.employee_id
     lock_employee(db, emp_id)            # отметка — вход закрытия периода (TOCTOU)
-    timesheet_edit.ensure_unlocked(str(emp_id), ts.date(), engine_ports(db, principal))
+    needs_recalculate = timesheet_edit.ensure_unlocked(str(emp_id), ts.date(),
+                                                       engine_ports(db, principal))
     audit(db, principal, "punch_delete", f"punch:{punch_id}",
           {"employee_id": emp_id, "ts": ts.isoformat(timespec="minutes"), "kind": p.kind})
     db.delete(p)
-    db.commit()   # пересчёт не нужен: движок считает Табель/УТ при чтении
-    return {"ok": True}
+    # открытый период движок считает при чтении; закрытый результат отмену ещё учитывает —
+    # раньше это было молчаливое {"ok": true} (рецензия аудита 22.10.2026, P1)
+    db.commit()
+    return {"ok": True, "warning": RECALC_WARNING if needs_recalculate else None}
 
 
 class NoteIn(BaseModel):

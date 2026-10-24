@@ -37,11 +37,16 @@ def lock_state(employee_id: str, day: dt.date, ports: EnginePorts) -> str:
     return lock_states([employee_id], day, ports)[employee_id]
 
 
-def ensure_unlocked(employee_id: str, day: dt.date, ports: EnginePorts) -> None:
+def ensure_unlocked(employee_id: str, day: dt.date, ports: EnginePorts) -> bool:
     """Исходные данные «замороженного» периода (закрыт он и следующий) не меняются: его
-    итог пересчитать уже нельзя. Одно правило для Табеля и отметок (аудит 22.10.2026)."""
-    if lock_state(employee_id, day, ports) == "locked":
+    итог пересчитать уже нельзя. Одно правило для Табеля и отметок (аудит 22.10.2026).
+
+    True — период последний закрытый: правка войдёт в результат только через пересчёт,
+    об этом надо предупредить (как needs_recalculate у ячейки Табеля)."""
+    state = lock_state(employee_id, day, ports)
+    if state == "locked":
         raise TimesheetLockedError(f"{employee_id}:{day}")
+    return state == "last_closed"
 
 
 def save_timesheet_day(employee_id: str, day: dt.date, code: str, plan_minutes: int | None,
