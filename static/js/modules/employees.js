@@ -16,7 +16,7 @@ async function loadEmployees() {
     <div class="page-head">
       <div><h2>Сотрудники</h2><div class="sub">Нажмите на строку, чтобы открыть карточку со всеми подробностями</div></div>
       <div class="spacer"></div>
-      <button class="btn btn-primary btn-sm" id="e-add">+ Добавить сотрудника</button>
+      ${can('employees.edit') ? '<button class="btn btn-primary btn-sm" id="e-add">+ Добавить сотрудника</button>' : ''}
     </div>
     <div class="table-wrap">
       <table class="data responsive"><thead><tr>
@@ -36,7 +36,8 @@ async function loadEmployees() {
       </tbody></table>
     </div>
     <p class="hint">Удаление скрывает сотрудника из списков и графика, но вся история (табель, отметки, аудит) сохраняется.</p>`;
-  $('#e-add').onclick = () => employeeModal(null);
+  const add = $('#e-add');
+  if (add) add.onclick = () => employeeModal(null);
   $$('[data-card]', host).forEach(tr => tr.onclick = () =>
     employeeCard(state.employees.find(x => x.id === +tr.dataset.card)));
 }
@@ -75,6 +76,7 @@ async function employeeCard(emp) {
   const contacts = emp.contacts?.length ? emp.contacts
     : (emp.emergency_name ? [{ name: emp.emergency_name, phone: emp.emergency_phone, relation: '' }] : []);
   const canBank = can('employees.bank');   // право, а не роль: гранты и группы учитываются
+  const canEdit = can('employees.edit');
   const bankNow = history.bank_now ?? 0;
   openModal({
     title: emp.full_name,
@@ -118,19 +120,21 @@ async function employeeCard(emp) {
       ${(history.bank_adjustments || []).map(a => `<div style="font-size:13.5px;padding:3px 0">
         <b class="${a.hours >= 0 ? 'balance-pos' : 'balance-neg'}">${a.hours >= 0 ? '+' : ''}${hours(a.hours)} ч</b>
         с ${dateRu(a.date)} — ${esc(a.note)} <small class="muted">(${esc(a.author)})</small></div>`).join('') || '<div class="hint">корректировок не было</div>'}`,
+    /* правки учётки — по праву employees.edit, как на сервере: без него кнопки вели к 403 */
     footer: `
-      <button class="btn btn-danger" data-delete>Удалить</button>
-      ${emp.dismissed_at || (!emp.active && !emp.deleted)
+      ${canEdit ? '<button class="btn btn-danger" data-delete>Удалить</button>' : ''}
+      ${!canEdit ? '' : emp.dismissed_at || (!emp.active && !emp.deleted)
         ? '<button class="btn" data-rehire>Принять обратно</button>'
         : '<button class="btn btn-ghost" data-dismiss>Уволить</button>'}
       <div style="flex:1"></div>
       ${canBank ? '<button class="btn btn-ghost" data-bank>Корректировка банка</button>' : ''}
-      <button class="btn btn-ghost" data-block>Перевод в блок</button>
-      <button class="btn btn-ghost" data-pos>Перевод на должность</button>
+      ${canEdit ? '<button class="btn btn-ghost" data-block>Перевод в блок</button>' : ''}
+      ${canEdit ? '<button class="btn btn-ghost" data-pos>Перевод на должность</button>' : ''}
       ${can('employees.impersonate') ? '<button class="btn btn-ghost" data-imp>Войти как сотрудник</button>' : ''}
-      <button class="btn btn-primary" data-edit>Изменить</button>`,
+      ${canEdit ? '<button class="btn btn-primary" data-edit>Изменить</button>' : ''}`,
     onMount(m) {
-      m.querySelector('[data-edit]').onclick = () => { closeModal(); employeeModal(emp); };
+      const on = (sel, fn) => { const b = m.querySelector(sel); if (b) b.onclick = fn; };
+      on('[data-edit]', () => { closeModal(); employeeModal(emp); });
       const impBtn = m.querySelector('[data-imp]');
       if (impBtn) impBtn.onclick = async () => {
         await api('/api/auth/impersonate', { method: 'POST', body: { employee_id: emp.id } });
@@ -139,15 +143,15 @@ async function employeeCard(emp) {
         resetUserViewState(); navigate('me');
         toast('Вы смотрите интерфейс глазами сотрудника', 'warn');
       };
-      m.querySelector('[data-pos]').onclick = () => { closeModal(); datedActionModal(emp, 'position'); };
-      m.querySelector('[data-block]').onclick = () => { closeModal(); datedActionModal(emp, 'block'); };
+      on('[data-pos]', () => { closeModal(); datedActionModal(emp, 'position'); });
+      on('[data-block]', () => { closeModal(); datedActionModal(emp, 'block'); });
       const dis = m.querySelector('[data-dismiss]');
       if (dis) dis.onclick = () => { closeModal(); datedActionModal(emp, 'dismiss'); };
       const reh = m.querySelector('[data-rehire]');
       if (reh) reh.onclick = () => { closeModal(); rehireModal(emp); };
       const bank = m.querySelector('[data-bank]');
       if (bank) bank.onclick = () => { closeModal(); bankAdjustModal(emp, history); };
-      m.querySelector('[data-delete]').onclick = () => {
+      on('[data-delete]', () => {
         closeModal();
         confirmDialog('Удалить сотрудника?',
           `${emp.full_name} исчезнет из списков и графика. Табель, отметки и аудит сохранятся в истории.`,
@@ -156,7 +160,7 @@ async function employeeCard(emp) {
             toast('Сотрудник удалён из активных списков; история сохранена', 'ok');
             await refreshAfterEmployeeChange();
           }, 'Удалить');
-      };
+      });
     },
   });
 }

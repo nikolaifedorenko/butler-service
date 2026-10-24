@@ -76,7 +76,7 @@ def list_reports(limit: int = 60, principal: Principal = Depends(require_perm("n
     # PERF-01: области и пункты — тремя запросами на весь архив, а не по запросу на отчёт и область
     q = (select(NightReport)
          .options(selectinload(NightReport.areas).selectinload(NightAreaSection.items))
-         .order_by(NightReport.date.desc()).limit(min(limit, 365)))
+         .order_by(NightReport.date.desc()).limit(max(1, min(limit, 365))))
     for rep in db.scalars(q):
         d = report_dict(rep, with_items=False)
         out.append(d)

@@ -237,7 +237,7 @@ def car_history(car_id: int, limit: int = 200, db: Session = Depends(get_db),
     if db.get(Car, car_id) is None:
         raise HTTPException(status_code=404, detail="Кар не найден")
     rows = list(db.scalars(select(CarHistory).where(CarHistory.car_id == car_id)
-                           .order_by(CarHistory.id.desc()).limit(min(limit, 500))))
+                           .order_by(CarHistory.id.desc()).limit(max(1, min(limit, 500)))))
     from ..application.cars import history_dict
     # history_dict() принимает КАРТУ фото {ref_id: [...]} и сам достаёт нужные:
     # раньше сюда передавался уже раскрытый список (pmap.get(h.id, [])), из-за чего
