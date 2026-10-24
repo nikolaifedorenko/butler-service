@@ -428,7 +428,7 @@ def set_punch_note(punch_id: int, payload: NoteIn,
     if ("punches.view_all" not in principal_permissions(db, principal)
             and (not principal.employee or principal.employee.id != p.employee_id)):
         raise HTTPException(status_code=403, detail="Можно комментировать только свои отметки")
-    p.note = payload.note.strip()[:500]
+    p.note = payload.note.strip()[:Punch.__table__.c.note.type.length]   # String(255): на PG длиннее — 500
     audit(db, principal, "punch_note", f"punch:{punch_id}", {"note": p.note})
     db.commit()
     return {"ok": True, "note": p.note}

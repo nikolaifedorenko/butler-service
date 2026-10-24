@@ -654,8 +654,12 @@ def _day_window_hhmm(db: Session, st, employee_id: int, day: dt.date) -> tuple[s
                      if row.plan_minutes else row.code)
             window = st.windows.get(value)
             if window is not None:
+                # окно до полуночи (end_minute = 1440, CHK-WINDOW-BOUNDS) — «00:00 следующих
+                # суток»: «24:00» роняло dt.time ValueError'ом → 500 (рецензия аудита 22.10.2026)
+                end_next_day = window.end_minute == 1440
+                end = 0 if end_next_day else window.end_minute
                 return (f"{window.start_minute // 60:02d}:{window.start_minute % 60:02d}",
-                        f"{window.end_minute // 60:02d}:{window.end_minute % 60:02d}", False)
+                        f"{end // 60:02d}:{end % 60:02d}", end_next_day)
     return "00:00", "00:00", True
 
 

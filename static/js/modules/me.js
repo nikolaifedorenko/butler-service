@@ -204,7 +204,7 @@ function openOtNoteModal(punchId, current, otHours) {
     title: 'Описание переработки',
     subtitle: otHours ? `Переработка ${hours(otHours)} ч — опишите, с кем работали и что делали` : 'Описание попадёт в табель и в выгрузку Excel',
     body: `<label class="field"><span>Текст</span>
-      <textarea id="ot-note" rows="4" placeholder="Например: оставался с Ивановым, готовили зал к банкету; принимал доставку белья">${esc(current || '')}</textarea></label>`,
+      <textarea id="ot-note" rows="4" maxlength="255" placeholder="Например: оставался с Ивановым, готовили зал к банкету; принимал доставку белья">${esc(current || '')}</textarea></label>`,
     footer: `<button class="btn btn-ghost" data-skip>Позже</button>
              <button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(m) {
