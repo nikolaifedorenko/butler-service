@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.core.time import utcnow
 
-from ..application.months import previous_period
 from ..domain.types.entities import ClosingInputs, DeferredBlock, Period, PeriodState
 from ..domain.types.results import FlagsResult, SettleResult
 from ..interface.deserialize import flags_from_dict, result_from_dict
@@ -23,7 +22,7 @@ from ..interface.serialize import flags_to_dict, result_to_dict
 from ..ports.unit_of_work import StorageConflictError
 from ._db import emp_pk
 from .orm import DeferredCarry, PeriodClosing
-from .sql_bank import opening_seed_set
+from .sql_bank import opening_seed_set, previous_closing
 
 
 def _block_dict(b: DeferredBlock) -> dict:
@@ -38,35 +37,24 @@ class SqlSettlementStore:
     def __init__(self, db: Session, settings_port, actor_name: str = ""):
         self.db, self.settings, self.actor = db, settings_port, actor_name
 
-    def _granularity(self, period: Period) -> str:
-        return self.settings.load(period).period_granularity
-
     def _row(self, employee_id: str, period: Period) -> PeriodClosing | None:
         return self.db.scalar(select(PeriodClosing).where(
             PeriodClosing.employee_id == emp_pk(employee_id),
             PeriodClosing.period_start == period.start))
 
-    def _closed_on(self, emp: int, start) -> bool:
-        return self.db.scalar(select(PeriodClosing.id).where(
-            PeriodClosing.employee_id == emp, PeriodClosing.period_start == start)) is not None
-
     def period_state(self, employee_id: str, period: Period) -> PeriodState:
-        """Цепочка периодов (R36): previous — смежный закрытый либо предыдущий период
-        гранулярности; next — любое сохранённое закрытие, начинающееся после period.end
-        (7.2: пересчёт запрещён, если следующий уже закрыт)."""
+        """Цепочка периодов (R36): previous — закрытие, смежное слева (как opening банка:
+        на смене гранулярности начало «предыдущего периода» указало бы не на ту строку);
+        next — любое сохранённое закрытие, начинающееся после period.end (7.2: пересчёт
+        запрещён, если следующий уже закрыт)."""
         emp = emp_pk(employee_id)
-        granularity = self._granularity(period)
         first = not self.db.scalar(select(PeriodClosing.id).where(
             PeriodClosing.employee_id == emp, PeriodClosing.period_start < period.start).limit(1))
-        adjacent_prev = self.db.scalar(select(PeriodClosing.id).where(
-            PeriodClosing.employee_id == emp,
-            PeriodClosing.period_end == period.start - dt.timedelta(days=1)).limit(1))
         later = self.db.scalar(select(PeriodClosing.id).where(
             PeriodClosing.employee_id == emp, PeriodClosing.period_start > period.end).limit(1))
         return PeriodState(
             closed=self._row(employee_id, period) is not None,
-            previous_closed=(self._closed_on(emp, previous_period(period, granularity).start)
-                             or adjacent_prev is not None),
+            previous_closed=previous_closing(self.db, emp, period) is not None,
             next_closed=later is not None,
             opening_bank_set=first and opening_seed_set(self.db, employee_id, period))
 

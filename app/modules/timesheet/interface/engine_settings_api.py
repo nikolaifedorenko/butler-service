@@ -122,6 +122,13 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
             f"Часовой пояс расчёта — только пояс объекта {app_settings.app_tz} (задаётся APP_TZ "
             f"при установке), а не {data.payload['tz']}"))
     data.payload["tz"] = app_settings.app_tz
+    # RUL-PERIOD-GRANULARITY: смена гранулярности — только на границе цепочки. 1-е число —
+    # граница и месяца, и половины; с 16-го новая цепочка начиналась бы внутри месяца
+    # старой (половина 16–31 при открытом месяце 1–31)
+    if st.period_granularity != _granularity(db, data.valid_from) and data.valid_from.day != 1:
+        raise HTTPException(status_code=422, detail=(
+            "Гранулярность периода меняется только с 1-го числа месяца — иначе новая "
+            "цепочка периодов начнётся посреди периода прежней"))
     _guard_removed_day_codes(data.payload, db)
     # shortcut: сверка и вставка не атомарны — публикации в одну и ту же долю секунды пройдут обе
     latest = db.scalar(select(func.max(EngineSettingsVersion.id)))
