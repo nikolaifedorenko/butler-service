@@ -333,6 +333,12 @@ def error_text(exc: Exception) -> str:
     if isinstance(exc, IncompletePeriodError):
         return f"Период ещё не завершён: закрыть можно с 00:00 {exc.period_end + dt.timedelta(days=1):%d.%m.%Y}"
     if isinstance(exc, InvalidInputDataError):
+        unknown = exc.code == "CHK-DEFERRED-IN" and (exc.data or {}).get("unknown_tariffs")
+        if unknown:
+            listed = ", ".join(f"«{t}»" for t in unknown)
+            return (f"Перенос из прошлого периода — по тарифу {listed}, которого нет в весах "
+                    "текущих настроек расчёта. Верните тариф в настройки (категории, веса, "
+                    "каскад) на этот период [CHK-DEFERRED-IN]")
         base = ERROR_TEXTS.get(exc.code, f"Ошибка входных данных ({exc.code})")
         return base if exc.code in ERROR_TEXTS else f"{base}: {exc.data}"
     if isinstance(exc, InvariantViolationError):
