@@ -527,12 +527,15 @@ def report_dict(rep: NightReport, *, with_items: bool = True, db=None) -> dict:
 
 def photo_delete_blocker(db: Session, photo) -> Optional[str]:
     """Фото закрытого ночного отчёта не удаляется (решение владельца В-4): ошибочное —
-    сначала переоткрыть отчёт. None — удалять можно (core/media.delete_photo)."""
+    сначала переоткрыть отчёт; фото закрытой области — сначала взять её в работу.
+    None — удалять можно (core/media.delete_photo)."""
     report_id = None
     if photo.kind == "night_item":
         item = db.get(NightCheckItem, photo.ref_id)
         sec = db.get(NightAreaSection, item.section_id) if item else None
         report_id = sec.report_id if sec else None
+        if sec is not None and sec.status == "done":
+            return f"Область «{sec.name}» закрыта — переоткройте её, чтобы удалить фото"
     elif photo.kind == "car_check":
         check = db.get(CarNightCheck, photo.ref_id)
         report_id = check.report_id if check else None

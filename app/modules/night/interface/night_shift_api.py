@@ -37,6 +37,7 @@ from .night_common import (
     _get_report,
     _get_section,
     _guard_open,
+    _guard_section_open,
     _principal_name,
     _report_payload,
     router,
@@ -179,6 +180,7 @@ def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(
     sec = _get_section(db, ni.section_id)
     rep = _get_report(db, sec.report_id)
     _guard_open(rep)
+    _guard_section_open(sec)
     if payload.answer not in ("ok", "bad", ""):
         raise HTTPException(status_code=400, detail="Неизвестный ответ")
     ni.answer = payload.answer
@@ -207,6 +209,7 @@ def add_item_photo(item_id: int, file: UploadFile = File(...),
     sec = _get_section(db, ni.section_id)
     rep = _get_report(db, sec.report_id)
     _guard_open(rep)
+    _guard_section_open(sec)
     limit = max_upload_bytes(db)
     # потоковая загрузка: файл идёт на диск чанками, не в память (P1 20.10.2026)
     ref = read_upload_streaming(file, limit)

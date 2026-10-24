@@ -303,12 +303,14 @@ function nightAreaCard(a, rep) {
         : `<button class="btn btn-sm ${mine ? 'btn-ghost' : 'btn-accent'}" data-sec-take="${a.id}">${a.status === 'taken' && !mine ? 'Перехватить' : (mine ? 'Продолжить' : 'Взять в работу')}</button>
            <button class="btn btn-sm" data-sec-close="${a.id}">Завершить область</button>`}
     </div>`}
-    <div class="night-items">${(a.items || []).map(it => nightItemRow(it, rep)).join('') ||
+    <div class="night-items">${(a.items || []).map(it => nightItemRow(it, rep, a.status === 'done')).join('') ||
       '<div class="hint" style="margin:0">Пунктов нет — справочник областей: кнопка «Области».</div>'}</div>
   </div>`;
 }
 
-function nightItemRow(it, rep) {
+function nightItemRow(it, rep, sectionDone = false) {
+  // закрытая смена или закрытая область — только просмотр (сервер отвечает 409)
+  const readonly = rep.readonly || sectionDone;
   const photos = (it.photos || []);
   return `<div class="night-item ${it.answer || 'none'}" data-item="${it.id}">
     <div class="night-item-text">${esc(it.text)}
@@ -316,7 +318,7 @@ function nightItemRow(it, rep) {
       ${it.answered_by_name ? `<small class="muted">· ${esc(it.answered_by_name)}${it.answered_at ? ' ' + esc(hhmm(it.answered_at)) : ''}</small>` : ''}
     </div>
     <div class="night-item-acts">
-      ${rep.readonly
+      ${readonly
         ? `<span class="badge ${NIGHT_ANSWER_BADGE[it.answer] || 'muted'}">${esc(it.answer_title)}</span>`
         : `<button class="btn btn-sm ${it.answer === 'ok' ? 'btn-primary' : 'btn-ghost'}" data-ans="ok" data-id="${it.id}">ОК</button>
            <button class="btn btn-sm ${it.answer === 'bad' ? 'btn-danger' : 'btn-ghost'}" data-ans="bad" data-id="${it.id}">Не ОК</button>
