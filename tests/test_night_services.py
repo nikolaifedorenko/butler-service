@@ -270,6 +270,46 @@ def test_svoya_sluzhba_u_obekta_ne_trogaet_zonu(manager_client, open_shift):
     _restore_override(manager_client, area_4001, item["id"], before_4001)
 
 
+def test_pravka_shablona_ne_zatiraet_pravku_obekta_v_otkrytoy_smene(manager_client, employee_client,
+                                                                    open_shift):
+    """Правка пункта шаблона зоны уезжает в незакрытые смены, но у объекта со своей
+    формулировкой и своей службой (ChecklistOverride) снимок остаётся его собственным."""
+    zone_id = _zone_id(manager_client)
+    item = _zone_item(manager_client, zone_id, "Вилла убрана")
+    own_svc = _create(manager_client, f"{TEST_PREFIX} своя у объекта", use_telegram=True)
+    zone_svc = _create(manager_client, f"{TEST_PREFIX} новая у шаблона", use_telegram=True)
+    area_4001 = _area_id(manager_client, "Вилла 4001")
+    area_4003 = _area_id(manager_client, "Вилла 4003")
+    before_4001 = _override_of(manager_client, area_4001, item["id"])
+    own_text = "Вилла убрана (своя формулировка объекта)"
+
+    def row_of(rep, area_id: int) -> dict:
+        # id пункта шаблона в ответ отчёта не попадает — ищем по любой из двух формулировок
+        r = employee_client.get(f"/api/night/reports/{rep.id}")
+        assert r.status_code == 200, r.text
+        sec = next(s for s in r.json()["report"]["areas"] if s["area_id"] == area_id)
+        rows = [i for i in sec["items"] if i["text"] in (own_text, item["text"])]
+        assert len(rows) == 1, rows
+        return rows[0]
+
+    try:
+        with open_shift() as rep:
+            r = manager_client.put(f"/api/night/areas/{area_4001}/overrides/{item['id']}", json={
+                "text": own_text, "disabled": False, "service_id": own_svc["id"]})
+            assert r.status_code == 200, r.text
+            _set_zone_service(manager_client, item, zone_svc["id"])
+
+            own = row_of(rep, area_4001)
+            assert own["text"] == own_text
+            assert own["service_name"] == own_svc["name"]
+            other = row_of(rep, area_4003)
+            assert other["text"] == item["text"]
+            assert other["service_name"] == zone_svc["name"]
+    finally:
+        _set_zone_service(manager_client, item, item.get("service_id"))
+        _restore_override(manager_client, area_4001, item["id"], before_4001)
+
+
 def test_pravka_tolko_sluzhby_sohranyaet_pravku(manager_client):
     """Правка объекта живёт, даже если изменена только служба (без своей формулировки)."""
     zone_id = _zone_id(manager_client)

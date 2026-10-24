@@ -488,19 +488,20 @@ def update_zone_item(item_id: int, payload: ZoneItemIn,
     item.active = payload.active
     item.service_id = payload.service_id
     svc_names = services_map(db)
+    # у объекта может быть своя формулировка или своя служба (ChecklistOverride) —
+    # их в незакрытых сменах не переопределяем; правки ищем по объекту (area_id)
+    ovs = {o.area_id: o for o in db.scalars(select(ChecklistOverride).where(
+        ChecklistOverride.zone_item_id == item.id))}
     for ni in db.scalars(select(NightCheckItem)
                          .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
                          .where(NightCheckItem.zone_item_id == item.id, NightReport.status == "open",
                                 NightAreaSection.status != "done")):
-        ni.text = item.text
+        ov = ovs.get(ni.section.area_id)
+        if ov is None or not ov.text:
+            ni.text = item.text
         ni.sort_order = item.sort_order
-        # служба пункта шаблона меняется и в незакрытых сменах; у объекта может быть
-        # своя служба (ChecklistOverride) — её не переопределяем
-        own = {o.zone_item_id for o in db.scalars(select(ChecklistOverride).where(
-            ChecklistOverride.zone_item_id == item.id,
-            ChecklistOverride.service_id.is_not(None)))}
-        if ni.section.area_id not in own:
+        if ov is None or not ov.service_id:
             ni.service_id = item.service_id
             ni.service_name = svc_names.get(item.service_id or 0, "")
     removed = _remove_zone_item_from_open(db, item) if not item.active else 0
