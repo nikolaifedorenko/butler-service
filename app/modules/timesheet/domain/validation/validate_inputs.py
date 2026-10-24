@@ -29,6 +29,6 @@ def validate_inputs(period: Period, days: Sequence[Day], adjustments: Sequence[A
     check_day_values(days, st)
     check_plan_minutes(days, st)
     check_groups(days, st)
-    check_opening_inputs(deferred_in, adjustments, period, previous_step_minutes)
+    check_opening_inputs(deferred_in, adjustments, period, previous_step_minutes, st.weights)
     check_now_in_period(period, now, st)
     check_close_allowed(period, now, mode, st)

@@ -130,6 +130,7 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
             "Гранулярность периода меняется только с 1-го числа месяца — иначе новая "
             "цепочка периодов начнётся посреди периода прежней"))
     _guard_removed_day_codes(data.payload, db)
+    _guard_deferred_tariffs(st, applies_from(data.valid_from, st.period_granularity), db)
     # shortcut: сверка и вставка не атомарны — публикации в одну и ту же долю секунды пройдут обе
     latest = db.scalar(select(func.max(EngineSettingsVersion.id)))
     if data.base_version_id is not None and latest != data.base_version_id:
@@ -177,6 +178,25 @@ def _guard_removed_day_codes(payload: dict, db: Session) -> None:
             f"Код {listed} нельзя удалить: в Табеле есть строки с ним. Сначала "
             "замените их другим кодом — на истории кода держится расчёт закрытых "
             "периодов."))
+
+
+def _guard_deferred_tariffs(st, start: dt.date, db: Session) -> None:
+    """Тариф, по которому лежит перенос в ещё не закрытый период новой версии, из весов
+    не убирается: тариф блока заморожен прошлым периодом, и закрытие следующего упало
+    бы на CHK-DEFERRED-IN (рецензия аудита 22.10.2026, §2.2: переименование ДН → НОЧЬ)."""
+    from ..adapters.orm import DeferredCarry, PeriodClosing
+
+    closed = select(PeriodClosing.id).where(PeriodClosing.employee_id == DeferredCarry.employee_id,
+                                            PeriodClosing.period_start == DeferredCarry.period_start)
+    used = sorted(set(db.scalars(select(DeferredCarry.tariff).where(
+        DeferredCarry.period_start >= start, DeferredCarry.tariff.not_in(list(st.weights)),
+        ~closed.exists()).distinct())))
+    if used:
+        listed = ", ".join(f"«{t}»" for t in used)
+        raise HTTPException(status_code=422, detail=(
+            f"Тариф {listed} нельзя убрать из весов: на него есть переносы в ещё не "
+            f"закрытые периоды с {start:%d.%m.%Y}. Оставьте тариф в категориях, весах и "
+            "каскаде, пока эти периоды не закрыты."))
 
 
 @router.get("/modifiers")
