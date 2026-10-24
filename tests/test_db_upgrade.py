@@ -90,6 +90,40 @@ def test_cars_holder_index_skipped_when_holder_has_two_cars(db):
     assert has_index()
 
 
+def test_cars_assigned_index_skipped_when_two_cars_assigned(db):
+    """Ревизия 0009 на базе, где за сотрудником уже закреплены два кара: данные не трогаем,
+    индекс не создаём, старт не падает. После снятия лишнего закрепления индекс создаётся."""
+    from alembic import command
+
+    from app.bootstrap.schema_version import config
+    from app.core.db import engine
+    from app.modules.cars.application.catalog import Car
+    from app.modules.employees.adapters.orm import Employee
+
+    def has_index():
+        return "ux_cars_assigned_to" in {i["name"] for i in inspect(engine).get_indexes("cars")}
+
+    assert has_index()
+    cars = db.scalars(select(Car).where(Car.assigned_to.is_(None)).order_by(Car.id)).all()[:2]
+    emp = db.scalar(select(Employee.id).where(Employee.id.not_in(
+        select(Car.assigned_to).where(Car.assigned_to.is_not(None)))))
+    db.rollback()       # открытое чтение cars держало бы DROP INDEX на PostgreSQL
+    command.downgrade(config(), "0008")
+    try:
+        for car in cars:
+            car.assigned_to = emp
+        db.commit()
+        command.upgrade(config(), "head")
+        assert not has_index()
+    finally:
+        for car in cars:
+            car.assigned_to = None
+        db.commit()
+        command.downgrade(config(), "0008")
+        command.upgrade(config(), "head")
+    assert has_index()
+
+
 def test_migrate_command_prepares_empty_base(tmp_path):
     """5.2 (ADR-0002): `python -m app.bootstrap.migrate` — отдельный шаг деплоя — доводит пустую
     базу до head и создаёт администратора из ADMIN_PASSWORD."""

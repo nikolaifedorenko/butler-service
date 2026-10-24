@@ -51,7 +51,11 @@ class Car(Base):
     # один сотрудник — один кар и при параллельных запросах (CONC-01)
     __table_args__ = (Index("ux_cars_holder_user_id", "holder_user_id", unique=True,
                             sqlite_where=text("holder_user_id IS NOT NULL"),
-                            postgresql_where=text("holder_user_id IS NOT NULL")),)
+                            postgresql_where=text("holder_user_id IS NOT NULL")),
+                      # один сотрудник — один закреплённый кар (0009)
+                      Index("ux_cars_assigned_to", "assigned_to", unique=True,
+                            sqlite_where=text("assigned_to IS NOT NULL"),
+                            postgresql_where=text("assigned_to IS NOT NULL")))
 
     id: Mapped[int] = mapped_column(primary_key=True)
     number: Mapped[str] = mapped_column(String(40), unique=True, index=True)

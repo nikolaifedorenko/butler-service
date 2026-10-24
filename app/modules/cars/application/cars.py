@@ -195,7 +195,11 @@ def add_history(db: Session, car: Car, action: str, principal, *, person: str = 
     try:
         db.flush()
     except IntegrityError as e:
-        # ux_cars_holder_user_id: параллельный запрос уже дал этому человеку другой кар
+        # ux_cars_holder_user_id / ux_cars_assigned_to: параллельный запрос уже дал (закрепил)
+        # этому человеку другой кар
+        if "assigned_to" in str(e.orig):
+            raise CarConflict("За сотрудником уже закреплён другой кар (один сотрудник — один кар) "
+                              "— обновите экран") from e
         if "holder_user_id" not in str(e.orig):
             raise
         raise CarConflict("У сотрудника уже есть кар (один сотрудник — один кар) — обновите экран") from e
