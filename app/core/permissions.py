@@ -84,6 +84,8 @@ def require_perm(*keys: str):
 
     def dep(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> Principal:
         perms = principal_permissions(db, principal)
+        # права, проверенные гейтом, — для чтений в том же запросе (без повторных запросов)
+        principal.gate_permissions = perms
         if not any(k in perms for k in keys):
             titles = ", ".join(next((p["title"] for p in PERMISSIONS if p["key"] == k), k) for k in keys)
             raise HTTPException(status_code=403, detail=f"Недостаточно прав: {titles}")

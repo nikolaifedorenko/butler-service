@@ -80,6 +80,7 @@ forbidden_modules =
     app.modules.employees
     app.modules.night
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 allow_indirect_imports = True
 
@@ -94,6 +95,7 @@ source_modules =
     app.modules.night
     app.modules.notify
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.access.domain
@@ -112,6 +114,7 @@ source_modules =
     app.modules.night
     app.modules.notify
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.audit.domain
@@ -130,6 +133,7 @@ source_modules =
     app.modules.night
     app.modules.notify
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.cars.domain
@@ -148,6 +152,7 @@ source_modules =
     app.modules.night
     app.modules.notify
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.docs.domain
@@ -166,6 +171,7 @@ source_modules =
     app.modules.night
     app.modules.notify
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.employees.domain
@@ -184,6 +190,7 @@ source_modules =
     app.modules.employees
     app.modules.notify
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.night.domain
@@ -202,6 +209,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.settings
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.notify.domain
@@ -220,11 +228,31 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.stays
     app.modules.timesheet
 forbidden_modules =
     app.modules.settings.domain
     app.modules.settings.adapters
     app.modules.settings.interface
+allow_indirect_imports = True
+
+[importlinter:contract:stays-private]
+name = R3: domain/adapters/interface stays приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.night
+    app.modules.notify
+    app.modules.settings
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.stays.domain
+    app.modules.stays.adapters
+    app.modules.stays.interface
 allow_indirect_imports = True
 
 [importlinter:contract:timesheet-private]
@@ -239,6 +267,7 @@ source_modules =
     app.modules.night
     app.modules.notify
     app.modules.settings
+    app.modules.stays
 forbidden_modules =
     app.modules.timesheet.domain
     app.modules.timesheet.adapters

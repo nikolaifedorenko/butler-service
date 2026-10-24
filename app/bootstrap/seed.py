@@ -403,6 +403,8 @@ def seed_if_empty(db: Session) -> bool:
     # ───────────────────── ночной отчёт и электрокары (вне движка) ─────────────────────
     _seed_night_dirs(db)
     _seed_cars(db, {e.full_name.split()[0]: e for e, _, _ in employees})
+    from ..modules.stays.application.demo import seed_stays_demo
+    seed_stays_demo(db)                                   # «Шахматка»: фонд, гости, брони, батлеры
 
     db.commit()
     return True

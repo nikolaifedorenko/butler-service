@@ -8,12 +8,15 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
+from app.core.time import TZ
+
 from ..domain.day_card.accepts_ut import accepts_ut
 from ..domain.day_card.window_of_day import window_of_day
 from ..domain.settings.types import Settings
 from ..domain.types.entities import Day, Period, Shift, ShiftEntry
+from ..domain.types.errors import DomainError
 from .context import EnginePorts
-from .errors import ScheduleDayNotEditableError
+from .errors import ScheduleDayNotEditableError, ScheduleInputError
 from .months import month_period, period_containing
 
 
@@ -40,6 +43,29 @@ def save_schedule_day(employee_id: str, day: dt.date, shifts: Sequence[Shift],
     # «Я 12 08:00–20:00» не пропадала после ручной 09:00–18:00)
     ports.schedule_store.replace_generated(employee_id, Period(day, day), ())
     ports.schedule_store.save_manual(employee_id, day, shifts)
+
+
+def preset_shifts(employee_id: str, day: dt.date, shift_type) -> list[Shift]:
+    """Смена из словаря (ShiftType: start_time, end_time, overnight) на день в UTC —
+    для «добавить смену в График» из шахматки."""
+    def at(d: dt.date, hhmm: str) -> dt.datetime:
+        hh, mm = (int(x) for x in hhmm.split(":"))
+        return dt.datetime.combine(d, dt.time(hh, mm), TZ).astimezone(dt.timezone.utc)
+    end_day = day + dt.timedelta(days=1) if shift_type.overnight else day
+    return [Shift(employee_id, at(day, shift_type.start_time), at(end_day, shift_type.end_time))]
+
+
+def add_preset_shift(employee_id: str, day: dt.date, shift_type, ports: EnginePorts) -> list[Shift]:
+    """Публичная точка «добавить смену в График» (модуль «Шахматка»): та же запись ручной
+    смены, что у вкладки График; ошибки — одним типом с текстом для пользователя."""
+    shifts = preset_shifts(employee_id, day, shift_type)
+    try:
+        save_schedule_day(employee_id, day, shifts, ports)
+    except ScheduleDayNotEditableError as e:
+        raise ScheduleInputError("День нельзя править в Графике: Табель дня не принимает смену") from e
+    except DomainError as e:
+        raise ScheduleInputError("Смена не прошла проверку Графика") from e
+    return shifts
 
 
 def drop_manual_day(employee_id: str, day: dt.date, ports: EnginePorts) -> None:

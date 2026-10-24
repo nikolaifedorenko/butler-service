@@ -52,6 +52,16 @@ class SqlTimesheetAdapter:
                 for r in rows]
 
 
+    def codes_for(self, employee_ids, period: Period) -> dict[tuple[str, dt.date], str]:
+        """Коды дней Табеля пакетно на диапазон — без групп и строк Day (для шахматки)."""
+        if not employee_ids:
+            return {}
+        rows = self.db.execute(select(TabelDay.employee_id, TabelDay.date, TabelDay.code).where(
+            TabelDay.employee_id.in_([emp_pk(e) for e in employee_ids]),
+            TabelDay.date >= period.start, TabelDay.date <= period.end))
+        return {(str(e), d): c for e, d, c in rows}
+
+
 def tabel_rows(db: Session, emp_ids: list[int], first: dt.date, last: dt.date) -> dict:
     return {(r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
         TabelDay.employee_id.in_(emp_ids), TabelDay.date >= first,

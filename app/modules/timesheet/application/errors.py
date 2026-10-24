@@ -111,3 +111,9 @@ class StoredResultCorruptError(ApplicationError):
         super().__init__(
             f"Сохранённый результат закрытого периода {what} — выполните «Пересчитать» "
             "либо обратитесь к администратору")
+
+
+class ScheduleInputError(ApplicationError):
+    """Ручная смена не принята Графиком (для вызова из других модулей: текст — для людей)."""
+
+    code = "SCHEDULE_INPUT"
