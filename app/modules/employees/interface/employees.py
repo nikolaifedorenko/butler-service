@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, joinedload, object_session, selectinload
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
 from app.core.auth_guards import can_manage_user
-from app.core.db import get_db
+from app.core.db import get_db, lock_employee
 from app.core.format import normalize_hex_color
 from app.core.identity import User
 from app.core.permissions import require_perm
@@ -455,6 +455,7 @@ def bank_adjust(employee_id: int, payload: BankAdjustIn,
     bank_adjustment.validate_adjustment_entry(str(emp.id), eff,
                                               payload.reason_code or "manual",
                                               engine_ports(db, principal, now_utc()))
+    lock_employee(db, emp.id)            # корректировка — вход закрытия периода (TOCTOU)
     adj = BankAdjustment(employee_id=emp.id, hours=hours, effective_date=eff,
                          note=payload.note.strip(), reason_code=(payload.reason_code or "manual"),
                          author_id=principal.user.id,
@@ -474,6 +475,7 @@ def bank_adjust_delete(employee_id: int, adjustment_id: int,
     if not adj or adj.employee_id != employee_id:
         raise HTTPException(status_code=404, detail="Корректировка не найдена")
     data = _adjustment_dict(adj)
+    lock_employee(db, employee_id)
     db.delete(adj)
     audit(db, principal, "bank_adjust_delete", f"employee:{employee_id}", data)
     db.commit()

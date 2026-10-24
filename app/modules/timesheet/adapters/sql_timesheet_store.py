@@ -8,6 +8,7 @@ import datetime as dt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.db import lock_employee
 from app.core.time import utcnow
 
 from ._db import emp_pk
@@ -21,6 +22,7 @@ class SqlTimesheetStore:
     def save_day(self, employee_id: str, day: dt.date, code: str,
                  plan_minutes: int | None) -> None:
         emp = emp_pk(employee_id)
+        lock_employee(self.db, emp)      # вход закрытия периода (TOCTOU)
         row = self.db.scalar(select(TabelDay).where(TabelDay.employee_id == emp,
                                                     TabelDay.date == day))
         if not code:

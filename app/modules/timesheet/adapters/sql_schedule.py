@@ -12,6 +12,8 @@ import datetime as dt
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.db import lock_employee
+
 from ..domain.types.entities import Absence, Period, Shift, ShiftEntry
 from ..domain.types.errors import ConfigError
 from ._db import emp_pk, local_midnight_utc, utc_naive_to_aware
@@ -133,8 +135,10 @@ class SqlScheduleStore:
                                           ScheduleShift.id))
         return [ShiftEntry(_shift(r), r.source) for r in rows]
 
+    # записи Графика — вход закрытия периода: под блокировкой сотрудника (TOCTOU)
     def save_manual(self, employee_id: str, day: dt.date, shifts) -> None:
         emp = emp_pk(employee_id)
+        lock_employee(self.db, emp)
         self.db.execute(delete(ScheduleShift).where(ScheduleShift.employee_id == emp,
                                                     ScheduleShift.date == day,
                                                     ScheduleShift.source == "manual"))
@@ -150,12 +154,14 @@ class SqlScheduleStore:
         self.db.flush()
 
     def drop_manual(self, employee_id: str, day: dt.date) -> None:
+        lock_employee(self.db, emp_pk(employee_id))
         self.db.execute(delete(ScheduleShift).where(
             ScheduleShift.employee_id == emp_pk(employee_id), ScheduleShift.date == day,
             ScheduleShift.source == "manual"))
 
     def replace_generated(self, employee_id: str, period: Period, entries) -> None:
         emp = emp_pk(employee_id)
+        lock_employee(self.db, emp)
         self.db.execute(delete(ScheduleShift).where(
             ScheduleShift.employee_id == emp, ScheduleShift.source == "generated",
             ScheduleShift.date >= period.start, ScheduleShift.date <= period.end))
@@ -182,6 +188,7 @@ class SqlScheduleStore:
         if end_local - start_local > MAX_ABSENCE:
             raise ConfigError([("CHK-ABSENCE-LENGTH",
                                 {"day": day.isoformat(), "start": start_hhmm, "end": end_hhmm})])
+        lock_employee(self.db, emp_pk(employee_id))
         row = ScheduleAbsence(employee_id=emp_pk(employee_id),
                               start_utc=start_local.astimezone(dt.timezone.utc).replace(tzinfo=None),
                               end_utc=end_local.astimezone(dt.timezone.utc).replace(tzinfo=None))
@@ -192,6 +199,7 @@ class SqlScheduleStore:
     def drop_absence(self, absence_id: int) -> None:
         row = self.db.get(ScheduleAbsence, absence_id)
         if row is not None:
+            lock_employee(self.db, row.employee_id)
             self.db.delete(row)
 
 

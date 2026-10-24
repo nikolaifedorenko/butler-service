@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
-from app.core.db import get_db
+from app.core.db import get_db, lock_employee
 from app.core.permissions import has_perm, principal_permissions, require_perm
 from app.core.time import TZ, local_date, now_local
 from app.modules.employees.application import Employee, employed_on, ensure_periods, periods_of
@@ -250,10 +250,10 @@ def punch(payload: PunchIn, principal: Principal = Depends(current_principal), d
 def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Employee):
     # Межпроцессное взаимное исключение: threading.Lock в punch() защищает только
     # внутри процесса. При нескольких воркерах/инстансах гонку «прочитал состояние —
-    # вставил отметку» закрывает блокировка строки сотрудника: Postgres выполняет
-    # SELECT … FOR UPDATE, SQLite форсу игнорирует — там писатели и так
-    # сериализуются файловой блокировкой (WAL + busy_timeout).
-    db.execute(select(Employee).where(Employee.id == emp.id).with_for_update())
+    # вставил отметку» закрывает блокировка сотрудника (lock_employee: PostgreSQL —
+    # строка FOR UPDATE, SQLite — блокировка записи); она же сериализует отметку с
+    # закрытием периода (TOCTOU).
+    lock_employee(db, emp.id)
     now = now_local()
     backfill = False
     ts = now
@@ -416,6 +416,7 @@ def delete_punch(punch_id: int, principal: Principal = Depends(require_perm("pun
     if not p:
         raise HTTPException(status_code=404, detail="Отметка не найдена")
     ts, emp_id = p.ts, p.employee_id
+    lock_employee(db, emp_id)            # отметка — вход закрытия периода (TOCTOU)
     timesheet_edit.ensure_unlocked(str(emp_id), ts.date(), engine_ports(db, principal))
     audit(db, principal, "punch_delete", f"punch:{punch_id}",
           {"employee_id": emp_id, "ts": ts.isoformat(timespec="minutes"), "kind": p.kind})

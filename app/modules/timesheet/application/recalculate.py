@@ -21,16 +21,18 @@ def recalculate(employee_id: str, period: Period, now: dt.datetime,
                 ports: EnginePorts) -> PeriodView:
     employment = ports.employment.employment(employee_id, period)
     require_effective(employee_id, period, employment)
-    state = ports.store.period_state(employee_id, period)
-    if not state.closed:
-        raise PeriodNotClosedError(f"{employee_id}:{period.start}")
-    if state.next_closed:
-        raise RecalculationForbiddenError(f"{employee_id}:{period.start}")
-    frozen = ports.store.closing_inputs(employee_id, period)
-    if frozen is None:
-        raise PeriodNotClosedError(f"{employee_id}:{period.start}")
-    inp = load_inputs(employee_id, period, ports, frozen=frozen)
     with ports.unit_of_work():
+        # вход и сохранение — под блокировкой сотрудника, как в close_period (TOCTOU)
+        ports.store.lock_employee(employee_id)
+        state = ports.store.period_state(employee_id, period)
+        if not state.closed:
+            raise PeriodNotClosedError(f"{employee_id}:{period.start}")
+        if state.next_closed:
+            raise RecalculationForbiddenError(f"{employee_id}:{period.start}")
+        frozen = ports.store.closing_inputs(employee_id, period)
+        if frozen is None:
+            raise PeriodNotClosedError(f"{employee_id}:{period.start}")
+        inp = load_inputs(employee_id, period, ports, frozen=frozen)
         view = run_pipeline(inp, now, "close")
         ports.store.save_result(employee_id, period, view.settle, view.flags,
                                 frozen, inp.st.versions, inp.st.step_minutes)

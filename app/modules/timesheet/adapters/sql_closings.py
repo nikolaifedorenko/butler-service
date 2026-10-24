@@ -13,6 +13,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.db import lock_employee
 from app.core.time import utcnow
 
 from ..domain.types.entities import ClosingInputs, DeferredBlock, Period, PeriodState
@@ -70,6 +71,9 @@ class SqlSettlementStore:
             closed, later = marks[pks[emp]]
             marks[pks[emp]] = (closed or start == period.start, later or start > period.end)
         return marks
+
+    def lock_employee(self, employee_id: str) -> None:
+        lock_employee(self.db, emp_pk(employee_id))
 
     def closing_inputs(self, employee_id: str, period: Period) -> ClosingInputs | None:
         row = self._row(employee_id, period)

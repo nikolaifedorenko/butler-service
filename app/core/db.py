@@ -1,5 +1,5 @@
 """Подключение к БД. По умолчанию SQLite, для продакшена достаточно поменять DATABASE_URL на PostgreSQL."""
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
@@ -25,6 +25,22 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 class Base(DeclarativeBase):
     pass
+
+
+def lock_employee(db, employee_id: int) -> None:
+    """Сериализовать записи входных данных сотрудника (отметки, Табель, График, банк) с
+    закрытием и пересчётом его периода — до конца текущей транзакции.
+
+    Закрытие читает вход и пишет результат в одной транзакции, но на PostgreSQL
+    (READ COMMITTED) каждый запрос видит свежие коммиты: правка, закоммиченная между
+    чтением и сохранением, в закрытый результат не попадала (рецензия аудита 22.10.2026,
+    TOCTOU). PostgreSQL — блокировка строки сотрудника; SQLite FOR UPDATE не знает,
+    поэтому — пустой UPDATE: он берёт блокировку записи базы до commit.
+    """
+    if db.get_bind().dialect.name == "sqlite":
+        db.execute(text("UPDATE employees SET id = id WHERE id = :id"), {"id": employee_id})
+    else:
+        db.execute(text("SELECT id FROM employees WHERE id = :id FOR UPDATE"), {"id": employee_id})
 
 
 def get_db():
