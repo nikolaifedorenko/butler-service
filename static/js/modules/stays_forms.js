@@ -127,7 +127,7 @@ async function openReservationForm(id, opts = {}) {
       ${rFields.length ? `<h4>Дополнительно</h4><div class="grid-2">${staysFieldInputs(rFields, r?.fields, 'data-rf-field')}</div>` : ''}
       <div id="rf-preview-out" class="sp-out"></div>`,
     footer: staysFormFoot(),
-    async onMount(m) {
+    onMount(m) {
       const val = sel => $(sel, m).value;
       if (opts.mine) {
         ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-declined',
@@ -193,19 +193,6 @@ async function openReservationForm(id, opts = {}) {
       };
       drawOcc(); drawMoves(); drawPins(); drawLog(); drawComp();
       $('#rf-comp-add', m).onclick = () => { form.companions.push({ kind: 'other', description: '' }); drawComp(); };
-      if (opts.mine) {
-        /* батлер: вместо поиска по всем гостям — гости, связанные «кто кому» с проживающими брони */
-        ['#rf-guest-q', '#rf-new-last', '#rf-new-level', '#rf-new-add'].forEach(sel => { $(sel, m).closest('.sb-toolbar').style.display = 'none'; });
-        const have = new Set(form.occupants.map(o => o.guest_id));
-        const cards = await Promise.all([...have].map(gid => api(`/api/stays/guests/${gid}`, { silent: true }).catch(() => null)));
-        const linked = new Map();
-        cards.filter(Boolean).forEach(c => c.links.forEach(l => { if (!have.has(l.guest_id)) linked.set(l.guest_id, l); }));
-        $('#rf-linked-box', m).innerHTML = linked.size ? `<div class="sb-line"><select id="rf-linked">${[...linked.values()].map(l =>
-          `<option value="${l.guest_id}">${esc(l.name)} · ${esc(l.label)}</option>`).join('')}</select>
-          <button class="btn btn-sm" id="rf-linked-add">+ Добавить связанного гостя</button></div>` : '';
-        const add = $('#rf-linked-add', m);
-        if (add) add.onclick = () => { const l = linked.get(Number(val('#rf-linked'))); addGuest(l.guest_id, l.name); };
-      }
 
       /* даты брони меняются — гости «на весь срок» едут вместе с ними */
       let prev = { ci: val('#rf-check-in'), co: val('#rf-check-out') };
@@ -257,6 +244,20 @@ async function openReservationForm(id, opts = {}) {
       const flow = previewThenSave({ url: r ? `/api/stays/reservations/${r.id}` : '/api/stays/reservations',
         method: r ? 'PUT' : 'POST', body, out: () => $('#rf-preview-out', m) });
       staysBindFoot(m, flow, opts.onSaved, 'Бронь сохранена');
+      /* связанных гостей батлера догружаем после привязки кнопок — иначе ранний клик «Сохранить» терялся */
+      if (opts.mine) (async () => {
+        /* батлер: вместо поиска по всем гостям — гости, связанные «кто кому» с проживающими брони */
+        ['#rf-guest-q', '#rf-new-last', '#rf-new-level', '#rf-new-add'].forEach(sel => { $(sel, m).closest('.sb-toolbar').style.display = 'none'; });
+        const have = new Set(form.occupants.map(o => o.guest_id));
+        const cards = await Promise.all([...have].map(gid => api(`/api/stays/guests/${gid}`, { silent: true }).catch(() => null)));
+        const linked = new Map();
+        cards.filter(Boolean).forEach(c => c.links.forEach(l => { if (!have.has(l.guest_id)) linked.set(l.guest_id, l); }));
+        $('#rf-linked-box', m).innerHTML = linked.size ? `<div class="sb-line"><select id="rf-linked">${[...linked.values()].map(l =>
+          `<option value="${l.guest_id}">${esc(l.name)} · ${esc(l.label)}</option>`).join('')}</select>
+          <button class="btn btn-sm" id="rf-linked-add">+ Добавить связанного гостя</button></div>` : '';
+        const add = $('#rf-linked-add', m);
+        if (add) add.onclick = () => { const l = linked.get(Number(val('#rf-linked'))); addGuest(l.guest_id, l.name); };
+      })().catch(e => toast(e.message, 'err'));
     },
   });
 }
