@@ -131,6 +131,15 @@ def _guard_open(rep: NightReport) -> None:
                             detail=f"Смена {rep.date.strftime('%d.%m.%Y')} закрыта — правки недоступны")
 
 
+def _guard_section_open(sec) -> None:
+    """Закрытая область — только для чтения: правки — после переоткрытия («Переоткрыть» или
+    «взять в работу» закрывшим/супервайзером) (рецензия аудита 22.10.2026, P1)."""
+    if sec.status == "done":
+        when = f" в {sec.closed_at:%H:%M}" if sec.closed_at else ""
+        raise HTTPException(status_code=409, detail=(
+            f"Область «{sec.name}» закрыта{when} — чтобы изменить отметки, переоткройте её"))
+
+
 def _report_payload(db: Session, rep: NightReport) -> dict:
     """Отчёт + снимок обхода каров/перехватов + фото к пунктам (для экрана хода смены)."""
     data = report_dict(rep, db=db)
