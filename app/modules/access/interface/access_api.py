@@ -209,6 +209,8 @@ def delete_group(group_id: int, principal: Principal = Depends(require_perm("acc
     g = db.get(AccessGroup, group_id)
     if not g:
         raise HTTPException(status_code=404, detail="Группа не найдена")
+    # удаление выводит из группы всех участников — те же правила, что для состава
+    _guard_members(db, principal, group_id, set())
     db.execute(delete(AccessGrant).where(AccessGrant.group_id == group_id))
     db.execute(delete(AccessGroupMember).where(AccessGroupMember.group_id == group_id))
     audit(db, principal, "access_group_delete", f"group:{group_id}", {"name": g.name})
