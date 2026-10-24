@@ -282,6 +282,13 @@ function resetUserViewState() {
   $$('.view').forEach(v => { v.innerHTML = ''; });
 }
 
+/* Перечень расхождений схемы сервер отдаёт только администратору (/api/selfcheck), остальным —
+   строку details: раньше chk.missing.slice у них падал TypeError, и предупреждение терялось. */
+function selfcheckDetails(chk) {
+  if (Array.isArray(chk.missing)) return chk.missing.slice(0, 6);
+  return chk.details ? [chk.details] : [];
+}
+
 async function enterApp() {
   resetUserViewState();
   $('#login-screen').classList.add('hidden');
@@ -291,7 +298,7 @@ async function enterApp() {
   try {
     const chk = await api('/api/selfcheck', { silent: true, allow401: true });
     if (chk && chk.ok === false) {
-      toast('Внимание: схема БД отстаёт от кода. ' + (chk.hint || ''), 'err', chk.missing.slice(0, 6));
+      toast('Внимание: схема БД отстаёт от кода. ' + (chk.hint || ''), 'err', selfcheckDetails(chk));
     }
   } catch { /* самодиагностика недоступна — не критично */ }
   if (can('employees.view')) {        // справочник — по праву, а не по роли (UI-02)

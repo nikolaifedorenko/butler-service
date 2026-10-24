@@ -352,6 +352,32 @@ async function main() {
   click($('#modal .x'));
   check('карточка закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
 
+  /* ── 6b. Мелочи рецензии 22.10.2026 (P2): самодиагностика и права сотрудников ── */
+  console.log('\n6b · Самодиагностика у не-админа; «Сотрудники» без employees.edit');
+  check('предупреждение схемы без перечня (ответ не-админу) не падает',
+    window.eval(`JSON.stringify(selfcheckDetails({ ok: false, hint: 'h', details: 'перечень — администратору' }))`)
+      === JSON.stringify(['перечень — администратору']));
+  const access = await jget('/api/access');
+  const gromova = (access.users || []).find(u => u.username === 'gromova');
+  check('админ запрещает gromova employees.edit',
+    !!gromova && (await jsend('PUT', `/api/access/users/${gromova.id}/grants`,
+      { grants: { 'employees.edit': 'deny' } })).ok);
+  click($('#logout-btn'));
+  check('выход выполнен', await waitFor(() => !$('#login-screen').classList.contains('hidden')));
+  await sleep(300);
+  check('вход выполнен (gromova без employees.edit)', await login('gromova'));
+  await sleep(600);
+  window.navigate('employees');
+  check('список сотрудников отрисован', await waitFor(() => $$('#view-employees tr[data-card]').length > 0));
+  check('без employees.edit нет «+ Добавить сотрудника»', !$('#e-add'));
+  click($('#view-employees tr[data-card]'));
+  check('карточка открылась', await waitFor(() => !$('#modal-backdrop').classList.contains('hidden')));
+  const editBtns = ['data-edit', 'data-delete', 'data-dismiss', 'data-rehire', 'data-block', 'data-pos']
+    .filter(a => $(`#modal [${a}]`));
+  check('в карточке нет кнопок правки учётки', editBtns.length === 0, editBtns.join(', '));
+  click($('#modal .x'));
+  check('карточка закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
+
   /* ── 7. Роль сотрудника: только свои слои и своя строка ── */
   console.log('\n7 · Сотрудник: слои по правам, в «Номерах» только себя');
   click($('#logout-btn'));
