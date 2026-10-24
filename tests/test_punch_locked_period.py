@@ -63,6 +63,36 @@ def test_last_closed_period_still_accepts_backfill(manager_client, closed_two_mo
     r = manager_client.post("/api/punches", json={
         "employee_id": emp.id, "kind": "out", "ts": f"{last_closed_day}T20:00", "note": "проба периода"})
     assert r.status_code == 200, r.text
+    # как правка Табеля: в закрытый результат отметка попадёт только через пересчёт
+    assert any("пересчёт" in w for w in r.json()["warnings"]), r.json()["warnings"]
+
+
+def test_cancel_in_last_closed_period_warns_about_recalculation(manager_client, closed_two_months, db):
+    """Отмена отметки из последнего закрытого периода: раньше — молчаливое {"ok": true},
+    хотя закрытый результат её ещё учитывает (рецензия аудита 22.10.2026, P1)."""
+    from app.modules.timesheet.adapters.orm import Punch
+
+    emp, _frozen_day, last_closed_day, _old_id = closed_two_months
+    p = Punch(employee_id=emp.id, ts=dt.datetime.combine(last_closed_day, dt.time(21)),
+              kind="OUT", source="manual", note="проба периода")
+    db.add(p)
+    db.commit()
+    r = manager_client.delete(f"/api/punches/{p.id}")
+    assert r.status_code == 200, r.text
+    assert "пересчёт" in (r.json().get("warning") or ""), r.text
+
+
+def test_cancel_in_open_period_has_no_warning(manager_client, db):
+    from app.modules.employees.application.catalog import Employee
+    from app.modules.timesheet.adapters.orm import Punch
+
+    emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
+    p = Punch(employee_id=emp.id, ts=dt.datetime.combine(local_date(), dt.time(0, 1)),
+              kind="IN", source="manual", note="проба периода")
+    db.add(p)
+    db.commit()
+    r = manager_client.delete(f"/api/punches/{p.id}")
+    assert r.status_code == 200 and r.json().get("warning") is None, r.text
 
 
 def test_month_journal_is_not_truncated(manager_client, db):

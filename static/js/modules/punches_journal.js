@@ -70,8 +70,8 @@ async function fetchPunchJournal() {
     confirmDialog('Отменить отметку?',
       `${p.employee}: ${p.kind === 'IN' ? 'приход' : 'уход'} ${dateRu(p.ts.slice(0, 10))} в ${p.ts.slice(11, 16)}. `
       + 'Отмена записывается в журнал аудита.', async () => {
-        await api(`/api/punches/${p.id}`, { method: 'DELETE' });
-        toast('Отметка отменена', 'ok');
+        const r = await api(`/api/punches/${p.id}`, { method: 'DELETE' });
+        toast('Отметка отменена', 'ok', r && r.warning ? [r.warning] : []);
         await fetchPunchJournal();
         fetchMarks(true);
       }, 'Отменить отметку');
