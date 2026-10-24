@@ -1,13 +1,19 @@
 """BankPort (2.6, v7.1/R37): opening(P) = закрывающий банк предыдущего периода цепочки
 (RUL-BANK-CONTINUITY); для первого периода — 0, начальное значение задаётся посевающей
 корректировкой OPENING_SEED (конвенция адаптера — ядро маркер не интерпретирует).
-adjustments(P) — только корректировки своего периода (Adjustment.period = P)."""
+adjustments(P) — только корректировки своего периода (Adjustment.period = P).
+
+Предыдущий период цепочки — закрытие, которое кончается накануне P.start, а не
+«предыдущий период гранулярности P»: на смене гранулярности (R36) они расходятся —
+после month → half_month закрытия с началом 16-го нет, после half_month → month
+строка с началом 1-го — это первая половина, а банк несёт вторая."""
 from __future__ import annotations
+
+import datetime as dt
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..application.months import previous_period
 from ..domain.types.entities import Adjustment, Period
 from ._db import emp_pk
 from .orm import BankAdjustment, PeriodClosing
@@ -23,14 +29,8 @@ class SqlBankAdapter:
     def __init__(self, db: Session, settings_port):
         self.db, self.settings = db, settings_port
 
-    def _previous_closing(self, emp: int, period: Period) -> PeriodClosing | None:
-        granularity = self.settings.load(period).period_granularity
-        prev = previous_period(period, granularity)
-        return self.db.scalar(select(PeriodClosing).where(
-            PeriodClosing.employee_id == emp, PeriodClosing.period_start == prev.start))
-
     def opening(self, employee_id: str, period: Period) -> int:
-        row = self._previous_closing(emp_pk(employee_id), period)
+        row = previous_closing(self.db, emp_pk(employee_id), period)
         return row.closing_bank_minutes if row is not None else 0
 
     def adjustments(self, employee_id: str, period: Period) -> list[Adjustment]:
@@ -40,6 +40,14 @@ class SqlBankAdapter:
             BankAdjustment.effective_date <= period.end).order_by(BankAdjustment.id))
         return [Adjustment(_minutes(r.hours), period, r.reason_code or "manual", r.note or None)
                 for r in rows]
+
+
+def previous_closing(db: Session, emp: int, period: Period) -> PeriodClosing | None:
+    """Закрытие, смежное с периодом слева (period_end = накануне period.start)."""
+    return db.scalar(select(PeriodClosing).where(
+        PeriodClosing.employee_id == emp,
+        PeriodClosing.period_end == period.start - dt.timedelta(days=1))
+        .order_by(PeriodClosing.period_start.desc()).limit(1))
 
 
 def opening_seed_set(db: Session, employee_id: str, period: Period) -> bool:
