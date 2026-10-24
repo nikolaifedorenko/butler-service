@@ -143,6 +143,7 @@ class BulkIn(BaseModel):
     dates: list[dt.date]
     code: str = ""
     hours: float = 0
+    note: str = ""          # как у ячейки: непустое — в каждую ячейку, пустое — не трогает
 
 
 def _apply_cell(db: Session, principal: Principal, emp_id: int, day: dt.date, code: str,
@@ -200,8 +201,8 @@ def bulk(payload: BulkIn, principal: Principal = Depends(require_perm("tabel.edi
     for d in payload.dates:
         for eid in payload.employee_ids:
             try:
-                w = _apply_cell(db, principal, eid, d, payload.code, payload.hours, "",
-                                rebuild=False)
+                w = _apply_cell(db, principal, eid, d, payload.code, payload.hours,
+                                payload.note, rebuild=False)
                 if w:
                     warns.add(w)
                 touched.setdefault(eid, []).append(d)

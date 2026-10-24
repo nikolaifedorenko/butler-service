@@ -551,6 +551,7 @@ def delete_employee(employee_id: int, principal: Principal = Depends(require_per
     emp.active = False
     if emp.user:
         emp.user.is_active = False
+        emp.user.token_version = int(emp.user.token_version or 0) + 1   # сессии завершаются
     audit(db, principal, "employee_delete", f"employee:{emp.id}",
           {"full_name": emp.full_name, "note": "данные истории сохранены"})
     db.commit()

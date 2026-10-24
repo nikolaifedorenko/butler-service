@@ -211,7 +211,7 @@ function tabelCellModal(empId, day) {
           let res;
           if (until > +day.slice(8)) {
             const dates = d.days.filter(x => +x.slice(8) >= +day.slice(8) && +x.slice(8) <= until);
-            res = await api('/api/tabel/bulk', { method: 'POST', body: { employee_ids: [empId], dates, code, hours: h } });
+            res = await api('/api/tabel/bulk', { method: 'POST', body: { employee_ids: [empId], dates, code, hours: h, note: $('#tc-note').value } });
             (res.warnings || []).forEach(w => toast(w, 'warn'));
             (res.errors || []).slice(0, 5).forEach(e => toast(`${e.date}: ${e.detail}`, 'err'));
           } else {

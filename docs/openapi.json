@@ -477,6 +477,11 @@
             "default": 0,
             "title": "Hours",
             "type": "number"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
           }
         },
         "required": [
