@@ -100,3 +100,34 @@ def test_second_car_for_same_holder_is_rejected_by_index(app_stack, db):
             with pytest.raises(CarConflict):
                 add_history(s, car, "give", None)
             s.rollback()
+
+
+def test_second_car_for_same_assignee_is_rejected_by_index(app_stack, db):
+    """Закрепление: assign_employee проверяет «уже закреплён» чтением, параллельный запрос
+    мог закрепить за человеком второй кар между проверкой и записью — ловит индекс."""
+    from app.modules.cars.application.cars import CarConflict, add_history
+    from app.modules.cars.application.catalog import Car
+    from app.modules.cars.interface.cars_api import _err
+
+    SessionLocal = app_stack["SessionLocal"]
+    (a, b), (uid, _), _p, User, _e = _free_cars_and_users(db, 2)
+    emp_id = db.get(User, uid).employee_id
+    with SessionLocal() as s:
+        saved = {cid: s.get(Car, cid).assigned_to for cid in (a, b)}
+    try:
+        with SessionLocal() as s:
+            s.get(Car, a).assigned_to = emp_id
+            s.commit()
+        with SessionLocal() as s:
+            car = s.get(Car, b)
+            car.assigned_to = emp_id
+            with pytest.raises(CarConflict) as exc:
+                add_history(s, car, "assign", None)
+            s.rollback()
+            assert _err(exc.value).status_code == 409
+            assert "закреплён" in str(exc.value)
+    finally:
+        with SessionLocal() as s:
+            for cid, v in saved.items():
+                s.get(Car, cid).assigned_to = v
+            s.commit()
