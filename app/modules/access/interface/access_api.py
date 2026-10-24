@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.auth import Principal
+from app.core.auth_guards import can_manage_role, can_manage_user
 from app.core.db import get_db
 from app.core.identity import AccessGrant, AccessGroup, AccessGroupMember, Role, User
 from app.core.permissions import (
@@ -15,6 +16,7 @@ from app.core.permissions import (
     PERMISSIONS,
     ROLE_DEFAULTS,
     effective_permissions,
+    principal_permissions,
     require_perm,
     role_permissions,
 )
@@ -149,8 +151,11 @@ def delete_role(code: str, principal: Principal = Depends(require_perm("access.m
 @router.put("/roles/{role}")
 def put_role(role: str, payload: GrantsIn, principal: Principal = Depends(require_perm("access.manage")),
              db: Session = Depends(get_db)):
-    if db.get(Role, role) is None:
+    target = db.get(Role, role)
+    if target is None:
         raise HTTPException(status_code=404, detail="Неизвестная роль")
+    can_manage_role(db, principal, target)
+    _guard_widening(db, principal, AccessGrant.role == role, payload.grants)
     clean = _replace_grants(db, AccessGrant.role == role,
                             lambda k, v: AccessGrant(role=role, permission=k, effect=v), payload.grants)
     audit(db, principal, "access_role", f"role:{role}", clean)
@@ -217,6 +222,11 @@ def put_group_grants(group_id: int, payload: GrantsIn, principal: Principal = De
                      db: Session = Depends(get_db)):
     if not db.get(AccessGroup, group_id):
         raise HTTPException(status_code=404, detail="Группа не найдена")
+    # права группы действуют на всех её участников — каждым надо уметь управлять
+    for u in db.scalars(select(User).join(AccessGroupMember, AccessGroupMember.user_id == User.id)
+                        .where(AccessGroupMember.group_id == group_id)):
+        can_manage_user(db, principal, u)
+    _guard_widening(db, principal, AccessGrant.group_id == group_id, payload.grants)
     clean = _replace_grants(db, AccessGrant.group_id == group_id,
                             lambda k, v: AccessGrant(group_id=group_id, permission=k, effect=v), payload.grants)
     audit(db, principal, "access_group_grants", f"group:{group_id}", clean)
@@ -242,11 +252,47 @@ def put_members(group_id: int, payload: MembersIn, principal: Principal = Depend
         if missing:
             raise HTTPException(status_code=422,
                                 detail=f"Пользователи не найдены: {', '.join(map(str, missing))}")
+    _guard_members(db, principal, group_id, set(ids))
     db.execute(delete(AccessGroupMember).where(AccessGroupMember.group_id == group_id))
     db.add_all([AccessGroupMember(group_id=group_id, user_id=u) for u in ids])
     audit(db, principal, "access_group_members", f"group:{group_id}", {"user_ids": ids})
     db.commit()
     return {"ok": True}
+
+
+def _raise_widened(keys: set[str]) -> None:
+    if keys:
+        titles = {p["key"]: p["title"] for p in PERMISSIONS}
+        listed = ", ".join(f"«{titles.get(k, k)}» ({k})" for k in sorted(keys))
+        raise HTTPException(status_code=403, detail=f"Нельзя выдать право, которого нет у вас: {listed}")
+
+
+def _guard_widening(db: Session, principal: Principal, where, grants: dict[str, str]) -> None:
+    """Права нельзя расширить сверх своих (рецензия аудита 22.10.2026, топ-5): новое allow
+    либо снятие deny с права, которого у действующего нет. Уже стоящие выдачи (например,
+    от администратора) не мешают править остальное. Одно правило для пользователя, роли
+    и группы — иначе ограничение обходилось бы через соседнюю вкладку «Доступа»."""
+    before = {g.permission: g.effect for g in db.scalars(select(AccessGrant).where(where))}
+    after = {k: v for k, v in grants.items() if v in EFFECTS}
+    mine = principal_permissions(db, principal)
+    _raise_widened({k for k in set(before) | set(after) if k not in mine and (
+        (after.get(k) == "allow" and before.get(k) != "allow")
+        or (before.get(k) == "deny" and after.get(k) != "deny"))})
+
+
+def _guard_members(db: Session, principal: Principal, group_id: int, ids: set[int]) -> None:
+    """Состав группы — тоже выдача прав: вошедший получает её allow, вышедший теряет её deny.
+    Менять состав можно только для тех, чьими учётками действующий управляет."""
+    before = set(db.scalars(select(AccessGroupMember.user_id).where(AccessGroupMember.group_id == group_id)))
+    added, removed = ids - before, before - ids
+    if not added and not removed:
+        return
+    for u in db.scalars(select(User).where(User.id.in_(added | removed))):
+        can_manage_user(db, principal, u)
+    grants = list(db.scalars(select(AccessGrant).where(AccessGrant.group_id == group_id)))
+    mine = principal_permissions(db, principal)
+    _raise_widened({g.permission for g in grants if g.permission not in mine and (
+        (g.effect == "allow" and added) or (g.effect == "deny" and removed))})
 
 
 @router.put("/users/{user_id}/grants")
@@ -257,6 +303,9 @@ def put_user_grants(user_id: int, payload: GrantsIn, principal: Principal = Depe
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     if u.id == principal.user.id and payload.grants.get("access.manage") == "deny":
         raise HTTPException(status_code=409, detail="Нельзя снять с себя право управления доступом")
+    # индивидуальные права — по иерархии учёток: ранг цели как в can_manage_user
+    can_manage_user(db, principal, u)
+    _guard_widening(db, principal, AccessGrant.user_id == user_id, payload.grants)
     clean = _replace_grants(db, AccessGrant.user_id == user_id,
                             lambda k, v: AccessGrant(user_id=user_id, permission=k, effect=v), payload.grants)
     audit(db, principal, "access_user_grants", f"user:{u.username}", clean)

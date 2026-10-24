@@ -42,6 +42,14 @@ def can_manage_user(db: Session, principal: Principal, target_user: Optional[Use
                             detail=f"Назначать роль «{roles[new_role].title}» вам нельзя")
 
 
+def can_manage_role(db: Session, principal: Principal, role: Role) -> None:
+    """Можно ли менять права роли: её уровень не выше max_assignable_rank роли
+    действующего — то же правило, что для назначения роли учётке (can_manage_user)."""
+    mine = db.get(Role, principal.role)
+    if role.rank > (mine.max_assignable_rank if mine else -1):
+        raise HTTPException(status_code=403, detail=f"Права роли «{role.title}» вам менять нельзя")
+
+
 def roles_catalog(db: Session) -> list[Role]:
     """Все роли: от старшей к младшей."""
     return list(db.scalars(select(Role).order_by(Role.rank.desc(), Role.title)))
