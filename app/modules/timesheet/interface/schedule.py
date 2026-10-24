@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.auth import Principal
-from app.core.db import get_db
+from app.core.db import get_db, lock_employee
 from app.core.format import safe_sheet_cell
 from app.core.permissions import principal_permissions, require_perm
 from app.core.time import TZ, now_local, utc_to_local
@@ -1002,6 +1002,7 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
         if locks[str(emp.id)] == "locked":
             skipped += 1
             continue
+        lock_employee(db, emp.id)        # График — вход закрытия периода (TOCTOU)
         manual = list(db.scalars(select(ScheduleShift).where(
             ScheduleShift.employee_id == emp.id, ScheduleShift.source == "manual",
             ScheduleShift.date >= first, ScheduleShift.date <= last)))

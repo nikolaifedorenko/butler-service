@@ -32,11 +32,15 @@ def close_period(employee_id: str, period: Period, now: dt.datetime,
     employment = ports.employment.employment(employee_id, period)
     effective = require_effective(employee_id, period, employment)
     _require_right(employee_id, period, ports)
-    inp = load_inputs(employee_id, period, ports)
-    check_close_allowed(effective, now, "close", inp.st)      # домен не вызывается (7.2)
     try:
         with ports.unit_of_work():
+            # вход читается и результат пишется под одной блокировкой сотрудника: правка
+            # отметок/Табеля/Графика/банка ждёт закрытия и не теряется между чтением и
+            # сохранением (рецензия аудита 22.10.2026, TOCTOU)
+            ports.store.lock_employee(employee_id)
             _require_right(employee_id, period, ports)        # конкурентное закрытие
+            inp = load_inputs(employee_id, period, ports)
+            check_close_allowed(effective, now, "close", inp.st)  # домен не вызывается (7.2)
             view = run_pipeline(inp, now, "close")
             ports.store.save_result(employee_id, period, view.settle, view.flags,
                                     inp.snapshot, inp.st.versions, inp.st.step_minutes)

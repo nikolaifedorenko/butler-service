@@ -24,6 +24,10 @@ class SettlementStorePort(Protocol):
         """(closed, next_closed) из period_state для многих сотрудников сразу — экранам
         Табеля и Графика (без запросов на каждого сотрудника, PERF-02)."""
         ...
+    def lock_employee(self, employee_id: str) -> None:
+        """Сериализовать закрытие/пересчёт с записями входных данных сотрудника до конца
+        транзакции (TOCTOU: вход читается и результат пишется под одной блокировкой)."""
+        ...
     def closing_inputs(self, employee_id: str, period: Period) -> ClosingInputs | None:
         """Входной снимок закрытия — основа recalculate (7.2, v7/R28: заморожены
         только ClosingInputs)."""

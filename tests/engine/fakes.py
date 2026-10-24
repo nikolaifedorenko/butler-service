@@ -253,6 +253,9 @@ class FakeStore:
     def _closed(self, emp, start):
         return (emp, start) in self.db.closings
 
+    def lock_employee(self, employee_id):
+        self.db.queries.append("store.lock_employee")
+
     def lock_marks(self, employee_ids, period):
         return {e: (s.closed, s.next_closed)
                 for e in employee_ids for s in [self.period_state(e, period)]}
