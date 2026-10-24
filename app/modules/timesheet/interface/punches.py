@@ -115,6 +115,13 @@ def _open_session(db: Session, emp_id: int) -> Optional[Punch]:
     return last if last is not None and last.kind == "IN" else None
 
 
+def _open_session_at(db: Session, emp_id: int, ts: dt.datetime) -> Optional[Punch]:
+    """Открытая на момент ts сессия: последняя отметка ДО ts — «пришёл» (как _open_session)."""
+    last = db.scalar(select(Punch).where(Punch.employee_id == emp_id, Punch.ts < ts)
+                     .order_by(Punch.ts.desc(), Punch.id.desc()).limit(1))
+    return last if last is not None and last.kind == "IN" else None
+
+
 def _punch_permissions(db: Session, emp_id: int,
                        now: dt.datetime) -> tuple[bool, bool, Optional[str]]:
     """Можно ли сейчас нажать «Пришёл»/«Ушёл» — и текст статуса для подсказки.
@@ -311,15 +318,18 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
             raise HTTPException(status_code=409,
                                 detail=f"Отметка уже принята: {what} в {last.ts:%H:%M}. "
                                        "Следующую можно поставить через минуту")
-    if backfill and payload.kind == "auto":
-        # при корректировке задним числом пара IN/OUT определяется по уже имеющимся отметкам дня
-        day_punches = db.scalars(select(Punch).where(
-            Punch.employee_id == emp.id,
-            Punch.ts >= dt.datetime(target_date.year, target_date.month, target_date.day),
-            Punch.ts < dt.datetime(target_date.year, target_date.month, target_date.day)
-            + dt.timedelta(days=2))).all()
-        kind = "OUT" if any(p.kind == "IN" for p in day_punches) and not any(
-            p.kind == "OUT" for p in day_punches) else "IN"
+    if backfill:
+        # Корректировка задним числом: направление — по сессии, открытой на момент ts, как
+        # у кнопок (_open_session). Раньше «auto» смотрел только отметки с 00:00 даты ts:
+        # ночной «Пришёл» накануне не попадал в окно, и «Ушёл» в 00:30 становился вторым
+        # «Пришёл» (рецензия аудита 22.10.2026, P1)
+        open_at = _open_session_at(db, emp.id, ts)
+        if payload.kind == "auto":
+            kind = "OUT" if open_at else "IN"
+        elif kind == "IN" and open_at:
+            raise HTTPException(status_code=409, detail=(
+                f"На {ts:%d.%m %H:%M} сотрудник уже на смене с {open_at.ts:%d.%m %H:%M} — "
+                "второй «Пришёл» не нужен; если смена прерывалась, сначала отметьте уход"))
 
     # Ворот отметок нет (RUL-ALL-MARKS-COUNTED): все реальные отметки участвуют в расчёте.
 
