@@ -10,7 +10,7 @@ cryptography==50.0.2
 fastapi==0.159.1
 freezegun==1.5.5
 httpx==0.28.1
-httpx2==2.15.1
+httpx2==2.16.0
 hypothesis==6.170.5
 import-linter==2.15
 mypy==2.4.0
@@ -25,7 +25,7 @@ python-docx==1.2.0
 python-dotenv==1.2.4
 python-multipart==0.0.32
 reportlab==5.0.1
-sqlalchemy==2.1.5
+sqlalchemy==2.1.6
 uvicorn==0.54.0
 
 # ── транзитивные ──
@@ -42,7 +42,7 @@ et-xmlfile==2.0.0
 grimp==3.17
 h11==0.16.0
 httpcore==1.0.9
-httpcore2==2.15.1
+httpcore2==2.16.0
 idna==3.20
 iniconfig==2.3.1
 librt==0.16.0

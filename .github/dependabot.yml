@@ -7,6 +7,15 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # границы «>=» в requirements*.txt не поднимать без нужды: обновляется lock, а нижняя
+    # граница остаётся совместимой со всей CI-матрицей (дефект 25.10.2026: бамп до
+    # SQLAlchemy>=2.1.6 уронил Python 3.10 — SQLAlchemy 2.1 требует >=3.11)
+    versioning-strategy: increase-if-necessary
+    groups:
+      # httpx2 требует httpcore2 ровно своей версии: по отдельности PR не ставятся
+      # (дефект 25.10.2026, ResolutionImpossible) — обновляем парой
+      httpx2:
+        patterns: ["httpx2", "httpcore2"]
     ignore:
       # pyee 14 требует Python >=3.12, а CI-матрица 3.10-3.12 ставит лок на 3.11:
       # автобамп транзитивного pyee в lock ломал установку (дефект 15.10.2026).
