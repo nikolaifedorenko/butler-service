@@ -29,6 +29,10 @@ async function settingsScreenNotify(host) {
   }
   const cfg = data.config || {};
   const tg = cfg.telegram || {}, em = cfg.email || {}, ready = cfg.ready || {};
+  /* секреты в БД зашифрованы ключом NOTIFY_SECRET_KEY (25.10.2026): ключ потерян или сменился —
+     сервер не может их прочитать и просит ввести заново */
+  const unreadable = new Set(cfg.unreadable || []);
+  const reenter = '<small class="hint" style="color:var(--danger)">не расшифровывается: ключ шифрования сменился — введите заново</small>';
   const chats = data.chats || [];
   let tpls = [];
   try { tpls = (await api('/api/notify/templates')).templates || []; } catch { tpls = []; }
@@ -57,7 +61,8 @@ async function settingsScreenNotify(host) {
       <div class="grid-2">
         <label class="field"><span>Токен бота (BotFather)</span>
           <input type="password" id="nt-token" autocomplete="off" placeholder="${esc(tg.token_masked || 'не задан')}">
-          <small class="hint">${tg.token_set ? 'токен сохранён (в поле — маска); заполните, чтобы заменить' : 'токен не задан'}</small></label>
+          ${unreadable.has('notify_telegram_token') ? reenter
+            : `<small class="hint">${tg.token_set ? 'токен сохранён (в поле — маска); заполните, чтобы заменить' : 'токен не задан'}</small>`}</label>
         <label class="field"><span>Адрес Bot API</span>
           <input type="text" id="nt-api" value="${esc(tg.api || '')}" placeholder="https://api.telegram.org">
           <small class="hint">меняют при выходе в интернет через корпоративный прокси</small></label>
@@ -103,7 +108,8 @@ async function settingsScreenNotify(host) {
         <label class="field"><span>Пользователь (SMTP AUTH)</span>
           <input type="text" id="ne-user" value="${esc(em.user || '')}" placeholder="пусто — релей без авторизации"></label>
         <label class="field"><span>Пароль</span>
-          <input type="password" id="ne-pass" autocomplete="off" placeholder="${esc(em.password_masked || 'не задан')}"></label>
+          <input type="password" id="ne-pass" autocomplete="off" placeholder="${esc(em.password_masked || 'не задан')}">
+          ${unreadable.has('notify_smtp_password') ? reenter : ''}</label>
         <label class="field"><span>Адрес для ответа</span>
           <input type="text" id="ne-reply" value="${esc(em.reply_to || '')}" placeholder="необязательно"></label>
         <label class="field"><span>Таймаут, секунд</span>

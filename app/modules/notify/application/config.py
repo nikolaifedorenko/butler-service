@@ -1,8 +1,8 @@
 """Учётные данные и параметры транспорта доставки (общие для всего приложения).
 
 Хранятся в обычной таблице ``settings`` рядом с правилами объекта, но это СЕКРЕТЫ:
-в API они отдаются маскированными (``public_config``), а в журналах и аудите не
-печатаются вовсе. Пустое значение секрета при сохранении означает «не менять» —
+в БД — зашифрованными ключом NOTIFY_SECRET_KEY (secrets.py, 25.10.2026), в API —
+маскированными (``public_config``), в журналах и аудите не печатаются вовсе. Пустое значение секрета при сохранении означает «не менять» —
 иначе интерфейс, который не показывает токен, стирал бы его при каждом сохранении.
 
 Почта — через MS Exchange (решение владельца): либо релей без авторизации
@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.settings_store import Setting
+
+from .secrets import decrypt, encrypt
 
 # ключ → (значение по умолчанию, секрет?, подпись для интерфейса)
 NOTIFY_KEYS: dict[str, tuple[str, bool, str]] = {
@@ -59,6 +61,8 @@ class NotifyConfig:
     email_from: str = ""
     email_reply_to: str = ""
     timeout: int = 20
+    # секреты, которые не расшифровались (ключ потерян или сменился) — ввести заново
+    unreadable: tuple[str, ...] = ()
 
     @property
     def telegram_ready(self) -> bool:
@@ -75,6 +79,11 @@ def load_config(db: Session) -> NotifyConfig:
     rows = {s.key: s.value for s in db.scalars(select(Setting)
                                                .where(Setting.key.in_(list(NOTIFY_KEYS))))}
     values = {k: rows.get(k, default) or default for k, (default, _, _) in NOTIFY_KEYS.items()}
+    unreadable = []
+    for key in SECRET_KEYS:
+        values[key], ok = decrypt(values[key])
+        if not ok:
+            unreadable.append(key)
     return NotifyConfig(
         telegram_token=values["notify_telegram_token"].strip(),
         telegram_api=(settings.notify_telegram_api.strip() or values["notify_telegram_api"].strip()
@@ -88,6 +97,7 @@ def load_config(db: Session) -> NotifyConfig:
         email_from=values["notify_email_from"].strip(),
         email_reply_to=values["notify_email_reply_to"].strip(),
         timeout=_int(values["notify_timeout"], 20, 1, 300),
+        unreadable=tuple(sorted(unreadable)),
     )
 
 
@@ -107,6 +117,8 @@ def public_config(cfg: NotifyConfig) -> dict:
         },
         "timeout": cfg.timeout,
         "ready": {"telegram": cfg.telegram_ready, "email": cfg.email_ready},
+        # не расшифровались (ключ потерян или сменился) — интерфейс просит ввести заново
+        "unreadable": list(cfg.unreadable),
     }
 
 
@@ -143,6 +155,8 @@ def save_config(db: Session, values: dict, *, allow_secrets: bool = True) -> dic
                 continue                      # «не менять»
             if new == "clear":
                 new = ""                      # явная очистка секрета
+            else:
+                new = encrypt(new)            # в БД — только шифротекст (SecretKeyMissing без ключа)
         if key == "notify_smtp_security" and new not in SMTP_SECURITY:
             raise ValueError("Режим шифрования: none, starttls или ssl")
         if key in ("notify_smtp_port", "notify_timeout"):

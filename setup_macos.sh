@@ -44,18 +44,21 @@ if [ ! -f .env ]; then
   SECRET=$(./.venv/bin/python -c 'import secrets; print(secrets.token_hex(32))')
   # меняем SECRET_KEY на случайный (sed с учётом особенностей macOS)
   ./.venv/bin/python - "$SECRET" <<'PY'
-import pathlib, sys
+import base64, os, pathlib, sys
 secret = sys.argv[1]
+notify_key = base64.urlsafe_b64encode(os.urandom(32)).decode()   # ключ Fernet секретов уведомлений
 p = pathlib.Path(".env")
 text = p.read_text()
 lines = []
 for line in text.splitlines():
     if line.startswith("SECRET_KEY="):
         line = f"SECRET_KEY={secret}"
+    elif line.startswith("NOTIFY_SECRET_KEY="):
+        line = f"NOTIFY_SECRET_KEY={notify_key}"
     lines.append(line)
 p.write_text("\n".join(lines) + "\n")
 PY
-  echo "создан .env со случайным SECRET_KEY"
+  echo "создан .env со случайными SECRET_KEY и NOTIFY_SECRET_KEY"
 else
   echo ".env уже есть — оставляю как есть"
 fi

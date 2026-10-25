@@ -61,6 +61,9 @@ def _init_db_steps() -> None:
         seed_if_empty(db)
         from .modules.timesheet.bootstrap import bootstrap_engine
         bootstrap_engine(db)
+        from .modules.notify.application.config import SECRET_KEYS
+        from .modules.notify.application.secrets import encrypt_stored_secrets
+        encrypt_stored_secrets(db, SECRET_KEYS)   # открытые секреты → шифротекст, смена ключа
         db.commit()
     finally:
         db.close()
@@ -121,6 +124,8 @@ async def lifespan(_: FastAPI):
     from .bootstrap.night_sync import start_night_sync, stop_night_sync
 
     _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
+    from .modules.notify.application.secrets import check_key_config
+    check_key_config()    # NOTIFY_SECRET_KEY задан, но не разбирается — отказ на старте
     _check_writable_dirs()
     if settings.migrate_on_start:
         init_db()
