@@ -277,7 +277,7 @@ jobs:
         # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и
         # системные пакеты базового python:3.11-slim. Блокирующий для уязвимостей,
         # у которых уже есть исправленная версия; остальные — в отчёте
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: butler-service:ci
           severity: HIGH,CRITICAL
