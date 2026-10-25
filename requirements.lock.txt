@@ -10,7 +10,7 @@ cryptography==50.0.2
 fastapi==0.150.0
 freezegun==1.5.5
 httpx==0.28.1
-httpx2==2.15.1
+httpx2==2.16.0
 hypothesis==6.170.5
 import-linter==2.15
 mypy==2.4.0
