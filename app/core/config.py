@@ -1,6 +1,7 @@
 """Конфигурация приложения (читается из .env / переменных окружения)."""
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,7 +9,19 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "Батлер Сервис — учёт рабочего времени"
-    database_url: str = "sqlite:///./timetrack.db"
+    # Адрес БД, по старшинству (25.10.2026):
+    #   1. DATABASE_URL — как задан;
+    #   2. POSTGRES_HOST (+ POSTGRES_USER/PASSWORD/DB/PORT) — адрес собирается здесь, с
+    #      экранированием: раньше compose подставлял пароль в URL как есть, и «@ : / # %»
+    #      в пароле ломали подключение (рецензия аудита 22.10.2026);
+    #   3. SQLite-файл SQLITE_PATH (в образе — внутри тома data/, см. Dockerfile).
+    database_url: str = ""
+    postgres_host: str = ""
+    postgres_port: int = 5432
+    postgres_user: str = "timetrack"
+    postgres_password: str = ""
+    postgres_db: str = "timetrack"
+    sqlite_path: str = "./timetrack.db"
     secret_key: str = "change-me-in-production"
     app_tz: str = "Europe/Moscow"
     # срок жизни сессии: 48 ч (было 14 суток) — короткое окно для украденной cookie;
@@ -61,6 +74,24 @@ class Settings(BaseSettings):
     # адрес Telegram Bot API (корпоративный прокси); из UI не меняется — иначе токен бота
     # уходит на любой хост (аудит 21.10.2026, SEC-03). Пусто — сохранённый или api.telegram.org
     notify_telegram_api: str = ""
+
+    @model_validator(mode="after")
+    def _resolve_database_url(self) -> "Settings":
+        if not self.database_url:
+            self.database_url = postgres_url(self) if self.postgres_host else f"sqlite:///{self.sqlite_path}"
+        return self
+
+
+def postgres_url(s: "Settings") -> str:
+    """postgresql+psycopg2://… из POSTGRES_*. Строку собирает сам SQLAlchemy (URL.create):
+    экранирование всегда то, которое разбирает установленная версия — ручной quote() имя
+    базы на одних версиях раскодировался, на других нет (CI, Python 3.10)."""
+    from sqlalchemy.engine import URL
+
+    return URL.create("postgresql+psycopg2", username=s.postgres_user,
+                      password=s.postgres_password or None, host=s.postgres_host,
+                      port=s.postgres_port, database=s.postgres_db
+                      ).render_as_string(hide_password=False)
 
 
 @lru_cache

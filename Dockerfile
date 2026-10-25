@@ -1,15 +1,19 @@
-# Простой контейнер TimeTrack: приложение + SQLite в томе
+# Простой контейнер TimeTrack: приложение + SQLite в томе (или PostgreSQL — POSTGRES_* / DATABASE_URL)
 FROM python:3.11-slim
 WORKDIR /srv/timetrack
 COPY requirements.txt requirements-postgres.txt requirements.lock.txt ./
 # версии — ровно те, что проверены CI (lock как constraints: dev-пакеты в образ не попадают)
 RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock.txt
-# Драйвер PostgreSQL: нужен прод-профилю (docker-compose.prod.yml); на SQLite просто не используется
-RUN pip install --no-cache-dir -r requirements-postgres.txt || echo "PostgreSQL-драйвер не установлен (SQLite работает без него)"
+# Драйвер PostgreSQL — обязателен: прод-профилю (docker-compose.prod.yml) он нужен, и сбой
+# установки должен ронять сборку, а не всплывать при первом запуске (раньше `|| echo` его глотал)
+RUN pip install --no-cache-dir -r requirements-postgres.txt
 COPY app ./app
 COPY static ./static
 COPY assets ./assets
 ENV PYTHONUNBUFFERED=1
+# SQLite по умолчанию — в томе data/: раньше файл ложился в рабочую папку и пропадал при
+# пересоздании контейнера. Заданный DATABASE_URL или POSTGRES_HOST главнее (app/core/config.py)
+ENV SQLITE_PATH=/srv/timetrack/data/timetrack.db
 # не от root (OPS-02): данные и бланки — пользователя app; chown до VOLUME, иначе он не сохранится.
 # Новые тома получают этого владельца из образа, старые (созданные от root) — deploy/README.md §6
 RUN useradd --create-home --uid 10001 app \

@@ -1,5 +1,6 @@
 # Запуск: docker compose up -d --build
-# Данные (SQLite) лежат в томе tt_data; для PostgreSQL замените DATABASE_URL и добавьте сервис db.
+# Данные (SQLite) лежат в томе tt_data; для PostgreSQL задайте POSTGRES_HOST/USER/PASSWORD/DB
+# (или DATABASE_URL) и добавьте сервис db — референс в docker-compose.prod.yml.
 services:
   timetrack:
     build: .
