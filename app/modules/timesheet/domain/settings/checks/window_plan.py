@@ -10,7 +10,7 @@ CHK_WINDOW_PLAN = "CHK-WINDOW-PLAN"
 
 
 def check_window_plan(st: Settings) -> list[Violation]:
-    out = []
+    out: list[Violation] = []
     for key, window in st.windows.items():
         parsed = parse_key(key)
         if parsed is not None and parsed[1] > window.length:

@@ -34,6 +34,19 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
 
+[tool.mypy]
+# проверка типов (решение владельца 25.10.2026): сначала ядро расчёта — чистый домен без
+# фреймворков, где ошибка типа = ошибка в деньгах сотрудников. Расширять — по слоям.
+python_version = "3.11"
+files = ["app/modules/timesheet/domain"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = false
+strict_equality = true
+
+[tool.coverage.run]
+source = ["app"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning:starlette.*"]

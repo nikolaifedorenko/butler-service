@@ -11,7 +11,7 @@ CHK_WINDOW_KEY = "CHK-WINDOW-KEY"
 
 
 def check_window_key(st: Settings) -> list[Violation]:
-    out = []
+    out: list[Violation] = []
     for key in st.windows:
         parsed = parse_key(key)
         if parsed is None:

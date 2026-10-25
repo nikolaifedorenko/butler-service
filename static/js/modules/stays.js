@@ -104,7 +104,11 @@ function staysBarHtml(b, base, span, names) {
 
 async function renderUnitsBoard(body) {
   const fund = await staysFund();
+  /* фильтры меняются подряд (дата → категория): запоздавший ответ перерисовал бы экран
+     без фильтра (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
+  const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/board/units?' + staysBoardParams(), { silent: true });
+  if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
   const base = staysPos(data.days[0], 0);
   const span = data.days.length * 2;

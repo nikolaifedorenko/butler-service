@@ -7,6 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock.txt
 # Драйвер PostgreSQL — обязателен: прод-профилю (docker-compose.prod.yml) он нужен, и сбой
 # установки должен ронять сборку, а не всплывать при первом запуске (раньше `|| echo` его глотал)
 RUN pip install --no-cache-dir -r requirements-postgres.txt
+# setuptools из базового образа не нужен приложению (все пакеты — колёса, ни одна зависимость
+# его не импортирует), а его вложенные jaraco.context и wheel — HIGH-уязвимости (Trivy,
+# 25.10.2026): убираем, а не обновляем — меньше поверхность и не гонимся за версиями
+RUN pip uninstall -y setuptools
 COPY app ./app
 COPY static ./static
 COPY assets ./assets

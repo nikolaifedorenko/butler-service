@@ -27,7 +27,7 @@ def scope_level(entry: ModifierEntry) -> int | None:
 
 
 def check_modifier_scope(st: Settings) -> list[Violation]:
-    out = [(CHK_MODIFIER_SCOPE, {"entry": _brief(e), "reason": "invalid_scope_form"})
+    out: list[Violation] = [(CHK_MODIFIER_SCOPE, {"entry": _brief(e), "reason": "invalid_scope_form"})
            for e in st.modifiers if scope_level(e) is None]
     out += [(CHK_MODIFIER_SCOPE, {"entry": _brief(e), "reason": "unknown_group"})
             for e in st.modifiers if e.group is not None and e.group not in st.groups]
