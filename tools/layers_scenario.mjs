@@ -432,6 +432,18 @@ async function main() {
   check('предупреждение схемы без перечня (ответ не-админу) не падает',
     window.eval(`JSON.stringify(selfcheckDetails({ ok: false, hint: 'h', details: 'перечень — администратору' }))`)
       === JSON.stringify(['перечень — администратору']));
+  /* плашка «Схема БД не в порядке» (25.10.2026): держится до закрытия, перечень — целиком */
+  check('свежая база: плашки схемы нет', $('#schema-banner').classList.contains('hidden'));
+  const idxRows = Array.from({ length: 8 }, (_, i) => `индекс ix_${i} — CREATE UNIQUE INDEX ix_${i} ON t (c)`);
+  window.eval(`renderSchemaBanner(${JSON.stringify({ ok: false, hint: 'Не созданы защитные уникальные индексы', missing: idxRows })})`);
+  check('пропущенные индексы — плашка с подсказкой и полным перечнем (не 6 строк)',
+    !$('#schema-banner').classList.contains('hidden')
+    && /не в порядке/.test(text('#schema-banner')) && /защитные уникальные индексы/.test(text('#schema-banner'))
+    && $$('#schema-banner li').length === 8, text('#schema-banner').slice(0, 120));
+  await sleep(5500);                            // тост к этому времени уже исчез бы
+  check('плашка держится, пока её не закроют', !$('#schema-banner').classList.contains('hidden'));
+  click($('#schema-banner [data-schema-close]'));
+  check('✕ скрывает плашку', $('#schema-banner').classList.contains('hidden'));
   const access = await jget('/api/access');
   const gromova = (access.users || []).find(u => u.username === 'gromova');
   check('админ запрещает gromova employees.edit',
