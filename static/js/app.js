@@ -87,7 +87,18 @@ function renderNav() {
     });
     $('#sidenav').insertBefore(more, foot);
   }
-  foot.innerHTML = `Учёт кратен шагу (по умолчанию 1 ч)<br>ДН 22:00–06:00 · ДЯ 06:00–22:00<br>Часы — по календарным дням`;
+  foot.innerHTML = `Учёт кратен шагу (по умолчанию 1 ч)<br><span id="nav-categories"></span>Часы — по календарным дням`;
+  renderCategoryFooter(state.timeCategories);
+}
+
+/* Категории времени в подвале меню — из настроек периода, когда их прислал Факт;
+   раньше здесь были зашиты 22:00–06:00 (рецензия аудита 22.10.2026). */
+function renderCategoryFooter(categories) {
+  if (categories && categories.length) state.timeCategories = categories;
+  const el = $('#nav-categories');
+  if (!el) return;
+  el.innerHTML = state.timeCategories
+    ? `${esc(state.timeCategories.map(c => `${c.code} ${c.start}–${c.end}`).join(' · '))}<br>` : '';
 }
 
 function navigate(view) {
