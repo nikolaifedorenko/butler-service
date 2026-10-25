@@ -273,6 +273,9 @@ jobs:
       - name: Сборка
         run: docker build -t butler-service:ci .
 
+      - name: Приложение импортируется в образе (без setuptools, с драйвером PostgreSQL)
+        run: docker run --rm butler-service:ci python -c "import app.main, psycopg2, cryptography; print('ok')"
+
       - name: Уязвимости образа (Trivy, HIGH/CRITICAL с исправлением)
         # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и
         # системные пакеты базового python:3.11-slim. Блокирующий для уязвимостей,
