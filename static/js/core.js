@@ -103,6 +103,16 @@ function loadGeneration(key) {
   return () => gen === loadGenerations[key];
 }
 
+/* То же, но поколение — у контейнера, в который рисуем: подряд идущие перерисовки ОДНОГО
+   контейнера (дата → категория в шахматке) отсекают запоздавший ответ, а разные контейнеры
+   (новая вкладка — новый контейнер) друг другу не мешают. Глобальный ключ здесь не подходит:
+   старая загрузка, дождавшись своего, брала бы поколение новее и «гасила» видимую вкладку. */
+function loadGenerationFor(el) {
+  const gen = String((Number(el.dataset.loadGen) || 0) + 1);
+  el.dataset.loadGen = gen;
+  return () => el.dataset.loadGen === gen;
+}
+
 let pendingLoads = 0;   // спиннер скрывается только когда завершились ВСЕ видимые запросы
 function loading(on) {
   pendingLoads = Math.max(0, pendingLoads + (on ? 1 : -1));

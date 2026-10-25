@@ -16,7 +16,9 @@ const boardState = { first: null, days: 7, day: null, tab: 'arrivals', esc: fals
 async function renderButlersBoard(body) {
   if (!boardState.first) boardState.first = staysToday();
   const last = staysAddDays(boardState.first, boardState.days - 1);
+  const fresh = loadGenerationFor(body);    // запоздавший ответ не перерисовывает (stays.js)
   const data = await api(`/api/stays/board/butlers?first=${boardState.first}&last=${last}`, { silent: true });
+  if (!fresh()) return;
   body.innerHTML = `
     <div class="sb-toolbar">
       <input type="date" id="bb-first" value="${esc(boardState.first)}">
@@ -147,7 +149,9 @@ async function renderDayBoard(body) {
   if (boardState.esc) q.set('escorted_only', '1');
   if (boardState.vip) q.set('vip', '1');
   if (boardState.q.trim()) q.set('q', boardState.q.trim());
+  const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/day?' + q, { silent: true });
+  if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
   const t = data.totals;
   const tabs = DAY_TABS.filter(([id]) => names || id !== 'attention');
@@ -195,7 +199,9 @@ async function renderOccupancyGrid(body) {
   const last = staysAddDays(boardState.first, 13);
   const q = new URLSearchParams({ first: boardState.first, last });
   if (boardState.building) q.set('building', boardState.building);
+  const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/occupancy?' + q, { silent: true });
+  if (!fresh()) return;
   const buildings = [...new Set(fund.units.map(u => u.building).filter(Boolean))].sort();
   const heat = (busy, total) => { const k = total ? busy / total : 0; return k >= 0.9 ? 'heat3' : k >= 0.6 ? 'heat2' : k > 0 ? 'heat1' : ''; };
   body.innerHTML = `

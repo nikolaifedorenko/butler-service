@@ -188,8 +188,23 @@ async function unitsBoard() {
 
   window.navigate('stays');
   check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 4));
+  /* панель фильтров появляется после загрузки фонда и шахматки: в медленном CI сценарий
+     менял фильтры раньше — change() уходил в пустоту (падало через раз, 25.10.2026) */
+  check('шахматка отрисована (панель фильтров)', await waitFor(() => $('#sb-first') && $('#sb-cat')));
+  /* гонка фильтров: пользователь меняет дату, затем категорию; ответ на запрос без категории
+     приходит ПОЗЖЕ — на экране должна остаться отфильтрованная шахматка (loadGenerationFor) */
+  const realApi = window.api;
+  window.api = async (url, opts) => {
+    if (url.startsWith('/api/stays/board/units') && !url.includes('category_id=')) await sleep(1500);
+    return realApi(url, opts);
+  };
+  window.eval('api = window.api');
   change($('#sb-first'), '2030-01-01');
+  await sleep(150);                             // запрос без категории ушёл и «висит»
   change($('#sb-cat'), String(cat.id));
+  await sleep(2000);                            // запоздавший ответ без категории тоже пришёл
+  window.api = realApi;
+  window.eval('api = window.api');
   check('строки объектов категории', await waitFor(() => $$('#view-stays [data-unit-row]').length === 2));
 
   click($('#sb-new'));
