@@ -21,6 +21,22 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
 
+  # базовые образы Dockerfile (python:3.11-slim) и бэкапа (deploy/backup.Dockerfile) —
+  # с 25.10.2026: уязвимости системных пакетов образа закрывает обновление базы
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "docker"
+    directory: "/deploy"
+    schedule:
+      interval: "weekly"
+  # образы prod-compose (postgres, nginx)
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
   # версии actions (checkout/setup-python/setup-node)
   - package-ecosystem: "github-actions"
     directory: "/"

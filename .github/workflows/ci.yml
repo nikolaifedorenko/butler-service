@@ -24,7 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # 3.13 — с 25.10.2026: run.sh пробует его первым, а CI его не проверял
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
 
@@ -58,7 +59,22 @@ jobs:
         run: lint-imports
 
       - name: Тесты
+        if: matrix.python-version != '3.11'
         run: python -m pytest tests/ -q
+
+      - name: Тесты + порог покрытия (приложение ≥ 90 %, ядро расчёта ≥ 95 %)
+        # с 25.10.2026 порог блокирующий: DoD спецификации — ядро ≥ 95 % (сейчас 98 %),
+        # приложение — не ниже 90 % (сейчас 91 %); на одной версии Python, чтобы не
+        # удлинять всю матрицу
+        if: matrix.python-version == '3.11'
+        run: |
+          python -m pytest tests/ -q --cov=app --cov-report=
+          python -m coverage report --skip-covered --skip-empty --fail-under=90 | tail -3
+          python -m coverage report --include='app/modules/timesheet/domain/*' --fail-under=95 | tail -1
+
+      - name: Типы ядра расчёта (mypy, [tool.mypy] в pyproject.toml)
+        if: matrix.python-version == '3.11'
+        run: python -m mypy
 
       - name: Версии статики согласованы (index.html ↔ sw.js)
         run: python tools/bump_version.py --check
@@ -256,3 +272,28 @@ jobs:
       - uses: actions/checkout@v7
       - name: Сборка
         run: docker build -t butler-service:ci .
+
+      - name: Уязвимости образа (Trivy, HIGH/CRITICAL с исправлением)
+        # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и
+        # системные пакеты базового python:3.11-slim. Блокирующий для уязвимостей,
+        # у которых уже есть исправленная версия; остальные — в отчёте
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: butler-service:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+  secrets:
+    name: Секреты в коммитах (gitleaks)
+    # с 25.10.2026: токен, пароль или ключ, случайно попавший в коммит, останавливает merge.
+    # Тестовые ключи и демо-данные — в .gitleaks.toml (allowlist по путям)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

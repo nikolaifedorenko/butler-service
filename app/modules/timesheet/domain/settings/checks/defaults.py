@@ -10,7 +10,7 @@ CHK_DEFAULTS = "CHK-DEFAULTS"
 
 def check_defaults(st: Settings) -> list[Violation]:
     gd = st.global_defaults
-    out = [(CHK_DEFAULTS, {"modifier": name}) for name, value in
+    out: list[Violation] = [(CHK_DEFAULTS, {"modifier": name}) for name, value in
            (("double_overtime", gd.double_overtime), ("pays_overtime", gd.pays_overtime),
             ("plan_equals_fact", gd.plan_equals_fact)) if value is None]
     if gd.double_overtime is not None and not isinstance(gd.double_overtime, bool):

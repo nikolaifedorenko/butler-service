@@ -4,7 +4,7 @@ late + early + off_shift, подавление LATE(None), каноническ�
 from __future__ import annotations
 
 import datetime as dt
-from typing import Sequence
+from typing import Sequence, cast
 
 from ..codes_registry.flag_codes import ALL as FLAG_ORDER
 from ..schedule.shift_segments import Segment
@@ -18,7 +18,8 @@ from .off_shift import off_shift_flag
 
 
 def _time_key(flag: Flag) -> dt.datetime:
-    return flag.data.get("expected_at") or flag.data.get("first_presence_at")
+    # у флагов дня всегда есть один из моментов (6.6); data — Mapping[str, object]
+    return cast(dt.datetime, flag.data.get("expected_at") or flag.data.get("first_presence_at"))
 
 
 def day_flags(day: Day, subintervals: Sequence[Segment], raw_intervals: Sequence[RawInterval],

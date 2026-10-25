@@ -1,0 +1,18 @@
+# gitleaks (шаг CI «Секреты в коммитах», 25.10.2026): стандартные правила + исключения.
+# Исключены только пути, где лежат заведомо тестовые значения: ключи и токены тестов
+# (tests/conftest.py, test_notify_secrets.py, test_db_url.py…) и скриптов смоуков/сценариев
+# (SECRET_KEY и NOTIFY_SECRET_KEY временных стендов). Реальные секреты в репозиторий
+# не кладутся вовсе — они в .env сервера (.gitignore).
+title = "butler-service"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "тестовые ключи и токены временных стендов"
+paths = [
+  '''^tests/''',
+  '''^tools/run_[a-z_]+\.sh$''',
+  '''^tools/[a-z_]+_scenario\.mjs$''',
+  '''^tools/ui_harness\.mjs$''',
+]

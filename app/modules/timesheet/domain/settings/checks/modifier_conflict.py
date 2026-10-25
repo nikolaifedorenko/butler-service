@@ -26,7 +26,7 @@ def _periods_intersect(a, b) -> bool:
 
 def check_modifier_conflict(st: Settings) -> list[Violation]:
     entries = [(i, e, scope_level(e)) for i, e in enumerate(st.modifiers)]
-    out = []
+    out: list[Violation] = []
     for ai, (i, a, la) in enumerate(entries):
         for j, b, lb in entries[ai + 1:]:
             if la is not None and la == lb and a.name == b.name and _same_scope(a, b):

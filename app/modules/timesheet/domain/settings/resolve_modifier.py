@@ -56,7 +56,7 @@ def resolve_modifier_trace(name: str, day: Day, st: Settings) -> ModifierResolut
     levels = sorted(((scope_level(e), i, e) for i, e in enumerate(st.modifiers)
                      if e.name == name and scope_level(e) is not None))
     for level, _, entry in levels:
-        if _matches(entry, day):
+        if level is not None and _matches(entry, day):     # None отфильтрован выше — для mypy
             return ModifierResolution(entry.value, level, entry)
     return ModifierResolution(_default_of(name, day, st), 7, None)
 

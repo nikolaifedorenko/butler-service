@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
-from typing import Literal, Mapping, Sequence
+from typing import Final, Literal, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from ..types.entities import MinuteOfDay, Minutes, Period, StepMinutes
@@ -24,8 +24,8 @@ PEF_AUTO = "auto"
 PEF_VALUES = (PEF_YES, PEF_NO, PEF_AUTO)
 
 # гранулярность периода (3.5, v7.1/R36)
-GRANULARITY_MONTH = "month"
-GRANULARITY_HALF_MONTH = "half_month"
+GRANULARITY_MONTH: Final = "month"
+GRANULARITY_HALF_MONTH: Final = "half_month"
 
 
 @dataclass(frozen=True)
