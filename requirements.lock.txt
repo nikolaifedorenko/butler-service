@@ -60,7 +60,7 @@ pluggy==1.7.0
 pycparser==3.12
 pydantic-core==2.50.1
 pygments==2.21.0
-python-dateutil==2.9.0.post0
+python-dateutil==3.0.0
 rich==15.0.0
 six==1.17.0
 sortedcontainers==2.4.0
