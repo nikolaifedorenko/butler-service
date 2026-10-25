@@ -43,6 +43,7 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 
 | Флаг | Прод-значение | Смысл |
 |---|---|---|
+| `POSTGRES_HOST` / `_USER` / `_PASSWORD` / `_DB` / `_PORT` | `db` / из `.env` | адрес БД собирает приложение и экранирует пароль — в нём допустимы любые символы. Старше — явный `DATABASE_URL`, младше — SQLite `SQLITE_PATH` (в образе — `/srv/timetrack/data/timetrack.db`, в томе) |
 | `COOKIE_SECURE` | `1` | cookie только по TLS |
 | `ALLOW_IMPERSONATION` | `1` | демо-вход «как сотрудник» включён по умолчанию (решение владельца 15.10.2026); `0` — выключить |
 | `TRUST_PROXY_HEADERS` | `1` | IP для rate-limit берётся из X-Forwarded-For (доверяем своему nginx) |
@@ -157,7 +158,11 @@ CREATE USER timetrack WITH PASSWORD 'STRONG_PASSWORD';
 CREATE DATABASE timetrack OWNER timetrack;
 SQL
 sudo -u timetrack /opt/timetrack/.venv/bin/pip install psycopg2-binary
-# в .env:  DATABASE_URL=postgresql+psycopg2://timetrack:STRONG_PASSWORD@127.0.0.1:5432/timetrack
+# в .env (пароль экранирует приложение — любые символы):
+#   POSTGRES_HOST=127.0.0.1
+#   POSTGRES_USER=timetrack
+#   POSTGRES_PASSWORD=STRONG_PASSWORD
+#   POSTGRES_DB=timetrack
 ```
 Таблицы создаются автоматически при старте (`create_all`). Для SQLite ничего делать не нужно.
 
@@ -241,8 +246,9 @@ ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SE
   разделы 1–6 выше. Для знакомства достаточно одиночного
   `docker-compose.yml` (SQLite), для разработки — `./run.sh`.
 * БД: SQLite по умолчанию (WAL + `busy_timeout`); для боевого режима
-  `DATABASE_URL=postgresql://…` в `.env` (драйвер уже в образе,
-  `requirements-postgres.txt`).
+  `POSTGRES_HOST`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` в `.env` — адрес
+  собирает приложение, пароль экранируется (либо готовый `DATABASE_URL`, он старше).
+  Драйвер в образе обязателен (`requirements-postgres.txt`): его сбой роняет сборку.
 * Часовой пояс объекта: `APP_TZ` (по умолчанию `Europe/Moscow`) — должен совпадать
   с `Settings.tz` движка; DST намеренно не поддерживается (локальные сутки = 1440 мин,
   решение владельца R24).
