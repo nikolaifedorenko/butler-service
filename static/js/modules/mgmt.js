@@ -44,10 +44,13 @@ async function loadMgmt() {
   };
   $('#ut-prev').onclick = () => shiftPeriod(-1);
   $('#ut-next').onclick = () => shiftPeriod(1);
+  const fresh = loadGeneration('mgmt');
   let d;
   try { d = await api(`/api/mgmt?${qs()}`); } catch (e) {
-    $('#ut-body').innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return;
+    if (fresh()) $('#ut-body').innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`;
+    return;
   }
+  if (!fresh()) return;          // пока ждали ответ, перелистнули период
   state.mgmt = d;
   if (d.granularity === 'half_month' && !state.mgmtHalf) state.mgmtHalf = d.half || 1;
   $('#ut-label').textContent = d.granularity === 'half_month'
