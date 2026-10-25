@@ -3,6 +3,9 @@
 # Подготовка (один раз):
 #   1. .env рядом с этим файлом:
 #        SECRET_KEY=$(openssl rand -hex 32)     # обязателен — без него приложение не стартует
+#        NOTIFY_SECRET_KEY=<ключ Fernet>        # обязателен: шифрует токен бота и пароль SMTP в БД;
+#            сгенерировать: python3 -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+#            держать вне сервера в копии: потерян — токен и пароль вводятся заново
 #        POSTGRES_PASSWORD=<надёжный пароль>
 #        ADMIN_PASSWORD=<пароль admin>         # нужен только первому старту на пустой базе
 #        BACKUP_AGE_RECIPIENT=age1…            # открытый ключ бэкапов; BACKUP_REMOTE — второй сервер
@@ -24,6 +27,8 @@ x-app-env: &app-env
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
   POSTGRES_DB: ${POSTGRES_DB:-timetrack}
   SECRET_KEY: ${SECRET_KEY:?задайте SECRET_KEY в .env (openssl rand -hex 32)}
+  # шифрование секретов уведомлений в БД (25.10.2026); "новый,старый" — смена ключа
+  NOTIFY_SECRET_KEY: ${NOTIFY_SECRET_KEY:?задайте NOTIFY_SECRET_KEY в .env — см. шапку файла}
   APP_TZ: ${APP_TZ:-Europe/Moscow}
   TZ: ${APP_TZ:-Europe/Moscow}
   # боевые нормы: cookie только по TLS, IP из XFF (приложение стоит за своим

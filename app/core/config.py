@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     # адрес Telegram Bot API (корпоративный прокси); из UI не меняется — иначе токен бота
     # уходит на любой хост (аудит 21.10.2026, SEC-03). Пусто — сохранённый или api.telegram.org
     notify_telegram_api: str = ""
+    # ключ Fernet шифрования секретов уведомлений в БД (токен бота, пароль SMTP);
+    # "новый,старый" — смена ключа (app/modules/notify/application/secrets.py, 25.10.2026)
+    notify_secret_key: str = ""
 
     @model_validator(mode="after")
     def _resolve_database_url(self) -> "Settings":

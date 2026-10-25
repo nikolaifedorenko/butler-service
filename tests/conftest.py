@@ -49,6 +49,9 @@ os.environ.setdefault("CSRF_ENABLED", "0")
 # в тестах фиксируем явно, чтобы прогон не зависел от внешнего окружения
 # (тесты test_13_impersonation / test_impersonated_manager проверяют механизм).
 os.environ.setdefault("ALLOW_IMPERSONATION", "1")
+# секреты уведомлений в БД шифруются (app/modules/notify/application/secrets.py): тесты
+# сохраняют токен бота и пароль SMTP — нужен ключ. Только для тестов.
+os.environ.setdefault("NOTIFY_SECRET_KEY", "qX4m2HcV8sRw0yE1nK6tPzL9bJ3uA7dF5gTiOoMlYe0=")
 
 DEMO_PASSWORD = "demo1234"
 

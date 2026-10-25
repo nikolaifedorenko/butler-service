@@ -63,7 +63,10 @@ fi
 if [ ! -f .env ]; then
   say "Создаю .env из .env.example с надёжным SECRET_KEY ..."
   SECRET="$("$PY" -c 'import secrets; print(secrets.token_hex(32))')"
-  sed "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET}|" .env.example > .env
+  # ключ Fernet шифрования секретов уведомлений (urlsafe base64 от 32 байт)
+  NKEY="$("$PY" -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+  sed -e "s|^SECRET_KEY=.*|SECRET_KEY=${SECRET}|" -e "s|^NOTIFY_SECRET_KEY=.*|NOTIFY_SECRET_KEY=${NKEY}|" \
+    .env.example > .env
 fi
 
 # ── 5. Контрольная проверка импорта приложения ────────────────────────────

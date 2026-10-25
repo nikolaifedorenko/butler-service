@@ -18,6 +18,9 @@ httpx>=0.27
 # удалён. pillow — картинки в PDF (фото ночного отчёта)
 reportlab>=4.0
 pillow>=10.0
+# шифрование секретов уведомлений в БД (Fernet: AES-128-CBC + HMAC-SHA256) ключом
+# NOTIFY_SECRET_KEY — app/modules/notify/application/secrets.py (решение владельца 25.10.2026)
+cryptography>=44
 
 # ── Наблюдаемость (опционально) ──────────────────────────────────────────────
 # prometheus-client: метрики /metrics при METRICS_ENABLED=1; без него приложение
