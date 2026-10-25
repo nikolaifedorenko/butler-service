@@ -2,7 +2,11 @@
 application), затем settle(mode="close") + evaluate_flags и атомарное сохранение
 в одной транзакции: результат, снимок флагов, закрывающий банк, исходящие переносы,
 ClosingInputs, версии настроек, состояние периода. Любое исключение домена →
-ничего не сохраняется; повторное и конкурентное закрытие невозможно."""
+ничего не сохраняется; повторное и конкурентное закрытие невозможно.
+
+check_close — предпроверка «всё или ничего» (решение владельца 25.10.2026: период
+закрывается сразу у всего штата): те же шаги без блокировки и записи — отказ той же
+ошибкой, что дало бы закрытие."""
 from __future__ import annotations
 
 import datetime as dt
@@ -27,6 +31,22 @@ def _require_right(employee_id: str, period: Period, ports: EnginePorts) -> None
         raise PreviousPeriodNotClosedError(f"{employee_id}:{period.start}")
 
 
+def _compute(employee_id: str, period: Period, effective: Period, now: dt.datetime,
+             ports: EnginePorts):
+    _require_right(employee_id, period, ports)
+    inp = load_inputs(employee_id, period, ports)
+    check_close_allowed(effective, now, "close", inp.st)      # домен не вызывается (7.2)
+    return inp, run_pipeline(inp, now, "close")
+
+
+def check_close(employee_id: str, period: Period, now: dt.datetime,
+                ports: EnginePorts) -> PeriodView:
+    """Закрылся бы период: тот же расчёт, что close_period, ничего не сохраняется."""
+    employment = ports.employment.employment(employee_id, period)
+    effective = require_effective(employee_id, period, employment)
+    return _compute(employee_id, period, effective, now, ports)[1]
+
+
 def close_period(employee_id: str, period: Period, now: dt.datetime,
                  ports: EnginePorts) -> PeriodView:
     employment = ports.employment.employment(employee_id, period)
@@ -38,10 +58,8 @@ def close_period(employee_id: str, period: Period, now: dt.datetime,
             # отметок/Табеля/Графика/банка ждёт закрытия и не теряется между чтением и
             # сохранением (рецензия аудита 22.10.2026, TOCTOU)
             ports.store.lock_employee(employee_id)
-            _require_right(employee_id, period, ports)        # конкурентное закрытие
-            inp = load_inputs(employee_id, period, ports)
-            check_close_allowed(effective, now, "close", inp.st)  # домен не вызывается (7.2)
-            view = run_pipeline(inp, now, "close")
+            # повторная проверка права внутри — конкурентное закрытие
+            inp, view = _compute(employee_id, period, effective, now, ports)
             ports.store.save_result(employee_id, period, view.settle, view.flags,
                                     inp.snapshot, inp.st.versions, inp.st.step_minutes)
             ports.bank_write.save_closing_bank(employee_id, period, view.settle.bank_closed_minutes)

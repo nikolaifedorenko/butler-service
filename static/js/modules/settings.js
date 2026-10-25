@@ -303,6 +303,21 @@ function settingsGo(id) {
    переключении экранов медленный render прежнего экрана возвращался ПОСЛЕ
    нового и перезаписывал #st-body чужим содержимым (nav подсвечивал один
    экран, показывался другой). */
+/* Последний закрытый период — по сотрудникам (решение владельца 25.10.2026): закрытие
+   «всё или ничего», но период мог остаться закрытым частично (прежние правила, сбой);
+   тогда — сколько закрыто и у кого нет, чтобы докрыть «Закрыть месяц». */
+function closedPeriodText(lc, { recalcNote = true } = {}) {
+  if (!lc) return 'закрытых периодов нет';
+  const head = `начинается ${dateRu(lc.start)}`;
+  if (lc.complete) {
+    return `${head} — закрыт у всех (${lc.total})`
+      + (recalcNote && lc.recalc_available ? ' · доступен пересчёт' : '');
+  }
+  const names = (lc.not_closed || []).slice(0, 5).join(', ');
+  const more = (lc.not_closed || []).length > 5 ? ` и ещё ${lc.not_closed.length - 5}` : '';
+  return `${head} — закрыт у ${lc.closed_count} из ${lc.total} · не закрыт: ${names}${more}`;
+}
+
 let settingsRenderGen = 0;
 
 async function settingsRenderScreen() {
@@ -532,9 +547,11 @@ function settingsPublishModal() {
             '<b style="color:var(--warn)">будет пересчитан по новой версии</b>']);
         }
         if (lastClosed) {
+          const lc = health?.periods?.last_closed;
+          const who = lc && !lc.complete ? ` (закрыт у ${lc.closed_count} из ${lc.total})` : '';
           rows.push(['Последний закрытый период', applies <= lastClosed
-            ? `<b style="color:var(--warn)">начинается ${dateRu(lastClosed)} — нужен явный пересчёт в «Управленческом табеле»</b>`
-            : `начинается ${dateRu(lastClosed)} — не затрагивается`]);
+            ? `<b style="color:var(--warn)">начинается ${dateRu(lastClosed)}${esc(who)} — нужен явный пересчёт в «Управленческом табеле»</b>`
+            : `начинается ${dateRu(lastClosed)}${esc(who)} — не затрагивается`]);
         }
         preview.innerHTML = rows.map(([k, val]) =>
           `<div class="row"><span class="k">${esc(k)}</span><span>${val}</span></div>`).join('');

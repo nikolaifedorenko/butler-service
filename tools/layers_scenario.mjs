@@ -237,6 +237,26 @@ async function main() {
   check('панель УТ активна и отрисована', await waitFor(() => activeLayer() === 'mgmt'
     && $('#ut-body table')));
   check('«Закрыть период» видна админу', !!$('#ut-close') && $('#ut-close').style.display !== 'none');
+  /* «всё или ничего» (25.10.2026): текущий месяц не завершён ни у кого — закрытие не трогает
+     никого и показывает полный список; закрывать и пересчитывать по одному нельзя */
+  click($('#ut-close'));
+  check('подтверждение закрытия «у всех»',
+    await waitFor(() => /у всех/.test(text('#modal h3')) && $('#modal [data-yes]')), text('#modal h3'));
+  click($('#modal [data-yes]'));
+  const opened = await waitFor(() => /не закрыт ни у кого/.test(text('#modal h3')), 20000);
+  const [, bad, total] = (text('#modal').match(/у (\d+) из (\d+)/) || []).map(Number);
+  check('ошибки — модалкой «не закрыт ни у кого» с полным списком',
+    opened && bad > 0 && bad === total && $$('#modal tr[data-emp]').length === bad,
+    `${text('#modal h3')} · строк ${$$('#modal tr[data-emp]').length}, в подзаголовке ${bad} из ${total}`);
+  click($('#modal [data-cancel]'));
+  check('модалка списка закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
+  click($('#ut-body tr[data-emp]'));
+  check('карточка сотрудника УТ открылась',
+    await waitFor(() => !$('#modal-backdrop').classList.contains('hidden') && $('#modal [data-cancel]'), 15000));
+  check('в карточке нет закрытия и пересчёта по одному',
+    !$('#modal [data-close]') && !$('#modal [data-recalc]'));
+  click($('#modal [data-cancel]'));
+  check('карточка УТ закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
 
   /* ── 4. Слой 2 · Факт: сетка «Номера» (Q7) ── */
   console.log('\n4 · Слой 2 · Факт: сетка «Номера»');

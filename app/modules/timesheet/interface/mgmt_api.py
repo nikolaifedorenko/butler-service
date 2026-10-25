@@ -5,7 +5,11 @@
 сохраняется; при незакрытом предыдущем — типизированное отклонение); закрыт → чтение
 сохранённых SettleResult и снимка FlagsResult без пересчёта. «Закрыть месяц» →
 close_period; «Пересчитать» → recalculate (только последний закрытый период).
-Периоды вне трудоустройства не предлагаются и показываются отказом (R35)."""
+Периоды вне трудоустройства не предлагаются и показываются отказом (R35).
+
+Закрытие и пересчёт — «всё или ничего» по всему штату периода (решение владельца
+25.10.2026): сначала предпроверка каждого (тот же расчёт, без записи); хоть одна
+ошибка — не трогаем никого и отдаём полный список. Выбрать сотрудников нельзя."""
 from __future__ import annotations
 
 import datetime as dt
@@ -14,7 +18,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -23,14 +27,14 @@ from app.core.db import get_db
 from app.core.format import safe_sheet_cell
 from app.core.permissions import principal_permissions, require_perm
 
-from ..application.close_period import close_period
+from ..application.close_period import check_close, close_period
 from ..application.engine_common import emp_brief, engine_ports, now_utc, period_employees
 from ..application.errors import ApplicationError
 from ..application.months import (
     half_month_period,
     month_period,
 )
-from ..application.recalculate import recalculate
+from ..application.recalculate import check_recalculate, recalculate
 from ..application.view_period import view_period
 from ..domain.settings.types import GRANULARITY_HALF_MONTH
 from ..domain.time.local_midnight import next_midnight
@@ -127,42 +131,68 @@ def get_mgmt(year: int, month: int, half: Optional[int] = None, employee_id: Opt
 
 
 class PeriodAction(BaseModel):
+    # без employee_ids: период закрывается и пересчитывается только у всего штата.
+    # Лишние поля — 422, а не молча игнорируются: иначе старый клиент, приславший
+    # employee_ids, закрыл бы период всем, думая, что закрывает одному
+    model_config = ConfigDict(extra="forbid")
+
     year: int
     month: int
     half: Optional[int] = None
-    employee_ids: Optional[list[int]] = None
 
 
-def _run_action(payload: PeriodAction, principal: Principal, db: Session, action,
-                audit_action: str) -> dict:
+def _error_row(emp, exc: Exception) -> dict:
+    return {"employee_id": emp.id, "name": emp.display_name, "error": error_text(exc)}
+
+
+def _run_all(payload: PeriodAction, principal: Principal, db: Session, check, action,
+             audit_action: str, *, skip_closed: bool) -> dict:
+    """Предпроверка всех → действие для всех. skip_closed (закрытие): у кого период уже
+    закрыт — пропускаем; так докрывается период, закрытый частично прежними правилами
+    или прерванный сбоем."""
     now, ports, _granularity, period, emps = _context(db, principal, payload.year, payload.month,
-                                                      payload.half, payload.employee_ids)
-    done, errors = [], []
+                                                      payload.half, None)
+    out = {"period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
+           "total": len(emps), "skipped_closed": 0, "stage": "check", "done": [], "errors": []}
+    todo = []
     for emp in emps:
-        # у каждого сотрудника своя транзакция закрытия (UnitOfWork внутри use case); запись
+        if skip_closed and ports.store.period_state(str(emp.id), period).closed:
+            out["skipped_closed"] += 1
+            continue
+        try:
+            check(str(emp.id), period, now, ports)
+            todo.append(emp)
+        except (DomainError, ApplicationError, ValueError) as exc:
+            out["errors"].append(_error_row(emp, exc))
+    db.rollback()       # предпроверка только читала — снимок сессии не нужен
+    if out["errors"]:
+        return {**out, "ok": False}
+    out["stage"] = "save"
+    for emp in todo:
+        # у каждого сотрудника своя транзакция (UnitOfWork внутри use case); запись
         # аудита кладём в сессию ДО неё — UoW закоммитит её вместе с закрытием (ARCH-01)
         audit(db, principal, audit_action, f"employee:{emp.id}",
               {"period": f"{period.start.isoformat()}..{period.end.isoformat()}"})
         try:
             view = action(str(emp.id), period, now, ports)
-            done.append({"employee_id": emp.id,
-                         "bank_closed": round(view.settle.bank_closed_minutes / 60, 2),
-                         "deferred": len(view.settle.deferred_blocks)})
+            out["done"].append({"employee_id": emp.id,
+                                "bank_closed": round(view.settle.bank_closed_minutes / 60, 2),
+                                "deferred": len(view.settle.deferred_blocks)})
         except (DomainError, ApplicationError, ValueError) as exc:
-            db.rollback()       # отказ — и запись аудита этого сотрудника не остаётся в сессии
-            # не HTTP-ошибка: массовая операция, отказ сотрудника — в payload (200)
-            errors.append({"employee_id": emp.id, "name": emp.display_name,
-                           "error": error_text(exc)})
-    return {"period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
-            "done": done, "errors": errors}
+            # редкость: правка между предпроверкой и записью; повторное «Закрыть» докроет
+            db.rollback()
+            out["errors"].append(_error_row(emp, exc))
+    return {**out, "ok": not out["errors"]}
 
 
 @router.post("/close")
 def close(payload: PeriodAction, principal: Principal = Depends(require_perm("mgmt.close")),
           db: Session = Depends(get_db)):
-    out = _run_action(payload, principal, db, close_period, "period_close")
+    out = _run_all(payload, principal, db, check_close, close_period, "period_close",
+                   skip_closed=True)
     audit(db, principal, "period_close", f"{payload.year}-{payload.month:02d}",
-          {"employees": [d["employee_id"] for d in out["done"]], "errors": out["errors"]})
+          {"employees": [d["employee_id"] for d in out["done"]], "stage": out["stage"],
+           "errors": out["errors"]})
     db.commit()
     return out
 
@@ -170,9 +200,11 @@ def close(payload: PeriodAction, principal: Principal = Depends(require_perm("mg
 @router.post("/recalculate")
 def recalc(payload: PeriodAction, principal: Principal = Depends(require_perm("mgmt.recalculate")),
            db: Session = Depends(get_db)):
-    out = _run_action(payload, principal, db, recalculate, "period_recalculate")
+    out = _run_all(payload, principal, db, check_recalculate, recalculate, "period_recalculate",
+                   skip_closed=False)
     audit(db, principal, "period_recalculate", f"{payload.year}-{payload.month:02d}",
-          {"employees": [d["employee_id"] for d in out["done"]], "errors": out["errors"]})
+          {"employees": [d["employee_id"] for d in out["done"]], "stage": out["stage"],
+           "errors": out["errors"]})
     db.commit()
     return out
 

@@ -2086,21 +2086,8 @@
         "type": "object"
       },
       "PeriodAction": {
+        "additionalProperties": false,
         "properties": {
-          "employee_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Employee Ids"
-          },
           "half": {
             "anyOf": [
               {

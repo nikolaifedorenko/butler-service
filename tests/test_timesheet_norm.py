@@ -41,6 +41,7 @@ from app.modules.timesheet.application.catalog import (  # noqa: E402
     TabelDay,  # noqa: E402,
 )
 from app.modules.timesheet.bootstrap import REMOVED_DAY_CODES, strip_removed_day_codes  # noqa: E402
+from tests.period_ops import period_action  # noqa: E402
 
 init_db()
 client = TestClient(app)
@@ -224,8 +225,8 @@ class TestDailyShiftExample(unittest.TestCase):
 
     @staticmethod
     def _close(month):
-        return client.post("/api/mgmt/close", json={"year": month.year, "month": month.month,
-                                                    "employee_ids": [TestDailyShiftExample.emp_id]})
+        # одному сотруднику — мимо API «всё или ничего» (tests/period_ops.py)
+        return period_action("close", TestDailyShiftExample.emp_id, month.year, month.month)
 
     def test_11_daily_shift_split_by_midnight(self):
         emp = self.emp_id

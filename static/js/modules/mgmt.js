@@ -55,8 +55,8 @@ async function loadMgmt() {
     : `${MONTHS[d.month - 1]} ${d.year}`;
   $('#ut-close').style.display = d.can_close ? '' : 'none';
   $('#ut-recalc').style.display = d.can_recalculate ? '' : 'none';
-  $('#ut-close').onclick = () => mgmtAction('close', null);
-  $('#ut-recalc').onclick = () => mgmtAction('recalculate', null);
+  $('#ut-close').onclick = () => mgmtAction('close');
+  $('#ut-recalc').onclick = () => mgmtAction('recalculate');
   $('#ut-xlsx').onclick = () => downloadBlob(`/api/mgmt/xlsx?${qs()}`, 'upr_tabel.xlsx');
   renderMgmt();
 }
@@ -119,29 +119,61 @@ function renderMgmt() {
   $$('#ut-body tr[data-emp]').forEach(tr => tr.onclick = () => mgmtDetail(+tr.dataset.emp));
 }
 
-async function mgmtAction(kind, empId) {
+/* Закрытие и пересчёт — «всё или ничего» по штату периода (решение владельца 25.10.2026):
+   сервер сначала проверяет всех; хоть одна ошибка — не трогает никого и возвращает
+   полный список. Выбрать сотрудников нельзя — ни здесь, ни в карточке. */
+async function mgmtAction(kind) {
   const d = state.mgmt;
-  const title = kind === 'close' ? 'Закрыть период?' : 'Пересчитать закрытый период?';
+  const title = kind === 'close' ? 'Закрыть период у всех?' : 'Пересчитать закрытый период у всех?';
   const text = kind === 'close'
-    ? `${dateRu(d.period.start)} – ${dateRu(d.period.end)}: недостача будет погашена банком и кодами, ` +
-      'результат, снимок флагов, банк и отложенные блоки сохранятся одной атомарной операцией. ' +
-      'Повторно закрыть нельзя; исправить можно только пересчётом последнего закрытого периода.'
-    : 'Отметки, Табель и корректировки будут перечитаны свежими; расчёт повторится с исходных ' +
+    ? `${dateRu(d.period.start)} – ${dateRu(d.period.end)}: сначала проверяются все сотрудники; если хоть у ` +
+      'кого-то ошибка, период не закрывается ни у кого — появится список, что исправить. ' +
+      'Недостача будет погашена банком и кодами, результат, снимок флагов, банк и отложенные блоки ' +
+      'сохранятся. Повторно закрыть нельзя; исправить можно только пересчётом последнего закрытого периода.'
+    : 'Сначала проверяются все сотрудники; если хоть у кого-то пересчёт невозможен, не пересчитывается ' +
+      'никто. Отметки, Табель и корректировки будут перечитаны свежими; расчёт повторится с исходных ' +
       'входящих остатков периода (ClosingInputs заморожены). Результат, банк, переносы и снимок ' +
       'флагов будут ЗАМЕНЕНЫ. Доступно только для последнего закрытого периода.';
   confirmDialog(title, text, async () => {
     try {
       const body = { year: d.year, month: d.month, half: d.half };
-      if (empId) body.employee_ids = [empId];
       // закрытие и пересчёт всего штата за период — дольше обычных 20 с (UI-03)
       const r = await api(`/api/mgmt/${kind}`, { method: 'POST', body, timeout: 300000 });
       closeModal();
-      const msg = kind === 'close' ? `Закрыто: ${r.done.length}` : `Пересчитано: ${r.done.length}`;
-      toast(msg + (r.errors.length ? `, ошибок: ${r.errors.length}` : ''), r.errors.length ? 'warn' : 'ok',
-            r.errors.map(e => `${e.name}: ${e.error}`).slice(0, 8));
+      if (r.ok) {
+        const n = r.done.length;
+        const msg = kind === 'close'
+          ? (n ? `Период закрыт у всех: ${n}` : 'Период уже закрыт у всех')
+            + (r.skipped_closed && n ? ` (ещё ${r.skipped_closed} были закрыты раньше)` : '')
+          : `Пересчитано у всех: ${n}`;
+        toast(msg, 'ok');
+      } else {
+        mgmtProblems(kind, r);
+      }
       loadMgmt();
     } catch (e) { toast(e.message, 'err'); }
-  }, kind === 'close' ? 'Закрыть' : 'Пересчитать', false);
+  }, kind === 'close' ? 'Закрыть у всех' : 'Пересчитать у всех', false);
+}
+
+/* Полный список тех, из-за кого период не закрыт (не пересчитан), — чтобы исправить. */
+function mgmtProblems(kind, r) {
+  const what = kind === 'close' ? 'закрыт' : 'пересчитан';
+  const title = r.stage === 'check' ? `Период не ${what} ни у кого` : `Период ${what} не у всех`;
+  const sub = r.stage === 'check'
+    ? `Исправьте ошибки у ${r.errors.length} из ${r.total} и повторите — период ${what === 'закрыт' ? 'закроется' : 'пересчитается'} у всех сразу`
+    : `Готово у ${r.done.length}; у остальных данные изменились во время операции — повторите её`;
+  openModal({
+    title, subtitle: sub, wide: true,
+    body: `<div class="table-wrap"><table class="data"><thead><tr><th>Сотрудник</th><th>Что не так</th></tr></thead>
+      <tbody>${r.errors.map(e => `<tr data-emp="${e.employee_id}" style="cursor:pointer">
+        <td class="who">${esc(e.name)}</td><td>${esc(e.error)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="hint">Клик по строке — расчёт сотрудника за период.</p>`,
+    footer: '<button class="btn btn-primary" data-cancel>Понятно</button>',
+    onMount(m) {
+      m.querySelector('[data-cancel]').onclick = closeModal;
+      $$('tr[data-emp]', m).forEach(tr => tr.onclick = () => { closeModal(); mgmtDetail(+tr.dataset.emp); });
+    },
+  });
 }
 
 async function mgmtDetail(empId) {
@@ -169,8 +201,6 @@ async function mgmtDetail(empId) {
       <td>${mgmtCell(r.ut[dv.day])}</td>
       <td>${flags}</td></tr>`;
   }).join('');
-  const canRecalc = d.can_recalculate && r.state?.can_recalculate;
-  const canClose = d.can_close && r.state?.can_close;
   const outDays = (r.out_of_staff_days || []);
   openModal({
     title: r.employee.full_name,
@@ -198,14 +228,11 @@ async function mgmtDetail(empId) {
       ${r.exceptions.length ? `<div class="panel" style="margin-top:12px"><h3 class="panel-title">Исключения</h3>${r.exceptions.map(x => `<div>${esc(x.text)}</div>`).join('')}</div>` : ''}
       <details style="margin-top:12px"><summary>Трасса расчёта (${(r.trace || []).length})</summary>
         ${(r.trace || []).map(t => `<div class="audit-item"><span class="ac">${esc(t.step)} · ${esc(t.code)}</span> ${esc(t.text)}</div>`).join('') || '<div class="empty">Пусто</div>'}</details>`,
-    footer: `${canClose ? '<button class="btn btn-primary" data-close>Закрыть период сотрудника</button>' : ''}
-      ${canRecalc ? '<button class="btn" data-recalc>Пересчитать</button>' : ''}
-      <button class="btn btn-ghost" data-cancel>Закрыть окно</button>`,
+    /* закрыть и пересчитать — только у всего штата, кнопками над таблицей */
+    footer: '<button class="btn btn-ghost" data-cancel>Закрыть окно</button>',
     onMount(m) {
       m.classList.add('v4-xl');
       m.querySelector('[data-cancel]').onclick = closeModal;
-      const c = m.querySelector('[data-close]'); if (c) c.onclick = () => mgmtAction('close', empId);
-      const rc = m.querySelector('[data-recalc]'); if (rc) rc.onclick = () => mgmtAction('recalculate', empId);
     },
   });
 }

@@ -21,6 +21,7 @@ from app.core.time import local_date
 from ..adapters.orm import DayModifier, EngineSettingsVersion
 from ..adapters.settings_codec import from_payload, to_payload
 from ..adapters.sql_settings import SCOPE_GROUPS, SqlSettingsAdapter, base_version
+from ..application.engine_common import period_employees
 from ..domain.settings.defaults import default_settings
 from ..domain.settings.types import (
     MOD_COUNTS_IN_UT,
@@ -78,14 +79,33 @@ def applies_from(valid_from: dt.date, granularity: str) -> dt.date:
 
 
 def period_state_of(db: Session, start: dt.date) -> dict:
-    """Закрыт ли период, начинающийся `start`, и доступен ли ему пересчёт."""
+    """Закрыт ли период, начинающийся `start`, — по сотрудникам, и доступен ли пересчёт.
+
+    Закрытие идёт «всё или ничего» по штату (решение владельца 25.10.2026), но период
+    мог остаться закрытым частично — прежние правила, сбой посреди закрытия. Раньше
+    признак брал общий максимум закрытий: один закрытый сотрудник делал «закрытым» весь
+    период. Теперь — «закрыт у N из M» и кто не закрыт; пересчёт — только у всех сразу.
+    """
     from ..adapters.orm import PeriodClosing
 
-    closed = db.scalar(select(func.max(PeriodClosing.period_start)))
-    row = db.scalar(select(PeriodClosing).where(PeriodClosing.period_start == start).limit(1))
-    return {"closed": row is not None,
-            "last_closed_start": closed.isoformat() if closed else None,
-            "recalc_available": row is not None and closed == start}
+    last = db.scalar(select(func.max(PeriodClosing.period_start)))
+    rows = db.execute(select(PeriodClosing.employee_id, PeriodClosing.period_end)
+                      .where(PeriodClosing.period_start == start)).all()
+    out = {"start": start.isoformat(), "closed": bool(rows),
+           "last_closed_start": last.isoformat() if last else None,
+           "closed_count": 0, "total": 0, "complete": False, "not_closed": [],
+           "recalc_available": False}
+    if not rows:
+        return out
+    end = max(r.period_end for r in rows)
+    closed_ids = {r.employee_id for r in rows}
+    staff = period_employees(db, start, end)
+    missing = sorted(e.display_name for e in staff if e.id not in closed_ids)
+    complete = bool(staff) and not missing
+    later = db.scalar(select(PeriodClosing.id).where(PeriodClosing.period_start > start).limit(1))
+    return {**out, "end": end.isoformat(), "total": len(staff),
+            "closed_count": len(staff) - len(missing), "complete": complete,
+            "not_closed": missing, "recalc_available": complete and later is None}
 
 
 @router.put("")
@@ -539,7 +559,8 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
             "periods": {"granularity": granularity,
                         "current": {"start": current.start.isoformat(),
                                     "end": current.end.isoformat()},
-                        "last_closed_start": last_closed.isoformat() if last_closed else None},
+                        "last_closed_start": last_closed.isoformat() if last_closed else None,
+                        "last_closed": period_state_of(db, last_closed) if last_closed else None},
             "version": {"id": ver.id if ver else None,
                         "valid_from": ver.valid_from.isoformat() if ver else None,
                         "note": ver.note if ver else "",
