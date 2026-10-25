@@ -38,11 +38,13 @@ from ..application.engine_common import (
     now_utc,
     period_employees,
 )
+from ..application.errors import ApplicationError
 from ..application.months import half_month_period, month_period
 from ..application.schedule_view import rebuild_generated_for_days, rebuild_generated_schedule
 from ..application.tabel_fill import fill_timesheet_from_cycles
 from ..domain.types.entities import Period
-from .formatting import fmt_hours_strict, hm
+from ..domain.types.errors import DomainError
+from .formatting import error_text, fmt_hours_strict, hm
 from .period_params import ensure_period
 
 router = APIRouter(prefix="/api/tabel", tags=["tabel"])
@@ -194,6 +196,7 @@ def bulk(payload: BulkIn, principal: Principal = Depends(require_perm("tabel.edi
         raise HTTPException(status_code=422,
                             detail="Слишком большой запрос (максимум 500 сотрудников и 366 дат)")
     warns, errors = set(), []
+    cells = len(payload.dates) * len(payload.employee_ids)
     # записанные дни по сотрудникам: График перегенерируется ОДИН раз на затронутый
     # месяц после всей массовки, а не на каждую ячейку (P0-3 ревью 20.10.2026 —
     # 500×366 ячеек иначе делали сотни тысяч DELETE+INSERT generated-строк)
@@ -208,13 +211,20 @@ def bulk(payload: BulkIn, principal: Principal = Depends(require_perm("tabel.edi
                 touched.setdefault(eid, []).append(d)
             except HTTPException as exc:
                 errors.append({"employee_id": eid, "date": d.isoformat(), "detail": exc.detail})
+            except (DomainError, ApplicationError) as exc:
+                errors.append({"employee_id": eid, "date": d.isoformat(), "detail": error_text(exc)})
+    if errors:
+        # «всё или ничего» (решение владельца 25.10.2026): Табель — первичный документ,
+        # заполненный наполовину хуже незаполненного. Раньше HTTP-ошибки собирались, а
+        # остальное записывалось, доменная же ошибка одной ячейки роняла весь запрос 500/422
+        db.rollback()
+        return {"ok": False, "cells": cells, "written": 0, "warnings": [], "errors": errors}
     for eid, days in touched.items():
         outcome = rebuild_generated_for_days(str(eid), days, ports(db, principal))
         if outcome.manual_dropped:
             warns.add("Ручные смены удалены: код дня больше не принимает коды УТ")
     db.commit()
-    return {"ok": not errors, "cells": len(payload.dates) * len(payload.employee_ids),
-            "warnings": sorted(warns), "errors": errors}
+    return {"ok": True, "cells": cells, "written": cells, "warnings": sorted(warns), "errors": []}
 
 
 class FillIn(BaseModel):

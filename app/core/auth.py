@@ -17,7 +17,7 @@ from .config import settings
 from .db import get_db
 from .identity import User
 from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
-from .security import read_token
+from .security import SESSION_TOKEN, read_token
 
 if TYPE_CHECKING:
     from app.modules.employees.application.catalog import Employee
@@ -86,7 +86,9 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
     if not token:
         raise _unauthorized()
     payload = read_token(token)
-    if not payload:
+    # тип токена: подпись одна на все токены, и токен другого назначения (сброс пароля,
+    # ссылка на документ — если появятся) не должен сойти за сессию (рецензия 22.10.2026)
+    if not payload or payload.get("typ") != SESSION_TOKEN:
         raise _unauthorized()
     user = db.get(User, payload.get("uid"))
     if not user or not user.is_active:

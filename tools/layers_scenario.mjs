@@ -444,6 +444,13 @@ async function main() {
   check('плашка держится, пока её не закроют', !$('#schema-banner').classList.contains('hidden'));
   click($('#schema-banner [data-schema-close]'));
   check('✕ скрывает плашку', $('#schema-banner').classList.contains('hidden'));
+  /* сгенерированный пароль новой учётки — в окне до кнопки, а не в тосте на 5 с */
+  window.eval(`initialPasswordModal({ full_name: 'Тестов Т.', username: 'testov', initial_password: 'Gen-Pass-123' })`);
+  check('сгенерированный пароль — в окне с «Скопировать»',
+    /Учётная запись создана/.test(text('#modal h3')) && text('#ip-pass') === 'Gen-Pass-123'
+    && !!$('#modal [data-copy]'), text('#modal h3'));
+  click($('#modal [data-done]'));
+  check('окно пароля закрывается кнопкой', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
   const access = await jget('/api/access');
   const gromova = (access.users || []).find(u => u.username === 'gromova');
   check('админ запрещает gromova employees.edit',

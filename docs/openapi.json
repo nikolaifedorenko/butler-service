@@ -679,11 +679,6 @@
             ],
             "title": "Employee Ids"
           },
-          "manual_too": {
-            "default": false,
-            "title": "Manual Too",
-            "type": "boolean"
-          },
           "month": {
             "title": "Month",
             "type": "integer"

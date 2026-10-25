@@ -155,12 +155,12 @@ class TestCodePunchFlags(unittest.TestCase):
         db = SessionLocal()
         try:
             # без изъятий — проходит
-            _guard_removed_day_codes(copy.deepcopy(base), db)
+            _guard_removed_day_codes(copy.deepcopy(base), db, local_date())
             # «Я» стоит в Табеле демо-сотрудников
             p = copy.deepcopy(base)
             p["day_code_policy"].pop("Я")
             with self.assertRaises(HTTPException) as ctx:
-                _guard_removed_day_codes(p, db)
+                _guard_removed_day_codes(p, db, local_date())
             self.assertEqual(ctx.exception.status_code, 422)
             self.assertIn("«Я»", ctx.exception.detail)
             self.assertIn("Табел", ctx.exception.detail)

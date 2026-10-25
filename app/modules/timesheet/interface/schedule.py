@@ -708,11 +708,15 @@ def _range_absence_as_schedule(payload: RangeAbsenceIn, kind: ShiftType, princip
                 row.created_by = principal.user.id
             written += 1
             day += dt.timedelta(days=1)
+    if errors:
+        db.rollback()       # «всё или ничего» (решение владельца 25.10.2026), см. range_absence
+        return {"ok": False, "written": 0, "skipped": skipped, "errors": errors,
+                "mode": "schedule_absence"}
     audit(db, principal, "schedule_range_absence", f"{payload.first}..{payload.last}",
           {"employees": payload.employee_ids, "kind": kind.code, "written": written,
            "mode": "schedule_absence"})
     db.commit()
-    return {"ok": not errors, "written": written, "skipped": skipped, "errors": errors[:20],
+    return {"ok": True, "written": written, "skipped": skipped, "errors": [],
             "mode": "schedule_absence"}
 
 
@@ -794,12 +798,18 @@ def range_absence(payload: RangeAbsenceIn, principal: Principal = Depends(requir
                 errors.append({"employee_id": employee_id, "date": day.isoformat(),
                                "error": error_text(exc)})
             day += dt.timedelta(days=1)
+    if errors:
+        # «всё или ничего» (решение владельца 25.10.2026): хоть один день не записался —
+        # не пишем ни одного и отдаём полный список; раньше остальные дни записывались,
+        # и отсутствие оставалось с дырами, которые легко не заметить
+        db.rollback()
+        return {"ok": False, "written": 0, "skipped": skipped, "errors": errors}
     for employee_id, days in touched.items():
         rebuild_generated_for_days(str(employee_id), days, ports)
     audit(db, principal, "schedule_range_absence", f"{payload.first}..{payload.last}",
           {"employees": payload.employee_ids, "code": code, "written": written})
     db.commit()
-    return {"ok": not errors, "written": written, "skipped": skipped, "errors": errors[:20]}
+    return {"ok": True, "written": written, "skipped": skipped, "errors": []}
 
 
 @router.get("/timeoff-hours")
@@ -970,7 +980,6 @@ class ClearMonthIn(BaseModel):
     employee_ids: Optional[list[int]] = None
     year: int
     month: int
-    manual_too: bool = False
 
 
 @router.post("/reset-month")

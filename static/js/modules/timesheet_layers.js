@@ -469,11 +469,17 @@ function openRangeModal(mode = 'tabel') {
             shift_type_id: kindId || null, code, note: $('#rg-note').value.trim(),
             workdays_only: $('#rg-work-only').checked,
           } });
+          /* «всё или ничего» (25.10.2026): хоть один день не записался — не записано ни одного;
+             окно не закрываем, чтобы поправить период или сотрудников и повторить */
+          if (!res.ok) {
+            toast(`Ничего не назначено: ошибок ${res.errors.length} — исправьте и повторите`, 'err',
+                  res.errors.slice(0, 8).map(e => `${dateRu(e.date)}: ${e.error}`));
+            return;
+          }
           closeModal();
           const what = res.mode === 'schedule_absence' ? 'дней в Графике' : 'ячеек Табеля';
           toast(`Отсутствие назначено: ${res.written} ${plural(res.written, 'ячейка', 'ячейки', 'ячеек')} (${what})`
-            + (res.skipped ? `, пропущено ${res.skipped}` : ''), (res.errors || []).length ? 'warn' : 'ok',
-            (res.errors || []).map(e => `${e.date}: ${e.error}`).slice(0, 6));
+            + (res.skipped ? `, пропущено ${res.skipped}` : ''), 'ok');
           const d0 = new Date(from + 'T12:00:00');
           if (d0.getFullYear() !== state.year || d0.getMonth() + 1 !== state.month) {
             state.year = d0.getFullYear();

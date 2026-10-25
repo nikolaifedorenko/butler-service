@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -149,14 +149,9 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
         raise HTTPException(status_code=422, detail=(
             "Гранулярность периода меняется только с 1-го числа месяца — иначе новая "
             "цепочка периодов начнётся посреди периода прежней"))
-    _guard_removed_day_codes(data.payload, db)
+    _guard_removed_day_codes(data.payload, db, data.valid_from)
     _guard_deferred_tariffs(st, applies_from(data.valid_from, st.period_granularity), db)
-    # shortcut: сверка и вставка не атомарны — публикации в одну и ту же долю секунды пройдут обе
-    latest = db.scalar(select(func.max(EngineSettingsVersion.id)))
-    if data.base_version_id is not None and latest != data.base_version_id:
-        raise HTTPException(status_code=409, detail=(
-            f"Пока вы редактировали, опубликована версия #{latest} — обновите страницу и "
-            "внесите изменения заново (иначе её правки потерялись бы)"))
+    _lock_and_check_base_version(db, data.base_version_id)
     v = EngineSettingsVersion(valid_from=data.valid_from, payload_json=json.dumps(data.payload, ensure_ascii=False),
                               note=data.note[:255], created_by_name=principal.name)
     db.add(v)
@@ -168,7 +163,27 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
             "period": period_state_of(db, start)}
 
 
-def _guard_removed_day_codes(payload: dict, db: Session) -> None:
+def _lock_and_check_base_version(db: Session, base_version_id: Optional[int]) -> None:
+    """«Моя версия ещё последняя?» и вставка новой — под одной блокировкой (CONC-03).
+
+    Раньше сверка и вставка не были атомарны: две вкладки, опубликовавшие в одну и ту же
+    долю секунды, проходили обе, и правки первой молча терялись (рецензия аудита
+    22.10.2026). Блокировка — пустой UPDATE последней версии: на PostgreSQL это замок
+    строки, на SQLite — замок записи базы; вторая публикация ждёт первую, затем
+    перечитывает последнюю версию и получает 409."""
+    if base_version_id is None:
+        return
+    latest = db.scalar(select(func.max(EngineSettingsVersion.id)))
+    if latest is not None:
+        db.execute(text("UPDATE engine_settings_versions SET id = id WHERE id = :id"), {"id": latest})
+        latest = db.scalar(select(func.max(EngineSettingsVersion.id)))
+    if latest != base_version_id:
+        raise HTTPException(status_code=409, detail=(
+            f"Пока вы редактировали, опубликована версия #{latest} — обновите страницу и "
+            "внесите изменения заново (иначе её правки потерялись бы)"))
+
+
+def _guard_removed_day_codes(payload: dict, db: Session, valid_from: dt.date) -> None:
     """Удаление кода Табеля из справочника — с серверной защитой (16.10.2026).
 
     Владелец разрешил удалять коды из карточек «Коды Табеля», но версия, которая
@@ -180,7 +195,9 @@ def _guard_removed_day_codes(payload: dict, db: Session) -> None:
     from ..adapters.orm import TabelDay
 
     new_codes = set((payload.get("day_code_policy") or {}).keys())
-    prev = base_version(db, local_date())
+    # сверяем с версией, которую новая сменяет (на её дату), а не с действующей сегодня:
+    # иначе публикация задним или будущим числом сравнивалась бы не с тем набором кодов
+    prev = base_version(db, valid_from)
     if prev is None:
         return
     try:

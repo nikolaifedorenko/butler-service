@@ -265,7 +265,9 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
           {"full_name": emp.full_name, "username": username, "role": role})
     db.commit()
     data = _emp_dict(emp, with_user=True)
-    data["initial_password"] = password
+    # пароль в ответе — только сгенерированный (его больше нигде не узнать); введённый
+    # администратором он и так знает — не гоняем его по сети и не показываем на экране
+    data["initial_password"] = None if payload.password else password
     return data
 
 

@@ -529,9 +529,32 @@ async function employeeModal(emp) {
             ? await api('/api/employees', { method: 'POST', body })
             : await api(`/api/employees/${emp.id}`, { method: 'PUT', body });
           closeModal();
-          toast(isNew ? `Создан: ${res.full_name}, логин ${res.username}, пароль ${res.initial_password}` : 'Изменения сохранены', 'ok');
+          if (isNew && res.initial_password) initialPasswordModal(res);
+          else toast(isNew ? `Создан: ${res.full_name}, логин ${res.username}` : 'Изменения сохранены', 'ok');
           await refreshAfterEmployeeChange();
         } catch (e) { toast(e.message, 'err'); }
+      };
+    },
+  });
+}
+
+/* Сгенерированный пароль новой учётки — один раз и до закрытия кнопкой: в БД только хеш,
+   второй раз его не узнать (раньше — тост на 5 секунд). Введённый администратором пароль
+   сервер не возвращает. */
+function initialPasswordModal(res) {
+  openModal({
+    title: 'Учётная запись создана',
+    subtitle: 'Пароль показывается один раз — передайте его сотруднику',
+    body: `<div class="kv"><span class="k">Сотрудник</span><span class="v">${esc(res.full_name)}</span></div>
+      <div class="kv"><span class="k">Логин</span><span class="v"><code>${esc(res.username)}</code></span></div>
+      <div class="kv"><span class="k">Пароль</span><span class="v"><code id="ip-pass">${esc(res.initial_password)}</code></span></div>`,
+    footer: `<button class="btn btn-ghost" data-copy>Скопировать пароль</button>
+      <button class="btn btn-primary" data-done>Готово, передал</button>`,
+    onMount(m) {
+      m.querySelector('[data-done]').onclick = closeModal;
+      m.querySelector('[data-copy]').onclick = async () => {
+        try { await navigator.clipboard.writeText(res.initial_password); toast('Пароль скопирован', 'ok'); }
+        catch { toast('Не удалось скопировать — выделите пароль и скопируйте вручную', 'warn'); }
       };
     },
   });

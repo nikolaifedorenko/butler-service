@@ -17,7 +17,14 @@ from app.core.db import get_db
 from app.core.identity import LoginAttempt, User
 from app.core.net import client_ip
 from app.core.permissions import require_perm
-from app.core.security import MIN_PASSWORD_LEN, create_token, hash_password, needs_rehash, verify_password
+from app.core.security import (
+    MIN_PASSWORD_LEN,
+    SESSION_TOKEN,
+    create_token,
+    hash_password,
+    needs_rehash,
+    verify_password,
+)
 from app.core.time import local_date, utcnow
 from app.modules.employees.application import Employee
 
@@ -66,7 +73,8 @@ def _reset_login_failures(db: Session, ip: str, username: str) -> None:
 
 
 def _token(user: User, emp_id, imp: bool = False) -> str:
-    body = {"uid": user.id, "emp_id": emp_id, "tv": int(user.token_version or 0)}
+    body = {"typ": SESSION_TOKEN, "uid": user.id, "emp_id": emp_id,
+            "tv": int(user.token_version or 0)}
     if imp:
         body["imp"] = True
     return create_token(body)
