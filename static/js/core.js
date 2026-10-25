@@ -93,6 +93,16 @@ function toast(message, type = 'ok', warnings = []) {
   setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 4600);
   setTimeout(() => el.remove(), 5100);
 }
+/* Поколения загрузок раздела: ответ устарел, если раздел успели перезагрузить (листание
+   месяцев, смена даты). Без этого ответ за прошлый месяц, пришедший позже, рисовался
+   поверх текущего: подпись — октябрь, сетка — сентябрь (рецензия аудита 22.10.2026).
+     const fresh = loadGeneration('tabel'); const d = await api(…); if (!fresh()) return; */
+const loadGenerations = {};
+function loadGeneration(key) {
+  const gen = (loadGenerations[key] = (loadGenerations[key] || 0) + 1);
+  return () => gen === loadGenerations[key];
+}
+
 let pendingLoads = 0;   // спиннер скрывается только когда завершились ВСЕ видимые запросы
 function loading(on) {
   pendingLoads = Math.max(0, pendingLoads + (on ? 1 : -1));

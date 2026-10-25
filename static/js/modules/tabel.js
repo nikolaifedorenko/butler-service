@@ -20,10 +20,13 @@ async function loadTabel() {
     </div>
     <div id="tb-body"><div class="empty">Загрузка…</div></div>`;
   v4BindMonthNav('tb', loadTabel);
+  const fresh = loadGeneration('tabel');
   let data;
   try { data = await api(`/api/tabel?year=${state.year}&month=${state.month}`); } catch (e) {
-    $('#tb-body').innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return;
+    if (fresh()) $('#tb-body').innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`;
+    return;
   }
+  if (!fresh()) return;          // пока ждали ответ, перелистнули месяц
   state.tabel = data;
   $('#tb-fill').style.display = data.can_edit ? '' : 'none';
   $('#tb-fill').onclick = () => tabelFillModal(data);

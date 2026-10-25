@@ -11,7 +11,9 @@ async function loadSchedule() {
     // легенде сетки нужен словарь смен (без employees.view справочник не грузится — app.js)
     try { state.shiftTypes = await api('/api/shift-types', { silent: true }); } catch { state.shiftTypes = []; }
   }
+  const fresh = loadGeneration('schedule');
   const data = await api(`/api/schedule?year=${state.year}&month=${state.month}`);
+  if (!fresh()) return;          // пока ждали ответ, перелистнули месяц
   state.grid = data;
   state.scrollToToday = true;    // после загрузки месяца докрутить сетку к сегодняшнему числу
   renderGrid();

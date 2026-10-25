@@ -393,6 +393,40 @@ async function main() {
   click($('#modal .x'));
   check('карточка закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
 
+  /* ── 6a. Гонка листания месяцев (рецензия 22.10.2026, P2): ответ за прошлый месяц
+     приходит ПОЗЖЕ ответа за текущий — на экране должен остаться текущий ── */
+  console.log('\n6a · Листание месяцев: запоздавший ответ не перерисовывает экран');
+  const realApi = window.api;
+  const { month: m0, year: y0 } = window.eval('({ month: state.month, year: state.year })');
+  const pm = m0 === 1 ? 12 : m0 - 1;
+  window.api = async (url, opts) => {          // ответ за прошлый месяц — на 1,5 с позже
+    if (new RegExp(`[?&]month=${pm}(&|$)`).test(url)) await sleep(1500);
+    return realApi(url, opts);
+  };
+  window.eval('api = window.api');
+  for (const [layer, prev, next, data, label] of [
+    ['timesheet', '#tb-prev', '#tb-next', 'tabel', '#tb-label'],
+    ['schedule', '#m-prev', '#m-next', 'grid', '#m-label'],
+    ['mgmt', '#ut-prev', '#ut-next', 'mgmt', '#ut-label'],
+    ['fact', '#fm-prev', '#fm-next', 'factMonth', null]]) {
+    window.navigate(layer);
+    if (layer === 'fact') click($('#fc-mode button[data-mode="month"]'));
+    await waitFor(() => $(prev) && $(next), 15000);
+    await sleep(800);
+    click($(prev));
+    await sleep(50);
+    click($(next));
+    await sleep(2600);                          // оба ответа пришли, запоздавший — последним
+    const got = window.eval(`state.${data} && state.${data}.month`);
+    const lbl = label ? text(label) : '';
+    check(`${layer}: после «назад-вперёд» на экране текущий месяц, а не запоздавший`,
+      got === m0 && window.eval('state.month') === m0 && (!label || lbl.includes(String(y0))
+        && !lbl.startsWith(window.eval(`MONTHS[${pm - 1}]`))),
+      `данные: ${got}, state.month: ${window.eval('state.month')}, подпись: ${lbl}`);
+  }
+  window.api = realApi;
+  window.eval('api = window.api');
+
   /* ── 6b. Мелочи рецензии 22.10.2026 (P2): самодиагностика и права сотрудников ── */
   console.log('\n6b · Самодиагностика у не-админа; «Сотрудники» без employees.edit');
   check('предупреждение схемы без перечня (ответ не-админу) не падает',

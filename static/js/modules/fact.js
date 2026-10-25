@@ -115,9 +115,11 @@ async function loadFactMonth() {
     </div>
     <div id="fm-body"><div class="empty">Загрузка…</div></div>`;
   v4BindMonthNav('fm', loadFactMonth);
+  const fresh = loadGeneration('fact-month');
   let d;
   try { d = await api(`/api/fact/month?year=${state.year}&month=${state.month}`); }
-  catch (e) { $('#fm-body').innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  catch (e) { if (fresh()) $('#fm-body').innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  if (!fresh()) return;          // пока ждали ответ, перелистнули месяц
   state.factMonth = d;
   renderFactMonth();
 }
@@ -283,9 +285,11 @@ async function loadFactNumbers() {
 async function fetchFactDay() {
   const body = $('#fd-body');
   $('#fd-label').textContent = dateRu(state.factDay);
+  const fresh = loadGeneration('fact-day');
   let d;
   try { d = await api(`/api/fact/day?date=${state.factDay}`); }
-  catch (e) { body.innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  catch (e) { if (fresh()) body.innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  if (!fresh()) return;          // пока ждали ответ, сменили день
   state.factDayData = d;
   $('#fd-meta').innerHTML = `Шаг округления: <b>${d.step_minutes} мин</b> (Настройки → Расчёт) ·
     период ${dateRu(d.period.start)}–${dateRu(d.period.end)}`;
@@ -360,10 +364,12 @@ function renderFactNumbers() {
 async function fetchFact() {
   const body = $('#fc-body');
   if (!state.factEmp) { body.innerHTML = '<div class="panel"><div class="empty">Выберите сотрудника</div></div>'; return; }
+  const fresh = loadGeneration('fact-sessions');
   let d;
   try {
     d = await api(`/api/fact/sessions?employee_id=${state.factEmp}&first=${state.factFrom}&last=${state.factTo || todayISO()}`);
-  } catch (e) { body.innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  } catch (e) { if (fresh()) body.innerHTML = `<div class="panel"><div class="empty">${esc(e.message)}</div></div>`; return; }
+  if (!fresh()) return;          // пока ждали ответ, сменили сотрудника или даты
   const byDay = {};
   d.sessions.forEach(s => {
     const key = s.start_local.slice(0, 10);
