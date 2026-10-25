@@ -7,7 +7,7 @@
 # ── прямые зависимости ──
 alembic==1.20.0
 cryptography==50.0.2
-fastapi==0.150.0
+fastapi==0.159.1
 freezegun==1.5.5
 httpx==0.28.1
 httpx2==2.15.1

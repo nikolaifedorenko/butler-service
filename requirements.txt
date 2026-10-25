@@ -1,5 +1,5 @@
 # ── Ядро (обязательно) ────────────────────────────────────────────────────
-fastapi>=0.115
+fastapi>=0.159.1
 uvicorn[standard]>=0.30
 SQLAlchemy>=2.0
 # миграции схемы (ADR-0002): ревизии в app/bootstrap/alembic/versions
