@@ -223,15 +223,30 @@ observability.register(app)
 modules.include_routers(app, modules.discover())
 
 
+_SCHEMA_HINT = ("Схема БД старее кода: остановите сервер и запустите снова (миграция применится при "
+                "старте). Если не помогло — удалите timetrack.db (демо) или восстановите базу из бэкапа "
+                "(боевая).")
+_INDEX_HINT = ("Не созданы защитные уникальные индексы — запрет дублей в базе не действует (например, "
+               "«один сотрудник — один кар»). Миграция пропускает такой индекс, если в данных уже есть "
+               "дубли, и пишет об этом в лог (строки «0004:», «0009:»). Устраните дубли и выполните "
+               "команду из перечня — повторный запуск миграции индекс не создаст.")
+
+
 def schema_report() -> dict:
-    """Полный отчёт о расхождении схемы БД с моделями (для админа и CI)."""
+    """Полный отчёт о расхождении схемы БД с моделями (для админа и CI).
+
+    Таблицы, колонки и уникальные индексы моделей. Индексы — с 25.10.2026: миграции 0004/0009
+    при дублях в данных индекс пропускают (данные не трогают), и защита «один сотрудник —
+    один кар» молча не работала, а самопроверка писала «схема в порядке»."""
     from sqlalchemy import inspect
+    from sqlalchemy.schema import CreateIndex
 
     from .core.db import Base
 
     insp = inspect(engine)
     db_tables = set(insp.get_table_names())
     missing: list[str] = []
+    missing_indexes: list[str] = []
     for table in Base.metadata.sorted_tables:
         if table.name not in db_tables:
             missing.append(f"таблица {table.name}")
@@ -240,15 +255,21 @@ def schema_report() -> dict:
         for column in table.columns:
             if column.name not in have:
                 missing.append(f"{table.name}.{column.name}")
+        have_idx = {i["name"] for i in insp.get_indexes(table.name)}
+        for index in sorted((i for i in table.indexes if i.unique and i.name), key=lambda i: i.name):
+            if index.name not in have_idx:
+                sql = str(CreateIndex(index).compile(dialect=engine.dialect)).strip()
+                missing_indexes.append(f"индекс {index.name} ({table.name}: "
+                                       f"{', '.join(c.name for c in index.columns)}) — {sql}")
+    hint = _SCHEMA_HINT if missing else _INDEX_HINT if missing_indexes else ""
     return {
-        "ok": not missing,
-        "missing": missing,
+        "ok": not missing and not missing_indexes,
+        "missing": missing + missing_indexes,
+        "missing_indexes": len(missing_indexes),
         "tables_expected": len(Base.metadata.sorted_tables),
         "tables_found": len(db_tables & {t.name for t in Base.metadata.sorted_tables}),
         "app": settings.app_name,
-        "hint": "" if not missing else
-                "Схема БД старее кода: остановите сервер и запустите снова (миграция применится при старте). "
-                "Если не помогло — удалите timetrack.db (демо) или восстановите базу из бэкапа (боевая).",
+        "hint": hint,
     }
 
 

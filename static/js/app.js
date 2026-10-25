@@ -295,9 +295,23 @@ function resetUserViewState() {
 
 /* Перечень расхождений схемы сервер отдаёт только администратору (/api/selfcheck), остальным —
    строку details: раньше chk.missing.slice у них падал TypeError, и предупреждение терялось. */
-function selfcheckDetails(chk) {
-  if (Array.isArray(chk.missing)) return chk.missing.slice(0, 6);
+function selfcheckDetails(chk, limit = 6) {
+  if (Array.isArray(chk.missing)) return chk.missing.slice(0, limit);
   return chk.details ? [chk.details] : [];
+}
+
+/* Плашка «Схема БД не в порядке» — до закрытия (тост исчезал через 5 с и вмещал 6 строк).
+   Перечень — у администратора целиком: для пропущенного индекса там команда его создания. */
+function renderSchemaBanner(chk) {
+  const el = $('#schema-banner');
+  if (!el) return;
+  if (!chk || chk.ok !== false) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  const items = selfcheckDetails(chk, 50);
+  el.innerHTML = `<div class="sb-text"><b>Схема БД не в порядке.</b> ${esc(chk.hint || '')}
+      ${items.length ? `<ul>${items.map(i => `<li><code>${esc(i)}</code></li>`).join('')}</ul>` : ''}</div>
+    <button class="icon-btn" data-schema-close title="Скрыть до следующего входа" aria-label="Скрыть">✕</button>`;
+  el.classList.remove('hidden');
+  el.querySelector('[data-schema-close]').onclick = () => el.classList.add('hidden');
 }
 
 async function enterApp() {
@@ -307,10 +321,7 @@ async function enterApp() {
   await loadPerms();
   renderUserChip();
   try {
-    const chk = await api('/api/selfcheck', { silent: true, allow401: true });
-    if (chk && chk.ok === false) {
-      toast('Внимание: схема БД отстаёт от кода. ' + (chk.hint || ''), 'err', selfcheckDetails(chk));
-    }
+    renderSchemaBanner(await api('/api/selfcheck', { silent: true, allow401: true }));
   } catch { /* самодиагностика недоступна — не критично */ }
   if (can('employees.view')) {        // справочник — по праву, а не по роли (UI-02)
     try {
