@@ -58,11 +58,32 @@ async function loadFact() {
    отметок (to_calc_mark + pair_marks, то же ядро, что у вкладки «День»), целиком,
    без нарезки полуночью; на день — стандартное окно Табеля (штриховка), цвет
    полосы из словаря «Смены и отсутствия» (тот же, что в ячейках Графика),
-   согласованные отсутствия (✂). Ночные часы 22:00–06:00 — темнее цвета полосы:
-   видно, кто работал в ночь. Рендерер — из прототипа
+   согласованные отсутствия (✂). Категории времени периода (CFG-CATEGORIES, из ответа
+   /api/fact/month) — тоном: самая длинная (обычно день) — цветом полосы, короче —
+   темнее; видно, кто работал в ночь. Рендерер — из прототипа
    docs/prototype-fact-month-gantt.html. */
 const FG_DAY_W = 52, FG_ROW_H = 34, FG_HEAD_H = 34, FG_BAR_H = 12, FG_WIN_H = 22;
-const FG_NIGHT = [[22, 24], [0, 6]];
+/* запасной вариант, если категории не пришли: значения по умолчанию CFG-CATEGORIES */
+const FG_FALLBACK_CATEGORIES = [{ code: 'ДЯ', start: '06:00', end: '22:00' },
+                                { code: 'ДН', start: '22:00', end: '06:00' }];
+const fgHours = hms => { const [h, m] = hms.split(':').map(Number); return h + m / 60; };
+/* Полосы категорий суток в часах: [{code, label, spans: [[h1, h2], …], tone}] в порядке
+   настроек. tone 0 — самая длинная категория, 1 — самая короткая (темнее): правило не
+   зависит ни от порядка категорий в настройках, ни от их кодов (25.10.2026). */
+function fgCategoryBands(categories) {
+  const list = (categories && categories.length ? categories : FG_FALLBACK_CATEGORIES).map((c, i) => {
+    const a = fgHours(c.start), b = fgHours(c.end);
+    const spans = b > a ? [[a, b]] : [[a, 24], [0, b]].filter(([x, y]) => y > x);
+    return { code: c.code, label: `${c.code} ${c.start}–${c.end}`, spans, i,
+             len: spans.reduce((s, [x, y]) => s + y - x, 0) };
+  });
+  const byLen = [...list].sort((p, q) => q.len - p.len || p.i - q.i);
+  byLen.forEach((c, r) => { c.tone = byLen.length > 1 ? r / (byLen.length - 1) : 0; });
+  return list;
+}
+function fgCategoryLegend(categories) {
+  return fgCategoryBands(categories).map(c => c.label).join(' · ');
+}
 function fgDarken(hex, k) {
   const n = parseInt(cssColor(hex).slice(1), 16);
   const f = v => Math.round(v * (1 - k));
@@ -105,7 +126,9 @@ function renderFactMonth() {
   const d = state.factMonth;
   const host = $('#fm-body');
   if (!d || !d.rows.length) { host.innerHTML = '<div class="empty">Нет сотрудников в периоде</div>'; return; }
-  $('#fm-meta').textContent = `Округление до шага ${d.step_minutes} мин · ось X — непрерывное время месяца · смена через полночь — одна полоса`;
+  const bands = fgCategoryBands(d.categories).filter(c => c.tone > 0);
+  $('#fm-meta').textContent = `${fgCategoryLegend(d.categories)} · округление до шага ${d.step_minutes} мин · ось X — непрерывное время месяца · смена через полночь — одна полоса`;
+  renderCategoryFooter(d.categories);
   const W = d.days.length * FG_DAY_W, H = FG_HEAD_H + d.rows.length * FG_ROW_H;
   const hatchColors = [...new Set(d.rows.flatMap(r => Object.values(r.days)
     .filter(x => x.window && x.color).map(x => x.color)))];
@@ -120,8 +143,8 @@ function renderFactMonth() {
   d.days.forEach((day, i) => {
     const x = i * FG_DAY_W;
     if (day.is_weekend) S.push(`<rect x="${x}" y="${FG_HEAD_H}" width="${FG_DAY_W}" height="${H - FG_HEAD_H}" fill="#faf7f3"/>`);
-    FG_NIGHT.forEach(([h1, h2]) => S.push(
-      `<rect x="${(x + h1 / 24 * FG_DAY_W).toFixed(1)}" y="${FG_HEAD_H}" width="${((h2 - h1) / 24 * FG_DAY_W).toFixed(1)}" height="${H - FG_HEAD_H}" fill="rgba(23,32,54,.07)"/>`));
+    bands.forEach(c => c.spans.forEach(([h1, h2]) => S.push(
+      `<rect class="fg-cat" data-cat="${esc(c.code)}" x="${(x + h1 / 24 * FG_DAY_W).toFixed(1)}" y="${FG_HEAD_H}" width="${((h2 - h1) / 24 * FG_DAY_W).toFixed(1)}" height="${H - FG_HEAD_H}" fill="rgba(23,32,54,${(.07 * c.tone).toFixed(3)})"/>`)));
     S.push(`<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="#e6e9ee"/>`);
     S.push(`<text x="${x + FG_DAY_W / 2}" y="14" text-anchor="middle" font-size="11" font-weight="700" fill="${day.is_weekend ? '#a04a3a' : '#141a25'}">${day.day}</text>`);
     S.push(`<text x="${x + FG_DAY_W / 2}" y="26" text-anchor="middle" font-size="9" fill="#67707e">${esc(day.weekday)}</text>`);
@@ -163,18 +186,19 @@ function renderFactMonth() {
       const dayInfo = r.days[s.start.slice(0, 10)] || {};
       const col = dayInfo.color || '#8a94a6';
       const title = `${r.employee.short_name} · ${dateRu(s.start.slice(0, 10))} · ${s.start.slice(11, 16)}–${s.end ? s.end.slice(11, 16) : '… (идёт сейчас)'}${dayInfo.tabel ? ` · Табель «${dayInfo.tabel}»` : ''}${dayInfo.window ? ` · окно ${dayInfo.window[0]}–${dayInfo.window[1]}` : ''}`;
-      const night = [];
+      const dark = [];
       for (let di = Math.floor(x1 / FG_DAY_W); di <= Math.floor((x2 - .01) / FG_DAY_W); di++) {
-        FG_NIGHT.forEach(([h1, h2]) => {
+        bands.forEach(c => c.spans.forEach(([h1, h2]) => {
           const a = Math.max(x1, di * FG_DAY_W + h1 / 24 * FG_DAY_W);
           const b = Math.min(x2, di * FG_DAY_W + h2 / 24 * FG_DAY_W);
-          if (b > a) night.push([a, b]);
-        });
+          if (b > a) dark.push([a, b, c]);
+        }));
       }
+      dark.sort((p, q) => p[0] - q[0]);
       let cur = x1;
-      night.forEach(([a, b]) => {
+      dark.forEach(([a, b, c]) => {
         if (a > cur) S.push(fgBar(cur, a, y, col, false, title));
-        S.push(fgBar(a, b, y, fgDarken(col, .42), false, `${title} · ночные часы 22–06`));
+        S.push(fgBar(a, b, y, fgDarken(col, .42 * c.tone), false, `${title} · ${c.label}`));
         cur = b;
       });
       if (cur < x2) S.push(fgBar(cur, x2, y, col, !s.end, title));

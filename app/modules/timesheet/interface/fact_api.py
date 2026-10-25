@@ -199,11 +199,23 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
             }
         rows.append({"employee": emp_brief(e), "sessions": sess_out, "days": day_out})
     return {"year": year, "month": month, "step_minutes": st.step_minutes,
+            "categories": categories_out(st),
             "days": [{"date": d.isoformat(), "day": d.day,
                       "weekday": ["пн", "вт", "ср", "чт", "пт", "сб", "вс"][d.weekday()],
                       "is_weekend": d.weekday() >= 5,
                       "is_today": d == now_utc().astimezone(TZ).date()} for d in days],
             "rows": rows}
+
+
+def categories_out(st) -> list[dict]:
+    """Категории времени периода (CFG-CATEGORIES) в порядке настроек — интерфейсу Факта.
+
+    Границы ночи и дня раньше были зашиты в интерфейс (22:00–06:00), а в настройках
+    их можно менять: расчёт был верным, а диаграмма и легенда — нет (рецензия аудита
+    22.10.2026). Права на настройки у тех, кто смотрит Факт, обычно нет, поэтому
+    категории — в ответе самого Факта."""
+    return [{"code": c.code, "start": hm(c.start_minute), "end": hm(c.end_minute),
+             "crosses_midnight": c.end_minute <= c.start_minute} for c in st.categories]
 
 
 def _settings_for_period(db, period):

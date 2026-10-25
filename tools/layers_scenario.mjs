@@ -272,6 +272,27 @@ async function main() {
   check('Месяц по умолчанию: гант отрисован без кликов',
     await waitFor(() => $('#fm-body svg') && $$('#fm-body svg rect').length > 10, 15000),
     `rect: ${$$('#fm-body svg rect').length}`);
+  /* категории времени — из настроек периода (ответ /api/fact/month), а не 22–06 из кода */
+  const cats = window.eval('JSON.stringify(state.factMonth.categories)');
+  check('категории периода пришли в ответе Факта',
+    cats === JSON.stringify([{ code: 'ДЯ', start: '06:00', end: '22:00', crosses_midnight: false },
+                             { code: 'ДН', start: '22:00', end: '06:00', crosses_midnight: true }]), cats);
+  check('легенда Факта и подвал меню — из категорий периода',
+    /ДЯ 06:00–22:00 · ДН 22:00–06:00/.test(text('#fm-meta'))
+    && /ДЯ 06:00–22:00 · ДН 22:00–06:00/.test(text('#nav-categories')),
+    `${text('#fm-meta')} | ${text('#nav-categories')}`);
+  check('затенена только короткая категория (ДН), день — нет',
+    $$('#fm-body rect.fg-cat[data-cat="ДН"]').length > 0 && !$('#fm-body rect.fg-cat[data-cat="ДЯ"]'));
+  const bands = cs => window.eval(`JSON.stringify(fgCategoryBands(${JSON.stringify(cs)})
+    .map(c => [c.code, c.spans, +c.tone.toFixed(2)]))`);
+  check('свои границы (ДН 23–07) — ночь по ним, не по 22–06',
+    bands([{ code: 'ДЯ', start: '07:00', end: '23:00' }, { code: 'ДН', start: '23:00', end: '07:00' }])
+      === JSON.stringify([['ДЯ', [[7, 23]], 0], ['ДН', [[23, 24], [0, 7]], 1]]));
+  check('порядок в настройках не важен: темнее — короткая категория',
+    bands([{ code: 'ДН', start: '22:00', end: '06:00' }, { code: 'ДЯ', start: '06:00', end: '22:00' }])
+      === JSON.stringify([['ДН', [[22, 24], [0, 6]], 1], ['ДЯ', [[6, 22]], 0]]));
+  check('категории не пришли — запасной вариант 22–06',
+    bands([]) === JSON.stringify([['ДЯ', [[6, 22]], 0], ['ДН', [[22, 24], [0, 6]], 1]]));
   click($('#fc-mode button[data-mode="numbers"]'));
   check('шаг округления и период показаны (шаг — из настроек)',
     await waitFor(() => /Шаг округления/.test(text('#fd-meta')) && /период/.test(text('#fd-meta'))),
