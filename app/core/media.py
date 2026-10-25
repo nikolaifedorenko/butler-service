@@ -106,13 +106,14 @@ def sniff_image(blob: bytes) -> str:
 
 
 def sniff_media(blob: bytes, filename: str = "") -> tuple[str, str]:
-    """(тип "photo"|"video", расширение) — по содержимому, затем по имени файла.
+    """(тип "photo"|"video", расширение) — только по содержимому (магическим байтам).
 
-    Видео принимается ТОЛЬКО по магическим байтам (ftyp → mp4/mov, EBML → webm/mkv):
-    declared-расширение для видео не доверяем, иначе любой файл с именем .mp4 лёг бы
-    на диск как видео. Для картинок прежнее поведение сохранено: если содержимое не
-    распознано, но расширение из списка картинок — принимаем (редкие экзотические
-    кодировки, которые sniff_image не знает).
+    Видео: ftyp → mp4/mov, EBML → webm/mkv; имя файла уточняет лишь webm/mkv. Картинки:
+    jpg/png/gif/webp/bmp по сигнатуре. Раньше картинку с нераспознанным содержимым
+    принимали по расширению — так любой файл с именем .jpg ложился на диск как фото
+    (рецензия аудита 22.10.2026; строгие требования владельца по безопасности, 25.10.2026).
+    Телефоны снимают в JPEG/PNG; HEIC отклоняется, как и раньше (iPhone при загрузке через
+    браузер сам присылает JPEG).
 
     Пустой тип — файл не медиа (PDF, HEIC, произвольные байты).
     """
@@ -128,8 +129,6 @@ def sniff_media(blob: bytes, filename: str = "") -> tuple[str, str]:
         return "video", ("mov" if brand == b"qt  " else "mp4")
     if head[:4] == b"\x1aE\xdf\xa3":                     # EBML-контейнер: webm или mkv
         return "video", (declared if declared in ("webm", "mkv") else "webm")
-    if declared in ALLOWED_EXT and not blob[:4].startswith(b"%PDF"):
-        return "photo", declared
     return "", ""
 
 

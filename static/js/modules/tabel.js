@@ -215,8 +215,13 @@ function tabelCellModal(empId, day) {
           if (until > +day.slice(8)) {
             const dates = d.days.filter(x => +x.slice(8) >= +day.slice(8) && +x.slice(8) <= until);
             res = await api('/api/tabel/bulk', { method: 'POST', body: { employee_ids: [empId], dates, code, hours: h, note: $('#tc-note').value } });
+            /* «всё или ничего» (25.10.2026): хоть одна ошибка — не записано ни одной ячейки */
+            if (!res.ok) {
+              toast(`Ничего не записано: ошибок ${res.errors.length} — исправьте и повторите`, 'err',
+                    res.errors.slice(0, 8).map(e => `${dateRu(e.date)}: ${e.detail}`));
+              return;
+            }
             (res.warnings || []).forEach(w => toast(w, 'warn'));
-            (res.errors || []).slice(0, 5).forEach(e => toast(`${e.date}: ${e.detail}`, 'err'));
           } else {
             res = await api('/api/tabel/cell', { method: 'PUT', body: { employee_id: empId, date: day, code, hours: h, note: $('#tc-note').value } });
             if (res.warning) toast(res.warning, 'warn');

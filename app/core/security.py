@@ -55,6 +55,10 @@ def _b64d(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
+# назначение токена (поле typ): подпись у всех токенов одна, сессия принимается только с этим
+SESSION_TOKEN = "session"
+
+
 def create_token(payload: dict, ttl_hours: Optional[int] = None) -> str:
     ttl = ttl_hours if ttl_hours is not None else settings.session_ttl_hours
     body = dict(payload)

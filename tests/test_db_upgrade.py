@@ -5,6 +5,9 @@ PostgreSQL (CI-джоб postgres): raw-SQL миграций обязан быт�
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
+import pytest
 from sqlalchemy import inspect, select, text
 
 
@@ -57,6 +60,50 @@ def test_base_before_alembic_refuses_to_start(db):
     assert _revisions() == (head, head)
 
 
+@contextmanager
+def _custom_roles_set_aside(db):
+    """Откат ниже 0007 отказывается стирать свои роли (откат схемы не поддерживается).
+    Тесту миграций нужен откат до 0003 — свои роли других тестов (их в таблице roles
+    заводят тесты «Шахматки») убираем на время и возвращаем."""
+    from app.core.identity import Role
+
+    saved = [(r.code, r.title, r.rank, r.max_assignable_rank)
+             for r in db.scalars(select(Role).where(Role.builtin.is_(False)))]
+    db.execute(text("DELETE FROM roles WHERE NOT builtin"))
+    db.commit()
+    try:
+        yield
+    finally:
+        db.add_all([Role(code=c, title=t, rank=r, max_assignable_rank=m, builtin=False)
+                    for c, t, r, m in saved if db.get(Role, c) is None])
+        db.commit()
+
+
+def test_downgrade_below_0007_keeps_custom_roles(db):
+    """Откат 0007 стёр бы свои роли (ADR-0011) — он отказывается, роли целы. Ревизии выше
+    0007 к этому моменту откачены (SQLite — без общей транзакции DDL; на PostgreSQL откат
+    отменяется целиком) — откат схемы не поддерживается, база возвращается на head."""
+    from alembic import command
+
+    from app.bootstrap.schema_version import config
+    from app.core.identity import Role
+
+    db.add(Role(code="tst_downgrade", title="Тест отката", rank=5, max_assignable_rank=-1, builtin=False))
+    db.commit()
+    db.rollback()       # открытое чтение держало бы DDL отката на PostgreSQL
+    try:
+        with pytest.raises(RuntimeError, match="tst_downgrade"):
+            command.downgrade(config(), "0006")
+        assert _revisions()[0] >= "0007", "откат прошёл ниже 0007"
+        assert db.get(Role, "tst_downgrade") is not None
+    finally:
+        db.rollback()
+        command.upgrade(config(), "head")
+        db.execute(text("DELETE FROM roles WHERE code = 'tst_downgrade'"))
+        db.commit()
+    assert _revisions()[0] == _revisions()[1]
+
+
 def test_cars_holder_index_skipped_when_holder_has_two_cars(db):
     """Ревизия 0004 (CONC-01) на базе, где человек уже держит два кара: данные не трогаем,
     индекс не создаём, старт не падает. После возврата лишнего кара индекс создаётся."""
@@ -74,19 +121,20 @@ def test_cars_holder_index_skipped_when_holder_has_two_cars(db):
     uid = db.scalar(select(User.id).where(User.id.not_in(
         select(Car.holder_user_id).where(Car.holder_user_id.is_not(None)))))
     db.rollback()       # открытое чтение cars держало бы DROP INDEX на PostgreSQL
-    command.downgrade(config(), "0003")
-    try:
-        for car in cars:
-            car.holder_user_id = uid
-        db.commit()
-        command.upgrade(config(), "head")
-        assert not has_index()
-    finally:
-        for car in cars:
-            car.holder_user_id = None
-        db.commit()
+    with _custom_roles_set_aside(db):
         command.downgrade(config(), "0003")
-        command.upgrade(config(), "head")
+        try:
+            for car in cars:
+                car.holder_user_id = uid
+            db.commit()
+            command.upgrade(config(), "head")
+            assert not has_index()
+        finally:
+            for car in cars:
+                car.holder_user_id = None
+            db.commit()
+            command.downgrade(config(), "0003")
+            command.upgrade(config(), "head")
     assert has_index()
 
 

@@ -93,8 +93,9 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
         own = principal.employee.id if principal.employee else None
         emps = [e for e in emps if e.id == own]
     ports = engine_ports(db, principal, now_utc())
-    lo = dt.datetime.combine(period.start, dt.time(0), TZ)
-    hi = dt.datetime.combine(period.end + dt.timedelta(days=1), dt.time(0), TZ)
+    # порт отметок ждёт UTC (from_utc/to_utc): границы месяца — локальная полночь объекта в UTC
+    lo = dt.datetime.combine(period.start, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    hi = dt.datetime.combine(period.end + dt.timedelta(days=1), dt.time(0), TZ).astimezone(dt.timezone.utc)
     lookups = color_lookups(db)
     emp_ids = [e.id for e in emps]
     tabel_rows: dict[tuple[int, dt.date], TabelDay] = {

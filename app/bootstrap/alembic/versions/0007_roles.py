@@ -14,7 +14,7 @@ down_revision: str | None = '0006'
 branch_labels: str | None = None
 depends_on: str | None = None
 
-# снимок core/roles.BUILTIN_ROLES на 22.10.2026: ревизия не зависит от будущих правок кода
+# снимок встроенных ролей на 22.10.2026: ревизия не зависит от будущих правок кода
 BUILTIN = (
     ("admin", "Администратор", 100, 100),
     ("manager", "Менеджер", 80, 80),
@@ -43,4 +43,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # свои роли (ADR-0011) живут только в этой таблице: откат молча стёр бы их, а учётки
+    # с такой ролью остались бы с ролью, которой нигде нет (рецензия аудита 22.10.2026)
+    custom = op.get_bind().execute(sa.text("SELECT code FROM roles WHERE NOT builtin")).scalars().all()
+    if custom:
+        raise RuntimeError(
+            f"0007: откат удалил бы свои роли {', '.join(custom)}. Откат схемы не поддерживается — "
+            "восстановите базу из бэкапа (deploy/README.md)")
     op.drop_table('roles')

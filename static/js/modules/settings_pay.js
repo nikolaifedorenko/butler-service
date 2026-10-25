@@ -147,7 +147,7 @@ async function settingsScreenPay(host) {
         draft.global_defaults = { ...(draft.global_defaults || {}) };
         const name = el.dataset.gd;
         const val = el.type === 'checkbox' ? el.checked : el.value;
-        draft.global_defaults[name] = name === 'plan_equals_fact' ? val : val;
+        draft.global_defaults[name] = val;
         settingsUpdateDraftBars();
         const b = el.closest('.val-picker')?.querySelector('b');
         if (b) b.textContent = settingsModValue(name, val);
