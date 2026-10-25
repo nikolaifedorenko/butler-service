@@ -53,8 +53,7 @@ async function settingsScreenSystem(host) {
           <div class="kv"><span class="k">Движок</span><span class="v">v7.1</span></div>
           <div class="kv"><span class="k">Действующая версия справочников</span><span class="v">#${engine?.active?.id ?? '—'}</span></div>
           <div class="kv"><span class="k">Замечаний конфигурации</span><span class="v">${(health?.checks || []).length}</span></div>
-          <div class="kv"><span class="k">Последний закрытый период</span><span class="v">${health?.periods?.last_closed_start
-            ? esc(dateRu(health.periods.last_closed_start)) : 'нет'}</span></div>
+          <div class="kv"><span class="k">Последний закрытый период</span><span class="v">${esc(closedPeriodText(health?.periods?.last_closed, { recalcNote: false }))}</span></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-content:flex-start">
           <button class="btn btn-sm" id="sy-selfcheck">Самопроверка схемы БД</button>

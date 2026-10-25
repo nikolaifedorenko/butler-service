@@ -61,8 +61,7 @@ async function settingsScreenCalc(host) {
         <div class="row"><span class="k">Действующая версия</span><b>#${engine?.active?.id ?? '—'} · с ${esc(dateRu(engine?.active?.valid_from))}</b></div>
         <div class="row"><span class="k">Текущий период</span><b>${health?.periods?.current
           ? `${dateRu(health.periods.current.start)}–${dateRu(health.periods.current.end)}` : '—'}</b></div>
-        <div class="row"><span class="k">Последний закрытый период</span><b>${health?.periods?.last_closed_start
-          ? `начинается ${dateRu(health.periods.last_closed_start)} — доступен пересчёт` : 'закрытых периодов нет'}</b></div>
+        <div class="row"><span class="k">Последний закрытый период</span><b>${esc(closedPeriodText(health?.periods?.last_closed))}</b></div>
         <div class="row"><span class="k">Черновик применится</span><b>к периодам, начинающимся с ${esc(dateRu(applies))} (или позже — по дате публикации)</b></div>
       </div>`) }
     ${settingsPanel('В · Категории времени · CFG-CATEGORIES', `

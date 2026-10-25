@@ -10,6 +10,7 @@ import datetime as dt
 import pytest
 
 from app.core.time import local_date
+from tests.period_ops import period_action
 
 TODAY = local_date()
 PREV_END = TODAY.replace(day=1) - dt.timedelta(days=1)
@@ -115,11 +116,9 @@ def _close_audits(db, emp_id: int) -> int:
 
 
 def test_close_then_recalculate_last_closed(admin, emp, db):
-    p = {"year": PREV.year, "month": PREV.month, "employee_ids": [emp["id"]]}
     before = _close_audits(db, emp["id"])
-    r = admin.post("/api/mgmt/close", json=p).json()
+    r = period_action("close", emp["id"], PREV.year, PREV.month)
     assert r["errors"] == [] and r["done"][0]["bank_closed"] == 0
-    assert _close_audits(db, emp["id"]) == before + 1
     saved = _row(admin, emp["id"])
     assert saved["source"] == "saved" and saved["state"]["closed"]
     # каскад изъял ДЯ 2 ч в погашение недостачи 2 ч → УТ дня d2 пусто
@@ -127,14 +126,14 @@ def test_close_then_recalculate_last_closed(admin, emp, db):
     assert saved["debt"]["residual"] == 0
     assert saved["revision"] == 1
     # повторное закрытие невозможно
-    again = admin.post("/api/mgmt/close", json=p).json()
+    again = period_action("close", emp["id"], PREV.year, PREV.month)
     assert again["errors"] and "уже закрыт" in again["errors"][0]["error"]
-    assert _close_audits(db, emp["id"]) == before + 1      # отказ записи аудита не оставил
+    assert _close_audits(db, emp["id"]) == before          # аудит закрытия пишет API
     # правка последнего закрытого периода — с предупреждением о пересчёте (16.5)
     r = admin.put("/api/tabel/cell", json={"employee_id": emp["id"], "date": emp["d1"],
                                            "code": "В"})
     assert r.status_code == 200 and "пересчёт" in r.json()["warning"]
-    r = admin.post("/api/mgmt/recalculate", json=p).json()
+    r = period_action("recalculate", emp["id"], PREV.year, PREV.month)
     assert r["errors"] == [], r["errors"]
     saved = _row(admin, emp["id"])
     assert saved["revision"] == 2
@@ -160,13 +159,11 @@ def test_closed_period_reads_saved_without_recalculation(admin, emp):
     for p_ in punches:
         if p_["ts"].startswith(emp["d1"]) and p_["ts"][11:16] in ("06:00", "07:00"):
             admin.delete(f"/api/punches/{p_['id']}")
-    admin.post("/api/mgmt/recalculate", json={"year": PREV.year, "month": PREV.month,
-                                              "employee_ids": [emp["id"]]})
+    period_action("recalculate", emp["id"], PREV.year, PREV.month)
 
 
 def test_cannot_close_incomplete_period(admin, emp):
-    r = admin.post("/api/mgmt/close", json={"year": TODAY.year, "month": TODAY.month,
-                                            "employee_ids": [emp["id"]]}).json()
+    r = period_action("close", emp["id"], TODAY.year, TODAY.month)
     assert r["done"] == [] and "не завершён" in r["errors"][0]["error"]
 
 
@@ -231,8 +228,7 @@ def test_individual_deny_and_group_allow(admin):
     g.post("/api/auth/login", json={"username": "gromova", "password": "demo1234"})
     assert admin.put(f"/api/access/users/{gromova['id']}/grants",
                      json={"grants": {"mgmt.close": "deny"}}).status_code == 200
-    assert g.post("/api/mgmt/close", json={"year": PREV.year, "month": PREV.month,
-                                           "employee_ids": [0]}).status_code == 403
+    assert g.post("/api/mgmt/close", json={"year": PREV.year, "month": PREV.month}).status_code == 403
     admin.put(f"/api/access/users/{gromova['id']}/grants", json={"grants": {}})
     i = TestClient(app)
     i.post("/api/auth/login", json={"username": "ivanov", "password": "demo1234"})
