@@ -1,6 +1,5 @@
 """Конфигурация приложения (читается из .env / переменных окружения)."""
 from functools import lru_cache
-from urllib.parse import quote
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -84,11 +83,15 @@ class Settings(BaseSettings):
 
 
 def postgres_url(s: "Settings") -> str:
-    """postgresql+psycopg2://… из POSTGRES_*: логин, пароль и имя базы экранируются целиком."""
-    def q(v) -> str:
-        return quote(str(v), safe="")
-    auth = q(s.postgres_user) + (f":{q(s.postgres_password)}" if s.postgres_password else "")
-    return f"postgresql+psycopg2://{auth}@{s.postgres_host}:{s.postgres_port}/{q(s.postgres_db)}"
+    """postgresql+psycopg2://… из POSTGRES_*. Строку собирает сам SQLAlchemy (URL.create):
+    экранирование всегда то, которое разбирает установленная версия — ручной quote() имя
+    базы на одних версиях раскодировался, на других нет (CI, Python 3.10)."""
+    from sqlalchemy.engine import URL
+
+    return URL.create("postgresql+psycopg2", username=s.postgres_user,
+                      password=s.postgres_password or None, host=s.postgres_host,
+                      port=s.postgres_port, database=s.postgres_db
+                      ).render_as_string(hide_password=False)
 
 
 @lru_cache

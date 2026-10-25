@@ -76,6 +76,7 @@ def test_dockerfile_sqlite_in_volume_and_postgres_driver_required():
 
 def test_driver_receives_raw_password():
     """psycopg2 получает пароль байт в байт: экранирование снимает SQLAlchemy."""
+    pytest.importorskip("psycopg2")       # драйвер — в образе и в CI-джобе postgres
     from sqlalchemy import create_engine
 
     url = make_url(_settings(postgres_host="db", postgres_password=NASTY).database_url)
