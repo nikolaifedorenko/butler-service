@@ -34,7 +34,7 @@ from ..adapters.orm import (
 )
 from . import allocation as _allocation
 from .fund import KINDS, FundConflict, FundError
-from .fund_versions import FundSnapshot, snapshot_of
+from .fund_versions import INITIAL_DATE, FundSnapshot, snapshot_of
 from .locking import lock_module
 
 # ── черновик ───────────────────────────────────────────────────────────────
@@ -508,6 +508,64 @@ def delete_version(db: Session, version_id: int) -> None:
     db.flush()
     if was_published:
         _allocation.run_allocation(db)
+
+
+# ── начальная загрузка ─────────────────────────────────────────────────────
+
+
+def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags: list[dict],
+                 units: list[dict]) -> None:
+    """Заполняет исходную версию (INITIAL_DATE) напрямую, минуя черновик. Только для демо-сида
+    и начальной загрузки. Ключи — как в телах API: категория — code/title/kind/escorted/weight/
+    sort_order; узел — path (названия от корня; недостающие предки заводятся сами) и sort_order;
+    флаг — title/color/sort_order; объект — label, category (код), path, floor, flags (названия).
+    FundConflict, если в исходной версии уже есть объекты."""
+    lock_module(db)
+    vid = db.scalar(select(FundVersion.id).where(FundVersion.valid_from == INITIAL_DATE,
+                                                 FundVersion.status == "published"))
+    if vid is None:
+        raise FundError("исходной версии фонда нет")
+    if db.scalar(select(func.count()).select_from(UnitState).where(UnitState.version_id == vid)):
+        raise FundConflict("в исходной версии уже есть объекты")
+    cats: dict[str, int] = {}
+    for i, c in enumerate(categories):
+        cats[c["code"]] = cid = _add(db, Category())
+        db.add(CategoryState(version_id=vid, category_id=cid, code=c["code"], title=c["title"],
+                             kind=c.get("kind", "room"), escorted=bool(c.get("escorted", False)),
+                             weight=Decimal(str(c.get("weight", 1))), sort_order=c.get("sort_order", i * 10)))
+    nodes: dict[tuple[str, ...], int] = {}
+
+    def node(path: tuple[str, ...], sort_order: int | None = None) -> int:
+        if path not in nodes:
+            parent = node(path[:-1]) if len(path) > 1 else None
+            nodes[path] = gid = _add(db, FundGroup())
+            db.add(GroupState(version_id=vid, group_id=gid, parent_id=parent, title=path[-1],
+                              sort_order=100 if sort_order is None else sort_order))
+        return nodes[path]
+
+    for i, g in enumerate(groups):
+        node(tuple(g["path"]), g.get("sort_order", i * 10))
+    flag_ids: dict[str, int] = {t: fid for fid, t in db.execute(select(UnitFlag.id, UnitFlag.title))}
+    for f in flags:
+        if f["title"] not in flag_ids:
+            flag_ids[f["title"]] = save_flag(db, f, None)
+    db.flush()
+    pending = []
+    for u in units:
+        uid = _add(db, Unit())
+        group = node(tuple(u["path"])) if u.get("path") else None
+        db.add(UnitState(version_id=vid, unit_id=uid, label=u["label"], category_id=cats[u["category"]],
+                         group_id=group, floor=str(u.get("floor", ""))[:8]))
+        pending.extend((uid, flag_ids[t]) for t in u.get("flags", ()))
+    db.flush()
+    db.add_all(UnitStateFlag(version_id=vid, unit_id=uid, flag_id=fid) for uid, fid in pending)
+    db.flush()
+
+
+def _add(db: Session, row) -> int:
+    db.add(row)
+    db.flush()
+    return row.id
 
 
 # ── справочник флагов (вне черновика) ──────────────────────────────────────

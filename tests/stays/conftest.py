@@ -30,6 +30,23 @@ def occupancy_client(app_stack):
     return _role_user(app_stack, "stays_occupancy", "occupancy")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _demo_without_future_version(app_stack):
+    """Демо заводит будущую версию фонда (деление коннекта). Тесты публикуют категории «сегодня» и
+    читают фонд на далёкие даты: пока правки не переносятся в поздние версии (Task 2.4), эта версия
+    скрыла бы их категории. Снимаем её на время прогона; сама версия проверяется в test_demo."""
+    from app.core.db import SessionLocal
+    from app.core.time import local_date
+    from app.modules.stays.adapters.orm import FundVersion
+    from app.modules.stays.application import fund_drafts
+
+    with SessionLocal() as s:
+        for vid in list(s.scalars(select(FundVersion.id).where(
+                FundVersion.status == "published", FundVersion.valid_from > local_date()))):
+            fund_drafts.delete_version(s, vid)
+        s.commit()
+
+
 @pytest.fixture()
 def today(monkeypatch):
     """«Сегодня» модуля шахматки: freeze() на будущие даты просрочил бы токен входа.

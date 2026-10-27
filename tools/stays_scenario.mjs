@@ -117,8 +117,14 @@ const uniq = Date.now().toString(36).slice(-5).toUpperCase();
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
    /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
+let futureDropped = false;
 async function fundCategory(code, labels) {
   const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  if (!futureDropped) {              // демо держит будущую версию (деление коннекта); правки «сегодня» пока
+    futureDropped = true;            // не переносятся в поздние версии (Task 2.4) и скрыли бы категории сценария
+    for (const v of (await apiJson('GET', '/api/stays/fund/versions')).body)
+      if (v.status === 'published' && v.valid_from > today) await apiJson('DELETE', '/api/stays/fund/versions/' + v.id);
+  }
   let rev = (await apiJson('POST', '/api/stays/fund/draft', { valid_from: today })).body.rev;
   const step = async (path, body) => {
     const r = await apiJson('POST', '/api/stays/fund/draft/' + path, { rev, ...body });
