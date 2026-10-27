@@ -183,3 +183,22 @@ def test_continuation_not_taken_by_piece_whose_unit_changed_category():
     got, warns = allocate(us, [], [a, c], CODES)
     assert got[(("r", 1), 0)] == got[(("r", 1), 1)] == 100
     assert got[(("r", 2), 0)] == 101 and got[(("r", 2), 1)] == 102 and warns == []
+
+
+def test_fixed_piece_keeps_continuation_and_blocks_pins():
+    """Замороженная часть занимает объект раньше закреплений и служит предыдущей частью:
+    продолжение сегмента за границей остаётся в том же объекте; закрепление поверх — конфликт."""
+    us = units("1", "2")
+    b = pos(D(5), PM)
+    it = item(1, 2, 9, bounds=[b], number="9")
+    frozen = AllocItem(it.key, it.number, it.segments, {}, {0: 101})
+    pinned = item(2, 3, 4, pinned={0: 101}, number="1")
+    got, warns = allocate(us, [], [frozen, pinned], CODES)
+    assert got[(("r", 1), 0)] == got[(("r", 1), 1)] == 101
+    assert [w.kind for w in warns] == ["pin_conflict"]
+
+
+def test_fixed_piece_without_unit_stays_unplaced():
+    it = item(1, 2, 9)
+    got, warns = allocate(units("1"), [], [AllocItem(it.key, it.number, it.segments, {}, {0: None})], CODES)
+    assert got == {(("r", 1), 0): None} and warns == []

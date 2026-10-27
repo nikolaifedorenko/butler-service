@@ -23,11 +23,11 @@ from ..adapters.orm import (
     Reservation,
 )
 from ..domain.allocate import natural_key
-from ..domain.halfday import hold_span, segments
+from ..domain.halfday import PIECE_BASE, Piece, hold_span, pieces, segments
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import butlers_on, load_context, nights
-from .fund_versions import CategoryInfo, FundTimeline, UnitInfo, fund_for
+from .fund_versions import CategoryInfo, FundTimeline, UnitInfo, fund_for, version_cuts
 from .guests import search_query, short_name
 from .reservations import STATUS_TITLES
 from .visibility import Level, at_least, serialize_bar
@@ -104,6 +104,18 @@ def _board_units(fund: FundTimeline, f: BoardFilters) -> list[BoardUnit]:
     return sorted(units, key=lambda b: (b.category.sort_order, natural_key(b.label), b.id))
 
 
+def _glued(ps: list[Piece], unit_of) -> list[list[Piece]]:
+    """Соседние части одного сегмента с тем же объектом — одна полоса (граница версии фонда,
+    не сменившая объект, на шахматке не видна)."""
+    runs: list[list[Piece]] = []
+    for p in ps:
+        if runs and runs[-1][-1].seg_index == p.seg_index and unit_of(runs[-1][-1]) == unit_of(p):
+            runs[-1].append(p)
+        else:
+            runs.append([p])
+    return runs
+
+
 def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level) -> dict:
     return _units_board(db, first, last, f, level)[0]
 
@@ -140,9 +152,10 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
         labels = {lb.id: lb for lb in db.scalars(select(Label))}
     match = _search(f.q, res, occ, guests, units, asg) if names and f.q.strip() else None
     today = local_date()
+    cuts = version_cuts(db)
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
-        on_duty = butlers_on(db, today, res, moves, asg, occ, guests, fund)
+        on_duty = butlers_on(db, today, res, moves, asg, occ, guests, fund, cuts)
 
     bars = []
     for r in res:
@@ -165,14 +178,17 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
                 "level": top, "butlers_today": on_duty.get(r.id, []),
                 "customer": r.customer, "purpose": r.purpose, "paid_by": r.paid_by, "note": r.note,
                 "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}")}
-        for s in segs:
-            uid = asg.get((r.id, s.index))
-            if uid not in unit_ids and not (uid is None and s.category_id in visible_cats):
+        # полоса — соседние части сегмента с одним объектом; seg_index полосы — индекс её первой
+        # части (seg_index // PIECE_BASE — сегмент; 0 — начало брони)
+        for run in _glued(pieces(segs, cuts), lambda p, rid=r.id: asg.get((rid, p.index))):
+            p0, p1 = run[0], run[-1]
+            uid = asg.get((r.id, p0.index))
+            if uid not in unit_ids and not (uid is None and p0.category_id in visible_cats):
                 continue
-            bars.append(serialize_bar({**base, "seg_index": s.index, "unit_id": uid, "category_id": s.category_id,
-                                       "start": _d(s.start), "end": _d(s.end), "start_pos": s.start_pos,
-                                       "end_pos": s.end_pos, "early": r.early and s.index == 0,
-                                       "late": r.late and s.index == len(segs) - 1}, level))
+            bars.append(serialize_bar({**base, "seg_index": p0.index, "unit_id": uid, "category_id": p0.category_id,
+                                       "start": _d(p0.start), "end": _d(p1.end), "start_pos": p0.start_pos,
+                                       "end_pos": p1.end_pos, "early": r.early and p0.index == 0,
+                                       "late": r.late and p1.end_pos == segs[-1].end_pos}, level))
 
     holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": h.kind,
               # название блока — свободный текст (в нём бывает фамилия): только с уровня names
@@ -183,8 +199,9 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
     if names:
         state = allocation.current_state(db)
         shown = {b["reservation_id"] for b in bars}
+        shown_holds = {("h", h["id"]) for h in holds}
         warnings = [{"kind": w.kind, "reservation_ids": state.members[w.key], "text": w.text}
-                    for w in state.warnings if shown & set(state.members[w.key])]
+                    for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds]
     return {"days": [_d(d) for d in days], "visibility": level,
             "units": [{"id": u.id, "label": u.label, "category_id": u.info.category_id,
                        "category": u.category.code, "kind": u.category.kind, "escorted": u.category.escorted,
@@ -236,7 +253,9 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     if r is None:
         raise LookupError("Бронь не найдена")
     moves = sorted((m.move_date, m.category_id) for m in db.scalars(select(Move).where(Move.reservation_id == rid)))
-    asg = {a.seg_index: a.unit_id for a in db.scalars(select(Assignment).where(Assignment.reservation_id == rid))}
+    # объект сегмента — его первой части (части режутся границами версий фонда)
+    asg = {a.seg_index // PIECE_BASE: a.unit_id for a in db.scalars(
+        select(Assignment).where(Assignment.reservation_id == rid)) if a.seg_index % PIECE_BASE == 0}
     fund = fund_for(db, r.check_in, r.check_out)
     segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)
     category = fund.category(r.category_id, r.check_in)
@@ -289,6 +308,7 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, group_ids: tuple[
         for d in days:
             p, iso = pos(d, PM), d.isoformat()
             cells.append({"day": iso, "busy": len({b["unit_id"] for b in bars if b["start_pos"] <= p <= b["end_pos"]}),
+                          # seg_index полосы 0 — первая часть первого сегмента: заезд
                           "arrivals": sum(1 for b in bars if b["start"] == iso and b["seg_index"] == 0),
                           "departures": len({b["reservation_id"] for b in bars if b["end"] == iso}),
                           "no_show": sum(1 for r in no_show if r.category_id == cid and r.check_in == d)})

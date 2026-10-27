@@ -22,14 +22,14 @@ from ..adapters.orm import (
     Reservation,
 )
 from ..domain.coverage import resolve_day
-from ..domain.halfday import PM, Segment, segment_on, segments
+from ..domain.halfday import PM, Piece, pieces, pos, segments
 from ..domain.load import day_loads
 from ..domain.types import DayCover, Line, StayDay, Warning
 from ..domain.warnings import day_warnings
 from ..ports.duty import DutyDay, DutyPort
 from . import allocation
 from .fund import get_settings
-from .fund_versions import CategoryInfo, FundTimeline, fund_for
+from .fund_versions import CategoryInfo, FundTimeline, boundary_pos, fund_for
 from .guests import short_name
 
 NO_GUESTS = 0          # бронь без состава — один «неизвестный» гость, чтобы дыра была видна
@@ -49,8 +49,8 @@ class StaysContext:
     codes: frozenset[str]
     fund: FundTimeline
     res: dict[int, Reservation]
-    segs: dict[int, list[Segment]]
-    asg: dict[tuple[int, int], int | None]
+    segs: dict[int, list[Piece]]                  # части сегментов (границы версий фонда)
+    asg: dict[tuple[int, int], int | None]        # (бронь, индекс части) → объект
     occ: dict[int, list[Occupant]]
     guests: dict[int, Guest]
     lines: list[Line]
@@ -62,9 +62,11 @@ class StaysContext:
     def days(self) -> list[dt.date]:
         return nights(self.first, self.last + dt.timedelta(days=1))
 
-    def unit_of(self, rid: int, day: dt.date) -> tuple[int | None, Segment | None]:
-        seg = segment_on(self.segs[rid], day, PM)
-        return (self.asg.get((rid, seg.index)) if seg else None), seg
+    def unit_of(self, rid: int, day: dt.date) -> tuple[int | None, Piece | None]:
+        """Объект брони на ночь day — по части сегмента, занимающей вечер этого дня."""
+        p = pos(day, PM)
+        piece = next((c for c in self.segs[rid] if c.start_pos <= p <= c.end_pos), None)
+        return (self.asg.get((rid, piece.index)) if piece else None), piece
 
     def stays_on(self, day: dt.date) -> list[StayDay]:
         key = ("stays", day)
@@ -150,9 +152,12 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
     """Брони, ночующие в [first, last], их сегменты, объекты, гости, строки покрытия, список
     «Сопровождают гостей» и График (если передан duty) — пакетно."""
     st = get_settings(db)
-    fund = fund_for(db, first, last)
     res = {r.id: r for r in db.scalars(select(Reservation).where(
         Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in <= last, Reservation.check_out > first))}
+    # фонд — с дня до самого раннего заезда по самый поздний выезд: его границы режут сегменты на
+    # части так же, как у распределения, без отдельного запроса границ (бюджет SQL табло дня)
+    fund = fund_for(db, min([first, *(r.check_in for r in res.values())]) - dt.timedelta(days=1),
+                    max([last, *(r.check_out for r in res.values())]))
     rids = list(res)
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
@@ -166,7 +171,8 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
             occ[o.reservation_id].append(o)
     gids = {o.guest_id for os in occ.values() for o in os}
     guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
-    segs = {rid: segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[rid])
+    cuts = [boundary_pos(d) for d in fund.boundaries()]
+    segs = {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[rid]), cuts)
             for rid, r in res.items()}
     lines = _line_rows(db, first, last)
     active_staff = dict(db.execute(select(Employee.id, Employee.full_name).where(Employee.active.is_(True))).all())
@@ -184,7 +190,7 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
 
 def butlers_on(db: Session, day: dt.date, res: list[Reservation], moves: dict[int, list], asg: dict,
                occ: dict[int, list[Occupant]], guests: dict[int, Guest],
-               fund: FundTimeline) -> dict[int, list[str]]:
+               fund: FundTimeline, cuts: list[int]) -> dict[int, list[str]]:
     """«Кто ведёт сегодня» из уже загруженных броней (шахматка объектов): строки покрытия дня
     и имена батлеров — два запроса вместо полного контекста (бюджет SQL, §10)."""
     lines = _line_rows(db, day, day)
@@ -194,7 +200,8 @@ def butlers_on(db: Session, day: dt.date, res: list[Reservation], moves: dict[in
         select(Employee).where(Employee.id.in_({ln.employee_id for ln in lines})))}
     live = {r.id: r for r in res if r.check_in <= day < r.check_out}
     ctx = StaysContext(day, day, 0.0, 0.0, 0.0, frozenset(), fund, live,
-                       {rid: segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves.get(rid, []))
+                       {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id,
+                                             moves.get(rid, [])), cuts)
                         for rid, r in live.items()}, asg, occ, guests, lines, [], staff, {})
     out: dict[int, list[str]] = {}
     for (rid, _g), emps in ctx.cover(day).by_guest.items():

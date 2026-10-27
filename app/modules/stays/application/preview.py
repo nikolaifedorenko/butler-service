@@ -16,11 +16,11 @@ from sqlalchemy.orm import Session
 from app.core.time import local_date
 
 from ..adapters.orm import Move, Reservation
-from ..domain.halfday import segments
+from ..domain.halfday import PIECE_BASE, pieces, segments
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import load_context
-from .fund_versions import fund_for
+from .fund_versions import fund_for, version_cuts
 from .locking import lock_module
 
 T = TypeVar("T")
@@ -49,7 +49,7 @@ def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | No
     state = allocation.current_state(db)
     warns = set()
     for w in state.warnings:
-        for rid in state.members[w.key]:
+        for rid in state.members[w.key] or [None]:         # предупреждение блока — без брони
             warns.add((w.kind, None, None, rid, w.text))
     snap = Snapshot(dict(state.units), frozenset(warns), frozenset(db.scalars(select(Reservation.id))))
     if window is None:
@@ -72,18 +72,19 @@ def _warning(k: WarningKey, known: frozenset[int]) -> dict:
             "text": text}
 
 
-def _segment_starts(db: Session, keys: list[tuple[int, int]]) -> dict[tuple[int, int], dt.date]:
-    """(бронь, сегмент) → дата начала сегмента по текущему документу брони."""
+def _piece_starts(db: Session, keys: list[tuple[int, int]]) -> dict[tuple[int, int], dt.date]:
+    """(бронь, индекс части) → дата начала части по текущему документу брони."""
     rids = list({rid for rid, _ in keys})
     if not rids:
         return {}
     moves: dict[int, list] = {rid: [] for rid in rids}
     for m in db.scalars(select(Move).where(Move.reservation_id.in_(rids))):
         moves[m.reservation_id].append((m.move_date, m.category_id))
+    cuts = version_cuts(db)
     out = {}
     for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids))):
-        for s in segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]):
-            out[(r.id, s.index)] = s.start
+        for p in pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]), cuts):
+            out[(r.id, p.index)] = p.start
     return out
 
 
@@ -91,8 +92,8 @@ def diff(db: Session, before: Snapshot, after: Snapshot) -> dict:
     numbers = dict(db.execute(select(Reservation.id, Reservation.number)).all())
     changed = [key for key in sorted(set(before.units) | set(after.units))
                if before.units.get(key) != after.units.get(key)]
-    # обозначения объектов — на дату начала сегмента (фонд меняется версиями с даты)
-    starts = _segment_starts(db, changed)
+    # обозначения объектов — на дату начала части (фонд меняется версиями с даты)
+    starts = _piece_starts(db, changed)
     dates = list(starts.values()) or [local_date()]      # сегмента больше нет — фонд сегодня
     fund = fund_for(db, min(dates), max(dates)) if changed else None
 
@@ -107,7 +108,8 @@ def diff(db: Session, before: Snapshot, after: Snapshot) -> dict:
         # не откатывается) — она помечается «новая», без id
         new = key[0] not in before.reservations
         moved.append({"reservation_id": None if new else key[0], "new": new,
-                      "number": numbers.get(key[0], ""), "seg_index": key[1],
+                      "number": numbers.get(key[0], ""), "seg_index": key[1] // PIECE_BASE,
+                      "since": since.isoformat() if key[1] % PIECE_BASE and (since := starts.get(key)) else None,
                       "from_unit": was, "to_unit": now,
                       "from_label": label(was, key), "to_label": label(now, key)})
     return {"moved": moved,

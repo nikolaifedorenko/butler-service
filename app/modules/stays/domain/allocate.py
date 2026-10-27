@@ -47,11 +47,14 @@ class AllocItem:
     number: str
     segments: tuple[Piece, ...]                                  # части по порядку
     pinned: Mapping[int, int] = field(default_factory=dict)     # seg_index → unit_id
+    # замороженные части (прошлое, заселённые): Piece.index → объект или None — не распределяются,
+    # но занимают объект и служат «предыдущей частью» для продолжения сегмента
+    fixed: Mapping[int, int | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class AllocWarning:
-    kind: str                          # unassigned | pin_invalid | pin_conflict | category_missing
+    kind: str                          # unassigned | pin_invalid | pin_conflict | category_missing | hold_absent
     key: Key
     piece_index: int
     text: str
@@ -100,10 +103,22 @@ def allocate(spans: Sequence[UnitSpan], holds: Sequence[HoldRef], items: Sequenc
         result[(it.key, p.index)] = u.unit_id
         paths[(it.key, p.index)] = u.group_path
 
-    for it in sorted(items, key=lambda i: (natural_key(i.number), i.key)):
+    by_number = sorted(items, key=lambda i: (natural_key(i.number), i.key))
+    for it in by_number:
+        # замороженные части — раньше закреплений: закрепление поверх них даёт pin_conflict
+        for p in it.segments:
+            if p.index in it.fixed:
+                if (uid := it.fixed[p.index]) is not None:
+                    busy.setdefault(uid, []).append((p.start_pos, p.end_pos, f"бронь {it.number}"))
+                    paths[(it.key, p.index)] = next((u.group_path for u in ordered if u.unit_id == uid
+                                                     and u.start_pos <= p.start_pos <= u.end_pos), ())
+                result[(it.key, p.index)] = uid
+    for it in by_number:
         for prev, p in zip((None, *it.segments), it.segments, strict=False):
             if prev is not None:
                 prev_of[(it.key, p.index)] = prev
+            if p.index in it.fixed:
+                continue
             uid = it.pinned.get(p.seg_index)
             if uid is None:
                 todo.append((it, p))
