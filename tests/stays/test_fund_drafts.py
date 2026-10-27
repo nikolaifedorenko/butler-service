@@ -299,3 +299,13 @@ def test_split_and_merge_keep_archived_flag(db, world):
     assert snapshot_of(db, d.id).units[m].flags == {world["flag"]}
     with pytest.raises(FundError):                        # а вот выбрать архивный флаг заново нельзя
         fd.save_unit(db, d.rev, {"label": "N", "category_id": world["a"], "flags": [world["flag"]]}, None)
+
+
+def test_publish_checks_rev_under_lock(db, world):
+    d = _open(db)
+    fd.save_unit(db, d.rev, {"floor": "5"}, world["u1"])
+    with pytest.raises(FundConflict):
+        fd.publish(db, None, d.rev - 1)
+    assert fd.current_draft(db) is not None
+    fd.publish(db, None, d.rev)
+    assert fd.current_draft(db) is None

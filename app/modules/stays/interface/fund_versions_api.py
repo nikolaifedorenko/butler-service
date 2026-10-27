@@ -309,14 +309,7 @@ def put_draft_flags(payload: FlagValueIn, principal: Principal = Depends(SETUP),
 
 @router.post("/fund/draft/publish")
 def publish_draft(payload: RevIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    draft = fd.current_draft(db)
-    if draft is None:
-        raise HTTPException(422, "Черновика фонда нет")
-    try:
-        fd.check_rev(draft, payload.rev)
-        version = fd.publish(db, principal)
-    except FundError as e:
-        raise _err(e) from e
+    version = _run(fd.publish, db, principal, payload.rev)
     out = {"id": version.id, "valid_from": version.valid_from.isoformat(), "rev": version.rev}
     db.commit()
     return out

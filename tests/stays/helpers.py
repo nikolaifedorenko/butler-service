@@ -43,8 +43,14 @@ def make_category(setup_client, n_units: int = 2, kind: str = "villa", escorted:
         if group_id is not None:
             body["group_id"] = group_id
         cat["units"].append({"id": post("units", body)["id"], "label": label})
-    resp = setup_client.post(f"{API}/fund/draft/publish", json={"rev": rev})
-    assert resp.status_code == 200, resp.text
+    try:
+        resp = setup_client.post(f"{API}/fund/draft/publish", json={"rev": rev})
+        assert resp.status_code == 200, resp.text
+    except BaseException:                         # не оставляем черновик: он заблокировал бы остальные тесты
+        draft = next((v for v in setup_client.get(f"{API}/fund/versions").json() if v["status"] == "draft"), None)
+        if draft:
+            setup_client.delete(f"{API}/fund/versions/{draft['id']}")
+        raise
     return cat
 
 

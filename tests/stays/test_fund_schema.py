@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import delete, inspect, select
 from sqlalchemy.exc import IntegrityError
 
-from app.core.db import SessionLocal, engine
+from app.core.db import engine
 from app.modules.stays.adapters.orm import (
     Category,
     CategoryState,
@@ -147,14 +147,31 @@ def test_used_flag_restrict(db, version):
     assert db.scalar(select(UnitStateFlag).where(UnitStateFlag.version_id == v.id)) is None
 
 
-def test_downgrade_restores_columns(db):
+@pytest.fixture()
+def iso_engine(tmp_path, monkeypatch):
+    """Свежая SQLite-база на head: миграционные тесты откатывают схему и не должны зависеть от того,
+    какие версии фонда опубликовали другие тесты в общей базе (0010 отказывает откат при >1 версии)."""
+    from alembic import command
+    from sqlalchemy import create_engine
+
+    import app.core.db as core_db
+    from app.bootstrap.schema_version import config
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'iso.db'}", future=True)
+    monkeypatch.setattr(core_db, "engine", eng)          # env.py Alembic берёт engine из app.core.db
+    command.upgrade(config(), "head")
+    yield eng
+    eng.dispose()
+
+
+def test_downgrade_restores_columns(iso_engine):
     """upgrade → downgrade → upgrade: колонки возвращаются в Category/Unit и уходят обратно."""
     from alembic import command
+    from sqlalchemy import text
 
     from app.bootstrap.schema_version import config
 
-    db.rollback()
-    db.close()
+    engine = iso_engine
     command.downgrade(config(), "0009")
     try:
         cols = {c["name"] for c in inspect(engine).get_columns("stays_units")}
@@ -164,8 +181,8 @@ def test_downgrade_restores_columns(db):
     finally:
         command.upgrade(config(), "head")
     assert {c["name"] for c in inspect(engine).get_columns("stays_units")} == {"id"}
-    with SessionLocal() as s:
-        assert s.scalar(select(FundVersion).where(FundVersion.valid_from == dt.date(2000, 1, 1))) is not None
+    with engine.connect() as c:
+        assert c.execute(text("SELECT id FROM stays_fund_versions WHERE valid_from = '2000-01-01'")).first()
 
 
 def test_downgrade_refuses_with_several_versions(db, version, monkeypatch):
@@ -181,7 +198,7 @@ def test_downgrade_refuses_with_several_versions(db, version, monkeypatch):
     assert inspect(engine).has_table("stays_fund_versions")
 
 
-def test_migration_with_data_roundtrip(db):
+def test_migration_with_data_roundtrip(iso_engine):
     """0009 → 0010 → 0009 → 0010 на данных: категория, активные и неактивный объект, бронь с
     назначением. Исходная версия содержит ровно активные объекты; откат возвращает значения."""
     from alembic import command
@@ -189,8 +206,7 @@ def test_migration_with_data_roundtrip(db):
 
     from app.bootstrap.schema_version import config
 
-    db.rollback()
-    db.close()
+    engine = iso_engine
     command.downgrade(config(), "0009")
     try:
         with engine.begin() as c:
@@ -228,10 +244,3 @@ def test_migration_with_data_roundtrip(db):
             assert (code, title, kind, float(weight), bool(esc)) == ("MIG", "Миграция", "villa", 4.0, True)
     finally:
         command.upgrade(config(), "head")
-        with engine.begin() as c:
-            c.execute(text("DELETE FROM stays_assignments WHERE reservation_id = 9201"))
-            c.execute(text("DELETE FROM stays_reservations WHERE id = 9201"))
-            c.execute(text("DELETE FROM stays_unit_states WHERE unit_id >= 9100"))
-            c.execute(text("DELETE FROM stays_units WHERE id >= 9100"))
-            c.execute(text("DELETE FROM stays_category_states WHERE category_id = 9001"))
-            c.execute(text("DELETE FROM stays_categories WHERE id = 9001"))

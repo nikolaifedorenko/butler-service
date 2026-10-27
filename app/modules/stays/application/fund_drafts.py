@@ -448,11 +448,15 @@ def diff(db: Session, base_id: int, other_id: int) -> FundDiff:
 # ── публикация и удаление ──────────────────────────────────────────────────
 
 
-def publish(db: Session, principal) -> FundVersion:
+def publish(db: Session, principal, rev: int | None = None) -> FundVersion:
+    """rev — ревизия, которую видел автор; сверяется уже под замком модуля, как в каждой записи."""
     lock_module(db)
     draft = current_draft(db)
     if draft is None:
         raise FundError("черновика фонда нет")
+    if rev is not None:
+        db.refresh(draft)                  # после замка: правка коллеги могла bump-нуть rev
+        check_rev(draft, rev)
     day = draft.valid_from
     if day < local_date():
         raise FundConflict("дата черновика прошла — сдвиньте на сегодня или позже")
