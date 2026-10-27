@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 from app.core.time import local_date
 
 from ..adapters.orm import Assignment, Hold, Move, Reservation
-from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitRef, allocate
-from ..domain.halfday import hold_span, segments
+from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitSpan, allocate
+from ..domain.halfday import AM, PIECE_BASE, PM, hold_span, pieces, pos, segments
 from .fund_versions import fund_on
 
 # статусы, которые занимают объект (отменённая и no-show — нет, §4.7)
@@ -47,12 +47,16 @@ def compute(db: Session) -> AllocationState:
     today = local_date()
     # этап 1: распределение по фонду сегодняшнего дня; границы версий внутри окна — этап 2
     fund = fund_on(db, today)
-    units = [UnitRef(u.id, u.category_id, fund.unit_path(u.id), fund.categories[u.category_id].sort_order, u.label)
-             for u in fund.units.values()]
     holds = [HoldRef(h.unit_id, *hold_span(h.start, h.end), h.title or ("OOO" if h.kind == "ooo" else "Блок"))
              for h in db.scalars(select(Hold).where(Hold.end >= today))]
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(OCCUPYING),
                                                     Reservation.check_out >= today)))
+    # этап 2 (переходно, до задачи 2.3): один интервал на объект на всё окно, без границ версий
+    lo = pos(min([today, *(r.check_in for r in res)]), AM)
+    hi = pos(max([today, *(r.check_out for r in res)]), PM)
+    spans = [UnitSpan(u.id, u.category_id, fund.categories[u.category_id].sort_order, u.label,
+                      fund.unit_path(u.id), lo, hi)
+             for u in fund.units.values()]
     moves = _moves(db, [r.id for r in res])
     pins: dict[tuple[int, int], int] = {}
     current: dict[tuple[int, int], int] = {}
@@ -85,7 +89,7 @@ def compute(db: Session) -> AllocationState:
             holds.append(HoldRef(fixed, s.start_pos, s.end_pos, f"бронь {number}"))
         pinned = {s.index: uid for s in live
                   if (uid := next((pins[(r.id, s.index)] for r in rs if (r.id, s.index) in pins), None)) is not None}
-        items.append(AllocItem(key, number, tuple(live), pinned))
+        items.append(AllocItem(key, number, tuple(pieces(live, [])), pinned))
         members[key] = [r.id for r in rs]
 
     for r in res:
@@ -103,11 +107,13 @@ def compute(db: Session) -> AllocationState:
                  segments(first.check_in, last.check_out, first.early, last.late, rs[0].category_id,
                           moves[rs[0].id]))
 
-    got, warnings = allocate(units, holds, items, {c.id: c.code for c in fund.categories.values()})
-    released = {(w.key, w.seg_index) for w in warnings if w.kind == "pin_invalid"}
+    got, warnings = allocate(spans, holds, items, {c.id: c.code for c in fund.categories.values()})
+    # без границ часть = сегмент: индекс части → seg_index (Assignment хранит сегменты до задачи 2.3)
+    released = {(w.key, w.piece_index // PIECE_BASE) for w in warnings if w.kind == "pin_invalid"}
     out_units: dict[tuple[int, int], int | None] = {}
     out_pinned: dict[tuple[int, int], bool] = {}
-    for (key, seg), uid in got.items():
+    for (key, piece), uid in got.items():
+        seg = piece // PIECE_BASE
         for rid in members[key]:
             out_units[(rid, seg)] = uid
             out_pinned[(rid, seg)] = (rid, seg) in pins and (key, seg) not in released

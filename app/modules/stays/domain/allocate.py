@@ -4,6 +4,11 @@
 объект, длинные брони раньше коротких при равном старте. Дополнения шахматки: группа
 совместного проживания приходит одним элементом, при переезде предпочитается другой
 объект того же узла дерева фонда, иначе ближайшего по дереву. Чистая функция: данные готовые, БД не видит.
+
+Границы версий фонда (спецификация версий §5): объект задан интервалами `UnitSpan` (категория,
+узел, обозначение на отрезке половинок), сегменты брони приходят частями `Piece`, разрезанными
+на границах. Объект подходит части, если его интервал нужной категории покрывает её целиком;
+следующая часть того же сегмента остаётся в том же объекте, если он подходит.
 """
 from __future__ import annotations
 
@@ -12,18 +17,20 @@ from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
 from .candidates import common_prefix
-from .halfday import Segment, overlaps
+from .halfday import PIECE_BASE, Piece, overlaps
 
 Key = tuple[str, int]                  # ("r", reservation_id) | ("g", group_id)
 
 
 @dataclass(frozen=True)
-class UnitRef:
-    id: int
+class UnitSpan:
+    unit_id: int
     category_id: int
-    group_path: tuple[int, ...]        # узел дерева фонда от корня; () — без узла
     cat_sort: int
     label: str
+    group_path: tuple[int, ...]        # узел дерева фонда от корня; () — без узла
+    start_pos: int
+    end_pos: int
 
 
 @dataclass(frozen=True)
@@ -38,15 +45,15 @@ class HoldRef:
 class AllocItem:
     key: Key
     number: str
-    segments: tuple[Segment, ...]
+    segments: tuple[Piece, ...]                                  # части по порядку
     pinned: Mapping[int, int] = field(default_factory=dict)     # seg_index → unit_id
 
 
 @dataclass(frozen=True)
 class AllocWarning:
-    kind: str                          # unassigned | pin_invalid | pin_conflict
+    kind: str                          # unassigned | pin_invalid | pin_conflict | category_missing
     key: Key
-    seg_index: int
+    piece_index: int
     text: str
 
 
@@ -61,64 +68,95 @@ def _nearness(a: tuple[int, ...], b: tuple[int, ...]) -> int:
     return len(a) + 1 if a == b else common_prefix(a, b)
 
 
-def allocate(units: Sequence[UnitRef], holds: Sequence[HoldRef], items: Sequence[AllocItem],
+def _since(p: Piece) -> str:
+    return f" с {p.start.strftime('%d.%m')}" if p.index % PIECE_BASE else ""
+
+
+def allocate(spans: Sequence[UnitSpan], holds: Sequence[HoldRef], items: Sequence[AllocItem],
              category_codes: Mapping[int, str]) -> tuple[dict[tuple[Key, int], int | None],
                                                          list[AllocWarning]]:
-    ordered = sorted(units, key=lambda u: (u.cat_sort, natural_key(u.label), u.id))
-    by_id = {u.id: u for u in ordered}
-    by_cat: dict[int, list[UnitRef]] = {}
+    """Результат и предупреждения — по индексу части (`Piece.index`)."""
+    ordered = sorted(spans, key=lambda u: (u.cat_sort, natural_key(u.label), u.unit_id, u.start_pos))
+    by_cat: dict[int, list[UnitSpan]] = {}
     for u in ordered:
         by_cat.setdefault(u.category_id, []).append(u)
-    busy: dict[int, list[tuple[int, int, str]]] = {u.id: [] for u in ordered}
+    busy: dict[int, list[tuple[int, int, str]]] = {u.unit_id: [] for u in ordered}
     for h in holds:
         if h.unit_id in busy:
             busy[h.unit_id].append((h.start_pos, h.end_pos, h.title))
 
-    result: dict[tuple[Key, int], int | None] = {}
-    warnings: list[AllocWarning] = []
-    todo: list[tuple[AllocItem, Segment]] = []
-    for it in sorted(items, key=lambda i: (natural_key(i.number), i.key)):
-        for s in it.segments:
-            uid = it.pinned.get(s.index)
-            unit = by_id.get(uid) if uid is not None else None
-            if uid is None:
-                todo.append((it, s))
-            elif unit is None or unit.category_id != s.category_id:
-                warnings.append(AllocWarning(
-                    "pin_invalid", it.key, s.index,
-                    f"Бронь {it.number}: закреплённый объект не подходит — сегмент {s.index + 1} "
-                    "распределяется автоматически"))
-                todo.append((it, s))
-            else:
-                for bs, be, desc in busy[unit.id]:
-                    if overlaps(s.start_pos, s.end_pos, bs, be):
-                        warnings.append(AllocWarning(
-                            "pin_conflict", it.key, s.index,
-                            f"Бронь {it.number}: закреплённый объект {unit.label} конфликтует с «{desc}»"))
-                busy[unit.id].append((s.start_pos, s.end_pos, f"бронь {it.number}"))
-                result[(it.key, s.index)] = unit.id
+    def fitting(p: Piece) -> list[UnitSpan]:
+        """Интервалы категории части, покрывающие её целиком — по одному на объект."""
+        return [u for u in by_cat.get(p.category_id, []) if u.start_pos <= p.start_pos and p.end_pos <= u.end_pos]
 
-    todo.sort(key=lambda t: (t[1].start_pos, -(t[1].end_pos - t[1].start_pos),
-                             natural_key(t[0].number), t[0].key, t[1].index))
-    for it, s in todo:
-        cands = [u for u in by_cat.get(s.category_id, [])
-                 if not any(overlaps(s.start_pos, s.end_pos, bs, be) for bs, be, _ in busy[u.id])]
-        prev = result.get((it.key, s.index - 1))
-        if prev is not None and len(cands) > 1:
-            # переезд: другой объект, по возможности в том же узле, иначе ближе по дереву (PoC §14.4)
-            others = [u for u in cands if u.id != prev] or cands
-            near = {u.id: _nearness(u.group_path, by_id[prev].group_path) for u in others}
-            best = max(near.values())
-            cands = [u for u in others if near[u.id] == best] if best else others
-        if cands:
-            unit = cands[0]
-            busy[unit.id].append((s.start_pos, s.end_pos, f"бронь {it.number}"))
-            result[(it.key, s.index)] = unit.id
-        else:
-            result[(it.key, s.index)] = None
+    result: dict[tuple[Key, int], int | None] = {}
+    paths: dict[tuple[Key, int], tuple[int, ...]] = {}      # путь узла объекта на этой части
+    warnings: list[AllocWarning] = []
+    prev_of: dict[tuple[Key, int], Piece] = {}
+    todo: list[tuple[AllocItem, Piece]] = []
+
+    def place(it: AllocItem, p: Piece, u: UnitSpan) -> None:
+        busy[u.unit_id].append((p.start_pos, p.end_pos, f"бронь {it.number}"))
+        result[(it.key, p.index)] = u.unit_id
+        paths[(it.key, p.index)] = u.group_path
+
+    for it in sorted(items, key=lambda i: (natural_key(i.number), i.key)):
+        for prev, p in zip((None, *it.segments), it.segments, strict=False):
+            if prev is not None:
+                prev_of[(it.key, p.index)] = prev
+            uid = it.pinned.get(p.seg_index)
+            if uid is None:
+                todo.append((it, p))
+                continue
+            unit = next((u for u in fitting(p) if u.unit_id == uid), None)
+            if unit is None:
+                warnings.append(AllocWarning(
+                    "pin_invalid", it.key, p.index,
+                    f"Бронь {it.number}: закреплённый объект не подходит{_since(p)} — "
+                    f"сегмент {p.seg_index + 1} распределяется автоматически"))
+                todo.append((it, p))
+                continue
+            for bs, be, desc in busy[unit.unit_id]:
+                if overlaps(p.start_pos, p.end_pos, bs, be):
+                    warnings.append(AllocWarning(
+                        "pin_conflict", it.key, p.index,
+                        f"Бронь {it.number}: закреплённый объект {unit.label} конфликтует с «{desc}»"))
+            place(it, p, unit)
+
+    # продолжение сегмента за границей версии — раньше прочих с той же половинки, чтобы
+    # его объект не заняла бронь, начинающаяся на границе
+    todo.sort(key=lambda t: (t[1].start_pos, t[1].index % PIECE_BASE == 0,
+                             -(t[1].end_pos - t[1].start_pos), natural_key(t[0].number), t[0].key, t[1].index))
+    for it, p in todo:
+        fit = fitting(p)
+        if not any(overlaps(u.start_pos, u.end_pos, p.start_pos, p.end_pos) for u in by_cat.get(p.category_id, [])):
+            result[(it.key, p.index)] = None
             warnings.append(AllocWarning(
-                "unassigned", it.key, s.index,
+                "category_missing", it.key, p.index,
+                f"Бронь {it.number}: категории {category_codes.get(p.category_id, '?')} нет в фонде "
+                f"с {p.start.strftime('%d.%m')}"))
+            continue
+        cands = [u for u in fit
+                 if not any(overlaps(p.start_pos, p.end_pos, bs, be) for bs, be, _ in busy[u.unit_id])]
+        prev = prev_of.get((it.key, p.index))
+        prev_uid = result.get((it.key, prev.index)) if prev is not None else None
+        if prev_uid is not None and prev.seg_index == p.seg_index:
+            # часть того же сегмента: сначала объект предыдущей части
+            cands = [u for u in cands if u.unit_id == prev_uid] or cands
+        elif prev_uid is not None and len(cands) > 1:
+            # переезд: другой объект, по возможности в том же узле, иначе ближе по дереву (PoC §14.4)
+            others = [u for u in cands if u.unit_id != prev_uid] or cands
+            prev_path = paths[(it.key, prev.index)]
+            near = {u.unit_id: _nearness(u.group_path, prev_path) for u in others}
+            best = max(near.values())
+            cands = [u for u in others if near[u.unit_id] == best] if best else others
+        if cands:
+            place(it, p, cands[0])
+        else:
+            result[(it.key, p.index)] = None
+            warnings.append(AllocWarning(
+                "unassigned", it.key, p.index,
                 f"Бронь {it.number}: нет свободных объектов категории "
-                f"{category_codes.get(s.category_id, '?')} на "
-                f"{s.start.strftime('%d.%m')}–{s.end.strftime('%d.%m')}"))
+                f"{category_codes.get(p.category_id, '?')} на "
+                f"{p.start.strftime('%d.%m')}–{p.end.strftime('%d.%m')}"))
     return result, warnings
