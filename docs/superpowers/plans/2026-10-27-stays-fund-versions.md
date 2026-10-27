@@ -400,12 +400,16 @@ jsdom-сценарии (`tools/*_scenario.mjs`), pytest.
 - `BoardFilters(group_ids: tuple[int, ...] = (), category_ids: tuple[int, ...] = (), flag_ids: tuple[int, ...] = (), kinds: tuple[str, ...] = (), floor: str | None = None, escorted_only=False, vip=False, employee_id=None, q="")`; API — повторяющиеся query-параметры `group_ids`, `category_ids`, `flag_ids`, `kinds`; параметры `building` и одиночный `category_id` удаляются.
 - Объект проходит фильтр **в день d**, если в `fund.on(d)` он в ветке одного из `group_ids`, его категория в `category_ids`, вид категории в `kinds`, все `flag_ids` ⊆ его флагов (пустой фильтр измерения = проходит). Строка показывается, если объект прошёл хотя бы в один день периода; дни, где не прошёл или нет в фонде, отдаются в `row.off: [[first, last], …]` с причиной `"absent" | "filtered"`.
 - Строка: `{unit_id, label, labels: [{from, label}], category_id, categories: [{from, category_id}], group_path: [id…], floor, flags: [id…], load: float}`; `load` = занятые ночи / ночи в фонде за период, 0..1, `round(…, 3)`.
-- `occupancy_grid(db, first, last, f: BoardFilters)` → строки по узлам дерева (`{group_id, path, totals_by_day, categories: [...]}`), «всего объектов» на день — по фонду дня.
+- `occupancy_grid(db, first, last, f: BoardFilters)` → `{days, total: NodeRow, nodes: [NodeRow]}`; `NodeRow = {group_id: int | None, path: [str], days: [{total, living, guests, arrivals, departures, free, ooo, blocks, pct: float | None}]}` — определения строк и формула `pct = (living + blocks) / (total − ooo)` (None при 0) — спека §6.1 дословно; `total` — «Итого по выбранному»; узлы — по фильтру `group_ids` (пустой — корневые узлы); всё по фонду дня.
 
 - [ ] **Step 1: Failing tests** — `test_or_within_dimension_and_between` («Корпус» ∪ «Виллы»;
   «Виллы» ∩ флаг), `test_flags_are_and`, `test_flag_filter_respects_version_day`,
   `test_absent_days_marked` (объект выведен с 15.11 → `off` с 15.11 `absent`),
   `test_label_change_listed`, `test_load_metric`, `test_occupancy_by_tree_totals_per_day`,
+  `test_occupancy_rows` (на одном объекте за день: заезд и выезд в тот же объект — по 1 в обеих
+  строках и 1 в «Проживают»; OOO уменьшает знаменатель; блок — в числителе; «Свободно» не
+  отрицательное; «Гостей» по составу; `pct` None при всём фонде в OOO),
+  `test_occupancy_total_is_sum_of_selected_nodes`,
   `test_day_board_filters_by_group_and_flags` (табло дня — те же измерения),
   `test_month_query_budget_440_units` (31 день, ≤ 30 запросов), удалённые параметры → 422.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
@@ -429,11 +433,15 @@ jsdom-сценарии (`tools/*_scenario.mjs`), pytest.
 - Дни `off` — серый фон «нет в фонде» / приглушённые «вне фильтра»; подпись `labels` у строки
   («4003 → 4103 с 15.11»).
 - Гонки — `loadGenerationFor(body)` на каждом виде.
+- «Загрузка» (`renderOccupancyGrid`): весь месяц, узлы сворачиваются кликом по названию,
+  развёрнутый узел — 8 строк спеки §6.1, свёрнутый — одна строка; переключатель «% / штуки»;
+  клик по клетке «Проживают» — вкладка «Объекты» с фильтром узла и прокруткой к дню.
 
 - [ ] **Step 1: Failing scenario steps** в `stays_scenario.mjs`: смена месяца ◀ ▶ синхронна с
   Табелем (открыть Табель → месяц тот же); «Сегодня» подсвечивает колонку; фильтр «Корпус» +
   «Винные виллы» показывает оба раздела; флаг сужает; сортировка «по загрузке ↓» без
-  группировки — первая строка с максимальным `load`; сохранённый набор переживает перезагрузку;
+  группировки — первая строка с максимальным `load`; «Загрузка» показывает все дни месяца и
+  восемь строк у развёрнутого узла, свёрнутый — одну; сохранённый набор переживает перезагрузку;
   быстрая смена месяцев не показывает устаревший месяц.
 - [ ] **Step 2–4:** FAIL → implement → PASS (+ `tools/run_ui_check.sh`, eslint, `gen_js_globals`, `bump_version`).
 - [ ] **Step 5: Commit**, push, PR «Шахматка, часть 1/4: месяц, дерево, фильтры и сортировка».
