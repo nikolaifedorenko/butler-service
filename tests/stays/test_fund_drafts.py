@@ -29,10 +29,7 @@ D = dt.date(2093, 2, 1)           # дата черновика в тестах
 LO, HI = dt.date(2093, 1, 1), dt.date(2095, 1, 1)
 
 
-@pytest.fixture(autouse=True)
-def _no_allocation(monkeypatch):
-    # TODO(Task 1.3): remove once allocation reads FundTimeline
-    monkeypatch.setattr(fd._allocation, "run_allocation", lambda db: None)
+pytestmark = pytest.mark.usefixtures("no_allocation")
 
 
 @pytest.fixture()

@@ -17,6 +17,7 @@ _S = "Шахматка"
 MODULE = ModuleManifest(
     name="stays", title="Шахматка", order=75,
     routers=("app.modules.stays.interface.fund_api:router",
+             "app.modules.stays.interface.fund_versions_api:router",
              "app.modules.stays.interface.guests_api:router",
              "app.modules.stays.interface.reservations_api:router",
              "app.modules.stays.interface.views_api:router",

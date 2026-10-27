@@ -31,6 +31,15 @@ def occupancy_client(app_stack):
 
 
 @pytest.fixture()
+def no_allocation(monkeypatch):
+    """Публикация версии пока вызывает распределение по старым колонкам."""
+    # TODO(Task 1.3): remove once allocation reads FundTimeline
+    from app.modules.stays.application import fund_drafts
+
+    monkeypatch.setattr(fund_drafts._allocation, "run_allocation", lambda db: None)
+
+
+@pytest.fixture()
 def today(monkeypatch):
     """«Сегодня» модуля шахматки: freeze() на будущие даты просрочил бы токен входа."""
     import datetime as dt
@@ -78,27 +87,31 @@ def demo_small(manager_role_client, manager_client):
 def big_fund(app_stack):
     """440 объектов и ~300 броней в одном месяце — для бюджетов SQL (без API: так быстрее)."""
     import datetime as dt
+    from unittest import mock
 
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import Category, Guest, Occupant, Reservation, Unit
+    from app.core.time import local_date
+    from app.modules.stays.adapters.orm import CategoryState, Guest, Occupant, Reservation
+    from app.modules.stays.application import fund_drafts as fd
     from app.modules.stays.application.allocation import run_allocation
 
     with SessionLocal() as s:
-        if s.scalar(select(Category).where(Category.code == "BIGDLX")) is None:
-            cats = [Category(code=f"BIG{k}", title=k, kind="room", escorted=(k == "VIL"), weight=1)
-                    for k in ("DLX", "STE", "VIL")]
-            s.add_all(cats)
-            s.flush()
+        if s.scalar(select(CategoryState.category_id).where(CategoryState.code == "BIGDLX")) is None:
+            draft = fd.open_draft(s, local_date(), None, "big_fund")
+            cat_ids = [fd.save_category(s, draft.rev, {"code": f"BIG{k}", "title": k, "kind": "room",
+                                                       "escorted": k == "VIL", "weight": 1}, None)
+                       for k in ("DLX", "STE", "VIL")]
             for i in range(440):
-                s.add(Unit(label=f"B{i:03d}", category_id=cats[i % 3].id, building=str(1 + i % 2),
-                           floor=str(i // 40)))
-            s.flush()
+                fd.save_unit(s, draft.rev, {"label": f"B{i:03d}", "category_id": cat_ids[i % 3],
+                                            "floor": str(i // 40)}, None)
+            with mock.patch.object(fd._allocation, "run_allocation", lambda db: None):
+                fd.publish(s, None)                 # распределение — один раз, после броней
             base = dt.date(2029, 6, 1)
             for i in range(300):
                 g = Guest(last_name=f"Большой{i}", search_text=f"большой{i}")
                 ci = base + dt.timedelta(days=i % 25)
                 r = Reservation(number=f"BIG{i}", check_in=ci, check_out=ci + dt.timedelta(days=2 + i % 4),
-                                category_id=cats[i % 3].id, search_text=f"big{i}")
+                                category_id=cat_ids[i % 3], search_text=f"big{i}")
                 s.add_all([g, r])
                 s.flush()
                 s.add(Occupant(reservation_id=r.id, guest_id=g.id, date_from=r.check_in,

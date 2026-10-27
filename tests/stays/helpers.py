@@ -12,13 +12,39 @@ def uniq() -> str:
 
 
 def make_category(setup_client, n_units: int = 2, kind: str = "villa", escorted: bool = True,
-                  weight: float = 4, building: str = "1") -> dict:
+                  weight: float = 4, group_id: int | None = None) -> dict:
+    """Категория с объектами через черновик фонда: открывает черновик на сегодня (или берёт
+    существующий), заводит категорию и объекты и публикует. Возвращает {id, code, units: [{id, label}]}."""
+    from app.modules.stays.application import fund_drafts
+
+    r = setup_client.post(f"{API}/fund/draft", json={"valid_from": fund_drafts.local_date().isoformat()})
+    if r.status_code == 409:                      # черновик уже есть — работаем в нём
+        versions = setup_client.get(f"{API}/fund/versions").json()
+        draft = next(v for v in versions if v["status"] == "draft")
+        rev = setup_client.get(f"{API}/fund/snapshot", params={"version_id": draft["id"]}).json()["version"]["rev"]
+    else:
+        assert r.status_code == 200, r.text
+        rev = r.json()["rev"]
+
+    def post(path: str, body: dict) -> dict:
+        nonlocal rev
+        resp = setup_client.post(f"{API}/fund/draft/{path}", json={"rev": rev, **body})
+        assert resp.status_code == 200, resp.text
+        rev = resp.json()["rev"]
+        return resp.json()
+
     code = "T" + uniq()
-    cat = setup_client.post(f"{API}/categories", json={"code": code, "title": code, "kind": kind,
-                                                       "escorted": escorted, "weight": weight}).json()
-    cat["units"] = [setup_client.post(f"{API}/units", json={
-        "label": f"{code}-{i + 1}", "category_id": cat["id"], "building": building}).json()
-        for i in range(n_units)]
+    cat = {"id": post("categories", {"code": code, "title": code, "kind": kind,
+                                     "escorted": escorted, "weight": weight})["id"], "code": code}
+    cat["units"] = []
+    for i in range(n_units):
+        label = f"{code}-{i + 1}"
+        body = {"label": label, "category_id": cat["id"]}
+        if group_id is not None:
+            body["group_id"] = group_id
+        cat["units"].append({"id": post("units", body)["id"], "label": label})
+    resp = setup_client.post(f"{API}/fund/draft/publish", json={"rev": rev})
+    assert resp.status_code == 200, resp.text
     return cat
 
 
