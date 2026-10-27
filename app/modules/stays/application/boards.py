@@ -31,7 +31,7 @@ def butlers_board(db: Session, first: dt.date, last: dt.date, duty: DutyPort) ->
             units, guests = [], []
             for (rid, g), emps in ctx.cover(d).by_guest.items():
                 if e in emps:
-                    label = ctx.unit_label(by_res[rid].unit_id)
+                    label = ctx.unit_label(by_res[rid].unit_id, d)
                     if label not in [u["label"] for u in units]:
                         units.append({"label": label, "reservation_id": rid})
                     if g != NO_GUESTS:
@@ -111,7 +111,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
         s = (stays_prev if kind == "departure" else stays_now).get(r.id)
         unit_id = s.unit_id if s else ctx.unit_of(r.id, night)[0]
         guests = guests_of(r, night)
-        base = {"reservation_id": r.id, "status": r.status, "unit": ctx.unit_label(unit_id),
+        base = {"reservation_id": r.id, "status": r.status, "unit": ctx.unit_label(unit_id, night),
                 "time": {"arrival": "РЗ" if r.early else "14:00", "departure": "ПВ" if r.late else "12:00"}.get(kind, ""),
                 "guests_count": len(guests) or 1}
         if not names:
@@ -137,7 +137,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     def collect(rs, kind):
         return [x for r in rs if (x := row(r, kind)) is not None]
 
-    res = sorted(ctx.res.values(), key=lambda r: (ctx.unit_label(ctx.unit_of(r.id, day)[0]), r.id))
+    res = sorted(ctx.res.values(), key=lambda r: (ctx.unit_label(ctx.unit_of(r.id, day)[0], day), r.id))
     arrivals = collect([r for r in res if r.check_in == day], "arrival")
     departures = collect([r for r in res if r.check_out == day], "departure")
     in_house = collect([r for r in res if r.id in stays_now], "in_house")

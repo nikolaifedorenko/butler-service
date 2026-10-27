@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 
 import pytest
 
@@ -320,7 +321,6 @@ def test_menu_and_settings_screens_match_frontend():
     id не повторяются, экраны одной группы идут подряд, и у каждого пункта есть регистрация
     во фронтенде (registerModule) — иначе пункт открыл бы заглушку «Раздел не найден»."""
     import itertools
-    import re
 
     from app.bootstrap import registry
     from app.core import manifest
@@ -340,3 +340,26 @@ def test_menu_and_settings_screens_match_frontend():
         assert len(ids) == len(set(ids)), f"{kind}: повтор id"
         missing = [i for i in ids if not re.search(rf"\b{i}\s*:", calls)]
         assert not missing, f"{kind} без registerModule во фронтенде: {missing}"
+
+
+# ── Шахматка: фонд читается только через FundTimeline (stays-fund-versions §3.3) ──
+
+FUND_READERS = {"application/fund_versions.py", "application/fund_drafts.py", "application/fund_xlsx.py",
+                "adapters/orm.py"}
+# имя модели целиком: select(UnitFlag) / select(UnitState) — не нарушение
+FUND_DIRECT = (r"select\(Unit\b", r"select\(Category\b", r"db\.get\(Unit\b", r"db\.get\(Category\b",
+               r"\bUnit\.label\b", r"\bCategory\.code\b")
+
+
+def test_stays_reads_fund_only_via_timeline():
+    """Постоянные строки категорий и объектов держат только id: свойства — в снимках версий,
+    читать их можно лишь через fund_versions (писать — через fund_drafts)."""
+    root = _mod_root("stays")
+    offenders = []
+    for path in _py_files(root):
+        rel = path.relative_to(root).as_posix()
+        if rel in FUND_READERS:
+            continue
+        src = path.read_text(encoding="utf-8")
+        offenders += [(rel, pat) for pat in FUND_DIRECT if re.search(pat, src)]
+    assert offenders == [], f"фонд мимо FundTimeline: {offenders}"

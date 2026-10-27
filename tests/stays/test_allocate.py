@@ -20,8 +20,8 @@ def item(rid: int, ci: int, co: int, cat: int = DLX, moves=(), pinned=None, numb
                      tuple(segments(D(ci), D(co), early, late, cat, moves)), pinned or {})
 
 
-def units(*labels, cat=DLX, building=""):
-    return [UnitRef(100 + i, cat, building, 1, lb) for i, lb in enumerate(labels)]
+def units(*labels, cat=DLX, path=()):
+    return [UnitRef(100 + i, cat, path, 1, lb) for i, lb in enumerate(labels)]
 
 
 def test_natural_key():
@@ -29,13 +29,13 @@ def test_natural_key():
 
 
 def test_first_fit_by_natural_label():
-    us = [UnitRef(1, DLX, "", 1, "4010"), UnitRef(2, DLX, "", 1, "402"), UnitRef(3, DLX, "", 1, "4003")]
+    us = [UnitRef(1, DLX, (), 1, "4010"), UnitRef(2, DLX, (), 1, "402"), UnitRef(3, DLX, (), 1, "4003")]
     got, warns = allocate(us, [], [item(7, 2, 5)], CODES)
     assert got[(("r", 7), 0)] == 2 and warns == []
 
 
 def test_category_order_before_label():
-    us = [UnitRef(1, DLX, "", 2, "100"), UnitRef(2, DLX, "", 1, "900")]
+    us = [UnitRef(1, DLX, (), 2, "100"), UnitRef(2, DLX, (), 1, "900")]
     got, _ = allocate(us, [], [item(1, 2, 5)], CODES)
     assert got[(("r", 1), 0)] == 2
 
@@ -68,15 +68,24 @@ def test_pinned_respected_and_conflict_warned():
 
 
 def test_pin_wrong_category_released():
-    us = units("1") + [UnitRef(200, VIL, "", 1, "4003")]
+    us = units("1") + [UnitRef(200, VIL, (), 1, "4003")]
     got, warns = allocate(us, [], [item(1, 2, 5, pinned={0: 200}, number="9")], CODES)
     assert got[(("r", 1), 0)] == 100
     assert warns[0].kind == "pin_invalid" and warns[0].seg_index == 0
     assert warns[0].text == "Бронь 9: закреплённый объект не подходит — сегмент 1 распределяется автоматически"
 
 
-def test_move_prefers_other_unit_same_building():
-    us = [UnitRef(1, DLX, "1", 1, "1-201"), UnitRef(2, DLX, "2", 1, "2-201"), UnitRef(3, DLX, "1", 1, "1-202")]
+def test_move_prefers_other_unit_same_group():
+    us = [UnitRef(1, DLX, (10, 1), 1, "1-201"), UnitRef(2, DLX, (10, 2), 1, "2-201"),
+          UnitRef(3, DLX, (10, 1), 1, "1-202")]
+    got, _ = allocate(us, [], [item(1, 2, 9, moves=((D(5), DLX),))], CODES)
+    assert got[(("r", 1), 0)] == 1 and got[(("r", 1), 1)] == 3
+
+
+def test_move_prefers_common_ancestor_when_group_has_no_other_unit():
+    """В узле больше нет объекта — ближайший по дереву (длиннее общий префикс пути)."""
+    us = [UnitRef(1, DLX, (10, 1), 1, "1-201"), UnitRef(2, DLX, (20, 5), 1, "2-201"),
+          UnitRef(3, DLX, (10, 2), 1, "3-202")]
     got, _ = allocate(us, [], [item(1, 2, 9, moves=((D(5), DLX),))], CODES)
     assert got[(("r", 1), 0)] == 1 and got[(("r", 1), 1)] == 3
 

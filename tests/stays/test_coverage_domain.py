@@ -16,8 +16,8 @@ A, B, X, Y = 1, 2, 3, 4
 CODES = frozenset({"ОТ", "Б"})
 
 
-def stay(rid=10, unit=100, guests=None, weight=4.0, escorted=True, declined=False, group=None, building="1"):
-    return StayDay(D, rid, group, unit, building, weight, escorted, declined, guests or {50: "regular"})
+def stay(rid=10, unit=100, guests=None, weight=4.0, escorted=True, declined=False, group=None, path=(1,)):
+    return StayDay(D, rid, group, unit, path, weight, escorted, declined, guests or {50: "regular"})
 
 
 def line(emp, rid=10, guests=(), group=None, lid=1):
@@ -130,14 +130,25 @@ def test_on_shift_clean():
 
 def test_candidates_order_knows_guest_first():
     duty = {(e, D): ON for e in (A, B, X)}
-    got = rank_candidates(D, {50}, 100, "1", [A, B, X], duty, {A: 0.0, B: 0.0, X: 4.0}, 4.0, 8.0,
+    got = rank_candidates(D, {50}, 100, (1,), [A, B, X], duty, {A: 0.0, B: 0.0, X: 4.0}, 4.0, 8.0,
                           known={X: {50}}, places={B: {("unit", 100)}}, replacement_codes=CODES)
     assert [c.employee_id for c in got] == [X, B, A]
     assert got[0].knows_guest and got[1].same_place and got[0].load_after == 8.0
 
 
+def test_candidates_same_unit_then_same_group_then_closer():
+    """Тот же объект → тот же узел → ближе по дереву (длиннее общий префикс) → меньше нагрузка."""
+    duty = {(e, D): ON for e in (A, B, X, Y)}
+    places = {A: {("unit", 100), ("path", (7, 8, 9))}, B: {("unit", 101), ("path", (7, 8, 9))},
+              X: {("unit", 102), ("path", (7, 3))}}
+    got = rank_candidates(D, {50}, 100, (7, 8, 9), [Y, X, B, A], duty, {A: 3.0, B: 2.0, X: 1.0}, 1.0, 8.0,
+                          known={}, places=places, replacement_codes=CODES)
+    assert [c.employee_id for c in got] == [A, B, X, Y]
+    assert [c.same_place for c in got] == [True, True, False, False]
+
+
 def test_candidates_exclude_overload_absent_and_off():
     duty = {(A, D): ON, (B, D): DutyDay(False, "ОТ", False), (Y, D): DutyDay(True, None, True)}
-    got = rank_candidates(D, {50}, 100, "1", [A, B, X, Y], duty, {A: 6.0, Y: 0.0}, 4.0, 8.0,
+    got = rank_candidates(D, {50}, 100, (1,), [A, B, X, Y], duty, {A: 6.0, Y: 0.0}, 4.0, 8.0,
                           known={}, places={}, replacement_codes=CODES)
     assert [(c.employee_id, c.note) for c in got] == [(Y, "есть отлучка в смене")]

@@ -1,5 +1,6 @@
-"""Справочники фонда (§3.1, §3.5): категории, объекты, метки, настраиваемые поля, список
-«Сопровождают гостей» и настройки нагрузки. Ничего не коммитит — commit в роутере."""
+"""Справочники модуля (§3.1, §3.5): метки, настраиваемые поля, список «Сопровождают гостей»
+и настройки нагрузки. Категории и объекты — версиями с даты: читаются через fund_versions,
+пишутся через fund_drafts. Ничего не коммитит — commit в роутере."""
 from __future__ import annotations
 
 import json
@@ -12,16 +13,11 @@ from sqlalchemy.orm import Session
 from app.modules.employees.application.catalog import Employee
 
 from ..adapters.orm import (
-    Assignment,
-    Category,
     CustomField,
     Escort,
-    Hold,
     Label,
-    Move,
     Reservation,
     StaysSettings,
-    Unit,
 )
 
 KINDS = {"villa": "вилла", "estate": "имение", "apartment": "апартаменты", "room": "номер"}
@@ -50,8 +46,6 @@ def changes(before: dict, after: dict) -> dict:
     return {k: [before.get(k), after.get(k)] for k in after if before.get(k) != after.get(k)}
 
 
-CATEGORY_FIELDS = ("id", "code", "title", "kind", "escorted", "weight", "sort_order")
-UNIT_FIELDS = ("id", "label", "category_id", "building", "floor", "active", "sort_order")
 LABEL_FIELDS = ("id", "title", "color")
 FIELD_FIELDS = ("id", "target", "code", "title", "kind", "searchable", "sort_order")
 SETTINGS_FIELDS = ("vip_bonus", "vvip_bonus", "daily_limit", "replacement_codes")
@@ -80,56 +74,6 @@ def _update(db: Session, model, rid: int | None, data: dict, fields, not_found: 
     _apply(row, data, fields)
     db.flush()
     return row, before
-
-
-def save_category(db: Session, data: dict, cid: int | None) -> tuple[Category, dict]:
-    if data["kind"] not in KINDS:
-        raise FundError("Неизвестный вид объекта")
-    code = data["code"].strip().upper()
-    taken = db.scalar(select(Category.id).where(Category.code == code))
-    if taken is not None and taken != cid:
-        raise FundConflict("Код категории занят")
-    return _update(db, Category, cid, {**data, "code": code}, CATEGORY_FIELDS, "Категория не найдена")
-
-
-def delete_category(db: Session, cid: int) -> dict:
-    row = db.get(Category, cid)
-    if row is None:
-        raise FundError("Категория не найдена")
-    if db.scalar(select(Unit.id).where(Unit.category_id == cid).limit(1)) is not None:
-        raise FundConflict("В категории есть объекты")
-    if db.scalar(select(Reservation.id).where(Reservation.category_id == cid).limit(1)) is not None:
-        raise FundConflict("Категория используется в бронях")
-    if db.scalar(select(Move.id).where(Move.category_id == cid).limit(1)) is not None:
-        raise FundConflict("Категория используется в переездах")
-    before = as_dict(row, CATEGORY_FIELDS)
-    db.delete(row)
-    return before
-
-
-def save_unit(db: Session, data: dict, uid: int | None) -> tuple[Unit, dict]:
-    if db.get(Category, data["category_id"]) is None:
-        raise FundError("Категория не найдена")
-    label = data["label"].strip()
-    if not label:
-        raise FundError("Укажите обозначение объекта")
-    taken = db.scalar(select(Unit.id).where(Unit.label == label))
-    if taken is not None and taken != uid:
-        raise FundConflict("Объект с таким обозначением уже есть")
-    return _update(db, Unit, uid, {**data, "label": label}, UNIT_FIELDS, "Объект не найден")
-
-
-def delete_unit(db: Session, uid: int) -> dict:
-    row = db.get(Unit, uid)
-    if row is None:
-        raise FundError("Объект не найден")
-    used = (db.scalar(select(Assignment.id).where(Assignment.unit_id == uid).limit(1)) is not None
-            or db.scalar(select(Hold.id).where(Hold.unit_id == uid).limit(1)) is not None)
-    if used:
-        raise FundConflict("У объекта есть брони или блоки — сделайте его неактивным")
-    before = as_dict(row, UNIT_FIELDS)
-    db.delete(row)
-    return before
 
 
 def save_label(db: Session, data: dict, lid: int | None) -> tuple[Label, dict]:
@@ -229,14 +173,11 @@ def save_settings(db: Session, vip_bonus: float, vvip_bonus: float, daily_limit:
 
 
 def list_fund(db: Session, with_staff: bool = False) -> dict:
-    """with_staff — список активных сотрудников для экрана «Сопровождение» (только stays.setup)."""
+    """with_staff — список активных сотрудников для экрана «Сопровождение» (только stays.setup).
+    Категории и объекты — в GET /fund/snapshot (фонд на дату)."""
     names = dict(db.execute(select(Employee.id, Employee.full_name)).all())
     out = {
         "kinds": [{"code": k, "title": v} for k, v in KINDS.items()],
-        "categories": [as_dict(c, CATEGORY_FIELDS) for c in
-                       db.scalars(select(Category).order_by(Category.sort_order, Category.code))],
-        "units": [as_dict(u, UNIT_FIELDS) for u in
-                  db.scalars(select(Unit).order_by(Unit.sort_order, Unit.label))],
         "labels": [as_dict(lb, LABEL_FIELDS) for lb in db.scalars(select(Label).order_by(Label.title))],
         "fields": [field_dict(f) for f in
                    db.scalars(select(CustomField).order_by(CustomField.target, CustomField.sort_order))],

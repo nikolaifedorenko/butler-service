@@ -13,7 +13,6 @@ from app.core.time import local_date
 
 from ..adapters.orm import (
     Assignment,
-    Category,
     Companion,
     Guest,
     Hold,
@@ -23,11 +22,11 @@ from ..adapters.orm import (
     Occupant,
     Reservation,
     StayGroup,
-    Unit,
 )
 from ..domain.halfday import segments, validate_dates
 from . import allocation
 from .fund import FundError, changes
+from .fund_versions import category_exists, fund_for, unit_exists
 from .guests import reservation_search_text, searchable_codes, short_name, validate_fields
 
 STATUS_TITLES = {"tentative": "предварительная", "confirmed": "подтверждена", "in_house": "заселён",
@@ -88,10 +87,10 @@ def _check_occupants(ci: dt.date, co: dt.date, occ: list[dict]) -> None:
 
 
 def _check_refs(db: Session, doc: dict) -> None:
-    if db.get(Category, doc["category_id"]) is None:
+    if not category_exists(db, doc["category_id"]):
         raise ReservationInvalid("Категория не найдена")
     for m in doc["moves"]:
-        if db.get(Category, m["category_id"]) is None:
+        if not category_exists(db, m["category_id"]):
             raise ReservationInvalid("Категория переезда не найдена")
     if doc.get("label_id") is not None and db.get(Label, doc["label_id"]) is None:
         raise ReservationInvalid("Метка не найдена")
@@ -104,7 +103,7 @@ def _check_refs(db: Session, doc: dict) -> None:
     for seg, uid in (doc.get("pins") or {}).items():
         if not 0 <= int(seg) < n_segments:
             raise ReservationInvalid("Закрепление для несуществующего сегмента")
-        if uid is not None and db.get(Unit, uid) is None:
+        if uid is not None and not unit_exists(db, uid):
             raise ReservationInvalid("Объект закрепления не найден")
     for c in doc["companions"]:
         if c["kind"] not in COMPANION_KINDS:
@@ -148,15 +147,18 @@ def _sync_group(db: Session, r: Reservation, doc: dict) -> None:
 
 def reservation_snapshot(db: Session, r: Reservation) -> dict:
     """Плоский снимок брони для журнала «было → стало» (§3.6)."""
-    labels = dict(db.execute(select(Unit.id, Unit.label)).all())
-    units = [labels.get(a.unit_id) if a.unit_id else None for a in
-             db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)
-                        .order_by(Assignment.seg_index))]
+    moves = _moves_of(db, r.id)
+    # обозначение — на дату начала сегмента (фонд меняется версиями с даты)
+    starts = {s.index: s.start for s in segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)}
+    fund = fund_for(db, r.check_in, r.check_out)
+    units = [u.label if a.unit_id and (u := fund.unit(a.unit_id, starts.get(a.seg_index, r.check_in))) else None
+             for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)
+                                 .order_by(Assignment.seg_index))]
     occ = [[o.guest_id, _d(o.date_from), _d(o.date_to), o.role] for o in
            db.scalars(select(Occupant).where(Occupant.reservation_id == r.id).order_by(Occupant.id))]
     return {**{k: _d(getattr(r, k)) for k in SCALARS}, "status": r.status,
             "fields": json.loads(r.fields_json or "{}"),
-            "moves": [[_d(d), c] for d, c in _moves_of(db, r.id)], "units": units, "occupants": occ}
+            "moves": [[_d(d), c] for d, c in moves], "units": units, "occupants": occ}
 
 
 def save_reservation(db: Session, doc: dict, rid: int | None,
@@ -327,7 +329,7 @@ def diff_of(before: dict, db: Session, r: Reservation) -> dict:
 
 
 def save_hold(db: Session, data: dict, hid: int | None) -> tuple[Hold, dict]:
-    if db.get(Unit, data["unit_id"]) is None:
+    if not unit_exists(db, data["unit_id"]):
         raise ReservationInvalid("Объект не найден")
     if data["end"] < data["start"]:
         raise ReservationInvalid("Конец блока раньше начала")

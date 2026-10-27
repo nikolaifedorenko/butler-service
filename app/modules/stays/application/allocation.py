@@ -15,9 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.core.time import local_date
 
-from ..adapters.orm import Assignment, Category, Hold, Move, Reservation, Unit
+from ..adapters.orm import Assignment, Hold, Move, Reservation
 from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitRef, allocate
 from ..domain.halfday import hold_span, segments
+from .fund_versions import fund_on
 
 # статусы, которые занимают объект (отменённая и no-show — нет, §4.7)
 OCCUPYING = ("tentative", "confirmed", "in_house", "checked_out")
@@ -44,9 +45,10 @@ def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
 def compute(db: Session) -> AllocationState:
     """Распределение без записи: им пользуются и сохранение, и снимок предпросмотра."""
     today = local_date()
-    cats = {c.id: c for c in db.scalars(select(Category))}
-    units = [UnitRef(u.id, u.category_id, u.building, cats[u.category_id].sort_order, u.label)
-             for u in db.scalars(select(Unit).where(Unit.active.is_(True)))]
+    # этап 1: распределение по фонду сегодняшнего дня; границы версий внутри окна — этап 2
+    fund = fund_on(db, today)
+    units = [UnitRef(u.id, u.category_id, fund.unit_path(u.id), fund.categories[u.category_id].sort_order, u.label)
+             for u in fund.units.values()]
     holds = [HoldRef(h.unit_id, *hold_span(h.start, h.end), h.title or ("OOO" if h.kind == "ooo" else "Блок"))
              for h in db.scalars(select(Hold).where(Hold.end >= today))]
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(OCCUPYING),
@@ -101,7 +103,7 @@ def compute(db: Session) -> AllocationState:
                  segments(first.check_in, last.check_out, first.early, last.late, rs[0].category_id,
                           moves[rs[0].id]))
 
-    got, warnings = allocate(units, holds, items, {c.id: c.code for c in cats.values()})
+    got, warnings = allocate(units, holds, items, {c.id: c.code for c in fund.categories.values()})
     released = {(w.key, w.seg_index) for w in warnings if w.kind == "pin_invalid"}
     out_units: dict[tuple[int, int], int | None] = {}
     out_pinned: dict[tuple[int, int], bool] = {}

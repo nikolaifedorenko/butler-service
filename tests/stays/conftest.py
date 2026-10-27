@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 
 def _role_user(app_stack, username: str, role: str):
@@ -31,25 +31,53 @@ def occupancy_client(app_stack):
 
 
 @pytest.fixture()
-def no_allocation(monkeypatch):
-    """Публикация версии пока вызывает распределение по старым колонкам."""
-    # TODO(Task 1.3): remove once allocation reads FundTimeline
-    from app.modules.stays.application import fund_drafts
-
-    monkeypatch.setattr(fund_drafts._allocation, "run_allocation", lambda db: None)
-
-
-@pytest.fixture()
 def today(monkeypatch):
-    """«Сегодня» модуля шахматки: freeze() на будущие даты просрочил бы токен входа."""
+    """«Сегодня» модуля шахматки: freeze() на будущие даты просрочил бы токен входа.
+
+    Версии фонда, опубликованные тестом «в будущем» (make_category под подменённой датой),
+    снимаются после теста: иначе они без последующих категорий действовали бы с их даты
+    для всех следующих тестов (перенос правок в поздние версии — Task 2.4)."""
     import datetime as dt
 
+    from app.core.db import SessionLocal
+    from app.modules.stays.adapters.orm import FundVersion
     from app.modules.stays.application import allocation, fund_drafts, reservations
+
+    with SessionLocal() as s:
+        top = s.scalar(select(func.coalesce(func.max(FundVersion.id), 0)))
 
     def _set(iso: str) -> None:
         for mod in (reservations, allocation, fund_drafts):
             monkeypatch.setattr(mod, "local_date", lambda: dt.date.fromisoformat(iso), raising=False)
-    return _set
+    yield _set
+    monkeypatch.undo()
+    with SessionLocal() as s:
+        _drop_versions(s, list(s.scalars(select(FundVersion.id).where(FundVersion.id > top))))
+        s.commit()
+
+
+def _drop_versions(s, ids: list[int]) -> None:
+    from sqlalchemy import delete, update
+
+    from app.modules.stays.adapters.orm import (
+        CategoryState,
+        FundVersion,
+        GroupState,
+        UnitLineage,
+        UnitState,
+        UnitStateFlag,
+    )
+
+    if not ids:
+        return
+    s.execute(update(FundVersion).where(FundVersion.base_version_id.in_(ids)).values(base_version_id=None))
+    s.execute(delete(UnitLineage).where(UnitLineage.version_id.in_(ids)))
+    s.execute(delete(UnitStateFlag).where(UnitStateFlag.version_id.in_(ids)))
+    s.execute(delete(UnitState).where(UnitState.version_id.in_(ids)))
+    s.execute(update(GroupState).where(GroupState.version_id.in_(ids)).values(parent_id=None))
+    s.execute(delete(GroupState).where(GroupState.version_id.in_(ids)))
+    s.execute(delete(CategoryState).where(CategoryState.version_id.in_(ids)))
+    s.execute(delete(FundVersion).where(FundVersion.id.in_(ids)))
 
 
 class Demo:

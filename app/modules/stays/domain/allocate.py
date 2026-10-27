@@ -3,7 +3,7 @@
 Детерминированный «первый подходящий»: закрепления уважаются, блоки и OOO занимают
 объект, длинные брони раньше коротких при равном старте. Дополнения шахматки: группа
 совместного проживания приходит одним элементом, при переезде предпочитается другой
-объект того же корпуса. Чистая функция: данные готовые, БД не видит.
+объект того же узла дерева фонда, иначе ближайшего по дереву. Чистая функция: данные готовые, БД не видит.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
+from .candidates import common_prefix
 from .halfday import Segment, overlaps
 
 Key = tuple[str, int]                  # ("r", reservation_id) | ("g", group_id)
@@ -20,7 +21,7 @@ Key = tuple[str, int]                  # ("r", reservation_id) | ("g", group_id)
 class UnitRef:
     id: int
     category_id: int
-    building: str
+    group_path: tuple[int, ...]        # узел дерева фонда от корня; () — без узла
     cat_sort: int
     label: str
 
@@ -53,6 +54,11 @@ def natural_key(s: str) -> tuple:
     """«402» < «4003» < «4010»; «B-2» < «B-10»; чисто числовые — раньше буквенных."""
     return tuple((0, int(t), "") if t.isdigit() else (1, 0, t.lower())
                  for t in re.split(r"(\d+)", s) if t)
+
+
+def _nearness(a: tuple[int, ...], b: tuple[int, ...]) -> int:
+    """Тот же узел (и оба без узла) — ближе всего; иначе длина общего префикса пути."""
+    return len(a) + 1 if a == b else common_prefix(a, b)
 
 
 def allocate(units: Sequence[UnitRef], holds: Sequence[HoldRef], items: Sequence[AllocItem],
@@ -99,10 +105,11 @@ def allocate(units: Sequence[UnitRef], holds: Sequence[HoldRef], items: Sequence
                  if not any(overlaps(s.start_pos, s.end_pos, bs, be) for bs, be, _ in busy[u.id])]
         prev = result.get((it.key, s.index - 1))
         if prev is not None and len(cands) > 1:
-            # переезд: другой объект, по возможности в том же корпусе (PoC §14.4)
+            # переезд: другой объект, по возможности в том же узле, иначе ближе по дереву (PoC §14.4)
             others = [u for u in cands if u.id != prev] or cands
-            same = [u for u in others if u.building == by_id[prev].building]
-            cands = same or others
+            near = {u.id: _nearness(u.group_path, by_id[prev].group_path) for u in others}
+            best = max(near.values())
+            cands = [u for u in others if near[u.id] == best] if best else others
         if cands:
             unit = cands[0]
             busy[unit.id].append((s.start_pos, s.end_pos, f"бронь {it.number}"))

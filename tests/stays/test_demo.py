@@ -9,14 +9,15 @@ from sqlalchemy import func, select
 def test_demo_fund_and_warnings(db):
     from app.core.time import local_date
     from app.modules.stays.adapters.duty_timesheet import TimesheetDuty
-    from app.modules.stays.adapters.orm import Category, Guest, GuestLink, Reservation, Unit
+    from app.modules.stays.adapters.orm import Guest, GuestLink, Reservation
     from app.modules.stays.application.context import load_context
+    from app.modules.stays.application.fund_versions import INITIAL_DATE, fund_on
 
-    demo = select(Category.id).where(Category.code.in_(("VEG", "FWV", "VIG", "ESTATE", "MED", "DLX", "PRM", "FAM",
-                                                         "JST", "SUI", "PRS")))
-    cats = list(db.scalars(demo))
+    fund = fund_on(db, INITIAL_DATE)
+    codes = ("VEG", "FWV", "VIG", "ESTATE", "MED", "DLX", "PRM", "FAM", "JST", "SUI", "PRS")
+    cats = {c.id for c in fund.categories.values() if c.code in codes}
     assert len(cats) == 11
-    assert db.scalar(select(func.count(Unit.id)).where(Unit.category_id.in_(cats))) == 440
+    assert sum(1 for u in fund.units.values() if u.category_id in cats) == 440
     assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo")) >= 60
     assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.level == "vvip")) == 2
     assert db.scalar(select(func.count(GuestLink.id))) >= 5

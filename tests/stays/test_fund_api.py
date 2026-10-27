@@ -14,7 +14,8 @@ def _code() -> str:
 
 def test_fund_readable_by_supervisor_and_butler(manager_client, employee_client):
     body = manager_client.get(f"{API}/fund").json()
-    assert {"categories", "units", "labels", "fields", "escorts", "settings"} <= set(body)
+    assert {"kinds", "labels", "fields", "escorts", "settings"} <= set(body)
+    assert not {"categories", "units"} & set(body)            # фонд на дату — GET /fund/snapshot
     # батлер (stays.edit_mine) читает справочник ради настраиваемых полей; списка сотрудников нет
     assert "staff" not in employee_client.get(f"{API}/fund").json()
 

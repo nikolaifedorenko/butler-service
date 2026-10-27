@@ -13,7 +13,6 @@ from app.core.time import local_date
 
 from ..adapters.orm import (
     Assignment,
-    Category,
     Companion,
     Guest,
     Hold,
@@ -22,13 +21,13 @@ from ..adapters.orm import (
     Move,
     Occupant,
     Reservation,
-    Unit,
 )
 from ..domain.allocate import natural_key
 from ..domain.halfday import hold_span, segments
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import butlers_on, load_context, nights
+from .fund_versions import CategoryInfo, FundTimeline, UnitInfo, fund_for
 from .guests import search_query, short_name
 from .reservations import STATUS_TITLES
 from .visibility import Level, at_least, serialize_bar
@@ -44,7 +43,7 @@ class ViewError(ValueError):
 @dataclass(frozen=True)
 class BoardFilters:
     kind: str | None = None
-    building: str | None = None
+    group_id: int | None = None             # узел дерева фонда: объекты всей ветки
     floor: str | None = None
     category_id: int | None = None
     escorted_only: bool = False
@@ -69,22 +68,48 @@ def _top_level(levels) -> str:
     return max(levels, key=lambda lv: LEVEL_RANK[lv], default="regular")
 
 
+@dataclass(frozen=True)
+class BoardUnit:
+    """Строка шахматки: объект в состоянии первого дня периода, когда он есть в фонде."""
+    info: UnitInfo
+    category: CategoryInfo
+    group_path: tuple[int, ...]
+    group: str                              # путь узла названиями: «Корпус / Блок B»
+
+    @property
+    def id(self) -> int:
+        return self.info.id
+
+    @property
+    def label(self) -> str:
+        return self.info.label
+
+
+def _board_units(fund: FundTimeline, f: BoardFilters) -> list[BoardUnit]:
+    """Объекты, которые есть в фонде хотя бы в один день периода (этап 1: свойства — на
+    первый такой день; разметка «нет в фонде» по дням — часть 4)."""
+    first_seen: dict[int, BoardUnit] = {}
+    for snap in fund.snapshots():
+        for u in snap.units.values():
+            if u.id not in first_seen:
+                path = snap.unit_path(u.id)
+                first_seen[u.id] = BoardUnit(u, snap.categories[u.category_id], path,
+                                             " / ".join(snap.path_titles(u.group_id)) if path else "")
+    units = [b for b in first_seen.values()
+             if (f.group_id is None or f.group_id in b.group_path)
+             and (not f.floor or b.info.floor == f.floor)
+             and (not f.category_id or b.info.category_id == f.category_id)
+             and (not f.kind or b.category.kind == f.kind)
+             and (not f.escorted_only or b.category.escorted)]
+    return sorted(units, key=lambda b: (b.category.sort_order, natural_key(b.label), b.id))
+
+
 def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level) -> dict:
     days = check_window(first, last)
-    cats = {c.id: c for c in db.scalars(select(Category))}
-    stmt = select(Unit).where(Unit.active.is_(True))
-    if f.building:
-        stmt = stmt.where(Unit.building == f.building)
-    if f.floor:
-        stmt = stmt.where(Unit.floor == f.floor)
-    if f.category_id:
-        stmt = stmt.where(Unit.category_id == f.category_id)
-    units = [u for u in db.scalars(stmt)
-             if (not f.kind or cats[u.category_id].kind == f.kind)
-             and (not f.escorted_only or cats[u.category_id].escorted)]
-    units.sort(key=lambda u: (cats[u.category_id].sort_order, natural_key(u.label)))
+    fund = fund_for(db, first, last)
+    units = _board_units(fund, f)
     unit_ids = {u.id for u in units}
-    visible_cats = {u.category_id for u in units}
+    visible_cats = {u.info.category_id for u in units}
 
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(allocation.OCCUPYING),
                                                     Reservation.check_in <= last,
@@ -112,7 +137,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     today = local_date()
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
-        on_duty = butlers_on(db, today, res, moves, asg, occ, guests, cats, {u.id: u for u in units})
+        on_duty = butlers_on(db, today, res, moves, asg, occ, guests, fund)
 
     bars = []
     for r in res:
@@ -156,9 +181,10 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         warnings = [{"kind": w.kind, "reservation_ids": state.members[w.key], "text": w.text}
                     for w in state.warnings if shown & set(state.members[w.key])]
     return {"days": [_d(d) for d in days], "visibility": level,
-            "units": [{"id": u.id, "label": u.label, "category_id": u.category_id,
-                       "category": cats[u.category_id].code, "kind": cats[u.category_id].kind,
-                       "escorted": cats[u.category_id].escorted, "building": u.building, "floor": u.floor}
+            "units": [{"id": u.id, "label": u.label, "category_id": u.info.category_id,
+                       "category": u.category.code, "kind": u.category.kind, "escorted": u.category.escorted,
+                       "group_id": u.info.group_id, "group_path": list(u.group_path), "group": u.group,
+                       "floor": u.info.floor}
                       for u in units],
             "bars": bars, "holds": holds, "warnings": warnings}
 
@@ -206,7 +232,9 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
         raise LookupError("Бронь не найдена")
     moves = sorted((m.move_date, m.category_id) for m in db.scalars(select(Move).where(Move.reservation_id == rid)))
     asg = {a.seg_index: a.unit_id for a in db.scalars(select(Assignment).where(Assignment.reservation_id == rid))}
-    unit_labels = dict(db.execute(select(Unit.id, Unit.label)).all())
+    fund = fund_for(db, r.check_in, r.check_out)
+    segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)
+    category = fund.category(r.category_id, r.check_in)
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == rid)
                           .order_by(Occupant.date_from, Occupant.id)))
     guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_({o.guest_id for o in occ})))} if occ else {}
@@ -214,11 +242,12 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     card = {
         "id": r.id, "number": r.number, "status": r.status, "status_title": STATUS_TITLES[r.status],
         "check_in": _d(r.check_in), "check_out": _d(r.check_out), "early": r.early, "late": r.late,
-        "category": db.get(Category, r.category_id).code, "label": {"title": lb.title, "color": lb.color} if lb else None,
+        "category": category.code if category else "?",
+        "label": {"title": lb.title, "color": lb.color} if lb else None,
         "group_id": r.group_id, "version": r.version,
         "segments": [{"index": s.index, "start": _d(s.start), "end": _d(s.end), "unit_id": asg.get(s.index),
-                      "unit": unit_labels.get(asg.get(s.index))}
-                     for s in segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)],
+                      "unit": u.label if (u := fund.unit(asg.get(s.index), s.start)) else None}
+                     for s in segs],
         "occupants": [{"guest_id": o.guest_id, "guest": short_name(guests[o.guest_id]),
                        "level": guests[o.guest_id].level, "date_from": _d(o.date_from),
                        "date_to": _d(o.date_to), "role": o.role} for o in occ if o.guest_id in guests],
@@ -236,13 +265,14 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     return card
 
 
-def occupancy_grid(db: Session, first: dt.date, last: dt.date, building: str | None) -> dict:
+def occupancy_grid(db: Session, first: dt.date, last: dt.date, group_id: int | None) -> dict:
     """Сводная загрузка (§6.4): категории × дни — занято из всего, заезды, выезды, не заехали.
     Строится из шахматки уровня «без гостей» — данных гостей здесь нет по построению."""
     from ..domain.halfday import PM, pos
     days = check_window(first, last)
-    board = units_board(db, first, last, BoardFilters(building=building), "occupancy")
-    cats = {c.id: c for c in db.scalars(select(Category))}
+    board = units_board(db, first, last, BoardFilters(group_id=group_id), "occupancy")
+    fund = fund_for(db, first, last)
+    cats = {u["category_id"]: fund.category(u["category_id"], first) for u in board["units"]}
     by_cat: dict[int, list[int]] = {}
     for u in board["units"]:
         by_cat.setdefault(u["category_id"], []).append(u["id"])

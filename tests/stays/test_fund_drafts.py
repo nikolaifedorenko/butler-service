@@ -29,9 +29,6 @@ D = dt.date(2093, 2, 1)           # дата черновика в тестах
 LO, HI = dt.date(2093, 1, 1), dt.date(2095, 1, 1)
 
 
-pytestmark = pytest.mark.usefixtures("no_allocation")
-
-
 @pytest.fixture()
 def world(db, today):
     """Основа V0: категории A и B, узлы Корпус → Этаж, объекты 4003 (A, Этаж, флаг) и 4004 (B)."""

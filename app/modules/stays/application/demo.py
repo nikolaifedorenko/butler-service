@@ -23,7 +23,11 @@ from app.modules.timesheet.application.roster import roster
 from ..adapters.orm import (
     Assignment,
     Category,
+    CategoryState,
     CoverageLine,
+    FundGroup,
+    FundVersion,
+    GroupState,
     Guest,
     GuestLink,
     Label,
@@ -33,9 +37,11 @@ from ..adapters.orm import (
     Reservation,
     StayGroup,
     Unit,
+    UnitState,
 )
 from . import allocation
 from .fund import seed_escorts_from_positions
+from .fund_versions import INITIAL_DATE
 from .guests import guest_search_text
 
 CATEGORIES = [  # код, название, вид, сопровождение, вес, объектов
@@ -68,35 +74,66 @@ def _butlers(db: Session) -> dict[str, int]:
     return out
 
 
-def seed_stays_demo(db: Session) -> None:
-    if db.scalar(select(Category.id).where(Category.code == "VEG")) is not None:
-        return
-    rnd = random.Random(23)
-    today = local_date()
-    cats, units = {}, {}
-    for i, (code, title, kind, escorted, weight, _n) in enumerate(CATEGORIES):
-        cats[code] = Category(code=code, title=title, kind=kind, escorted=escorted, weight=weight, sort_order=i * 10)
-    db.add_all(cats.values())
+GROUPS = ("Виллы", "Имение", "Медцентр", "Корпус 1", "Корпус 2")       # плоские узлы дерева фонда
+
+
+def _initial_version(db: Session) -> int:
+    """Исходная версия фонда (её заводит миграция 0010)."""
+    return db.scalar(select(FundVersion.id).where(FundVersion.valid_from == INITIAL_DATE,
+                                                  FundVersion.status == "published"))
+
+
+def _seed_fund(db: Session, vid: int) -> tuple[dict[str, Category], dict[str, list[Unit]]]:
+    """Фонд демо — состояниями исходной версии: постоянные строки держат только id."""
+    cats: dict[str, Category] = {code: Category() for code, *_ in CATEGORIES}
+    groups: dict[str, FundGroup] = {t: FundGroup() for t in GROUPS}
+    db.add_all([*cats.values(), *groups.values()])
     db.flush()
+    db.add_all(CategoryState(version_id=vid, category_id=cats[code].id, code=code, title=title, kind=kind,
+                             escorted=escorted, weight=weight, sort_order=i * 10)
+               for i, (code, title, kind, escorted, weight, _n) in enumerate(CATEGORIES))
+    db.add_all(GroupState(version_id=vid, group_id=g.id, title=t, sort_order=i * 10)
+               for i, (t, g) in enumerate(groups.items()))
+    db.flush()
+    units: dict[str, list[Unit]] = {}
+    states = []
     villa_no = 4001
     room_no = {"1": 101, "2": 101}
     for code, _t, kind, _e, _w, n in CATEGORIES:
         units[code] = []
         for i in range(n):
+            floor = ""
             if kind == "villa":
-                u = Unit(label=str(villa_no), category_id=cats[code].id, building="Виллы")
+                label, group = str(villa_no), "Виллы"
                 villa_no += 1
             elif kind == "estate":
-                u = Unit(label="Имение", category_id=cats[code].id, building="Имение")
+                label, group = "Имение", "Имение"
             elif kind == "apartment":
-                u = Unit(label=f"MED-{i + 1}", category_id=cats[code].id, building="Медцентр")
+                label, group = f"MED-{i + 1}", "Медцентр"
             else:
                 b = "1" if i % 2 == 0 else "2"
                 num = room_no[b]
                 room_no[b] = num + 1 if (num % 100) < 40 else (num // 100 + 1) * 100 + 1
-                u = Unit(label=f"{b}-{num}", category_id=cats[code].id, building=b, floor=str(num // 100))
-            units[code].append(u)
+                label, group, floor = f"{b}-{num}", f"Корпус {b}", str(num // 100)
+            u = Unit()
             db.add(u)
+            units[code].append(u)
+            states.append((u, label, cats[code].id, groups[group].id, floor))
+    db.flush()
+    db.add_all(UnitState(version_id=vid, unit_id=u.id, label=label, category_id=cid, group_id=gid, floor=floor)
+               for u, label, cid, gid, floor in states)
+    db.flush()
+    return cats, units
+
+
+def seed_stays_demo(db: Session) -> None:
+    vid = _initial_version(db)
+    if vid is None or db.scalar(select(CategoryState.category_id).where(
+            CategoryState.version_id == vid, CategoryState.code == "VEG")) is not None:
+        return
+    rnd = random.Random(23)
+    today = local_date()
+    cats, units = _seed_fund(db, vid)
     labels = [Label(title=t, color=c) for t, c in LABELS]
     db.add_all(labels)
     db.flush()
@@ -210,7 +247,7 @@ def _demo_coverage(db: Session, today: dt.date, made: list[Reservation], units: 
     def line(r: Reservation, d: dt.date, e: int) -> None:
         db.add(CoverageLine(day=d, employee_id=e, reservation_id=r.id, source="template"))
 
-    escorted = {c.id for c in db.scalars(select(Category).where(Category.escorted.is_(True)))}
+    escorted = set(db.scalars(select(CategoryState.category_id).where(CategoryState.escorted.is_(True))))
     pairs = [(b["Сидоров"], b["Морозова"]), (b["Петров"], b["Орлов"])]
     for n, r in enumerate(m for m in made if m.category_id in escorted and m.status != "no_show"
                           and not m.declined_butler and m.group_id is None):

@@ -135,7 +135,7 @@ def my_guests(db: Session, employee_id: int) -> dict:
     out = []
     for rid, days in sorted(owned.items(), key=lambda x: min(x[1])):
         r = res[rid]
-        units = [ctx.unit_label(ctx.unit_of(rid, d)[0]) for d in sorted(days) if rid in ctx.res]
+        units = [ctx.unit_label(ctx.unit_of(rid, d)[0], d) for d in sorted(days) if rid in ctx.res]
         guests = []
         for o in sorted((o for o in occ if o.reservation_id == rid), key=lambda o: (o.role != "main", o.id)):
             g = ctx.guests.get(o.guest_id)

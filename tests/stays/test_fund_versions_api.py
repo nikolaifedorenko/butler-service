@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 
 from app.modules.stays.adapters.orm import (
+    Assignment,
     Category,
     CategoryState,
     FundGroup,
@@ -19,8 +20,6 @@ from app.modules.stays.adapters.orm import (
 from app.modules.stays.application import fund_drafts as fd
 
 from .helpers import API, make_category, uniq
-
-pytestmark = pytest.mark.usefixtures("no_allocation")
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +36,19 @@ def _clean(db):
     for model in (UnitStateFlag, UnitState, GroupState, CategoryState):
         db.execute(delete(model).where(model.version_id.in_(ids)))
     db.execute(delete(FundVersion).where(FundVersion.id.in_(ids)))
+    # публикация на сегодня заменяет снимок прежней версии сегодня (та же строка) — новые
+    # сущности теста снимаются и из неё, и из назначений, сделанных распределением
+    new_units = select(Unit.id).where(Unit.id > top[Unit])
+    db.execute(delete(Assignment).where(Assignment.unit_id.in_(new_units)))
+    db.execute(delete(UnitLineage).where(UnitLineage.unit_id.in_(new_units) | UnitLineage.predecessor_id.in_(new_units)))
+    db.execute(delete(UnitStateFlag).where(UnitStateFlag.unit_id.in_(new_units)))
+    db.execute(delete(UnitState).where(UnitState.unit_id.in_(new_units)
+                                       | UnitState.category_id.in_(select(Category.id).where(Category.id > top[Category]))))
+    db.execute(update(GroupState).where(GroupState.parent_id > top[FundGroup]).values(parent_id=None))
+    db.execute(delete(GroupState).where(GroupState.group_id > top[FundGroup]))
+    db.execute(delete(CategoryState).where(CategoryState.category_id > top[Category]))
+    test_flags = select(UnitFlag.id).where(UnitFlag.title.like("апи-флаг-%"))
+    db.execute(delete(UnitStateFlag).where(UnitStateFlag.flag_id.in_(test_flags)))
     db.execute(delete(UnitFlag).where(UnitFlag.title.like("апи-флаг-%")))
     for model, last in top.items():
         db.execute(delete(model).where(model.id > last))

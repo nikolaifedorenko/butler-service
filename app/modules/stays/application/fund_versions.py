@@ -9,7 +9,7 @@ from bisect import bisect_right
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from ..adapters.orm import (
@@ -17,6 +17,7 @@ from ..adapters.orm import (
     CategoryState,
     FundVersion,
     GroupState,
+    Unit,
     UnitState,
     UnitStateFlag,
 )
@@ -70,23 +71,51 @@ class FundSnapshot:
     def path_titles(self, group_id: int) -> tuple[str, ...]:
         return tuple(self.groups[i].title for i in self.groups[group_id].path)
 
+    def unit_path(self, unit_id: int | None) -> tuple[int, ...]:
+        """Путь узла объекта от корня; объект без узла (или не в фонде) — пустой путь."""
+        u = self.units.get(unit_id)
+        return self.groups[u.group_id].path if u is not None and u.group_id in self.groups else ()
+
 
 @dataclass(frozen=True)
 class FundTimeline:
     parts: list[tuple[dt.date, FundSnapshot]] = field(default_factory=list)   # по возрастанию даты
+    _dates: list[dt.date] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # on() зовётся на каждый объект и день шахматки — даты границ считаются один раз
+        object.__setattr__(self, "_dates", [d for d, _ in self.parts])
 
     def on(self, day: dt.date) -> FundSnapshot:
         """Снимок, действующий в сутки day (последняя версия с valid_from <= day)."""
-        dates = [d for d, _ in self.parts]
-        i = bisect_right(dates, day) - 1
+        i = bisect_right(self._dates, day) - 1
         return self.parts[max(i, 0)][1]
 
     def boundaries(self) -> list[dt.date]:
         """Даты начала версий внутри диапазона (без первой)."""
-        return [d for d, _ in self.parts[1:]]
+        return self._dates[1:]
 
     def snapshots(self) -> list[FundSnapshot]:
         return [s for _, s in self.parts]
+
+    def _near(self, day: dt.date) -> list[FundSnapshot]:
+        """Снимок дня, затем более ранние, затем более поздние — для подписи сущности,
+        которой в фонде дня нет (выведена или ещё не заведена)."""
+        i = max(bisect_right(self._dates, day) - 1, 0)
+        snaps = self.snapshots()
+        return snaps[i::-1] + snaps[i + 1:]
+
+    def unit(self, unit_id: int | None, day: dt.date) -> UnitInfo | None:
+        """Объект на день; нет в фонде дня — ближайшее его состояние в диапазоне."""
+        if self.parts and unit_id in (here := self.on(day)).units:
+            return here.units[unit_id]
+        return next((s.units[unit_id] for s in self._near(day) if unit_id in s.units), None)
+
+    def category(self, category_id: int, day: dt.date) -> CategoryInfo | None:
+        """Категория на день; нет в фонде дня — ближайшее её состояние в диапазоне."""
+        if self.parts and category_id in (here := self.on(day)).categories:
+            return here.categories[category_id]
+        return next((s.categories[category_id] for s in self._near(day) if category_id in s.categories), None)
 
 
 def boundary_pos(d: dt.date) -> int:
@@ -110,44 +139,62 @@ def _group_paths(rows: list[GroupState]) -> dict[int, GroupInfo]:
                                   sort_order=r.sort_order, path=path(r.group_id)) for r in rows}
 
 
-def _load(db: Session, versions: list[tuple[int, dt.date]]) -> list[FundSnapshot]:
-    """Снимки перечисленных версий: по одному запросу на тип состояния (IN по всем версиям)."""
+def _category_info(r: CategoryState) -> CategoryInfo:
+    return CategoryInfo(id=r.category_id, code=r.code, title=r.title, kind=r.kind, weight=float(r.weight),
+                        escorted=bool(r.escorted), sort_order=r.sort_order)
+
+
+def _load(db: Session, versions: list[tuple[int, dt.date]],
+          cats: dict[int, dict[int, CategoryInfo]] | None = None) -> list[FundSnapshot]:
+    """Снимки перечисленных версий: по одному запросу на тип состояния (IN по всем версиям);
+    флаги объектов — в том же запросе, что и объекты. cats — уже прочитанные категории."""
     ids = [v for v, _ in versions]
-    cats: dict[int, dict[int, CategoryInfo]] = defaultdict(dict)
-    for r in db.scalars(select(CategoryState).where(CategoryState.version_id.in_(ids))):
-        cats[r.version_id][r.category_id] = CategoryInfo(
-            id=r.category_id, code=r.code, title=r.title, kind=r.kind, weight=float(r.weight),
-            escorted=bool(r.escorted), sort_order=r.sort_order)
+    if cats is None:
+        cats = defaultdict(dict)
+        for r in db.scalars(select(CategoryState).where(CategoryState.version_id.in_(ids))):
+            cats[r.version_id][r.category_id] = _category_info(r)
     group_rows: dict[int, list[GroupState]] = defaultdict(list)
     for r in db.scalars(select(GroupState).where(GroupState.version_id.in_(ids))):
         group_rows[r.version_id].append(r)
+    unit_rows: dict[tuple[int, int], UnitState] = {}
     flags: dict[tuple[int, int], set[int]] = defaultdict(set)
-    for vid, uid, fid in db.execute(
-            select(UnitStateFlag.version_id, UnitStateFlag.unit_id, UnitStateFlag.flag_id)
-            .where(UnitStateFlag.version_id.in_(ids))):
-        flags[(vid, uid)].add(fid)
+    for r, fid in db.execute(
+            select(UnitState, UnitStateFlag.flag_id)
+            .outerjoin(UnitStateFlag, and_(UnitStateFlag.version_id == UnitState.version_id,
+                                           UnitStateFlag.unit_id == UnitState.unit_id))
+            .where(UnitState.version_id.in_(ids))):
+        unit_rows[(r.version_id, r.unit_id)] = r
+        if fid is not None:
+            flags[(r.version_id, r.unit_id)].add(fid)
     units: dict[int, dict[int, UnitInfo]] = defaultdict(dict)
-    for r in db.scalars(select(UnitState).where(UnitState.version_id.in_(ids))):
-        units[r.version_id][r.unit_id] = UnitInfo(
-            id=r.unit_id, label=r.label, category_id=r.category_id, group_id=r.group_id,
-            floor=r.floor, flags=frozenset(flags.get((r.version_id, r.unit_id), ())))
-    return [FundSnapshot(version_id=vid, valid_from=d, categories=cats[vid],
+    for (vid, uid), r in unit_rows.items():
+        units[vid][uid] = UnitInfo(id=uid, label=r.label, category_id=r.category_id, group_id=r.group_id,
+                                   floor=r.floor, flags=frozenset(flags.get((vid, uid), ())))
+    return [FundSnapshot(version_id=vid, valid_from=d, categories=cats.get(vid, {}),
                          groups=_group_paths(group_rows[vid]), units=units[vid])
             for vid, d in versions]
 
 
 def fund_for(db: Session, first: dt.date, last: dt.date) -> FundTimeline:
     """Опубликованные версии, действующие в [first, last]: та, что на first, и начатые позже.
-    Запросов: версии + категории + узлы + флаги + объекты = 5."""
+    Запросов 3: версии с категориями (внешнее соединение) + узлы + объекты с флагами —
+    фонд читают все виды, и бюджет SQL шахматки и табло дня (≤ 30) это учитывает."""
+    published = FundVersion.status == "published"
+    on_first = select(func.max(FundVersion.valid_from)).where(published, FundVersion.valid_from <= first)
     rows = db.execute(
-        select(FundVersion.id, FundVersion.valid_from)
-        .where(FundVersion.status == "published", FundVersion.valid_from <= last)
+        select(FundVersion.id, FundVersion.valid_from, CategoryState)
+        .outerjoin(CategoryState, CategoryState.version_id == FundVersion.id)
+        .where(published, FundVersion.valid_from <= last,
+               FundVersion.valid_from >= func.coalesce(on_first.scalar_subquery(), dt.date.min))
         .order_by(FundVersion.valid_from)).all()
-    start = max((i for i, (_, d) in enumerate(rows) if d <= first), default=0)
-    needed = [(vid, d) for vid, d in rows[start:]]
-    if not needed:
+    if not rows:
         return FundTimeline([])
-    snaps = _load(db, needed)
+    versions = list(dict.fromkeys((vid, d) for vid, d, _ in rows))
+    cats: dict[int, dict[int, CategoryInfo]] = defaultdict(dict)
+    for vid, _d, c in rows:
+        if c is not None:
+            cats[vid][c.category_id] = _category_info(c)
+    snaps = _load(db, versions, cats)
     return FundTimeline([(s.valid_from, s) for s in snaps])
 
 
@@ -166,3 +213,8 @@ def snapshot_of(db: Session, version_id: int) -> FundSnapshot:
 def category_exists(db: Session, category_id: int) -> bool:
     """Категория постоянна по id: проверка существования, а не наличия в версии."""
     return db.get(Category, category_id) is not None
+
+
+def unit_exists(db: Session, unit_id: int) -> bool:
+    """Объект постоянен по id: проверка существования, а не наличия в версии."""
+    return db.get(Unit, unit_id) is not None

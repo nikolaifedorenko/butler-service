@@ -2,7 +2,7 @@
 группа от нового члена, название блока без персональных данных."""
 from __future__ import annotations
 
-from .helpers import API, create_res, make_category, make_guest, units_of
+from .helpers import API, FundDraft, create_res, make_category, make_guest, units_of
 
 
 def _get(c, rid):
@@ -45,14 +45,15 @@ def test_history_hides_full_fields_for_names(manager_role_client, manager_client
 
 
 def test_deactivate_unit_keeps_past_segment(manager_role_client, manager_client, today):
-    """I2: деактивация объекта не переписывает прошедшие ночи брони."""
+    """I2: вывод объекта из фонда не переписывает прошедшие ночи брони."""
     cat = make_category(manager_role_client, n_units=2)
     a = create_res(manager_client, cat, "2033-03-01", "2033-03-20",
                    moves=[{"move_date": "2033-03-05", "category_id": cat["id"]}])
     u_past = units_of(_get(manager_client, a["id"]))[0]
     today("2033-03-10")
-    unit = next(u for u in cat["units"] if u["id"] == u_past)
-    assert manager_role_client.put(f"{API}/units/{u_past}", json={**unit, "active": False}).status_code == 200
+    d = FundDraft(manager_role_client)                 # версия с «сегодня» 10.03 без объекта
+    d.call("DELETE", f"units/{u_past}")
+    d.publish()
     assert units_of(_get(manager_client, a["id"]))[0] == u_past
 
 

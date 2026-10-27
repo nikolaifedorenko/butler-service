@@ -262,10 +262,10 @@ def rank_in_ctx(ctx, day: dt.date, stays: list, guest_ids: set[int], known) -> l
     places: dict[int, set] = {}
     for (rid, _g), emps in ctx.cover(day).by_guest.items():
         for e in emps:
-            places.setdefault(e, set()).update({("unit", by_res[rid].unit_id), ("building", by_res[rid].building)})
+            places.setdefault(e, set()).update({("unit", by_res[rid].unit_id), ("path", by_res[rid].group_path)})
     bonus = sum((ctx.vvip_bonus if s.guests.get(g) == "vvip" else ctx.vip_bonus if s.guests.get(g) == "vip" else 0)
                 for s in stays for g in s.guests if g in guest_ids)
-    got = rank_candidates(day, guest_ids, stays[0].unit_id, stays[0].building, ctx.escorts, ctx.duty,
+    got = rank_candidates(day, guest_ids, stays[0].unit_id, stays[0].group_path, ctx.escorts, ctx.duty,
                           ctx.loads(day), stays[0].weight + bonus, ctx.limit, known, places, ctx.codes)
     return [{"employee_id": c.employee_id, "name": ctx.name(c.employee_id), "knows_guest": c.knows_guest,
              "same_place": c.same_place, "load_after": round(c.load_after, 2), "note": c.note} for c in got]
@@ -326,7 +326,7 @@ def replacement_list(db: Session, first: dt.date, last: dt.date, duty: DutyPort)
             guest_ids = {g for s in stays for g in s.guests}
             out.append({"day": d.isoformat(), "employee_id": w.employee_id, "employee": ctx.name(w.employee_id),
                         "reservation_id": r.id, "group_id": r.group_id, "number": r.number, "code": w.value,
-                        "unit": ctx.unit_label(w.unit_id), "candidates": rank_in_ctx(ctx, d, stays, guest_ids, known)})
+                        "unit": ctx.unit_label(w.unit_id, d), "candidates": rank_in_ctx(ctx, d, stays, guest_ids, known)})
     return out
 
 

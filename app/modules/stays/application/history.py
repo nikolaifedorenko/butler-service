@@ -11,7 +11,8 @@ from app.core import manifest
 from app.core.audit import AuditLog
 from app.modules.employees.application.catalog import Employee
 
-from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Guest, Occupant, Reservation, Unit
+from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Guest, Occupant, Reservation
+from .fund_versions import fund_for
 from .guests import short_name
 from .reservations import STATUS_TITLES
 from .visibility import Level
@@ -51,15 +52,20 @@ def guest_stays(db: Session, gid: int) -> list[dict]:
     if not rids:
         return []
     res = {r.id: r for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids)))}
-    labels = dict(db.execute(select(Unit.id, Unit.label)).all())
-    units: dict[int, list[str]] = {rid: [] for rid in rids}
+    unit_ids: dict[int, list[int]] = {rid: [] for rid in rids}
     for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_(rids)).order_by(Assignment.seg_index)):
-        if a.unit_id and labels.get(a.unit_id) not in units[a.reservation_id]:
-            units[a.reservation_id].append(labels[a.unit_id])
+        if a.unit_id and a.unit_id not in unit_ids[a.reservation_id]:
+            unit_ids[a.reservation_id].append(a.unit_id)
+    # обозначения — на дату записи «проживающий» (фонд меняется версиями с даты)
+    fund = fund_for(db, min(o.date_from for o in occ), max(o.date_to for o in occ))
+
+    def units_of(o: Occupant) -> list[str]:
+        return list(dict.fromkeys(u.label for uid in unit_ids[o.reservation_id]
+                                  if (u := fund.unit(uid, o.date_from)) is not None))
     butlers = _butlers_of(db, gid, occ, res)
     out = [{"reservation_id": o.reservation_id, "number": res[o.reservation_id].number,
             "status": res[o.reservation_id].status, "status_title": STATUS_TITLES[res[o.reservation_id].status],
-            "units": units[o.reservation_id], "date_from": o.date_from.isoformat(),
+            "units": units_of(o), "date_from": o.date_from.isoformat(),
             "date_to": o.date_to.isoformat(), "role": o.role, "butlers": butlers.get(o.id, [])} for o in occ]
     return sorted(out, key=lambda s: (s["date_from"], s["reservation_id"]), reverse=True)
 
