@@ -123,11 +123,18 @@ def allocate(spans: Sequence[UnitSpan], holds: Sequence[HoldRef], items: Sequenc
                         f"Бронь {it.number}: закреплённый объект {unit.label} конфликтует с «{desc}»"))
             place(it, p, unit)
 
-    # продолжение сегмента за границей версии — раньше прочих с той же половинки, чтобы
-    # его объект не заняла бронь, начинающаяся на границе
-    todo.sort(key=lambda t: (t[1].start_pos, t[1].index % PIECE_BASE == 0,
-                             -(t[1].end_pos - t[1].start_pos), natural_key(t[0].number), t[0].key, t[1].index))
-    for it, p in todo:
+    def free(u: UnitSpan, p: Piece) -> bool:
+        return not any(overlaps(p.start_pos, p.end_pos, bs, be) for bs, be, _ in busy[u.unit_id])
+
+    def keep_unit(it: AllocItem, p: Piece) -> UnitSpan | None:
+        """Часть того же сегмента за границей: объект предыдущей части, если он подходит и свободен."""
+        prev = prev_of.get((it.key, p.index))
+        if prev is None or prev.seg_index != p.seg_index:
+            return None
+        uid = result.get((it.key, prev.index))
+        return next((u for u in fitting(p) if u.unit_id == uid and free(u, p)), None)
+
+    def assign(it: AllocItem, p: Piece) -> None:
         fit = fitting(p)
         if not any(overlaps(u.start_pos, u.end_pos, p.start_pos, p.end_pos) for u in by_cat.get(p.category_id, [])):
             result[(it.key, p.index)] = None
@@ -135,15 +142,11 @@ def allocate(spans: Sequence[UnitSpan], holds: Sequence[HoldRef], items: Sequenc
                 "category_missing", it.key, p.index,
                 f"Бронь {it.number}: категории {category_codes.get(p.category_id, '?')} нет в фонде "
                 f"с {p.start.strftime('%d.%m')}"))
-            continue
-        cands = [u for u in fit
-                 if not any(overlaps(p.start_pos, p.end_pos, bs, be) for bs, be, _ in busy[u.unit_id])]
+            return
+        cands = [u for u in fit if free(u, p)]
         prev = prev_of.get((it.key, p.index))
         prev_uid = result.get((it.key, prev.index)) if prev is not None else None
-        if prev_uid is not None and prev.seg_index == p.seg_index:
-            # часть того же сегмента: сначала объект предыдущей части
-            cands = [u for u in cands if u.unit_id == prev_uid] or cands
-        elif prev_uid is not None and len(cands) > 1:
+        if prev_uid is not None and prev.seg_index != p.seg_index and len(cands) > 1:
             # переезд: другой объект, по возможности в том же узле, иначе ближе по дереву (PoC §14.4)
             others = [u for u in cands if u.unit_id != prev_uid] or cands
             prev_path = paths[(it.key, prev.index)]
@@ -159,4 +162,21 @@ def allocate(spans: Sequence[UnitSpan], holds: Sequence[HoldRef], items: Sequenc
                 f"Бронь {it.number}: нет свободных объектов категории "
                 f"{category_codes.get(p.category_id, '?')} на "
                 f"{p.start.strftime('%d.%m')}–{p.end.strftime('%d.%m')}"))
+
+    todo.sort(key=lambda t: (t[1].start_pos, -(t[1].end_pos - t[1].start_pos),
+                             natural_key(t[0].number), t[0].key, t[1].index))
+    groups: dict[int, list[tuple[AllocItem, Piece]]] = {}
+    for t in todo:
+        groups.setdefault(t[1].start_pos, []).append(t)
+    for group in groups.values():
+        rest = []
+        # с одной половинки сначала части, остающиеся в объекте предыдущей части: иначе
+        # часть, чей объект сменил категорию на границе, заняла бы чужой продолжающийся объект
+        for it, p in group:
+            if (unit := keep_unit(it, p)) is not None:
+                place(it, p, unit)
+            else:
+                rest.append((it, p))
+        for it, p in rest:
+            assign(it, p)
     return result, warnings

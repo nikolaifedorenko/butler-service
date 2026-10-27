@@ -162,12 +162,24 @@ def test_category_missing_warning():
 
 def test_move_prefers_same_group_then_common_prefix():
     """Переезд: другой объект; сначала тот же узел, иначе самый длинный общий префикс пути —
-    по пути объекта на границе (с границы версии объект 3 перенесён в другой узел)."""
-    us = [span(1, DLX, "1-201", (10, 1)), span(2, DLX, "2-201", (20, 5)),
-          span(3, DLX, "1-202", (10, 1), hi=B - 1), span(3, DLX, "1-202", (10, 2), lo=B),
-          span(4, DLX, "3-202", (10, 1, 7))]
+    по пути прежнего объекта на предыдущей части (с границы версии объект 1 в другом узле)."""
+    us = [span(1, DLX, "1-201", (10, 1), hi=B - 1), span(1, DLX, "1-201", (20, 5, 1), lo=B),
+          span(2, DLX, "2-201", (20, 5)), span(3, DLX, "1-202", (10, 1)),
+          span(4, DLX, "3-202", (20, 5, 1, 7))]
     early = item(1, 2, 9, moves=((D(5), DLX),), bounds=[B])
     late = item(2, 12, 20, moves=((D(15), DLX),), bounds=[B])
     got, _ = allocate(us, [], [early, late], CODES)
-    assert got[(("r", 1), 0)] == 1 and got[(("r", 1), 1000)] == 3      # тот же узел (10, 1)
-    assert got[(("r", 2), 0)] == 1 and got[(("r", 2), 1000)] == 4      # общий префикс (10, 1)
+    assert got[(("r", 1), 0)] == 1 and got[(("r", 1), 1000)] == 3      # тот же узел (10, 1) до границы
+    assert got[(("r", 2), 0)] == 1 and got[(("r", 2), 1000)] == 4      # общий префикс с (20, 5, 1)
+
+
+def test_continuation_not_taken_by_piece_whose_unit_changed_category():
+    """C (длиннее) обрабатывается первой на границе, её объект 2 стал VIL — она не забирает
+    объект 1, в котором продолжается A."""
+    us = [span(100, DLX, "1", hi=B - 1), span(100, DLX, "1", lo=B),
+          span(101, DLX, "2", hi=B - 1), span(101, VIL, "2", lo=B), span(102, DLX, "3")]
+    a = item(1, 5, 15, bounds=[B], number="50")
+    c = item(2, 6, 20, bounds=[B], number="10")
+    got, warns = allocate(us, [], [a, c], CODES)
+    assert got[(("r", 1), 0)] == got[(("r", 1), 1)] == 100
+    assert got[(("r", 2), 0)] == 101 and got[(("r", 2), 1)] == 102 and warns == []
