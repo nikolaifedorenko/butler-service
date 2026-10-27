@@ -52,8 +52,11 @@ def upgrade() -> None:
         sa.CheckConstraint("status IN ('draft', 'published')", name='ck_stays_fund_status'),
         sa.ForeignKeyConstraint(['author_id'], ['users.id']),
         sa.ForeignKeyConstraint(['base_version_id'], ['stays_fund_versions.id']),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('valid_from'))
+        sa.PrimaryKeyConstraint('id'))
+    op.create_index('uq_stays_fund_published_from', 'stays_fund_versions', ['valid_from'], unique=True,
+                    sqlite_where=sa.text("status = 'published'"), postgresql_where=sa.text("status = 'published'"))
+    op.create_index('uq_stays_fund_one_draft', 'stays_fund_versions', ['status'], unique=True,
+                    sqlite_where=sa.text("status = 'draft'"), postgresql_where=sa.text("status = 'draft'"))
     op.create_table('stays_category_states',
         sa.Column('version_id', sa.Integer(), nullable=False),
         sa.Column('category_id', sa.Integer(), nullable=False),

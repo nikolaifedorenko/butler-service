@@ -5,9 +5,9 @@
 версией. Каждая запись начинается с lock_module и сверяет rev черновика (409 при
 одновременной правке). Ничего не коммитит — commit в роутере.
 
-Черновик на дату уже опубликованной версии (Plan, Decision 1) заменяет её снимок при публикации.
-valid_from уникален, поэтому такой черновик хранится с REPLACE_MARK в valid_from, а его
-настоящая дата — valid_from базовой (заменяемой) версии: см. draft_date()."""
+Черновик на дату уже опубликованной версии (Plan, Decision 1) заменяет её снимок при публикации:
+valid_from уникален только среди опубликованных, у черновика остаётся его настоящая дата,
+base_version_id указывает на заменяемую версию."""
 from __future__ import annotations
 
 import datetime as dt
@@ -37,21 +37,11 @@ from .fund import KINDS, FundConflict, FundError
 from .fund_versions import FundSnapshot, snapshot_of
 from .locking import lock_module
 
-REPLACE_MARK = dt.date(1900, 1, 1)     # valid_from черновика, заменяющего версию на ту же дату
-
-
 # ── черновик ───────────────────────────────────────────────────────────────
 
 
 def current_draft(db: Session) -> FundVersion | None:
     return db.scalar(select(FundVersion).where(FundVersion.status == "draft"))
-
-
-def draft_date(db: Session, draft: FundVersion) -> dt.date:
-    """Дата, с которой черновик вступит в силу."""
-    if draft.valid_from == REPLACE_MARK and draft.base_version_id is not None:
-        return db.get(FundVersion, draft.base_version_id).valid_from
-    return draft.valid_from
 
 
 def check_rev(draft: FundVersion, rev: int) -> None:
@@ -98,7 +88,7 @@ def open_draft(db: Session, valid_from: dt.date, author_id: int | None, note: st
         select(FundVersion).where(FundVersion.status == "published").order_by(FundVersion.valid_from).limit(1))
     if base is None:
         raise FundError("в фонде нет ни одной версии")
-    draft = FundVersion(valid_from=REPLACE_MARK if same else valid_from, status="draft",
+    draft = FundVersion(valid_from=valid_from, status="draft",
                         base_version_id=base.id, rev=1, author_id=author_id, note=note)
     db.add(draft)
     db.flush()
@@ -168,14 +158,15 @@ def _unit_flags(db: Session, vid: int, unit_id: int) -> set[int]:
         UnitStateFlag.version_id == vid, UnitStateFlag.unit_id == unit_id)))
 
 
-def _put_flags(db: Session, vid: int, unit_id: int, flags: list[int]) -> None:
+def _put_flags(db: Session, vid: int, unit_id: int, flags: list[int], inherited: frozenset[int] = frozenset()) -> None:
+    """inherited — флаги, унаследованные от исходных объектов: им архивность не мешает."""
     want = set(flags)
     have = _unit_flags(db, vid, unit_id)
     known = {f.id: f for f in db.scalars(select(UnitFlag).where(UnitFlag.id.in_(want)))} if want else {}
     for fid in want - have:
         if fid not in known:
             raise FundError(f"флага {fid} нет в справочнике")
-        if known[fid].archived:
+        if known[fid].archived and fid not in inherited:
             raise FundError(f"флаг «{known[fid].title}» в архиве")
     if have - want:
         db.execute(delete(UnitStateFlag).where(
@@ -292,7 +283,7 @@ def retire_group(db: Session, rev: int, group_id: int) -> None:
 
 
 def _new_unit(db: Session, vid: int, label: str, category_id: int | None, group_id: int | None,
-              floor: str, flags: list[int]) -> int:
+              floor: str, flags: list[int], inherited: frozenset[int] = frozenset()) -> int:
     label = _text({"label": label}, "label", None, 40, "обозначение объекта")
     _cat(db, vid, category_id)
     _grp(db, vid, group_id)
@@ -303,7 +294,7 @@ def _new_unit(db: Session, vid: int, label: str, category_id: int | None, group_
     db.add(UnitState(version_id=vid, unit_id=u.id, label=label, category_id=category_id,
                      group_id=group_id, floor=str(floor or "")[:8]))
     db.flush()
-    _put_flags(db, vid, u.id, flags)
+    _put_flags(db, vid, u.id, flags, inherited)
     return u.id
 
 
@@ -348,7 +339,8 @@ def split_unit(db: Session, rev: int, unit_id: int, parts: list[dict]) -> list[i
     ids = []
     for p in parts:
         new_id = _new_unit(db, draft.id, p.get("label", ""), p.get("category_id", base[1]),
-                           p.get("group_id", base[2]), p.get("floor", base[3]), flags)
+                           p.get("group_id", base[2]), p.get("floor", base[3]), flags,
+                           frozenset(flags))
         db.add(UnitLineage(unit_id=new_id, predecessor_id=unit_id, version_id=draft.id))
         ids.append(new_id)
     bump(draft)
@@ -372,7 +364,8 @@ def merge_units(db: Session, rev: int, unit_ids: list[int], data: dict) -> int:
         _remove_unit(db, draft.id, u)
     new_id = _new_unit(db, draft.id, data.get("label", ""), data.get("category_id", rows[0].category_id),
                        data.get("group_id", rows[0].group_id),
-                       data.get("floor", rows[0].floor if len(floors) == 1 else ""), flags)
+                       data.get("floor", rows[0].floor if len(floors) == 1 else ""), flags,
+                       frozenset(flags))
     db.add_all(UnitLineage(unit_id=new_id, predecessor_id=u, version_id=draft.id) for u in unit_ids)
     bump(draft)
     db.flush()
@@ -460,11 +453,11 @@ def publish(db: Session, principal) -> FundVersion:
     draft = current_draft(db)
     if draft is None:
         raise FundError("черновика фонда нет")
-    day = draft_date(db, draft)
+    day = draft.valid_from
     if day < local_date():
         raise FundConflict("дата черновика прошла — сдвиньте на сегодня или позже")
     change = asdict(diff(db, draft.base_version_id, draft.id)) if draft.base_version_id else {}
-    target = db.get(FundVersion, draft.base_version_id) if draft.valid_from == REPLACE_MARK else None
+    target = _published_on(db, day)
     if target is not None:                              # замена снимка версии на ту же дату
         _drop_states(db, target.id)
         db.flush()
@@ -499,6 +492,9 @@ def delete_version(db: Session, version_id: int) -> None:
             raise FundConflict("исходную версию фонда удалить нельзя")
         if v.valid_from <= local_date():
             raise FundConflict("действующую и прошедшие версии удалить нельзя")
+    if db.scalar(select(func.count()).select_from(FundVersion).where(
+            FundVersion.status == "draft", FundVersion.base_version_id == v.id)) and v.status == "published":
+        raise FundConflict("на эту версию опирается черновик — сначала удалите черновик")
     _drop_states(db, v.id)
     db.execute(delete(UnitLineage).where(UnitLineage.version_id == v.id))
     db.execute(update(FundVersion).where(FundVersion.base_version_id == v.id).values(base_version_id=None))

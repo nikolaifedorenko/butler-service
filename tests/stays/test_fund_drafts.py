@@ -63,7 +63,6 @@ def world(db, today):
     yield {"v0": v.id, "a": a.id, "b": b.id, "g1": g1.id, "g2": g2.id, "u1": u1.id, "u2": u2.id, "flag": flag.id}
     db.rollback()
     ids = list(db.scalars(select(FundVersion.id).where(FundVersion.valid_from >= LO, FundVersion.valid_from < HI)))
-    ids += list(db.scalars(select(FundVersion.id).where(FundVersion.valid_from == fd.REPLACE_MARK)))
     db.execute(update_null_base(ids))
     db.execute(delete(UnitLineage).where(UnitLineage.version_id.in_(ids)))
     for model in (UnitStateFlag, UnitState, GroupState, CategoryState):
@@ -209,14 +208,12 @@ def test_draft_on_existing_version_date_replaces_it(db, world):
     fd.save_unit(db, d.rev, {"floor": "7"}, world["u1"])
     first = fd.publish(db, None)
     d2 = _open(db, D)                                     # правка «с той же даты»
-    assert fd.draft_date(db, d2) == D
+    assert d2.valid_from == D and d2.base_version_id == first.id
     assert snapshot_of(db, d2.id).units[world["u1"]].floor == "7"
     fd.save_unit(db, d2.rev, {"floor": "8", "label": "4003x"}, world["u1"])
     second = fd.publish(db, None)
     assert second.id == first.id and fd.current_draft(db) is None
     assert db.scalar(select(func.count()).select_from(FundVersion).where(FundVersion.valid_from == D)) == 1
-    assert db.scalar(select(func.count()).select_from(FundVersion)
-                     .where(FundVersion.valid_from == fd.REPLACE_MARK)) == 0
     u = fund_on(db, D).units[world["u1"]]
     assert (u.floor, u.label) == ("8", "4003x")
     assert fund_on(db, D - dt.timedelta(days=1)).units[world["u1"]].floor == "4"
@@ -282,3 +279,26 @@ def test_delete_used_flag_409_archive_ok(db, world):
     free = fd.save_flag(db, {"title": "тест-флаг-свободный"}, None)
     fd.delete_flag(db, free)
     assert db.get(UnitFlag, free) is None
+
+
+def test_delete_version_under_draft_409(db, world):
+    d = _open(db)
+    v = fd.publish(db, None)
+    d2 = _open(db, D)                                     # черновик опирается на v
+    assert d2.base_version_id == v.id
+    with pytest.raises(FundConflict, match="черновик"):
+        fd.delete_version(db, v.id)
+    fd.delete_version(db, d2.id)
+    fd.delete_version(db, v.id)
+    assert d.id
+
+
+def test_split_and_merge_keep_archived_flag(db, world):
+    fd.archive_flag(db, world["flag"], True)
+    d = _open(db)
+    a, b = fd.split_unit(db, d.rev, world["u1"], [{"label": "S1"}, {"label": "S2"}])
+    assert snapshot_of(db, d.id).units[a].flags == {world["flag"]}
+    m = fd.merge_units(db, d.rev, [a, b], {"label": "M1"})
+    assert snapshot_of(db, d.id).units[m].flags == {world["flag"]}
+    with pytest.raises(FundError):                        # а вот выбрать архивный флаг заново нельзя
+        fd.save_unit(db, d.rev, {"label": "N", "category_id": world["a"], "flags": [world["flag"]]}, None)

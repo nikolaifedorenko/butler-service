@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
@@ -71,10 +72,17 @@ class FundVersion(Base):
     valid_from (§3.3). rev — счётчик правок черновика (оптимистичная блокировка)."""
 
     __tablename__ = "stays_fund_versions"
-    __table_args__ = (CheckConstraint("status IN ('draft', 'published')", name="ck_stays_fund_status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'published')", name="ck_stays_fund_status"),
+        # дата уникальна среди опубликованных (черновик на ту же дату заменяет версию); черновик один
+        Index("uq_stays_fund_published_from", "valid_from", unique=True,
+              sqlite_where=text("status = 'published'"), postgresql_where=text("status = 'published'")),
+        Index("uq_stays_fund_one_draft", "status", unique=True,
+              sqlite_where=text("status = 'draft'"), postgresql_where=text("status = 'draft'")),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    valid_from: Mapped[dt.date] = mapped_column(Date, unique=True)
+    valid_from: Mapped[dt.date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(10), default="draft")    # draft | published
     base_version_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_fund_versions.id"), nullable=True)
     rev: Mapped[int] = mapped_column(Integer, default=1)

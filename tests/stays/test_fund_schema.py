@@ -81,7 +81,7 @@ def test_label_unique_in_version(db, version):
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
-    other = FundVersion(valid_from=dt.date(2099, 2, 1), status="draft", rev=1)
+    other = FundVersion(valid_from=dt.date(2099, 2, 1), status="published", rev=1)
     db.add(other)
     db.flush()
     try:
@@ -108,7 +108,7 @@ def test_code_unique_in_version(db, version):
 
 def test_unit_state_category_must_be_in_same_version(db, version):
     v, created = version
-    other = FundVersion(valid_from=dt.date(2099, 3, 1), status="draft", rev=1)
+    other = FundVersion(valid_from=dt.date(2099, 3, 1), status="published", rev=1)
     db.add(other)
     db.flush()
     try:
