@@ -50,65 +50,30 @@ function staysBindDeletes(host, attr, url, what, rerender) {
 }
 
 /* ─────────────── Фонд и категории ─────────────── */
+/* Только просмотр фонда на сегодня: фонд меняется черновиком версии с даты (API /fund/draft);
+   экран редактирования — следующее обновление (Task 3.1) */
 async function renderStaysFund(host) {
   const fund = await staysFund(true);          // категории и объекты — фонд на сегодня
   const kinds = Object.fromEntries(fund.kinds.map(k => [k.code, k.title]));
   const cats = Object.fromEntries(fund.categories.map(c => [c.id, c]));
-  const rerender = () => renderStaysFund(host);
   host.innerHTML = `
-    ${settingsHead('Фонд и категории', 'Категории с видом, сопровождением и весом нагрузки; объекты по корпусам и этажам.')}
+    ${settingsHead('Фонд и категории', 'Категории с видом, сопровождением и весом нагрузки; объекты по узлам дерева фонда и этажам — на сегодня.')}
+    <div class="dict-banner"><span>ℹ</span><span>Изменения фонда — черновиком с даты; экран редактирования появится в следующем обновлении</span></div>
     ${settingsPanel('Категории', `
       <div class="table-wrap"><table class="data">
-        <thead><tr><th>Код</th><th>Название</th><th>Вид</th><th>Сопровождение</th><th class="num">Вес</th><th></th></tr></thead>
+        <thead><tr><th>Код</th><th>Название</th><th>Вид</th><th>Сопровождение</th><th class="num">Вес</th></tr></thead>
         <tbody>${fund.categories.map(c => `<tr>
           <td><b>${esc(c.code)}</b></td><td>${esc(c.title)}</td><td>${esc(kinds[c.kind] || c.kind)}</td>
           <td>${c.escorted ? '<span class="badge ok">с батлером</span>' : '<span class="muted">нет</span>'}</td>
           <td class="num">${esc(String(c.weight))}</td>
-          <td class="num"><button class="btn btn-sm btn-ghost" data-cat-edit="${c.id}">Изменить</button>${staysDeleteButton('data-cat-del', c.id)}</td>
-        </tr>`).join('') || '<tr><td colspan="6" class="empty">Категорий пока нет</td></tr>'}</tbody></table></div>`,
-      '<button class="btn btn-sm btn-primary" id="sf-cat-add" style="float:right">+ Категория</button>')}
+        </tr>`).join('') || '<tr><td colspan="5" class="empty">Категорий пока нет</td></tr>'}</tbody></table></div>`)}
     ${settingsPanel(`Объекты · ${fund.units.length}`, `
       <div class="table-wrap" style="max-height:420px"><table class="data">
-        <thead><tr><th>Объект</th><th>Категория</th><th>Корпус</th><th>Этаж</th><th></th></tr></thead>
+        <thead><tr><th>Объект</th><th>Категория</th><th>Узел</th><th>Этаж</th></tr></thead>
         <tbody>${fund.units.map(u => `<tr>
-          <td><b>${esc(u.label)}</b>${u.active ? '' : ' <span class="badge muted">неактивен</span>'}</td>
-          <td>${esc(cats[u.category_id]?.code || '—')}</td><td>${esc(u.building)}</td><td>${esc(u.floor)}</td>
-          <td class="num"><button class="btn btn-sm btn-ghost" data-unit-edit="${u.id}">Изменить</button>${staysDeleteButton('data-unit-del', u.id)}</td>
-        </tr>`).join('') || '<tr><td colspan="5" class="empty">Объектов пока нет</td></tr>'}</tbody></table></div>`,
-      '<button class="btn btn-sm btn-primary" id="sf-unit-add" style="float:right">+ Объект</button>')}`;
-
-  const catForm = c => staysForm(c ? `Категория ${c.code}` : 'Новая категория', [
-    sfRow('Код', sfInput('sf-code', c?.code)), sfRow('Название', sfInput('sf-title', c?.title)),
-    sfRow('Вид', sfSelect('sf-kind', fund.kinds.map(k => [k.code, k.title]), c?.kind || 'room')),
-    sfRow('Вес нагрузки', sfInput('sf-weight', c?.weight ?? 1, 'number')),
-    sfRow('Порядок', sfInput('sf-sort', c?.sort_order ?? 100, 'number')),
-    sfCheck('sf-escorted', 'С батлер-сопровождением', c?.escorted),
-  ], async m => {
-    const body = { code: $('#sf-code', m).value, title: $('#sf-title', m).value, kind: $('#sf-kind', m).value,
-      weight: Number($('#sf-weight', m).value), sort_order: Number($('#sf-sort', m).value),
-      escorted: $('#sf-escorted', m).checked };
-    await api(c ? `/api/stays/categories/${c.id}` : '/api/stays/categories', { method: c ? 'PUT' : 'POST', body });
-    toast('Категория сохранена'); rerender();
-  });
-  const unitForm = u => staysForm(u ? `Объект ${u.label}` : 'Новый объект', [
-    sfRow('Обозначение', sfInput('sf-label', u?.label)),
-    sfRow('Категория', sfSelect('sf-cat', fund.categories.map(c => [c.id, `${c.code} · ${c.title}`]), u?.category_id)),
-    sfRow('Корпус', sfInput('sf-building', u?.building)), sfRow('Этаж', sfInput('sf-floor', u?.floor)),
-    sfRow('Порядок', sfInput('sf-usort', u?.sort_order ?? 100, 'number')),
-    sfCheck('sf-active', 'Активен', u ? u.active : true),
-  ], async m => {
-    const body = { label: $('#sf-label', m).value, category_id: Number($('#sf-cat', m).value),
-      building: $('#sf-building', m).value, floor: $('#sf-floor', m).value,
-      sort_order: Number($('#sf-usort', m).value), active: $('#sf-active', m).checked };
-    await api(u ? `/api/stays/units/${u.id}` : '/api/stays/units', { method: u ? 'PUT' : 'POST', body });
-    toast('Объект сохранён'); rerender();
-  });
-  $('#sf-cat-add', host).onclick = () => catForm(null);
-  $('#sf-unit-add', host).onclick = () => (fund.categories.length ? unitForm(null) : toast('Сначала заведите категорию', 'err'));
-  $$('[data-cat-edit]', host).forEach(b => { b.onclick = () => catForm(cats[b.dataset.catEdit]); });
-  $$('[data-unit-edit]', host).forEach(b => { b.onclick = () => unitForm(fund.units.find(u => u.id === Number(b.dataset.unitEdit))); });
-  staysBindDeletes(host, 'data-cat-del', '/api/stays/categories', 'категорию', rerender);
-  staysBindDeletes(host, 'data-unit-del', '/api/stays/units', 'объект', rerender);
+          <td><b>${esc(u.label)}</b></td><td>${esc(cats[u.category_id]?.code || '—')}</td>
+          <td>${esc(u.group || '—')}</td><td>${esc(u.floor)}</td>
+        </tr>`).join('') || '<tr><td colspan="4" class="empty">Объектов пока нет</td></tr>'}</tbody></table></div>`)}`;
 }
 
 /* ─────────────── Сопровождение ─────────────── */

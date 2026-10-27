@@ -18,6 +18,10 @@ from app.modules.stays.adapters.orm import (
 )
 from app.modules.stays.application.fund_versions import (
     INITIAL_DATE,
+    CategoryInfo,
+    FundSnapshot,
+    FundTimeline,
+    UnitInfo,
     boundary_pos,
     category_exists,
     fund_for,
@@ -128,3 +132,26 @@ def test_fund_for_query_budget(db, world, sql_counter):
 def test_category_exists(db, world):
     assert category_exists(db, world["cat"])
     assert not category_exists(db, 10**9)
+
+
+def _snap(vid: int, d: dt.date, units: dict[int, str], cats: dict[int, str]) -> FundSnapshot:
+    return FundSnapshot(vid, d, {c: CategoryInfo(c, code, code, "room", 1.0, False, 0) for c, code in cats.items()},
+                        {}, {u: UnitInfo(u, label, 1, None, "", frozenset()) for u, label in units.items()})
+
+
+def test_timeline_unit_and_category_on_day_with_fallback():
+    """Состояние на день; нет в фонде дня — ближайшее: сначала раньше, затем позже; нет нигде — None."""
+    a, b, c = dt.date(2090, 1, 1), dt.date(2090, 2, 1), dt.date(2090, 3, 1)
+    tl = FundTimeline([(a, _snap(1, a, {10: "4003", 11: "старый"}, {1: "DTG"})),
+                       (b, _snap(2, b, {10: "4103"}, {1: "DKG", 2: "NEW"})),
+                       (c, _snap(3, c, {10: "4103", 12: "новый"}, {1: "DKG"}))])
+    assert tl.unit(10, a).label == "4003" and tl.unit(10, b).label == "4103"
+    assert tl.unit(10, a - dt.timedelta(days=5)).label == "4003"        # до первой загруженной версии
+    assert tl.unit(10, c + dt.timedelta(days=99)).label == "4103"       # после последней
+    assert tl.unit(11, c).label == "старый"                              # выведен — прежнее состояние
+    assert tl.unit(12, a).label == "новый"                               # ещё не заведён — позднее состояние
+    assert tl.unit(99, b) is None and tl.unit(None, b) is None
+    assert tl.category(1, a).code == "DTG" and tl.category(1, c).code == "DKG"
+    assert tl.category(2, c).code == "NEW" and tl.category(2, a).code == "NEW"
+    assert tl.category(3, a) is None
+    assert tl.boundaries() == [b, c] and tl.on(b + dt.timedelta(days=3)).version_id == 2

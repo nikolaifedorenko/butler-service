@@ -43,7 +43,7 @@ class ViewError(ValueError):
 @dataclass(frozen=True)
 class BoardFilters:
     kind: str | None = None
-    group_id: int | None = None             # узел дерева фонда: объекты всей ветки
+    group_ids: tuple[int, ...] = ()         # узлы дерева фонда: объекты их веток («или»)
     floor: str | None = None
     category_id: int | None = None
     escorted_only: bool = False
@@ -96,7 +96,7 @@ def _board_units(fund: FundTimeline, f: BoardFilters) -> list[BoardUnit]:
                 first_seen[u.id] = BoardUnit(u, snap.categories[u.category_id], path,
                                              " / ".join(snap.path_titles(u.group_id)) if path else "")
     units = [b for b in first_seen.values()
-             if (f.group_id is None or f.group_id in b.group_path)
+             if (not f.group_ids or any(g in b.group_path for g in f.group_ids))
              and (not f.floor or b.info.floor == f.floor)
              and (not f.category_id or b.info.category_id == f.category_id)
              and (not f.kind or b.category.kind == f.kind)
@@ -105,6 +105,11 @@ def _board_units(fund: FundTimeline, f: BoardFilters) -> list[BoardUnit]:
 
 
 def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level) -> dict:
+    return _units_board(db, first, last, f, level)[0]
+
+
+def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
+                 level: Level) -> tuple[dict, FundTimeline]:
     days = check_window(first, last)
     fund = fund_for(db, first, last)
     units = _board_units(fund, f)
@@ -186,7 +191,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                        "group_id": u.info.group_id, "group_path": list(u.group_path), "group": u.group,
                        "floor": u.info.floor}
                       for u in units],
-            "bars": bars, "holds": holds, "warnings": warnings}
+            "bars": bars, "holds": holds, "warnings": warnings}, fund
 
 
 def _search(q: str, res, occ, guests, units, asg) -> set[int]:
@@ -265,13 +270,12 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     return card
 
 
-def occupancy_grid(db: Session, first: dt.date, last: dt.date, group_id: int | None) -> dict:
+def occupancy_grid(db: Session, first: dt.date, last: dt.date, group_ids: tuple[int, ...] = ()) -> dict:
     """Сводная загрузка (§6.4): категории × дни — занято из всего, заезды, выезды, не заехали.
     Строится из шахматки уровня «без гостей» — данных гостей здесь нет по построению."""
     from ..domain.halfday import PM, pos
     days = check_window(first, last)
-    board = units_board(db, first, last, BoardFilters(group_id=group_id), "occupancy")
-    fund = fund_for(db, first, last)
+    board, fund = _units_board(db, first, last, BoardFilters(group_ids=group_ids), "occupancy")
     cats = {u["category_id"]: fund.category(u["category_id"], first) for u in board["units"]}
     by_cat: dict[int, list[int]] = {}
     for u in board["units"]:

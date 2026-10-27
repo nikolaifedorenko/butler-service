@@ -198,7 +198,7 @@ async function renderOccupancyGrid(body) {
   if (!boardState.first) boardState.first = staysToday();
   const last = staysAddDays(boardState.first, 13);
   const q = new URLSearchParams({ first: boardState.first, last });
-  if (boardState.group_id) q.set('group_id', boardState.group_id);
+  if (boardState.group_id) q.append('group_ids', boardState.group_id);
   const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/occupancy?' + q, { silent: true });
   if (!fresh()) return;

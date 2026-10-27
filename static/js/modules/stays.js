@@ -89,7 +89,7 @@ function staysBoardParams() {
   const f = staysState.filters;
   const p = new URLSearchParams({ first: staysState.first, last: staysAddDays(staysState.first, staysState.days - 1) });
   if (f.kind) p.set('kind', f.kind);
-  if (f.group_id) p.set('group_id', f.group_id);
+  if (f.group_id) p.append('group_ids', f.group_id);        // фильтр по узлам — повторяемый параметр
   if (f.category_id) p.set('category_id', f.category_id);
   if (f.escorted) p.set('escorted', '1');
   if (f.vip) p.set('vip', '1');
