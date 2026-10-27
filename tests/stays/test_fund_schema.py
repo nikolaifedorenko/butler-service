@@ -179,3 +179,59 @@ def test_downgrade_refuses_with_several_versions(db, version, monkeypatch):
     with pytest.raises(RuntimeError, match="0010"):
         command.downgrade(config(), "0009")
     assert inspect(engine).has_table("stays_fund_versions")
+
+
+def test_migration_with_data_roundtrip(db):
+    """0009 → 0010 → 0009 → 0010 на данных: категория, активные и неактивный объект, бронь с
+    назначением. Исходная версия содержит ровно активные объекты; откат возвращает значения."""
+    from alembic import command
+    from sqlalchemy import text
+
+    from app.bootstrap.schema_version import config
+
+    db.rollback()
+    db.close()
+    command.downgrade(config(), "0009")
+    try:
+        with engine.begin() as c:
+            c.execute(text("INSERT INTO stays_categories (id, code, title, kind, escorted, weight, sort_order) "
+                           "VALUES (9001, 'MIG', 'Миграция', 'villa', 1, 4, 7)"))
+            for uid, label, floor, active in ((9101, 'M-1', '2', 1), (9102, 'M-2', '', 1), (9103, 'M-OFF', '3', 0)):
+                c.execute(text("INSERT INTO stays_units (id, label, category_id, building, floor, active, sort_order) "
+                               "VALUES (:i, :l, 9001, 'B', :f, :a, 5)"), {"i": uid, "l": label, "f": floor, "a": active})
+            c.execute(text("INSERT INTO stays_reservations (id, number, status, check_in, check_out, early, late, "
+                           "category_id, paid_by, customer, purpose, note, declined_butler, fields_json, source, "
+                           "version, search_text, created_at, updated_at) VALUES (9201, 'M1', 'confirmed', "
+                           "'2099-01-01', '2099-01-03', 0, 0, 9001, '', '', '', '', 0, '{}', '', 1, '', "
+                           "'2099-01-01 00:00:00', '2099-01-01 00:00:00')"))
+            c.execute(text("INSERT INTO stays_assignments (reservation_id, seg_index, unit_id, pinned) "
+                           "VALUES (9201, 0, 9101, 1)"))
+        command.upgrade(config(), "head")
+        with engine.connect() as c:
+            v = c.execute(text("SELECT id FROM stays_fund_versions WHERE valid_from = '2000-01-01'")).scalar_one()
+            units = c.execute(text("SELECT unit_id, label, category_id, group_id, floor FROM stays_unit_states "
+                                   "WHERE version_id = :v AND unit_id >= 9000 ORDER BY unit_id"), {"v": v}).all()
+            assert [tuple(r) for r in units] == [(9101, "M-1", 9001, None, "2"), (9102, "M-2", 9001, None, "")]
+            cat = c.execute(text("SELECT code, title, kind, weight, escorted, sort_order FROM stays_category_states "
+                                 "WHERE version_id = :v AND category_id = 9001"), {"v": v}).one()
+            assert (cat[0], cat[1], cat[2], float(cat[3]), bool(cat[4]), cat[5]) == ("MIG", "Миграция", "villa", 4.0, True, 7)
+            assert c.execute(text("SELECT unit_id FROM stays_assignments WHERE reservation_id = 9201")).scalar_one() == 9101
+        command.downgrade(config(), "0009")
+        with engine.connect() as c:
+            rows = c.execute(text("SELECT id, label, category_id, floor, active FROM stays_units "
+                                  "WHERE id >= 9100 ORDER BY id")).all()
+            assert [(r[0], r[1], r[2], r[3], bool(r[4])) for r in rows] == [
+                (9101, "M-1", 9001, "2", True), (9102, "M-2", 9001, "", True),
+                (9103, "unit-9103", 9001, "", False)]     # неактивного в исходной версии не было: заглушка
+            code, title, kind, weight, esc = c.execute(text(
+                "SELECT code, title, kind, weight, escorted FROM stays_categories WHERE id = 9001")).one()
+            assert (code, title, kind, float(weight), bool(esc)) == ("MIG", "Миграция", "villa", 4.0, True)
+    finally:
+        command.upgrade(config(), "head")
+        with engine.begin() as c:
+            c.execute(text("DELETE FROM stays_assignments WHERE reservation_id = 9201"))
+            c.execute(text("DELETE FROM stays_reservations WHERE id = 9201"))
+            c.execute(text("DELETE FROM stays_unit_states WHERE unit_id >= 9100"))
+            c.execute(text("DELETE FROM stays_units WHERE id >= 9100"))
+            c.execute(text("DELETE FROM stays_category_states WHERE category_id = 9001"))
+            c.execute(text("DELETE FROM stays_categories WHERE id = 9001"))
