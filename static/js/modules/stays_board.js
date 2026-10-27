@@ -198,17 +198,17 @@ async function renderOccupancyGrid(body) {
   if (!boardState.first) boardState.first = staysToday();
   const last = staysAddDays(boardState.first, 13);
   const q = new URLSearchParams({ first: boardState.first, last });
-  if (boardState.building) q.set('building', boardState.building);
+  if (boardState.group_id) q.set('group_id', boardState.group_id);
   const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/occupancy?' + q, { silent: true });
   if (!fresh()) return;
-  const buildings = [...new Set(fund.units.map(u => u.building).filter(Boolean))].sort();
+  const roots = fund.groups.filter(g => g.parent_id == null);
   const heat = (busy, total) => { const k = total ? busy / total : 0; return k >= 0.9 ? 'heat3' : k >= 0.6 ? 'heat2' : k > 0 ? 'heat1' : ''; };
   body.innerHTML = `
     <div class="sb-toolbar">
       <input type="date" id="oc-first" value="${esc(boardState.first)}">
-      <select id="oc-building"><option value="">Все корпуса</option>${buildings.map(b =>
-        `<option value="${esc(b)}"${b === boardState.building ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select>
+      <select id="oc-group"><option value="">Весь фонд</option>${roots.map(g =>
+        `<option value="${g.id}"${String(g.id) === String(boardState.group_id) ? ' selected' : ''}>${esc(g.title)}</option>`).join('')}</select>
       <span class="muted">занято / всего · ▲ заезды · ▼ выезды</span>
     </div>
     <div class="sb-grid bb-grid" style="--days:${data.days.length}">
@@ -220,7 +220,7 @@ async function renderOccupancyGrid(body) {
     </div>`;
   const rerender = () => renderOccupancyGrid(body);
   $('#oc-first', body).onchange = e => { boardState.first = e.target.value || staysToday(); rerender(); };
-  $('#oc-building', body).onchange = e => { boardState.building = e.target.value; rerender(); };
+  $('#oc-group', body).onchange = e => { boardState.group_id = e.target.value; rerender(); };
   /* клик по ячейке — шахматка объектов этой категории с этого дня (PoC §14.1) */
   $$('[data-oc-cat]', body).forEach(el => {
     el.onclick = () => {

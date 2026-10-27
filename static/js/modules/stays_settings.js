@@ -51,7 +51,7 @@ function staysBindDeletes(host, attr, url, what, rerender) {
 
 /* ─────────────── Фонд и категории ─────────────── */
 async function renderStaysFund(host) {
-  const fund = await api('/api/stays/fund', { silent: true });
+  const fund = await staysFund(true);          // категории и объекты — фонд на сегодня
   const kinds = Object.fromEntries(fund.kinds.map(k => [k.code, k.title]));
   const cats = Object.fromEntries(fund.categories.map(c => [c.id, c]));
   const rerender = () => renderStaysFund(host);

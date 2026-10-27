@@ -14,7 +14,7 @@ const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], 
 const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
 const staysState = {
   tab: 'units', first: null, days: 14, fund: null,
-  filters: { kind: '', building: '', category_id: '', escorted: false, vip: false, q: '' },
+  filters: { kind: '', group_id: '', category_id: '', escorted: false, vip: false, q: '' },
 };
 
 /* PoC §5.1: ordinal как в Python date.toordinal() — клиент и сервер считают позиции одинаково */
@@ -25,8 +25,16 @@ function staysAddDays(iso, n) {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
 function staysToday() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+/* Справочники модуля + фонд на сегодня (категории, узлы, объекты — версиями с даты, GET /fund/snapshot) */
 async function staysFund(force = false) {
-  if (!staysState.fund || force) staysState.fund = await api('/api/stays/fund', { silent: true });
+  if (!staysState.fund || force) {
+    const [dicts, snap] = await Promise.all([api('/api/stays/fund', { silent: true }),
+      api('/api/stays/fund/snapshot?date=' + staysToday(), { silent: true })]);
+    const groups = Object.fromEntries(snap.groups.map(g => [g.id, g]));
+    staysState.fund = { ...dicts, categories: snap.categories, groups: snap.groups,
+      /* объект снимка есть в фонде дня — «активен»; путь узла названиями — для подписи */
+      units: snap.units.map(u => ({ ...u, active: true, group: u.path.map(id => groups[id]?.title || '').join(' / ') })) };
+  }
   return staysState.fund;
 }
 
@@ -60,13 +68,13 @@ async function loadMyStays() {
 /* ─────────────── Шахматка объектов ─────────────── */
 function staysToolbar(fund) {
   const f = staysState.filters;
-  const buildings = [...new Set(fund.units.map(u => u.building).filter(Boolean))].sort();
+  const roots = fund.groups.filter(g => g.parent_id == null);
   const opt = (v, t, cur) => `<option value="${esc(String(v))}"${String(v) === String(cur) ? ' selected' : ''}>${esc(t)}</option>`;
   return `<div class="sb-toolbar">
     <input type="date" id="sb-first" value="${esc(staysState.first)}">
     <select id="sb-days">${[7, 14, 31].map(n => opt(n, `${n} дн.`, staysState.days)).join('')}</select>
     <select id="sb-kind">${opt('', 'Все виды', f.kind)}${fund.kinds.map(k => opt(k.code, k.title, f.kind)).join('')}</select>
-    <select id="sb-building">${opt('', 'Все корпуса', f.building)}${buildings.map(b => opt(b, `Корпус ${b}`, f.building)).join('')}</select>
+    <select id="sb-group">${opt('', 'Весь фонд', f.group_id)}${roots.map(g => opt(g.id, g.title, f.group_id)).join('')}</select>
     <select id="sb-cat">${opt('', 'Все категории', f.category_id)}${fund.categories.map(c => opt(c.id, c.code, f.category_id)).join('')}</select>
     <label class="chk"><input type="checkbox" id="sb-esc"${f.escorted ? ' checked' : ''}> с сопровождением</label>
     <label class="chk"><input type="checkbox" id="sb-vip"${f.vip ? ' checked' : ''}> VIP/VVIP</label>
@@ -81,7 +89,7 @@ function staysBoardParams() {
   const f = staysState.filters;
   const p = new URLSearchParams({ first: staysState.first, last: staysAddDays(staysState.first, staysState.days - 1) });
   if (f.kind) p.set('kind', f.kind);
-  if (f.building) p.set('building', f.building);
+  if (f.group_id) p.set('group_id', f.group_id);
   if (f.category_id) p.set('category_id', f.category_id);
   if (f.escorted) p.set('escorted', '1');
   if (f.vip) p.set('vip', '1');
@@ -124,7 +132,7 @@ async function renderUnitsBoard(body) {
       <div class="sb-row sb-head"><div class="sb-unit">Объект</div><div class="sb-track sb-days">${data.days.map(d =>
         `<div class="${d === today ? 'today' : ''}">${esc(d.slice(8))}.${esc(d.slice(5, 7))}</div>`).join('')}</div></div>
       ${data.units.map(u => `<div class="sb-row" data-unit-row="${u.id}">
-        <div class="sb-unit"><b>${esc(u.label)}</b><small>${esc(u.category)}${u.building ? ' · к.' + esc(u.building) : ''}</small></div>
+        <div class="sb-unit"><b>${esc(u.label)}</b><small>${esc(u.category)}${u.group ? ' · ' + esc(u.group) : ''}</small></div>
         <div class="sb-track" style="--days:${data.days.length}">
           ${(holdsBy[u.id] || []).map(h => {
             const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
@@ -140,7 +148,7 @@ async function renderUnitsBoard(body) {
   const rerender = () => renderUnitsBoard(body);
   $('#sb-first', body).onchange = e => { staysState.first = e.target.value || staysToday(); rerender(); };
   $('#sb-days', body).onchange = e => { staysState.days = Number(e.target.value); rerender(); };
-  [['#sb-kind', 'kind'], ['#sb-building', 'building'], ['#sb-cat', 'category_id']].forEach(([sel, key]) => {
+  [['#sb-kind', 'kind'], ['#sb-group', 'group_id'], ['#sb-cat', 'category_id']].forEach(([sel, key]) => {
     $(sel, body).onchange = e => { f[key] = e.target.value; rerender(); };
   });
   $('#sb-esc', body).onchange = e => { f.escorted = e.target.checked; rerender(); };

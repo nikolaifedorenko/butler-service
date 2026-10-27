@@ -115,6 +115,24 @@ async function apiJson(method, url, body) {
 }
 const uniq = Date.now().toString(36).slice(-5).toUpperCase();
 
+/* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
+   /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
+async function fundCategory(code, labels) {
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  let rev = (await apiJson('POST', '/api/stays/fund/draft', { valid_from: today })).body.rev;
+  const step = async (path, body) => {
+    const r = await apiJson('POST', '/api/stays/fund/draft/' + path, { rev, ...body });
+    if (r.status !== 200) throw new Error(`черновик фонда ${path}: ${r.status} ${JSON.stringify(r.body)}`);
+    rev = r.body.rev;
+    return r.body;
+  };
+  const cat = await step('categories', { code, title: code, kind: 'villa', escorted: true, weight: 4 });
+  const units = [];
+  for (const label of labels) units.push({ id: (await step('units', { label, category_id: cat.id })).id, label });
+  await step('publish', {});
+  return { cat, units };
+}
+
 async function settingsScreens() {
   console.log('\n1 · Настройки шахматки');
   window.navigate('settings');
@@ -126,24 +144,6 @@ async function settingsScreens() {
 
   await go('stays_fund');
   check('фонд: экран отрисован', /Категории/.test(text('#st-body')) && /Объекты/.test(text('#st-body')));
-  click($('#sf-cat-add'));
-  check('форма категории открылась', await waitFor(() => !!$('#sf-code')));
-  input($('#sf-code'), 'SC' + uniq); input($('#sf-title'), 'Сценарий ' + uniq);
-  change($('#sf-kind'), 'villa'); input($('#sf-weight'), '4');
-  $('#sf-escorted').checked = true;
-  click($('[data-save]'));
-  check('категория сохранена и видна', await waitFor(() => text('#st-body').includes('SC' + uniq)));
-  click($('#sf-unit-add'));
-  check('форма объекта открылась', await waitFor(() => !!$('#sf-label')));
-  input($('#sf-label'), 'V' + uniq);
-  change($('#sf-cat'), $$('#sf-cat option').find(o => o.textContent.includes('SC' + uniq))?.value);
-  input($('#sf-building'), '1');
-  click($('[data-save]'));
-  check('объект сохранён и виден', await waitFor(() => text('#st-body').includes('V' + uniq)));
-  const fund = (await apiJson('GET', '/api/stays/fund')).body;
-  check('объект на сервере с категорией', fund.units.some(u => u.label === 'V' + uniq
-    && fund.categories.find(c => c.id === u.category_id)?.code === 'SC' + uniq));
-
   await go('stays_escort');
   check('сопровождение: экран отрисован', /Сопровождают гостей/.test(text('#st-body')));
   click($('#se-seed'));
@@ -180,9 +180,7 @@ async function unitsBoard() {
     [[2026, 9, 1, 739860], [2000, 2, 29, 730179], [1970, 1, 1, 719163], [2029, 12, 31, 741077]]
       .every(([y, m, d, o]) => window.staysOrdinal(y, m, d) === o));
   const code = 'SB' + uniq;
-  const cat = (await apiJson('POST', '/api/stays/categories', { code, title: code, kind: 'villa', escorted: true, weight: 4 })).body;
-  const u1 = (await apiJson('POST', '/api/stays/units', { label: code + '-1', category_id: cat.id })).body;
-  const u2 = (await apiJson('POST', '/api/stays/units', { label: code + '-2', category_id: cat.id })).body;
+  const { cat, units: [u1, u2] } = await fundCategory(code, [code + '-1', code + '-2']);
   const guest = 'Сценарный' + uniq;
   await apiJson('POST', '/api/stays/guests', { last_name: guest });
 
@@ -271,8 +269,7 @@ async function butlersAndDay() {
   const base = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
   const day = n => iso(new Date(base.getTime() + n * 86400000));
   const code = 'BT' + uniq;
-  const cat = (await apiJson('POST', '/api/stays/categories', { code, title: code, kind: 'villa', escorted: true, weight: 4 })).body;
-  await apiJson('POST', '/api/stays/units', { label: code + '-1', category_id: cat.id });
+  const { cat } = await fundCategory(code, [code + '-1']);
   const guest = 'Ведомый' + uniq;
   const g = (await apiJson('POST', '/api/stays/guests', { last_name: guest })).body;
   const res = (await apiJson('POST', '/api/stays/reservations', { number: 'C' + uniq, check_in: day(1), check_out: day(7),
@@ -415,9 +412,7 @@ async function moreForms() {
   const base = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
   const day = n => iso(new Date(base.getTime() + n * 86400000));
   const code = 'FM' + uniq;
-  const cat = (await apiJson('POST', '/api/stays/categories', { code, title: code, kind: 'villa', escorted: true, weight: 4 })).body;
-  const u1 = (await apiJson('POST', '/api/stays/units', { label: code + '-1', category_id: cat.id })).body;
-  const u2 = (await apiJson('POST', '/api/stays/units', { label: code + '-2', category_id: cat.id })).body;
+  const { cat, units: [u1, u2] } = await fundCategory(code, [code + '-1', code + '-2']);
   const rField = 'trip' + uniq.toLowerCase(), gField = 'pet' + uniq.toLowerCase();
   await apiJson('POST', '/api/stays/fields', { target: 'reservation', code: rField, title: 'Откуда', kind: 'text' });
   await apiJson('POST', '/api/stays/fields', { target: 'guest', code: gField, title: 'Питомец', kind: 'text' });
