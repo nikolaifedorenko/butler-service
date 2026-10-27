@@ -35,10 +35,10 @@ def today(monkeypatch):
     """«Сегодня» модуля шахматки: freeze() на будущие даты просрочил бы токен входа."""
     import datetime as dt
 
-    from app.modules.stays.application import allocation, reservations
+    from app.modules.stays.application import allocation, fund_drafts, reservations
 
     def _set(iso: str) -> None:
-        for mod in (reservations, allocation):
+        for mod in (reservations, allocation, fund_drafts):
             monkeypatch.setattr(mod, "local_date", lambda: dt.date.fromisoformat(iso), raising=False)
     return _set
 
