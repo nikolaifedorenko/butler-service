@@ -54,7 +54,7 @@ class AllocItem:
 
 @dataclass(frozen=True)
 class AllocWarning:
-    kind: str                          # unassigned | pin_invalid | pin_conflict | category_missing | hold_absent
+    kind: str                          # unassigned | pin_invalid | pin_conflict | category_missing | hold_absent | unit_invalid
     key: Key
     piece_index: int
     text: str

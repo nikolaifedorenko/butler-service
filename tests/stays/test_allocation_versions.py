@@ -145,3 +145,70 @@ def test_hold_on_absent_unit_warns(manager_role_client, manager_client, today):
     board = manager_client.get(f"{API}/board/units", params={"first": "2035-08-01", "last": "2035-08-20",
                                                              "category_id": cat["id"]}).json()
     assert [w["kind"] for w in board["warnings"] if text in w["text"]] == ["hold_absent"]
+
+
+def _form_pins(doc: dict) -> dict:
+    """pins, как их шлёт форма брони на каждое сохранение: каждому сегменту — объект или «авто»."""
+    return {str(s["index"]): s["unit_id"] if s["pinned"] else None for s in doc["segments"]}
+
+
+def _board_warnings(c, cat, first, last) -> list[str]:
+    board = c.get(f"{API}/board/units", params={"first": first, "last": last, "category_id": cat["id"]}).json()
+    return [w["kind"] for w in board["warnings"]]
+
+
+def test_form_save_keeps_piece_released_from_pin(manager_role_client, manager_client, today, db):
+    """Заселённая бронь закреплена за X; версия с D выводит X — часть после D отпущена (pin_invalid)
+    в Y. Сохранение формы без изменений не возвращает её в выведенный X."""
+    today("2035-09-01")
+    cat = make_category(manager_role_client, n_units=2)
+    x, y = (u["id"] for u in cat["units"])
+    r = create_res(manager_client, cat, "2035-09-01", "2035-09-12", pins={"0": x})
+    st = manager_client.post(f"{API}/reservations/{r['id']}/status", json={"status": "in_house", "version": r["version"]})
+    assert st.status_code == 200, st.text
+    _version(manager_role_client, "2035-09-05", ("DELETE", f"units/{x}", {}))
+    assert _rows(db, r["id"]) == {0: (x, True), 1: (y, False)}
+    assert "pin_invalid" in _board_warnings(manager_client, cat, "2035-09-01", "2035-09-12")
+    doc = manager_client.get(f"{API}/reservations/{r['id']}").json()
+    put = _put(manager_client, doc, pins=_form_pins(doc))
+    assert put.status_code == 200, put.text
+    assert _rows(db, r["id"]) == {0: (x, True), 1: (y, False)}
+    assert "pin_invalid" in _board_warnings(manager_client, cat, "2035-09-01", "2035-09-12")
+
+
+def test_in_house_piece_after_withdrawal_relocated(manager_role_client, manager_client, today, db):
+    """Заселённая бронь без закрепления: версия с D выводит её объект — часть после D переезжает
+    с предупреждением, текущая часть остаётся; повторная публикация на ту же дату (строка части
+    уже есть) проверяет её снова."""
+    from app.modules.stays.application import allocation, fund_drafts
+
+    today("2035-10-01")
+    cat = make_category(manager_role_client, n_units=2)
+    x, y = (u["id"] for u in cat["units"])
+    r = create_res(manager_client, cat, "2035-10-01", "2035-10-12")
+    st = manager_client.post(f"{API}/reservations/{r['id']}/status", json={"status": "in_house", "version": r["version"]})
+    assert st.status_code == 200, st.text
+    assert _rows(db, r["id"]) == {0: (x, False)}
+
+    def publish(*edits) -> list:
+        opened = manager_role_client.post(f"{API}/fund/draft", json={"valid_from": "2035-10-05"})
+        assert opened.status_code == 200, opened.text
+        rev = opened.json()["rev"]
+        for path, body in edits:
+            resp = manager_role_client.request("PUT" if body else "DELETE", f"{API}/fund/draft/{path}",
+                                               **({"json": {"rev": rev, **body}} if body else {"params": {"rev": rev}}))
+            assert resp.status_code == 200, resp.text
+            rev = resp.json()["rev"]
+        db.expire_all()
+        fund_drafts.publish(db, None, rev)
+        state = db.info[allocation.CACHE_KEY]
+        db.commit()
+        return [w.text for w in state.warnings if w.kind == "unit_invalid" and r["id"] in state.members[w.key]]
+
+    # версия с D переименовывает Y: часть после D остаётся в X
+    assert publish((f"units/{y}", {"label": cat["units"][1]["label"] + "-н", "category_id": cat["id"]})) == []
+    assert _rows(db, r["id"]) == {0: (x, False), 1: (x, False)}
+    # та же дата заново: X выведен — у части после D уже есть строка, она переезжает в Y
+    warns = publish((f"units/{x}", None))
+    assert _rows(db, r["id"]) == {0: (x, False), 1: (y, False)}
+    assert len(warns) == 1 and "не подходит по фонду с 05.10" in warns[0] and "переезд в" in warns[0]

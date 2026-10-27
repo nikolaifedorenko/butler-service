@@ -92,6 +92,13 @@ def _day(p: int) -> str:
     return dt.date.fromordinal(p // 2).strftime("%d.%m")
 
 
+def _pin_invalid(number: str, key: Key, p: Piece) -> AllocWarning:
+    """Тот же текст, что у domain.allocate, — для части, уже отпущенной с закрепления."""
+    since = f" с {p.start.strftime('%d.%m')}" if p.index % PIECE_BASE else ""
+    return AllocWarning("pin_invalid", key, p.index, f"Бронь {number}: закреплённый объект не подходит{since} — "
+                                                     f"сегмент {p.seg_index + 1} распределяется автоматически")
+
+
 def compute(db: Session) -> AllocationState:
     """Распределение без записи: им пользуются и сохранение, и снимок предпросмотра."""
     today = local_date()
@@ -133,28 +140,66 @@ def compute(db: Session) -> AllocationState:
                 if a.pinned:
                     pinned_rows.add((a.reservation_id, a.seg_index))
                     seg_pins.setdefault((a.reservation_id, a.seg_index // PIECE_BASE), a.unit_id)
-    morning = pos(today, AM)
+    morning, evening = pos(today, AM), pos(today, PM)
 
-    def frozen_unit(rs: list[Reservation], p: Piece) -> tuple[bool, int | None]:
-        """Заморожена ли часть и с каким объектом: заселённая/выехавшая или закончившаяся к
-        сегодня — с текущим объектом; закончившаяся до сегодняшнего утра — и без объекта (L1)."""
-        fixed = next((current[(r.id, p.index)] for r in rs if (r.id, p.index) in current
-                      and (r.status in FROZEN_STATUSES or p.end <= today)), None)
-        return (fixed is not None or p.end_pos < morning), fixed
+    by_unit: dict[int, list[UnitSpan]] = {}
+    for u in spans:
+        by_unit.setdefault(u.unit_id, []).append(u)
+
+    def unit_cat(uid: int, p: Piece) -> int | None:
+        """Категория объекта на всей части; None — объекта нет в фонде на части целиком."""
+        return next((u.category_id for u in by_unit.get(uid, ()) if u.start_pos <= p.start_pos
+                     and p.end_pos <= u.end_pos), None)
+
+    def frozen_unit(rs: list[Reservation], p: Piece, prev: Piece | None) -> tuple[bool, int | None, int | None]:
+        """(заморожена ли часть, её объект, объект, который ей больше не подходит).
+
+        Закончившаяся до сегодняшнего утра — заморожена безусловно, и без объекта (L1).
+        Заселённая/выехавшая или закончившаяся к сегодня — с текущим объектом. Часть, которая
+        начинается с сегодняшнего вечера или позже (за границей версии — версия публикуется не
+        раньше сегодня), заморожена, только пока объект есть в фонде на всей части и не сменил
+        на границе категорию на чужую; иначе она распределяется заново, как незамороженная."""
+        uid = next((current[(r.id, p.index)] for r in rs if (r.id, p.index) in current
+                    and (r.status in FROZEN_STATUSES or p.end <= today)), None)
+        if p.end_pos < morning:
+            return True, uid, None
+        if uid is None:
+            return False, None, None
+        if p.start_pos < evening:
+            return True, uid, None          # фонд этой части уже действует — его не меняют
+        cat = unit_cat(uid, p)
+        before = unit_cat(uid, prev) if prev is not None and prev.seg_index == p.seg_index else cat
+        if cat is not None and (cat == p.category_id or cat == before):
+            return True, uid, None
+        return False, None, uid
 
     groups: dict[int, list[Reservation]] = {}
     items: list[AllocItem] = []
+    relocated: dict[tuple[Key, int], tuple[str, Piece, int]] = {}   # часть заселённой брони → прежний объект
 
     def add_item(key: Key, number: str, rs: list[Reservation], segs) -> None:
         ps = pieces(segs, cuts)
-        fixed: dict[int, int | None] = {}
-        for p in ps:
-            frozen, uid = frozen_unit(rs, p)
-            if frozen:
-                fixed[p.index] = uid
         pinned = {s.index: uid for s in segs
                   if (uid := next((seg_pins[(r.id, s.index)] for r in rs if (r.id, s.index) in seg_pins),
                                   None)) is not None}
+        fixed: dict[int, int | None] = {}
+        settled = any(r.status in FROZEN_STATUSES for r in rs)
+        for prev, p in zip((None, *ps), ps, strict=False):
+            frozen, uid, lost = frozen_unit(rs, p, prev)
+            pin = pinned.get(p.seg_index)
+            if frozen:
+                fixed[p.index] = uid
+                if pin is not None and pin != uid and p.end_pos >= morning and unit_cat(pin, p) != p.category_id:
+                    # часть уже отпущена с закрепления (pin_invalid): предупреждение остаётся
+                    warnings.append(_pin_invalid(number, key, p))
+                continue
+            if not settled or pin is not None:
+                continue                  # у закреплённого сегмента о смене объекта скажет pin_invalid
+            # заселённая бронь переезжает по фонду: объект строки или предыдущей части сегмента
+            ref = lost if lost is not None else (
+                fixed.get(prev.index) if prev is not None and prev.seg_index == p.seg_index else None)
+            if ref is not None:
+                relocated[(key, p.index)] = (number, p, ref)
         items.append(AllocItem(key, number, tuple(ps), pinned, fixed))
         members[key] = [r.id for r in rs]
 
@@ -175,6 +220,14 @@ def compute(db: Session) -> AllocationState:
 
     got, alloc_warnings = allocate(spans, holds, items, codes)
     warnings += alloc_warnings
+    for (key, index), (number, p, ref) in relocated.items():
+        if got.get((key, index)) != ref:
+            u, new = timeline.unit(ref, p.start), got.get((key, index))
+            nu = timeline.unit(new, p.start) if new is not None else None
+            warnings.append(AllocWarning(
+                "unit_invalid", key, index,
+                f"Бронь {number}: объект {u.label if u else ref} не подходит по фонду с "
+                f"{p.start.strftime('%d.%m')} — {'переезд в ' + nu.label if nu else 'без объекта'}"))
     released = {(w.key, w.piece_index) for w in alloc_warnings if w.kind == "pin_invalid"}
     fixed_keys = {(it.key, i) for it in items for i in it.fixed}
     out_units: dict[tuple[int, int], int | None] = {}
