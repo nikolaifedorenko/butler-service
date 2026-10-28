@@ -3,15 +3,18 @@
 Переход с тестовых данных на реальные: все данные шахматки (фонд с версиями, брони, гости,
 покрытие батлеров, OOO и блоки) удаляются, из файла фонда заводится исходная версия.
 Только пока выключен переключатель «Шахматка в эксплуатации» (StaysSettings.in_production).
-Перед удалением — полная копия данных модуля в Excel (Plan, Decision 4). Настройки модуля
+Перед удалением — полная копия данных модуля в Excel (§9.3; листы — Plan, Decision 4, плюс
+по листу на каждую удаляемую таблицу). Настройки модуля
 (KEEP) не трогаются. Ничего не коммитит — commit в роутере: удаление и загрузка — одна
 транзакция."""
 from __future__ import annotations
 
+import datetime as dt
 import io
 import json
 import os
 import re
+from decimal import Decimal
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -95,11 +98,22 @@ def reset_counts(db: Session) -> dict[str, int]:
     return {k: int(db.scalar(select(func.count()).select_from(m)) or 0) for k, m in COUNTED.items()}
 
 
-def fingerprint(counts: dict[str, int]) -> str:
-    return json.dumps(counts, sort_keys=True, separators=(",", ":"))
+def reset_state(db: Session) -> dict:
+    """Отпечаток данных для подтверждения: счётчики и монотонные метки — наибольшие id таблиц
+    шахматки и время последней версии фонда. Счётчики одни не отличили бы повторную загрузку
+    файла того же размера; id и время после каждой замены только растут."""
+    max_ids = {m.__tablename__: db.scalar(select(func.max(m.id)))
+               for m in WIPE if "id" in m.__table__.c and m.__table__.c.id.primary_key}
+    last = db.execute(select(func.max(FundVersion.created_at), func.max(FundVersion.published_at))).one()
+    return {"counts": reset_counts(db), "max_ids": max_ids,
+            "versions_at": [x.isoformat() if x else None for x in last]}
 
 
-def parse_fingerprint(s: str) -> dict[str, int]:
+def fingerprint(state: dict) -> str:
+    return json.dumps(state, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def parse_fingerprint(s: str) -> dict:
     try:
         v = json.loads(s)
     except ValueError:
@@ -219,9 +233,9 @@ def preview(db: Session, parsed: ParsedFund) -> dict:
     plan, errors = plan_load(parsed)
     if errors:
         raise FundFileError(errors)
-    counts = reset_counts(db)
-    return {"counts": counts, "will_load": _will_load(plan), "warnings": _warnings(parsed),
-            "fingerprint": fingerprint(counts)}
+    state = reset_state(db)
+    return {"counts": state["counts"], "will_load": _will_load(plan), "warnings": _warnings(parsed),
+            "fingerprint": fingerprint(state)}
 
 
 # ── копия ──────────────────────────────────────────────────────────────────
@@ -255,7 +269,8 @@ def _guest_name(g: Guest) -> str:
 
 def backup_bytes(db: Session) -> bytes:
     """Копия данных модуля: фонд на сегодня листами файла фонда (их же принимает загрузка),
-    брони и гости — листами «Брони», «Гости»."""
+    брони и гости — листами «Брони», «Гости»; затем по листу на каждую таблицу WIPE со всеми
+    строками (_raw_sheets) — полная копия того, что удаляется (§9.3)."""
     wb = load_workbook(io.BytesIO(export_fund(fund_on(db, local_date()), list(db.scalars(select(UnitFlag))))))
     code = _latest(db, CategoryState.version_id, CategoryState.category_id, CategoryState.code)
     label = _latest(db, UnitState.version_id, UnitState.unit_id, UnitState.label)
@@ -289,25 +304,69 @@ def backup_bytes(db: Session) -> bytes:
            ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, g.level,
              g.preferences_json, g.special_dates_json, g.fields_json, g.note, g.source, g.external_id or ""]
             for g in guests.values()))
+    _raw_sheets(wb, db)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _raw(v):
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, dt.date | dt.datetime):
+        return v.isoformat()
+    return v
+
+
+def raw_sheet_names() -> dict[str, str]:
+    """Таблица → имя листа сырой копии: имя таблицы, не длиннее 31 символа (предел Excel), без повторов."""
+    out: dict[str, str] = {}
+    for m in WIPE:
+        name, n = m.__tablename__[:31], 1
+        while name in out.values():
+            n += 1
+            name = f"{m.__tablename__[:31 - len(str(n)) - 1]}~{n}"
+        out[m.__tablename__] = name
+    return out
+
+
+def _raw_sheets(wb, db: Session) -> None:
+    """По листу на каждую удаляемую таблицу (WIPE): заголовок — колонки, строка — запись БД.
+    Человекочитаемые листы выше — для просмотра; эти — полная копия всего, что удаляется
+    (будущие версии и черновик фонда, блоки и OOO, покрытие, переезды, логистика…)."""
+    names = raw_sheet_names()
+    for m in WIPE:
+        t = m.__table__
+        cols = [c.name for c in t.columns]
+        order = list(t.primary_key.columns)
+        _sheet(wb, names[t.name], cols,
+               ([_raw(v) for v in row] for row in db.execute(select(*t.columns).order_by(*order))))
+
+
+class BackupError(FundConflict):
+    """Копию записать не удалось (диск, права): замена не начиналась."""
 
 
 def backup_module(db: Session) -> Path:
     """Пишет копию в BACKUP_DIR: сначала во временный файл, fsync, затем переименование —
     файл с именем по шаблону всегда полный. Имя уже занято (две замены в одну секунду) — 409."""
     data = backup_bytes(db)
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     final = BACKUP_DIR / f"stays-{now_local():%Y%m%d-%H%M%S}.xlsx"
-    if final.exists():
-        raise FundConflict("Копия с таким временем уже есть — повторите через секунду")
     tmp = final.with_name(final.name + ".part")
-    with open(tmp, "wb") as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, final)
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        if final.exists():
+            raise FundConflict("Копия с таким временем уже есть — повторите через секунду")
+        with open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, final)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        raise BackupError(f"Не удалось сохранить копию — ничего не удалено ({e.strerror or e})") from e
     return final
 
 
@@ -355,22 +414,23 @@ def _release_ids(db: Session, rows: list) -> None:
     db.flush()
 
 
-def initial_load(db: Session, parsed: ParsedFund, principal, expected_counts: dict, *,
+def initial_load(db: Session, parsed: ParsedFund, principal, expected_state: dict, *,
                  confirm: str, filename: str = "") -> dict:
     """«Начальная загрузка (заменить всё)». Под замком модуля: 409 — в эксплуатации или данные
-    изменились после предпросмотра (expected_counts ≠ reset_counts); 422 — нет слова
+    изменились после предпросмотра (expected_state ≠ reset_state); 422 — нет слова
     подтверждения или ошибка в файле. Затем копия, удаление, исходная версия из файла,
     распределение (броней нет — шахматка пустая) и аудит stays_reset."""
     lock_module(db)
     _not_in_production(db)
     if confirm != CONFIRM_WORD:
         raise FundError(f"Для замены введите слово «{CONFIRM_WORD}»")
-    counts = reset_counts(db)
-    if counts != expected_counts:
+    state = reset_state(db)
+    if json.loads(fingerprint(state)) != expected_state:
         raise FundConflict("Данные шахматки изменились после предпросмотра — повторите предпросмотр")
     plan, errors = plan_load(parsed)
     if errors:
         raise FundFileError(errors)
+    counts = state["counts"]
     path = backup_module(db)
     maxima = {m: db.scalar(select(func.max(m.id))) for m in _FILE_IDS}
     wipe(db)

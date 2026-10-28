@@ -6,6 +6,7 @@ _restore снимает все строки таблиц шахматки до �
 from __future__ import annotations
 
 import io
+import json
 import os
 
 import pytest
@@ -15,10 +16,12 @@ from sqlalchemy import func, insert, select, update
 from app.core.audit import AuditLog
 from app.core.db import Base
 from app.modules.stays.adapters.orm import (
+    CoverageLine,
     CustomField,
     Escort,
     FundVersion,
     GroupState,
+    Hold,
     Label,
     StaysSettings,
     UnitState,
@@ -136,7 +139,7 @@ def test_reset_requires_stays_reset_perm(manager_role_client, admin_client, db):
     before = _counts(db)
     c = manager_role_client
     assert _preview(c, data).status_code == 403
-    assert _reset(c, data, fr.fingerprint(before)).status_code == 403
+    assert _reset(c, data, fr.fingerprint(fr.reset_state(db))).status_code == 403
     assert c.put(f"{API}/fund/in-production", json={"value": True}).status_code == 403
     assert c.get(f"{API}/fund/backups/stays-20261028-120000.xlsx").status_code == 403
     assert _counts(db) == before
@@ -178,13 +181,14 @@ def test_reset_wrong_confirm_422(admin_client, db):
 def test_reset_checks_under_module_lock(admin_client, db, monkeypatch):
     """Слово и отпечаток сверяются после захвата замка модуля: две вкладки не проскочат вместе."""
     calls: list[str] = []
+    state = fr.reset_state(db)
     real_lock, real_counts = fr.lock_module, fr.reset_counts
     monkeypatch.setattr(fr, "lock_module", lambda s: (calls.append("lock"), real_lock(s)))
     monkeypatch.setattr(fr, "reset_counts", lambda s: (calls.append("counts"), real_counts(s))[1])
     parsed, errors = fx.parse_fund(_export(admin_client))
     assert not errors
     with pytest.raises(fr.FundError, match="ЗАМЕНИТЬ"):
-        fr.initial_load(db, parsed, None, real_counts(db), confirm="нет")
+        fr.initial_load(db, parsed, None, state, confirm="нет")
     assert calls == ["lock"]
     calls.clear()
     with pytest.raises(fr.FundConflict):
@@ -226,7 +230,8 @@ def test_reset_plan_rejects_unknown_refs_without_keyerror(admin_client, db):
     u.category_code, u.group_path, u.flags = "НЕТ", ("Нет", "узла"), frozenset({"нет-флага"})
     before = _counts(db)
     with pytest.raises(FundFileError) as e:
-        fr.initial_load(db, parsed, None, before, confirm=fr.CONFIRM_WORD)
+        fr.initial_load(db, parsed, None, json.loads(fr.fingerprint(fr.reset_state(db))),
+                        confirm=fr.CONFIRM_WORD)
     msgs = " ".join(x.message for x in e.value.errors)
     assert "категория «НЕТ»" in msgs and "узел «Нет / узла»" in msgs and "флаг «нет-флага»" in msgs
     db.rollback()
@@ -239,17 +244,39 @@ def test_reset_plan_rejects_unknown_refs_without_keyerror(admin_client, db):
 def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
     c = admin_client
     data = _export(c)
+    unit = db.scalar(select(UnitState.unit_id).limit(1))
+    db.add(Hold(unit_id=unit, start=fr.local_date(), end=fr.local_date(), kind="ooo", title="ремонт-резерв"))
+    db.commit()
+    hold = db.scalar(select(Hold).where(Hold.title == "ремонт-резерв"))
+    cover = db.scalar(select(CoverageLine).limit(1))
+    assert cover is not None, "в демо есть назначения батлеров"
+    today = fr.local_date()
+    future = db.scalar(select(FundVersion).where(FundVersion.valid_from > today, FundVersion.status == "published"))
+    assert future is not None, "в демо есть будущая версия фонда"
+    future_label = db.scalar(select(UnitState.label).where(UnitState.version_id == future.id).limit(1))
+    tables = {m.__tablename__: len(_rows(db, m)) for m in fr.WIPE}
+    names = fr.raw_sheet_names()
     before = _counts(db)
     assert before["reservations"] and before["guests"]
     fp = _preview(c, data).json()["fingerprint"]
     seen: dict = {}
+    sheet_of = names
     real_wipe = fr.wipe
 
     def checked_wipe(s):
         names = _backups()
         assert len(names) == 1 and fr.BACKUP_NAME.fullmatch(names[0]), names   # без «.part»
-        wb = load_workbook(fr.BACKUP_DIR / names[0], read_only=True)
-        assert wb.sheetnames == ["Категории", "Дерево", "Флаги", "Объекты", "Брони", "Гости"]
+        wb = load_workbook(fr.BACKUP_DIR / names[0])
+        assert wb.sheetnames == ["Категории", "Дерево", "Флаги", "Объекты", "Брони", "Гости",
+                                 *[sheet_of[m.__tablename__] for m in fr.WIPE]]
+        seen["raw"] = {t: wb[sheet_of[t]].max_row - 1 for t in tables}
+        rows = {t: [[x.value for x in r] for r in wb[sheet_of[t]].iter_rows()] for t in
+                ("stays_holds", "stays_coverage", "stays_unit_states")}
+        seen["hold"] = [r for r in rows["stays_holds"][1:] if r[0] == hold.id]
+        seen["cover"] = [r for r in rows["stays_coverage"][1:] if r[0] == cover.id]
+        head = rows["stays_unit_states"][0]
+        seen["future"] = [r for r in rows["stays_unit_states"][1:]
+                          if r[head.index("version_id")] == future.id and r[head.index("label")] == future_label]
         seen["reservations"] = wb["Брони"].max_row - 1
         seen["guests"] = wb["Гости"].max_row - 1
         seen["units"] = wb["Объекты"].max_row - 1
@@ -260,6 +287,11 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
     r = _reset(c, data, fp)
     assert r.status_code == 200, r.text
     body = r.json()
+    assert seen["raw"] == tables                 # по листу на каждую удаляемую таблицу, все строки
+    assert len(seen["hold"]) == 1 and "ремонт-резерв" in seen["hold"][0] and "ooo" in seen["hold"][0]
+    assert len(seen["cover"]) == 1 and cover.employee_id in seen["cover"][0]
+    assert cover.day.isoformat() in seen["cover"][0]
+    assert len(seen["future"]) == 1
     assert seen["db"] == before
     assert seen["reservations"] == before["reservations"] and seen["guests"] == before["guests"]
     assert seen["units"] == len(fx.parse_fund(data)[0].units)
@@ -328,6 +360,61 @@ def test_reset_twice_second_conflicts(admin_client, db):
     r = _reset(c, data, fp)
     assert r.status_code == 409 and "предпросмотр" in r.json()["detail"]
     assert _counts(db) == after
+    assert len(_backups()) == 1
+
+
+def test_reset_twice_same_size_second_conflicts(admin_client, db, monkeypatch):
+    """Две вкладки с одним предпросмотром после загрузки того же файла: счётчики совпадают,
+    но отпечаток (наибольшие id, время версии) — нет, вторая замена — 409. Часы сдвигаются на
+    минуту за вызов: иначе три замены за секунду упёрлись бы в имя копии, а не в отпечаток."""
+    import datetime as dt
+    import itertools
+
+    tick = itertools.count()
+    start = fr.now_local()
+    monkeypatch.setattr(fr, "now_local", lambda: start + dt.timedelta(minutes=next(tick)))
+    c = admin_client
+    data = _export(c)
+    assert _reset(c, data, _preview(c, data).json()["fingerprint"]).status_code == 200
+    fp = _preview(c, data).json()["fingerprint"]          # обе вкладки открыли предпросмотр
+    assert _reset(c, data, fp).status_code == 200          # первая заменила тем же по размеру файлом
+    after = _counts(db)
+    assert after == json.loads(fp)["counts"]               # счётчики одни 409 не дали бы
+    r = _reset(c, data, fp)
+    assert r.status_code == 409 and "предпросмотр" in r.json()["detail"]
+    assert _counts(db) == after and len(_backups()) == 2
+
+
+def test_reset_backup_failure_deletes_nothing(admin_client, db, monkeypatch):
+    c = admin_client
+    data = _export(c)
+    fp = _preview(c, data).json()["fingerprint"]
+    before = _counts(db)
+
+    def broken(fd):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(fr.os, "fsync", broken)
+    r = _reset(c, data, fp)
+    assert r.status_code == 409
+    assert "Не удалось сохранить копию — ничего не удалено" in r.json()["detail"]
+    assert _backups() == []                                 # и без «.part»
+    assert _counts(db) == before
+
+
+def test_reset_failure_after_wipe_rolls_back(admin_client, db, monkeypatch):
+    """Сбой после удаления (здесь — в загрузке фонда): транзакция откатывается, данные на месте;
+    копия остаётся на диске — она безвредна."""
+    c = admin_client
+    data = _export(c)
+    fp = _preview(c, data).json()["fingerprint"]
+    before = _counts(db)
+
+    def boom(*a, **k):
+        raise RuntimeError("сбой загрузки")
+    monkeypatch.setattr(fr.fund_drafts, "seed_initial", boom)
+    with pytest.raises(RuntimeError, match="сбой загрузки"):
+        _reset(c, data, fp)
+    assert _counts(db) == before
     assert len(_backups()) == 1
 
 
