@@ -1214,6 +1214,13 @@ tr.v4-click:hover td { background: #faf6ef; }
 .sb-hold.ooo { background: repeating-linear-gradient(45deg, #f3c9c0, #f3c9c0 6px, #f8dfd9 6px, #f8dfd9 12px); color: #8a2a1a; }
 .sb-unassigned { padding: 6px 0; cursor: pointer; }
 .sb-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+/* вкладка «Брони»: плоский список, строка открывает карточку */
+.sb-scroll { overflow-x: auto; margin: 8px 0 12px; }
+.bk-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.bk-table th, .bk-table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.bk-table th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); user-select: none; }
+.bk-row { cursor: pointer; }
+.bk-row:hover, .bk-row:focus { background: #f7efe7; outline: none; }
 .sb-history > div { padding: 6px 0; border-bottom: 1px solid #efe9df; font-size: 13px; }
 .sp-out:empty { display: none; }
 .sp-out { margin-top: 12px; padding: 10px 12px; background: #f8f5f0; border-radius: var(--r-sm); }

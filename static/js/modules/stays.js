@@ -10,7 +10,7 @@
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
-const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка']];
+const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони']];
 const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
 /* месяц видов — общий state.year / state.month (как Табель и График, §6); фильтры — одна
    панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
@@ -122,7 +122,7 @@ async function loadStays() {
   const host = $('#view-stays');
   host.innerHTML = `
     <div class="page-head"><div><h2>Шахматка</h2><div class="sub">Кто где живёт и кто из батлеров ведёт гостей</div></div></div>
-    <div class="layer-tabs">${STAYS_TABS.filter(([id]) => id !== 'butlers' || can('stays.view')).map(([id, t]) =>
+    <div class="layer-tabs">${STAYS_TABS.filter(([id]) => (id !== 'butlers' && id !== 'bookings') || can('stays.view')).map(([id, t]) =>
       `<button class="btn btn-sm${staysState.tab === id ? ' btn-primary' : ''}" data-stab="${id}">${esc(t)}</button>`).join('')}</div>
     <div id="stays-body"><div class="empty">Загрузка…</div></div>`;
   $$('[data-stab]', host).forEach(b => { b.onclick = () => { staysState.tab = b.dataset.stab; loadStays(); }; });
@@ -137,7 +137,7 @@ async function loadStays() {
 /* вкладки из других файлов раздела — по имени при вызове: файлы грузятся по алфавиту */
 function staysTabRender(tab) {
   return { units: renderUnitsBoard, butlers: renderButlersBoard, day: renderDayBoard,
-    occupancy: renderOccupancyGrid }[tab] || renderUnitsBoard;
+    occupancy: renderOccupancyGrid, bookings: renderBookings }[tab] || renderUnitsBoard;
 }
 
 async function loadMyStays() {
