@@ -1,13 +1,12 @@
 /* ══════════════════════════════════════════════════════════════════════
-   «ШАХМАТКА» — экраны Настроек (§6): фонд и категории, сопровождение,
-   настраиваемые поля, метки броней. Запись — право stays.setup.
+   «ШАХМАТКА» — экраны Настроек (§6): сопровождение, настраиваемые поля, метки
+   броней (фонд и категории — stays_fund.js). Запись — право stays.setup.
    Использует хелперы app.js / settings.js: $ $$ esc api openModal closeModal
    confirmDialog toast settingsHead settingsPanel.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
 registerModule({ screens: {
-  stays_fund: { render: renderStaysFund, icon: 'home' },
   stays_escort: { render: renderStaysEscort, icon: 'people' },
   stays_fields: { render: renderStaysFields, icon: 'list' },
   stays_labels: { render: renderStaysLabels, icon: 'code' },
@@ -47,33 +46,6 @@ function staysBindDeletes(host, attr, url, what, rerender) {
       catch (e) { toast(e.message, 'err'); }
     }, 'Удалить');
   });
-}
-
-/* ─────────────── Фонд и категории ─────────────── */
-/* Только просмотр фонда на сегодня: фонд меняется черновиком версии с даты (API /fund/draft);
-   экран редактирования — следующее обновление (Task 3.1) */
-async function renderStaysFund(host) {
-  const fund = await staysFund(true);          // категории и объекты — фонд на сегодня
-  const kinds = Object.fromEntries(fund.kinds.map(k => [k.code, k.title]));
-  const cats = Object.fromEntries(fund.categories.map(c => [c.id, c]));
-  host.innerHTML = `
-    ${settingsHead('Фонд и категории', 'Категории с видом, сопровождением и весом нагрузки; объекты по узлам дерева фонда и этажам — на сегодня.')}
-    <div class="dict-banner"><span>ℹ</span><span>Изменения фонда — черновиком с даты; экран редактирования появится в следующем обновлении</span></div>
-    ${settingsPanel('Категории', `
-      <div class="table-wrap"><table class="data">
-        <thead><tr><th>Код</th><th>Название</th><th>Вид</th><th>Сопровождение</th><th class="num">Вес</th></tr></thead>
-        <tbody>${fund.categories.map(c => `<tr>
-          <td><b>${esc(c.code)}</b></td><td>${esc(c.title)}</td><td>${esc(kinds[c.kind] || c.kind)}</td>
-          <td>${c.escorted ? '<span class="badge ok">с батлером</span>' : '<span class="muted">нет</span>'}</td>
-          <td class="num">${esc(String(c.weight))}</td>
-        </tr>`).join('') || '<tr><td colspan="5" class="empty">Категорий пока нет</td></tr>'}</tbody></table></div>`)}
-    ${settingsPanel(`Объекты · ${fund.units.length}`, `
-      <div class="table-wrap" style="max-height:420px"><table class="data">
-        <thead><tr><th>Объект</th><th>Категория</th><th>Узел</th><th>Этаж</th></tr></thead>
-        <tbody>${fund.units.map(u => `<tr>
-          <td><b>${esc(u.label)}</b></td><td>${esc(cats[u.category_id]?.code || '—')}</td>
-          <td>${esc(u.group || '—')}</td><td>${esc(u.floor)}</td>
-        </tr>`).join('') || '<tr><td colspan="4" class="empty">Объектов пока нет</td></tr>'}</tbody></table></div>`)}`;
 }
 
 /* ─────────────── Сопровождение ─────────────── */

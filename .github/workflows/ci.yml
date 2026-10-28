@@ -265,6 +265,14 @@ jobs:
           ./tools/run_stays_scenario.sh 8186 sluzhba
           ./tools/run_stays_scenario.sh 8185 rukovod
 
+      - name: "Сценарий экрана «Фонд» шахматки (черновик с даты, деление, флаги, перевод броней, публикация)"
+        # Под admin — путь менеджера: черновик с завтра, деление коннекта 12134, 409 при
+        # устаревшем rev, массовая отметка флага по узлу, предпросмотр с переводом брони
+        # без объекта и публикация; гонка переключения версий. Под rukovod — экрана нет.
+        run: |
+          ./tools/run_stays_fund_scenario.sh 8184 admin
+          ./tools/run_stays_fund_scenario.sh 8183 rukovod
+
   docker:
     name: Docker-образ собирается
     runs-on: ubuntu-latest
