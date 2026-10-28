@@ -24,6 +24,7 @@ from app.modules.stays.adapters.orm import (
     UnitStateFlag,
 )
 from app.modules.stays.application import fund_drafts as fd
+from app.modules.stays.application.fund import FundConflict
 from app.modules.stays.application.fund_versions import fund_on
 
 from .helpers import API, create_res, make_category
@@ -155,6 +156,27 @@ def test_propagate_false_leaves_later_versions(db, world):
     assert res.propagated == res.kept == res.skipped == []
 
 
+def test_move_draft_across_later_version_409(db, world):
+    """Сдвиг даты черновика за другую версию сменил бы базу — 409; внутри интервала базы — можно."""
+    _later(db, lambda rev: fd.save_unit(db, rev, {"floor": "5"}, world["u2"]))
+    d = fd.open_draft(db, D, None)
+    fd.save_unit(db, d.rev, {"floor": "7"}, world["u1"])
+    with pytest.raises(FundConflict, match="между датами есть другая версия"):
+        fd.move_draft_date(db, d.rev, L + dt.timedelta(days=1))
+    fd.move_draft_date(db, d.rev, D + dt.timedelta(days=10))      # та же база V0
+    assert fd.current_draft(db).valid_from == D + dt.timedelta(days=10)
+
+
+def test_move_same_date_draft_before_its_version_409(db, world):
+    """Черновик на дату поздней версии (её замена) нельзя увести раньше неё: база стала бы другой."""
+    _later(db, lambda rev: None)
+    d = fd.open_draft(db, L, None)
+    with pytest.raises(FundConflict, match="между датами"):
+        fd.move_draft_date(db, d.rev, D)
+    fd.move_draft_date(db, d.rev, L + dt.timedelta(days=3))
+    fd.publish(db, None)
+
+
 # ── предпросмотр и перевод броней (через API) ──────────────────────────────
 
 TODAY = "2036-01-10"
@@ -282,3 +304,20 @@ def test_transfer_reservation_ended_before_day_422(manager_role_client, manager_
     resp = manager_role_client.post(f"{API}/fund/draft/publish", json={
         "rev": rev, "transfers": [{"reservation_id": live["id"], "category_id": dlx["id"]}]})
     assert resp.status_code == 422
+
+
+def test_transfer_group_journals_every_member(manager_role_client, manager_client, today, db):
+    """Перевод брони группы переводит и остальных её членов — журнал «было → стало» у каждого."""
+    today(TODAY)
+    conn, dlx = make_category(manager_role_client, n_units=1), make_category(manager_role_client, n_units=1)
+    gid = manager_client.post(f"{API}/groups", json={"title": "Семья"}).json()["id"]
+    a = create_res(manager_client, conn, "2036-02-05", "2036-02-08", group_id=gid)
+    b = create_res(manager_client, conn, "2036-02-05", "2036-02-08", group_id=gid)
+    opened = manager_role_client.post(f"{API}/fund/draft", json={"valid_from": DAY})
+    assert opened.status_code == 200, opened.text
+    _publish(manager_role_client, {"rev": opened.json()["rev"], "transfers": [
+        {"reservation_id": a["id"], "category_id": dlx["id"]}]}, preview=False)
+    db.expire_all()
+    for rid in (a["id"], b["id"]):
+        assert db.get(Reservation, rid).category_id == dlx["id"]
+        assert _journal(db, rid)[-1]["category_id"] == [conn["id"], dlx["id"]]

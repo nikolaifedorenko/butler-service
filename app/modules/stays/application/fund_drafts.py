@@ -116,6 +116,12 @@ def move_draft_date(db: Session, rev: int, valid_from: dt.date) -> None:
         raise FundError("дата версии не может быть в прошлом")
     if _published_on(db, valid_from) is not None:
         raise FundConflict("на эту дату уже есть версия — удалите черновик и откройте новый на эту дату")
+    on_new = db.scalar(select(FundVersion.id).where(
+        FundVersion.status == "published", FundVersion.valid_from <= valid_from)
+        .order_by(FundVersion.valid_from.desc()).limit(1))
+    if on_new != draft.base_version_id:    # другая база: снимок черновика не учёл бы её правки (§4.4)
+        raise FundConflict("между датами есть другая версия фонда — удалите черновик и откройте новый "
+                           "с нужной даты")
     draft.valid_from = valid_from
     bump(draft)
     db.flush()
@@ -662,9 +668,16 @@ def _transfer(db: Session, principal, version: FundVersion, t: Transfer, categor
         doc = reservations.doc_of(db, r)
         doc["moves"] = sorted([m for m in doc["moves"] if m["move_date"] != day]
                               + [{"move_date": day, "category_id": t.category_id}], key=lambda m: m["move_date"])
+    # члены группы получают ту же категорию и переезды (save_reservation) — журнал и им
+    group = list(db.scalars(select(Reservation).where(Reservation.group_id == r.group_id,
+                                                      Reservation.id != r.id))) if r.group_id else []
+    others = [(m, reservations.reservation_snapshot(db, m)) for m in group]
     saved, before = reservations.save_reservation(db, doc, r.id, r.version)
-    audit(db, principal, "stays_reservation", f"reservation:{saved.id}",
-          {"diff": reservations.diff_of(before, db, saved), "fund_version": version.id})
+    for m, was in [(saved, before), *others]:
+        change = reservations.diff_of(was, db, m)
+        if change or m is saved:
+            audit(db, principal, "stays_reservation", f"reservation:{m.id}",
+                  {"diff": change, "fund_version": version.id})
     return {"reservation_id": saved.id, "number": saved.number, "category_id": t.category_id,
             "since": None if whole else day.isoformat()}
 
