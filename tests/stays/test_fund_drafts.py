@@ -324,3 +324,40 @@ def test_sibling_group_with_same_title_409(db, world):
     with pytest.raises(FundConflict):
         fd.save_group(db, d.rev, {"title": "Дубль", "parent_id": world["g1"]}, None)
     fd.save_group(db, d.rev, {"title": "Дубль", "parent_id": world["g2"]}, None)   # другой родитель — можно
+
+
+def test_missing_draft_409(db, world):
+    """Нет черновика — состояние, а не ввод: 409 (FundConflict) и у записи, и у публикации."""
+    with pytest.raises(FundConflict):
+        fd.save_unit(db, 1, {"floor": "5"}, world["u1"])
+    with pytest.raises(FundConflict):
+        fd.publish(db, None)
+
+
+def test_repeated_ids_in_merge_and_set_flag(db, world):
+    """Повтор id в объединении и флаге — как один id, без IntegrityError."""
+    d = _open(db)
+    fd.set_flag(db, d.rev, world["flag"], [world["u2"], world["u2"]], True)
+    new = fd.merge_units(db, d.rev, [world["u1"], world["u1"], world["u2"]],
+                         {"label": "M", "group_id": world["g1"], "category_id": world["a"]})
+    preds = set(db.scalars(select(UnitLineage.predecessor_id).where(UnitLineage.unit_id == new)))
+    assert preds == {world["u1"], world["u2"]}
+    with pytest.raises(FundError) as e:
+        fd.merge_units(db, d.rev, [world["u1"], world["u1"]], {"label": "N"})      # один объект дважды
+    assert _exact(e, FundError)
+
+
+@pytest.mark.parametrize("bad", ["abc", None, 1.5, True, 10**9])
+def test_bad_sort_order_422(db, world, bad):
+    d = _open(db)
+    for call in (lambda: fd.save_category(db, d.rev, {"sort_order": bad}, world["a"]),
+                 lambda: fd.save_group(db, d.rev, {"sort_order": bad}, world["g1"]),
+                 lambda: fd.save_flag(db, {"sort_order": bad}, world["flag"])):
+        with pytest.raises(FundError) as e:
+            call()
+        assert _exact(e, FundError)
+
+
+def test_fund_on_before_first_version(db, world):
+    with pytest.raises(LookupError, match="дата раньше начала фонда"):     # не IndexError пустой ленты
+        fund_on(db, dt.date(1999, 12, 31))

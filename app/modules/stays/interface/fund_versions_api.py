@@ -155,6 +155,13 @@ def _snapshot_dict(db: Session, version: FundVersion, snap: FundSnapshot) -> dic
     }
 
 
+def _fund_on(db: Session, date: dt.date) -> FundSnapshot:
+    try:
+        return fund_on(db, date)
+    except LookupError as e:
+        raise HTTPException(422, str(e)) from e      # дата раньше первой версии — ошибка ввода
+
+
 @router.get("/fund/snapshot")
 def get_snapshot(date: Optional[dt.date] = None, version_id: Optional[int] = None,
                  principal: Principal = Depends(READ), db: Session = Depends(get_db)):
@@ -166,7 +173,7 @@ def get_snapshot(date: Optional[dt.date] = None, version_id: Optional[int] = Non
             raise HTTPException(404, "Версии фонда нет")
         snap = snapshot_of(db, version_id)
     else:
-        snap = fund_on(db, date)
+        snap = _fund_on(db, date)
         version = db.get(FundVersion, snap.version_id)
     return _snapshot_dict(db, version, snap)
 
@@ -185,7 +192,7 @@ def list_versions(principal: Principal = Depends(READ), db: Session = Depends(ge
 def draft_diff(principal: Principal = Depends(READ), db: Session = Depends(get_db)):
     draft = fd.current_draft(db)
     if draft is None:
-        raise HTTPException(422, "Черновика фонда нет")
+        raise HTTPException(409, "Черновика фонда нет")
     if draft.base_version_id is None:
         return asdict(fd.FundDiff())
     out = asdict(fd.diff(db, draft.base_version_id, draft.id))
@@ -363,7 +370,7 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 @router.get("/fund/export", response_class=Response, responses={200: {"content": {XLSX: {}}}})
 def export_fund(date: dt.date, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     """Фонд на дату файлом Excel — он же образец для загрузки (§9.1)."""
-    data = fx.export_fund(fund_on(db, date), list(db.scalars(select(UnitFlag))))
+    data = fx.export_fund(_fund_on(db, date), list(db.scalars(select(UnitFlag))))
     return Response(content=data, media_type=XLSX,
                     headers={"Content-Disposition": f'attachment; filename="fund-{date.isoformat()}.xlsx"'})
 

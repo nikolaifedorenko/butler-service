@@ -219,7 +219,11 @@ def fund_for(db: Session, first: dt.date, last: dt.date) -> FundTimeline:
 
 
 def fund_on(db: Session, day: dt.date) -> FundSnapshot:
-    return fund_for(db, day, day).on(day)
+    """Снимок на день; день раньше первой версии фонда — LookupError (фонда на него нет)."""
+    timeline = fund_for(db, day, day)
+    if not timeline.parts:
+        raise LookupError("дата раньше начала фонда")
+    return timeline.on(day)
 
 
 def snapshot_of(db: Session, version_id: int) -> FundSnapshot:

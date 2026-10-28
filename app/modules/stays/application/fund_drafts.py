@@ -108,7 +108,7 @@ def _draft(db: Session, rev: int) -> FundVersion:
     lock_module(db)
     draft = current_draft(db)
     if draft is None:
-        raise FundError("черновика фонда нет — откройте его")
+        raise FundConflict("черновика фонда нет — откройте его")
     check_rev(draft, rev)
     return draft
 
@@ -131,6 +131,21 @@ def move_draft_date(db: Session, rev: int, valid_from: dt.date) -> None:
 
 
 # ── вспомогательное ────────────────────────────────────────────────────────
+
+
+SORT_RANGE = (-100_000, 100_000)
+
+
+def _sort_order(data: dict, current: int | None) -> int:
+    """Порядок сортировки: целое в SORT_RANGE (как в API); не задан — прежний, у нового — 100."""
+    v = data.get("sort_order", 100 if current is None else current)
+    try:
+        n = None if isinstance(v, bool) else int(str(v).strip())
+    except ValueError:
+        n = None
+    if n is None or not SORT_RANGE[0] <= n <= SORT_RANGE[1]:
+        raise FundError(f"порядок: целое число от {SORT_RANGE[0]} до {SORT_RANGE[1]}")
+    return n
 
 
 def _text(data: dict, key: str, current: str | None, limit: int, what: str) -> str:
@@ -229,7 +244,7 @@ def save_category(db: Session, rev: int, data: dict, category_id: int | None) ->
         db.add(row)
     row.code, row.title, row.kind, row.weight = code, title, kind, weight
     row.escorted = bool(data.get("escorted", row.escorted if row.escorted is not None else False))
-    row.sort_order = int(data.get("sort_order", row.sort_order if row.sort_order is not None else 100))
+    row.sort_order = _sort_order(data, row.sort_order)
     bump(draft)
     db.flush()
     return category_id
@@ -277,7 +292,7 @@ def save_group(db: Session, rev: int, data: dict, group_id: int | None) -> int:
         row = GroupState(version_id=draft.id, group_id=group_id)
         db.add(row)
     row.title, row.parent_id = title, parent_id
-    row.sort_order = int(data.get("sort_order", row.sort_order if row.sort_order is not None else 100))
+    row.sort_order = _sort_order(data, row.sort_order)
     bump(draft)
     db.flush()
     return group_id
@@ -368,7 +383,8 @@ def split_unit(db: Session, rev: int, unit_id: int, parts: list[dict]) -> list[i
 
 def merge_units(db: Session, rev: int, unit_ids: list[int], data: dict) -> int:
     draft = _draft(db, rev)
-    if len(set(unit_ids)) < 2:
+    unit_ids = list(dict.fromkeys(unit_ids))     # повтор id — одна строка происхождения
+    if len(unit_ids) < 2:
         raise FundError("для объединения нужно минимум два объекта")
     rows = [_unit(db, draft.id, u) for u in unit_ids]
     groups, cats = {r.group_id for r in rows}, {r.category_id for r in rows}
@@ -397,7 +413,7 @@ def set_flag(db: Session, rev: int, flag_id: int, unit_ids: list[int], value: bo
         raise FundError("флага нет в справочнике")
     if value and flag.archived:
         raise FundError(f"флаг «{flag.title}» в архиве")
-    for u in unit_ids:
+    for u in dict.fromkeys(unit_ids):             # повтор id — одна строка флага
         _unit(db, draft.id, u)
         have = db.get(UnitStateFlag, (draft.id, u, flag_id)) is not None
         if value and not have:
@@ -712,7 +728,7 @@ def publish(db: Session, principal, rev: int | None = None, propagate: bool = Tr
     lock_module(db)
     draft = current_draft(db)
     if draft is None:
-        raise FundError("черновика фонда нет")
+        raise FundConflict("черновика фонда нет")
     if rev is not None:
         db.refresh(draft)                  # после замка: правка коллеги могла bump-нуть rev
         check_rev(draft, rev)
@@ -1065,7 +1081,7 @@ def save_flag(db: Session, data: dict, flag_id: int | None) -> int:
         db.add(row)
     row.title = title
     row.color = str(data.get("color", row.color or "#3b6fd8"))[:9]
-    row.sort_order = int(data.get("sort_order", row.sort_order if row.sort_order is not None else 100))
+    row.sort_order = _sort_order(data, row.sort_order)
     db.flush()
     return row.id
 
