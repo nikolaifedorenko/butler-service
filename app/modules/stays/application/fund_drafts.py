@@ -253,6 +253,12 @@ def save_group(db: Session, rev: int, data: dict, group_id: int | None) -> int:
     title = _text(data, "title", row.title if row else None, 120, "название узла")
     parent_id = data.get("parent_id", row.parent_id if row else None)
     _grp(db, draft.id, parent_id)
+    if "/" in title:
+        raise FundError("в названии узла нельзя использовать «/»")
+    twin = db.scalar(select(GroupState.group_id).where(
+        GroupState.version_id == draft.id, GroupState.parent_id == parent_id, GroupState.title == title))
+    if twin is not None and twin != group_id:
+        raise FundConflict("в этом узле уже есть подузел с таким названием")
     if group_id is not None:
         seen, cur = set(), parent_id
         while cur is not None:
@@ -796,6 +802,8 @@ def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags:
 
     def node(path: tuple[str, ...], sort_order: int | None = None) -> int:
         if path not in nodes:
+            if "/" in path[-1]:
+                raise FundError("в названии узла нельзя использовать «/»")
             parent = node(path[:-1]) if len(path) > 1 else None
             nodes[path] = gid = _add(db, FundGroup())
             db.add(GroupState(version_id=vid, group_id=gid, parent_id=parent, title=path[-1],

@@ -181,3 +181,24 @@ def test_formula_guard_roundtrip():
 def test_numeric_cells_as_text(val):
     parsed, e = fx.parse_fund(book(units=[[None, val, "DLX", None, 3, None]]))
     assert e == [] and parsed.units[0].label == "1" and parsed.units[0].floor == "3"
+
+
+def test_formula_flag_title_exported_as_text_and_parsed_back():
+    fl = [UnitFlag(id=5, title="=1+1", color="#112233", sort_order=1, archived=False)]
+    data = fx.export_fund(snap(), fl)
+    ws = load_workbook(io.BytesIO(data))["Объекты"]
+    assert ws.cell(row=1, column=7).value == "'=1+1"
+    parsed, e = fx.parse_fund(data)
+    assert e == [] and {f.title for f in parsed.flags} == {"=1+1"}
+    assert [u.flags for u in parsed.units if u.id == 57] == [frozenset({"=1+1"})]
+
+
+def test_too_many_flag_columns():
+    cols = [f"F{i}" for i in range(fx.MAX_FLAG_COLUMNS + 1)]
+    e = errs(book(units=[], ucols=cols))
+    assert "слишком много колонок" in e[("Объекты", 1)]
+
+
+def test_predecessors_on_row_with_id_is_error():
+    e = errs(book(units=[[7, "1", "DLX", None, "", "57"]]))
+    assert "только у новых" in e[("Объекты", 2)]

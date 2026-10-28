@@ -100,7 +100,7 @@ def _yn(v: bool) -> str:
 
 def _setup_sheet(ws, headers: list[str], widths: list[int]) -> None:
     for i, (h, w) in enumerate(zip(headers, widths, strict=True), start=1):
-        c = ws.cell(row=1, column=i, value=h)
+        c = ws.cell(row=1, column=i, value=safe_sheet_cell(h))
         c.font = HEAD
         c.protection = Protection(locked=(i == 1))
         letter = get_column_letter(i)
@@ -207,7 +207,7 @@ def _bool(raw, ctx: _Ctx, sheet: str, row: int, what: str) -> bool:
 
 
 def _path(s: str) -> tuple[str, ...]:
-    return tuple(p.strip() for p in s.split("/"))
+    return tuple(p.strip() for p in s.split(PATH_SEP.strip()))
 
 
 def _read_sheet(wb, name: str, width: int, ctx: _Ctx) -> tuple[list[str], list[tuple[int, tuple]]] | None:
@@ -350,6 +350,8 @@ def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund |
     # Колонки флагов листа «Объекты»: новая колонка создаёт флаг (§9.1).
     uheader, urows = units_raw
     flag_cols = [(i, t) for i, t in enumerate(uheader) if i >= 6 and t]
+    if len(uheader) > 6 + MAX_FLAG_COLUMNS and any(uheader[6 + MAX_FLAG_COLUMNS:]):
+        ctx.err(SHEET_UNITS, 1, f"слишком много колонок флагов: больше {MAX_FLAG_COLUMNS}")
     known_titles = {f.title for f in flags}
     seen_cols: set[str] = set()
     for _, t in flag_cols:
@@ -386,9 +388,12 @@ def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund |
             if known_unit_ids is not None and pid not in known_unit_ids:
                 ctx.err(SHEET_UNITS, n, f"«Из чего»: неизвестный ID {pid}")
             preds.append(pid)
+        uid = _int(v[0], ctx, SHEET_UNITS, n, "ID")
+        if uid is not None and preds:
+            ctx.err(SHEET_UNITS, n, "«Из чего» заполняется только у новых строк (ID пуст)")
         on = frozenset(t for i, t in flag_cols
                        if i < len(v) and _bool(v[i], ctx, SHEET_UNITS, n, f"флаг «{t}»"))
-        units.append(ParsedUnit(n, _int(v[0], ctx, SHEET_UNITS, n, "ID"), label, code, gpath,
+        units.append(ParsedUnit(n, uid, label, code, gpath,
                                 _text(v[4]), preds, on))
     _dup_ids(units, SHEET_UNITS, ctx)
     _dup_keys(units, lambda u: u.label, SHEET_UNITS, "номер", ctx)

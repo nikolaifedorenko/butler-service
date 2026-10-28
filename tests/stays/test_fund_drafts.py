@@ -306,3 +306,21 @@ def test_publish_checks_rev_under_lock(db, world):
     assert fd.current_draft(db) is not None
     fd.publish(db, None, d.rev)
     assert fd.current_draft(db) is None
+
+
+def test_group_title_with_slash_422(db, world):
+    d = _open(db)
+    with pytest.raises(FundError) as e:
+        fd.save_group(db, d.rev, {"title": "A/B", "parent_id": world["g1"]}, None)
+    assert _exact(e, FundError) and "«/»" in str(e.value)
+    with pytest.raises(FundError):
+        fd.seed_initial(db, [], [{"path": ["A/B"]}], [], [])
+
+
+def test_sibling_group_with_same_title_409(db, world):
+    d = _open(db)
+    fd.save_group(db, d.rev, {"title": "Дубль", "parent_id": world["g1"]}, None)
+    d = fd.current_draft(db)
+    with pytest.raises(FundConflict):
+        fd.save_group(db, d.rev, {"title": "Дубль", "parent_id": world["g1"]}, None)
+    fd.save_group(db, d.rev, {"title": "Дубль", "parent_id": world["g2"]}, None)   # другой родитель — можно
