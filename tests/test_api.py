@@ -476,37 +476,59 @@ class TestApi(unittest.TestCase):
 
     def test_15h_back_and_forth_transfers(self):
         """Переводы туда-сюда (в т.ч. задним числом): история без пересечений,
-        одна строка на блок, фаза каждого периода — своего блока."""
-        today = local_date()
-        first = today.replace(day=1)
-        if today.day < 26:
-            self.skipTest("нужно число месяца >= 26")
-        created = client.post("/api/employees", json={
+        одна строка на блок, фаза каждого периода — своего блока.
+
+        Месяц — прошлый: все его дни уже прошли, тест не зависит от сегодняшнего
+        числа (раньше пропускался до 26-го и падал после). Фаза сверяется по Табелю,
+        как в test_15g: отдельного поля `shift` в ячейке сетки v7 нет.
+        """
+        first = local_date().replace(day=1)
+        r = self.admin.put("/api/settings/base", json={
+            "cycle": "2/2", "anchor": "2024-01-01",
+            "groups": {"Смена 1": {"value": "Я 12"},
+                       "Смена 2": {"value": "Я 12"},
+                       "Пятидневка": {"value": "Я 9", "off_weekdays": [5, 6]}}})
+        self.assertEqual(r.status_code, 200, r.text)
+        created = self.admin.post("/api/employees", json={
             "full_name": "ТудаСюда Тест Тестович", "position": "Батлер",
-            "schedule_group": "Смена 2", "hired_at": (first - dt.timedelta(days=90)).isoformat()}).json()
-        eid = created["id"]
+            "schedule_group": "Смена 2", "hired_at": (first - dt.timedelta(days=90)).isoformat()})
+        self.assertEqual(created.status_code, 200, created.text)
+        eid = created.json()["id"]
         d10, d20 = first + dt.timedelta(days=9), first + dt.timedelta(days=19)
-        client.post(f"/api/employees/{eid}/block-change", json={"group": "Смена 1", "date": d10.isoformat()})
-        client.post(f"/api/employees/{eid}/block-change", json={"group": "Смена 2", "date": (first + dt.timedelta(days=4)).isoformat()})
-        client.post(f"/api/employees/{eid}/block-change", json={"group": "Смена 1", "date": d20.isoformat()})
-        hist = client.get(f"/api/employees/{eid}/history").json()["blocks"]
+        for group, day in (("Смена 1", d10), ("Смена 2", first + dt.timedelta(days=4)), ("Смена 1", d20)):
+            r = self.admin.post(f"/api/employees/{eid}/block-change",
+                                json={"group": group, "date": day.isoformat()})
+            self.assertEqual(r.status_code, 200, r.text)
+        hist = self.admin.get(f"/api/employees/{eid}/history").json()["blocks"]
         # нет пересечений и ровно один открытый период
         self.assertEqual(sum(1 for h in hist if h["end"] is None), 1)
         for a, b in zip(hist, hist[1:], strict=False):
             self.assertIsNotNone(a["end"])
             self.assertEqual(dt.date.fromisoformat(a["end"]) + dt.timedelta(days=1),
                              dt.date.fromisoformat(b["start"]))
-        g = client.get("/api/schedule", params={"year": first.year, "month": first.month}).json()
+        rf = self.admin.post("/api/tabel/fill-from-cycles", json={
+            "year": first.year, "month": first.month, "overwrite": True})
+        self.assertEqual(rf.status_code, 200, rf.text)
+        g = self.admin.get("/api/schedule", params={"year": first.year, "month": first.month}).json()
         moved = next(x for x in g["rows"] if x["employee"]["id"] == eid)
         self.assertEqual(sorted(b["group"] for b in moved["blocks"]), ["Смена 1", "Смена 2"])
-        ref1 = next(x for x in g["rows"] if x["employee"]["full_name"].startswith("Громова"))
-        ref2 = next(x for x in g["rows"] if x["employee"]["full_name"].startswith("Петров"))
-        d_before = (first + dt.timedelta(days=6)).isoformat()
-        d_after = (first + dt.timedelta(days=22)).isoformat()
-        kind = lambda row, d: row["cells"][d]["shift"]["kind"] if row["cells"][d]["shift"] else None
-        self.assertEqual(kind(moved, d_before), kind(ref2, d_before))   # до перевода — фаза Смены 2
-        self.assertEqual(kind(moved, d_after), kind(ref1, d_after))     # после — фаза Смены 1
-        client.post(f"/api/employees/{eid}/delete", json={})
+        ref1 = next(x for x in g["rows"] if x["employee"]["full_name"].startswith("Громова"))   # Смена 1
+
+        def phase(row, iso):
+            """Рабочий день / выходной по Табелю: плановые часы есть — рабочий."""
+            tabel = row["cells"][iso]["tabel"] or {}
+            return "work" if tabel.get("hours") else "off"
+
+        # до перевода (05–19) — базовый цикл Смены 2: 2/2 в противофазе со Сменой 1
+        for i in range(5, 9):
+            d = (first + dt.timedelta(days=i)).isoformat()
+            self.assertEqual(phase(moved, d), "off" if phase(ref1, d) == "work" else "work",
+                             f"день {d}: до перевода фаза Смены 2")
+        # после перевода (с 20-го) — фаза Смены 1
+        for i in range(20, 24):
+            d = (first + dt.timedelta(days=i)).isoformat()
+            self.assertEqual(phase(moved, d), phase(ref1, d), f"день {d}: после перевода фаза Смены 1")
+        self.admin.post(f"/api/employees/{eid}/delete", json={})
 
     def test_15i_docx_templates(self):
         """Корпоративные шаблоны .docx: загрузка, плейсхолдеры (в т.ч. разбитые на runs), рендер."""
