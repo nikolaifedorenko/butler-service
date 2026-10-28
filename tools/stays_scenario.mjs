@@ -4,8 +4,12 @@
   1. экраны Настроек: фонд и категории, сопровождение, настраиваемые поля, метки;
   2. шахматка объектов: бронь формой с предпросмотром, вытеснение чужой брони, 409, карточка;
   3. батлеры: назначение шаблоном → «вне смены» → «Добавить смену» → табло дня;
-  4. сводная загрузка, полный фонд на шахматке; под другими логинами — смоук вкладок и «Мои гости»;
-  5. блок/OOO, совместное проживание, карточка гостя со связями, особые даты, сопровождающие, поля.
+  2а. месяц: ◀ ▶ (гонка быстрой смены), общий с Табелем, «Сегодня» с подсветкой колонки;
+  4. фильтры по дереву и флагам, разделы дерева, сортировка, «Загрузка» (8 строк узла, % / штуки),
+     полный фонд на шахматке; под другими логинами — смоук вкладок и «Мои гости»;
+  5. блок/OOO, совместное проживание, карточка гостя со связями, особые даты, сопровождающие, поля;
+  6. сохранённые наборы фильтров (localStorage, без хранилища — пустой список);
+  7. флаг и выбытие объекта с середины месяца: «вне фильтра» / «нет в фонде», полосы не скрыты.
 
 Запуск: tools/run_stays_scenario.sh [порт] [логин]   (нужен jsdom: npm i)
 Код возврата: 0 — сценарий пройден, 2 — есть проваленные проверки. */
@@ -120,6 +124,29 @@ function serverToday() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: SERVER_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 const uniq = Date.now().toString(36).slice(-5).toUpperCase();
+const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+const monthTitle = () => window.eval('MONTHS[state.month - 1] + " " + state.year');
+
+/* Месяц видов — общий state.year / state.month (§6): открыть месяц даты iso на вкладке tab */
+async function openMonth(iso, tab = 'units') {
+  const [y, m] = iso.split('-').map(Number);
+  window.eval(`state.year = ${y}; state.month = ${m};`);
+  click($(`#view-stays [data-stab="${tab}"]`));
+  return waitFor(() => !!$(`#stays-body .sb-head [data-day="${iso.slice(0, 8)}01"]`));
+}
+/* фильтр меняет разметку целиком: ждём новую (иначе следующий шаг уйдёт в старую панель) */
+async function setCheck(sel, on) {
+  const el = $(sel);
+  if (!el) return false;
+  el.checked = on;
+  change(el);
+  return waitFor(() => $(sel) && $(sel) !== el);
+}
+async function resetFilters() {
+  const old = $('#sf-reset');
+  click(old);
+  return waitFor(() => $('#sf-reset') && $('#sf-reset') !== old);
+}
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
    /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
@@ -196,22 +223,49 @@ async function unitsBoard() {
   check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 4));
   /* панель фильтров появляется после загрузки фонда и шахматки: в медленном CI сценарий
      менял фильтры раньше — change() уходил в пустоту (падало через раз, 25.10.2026) */
-  check('шахматка отрисована (панель фильтров)', await waitFor(() => $('#sb-first') && $('#sb-cat')));
-  /* гонка фильтров: пользователь меняет дату, затем категорию; ответ на запрос без категории
-     приходит ПОЗЖЕ — на экране должна остаться отфильтрованная шахматка (loadGenerationFor) */
+  check('шахматка отрисована (месяц и панель фильтров)', await waitFor(() => $('#sm-label') && $('.sf-panel')));
+  check('выбор «7 / 14 / 31 дн.» и даты убран', !$('#sb-days') && !$('#sb-first'));
+  check('месяц шахматки — общий месяц разделов', text('#sm-label') === monthTitle(), text('#sm-label'));
+  /* гонка месяцев: ▶ ▶ подряд; ответ за февраль приходит ПОЗЖЕ мартовского — на экране
+     должен остаться март (loadGenerationFor) */
+  await openMonth('2030-01-01');
   const realApi = window.api;
   window.api = async (url, opts) => {
-    if (url.startsWith('/api/stays/board/units') && !url.includes('category_ids=')) await sleep(1500);
+    if (url.startsWith('/api/stays/board/units') && url.includes('first=2030-02-01')) await sleep(1500);
     return realApi(url, opts);
   };
   window.eval('api = window.api');
-  change($('#sb-first'), '2030-01-01');
-  await sleep(150);                             // запрос без категории ушёл и «висит»
-  change($('#sb-cat'), String(cat.id));
-  await sleep(2000);                            // запоздавший ответ без категории тоже пришёл
+  click($('#sm-next'));
+  await sleep(150);                             // февраль ушёл и «висит»
+  click($('#sm-next'));
+  await sleep(2000);                            // запоздавший февраль тоже пришёл
   window.api = realApi;
   window.eval('api = window.api');
+  check('быстрая смена месяцев: на экране последний выбранный', await waitFor(() => !!$('.sb-head [data-day="2030-03-01"]'))
+    && !$('.sb-head [data-day="2030-02-01"]') && text('#sm-label') === 'март 2030', text('#sm-label'));
+  check('месяц целиком — 31 колонка', $$('#stays-body .sb-head [data-day]').length === 31);
+  click($('#sm-prev'));
+  await waitFor(() => !!$('.sb-head [data-day="2030-02-01"]'));
+  click($('#sm-prev'));
+  check('◀ ◀ — снова январь', await waitFor(() => !!$('.sb-head [data-day="2030-01-01"]')));
+  check('фильтр категории — галочкой', await setCheck(`[data-sf-cat="${cat.id}"]`, true));
   check('строки объектов категории', await waitFor(() => $$('#view-stays [data-unit-row]').length === 2));
+  /* месяц общий с Табелем: ▶ здесь — Табель на том же месяце; ◀ в Табеле — шахматка тоже */
+  click($('#sm-next'));
+  await waitFor(() => text('#sm-label') === 'февраль 2030');
+  window.navigate('timesheet');
+  check('Табель открылся на месяце шахматки', await waitFor(() => text('#tb-label') === 'февраль 2030'), text('#tb-label'));
+  click($('#tb-prev'));
+  await waitFor(() => text('#tb-label') === 'январь 2030');
+  window.navigate('stays');
+  check('шахматка — на месяце Табеля', await waitFor(() => !!$('.sb-head [data-day="2030-01-01"]')) && text('#sm-label') === 'январь 2030');
+  await waitFor(() => $$('#view-stays [data-unit-row]').length === 2);
+  /* «Сегодня» — текущий месяц, колонка дня подсвечена */
+  click($('#sm-today'));
+  const today = serverToday();
+  check('«Сегодня»: текущий месяц и подсветка колонки', await waitFor(() =>
+    !!$(`.sb-head [data-day="${today}"].today.flash-today`)), text('#sm-label'));
+  await openMonth('2030-01-01');
 
   click($('#sb-new'));
   check('форма брони открылась', await waitFor(() => !!$('#rf-check-in')));
@@ -287,11 +341,9 @@ async function butlersAndDay() {
   check('Иванов в «Сопровождают гостей»', !!ivanov);
 
   window.navigate('stays');
-  /* ждём свежую отрисовку: фильтры старой разметки ушли бы в гонку с перерисовкой */
-  await waitFor(() => $$('#sb-cat option').some(o => o.value === String(cat.id)));
-  change($('#sb-first'), day(1));
-  await waitFor(() => text('#view-stays .sb-head').includes(day(1).slice(8, 10) + '.' + day(1).slice(5, 7)));
-  change($('#sb-cat'), String(cat.id));
+  await openMonth(day(1));
+  await resetFilters();
+  await setCheck(`[data-sf-cat="${cat.id}"]`, true);
   check('бронь на шахматке', await waitFor(() => !!$(`#view-stays [data-bar="${res.id}"]`)));
   click($(`#view-stays [data-bar="${res.id}"]`));
   check('кнопка «Назначить батлеров» в карточке', await waitFor(() => !!$('#rc-assign')));
@@ -304,14 +356,16 @@ async function butlersAndDay() {
   click($('[data-save]'));
   await sleep(500);
 
-  click($('[data-stab="butlers"]'));
-  check('шахматка батлеров открылась', await waitFor(() => !!$('#bb-first')));
-  change($('#bb-first'), day(1));
-  await waitFor(() => !$(`[data-bb-emp][data-day="${day(0)}"]`) && !!$(`[data-bb-emp][data-day="${day(1)}"]`));
-  /* ночи брони C — day(1)…day(6); вне их «вне смены» может давать демо-назначение */
+  check('шахматка батлеров открылась', await openMonth(day(1), 'butlers'));
+  check('батлеры: селектора дней нет, месяц целиком', !$('#bb-days') && !$('#bb-first')
+    && !!$(`#stays-body .sb-head [data-day="${day(1).slice(0, 8)}01"]`));
+  /* ночи брони C — day(1)…day(6); вне их «вне смены» может давать демо-назначение.
+     Ночи могут уйти в следующий месяц — тогда ищем там (▶) */
   const nights = [1, 2, 3, 4, 5, 6].map(day);
   const offCell = () => $$(`[data-bb-emp="${ivanov.employee_id}"][data-warn*="off_shift"]`).find(c => nights.includes(c.dataset.day));
-  check('день «вне смены» подсвечен', await waitFor(() => !!offCell()));
+  let offFound = await waitFor(() => !!offCell(), 6000);
+  if (!offFound) { click($('#sm-next')); offFound = await waitFor(() => !!offCell()); }
+  check('день «вне смены» подсвечен', offFound);
   const offDay = offCell()?.dataset.day;
   click(offCell());
   check('диалог дня батлера', await waitFor(() => !!$('#bb-add-shift')));
@@ -345,10 +399,8 @@ async function butlersAndDay() {
   check('первая ночь без батлера', card.coverage.find(c => c.day === day(1))?.butlers.length === 0);
 
   /* день батлера: «Назначить» бронь на свободный день */
-  click($('[data-stab="butlers"]'));
-  await waitFor(() => !!$('#bb-first'));
-  change($('#bb-first'), day(1));
-  await waitFor(() => !$(`[data-bb-emp][data-day="${day(0)}"]`) && !!$(`[data-bb-emp="${ivanov.employee_id}"][data-day="${day(1)}"]`));
+  await openMonth(day(1), 'butlers');
+  await waitFor(() => !!$(`[data-bb-emp="${ivanov.employee_id}"][data-day="${day(1)}"]`));
   click($(`[data-bb-emp="${ivanov.employee_id}"][data-day="${day(1)}"]`));
   check('кнопка «Назначить» в дне батлера', await waitFor(() => !!$('#bb-assign')));
   click($('#bb-assign'));
@@ -362,25 +414,154 @@ async function butlersAndDay() {
 }
 
 async function occupancyAndFund() {
-  console.log('\n4 · Загрузка и полный фонд');
-  click($('[data-stab="occupancy"]'));
-  check('сводная загрузка отрисована', await waitFor(() => $$('[data-oc-node]').length > 0));
-  const cell = $('[data-oc-node]');
-  const node = cell.dataset.ocNode;
+  console.log('\n4 · Загрузка, фильтры, сортировка, полный фонд');
+  const today = serverToday();
+  const snap = (await apiJson('GET', '/api/stays/fund/snapshot?date=' + today)).body;
+  const root = t => snap.groups.find(g => g.parent_id == null && g.title === t);
+  const [korpus, villas, estate] = ['Корпус', 'Винные виллы', 'Имение'].map(root);
+  const sea = snap.flags.find(f => f.title === 'Вид на море');
+  check('демо-дерево: Корпус, Винные виллы, Имение, флаг «Вид на море»', !!(korpus && villas && estate && sea));
+  await openMonth(today);
+
+  /* Где: «Корпус» + «Винные виллы» — оба раздела (внутри измерения — «или») */
+  await resetFilters();
+  await setCheck(`[data-sf-group="${korpus.id}"]`, true);
+  await setCheck(`[data-sf-group="${villas.id}"]`, true);
+  check('«Корпус» + «Винные виллы» — оба раздела', !!$(`[data-sec="${korpus.id}"]`) && !!$(`[data-sec="${villas.id}"]`)
+    && !$(`[data-sec="${estate.id}"]`));
+  const rowsOf = gid => $$(`#view-stays [data-unit-row][data-root="${gid}"]`).length;
+  check('по умолчанию виллы развёрнуты, корпус свёрнут (строки не в DOM)', rowsOf(villas.id) > 0 && rowsOf(korpus.id) === 0,
+    `${rowsOf(villas.id)} / ${rowsOf(korpus.id)}`);
+  click($(`[data-sec="${korpus.id}"]`));
+  check('клик по разделу — корпус развёрнут', await waitFor(() => rowsOf(korpus.id) > 0));
+  const n1 = rowsOf(korpus.id);
+  await setCheck(`[data-sf-flag="${sea.id}"]`, true);
+  const n2 = rowsOf(korpus.id);
+  check('флаг «Вид на море» сужает', n2 > 0 && n2 < n1, `${n1} → ${n2}`);
+  check('флаги — значками в строке', $$('#view-stays [data-unit-row] .sb-flag').length >= n2);
+
+  check('«Загрузка» открылась', await openMonth(today, 'occupancy'));
+  const [y, m] = today.split('-').map(Number);
+  const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  check('«Загрузка»: все дни месяца', $$('#stays-body .oc-head [data-day]').length === dim,
+    String($$('#stays-body .oc-head [data-day]').length));
+  const lines = key => $$(`[data-oc-group="${key}"] .oc-line`).length;
+  check('«Итого по выбранному» развёрнут — восемь строк', lines('total') === 8, String(lines('total')));
+  check('узел «Корпус» свёрнут — одна строка', lines(korpus.id) === 1, String(lines(korpus.id)));
+  click($(`[data-oc-toggle="${korpus.id}"]`));
+  check('клик по названию — узел развёрнут, восемь строк', await waitFor(() => lines(korpus.id) === 8));
+  click($('[data-oc-toggle="total"]'));
+  check('«Итого» свёрнут — одна строка', await waitFor(() => lines('total') === 1));
+  check('свёрнутый узел — в процентах', /%|—/.test(text('[data-oc-group="total"] .oc-line')));
+  click($('[data-oc-mode="count"]'));
+  check('переключатель «штуки»', await waitFor(() => !/%/.test(text('[data-oc-group="total"] .oc-line'))
+    && /\d+\/\d+/.test(text('[data-oc-group="total"] .oc-line'))));
+  click($('[data-oc-mode="pct"]'));
+  const cell = $(`[data-oc-group="${korpus.id}"] [data-oc-living]`);
+  check('клетка «Проживают» узла', !!cell);
+  const day = cell?.dataset.day;
   click(cell);
-  check('клик — шахматка объектов узла', await waitFor(() => $('#sb-group')?.value === node));
-  /* сбросить узел и категорию прошлых шагов: каждая смена перерисовывает панель — ждём новую */
-  for (const sel of ['#sb-cat', '#sb-group']) {
-    const old = $(sel);
-    change(old, '');
-    await waitFor(() => $(sel) && $(sel) !== old);
-  }
+  check('клик — шахматка объектов узла', await waitFor(() => $(`[data-sf-group="${korpus.id}"]`)?.checked === true
+    && $$('#view-stays [data-unit-row]').length > 0));
+  check('… с этого дня (колонка подсвечена)', !!$(`.sb-head [data-day="${day}"]`));
+
+  /* сортировка «по загрузке ↓» без группировки — первая строка с максимальной загрузкой */
+  await resetFilters();
+  change($('#sb-sort'), 'load');
+  change($('#sb-dir'), 'desc');
+  $('#sb-grouped').checked = false;
+  change($('#sb-grouped'));
+  await sleep(100);
+  const params = window.eval('staysBoardParams().toString()');
+  const board = (await apiJson('GET', '/api/stays/board/units?' + params)).body;
+  const maxLoad = Math.max(...board.units.map(u => u.load));
+  const first = $('#view-stays [data-unit-row]');
+  check('по загрузке ↓ — первая строка с максимальной загрузкой', first && Number(first.dataset.load) === maxLoad
+    && board.units.find(u => String(u.unit_id) === first.dataset.unitRow)?.load === maxLoad, `${first?.dataset.load} / ${maxLoad}`);
+  check('без группировки — разделов нет', !$('#view-stays [data-sec]'));
+
   const t0 = Date.now();
-  check('полный фонд на шахматке (≥ 440 объектов)', await waitFor(() => $$('#view-stays [data-unit-row]').length >= 440, 20000),
-    String($$('#view-stays [data-unit-row]').length));
+  click($('#sm-next'));
+  check('полный фонд на шахматке (≥ 440 объектов)', await waitFor(() => !!$(`.sb-head [data-day="${addDays(today.slice(0, 8) + '01', 40).slice(0, 8)}01"]`)
+    && $$('#view-stays [data-unit-row]').length >= 440, 20000), String($$('#view-stays [data-unit-row]').length));
   const ms = Date.now() - t0;
-  console.log(`  · отрисовка полного фонда: ${ms} мс`);
+  console.log(`  · отрисовка полного фонда за месяц: ${ms} мс`);
   check('полный фонд — быстрее 3 с (вместе с запросом)', ms < 3000, `${ms} мс`);
+  change($('#sb-sort'), 'tree');
+  change($('#sb-dir'), 'asc');
+  $('#sb-grouped').checked = true;
+  change($('#sb-grouped'));
+}
+
+/* Сохранённые наборы (§7): localStorage, каждый доступ в try/catch */
+async function savedFilters() {
+  console.log('\n6 · Сохранённые наборы фильтров');
+  const snap = (await apiJson('GET', '/api/stays/fund/snapshot?date=' + serverToday())).body;
+  const villas = snap.groups.find(g => g.parent_id == null && g.title === 'Винные виллы');
+  window.navigate('stays');
+  await openMonth(serverToday());
+  await resetFilters();
+  await setCheck(`[data-sf-group="${villas.id}"]`, true);
+  const name = 'Виллы ' + uniq;
+  input($('#sf-save-name'), name);
+  click($('#sf-save'));
+  check('набор в списке', await waitFor(() => $$('#sf-saved option').some(o => o.value === name)));
+  const stored = JSON.parse(window.localStorage.getItem('stays.filters') || '[]');
+  check('набор в localStorage', stored.some(x => x.name === name && x.filters.group_ids.includes(villas.id)));
+  /* «перезагрузка»: память раздела сброшена, набор читается из хранилища */
+  window.eval('staysState.filters = staysEmptyFilters(); staysState.fund = null;');
+  const before = $('.sf-panel');
+  window.navigate('stays');
+  await waitFor(() => $('.sf-panel') && $('.sf-panel') !== before && $(`[data-sf-group="${villas.id}"]`));
+  check('после перезагрузки набор — в списке', $$('#sf-saved option').some(o => o.value === name));
+  check('после перезагрузки фильтр пуст', $(`[data-sf-group="${villas.id}"]`)?.checked === false);
+  const old = $('#sf-saved');
+  change(old, name);
+  await waitFor(() => $('#sf-saved') && $('#sf-saved') !== old);
+  check('выбранный набор применён', $(`[data-sf-group="${villas.id}"]`)?.checked === true
+    && $$('#view-stays [data-unit-row]').every(r => r.dataset.root === String(villas.id)));
+  change($('#sf-saved'), name);
+  click($('#sf-del'));
+  check('набор удалён', await waitFor(() => !$$('#sf-saved option').some(o => o.value === name)));
+  /* хранилище недоступно (приватный режим, запрет сайта) — пустой список, экран работает */
+  window.eval(`Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('denied'); } })`);
+  check('без хранилища — пустой список наборов', window.eval('staysSavedFilters().length') === 0
+    && window.eval('staysSaveFilter("x", staysEmptyFilters())') === false);
+  const prev = $('.sf-panel');
+  window.navigate('stays');
+  check('без хранилища — панель фильтров на месте', await waitFor(() => $('.sf-panel') && $('.sf-panel') !== prev
+    && !!$('#view-stays [data-unit-row]')));
+  window.eval('delete window.localStorage');
+}
+
+/* Флаг с середины месяца (§7, фокус 4): строка показана, полосы до даты не скрыты,
+   дни вне фильтра приглушены «вне фильтра», дни без объекта — серые «нет в фонде» */
+async function flagMidMonth() {
+  console.log('\n7 · Флаг и выбытие объекта с середины месяца');
+  const code = 'FL' + uniq;
+  const { cat, units: [u1, u2] } = await fundCategory(code, [code + '-1', code + '-2']);
+  const flag = (await apiJson('POST', '/api/stays/fund/flags', { title: 'Флаг ' + uniq })).body;
+  const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: '2035-03-15' });
+  let rev = d.body.rev;
+  rev = (await apiJson('PUT', '/api/stays/fund/draft/flags', { rev, flag_id: flag.id, unit_ids: [u1.id], value: true })).body.rev;
+  rev = (await apiJson('DELETE', `/api/stays/fund/draft/units/${u2.id}?rev=${rev}`)).body.rev;
+  const pub = await apiJson('POST', '/api/stays/fund/draft/publish', { rev });
+  check('версия фонда с 15.03.2035 опубликована', pub.status === 200, JSON.stringify(pub.body));
+  const res = (await apiJson('POST', '/api/stays/reservations', { number: 'FL' + uniq, check_in: '2035-03-10',
+    check_out: '2035-03-20', category_id: cat.id })).body.result;
+  window.navigate('stays');
+  await openMonth('2035-03-01');
+  await resetFilters();
+  await setCheck(`[data-sf-flag="${flag.id}"]`, true);
+  const row = `#view-stays [data-unit-row="${u1.id}"]`;
+  check('объект с флагом с 15.03 — в фильтре', await waitFor(() => !!$(row)));
+  check('дни до 15.03 — «вне фильтра»', !!$(`${row} .sb-off.filtered[data-from="2035-03-01"][data-to="2035-03-14"]`));
+  check('полоса брони до 15.03 не скрыта', !!$(`${row} [data-bar="${res.id}"]`));
+  await resetFilters();
+  await setCheck(`[data-sf-cat="${cat.id}"]`, true);
+  check('выбывший объект — серым «нет в фонде» с 15.03',
+    await waitFor(() => !!$(`#view-stays [data-unit-row="${u2.id}"] .sb-off.absent[data-from="2035-03-15"][data-to="2035-03-31"]`)));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
 }
 
 const DEMO_SURNAMES = ['Лебедев', 'Фомина', 'Зайцев', 'Гусев', 'Кузьмин', 'Белова'];
@@ -421,9 +602,9 @@ async function roleSmoke() {
 
 async function moreForms() {
   console.log('\n5 · Блоки, совместное проживание, гость, поля');
-  const iso = d => d.toISOString().slice(0, 10);
-  const base = new Date(serverToday() + 'T00:00:00Z');
-  const day = n => iso(new Date(base.getTime() + n * 86400000));
+  /* все даты шага — в одном месяце (следующем): day(9) — 1-е число */
+  const next = addDays(serverToday().slice(0, 8) + '01', 40).slice(0, 8) + '01';
+  const day = n => addDays(next, n - 9);
   const code = 'FM' + uniq;
   const { cat, units: [u1, u2] } = await fundCategory(code, [code + '-1', code + '-2']);
   const rField = 'trip' + uniq.toLowerCase(), gField = 'pet' + uniq.toLowerCase();
@@ -437,12 +618,9 @@ async function moreForms() {
     category_id: cat.id })).body.result;
 
   window.navigate('stays');
-  await waitFor(() => $$('#sb-cat option').some(o => o.value === String(cat.id)));
-  click($('[data-stab="units"]'));
-  await waitFor(() => $$('#sb-cat option').some(o => o.value === String(cat.id)));
-  change($('#sb-first'), day(9));
-  await waitFor(() => !!$('#sb-cat') && text('#view-stays .sb-head').includes(day(9).slice(8, 10) + '.'));
-  change($('#sb-cat'), String(cat.id));
+  await openMonth(day(9));
+  await resetFilters();
+  await setCheck(`[data-sf-cat="${cat.id}"]`, true);
   check('объекты категории на шахматке', await waitFor(() => !!$(`[data-unit-row="${u2.id}"]`)));
 
   /* блок / OOO: клик по объекту → форма с предпросмотром */
@@ -534,6 +712,8 @@ async function main() {
     await butlersAndDay();
     await occupancyAndFund();
     await moreForms();
+    await savedFilters();
+    await flagMidMonth();
   } else {
     await roleSmoke();
   }
