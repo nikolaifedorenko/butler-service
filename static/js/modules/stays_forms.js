@@ -373,7 +373,7 @@ async function openCoverageForm(card, onSaved) {
 async function openHoldForm(hold, onSaved) {
   const fund = await staysFund();
   const isNew = !hold.id;
-  const first = hold.start || staysState.first || staysToday();
+  const first = hold.start || staysToday();
   openModal({
     title: isNew ? 'Блок / OOO' : `${hold.kind === 'ooo' ? 'OOO' : 'Блок'} · ${dateRu(hold.start)}–${dateRu(hold.end)}`,
     subtitle: 'Занимает объект целыми сутками с–по; брони на эти дни перераспределятся',

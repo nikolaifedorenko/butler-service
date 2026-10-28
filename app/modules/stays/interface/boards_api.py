@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -16,6 +16,7 @@ from ..adapters.duty_timesheet import TimesheetDuty
 from ..application import boards, views
 from ..application.mine import my_guests
 from ..application.visibility import level_for
+from .views_api import fund_filters
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 MAX_DAYS = 62
@@ -30,19 +31,20 @@ def board_butlers(first: dt.date, last: dt.date, principal: Principal = Depends(
 
 
 @router.get("/day")
-def day_board(date: dt.date, escorted_only: bool = False, vip: bool = False, employee_id: Optional[int] = None,
-              q: str = "", principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
+def day_board(date: dt.date, dims: dict = Depends(fund_filters), escorted_only: bool = False, vip: bool = False,
+              employee_id: Optional[int] = None, q: str = "",
+              principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
               db: Session = Depends(get_db)):
-    return boards.day_board(db, date, level_for(db, principal),
-                            boards.DayFilters(escorted_only, vip, employee_id, q), TimesheetDuty(db))
+    f = boards.DayFilters(**dims, escorted_only=escorted_only, vip=vip, employee_id=employee_id, q=q)
+    return boards.day_board(db, date, level_for(db, principal), f, TimesheetDuty(db))
 
 
 @router.get("/occupancy")
-def occupancy(first: dt.date, last: dt.date, group_ids: list[int] = Query(default=[]),
+def occupancy(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters), escorted: bool = False,
               principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
               db: Session = Depends(get_db)):
     try:
-        return views.occupancy_grid(db, first, last, tuple(group_ids))
+        return views.occupancy_grid(db, first, last, views.BoardFilters(**dims, escorted_only=escorted))
     except views.ViewError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 

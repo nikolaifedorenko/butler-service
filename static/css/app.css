@@ -1171,16 +1171,40 @@ tr.v4-click:hover td { background: #faf6ef; }
 .stays-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; }
 .sb-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .sb-toolbar input[type=search] { min-width: 220px; flex: 1; }
+.sb-toolbar select, .sb-toolbar input[type=text] { width: auto; padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
+.sb-toolbar input[type=text] { max-width: 160px; }
 .sb-grid { border: 1px solid var(--line); border-radius: var(--r-sm); overflow: auto; max-height: 70vh; background: #fff; }
 .sb-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid #efe9df; min-height: 34px; }
 .sb-head { position: sticky; top: 0; z-index: 2; background: #f8f5f0; font-size: 11px; color: var(--muted); }
 .sb-unit { padding: 6px 8px; border-right: 1px solid #efe9df; display: flex; flex-direction: column; justify-content: center;
   position: sticky; left: 0; background: inherit; z-index: 1; }
 .sb-unit small { color: var(--muted); font-size: 11px; }
-.sb-track { position: relative; min-width: 560px; }
+/* месяц целиком (§6): колонка дня не уже 32px — сетка прокручивается вбок, объект закреплён слева */
+.sb-track { position: relative; min-width: max(560px, calc(var(--days, 14) * 32px)); }
+.sb-row:not(.sb-head) { background: #fff; }
 .sb-days { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
-.sb-days > div { text-align: center; padding: 8px 0; border-left: 1px solid #efe9df; }
-.sb-days > div.today { background: #faf0dc; color: #8a5a10; font-weight: 700; }
+.sb-days > div { text-align: center; padding: 4px 0; border-left: 1px solid #efe9df; }
+.sb-head [data-day] small { display: block; font-size: 9.5px; text-transform: uppercase; }
+.sb-head [data-day].we { color: #a04a3a; }
+.sb-days > div.today, .bb-row.sb-head > div.today { background: #faf0dc; color: #8a5a10; font-weight: 700; }
+.sb-head [data-day].flash-today { animation: flashToday 1.6s ease-out; }
+/* разделы дерева (§6): клик сворачивает; свёрнутые строки в DOM не рисуются */
+.sb-sec { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px 6px calc(8px + var(--depth, 0) * 16px);
+  background: #f3efe8; border-bottom: 1px solid #e6dfd3; font-weight: 600; font-size: 13px; cursor: pointer;
+  position: sticky; left: 0; }
+.sb-sec small { color: var(--muted); font-weight: 400; }
+.sb-flag { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
+.sb-unit .sb-change { color: #8a5a10; }
+/* дни строки вне фонда — серым; в фонде, но вне фильтра — приглушены; полосы поверх */
+.sb-off { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+.sb-off.absent { background: repeating-linear-gradient(135deg, #e4e4e4, #e4e4e4 5px, #ececec 5px, #ececec 10px); }
+.sb-off.filtered { background: rgba(240, 236, 228, .75); }
+.sf-panel .sf-dd { position: relative; }
+.sf-panel .sf-dd summary { cursor: pointer; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: #fff; font-size: 13px; }
+.sf-panel .sf-dd summary b { font-weight: 600; }
+.sf-panel .sf-list { position: absolute; z-index: 5; top: 100%; left: 0; min-width: 220px; max-height: 320px; overflow: auto;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .12); }
+.sf-panel .sf-list .chk { display: block; padding: 2px 0; white-space: nowrap; }
 .sb-bar { position: absolute; top: 5px; bottom: 5px; border-radius: 4px; color: #fff; font-size: 12px; padding: 3px 6px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; box-sizing: border-box; }
 .sb-bar.tentative { opacity: .6; border: 1px dashed #fff; }
@@ -1237,7 +1261,15 @@ tr.fund-retired td .badge { text-decoration: none; }
 .db-row { display: grid; grid-template-columns: 70px 130px 1fr 1.3fr 1fr; gap: 8px; padding: 8px 6px;
   border-bottom: 1px solid #edf0f4; cursor: pointer; align-items: start; }
 @media (max-width: 640px) { .db-row { grid-template-columns: 1fr; gap: 2px; } }
-.oc-cell { cursor: pointer; text-align: center; }
+.oc-grid .bb-row { grid-template-columns: 180px repeat(var(--days), minmax(40px, 1fr)); }
+.oc-grid .bb-row > div:not(.sb-unit) { padding: 4px 2px; }
+.oc-node { border-bottom: 2px solid #e6dfd3; }
+.oc-line:not(.sb-head) { background: #fff; }
+.oc-sub { color: var(--muted); font-size: 12px; padding-left: 22px; }
+.oc-name { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; cursor: pointer; text-align: left; }
+.oc-cell { text-align: center; }
+.oc-cell[data-oc-living] { cursor: pointer; text-decoration: underline dotted; }
 .oc-cell small { display: block; color: var(--muted); }
-.oc-cell.heat1 { background: #d9f2df; } .oc-cell.heat2 { background: #fff2c6; } .oc-cell.heat3 { background: #ffd3c4; }
+/* §6.1: от 50 % — синий, от 80 % — жёлтый, 100 % и больше — красный */
+.oc-cell.heat1 { background: #dce8fb; } .oc-cell.heat2 { background: #fff2c6; } .oc-cell.heat3 { background: #ffd3c4; }
 .mine-card .mine-guest { padding: 6px 0; border-top: 1px solid #efe9df; }

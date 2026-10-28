@@ -10,23 +10,22 @@
 const STAYS_DUTY = { shift: 'на смене', off: 'выходной', absent: 'отсутствие' };
 const STAYS_WARN = { off_shift: 'вне смены', overload: 'перегруз', need_replacement: 'нужна подмена',
   hole: 'гости без батлера', double_cover: 'два батлера у гостя' };
-const boardState = { first: null, days: 7, day: null, tab: 'arrivals', esc: false, vip: false, q: '' };
+const boardState = { day: null, tab: 'arrivals' };   // месяц — общий state; фильтры — staysState.filters
 
 /* ─────────────── Шахматка батлеров ─────────────── */
 async function renderButlersBoard(body) {
-  if (!boardState.first) boardState.first = staysToday();
-  const last = staysAddDays(boardState.first, boardState.days - 1);
+  const { first, last } = staysMonthRange();
   const fresh = loadGenerationFor(body);    // запоздавший ответ не перерисовывает (stays.js)
-  const data = await api(`/api/stays/board/butlers?first=${boardState.first}&last=${last}`, { silent: true });
+  const data = await api(`/api/stays/board/butlers?first=${first}&last=${last}`, { silent: true });
   if (!fresh()) return;
+  const today = staysToday();
   body.innerHTML = `
     <div class="sb-toolbar">
-      <input type="date" id="bb-first" value="${esc(boardState.first)}">
-      <select id="bb-days">${[7, 14].map(n => `<option value="${n}"${n === boardState.days ? ' selected' : ''}>${n} дн.</option>`).join('')}</select>
+      ${staysMonthNav()}
       <span class="muted">лимит нагрузки — ${esc(String(data.limit))}</span>
     </div>
     <div class="sb-grid bb-grid" style="--days:${data.days.length}">
-      <div class="bb-row sb-head"><div class="sb-unit">Батлер</div>${data.days.map(d => `<div>${esc(dateRu(d).slice(0, 5))}</div>`).join('')}</div>
+      <div class="bb-row sb-head"><div class="sb-unit">Батлер</div>${data.days.map(d => staysDayHead(d, today)).join('')}</div>
       ${data.rows.map(r => `<div class="bb-row"><div class="sb-unit"><b>${esc(r.name)}</b>${r.escort ? '' : '<small>не в списке</small>'}</div>
         ${r.cells.map(c => `<div class="bb-cell duty-${c.duty}${c.warnings.length ? ' warn' : ''}" data-bb-emp="${r.employee_id}"
           data-day="${esc(c.day)}" data-warn="${esc(c.warnings.join(' '))}" title="${esc(STAYS_DUTY[c.duty] + (c.code ? ' · ' + c.code : ''))}">
@@ -36,12 +35,12 @@ async function renderButlersBoard(body) {
         </div>`).join('')}</div>`).join('') || '<div class="empty">Список «Сопровождают гостей» пуст — Настройки → Сопровождение</div>'}
     </div>`;
   const rerender = () => renderButlersBoard(body);
-  $('#bb-first', body).onchange = e => { boardState.first = e.target.value || staysToday(); rerender(); };
-  $('#bb-days', body).onchange = e => { boardState.days = Number(e.target.value); rerender(); };
+  staysBindMonthNav(body, rerender);
   $$('[data-bb-emp]', body).forEach(cell => {
     const row = data.rows.find(r => r.employee_id === Number(cell.dataset.bbEmp));
     cell.onclick = () => openButlerDay(row, row.cells.find(c => c.day === cell.dataset.day), rerender);
   });
+  staysFocusDay(body);
 }
 
 async function openButlerDay(row, cell, onChanged) {
@@ -144,11 +143,13 @@ function dayRowHtml(r, names) {
 }
 
 async function renderDayBoard(body) {
+  const fund = await staysFund();
   if (!boardState.day) boardState.day = staysToday();
-  const q = new URLSearchParams({ date: boardState.day });
-  if (boardState.esc) q.set('escorted_only', '1');
-  if (boardState.vip) q.set('vip', '1');
-  if (boardState.q.trim()) q.set('q', boardState.q.trim());
+  const f = staysState.filters;
+  const q = staysFundParams(new URLSearchParams({ date: boardState.day }));
+  if (f.escorted) q.set('escorted_only', '1');
+  if (f.vip) q.set('vip', '1');
+  if (f.q.trim()) q.set('q', f.q.trim());
   const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/day?' + q, { silent: true });
   if (!fresh()) return;
@@ -160,10 +161,8 @@ async function renderDayBoard(body) {
     <div class="sb-toolbar">
       <button class="btn btn-sm" id="db-prev">◀</button><input type="date" id="db-date" value="${esc(boardState.day)}">
       <button class="btn btn-sm" id="db-next">▶</button><button class="btn btn-sm btn-ghost" id="db-today">Сегодня</button>
-      ${names ? `<label class="chk"><input type="checkbox" id="db-esc"${boardState.esc ? ' checked' : ''}> только с сопровождением</label>
-        <label class="chk"><input type="checkbox" id="db-vip"${boardState.vip ? ' checked' : ''}> VIP/VVIP</label>
-        <input type="search" id="db-q" placeholder="фамилия, № брони, объект" value="${esc(boardState.q)}">` : ''}
     </div>
+    <div data-sf-slot></div>
     <div class="db-sum">
       <div>▲ Заезды <b>${t.arrivals}</b></div><div>▼ Выезды <b>${t.departures}</b></div><div>🏠 Проживают <b>${t.in_house}</b></div>
       ${names ? `<div>🤵 Ведёт батлер <b>${t.covered}</b></div><div class="danger">⚠ Нужно, не назначено <b>${t.uncovered}</b></div>
@@ -183,53 +182,111 @@ async function renderDayBoard(body) {
   $('#db-today', body).onclick = () => go(staysToday());
   $('#db-date', body).onchange = e => go(e.target.value || staysToday());
   $$('[data-dtab]', body).forEach(b => { b.onclick = () => { boardState.tab = b.dataset.dtab; rerender(); }; });
+  staysPanelInto(body, fund, rerender, { people: names });
   if (names) {
-    $('#db-esc', body).onchange = e => { boardState.esc = e.target.checked; rerender(); };
-    $('#db-vip', body).onchange = e => { boardState.vip = e.target.checked; rerender(); };
-    let timer = null;
-    $('#db-q', body).oninput = e => { clearTimeout(timer); timer = setTimeout(() => { boardState.q = e.target.value; rerender(); }, 350); };
     $$('[data-db-row]', body).forEach(el => { el.onclick = () => openReservationCard(Number(el.dataset.dbRow), rerender); });
   }
 }
 
-/* ─────────────── Сводная загрузка (§6.4) ─────────────── */
+/* ─────────────── Сводная загрузка (§6.1) ─────────────── */
+/* Весь месяц; строки — узлы дерева (по фильтру «Где»), сверху «Итого по выбранному».
+   Свёрнутый узел — одна строка загрузки («% / штуки»), развёрнутый — восемь строк §6.1.
+   Клик по названию — свернуть / развернуть; по клетке «Проживают» — шахматка узла с этого дня. */
+const OC_ROWS = [['total', 'Всего объектов'], ['living', 'Проживают'], ['guests', 'Гостей'], ['arrivals', '▲ Заезды'],
+  ['departures', '▼ Выезды'], ['free', 'Свободно'], ['ooo', 'OOO'], ['blocks', 'Блоки']];
+
+function ocHeat(pct) { return pct == null ? '' : pct >= 1 ? 'heat3' : pct >= 0.8 ? 'heat2' : pct >= 0.5 ? 'heat1' : ''; }
+
 async function renderOccupancyGrid(body) {
   const fund = await staysFund();
-  if (!boardState.first) boardState.first = staysToday();
-  const last = staysAddDays(boardState.first, 13);
-  const q = new URLSearchParams({ first: boardState.first, last });
-  if (boardState.group_id) q.append('group_ids', boardState.group_id);
+  const { first, last } = staysMonthRange();
+  const q = staysFundParams(new URLSearchParams({ first, last }));
+  if (staysState.filters.escorted) q.set('escorted', '1');
   const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/occupancy?' + q, { silent: true });
   if (!fresh()) return;
-  const roots = fund.groups.filter(g => g.parent_id == null);
-  const heat = (busy, total) => { const k = total ? busy / total : 0; return k >= 0.9 ? 'heat3' : k >= 0.6 ? 'heat2' : k > 0 ? 'heat1' : ''; };
+  const rerender = () => renderOccupancyGrid(body);
   body.innerHTML = `
     <div class="sb-toolbar">
-      <input type="date" id="oc-first" value="${esc(boardState.first)}">
-      <select id="oc-group"><option value="">Весь фонд</option>${roots.map(g =>
-        `<option value="${g.id}"${String(g.id) === String(boardState.group_id) ? ' selected' : ''}>${esc(g.title)}</option>`).join('')}</select>
-      <span class="muted">занято / всего · ▲ заезды · ▼ выезды</span>
+      ${staysMonthNav()}
+      <span class="oc-modes">${[['pct', '%'], ['count', 'штуки']].map(([m, t]) =>
+        `<button class="btn btn-sm${staysState.ocMode === m ? ' btn-primary' : ''}" data-oc-mode="${m}">${esc(t)}</button>`).join('')}</span>
+      <span class="muted">цвет: от 50 % · от 80 % · 100 % и больше</span>
     </div>
-    <div class="sb-grid bb-grid" style="--days:${data.days.length}">
-      <div class="bb-row sb-head"><div class="sb-unit">Категория</div>${data.days.map(d => `<div>${esc(dateRu(d).slice(0, 5))}</div>`).join('')}</div>
-      ${data.categories.map(c => `<div class="bb-row"><div class="sb-unit"><b>${esc(c.code)}</b><small>${esc(c.title)} · ${c.total}</small></div>
-        ${c.cells.map(x => `<div class="oc-cell ${heat(x.busy, c.total)}" data-oc-cat="${c.category_id}" data-day="${esc(x.day)}">
-          <b>${x.busy}/${c.total}</b><small>${x.arrivals ? '▲' + x.arrivals : ''} ${x.departures ? '▼' + x.departures : ''}${x.no_show ? ' · не заехали ' + x.no_show : ''}</small>
-        </div>`).join('')}</div>`).join('') || '<div class="empty">Фонд пуст</div>'}
-    </div>`;
-  const rerender = () => renderOccupancyGrid(body);
-  $('#oc-first', body).onchange = e => { boardState.first = e.target.value || staysToday(); rerender(); };
-  $('#oc-group', body).onchange = e => { boardState.group_id = e.target.value; rerender(); };
-  /* клик по ячейке — шахматка объектов этой категории с этого дня (PoC §14.1) */
-  $$('[data-oc-cat]', body).forEach(el => {
-    el.onclick = () => {
-      staysState.filters.category_id = el.dataset.ocCat;
-      staysState.first = el.dataset.day;
-      staysState.tab = 'units';
-      loadStays();
+    <div data-sf-slot></div>
+    <div class="sb-grid bb-grid oc-grid" style="--days:${data.days.length}"></div>`;
+  /* поиск и VIP к загрузке не применяются: в ней нет данных гостей (§6.1) */
+  staysPanelInto(body, fund, rerender, { people: false });
+  const grid = $('.oc-grid', body);
+  const paint = () => { grid.innerHTML = ocGridHtml(data); };
+  paint();
+  staysBindMonthNav(body, rerender);
+  $$('[data-oc-mode]', body).forEach(b => {
+    b.onclick = () => {
+      staysState.ocMode = b.dataset.ocMode;
+      $$('[data-oc-mode]', body).forEach(x => x.classList.toggle('btn-primary', x === b));
+      paint();
     };
   });
+  grid.onclick = e => {
+    const tog = e.target.closest('[data-oc-toggle]');
+    if (tog) {
+      const key = tog.dataset.ocToggle;
+      staysState.ocOpen[key] = !ocIsOpen(key);
+      paint();
+      return;
+    }
+    const cell = e.target.closest('[data-oc-living]');
+    if (cell) staysOpenNodeDay(cell.dataset.ocNode, cell.dataset.day);
+  };
+  staysFocusDay(body);
+}
+
+function ocIsOpen(key) { return staysState.ocOpen[key] ?? key === 'total'; }
+
+function ocGridHtml(data) {
+  const today = staysToday();
+  const count = staysState.ocMode === 'count';
+  const nodeHtml = (n, key) => {
+    const name = n.path[n.path.length - 1] || '';
+    const sub = n.path.slice(0, -1).join(' / ');
+    const isOpen = ocIsOpen(key);
+    const label = (extra) => `<div class="sb-unit"><button class="oc-name" data-oc-toggle="${esc(key)}" title="Свернуть / развернуть">
+      ${isOpen ? '▾' : '▸'} ${esc(name)}</button>${sub ? `<small>${esc(sub)}</small>` : ''}${extra ? `<small>${esc(extra)}</small>` : ''}</div>`;
+    /* «Проживают» узла ведёт в шахматку объектов; «Без группы» фильтром «Где» не выбрать */
+    const node = key === 'total' ? '' : n.group_id == null ? null : String(n.group_id);
+    if (!isOpen) {
+      return `<div class="oc-node" data-oc-group="${esc(key)}"><div class="bb-row oc-line">${label('загрузка')}
+        ${n.days.map(x => `<div class="oc-cell ${ocHeat(x.pct)}" title="занято (проживают + блоки) / доступно (всего − OOO)">${count
+          ? `${x.living + x.blocks}/${x.total - x.ooo}` : (x.pct == null ? '—' : Math.round(x.pct * 100) + '%')}</div>`).join('')}</div></div>`;
+    }
+    return `<div class="oc-node" data-oc-group="${esc(key)}">${OC_ROWS.map(([field, title], i) => `<div class="bb-row oc-line">
+      ${i === 0 ? label(title) : `<div class="sb-unit oc-sub">${esc(title)}</div>`}
+      ${n.days.map((x, d) => (field === 'living'
+        ? `<div class="oc-cell ${ocHeat(x.pct)}"${node != null ? ` data-oc-living data-oc-node="${esc(node)}" data-day="${esc(data.days[d])}"` : ''}
+            title="${x.pct == null ? 'загрузка —' : 'загрузка ' + Math.round(x.pct * 100) + '%'}">${x.living}</div>`
+        : `<div class="oc-cell">${x[field]}</div>`)).join('')}</div>`).join('')}</div>`;
+  };
+  return `<div class="bb-row sb-head oc-head"><div class="sb-unit">Узел</div>${data.days.map(d => staysDayHead(d, today)).join('')}</div>
+    ${data.nodes.length ? nodeHtml(data.total, 'total') + data.nodes.map(n => nodeHtml(n, n.group_id == null ? 'none' : String(n.group_id))).join('')
+    : '<div class="empty">Фонд пуст</div>'}`;
+}
+
+/* клик по «Проживают» (§6.1): шахматка объектов узла, раздел узла развёрнут, докрутка к дню */
+function staysOpenNodeDay(node, day) {
+  if (node) {
+    const gid = Number(node);
+    staysState.filters = { ...staysState.filters, group_ids: [gid] };
+    (staysState.fund?.groups || []).forEach(g => {
+      if (g.path.includes(gid) || (staysState.fund.groups.find(x => x.id === gid)?.path || []).includes(g.id)) {
+        staysState.collapsed[String(g.id)] = false;
+      }
+    });
+    staysState.collapsed[node] = false;
+  }
+  staysState.focusDay = day;
+  staysState.tab = 'units';
+  loadStays();
 }
 
 /* ─────────────── «Мои гости» (§6.6): батлер с телефона ─────────────── */

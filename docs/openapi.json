@@ -10869,67 +10869,6 @@
           },
           {
             "in": "query",
-            "name": "kind",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Kind"
-            }
-          },
-          {
-            "in": "query",
-            "name": "group_ids",
-            "required": false,
-            "schema": {
-              "default": [],
-              "items": {
-                "type": "integer"
-              },
-              "title": "Group Ids",
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "floor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Floor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "category_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Category Id"
-            }
-          },
-          {
-            "in": "query",
             "name": "escorted",
             "required": false,
             "schema": {
@@ -10972,6 +10911,74 @@
               "default": "",
               "title": "Q",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Group Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Category Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flag_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Flag Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Kinds",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "floor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Floor"
             }
           }
         ],
@@ -11445,6 +11452,74 @@
               "default": "",
               "title": "Q",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Group Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Category Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flag_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Flag Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Kinds",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "floor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Floor"
             }
           }
         ],
@@ -13540,6 +13615,16 @@
           },
           {
             "in": "query",
+            "name": "escorted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Escorted",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "group_ids",
             "required": false,
             "schema": {
@@ -13549,6 +13634,61 @@
               },
               "title": "Group Ids",
               "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Category Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flag_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Flag Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Kinds",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "floor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Floor"
             }
           }
         ],

@@ -16,6 +16,7 @@ from ..ports.duty import DutyPort
 from .context import NO_GUESTS, StaysContext, load_context
 from .coverage import _known, rank_in_ctx
 from .guests import search_query
+from .views import fund_match
 from .visibility import Level
 
 
@@ -46,6 +47,12 @@ def butlers_board(db: Session, first: dt.date, last: dt.date, duty: DutyPort) ->
 
 @dataclass(frozen=True)
 class DayFilters:
+    """Те же измерения фонда, что у шахматки (§7, views.fund_match) — по фонду ночи строки."""
+    group_ids: tuple[int, ...] = ()
+    category_ids: tuple[int, ...] = ()
+    flag_ids: tuple[int, ...] = ()
+    kinds: tuple[str, ...] = ()
+    floor: str | None = None
     escorted_only: bool = False
     vip: bool = False
     employee_id: int | None = None
@@ -85,7 +92,9 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     full = level == "full"
     stays_now = {s.reservation_id: s for s in ctx.stays_on(day)}
     stays_prev = {s.reservation_id: s for s in ctx.stays_on(prev)}
-    no_show = list(db.scalars(select(Reservation).where(Reservation.status == "no_show", Reservation.check_in == day)))
+    no_show = [r for r in db.scalars(select(Reservation).where(Reservation.status == "no_show",
+                                                                Reservation.check_in == day))
+               if fund_match(ctx.fund.on(day), None, r.category_id, f)]
     rids = list(ctx.res)
     logistics: dict[int, list] = {}
     companions: dict[int, list] = {}
@@ -109,7 +118,9 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     def row(r: Reservation, kind: str) -> dict | None:
         night = prev if kind == "departure" else day
         s = (stays_prev if kind == "departure" else stays_now).get(r.id)
-        unit_id = s.unit_id if s else ctx.unit_of(r.id, night)[0]
+        unit_id, piece = ctx.unit_of(r.id, night)          # тот же объект, что у s (StayDay)
+        if not fund_match(ctx.fund.on(night), unit_id, piece.category_id if piece else r.category_id, f):
+            return None
         guests = guests_of(r, night)
         base = {"reservation_id": r.id, "status": r.status, "unit": ctx.unit_label(unit_id, night),
                 "time": {"arrival": "РЗ" if r.early else "14:00", "departure": "ПВ" if r.late else "12:00"}.get(kind, ""),

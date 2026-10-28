@@ -27,7 +27,7 @@ BUSY = PatternFill("solid", fgColor="DCE6F5")
 
 def occupancy_counts(board: dict, days: list[dt.date]) -> dict[str, dict[str, int]]:
     """Категория → день → занято объектов (ночь дня: полоса покрывает PM даты)."""
-    cat_of = {u["id"]: u["category"] for u in board["units"]}
+    cat_of = {u["unit_id"]: u["category"] for u in board["units"]}
     out: dict[str, dict[str, int]] = {}
     for d in days:
         p = pos(d, PM)
@@ -58,7 +58,7 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
         _put(ws, r, [u["label"], u["category"]])
         for c, d in enumerate(days, start=3):
             p = pos(d, PM)
-            bar = next((b for b in board["bars"] if b["unit_id"] == u["id"] and b["start_pos"] <= p <= b["end_pos"]), None)
+            bar = next((b for b in board["bars"] if b["unit_id"] == u["unit_id"] and b["start_pos"] <= p <= b["end_pos"]), None)
             if bar:
                 cell = ws.cell(row=r, column=c, value=safe_sheet_cell(bar.get("main_guest") or bar.get("number") or "занято")
                                if kind == "full" else "занято")
@@ -71,7 +71,7 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     if kind == "full":
         head += ["№ брони", "Гости", "Уровень", "Метка", "Заказчик", "Повод", "Примечание", "Батлеры", "Логистика"]
     _put(ws, 1, head, bold=True)
-    labels = {u["id"]: u for u in board["units"]}
+    labels = {u["unit_id"]: u for u in board["units"]}
     rids = sorted({b["reservation_id"] for b in board["bars"]})
     res = {r.id: r for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids)))} if rids else {}
     butlers, logistics, occupants = {}, {}, {}

@@ -12,10 +12,17 @@ registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
 const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка']];
 const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
+/* месяц видов — общий state.year / state.month (как Табель и График, §6); фильтры — одна
+   панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
 const staysState = {
-  tab: 'units', first: null, days: 14, fund: null,
-  filters: { kind: '', group_id: '', category_id: '', escorted: false, vip: false, q: '' },
+  tab: 'units', fund: null, filters: staysEmptyFilters(),
+  sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {},
+  ocOpen: {}, ocMode: 'pct', focusDay: null,
 };
+const STAYS_OPEN_KINDS = new Set(['villa', 'estate', 'apartment']);   // разделы с ними развёрнуты сразу
+function staysEmptyFilters() {
+  return { group_ids: [], category_ids: [], flag_ids: [], kinds: [], escorted: false, vip: false, q: '' };
+}
 
 /* PoC §5.1: ordinal как в Python date.toordinal() — клиент и сервер считают позиции одинаково */
 function staysOrdinal(y, m, d) { return Math.round(Date.UTC(y, m - 1, d) / 86400000) + 719163; }
@@ -24,14 +31,87 @@ function staysAddDays(iso, n) {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
-function staysToday() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+/* «сегодня» — по часам объекта (APP_TZ сервера), как Табель: todayISO() из core.js */
+function staysToday() { return todayISO(); }
+/* границы общего месяца разделов */
+function staysMonthRange() {
+  const mm = String(state.month).padStart(2, '0');
+  const days = new Date(Date.UTC(state.year, state.month, 0)).getUTCDate();
+  return { first: `${state.year}-${mm}-01`, last: `${state.year}-${mm}-${String(days).padStart(2, '0')}` };
+}
+function staysMonthNav() {
+  return `<div class="month-nav"><button id="sm-prev" title="Предыдущий месяц">◀</button>
+    <div class="label" id="sm-label">${esc(MONTHS[state.month - 1])} ${state.year}</div>
+    <button id="sm-next" title="Следующий месяц">▶</button></div>
+    <button class="btn btn-sm" id="sm-today" title="Текущий месяц и колонка сегодняшнего дня">Сегодня</button>`;
+}
+/* ◀ ▶ — как Табель (v4BindMonthNav); «Сегодня» — текущий месяц, докрутка и подсветка дня */
+function staysBindMonthNav(body, rerender) {
+  const shift = delta => {
+    let m = state.month + delta, y = state.year;
+    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+    state.month = m; state.year = y;
+    staysState.focusDay = null;     // «Сегодня» прошлого месяца не докручивает новый
+    rerender();
+  };
+  $('#sm-prev', body).onclick = () => shift(-1);
+  $('#sm-next', body).onclick = () => shift(1);
+  $('#sm-today', body).onclick = () => {
+    const today = staysToday();
+    const [y, m] = today.split('-').map(Number);
+    staysState.focusDay = today;
+    if (y === state.year && m === state.month) staysFocusDay(body);
+    else { state.year = y; state.month = m; rerender(); }
+  };
+}
+/* докрутка сетки к колонке staysState.focusDay и подсветка (как scrollTabelToToday) */
+function staysFocusDay(body) {
+  const day = staysState.focusDay;
+  if (!day) return;
+  staysState.focusDay = null;
+  const grid = $('.sb-grid', body);
+  const cell = grid && grid.querySelector(`.sb-head [data-day="${day}"]`);
+  if (!cell) { toast('День не входит в открытый месяц', 'warn'); return; }
+  /* позиция колонки в прокручиваемой сетке (offsetParent у разных видов разный); колонка
+     объекта закреплена слева — середина видимой части без неё */
+  const unitCol = cell.closest('.sb-head')?.firstElementChild?.clientWidth || 0;
+  const x = cell.getBoundingClientRect().left - grid.getBoundingClientRect().left + grid.scrollLeft;
+  grid.scrollTo({ left: Math.max(0, x - unitCol - (grid.clientWidth - unitCol) / 2 + cell.clientWidth / 2),
+    behavior: 'smooth' });
+  cell.classList.add('flash-today');
+  setTimeout(() => cell.classList.remove('flash-today'), 1800);
+}
+/* измерения фонда (§7) — повторяемые параметры; общие для шахматки, «Загрузки» и табло */
+function staysFundParams(p) {
+  const f = staysState.filters;
+  f.group_ids.forEach(v => p.append('group_ids', v));
+  f.category_ids.forEach(v => p.append('category_ids', v));
+  f.flag_ids.forEach(v => p.append('flag_ids', v));
+  f.kinds.forEach(v => p.append('kinds', v));
+  return p;
+}
+/* панель фильтров вида: изменение — новые фильтры и перерисовка вида */
+function staysPanelInto(body, fund, rerender, opts) {
+  const slot = $('[data-sf-slot]', body);
+  if (!slot) return;
+  const panel = staysFilterPanel(fund, staysState.filters, f => { staysState.filters = f; rerender(); }, opts);
+  slot.replaceWith(panel);
+  /* перерисовка после набора в поиске — фокус и курсор остаются в поле */
+  const q = $('#sf-q', panel);
+  if (staysSearchDraft && q) {
+    q.focus();
+    const c = Math.min(staysSearchDraft.caret ?? q.value.length, q.value.length);
+    q.setSelectionRange(c, c);
+    if (staysSearchDraft.value === staysState.filters.q) staysSearchDraft = null;
+  }
+}
 /* Справочники модуля + фонд на сегодня (категории, узлы, объекты — версиями с даты, GET /fund/snapshot) */
 async function staysFund(force = false) {
   if (!staysState.fund || force) {
     const [dicts, snap] = await Promise.all([api('/api/stays/fund', { silent: true }),
       api('/api/stays/fund/snapshot?date=' + staysToday(), { silent: true })]);
     const groups = Object.fromEntries(snap.groups.map(g => [g.id, g]));
-    staysState.fund = { ...dicts, categories: snap.categories, groups: snap.groups,
+    staysState.fund = { ...dicts, categories: snap.categories, groups: snap.groups, flags: snap.flags,
       /* объект снимка есть в фонде дня — «активен»; путь узла названиями — для подписи */
       units: snap.units.map(u => ({ ...u, active: true, group: u.path.map(id => groups[id]?.title || '').join(' / ') })) };
   }
@@ -40,7 +120,6 @@ async function staysFund(force = false) {
 
 async function loadStays() {
   const host = $('#view-stays');
-  if (!staysState.first) staysState.first = staysToday();
   host.innerHTML = `
     <div class="page-head"><div><h2>Шахматка</h2><div class="sub">Кто где живёт и кто из батлеров ведёт гостей</div></div></div>
     <div class="layer-tabs">${STAYS_TABS.filter(([id]) => id !== 'butlers' || can('stays.view')).map(([id, t]) =>
@@ -66,19 +145,15 @@ async function loadMyStays() {
 }
 
 /* ─────────────── Шахматка объектов ─────────────── */
-function staysToolbar(fund) {
-  const f = staysState.filters;
-  const roots = fund.groups.filter(g => g.parent_id == null);
-  const opt = (v, t, cur) => `<option value="${esc(String(v))}"${String(v) === String(cur) ? ' selected' : ''}>${esc(t)}</option>`;
+function staysToolbar() {
+  const st = staysState.sort;
   return `<div class="sb-toolbar">
-    <input type="date" id="sb-first" value="${esc(staysState.first)}">
-    <select id="sb-days">${[7, 14, 31].map(n => opt(n, `${n} дн.`, staysState.days)).join('')}</select>
-    <select id="sb-kind">${opt('', 'Все виды', f.kind)}${fund.kinds.map(k => opt(k.code, k.title, f.kind)).join('')}</select>
-    <select id="sb-group">${opt('', 'Весь фонд', f.group_id)}${roots.map(g => opt(g.id, g.title, f.group_id)).join('')}</select>
-    <select id="sb-cat">${opt('', 'Все категории', f.category_id)}${fund.categories.map(c => opt(c.id, c.code, f.category_id)).join('')}</select>
-    <label class="chk"><input type="checkbox" id="sb-esc"${f.escorted ? ' checked' : ''}> с сопровождением</label>
-    <label class="chk"><input type="checkbox" id="sb-vip"${f.vip ? ' checked' : ''}> VIP/VVIP</label>
-    <input type="search" id="sb-q" placeholder="фамилия, № брони, объект, телефон" value="${esc(f.q)}">
+    ${staysMonthNav()}
+    <select id="sb-sort" title="Сортировка строк">${STAYS_SORTS.map(([v, t]) =>
+      `<option value="${v}"${v === st.by ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
+    <select id="sb-dir" title="Направление"><option value="asc"${st.dir === 'asc' ? ' selected' : ''}>↑</option>
+      <option value="desc"${st.dir === 'desc' ? ' selected' : ''}>↓</option></select>
+    <label class="chk"><input type="checkbox" id="sb-grouped"${st.grouped ? ' checked' : ''}> группировать по дереву</label>
     <button class="btn btn-sm btn-ghost" id="sb-xlsx-anon" title="Объекты, даты, статусы, число гостей — без данных гостей">Выгрузить (без гостей)</button>
     ${can('stays.export') && can('stays.guests') ? '<button class="btn btn-sm btn-ghost" id="sb-xlsx-full">Выгрузить полностью</button>' : ''}
     ${can('stays.edit') ? '<button class="btn btn-sm btn-primary" id="sb-new">+ Бронь</button>' : ''}
@@ -87,14 +162,30 @@ function staysToolbar(fund) {
 
 function staysBoardParams() {
   const f = staysState.filters;
-  const p = new URLSearchParams({ first: staysState.first, last: staysAddDays(staysState.first, staysState.days - 1) });
-  if (f.kind) p.set('kind', f.kind);
-  if (f.group_id) p.append('group_ids', f.group_id);        // фильтр по узлам — повторяемый параметр
-  if (f.category_id) p.set('category_id', f.category_id);
+  const { first, last } = staysMonthRange();
+  const p = staysFundParams(new URLSearchParams({ first, last }));
   if (f.escorted) p.set('escorted', '1');
   if (f.vip) p.set('vip', '1');
   if (f.q.trim()) p.set('q', f.q.trim());
   return p;
+}
+
+/* заголовок колонок дня — общий для видов месяца: data-day, «сегодня», выходные */
+function staysDayHead(d, today) {
+  const wd = new Date(d + 'T12:00:00Z').getUTCDay();
+  return `<div data-day="${esc(d)}" class="${d === today ? 'today' : ''}${wd === 0 || wd === 6 ? ' we' : ''}">${Number(d.slice(8))}<small>${esc(WD_SHORT[(wd + 6) % 7])}</small></div>`;
+}
+
+/* цвет в style — только #RGB / #RRGGBB(AA): иначе текст цвета дописал бы CSS в атрибут */
+function staysColor(c) { return /^#[0-9a-f]{3,8}$/i.test(c || '') ? c : '#999'; }
+
+/* «4003 → 4103 с 15.11» — смена обозначения и категории внутри месяца (§6) */
+function staysRowChanges(u, cats) {
+  const ddmm = iso => `${iso.slice(8)}.${iso.slice(5, 7)}`;
+  const chain = (items, name) => items.length > 1
+    ? items.map((x, i) => (i ? ` → ${name(x)} с ${ddmm(x.from)}` : name(x))).join('') : '';
+  return [chain(u.labels, x => x.label), chain(u.categories, x => cats[x.category_id]?.code || '#' + x.category_id)]
+    .filter(Boolean).join(' · ');
 }
 
 function staysBarHtml(b, base, span, names) {
@@ -112,70 +203,126 @@ function staysBarHtml(b, base, span, names) {
 
 async function renderUnitsBoard(body) {
   const fund = await staysFund();
-  /* фильтры меняются подряд (дата → категория): запоздавший ответ перерисовал бы экран
-     без фильтра (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
+  /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
+     (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
   const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/board/units?' + staysBoardParams(), { silent: true });
   if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
-  const base = staysPos(data.days[0], 0);
-  const span = data.days.length * 2;
   const byUnit = {};
   data.bars.forEach(b => { (byUnit[b.unit_id ?? 'none'] ||= []).push(b); });
   const holdsBy = {};
   data.holds.forEach(h => { (holdsBy[h.unit_id] ||= []).push(h); });
-  const today = staysToday();
+  const rerender = () => renderUnitsBoard(body);
   body.innerHTML = `
-    ${staysToolbar(fund)}
+    ${staysToolbar()}
+    <div data-sf-slot></div>
     ${data.warnings.length ? `<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map(w => esc(w.text)).join('<br>')}</span></div>` : ''}
-    <div class="sb-grid">
-      <div class="sb-row sb-head"><div class="sb-unit">Объект</div><div class="sb-track sb-days">${data.days.map(d =>
-        `<div class="${d === today ? 'today' : ''}">${esc(d.slice(8))}.${esc(d.slice(5, 7))}</div>`).join('')}</div></div>
-      ${data.units.map(u => `<div class="sb-row" data-unit-row="${u.id}">
-        <div class="sb-unit"><b>${esc(u.label)}</b><small>${esc(u.category)}${u.group ? ' · ' + esc(u.group) : ''}</small></div>
-        <div class="sb-track" style="--days:${data.days.length}">
-          ${(holdsBy[u.id] || []).map(h => {
-            const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
-            return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.kind === 'ooo' ? 'OOO' : (h.title || 'Блок'))}</div>`;
-          }).join('')}
-          ${(byUnit[u.id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
-        </div></div>`).join('') || '<div class="empty">Объектов по фильтру нет</div>'}
-    </div>
+    <div class="sb-grid" style="--days:${data.days.length}"></div>
     ${(byUnit.none || []).length ? `<div class="panel"><h3 class="panel-title">Без объекта</h3>${byUnit.none.map(b =>
       `<div class="sb-unassigned" data-bar="${b.reservation_id}">${esc(names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь')} · ${esc(dateRu(b.start))}–${esc(dateRu(b.end))}</div>`).join('')}</div>` : ''}`;
-
-  const f = staysState.filters;
-  const rerender = () => renderUnitsBoard(body);
-  $('#sb-first', body).onchange = e => { staysState.first = e.target.value || staysToday(); rerender(); };
-  $('#sb-days', body).onchange = e => { staysState.days = Number(e.target.value); rerender(); };
-  [['#sb-kind', 'kind'], ['#sb-group', 'group_id'], ['#sb-cat', 'category_id']].forEach(([sel, key]) => {
-    $(sel, body).onchange = e => { f[key] = e.target.value; rerender(); };
-  });
-  $('#sb-esc', body).onchange = e => { f.escorted = e.target.checked; rerender(); };
-  $('#sb-vip', body).onchange = e => { f.vip = e.target.checked; rerender(); };
-  let timer = null;
-  $('#sb-q', body).oninput = e => { clearTimeout(timer); timer = setTimeout(() => { f.q = e.target.value; rerender(); }, 350); };
+  staysPanelInto(body, fund, rerender, { people: names });
+  const grid = $('.sb-grid', body);
+  /* сортировка и разделы — без нового запроса: перерисовка одной сетки */
+  const paint = () => { grid.innerHTML = staysUnitsGridHtml(data, fund, byUnit, holdsBy, names); };
+  paint();
+  staysBindMonthNav(body, rerender);
+  const st = staysState.sort;
+  $('#sb-sort', body).onchange = e => { st.by = e.target.value; paint(); };
+  $('#sb-dir', body).onchange = e => { st.dir = e.target.value; paint(); };
+  $('#sb-grouped', body).onchange = e => { st.grouped = e.target.checked; paint(); };
   const xlsx = kind => () => {
-    const p = new URLSearchParams({ first: staysState.first, last: staysAddDays(staysState.first, staysState.days - 1), kind });
-    downloadBlob('/api/stays/export?' + p, `shakhmatka_${kind}_${staysState.first}.xlsx`);
+    const { first, last } = staysMonthRange();
+    downloadBlob('/api/stays/export?' + new URLSearchParams({ first, last, kind }), `shakhmatka_${kind}_${first}.xlsx`);
   };
   $('#sb-xlsx-anon', body).onclick = xlsx('anon');
   const full = $('#sb-xlsx-full', body);
   if (full) full.onclick = xlsx('full');
   const add = $('#sb-new', body);
   if (add) add.onclick = () => openReservationForm(null, { onSaved: rerender });
-  if (names) $$('[data-bar]', body).forEach(el => { el.onclick = () => openReservationCard(Number(el.dataset.bar), rerender); });
-  if (can('stays.edit')) {
+  if (names) $$('.sb-unassigned[data-bar]', body).forEach(el => { el.onclick = () => openReservationCard(Number(el.dataset.bar), rerender); });
+  /* сетка — одним обработчиком: строк до 440, и они перерисовываются при сортировке */
+  grid.onclick = e => {
+    const sec = e.target.closest('[data-sec]');
+    if (sec) {
+      staysState.collapsed[sec.dataset.sec] = sec.dataset.open === '1';
+      paint();
+      return;
+    }
+    const bar = e.target.closest('[data-bar]');
+    if (bar) { if (names) openReservationCard(Number(bar.dataset.bar), rerender); return; }
+    if (!can('stays.edit')) return;
     /* блок / OOO: клик по объекту — новый, по полосе блока — правка или удаление */
-    $$('[data-unit-row] .sb-unit', body).forEach(el => {
-      el.style.cursor = 'pointer';
-      el.title = 'Поставить блок или OOO';
-      el.onclick = () => openHoldForm({ unit_id: Number(el.closest('[data-unit-row]').dataset.unitRow) }, rerender);
-    });
-    $$('[data-hold]', body).forEach(el => {
-      el.onclick = () => openHoldForm(data.holds.find(h => h.id === Number(el.dataset.hold)), rerender);
-    });
-  }
+    const hold = e.target.closest('[data-hold]');
+    if (hold) { openHoldForm(data.holds.find(h => h.id === Number(hold.dataset.hold)), rerender); return; }
+    const unit = e.target.closest('.sb-unit');
+    const row = unit && unit.closest('[data-unit-row]');
+    if (row) openHoldForm({ unit_id: Number(row.dataset.unitRow) }, rerender);
+  };
+  staysFocusDay(body);
+}
+
+/* Разделы дерева: по умолчанию развёрнуты корневые разделы с виллами, имениями и
+   апартаментами (§6: «виллы развёрнуты, основной корпус свёрнут»), вложенные — развёрнуты;
+   выбор пользователя — staysState.collapsed. Строки свёрнутого раздела в DOM не рисуются. */
+function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
+  const days = data.days;
+  const n = days.length;
+  const base = staysPos(days[0], 0);
+  const span = n * 2;
+  const dayIdx = Object.fromEntries(days.map((d, i) => [d, i]));
+  const cats = Object.fromEntries(fund.categories.map(c => [c.id, c]));
+  const groups = Object.fromEntries(fund.groups.map(g => [g.id, g]));
+  const flags = Object.fromEntries((fund.flags || []).map(f => [f.id, f]));
+  const st = staysState.sort;
+  const rows = staysSortRows(data.units, st, fund);
+  const pathOf = u => (u.group_path.length ? u.group_path.map(String) : ['none']);
+  const under = {};
+  rows.forEach(u => pathOf(u).forEach(k => { (under[k] ||= []).push(u); }));
+  const open = (key, depth) => {
+    if (key in staysState.collapsed) return !staysState.collapsed[key];
+    return depth > 0 || under[key].some(u => u.categories.some(c => STAYS_OPEN_KINDS.has(cats[c.category_id]?.kind)));
+  };
+  const title = (u, i) => (u.group_path.length ? groups[u.group_path[i]]?.title || u.group.split(' / ')[i] || '#' + u.group_path[i] : 'Без группы');
+  const pct = (a, b) => `left:${a / n * 100}%;width:${(b - a + 1) / n * 100}%`;
+  const OFF = { absent: 'нет в фонде', filtered: 'вне фильтра' };
+  const rowHtml = u => {
+    const changes = staysRowChanges(u, cats);
+    return `<div class="sb-row" data-unit-row="${u.unit_id}" data-root="${esc(pathOf(u)[0])}" data-load="${u.load}">
+      <div class="sb-unit"><b>${esc(u.label)}</b><small>${esc(u.category)}${u.floor ? ' · эт. ' + esc(u.floor) : ''}
+        ${u.flags.map(id => `<span class="sb-flag" style="background:${staysColor(flags[id]?.color)}" title="${esc(flags[id]?.title || '')}"></span>`).join('')}</small>
+        ${changes ? `<small class="sb-change">${esc(changes)}</small>` : ''}</div>
+      <div class="sb-track">
+        ${u.off.map(([a, b, why]) => `<div class="sb-off ${esc(why)}" data-from="${esc(a)}" data-to="${esc(b)}"
+          style="${pct(dayIdx[a], dayIdx[b])}" title="${esc(OFF[why] || why)}"></div>`).join('')}
+        ${(holdsBy[u.unit_id] || []).map(h => {
+          const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
+          return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.kind === 'ooo' ? 'OOO' : (h.title || 'Блок'))}</div>`;
+        }).join('')}
+        ${(byUnit[u.unit_id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
+      </div></div>`;
+  };
+  const out = [];
+  let prev = [];
+  rows.forEach(u => {
+    const path = pathOf(u);
+    if (st.grouped) {
+      let i = 0;
+      while (i < prev.length && i < path.length && prev[i] === path[i]) i++;
+      for (let k = i; k < path.length; k++) {
+        if (path.slice(0, k).some((key, d) => !open(key, d))) break;
+        const isOpen = open(path[k], k);
+        out.push(`<div class="sb-sec" data-sec="${esc(path[k])}" data-open="${isOpen ? 1 : 0}" style="--depth:${k}">
+          <span>${isOpen ? '▾' : '▸'} ${esc(title(u, k))}</span><small>${under[path[k]].length}</small></div>`);
+      }
+      prev = path;
+      if (!path.every((key, d) => open(key, d))) return;
+    }
+    out.push(rowHtml(u));
+  });
+  const today = staysToday();
+  return `<div class="sb-row sb-head"><div class="sb-unit">Объект</div><div class="sb-track sb-days">${days.map(d => staysDayHead(d, today)).join('')}</div></div>
+    ${out.join('') || '<div class="empty">Объектов по фильтру нет</div>'}`;
 }
 
 /* ─────────────── Карточка брони ─────────────── */
