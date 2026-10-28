@@ -19,7 +19,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.identity import User
 
-from ..adapters.orm import FundVersion, UnitFlag
+from ..adapters.orm import FundVersion, UnitFlag, UnitLineage
 from ..application import fund_drafts as fd
 from ..application.fund import FundError
 from ..application.fund_versions import FundSnapshot, fund_on, snapshot_of
@@ -182,7 +182,20 @@ def draft_diff(principal: Principal = Depends(READ), db: Session = Depends(get_d
         raise HTTPException(422, "Черновика фонда нет")
     if draft.base_version_id is None:
         return asdict(fd.FundDiff())
-    return asdict(fd.diff(db, draft.base_version_id, draft.id))
+    out = asdict(fd.diff(db, draft.base_version_id, draft.id))
+    # «новый · из 12134» (§10): у нового объекта — обозначения тех, из кого он получился
+    # (деление, объединение в этом черновике); выведенный предшественник — по базе черновика
+    preds: dict[int, list[int]] = {}
+    for unit_id, pred in db.execute(select(UnitLineage.unit_id, UnitLineage.predecessor_id)
+                                    .where(UnitLineage.version_id == draft.id)):
+        preds.setdefault(unit_id, []).append(pred)
+    if preds:
+        mine, base = snapshot_of(db, draft.id).units, snapshot_of(db, draft.base_version_id).units
+        name = {i: u.label for i, u in {**base, **mine}.items()}
+        for e in out["units"]:
+            if e["kind"] == "added":
+                e["from"] = [name.get(p, f"#{p}") for p in sorted(preds.get(e["id"], []))]
+    return out
 
 
 # ── запись черновика ───────────────────────────────────────────────────────

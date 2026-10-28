@@ -188,8 +188,8 @@ async function fundFlow() {
   input($('[data-sp-label="0"]'), '12134A'); input($('[data-sp-label="1"]'), '12134B');
   change($('[data-sp-cat="0"]'), String(dlx.id)); change($('[data-sp-cat="1"]'), String(dlx.id));
   click($('[data-save]'));
-  check('новые объекты с пометкой «новый»', await waitFor(() => text('#st-body').includes('12134A')
-    && text('#st-body').includes('12134B') && /новый/.test(text('#st-body'))));
+  check('новые объекты с пометкой «новый · из 12134»', await waitFor(() => text('#st-body').includes('12134A')
+    && text('#st-body').includes('12134B') && [...text('#st-body').matchAll(/новый · из 12134/g)].length === 2), text('#st-body').slice(0, 400));
   check(`исходный объект — «выведен с ${ru(tomorrow)}»`,
     (($(`#st-body [data-fund-unit="${connect.id}"]`)?.textContent) || '').includes('выведен с ' + ru(tomorrow)));
   check('плашка: число изменений и список', /изменений: [1-9]/.test(text('#fund-draft-bar')) && text('#fund-draft-bar').includes('12134A'),
@@ -218,6 +218,41 @@ async function fundFlow() {
     const boxes = $$(`[data-fund-flag="${flag.id}"]`);
     return boxes.length > 1 && boxes.every(b => b.checked);
   }));
+
+  console.log('\n3a · Дерево: перетаскивание узлов');
+  const grp = title => snap0.groups.find(g => g.title === title);
+  const villas = grp('Винные виллы'), water = grp('У воды'), view = grp('С видом');
+  const second = grp('Вторая линия'), first = grp('Первая линия');
+  const drag = async (from, to) => {
+    const src = $(`#st-body [data-fund-node="${from}"]`);
+    src.dispatchEvent(new window.Event('dragstart', { bubbles: true }));
+    const dst = typeof to === 'string' ? $(to) : $(`#st-body [data-fund-node="${to}"]`);
+    dst.dispatchEvent(new window.Event('dragover', { bubbles: true, cancelable: true }));
+    dst.dispatchEvent(new window.Event('drop', { bubbles: true, cancelable: true }));
+  };
+  const poll = async fn => {             // как waitFor, но условие — запрос к API
+    for (let i = 0; i < 40; i++) { if (await fn()) return true; await sleep(250); }
+    return false;
+  };
+  const draftGroups = async () => {
+    const v = (await apiJson('GET', '/api/stays/fund/versions')).body.find(x => x.status === 'draft');
+    return (await apiJson('GET', '/api/stays/fund/snapshot?version_id=' + v.id)).body.groups;
+  };
+  check('узлы перетаскиваются в черновике', $(`#st-body [data-fund-node="${second.id}"]`)?.getAttribute('draggable') === 'true');
+  await drag(second.id, water.id);
+  check('перенос на узел: «Вторая линия» — подузел «У воды»',
+    await poll(async () => (await draftGroups()).find(g => g.id === second.id)?.parent_id === water.id));
+  await waitFor(() => !!$(`#st-body [data-fund-gap="${villas.id}"][data-fund-before="${water.id}"]`));
+  await drag(view.id, `#st-body [data-fund-gap="${villas.id}"][data-fund-before="${water.id}"]`);
+  check('перенос между соседями: «С видом» перед «У воды»', await poll(async () => {
+    const gs = (await draftGroups()).filter(g => g.parent_id === villas.id);
+    return gs.findIndex(g => g.id === view.id) < gs.findIndex(g => g.id === water.id);
+  }));
+  await waitFor(() => !!$(`#st-body [data-fund-node="${first.id}"]`));
+  await sleep(500);
+  await drag(villas.id, first.id);
+  check('цикл отклонён сервером — тост', await waitFor(() => toastHas('нельзя вложить')), text('#toast-host'));
+  check('цикл: дерево не изменилось', (await draftGroups()).find(g => g.id === villas.id)?.parent_id == null);
 
   console.log('\n4 · Предпросмотр, перевод брони, публикация');
   click($('#fund-publish'));

@@ -194,3 +194,25 @@ def test_flag_dictionary_crud(manager_role_client, db):
     assert c.delete(f"{API}/fund/flags/{fid}").status_code == 200
     assert db.scalar(select(UnitFlag.id).where(UnitFlag.id == fid)) is None
     assert c.delete(f"{API}/fund/flags/{fid}").status_code == 422
+
+
+def test_draft_diff_lists_lineage_of_split_units(manager_role_client, db):
+    """«новый · из 12134»: у объектов, полученных делением, в diff черновика — откуда они."""
+    from .helpers import make_category
+
+    c = manager_role_client
+    cat = make_category(c, n_units=1)
+    src = cat["units"][0]
+    opened = c.post(f"{API}/fund/draft", json={"valid_from": _today(db)})
+    assert opened.status_code == 200, opened.text
+    try:
+        split = c.post(f"{API}/fund/draft/units/{src['id']}/split", json={
+            "rev": opened.json()["rev"], "parts": [{"label": src["label"] + "a"}, {"label": src["label"] + "b"}]})
+        assert split.status_code == 200, split.text
+        diff = c.get(f"{API}/fund/draft/diff").json()
+        added = {e["id"]: e for e in diff["units"] if e["kind"] == "added"}
+        assert set(added) == set(split.json()["ids"])
+        assert all(e["from"] == [src["label"]] for e in added.values())
+        assert all("from" not in e for e in diff["units"] if e["kind"] != "added")
+    finally:
+        c.delete(f"{API}/fund/versions/{opened.json()['id']}")

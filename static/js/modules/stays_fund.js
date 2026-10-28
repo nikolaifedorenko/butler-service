@@ -17,7 +17,7 @@ const FUND_STATUS = { draft: 'черновик', future: 'будущая', curre
 const FUND_ENTITY = { unit: 'объект', group: 'узел', category: 'категория' };
 const FUND_TABS = [['units', 'Объекты'], ['flags', 'Флаги объектов'], ['cats', 'Категории']];
 /* что открыто на экране: view — 'current' | 'draft' | id версии; node — узел дерева */
-const fundUI = { view: null, node: null, tab: 'units', picked: new Set(), rev: null, host: null, data: null };
+const fundUI = { view: null, node: null, tab: 'units', picked: new Set(), rev: null, host: null, data: null, drag: null };
 
 /* ─────────────── данные ─────────────── */
 function fundVersionStatus(v, versions, today) {
@@ -114,7 +114,7 @@ function fundDiffLines(diff, snapshot) {
   const fields = e => Object.keys(e.after).filter(k => JSON.stringify(e.before[k]) !== JSON.stringify(e.after[k]))
     .map(k => `${names[k] || k}: ${(show[k] || String)(e.before[k])} → ${(show[k] || String)(e.after[k])}`).join(', ');
   const line = (what, name, e, female) => {
-    if (e.kind === 'added') return `${what} ${name} — ${female ? 'новая' : 'новый'}`;
+    if (e.kind === 'added') return `${what} ${name} — ${female ? 'новая' : 'новый'}${e.from?.length ? ` из ${e.from.join(', ')}` : ''}`;
     if (e.kind === 'retired') return `${what} ${name} — ${female ? 'выведена' : 'выведен'}`;
     return `${what} ${name}: ${fields(e)}`;
   };
@@ -131,14 +131,45 @@ function fundDiffLines(diff, snapshot) {
 }
 
 /* ─────────────── дерево ─────────────── */
-function staysFundTree(snapshot, selectedId) {
+/* editable — черновик: узлы перетаскиваются; на узел — стать его подузлом, в щель между
+   соседями — встать на это место (data-fund-gap: родитель, data-fund-before: перед кем) */
+function staysFundTree(snapshot, selectedId, editable = false) {
   const kids = {};
   snapshot.groups.forEach(g => { (kids[g.parent_id ?? 'root'] ||= []).push(g); });
   const count = id => snapshot.units.filter(u => u.path.includes(id)).length;
   const node = (id, title, n, depth) => `<button class="fund-node${(id ?? null) === (selectedId ?? null) ? ' active' : ''}"
-    data-fund-node="${id ?? ''}" style="padding-left:${8 + depth * 14}px">${esc(title)} <small class="muted">${n}</small></button>`;
-  const walk = (pid, depth) => (kids[pid] || []).map(g => node(g.id, g.title, count(g.id), depth) + walk(g.id, depth + 1)).join('');
+    data-fund-node="${id ?? ''}"${editable && id != null ? ' draggable="true"' : ''} style="padding-left:${8 + depth * 14}px">${esc(title)} <small class="muted">${n}</small></button>`;
+  const gap = (pid, before, depth) => (editable
+    ? `<div class="fund-gap" data-fund-gap="${pid === 'root' ? '' : pid}" data-fund-before="${before ?? ''}" style="margin-left:${8 + depth * 14}px"></div>` : '');
+  const walk = (pid, depth) => (kids[pid] || []).map(g => gap(pid, g.id, depth) + node(g.id, g.title, count(g.id), depth)
+    + walk(g.id, depth + 1)).join('') + ((kids[pid] || []).length ? gap(pid, null, depth) : '');
   return `<div class="fund-tree">${node(null, 'Весь фонд', snapshot.units.length, 0)}${walk('root', 0)}</div>`;
+}
+
+/* перенос узла перетаскиванием: parent — новый родитель (null — корень), before — перед каким
+   узлом встать (null — в конец). Порядок соседей пересчитывается шагом 10; пишутся только
+   изменившиеся узлы, каждый — записью черновика с rev. Цикл отклонит сервер (422 → тост). */
+async function fundMoveGroup(snapshot, id, parent, before) {
+  const g = snapshot.groups.find(x => x.id === id);
+  if (!g || id === before) return;
+  const siblings = snapshot.groups.filter(x => (x.parent_id ?? null) === parent && x.id !== id);
+  const at = before == null ? siblings.length : Math.max(0, siblings.findIndex(x => x.id === before));
+  const order = before === undefined ? null : [...siblings.slice(0, at), g, ...siblings.slice(at)];
+  const writes = [];
+  if (order) {
+    order.forEach((x, i) => {
+      const sort = (i + 1) * 10;
+      if (x.id === id || x.sort_order !== sort) writes.push({ g: x, parent: x.id === id ? parent : x.parent_id ?? null, sort });
+    });
+  } else {
+    const last = siblings.reduce((m, x) => Math.max(m, x.sort_order), 0);
+    writes.push({ g, parent, sort: last + 10 });
+  }
+  /* сначала сам узел: если сервер отклонит (цикл), соседей не трогаем */
+  writes.sort((a, b) => (b.g.id === id) - (a.g.id === id));
+  for (const w of writes) {
+    await fundWrite('PUT', `/api/stays/fund/draft/groups/${w.g.id}`, { title: w.g.title, parent_id: w.parent, sort_order: w.sort });
+  }
 }
 
 /* ─────────────── экран ─────────────── */
@@ -176,7 +207,8 @@ async function renderStaysFund(host) {
     <div class="fund-layout">
       <div class="panel fund-side"><h3 class="panel-title">Дерево ${editing
         ? '<button class="btn btn-sm btn-ghost" id="fund-node-add" title="Новый узел внутри выбранного">+</button>' : ''}</h3>
-        ${staysFundTree(snap, fundUI.node)}
+        ${staysFundTree(snap, fundUI.node, editing)}
+        ${editing ? '<p class="hint">Перетащите узел на другой — станет его подузлом; между узлами — сменит порядок.</p>' : ''}
         ${editing && fundUI.node != null ? `<div class="sb-line fund-node-actions">
           <button class="btn btn-sm btn-ghost" id="fund-node-edit">Изменить узел</button>
           <button class="btn btn-sm btn-ghost" id="fund-node-retire">Вывести узел</button></div>` : ''}</div>
@@ -214,14 +246,18 @@ function fundScopeUnits(data, editing) {
 function fundUnitMarks(data) {
   const marks = {};
   if (!data.diff) return marks;
-  data.diff.flags.forEach(e => { marks[e.id] = 'changed'; });
-  data.diff.units.forEach(e => { marks[e.id] = e.kind; });
+  data.diff.flags.forEach(e => { marks[e.id] = { kind: 'changed' }; });
+  data.diff.units.forEach(e => { marks[e.id] = e; });
   return marks;
 }
-function fundMark(kind, since) {
-  if (kind === 'added') return `<span class="badge info">с ${esc(since)} · новый</span>`;
-  if (kind === 'retired') return `<span class="badge muted">выведен с ${esc(since)}</span>`;
-  if (kind === 'changed') return `<span class="badge warn">с ${esc(since)} · изменён</span>`;
+/* пометка черновика: e — запись diff ({kind, from}); female — «новая / выведена / изменена» */
+function fundMark(e, since, female = false) {
+  if (!e) return '';
+  const [added, retired, changed] = female ? ['новая', 'выведена', 'изменена'] : ['новый', 'выведен', 'изменён'];
+  const from = e.from?.length ? ` · из ${e.from.join(', ')}` : '';
+  if (e.kind === 'added') return `<span class="badge info">с ${esc(since)} · ${added}${esc(from)}</span>`;
+  if (e.kind === 'retired') return `<span class="badge muted">${retired} с ${esc(since)}</span>`;
+  if (e.kind === 'changed') return `<span class="badge warn">с ${esc(since)} · ${changed}</span>`;
   return '';
 }
 
@@ -270,13 +306,13 @@ function fundCatsTab(data, editing) {
   const { snap, dicts } = data;
   const kinds = Object.fromEntries(dicts.kinds.map(k => [k.code, k.title]));
   const marks = {};
-  if (editing && data.diff) data.diff.categories.forEach(e => { marks[e.id] = e.kind; });
+  if (editing && data.diff) data.diff.categories.forEach(e => { marks[e.id] = e; });
   const since = data.draft ? dateRu(data.draft.valid_from).slice(0, 5) : '';
   return `${editing ? '<div class="sb-toolbar"><button class="btn btn-sm btn-primary" id="fund-cat-add">+ Категория</button></div>' : ''}
     <div class="table-wrap"><table class="data">
       <thead><tr><th>Код</th><th>Название</th><th>Вид</th><th>Сопровождение</th><th class="num">Вес</th><th class="num">Объектов</th><th></th></tr></thead>
       <tbody>${snap.categories.map(c => `<tr data-fund-cat="${c.id}">
-        <td><b>${esc(c.code)}</b> ${fundId(c.id)} ${fundMark(marks[c.id], since).replace('новый', 'новая').replace('изменён', 'изменена')}</td>
+        <td><b>${esc(c.code)}</b> ${fundId(c.id)} ${fundMark(marks[c.id], since, true)}</td>
         <td>${esc(c.title)}</td><td>${esc(kinds[c.kind] || c.kind)}</td>
         <td>${c.escorted ? '<span class="badge ok">с батлером</span>' : '<span class="muted">нет</span>'}</td>
         <td class="num">${esc(String(c.weight))}</td><td class="num">${snap.units.filter(u => u.category_id === c.id).length}</td>
@@ -298,7 +334,11 @@ function fundBind(host, data, editing) {
     rerender();
   };
   $$('[data-fund-node]', host).forEach(b => {
-    b.onclick = () => { fundUI.node = b.dataset.fundNode ? Number(b.dataset.fundNode) : null; rerender(); };
+    b.onclick = () => {
+      fundUI.node = b.dataset.fundNode ? Number(b.dataset.fundNode) : null;
+      fundUI.picked.clear();             // «Объединить» и «Сменить узел» — только по видимым галочкам
+      rerender();
+    };
   });
   $$('[data-fund-tab]', host).forEach(b => { b.onclick = () => { fundUI.tab = b.dataset.fundTab; rerender(); }; });
   $$('[data-fund-open]', host).forEach(b => {
@@ -344,6 +384,36 @@ function fundBind(host, data, editing) {
     try { await fundWrite('DELETE', `/api/stays/fund/draft/groups/${fundUI.node}`); fundUI.node = null; toast('Узел выведен'); rerender(); }
     catch (e) { fundFail(e); }
   }, 'Вывести'));
+
+  /* перетаскивание узлов (клавиатура и телефон — форма «Изменить узел») */
+  const drop = (el, act) => {
+    el.addEventListener('dragover', e => { if (fundUI.drag != null) { e.preventDefault(); el.classList.add('drop'); } });
+    el.addEventListener('dragleave', () => el.classList.remove('drop'));
+    el.addEventListener('drop', async e => {
+      e.preventDefault();
+      el.classList.remove('drop');
+      const id = fundUI.drag;
+      fundUI.drag = null;
+      if (id == null) return;
+      try { await act(id); toast('Дерево изменено'); rerender(); } catch (err) { fundFail(err); if (!err.handled) rerender(); }
+    });
+  };
+  $$('[data-fund-node]', host).forEach(el => {
+    if (el.draggable) {
+      el.addEventListener('dragstart', e => {
+        fundUI.drag = Number(el.dataset.fundNode);
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', el.dataset.fundNode); }
+      });
+      el.addEventListener('dragend', () => { fundUI.drag = null; });
+    }
+    const target = el.dataset.fundNode ? Number(el.dataset.fundNode) : null;
+    drop(el, id => (id === target ? Promise.resolve() : fundMoveGroup(snap, id, target, undefined)));
+  });
+  $$('[data-fund-gap]', host).forEach(el => {
+    const parent = el.dataset.fundGap ? Number(el.dataset.fundGap) : null;
+    const before = el.dataset.fundBefore ? Number(el.dataset.fundBefore) : null;
+    drop(el, id => fundMoveGroup(snap, id, parent, before));
+  });
 
   /* объекты */
   $$('[data-fund-pick]', host).forEach(cb => {
