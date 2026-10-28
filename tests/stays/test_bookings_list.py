@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app.core.audit import AuditLog
+from app.modules.stays.domain.allocate import natural_key
 
 from .helpers import API, create_res, make_category, make_guest, uniq
 from .test_board_filters import _flag, _groups, _set_flag
@@ -94,7 +95,9 @@ def test_sort_each_column_both_directions(manager_role_client, manager_client, d
     units = {r["number"]: r["unit"] for r in _get(manager_client, **win)["rows"]}
     assert units["N9"] == ""                                   # отменённая — без объекта
     by_unit = [units[n] for n in _numbers(manager_client, **win, sort="unit")]
-    assert by_unit[-1] == "" and by_unit[:-1] == sorted(by_unit[:-1])        # без объекта — в конце
+    assert by_unit[-1] == ""                                  # без объекта — в конце
+    # метки объектов случайные — сравниваем тем же натуральным ключом, что и сервер
+    assert by_unit[:-1] == sorted(by_unit[:-1], key=natural_key)
     # вторичный ключ — номер по возрастанию в любом направлении
     for n in ("S3", "S1", "S2"):
         create_res(manager_client, cat, "2039-06-01", "2039-06-03", number=n)
