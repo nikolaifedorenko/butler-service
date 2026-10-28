@@ -121,3 +121,32 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+BOOKING_COLUMNS = (("Номер", "number"), ("Главный гость", "main_guest"), ("Уровень", "level"), ("Заезд", "check_in"),
+                   ("Выезд", "check_out"), ("Ночей", "nights"), ("Категория", "category"), ("Объект", "unit"),
+                   ("Статус", "status_title"), ("Метка", "label"), ("Батлеры", "butlers"), ("РЗ", "early"),
+                   ("ПВ", "late"), ("Создана", "created_at"))
+
+
+def _booking_cell(key: str, v):
+    if key == "butlers":
+        return ", ".join(v)
+    if key == "label":
+        return v["title"] if v else ""
+    if key in ("early", "late"):
+        return "да" if v else ""
+    return v
+
+
+def bookings_xlsx(rows: list[dict]) -> bytes:
+    """Список броней (§8) в том порядке и составе колонок, что на экране; лист «Бронирования»."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Бронирования"
+    _put(ws, 1, [title for title, _ in BOOKING_COLUMNS], bold=True)
+    for i, row in enumerate(rows, start=2):
+        _put(ws, i, [_booking_cell(key, row[key]) for _, key in BOOKING_COLUMNS])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

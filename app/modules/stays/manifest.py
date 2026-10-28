@@ -23,7 +23,8 @@ MODULE = ModuleManifest(
              "app.modules.stays.interface.views_api:router",
              "app.modules.stays.interface.coverage_api:router",
              "app.modules.stays.interface.boards_api:router",
-             "app.modules.stays.interface.export_api:router"),
+             "app.modules.stays.interface.export_api:router",
+             "app.modules.stays.interface.bookings_api:router"),
     models=("app.modules.stays.adapters.orm",),
     permissions=(
         # без персональных данных — только своей ролью «Загрузка без гостей» (§7–§8)
