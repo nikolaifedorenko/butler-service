@@ -1,7 +1,8 @@
 """API версий фонда (спецификация stays-fund-versions §4, §6): снимок на дату и черновик.
 
 Чтение — тем, кто видит шахматку (READ), запись — правом stays.setup. Каждая запись черновика
-несёт rev (оптимистичная блокировка: 409 при расхождении) и возвращает новый rev."""
+несёт rev (оптимистичная блокировка: 409 при расхождении) и возвращает новый rev. Начальная
+загрузка («заменить всё») и переключатель «в эксплуатации» — правом stays.reset (§9.3)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -9,7 +10,8 @@ import re
 from dataclasses import asdict
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,15 +20,19 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.identity import User
+from app.core.permissions import require_perm
 
 from ..adapters.orm import FundVersion, UnitFlag, UnitLineage
 from ..application import fund_drafts as fd
+from ..application import fund_reset as fr
+from ..application import fund_xlsx as fx
 from ..application.fund import FundError
 from ..application.fund_versions import FundSnapshot, fund_on, snapshot_of
 from ._ops import PREVIEW, run
 from .fund_api import READ, SETUP, SORT, CategoryIn, _err
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
+RESET = require_perm("stays.reset")
 
 
 # ── тела запросов ──────────────────────────────────────────────────────────
@@ -149,6 +155,13 @@ def _snapshot_dict(db: Session, version: FundVersion, snap: FundSnapshot) -> dic
     }
 
 
+def _fund_on(db: Session, date: dt.date) -> FundSnapshot:
+    try:
+        return fund_on(db, date)
+    except LookupError as e:
+        raise HTTPException(422, str(e)) from e      # дата раньше первой версии — ошибка ввода
+
+
 @router.get("/fund/snapshot")
 def get_snapshot(date: Optional[dt.date] = None, version_id: Optional[int] = None,
                  principal: Principal = Depends(READ), db: Session = Depends(get_db)):
@@ -160,7 +173,7 @@ def get_snapshot(date: Optional[dt.date] = None, version_id: Optional[int] = Non
             raise HTTPException(404, "Версии фонда нет")
         snap = snapshot_of(db, version_id)
     else:
-        snap = fund_on(db, date)
+        snap = _fund_on(db, date)
         version = db.get(FundVersion, snap.version_id)
     return _snapshot_dict(db, version, snap)
 
@@ -179,7 +192,7 @@ def list_versions(principal: Principal = Depends(READ), db: Session = Depends(ge
 def draft_diff(principal: Principal = Depends(READ), db: Session = Depends(get_db)):
     draft = fd.current_draft(db)
     if draft is None:
-        raise HTTPException(422, "Черновика фонда нет")
+        raise HTTPException(409, "Черновика фонда нет")
     if draft.base_version_id is None:
         return asdict(fd.FundDiff())
     out = asdict(fd.diff(db, draft.base_version_id, draft.id))
@@ -347,6 +360,128 @@ def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: P
                                  **{k: [w for w in added if w["kind"] == k]
                                     for k in ("unassigned", "pin_invalid", "category_missing")}}
     return out
+
+
+# ── файл фонда (§9) ────────────────────────────────────────────────────────
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/fund/export", response_class=Response, responses={200: {"content": {XLSX: {}}}})
+def export_fund(date: dt.date, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    """Фонд на дату файлом Excel — он же образец для загрузки (§9.1)."""
+    data = fx.export_fund(_fund_on(db, date), list(db.scalars(select(UnitFlag))))
+    return Response(content=data, media_type=XLSX,
+                    headers={"Content-Disposition": f'attachment; filename="fund-{date.isoformat()}.xlsx"'})
+
+
+def _file_errors(errors: list[fx.FileError]) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"errors": [
+        {"sheet": e.sheet, "row": e.row, "message": e.message} for e in errors]})
+
+
+def _read_upload(file: UploadFile) -> bytes:
+    cap = fx.MAX_FILE_BYTES
+    if file.size is not None and file.size > cap:
+        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
+    data = file.file.read(cap + 1)           # с запасом в байт: лимит до чтения файла целиком
+    if len(data) > cap:
+        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
+    return data
+
+
+@router.post("/fund/import")
+def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
+                principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    """«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже
+    есть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда
+    не остаётся ничего, даже черновика: всё — одна транзакция. flags — правки справочника флагов
+    {created, renamed, recoloured}: он не версионируется, и они остаются и без черновика."""
+    data = _read_upload(file)
+    try:
+        draft = fd.open_draft(db, valid_from, principal.user.id)
+        parsed, errors = fx.parse_fund(data, known_unit_ids=set(snapshot_of(db, draft.id).units))
+        if parsed is None:
+            db.rollback()
+            return _file_errors(errors)
+        result, flags = fd.apply_file(db, draft.rev, parsed)
+        change = asdict(result)
+    except fd.FundFileError as e:
+        db.rollback()
+        return _file_errors(e.errors)
+    except FundError as e:
+        db.rollback()
+        raise _err(e) from e
+    names = {"unit": "label", "category": "code", "group": "title"}
+    retired = [{"entity": entity, "id": e["id"], "name": e["before"].get(names[entity])}
+               for entity, key in (("unit", "units"), ("group", "groups"), ("category", "categories"))
+               for e in change[key] if e["kind"] == "retired"]
+    counts = {key: {k: sum(e["kind"] == k for e in change[key]) for k in ("added", "changed", "retired")}
+              for key in ("units", "categories", "groups")}
+    audit(db, principal, "stays_fund_import", f"fund_draft:{draft.id}",
+          {"valid_from": valid_from.isoformat(), "filename": file.filename, "counts": counts,
+           "flags": flags, "units_flags_changed": len(change["flags"])})
+    out = {"id": draft.id, "valid_from": draft.valid_from.isoformat(), "rev": draft.rev,
+           "diff": change, "retired": retired, "flags": flags}
+    db.commit()
+    return out
+
+
+# ── начальная загрузка (§9.3) ──────────────────────────────────────────────
+
+
+class InProductionIn(BaseModel):
+    value: bool
+
+
+@router.post("/fund/reset")
+def reset_fund(file: UploadFile = File(...), confirm: str = Form(""), fingerprint: str = Form(""),
+               preview_flag: bool = PREVIEW, principal: Principal = Depends(RESET),
+               db: Session = Depends(get_db)):
+    """«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,
+    предупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и
+    fingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки
+    файла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания."""
+    data = _read_upload(file)
+    parsed, errors = fx.parse_fund(data)
+    if parsed is None:
+        return _file_errors(errors)
+    try:
+        if preview_flag:
+            out = fr.preview(db, parsed)
+            db.rollback()
+            return out
+        out = fr.initial_load(db, parsed, principal, fr.parse_fingerprint(fingerprint),
+                              confirm=confirm, filename=file.filename or "")
+    except fd.FundFileError as e:
+        db.rollback()
+        return _file_errors(e.errors)
+    except FundError as e:
+        db.rollback()
+        raise _err(e) from e
+    db.commit()
+    return {**out, "backup_url": f"/api/stays/fund/backups/{out['backup']}"}
+
+
+@router.get("/fund/backups/{name}", response_class=FileResponse, responses={200: {"content": {XLSX: {}}}})
+def get_backup(name: str, principal: Principal = Depends(RESET), db: Session = Depends(get_db)):
+    """Копия перед начальной загрузкой: имя строго stays-YYYYMMDD-HHMMSS.xlsx, без путей.
+    В копии персональные данные гостей — скачивание в журнале аудита."""
+    path = fr.backup_path(name)
+    if path is None:
+        raise HTTPException(404, "Копии нет")
+    audit(db, principal, "stays_reset", f"backup:{name}", {"download": True})
+    db.commit()
+    return FileResponse(path, media_type=XLSX, filename=name)
+
+
+@router.put("/fund/in-production")
+def put_in_production(payload: InProductionIn, principal: Principal = Depends(RESET),
+                      db: Session = Depends(get_db)):
+    """Переключатель «Шахматка в эксплуатации»: включён — начальной загрузки нет (§9.3)."""
+    value = fr.set_in_production(db, principal, payload.value)
+    db.commit()
+    return {"in_production": value}
 
 
 # ── справочник флагов (вне черновика) ──────────────────────────────────────

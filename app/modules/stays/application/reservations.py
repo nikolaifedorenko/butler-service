@@ -26,7 +26,7 @@ from ..adapters.orm import (
 from ..domain.halfday import AM, PIECE_BASE, pieces, pos, segments, validate_dates
 from . import allocation
 from .fund import FundError, changes
-from .fund_versions import category_exists, fund_for, unit_exists, version_cuts
+from .fund_versions import category_exists, fund_day, fund_for_stays, unit_exists, version_cuts
 from .guests import reservation_search_text, searchable_codes, short_name, validate_fields
 
 STATUS_TITLES = {"tentative": "предварительная", "confirmed": "подтверждена", "in_house": "заселён",
@@ -148,10 +148,10 @@ def _sync_group(db: Session, r: Reservation, doc: dict) -> None:
 def reservation_snapshot(db: Session, r: Reservation) -> dict:
     """Плоский снимок брони для журнала «было → стало» (§3.6)."""
     moves = _moves_of(db, r.id)
-    # обозначение — на дату начала части сегмента (фонд меняется версиями с даты)
-    starts = {p.index: p.start for p in pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id,
+    # обозначение — по фонду части (фонд меняется версиями с вечера даты)
+    starts = {p.index: fund_day(p.start_pos) for p in pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id,
                                                         moves), version_cuts(db))}
-    fund = fund_for(db, r.check_in, r.check_out)
+    fund = fund_for_stays(db, r.check_in, r.check_out)
     units = [u.label if a.unit_id and (u := fund.unit(a.unit_id, starts.get(a.seg_index, r.check_in))) else None
              for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)
                                  .order_by(Assignment.seg_index))]

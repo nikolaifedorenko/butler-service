@@ -361,6 +361,26 @@
         "title": "Body_car_return_api_cars__car_id__return_post",
         "type": "object"
       },
+      "Body_import_fund_api_stays_fund_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date",
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid_from",
+          "file"
+        ],
+        "title": "Body_import_fund_api_stays_fund_import_post",
+        "type": "object"
+      },
       "Body_login_form_api_auth_login_form_post": {
         "properties": {
           "password": {
@@ -448,6 +468,30 @@
           }
         },
         "title": "Body_report_car_check_api_night_reports__report_id__cars__car_id__check_post",
+        "type": "object"
+      },
+      "Body_reset_fund_api_stays_fund_reset_post": {
+        "properties": {
+          "confirm": {
+            "default": "",
+            "title": "Confirm",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "fingerprint": {
+            "default": "",
+            "title": "Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_reset_fund_api_stays_fund_reset_post",
         "type": "object"
       },
       "Body_upload_template_api_docs_templates_post": {
@@ -1801,6 +1845,19 @@
           "employee_id"
         ],
         "title": "ImpersonateIn",
+        "type": "object"
+      },
+      "InProductionIn": {
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "InProductionIn",
         "type": "object"
       },
       "InterceptionAck": {
@@ -12397,6 +12454,45 @@
         ]
       }
     },
+    "/api/stays/fund/backups/{name}": {
+      "get": {
+        "description": "Копия перед начальной загрузкой: имя строго stays-YYYYMMDD-HHMMSS.xlsx, без путей.\nВ копии персональные данные гостей — скачивание в журнале аудита.",
+        "operationId": "get_backup_api_stays_fund_backups__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Backup",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/fund/draft": {
       "patch": {
         "operationId": "move_draft_api_stays_fund_draft_patch",
@@ -13082,6 +13178,46 @@
         ]
       }
     },
+    "/api/stays/fund/export": {
+      "get": {
+        "description": "Фонд на дату файлом Excel — он же образец для загрузки (§9.1).",
+        "operationId": "export_fund_api_stays_fund_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Fund",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/fund/flags": {
       "post": {
         "operationId": "create_flag_api_stays_fund_flags_post",
@@ -13254,6 +13390,140 @@
           }
         },
         "summary": "Archive Flag",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/import": {
+      "post": {
+        "description": "«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже\nесть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда\nне остаётся ничего, даже черновика: всё — одна транзакция. flags — правки справочника флагов\n{created, renamed, recoloured}: он не версионируется, и они остаются и без черновика.",
+        "operationId": "import_fund_api_stays_fund_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_fund_api_stays_fund_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Fund",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/in-production": {
+      "put": {
+        "description": "Переключатель «Шахматка в эксплуатации»: включён — начальной загрузки нет (§9.3).",
+        "operationId": "put_in_production_api_stays_fund_in_production_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InProductionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put In Production",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/reset": {
+      "post": {
+        "description": "«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,\nпредупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и\nfingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки\nфайла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания.",
+        "operationId": "reset_fund_api_stays_fund_reset_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_reset_fund_api_stays_fund_reset_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Fund",
         "tags": [
           "stays"
         ]

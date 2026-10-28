@@ -17,7 +17,7 @@ from ..adapters.orm import Assignment, CoverageLine, Guest, Label, Move, Occupan
 from ..domain.allocate import natural_key
 from ..domain.halfday import Piece, pieces, segments
 from . import allocation
-from .fund_versions import FundTimeline, boundary_pos, fund_for
+from .fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
 from .guests import search_query, short_name
 from .reservations import STATUS_TITLES
 from .views import LEVEL_RANK, BoardFilters, ViewError, fund_match
@@ -149,7 +149,9 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
                            .where(Occupant.reservation_id.in_(rids)).order_by(Occupant.date_from, Occupant.id)):
         occ[o.reservation_id].append(o)
         guests[g.id] = g
-    fund = fund_for(db, min(r.check_in for r, _ in cand), max(r.check_out for r, _ in cand))
+    fund = fund_for_stays(db, min(r.check_in for r, _ in cand), max(r.check_out for r, _ in cand))
+    # окно фонда — с дня до самого раннего заезда по самый поздний выезд: его границы — все границы
+    # версий внутри проживаний, части те же, что у распределения (version_cuts — лишний запрос бюджета)
     cuts = [boundary_pos(d) for d in fund.boundaries()]
     items: list[_Item] = []
     for r, lb in cand:
@@ -159,7 +161,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         cats: list[str] = []
         for p in ps:
             uid = asg.get((r.id, p.index)) if live else None
-            day = max(p.start, r.check_in)
+            day = fund_day(p.start_pos)
             if uid is not None and (not units or units[-1][0] != uid):
                 units.append((uid, _label_on(fund, uid, day)))
             cat = fund.category(p.category_id, day) if fund.parts else None
@@ -190,8 +192,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
                     continue
                 live = it.r.status in allocation.OCCUPYING
                 if not any(_piece_passes(fund, p, asg.get((it.r.id, p.index)) if live else None,
-                                         max(p.start, win_a) if max(p.start, win_a) <= p.end else p.start, f)
-                           for p in in_win):
+                                         fund_day(p.start_pos), f) for p in in_win):
                     continue
             kept.append(it)
         items = kept

@@ -120,7 +120,7 @@ def test_publish_flow_via_api(manager_role_client, db):
     snap = c.get(f"{API}/fund/snapshot", params={"date": _today(db)}).json()
     assert unit.json()["id"] in [u["id"] for u in snap["units"]]
     assert snap["version"]["status"] == "published"
-    assert c.get(f"{API}/fund/draft/diff").status_code == 422                     # черновика больше нет
+    assert c.get(f"{API}/fund/draft/diff").status_code == 409                     # черновика больше нет
     assert not [v for v in c.get(f"{API}/fund/versions").json() if v["status"] == "draft"]
 
 
@@ -164,8 +164,31 @@ def test_validation_errors(manager_role_client, db):
                                                         "weight": 1, "sort_order": 3_000_000_000}).status_code == 422
     assert c.post(f"{API}/fund/draft/categories", json={"rev": 1, "code": "X", "title": "x", "kind": "castle",
                                                         "weight": 1}).status_code == 422
-    assert c.post(f"{API}/fund/draft/units", json={"rev": 1, "label": "U", "category_id": 1}).status_code == 422  # черновика нет
-    assert c.post(f"{API}/fund/draft/units/1/split", json={"rev": 1, "parts": [{"label": "a"}]}).status_code == 422
+    assert c.post(f"{API}/fund/draft/units", json={"rev": 1, "label": "U", "category_id": 1}).status_code == 409  # черновика нет
+    assert c.post(f"{API}/fund/draft/units/1/split", json={"rev": 1, "parts": [{"label": "a"}]}).status_code == 422  # одна часть
+    for url in (f"{API}/fund/snapshot", f"{API}/fund/export"):              # раньше первой версии фонда
+        r = c.get(url, params={"date": "1999-12-31"})
+        assert r.status_code == 422 and r.json()["detail"] == "дата раньше начала фонда"
+
+
+def test_repeated_ids_in_merge_and_flags_via_api(manager_role_client, db):
+    c = manager_role_client
+    rev = c.post(f"{API}/fund/draft", json={"valid_from": _today(db)}).json()["rev"]
+
+    def call(method, path, **body):
+        nonlocal rev
+        r = c.request(method, f"{API}/fund/draft/{path}", json={"rev": rev, **body})
+        assert r.status_code == 200, r.text
+        rev = r.json()["rev"]
+        return r.json()
+
+    code = "T" + uniq()
+    cat = call("POST", "categories", code=code, title=code, kind="room", weight=1)["id"]
+    a, b = (call("POST", "units", label=f"{code}-{i}", category_id=cat)["id"] for i in (1, 2))
+    flag = c.post(f"{API}/fund/flags", json={"title": "апи-флаг-" + uniq()}).json()["id"]
+    call("PUT", "flags", flag_id=flag, unit_ids=[a, a], value=True)
+    merged = call("POST", "units/merge", unit_ids=[a, b, b], label=code + "-M")["id"]
+    assert merged not in (a, b)
 
 
 def test_delete_version_rules(manager_role_client, db):

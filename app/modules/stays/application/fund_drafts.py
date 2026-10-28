@@ -11,6 +11,8 @@ base_version_id указывает на заменяемую версию."""
 from __future__ import annotations
 
 import datetime as dt
+import math
+import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -38,6 +40,7 @@ from . import allocation as _allocation
 from . import reservations
 from .fund import KINDS, FundConflict, FundError
 from .fund_versions import INITIAL_DATE, FundSnapshot, fund_on, snapshot_of
+from .fund_xlsx import SHEET_CATEGORIES, SHEET_FLAGS, SHEET_TREE, SHEET_UNITS, FileError, ParsedFund
 from .locking import lock_module
 
 # ── черновик ───────────────────────────────────────────────────────────────
@@ -105,7 +108,7 @@ def _draft(db: Session, rev: int) -> FundVersion:
     lock_module(db)
     draft = current_draft(db)
     if draft is None:
-        raise FundError("черновика фонда нет — откройте его")
+        raise FundConflict("черновика фонда нет — откройте его")
     check_rev(draft, rev)
     return draft
 
@@ -128,6 +131,21 @@ def move_draft_date(db: Session, rev: int, valid_from: dt.date) -> None:
 
 
 # ── вспомогательное ────────────────────────────────────────────────────────
+
+
+SORT_RANGE = (-100_000, 100_000)
+
+
+def _sort_order(data: dict, current: int | None) -> int:
+    """Порядок сортировки: целое в SORT_RANGE (как в API); не задан — прежний, у нового — 100."""
+    v = data.get("sort_order", 100 if current is None else current)
+    try:
+        n = None if isinstance(v, bool) else int(str(v).strip())
+    except ValueError:
+        n = None
+    if n is None or not SORT_RANGE[0] <= n <= SORT_RANGE[1]:
+        raise FundError(f"порядок: целое число от {SORT_RANGE[0]} до {SORT_RANGE[1]}")
+    return n
 
 
 def _text(data: dict, key: str, current: str | None, limit: int, what: str) -> str:
@@ -226,7 +244,7 @@ def save_category(db: Session, rev: int, data: dict, category_id: int | None) ->
         db.add(row)
     row.code, row.title, row.kind, row.weight = code, title, kind, weight
     row.escorted = bool(data.get("escorted", row.escorted if row.escorted is not None else False))
-    row.sort_order = int(data.get("sort_order", row.sort_order if row.sort_order is not None else 100))
+    row.sort_order = _sort_order(data, row.sort_order)
     bump(draft)
     db.flush()
     return category_id
@@ -253,6 +271,12 @@ def save_group(db: Session, rev: int, data: dict, group_id: int | None) -> int:
     title = _text(data, "title", row.title if row else None, 120, "название узла")
     parent_id = data.get("parent_id", row.parent_id if row else None)
     _grp(db, draft.id, parent_id)
+    if "/" in title:
+        raise FundError("в названии узла нельзя использовать «/»")
+    twin = db.scalar(select(GroupState.group_id).where(
+        GroupState.version_id == draft.id, GroupState.parent_id == parent_id, GroupState.title == title))
+    if twin is not None and twin != group_id:
+        raise FundConflict("в этом узле уже есть подузел с таким названием")
     if group_id is not None:
         seen, cur = set(), parent_id
         while cur is not None:
@@ -268,7 +292,7 @@ def save_group(db: Session, rev: int, data: dict, group_id: int | None) -> int:
         row = GroupState(version_id=draft.id, group_id=group_id)
         db.add(row)
     row.title, row.parent_id = title, parent_id
-    row.sort_order = int(data.get("sort_order", row.sort_order if row.sort_order is not None else 100))
+    row.sort_order = _sort_order(data, row.sort_order)
     bump(draft)
     db.flush()
     return group_id
@@ -359,7 +383,8 @@ def split_unit(db: Session, rev: int, unit_id: int, parts: list[dict]) -> list[i
 
 def merge_units(db: Session, rev: int, unit_ids: list[int], data: dict) -> int:
     draft = _draft(db, rev)
-    if len(set(unit_ids)) < 2:
+    unit_ids = list(dict.fromkeys(unit_ids))     # повтор id — одна строка происхождения
+    if len(unit_ids) < 2:
         raise FundError("для объединения нужно минимум два объекта")
     rows = [_unit(db, draft.id, u) for u in unit_ids]
     groups, cats = {r.group_id for r in rows}, {r.category_id for r in rows}
@@ -388,7 +413,7 @@ def set_flag(db: Session, rev: int, flag_id: int, unit_ids: list[int], value: bo
         raise FundError("флага нет в справочнике")
     if value and flag.archived:
         raise FundError(f"флаг «{flag.title}» в архиве")
-    for u in unit_ids:
+    for u in dict.fromkeys(unit_ids):             # повтор id — одна строка флага
         _unit(db, draft.id, u)
         have = db.get(UnitStateFlag, (draft.id, u, flag_id)) is not None
         if value and not have:
@@ -703,7 +728,7 @@ def publish(db: Session, principal, rev: int | None = None, propagate: bool = Tr
     lock_module(db)
     draft = current_draft(db)
     if draft is None:
-        raise FundError("черновика фонда нет")
+        raise FundConflict("черновика фонда нет")
     if rev is not None:
         db.refresh(draft)                  # после замка: правка коллеги могла bump-нуть rev
         check_rev(draft, rev)
@@ -796,6 +821,8 @@ def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags:
 
     def node(path: tuple[str, ...], sort_order: int | None = None) -> int:
         if path not in nodes:
+            if "/" in path[-1]:
+                raise FundError("в названии узла нельзя использовать «/»")
             parent = node(path[:-1]) if len(path) > 1 else None
             nodes[path] = gid = _add(db, FundGroup())
             db.add(GroupState(version_id=vid, group_id=gid, parent_id=parent, title=path[-1],
@@ -827,6 +854,216 @@ def _add(db: Session, row) -> int:
     return row.id
 
 
+# ── файл фонда в черновик (§9.2) ───────────────────────────────────────────
+
+
+class FundFileError(FundError):
+    """Файл не применён: все ошибки списком с листом и строкой; ничего не записано (вызывающий
+    откатывает транзакцию — вместе с открытием черновика)."""
+
+    def __init__(self, errors: list[FileError]) -> None:
+        super().__init__("; ".join(f"{e.sheet}:{e.row} {e.message}" for e in errors))
+        self.errors = errors
+
+
+_KIND_BY_TITLE = {t: k for k, t in KINDS.items()}
+_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+_WEIGHT_MAX = Decimal("999.99")                 # Numeric(5, 2)
+
+
+def _file_weight(w: float) -> Decimal | None:
+    if not math.isfinite(w):
+        return None
+    d = Decimal(str(w)).quantize(Decimal("0.01"))
+    return d if Decimal(0) < d <= _WEIGHT_MAX else None
+
+
+@dataclass
+class _FlagPlan:
+    """Что файл делает со справочником флагов: колонка «Объектов» → флаг и правки справочника."""
+    column: dict[str, int | None] = field(default_factory=dict)   # название → id; None — новый флаг
+    rename: dict[int, str] = field(default_factory=dict)          # id → новое название
+    recolour: dict[int, str] = field(default_factory=dict)        # id → новый цвет
+    new_color: dict[str, str] = field(default_factory=dict)       # новый флаг → цвет с листа
+
+
+def _plan_flags(parsed: ParsedFund, dictionary: dict[int, UnitFlag], err) -> _FlagPlan:
+    """Флаги файла → флаги справочника. Строка листа «Флаги» с ID — тот флаг (новое название,
+    цвет). Колонка «Объектов» без строки на листе: прежнее название флага, переименованного на
+    листе, — этот флаг; название флага справочника, которого на листе нет, — он; иначе новый
+    флаг — если это однозначно (на листе нет переименованного флага, потерявшего колонку)."""
+    by_title = {f.title: f for f in dictionary.values()}
+    on_sheet = {f.id: f for f in parsed.flags if f.row_no and f.id is not None}
+    plan = _FlagPlan()
+    for f in parsed.flags:
+        if f.id is not None and f.id not in dictionary:
+            err(SHEET_FLAGS, f.row_no, f"ID {f.id} нет в справочнике флагов — ID не меняют; "
+                                       "новому флагу оставьте ID пустым")
+        if len(f.title) > 80:
+            err(SHEET_FLAGS if f.row_no else SHEET_UNITS, f.row_no or 1,
+                f"название флага «{f.title[:20]}…» длиннее 80 символов")
+        if f.color and not _COLOR.fullmatch(f.color):
+            err(SHEET_FLAGS, f.row_no, f"цвет «{f.color}» — ожидается #RRGGBB")
+    for fid, f in on_sheet.items():
+        if (d := dictionary.get(fid)) is None:
+            continue
+        plan.column[f.title] = fid
+        if d.title != f.title:
+            plan.rename[fid] = f.title
+        if f.color and d.color != f.color:
+            plan.recolour[fid] = f.color
+    for f in parsed.flags:
+        if f.id is not None:
+            continue
+        d = by_title.get(f.title)
+        if d is None or (d.id in on_sheet and f.row_no):      # новое название или новая строка листа
+            plan.column[f.title] = None
+            if f.color:
+                plan.new_color[f.title] = f.color
+            continue
+        plan.column[f.title] = d.id                          # прежнее название / флаг не на листе
+        if f.color and d.color != f.color:
+            plan.recolour[d.id] = f.color
+
+    headers = parsed.flag_columns
+    mapped: dict[int, str] = {}
+    for h in headers:
+        fid = plan.column.get(h)
+        if fid is None:
+            continue
+        if fid in mapped:
+            err(SHEET_UNITS, 1, f"колонка флага «{h}» не совпадает с листом «Флаги»: флаг ID {fid} "
+                                f"там называется «{on_sheet[fid].title if fid in on_sheet else dictionary[fid].title}», "
+                                f"и колонка «{mapped[fid]}» — тоже он; оставьте одну колонку")
+        mapped.setdefault(fid, h)
+    lost = [fid for fid in plan.rename if fid not in mapped]  # переименован на листе, колонки нет
+    sheet_titles = {f.title for f in parsed.flags if f.row_no}
+    for h in headers:
+        if lost and plan.column.get(h, 0) is None and h not in sheet_titles:
+            err(SHEET_UNITS, 1, f"колонка флага «{h}» не совпадает с листом «Флаги»: это новый флаг или "
+                                f"переименованный «{dictionary[lost[0]].title}» → «{on_sheet[lost[0]].title}»? Назовите колонку как на листе")
+    final = {fid: plan.rename.get(fid, d.title) for fid, d in dictionary.items()}
+    for fid, title in plan.rename.items():
+        twin = next((i for i, t in final.items() if t == title and i != fid), None)
+        if twin is not None:
+            err(SHEET_FLAGS, on_sheet[fid].row_no, f"флаг «{title}» уже есть в справочнике (ID {twin})")
+    return plan
+
+
+def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dict]:
+    """Разобранный файл фонда → снимок черновика (§9.2): строка с ID — та же сущность (меняется
+    всё, что изменено), пустой ID — новая, сущность черновика без строки в файле выводится,
+    «Из чего» у новой строки — lineage. ID, которого нет в черновике (на листе «Флаги» — в
+    справочнике), — ошибка. Сначала проверка всего файла, затем запись; при любой ошибке —
+    FundFileError и ничего не записано. Справочник флагов не версионируется: переименование и
+    цвет флага и новые флаги применяются к нему сразу, как правка справочника, и при удалении
+    черновика не откатываются; флаг без строки в файле не удаляется. Возвращает разницу
+    черновика с его базой и правки справочника {created, renamed, recoloured}."""
+    draft = _draft(db, rev)
+    have = _load_fund(db, draft.id)
+    hc, hg, hu = have.rows["category"], have.rows["group"], have.rows["unit"]
+    errors: list[FileError] = []
+
+    def err(sheet: str, row: int, msg: str) -> None:
+        errors.append(FileError(sheet, row, msg))
+
+    def unknown(sheet: str, row: int, i: int) -> None:
+        err(sheet, row, f"ID {i} нет в фонде на дату черновика — ID не меняют; новой записи оставьте ID пустым")
+
+    dictionary = {f.id: f for f in db.scalars(select(UnitFlag))}
+    plan = _plan_flags(parsed, dictionary, err)
+
+    cats: dict[int, dict] = {}                   # ParsedCategory.row_no → поля
+    for c in parsed.categories:
+        if c.id is not None and c.id not in hc:
+            unknown(SHEET_CATEGORIES, c.row_no, c.id)
+        if len(c.code) > 16:
+            err(SHEET_CATEGORIES, c.row_no, "код категории длиннее 16 символов")
+        if len(c.title) > 120:
+            err(SHEET_CATEGORIES, c.row_no, "название категории длиннее 120 символов")
+        kind = c.kind.lower() if c.kind.lower() in KINDS else _KIND_BY_TITLE.get(c.kind.lower())
+        if not c.kind:
+            kind = hc[c.id]["kind"] if c.id in hc else "room"
+        if kind is None:
+            err(SHEET_CATEGORIES, c.row_no, f"вид «{c.kind}» — ожидается одно из: " + ", ".join(KINDS))
+        weight = _file_weight(c.weight)
+        if weight is None:
+            err(SHEET_CATEGORIES, c.row_no, f"вес {c.weight} — ожидается число больше 0 и не больше {_WEIGHT_MAX}")
+        cats[c.row_no] = {"code": c.code, "title": c.title, "kind": kind, "weight": weight,
+                          "escorted": c.escorted, "sort_order": c.sort_order}
+    for g in parsed.groups:
+        if g.id is not None and g.id not in hg:
+            unknown(SHEET_TREE, g.row_no, g.id)
+        if len(g.path[-1]) > 120:
+            err(SHEET_TREE, g.row_no, "название узла длиннее 120 символов")
+    for u in parsed.units:
+        if u.id is not None and u.id not in hu:
+            unknown(SHEET_UNITS, u.row_no, u.id)
+        if len(u.label) > 40:
+            err(SHEET_UNITS, u.row_no, "номер объекта длиннее 40 символов")
+        if len(u.floor) > 8:
+            err(SHEET_UNITS, u.row_no, "этаж длиннее 8 символов")
+        for p in u.predecessors:
+            if p not in hu:
+                err(SHEET_UNITS, u.row_no, f"«Из чего»: ID {p} нет в фонде на дату черновика")
+        had = have.flags.get(u.id, set()) if u.id is not None else set().union(
+            *(have.flags.get(p, set()) for p in u.predecessors))
+        for t in sorted(u.flags):
+            f = dictionary.get(plan.column.get(t))
+            if f is not None and f.archived and f.id not in had:
+                err(SHEET_UNITS, u.row_no, f"флаг «{t}» в архиве")
+    if errors:
+        raise FundFileError(errors)
+
+    # запись: справочник флагов, новые id, снимок черновика целиком, lineage
+    changes: dict[str, list[dict]] = {"created": [], "renamed": [], "recoloured": []}
+    was = {fid: dictionary[fid].title for fid in plan.rename}
+    for fid in plan.rename:              # сначала временные названия: обмен названиями — без UNIQUE
+        dictionary[fid].title = f"\u2063{fid}"
+    db.flush()
+    for fid, title in plan.rename.items():
+        changes["renamed"].append({"id": fid, "from": was[fid], "to": title})
+        dictionary[fid].title = title
+    for fid, color in plan.recolour.items():
+        changes["recoloured"].append({"id": fid, "from": dictionary[fid].color, "to": color})
+        dictionary[fid].color = color
+    db.flush()
+    flag_ids = dict(plan.column)
+    for title, fid in plan.column.items():
+        if fid is None:
+            color = plan.new_color.get(title)
+            flag_ids[title] = save_flag(db, {"title": title, **({"color": color} if color else {})}, None)
+            changes["created"].append({"id": flag_ids[title], "title": title})
+
+    want = _Fund({"category": {}, "group": {}, "unit": {}}, {})
+    code_id: dict[str, int] = {}
+    for c in parsed.categories:
+        cid = c.id if c.id is not None else _add(db, Category())
+        want.rows["category"][cid] = cats[c.row_no]
+        code_id[c.code] = cid
+    path_id: dict[tuple[str, ...], int] = {}
+    for g in sorted(parsed.groups, key=lambda g: len(g.path)):         # родитель раньше потомка
+        gid = g.id if g.id is not None else _add(db, FundGroup())
+        path_id[g.path] = gid
+        want.rows["group"][gid] = {"parent_id": path_id[g.path[:-1]] if len(g.path) > 1 else None,
+                                   "title": g.path[-1], "sort_order": g.sort_order}
+    lineage: list[UnitLineage] = []
+    for u in parsed.units:
+        uid = u.id if u.id is not None else _add(db, Unit())
+        want.rows["unit"][uid] = {"label": u.label, "category_id": code_id[u.category_code],
+                                  "group_id": path_id[u.group_path] if u.group_path else None, "floor": u.floor}
+        want.flags[uid] = {flag_ids[t] for t in u.flags}
+        lineage += [UnitLineage(unit_id=uid, predecessor_id=p, version_id=draft.id)
+                    for p in dict.fromkeys(u.predecessors)]
+    if want != have:                     # без правок снимок не трогаем
+        _store_fund(db, draft.id, want)
+    db.add_all(lineage)
+    bump(draft)
+    db.flush()
+    change = diff(db, draft.base_version_id, draft.id) if draft.base_version_id is not None else FundDiff()
+    return change, changes
+
+
 # ── справочник флагов (вне черновика) ──────────────────────────────────────
 
 
@@ -844,7 +1081,7 @@ def save_flag(db: Session, data: dict, flag_id: int | None) -> int:
         db.add(row)
     row.title = title
     row.color = str(data.get("color", row.color or "#3b6fd8"))[:9]
-    row.sort_order = int(data.get("sort_order", row.sort_order if row.sort_order is not None else 100))
+    row.sort_order = _sort_order(data, row.sort_order)
     db.flush()
     return row.id
 

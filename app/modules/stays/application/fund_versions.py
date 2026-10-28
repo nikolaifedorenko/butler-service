@@ -123,6 +123,19 @@ def boundary_pos(d: dt.date) -> int:
     return halfday.pos(d, halfday.PM)
 
 
+def fund_day(p: int) -> dt.date:
+    """Сутки, чей фонд действует в половинке p: версия с valid_from D — с вечера D, утро D — ещё
+    фонд D-1. Часть брони между границами версий целиком в одном фонде: её объект и категорию
+    читают по fund_day(start_pos) — утренняя часть дня версии — по прежней версии."""
+    return dt.date.fromordinal((p - 1) // 2)
+
+
+def fund_for_stays(db: Session, first_check_in: dt.date, last: dt.date) -> FundTimeline:
+    """Фонд для частей броней с заездами от first_check_in: с дня до него — утро заезда
+    (ранний заезд в день версии) принадлежит предыдущей версии, и её граница — в boundaries()."""
+    return fund_for(db, first_check_in - dt.timedelta(days=1), last)
+
+
 def version_cuts(db: Session) -> list[int]:
     """Границы всех опубликованных версий (позиции половинок). По ним режут сегменты на части и
     распределение, и виды: индекс части (Assignment.seg_index) не зависит от окна чтения."""
@@ -206,7 +219,11 @@ def fund_for(db: Session, first: dt.date, last: dt.date) -> FundTimeline:
 
 
 def fund_on(db: Session, day: dt.date) -> FundSnapshot:
-    return fund_for(db, day, day).on(day)
+    """Снимок на день; день раньше первой версии фонда — LookupError (фонда на него нет)."""
+    timeline = fund_for(db, day, day)
+    if not timeline.parts:
+        raise LookupError("дата раньше начала фонда")
+    return timeline.on(day)
 
 
 def snapshot_of(db: Session, version_id: int) -> FundSnapshot:

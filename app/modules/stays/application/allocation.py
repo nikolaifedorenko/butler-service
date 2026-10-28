@@ -24,7 +24,7 @@ from app.core.time import local_date
 
 from ..adapters.orm import Assignment, Hold, Move, Reservation
 from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitSpan, allocate, pin_invalid
-from ..domain.halfday import AM, PIECE_BASE, PM, Piece, hold_span, pieces, pos, segments
+from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, hold_span, pieces, pos, segments
 from .fund_versions import FundTimeline, boundary_pos, fund_for
 
 # статусы, которые занимают объект (отменённая и no-show — нет, §4.7)
@@ -103,6 +103,15 @@ def effective_pin(pinned: dict[int, int], live: set[int]) -> int | None:
     return next((pinned[i] for i in order if i in live), next((pinned[i] for i in order), None))
 
 
+def _envelope(rs: list[Reservation], moves: dict[int, list[tuple]]) -> list[Segment]:
+    """Сегменты группы — по датам-оболочке её членов; переезды и категория у членов совпадают."""
+    rs.sort(key=lambda r: r.id)
+    first_r = min(rs, key=lambda r: (r.check_in, not r.early))
+    last_r = max(rs, key=lambda r: (r.check_out, r.late))
+    return segments(first_r.check_in, last_r.check_out, first_r.early, last_r.late, rs[0].category_id,
+                    moves[rs[0].id])
+
+
 def compute(db: Session) -> AllocationState:
     """Распределение без записи: им пользуются и сохранение, и снимок предпросмотра."""
     today = local_date()
@@ -133,17 +142,40 @@ def compute(db: Session) -> AllocationState:
             members[("h", h.id)] = []
 
     moves = _moves(db, [r.id for r in res])
+    groups: dict[int, list[Reservation]] = {}
+    for r in res:
+        if r.group_id is not None:
+            groups.setdefault(r.group_id, []).append(r)
+    envelopes = {gid: _envelope(rs, moves) for gid, rs in groups.items()}
+    # строки членов группы — по их собственным частям (читатели строят части из дат брони);
+    # распределение группы идёт по частям оболочки: (член, своя часть) ↔ часть оболочки
+    to_env: dict[tuple[int, int], int] = {}
+    from_env: dict[tuple[int, int], list[Piece]] = {}
+    for gid, rs in groups.items():
+        env = pieces(envelopes[gid], cuts)
+        for r in rs:
+            for p in pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]), cuts):
+                e = next((e for e in env if e.start_pos <= p.start_pos <= e.end_pos), None)
+                if e is not None:
+                    to_env[(r.id, p.index)] = e.index
+                    from_env.setdefault((r.id, e.index), []).append(p)
     current: dict[tuple[int, int], int] = {}
     pinned_rows: set[tuple[int, int]] = set()
     pin_rows: dict[tuple[int, int], dict[int, int]] = {}   # (бронь, сегмент) → {часть: объект}
+    in_group = {r.id for rs in groups.values() for r in rs}
     if res:
         for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([r.id for r in res]))
                             .order_by(Assignment.seg_index)):
+            rid, index = a.reservation_id, a.seg_index
+            if rid in in_group:
+                if (rid, index) not in to_env:
+                    continue                       # не часть брони — строка удаляется при записи
+                index = to_env[(rid, index)]
             if a.unit_id is not None:
-                current[(a.reservation_id, a.seg_index)] = a.unit_id
+                current[(rid, index)] = a.unit_id
                 if a.pinned:
-                    pinned_rows.add((a.reservation_id, a.seg_index))
-                    pin_rows.setdefault((a.reservation_id, a.seg_index // PIECE_BASE), {})[a.seg_index] = a.unit_id
+                    pinned_rows.add((rid, index))
+                    pin_rows.setdefault((rid, index // PIECE_BASE), {})[index] = a.unit_id
     morning, evening = pos(today, AM), pos(today, PM)
 
     by_unit: dict[int, list[UnitSpan]] = {}
@@ -177,7 +209,6 @@ def compute(db: Session) -> AllocationState:
             return True, uid, None
         return False, None, uid
 
-    groups: dict[int, list[Reservation]] = {}
     items: list[AllocItem] = []
     relocated: dict[tuple[Key, int], tuple[str, Piece, int]] = {}   # часть заселённой брони → прежний объект
 
@@ -209,19 +240,11 @@ def compute(db: Session) -> AllocationState:
         members[key] = [r.id for r in rs]
 
     for r in res:
-        if r.group_id is not None:
-            groups.setdefault(r.group_id, []).append(r)
-            continue
-        add_item(("r", r.id), r.number or str(r.id), [r],
-                 segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]))
+        if r.group_id is None:
+            add_item(("r", r.id), r.number or str(r.id), [r],
+                     segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]))
     for gid, rs in groups.items():
-        # группа — один элемент с датами-оболочкой; переезды и категория у членов совпадают
-        rs.sort(key=lambda r: r.id)
-        first_r = min(rs, key=lambda r: (r.check_in, not r.early))
-        last_r = max(rs, key=lambda r: (r.check_out, r.late))
-        add_item(("g", gid), rs[0].number or f"группа {gid}", rs,
-                 segments(first_r.check_in, last_r.check_out, first_r.early, last_r.late, rs[0].category_id,
-                          moves[rs[0].id]))
+        add_item(("g", gid), rs[0].number or f"группа {gid}", rs, envelopes[gid])
 
     got, alloc_warnings = allocate(spans, holds, items, codes)
     warnings += alloc_warnings
@@ -241,14 +264,17 @@ def compute(db: Session) -> AllocationState:
     span_of = {(it.key, p.index): (p.start_pos, p.end_pos) for it in items for p in it.segments}
     for (key, piece), uid in got.items():
         for rid in members[key]:
-            out_units[(rid, piece)] = uid
-            if (key, piece) in span_of:
-                out_spans[(rid, piece)] = span_of[(key, piece)]
             if (key, piece) in fixed_keys:
-                out_pinned[(rid, piece)] = (rid, piece) in pinned_rows
+                pinned = (rid, piece) in pinned_rows
             else:
-                out_pinned[(rid, piece)] = ((rid, piece // PIECE_BASE) in pin_rows
-                                            and (key, piece) not in released)
+                pinned = (rid, piece // PIECE_BASE) in pin_rows and (key, piece) not in released
+            own = ([(p.index, (p.start_pos, p.end_pos)) for p in from_env.get((rid, piece), ())]
+                   if key[0] == "g" else [(piece, span_of.get((key, piece)))])
+            for index, span in own:
+                out_units[(rid, index)] = uid
+                out_pinned[(rid, index)] = pinned
+                if span is not None:
+                    out_spans[(rid, index)] = span
     return AllocationState(out_units, out_pinned, warnings, members, out_spans)
 
 
