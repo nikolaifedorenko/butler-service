@@ -24,7 +24,7 @@ pytest-cov==7.1.0
 python-docx==1.2.0
 python-dotenv==1.2.4
 python-multipart==0.0.32
-reportlab==5.0.1
+reportlab==5.1.0
 sqlalchemy==2.1.6
 uvicorn==0.54.0
 
