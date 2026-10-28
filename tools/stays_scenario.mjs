@@ -502,12 +502,40 @@ async function savedFilters() {
   await openMonth(serverToday());
   await resetFilters();
   await setCheck(`[data-sf-group="${villas.id}"]`, true);
+  /* поиск набирается — перерисовка после паузы не отнимает фокус у поля */
+  const search = 'Лебедев';
+  $('#sf-q').focus();
+  input($('#sf-q'), search);
+  const typed = $('#sf-q');
+  await waitFor(() => $('#sf-q') && $('#sf-q') !== typed);
+  check('поиск: после перерисовки фокус и текст в поле', window.document.activeElement?.id === 'sf-q'
+    && $('#sf-q').value === search && window.eval('staysState.filters.q') === search);
   const name = 'Виллы ' + uniq;
   input($('#sf-save-name'), name);
   click($('#sf-save'));
   check('набор в списке', await waitFor(() => $$('#sf-saved option').some(o => o.value === name)));
-  const stored = JSON.parse(window.localStorage.getItem('stays.filters') || '[]');
-  check('набор в localStorage', stored.some(x => x.name === name && x.filters.group_ids.includes(villas.id)));
+  const me = (await apiJson('GET', '/api/auth/me')).body.user;
+  const key = 'stays.filters.' + me.id;
+  const stored = JSON.parse(window.localStorage.getItem(key) || '[]');
+  check('набор в localStorage — под ключом пользователя', stored.some(x => x.name === name && x.filters.group_ids.includes(villas.id)));
+  check('в наборе нет поиска и VIP (данные гостей не сохраняются)', stored.every(x => !('q' in x.filters) && !('vip' in x.filters))
+    && !window.localStorage.getItem(key).includes(search) && window.localStorage.getItem('stays.filters') === null);
+  /* смена пользователя устройства: ни наборов, ни поиска, ни фильтров прежнего */
+  click($('#logout-btn'));
+  check('выход выполнен', await waitFor(() => !$('#login-screen').classList.contains('hidden')));
+  check('вход другим пользователем (sluzhba)', await relogin('sluzhba'));
+  window.navigate('stays');
+  check('другой пользователь: шахматка с панелью', await waitFor(() => !!$('.sf-panel')));
+  check('другой пользователь: наборов прежнего нет', !$$('#sf-saved option').some(o => o.value === name));
+  check('другой пользователь: поиск и фильтры пусты', ($('#sf-q')?.value ?? '') === ''
+    && window.eval('staysState.filters.q') === '' && window.eval('staysState.filters.group_ids.length') === 0);
+  click($('#logout-btn'));
+  await waitFor(() => !$('#login-screen').classList.contains('hidden'));
+  check('снова admin', await relogin(LOGIN));
+  window.navigate('stays');
+  await waitFor(() => !!$('.sf-panel') && $$('#sf-saved option').some(o => o.value === name));
+  check('admin: свой набор на месте, поиск пуст', $$('#sf-saved option').some(o => o.value === name)
+    && ($('#sf-q')?.value ?? '') === '');
   /* «перезагрузка»: память раздела сброшена, набор читается из хранилища */
   window.eval('staysState.filters = staysEmptyFilters(); staysState.fund = null;');
   const before = $('.sf-panel');
@@ -518,7 +546,8 @@ async function savedFilters() {
   const old = $('#sf-saved');
   change(old, name);
   await waitFor(() => $('#sf-saved') && $('#sf-saved') !== old);
-  check('выбранный набор применён', $(`[data-sf-group="${villas.id}"]`)?.checked === true
+  check('выбранный набор применён (без поиска)', $(`[data-sf-group="${villas.id}"]`)?.checked === true
+    && $('#sf-q').value === ''
     && $$('#view-stays [data-unit-row]').every(r => r.dataset.root === String(villas.id)));
   change($('#sf-saved'), name);
   click($('#sf-del'));
@@ -695,6 +724,18 @@ async function moreForms() {
   check('связь видна в профиле', gc.links.some(l => l.guest_id === g2.id && l.label === 'супруг(а)'));
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML + ($('#modal')?.innerHTML || '')));
   void u1;
+}
+
+/* выход уже нажат: вход другим логином тем же путём, что в main (JSON-вход + bootApp) */
+async function relogin(username) {
+  await sleep(300);
+  const r = await proxy('POST', '/api/auth/login', { body: JSON.stringify({ username, password: 'demo1234' }),
+    headers: { 'Content-Type': 'application/json' } });
+  if (!r.ok) return false;
+  window.eval('bootApp()');
+  const ok = await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
+  await sleep(500);
+  return ok;
 }
 
 async function main() {

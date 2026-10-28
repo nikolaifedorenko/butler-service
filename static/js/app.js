@@ -280,6 +280,9 @@ function resetUserViewState() {
   /* Состояния модулей (ADR-0008: межфайловые вызовы через глобальную область).
      settingsUI.searchBound НЕ сбрасываем: флаг стережёт одноразовую привязку
      document-листнера ⌘K, которая не снимается — сброс удвоил бы обработчик. */
+  /* шахматка: фильтры (в них поиск — фамилия, телефон гостя), разделы, вкладка — не
+     переходят к следующему пользователю устройства; сохранённые наборы — у каждого свои */
+  staysResetUserState();
   Object.assign(carsState, { data: null, meta: null, locations: [], filter: 'all', q: '' });
   Object.assign(nightState, { reportId: null, today: null, areas: null, zoneId: null,
     areaId: null, q: '', filter: 'all', dictTab: 'zones', dictZone: null,

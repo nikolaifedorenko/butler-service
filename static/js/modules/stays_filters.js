@@ -7,16 +7,38 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-const STAYS_FILTERS_KEY = 'stays.filters';
+const STAYS_FILTERS_KEY = 'stays.filters';   // + '.<id пользователя>': на общем устройстве наборы не смешиваются
 const STAYS_SORTS = [['tree', 'по дереву'], ['label', 'по номеру'], ['category', 'по категории'],
   ['floor', 'по этажу'], ['load', 'по загрузке за месяц']];
 const staysFilterOpen = new Set();   // раскрытые списки панели — переживают перерисовку
+/* набираемый поиск: перерисовка вида после паузы не отнимает фокус и не теряет символы,
+   набранные, пока шёл запрос (сбрасывается при смене пользователя) */
+let staysSearchDraft = null;         // { value, caret }
+
+/* смена пользователя устройства (resetUserViewState, app.js): ничего от прежнего не остаётся */
+function staysResetUserState() {
+  Object.assign(staysState, { tab: 'units', fund: null, filters: staysEmptyFilters(),
+    sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {}, ocOpen: {}, ocMode: 'pct', focusDay: null });
+  Object.assign(boardState, { day: null, tab: 'arrivals' });
+  staysFilterOpen.clear();
+  staysSearchDraft = null;
+}
 
 /* ─────────────── Сохранённые наборы ─────────────── */
-/* хранилища может не быть (приватный режим, запрет сайта) — тогда наборов просто нет */
+/* Наборы — у каждого пользователя свои (ключ с id), и в них только устройство фонда:
+   поиск (фамилия, № брони, телефон) и VIP не сохраняются — персональные данные гостей не
+   остаются в браузере после выхода. Хранилища может не быть (приватный режим, запрет
+   сайта) — тогда наборов просто нет; без пользователя — тоже. */
+function staysFiltersKey() {
+  const id = state.user?.id;
+  return id == null ? null : `${STAYS_FILTERS_KEY}.${id}`;
+}
 function staysSavedFilters() {
   try {
-    const list = JSON.parse(window.localStorage.getItem(STAYS_FILTERS_KEY) || '[]');
+    const key = staysFiltersKey();
+    if (!key) return [];
+    window.localStorage.removeItem(STAYS_FILTERS_KEY);   // общий ключ ранней сборки — с поиском внутри
+    const list = JSON.parse(window.localStorage.getItem(key) || '[]');
     return Array.isArray(list) ? list.filter(x => x && typeof x.name === 'string' && x.filters) : [];
   } catch {
     return [];
@@ -24,7 +46,9 @@ function staysSavedFilters() {
 }
 function staysWriteFilters(list) {
   try {
-    window.localStorage.setItem(STAYS_FILTERS_KEY, JSON.stringify(list));
+    const key = staysFiltersKey();
+    if (!key) return false;
+    window.localStorage.setItem(key, JSON.stringify(list));
     return true;
   } catch {
     return false;
@@ -33,7 +57,12 @@ function staysWriteFilters(list) {
 function staysSaveFilter(name, filters) {
   const n = String(name || '').trim();
   if (!n) return false;
-  return staysWriteFilters([...staysSavedFilters().filter(x => x.name !== n), { name: n, filters: staysCleanFilters(filters) }]);
+  const fund = staysCleanFilters(filters);
+  delete fund.q;
+  delete fund.vip;
+  const { by, dir, grouped } = staysState.sort;
+  return staysWriteFilters([...staysSavedFilters().filter(x => x.name !== n),
+    { name: n, filters: fund, sort: { by, dir, grouped } }]);
 }
 function staysDeleteFilter(name) {
   return staysWriteFilters(staysSavedFilters().filter(x => x.name !== name));
@@ -80,7 +109,7 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
     ${list('kind', 'Вид', fund.kinds.map(k => ({ value: k.code, label: k.title })), f.kinds)}
     <label class="chk"><input type="checkbox" id="sf-esc"${f.escorted ? ' checked' : ''}> с сопровождением</label>
     ${people ? `<label class="chk"><input type="checkbox" id="sf-vip"${f.vip ? ' checked' : ''}> VIP/VVIP</label>
-      <input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" value="${esc(f.q)}">` : ''}
+      <input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" value="${esc(staysSearchDraft?.value ?? f.q)}">` : ''}
     <select id="sf-saved" title="Сохранённые наборы фильтров"><option value="">Наборы…</option>${saved.map(s =>
       `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')}</select>
     ${saved.length ? '<button class="btn btn-sm btn-ghost" id="sf-del" title="Удалить выбранный набор">✕</button>' : ''}
@@ -102,11 +131,21 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
   if (people) {
     $('#sf-vip', el).onchange = e => emit({ vip: e.target.checked });
     let timer = null;
-    $('#sf-q', el).oninput = e => { clearTimeout(timer); timer = setTimeout(() => emit({ q: e.target.value }), 350); };
+    $('#sf-q', el).oninput = e => {
+      staysSearchDraft = { value: e.target.value, caret: e.target.selectionStart };
+      clearTimeout(timer);
+      timer = setTimeout(() => emit({ q: e.target.value }), 350);
+    };
   }
   $('#sf-saved', el).onchange = e => {
     const s = staysSavedFilters().find(x => x.name === e.target.value);
-    if (s) onChange(staysCleanFilters(s.filters));
+    if (!s) return;
+    /* набор — устройство фонда и сортировка; поиск и VIP остаются как были */
+    const sort = s.sort || {};
+    if (STAYS_SORTS.some(([v]) => v === sort.by)) staysState.sort.by = sort.by;
+    if (sort.dir === 'asc' || sort.dir === 'desc') staysState.sort.dir = sort.dir;
+    if (typeof sort.grouped === 'boolean') staysState.sort.grouped = sort.grouped;
+    onChange({ ...staysCleanFilters(s.filters), q: f.q, vip: f.vip });
   };
   const del = $('#sf-del', el);
   if (del) del.onclick = () => {
@@ -124,7 +163,7 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
     el.replaceWith(fresh);
     $('#sf-saved', fresh).value = name;
   };
-  $('#sf-reset', el).onclick = () => onChange(staysEmptyFilters());
+  $('#sf-reset', el).onclick = () => { staysSearchDraft = null; onChange(staysEmptyFilters()); };
   return el;
 }
 

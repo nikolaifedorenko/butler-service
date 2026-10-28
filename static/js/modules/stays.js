@@ -51,6 +51,7 @@ function staysBindMonthNav(body, rerender) {
     let m = state.month + delta, y = state.year;
     if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
     state.month = m; state.year = y;
+    staysState.focusDay = null;     // «Сегодня» прошлого месяца не докручивает новый
     rerender();
   };
   $('#sm-prev', body).onclick = () => shift(-1);
@@ -92,7 +93,17 @@ function staysFundParams(p) {
 /* панель фильтров вида: изменение — новые фильтры и перерисовка вида */
 function staysPanelInto(body, fund, rerender, opts) {
   const slot = $('[data-sf-slot]', body);
-  if (slot) slot.replaceWith(staysFilterPanel(fund, staysState.filters, f => { staysState.filters = f; rerender(); }, opts));
+  if (!slot) return;
+  const panel = staysFilterPanel(fund, staysState.filters, f => { staysState.filters = f; rerender(); }, opts);
+  slot.replaceWith(panel);
+  /* перерисовка после набора в поиске — фокус и курсор остаются в поле */
+  const q = $('#sf-q', panel);
+  if (staysSearchDraft && q) {
+    q.focus();
+    const c = Math.min(staysSearchDraft.caret ?? q.value.length, q.value.length);
+    q.setSelectionRange(c, c);
+    if (staysSearchDraft.value === staysState.filters.q) staysSearchDraft = null;
+  }
 }
 /* Справочники модуля + фонд на сегодня (категории, узлы, объекты — версиями с даты, GET /fund/snapshot) */
 async function staysFund(force = false) {
@@ -164,6 +175,9 @@ function staysDayHead(d, today) {
   const wd = new Date(d + 'T12:00:00Z').getUTCDay();
   return `<div data-day="${esc(d)}" class="${d === today ? 'today' : ''}${wd === 0 || wd === 6 ? ' we' : ''}">${Number(d.slice(8))}<small>${esc(WD_SHORT[(wd + 6) % 7])}</small></div>`;
 }
+
+/* цвет в style — только #RGB / #RRGGBB(AA): иначе текст цвета дописал бы CSS в атрибут */
+function staysColor(c) { return /^#[0-9a-f]{3,8}$/i.test(c || '') ? c : '#999'; }
 
 /* «4003 → 4103 с 15.11» — смена обозначения и категории внутри месяца (§6) */
 function staysRowChanges(u, cats) {
@@ -276,7 +290,7 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
     const changes = staysRowChanges(u, cats);
     return `<div class="sb-row" data-unit-row="${u.unit_id}" data-root="${esc(pathOf(u)[0])}" data-load="${u.load}">
       <div class="sb-unit"><b>${esc(u.label)}</b><small>${esc(u.category)}${u.floor ? ' · эт. ' + esc(u.floor) : ''}
-        ${u.flags.map(id => `<span class="sb-flag" style="background:${esc(flags[id]?.color || '#999')}" title="${esc(flags[id]?.title || '')}"></span>`).join('')}</small>
+        ${u.flags.map(id => `<span class="sb-flag" style="background:${staysColor(flags[id]?.color)}" title="${esc(flags[id]?.title || '')}"></span>`).join('')}</small>
         ${changes ? `<small class="sb-change">${esc(changes)}</small>` : ''}</div>
       <div class="sb-track">
         ${u.off.map(([a, b, why]) => `<div class="sb-off ${esc(why)}" data-from="${esc(a)}" data-to="${esc(b)}"
