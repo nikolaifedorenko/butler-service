@@ -113,13 +113,21 @@ async function apiJson(method, url, body) {
     headers: body ? { 'Content-Type': 'application/json' } : {} });
   return { status: r.status, body: JSON.parse((await r.text()) || 'null') };
 }
+/* «Сегодня» в часовом поясе СЕРВЕРА (APP_TZ), а не раннера: иначе в CI (UTC) около 21–24 UTC дата
+   сценария — вчера по Москве, и черновик фонда с valid_from в прошлом отклоняется */
+const SERVER_TZ = process.env.APP_TZ || 'Europe/Moscow';
+function serverToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: SERVER_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
 const uniq = Date.now().toString(36).slice(-5).toUpperCase();
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
    /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
 async function fundCategory(code, labels) {
-  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  let rev = (await apiJson('POST', '/api/stays/fund/draft', { valid_from: today })).body.rev;
+  const today = serverToday();
+  const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: today });
+  if (d.status !== 200) throw new Error(`черновик фонда (create): ${d.status} ${JSON.stringify(d.body)}`);
+  let rev = d.body.rev;
   const step = async (path, body) => {
     const r = await apiJson('POST', '/api/stays/fund/draft/' + path, { rev, ...body });
     if (r.status !== 200) throw new Error(`черновик фонда ${path}: ${r.status} ${JSON.stringify(r.body)}`);
@@ -266,7 +274,7 @@ async function unitsBoard() {
 async function butlersAndDay() {
   console.log('\n3 · Батлеры и табло дня');
   const iso = d => d.toISOString().slice(0, 10);
-  const base = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  const base = new Date(serverToday() + 'T00:00:00Z');
   const day = n => iso(new Date(base.getTime() + n * 86400000));
   const code = 'BT' + uniq;
   const { cat } = await fundCategory(code, [code + '-1']);
@@ -409,7 +417,7 @@ async function roleSmoke() {
 async function moreForms() {
   console.log('\n5 · Блоки, совместное проживание, гость, поля');
   const iso = d => d.toISOString().slice(0, 10);
-  const base = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  const base = new Date(serverToday() + 'T00:00:00Z');
   const day = n => iso(new Date(base.getTime() + n * 86400000));
   const code = 'FM' + uniq;
   const { cat, units: [u1, u2] } = await fundCategory(code, [code + '-1', code + '-2']);
