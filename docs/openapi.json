@@ -13121,9 +13121,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
-              }
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
             },
             "description": "Successful Response"
           },
@@ -13323,7 +13321,7 @@
     },
     "/api/stays/fund/import": {
       "post": {
-        "description": "«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже\nесть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда\nне остаётся ничего, даже черновика: всё — одна транзакция.",
+        "description": "«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже\nесть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда\nне остаётся ничего, даже черновика: всё — одна транзакция. flags — правки справочника флагов\n{created, renamed, recoloured}: он не версионируется, и они остаются и без черновика.",
         "operationId": "import_fund_api_stays_fund_import_post",
         "requestBody": {
           "content": {

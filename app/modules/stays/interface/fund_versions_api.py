@@ -356,7 +356,7 @@ def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: P
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-@router.get("/fund/export")
+@router.get("/fund/export", response_class=Response, responses={200: {"content": {XLSX: {}}}})
 def export_fund(date: dt.date, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     """Фонд на дату файлом Excel — он же образец для загрузки (§9.1)."""
     data = fx.export_fund(fund_on(db, date), list(db.scalars(select(UnitFlag))))
@@ -374,7 +374,8 @@ def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
                 principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     """«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже
     есть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда
-    не остаётся ничего, даже черновика: всё — одна транзакция."""
+    не остаётся ничего, даже черновика: всё — одна транзакция. flags — правки справочника флагов
+    {created, renamed, recoloured}: он не версионируется, и они остаются и без черновика."""
     cap = fx.MAX_FILE_BYTES
     if file.size is not None and file.size > cap:
         raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
@@ -387,7 +388,8 @@ def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
         if parsed is None:
             db.rollback()
             return _file_errors(errors)
-        change = asdict(fd.apply_file(db, draft.rev, parsed))
+        result, flags = fd.apply_file(db, draft.rev, parsed)
+        change = asdict(result)
     except fd.FundFileError as e:
         db.rollback()
         return _file_errors(e.errors)
@@ -402,9 +404,9 @@ def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
               for key in ("units", "categories", "groups")}
     audit(db, principal, "stays_fund_import", f"fund_draft:{draft.id}",
           {"valid_from": valid_from.isoformat(), "filename": file.filename, "counts": counts,
-           "flags_changed": len(change["flags"])})
+           "flags": flags, "units_flags_changed": len(change["flags"])})
     out = {"id": draft.id, "valid_from": draft.valid_from.isoformat(), "rev": draft.rev,
-           "diff": change, "retired": retired}
+           "diff": change, "retired": retired, "flags": flags}
     db.commit()
     return out
 

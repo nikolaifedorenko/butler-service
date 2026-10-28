@@ -90,6 +90,7 @@ class ParsedFund:
     groups: list[ParsedGroup]
     flags: list[ParsedFlag]
     units: list[ParsedUnit]
+    flag_columns: list[str] = field(default_factory=list)   # заголовки колонок флагов «Объектов»
 
 
 # ---------------------------------------------------------------- выгрузка
@@ -400,4 +401,4 @@ def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund |
 
     if ctx.errors:
         return None, ctx.errors
-    return ParsedFund(cats, groups, flags, units), []
+    return ParsedFund(cats, groups, flags, units, [t for _, t in flag_cols]), []

@@ -862,14 +862,87 @@ def _file_weight(w: float) -> Decimal | None:
     return d if Decimal(0) < d <= _WEIGHT_MAX else None
 
 
-def apply_file(db: Session, rev: int, parsed: ParsedFund) -> FundDiff:
+@dataclass
+class _FlagPlan:
+    """Что файл делает со справочником флагов: колонка «Объектов» → флаг и правки справочника."""
+    column: dict[str, int | None] = field(default_factory=dict)   # название → id; None — новый флаг
+    rename: dict[int, str] = field(default_factory=dict)          # id → новое название
+    recolour: dict[int, str] = field(default_factory=dict)        # id → новый цвет
+    new_color: dict[str, str] = field(default_factory=dict)       # новый флаг → цвет с листа
+
+
+def _plan_flags(parsed: ParsedFund, dictionary: dict[int, UnitFlag], err) -> _FlagPlan:
+    """Флаги файла → флаги справочника. Строка листа «Флаги» с ID — тот флаг (новое название,
+    цвет). Колонка «Объектов» без строки на листе: прежнее название флага, переименованного на
+    листе, — этот флаг; название флага справочника, которого на листе нет, — он; иначе новый
+    флаг — если это однозначно (на листе нет переименованного флага, потерявшего колонку)."""
+    by_title = {f.title: f for f in dictionary.values()}
+    on_sheet = {f.id: f for f in parsed.flags if f.row_no and f.id is not None}
+    plan = _FlagPlan()
+    for f in parsed.flags:
+        if f.id is not None and f.id not in dictionary:
+            err(SHEET_FLAGS, f.row_no, f"ID {f.id} нет в справочнике флагов — ID не меняют; "
+                                       "новому флагу оставьте ID пустым")
+        if len(f.title) > 80:
+            err(SHEET_FLAGS if f.row_no else SHEET_UNITS, f.row_no or 1,
+                f"название флага «{f.title[:20]}…» длиннее 80 символов")
+        if f.color and not _COLOR.fullmatch(f.color):
+            err(SHEET_FLAGS, f.row_no, f"цвет «{f.color}» — ожидается #RRGGBB")
+    for fid, f in on_sheet.items():
+        if (d := dictionary.get(fid)) is None:
+            continue
+        plan.column[f.title] = fid
+        if d.title != f.title:
+            plan.rename[fid] = f.title
+        if f.color and d.color != f.color:
+            plan.recolour[fid] = f.color
+    for f in parsed.flags:
+        if f.id is not None:
+            continue
+        d = by_title.get(f.title)
+        if d is None or (d.id in on_sheet and f.row_no):      # новое название или новая строка листа
+            plan.column[f.title] = None
+            if f.color:
+                plan.new_color[f.title] = f.color
+            continue
+        plan.column[f.title] = d.id                          # прежнее название / флаг не на листе
+        if f.color and d.color != f.color:
+            plan.recolour[d.id] = f.color
+
+    headers = parsed.flag_columns
+    mapped: dict[int, str] = {}
+    for h in headers:
+        fid = plan.column.get(h)
+        if fid is None:
+            continue
+        if fid in mapped:
+            err(SHEET_UNITS, 1, f"колонка флага «{h}» не совпадает с листом «Флаги»: флаг ID {fid} "
+                                f"там называется «{on_sheet[fid].title if fid in on_sheet else dictionary[fid].title}», "
+                                f"и колонка «{mapped[fid]}» — тоже он; оставьте одну колонку")
+        mapped.setdefault(fid, h)
+    lost = [fid for fid in plan.rename if fid not in mapped]  # переименован на листе, колонки нет
+    sheet_titles = {f.title for f in parsed.flags if f.row_no}
+    for h in headers:
+        if lost and plan.column.get(h, 0) is None and h not in sheet_titles:
+            err(SHEET_UNITS, 1, f"колонка флага «{h}» не совпадает с листом «Флаги»: это новый флаг или "
+                                f"переименованный «{dictionary[lost[0]].title}» → «{on_sheet[lost[0]].title}»? Назовите колонку как на листе")
+    final = {fid: plan.rename.get(fid, d.title) for fid, d in dictionary.items()}
+    for fid, title in plan.rename.items():
+        twin = next((i for i, t in final.items() if t == title and i != fid), None)
+        if twin is not None:
+            err(SHEET_FLAGS, on_sheet[fid].row_no, f"флаг «{title}» уже есть в справочнике (ID {twin})")
+    return plan
+
+
+def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dict]:
     """Разобранный файл фонда → снимок черновика (§9.2): строка с ID — та же сущность (меняется
     всё, что изменено), пустой ID — новая, сущность черновика без строки в файле выводится,
     «Из чего» у новой строки — lineage. ID, которого нет в черновике (на листе «Флаги» — в
     справочнике), — ошибка. Сначала проверка всего файла, затем запись; при любой ошибке —
     FundFileError и ничего не записано. Справочник флагов не версионируется: переименование и
-    цвет флага применяются к нему сразу, как правка справочника; флаг без строки в файле не
-    удаляется. Возвращает разницу черновика с его базой."""
+    цвет флага и новые флаги применяются к нему сразу, как правка справочника, и при удалении
+    черновика не откатываются; флаг без строки в файле не удаляется. Возвращает разницу
+    черновика с его базой и правки справочника {created, renamed, recoloured}."""
     draft = _draft(db, rev)
     have = _load_fund(db, draft.id)
     hc, hg, hu = have.rows["category"], have.rows["group"], have.rows["unit"]
@@ -882,16 +955,7 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> FundDiff:
         err(sheet, row, f"ID {i} нет в фонде на дату черновика — ID не меняют; новой записи оставьте ID пустым")
 
     dictionary = {f.id: f for f in db.scalars(select(UnitFlag))}
-    by_title = {f.title: f for f in dictionary.values()}
-    for f in parsed.flags:
-        if f.id is not None and f.id not in dictionary:
-            err(SHEET_FLAGS, f.row_no, f"ID {f.id} нет в справочнике флагов — ID не меняют; "
-                                       "новому флагу оставьте ID пустым")
-        if len(f.title) > 80:
-            err(SHEET_FLAGS if f.row_no else SHEET_UNITS, f.row_no or 1,
-                f"название флага «{f.title[:20]}…» длиннее 80 символов")
-        if f.color and not _COLOR.fullmatch(f.color):
-            err(SHEET_FLAGS, f.row_no, f"цвет «{f.color}» — ожидается #RRGGBB")
+    plan = _plan_flags(parsed, dictionary, err)
 
     cats: dict[int, dict] = {}                   # ParsedCategory.row_no → поля
     for c in parsed.categories:
@@ -901,7 +965,7 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> FundDiff:
             err(SHEET_CATEGORIES, c.row_no, "код категории длиннее 16 символов")
         if len(c.title) > 120:
             err(SHEET_CATEGORIES, c.row_no, "название категории длиннее 120 символов")
-        kind = c.kind if c.kind in KINDS else _KIND_BY_TITLE.get(c.kind.lower())
+        kind = c.kind.lower() if c.kind.lower() in KINDS else _KIND_BY_TITLE.get(c.kind.lower())
         if not c.kind:
             kind = hc[c.id]["kind"] if c.id in hc else "room"
         if kind is None:
@@ -929,28 +993,31 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> FundDiff:
         had = have.flags.get(u.id, set()) if u.id is not None else set().union(
             *(have.flags.get(p, set()) for p in u.predecessors))
         for t in sorted(u.flags):
-            f = by_title.get(t)
+            f = dictionary.get(plan.column.get(t))
             if f is not None and f.archived and f.id not in had:
                 err(SHEET_UNITS, u.row_no, f"флаг «{t}» в архиве")
     if errors:
         raise FundFileError(errors)
 
     # запись: справочник флагов, новые id, снимок черновика целиком, lineage
-    flag_ids: dict[str, int] = {}
-    try:
-        for f in sorted(parsed.flags, key=lambda f: f.id is None):    # сначала правки, потом новые
-            if f.id is not None:
-                row = dictionary[f.id]
-                if row.title != f.title or (f.color and row.color != f.color):
-                    save_flag(db, {"title": f.title, **({"color": f.color} if f.color else {})}, f.id)
-                flag_ids[f.title] = f.id
-            elif (same := db.scalar(select(UnitFlag.id).where(UnitFlag.title == f.title))) is not None:
-                flag_ids[f.title] = same                                # колонка уже известного флага
-            else:
-                flag_ids[f.title] = save_flag(db, {"title": f.title, **({"color": f.color} if f.color else {})},
-                                              None)
-    except FundError as e:
-        raise FundFileError([FileError(SHEET_FLAGS, 0, str(e))]) from e
+    changes: dict[str, list[dict]] = {"created": [], "renamed": [], "recoloured": []}
+    was = {fid: dictionary[fid].title for fid in plan.rename}
+    for fid in plan.rename:              # сначала временные названия: обмен названиями — без UNIQUE
+        dictionary[fid].title = f"\u2063{fid}"
+    db.flush()
+    for fid, title in plan.rename.items():
+        changes["renamed"].append({"id": fid, "from": was[fid], "to": title})
+        dictionary[fid].title = title
+    for fid, color in plan.recolour.items():
+        changes["recoloured"].append({"id": fid, "from": dictionary[fid].color, "to": color})
+        dictionary[fid].color = color
+    db.flush()
+    flag_ids = dict(plan.column)
+    for title, fid in plan.column.items():
+        if fid is None:
+            color = plan.new_color.get(title)
+            flag_ids[title] = save_flag(db, {"title": title, **({"color": color} if color else {})}, None)
+            changes["created"].append({"id": flag_ids[title], "title": title})
 
     want = _Fund({"category": {}, "group": {}, "unit": {}}, {})
     code_id: dict[str, int] = {}
@@ -977,7 +1044,8 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> FundDiff:
     db.add_all(lineage)
     bump(draft)
     db.flush()
-    return diff(db, draft.base_version_id, draft.id) if draft.base_version_id is not None else FundDiff()
+    change = diff(db, draft.base_version_id, draft.id) if draft.base_version_id is not None else FundDiff()
+    return change, changes
 
 
 # ── справочник флагов (вне черновика) ──────────────────────────────────────
