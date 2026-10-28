@@ -20,6 +20,7 @@ function staysResetUserState() {
   Object.assign(staysState, { tab: 'units', fund: null, filters: staysEmptyFilters(),
     sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {}, ocOpen: {}, ocMode: 'pct', focusDay: null });
   Object.assign(boardState, { day: null, tab: 'arrivals' });
+  Object.assign(staysBook, staysBookEmpty());
   staysFilterOpen.clear();
   staysSearchDraft = null;
 }

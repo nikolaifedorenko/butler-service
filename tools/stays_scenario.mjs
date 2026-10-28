@@ -9,7 +9,9 @@
      полный фонд на шахматке; под другими логинами — смоук вкладок и «Мои гости»;
   5. блок/OOO, совместное проживание, карточка гостя со связями, особые даты, сопровождающие, поля;
   6. сохранённые наборы фильтров (localStorage, без хранилища — пустой список);
-  7. флаг и выбытие объекта с середины месяца: «вне фильтра» / «нет в фонде», полосы не скрыты.
+  7. флаг и выбытие объекта с середины месяца: «вне фильтра» / «нет в фонде», полосы не скрыты;
+  8. вкладка «Брони»: свой период, сортировка «Выезд ↓», «Показать ещё», карточка по клику,
+     лимит 366 дней, экранирование; у уровня «занятость» вкладки нет.
 
 Запуск: tools/run_stays_scenario.sh [порт] [логин]   (нужен jsdom: npm i)
 Код возврата: 0 — сценарий пройден, 2 — есть проваленные проверки. */
@@ -220,7 +222,7 @@ async function unitsBoard() {
   await apiJson('POST', '/api/stays/guests', { last_name: guest });
 
   window.navigate('stays');
-  check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 4));
+  check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 5));
   /* панель фильтров появляется после загрузки фонда и шахматки: в медленном CI сценарий
      менял фильтры раньше — change() уходил в пустоту (падало через раз, 25.10.2026) */
   check('шахматка отрисована (месяц и панель фильтров)', await waitFor(() => $('#sm-label') && $('.sf-panel')));
@@ -611,6 +613,9 @@ async function roleSmoke() {
         check(`вкладка «${b}»: без фамилий гостей`, !leaked.length, leaked.join(', '));
       }
     }
+    const names = me.permissions.includes('stays.view');
+    check(names ? 'вкладка «Брони» есть (с фамилиями)' : 'вкладки «Брони» нет (занятость)',
+      !!$('#view-stays [data-stab="bookings"]') === names);
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
   }
   if (menu.includes('mystays')) {
@@ -726,6 +731,76 @@ async function moreForms() {
   void u1;
 }
 
+/* 8 · вкладка «Брони»: 205 односуточных броней в далёком окне (больше одной страницы в 200) */
+async function bookingsTab() {
+  console.log('\n8 · Вкладка «Брони»');
+  const day = n => addDays(serverToday(), n);
+  const code = 'BK' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1']);
+  const evil = `<i id="bk-xss">Зло${uniq}</i>`;
+  const g = (await apiJson('POST', '/api/stays/guests', { last_name: evil })).body;
+  const N = 205;
+  const made = [];
+  for (let i = 0; i < N; i += 10) {
+    const batch = await Promise.all(Array.from({ length: Math.min(10, N - i) }, (_, k) => {
+      const n = i + k;
+      return apiJson('POST', '/api/stays/reservations', { number: `BK${uniq}-${n}`, check_in: day(30 + n), check_out: day(31 + n),
+        category_id: cat.id, occupants: n === 0 ? [{ guest_id: g.id, role: 'main', date_from: day(30), date_to: day(31) }] : [] });
+    }));
+    made.push(...batch);
+  }
+  check(`создано ${N} броней`, made.every(r => r.status === 200), JSON.stringify(made.find(r => r.status !== 200)?.body));
+
+  window.eval('staysState.filters = staysEmptyFilters(); Object.assign(staysBook, staysBookEmpty());');
+  window.navigate('stays');
+  await waitFor(() => $$('#view-stays [data-stab]').length > 0);
+  check('вкладка «Брони» есть', !!$('#view-stays [data-stab="bookings"]'));
+  click($('#view-stays [data-stab="bookings"]'));
+  check('вкладка «Брони» отрисована', await waitFor(() => !!$('#bk-total')));
+  const rerendered = async (sel, act) => { const old = $(sel); act(); return waitFor(() => $(sel) && $(sel) !== old); };
+  check('свой период', await rerendered('#bk-period', () => change($('#bk-period'), 'custom')) && !!$('#bk-first'));
+  await rerendered('#bk-first', () => change($('#bk-first'), day(30)));
+  check('конец периода ограничен 366 днями', $('#bk-last').max === day(30 + 365));
+  await rerendered('#bk-last', () => change($('#bk-last'), day(240)));
+  await rerendered('#bk-mode', () => change($('#bk-mode'), 'check_in'));
+  /* в окне могут быть и брони прежних шагов сценария: всего не меньше созданных */
+  const total = Number(text('#bk-total').match(/Найдено броней: (\d+)/)?.[1]);
+  check(`всего не меньше ${N} броней, показано 200`, total >= N && $$('[data-bk-row]').length === 200, text('#bk-total'));
+
+  const thOut = () => $('[data-bk-sort="check_out"]');
+  await rerendered('#bk-total', () => click(thOut()));
+  check('сортировка по выезду ↑', thOut().textContent.includes('↑'));
+  await rerendered('#bk-total', () => click(thOut()));
+  check('повторный клик — «Выезд ↓»', thOut().textContent.includes('↓'));
+  const firstOut = $('[data-bk-row] td:nth-child(4)')?.textContent.trim();
+  check('первой идёт самая поздняя бронь', firstOut === window.eval(`dateRu('${day(30 + N)}')`), firstOut);
+
+  click($('#bk-more'));
+  check('«Показать ещё» добавляет строки', await waitFor(() => $$('[data-bk-row]').length === total), String($$('[data-bk-row]').length));
+  check('кнопки «Показать ещё» больше нет', !$('#bk-more'));
+
+  check('гость в списке экранирован (текстом, не разметкой)', !$('#bk-xss') && text('#bk-result').includes('<i id="bk-xss">'));
+  const resRow = $$('[data-bk-row]').find(tr => tr.textContent.includes(`BK${uniq}-0`));
+  click(resRow);
+  check('клик по строке открывает карточку', await waitFor(() => text('#modal').includes(`Бронь BK${uniq}-0`)), text('#modal'));
+  check('в карточке гость показан текстом', !$('#bk-xss') && text('#modal').includes('Зло' + uniq));
+  click($('#modal [data-close]'));
+  await sleep(200);
+
+  const exp = await proxy('GET', `/api/stays/bookings/export?first=${day(30)}&last=${day(240)}&mode=check_in`);
+  check('выгрузка xlsx отдаётся', exp.status === 200 && String(exp.headers['content-type']).includes('spreadsheetml'), String(exp.status));
+  check('кнопка «Выгрузить» у менеджера', !!$('#bk-xlsx'));
+
+  /* период длиннее 366 дней: сообщение сервера видно пользователю */
+  window.eval(`staysBook.first = '${day(0)}'; staysBook.last = '${day(400)}'; staysBook.custom = true;`);
+  click($('#view-stays [data-stab="units"]'));
+  await waitFor(() => !!$('.sb-grid'));
+  click($('#view-stays [data-stab="bookings"]'));
+  check('период больше 366 дней: объяснение', await waitFor(() => text('#stays-body').includes('не больше 366')), text('#stays-body'));
+  window.eval('Object.assign(staysBook, staysBookEmpty());');
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
 /* выход уже нажат: вход другим логином тем же путём, что в main (JSON-вход + bootApp) */
 async function relogin(username) {
   await sleep(300);
@@ -755,6 +830,7 @@ async function main() {
     await moreForms();
     await savedFilters();
     await flagMidMonth();
+    await bookingsTab();
   } else {
     await roleSmoke();
   }
