@@ -17,6 +17,7 @@ _S = "Шахматка"
 MODULE = ModuleManifest(
     name="stays", title="Шахматка", order=75,
     routers=("app.modules.stays.interface.fund_api:router",
+             "app.modules.stays.interface.fund_versions_api:router",
              "app.modules.stays.interface.guests_api:router",
              "app.modules.stays.interface.reservations_api:router",
              "app.modules.stays.interface.views_api:router",
@@ -37,9 +38,13 @@ MODULE = ModuleManifest(
         Perm("stays.mine", _S, "Экран «Мои гости»", EVERYONE),
         Perm("stays.setup", _S, "Фонд, веса, настраиваемые поля, сопровождение, метки", MANAGER_UP),
         Perm("stays.export", _S, "Выгрузка в Excel", MANAGER_UP),
+        Perm("stays.reset", _S, "Сброс данных шахматки (брони, гости, фонд) до запуска в работу", ADMIN_ONLY),
     ),
     audit_actions={
         "stays_fund": "Шахматка: справочник фонда",
+        "stays_fund_version": "Шахматка: версия фонда",
+        "stays_fund_import": "Шахматка: импорт фонда",
+        "stays_reset": "Шахматка: сброс данных",
         "stays_guest": "Шахматка: профиль гостя",
         "stays_guest_link": "Шахматка: связь гостей",
         "stays_reservation": "Шахматка: бронь",

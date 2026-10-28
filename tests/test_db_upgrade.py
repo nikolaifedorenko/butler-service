@@ -11,6 +11,14 @@ import pytest
 from sqlalchemy import inspect, select, text
 
 
+@pytest.fixture(autouse=True)
+def _fund_downgrade_allowed(monkeypatch):
+    """Откат 0010 при нескольких версиях фонда отказывается (история фонда пропала бы); тесты
+    «Шахматки» к этому моменту публикуют версии в общей базе. Тестам миграций нужен откат
+    ниже 0010 — разрешаем его осознанно, как оператор (остаётся самая ранняя версия)."""
+    monkeypatch.setenv("STAYS_FUND_DOWNGRADE_FORCE", "1")
+
+
 def _revisions():
     """(текущая ревизия базы, head ревизий)."""
     from alembic.migration import MigrationContext

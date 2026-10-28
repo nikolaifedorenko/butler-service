@@ -1,4 +1,5 @@
-"""API справочников «Шахматки» (§3.1, §3.5, §6 «Экраны Настроек»): чтение — тем, кто видит
+"""API справочников «Шахматки» (§3.1, §3.5, §6 «Экраны Настроек»); категории, узлы и объекты фонда
+живут в версиях — fund_versions_api. Чтение — тем, кто видит
 шахматку (в том числе без персональных данных), запись — правом stays.setup."""
 from __future__ import annotations
 
@@ -14,9 +15,8 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import has_perm, require_perm
 
-from ..application import allocation, fund, guests
+from ..application import fund, guests
 from ..application.fund import FundConflict, FundError
-from ..application.locking import lock_module
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 
@@ -45,15 +45,6 @@ class CategoryIn(BaseModel):
     kind: Literal["villa", "estate", "apartment", "room"]
     escorted: bool = False
     weight: float = Field(ge=0, le=100)
-    sort_order: int = SORT
-
-
-class UnitIn(BaseModel):
-    label: str = Field(min_length=1, max_length=40)
-    category_id: int
-    building: str = Field("", max_length=40)
-    floor: str = Field("", max_length=8)
-    active: bool = True
     sort_order: int = SORT
 
 
@@ -102,18 +93,11 @@ def get_fund(principal: Principal = Depends(READ), db: Session = Depends(get_db)
     return fund.list_fund(db, with_staff=has_perm(db, principal, "stays.setup"))
 
 
-REALLOCATE = {"unit", "category"}          # активность объекта и порядок категорий меняют распределение
-
-
 def _save(db, principal, kind: str, saver, fields, payload: BaseModel, rid: Optional[int]):
-    if kind in REALLOCATE:
-        lock_module(db)
     try:
         row, before = saver(db, payload.model_dump(), rid)
     except FundError as e:
         raise _err(e) from e
-    if kind in REALLOCATE:
-        allocation.run_allocation(db)
     after = fund.field_dict(row) if kind == "field" else fund.as_dict(row, fields)
     if kind == "field" and bool(before.get("searchable")) != after["searchable"]:
         guests.reindex_search(db)          # флаг «искать по полю» меняет состав search_text
@@ -122,49 +106,12 @@ def _save(db, principal, kind: str, saver, fields, payload: BaseModel, rid: Opti
 
 
 def _delete(db, principal, kind: str, deleter, rid: int):
-    if kind in REALLOCATE:
-        lock_module(db)
     try:
         before = deleter(db, rid)
     except FundError as e:
         raise _err(e) from e
-    if kind in REALLOCATE:
-        db.flush()
-        allocation.run_allocation(db)
     _write(db, principal, f"{kind}:{rid}", before, {k: None for k in before})
     return {"ok": True}
-
-
-@router.post("/categories")
-def create_category(payload: CategoryIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    return _save(db, principal, "category", fund.save_category, fund.CATEGORY_FIELDS, payload, None)
-
-
-@router.put("/categories/{cid}")
-def update_category(cid: int, payload: CategoryIn, principal: Principal = Depends(SETUP),
-                    db: Session = Depends(get_db)):
-    return _save(db, principal, "category", fund.save_category, fund.CATEGORY_FIELDS, payload, cid)
-
-
-@router.delete("/categories/{cid}")
-def remove_category(cid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    return _delete(db, principal, "category", fund.delete_category, cid)
-
-
-@router.post("/units")
-def create_unit(payload: UnitIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    return _save(db, principal, "unit", fund.save_unit, fund.UNIT_FIELDS, payload, None)
-
-
-@router.put("/units/{uid}")
-def update_unit(uid: int, payload: UnitIn, principal: Principal = Depends(SETUP),
-                db: Session = Depends(get_db)):
-    return _save(db, principal, "unit", fund.save_unit, fund.UNIT_FIELDS, payload, uid)
-
-
-@router.delete("/units/{uid}")
-def remove_unit(uid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    return _delete(db, principal, "unit", fund.delete_unit, uid)
 
 
 @router.post("/labels")

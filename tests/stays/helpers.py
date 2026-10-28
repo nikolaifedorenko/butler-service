@@ -11,14 +11,61 @@ def uniq() -> str:
     return uuid.uuid4().hex[:6].upper()
 
 
+class FundDraft:
+    """Черновик фонда через API: открывает черновик на сегодня модуля (или берёт
+    существующий), ведёт rev, публикует; при ошибке публикации черновик удаляется —
+    иначе он заблокировал бы остальные тесты."""
+
+    def __init__(self, setup_client):
+        from app.modules.stays.application import fund_drafts
+
+        self.c = setup_client
+        r = setup_client.post(f"{API}/fund/draft", json={"valid_from": fund_drafts.local_date().isoformat()})
+        if r.status_code == 409:                  # черновик уже есть — работаем в нём
+            versions = setup_client.get(f"{API}/fund/versions").json()
+            draft = next(v for v in versions if v["status"] == "draft")
+            self.rev = setup_client.get(f"{API}/fund/snapshot",
+                                        params={"version_id": draft["id"]}).json()["version"]["rev"]
+        else:
+            assert r.status_code == 200, r.text
+            self.rev = r.json()["rev"]
+
+    def call(self, method: str, path: str, **body) -> dict:
+        if method == "DELETE":
+            resp = self.c.delete(f"{API}/fund/draft/{path}", params={"rev": self.rev})
+        else:
+            resp = self.c.request(method, f"{API}/fund/draft/{path}", json={"rev": self.rev, **body})
+        assert resp.status_code == 200, resp.text
+        self.rev = resp.json()["rev"]
+        return resp.json()
+
+    def publish(self) -> None:
+        try:
+            resp = self.c.post(f"{API}/fund/draft/publish", json={"rev": self.rev})
+            assert resp.status_code == 200, resp.text
+        except BaseException:
+            draft = next((v for v in self.c.get(f"{API}/fund/versions").json() if v["status"] == "draft"), None)
+            if draft:
+                self.c.delete(f"{API}/fund/versions/{draft['id']}")
+            raise
+
+
 def make_category(setup_client, n_units: int = 2, kind: str = "villa", escorted: bool = True,
-                  weight: float = 4, building: str = "1") -> dict:
+                  weight: float = 4, group_id: int | None = None) -> dict:
+    """Категория с объектами через черновик фонда (FundDraft) с публикацией.
+    Возвращает {id, code, units: [{id, label}]}."""
+    d = FundDraft(setup_client)
     code = "T" + uniq()
-    cat = setup_client.post(f"{API}/categories", json={"code": code, "title": code, "kind": kind,
-                                                       "escorted": escorted, "weight": weight}).json()
-    cat["units"] = [setup_client.post(f"{API}/units", json={
-        "label": f"{code}-{i + 1}", "category_id": cat["id"], "building": building}).json()
-        for i in range(n_units)]
+    cat = {"id": d.call("POST", "categories", code=code, title=code, kind=kind, escorted=escorted,
+                        weight=weight)["id"], "code": code}
+    cat["units"] = []
+    for i in range(n_units):
+        label = f"{code}-{i + 1}"
+        body = {"label": label, "category_id": cat["id"]}
+        if group_id is not None:
+            body["group_id"] = group_id
+        cat["units"].append({"id": d.call("POST", "units", **body)["id"], "label": label})
+    d.publish()
     return cat
 
 

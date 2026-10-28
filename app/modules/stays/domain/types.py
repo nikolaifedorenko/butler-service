@@ -24,7 +24,7 @@ class StayDay:
     reservation_id: int
     group_id: int | None
     unit_id: int | None
-    building: str
+    group_path: tuple[int, ...]                # узел объекта в дереве фонда дня, от корня
     weight: float
     escorted: bool
     declined: bool

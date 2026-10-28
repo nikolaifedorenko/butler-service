@@ -1,7 +1,7 @@
 """Ревью этапа 2: окно распределения, замок модуля, группы, ошибки ввода."""
 from __future__ import annotations
 
-from .helpers import API, create_res, make_category, make_guest, res_body, units_of
+from .helpers import API, FundDraft, create_res, make_category, make_guest, res_body, units_of
 
 
 def _body(res, **ch):
@@ -97,13 +97,14 @@ def test_bad_custom_field_is_422(manager_role_client, manager_client):
 
 
 def test_unit_deactivation_reallocates(manager_role_client, manager_client):
-    """I5: объект сделали неактивным — бронь переходит на другой."""
+    """I5: объект вывели из фонда — бронь переходит на другой."""
     cat = make_category(manager_role_client, n_units=2)
     a = create_res(manager_client, cat, "2031-08-01", "2031-08-05")
     u0 = cat["units"][0]
     assert units_of(a) == [u0["id"]]
-    r = manager_role_client.put(f"{API}/units/{u0['id']}", json={**u0, "active": False})
-    assert r.status_code == 200
+    d = FundDraft(manager_role_client)                 # объект выводится из фонда с сегодня
+    d.call("DELETE", f"units/{u0['id']}")
+    d.publish()
     assert units_of(_get(manager_client, a["id"])) == [cat["units"][1]["id"]]
 
 
@@ -112,7 +113,9 @@ def test_new_unit_takes_unassigned(manager_role_client, manager_client):
     create_res(manager_client, cat, "2031-09-01", "2031-09-05")
     b = create_res(manager_client, cat, "2031-09-02", "2031-09-04")
     assert units_of(b) == [None]
-    u = manager_role_client.post(f"{API}/units", json={"label": cat["code"] + "-new", "category_id": cat["id"]}).json()
+    d = FundDraft(manager_role_client)
+    u = d.call("POST", "units", label=cat["code"] + "-new", category_id=cat["id"])
+    d.publish()
     assert units_of(_get(manager_client, b["id"])) == [u["id"]]
 
 

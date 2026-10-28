@@ -13,7 +13,6 @@ from app.modules.employees.application.catalog import Employee
 
 from ..adapters.orm import (
     Assignment,
-    Category,
     CoverageGuest,
     CoverageLine,
     Escort,
@@ -21,7 +20,6 @@ from ..adapters.orm import (
     Move,
     Occupant,
     Reservation,
-    Unit,
 )
 from ..domain.coverage import resolve_day
 from ..domain.halfday import PM, Segment, segment_on, segments
@@ -31,6 +29,7 @@ from ..domain.warnings import day_warnings
 from ..ports.duty import DutyDay, DutyPort
 from . import allocation
 from .fund import get_settings
+from .fund_versions import CategoryInfo, FundTimeline, fund_for
 from .guests import short_name
 
 NO_GUESTS = 0          # бронь без состава — один «неизвестный» гость, чтобы дыра была видна
@@ -48,8 +47,7 @@ class StaysContext:
     vvip_bonus: float
     limit: float
     codes: frozenset[str]
-    cats: dict[int, Category]
-    units: dict[int, Unit]
+    fund: FundTimeline
     res: dict[int, Reservation]
     segs: dict[int, list[Segment]]
     asg: dict[tuple[int, int], int | None]
@@ -80,15 +78,14 @@ class StaysContext:
             if not r.check_in <= day < r.check_out:
                 continue
             unit_id, seg = self.unit_of(rid, day)
-            cat = self.cats[seg.category_id if seg else r.category_id]
+            cat = self.category(seg.category_id if seg else r.category_id, day)
             present = {o.guest_id: self.guests[o.guest_id].level for o in self.occ.get(rid, ())
                        if o.date_from <= day < o.date_to and o.guest_id in self.guests}
             if not self.occ.get(rid):
                 present = {NO_GUESTS: "regular"}
             if not present:
                 continue
-            unit = self.units.get(unit_id)
-            out.append(StayDay(day, rid, r.group_id, unit_id, unit.building if unit else "", float(cat.weight),
+            out.append(StayDay(day, rid, r.group_id, unit_id, self.fund.on(day).unit_path(unit_id), cat.weight,
                                cat.escorted, r.declined_butler, present))
         return out
 
@@ -117,8 +114,13 @@ class StaysContext:
     def name(self, employee_id: int | None) -> str:
         return self.staff.get(employee_id, "") if employee_id else ""
 
-    def unit_label(self, unit_id: int | None) -> str:
-        return self.units[unit_id].label if unit_id in self.units else "без объекта"
+    def unit_label(self, unit_id: int | None, day: dt.date) -> str:
+        u = self.fund.unit(unit_id, day) if unit_id is not None else None
+        return u.label if u is not None else "без объекта"
+
+    def category(self, cat_id: int, day: dt.date) -> CategoryInfo:
+        """Категория в фонде дня: вес нагрузки и сопровождение — из версии этого дня (§5)."""
+        return self.fund.category(cat_id, day) or CategoryInfo(cat_id, "?", "", "", 0.0, False, 0)
 
     def guest_name(self, guest_id: int) -> str:
         return short_name(self.guests[guest_id]) if guest_id in self.guests else "гость брони"
@@ -126,8 +128,8 @@ class StaysContext:
     def warning_text(self, w: Warning) -> str:
         who = self.name(w.employee_id)
         return {
-            "hole": f"{self.unit_label(w.unit_id)}: гости без батлера",
-            "double_cover": f"{self.unit_label(w.unit_id)}: гостя ведут два батлера",
+            "hole": f"{self.unit_label(w.unit_id, w.day)}: гости без батлера",
+            "double_cover": f"{self.unit_label(w.unit_id, w.day)}: гостя ведут два батлера",
             "need_replacement": f"{who}: {w.value} — нужна подмена",
             "off_shift": f"{who} вне смены — переработка",
             "overload": f"{who}: нагрузка {w.value}",
@@ -148,8 +150,7 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
     """Брони, ночующие в [first, last], их сегменты, объекты, гости, строки покрытия, список
     «Сопровождают гостей» и График (если передан duty) — пакетно."""
     st = get_settings(db)
-    cats = {c.id: c for c in db.scalars(select(Category))}
-    units = {u.id: u for u in db.scalars(select(Unit))}
+    fund = fund_for(db, first, last)
     res = {r.id: r for r in db.scalars(select(Reservation).where(
         Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in <= last, Reservation.check_out > first))}
     rids = list(res)
@@ -177,13 +178,13 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
         staff = {e.id: e.short_name or e.full_name for e in db.scalars(select(Employee).where(Employee.id.in_(people)))}
     got = dict(duty.duty(sorted(people), first, last)) if duty is not None and people else {}
     return StaysContext(first, last, float(st.vip_bonus), float(st.vvip_bonus), float(st.daily_limit),
-                        frozenset(c for c in st.replacement_codes.split(",") if c), cats, units, res, segs, asg,
+                        frozenset(c for c in st.replacement_codes.split(",") if c), fund, res, segs, asg,
                         occ, guests, lines, escorts, staff, got)
 
 
 def butlers_on(db: Session, day: dt.date, res: list[Reservation], moves: dict[int, list], asg: dict,
-               occ: dict[int, list[Occupant]], guests: dict[int, Guest], cats: dict[int, Category],
-               units: dict[int, Unit]) -> dict[int, list[str]]:
+               occ: dict[int, list[Occupant]], guests: dict[int, Guest],
+               fund: FundTimeline) -> dict[int, list[str]]:
     """«Кто ведёт сегодня» из уже загруженных броней (шахматка объектов): строки покрытия дня
     и имена батлеров — два запроса вместо полного контекста (бюджет SQL, §10)."""
     lines = _line_rows(db, day, day)
@@ -192,7 +193,7 @@ def butlers_on(db: Session, day: dt.date, res: list[Reservation], moves: dict[in
     staff = {e.id: e.short_name or e.full_name for e in db.scalars(
         select(Employee).where(Employee.id.in_({ln.employee_id for ln in lines})))}
     live = {r.id: r for r in res if r.check_in <= day < r.check_out}
-    ctx = StaysContext(day, day, 0.0, 0.0, 0.0, frozenset(), cats, units, live,
+    ctx = StaysContext(day, day, 0.0, 0.0, 0.0, frozenset(), fund, live,
                        {rid: segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves.get(rid, []))
                         for rid, r in live.items()}, asg, occ, guests, lines, [], staff, {})
     out: dict[int, list[str]] = {}

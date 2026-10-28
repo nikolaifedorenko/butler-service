@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -38,11 +38,11 @@ def day_board(date: dt.date, escorted_only: bool = False, vip: bool = False, emp
 
 
 @router.get("/occupancy")
-def occupancy(first: dt.date, last: dt.date, building: Optional[str] = None,
+def occupancy(first: dt.date, last: dt.date, group_ids: list[int] = Query(default=[]),
               principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
               db: Session = Depends(get_db)):
     try:
-        return views.occupancy_grid(db, first, last, building)
+        return views.occupancy_grid(db, first, last, tuple(group_ids))
     except views.ViewError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 

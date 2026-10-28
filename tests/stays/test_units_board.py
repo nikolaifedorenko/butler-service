@@ -1,7 +1,7 @@
 """Шахматка, задача 10: шахматка объектов с уровнями видимости (§6.1, §8) и бюджет SQL."""
 from __future__ import annotations
 
-from .helpers import API
+from .helpers import API, FundDraft, make_category, uniq
 
 WIN = {"first": "2029-02-01", "last": "2029-02-10"}
 
@@ -78,10 +78,29 @@ def test_board_window_limit(manager_client):
     assert r.status_code == 422 and r.json()["detail"] == "Период шахматки — не больше 62 дней"
 
 
-def test_board_filters_building_and_escorted(manager_client, big_fund):
-    r = manager_client.get(f"{API}/board/units", params={**big_fund, "building": "2", "escorted": 1}).json()
-    assert r["units"] and all(u["building"] == "2" and u["escorted"] for u in r["units"])
-    assert {b["unit_id"] for b in r["bars"]} <= {u["id"] for u in r["units"]}
+def test_board_filters_group_branch_and_escorted(manager_role_client, manager_client):
+    """Узел дерева фонда — вся его ветка; объект несёт путь узла названиями."""
+    d = FundDraft(manager_role_client)
+    corp = d.call("POST", "groups", title="Корпус" + uniq())["id"]
+    block = d.call("POST", "groups", title="Блок B", parent_id=corp)["id"]
+    villas = d.call("POST", "groups", title="Виллы" + uniq())["id"]
+    d.publish()
+    in_block = make_category(manager_role_client, n_units=2, group_id=block)
+    in_corp = make_category(manager_role_client, n_units=1, group_id=corp, escorted=False)
+    in_villas = make_category(manager_role_client, n_units=1, group_id=villas)
+    make_category(manager_role_client, n_units=1)                  # без узла — вне фильтра
+    win = {"first": "2029-06-01", "last": "2029-06-05"}
+    branch = manager_client.get(f"{API}/board/units", params={**win, "group_ids": corp}).json()["units"]
+    assert {u["id"] for u in branch} == {u["id"] for u in in_block["units"] + in_corp["units"]}
+    assert {u["group_path"][0] for u in branch} == {corp}
+    sub = manager_client.get(f"{API}/board/units", params={**win, "group_ids": block}).json()["units"]
+    assert {u["id"] for u in sub} == {u["id"] for u in in_block["units"]}
+    assert all(u["group"].endswith(" / Блок B") and u["group_path"] == [corp, block] for u in sub)
+    esc = manager_client.get(f"{API}/board/units", params={**win, "group_ids": corp, "escorted": 1}).json()
+    assert {u["id"] for u in esc["units"]} == {u["id"] for u in in_block["units"]}
+    assert {b["unit_id"] for b in esc["bars"]} <= {u["id"] for u in esc["units"]}
+    both = manager_client.get(f"{API}/board/units", params={**win, "group_ids": [block, villas]}).json()["units"]
+    assert {u["id"] for u in both} == {u["id"] for u in in_block["units"] + in_villas["units"]}   # узлы — «или»
 
 
 def test_board_query_budget_440_units(manager_client, big_fund, sql_counter):

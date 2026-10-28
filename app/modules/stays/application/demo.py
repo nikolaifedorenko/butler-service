@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+from types import SimpleNamespace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,7 +23,7 @@ from app.modules.timesheet.application.roster import roster
 
 from ..adapters.orm import (
     Assignment,
-    Category,
+    CategoryState,
     CoverageLine,
     Guest,
     GuestLink,
@@ -32,10 +33,10 @@ from ..adapters.orm import (
     Occupant,
     Reservation,
     StayGroup,
-    Unit,
 )
-from . import allocation
+from . import allocation, fund_drafts, fund_versions
 from .fund import seed_escorts_from_positions
+from .fund_versions import INITIAL_DATE
 from .guests import guest_search_text
 
 CATEGORIES = [  # код, название, вид, сопровождение, вес, объектов
@@ -68,35 +69,98 @@ def _butlers(db: Session) -> dict[str, int]:
     return out
 
 
-def seed_stays_demo(db: Session) -> None:
-    if db.scalar(select(Category.id).where(Category.code == "VEG")) is not None:
-        return
-    rnd = random.Random(23)
-    today = local_date()
-    cats, units = {}, {}
-    for i, (code, title, kind, escorted, weight, _n) in enumerate(CATEGORIES):
-        cats[code] = Category(code=code, title=title, kind=kind, escorted=escorted, weight=weight, sort_order=i * 10)
-    db.add_all(cats.values())
-    db.flush()
+FLAGS = [("Смежные номера", "#d8833b"), ("Вид на море", "#3b6fd8"), ("С бассейном", "#2f9e8f"),
+         ("Для аллергиков", "#7a4fd0")]
+CONNECT = ("CNX", "Коннект", "room", False, 2, 1)                      # объект «12134» делится в будущей версии
+ROOT_VILLAS = "Винные виллы"
+VILLA_NODES = {"VEG": [(ROOT_VILLAS, "Семейная", "Первая линия"), (ROOT_VILLAS, "Семейная", "Вторая линия")],
+               "FWV": [(ROOT_VILLAS, "У воды")], "VIG": [(ROOT_VILLAS, "С видом")]}
+BLOCKS = {"1": "Блок A", "2": "Блок B"}
+VIEWS = ("Вид на море", "Вид на парк")
+
+
+def _tree() -> list[tuple[str, ...]]:
+    nodes = [p for ps in VILLA_NODES.values() for p in ps]
+    nodes += [("Имение",), ("Медцентр",)]
+    nodes += [("Корпус", blk, view) for blk in BLOCKS.values() for view in VIEWS]
+    return nodes
+
+
+def _unit_specs() -> list[dict]:
+    """Объекты исходной версии: обозначения, узлы дерева и флаги демо-фонда."""
+    specs: list[dict] = []
     villa_no = 4001
     room_no = {"1": 101, "2": 101}
-    for code, _t, kind, _e, _w, n in CATEGORIES:
-        units[code] = []
+    for code, _t, kind, _e, _w, n in [*CATEGORIES, CONNECT]:
         for i in range(n):
+            flags: list[str] = []
+            floor = ""
             if kind == "villa":
-                u = Unit(label=str(villa_no), category_id=cats[code].id, building="Виллы")
+                label, path = str(villa_no), VILLA_NODES[code][(i * 2 // n) % len(VILLA_NODES[code])]
                 villa_no += 1
+                if code == "FWV":
+                    flags.append("С бассейном")
             elif kind == "estate":
-                u = Unit(label="Имение", category_id=cats[code].id, building="Имение")
+                label, path = "Имение", ("Имение",)
             elif kind == "apartment":
-                u = Unit(label=f"MED-{i + 1}", category_id=cats[code].id, building="Медцентр")
+                label, path = f"MED-{i + 1}", ("Медцентр",)
+                flags.append("Для аллергиков")
+            elif code == CONNECT[0]:
+                label, path, floor = "12134", ("Корпус", BLOCKS["1"], VIEWS[0]), "1"
+                flags.append("Смежные номера")
             else:
                 b = "1" if i % 2 == 0 else "2"
                 num = room_no[b]
                 room_no[b] = num + 1 if (num % 100) < 40 else (num // 100 + 1) * 100 + 1
-                u = Unit(label=f"{b}-{num}", category_id=cats[code].id, building=b, floor=str(num // 100))
-            units[code].append(u)
-            db.add(u)
+                sea = (num % 100) <= 20
+                label, floor = f"{b}-{num}", str(num // 100)
+                path = ("Корпус", BLOCKS[b], VIEWS[0 if sea else 1])
+                if sea and num % 100 <= 6:
+                    flags.append("Вид на море")
+                if code == "FAM" and i % 5 == 0:
+                    flags.append("Смежные номера")
+            specs.append({"label": label, "category": code, "path": list(path), "floor": floor, "flags": flags})
+    return specs
+
+
+def _seed_fund(db: Session) -> tuple[dict, dict]:
+    """Фонд демо: исходная версия через seed_initial, затем будущая версия с делением коннекта."""
+    specs = _unit_specs()
+    fund_drafts.seed_initial(
+        db,
+        categories=[{"code": c, "title": t, "kind": k, "escorted": e, "weight": w}
+                    for c, t, k, e, w, _n in [*CATEGORIES, CONNECT]],
+        groups=[{"path": list(p)} for p in _tree()],
+        flags=[{"title": t, "color": c} for t, c in FLAGS],
+        units=specs)
+    snap = fund_versions.fund_on(db, INITIAL_DATE)
+    cats = {c.code: SimpleNamespace(id=c.id) for c in snap.categories.values()}
+    by_label = {u.label: SimpleNamespace(id=u.id) for u in snap.units.values()}
+    units: dict[str, list[SimpleNamespace]] = {}
+    for sp in specs:
+        units.setdefault(sp["category"], []).append(by_label[sp["label"]])
+    seed_connect_split(db)
+    return cats, units
+
+
+def seed_connect_split(db: Session) -> None:
+    """Через две недели коннект 12134 делится на два номера Делюкс 1213 и 1214 (lineage от него).
+    Это будущая версия фонда: распределение этапа 1 читает фонд на сегодня, брони демо от неё не зависят."""
+    snap = fund_versions.fund_on(db, local_date())
+    connect = next(u.id for u in snap.units.values() if u.label == "12134")
+    dlx_id = next(c.id for c in snap.categories.values() if c.code == "DLX")
+    draft = fund_drafts.open_draft(db, local_date() + dt.timedelta(days=14), None, "Деление коннекта 12134")
+    fund_drafts.split_unit(db, draft.rev, connect, [{"label": "1213", "category_id": dlx_id},
+                                                     {"label": "1214", "category_id": dlx_id}])
+    fund_drafts.publish(db, None, draft.rev)
+
+
+def seed_stays_demo(db: Session) -> None:
+    if db.scalar(select(CategoryState.category_id).where(CategoryState.code == "VEG")) is not None:
+        return
+    rnd = random.Random(23)
+    today = local_date()
+    cats, units = _seed_fund(db)
     labels = [Label(title=t, color=c) for t, c in LABELS]
     db.add_all(labels)
     db.flush()
@@ -121,7 +185,7 @@ def seed_stays_demo(db: Session) -> None:
     def guest() -> Guest:
         return guests[next(gi) % len(guests)]
 
-    def book(cat: str, ci: dt.date, co: dt.date, unit: Unit | None, **kw) -> Reservation:
+    def book(cat: str, ci: dt.date, co: dt.date, unit: SimpleNamespace | None, **kw) -> Reservation:
         status = "in_house" if ci <= today < co else "confirmed"
         r = Reservation(number=f"F{len(made) + 1:05d}", status=kw.pop("status", status), check_in=ci, check_out=co,
                         category_id=cats[cat].id, label_id=labels[len(made) % 3].id, source="demo",
@@ -210,7 +274,7 @@ def _demo_coverage(db: Session, today: dt.date, made: list[Reservation], units: 
     def line(r: Reservation, d: dt.date, e: int) -> None:
         db.add(CoverageLine(day=d, employee_id=e, reservation_id=r.id, source="template"))
 
-    escorted = {c.id for c in db.scalars(select(Category).where(Category.escorted.is_(True)))}
+    escorted = set(db.scalars(select(CategoryState.category_id).where(CategoryState.escorted.is_(True))))
     pairs = [(b["Сидоров"], b["Морозова"]), (b["Петров"], b["Орлов"])]
     for n, r in enumerate(m for m in made if m.category_id in escorted and m.status != "no_show"
                           and not m.declined_butler and m.group_id is None):

@@ -98,6 +98,19 @@
         "title": "AnswerIn",
         "type": "object"
       },
+      "ArchiveIn": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "archived"
+        ],
+        "title": "ArchiveIn",
+        "type": "object"
+      },
       "AreaBulkIn": {
         "properties": {
           "category": {
@@ -557,58 +570,6 @@
           "number"
         ],
         "title": "CarIn",
-        "type": "object"
-      },
-      "CategoryIn": {
-        "properties": {
-          "code": {
-            "maxLength": 16,
-            "minLength": 1,
-            "title": "Code",
-            "type": "string"
-          },
-          "escorted": {
-            "default": false,
-            "title": "Escorted",
-            "type": "boolean"
-          },
-          "kind": {
-            "enum": [
-              "villa",
-              "estate",
-              "apartment",
-              "room"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "sort_order": {
-            "default": 100,
-            "maximum": 100000.0,
-            "minimum": -100000.0,
-            "title": "Sort Order",
-            "type": "integer"
-          },
-          "title": {
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "weight": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Weight",
-            "type": "number"
-          }
-        },
-        "required": [
-          "code",
-          "title",
-          "kind",
-          "weight"
-        ],
-        "title": "CategoryIn",
         "type": "object"
       },
       "CellIn": {
@@ -1097,6 +1058,190 @@
         "title": "DocIn",
         "type": "object"
       },
+      "DraftCategoryIn": {
+        "properties": {
+          "code": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "escorted": {
+            "default": false,
+            "title": "Escorted",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "villa",
+              "estate",
+              "apartment",
+              "room"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "kind",
+          "weight",
+          "rev"
+        ],
+        "title": "DraftCategoryIn",
+        "type": "object"
+      },
+      "DraftGroupIn": {
+        "properties": {
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rev",
+          "title"
+        ],
+        "title": "DraftGroupIn",
+        "type": "object"
+      },
+      "DraftIn": {
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date",
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid_from"
+        ],
+        "title": "DraftIn",
+        "type": "object"
+      },
+      "DraftMoveIn": {
+        "properties": {
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "valid_from": {
+            "format": "date",
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rev",
+          "valid_from"
+        ],
+        "title": "DraftMoveIn",
+        "type": "object"
+      },
+      "DraftUnitIn": {
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "flags": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "floor": {
+            "default": "",
+            "maxLength": 8,
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "label",
+          "category_id",
+          "rev"
+        ],
+        "title": "DraftUnitIn",
+        "type": "object"
+      },
       "EmailTestIn": {
         "properties": {
           "subject": {
@@ -1367,6 +1512,65 @@
           "month"
         ],
         "title": "FillIn",
+        "type": "object"
+      },
+      "FlagIn": {
+        "properties": {
+          "color": {
+            "default": "#3b6fd8",
+            "title": "Color",
+            "type": "string"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "FlagIn",
+        "type": "object"
+      },
+      "FlagValueIn": {
+        "properties": {
+          "flag_id": {
+            "title": "Flag Id",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "title": "Unit Ids",
+            "type": "array"
+          },
+          "value": {
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rev",
+          "flag_id",
+          "unit_ids",
+          "value"
+        ],
+        "title": "FlagValueIn",
         "type": "object"
       },
       "GiveIn": {
@@ -1912,6 +2116,64 @@
         "title": "MembersIn",
         "type": "object"
       },
+      "MergeIn": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "floor": {
+            "default": "",
+            "maxLength": 8,
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Unit Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rev",
+          "unit_ids",
+          "label"
+        ],
+        "title": "MergeIn",
+        "type": "object"
+      },
       "ModifierIn": {
         "properties": {
           "date": {
@@ -2078,6 +2340,49 @@
           }
         },
         "title": "OverrideIn",
+        "type": "object"
+      },
+      "PartIn": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "floor": {
+            "default": "",
+            "maxLength": 8,
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "PartIn",
         "type": "object"
       },
       "PeriodAction": {
@@ -2551,6 +2856,19 @@
         "title": "ResetIn",
         "type": "object"
       },
+      "RevIn": {
+        "properties": {
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev"
+        ],
+        "title": "RevIn",
+        "type": "object"
+      },
       "RoleIn": {
         "properties": {
           "max_assignable_rank": {
@@ -2799,6 +3117,29 @@
         "title": "SpecialDate",
         "type": "object"
       },
+      "SplitIn": {
+        "properties": {
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/PartIn"
+            },
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Parts",
+            "type": "array"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rev",
+          "parts"
+        ],
+        "title": "SplitIn",
+        "type": "object"
+      },
       "SubdivisionIn": {
         "properties": {
           "name": {
@@ -2863,50 +3204,6 @@
           "chat_id"
         ],
         "title": "TelegramTestIn",
-        "type": "object"
-      },
-      "UnitIn": {
-        "properties": {
-          "active": {
-            "default": true,
-            "title": "Active",
-            "type": "boolean"
-          },
-          "building": {
-            "default": "",
-            "maxLength": 40,
-            "title": "Building",
-            "type": "string"
-          },
-          "category_id": {
-            "title": "Category Id",
-            "type": "integer"
-          },
-          "floor": {
-            "default": "",
-            "maxLength": 8,
-            "title": "Floor",
-            "type": "string"
-          },
-          "label": {
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Label",
-            "type": "string"
-          },
-          "sort_order": {
-            "default": 100,
-            "maximum": 100000.0,
-            "minimum": -100000.0,
-            "title": "Sort Order",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "label",
-          "category_id"
-        ],
-        "title": "UnitIn",
         "type": "object"
       },
       "ValidationError": {
@@ -10556,18 +10853,15 @@
           },
           {
             "in": "query",
-            "name": "building",
+            "name": "group_ids",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Building"
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Group Ids",
+              "type": "array"
             }
           },
           {
@@ -10670,133 +10964,6 @@
           }
         },
         "summary": "Board Units",
-        "tags": [
-          "stays"
-        ]
-      }
-    },
-    "/api/stays/categories": {
-      "post": {
-        "operationId": "create_category_api_stays_categories_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CategoryIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Category",
-        "tags": [
-          "stays"
-        ]
-      }
-    },
-    "/api/stays/categories/{cid}": {
-      "delete": {
-        "operationId": "remove_category_api_stays_categories__cid__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cid",
-            "required": true,
-            "schema": {
-              "title": "Cid",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Remove Category",
-        "tags": [
-          "stays"
-        ]
-      },
-      "put": {
-        "operationId": "update_category_api_stays_categories__cid__put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cid",
-            "required": true,
-            "schema": {
-              "title": "Cid",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CategoryIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Category",
         "tags": [
           "stays"
         ]
@@ -11570,6 +11737,976 @@
           }
         },
         "summary": "Get Fund",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft": {
+      "patch": {
+        "operationId": "move_draft_api_stays_fund_draft_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftMoveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move Draft",
+        "tags": [
+          "stays"
+        ]
+      },
+      "post": {
+        "operationId": "open_draft_api_stays_fund_draft_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Draft",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/categories": {
+      "post": {
+        "operationId": "create_category_api_stays_fund_draft_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftCategoryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Category",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/categories/{cid}": {
+      "delete": {
+        "operationId": "remove_category_api_stays_fund_draft_categories__cid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev",
+            "required": true,
+            "schema": {
+              "title": "Rev",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Category",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_category_api_stays_fund_draft_categories__cid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftCategoryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Category",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/diff": {
+      "get": {
+        "operationId": "draft_diff_api_stays_fund_draft_diff_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Draft Diff",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/flags": {
+      "put": {
+        "operationId": "put_draft_flags_api_stays_fund_draft_flags_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagValueIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Draft Flags",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/groups": {
+      "post": {
+        "operationId": "create_group_api_stays_fund_draft_groups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftGroupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Group",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/groups/{gid}": {
+      "delete": {
+        "operationId": "remove_group_api_stays_fund_draft_groups__gid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev",
+            "required": true,
+            "schema": {
+              "title": "Rev",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Group",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_group_api_stays_fund_draft_groups__gid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftGroupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Group",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/publish": {
+      "post": {
+        "operationId": "publish_draft_api_stays_fund_draft_publish_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Draft",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/units": {
+      "post": {
+        "operationId": "create_unit_api_stays_fund_draft_units_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftUnitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Unit",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/units/merge": {
+      "post": {
+        "operationId": "merge_units_api_stays_fund_draft_units_merge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Merge Units",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/units/{uid}": {
+      "delete": {
+        "operationId": "remove_unit_api_stays_fund_draft_units__uid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "title": "Uid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev",
+            "required": true,
+            "schema": {
+              "title": "Rev",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Unit",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_unit_api_stays_fund_draft_units__uid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "title": "Uid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftUnitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Unit",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/draft/units/{uid}/split": {
+      "post": {
+        "operationId": "split_unit_api_stays_fund_draft_units__uid__split_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "title": "Uid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SplitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Split Unit",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/flags": {
+      "post": {
+        "operationId": "create_flag_api_stays_fund_flags_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Flag",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/flags/{fid}": {
+      "delete": {
+        "operationId": "remove_flag_api_stays_fund_flags__fid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Flag",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_flag_api_stays_fund_flags__fid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Flag",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/flags/{fid}/archive": {
+      "put": {
+        "operationId": "archive_flag_api_stays_fund_flags__fid__archive_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Flag",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/snapshot": {
+      "get": {
+        "operationId": "get_snapshot_api_stays_fund_snapshot_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Snapshot",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/versions": {
+      "get": {
+        "operationId": "list_versions_api_stays_fund_versions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Versions",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/versions/{vid}": {
+      "delete": {
+        "operationId": "remove_version_api_stays_fund_versions__vid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vid",
+            "required": true,
+            "schema": {
+              "title": "Vid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Version",
         "tags": [
           "stays"
         ]
@@ -12356,18 +13493,15 @@
           },
           {
             "in": "query",
-            "name": "building",
+            "name": "group_ids",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Building"
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Group Ids",
+              "type": "array"
             }
           }
         ],
@@ -12766,133 +13900,6 @@
           }
         },
         "summary": "Put Settings",
-        "tags": [
-          "stays"
-        ]
-      }
-    },
-    "/api/stays/units": {
-      "post": {
-        "operationId": "create_unit_api_stays_units_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnitIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Unit",
-        "tags": [
-          "stays"
-        ]
-      }
-    },
-    "/api/stays/units/{uid}": {
-      "delete": {
-        "operationId": "remove_unit_api_stays_units__uid__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "uid",
-            "required": true,
-            "schema": {
-              "title": "Uid",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Remove Unit",
-        "tags": [
-          "stays"
-        ]
-      },
-      "put": {
-        "operationId": "update_unit_api_stays_units__uid__put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "uid",
-            "required": true,
-            "schema": {
-              "title": "Uid",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnitIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Unit",
         "tags": [
           "stays"
         ]

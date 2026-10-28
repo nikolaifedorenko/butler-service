@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -22,12 +22,12 @@ SEE = require_perm("stays.view", "stays.occupancy")
 
 
 @router.get("/board/units")
-def board_units(first: dt.date, last: dt.date, kind: Optional[str] = None, building: Optional[str] = None,
+def board_units(first: dt.date, last: dt.date, kind: Optional[str] = None, group_ids: list[int] = Query(default=[]),
                 floor: Optional[str] = None, category_id: Optional[int] = None, escorted: bool = False,
                 vip: bool = False, employee_id: Optional[int] = None, q: str = "",
                 principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
     level = level_for(db, principal)
-    f = views.BoardFilters(kind, building, floor, category_id, escorted, vip, employee_id, q)
+    f = views.BoardFilters(kind, tuple(group_ids), floor, category_id, escorted, vip, employee_id, q)
     try:
         return views.units_board(db, first, last, f, level)
     except views.ViewError as e:
