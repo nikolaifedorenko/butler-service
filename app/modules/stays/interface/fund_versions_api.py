@@ -9,7 +9,8 @@ import re
 from dataclasses import asdict
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,6 +22,7 @@ from app.core.identity import User
 
 from ..adapters.orm import FundVersion, UnitFlag, UnitLineage
 from ..application import fund_drafts as fd
+from ..application import fund_xlsx as fx
 from ..application.fund import FundError
 from ..application.fund_versions import FundSnapshot, fund_on, snapshot_of
 from ._ops import PREVIEW, run
@@ -346,6 +348,64 @@ def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: P
     out["result"]["affected"] = {"moved": out["diff"]["moved"],
                                  **{k: [w for w in added if w["kind"] == k]
                                     for k in ("unassigned", "pin_invalid", "category_missing")}}
+    return out
+
+
+# ── файл фонда (§9) ────────────────────────────────────────────────────────
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/fund/export")
+def export_fund(date: dt.date, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    """Фонд на дату файлом Excel — он же образец для загрузки (§9.1)."""
+    data = fx.export_fund(fund_on(db, date), list(db.scalars(select(UnitFlag))))
+    return Response(content=data, media_type=XLSX,
+                    headers={"Content-Disposition": f'attachment; filename="fund-{date.isoformat()}.xlsx"'})
+
+
+def _file_errors(errors: list[fx.FileError]) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"errors": [
+        {"sheet": e.sheet, "row": e.row, "message": e.message} for e in errors]})
+
+
+@router.post("/fund/import")
+def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
+                principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    """«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже
+    есть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда
+    не остаётся ничего, даже черновика: всё — одна транзакция."""
+    cap = fx.MAX_FILE_BYTES
+    if file.size is not None and file.size > cap:
+        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
+    data = file.file.read(cap + 1)           # с запасом в байт: лимит до чтения файла целиком
+    if len(data) > cap:
+        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
+    try:
+        draft = fd.open_draft(db, valid_from, principal.user.id)
+        parsed, errors = fx.parse_fund(data, known_unit_ids=set(snapshot_of(db, draft.id).units))
+        if parsed is None:
+            db.rollback()
+            return _file_errors(errors)
+        change = asdict(fd.apply_file(db, draft.rev, parsed))
+    except fd.FundFileError as e:
+        db.rollback()
+        return _file_errors(e.errors)
+    except FundError as e:
+        db.rollback()
+        raise _err(e) from e
+    names = {"unit": "label", "category": "code", "group": "title"}
+    retired = [{"entity": entity, "id": e["id"], "name": e["before"].get(names[entity])}
+               for entity, key in (("unit", "units"), ("group", "groups"), ("category", "categories"))
+               for e in change[key] if e["kind"] == "retired"]
+    counts = {key: {k: sum(e["kind"] == k for e in change[key]) for k in ("added", "changed", "retired")}
+              for key in ("units", "categories", "groups")}
+    audit(db, principal, "stays_fund_import", f"fund_draft:{draft.id}",
+          {"valid_from": valid_from.isoformat(), "filename": file.filename, "counts": counts,
+           "flags_changed": len(change["flags"])})
+    out = {"id": draft.id, "valid_from": draft.valid_from.isoformat(), "rev": draft.rev,
+           "diff": change, "retired": retired}
+    db.commit()
     return out
 
 

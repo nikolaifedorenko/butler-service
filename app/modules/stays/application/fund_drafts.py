@@ -11,6 +11,8 @@ base_version_id указывает на заменяемую версию."""
 from __future__ import annotations
 
 import datetime as dt
+import math
+import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -38,6 +40,7 @@ from . import allocation as _allocation
 from . import reservations
 from .fund import KINDS, FundConflict, FundError
 from .fund_versions import INITIAL_DATE, FundSnapshot, fund_on, snapshot_of
+from .fund_xlsx import SHEET_CATEGORIES, SHEET_FLAGS, SHEET_TREE, SHEET_UNITS, FileError, ParsedFund
 from .locking import lock_module
 
 # ── черновик ───────────────────────────────────────────────────────────────
@@ -833,6 +836,148 @@ def _add(db: Session, row) -> int:
     db.add(row)
     db.flush()
     return row.id
+
+
+# ── файл фонда в черновик (§9.2) ───────────────────────────────────────────
+
+
+class FundFileError(FundError):
+    """Файл не применён: все ошибки списком с листом и строкой; ничего не записано (вызывающий
+    откатывает транзакцию — вместе с открытием черновика)."""
+
+    def __init__(self, errors: list[FileError]) -> None:
+        super().__init__("; ".join(f"{e.sheet}:{e.row} {e.message}" for e in errors))
+        self.errors = errors
+
+
+_KIND_BY_TITLE = {t: k for k, t in KINDS.items()}
+_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+_WEIGHT_MAX = Decimal("999.99")                 # Numeric(5, 2)
+
+
+def _file_weight(w: float) -> Decimal | None:
+    if not math.isfinite(w):
+        return None
+    d = Decimal(str(w)).quantize(Decimal("0.01"))
+    return d if Decimal(0) < d <= _WEIGHT_MAX else None
+
+
+def apply_file(db: Session, rev: int, parsed: ParsedFund) -> FundDiff:
+    """Разобранный файл фонда → снимок черновика (§9.2): строка с ID — та же сущность (меняется
+    всё, что изменено), пустой ID — новая, сущность черновика без строки в файле выводится,
+    «Из чего» у новой строки — lineage. ID, которого нет в черновике (на листе «Флаги» — в
+    справочнике), — ошибка. Сначала проверка всего файла, затем запись; при любой ошибке —
+    FundFileError и ничего не записано. Справочник флагов не версионируется: переименование и
+    цвет флага применяются к нему сразу, как правка справочника; флаг без строки в файле не
+    удаляется. Возвращает разницу черновика с его базой."""
+    draft = _draft(db, rev)
+    have = _load_fund(db, draft.id)
+    hc, hg, hu = have.rows["category"], have.rows["group"], have.rows["unit"]
+    errors: list[FileError] = []
+
+    def err(sheet: str, row: int, msg: str) -> None:
+        errors.append(FileError(sheet, row, msg))
+
+    def unknown(sheet: str, row: int, i: int) -> None:
+        err(sheet, row, f"ID {i} нет в фонде на дату черновика — ID не меняют; новой записи оставьте ID пустым")
+
+    dictionary = {f.id: f for f in db.scalars(select(UnitFlag))}
+    by_title = {f.title: f for f in dictionary.values()}
+    for f in parsed.flags:
+        if f.id is not None and f.id not in dictionary:
+            err(SHEET_FLAGS, f.row_no, f"ID {f.id} нет в справочнике флагов — ID не меняют; "
+                                       "новому флагу оставьте ID пустым")
+        if len(f.title) > 80:
+            err(SHEET_FLAGS if f.row_no else SHEET_UNITS, f.row_no or 1,
+                f"название флага «{f.title[:20]}…» длиннее 80 символов")
+        if f.color and not _COLOR.fullmatch(f.color):
+            err(SHEET_FLAGS, f.row_no, f"цвет «{f.color}» — ожидается #RRGGBB")
+
+    cats: dict[int, dict] = {}                   # ParsedCategory.row_no → поля
+    for c in parsed.categories:
+        if c.id is not None and c.id not in hc:
+            unknown(SHEET_CATEGORIES, c.row_no, c.id)
+        if len(c.code) > 16:
+            err(SHEET_CATEGORIES, c.row_no, "код категории длиннее 16 символов")
+        if len(c.title) > 120:
+            err(SHEET_CATEGORIES, c.row_no, "название категории длиннее 120 символов")
+        kind = c.kind if c.kind in KINDS else _KIND_BY_TITLE.get(c.kind.lower())
+        if not c.kind:
+            kind = hc[c.id]["kind"] if c.id in hc else "room"
+        if kind is None:
+            err(SHEET_CATEGORIES, c.row_no, f"вид «{c.kind}» — ожидается одно из: " + ", ".join(KINDS))
+        weight = _file_weight(c.weight)
+        if weight is None:
+            err(SHEET_CATEGORIES, c.row_no, f"вес {c.weight} — ожидается число больше 0 и не больше {_WEIGHT_MAX}")
+        cats[c.row_no] = {"code": c.code, "title": c.title, "kind": kind, "weight": weight,
+                          "escorted": c.escorted, "sort_order": c.sort_order}
+    for g in parsed.groups:
+        if g.id is not None and g.id not in hg:
+            unknown(SHEET_TREE, g.row_no, g.id)
+        if len(g.path[-1]) > 120:
+            err(SHEET_TREE, g.row_no, "название узла длиннее 120 символов")
+    for u in parsed.units:
+        if u.id is not None and u.id not in hu:
+            unknown(SHEET_UNITS, u.row_no, u.id)
+        if len(u.label) > 40:
+            err(SHEET_UNITS, u.row_no, "номер объекта длиннее 40 символов")
+        if len(u.floor) > 8:
+            err(SHEET_UNITS, u.row_no, "этаж длиннее 8 символов")
+        for p in u.predecessors:
+            if p not in hu:
+                err(SHEET_UNITS, u.row_no, f"«Из чего»: ID {p} нет в фонде на дату черновика")
+        had = have.flags.get(u.id, set()) if u.id is not None else set().union(
+            *(have.flags.get(p, set()) for p in u.predecessors))
+        for t in sorted(u.flags):
+            f = by_title.get(t)
+            if f is not None and f.archived and f.id not in had:
+                err(SHEET_UNITS, u.row_no, f"флаг «{t}» в архиве")
+    if errors:
+        raise FundFileError(errors)
+
+    # запись: справочник флагов, новые id, снимок черновика целиком, lineage
+    flag_ids: dict[str, int] = {}
+    try:
+        for f in sorted(parsed.flags, key=lambda f: f.id is None):    # сначала правки, потом новые
+            if f.id is not None:
+                row = dictionary[f.id]
+                if row.title != f.title or (f.color and row.color != f.color):
+                    save_flag(db, {"title": f.title, **({"color": f.color} if f.color else {})}, f.id)
+                flag_ids[f.title] = f.id
+            elif (same := db.scalar(select(UnitFlag.id).where(UnitFlag.title == f.title))) is not None:
+                flag_ids[f.title] = same                                # колонка уже известного флага
+            else:
+                flag_ids[f.title] = save_flag(db, {"title": f.title, **({"color": f.color} if f.color else {})},
+                                              None)
+    except FundError as e:
+        raise FundFileError([FileError(SHEET_FLAGS, 0, str(e))]) from e
+
+    want = _Fund({"category": {}, "group": {}, "unit": {}}, {})
+    code_id: dict[str, int] = {}
+    for c in parsed.categories:
+        cid = c.id if c.id is not None else _add(db, Category())
+        want.rows["category"][cid] = cats[c.row_no]
+        code_id[c.code] = cid
+    path_id: dict[tuple[str, ...], int] = {}
+    for g in sorted(parsed.groups, key=lambda g: len(g.path)):         # родитель раньше потомка
+        gid = g.id if g.id is not None else _add(db, FundGroup())
+        path_id[g.path] = gid
+        want.rows["group"][gid] = {"parent_id": path_id[g.path[:-1]] if len(g.path) > 1 else None,
+                                   "title": g.path[-1], "sort_order": g.sort_order}
+    lineage: list[UnitLineage] = []
+    for u in parsed.units:
+        uid = u.id if u.id is not None else _add(db, Unit())
+        want.rows["unit"][uid] = {"label": u.label, "category_id": code_id[u.category_code],
+                                  "group_id": path_id[u.group_path] if u.group_path else None, "floor": u.floor}
+        want.flags[uid] = {flag_ids[t] for t in u.flags}
+        lineage += [UnitLineage(unit_id=uid, predecessor_id=p, version_id=draft.id)
+                    for p in dict.fromkeys(u.predecessors)]
+    if want != have:                     # без правок снимок не трогаем
+        _store_fund(db, draft.id, want)
+    db.add_all(lineage)
+    bump(draft)
+    db.flush()
+    return diff(db, draft.base_version_id, draft.id) if draft.base_version_id is not None else FundDiff()
 
 
 # ── справочник флагов (вне черновика) ──────────────────────────────────────

@@ -361,6 +361,26 @@
         "title": "Body_car_return_api_cars__car_id__return_post",
         "type": "object"
       },
+      "Body_import_fund_api_stays_fund_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date",
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid_from",
+          "file"
+        ],
+        "title": "Body_import_fund_api_stays_fund_import_post",
+        "type": "object"
+      },
       "Body_login_form_api_auth_login_form_post": {
         "properties": {
           "password": {
@@ -13082,6 +13102,48 @@
         ]
       }
     },
+    "/api/stays/fund/export": {
+      "get": {
+        "description": "Фонд на дату файлом Excel — он же образец для загрузки (§9.1).",
+        "operationId": "export_fund_api_stays_fund_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Fund",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/fund/flags": {
       "post": {
         "operationId": "create_flag_api_stays_fund_flags_post",
@@ -13254,6 +13316,46 @@
           }
         },
         "summary": "Archive Flag",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/import": {
+      "post": {
+        "description": "«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже\nесть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда\nне остаётся ничего, даже черновика: всё — одна транзакция.",
+        "operationId": "import_fund_api_stays_fund_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_fund_api_stays_fund_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Fund",
         "tags": [
           "stays"
         ]
