@@ -75,6 +75,12 @@ def _since(p: Piece) -> str:
     return f" с {p.start.strftime('%d.%m')}" if p.index % PIECE_BASE else ""
 
 
+def pin_invalid(number: str, key: Key, p: Piece) -> AllocWarning:
+    """Закреплённый объект не подходит части — она распределяется автоматически."""
+    return AllocWarning("pin_invalid", key, p.index, f"Бронь {number}: закреплённый объект не подходит{_since(p)} — "
+                                                     f"сегмент {p.seg_index + 1} распределяется автоматически")
+
+
 def allocate(spans: Sequence[UnitSpan], holds: Sequence[HoldRef], items: Sequence[AllocItem],
              category_codes: Mapping[int, str]) -> tuple[dict[tuple[Key, int], int | None],
                                                          list[AllocWarning]]:
@@ -125,10 +131,7 @@ def allocate(spans: Sequence[UnitSpan], holds: Sequence[HoldRef], items: Sequenc
                 continue
             unit = next((u for u in fitting(p) if u.unit_id == uid), None)
             if unit is None:
-                warnings.append(AllocWarning(
-                    "pin_invalid", it.key, p.index,
-                    f"Бронь {it.number}: закреплённый объект не подходит{_since(p)} — "
-                    f"сегмент {p.seg_index + 1} распределяется автоматически"))
+                warnings.append(pin_invalid(it.number, it.key, p))
                 todo.append((it, p))
                 continue
             for bs, be, desc in busy[unit.unit_id]:

@@ -237,7 +237,7 @@ def _replace_children(db: Session, r: Reservation, doc: dict) -> None:
 
 def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
     """pins — сегмент → объект (форма шлёт его на каждое сохранение). Пишутся только изменения:
-    сегмент, чей объект закрепления не сменился, не трогается — и части, отпущенные с этого
+    сегмент, чей объект закрепления (allocation.effective_pin) не сменился, не трогается — и части, отпущенные с этого
     закрепления (pin_invalid за границей версии), остаются в своём объекте. Новое закрепление
     пишется во все не закончившиеся части сегмента (seg * PIECE_BASE + n); прошлые части
     (закончившиеся до сегодняшнего утра) заморожены и не переписываются. Закрепление у брони группы —
@@ -256,7 +256,9 @@ def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
                 live.setdefault(p.seg_index, []).append(p.index)
         for seg, uid in pins.items():
             parts = rows.get((m.id, int(seg)), {})
-            pinned_to = next((parts[i].unit_id for i in sorted(parts) if parts[i].pinned), None)
+            pinned_to = allocation.effective_pin({i: a.unit_id for i, a in parts.items()
+                                                  if a.pinned and a.unit_id is not None},
+                                                 set(live.get(int(seg), [])))
             if uid == pinned_to:
                 continue                     # закрепление сегмента не меняется
             if uid is None:
@@ -317,15 +319,19 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
     """Документ брони для формы правки (уровень «полный», только stays.edit)."""
     moves = _moves_of(db, r.id)
     segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)
-    # сегмент формы: закреплён, если закреплена любая часть, — объект закрепления (его форма шлёт
-    # обратно, и _apply_pins видит «без изменений»); иначе объект первой части
+    # сегмент формы: закреплён, если закреплена любая часть, — объект закрепления по тому же
+    # правилу, что у распределения (effective_pin: первая живая закреплённая часть); его форма шлёт
+    # обратно, и _apply_pins видит «без изменений». Иначе — объект первой части
+    morning = pos(local_date(), AM)
+    live = {p.index for p in pieces(segs, version_cuts(db)) if p.end_pos >= morning}
     first: dict[int, int | None] = {}
-    pinned: dict[int, int | None] = {}
-    for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id).order_by(Assignment.seg_index)):
+    pin_rows: dict[int, dict[int, int]] = {}
+    for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)):
         if a.seg_index % PIECE_BASE == 0:
             first[a.seg_index // PIECE_BASE] = a.unit_id
-        if a.pinned:
-            pinned.setdefault(a.seg_index // PIECE_BASE, a.unit_id)
+        if a.pinned and a.unit_id is not None:
+            pin_rows.setdefault(a.seg_index // PIECE_BASE, {})[a.seg_index] = a.unit_id
+    pinned = {seg: allocation.effective_pin(rows, live) for seg, rows in pin_rows.items()}
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == r.id)
                           .order_by(Occupant.date_from, Occupant.id)))
     names = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_({o.guest_id for o in occ})))} if occ else {}

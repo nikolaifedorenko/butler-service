@@ -212,3 +212,24 @@ def test_in_house_piece_after_withdrawal_relocated(manager_role_client, manager_
     warns = publish((f"units/{x}", None))
     assert _rows(db, r["id"]) == {0: (x, False), 1: (y, False)}
     assert len(warns) == 1 and "не подходит по фонду с 05.10" in warns[0] and "переезд в" in warns[0]
+
+
+def test_repin_with_past_pinned_piece(manager_role_client, manager_client, today, db):
+    """Прошлая часть закреплена за X (не переписывается), живая — тоже; перезакрепление сегмента
+    на Z в форме переводит живую часть в Z, форма показывает Z, прошлая строка остаётся X."""
+    today("2035-11-01")
+    cat = make_category(manager_role_client, n_units=3)
+    x, _y, z = (u["id"] for u in cat["units"])
+    r = create_res(manager_client, cat, "2035-11-02", "2035-11-14", pins={"0": x})
+    _version(manager_role_client, "2035-11-05", _rename(cat, 1))
+    assert _rows(db, r["id"]) == {0: (x, True), 1: (x, True)}
+    today("2035-11-08")
+    doc = manager_client.get(f"{API}/reservations/{r['id']}").json()
+    assert (doc["segments"][0]["unit_id"], doc["segments"][0]["pinned"]) == (x, True)
+    put = _put(manager_client, doc, pins={"0": z})
+    assert put.status_code == 200, put.text
+    assert _rows(db, r["id"]) == {0: (x, True), 1: (z, True)}
+    doc = manager_client.get(f"{API}/reservations/{r['id']}").json()
+    assert (doc["segments"][0]["unit_id"], doc["segments"][0]["pinned"]) == (z, True)
+    assert _put(manager_client, doc, pins=_form_pins(doc)).status_code == 200      # повторное сохранение — без изменений
+    assert _rows(db, r["id"]) == {0: (x, True), 1: (z, True)}

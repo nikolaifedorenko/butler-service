@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.time import local_date
 
 from ..adapters.orm import Assignment, Hold, Move, Reservation
-from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitSpan, allocate
+from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitSpan, allocate, pin_invalid
 from ..domain.halfday import AM, PIECE_BASE, PM, Piece, hold_span, pieces, pos, segments
 from .fund_versions import FundTimeline, boundary_pos, fund_for
 
@@ -92,11 +92,12 @@ def _day(p: int) -> str:
     return dt.date.fromordinal(p // 2).strftime("%d.%m")
 
 
-def _pin_invalid(number: str, key: Key, p: Piece) -> AllocWarning:
-    """Тот же текст, что у domain.allocate, — для части, уже отпущенной с закрепления."""
-    since = f" с {p.start.strftime('%d.%m')}" if p.index % PIECE_BASE else ""
-    return AllocWarning("pin_invalid", key, p.index, f"Бронь {number}: закреплённый объект не подходит{since} — "
-                                                     f"сегмент {p.seg_index + 1} распределяется автоматически")
+def effective_pin(pinned: dict[int, int], live: set[int]) -> int | None:
+    """Объект закрепления сегмента по его закреплённым строкам (индекс части → объект): первой
+    живой части (end_pos >= сегодня AM), иначе — первой прошлой. Прошлые строки не
+    переписываются, поэтому новое закрепление видно по живым частям."""
+    order = sorted(pinned)
+    return next((pinned[i] for i in order if i in live), next((pinned[i] for i in order), None))
 
 
 def compute(db: Session) -> AllocationState:
@@ -131,7 +132,7 @@ def compute(db: Session) -> AllocationState:
     moves = _moves(db, [r.id for r in res])
     current: dict[tuple[int, int], int] = {}
     pinned_rows: set[tuple[int, int]] = set()
-    seg_pins: dict[tuple[int, int], int] = {}         # (бронь, сегмент) → объект закрепления
+    pin_rows: dict[tuple[int, int], dict[int, int]] = {}   # (бронь, сегмент) → {часть: объект}
     if res:
         for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([r.id for r in res]))
                             .order_by(Assignment.seg_index)):
@@ -139,7 +140,7 @@ def compute(db: Session) -> AllocationState:
                 current[(a.reservation_id, a.seg_index)] = a.unit_id
                 if a.pinned:
                     pinned_rows.add((a.reservation_id, a.seg_index))
-                    seg_pins.setdefault((a.reservation_id, a.seg_index // PIECE_BASE), a.unit_id)
+                    pin_rows.setdefault((a.reservation_id, a.seg_index // PIECE_BASE), {})[a.seg_index] = a.unit_id
     morning, evening = pos(today, AM), pos(today, PM)
 
     by_unit: dict[int, list[UnitSpan]] = {}
@@ -179,9 +180,10 @@ def compute(db: Session) -> AllocationState:
 
     def add_item(key: Key, number: str, rs: list[Reservation], segs) -> None:
         ps = pieces(segs, cuts)
+        live = {p.index for p in ps if p.end_pos >= morning}
         pinned = {s.index: uid for s in segs
-                  if (uid := next((seg_pins[(r.id, s.index)] for r in rs if (r.id, s.index) in seg_pins),
-                                  None)) is not None}
+                  if (uid := next((effective_pin(pin_rows[(r.id, s.index)], live) for r in rs
+                                   if (r.id, s.index) in pin_rows), None)) is not None}
         fixed: dict[int, int | None] = {}
         settled = any(r.status in FROZEN_STATUSES for r in rs)
         for prev, p in zip((None, *ps), ps, strict=False):
@@ -191,7 +193,7 @@ def compute(db: Session) -> AllocationState:
                 fixed[p.index] = uid
                 if pin is not None and pin != uid and p.end_pos >= morning and unit_cat(pin, p) != p.category_id:
                     # часть уже отпущена с закрепления (pin_invalid): предупреждение остаётся
-                    warnings.append(_pin_invalid(number, key, p))
+                    warnings.append(pin_invalid(number, key, p))
                 continue
             if not settled or pin is not None:
                 continue                  # у закреплённого сегмента о смене объекта скажет pin_invalid
@@ -238,7 +240,7 @@ def compute(db: Session) -> AllocationState:
             if (key, piece) in fixed_keys:
                 out_pinned[(rid, piece)] = (rid, piece) in pinned_rows
             else:
-                out_pinned[(rid, piece)] = ((rid, piece // PIECE_BASE) in seg_pins
+                out_pinned[(rid, piece)] = ((rid, piece // PIECE_BASE) in pin_rows
                                             and (key, piece) not in released)
     return AllocationState(out_units, out_pinned, warnings, members)
 
