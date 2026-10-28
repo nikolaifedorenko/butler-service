@@ -73,7 +73,7 @@ def test_board_merges_pieces_same_unit(manager_role_client, manager_client, toda
     _version(manager_role_client, "2035-04-10", _rename(cat, 0))
     assert _rows(db, r["id"]) == {0: (uid, False), 1: (uid, False)}
     board = manager_client.get(f"{API}/board/units", params={"first": "2035-04-01", "last": "2035-04-20",
-                                                             "category_id": cat["id"]}).json()
+                                                             "category_ids": cat["id"]}).json()
     bars = [b for b in board["bars"] if b["reservation_id"] == r["id"]]
     assert [(b["seg_index"], b["unit_id"], b["start"], b["end"]) for b in bars] == [
         (0, uid, "2035-04-05", "2035-04-15")]
@@ -109,7 +109,7 @@ def test_publish_version_reallocates_future_only(manager_role_client, manager_cl
     _version(manager_role_client, "2035-06-08", ("DELETE", f"units/{second}", {}))
     assert _rows(db, r["id"]) == {0: (first, False), 1000: (second, False), 1001: (first, False)}
     board = manager_client.get(f"{API}/board/units", params={"first": "2035-06-01", "last": "2035-06-15",
-                                                             "category_id": cat["id"]}).json()
+                                                             "category_ids": cat["id"]}).json()
     bars = [b for b in board["bars"] if b["reservation_id"] == r["id"]]
     assert [(b["seg_index"], b["unit_id"], b["start"], b["end"]) for b in bars] == [
         (0, first, "2035-06-02", "2035-06-05"), (1000, second, "2035-06-05", "2035-06-08"),
@@ -143,7 +143,7 @@ def test_hold_on_absent_unit_warns(manager_role_client, manager_client, today):
     text = f"объекта {gone['label']} нет в фонде 10.08–14.08"
     assert any(w["kind"] == "hold_absent" and text in w["text"] for w in h.json()["diff"]["warnings_added"])
     board = manager_client.get(f"{API}/board/units", params={"first": "2035-08-01", "last": "2035-08-20",
-                                                             "category_id": cat["id"]}).json()
+                                                             "category_ids": cat["id"]}).json()
     assert [w["kind"] for w in board["warnings"] if text in w["text"]] == ["hold_absent"]
 
 
@@ -153,7 +153,7 @@ def _form_pins(doc: dict) -> dict:
 
 
 def _board_warnings(c, cat, first, last) -> list[str]:
-    board = c.get(f"{API}/board/units", params={"first": first, "last": last, "category_id": cat["id"]}).json()
+    board = c.get(f"{API}/board/units", params={"first": first, "last": last, "category_ids": cat["id"]}).json()
     return [w["kind"] for w in board["warnings"]]
 
 

@@ -192,7 +192,9 @@ async function renderDayBoard(body) {
   }
 }
 
-/* ─────────────── Сводная загрузка (§6.4) ─────────────── */
+/* ─────────────── Сводная загрузка (§6.1) ─────────────── */
+/* узлы дерева × дни, сверху «Итого по выбранному»; полная вкладка (8 строк узла, «% / штуки»,
+   месяц) — задача 4.2 */
 async function renderOccupancyGrid(body) {
   const fund = await staysFund();
   if (!boardState.first) boardState.first = staysToday();
@@ -203,28 +205,30 @@ async function renderOccupancyGrid(body) {
   const data = await api('/api/stays/occupancy?' + q, { silent: true });
   if (!fresh()) return;
   const roots = fund.groups.filter(g => g.parent_id == null);
-  const heat = (busy, total) => { const k = total ? busy / total : 0; return k >= 0.9 ? 'heat3' : k >= 0.6 ? 'heat2' : k > 0 ? 'heat1' : ''; };
+  const heat = pct => pct == null ? '' : pct >= 1 ? 'heat3' : pct >= 0.8 ? 'heat2' : pct >= 0.5 ? 'heat1' : '';
+  const row = (n, total) => `<div class="bb-row"><div class="sb-unit"><b>${esc(n.path[n.path.length - 1] || '')}</b>
+      <small>${esc(n.path.slice(0, -1).join(' / '))}</small></div>
+    ${n.days.map((x, i) => `<div class="oc-cell ${heat(x.pct)}"${!total && n.group_id != null ? ` data-oc-node="${n.group_id}"` : ''} data-day="${esc(data.days[i])}">
+      <b>${x.living}/${x.total}</b><small>${x.arrivals ? '▲' + x.arrivals : ''} ${x.departures ? '▼' + x.departures : ''}${x.pct != null ? ' · ' + Math.round(x.pct * 100) + '%' : ''}</small>
+    </div>`).join('')}</div>`;
   body.innerHTML = `
     <div class="sb-toolbar">
       <input type="date" id="oc-first" value="${esc(boardState.first)}">
       <select id="oc-group"><option value="">Весь фонд</option>${roots.map(g =>
         `<option value="${g.id}"${String(g.id) === String(boardState.group_id) ? ' selected' : ''}>${esc(g.title)}</option>`).join('')}</select>
-      <span class="muted">занято / всего · ▲ заезды · ▼ выезды</span>
+      <span class="muted">проживают / всего · ▲ заезды · ▼ выезды · загрузка</span>
     </div>
     <div class="sb-grid bb-grid" style="--days:${data.days.length}">
-      <div class="bb-row sb-head"><div class="sb-unit">Категория</div>${data.days.map(d => `<div>${esc(dateRu(d).slice(0, 5))}</div>`).join('')}</div>
-      ${data.categories.map(c => `<div class="bb-row"><div class="sb-unit"><b>${esc(c.code)}</b><small>${esc(c.title)} · ${c.total}</small></div>
-        ${c.cells.map(x => `<div class="oc-cell ${heat(x.busy, c.total)}" data-oc-cat="${c.category_id}" data-day="${esc(x.day)}">
-          <b>${x.busy}/${c.total}</b><small>${x.arrivals ? '▲' + x.arrivals : ''} ${x.departures ? '▼' + x.departures : ''}${x.no_show ? ' · не заехали ' + x.no_show : ''}</small>
-        </div>`).join('')}</div>`).join('') || '<div class="empty">Фонд пуст</div>'}
+      <div class="bb-row sb-head"><div class="sb-unit">Узел</div>${data.days.map(d => `<div>${esc(dateRu(d).slice(0, 5))}</div>`).join('')}</div>
+      ${data.nodes.length ? row(data.total, true) + data.nodes.map(n => row(n, false)).join('') : '<div class="empty">Фонд пуст</div>'}
     </div>`;
   const rerender = () => renderOccupancyGrid(body);
   $('#oc-first', body).onchange = e => { boardState.first = e.target.value || staysToday(); rerender(); };
   $('#oc-group', body).onchange = e => { boardState.group_id = e.target.value; rerender(); };
-  /* клик по ячейке — шахматка объектов этой категории с этого дня (PoC §14.1) */
-  $$('[data-oc-cat]', body).forEach(el => {
+  /* клик по ячейке узла — шахматка объектов этого узла с этого дня (§6.1) */
+  $$('[data-oc-node]', body).forEach(el => {
     el.onclick = () => {
-      staysState.filters.category_id = el.dataset.ocCat;
+      staysState.filters.group_id = el.dataset.ocNode;
       staysState.first = el.dataset.day;
       staysState.tab = 'units';
       loadStays();

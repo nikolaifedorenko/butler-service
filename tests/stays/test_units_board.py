@@ -7,7 +7,7 @@ WIN = {"first": "2029-02-01", "last": "2029-02-10"}
 
 
 def _board(c, demo, **kw):
-    return c.get(f"{API}/board/units", params={**WIN, "category_id": demo.cat["id"], **kw})
+    return c.get(f"{API}/board/units", params={**WIN, "category_ids": demo.cat["id"], **kw})
 
 
 def test_board_names_level(names_client, demo_small):
@@ -91,16 +91,16 @@ def test_board_filters_group_branch_and_escorted(manager_role_client, manager_cl
     make_category(manager_role_client, n_units=1)                  # без узла — вне фильтра
     win = {"first": "2029-06-01", "last": "2029-06-05"}
     branch = manager_client.get(f"{API}/board/units", params={**win, "group_ids": corp}).json()["units"]
-    assert {u["id"] for u in branch} == {u["id"] for u in in_block["units"] + in_corp["units"]}
+    assert {u["unit_id"] for u in branch} == {u["id"] for u in in_block["units"] + in_corp["units"]}
     assert {u["group_path"][0] for u in branch} == {corp}
     sub = manager_client.get(f"{API}/board/units", params={**win, "group_ids": block}).json()["units"]
-    assert {u["id"] for u in sub} == {u["id"] for u in in_block["units"]}
+    assert {u["unit_id"] for u in sub} == {u["id"] for u in in_block["units"]}
     assert all(u["group"].endswith(" / Блок B") and u["group_path"] == [corp, block] for u in sub)
     esc = manager_client.get(f"{API}/board/units", params={**win, "group_ids": corp, "escorted": 1}).json()
-    assert {u["id"] for u in esc["units"]} == {u["id"] for u in in_block["units"]}
-    assert {b["unit_id"] for b in esc["bars"]} <= {u["id"] for u in esc["units"]}
+    assert {u["unit_id"] for u in esc["units"]} == {u["id"] for u in in_block["units"]}
+    assert {b["unit_id"] for b in esc["bars"]} <= {u["unit_id"] for u in esc["units"]}
     both = manager_client.get(f"{API}/board/units", params={**win, "group_ids": [block, villas]}).json()["units"]
-    assert {u["id"] for u in both} == {u["id"] for u in in_block["units"] + in_villas["units"]}   # узлы — «или»
+    assert {u["unit_id"] for u in both} == {u["id"] for u in in_block["units"] + in_villas["units"]}   # узлы — «или»
 
 
 def test_board_query_budget_440_units(manager_client, big_fund, sql_counter):

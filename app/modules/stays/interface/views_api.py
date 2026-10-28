@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -21,13 +21,28 @@ router = APIRouter(prefix="/api/stays", tags=["stays"])
 SEE = require_perm("stays.view", "stays.occupancy")
 
 
+REMOVED_PARAMS = ("building", "category_id", "kind")
+
+
+def fund_filters(request: Request, group_ids: list[int] = Query(default=[]),
+                 category_ids: list[int] = Query(default=[]), flag_ids: list[int] = Query(default=[]),
+                 kinds: list[str] = Query(default=[]), floor: Optional[str] = None) -> dict:
+    """Измерения фонда (§7) — повторяющиеся параметры. Прежние одиночные параметры — 422, а не
+    молча без фильтра: старый клиент иначе показал бы весь фонд как отфильтрованный."""
+    old = [p for p in REMOVED_PARAMS if p in request.query_params]
+    if old:
+        raise HTTPException(status_code=422, detail=f"Параметр {', '.join(old)} больше не поддерживается: "
+                                                    "group_ids, category_ids, flag_ids, kinds")
+    return {"group_ids": tuple(group_ids), "category_ids": tuple(category_ids), "flag_ids": tuple(flag_ids),
+            "kinds": tuple(kinds), "floor": floor or None}
+
+
 @router.get("/board/units")
-def board_units(first: dt.date, last: dt.date, kind: Optional[str] = None, group_ids: list[int] = Query(default=[]),
-                floor: Optional[str] = None, category_id: Optional[int] = None, escorted: bool = False,
+def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters), escorted: bool = False,
                 vip: bool = False, employee_id: Optional[int] = None, q: str = "",
                 principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
     level = level_for(db, principal)
-    f = views.BoardFilters(kind, tuple(group_ids), floor, category_id, escorted, vip, employee_id, q)
+    f = views.BoardFilters(**dims, escorted_only=escorted, vip=vip, employee_id=employee_id, q=q)
     try:
         return views.units_board(db, first, last, f, level)
     except views.ViewError as e:

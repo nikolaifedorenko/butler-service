@@ -201,7 +201,7 @@ async function unitsBoard() {
      приходит ПОЗЖЕ — на экране должна остаться отфильтрованная шахматка (loadGenerationFor) */
   const realApi = window.api;
   window.api = async (url, opts) => {
-    if (url.startsWith('/api/stays/board/units') && !url.includes('category_id=')) await sleep(1500);
+    if (url.startsWith('/api/stays/board/units') && !url.includes('category_ids=')) await sleep(1500);
     return realApi(url, opts);
   };
   window.eval('api = window.api');
@@ -230,7 +230,7 @@ async function unitsBoard() {
   check('полоса брони на шахматке', await waitFor(() =>
     $$('#view-stays [data-bar]').some(b => b.textContent.includes(guest))));
 
-  const a = (await apiJson('GET', '/api/stays/board/units?first=2030-01-01&last=2030-01-14&category_id=' + cat.id))
+  const a = (await apiJson('GET', '/api/stays/board/units?first=2030-01-01&last=2030-01-14&category_ids=' + cat.id))
     .body.bars.find(b => b.number === 'A' + uniq);
   const b = (await apiJson('POST', '/api/stays/reservations', { number: 'B' + uniq, check_in: '2030-01-07',
     check_out: '2030-01-10', category_id: cat.id })).body.result;
@@ -364,12 +364,17 @@ async function butlersAndDay() {
 async function occupancyAndFund() {
   console.log('\n4 · Загрузка и полный фонд');
   click($('[data-stab="occupancy"]'));
-  check('сводная загрузка отрисована', await waitFor(() => $$('[data-oc-cat]').length > 0));
-  const cell = $('[data-oc-cat]');
-  const cat = cell.dataset.ocCat;
+  check('сводная загрузка отрисована', await waitFor(() => $$('[data-oc-node]').length > 0));
+  const cell = $('[data-oc-node]');
+  const node = cell.dataset.ocNode;
   click(cell);
-  check('клик — шахматка объектов категории', await waitFor(() => $('#sb-cat')?.value === cat));
-  change($('#sb-cat'), '');
+  check('клик — шахматка объектов узла', await waitFor(() => $('#sb-group')?.value === node));
+  /* сбросить узел и категорию прошлых шагов: каждая смена перерисовывает панель — ждём новую */
+  for (const sel of ['#sb-cat', '#sb-group']) {
+    const old = $(sel);
+    change(old, '');
+    await waitFor(() => $(sel) && $(sel) !== old);
+  }
   const t0 = Date.now();
   check('полный фонд на шахматке (≥ 440 объектов)', await waitFor(() => $$('#view-stays [data-unit-row]').length >= 440, 20000),
     String($$('#view-stays [data-unit-row]').length));

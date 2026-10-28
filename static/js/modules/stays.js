@@ -88,9 +88,10 @@ function staysToolbar(fund) {
 function staysBoardParams() {
   const f = staysState.filters;
   const p = new URLSearchParams({ first: staysState.first, last: staysAddDays(staysState.first, staysState.days - 1) });
-  if (f.kind) p.set('kind', f.kind);
-  if (f.group_id) p.append('group_ids', f.group_id);        // фильтр по узлам — повторяемый параметр
-  if (f.category_id) p.set('category_id', f.category_id);
+  /* измерения фонда — повторяемые параметры (§7); панель с несколькими значениями — задача 4.2 */
+  if (f.kind) p.append('kinds', f.kind);
+  if (f.group_id) p.append('group_ids', f.group_id);
+  if (f.category_id) p.append('category_ids', f.category_id);
   if (f.escorted) p.set('escorted', '1');
   if (f.vip) p.set('vip', '1');
   if (f.q.trim()) p.set('q', f.q.trim());
@@ -131,14 +132,14 @@ async function renderUnitsBoard(body) {
     <div class="sb-grid">
       <div class="sb-row sb-head"><div class="sb-unit">Объект</div><div class="sb-track sb-days">${data.days.map(d =>
         `<div class="${d === today ? 'today' : ''}">${esc(d.slice(8))}.${esc(d.slice(5, 7))}</div>`).join('')}</div></div>
-      ${data.units.map(u => `<div class="sb-row" data-unit-row="${u.id}">
+      ${data.units.map(u => `<div class="sb-row" data-unit-row="${u.unit_id}">
         <div class="sb-unit"><b>${esc(u.label)}</b><small>${esc(u.category)}${u.group ? ' · ' + esc(u.group) : ''}</small></div>
         <div class="sb-track" style="--days:${data.days.length}">
-          ${(holdsBy[u.id] || []).map(h => {
+          ${(holdsBy[u.unit_id] || []).map(h => {
             const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
             return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.kind === 'ooo' ? 'OOO' : (h.title || 'Блок'))}</div>`;
           }).join('')}
-          ${(byUnit[u.id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
+          ${(byUnit[u.unit_id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
         </div></div>`).join('') || '<div class="empty">Объектов по фильтру нет</div>'}
     </div>
     ${(byUnit.none || []).length ? `<div class="panel"><h3 class="panel-title">Без объекта</h3>${byUnit.none.map(b =>

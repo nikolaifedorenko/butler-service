@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,11 +23,11 @@ from ..adapters.orm import (
     Reservation,
 )
 from ..domain.allocate import natural_key
-from ..domain.halfday import PIECE_BASE, Piece, hold_span, pieces, segments
+from ..domain.halfday import PIECE_BASE, PM, Piece, hold_span, pieces, pos, segments
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import butlers_on, load_context, nights
-from .fund_versions import CategoryInfo, FundTimeline, UnitInfo, fund_for, version_cuts
+from .fund_versions import CategoryInfo, FundSnapshot, FundTimeline, UnitInfo, fund_for, version_cuts
 from .guests import search_query, short_name
 from .reservations import STATUS_TITLES
 from .visibility import Level, at_least, serialize_bar
@@ -42,14 +42,40 @@ class ViewError(ValueError):
 
 @dataclass(frozen=True)
 class BoardFilters:
-    kind: str | None = None
-    group_ids: tuple[int, ...] = ()         # узлы дерева фонда: объекты их веток («или»)
+    """Фильтры видов (§7): внутри измерения — «или», между измерениями — «и», флаги — все сразу.
+    Узлы, категории, виды и флаги проверяются по фонду каждого дня (fund_match)."""
+    group_ids: tuple[int, ...] = ()         # узлы дерева фонда: объекты их веток
+    category_ids: tuple[int, ...] = ()
+    flag_ids: tuple[int, ...] = ()
+    kinds: tuple[str, ...] = ()
     floor: str | None = None
-    category_id: int | None = None
     escorted_only: bool = False
     vip: bool = False
     employee_id: int | None = None          # «кто ведёт» — с задачи 14
     q: str = ""
+
+    def for_level(self, level: Level) -> BoardFilters:
+        """Поиск и VIP опираются на данные гостей: уровню occupancy они не применяются (находка
+        C1 аудита) — иначе по ответу можно было бы подобрать фамилию или уровень гостя."""
+        return self if level != "occupancy" else replace(self, q="", vip=False, employee_id=None)
+
+
+def fund_match(snap: FundSnapshot, unit_id: int | None, category_id: int | None, f) -> bool:
+    """Проходит ли объект фильтры фонда (узел, категория, вид, флаги, этаж) в снимке дня.
+    f — BoardFilters или DayFilters. Объекта нет в фонде дня — не проходит. Бронь без объекта
+    (unit_id None) проверяется по категории; узел, флаги и этаж у неё не определены."""
+    u = snap.units.get(unit_id) if unit_id is not None else None
+    if unit_id is not None and u is None:
+        return False
+    if u is None and (f.group_ids or f.flag_ids or f.floor):
+        return False
+    cid = u.category_id if u is not None else category_id
+    cat = snap.categories.get(cid)
+    return ((not f.group_ids or bool(set(f.group_ids) & set(snap.unit_path(unit_id))))
+            and (not f.category_ids or cid in f.category_ids)
+            and (not f.kinds or (cat is not None and cat.kind in f.kinds))
+            and (not f.flag_ids or set(f.flag_ids) <= u.flags)
+            and (not f.floor or u.floor == f.floor))
 
 
 def check_window(first: dt.date, last: dt.date) -> list[dt.date]:
@@ -68,13 +94,18 @@ def _top_level(levels) -> str:
     return max(levels, key=lambda lv: LEVEL_RANK[lv], default="regular")
 
 
-@dataclass(frozen=True)
-class BoardUnit:
-    """Строка шахматки: объект в состоянии первого дня периода, когда он есть в фонде."""
+@dataclass
+class BoardRow:
+    """Строка шахматки — постоянный объект. Свойства — на первый день периода, когда он в
+    фонде; смены обозначения и категории — по датам; дни «нет в фонде» и «вне фильтра» — off."""
     info: UnitInfo
     category: CategoryInfo
     group_path: tuple[int, ...]
     group: str                              # путь узла названиями: «Корпус / Блок B»
+    labels: list[tuple[dt.date, str]]
+    categories: list[tuple[dt.date, int]]
+    in_fund: list[dt.date] = field(default_factory=list)       # дни периода, когда объект в фонде
+    off: list[list] = field(default_factory=list)              # [первый, последний, причина]
 
     @property
     def id(self) -> int:
@@ -85,23 +116,64 @@ class BoardUnit:
         return self.info.label
 
 
-def _board_units(fund: FundTimeline, f: BoardFilters) -> list[BoardUnit]:
-    """Объекты, которые есть в фонде хотя бы в один день периода (этап 1: свойства — на
-    первый такой день; разметка «нет в фонде» по дням — часть 4)."""
-    first_seen: dict[int, BoardUnit] = {}
-    for snap in fund.snapshots():
-        for u in snap.units.values():
-            if u.id not in first_seen:
-                path = snap.unit_path(u.id)
-                first_seen[u.id] = BoardUnit(u, snap.categories[u.category_id], path,
-                                             " / ".join(snap.path_titles(u.group_id)) if path else "")
-    units = [b for b in first_seen.values()
-             if (not f.group_ids or any(g in b.group_path for g in f.group_ids))
-             and (not f.floor or b.info.floor == f.floor)
-             and (not f.category_id or b.info.category_id == f.category_id)
-             and (not f.kind or b.category.kind == f.kind)
-             and (not f.escorted_only or b.category.escorted)]
-    return sorted(units, key=lambda b: (b.category.sort_order, natural_key(b.label), b.id))
+def _passing(snap: FundSnapshot, f: BoardFilters) -> set[int]:
+    """Объекты снимка, прошедшие фильтры фонда (и «с сопровождением» — по категории)."""
+    return {uid for uid, u in snap.units.items() if fund_match(snap, uid, None, f)
+            and (not f.escorted_only or getattr(snap.categories.get(u.category_id), "escorted", False))}
+
+
+def _runs(marks: list[str | None], days: list[dt.date]) -> list[list]:
+    """Подряд идущие дни с одной причиной → [первый, последний, причина]."""
+    out: list[list] = []
+    for d, m in zip(days, marks, strict=True):
+        if m is None:
+            continue
+        if out and out[-1][2] == m and out[-1][1] == _d(d - dt.timedelta(days=1)):
+            out[-1][1] = _d(d)
+        else:
+            out.append([_d(d), _d(d), m])
+    return out
+
+
+def _board_rows(fund: FundTimeline, days: list[dt.date], f: BoardFilters) -> list[BoardRow]:
+    """Объекты, прошедшие фильтр хотя бы в один день периода — каждый день по фонду этого дня
+    (§7: флаг с 15.11 — в фильтре с 15.11). Остальные дни строки — off: «absent» (нет в фонде)
+    или «filtered» (в фонде, но вне фильтра); полосы и блоки этих дней не скрываются."""
+    if not fund.parts:
+        return []
+    uids = list(dict.fromkeys(uid for snap in fund.snapshots() for uid in snap.units))
+    passing: dict[int, set[int]] = {}
+    rows: dict[int, BoardRow] = {}
+    marks: dict[int, list[str | None]] = {uid: [] for uid in uids}
+    for d in days:
+        snap = fund.on(d)
+        if snap.version_id not in passing:
+            passing[snap.version_id] = _passing(snap, f)
+        ok = passing[snap.version_id]
+        for uid in uids:
+            u = snap.units.get(uid)
+            if u is None:
+                marks[uid].append("absent")
+                continue
+            marks[uid].append(None if uid in ok else "filtered")
+            row = rows.get(uid)
+            if row is None:
+                path = snap.unit_path(uid)
+                rows[uid] = row = BoardRow(u, snap.categories[u.category_id], path,
+                                           " / ".join(snap.path_titles(u.group_id)) if path else "",
+                                           [(d, u.label)], [(d, u.category_id)])
+            else:
+                if row.labels[-1][1] != u.label:
+                    row.labels.append((d, u.label))
+                if row.categories[-1][1] != u.category_id:
+                    row.categories.append((d, u.category_id))
+            row.in_fund.append(d)
+    out = []
+    for uid, row in rows.items():
+        if None in marks[uid]:
+            row.off = _runs(marks[uid], days)
+            out.append(row)
+    return sorted(out, key=lambda b: (b.category.sort_order, natural_key(b.label), b.id))
 
 
 def _glued(ps: list[Piece], unit_of) -> list[list[Piece]]:
@@ -116,18 +188,18 @@ def _glued(ps: list[Piece], unit_of) -> list[list[Piece]]:
     return runs
 
 
-def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level) -> dict:
-    return _units_board(db, first, last, f, level)[0]
+@dataclass
+class _Stays:
+    """Брони диапазона, занимающие объекты, с переездами, объектами частей и составом — пакетом."""
+    res: list[Reservation]
+    moves: dict[int, list]
+    asg: dict[tuple[int, int], int | None]
+    occ: dict[int, list[Occupant]]
+    segs: dict[int, list]
+    parts: dict[int, list[Piece]]           # части сегментов (границы версий фонда)
 
 
-def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
-                 level: Level) -> tuple[dict, FundTimeline]:
-    days = check_window(first, last)
-    fund = fund_for(db, first, last)
-    units = _board_units(fund, f)
-    unit_ids = {u.id for u in units}
-    visible_cats = {u.info.category_id for u in units}
-
+def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int]) -> _Stays:
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(allocation.OCCUPYING),
                                                     Reservation.check_in <= last,
                                                     Reservation.check_out >= first)))
@@ -143,6 +215,45 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
         for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_(rids))
                             .order_by(Occupant.date_from, Occupant.id)):
             occ[o.reservation_id].append(o)
+    segs = {r.id: segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]) for r in res}
+    return _Stays(res, moves, asg, occ, segs, {r.id: pieces(segs[r.id], cuts) for r in res})
+
+
+def _occupied(st: _Stays, first: dt.date, last: dt.date) -> dict[tuple[int, dt.date], int]:
+    """(объект, ночь) → бронь. Ночь d брони — её часть, покрывающая вечер d (как ctx.unit_of)."""
+    one = dt.timedelta(days=1)
+    out: dict[tuple[int, dt.date], int] = {}
+    for r in st.res:
+        for p in st.parts[r.id]:
+            uid = st.asg.get((r.id, p.index))
+            if uid is None:
+                continue
+            d, end = max(p.start, r.check_in, first), min(p.end, r.check_out - one, last)
+            while d <= end:
+                if p.start_pos <= pos(d, PM) <= p.end_pos:
+                    out[(uid, d)] = r.id
+                d += one
+    return out
+
+
+def _load(row: BoardRow, occupied: dict[tuple[int, dt.date], int]) -> float:
+    """Загрузка строки за период: занятые ночи / ночи в фонде, 0..1."""
+    if not row.in_fund:
+        return 0.0
+    return round(sum((row.id, d) in occupied for d in row.in_fund) / len(row.in_fund), 3)
+
+
+def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level) -> dict:
+    days = check_window(first, last)
+    f = f.for_level(level)
+    fund = fund_for(db, first, last)
+    units = _board_rows(fund, days, f)
+    unit_ids = {u.id for u in units}
+    visible_cats = {cid for u in units for _, cid in u.categories}
+    cuts = version_cuts(db)
+    st = _load_stays(db, first, last, cuts)
+    res, moves, asg, occ = st.res, st.moves, st.asg, st.occ
+    occupied = _occupied(st, first, last)
     names = level != "occupancy"
     guests = {}
     labels = {}
@@ -150,9 +261,8 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
         gids = {o.guest_id for os in occ.values() for o in os}
         guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
         labels = {lb.id: lb for lb in db.scalars(select(Label))}
-    match = _search(f.q, res, occ, guests, units, asg) if names and f.q.strip() else None
+    match = _search(f.q, res, occ, guests, units, asg) if f.q.strip() else None
     today = local_date()
-    cuts = version_cuts(db)
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
         on_duty = butlers_on(db, today, res, moves, asg, occ, guests, fund, cuts)
@@ -163,9 +273,9 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
             continue
         rocc = occ[r.id]
         top = _top_level(guests[o.guest_id].level for o in rocc if o.guest_id in guests)
-        if names and f.vip and top == "regular":
+        if f.vip and top == "regular":
             continue
-        segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id])
+        segs = st.segs[r.id]
         mains = [o for o in rocc if o.role == "main"]
         on_day = max(r.check_in, first)
         main_now = next((o for o in mains if o.date_from <= on_day < o.date_to), mains[0] if mains else None)
@@ -180,7 +290,7 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
                 "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}")}
         # полоса — соседние части сегмента с одним объектом; seg_index полосы — индекс её первой
         # части (seg_index // PIECE_BASE — сегмент; 0 — начало брони)
-        for run in _glued(pieces(segs, cuts), lambda p, rid=r.id: asg.get((rid, p.index))):
+        for run in _glued(st.parts[r.id], lambda p, rid=r.id: asg.get((rid, p.index))):
             p0, p1 = run[0], run[-1]
             uid = asg.get((r.id, p0.index))
             if uid not in unit_ids and not (uid is None and p0.category_id in visible_cats):
@@ -203,12 +313,14 @@ def _units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters,
         warnings = [{"kind": w.kind, "reservation_ids": state.members[w.key], "text": w.text}
                     for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds]
     return {"days": [_d(d) for d in days], "visibility": level,
-            "units": [{"id": u.id, "label": u.label, "category_id": u.info.category_id,
-                       "category": u.category.code, "kind": u.category.kind, "escorted": u.category.escorted,
-                       "group_id": u.info.group_id, "group_path": list(u.group_path), "group": u.group,
-                       "floor": u.info.floor}
+            "units": [{"unit_id": u.id, "label": u.label,
+                       "labels": [{"from": _d(d), "label": lb} for d, lb in u.labels],
+                       "category_id": u.info.category_id, "category": u.category.code,
+                       "categories": [{"from": _d(d), "category_id": cid} for d, cid in u.categories],
+                       "group_path": list(u.group_path), "group": u.group, "floor": u.info.floor,
+                       "flags": sorted(u.info.flags), "load": _load(u, occupied), "off": u.off}
                       for u in units],
-            "bars": bars, "holds": holds, "warnings": warnings}, fund
+            "bars": bars, "holds": holds, "warnings": warnings}
 
 
 def _search(q: str, res, occ, guests, units, asg) -> set[int]:
@@ -289,29 +401,101 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     return card
 
 
-def occupancy_grid(db: Session, first: dt.date, last: dt.date, group_ids: tuple[int, ...] = ()) -> dict:
-    """Сводная загрузка (§6.4): категории × дни — занято из всего, заезды, выезды, не заехали.
-    Строится из шахматки уровня «без гостей» — данных гостей здесь нет по построению."""
-    from ..domain.halfday import PM, pos
+NO_GROUP = "Без группы"
+TOTAL = "Итого по выбранному"
+
+
+def _nodes(fund: FundTimeline, f: BoardFilters) -> list[tuple[int | None, tuple[str, ...]]]:
+    """Узлы «Загрузки»: выбранные в фильтре «Где», иначе корневые узлы дерева (и «Без группы»,
+    если в периоде есть объекты без узла). Путь названиями — по первой версии, где узел есть."""
+    snaps = fund.snapshots()
+    if f.group_ids:
+        out = []
+        for gid in dict.fromkeys(f.group_ids):
+            snap = next((s for s in snaps if gid in s.groups), None)
+            if snap is not None:
+                out.append((gid, snap.path_titles(gid)))
+        return out
+    roots: dict[int, tuple[int, str]] = {}
+    for s in snaps:
+        for g in s.groups.values():
+            if g.parent_id is None and g.id not in roots:
+                roots[g.id] = (g.sort_order, g.title)
+    out = [(gid, (title,)) for gid, (_o, title) in sorted(roots.items(), key=lambda x: (x[1], x[0]))]
+    if any(not s.unit_path(uid) for s in snaps for uid in s.units):
+        out.append((None, (NO_GROUP,)))
+    return out
+
+
+def _pct(living: int, blocks: int, total: int, ooo: int) -> float | None:
+    """Загрузка, % (§6.1) = (проживают + блоки) / (всего − OOO); знаменатель 0 — None."""
+    return round((living + blocks) / (total - ooo), 3) if total - ooo > 0 else None
+
+
+def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) -> dict:
+    """Сводная загрузка (§6.1): узлы дерева × дни и «Итого по выбранному» (объекты всех узлов —
+    без двойного счёта, если выбраны узел и его потомок). Всё — по фонду дня; данных гостей
+    нет, только числа: поиск и VIP не применяются."""
     days = check_window(first, last)
-    board, fund = _units_board(db, first, last, BoardFilters(group_ids=group_ids), "occupancy")
-    cats = {u["category_id"]: fund.category(u["category_id"], first) for u in board["units"]}
-    by_cat: dict[int, list[int]] = {}
-    for u in board["units"]:
-        by_cat.setdefault(u["category_id"], []).append(u["id"])
-    no_show = list(db.scalars(select(Reservation).where(Reservation.status == "no_show",
-                                                        Reservation.check_in >= first, Reservation.check_in <= last)))
-    out = []
-    for cid, uids in sorted(by_cat.items(), key=lambda x: (cats[x[0]].sort_order, cats[x[0]].code)):
-        bars = [b for b in board["bars"] if b["unit_id"] in set(uids)]
-        cells = []
-        for d in days:
-            p, iso = pos(d, PM), d.isoformat()
-            cells.append({"day": iso, "busy": len({b["unit_id"] for b in bars if b["start_pos"] <= p <= b["end_pos"]}),
-                          # seg_index полосы 0 — первая часть первого сегмента: заезд
-                          "arrivals": sum(1 for b in bars if b["start"] == iso and b["seg_index"] == 0),
-                          "departures": len({b["reservation_id"] for b in bars if b["end"] == iso}),
-                          "no_show": sum(1 for r in no_show if r.category_id == cid and r.check_in == d)})
-        out.append({"category_id": cid, "code": cats[cid].code, "title": cats[cid].title, "total": len(uids),
-                    "cells": cells})
-    return {"days": [d.isoformat() for d in days], "categories": out}
+    one = dt.timedelta(days=1)
+    f = f.for_level("occupancy")
+    fund = fund_for(db, first - one, last)           # выезд в first — по объекту ночи накануне
+    if not fund.parts:
+        empty = dict.fromkeys(("total", "living", "guests", "arrivals", "departures", "free", "ooo", "blocks"), 0)
+        return {"days": [_d(d) for d in days], "nodes": [],
+                "total": {"group_id": None, "path": [TOTAL], "days": [{**empty, "pct": None} for _ in days]}}
+    nodes = _nodes(fund, f)
+    st = _load_stays(db, first - one, last, version_cuts(db))
+    occupied = _occupied(st, first - one, last)
+    unit_of = {(rid, d): uid for (uid, d), rid in occupied.items()}
+    holds: dict[tuple[int, dt.date], set[str]] = {}
+    for h in db.scalars(select(Hold).where(Hold.start <= last, Hold.end >= first)):
+        d = max(h.start, first)
+        while d <= min(h.end, last):                  # блок и OOO — целые сутки с–по
+            holds.setdefault((h.unit_id, d), set()).add(h.kind)
+            d += one
+    arrive: dict[dt.date, list[int | None]] = {}
+    leave: dict[dt.date, list[int | None]] = {}
+    for r in st.res:                                   # выезд + заезд в тот же объект — в обеих строках
+        arrive.setdefault(r.check_in, []).append(unit_of.get((r.id, r.check_in)))
+        leave.setdefault(r.check_out, []).append(unit_of.get((r.id, r.check_out - one)))
+
+    def people(rid: int, d: dt.date) -> int:
+        return len({o.guest_id for o in st.occ[rid] if o.date_from <= d < o.date_to}) or 1
+
+    memo: dict[tuple[int, int | None], set[int]] = {}
+
+    def members(snap: FundSnapshot, gid: int | None) -> set[int]:
+        key = (snap.version_id, gid)
+        if key not in memo:
+            ok = _passing(snap, f)
+            memo[key] = ({u for u in ok if gid in snap.unit_path(u)} if gid is not None
+                         else {u for u in ok if not snap.unit_path(u)})
+        return memo[key]
+
+    def cell(units: set[int], before: set[int], d: dt.date) -> dict:
+        living = [u for u in units if (u, d) in occupied]
+        ooo = sum("ooo" in holds.get((u, d), ()) for u in units)
+        blocks = sum("block" in holds.get((u, d), ()) for u in units)
+        total = len(units)
+        return {"total": total, "living": len(living),
+                "guests": sum(people(occupied[(u, d)], d) for u in living),
+                "arrivals": sum(u in units for u in arrive.get(d, ())),
+                "departures": sum(u in before for u in leave.get(d, ())),
+                "free": max(0, total - len(living) - ooo - blocks), "ooo": ooo, "blocks": blocks,
+                "pct": _pct(len(living), blocks, total, ooo)}
+
+    rows = {gid: [] for gid, _ in nodes}
+    total_days = []
+    for d in days:
+        snap, prev = fund.on(d), fund.on(d - one)
+        every, every_prev = set(), set()
+        for gid, _ in nodes:
+            now, before = members(snap, gid), members(prev, gid)
+            every |= now
+            every_prev |= before
+            rows[gid].append(cell(now, before, d))
+        total_days.append(cell(every, every_prev, d))
+    return {"days": [_d(d) for d in days],
+            "total": {"group_id": None, "path": [TOTAL], "days": total_days},
+            "nodes": [{"group_id": gid, "path": list(path), "days": rows[gid]} for gid, path in nodes]}
