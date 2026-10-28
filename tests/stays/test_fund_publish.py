@@ -321,3 +321,61 @@ def test_transfer_group_journals_every_member(manager_role_client, manager_clien
     for rid in (a["id"], b["id"]):
         assert db.get(Reservation, rid).category_id == dlx["id"]
         assert _journal(db, rid)[-1]["category_id"] == [conn["id"], dlx["id"]]
+
+
+# ── предпросмотр: части «до/после» сравниваются по покрытию, а не по индексу ──
+
+
+def _draft_floor(setup, unit_id: int, cat: dict, label: str, valid_from: str = DAY) -> int:
+    """Черновик с valid_from, где у объекта меняется только этаж (на размещение не влияет)."""
+    opened = setup.post(f"{API}/fund/draft", json={"valid_from": valid_from})
+    assert opened.status_code == 200, opened.text
+    r = setup.put(f"{API}/fund/draft/units/{unit_id}", json={
+        "rev": opened.json()["rev"], "label": label, "category_id": cat["id"], "floor": "9"})
+    assert r.status_code == 200, r.text
+    return r.json()["rev"]
+
+
+def _moved_of(out: dict, rid: int) -> list[dict]:
+    return [m for m in out["result"]["affected"]["moved"] if m["reservation_id"] == rid]
+
+
+def test_preview_pinned_booking_across_new_boundary_not_moved(manager_role_client, manager_client, today):
+    today(TODAY)
+    cat = make_category(manager_role_client, n_units=2)
+    pin = cat["units"][1]
+    r = create_res(manager_client, cat, "2036-01-28", "2036-02-06", pins={"0": pin["id"]})
+    assert r["segments"][0]["unit_id"] == pin["id"]
+    rev = _draft_floor(manager_role_client, cat["units"][0]["id"], cat, cat["units"][0]["label"])
+    out = _publish(manager_role_client, {"rev": rev}, preview=True)
+    assert _moved_of(out, r["id"]) == []
+
+
+def test_preview_booking_across_new_and_later_boundary_not_moved(manager_role_client, manager_client, today):
+    today(TODAY)
+    cat = make_category(manager_role_client, n_units=2)
+    u0, u1 = cat["units"]
+    # поздняя версия с 15.02 уже есть: части после неё сдвинули бы индекс при новой границе 01.02
+    rev = _draft_floor(manager_role_client, u1["id"], cat, u1["label"], valid_from="2036-02-15")
+    _publish(manager_role_client, {"rev": rev}, preview=False)
+    r = create_res(manager_client, cat, "2036-01-28", "2036-02-20")
+    rev = _draft_floor(manager_role_client, u1["id"], cat, u1["label"] + "x")
+    out = _publish(manager_role_client, {"rev": rev}, preview=True)
+    assert _moved_of(out, r["id"]) == [], _moved_of(out, r["id"])
+
+
+def test_preview_real_unit_change_at_boundary_one_row(manager_role_client, manager_client, today):
+    today(TODAY)
+    cat = make_category(manager_role_client, n_units=2)
+    u0, u1 = cat["units"]
+    r = create_res(manager_client, cat, "2036-01-28", "2036-02-06")
+    was = r["segments"][0]["unit_id"]
+    other = u1["id"] if was == u0["id"] else u0["id"]
+    opened = manager_role_client.post(f"{API}/fund/draft", json={"valid_from": DAY})
+    assert opened.status_code == 200, opened.text
+    gone = manager_role_client.delete(f"{API}/fund/draft/units/{was}", params={"rev": opened.json()["rev"]})
+    assert gone.status_code == 200, gone.text
+    out = _publish(manager_role_client, {"rev": gone.json()["rev"]}, preview=True)
+    rows = _moved_of(out, r["id"])
+    assert len(rows) == 1, rows
+    assert rows[0]["from_unit"] == was and rows[0]["to_unit"] == other and rows[0]["since"] == DAY

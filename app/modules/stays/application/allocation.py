@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -39,6 +39,9 @@ class AllocationState:
     pinned: dict[tuple[int, int], bool]
     warnings: list[AllocWarning]
     members: dict[Key, list[int]]                 # элемент распределения → брони; ("h", id) блока — []
+    # (бронь, индекс части) → (start_pos, end_pos) части: индекс зависит от границ версий,
+    # предпросмотр публикации сравнивает части «до/после» по покрытию, а не по индексу
+    spans: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
 
 
 def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
@@ -234,15 +237,19 @@ def compute(db: Session) -> AllocationState:
     fixed_keys = {(it.key, i) for it in items for i in it.fixed}
     out_units: dict[tuple[int, int], int | None] = {}
     out_pinned: dict[tuple[int, int], bool] = {}
+    out_spans: dict[tuple[int, int], tuple[int, int]] = {}
+    span_of = {(it.key, p.index): (p.start_pos, p.end_pos) for it in items for p in it.segments}
     for (key, piece), uid in got.items():
         for rid in members[key]:
             out_units[(rid, piece)] = uid
+            if (key, piece) in span_of:
+                out_spans[(rid, piece)] = span_of[(key, piece)]
             if (key, piece) in fixed_keys:
                 out_pinned[(rid, piece)] = (rid, piece) in pinned_rows
             else:
                 out_pinned[(rid, piece)] = ((rid, piece // PIECE_BASE) in pin_rows
                                             and (key, piece) not in released)
-    return AllocationState(out_units, out_pinned, warnings, members)
+    return AllocationState(out_units, out_pinned, warnings, members, out_spans)
 
 
 def run_allocation(db: Session) -> AllocationState:
