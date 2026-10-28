@@ -12,7 +12,7 @@ from app.core.audit import AuditLog
 from app.modules.employees.application.catalog import Employee
 
 from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Guest, Occupant, Reservation
-from .fund_versions import fund_for
+from .fund_versions import fund_for_stays
 from .guests import short_name
 from .reservations import STATUS_TITLES
 from .visibility import Level
@@ -58,7 +58,7 @@ def guest_stays(db: Session, gid: int) -> list[dict]:
         if a.unit_id and a.unit_id not in unit_ids[a.reservation_id]:
             unit_ids[a.reservation_id].append(a.unit_id)
     # обозначения — на дату записи «проживающий» (фонд меняется версиями с даты)
-    fund = fund_for(db, min(o.date_from for o in occ), max(o.date_to for o in occ))
+    fund = fund_for_stays(db, min(o.date_from for o in occ), max(o.date_to for o in occ))
 
     def units_of(o: Occupant) -> list[str]:
         return list(dict.fromkeys(u.label for uid in unit_ids[o.reservation_id]

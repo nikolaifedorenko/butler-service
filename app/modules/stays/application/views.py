@@ -27,7 +27,16 @@ from ..domain.halfday import PIECE_BASE, PM, Piece, hold_span, pieces, pos, segm
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import butlers_on, load_context, nights
-from .fund_versions import CategoryInfo, FundSnapshot, FundTimeline, UnitInfo, fund_for, version_cuts
+from .fund_versions import (
+    CategoryInfo,
+    FundSnapshot,
+    FundTimeline,
+    UnitInfo,
+    fund_day,
+    fund_for,
+    fund_for_stays,
+    version_cuts,
+)
 from .guests import search_query, short_name
 from .reservations import STATUS_TITLES
 from .visibility import Level, at_least, serialize_bar
@@ -368,7 +377,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     # объект сегмента — его первой части (части режутся границами версий фонда)
     asg = {a.seg_index // PIECE_BASE: a.unit_id for a in db.scalars(
         select(Assignment).where(Assignment.reservation_id == rid)) if a.seg_index % PIECE_BASE == 0}
-    fund = fund_for(db, r.check_in, r.check_out)
+    fund = fund_for_stays(db, r.check_in, r.check_out)
     segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)
     category = fund.category(r.category_id, r.check_in)
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == rid)
@@ -382,7 +391,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
         "label": {"title": lb.title, "color": lb.color} if lb else None,
         "group_id": r.group_id, "version": r.version,
         "segments": [{"index": s.index, "start": _d(s.start), "end": _d(s.end), "unit_id": asg.get(s.index),
-                      "unit": u.label if (u := fund.unit(asg.get(s.index), s.start)) else None}
+                      "unit": u.label if (u := fund.unit(asg.get(s.index), fund_day(s.start_pos))) else None}
                      for s in segs],
         "occupants": [{"guest_id": o.guest_id, "guest": short_name(guests[o.guest_id]),
                        "level": guests[o.guest_id].level, "date_from": _d(o.date_from),

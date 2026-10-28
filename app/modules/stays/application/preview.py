@@ -20,7 +20,7 @@ from ..domain.halfday import PIECE_BASE
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import load_context
-from .fund_versions import fund_for
+from .fund_versions import fund_day, fund_for
 from .locking import lock_module
 
 T = TypeVar("T")
@@ -116,9 +116,10 @@ def _changed_pieces(before: Snapshot, after: Snapshot) -> list[tuple[tuple[int, 
 def diff(db: Session, before: Snapshot, after: Snapshot) -> dict:
     numbers = dict(db.execute(select(Reservation.id, Reservation.number)).all())
     changed = _changed_pieces(before, after)
-    # обозначения объектов — на дату начала изменившегося отрезка (фонд меняется версиями с даты)
+    # обозначения объектов — по фонду начала изменившегося отрезка (версия действует с вечера даты)
     starts = {i: dt.date.fromordinal(start // 2) for i, (_k, _w, _n, start) in enumerate(changed)}
-    dates = list(starts.values()) or [local_date()]
+    fund_days = {i: fund_day(start) for i, (_k, _w, _n, start) in enumerate(changed)}
+    dates = list(fund_days.values()) or [local_date()]
     fund = fund_for(db, min(dates), max(dates)) if changed else None
 
     def label(uid: int | None, day: dt.date) -> str | None:
@@ -139,7 +140,7 @@ def diff(db: Session, before: Snapshot, after: Snapshot) -> dict:
                       "number": numbers.get(key[0], ""), "seg_index": key[1] // PIECE_BASE,
                       "since": starts[i].isoformat() if start > seg_start else None,
                       "from_unit": was, "to_unit": now,
-                      "from_label": label(was, starts[i]), "to_label": label(now, starts[i])})
+                      "from_label": label(was, fund_days[i]), "to_label": label(now, fund_days[i])})
     return {"moved": moved,
             "warnings_added": [_warning(k, before.reservations) for k in
                                sorted(after.warnings - before.warnings, key=lambda k: repr(k[:3] + k[4:]))],
