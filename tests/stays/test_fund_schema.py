@@ -193,9 +193,12 @@ def test_downgrade_refuses_with_several_versions(db, version, monkeypatch):
     monkeypatch.delenv("STAYS_FUND_DOWNGRADE_FORCE", raising=False)
     db.rollback()
     db.close()
-    with pytest.raises(RuntimeError, match="0010"):
-        command.downgrade(config(), "0009")
-    assert inspect(engine).has_table("stays_fund_versions")
+    try:
+        with pytest.raises(RuntimeError, match="0010"):
+            command.downgrade(config(), "0009")
+        assert inspect(engine).has_table("stays_fund_versions")
+    finally:
+        command.upgrade(config(), "head")     # откат 0011 до отказа 0010 уже зафиксирован (SQLite)
 
 
 def test_migration_with_data_roundtrip(iso_engine):
@@ -244,3 +247,39 @@ def test_migration_with_data_roundtrip(iso_engine):
             assert (code, title, kind, float(weight), bool(esc)) == ("MIG", "Миграция", "villa", 4.0, True)
     finally:
         command.upgrade(config(), "head")
+
+
+def test_assignment_pieces_migration(iso_engine):
+    """0011: seg_index — индекс части (сегмент * 1000 + n). Откат оставляет первые части как
+    сегменты и удаляет продолжения; повторный подъём умножает обратно."""
+    from alembic import command
+    from sqlalchemy import text
+
+    from app.bootstrap.schema_version import config
+
+    engine = iso_engine
+
+    def rows() -> list[tuple]:
+        with engine.connect() as c:
+            return [tuple(r) for r in c.execute(text(
+                "SELECT seg_index, unit_id, pinned FROM stays_assignments WHERE reservation_id = 9201 "
+                "ORDER BY seg_index"))]
+
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO stays_categories (id) VALUES (9001)"))
+        for uid in (9101, 9102):
+            c.execute(text("INSERT INTO stays_units (id) VALUES (:i)"), {"i": uid})
+        c.execute(text("INSERT INTO stays_reservations (id, number, status, check_in, check_out, early, late, "
+                       "category_id, paid_by, customer, purpose, note, declined_butler, fields_json, source, "
+                       "version, search_text, created_at, updated_at) VALUES (9201, 'M1', 'confirmed', "
+                       "'2099-01-01', '2099-01-09', 0, 0, 9001, '', '', '', '', 0, '{}', '', 1, '', "
+                       "'2099-01-01 00:00:00', '2099-01-01 00:00:00')"))
+        for seg, uid, pinned in ((0, 9101, 1), (1000, 9102, 0), (1001, 9101, 0)):
+            c.execute(text("INSERT INTO stays_assignments (reservation_id, seg_index, unit_id, pinned) "
+                           "VALUES (9201, :s, :u, :p)"), {"s": seg, "u": uid, "p": pinned})
+    command.downgrade(config(), "0010")
+    try:
+        assert rows() == [(0, 9101, 1), (1, 9102, 0)]
+    finally:
+        command.upgrade(config(), "head")
+    assert rows() == [(0, 9101, 1), (1000, 9102, 0)]

@@ -286,7 +286,10 @@ class Move(Base):
 
 
 class Assignment(Base):
-    """Сегмент брони → объект; pinned — закреплён вручную (PoC §4.8)."""
+    """Часть сегмента брони → объект; pinned — закреплён вручную (PoC §4.8).
+
+    seg_index — индекс части: сегмент * PIECE_BASE + номер части между границами версий фонда
+    (ревизия 0011; спецификация версий §5)."""
 
     __tablename__ = "stays_assignments"
     __table_args__ = (UniqueConstraint("reservation_id", "seg_index", name="uq_stays_assignment"),)

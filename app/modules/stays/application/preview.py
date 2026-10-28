@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.core.time import local_date
 
-from ..adapters.orm import Move, Reservation
-from ..domain.halfday import segments
+from ..adapters.orm import Reservation
+from ..domain.halfday import PIECE_BASE
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import load_context
@@ -37,6 +37,7 @@ class Snapshot:
     loads: dict[tuple[int, dt.date], float] = field(default_factory=dict)
     names: dict = field(default_factory=dict)          # подписи батлеров и гостей для разницы
     limit: float = 0.0
+    spans: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)   # часть → (start_pos, end_pos)
 
 
 Window = tuple[dt.date, dt.date]
@@ -49,9 +50,10 @@ def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | No
     state = allocation.current_state(db)
     warns = set()
     for w in state.warnings:
-        for rid in state.members[w.key]:
+        for rid in state.members[w.key] or [None]:         # предупреждение блока — без брони
             warns.add((w.kind, None, None, rid, w.text))
-    snap = Snapshot(dict(state.units), frozenset(warns), frozenset(db.scalars(select(Reservation.id))))
+    snap = Snapshot(dict(state.units), frozenset(warns), frozenset(db.scalars(select(Reservation.id))),
+                    spans=dict(state.spans))
     if window is None:
         return snap
     ctx = load_context(db, window[0], window[1], duty)
@@ -62,7 +64,7 @@ def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | No
         warns |= {(w.kind, d.isoformat(), w.employee_id, w.reservation_id, ctx.warning_text(w))
                   for w in ctx.warnings(d)}
     names = {("e", e): n for e, n in ctx.staff.items()} | {("g", g): ctx.guest_name(g) for g in ctx.guests}
-    return Snapshot(snap.units, frozenset(warns), snap.reservations, coverage, loads, names, ctx.limit)
+    return Snapshot(snap.units, frozenset(warns), snap.reservations, coverage, loads, names, ctx.limit, snap.spans)
 
 
 def _warning(k: WarningKey, known: frozenset[int]) -> dict:
@@ -72,44 +74,72 @@ def _warning(k: WarningKey, known: frozenset[int]) -> dict:
             "text": text}
 
 
-def _segment_starts(db: Session, keys: list[tuple[int, int]]) -> dict[tuple[int, int], dt.date]:
-    """(бронь, сегмент) → дата начала сегмента по текущему документу брони."""
-    rids = list({rid for rid, _ in keys})
-    if not rids:
-        return {}
-    moves: dict[int, list] = {rid: [] for rid in rids}
-    for m in db.scalars(select(Move).where(Move.reservation_id.in_(rids))):
-        moves[m.reservation_id].append((m.move_date, m.category_id))
-    out = {}
-    for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids))):
-        for s in segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]):
-            out[(r.id, s.index)] = s.start
-    return out
+def _changed_pieces(before: Snapshot, after: Snapshot) -> list[tuple[tuple[int, int], int | None, int | None, int]]:
+    """Части, у которых сменился объект: (ключ, был, стал, start_pos части).
+
+    Индекс части зависит от границ версий фонда: публикация с даты D добавляет границу, и
+    часть «после» с тем же индексом — уже другой отрезок сегмента. Поэтому каждая часть «после»
+    сравнивается с частями «до» той же брони и сегмента, которые она покрывает; строка — только
+    если объект действительно сменился. Часть «до», которую не покрывает ни одна часть «после»
+    (бронь удалена, сегмент сократился), с объектом — «объект → без объекта»."""
+    def by_seg(snap: Snapshot) -> dict[tuple[int, int], list[tuple[int, int, int | None, tuple[int, int]]]]:
+        out: dict = {}
+        for key, uid in snap.units.items():
+            span = snap.spans.get(key)
+            if span is None:
+                continue
+            out.setdefault((key[0], key[1] // PIECE_BASE), []).append((span[0], span[1], uid, key))
+        return out
+
+    was_by, now_by = by_seg(before), by_seg(after)
+    out = []
+    covered: set[tuple[int, int]] = set()
+    for seg, now_pieces in now_by.items():
+        old = sorted(was_by.get(seg, []))
+        for a, z, now, key in sorted(now_pieces):
+            over = [o for o in old if o[0] <= z and a <= o[1]]
+            covered.update(o[3] for o in over)
+            if not over:
+                if now is not None:
+                    out.append((key, None, now, a))
+                continue
+            moved = next((o for o in over if o[2] != now), None)
+            if moved is not None:
+                out.append((key, moved[2], now, max(a, moved[0])))
+    for old in was_by.values():
+        for a, _z, was, key in old:
+            if key not in covered and was is not None:
+                out.append((key, was, None, a))
+    return sorted(out, key=lambda x: (x[0][0], x[3]))
 
 
 def diff(db: Session, before: Snapshot, after: Snapshot) -> dict:
     numbers = dict(db.execute(select(Reservation.id, Reservation.number)).all())
-    changed = [key for key in sorted(set(before.units) | set(after.units))
-               if before.units.get(key) != after.units.get(key)]
-    # обозначения объектов — на дату начала сегмента (фонд меняется версиями с даты)
-    starts = _segment_starts(db, changed)
-    dates = list(starts.values()) or [local_date()]      # сегмента больше нет — фонд сегодня
+    changed = _changed_pieces(before, after)
+    # обозначения объектов — на дату начала изменившегося отрезка (фонд меняется версиями с даты)
+    starts = {i: dt.date.fromordinal(start // 2) for i, (_k, _w, _n, start) in enumerate(changed)}
+    dates = list(starts.values()) or [local_date()]
     fund = fund_for(db, min(dates), max(dates)) if changed else None
 
-    def label(uid: int | None, key: tuple[int, int]) -> str | None:
-        u = fund.unit(uid, starts.get(key, min(dates))) if fund is not None and uid is not None else None
+    def label(uid: int | None, day: dt.date) -> str | None:
+        u = fund.unit(uid, day) if fund is not None and uid is not None else None
         return u.label if u is not None else None
 
+    seg_starts: dict[tuple[int, int], int] = {}          # (бронь, сегмент) → начало сегмента
+    for k, (a, _z) in (before.spans | after.spans).items():
+        seg = (k[0], k[1] // PIECE_BASE)
+        seg_starts[seg] = min(a, seg_starts.get(seg, a))
     moved = []
-    for key in changed:
-        was, now = before.units.get(key), after.units.get(key)
+    for i, (key, was, now, start) in enumerate(changed):
         # у новой брони id при предпросмотре и сохранении разные (последовательность PG
         # не откатывается) — она помечается «новая», без id
         new = key[0] not in before.reservations
+        seg_start = seg_starts.get((key[0], key[1] // PIECE_BASE), start)
         moved.append({"reservation_id": None if new else key[0], "new": new,
-                      "number": numbers.get(key[0], ""), "seg_index": key[1],
+                      "number": numbers.get(key[0], ""), "seg_index": key[1] // PIECE_BASE,
+                      "since": starts[i].isoformat() if start > seg_start else None,
                       "from_unit": was, "to_unit": now,
-                      "from_label": label(was, key), "to_label": label(now, key)})
+                      "from_label": label(was, starts[i]), "to_label": label(now, starts[i])})
     return {"moved": moved,
             "warnings_added": [_warning(k, before.reservations) for k in
                                sorted(after.warnings - before.warnings, key=lambda k: repr(k[:3] + k[4:]))],

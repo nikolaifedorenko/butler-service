@@ -23,10 +23,10 @@ from ..adapters.orm import (
     Reservation,
     StayGroup,
 )
-from ..domain.halfday import segments, validate_dates
+from ..domain.halfday import AM, PIECE_BASE, pieces, pos, segments, validate_dates
 from . import allocation
 from .fund import FundError, changes
-from .fund_versions import category_exists, fund_for, unit_exists
+from .fund_versions import category_exists, fund_for, unit_exists, version_cuts
 from .guests import reservation_search_text, searchable_codes, short_name, validate_fields
 
 STATUS_TITLES = {"tentative": "предварительная", "confirmed": "подтверждена", "in_house": "заселён",
@@ -148,8 +148,9 @@ def _sync_group(db: Session, r: Reservation, doc: dict) -> None:
 def reservation_snapshot(db: Session, r: Reservation) -> dict:
     """Плоский снимок брони для журнала «было → стало» (§3.6)."""
     moves = _moves_of(db, r.id)
-    # обозначение — на дату начала сегмента (фонд меняется версиями с даты)
-    starts = {s.index: s.start for s in segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)}
+    # обозначение — на дату начала части сегмента (фонд меняется версиями с даты)
+    starts = {p.index: p.start for p in pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id,
+                                                        moves), version_cuts(db))}
     fund = fund_for(db, r.check_in, r.check_out)
     units = [u.label if a.unit_id and (u := fund.unit(a.unit_id, starts.get(a.seg_index, r.check_in))) else None
              for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)
@@ -235,24 +236,42 @@ def _replace_children(db: Session, r: Reservation, doc: dict) -> None:
 
 
 def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
-    """Закрепление у брони группы — закрепление всей группы: пишется всем её членам."""
+    """pins — сегмент → объект (форма шлёт его на каждое сохранение). Пишутся только изменения:
+    сегмент, чей объект закрепления (allocation.effective_pin) не сменился, не трогается — и части, отпущенные с этого
+    закрепления (pin_invalid за границей версии), остаются в своём объекте. Новое закрепление
+    пишется во все не закончившиеся части сегмента (seg * PIECE_BASE + n); прошлые части
+    (закончившиеся до сегодняшнего утра) заморожены и не переписываются. Закрепление у брони группы —
+    закрепление всей группы: пишется всем её членам."""
     if pins is None:
         return
-    rids = [r.id] + [o.id for o in _group_others(db, r.group_id, r.id)]
-    rows = {(a.reservation_id, a.seg_index): a
-            for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_(rids)))}
-    for rid in rids:
+    members = [r, *_group_others(db, r.group_id, r.id)]
+    rows: dict[tuple[int, int], dict[int, Assignment]] = {}
+    for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([m.id for m in members]))):
+        rows.setdefault((a.reservation_id, a.seg_index // PIECE_BASE), {})[a.seg_index] = a
+    cuts, morning = version_cuts(db), pos(local_date(), AM)
+    for m in members:
+        live: dict[int, list[int]] = {}
+        for p in pieces(segments(m.check_in, m.check_out, m.early, m.late, m.category_id, _moves_of(db, m.id)), cuts):
+            if p.end_pos >= morning:
+                live.setdefault(p.seg_index, []).append(p.index)
         for seg, uid in pins.items():
-            a = rows.get((rid, int(seg)))
+            parts = rows.get((m.id, int(seg)), {})
+            pinned_to = allocation.effective_pin({i: a.unit_id for i, a in parts.items()
+                                                  if a.pinned and a.unit_id is not None},
+                                                 set(live.get(int(seg), [])))
+            if uid == pinned_to:
+                continue                     # закрепление сегмента не меняется
             if uid is None:
-                # «Авто» снимает только закрепление: объект замороженного сегмента остаётся
-                if a is not None:
+                # «Авто» снимает только закрепление: объект замороженной части остаётся
+                for a in parts.values():
                     a.pinned = False
                 continue
-            if a is None:
-                a = Assignment(reservation_id=rid, seg_index=int(seg))
-                db.add(a)
-            a.unit_id, a.pinned = uid, True
+            for i in live.get(int(seg), []):
+                a = parts.get(i)
+                if a is None:
+                    a = Assignment(reservation_id=m.id, seg_index=i)
+                    db.add(a)
+                a.unit_id, a.pinned = uid, True
     db.flush()
 
 
@@ -300,7 +319,19 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
     """Документ брони для формы правки (уровень «полный», только stays.edit)."""
     moves = _moves_of(db, r.id)
     segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)
-    asg = {a.seg_index: a for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id))}
+    # сегмент формы: закреплён, если закреплена любая часть, — объект закрепления по тому же
+    # правилу, что у распределения (effective_pin: первая живая закреплённая часть); его форма шлёт
+    # обратно, и _apply_pins видит «без изменений». Иначе — объект первой части
+    morning = pos(local_date(), AM)
+    live = {p.index for p in pieces(segs, version_cuts(db)) if p.end_pos >= morning}
+    first: dict[int, int | None] = {}
+    pin_rows: dict[int, dict[int, int]] = {}
+    for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)):
+        if a.seg_index % PIECE_BASE == 0:
+            first[a.seg_index // PIECE_BASE] = a.unit_id
+        if a.pinned and a.unit_id is not None:
+            pin_rows.setdefault(a.seg_index // PIECE_BASE, {})[a.seg_index] = a.unit_id
+    pinned = {seg: allocation.effective_pin(rows, live) for seg, rows in pin_rows.items()}
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == r.id)
                           .order_by(Occupant.date_from, Occupant.id)))
     names = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_({o.guest_id for o in occ})))} if occ else {}
@@ -309,8 +340,8 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
         **{k: _d(getattr(r, k)) for k in SCALARS}, "fields": json.loads(r.fields_json or "{}"),
         "moves": [{"move_date": _d(d), "category_id": c} for d, c in moves],
         "segments": [{"index": s.index, "category_id": s.category_id, "start": _d(s.start), "end": _d(s.end),
-                      "unit_id": asg[s.index].unit_id if s.index in asg else None,
-                      "pinned": bool(asg[s.index].pinned) if s.index in asg else False} for s in segs],
+                      "unit_id": pinned[s.index] if s.index in pinned else first.get(s.index),
+                      "pinned": s.index in pinned} for s in segs],
         "occupants": [{"id": o.id, "guest_id": o.guest_id, "date_from": _d(o.date_from),
                        "date_to": _d(o.date_to), "role": o.role,
                        "name": short_name(names[o.guest_id]) if o.guest_id in names else "",

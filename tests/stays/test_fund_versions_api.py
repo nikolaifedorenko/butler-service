@@ -1,6 +1,8 @@
 """API версий фонда: снимок на дату, черновик, публикация, справочник флагов."""
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 from sqlalchemy import delete, func, select, update
 
@@ -152,7 +154,8 @@ def test_group_split_merge_and_flags_via_api(manager_role_client, db):
     r = c.delete(f"{API}/fund/draft/units/{merged}", params={"rev": rev})
     assert r.status_code == 200 and r.json()["rev"] == rev + 1
     assert c.patch(f"{API}/fund/draft", json={"rev": rev + 1, "valid_from": "2000-01-01"}).status_code == 422
-    assert c.patch(f"{API}/fund/draft", json={"rev": rev + 1, "valid_from": "2090-01-01"}).status_code == 200
+    nxt = (dt.date.fromisoformat(_today(db)) + dt.timedelta(days=1)).isoformat()   # в интервале той же базы
+    assert c.patch(f"{API}/fund/draft", json={"rev": rev + 1, "valid_from": nxt}).status_code == 200
 
 
 def test_validation_errors(manager_role_client, db):

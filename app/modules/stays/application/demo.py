@@ -193,6 +193,7 @@ def seed_stays_demo(db: Session) -> None:
         db.add(r)
         db.flush()
         if unit is not None:
+            # индекс 0 — первая часть первого сегмента; закрепление действует на весь сегмент
             db.add(Assignment(reservation_id=r.id, seg_index=0, unit_id=unit.id, pinned=True))
         made.append(r)
         return r

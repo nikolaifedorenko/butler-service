@@ -11,6 +11,7 @@ base_version_id указывает на заменяемую версию."""
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
 
@@ -26,6 +27,7 @@ from ..adapters.orm import (
     FundGroup,
     FundVersion,
     GroupState,
+    Reservation,
     Unit,
     UnitFlag,
     UnitLineage,
@@ -33,8 +35,9 @@ from ..adapters.orm import (
     UnitStateFlag,
 )
 from . import allocation as _allocation
+from . import reservations
 from .fund import KINDS, FundConflict, FundError
-from .fund_versions import INITIAL_DATE, FundSnapshot, snapshot_of
+from .fund_versions import INITIAL_DATE, FundSnapshot, fund_on, snapshot_of
 from .locking import lock_module
 
 # ── черновик ───────────────────────────────────────────────────────────────
@@ -113,6 +116,12 @@ def move_draft_date(db: Session, rev: int, valid_from: dt.date) -> None:
         raise FundError("дата версии не может быть в прошлом")
     if _published_on(db, valid_from) is not None:
         raise FundConflict("на эту дату уже есть версия — удалите черновик и откройте новый на эту дату")
+    on_new = db.scalar(select(FundVersion.id).where(
+        FundVersion.status == "published", FundVersion.valid_from <= valid_from)
+        .order_by(FundVersion.valid_from.desc()).limit(1))
+    if on_new != draft.base_version_id:    # другая база: снимок черновика не учёл бы её правки (§4.4)
+        raise FundConflict("между датами есть другая версия фонда — удалите черновик и откройте новый "
+                           "с нужной даты")
     draft.valid_from = valid_from
     bump(draft)
     db.flush()
@@ -445,11 +454,252 @@ def diff(db: Session, base_id: int, other_id: int) -> FundDiff:
     return FundDiff(units=units, categories=_entries(bc, oc), groups=_entries(bg, og), flags=flags)
 
 
+# ── перенос в поздние версии (§4.4) ────────────────────────────────────────
+
+# сущность → (модель, ключ, поля в версии); порядок — порядок составных FK
+_STATE = {
+    "category": (CategoryState, "category_id", ("code", "title", "kind", "weight", "escorted", "sort_order")),
+    "group": (GroupState, "group_id", ("parent_id", "title", "sort_order")),
+    "unit": (UnitState, "unit_id", ("label", "category_id", "group_id", "floor")),
+}
+_NAME = {"category": "code", "group": "title", "unit": "label"}
+
+
+@dataclass
+class _Fund:
+    """Снимок версии изменяемыми словарями: сущность → id → поля; флаги объектов — множества."""
+    rows: dict[str, dict[int, dict]]
+    flags: dict[int, set[int]]
+
+
+def _load_fund(db: Session, vid: int) -> _Fund:
+    rows = {}
+    for kind, (model, key, cols) in _STATE.items():
+        rows[kind] = {r[0]: dict(zip(cols, r[1:], strict=True)) for r in db.execute(
+            select(getattr(model, key), *(getattr(model, c) for c in cols)).where(model.version_id == vid))}
+    flags: dict[int, set[int]] = {u: set() for u in rows["unit"]}
+    for uid, fid in db.execute(select(UnitStateFlag.unit_id, UnitStateFlag.flag_id)
+                               .where(UnitStateFlag.version_id == vid)):
+        flags[uid].add(fid)
+    return _Fund(rows, flags)
+
+
+def _depth(groups: dict[int, dict], gid: int) -> int:
+    n, seen = 0, set()
+    while gid is not None and gid in groups and gid not in seen:
+        seen.add(gid)
+        gid, n = groups[gid]["parent_id"], n + 1
+    return n
+
+
+def _store_fund(db: Session, vid: int, f: _Fund) -> None:
+    """Переписать снимок версии целиком: удаление до вставки снимает конфликты UNIQUE при обмене
+    обозначениями, узлы вставляются от корня (FK на родителя в той же версии)."""
+    _drop_states(db, vid)
+    db.flush()
+    groups = f.rows["group"]
+    order = {"group": sorted(groups, key=lambda g: (_depth(groups, g), g))}
+    for kind, (model, key, _cols) in _STATE.items():
+        rows = f.rows[kind]
+        values = [{"version_id": vid, key: i, **rows[i]} for i in order.get(kind, sorted(rows))]
+        if values:
+            db.execute(insert(model), values)
+    pairs = [{"version_id": vid, "unit_id": u, "flag_id": fl} for u in sorted(f.flags) for fl in sorted(f.flags[u])]
+    if pairs:
+        db.execute(insert(UnitStateFlag), pairs)
+    db.flush()
+
+
+def _conflict(f: _Fund, kind: str, i: int, row: dict) -> str | None:
+    """Что мешает записать строку row сущности i в снимок f (составные FK, UNIQUE, цикл дерева)."""
+    if kind == "unit":
+        if row["category_id"] not in f.rows["category"]:
+            return "категории объекта в этой версии нет"
+        if row["group_id"] is not None and row["group_id"] not in f.rows["group"]:
+            return "узла объекта в этой версии нет"
+        if any(j != i and u["label"] == row["label"] for j, u in f.rows["unit"].items()):
+            return f"обозначение «{row['label']}» уже занято"
+    elif kind == "category":
+        if any(j != i and c["code"] == row["code"] for j, c in f.rows["category"].items()):
+            return f"код категории «{row['code']}» уже занят"
+    else:
+        groups, cur, seen = f.rows["group"], row["parent_id"], set()
+        if cur is not None and cur not in groups:
+            return "родительского узла в этой версии нет"
+        while cur is not None and cur in groups and cur not in seen:
+            if cur == i:
+                return "узел оказался бы в своём потомке"
+            seen.add(cur)
+            cur = groups[cur]["parent_id"]
+    return None
+
+
+def _busy(f: _Fund, kind: str, i: int) -> str | None:
+    """Что мешает вывести сущность i из снимка f."""
+    if kind == "category" and any(u["category_id"] == i for u in f.rows["unit"].values()):
+        return "в категории этой версии есть объекты"
+    if kind == "group":
+        if any(u["group_id"] == i for u in f.rows["unit"].values()):
+            return "в узле этой версии есть объекты"
+        if any(g["parent_id"] == i for g in f.rows["group"].values()):
+            return "в узле этой версии есть подузлы"
+    return None
+
+
+def _plain_value(v):
+    return float(v) if isinstance(v, Decimal) else v
+
+
+def _propagate(base: _Fund, draft: _Fund, later: _Fund, version: FundVersion, out: PublishResult) -> bool:
+    """Правило §4.4 для одной поздней версии, поле за полем относительно базы черновика.
+    Пишет строки отчёта в out; True — снимок поздней версии изменился."""
+    b, d, v = base.rows, draft.rows, later.rows
+    changed = False
+
+    def note(bucket: list, kind: str, i: int, fld: str | None, **extra) -> None:
+        row = d[kind].get(i) or b[kind].get(i) or v[kind].get(i) or {}
+        bucket.append({"version_id": version.id, "valid_from": version.valid_from.isoformat(), "entity": kind,
+                       "id": i, "name": row.get(_NAME[kind]), "field": fld, **extra})
+
+    # правки и добавления: категории, узлы (от корня), объекты — FK ссылаются на уже перенесённое
+    for kind, (_m, _k, cols) in _STATE.items():
+        ids = sorted(d[kind], key=lambda g: (_depth(d["group"], g), g)) if kind == "group" else sorted(d[kind])
+        for i in ids:
+            if i not in b[kind]:                                         # добавлено в черновике
+                problem = _conflict(later, kind, i, d[kind][i])
+                if problem:
+                    note(out.skipped, kind, i, None, reason=problem)
+                    continue
+                v[kind][i] = dict(d[kind][i])
+                if kind == "unit":
+                    later.flags[i] = set(draft.flags[i])
+                note(out.propagated, kind, i, None, action="added")
+                changed = True
+                continue
+            fields = [c for c in cols if b[kind][i][c] != d[kind][i][c]]
+            if fields and i not in v[kind]:
+                note(out.kept, kind, i, None, value=None, reason="в этой версии этого нет")
+                continue
+            for c in fields:
+                if v[kind][i][c] != b[kind][i][c]:                       # поздняя версия меняла поле сама
+                    note(out.kept, kind, i, c, value=_plain_value(v[kind][i][c]))
+                    continue
+                problem = _conflict(later, kind, i, {**v[kind][i], c: d[kind][i][c]})
+                if problem:
+                    note(out.skipped, kind, i, c, reason=problem)
+                    continue
+                v[kind][i][c] = d[kind][i][c]
+                note(out.propagated, kind, i, c, action="changed", value=_plain_value(d[kind][i][c]))
+                changed = True
+    # флаги объектов: каждая отметка — отдельное поле «да/нет»
+    for u in sorted(b["unit"].keys() & d["unit"].keys()):
+        flips = base.flags[u] ^ draft.flags[u]
+        if not flips:
+            continue
+        if u not in v["unit"]:
+            note(out.kept, "unit", u, "flags", value=None, reason="в этой версии этого нет")
+            continue
+        for fl in sorted(flips):
+            on = fl in draft.flags[u]
+            if (fl in later.flags[u]) != on:                             # иначе версия уже такая
+                (later.flags[u].add if on else later.flags[u].discard)(fl)
+                note(out.propagated, "unit", u, "flags", action="changed", flag_id=fl, value=on)
+                changed = True
+    # выведенное: объекты, узлы (от листьев), категории — только если поздняя версия их не меняла
+    for kind in ("unit", "group", "category"):
+        gone = sorted((i for i in b[kind] if i not in d[kind] and i in v[kind]),
+                      key=lambda i: (-_depth(b["group"], i) if kind == "group" else 0, i))
+        for i in gone:
+            if v[kind][i] != b[kind][i] or (kind == "unit" and later.flags[i] != base.flags[i]):
+                note(out.kept, kind, i, None, value=None, reason="версия меняла его сама")
+                continue
+            problem = _busy(later, kind, i)
+            if problem:
+                note(out.skipped, kind, i, None, reason=problem)
+                continue
+            del v[kind][i]
+            if kind == "unit":
+                del later.flags[i]
+            note(out.propagated, kind, i, None, action="retired")
+            changed = True
+    return changed
+
+
+def _propagate_later(db: Session, draft: FundVersion, out: PublishResult) -> None:
+    later = list(db.scalars(select(FundVersion).where(FundVersion.status == "published",
+                                                      FundVersion.valid_from > draft.valid_from)
+                            .order_by(FundVersion.valid_from)))
+    if not later or draft.base_version_id is None:
+        return
+    db.flush()
+    base, mine = _load_fund(db, draft.base_version_id), _load_fund(db, draft.id)
+    for v in later:
+        snap = _load_fund(db, v.id)
+        if _propagate(base, mine, snap, v, out):
+            _store_fund(db, v.id, snap)
+    db.expire_all()
+
+
+# ── перевод броней на категорию (§4.3) ─────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Transfer:
+    reservation_id: int
+    category_id: int
+
+
+def _transfer(db: Session, principal, version: FundVersion, t: Transfer, categories: set[int]) -> dict:
+    """Заезд с D и позже — бронь целиком в категорию; бронь, живущая на D, — переезд с D.
+    Записывается тем же путём, что и правка формы: журнал брони «было → стало»."""
+    day = version.valid_from
+    r = db.get(Reservation, t.reservation_id)
+    if r is None:
+        raise FundError("бронь для перевода не найдена")
+    who = f"бронь {r.number or r.id}"
+    if t.category_id not in categories:
+        raise FundError(f"{who}: категории перевода нет в фонде с {day:%d.%m.%Y}")
+    if r.check_out <= day:
+        raise FundError(f"{who}: выезд до {day:%d.%m.%Y} — переводить нечего")
+    whole = r.check_in >= day
+    if whole:
+        doc = reservations.doc_of(db, r, category_id=t.category_id)
+    else:
+        doc = reservations.doc_of(db, r)
+        doc["moves"] = sorted([m for m in doc["moves"] if m["move_date"] != day]
+                              + [{"move_date": day, "category_id": t.category_id}], key=lambda m: m["move_date"])
+    # члены группы получают ту же категорию и переезды (save_reservation) — журнал и им
+    group = list(db.scalars(select(Reservation).where(Reservation.group_id == r.group_id,
+                                                      Reservation.id != r.id))) if r.group_id else []
+    others = [(m, reservations.reservation_snapshot(db, m)) for m in group]
+    saved, before = reservations.save_reservation(db, doc, r.id, r.version)
+    for m, was in [(saved, before), *others]:
+        change = reservations.diff_of(was, db, m)
+        if change or m is saved:
+            audit(db, principal, "stays_reservation", f"reservation:{m.id}",
+                  {"diff": change, "fund_version": version.id})
+    return {"reservation_id": saved.id, "number": saved.number, "category_id": t.category_id,
+            "since": None if whole else day.isoformat()}
+
+
 # ── публикация и удаление ──────────────────────────────────────────────────
 
 
-def publish(db: Session, principal, rev: int | None = None) -> FundVersion:
-    """rev — ревизия, которую видел автор; сверяется уже под замком модуля, как в каждой записи."""
+@dataclass
+class PublishResult:
+    version: FundVersion
+    propagated: list[dict] = field(default_factory=list)   # перенесено в поздние версии
+    kept: list[dict] = field(default_factory=list)         # поздняя версия меняла сама — оставлено
+    skipped: list[dict] = field(default_factory=list)      # конфликт — не перенесено
+    fund_diff: dict = field(default_factory=dict)          # черновик против базы
+    transfers: list[dict] = field(default_factory=list)
+
+
+def publish(db: Session, principal, rev: int | None = None, propagate: bool = True,
+            transfers: Sequence[Transfer] = ()) -> PublishResult:
+    """rev — ревизия, которую видел автор; сверяется уже под замком модуля, как в каждой записи.
+    propagate — перенести правки в опубликованные версии после даты черновика (§4.4);
+    transfers — перевод броней на категорию с даты версии (§4.3). Всё — одной транзакцией."""
     lock_module(db)
     draft = current_draft(db)
     if draft is None:
@@ -461,6 +711,9 @@ def publish(db: Session, principal, rev: int | None = None) -> FundVersion:
     if day < local_date():
         raise FundConflict("дата черновика прошла — сдвиньте на сегодня или позже")
     change = asdict(diff(db, draft.base_version_id, draft.id)) if draft.base_version_id else {}
+    out = PublishResult(version=draft, fund_diff=change)
+    if propagate:
+        _propagate_later(db, draft, out)   # до замены снимка: база — ещё прежний снимок
     target = _published_on(db, day)
     if target is not None:                              # замена снимка версии на ту же дату
         _drop_states(db, target.id)
@@ -478,11 +731,17 @@ def publish(db: Session, principal, rev: int | None = None) -> FundVersion:
         version = draft
     version.published_at = now_local()
     version.rev = 1
+    out.version = version
     db.flush()
+    db.info.pop(_allocation.CACHE_KEY, None)            # фонд другой — прежнее состояние распределения не годится
+    if transfers:
+        categories = set(fund_on(db, day).categories)
+        out.transfers = [_transfer(db, principal, version, t, categories) for t in transfers]
     _allocation.run_allocation(db)
     audit(db, principal, "stays_fund_version", f"fund_version:{version.id}",
-          {"valid_from": day.isoformat(), "diff": change})
-    return version
+          {"valid_from": day.isoformat(), "diff": change, "propagated": out.propagated, "kept": out.kept,
+           "skipped": out.skipped, "transfers": out.transfers})
+    return out
 
 
 def delete_version(db: Session, version_id: int) -> None:

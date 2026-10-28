@@ -53,6 +53,7 @@ def guest_stays(db: Session, gid: int) -> list[dict]:
         return []
     res = {r.id: r for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids)))}
     unit_ids: dict[int, list[int]] = {rid: [] for rid in rids}
+    # seg_index — индекс части (сегмент * PIECE_BASE + n): порядок частей — порядок во времени
     for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_(rids)).order_by(Assignment.seg_index)):
         if a.unit_id and a.unit_id not in unit_ids[a.reservation_id]:
             unit_ids[a.reservation_id].append(a.unit_id)

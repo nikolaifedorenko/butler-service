@@ -23,6 +23,7 @@ from ..adapters.orm import FundVersion, UnitFlag
 from ..application import fund_drafts as fd
 from ..application.fund import FundError
 from ..application.fund_versions import FundSnapshot, fund_on, snapshot_of
+from ._ops import PREVIEW, run
 from .fund_api import READ, SETUP, SORT, CategoryIn, _err
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -41,8 +42,15 @@ class DraftMoveIn(BaseModel):
     valid_from: dt.date
 
 
-class RevIn(BaseModel):
+class TransferIn(BaseModel):
+    reservation_id: int
+    category_id: int
+
+
+class PublishIn(BaseModel):
     rev: int
+    propagate: bool = True                 # перенести правки в поздние версии (§4.4)
+    transfers: list[TransferIn] = Field([], max_length=500)
 
 
 class DraftCategoryIn(CategoryIn):
@@ -308,10 +316,23 @@ def put_draft_flags(payload: FlagValueIn, principal: Principal = Depends(SETUP),
 
 
 @router.post("/fund/draft/publish")
-def publish_draft(payload: RevIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    version = _run(fd.publish, db, principal, payload.rev)
-    out = {"id": version.id, "valid_from": version.valid_from.isoformat(), "rev": version.rev}
-    db.commit()
+def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
+                  db: Session = Depends(get_db)):
+    """Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается
+    (§4.3). rev сверяется в fd.publish под замком модуля."""
+    transfers = [fd.Transfer(t.reservation_id, t.category_id) for t in payload.transfers]
+
+    def op():
+        res = fd.publish(db, principal, payload.rev, propagate=payload.propagate, transfers=transfers)
+        v = res.version
+        return {"version": {"id": v.id, "valid_from": v.valid_from.isoformat(), "rev": v.rev},
+                "fund_diff": res.fund_diff, "propagated": res.propagated, "kept": res.kept,
+                "skipped": res.skipped, "transfers": res.transfers}
+    out = run(db, op, preview_flag, None)
+    added = out["diff"]["warnings_added"]
+    out["result"]["affected"] = {"moved": out["diff"]["moved"],
+                                 **{k: [w for w in added if w["kind"] == k]
+                                    for k in ("unassigned", "pin_invalid", "category_missing")}}
     return out
 
 

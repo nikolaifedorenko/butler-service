@@ -2415,6 +2415,33 @@
         "title": "PeriodAction",
         "type": "object"
       },
+      "PublishIn": {
+        "properties": {
+          "propagate": {
+            "default": true,
+            "title": "Propagate",
+            "type": "boolean"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "transfers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TransferIn"
+            },
+            "maxItems": 500,
+            "title": "Transfers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rev"
+        ],
+        "title": "PublishIn",
+        "type": "object"
+      },
       "PunchIn": {
         "properties": {
           "employee_id": {
@@ -2856,19 +2883,6 @@
         "title": "ResetIn",
         "type": "object"
       },
-      "RevIn": {
-        "properties": {
-          "rev": {
-            "title": "Rev",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "rev"
-        ],
-        "title": "RevIn",
-        "type": "object"
-      },
       "RoleIn": {
         "properties": {
           "max_assignable_rank": {
@@ -3204,6 +3218,24 @@
           "chat_id"
         ],
         "title": "TelegramTestIn",
+        "type": "object"
+      },
+      "TransferIn": {
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "reservation_id": {
+            "title": "Reservation Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reservation_id",
+          "category_id"
+        ],
+        "title": "TransferIn",
         "type": "object"
       },
       "ValidationError": {
@@ -12150,12 +12182,27 @@
     },
     "/api/stays/fund/draft/publish": {
       "post": {
+        "description": "Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается\n(§4.3). rev сверяется в fd.publish под замком модуля.",
         "operationId": "publish_draft_api_stays_fund_draft_publish_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RevIn"
+                "$ref": "#/components/schemas/PublishIn"
               }
             }
           },

@@ -44,7 +44,8 @@ function renderPreview(diff, el) {
   const items = [];
   (diff.moved || []).forEach(m => {
     const who = m.new ? 'Новая бронь' : `Бронь ${m.number || '#' + m.reservation_id}`;
-    const seg = m.seg_index ? ` (сегмент ${m.seg_index + 1})` : '';
+    // seg_index — сегмент; since — дата части сегмента за границей версии фонда
+    const seg = (m.seg_index ? ` (сегмент ${m.seg_index + 1})` : '') + (m.since ? ` с ${dateRu(m.since)}` : '');
     items.push(`<li>${esc(who)}${esc(seg)}: ${esc(m.from_label || 'без объекта')} → <b>${esc(m.to_label || 'без объекта')}</b></li>`);
   });
   (diff.warnings_added || []).forEach(w => items.push(`<li class="sp-warn">⚠ ${esc(w.text)}</li>`));

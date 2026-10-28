@@ -123,6 +123,13 @@ def boundary_pos(d: dt.date) -> int:
     return halfday.pos(d, halfday.PM)
 
 
+def version_cuts(db: Session) -> list[int]:
+    """Границы всех опубликованных версий (позиции половинок). По ним режут сегменты на части и
+    распределение, и виды: индекс части (Assignment.seg_index) не зависит от окна чтения."""
+    return [boundary_pos(d) for d in db.scalars(
+        select(FundVersion.valid_from).where(FundVersion.status == "published"))]
+
+
 def _group_paths(rows: list[GroupState]) -> dict[int, GroupInfo]:
     by_id = {r.group_id: r for r in rows}
 
