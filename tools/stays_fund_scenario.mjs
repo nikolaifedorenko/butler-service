@@ -6,7 +6,10 @@
   3. 409 при устаревшем rev — тост и перезагрузка снимка; массовая отметка флага по узлу;
   4. предпросмотр: бронь коннекта без объекта → перевод галочкой в DLX → публикация;
      затем GET /fund/snapshot?date=<завтра> — новые объекты и флаг;
-  5. под rukovod экран недоступен.
+  5. файл фонда: «Выгрузить фонд» → тот же файл «Загрузить фонд» черновиком с сегодня (ноль
+     изменений); под admin — предпросмотр начальной загрузки («будет удалено…», слово ЗАМЕНИТЬ)
+     без подтверждения: ничего не удалено; переключатель «Шахматка в эксплуатации»;
+  6. под rukovod экран недоступен.
 
 Запуск: tools/run_stays_fund_scenario.sh [порт] [логин]   (нужен jsdom: npm i)
 Код возврата: 0 — сценарий пройден, 2 — есть проваленные проверки. */
@@ -28,6 +31,7 @@ vc.on('error', (...a) => consoleErrors.push('[console.error] ' + a.map(String).j
 
 const html = fs.readFileSync(path.join(ROOT, 'static/index.html'), 'utf8');
 const jar = new Map();
+const requests = [];                    // [{method, path, status, buf}] — что слал интерфейс
 function proxy(method, url, { body, headers } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url, BASE);
@@ -46,9 +50,12 @@ function proxy(method, url, { body, headers } = {}) {
       const chunks = [];
       res.on('data', d => chunks.push(d));
       res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
-        resolve({ status: res.statusCode, ok: res.statusCode < 400, headers: res.headers,
-          text: async () => text, json: async () => JSON.parse(text) });
+        const buf = Buffer.concat(chunks);
+        const text = buf.toString('utf8');
+        requests.push({ method, path: u.pathname + u.search, status: res.statusCode, buf });
+        const hdrs = { get: k => res.headers[k.toLowerCase()] ?? null };
+        resolve({ status: res.statusCode, ok: res.statusCode < 400, headers: hdrs,
+          text: async () => text, json: async () => JSON.parse(text), blob: async () => new window.Blob([buf]) });
       });
     });
     req.on('error', e => { console.error('PROXY ERROR', method, u.pathname, e.code || e.message); reject(e); });
@@ -60,8 +67,28 @@ function proxy(method, url, { body, headers } = {}) {
 const dom = new JSDOM(html, { url: BASE + '/', runScripts: 'dangerously',
   pretendToBeVisual: true, virtualConsole: vc });
 const { window } = dom;
-window.fetch = (url, init = {}) => proxy(init.method || 'GET', url,
-  { body: typeof init.body === 'string' ? init.body : undefined, headers: init.headers });
+/* FormData (загрузка файла фонда) → multipart вручную: http.request не знает FormData jsdom */
+async function multipart(fd) {
+  const b = '----scenario' + Date.now().toString(16);
+  const parts = [];
+  for (const [k, v] of fd.entries()) {
+    if (typeof v === 'string') {
+      parts.push(Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+    } else {
+      parts.push(Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="${k}"; filename="${v.name}"\r\n`
+        + `Content-Type: ${v.type || 'application/octet-stream'}\r\n\r\n`), Buffer.from(await v.arrayBuffer()), Buffer.from('\r\n'));
+    }
+  }
+  parts.push(Buffer.from(`--${b}--\r\n`));
+  return { body: Buffer.concat(parts), type: `multipart/form-data; boundary=${b}` };
+}
+window.fetch = async (url, init = {}) => {
+  if (init.body instanceof window.FormData) {
+    const { body, type } = await multipart(init.body);
+    return proxy(init.method || 'GET', url, { body, headers: { ...(init.headers || {}), 'Content-Type': type } });
+  }
+  return proxy(init.method || 'GET', url, { body: typeof init.body === 'string' ? init.body : undefined, headers: init.headers });
+};
 window.URL.createObjectURL = () => 'blob:stub';
 window.URL.revokeObjectURL = () => {};
 window.print = () => {};
@@ -74,6 +101,7 @@ window.addEventListener('error', e => consoleErrors.push('[window.onerror] ' + S
 window.addEventListener('unhandledrejection', e => consoleErrors.push('[unhandledrejection] ' + String(e.reason?.message || e.reason)));
 window.Element.prototype.scrollTo = function () {};
 window.HTMLElement.prototype.scrollIntoView = function () {};
+window.HTMLAnchorElement.prototype.click = function () {};   // скачивание (downloadBlob): навигации в jsdom нет
 
 for (const src of [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1])) {
   const file = path.join(ROOT, src.split('?v=')[0].replace(/^\//, ''));
@@ -281,6 +309,86 @@ async function fundFlow() {
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
 }
 
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/* выбрать файл в <input type=file>: jsdom не даёт задать files — подменяем свойство */
+function pickFile(el, buf, name) {
+  const f = new window.File([buf], name, { type: XLSX });
+  Object.defineProperty(el, 'files', { value: [f], configurable: true });
+  change(el);
+}
+
+async function fundFileFlow() {
+  console.log('\n5 · Файл фонда: выгрузка, загрузка черновиком, предпросмотр начальной загрузки');
+  const today = serverToday();
+  window.navigate('settings');
+  await waitFor(() => !!$('#st-nav'));
+  await go('stays_fund');
+  await waitFor(() => !!$('#fund-export'));
+  check('кнопки «Выгрузить фонд» и «Загрузить фонд»', !!$('#fund-export') && !!$('#fund-upload'));
+  check('переключатель «Шахматка в эксплуатации» виден администратору (выключен)',
+    !!$('#fund-in-prod') && $('#fund-in-prod').checked === false);
+  const n0 = requests.length;
+  click($('#fund-export'));
+  await waitFor(() => requests.slice(n0).some(r => r.path.startsWith('/api/stays/fund/export')));
+  const exp = requests.slice(n0).find(r => r.path.startsWith('/api/stays/fund/export'));
+  check('выгрузка: файл фонда на сегодня', exp?.status === 200 && exp.path.includes('date=' + today)
+    && exp.buf.subarray(0, 2).toString() === 'PK', exp && `${exp.status} ${exp.path}`);
+  if (!exp || exp.status !== 200) return;
+
+  click($('#fund-upload'));
+  check('окно «Загрузить фонд»: режимы черновик и начальная загрузка', await waitFor(() => !!$('#fu-mode'))
+    && [...$('#fu-mode').options].map(o => o.value).join() === 'draft,reset');
+  input($('#fu-date'), today); change($('#fu-date'));
+  pickFile($('#fu-file'), exp.buf, `fund-${today}.xlsx`);
+  click($('#fu-go'));
+  check('черновик из файла без правок: изменений 0', await waitFor(() => toastHas('изменений: 0')), text('#toast-host'));
+  check('экран показывает черновик, плашка «изменений: 0»',
+    await waitFor(() => $('#fund-view')?.value === 'draft' && text('#fund-draft-bar').includes('изменений: 0')), text('#fund-draft-bar'));
+  const draft = (await apiJson('GET', '/api/stays/fund/versions')).body.find(v => v.status === 'draft');
+  check('черновик с сегодня', draft?.valid_from === today, JSON.stringify(draft));
+  if (draft) await apiJson('DELETE', '/api/stays/fund/versions/' + draft.id);
+  window.navigate('settings');
+  await waitFor(() => !!$('#st-nav'));
+  await go('stays_fund');
+  await waitFor(() => !!$('#fund-upload') && !$('#fund-draft-bar'));
+
+  const resBefore = (await apiJson('GET', `/api/stays/board/units?first=${today}&last=${addDays(today, 30)}`)).body.bars.length;
+  const verBefore = (await apiJson('GET', '/api/stays/fund/versions')).body.length;
+  click($('#fund-upload'));
+  await waitFor(() => !!$('#fu-mode'));
+  change($('#fu-mode'), 'reset');
+  check('режим «заменить всё»: предупреждение, кнопка «Проверить»', !$('#fu-reset').hidden && text('#fu-go') === 'Проверить');
+  pickFile($('#fu-file'), exp.buf, 'real.xlsx');
+  click($('#fu-go'));
+  check('предпросмотр: «Будет удалено» и «Будет загружено»', await waitFor(() => text('#fu-out').includes('Будет удалено')
+    && text('#fu-out').includes('Будет загружено') && /\d+ броней/.test(text('#fu-out'))), text('#fu-out'));
+  check('предпросмотр: ID в файле будут проигнорированы', text('#fu-out').includes('ID в файле будут проигнорированы'));
+  check('без слова ЗАМЕНИТЬ кнопка «Заменить всё» недоступна', text('#fu-go') === 'Заменить всё' && $('#fu-go').disabled === true);
+  input($('#fu-word'), 'заменить');
+  check('слово в другом регистре — кнопка недоступна', $('#fu-go').disabled === true);
+  click($('[data-close]'));
+  const resAfter = (await apiJson('GET', `/api/stays/board/units?first=${today}&last=${addDays(today, 30)}`)).body.bars.length;
+  check('без подтверждения ничего не удалено', resAfter === resBefore && resBefore > 0
+    && (await apiJson('GET', '/api/stays/fund/versions')).body.length === verBefore, `${resBefore} → ${resAfter}`);
+
+  /* «в эксплуатации» убирает начальную загрузку; снять — снова доступна */
+  const prod = $('#fund-in-prod');
+  prod.checked = true; change(prod);
+  await waitFor(() => !!$('[data-yes]'));
+  click($('[data-yes]'));
+  check('в эксплуатации: отметка сохранена', await waitFor(() => $('#fund-in-prod')?.checked === true));
+  click($('#fund-upload'));
+  await waitFor(() => !!$('#fu-mode'));
+  check('в эксплуатации: режима «заменить всё» нет', [...$('#fu-mode').options].map(o => o.value).join() === 'draft');
+  click($('[data-close]'));
+  const prod2 = $('#fund-in-prod');
+  prod2.checked = false; change(prod2);
+  await waitFor(() => !!$('[data-yes]'));
+  click($('[data-yes]'));
+  check('отметка снята', await waitFor(() => $('#fund-in-prod')?.checked === false));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
+}
+
 async function noAccess() {
   console.log(`\nДоступ под логином ${LOGIN}`);
   const me = (await apiJson('GET', '/api/auth/me')).body;
@@ -303,7 +411,7 @@ async function main() {
   await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
   check('вход выполнен', !$('#app').classList.contains('hidden'), text('#login-error'));
   await sleep(500);
-  if (LOGIN === 'admin') await fundFlow();
+  if (LOGIN === 'admin') { await fundFlow(); await fundFileFlow(); }
   else await noAccess();
 
   console.log(`\n=== ошибки консоли ===`);

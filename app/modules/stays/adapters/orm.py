@@ -415,5 +415,5 @@ class StaysSettings(Base):
     daily_limit: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("8"))
     # коды дня Табеля, при которых назначенному батлеру нужна подмена (отпуск, больничный…)
     replacement_codes: Mapped[str] = mapped_column(String(120), default="ОТ,ДО,Б,ОВ,К")
-    # false — фонд правится без ограничений; true — только через версии «с даты»
+    # «Шахматка в эксплуатации» (§9.3): true — начальная загрузка («заменить всё») недоступна
     in_production: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())

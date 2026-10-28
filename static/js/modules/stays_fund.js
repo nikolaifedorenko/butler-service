@@ -5,9 +5,13 @@
    или любую версию из истории; менять можно только черновик «с даты D».
    Каждая запись черновика отправляет rev и получает новый; 409 «черновик изменён
    другим пользователем» — тост и перезагрузка снимка.
+   Файл фонда (§9): «Выгрузить фонд» — Excel на дату экрана; «Загрузить фонд» — черновиком
+   с даты или, администратору (stays.reset) и пока шахматка не «в эксплуатации», начальной
+   загрузкой «заменить всё» с предпросмотром и словом «ЗАМЕНИТЬ».
    Использует хелперы app.js / settings.js / stays*.js: $ $$ esc api openModal
    closeModal confirmDialog toast dateRu settingsHead settingsPanel loadGenerationFor
-   staysToday staysAddDays renderPreview sfRow sfInput sfSelect sfCheck.
+   staysToday staysAddDays renderPreview sfRow sfInput sfSelect sfCheck can downloadBlob
+   getCookie loading.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -193,7 +197,10 @@ async function renderStaysFund(host) {
     ${settingsHead('Фонд и категории', 'Категории, дерево узлов, объекты и их флаги — версиями с даты. Менять фонд можно черновиком «с даты».',
     `<label class="field fund-view"><span>Фонд на дату</span>${sfSelect('fund-view', viewOpts, viewValue)}</label>
       <button class="btn btn-sm" id="fund-flags-dict">Флаги объектов (справочник)</button>
-      ${draft ? '' : '<button class="btn btn-sm btn-primary" id="fund-new-draft">Изменить с даты…</button>'}`)}
+      ${draft ? '' : '<button class="btn btn-sm btn-primary" id="fund-new-draft">Изменить с даты…</button>'}
+      <button class="btn btn-sm" id="fund-export">Выгрузить фонд</button>
+      <button class="btn btn-sm" id="fund-upload">Загрузить фонд</button>
+      ${can('stays.reset') ? sfCheck('fund-in-prod', 'Шахматка в эксплуатации', data.dicts.in_production) : ''}`)}
     ${draft ? `<div class="dict-banner gold fund-draft-bar" id="fund-draft-bar"><span>✎</span>
       <div class="fund-draft-text">Черновик фонда с <b>${esc(dateRu(draft.valid_from))}</b> · изменений: ${lines.length}
         ${lines.length ? `<details><summary>список изменений</summary><ul>${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul></details>` : ''}</div>
@@ -355,6 +362,29 @@ function fundBind(host, data, editing) {
     }, 'Удалить');
   });
   fundOn(host, '#fund-flags-dict', () => openFundFlagsDict());
+  fundOn(host, '#fund-export', () => {
+    const v = typeof fundUI.view === 'number' ? data.versions.find(x => x.id === fundUI.view) : null;
+    const day = v ? v.valid_from : staysToday();
+    downloadBlob(`/api/stays/fund/export?date=${day}`, `fund-${day}.xlsx`);
+  });
+  fundOn(host, '#fund-upload', () => openFundUpload(data, rerender));
+  const prod = $('#fund-in-prod', host);
+  if (prod) {
+    prod.onchange = () => {
+      const on = prod.checked;
+      prod.checked = !on;                         // до подтверждения — прежнее положение
+      confirmDialog(on ? 'Шахматка в эксплуатации?' : 'Снять «в эксплуатации»?',
+        on ? 'Начальная загрузка («заменить всё») станет недоступна. Снять отметку может только администратор.'
+          : 'Снова станет доступна начальная загрузка, которая удаляет все брони, гостей и фонд.',
+        async () => {
+          try {
+            await api('/api/stays/fund/in-production', { method: 'PUT', body: { value: on } });
+            toast(on ? 'Шахматка в эксплуатации' : 'Отметка «в эксплуатации» снята');
+            rerender();
+          } catch (e) { toast(e.message, 'err'); }
+        }, on ? 'Включить' : 'Снять', !on);
+    };
+  }
   fundOn(host, '#fund-new-draft', () => fundForm('Изменить фонд с даты',
     sfRow('С даты', sfInput('fd-date', staysAddDays(staysToday(), 1), 'date')) + sfRow('Примечание', sfInput('fd-note')),
     async m => {
@@ -647,6 +677,118 @@ async function openFundPublish(onDone) {
         } catch (e) { fundFail(e); }
       };
       check(m);
+    },
+  });
+}
+
+/* ─────────────── файл фонда (§9) ─────────────── */
+/* multipart-запрос: api() шлёт только JSON. Ошибки файла — 422 {errors: [{sheet, row, message}]} */
+async function fundPostFile(url, fields) {
+  const fd = new FormData();
+  Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+  loading(true);
+  try {
+    const res = await fetch(url, { method: 'POST', credentials: 'same-origin', body: fd,
+      headers: { 'X-CSRF-Token': getCookie('tt_csrf') } });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const e = new Error(typeof d.detail === 'string' ? d.detail : d.errors ? 'В файле есть ошибки' : `Ошибка ${res.status}`);
+      e.status = res.status;
+      e.errors = d.errors || null;
+      throw e;
+    }
+    return d;
+  } finally { loading(false); }
+}
+
+const FUND_RESET_COUNTS = [['units', 'объектов'], ['reservations', 'броней'], ['guests', 'гостей'],
+  ['coverage', 'назначений батлеров'], ['holds', 'OOO и блоков'], ['versions', 'версий фонда'],
+  ['categories', 'категорий'], ['groups', 'узлов'], ['flags', 'флагов']];
+const FUND_LOAD_COUNTS = [['categories', 'категорий'], ['groups', 'узлов'], ['flags', 'флагов'], ['units', 'объектов']];
+
+function fundFileErrors(e) {
+  if (!e.errors) return `<div class="sp-warn">${esc(e.message)}</div>`;
+  return `<div class="sp-head">Файл не загружен — ошибки:</div><ul>${e.errors.map(x =>
+    `<li class="sp-warn">${esc(x.sheet || 'файл')}${x.row ? `, строка ${x.row}` : ''}: ${esc(x.message)}</li>`).join('')}</ul>`;
+}
+
+/* «Загрузить фонд»: черновиком с даты (stays.setup) или начальной загрузкой (stays.reset).
+   Начальная загрузка: «Проверить» — предпросмотр и отпечаток; «Заменить всё» — только со словом
+   ЗАМЕНИТЬ; после замены копия прежних данных сразу скачивается. */
+function openFundUpload(data, onDone) {
+  const resetOk = can('stays.reset') && !data.dicts.in_production;
+  const modes = [['draft', 'Черновиком с даты'], ...(resetOk ? [['reset', 'Начальная загрузка (заменить всё)']] : [])];
+  let checked = null;                              // предпросмотр замены для выбранного файла
+  openModal({
+    title: 'Загрузить фонд', subtitle: 'Файл — как «Выгрузить фонд»: листы «Категории», «Дерево», «Флаги», «Объекты»', wide: true,
+    body: `${sfRow('Режим', sfSelect('fu-mode', modes, 'draft'))}
+      <div id="fu-draft">${data.draft
+        ? `<div class="dict-banner gold"><span>✎</span><span>Черновик с ${esc(dateRu(data.draft.valid_from))} уже есть — откройте или удалите его, черновик один</span></div>`
+        : sfRow('С даты', sfInput('fu-date', staysAddDays(staysToday(), 1), 'date'))}</div>
+      <div id="fu-reset" hidden><div class="dict-banner gold"><span>⚠</span><span>Все брони, гости, назначения батлеров,
+        OOO и блоки и все версии фонда будут удалены; фонд — из файла. Метки, настраиваемые поля, сопровождение,
+        надбавки и лимит остаются. Перед заменой сохраняется копия.</span></div></div>
+      ${sfRow('Файл Excel', '<input id="fu-file" type="file" accept=".xlsx">')}
+      <div id="fu-out" class="sp-out"></div>`,
+    footer: `<button class="btn btn-ghost" data-close>Отмена</button>
+      <button class="btn btn-primary" id="fu-go">Загрузить</button>`,
+    onMount(m) {
+      $('[data-close]', m).onclick = closeModal;
+      const mode = () => $('#fu-mode', m).value;
+      const file = () => $('#fu-file', m).files?.[0] || null;
+      const out = $('#fu-out', m);
+      const go = $('#fu-go', m);
+      const sync = () => {
+        const reset = mode() === 'reset';
+        $('#fu-draft', m).hidden = reset;
+        $('#fu-reset', m).hidden = !reset;
+        go.textContent = reset ? (checked ? 'Заменить всё' : 'Проверить') : 'Загрузить';
+        go.className = `btn ${reset && checked ? 'btn-danger' : 'btn-primary'}`;
+        go.disabled = reset ? !!checked && $('#fu-word', m)?.value !== 'ЗАМЕНИТЬ' : !!data.draft;
+      };
+      const drop = () => { checked = null; out.innerHTML = ''; sync(); };
+      $('#fu-mode', m).onchange = drop;
+      $('#fu-file', m).onchange = drop;
+      const preview = async () => {
+        const p = await fundPostFile('/api/stays/fund/reset?preview=1', { file: file() });
+        checked = p;
+        const list = (pairs, counts) => pairs.map(([k, t]) => `${counts[k] ?? 0} ${t}`).join(', ');
+        out.innerHTML = `<div class="sp-head">Будет удалено</div><div>${esc(list(FUND_RESET_COUNTS, p.counts))}</div>
+          <div class="sp-head">Будет загружено</div><div>${esc(list(FUND_LOAD_COUNTS, p.will_load))}</div>
+          ${p.warnings.map(w => `<div class="sp-warn">${esc(w)}</div>`).join('')}
+          ${sfRow('Для замены введите слово ЗАМЕНИТЬ', sfInput('fu-word'))}`;
+        $('#fu-word', m).oninput = sync;
+        sync();
+      };
+      const replace = async () => {
+        const r = await fundPostFile('/api/stays/fund/reset', { file: file(), confirm: $('#fu-word', m).value, fingerprint: checked.fingerprint });
+        closeModal();
+        toast(`Фонд заменён: объектов ${r.loaded.units} · копия ${r.backup}`);
+        downloadBlob(r.backup_url, r.backup);
+        fundUI.view = null;
+        if (onDone) onDone();
+      };
+      const draft = async () => {
+        const r = await fundPostFile('/api/stays/fund/import', { file: file(), valid_from: $('#fu-date', m).value });
+        closeModal();
+        const n = ['units', 'categories', 'groups', 'flags'].reduce((s, k) => s + (r.diff[k]?.length || 0), 0);
+        toast(`Черновик с ${dateRu(r.valid_from)} · изменений: ${n}${r.retired.length ? ` · будут выведены: ${r.retired.length}` : ''}`);
+        fundUI.view = 'draft';
+        if (onDone) onDone();
+      };
+      go.onclick = async () => {
+        if (!file()) { toast('Выберите файл', 'err'); return; }
+        try {
+          if (mode() === 'draft') await draft();
+          else if (checked) await replace();
+          else await preview();
+        } catch (e) {
+          if (e.status === 409 && checked) checked = null;      // данные изменились — проверить заново
+          out.innerHTML = fundFileErrors(e);
+          sync();
+        }
+      };
+      sync();
     },
   });
 }

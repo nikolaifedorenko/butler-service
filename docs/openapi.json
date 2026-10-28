@@ -470,6 +470,30 @@
         "title": "Body_report_car_check_api_night_reports__report_id__cars__car_id__check_post",
         "type": "object"
       },
+      "Body_reset_fund_api_stays_fund_reset_post": {
+        "properties": {
+          "confirm": {
+            "default": "",
+            "title": "Confirm",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "fingerprint": {
+            "default": "",
+            "title": "Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_reset_fund_api_stays_fund_reset_post",
+        "type": "object"
+      },
       "Body_upload_template_api_docs_templates_post": {
         "properties": {
           "file": {
@@ -1821,6 +1845,19 @@
           "employee_id"
         ],
         "title": "ImpersonateIn",
+        "type": "object"
+      },
+      "InProductionIn": {
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "InProductionIn",
         "type": "object"
       },
       "InterceptionAck": {
@@ -12417,6 +12454,45 @@
         ]
       }
     },
+    "/api/stays/fund/backups/{name}": {
+      "get": {
+        "description": "Копия перед начальной загрузкой: имя строго stays-YYYYMMDD-HHMMSS.xlsx, без путей.\nВ копии персональные данные гостей — скачивание в журнале аудита.",
+        "operationId": "get_backup_api_stays_fund_backups__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Backup",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/fund/draft": {
       "patch": {
         "operationId": "move_draft_api_stays_fund_draft_patch",
@@ -13354,6 +13430,100 @@
           }
         },
         "summary": "Import Fund",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/in-production": {
+      "put": {
+        "description": "Переключатель «Шахматка в эксплуатации»: включён — начальной загрузки нет (§9.3).",
+        "operationId": "put_in_production_api_stays_fund_in_production_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InProductionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put In Production",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/reset": {
+      "post": {
+        "description": "«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,\nпредупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и\nfingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки\nфайла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания.",
+        "operationId": "reset_fund_api_stays_fund_reset_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_reset_fund_api_stays_fund_reset_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Fund",
         "tags": [
           "stays"
         ]

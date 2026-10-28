@@ -1,7 +1,8 @@
 """API версий фонда (спецификация stays-fund-versions §4, §6): снимок на дату и черновик.
 
 Чтение — тем, кто видит шахматку (READ), запись — правом stays.setup. Каждая запись черновика
-несёт rev (оптимистичная блокировка: 409 при расхождении) и возвращает новый rev."""
+несёт rev (оптимистичная блокировка: 409 при расхождении) и возвращает новый rev. Начальная
+загрузка («заменить всё») и переключатель «в эксплуатации» — правом stays.reset (§9.3)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -10,7 +11,7 @@ from dataclasses import asdict
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,9 +20,11 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.identity import User
+from app.core.permissions import require_perm
 
 from ..adapters.orm import FundVersion, UnitFlag, UnitLineage
 from ..application import fund_drafts as fd
+from ..application import fund_reset as fr
 from ..application import fund_xlsx as fx
 from ..application.fund import FundError
 from ..application.fund_versions import FundSnapshot, fund_on, snapshot_of
@@ -29,6 +32,7 @@ from ._ops import PREVIEW, run
 from .fund_api import READ, SETUP, SORT, CategoryIn, _err
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
+RESET = require_perm("stays.reset")
 
 
 # ── тела запросов ──────────────────────────────────────────────────────────
@@ -369,6 +373,16 @@ def _file_errors(errors: list[fx.FileError]) -> JSONResponse:
         {"sheet": e.sheet, "row": e.row, "message": e.message} for e in errors]})
 
 
+def _read_upload(file: UploadFile) -> bytes:
+    cap = fx.MAX_FILE_BYTES
+    if file.size is not None and file.size > cap:
+        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
+    data = file.file.read(cap + 1)           # с запасом в байт: лимит до чтения файла целиком
+    if len(data) > cap:
+        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
+    return data
+
+
 @router.post("/fund/import")
 def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
                 principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
@@ -376,12 +390,7 @@ def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
     есть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда
     не остаётся ничего, даже черновика: всё — одна транзакция. flags — правки справочника флагов
     {created, renamed, recoloured}: он не версионируется, и они остаются и без черновика."""
-    cap = fx.MAX_FILE_BYTES
-    if file.size is not None and file.size > cap:
-        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
-    data = file.file.read(cap + 1)           # с запасом в байт: лимит до чтения файла целиком
-    if len(data) > cap:
-        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
+    data = _read_upload(file)
     try:
         draft = fd.open_draft(db, valid_from, principal.user.id)
         parsed, errors = fx.parse_fund(data, known_unit_ids=set(snapshot_of(db, draft.id).units))
@@ -409,6 +418,63 @@ def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
            "diff": change, "retired": retired, "flags": flags}
     db.commit()
     return out
+
+
+# ── начальная загрузка (§9.3) ──────────────────────────────────────────────
+
+
+class InProductionIn(BaseModel):
+    value: bool
+
+
+@router.post("/fund/reset")
+def reset_fund(file: UploadFile = File(...), confirm: str = Form(""), fingerprint: str = Form(""),
+               preview_flag: bool = PREVIEW, principal: Principal = Depends(RESET),
+               db: Session = Depends(get_db)):
+    """«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,
+    предупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и
+    fingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки
+    файла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания."""
+    data = _read_upload(file)
+    parsed, errors = fx.parse_fund(data)
+    if parsed is None:
+        return _file_errors(errors)
+    try:
+        if preview_flag:
+            out = fr.preview(db, parsed)
+            db.rollback()
+            return out
+        out = fr.initial_load(db, parsed, principal, fr.parse_fingerprint(fingerprint),
+                              confirm=confirm, filename=file.filename or "")
+    except fd.FundFileError as e:
+        db.rollback()
+        return _file_errors(e.errors)
+    except FundError as e:
+        db.rollback()
+        raise _err(e) from e
+    db.commit()
+    return {**out, "backup_url": f"/api/stays/fund/backups/{out['backup']}"}
+
+
+@router.get("/fund/backups/{name}", response_class=FileResponse, responses={200: {"content": {XLSX: {}}}})
+def get_backup(name: str, principal: Principal = Depends(RESET), db: Session = Depends(get_db)):
+    """Копия перед начальной загрузкой: имя строго stays-YYYYMMDD-HHMMSS.xlsx, без путей.
+    В копии персональные данные гостей — скачивание в журнале аудита."""
+    path = fr.backup_path(name)
+    if path is None:
+        raise HTTPException(404, "Копии нет")
+    audit(db, principal, "stays_reset", f"backup:{name}", {"download": True})
+    db.commit()
+    return FileResponse(path, media_type=XLSX, filename=name)
+
+
+@router.put("/fund/in-production")
+def put_in_production(payload: InProductionIn, principal: Principal = Depends(RESET),
+                      db: Session = Depends(get_db)):
+    """Переключатель «Шахматка в эксплуатации»: включён — начальной загрузки нет (§9.3)."""
+    value = fr.set_in_production(db, principal, payload.value)
+    db.commit()
+    return {"in_production": value}
 
 
 # ── справочник флагов (вне черновика) ──────────────────────────────────────

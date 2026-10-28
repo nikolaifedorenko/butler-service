@@ -184,6 +184,8 @@ def list_fund(db: Session, with_staff: bool = False) -> dict:
         "escorts": [{"employee_id": e.employee_id, "name": names.get(e.employee_id, ""),
                      "active": e.active} for e in db.scalars(select(Escort))],
         "settings": as_dict(get_settings(db), SETTINGS_FIELDS),
+        # «Шахматка в эксплуатации» (§9.3): включён — начальной загрузки нет
+        "in_production": bool(get_settings(db).in_production),
     }
     if with_staff:
         out["staff"] = [{"id": e.id, "name": e.full_name, "position": e.position} for e in

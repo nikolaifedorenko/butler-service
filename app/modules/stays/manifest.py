@@ -46,6 +46,7 @@ MODULE = ModuleManifest(
         "stays_fund_version": "Шахматка: версия фонда",
         "stays_fund_import": "Шахматка: импорт фонда",
         "stays_reset": "Шахматка: сброс данных",
+        "stays_in_production": "Шахматка: переключатель «в эксплуатации»",
         "stays_guest": "Шахматка: профиль гостя",
         "stays_guest_link": "Шахматка: связь гостей",
         "stays_reservation": "Шахматка: бронь",
