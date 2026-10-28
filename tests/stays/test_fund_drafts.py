@@ -200,12 +200,12 @@ def test_flag_from_date(db, world):
 def test_draft_on_existing_version_date_replaces_it(db, world):
     d = _open(db)
     fd.save_unit(db, d.rev, {"floor": "7"}, world["u1"])
-    first = fd.publish(db, None)
+    first = fd.publish(db, None).version
     d2 = _open(db, D)                                     # правка «с той же даты»
     assert d2.valid_from == D and d2.base_version_id == first.id
     assert snapshot_of(db, d2.id).units[world["u1"]].floor == "7"
     fd.save_unit(db, d2.rev, {"floor": "8", "label": "4003x"}, world["u1"])
-    second = fd.publish(db, None)
+    second = fd.publish(db, None).version
     assert second.id == first.id and fd.current_draft(db) is None
     assert db.scalar(select(func.count()).select_from(FundVersion).where(FundVersion.valid_from == D)) == 1
     u = fund_on(db, D).units[world["u1"]]
@@ -219,13 +219,13 @@ def test_publish_stale_draft_date_409(db, world, today):
     with pytest.raises(FundConflict, match="сдвиньте"):
         fd.publish(db, None)
     fd.move_draft_date(db, d.rev, dt.date(2093, 1, 12))
-    assert fd.publish(db, None).valid_from == dt.date(2093, 1, 12)
+    assert fd.publish(db, None).version.valid_from == dt.date(2093, 1, 12)
 
 
 def test_publish_writes_audit(db, world):
     d = _open(db)
     fd.save_unit(db, d.rev, {"label": "4103"}, world["u1"])
-    v = fd.publish(db, None)
+    v = fd.publish(db, None).version
     db.flush()
     row = db.scalar(select(AuditLog).where(AuditLog.action == "stays_fund_version").order_by(AuditLog.id.desc()))
     assert row.target == f"fund_version:{v.id}" and "4103" in row.payload_json
@@ -253,7 +253,7 @@ def test_delete_current_version_409(db, world):
 
 def test_delete_future_version_ok(db, world):
     d = _open(db)
-    v = fd.publish(db, None)
+    v = fd.publish(db, None).version
     fd.delete_version(db, v.id)
     assert db.get(FundVersion, v.id) is None
     d2 = _open(db, dt.date(2093, 3, 1))                   # черновик тоже удаляется
@@ -277,7 +277,7 @@ def test_delete_used_flag_409_archive_ok(db, world):
 
 def test_delete_version_under_draft_409(db, world):
     d = _open(db)
-    v = fd.publish(db, None)
+    v = fd.publish(db, None).version
     d2 = _open(db, D)                                     # черновик опирается на v
     assert d2.base_version_id == v.id
     with pytest.raises(FundConflict, match="черновик"):
