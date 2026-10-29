@@ -273,9 +273,9 @@ def test_assignment_pieces_migration(iso_engine):
         for uid in (9101, 9102):
             c.execute(text("INSERT INTO stays_units (id) VALUES (:i)"), {"i": uid})
         c.execute(text("INSERT INTO stays_reservations (id, number, status, check_in, check_out, early, late, "
-                       "category_id, paid_by, customer, purpose, note, declined_butler, fields_json, source, "
+                       "category_id, customer, note, declined_butler, fields_json, source, "
                        "version, search_text, created_at, updated_at) VALUES (9201, 'M1', 'confirmed', "
-                       "'2099-01-01', '2099-01-09', 0, 0, 9001, '', '', '', '', 0, '{}', '', 1, '', "
+                       "'2099-01-01', '2099-01-09', 0, 0, 9001, '', '', 0, '{}', '', 1, '', "
                        "'2099-01-01 00:00:00', '2099-01-01 00:00:00')"))
         for seg, uid, pinned in ((0, 9101, 1), (1000, 9102, 0), (1001, 9101, 0)):
             c.execute(text("INSERT INTO stays_assignments (reservation_id, seg_index, unit_id, pinned) "

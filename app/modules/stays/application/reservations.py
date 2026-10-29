@@ -26,7 +26,7 @@ from ..adapters.orm import (
 from ..domain.halfday import AM, PIECE_BASE, pieces, pos, segments, validate_dates
 from . import allocation
 from .fund import FundError, changes
-from .fund_versions import category_exists, fund_day, fund_for_stays, unit_exists, version_cuts
+from .fund_versions import category_exists, fund_day, fund_for_stays, fund_on, unit_exists, version_cuts
 from .guests import reservation_search_text, searchable_codes, short_name, validate_fields
 
 STATUS_TITLES = {"tentative": "предварительная", "confirmed": "подтверждена", "in_house": "заселён",
@@ -39,8 +39,8 @@ TRANSITIONS = {
     "cancelled": {"confirmed"},
     "no_show": {"confirmed"},
 }
-SCALARS = ("number", "check_in", "check_out", "early", "late", "category_id", "paid_by", "label_id",
-           "customer", "purpose", "note", "declined_butler", "group_id", "external_id", "source")
+SCALARS = ("number", "check_in", "check_out", "early", "late", "category_id", "paid_category_id", "label_id",
+           "customer", "note", "declined_butler", "group_id", "external_id", "source")
 COMPANION_KINDS = {"security", "driver", "nanny", "pet", "other"}
 LOGISTICS_KINDS = {"flight", "transfer", "car"}
 
@@ -86,9 +86,24 @@ def _check_occupants(ci: dt.date, co: dt.date, occ: list[dict]) -> None:
             raise ReservationInvalid(f"На {night.strftime('%d.%m')} {word}")
 
 
+def _check_paid_category(db: Session, doc: dict) -> None:
+    """«Оплата за» — категория, существующая в фонде на дату заезда (категории постоянны по id,
+    а состав фонда зависит от версии). Совпадающая с категорией брони проверяется как она сама."""
+    paid = doc.get("paid_category_id")
+    if paid is None or paid == doc["category_id"]:
+        return
+    try:
+        known = paid in fund_on(db, doc["check_in"]).categories
+    except LookupError:
+        known = False
+    if not known:
+        raise ReservationInvalid("Категория «оплата за» отсутствует в фонде на дату заезда")
+
+
 def _check_refs(db: Session, doc: dict) -> None:
     if not category_exists(db, doc["category_id"]):
         raise ReservationInvalid("Категория не найдена")
+    _check_paid_category(db, doc)
     for m in doc["moves"]:
         if not category_exists(db, m["category_id"]):
             raise ReservationInvalid("Категория переезда не найдена")
@@ -158,6 +173,7 @@ def reservation_snapshot(db: Session, r: Reservation) -> dict:
     occ = [[o.guest_id, _d(o.date_from), _d(o.date_to), o.role] for o in
            db.scalars(select(Occupant).where(Occupant.reservation_id == r.id).order_by(Occupant.id))]
     return {**{k: _d(getattr(r, k)) for k in SCALARS}, "status": r.status,
+            "paid_category_id": r.paid_category_id or r.category_id,
             "fields": json.loads(r.fields_json or "{}"),
             "moves": [[_d(d), c] for d, c in moves], "units": units, "occupants": occ}
 
@@ -183,6 +199,8 @@ def save_reservation(db: Session, doc: dict, rid: int | None,
         # новичок группы получает её переезды и категорию — а не переписывает их остальным
         doc = {**doc, "category_id": others[0].category_id,
                "moves": [{"move_date": d, "category_id": c} for d, c in _moves_of(db, others[0].id)]}
+    if doc.get("paid_category_id") is None:
+        doc = {**doc, "paid_category_id": doc["category_id"]}      # по умолчанию — категория брони
     errors = validate_dates(doc["check_in"], doc["check_out"], [m["move_date"] for m in doc["moves"]])
     if errors:
         raise ReservationInvalid(errors[0])
@@ -338,6 +356,7 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
     return {
         "id": r.id, "version": r.version, "status": r.status, "status_title": STATUS_TITLES[r.status],
         **{k: _d(getattr(r, k)) for k in SCALARS}, "fields": json.loads(r.fields_json or "{}"),
+        "paid_category_id": r.paid_category_id or r.category_id,
         "moves": [{"move_date": _d(d), "category_id": c} for d, c in moves],
         "segments": [{"index": s.index, "category_id": s.category_id, "start": _d(s.start), "end": _d(s.end),
                       "unit_id": pinned[s.index] if s.index in pinned else first.get(s.index),

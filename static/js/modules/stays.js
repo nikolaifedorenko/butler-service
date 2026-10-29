@@ -335,7 +335,7 @@ async function openReservationCard(rid, onChanged) {
   openModal({
     title: `Бронь ${card.number || '#' + card.id}`, wide: true,
     subtitle: `${card.status_title} · ${dateRu(card.check_in)}–${dateRu(card.check_out)}`,
-    body: `
+    body: `${card.upgrade ? `<p><span class="badge muted">${esc(card.upgrade)}</span></p>` : ''}
       <div class="grid-2">
         <div><h4>Объекты</h4>${card.segments.map(s => `<div>${esc(dateRu(s.start))}–${esc(dateRu(s.end))}: <b>${esc(s.unit || 'без объекта')}</b>
           ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}</div>

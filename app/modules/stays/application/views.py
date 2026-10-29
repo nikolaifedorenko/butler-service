@@ -295,8 +295,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                 "mains": [{"guest": short_name(guests[o.guest_id]), "from": _d(o.date_from), "to": _d(o.date_to)}
                           for o in mains if o.guest_id in guests],
                 "level": top, "butlers_today": on_duty.get(r.id, []),
-                "customer": r.customer, "purpose": r.purpose, "paid_by": r.paid_by, "note": r.note,
-                "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}")}
+                "customer": r.customer, "paid_category_id": r.paid_category_id or r.category_id,
+                "note": r.note, "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}")}
         # полоса — соседние части сегмента с одним объектом; seg_index полосы — индекс её первой
         # части (seg_index // PIECE_BASE — сегмент; 0 — начало брони)
         for run in _glued(st.parts[r.id], lambda p, rid=r.id: asg.get((rid, p.index))):
@@ -383,11 +383,16 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == rid)
                           .order_by(Occupant.date_from, Occupant.id)))
     guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_({o.guest_id for o in occ})))} if occ else {}
+    paid_id = r.paid_category_id or r.category_id
+    paid = fund.category(paid_id, r.check_in)
+    paid_code = paid.code if paid else "?"
     lb = db.get(Label, r.label_id) if r.label_id else None
     card = {
         "id": r.id, "number": r.number, "status": r.status, "status_title": STATUS_TITLES[r.status],
         "check_in": _d(r.check_in), "check_out": _d(r.check_out), "early": r.early, "late": r.late,
         "category": category.code if category else "?",
+        "paid_category_id": paid_id, "paid_category": paid_code,
+        "upgrade": f"апгрейд: оплачена {paid_code}" if paid_id != r.category_id else "",
         "label": {"title": lb.title, "color": lb.color} if lb else None,
         "group_id": r.group_id, "version": r.version,
         "segments": [{"index": s.index, "start": _d(s.start), "end": _d(s.end), "unit_id": asg.get(s.index),
@@ -400,7 +405,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
             {"day": d.isoformat(), "butlers": [], "warnings": []} for d in nights(r.check_in, r.check_out)],
     }
     if at_least(level, "full"):
-        card |= {"customer": r.customer, "purpose": r.purpose, "paid_by": r.paid_by, "note": r.note,
+        card |= {"customer": r.customer, "note": r.note,
                  "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}"),
                  "companions": [{"kind": c.kind, "description": c.description} for c in
                                 db.scalars(select(Companion).where(Companion.reservation_id == rid))],

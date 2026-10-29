@@ -82,7 +82,7 @@ function staysBookRowHtml(r) {
     <td>${r.level !== 'regular' ? `<span class="sb-star">${esc(STAYS_LEVEL_MARK[r.level] || '')}</span>` : ''}${esc(r.main_guest)}</td>
     <td>${esc(dateRu(r.check_in))}${r.early ? ' <span class="muted" title="Ранний заезд">РЗ</span>' : ''}</td>
     <td>${esc(dateRu(r.check_out))}${r.late ? ' <span class="muted" title="Поздний выезд">ПВ</span>' : ''}</td>
-    <td>${r.nights}</td><td>${esc(r.category)}</td><td>${esc(r.unit || '—')}</td>
+    <td>${r.nights}</td><td>${esc(r.category)}${r.upgrade ? ` <span class="badge muted" title="${esc(r.upgrade)}">${esc(r.upgrade)}</span>` : ''}</td><td>${esc(r.unit || '—')}</td>
     <td>${esc(r.status_title)}</td><td>${esc(r.created_at.slice(0, 16).replace('T', ' '))}</td></tr>`;
 }
 

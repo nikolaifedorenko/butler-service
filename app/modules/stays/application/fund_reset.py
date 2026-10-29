@@ -294,11 +294,11 @@ def backup_bytes(db: Session) -> bytes:
     yn = {True: "да", False: ""}
     _sheet(wb, SHEET_RESERVATIONS,
            ["ID", "номер", "статус", "заезд", "выезд", "РЗ", "ПВ", "категория (код)", "объекты", "гости",
-            "метка", "заказчик", "оплачивает", "повод", "примечание", "без батлера", "источник", "внешний ID",
+            "метка", "заказчик", "оплата за (код)", "примечание", "без батлера", "источник", "внешний ID",
             "поля"],
            ([r.id, r.number, r.status, r.check_in, r.check_out, yn[bool(r.early)], yn[bool(r.late)],
              code.get(r.category_id, f"#{r.category_id}"), ", ".join(units.get(r.id, [])),
-             "; ".join(occ.get(r.id, [])), labels.get(r.label_id, ""), r.customer, r.paid_by, r.purpose,
+             "; ".join(occ.get(r.id, [])), labels.get(r.label_id, ""), r.customer, code.get(r.paid_category_id or r.category_id, ""),
              r.note, yn[bool(r.declined_butler)], r.source, r.external_id or "", r.fields_json]
             for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id))))
     _sheet(wb, SHEET_GUESTS,

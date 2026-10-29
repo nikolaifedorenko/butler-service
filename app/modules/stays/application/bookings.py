@@ -75,6 +75,7 @@ class _Item:
     butler_ids: set[int] = field(default_factory=set)
     main: str = ""
     top: str = "regular"
+    upgrade: str = ""            # «апгрейд: оплачена DKG», если оплата за другую категорию
 
 
 def _guest_text(g: Guest, can_guests: bool) -> str:
@@ -169,6 +170,9 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
             if not cats or cats[-1] != code:
                 cats.append(code)
         it = _Item(r, lb, occ[r.id], ps, units, cats)
+        if r.paid_category_id and r.paid_category_id != r.category_id:
+            paid = fund.category(r.paid_category_id, r.check_in) if fund.parts else None
+            it.upgrade = f"апгрейд: оплачена {paid.code if paid else '?'}"
         it.top = max((guests[o.guest_id].level for o in it.occ if o.guest_id in guests),
                      key=lambda lv: LEVEL_RANK[lv], default="regular")
         mains = [o for o in it.occ if o.role == "main"]
@@ -272,7 +276,7 @@ def _row(it: _Item) -> dict:
             "category": " → ".join(it.categories), "unit": " → ".join(lbl for _, lbl in it.units),
             "status": r.status, "status_title": STATUS_TITLES[r.status],
             "label": {"title": it.label.title, "color": it.label.color} if it.label else None,
-            "butlers": it.butlers, "early": r.early, "late": r.late,
+            "upgrade": it.upgrade, "butlers": it.butlers, "early": r.early, "late": r.late,
             "created_at": r.created_at.isoformat(timespec="minutes")}
 
 

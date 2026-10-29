@@ -142,7 +142,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
         if full:
             prefs = [json.loads(ctx.guests[g["guest_id"]].preferences_json or "{}") for g in guests]
             out["details"] = {"logistics": logistics.get(r.id, []), "companions": companions.get(r.id, []),
-                              "allergies": [p["allergy"] for p in prefs if p.get("allergy")], "purpose": r.purpose}
+                              "allergies": [p["allergy"] for p in prefs if p.get("allergy")]}
         return out
 
     def collect(rs, kind):

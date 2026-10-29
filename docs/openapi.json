@@ -2806,11 +2806,16 @@
             "title": "Occupants",
             "type": "array"
           },
-          "paid_by": {
-            "default": "",
-            "maxLength": 120,
-            "title": "Paid By",
-            "type": "string"
+          "paid_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Category Id"
           },
           "pins": {
             "anyOf": [
@@ -2832,12 +2837,6 @@
               }
             ],
             "title": "Pins"
-          },
-          "purpose": {
-            "default": "",
-            "maxLength": 160,
-            "title": "Purpose",
-            "type": "string"
           },
           "status": {
             "default": "confirmed",

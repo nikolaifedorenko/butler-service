@@ -69,7 +69,7 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     ws = wb.create_sheet("Брони")
     head = ["Объект", "Категория", "Заезд", "Выезд", "Статус", "Гостей"]
     if kind == "full":
-        head += ["№ брони", "Гости", "Уровень", "Метка", "Заказчик", "Повод", "Примечание", "Батлеры", "Логистика"]
+        head += ["№ брони", "Гости", "Уровень", "Метка", "Заказчик", "Примечание", "Батлеры", "Логистика"]
     _put(ws, 1, head, bold=True)
     labels = {u["unit_id"]: u for u in board["units"]}
     rids = sorted({b["reservation_id"] for b in board["bars"]})
@@ -97,7 +97,7 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
         if kind == "full":
             b0 = bars[0]
             values += [r.number, ", ".join(occupants.get(rid, [])), b0.get("level", ""),
-                       (b0.get("label") or {}).get("title", ""), r.customer, r.purpose, r.note,
+                       (b0.get("label") or {}).get("title", ""), r.customer, r.note,
                        "; ".join(f"{n}: {', '.join(ds)}" for n, ds in butlers.get(rid, {}).items()),
                        "; ".join(logistics.get(rid, []))]
         _put(ws, row, values)

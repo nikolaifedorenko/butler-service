@@ -275,6 +275,8 @@ async function unitsBoard() {
   check('форма брони открылась', await waitFor(() => !!$('#rf-check-in')));
   input($('#rf-number'), 'A' + uniq);
   change($('#rf-category'), String(cat.id));
+  check('«Оплата за» — список категорий, следует за категорией брони', $('#rf-paid')?.tagName === 'SELECT'
+    && $('#rf-paid').value === String(cat.id) && !$('#rf-purpose'));
   change($('#rf-check-in'), '2030-01-03');
   change($('#rf-check-out'), '2030-01-07');
   input($('#rf-guest-q'), guest);

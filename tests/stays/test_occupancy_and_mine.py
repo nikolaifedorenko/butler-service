@@ -10,7 +10,7 @@ def _doc(c, rid):
 
 def _body(res, **ch):
     return {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late", "group_id",
-                                   "note", "declined_butler", "label_id", "customer", "purpose", "paid_by", "fields")},
+                                   "note", "declined_butler", "label_id", "customer", "paid_category_id", "fields")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **ch}
 
@@ -200,3 +200,21 @@ def test_role_matrix(manager_client, mgmt_client, occupancy_client, butler_clien
 def test_demo_butler_has_tonight(butler_client):
     """Демо: у входа ivanov в «Моих гостях» есть бронь на сегодня (§11)."""
     assert butler_client.get(f"{API}/mine").json()["reservations"]
+
+
+def test_butler_cannot_change_paid_category(butler_client, own_reservation, manager_role_client):
+    rid = own_reservation["mine"]["id"]
+    doc = _doc(butler_client, rid)
+    other = make_category(manager_role_client)
+    r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, paid_category_id=other["id"]))
+    assert r.status_code == 403
+    assert r.json()["detail"] == "Батлер может менять только состав, логистику и сведения о гостях"
+
+
+def test_butler_cannot_change_paid_category(butler_client, own_reservation, manager_role_client):
+    rid = own_reservation["mine"]["id"]
+    doc = _doc(butler_client, rid)
+    other = make_category(manager_role_client)
+    r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, paid_category_id=other["id"]))
+    assert r.status_code == 403
+    assert r.json()["detail"] == "Батлер может менять только состав, логистику и сведения о гостях"

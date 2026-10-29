@@ -13,7 +13,7 @@ def _doc(c, rid):
 
 def _body(res, **ch):
     return {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late", "group_id",
-                                   "note", "declined_butler", "label_id", "customer", "purpose", "paid_by", "fields")},
+                                   "note", "declined_butler", "label_id", "customer", "paid_category_id", "fields")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **ch}
 

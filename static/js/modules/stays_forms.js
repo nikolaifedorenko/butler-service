@@ -110,8 +110,7 @@ async function openReservationForm(id, opts = {}) {
       <div class="grid-2">
         ${sfRow('Метка', `<select id="rf-label">${opt('', '—', r?.label_id)}${fund.labels.map(l => opt(l.id, l.title, r?.label_id)).join('')}</select>`)}
         ${sfRow('Заказчик', sfInput('rf-customer', r?.customer))}
-        ${sfRow('Повод визита', sfInput('rf-purpose', r?.purpose))}
-        ${sfRow('Оплата за', sfInput('rf-paid', r?.paid_by))}
+        ${sfRow('Оплата за', `<select id="rf-paid">${fund.categories.map(c => opt(c.id, `${c.code} · ${c.title}`, r?.paid_category_id ?? r?.category_id)).join('')}</select>`)}
       </div>
       ${sfRow('Примечание', `<textarea id="rf-note" rows="2">${esc(r?.note || '')}</textarea>`)}
       <h4>Гости</h4><div id="rf-occupants"></div>
@@ -132,10 +131,11 @@ async function openReservationForm(id, opts = {}) {
       const val = sel => $(sel, m).value;
       if (opts.mine) {
         ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-declined',
-          '#rf-label', '#rf-customer', '#rf-purpose', '#rf-paid', '#rf-move-add', '#rf-new-add', '#rf-new-last']
+          '#rf-label', '#rf-customer', '#rf-paid', '#rf-move-add', '#rf-new-add', '#rf-new-last']
           .forEach(sel => { const el = $(sel, m); if (el) el.disabled = true; });
         if (r) {
           $('#rf-category', m).innerHTML = `<option value="${r.category_id}">—</option>`;
+          $('#rf-paid', m).innerHTML = `<option value="${r.paid_category_id ?? r.category_id}">—</option>`;
           $('#rf-label', m).innerHTML = `<option value="${r.label_id ?? ''}">—</option>`;
         }
       }
@@ -207,7 +207,10 @@ async function openReservationForm(id, opts = {}) {
       };
       $('#rf-check-in', m).onchange = follow;
       $('#rf-check-out', m).onchange = follow;
-      $('#rf-category', m).onchange = drawPins;
+      /* «оплата за» следует за категорией, пока её не выбрали отдельно */
+      let paidTouched = !!r && (r.paid_category_id ?? r.category_id) !== r.category_id;
+      $('#rf-paid', m).onchange = () => { paidTouched = true; };
+      $('#rf-category', m).onchange = () => { if (!paidTouched) $('#rf-paid', m).value = val('#rf-category'); drawPins(); };
       $('#rf-move-add', m).onclick = () => { form.moves.push({ move_date: '', category_id: Number(val('#rf-category')) }); drawMoves(); drawPins(); };
       $('#rf-log-add', m).onclick = () => { form.logistics.push({ kind: 'transfer', date: val('#rf-check-in'), time: '', description: '' }); drawLog(); };
       let timer = null;
@@ -235,7 +238,7 @@ async function openReservationForm(id, opts = {}) {
         check_in: val('#rf-check-in'), check_out: val('#rf-check-out'),
         early: $('#rf-early', m).checked, late: $('#rf-late', m).checked, declined_butler: $('#rf-declined', m).checked,
         label_id: opts.mine ? (r?.label_id ?? null) : (val('#rf-label') ? Number(val('#rf-label')) : null),
-        customer: val('#rf-customer'), purpose: val('#rf-purpose'), paid_by: val('#rf-paid'), note: val('#rf-note'),
+        customer: val('#rf-customer'), paid_category_id: Number(val('#rf-paid')), note: val('#rf-note'),
         group_id: r?.group_id ?? null, fields: { ...(r?.fields || {}), ...staysFieldValues(m, 'data-rf-field') },
         occupants: form.occupants.map(({ id: oid, guest_id, role, date_from, date_to }) => ({ id: oid, guest_id, role, date_from, date_to })),
         moves: form.moves.filter(mv => mv.move_date), logistics: form.logistics, companions: form.companions,

@@ -135,7 +135,7 @@ function dayRowHtml(r, names) {
   const guests = names ? r.guests.map(g => `${g.level !== 'regular' ? esc(STAYS_LEVEL_MARK[g.level]) : ''}${esc(g.name)}`).join(', ')
     : `${r.guests_count} гост.`;
   const det = r.details ? [...r.details.logistics.map(l => `${l.time} ${l.description}`), ...r.details.companions.map(c => c.description),
-    ...r.details.allergies.map(a => 'аллергия: ' + a), r.details.purpose].filter(Boolean).join(' · ') : '';
+    ...r.details.allergies.map(a => 'аллергия: ' + a)].filter(Boolean).join(' · ') : '';
   return `<div class="db-row" data-db-row="${r.reservation_id}">
     <div class="db-time">${esc(r.time)}</div><div class="db-unit"><b>${esc(r.unit)}</b></div>
     <div class="db-guests">${guests}</div><div class="db-status">${names ? dayStatusHtml(r) : esc(STAYS_STATUS[r.status] || r.status)}</div>
