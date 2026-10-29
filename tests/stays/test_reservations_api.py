@@ -265,3 +265,36 @@ def test_purpose_removed_from_api_and_export(manager_role_client, manager_client
     heads = [c.value for ws in load_workbook(io.BytesIO(r.content)).worksheets for row in ws.iter_rows(max_row=1)
              for c in row]
     assert not any("повод" in str(h).lower() for h in heads)
+
+
+def _upgrade(c, rid) -> str:
+    return c.get(f"{API}/reservations/{rid}/card").json()["upgrade"]
+
+
+def test_paid_category_follows_category_change(manager_role_client, manager_client):
+    cat, other = make_category(manager_role_client), make_category(manager_role_client)
+    g = make_guest(manager_client)
+    res = create_res(manager_client, cat, "2027-10-02", "2027-10-05", [(g["id"], "main", None, None)])
+    r = _put(manager_client, res, category_id=other["id"])        # эхо старой нагрузки: оплата не указана
+    assert r.status_code == 200, r.text
+    assert r.json()["result"]["paid_category_id"] == other["id"] and _upgrade(manager_client, res["id"]) == ""
+
+
+def test_group_join_keeps_default_paid(manager_role_client, manager_client):
+    cat, other, third = (make_category(manager_role_client) for _ in range(3))
+    g = make_guest(manager_client)
+    gid = manager_client.post(f"{API}/groups", json={"title": "Семья"}).json()["id"]
+    create_res(manager_client, cat, "2027-11-02", "2027-11-05", group_id=gid)
+    b = create_res(manager_client, other, "2027-11-02", "2027-11-05", [(g["id"], "main", None, None)],
+                   group_id=gid)                                   # категория группы перекрывает свою
+    assert b["category_id"] == cat["id"] and _upgrade(manager_client, b["id"]) == ""
+    c = create_res(manager_client, other, "2027-11-02", "2027-11-05", group_id=gid, paid_category_id=third["id"])
+    assert _upgrade(manager_client, c["id"]) == f"апгрейд: оплачена {third['code']}"
+
+
+def test_paid_category_before_fund_start_refused(manager_role_client, manager_client):
+    cat, other = make_category(manager_role_client), make_category(manager_role_client)
+    g = make_guest(manager_client)
+    r = manager_client.post(f"{API}/reservations", json=res_body(
+        cat, "1990-05-02", "1990-05-05", [(g["id"], "main", None, None)], paid_category_id=other["id"]))
+    assert r.status_code == 422, r.text

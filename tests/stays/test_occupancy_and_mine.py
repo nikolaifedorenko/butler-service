@@ -209,12 +209,3 @@ def test_butler_cannot_change_paid_category(butler_client, own_reservation, mana
     r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, paid_category_id=other["id"]))
     assert r.status_code == 403
     assert r.json()["detail"] == "Батлер может менять только состав, логистику и сведения о гостях"
-
-
-def test_butler_cannot_change_paid_category(butler_client, own_reservation, manager_role_client):
-    rid = own_reservation["mine"]["id"]
-    doc = _doc(butler_client, rid)
-    other = make_category(manager_role_client)
-    r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, paid_category_id=other["id"]))
-    assert r.status_code == 403
-    assert r.json()["detail"] == "Батлер может менять только состав, логистику и сведения о гостях"

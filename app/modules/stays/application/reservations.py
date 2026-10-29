@@ -199,8 +199,8 @@ def save_reservation(db: Session, doc: dict, rid: int | None,
         # новичок группы получает её переезды и категорию — а не переписывает их остальным
         doc = {**doc, "category_id": others[0].category_id,
                "moves": [{"move_date": d, "category_id": c} for d, c in _moves_of(db, others[0].id)]}
-    if doc.get("paid_category_id") is None:
-        doc = {**doc, "paid_category_id": doc["category_id"]}      # по умолчанию — категория брони
+    if doc.get("paid_category_id") == doc["category_id"]:
+        doc = {**doc, "paid_category_id": None}      # NULL — «оплата за категорию брони»: одно представление
     errors = validate_dates(doc["check_in"], doc["check_out"], [m["move_date"] for m in doc["moves"]])
     if errors:
         raise ReservationInvalid(errors[0])
