@@ -11,7 +11,9 @@
   6. сохранённые наборы фильтров (localStorage, без хранилища — пустой список);
   7. флаг и выбытие объекта с середины месяца: «вне фильтра» / «нет в фонде», полосы не скрыты;
   8. вкладка «Брони»: свой период, сортировка «Выезд ↓», «Показать ещё», карточка по клику,
-     лимит 366 дней, экранирование; у уровня «занятость» вкладки нет.
+     лимит 366 дней, экранирование; у уровня «занятость» вкладки нет;
+  9. вкладка «Гости»: поиск, фильтр «день рождения», карточка по клику, объединение дублей
+     с предпросмотром «что перенесётся».
 
 Запуск: tools/run_stays_scenario.sh [порт] [логин]   (нужен jsdom: npm i)
 Код возврата: 0 — сценарий пройден, 2 — есть проваленные проверки. */
@@ -224,7 +226,7 @@ async function unitsBoard() {
   await apiJson('POST', '/api/stays/guests', { last_name: guest });
 
   window.navigate('stays');
-  check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 5));
+  check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 6));
   /* панель фильтров появляется после загрузки фонда и шахматки: в медленном CI сценарий
      менял фильтры раньше — change() уходил в пустоту (падало через раз, 25.10.2026) */
   check('шахматка отрисована (месяц и панель фильтров)', await waitFor(() => $('#sm-label') && $('.sf-panel')));
@@ -644,6 +646,9 @@ async function roleSmoke() {
     const names = me.permissions.includes('stays.view');
     check(names ? 'вкладка «Брони» есть (с фамилиями)' : 'вкладки «Брони» нет (занятость)',
       !!$('#view-stays [data-stab="bookings"]') === names);
+    const full = names && me.permissions.includes('stays.guests');
+    check(full ? 'вкладка «Гости» есть (полный уровень)' : 'вкладки «Гости» нет',
+      !!$('#view-stays [data-stab="guests"]') === full);
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
   }
   if (menu.includes('mystays')) {
@@ -829,6 +834,67 @@ async function bookingsTab() {
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
 }
 
+/* 9 · вкладка «Гости»: справочник, поиск, «день рождения в ближайшие 30 дней», карточка, объединение */
+async function guestsTab() {
+  console.log('\n9 · Вкладка «Гости»');
+  const today = serverToday();
+  const soon = addDays(today, 10);
+  const birth = `${Number(soon.slice(0, 4)) - 40}${soon.slice(4)}`.replace(/-02-29$/, '-02-28');
+  const code = 'GS' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1']);
+  const mk = body => apiJson('POST', '/api/stays/guests', body).then(r => r.body);
+  const keep = await mk({ last_name: `Дублёв${uniq}`, first_name: 'Пётр', phone: '+7 916 400-11-22', birth_date: birth });
+  const drop = await mk({ last_name: `Дублёв${uniq}`, first_name: 'Петя', preferences: { food: 'без лактозы' },
+    special_dates: [{ date: '2020-06-01', what: 'годовщина' }] });
+  const res = await apiJson('POST', '/api/stays/reservations', { number: `GS${uniq}`, check_in: addDays(today, 50),
+    check_out: addDays(today, 52), category_id: cat.id, occupants: [{ guest_id: drop.id, role: 'main',
+      date_from: addDays(today, 50), date_to: addDays(today, 52) }] });
+  check('гости и бронь дубля созданы', !!keep.id && !!drop.id && res.status === 200, JSON.stringify(res.body));
+
+  window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
+  window.navigate('stays');
+  await waitFor(() => $$('#view-stays [data-stab]').length > 0);
+  check('вкладка «Гости» есть', !!$('#view-stays [data-stab="guests"]'));
+  click($('#view-stays [data-stab="guests"]'));
+  check('вкладка «Гости» отрисована', await waitFor(() => !!$('#gl-total')));
+  const rerendered = async (sel, act) => { const old = $(sel); act(); return waitFor(() => $(sel) && $(sel) !== old); };
+  check('поиск по фамилии', await rerendered('#gl-total', () => input($('#gl-q'), `дублёв${uniq}`))
+    && $$('[data-gl-row]').length === 2, text('#gl-total'));
+  check('телефон виден полному уровню', text('#gl-result').includes('+7 916 400-11-22'));
+  await rerendered('#gl-total', () => input($('#gl-q'), `GS${uniq}`));
+  check('поиск по номеру брони — гость брони', $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(drop.id));
+  await rerendered('#gl-total', () => input($('#gl-q'), `дублёв${uniq}`));
+  await rerendered('#gl-total', () => { $('#gl-birthday').checked = true; change($('#gl-birthday')); });
+  check('фильтр «день рождения в ближайшие 30 дней»', $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(keep.id),
+    text('#gl-total'));
+  await rerendered('#gl-total', () => { $('#gl-birthday').checked = false; change($('#gl-birthday')); });
+
+  click($(`[data-gl-row="${drop.id}"] td:nth-child(2)`));
+  check('клик по строке открывает карточку гостя', await waitFor(() => text('#modal').includes('История проживаний')
+    && text('#modal').includes(`GS${uniq}`)), text('#modal'));
+  click($('#modal [data-close]'));
+  await sleep(200);
+
+  for (const id of [keep.id, drop.id]) click($(`[data-gl-pick="${id}"]`));     // клик отмечает флажок
+  check('«Объединить…» доступна для двух отмеченных', $('#gl-merge') && !$('#gl-merge').disabled);
+  click($('#gl-merge'));
+  check('окно объединения', await waitFor(() => !!$('#gm-preview')));
+  click($('#gm-preview'));
+  check('предпросмотр: что перенесётся', await waitFor(() => text('#gm-out').includes(`GS${uniq}`)
+    && text('#gm-out').includes('food') && text('#gm-out').includes('годовщина')), text('#gm-out'));
+  const still = (await apiJson('GET', `/api/stays/guests/${drop.id}`)).status;
+  check('предпросмотр ничего не сохранил', still === 200, String(still));
+  click($('#modal [data-save]'));
+  check('после объединения в списке один гость', await waitFor(() => !$('#modal').innerHTML
+    && $$('[data-gl-row]').length === 1 && !!$(`[data-gl-row="${keep.id}"]`)), text('#gl-total'));
+  const card = (await apiJson('GET', `/api/stays/guests/${keep.id}/card`)).body;
+  check('бронь и предпочтения перешли оставленному', card.stays.some(x => x.number === `GS${uniq}`)
+    && card.preferences.food === 'без лактозы', JSON.stringify(card.stays));
+  check('дубль удалён', (await apiJson('GET', `/api/stays/guests/${drop.id}`)).status === 404);
+  window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
 /* выход уже нажат: вход другим логином тем же путём, что в main (JSON-вход + bootApp) */
 async function relogin(username) {
   await sleep(300);
@@ -859,6 +925,7 @@ async function main() {
     await savedFilters();
     await flagMidMonth();
     await bookingsTab();
+    await guestsTab();
   } else {
     await roleSmoke();
   }

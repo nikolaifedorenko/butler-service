@@ -38,8 +38,8 @@ def graph_of(links) -> FamilyGraph:
     return FamilyGraph(parents=parents, spouses=spouses)
 
 
-def family_graph(db: Session, seeds: set[int]) -> FamilyGraph:
-    """Связный граф семьи seeds целиком — для проверок «не стать своим предком» и т. п."""
+def family_links(db: Session, seeds: set[int]) -> list[GuestLink]:
+    """Семейные связи всего связного графа семьи seeds, по id."""
     seen, frontier, links = set(seeds), set(seeds), {}
     while frontier:
         nxt = set()
@@ -48,7 +48,12 @@ def family_graph(db: Session, seeds: set[int]) -> FamilyGraph:
             nxt |= {ln.guest_a_id, ln.guest_b_id} - seen
         seen |= nxt
         frontier = nxt
-    return graph_of(links[k] for k in sorted(links))
+    return [links[k] for k in sorted(links)]
+
+
+def family_graph(db: Session, seeds: set[int]) -> FamilyGraph:
+    """Связный граф семьи seeds целиком — для проверок «не стать своим предком» и т. п."""
+    return graph_of(family_links(db, seeds))
 
 
 def _family_people(db: Session, gid: int) -> dict[int, int]:

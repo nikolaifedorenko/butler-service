@@ -1,11 +1,12 @@
 """API профилей гостей (§3.2, §8): список с фамилиями — stays.view, карточка целиком —
-stays.guests, запись — stays.edit. Изменения — в журнале аудита с разницей полей."""
+stays.guests, запись — stays.edit. Изменения — в журнале аудита с разницей полей.
+Вкладка «Гости» (addendum §3): справочник с фильтрами, история проживаний, объединение дублей."""
 from __future__ import annotations
 
 import datetime as dt
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,9 +16,10 @@ from app.core.db import get_db
 from app.core.permissions import require_perm
 
 from ..adapters.orm import Guest
-from ..application import family, guests, mine
+from ..application import family, guests, guests_list, history, mine
 from ..application.fund import FundConflict, FundError
 from ..application.visibility import at_least, level_for
+from ._ops import PREVIEW, run
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 
@@ -53,6 +55,12 @@ class LinkIn(BaseModel):
     former: bool = False
 
 
+class MergeIn(BaseModel):
+    """keep_id — кого оставить, drop_id — дубль, который удаляется."""
+    keep_id: int
+    drop_id: int
+
+
 def _card(db: Session, g: Guest) -> dict:
     return {**guests.guest_dict(g), "links": guests.links_of(db, g.id)}
 
@@ -64,6 +72,43 @@ def list_guests(q: str = "", principal: Principal = Depends(require_perm("stays.
     return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
              "middle_name": g.middle_name, "level": g.level, "short": guests.short_name(g)}
             for g in guests.search_guests(db, q)]
+
+
+@router.get("/guests/list")
+def guests_tab(q: str = "", level: Literal["", "regular", "vip", "vvip"] = "",
+               stayed_from: Optional[dt.date] = None, stayed_to: Optional[dt.date] = None,
+               birthday_days: Optional[int] = Query(None, ge=0, le=guests_list.MAX_BIRTHDAY_DAYS),
+               sort: Literal["name", "level", "last_stay", "stays"] = "name", dir: Literal["asc", "desc"] = "asc",
+               offset: int = Query(0, ge=0), limit: int = Query(guests_list.MAX_LIMIT, ge=1, le=guests_list.MAX_LIMIT),
+               principal: Principal = Depends(require_perm("stays.view", "stays.guests")),
+               db: Session = Depends(get_db)):
+    """Вкладка «Гости»: с уровня «с фамилиями»; телефон, поиск по нему и фильтр по дню
+    рождения — только полный уровень (stays.guests)."""
+    level_ = level_for(db, principal)
+    try:
+        query = guests_list.GuestQuery(q, level, stayed_from, stayed_to, birthday_days, sort, dir, offset, limit)
+        return guests_list.list_guests(db, query, level_)
+    except FundError as e:
+        raise _err(e) from e
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+
+
+@router.post("/guests/merge")
+def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
+                 principal: Principal = Depends(require_perm("stays.edit")), db: Session = Depends(get_db)):
+    """Объединение дублей: ?preview=1 — что перенесётся, тем же кодом с откатом."""
+    if "stays.guests" not in principal.gate_permissions:
+        raise HTTPException(status_code=403, detail="Объединение гостей — с правом «Профили гостей целиком»")
+
+    def op() -> dict:
+        out = guests.merge_guests(db, payload.keep_id, payload.drop_id)
+        audit(db, principal, "stays_guest_merge", f"guest:{payload.keep_id}",
+              {"drop_id": payload.drop_id, "dropped": out.pop("dropped"), "moves": out["moves"]})
+        return out
+
+    done = run(db, op, preview_flag, None)
+    return {"preview": done["preview"], **done["result"], "diff": done["diff"]}
 
 
 def _own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> bool:
@@ -83,6 +128,15 @@ def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guest
         raise HTTPException(status_code=404, detail="Гость не найден")
     _own_guest(db, principal, gid, "stays.guests")
     return _card(db, g)
+
+
+@router.get("/guests/{gid}/stays")
+def guest_stays(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
+                db: Session = Depends(get_db)):
+    """История проживаний гостя: все брони, где он жил, с объектами по фонду дня и батлерами."""
+    if db.get(Guest, gid) is None:
+        raise HTTPException(status_code=404, detail="Гость не найден")
+    return history.guest_stays(db, gid)
 
 
 def _save(db: Session, principal: Principal, payload: GuestIn, gid: Optional[int]) -> dict:

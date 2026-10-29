@@ -6,10 +6,10 @@ import datetime as dt
 import json
 import re
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import CustomField, Guest, GuestLink, Reservation
+from ..adapters.orm import CoverageGuest, CustomField, Guest, GuestLink, Occupant, Reservation
 from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
 from .fund import FundConflict, FundError, as_dict, changes
 from .locking import lock_module
@@ -104,6 +104,14 @@ def guest_search_text(g: Guest, searchable: set[str]) -> str:
              *(str(v) for k, v in fields.items() if k in searchable)]
     # нижний регистр Python: SQLite lower() кириллицу не понижает
     return " ".join(p for p in parts if p).lower()[:1000]
+
+
+def guest_text(g: Guest, can_phone: bool) -> str:
+    """Текст поиска по гостю. Телефон — персональные данные полного уровня: без права цифры
+    телефона из текста убираются, иначе по ответу можно было бы подобрать номер."""
+    text = g.search_text or ""
+    digits = re.sub(r"\D", "", g.phone or "")
+    return text if can_phone or not digits else text.replace(digits, "", 1)
 
 
 def reservation_search_text(r: Reservation, searchable: set[str]) -> str:
@@ -259,3 +267,187 @@ def search_guests(db: Session, q: str, limit: int = 30) -> list[Guest]:
         return []
     return list(db.scalars(select(Guest).where(Guest.search_text.contains(needle, autoescape=True))
                            .order_by(Guest.last_name, Guest.first_name, Guest.id).limit(limit)))
+
+
+# ── Объединение дублей (addendum §3) ──────────────────────────────────────
+
+# поля профиля, которые у оставляемого гостя заполняются из дубля, если у него пусто
+MERGE_PROFILE = ("first_name", "middle_name", "phone", "email", "birth_date", "gender", "external_id", "source")
+FAMILY_KINDS = ("parent", "spouse")
+
+
+def _symmetric(kind: str) -> bool:
+    """Связь без направления (супруги, родственники, коллеги): A–B и B–A — одна связь."""
+    a, b = LINK_KINDS.get(kind, ("", "-"))
+    return a == b
+
+
+def _plan_links(db: Session, keep_id: int, drop_id: int) -> list[tuple[GuestLink, str, int, int]]:
+    """Что станет со связями дубля: (связь, moved | duplicate | removed, новая A, новая B).
+    Семейные перенесённые связи проверяются по графу семьи тем же кодом, что и add_link;
+    нарушение (третий родитель, цикл, второй действующий супруг) — FundConflict, до записи."""
+    from .family import family_links, graph_of
+
+    def sub(x: int) -> int:
+        return keep_id if x == drop_id else x
+
+    rows = list(db.scalars(select(GuestLink).where(or_(GuestLink.guest_a_id == drop_id,
+                                                       GuestLink.guest_b_id == drop_id)).order_by(GuestLink.id)))
+    existing = {(ln.guest_a_id, ln.guest_b_id, ln.kind) for ln in db.scalars(select(GuestLink).where(
+        or_(GuestLink.guest_a_id == keep_id, GuestLink.guest_b_id == keep_id)))}
+    family = [(ln.guest_a_id, ln.guest_b_id, ln.kind, ln.former) for ln in family_links(db, {keep_id, drop_id})
+              if drop_id not in (ln.guest_a_id, ln.guest_b_id)]
+    plan = []
+    for ln in rows:
+        a, b = sub(ln.guest_a_id), sub(ln.guest_b_id)
+        if a == b:
+            plan.append((ln, "removed", a, b))
+            continue
+        if (a, b, ln.kind) in existing or (_symmetric(ln.kind) and (b, a, ln.kind) in existing):
+            plan.append((ln, "duplicate", a, b))
+            continue
+        if ln.kind in FAMILY_KINDS:
+            graph = graph_of(family)
+            err = check_parent(b, a, graph) if ln.kind == "parent" else check_spouse(a, b, graph)
+            if not err and ln.kind == "spouse" and not ln.former and any(
+                    not f for x in (a, b) for _, f in graph.spouses.get(x, ())):
+                err = "У гостя уже есть супруг(а)"
+            if err:
+                raise FundConflict(f"Объединение нарушит семейное дерево: {err}")
+            family.append((a, b, ln.kind, ln.former))
+        existing.add((a, b, ln.kind))
+        plan.append((ln, "moved", a, b))
+    return plan
+
+
+def _apply_links(db: Session, plan: list[tuple[GuestLink, str, int, int]], keep_id: int) -> list[dict]:
+    others = {a if b == keep_id else b for _, _, a, b in plan}
+    names = {g.id: short_name(g) for g in db.scalars(select(Guest).where(Guest.id.in_(others)))} if others else {}
+    out = [{"guest_id": (a if b == keep_id else b), "name": names.get(a if b == keep_id else b, ""),
+            "kind": ln.kind, "former": ln.former, "result": result} for ln, result, a, b in plan]
+    for ln, result, _, _ in plan:            # сначала удаления: перенос не должен задеть уникальность
+        if result != "moved":
+            db.delete(ln)
+    db.flush()
+    for ln, result, a, b in plan:
+        if result == "moved":
+            ln.guest_a_id, ln.guest_b_id = a, b
+    db.flush()
+    return out
+
+
+def _nights_runs(rows: list[Occupant]) -> list[tuple[dt.date, dt.date, str]]:
+    """Проживание одного человека в брони по ночам: главный, если хоть одна запись главная
+    в эту ночь; подряд идущие ночи с одной ролью — одна запись."""
+    roles: dict[dt.date, str] = {}
+    for o in rows:
+        d = o.date_from
+        while d < o.date_to:
+            roles[d] = "main" if o.role == "main" or roles.get(d) == "main" else "guest"
+            d += dt.timedelta(days=1)
+    runs: list[list] = []
+    for d in sorted(roles):
+        if runs and runs[-1][1] == d and runs[-1][2] == roles[d]:
+            runs[-1][1] = d + dt.timedelta(days=1)
+        else:
+            runs.append([d, d + dt.timedelta(days=1), roles[d]])
+    return [tuple(r) for r in runs]
+
+
+def _merge_occupants(db: Session, keep_id: int, drop_id: int) -> list[dict]:
+    """Записи «проживающий» дубля → оставляемому. Если оба живут в одной брони (Review Focus 1),
+    их записи сливаются в записи одного человека: без дубля в составе, главный — там, где
+    главным был любой из двух (двух главных на ночь у брони не бывает)."""
+    drop_occ = list(db.scalars(select(Occupant).where(Occupant.guest_id == drop_id).order_by(Occupant.id)))
+    rids = sorted({o.reservation_id for o in drop_occ})
+    if not rids:
+        return []
+    keep_occ = list(db.scalars(select(Occupant).where(Occupant.guest_id == keep_id,
+                                                      Occupant.reservation_id.in_(rids)).order_by(Occupant.id)))
+    shared = {o.reservation_id for o in keep_occ}
+    for o in drop_occ:
+        if o.reservation_id not in shared:
+            o.guest_id = keep_id
+    for rid in sorted(shared):
+        rows = [o for o in keep_occ + drop_occ if o.reservation_id == rid]
+        runs = _nights_runs(rows)
+        for o in rows:
+            db.delete(o)
+        db.add_all(Occupant(reservation_id=rid, guest_id=keep_id, date_from=a, date_to=b, role=role)
+                   for a, b, role in runs)
+    out = []
+    for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids)).order_by(Reservation.id)):
+        r.version += 1                       # открытая форма брони со старым составом получит 409
+        out.append({"id": r.id, "number": r.number, "shared": r.id in shared})
+    db.flush()
+    return out
+
+
+def _merge_coverage(db: Session, keep_id: int, drop_id: int) -> int:
+    """Строки покрытия, где дубль выбран явно, — на оставляемого (без повтора в строке)."""
+    lines = set(db.scalars(select(CoverageGuest.coverage_id).where(CoverageGuest.guest_id == drop_id)))
+    if not lines:
+        return 0
+    both = set(db.scalars(select(CoverageGuest.coverage_id).where(CoverageGuest.guest_id == keep_id,
+                                                                  CoverageGuest.coverage_id.in_(lines))))
+    if both:
+        db.execute(delete(CoverageGuest).where(CoverageGuest.guest_id == drop_id,
+                                               CoverageGuest.coverage_id.in_(both)))
+    db.execute(update(CoverageGuest).where(CoverageGuest.guest_id == drop_id).values(guest_id=keep_id))
+    return len(lines)
+
+
+def _fill_missing(mine: dict, theirs: dict) -> list[str]:
+    added = [k for k, v in theirs.items() if v not in (None, "") and mine.get(k) in (None, "")]
+    mine.update({k: theirs[k] for k in added})
+    return added
+
+
+def _merge_profile(keep: Guest, drop: Guest) -> dict:
+    """Значения оставляемого побеждают; недостающее берётся у дубля. Уровень VIP/VVIP дубля
+    переходит, только если у оставляемого — обычный; примечания — оба, через перевод строки."""
+    profile = [k for k in MERGE_PROFILE if not getattr(keep, k) and getattr(drop, k)]
+    for k in profile:
+        setattr(keep, k, getattr(drop, k))
+    if keep.level == "regular" and drop.level != "regular":
+        keep.level = drop.level
+        profile.append("level")
+    note = (drop.note or "").strip()
+    if note and note not in (keep.note or ""):
+        keep.note = f"{keep.note.rstrip()}\n{note}" if (keep.note or "").strip() else note
+        profile.append("note")
+    prefs = json.loads(keep.preferences_json or "{}")
+    pref_added = _fill_missing(prefs, json.loads(drop.preferences_json or "{}"))
+    keep.preferences_json = json.dumps(prefs, ensure_ascii=False)
+    fields = json.loads(keep.fields_json or "{}")
+    fields_added = _fill_missing(fields, json.loads(drop.fields_json or "{}"))
+    keep.fields_json = json.dumps(fields, ensure_ascii=False)
+    dates = json.loads(keep.special_dates_json or "[]")
+    dates_added = [d for d in json.loads(drop.special_dates_json or "[]") if d not in dates]
+    keep.special_dates_json = json.dumps(dates + dates_added, ensure_ascii=False)
+    return {"profile": profile, "preferences": pref_added, "fields": fields_added, "special_dates": dates_added}
+
+
+def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
+    """Объединить дубль drop в keep (addendum §3): проживания, строки покрытия, связи,
+    предпочтения, особые даты, настраиваемые поля переходят к keep, профиль drop удаляется.
+    Ввод — 422, нарушение семейного дерева — 409; все проверки — до первой записи.
+    Предпросмотр — этот же код с откатом (preview.run_operation). Ничего не коммитит."""
+    lock_module(db)
+    if keep_id == drop_id:
+        raise GuestError("Нельзя объединить гостя с самим собой")
+    keep, drop = db.get(Guest, keep_id), db.get(Guest, drop_id)
+    if keep is None or drop is None:
+        raise GuestError("Гость не найден")
+    plan = _plan_links(db, keep_id, drop_id)
+    dropped = guest_dict(drop)
+    reservations = _merge_occupants(db, keep_id, drop_id)
+    coverage = _merge_coverage(db, keep_id, drop_id)
+    links = _apply_links(db, plan, keep_id)
+    merged = _merge_profile(keep, drop)
+    db.delete(drop)
+    db.flush()
+    keep.search_text = guest_search_text(keep, searchable_codes(db, "guest"))
+    db.flush()
+    return {"keep_id": keep_id, "drop_id": drop_id, "dropped": dropped,
+            "moves": {"reservations": reservations, "links": links, "coverage": coverage, **merged}}

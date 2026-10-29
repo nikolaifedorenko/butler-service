@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -18,7 +17,7 @@ from ..domain.allocate import natural_key
 from ..domain.halfday import Piece, pieces, segments
 from . import allocation
 from .fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
-from .guests import search_query, short_name
+from .guests import guest_text, search_query, short_name
 from .reservations import STATUS_TITLES
 from .views import LEVEL_RANK, BoardFilters, ViewError, fund_match
 from .visibility import LEVEL_ORDER, Level
@@ -76,14 +75,6 @@ class _Item:
     main: str = ""
     top: str = "regular"
     upgrade: str = ""            # «апгрейд: оплачена DKG», если оплата за другую категорию
-
-
-def _guest_text(g: Guest, can_guests: bool) -> str:
-    """Текст поиска по гостю. Телефон — персональные данные уровня stays.guests: без права цифры
-    телефона из текста убираются, иначе по ответу можно было бы подобрать номер."""
-    text = g.search_text or ""
-    digits = re.sub(r"\D", "", g.phone or "")
-    return text if can_guests or not digits else text.replace(digits, "", 1)
 
 
 def _candidates(db: Session, q: BookingQuery):
@@ -207,7 +198,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         needle = search_query(f.q)
         unit_text = {it.r.id: " ".join(lbl for _, lbl in it.units).lower() for it in items}
         items = [it for it in items if needle in (it.r.search_text or "") or needle in unit_text[it.r.id]
-                 or any(needle in _guest_text(guests[o.guest_id], can_guests) for o in it.occ if o.guest_id in guests)]
+                 or any(needle in guest_text(guests[o.guest_id], can_guests) for o in it.occ if o.guest_id in guests)]
     if q.with_warnings:
         state = allocation.current_state(db)
         flagged = {rid for w in state.warnings for rid in state.members[w.key]}

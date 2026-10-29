@@ -2160,64 +2160,6 @@
         "title": "MembersIn",
         "type": "object"
       },
-      "MergeIn": {
-        "properties": {
-          "category_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category Id"
-          },
-          "floor": {
-            "default": "",
-            "maxLength": 8,
-            "title": "Floor",
-            "type": "string"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "label": {
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Label",
-            "type": "string"
-          },
-          "rev": {
-            "title": "Rev",
-            "type": "integer"
-          },
-          "unit_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "maxItems": 50,
-            "minItems": 2,
-            "title": "Unit Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "rev",
-          "unit_ids",
-          "label"
-        ],
-        "title": "MergeIn",
-        "type": "object"
-      },
       "ModifierIn": {
         "properties": {
           "date": {
@@ -3653,6 +3595,83 @@
           "title"
         ],
         "title": "KindIn",
+        "type": "object"
+      },
+      "app__modules__stays__interface__fund_versions_api__MergeIn": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "floor": {
+            "default": "",
+            "maxLength": 8,
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Unit Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rev",
+          "unit_ids",
+          "label"
+        ],
+        "title": "MergeIn",
+        "type": "object"
+      },
+      "app__modules__stays__interface__guests_api__MergeIn": {
+        "description": "keep_id — кого оставить, drop_id — дубль, который удаляется.",
+        "properties": {
+          "drop_id": {
+            "title": "Drop Id",
+            "type": "integer"
+          },
+          "keep_id": {
+            "title": "Keep Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keep_id",
+          "drop_id"
+        ],
+        "title": "MergeIn",
         "type": "object"
       },
       "app__modules__stays__interface__reservations_api__GroupIn": {
@@ -13035,7 +13054,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MergeIn"
+                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__MergeIn"
               }
             }
           },
@@ -14130,6 +14149,223 @@
         ]
       }
     },
+    "/api/stays/guests/list": {
+      "get": {
+        "description": "Вкладка «Гости»: с уровня «с фамилиями»; телефон, поиск по нему и фильтр по дню\nрождения — только полный уровень (stays.guests).",
+        "operationId": "guests_tab_api_stays_guests_list_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "regular",
+                "vip",
+                "vvip"
+              ],
+              "title": "Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stayed_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stayed From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stayed_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stayed To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "birthday_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 366,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Birthday Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "level",
+                "last_stay",
+                "stays"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dir",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Dir",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guests Tab",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guests/merge": {
+      "post": {
+        "description": "Объединение дублей: ?preview=1 — что перенесётся, тем же кодом с откатом.",
+        "operationId": "merge_guests_api_stays_guests_merge_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__modules__stays__interface__guests_api__MergeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Merge Guests",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/guests/{gid}": {
       "get": {
         "operationId": "get_guest_api_stays_guests__gid__get",
@@ -14344,6 +14580,47 @@
           }
         },
         "summary": "Create Link",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guests/{gid}/stays": {
+      "get": {
+        "description": "История проживаний гостя: все брони, где он жил, с объектами по фонду дня и батлерами.",
+        "operationId": "guest_stays_api_stays_guests__gid__stays_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guest Stays",
         "tags": [
           "stays"
         ]
