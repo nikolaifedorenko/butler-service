@@ -650,6 +650,7 @@ function fundKindOptions(snapshot, cat) {
 }
 
 function fundCategoryForm(cat, data, onSaved) {
+  const noKinds = !(data.snap.kinds || []).some(k => !k.archived || k.id === cat?.kind_id);
   fundForm(cat ? `Категория ${cat.code}` : 'Новая категория', `
     <div class="grid-2">
       ${sfRow('Код', sfInput('fc-code', cat?.code))}
@@ -658,6 +659,7 @@ function fundCategoryForm(cat, data, onSaved) {
       ${sfRow('Вес нагрузки', sfInput('fc-weight', cat?.weight ?? 1, 'number'))}
       ${sfRow('Порядок', sfInput('fc-sort', cat?.sort_order ?? 100, 'number'))}
     </div>
+    ${noKinds ? '<p class="hint">Сначала заведите вид на вкладке «Виды».</p>' : ''}
     ${sfCheck('fc-escorted', 'С сопровождением батлером', cat?.escorted)}`,
   async m => {
     const body = { code: $('#fc-code', m).value, title: $('#fc-title', m).value, kind_id: fundNum($('#fc-kind', m).value),

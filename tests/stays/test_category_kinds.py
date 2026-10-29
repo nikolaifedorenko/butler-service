@@ -66,6 +66,7 @@ def test_kind_crud(manager_role_client, manager_client, occupancy_client):
     assert _kind_row(occupancy_client, kid) == {"id": kid, "title": title, "sort_order": 5, "expanded": True,
                                                 "archived": False}
     assert c.post(f"{API}/fund/kinds", json={"title": title}).status_code == 409             # название уникально
+    assert c.post(f"{API}/fund/kinds", json={"title": title.upper()}).status_code == 409     # и без учёта регистра
     assert c.post(f"{API}/fund/kinds", json={"title": ""}).status_code == 422
     assert c.post(f"{API}/fund/kinds", json={"title": "x" * 41}).status_code == 422
     assert c.put(f"{API}/fund/kinds/{kid}", json={"title": title + "!", "sort_order": 7}).status_code == 200
@@ -270,3 +271,14 @@ def test_reset_plan_kind_by_title(db):
     assert plan["categories"][0]["kind_id"] == 1
     assert {(e.sheet, e.row) for e in errors} == {("Категории", 3), ("Категории", 4), ("Категории", 5)}
     assert any("замок" in e.message and "вилла" in e.message and "старое" not in e.message for e in errors)
+
+
+def test_reset_plan_empty_kind_dictionary_hint():
+    from app.modules.stays.application import fund_reset as fr
+    from app.modules.stays.application import fund_xlsx as fx
+
+    cats = [fx.ParsedCategory(row_no=2, id=None, code="C", title="К", kind="замок", weight=1, escorted=False,
+                              sort_order=1)]
+    _, errors = fr.plan_load(fx.ParsedFund(categories=cats, groups=[], flags=[], units=[]),
+                             [CategoryKind(id=2, title="старое", archived=True)])
+    assert errors and "сначала заведите вид на вкладке «Виды»" in errors[0].message

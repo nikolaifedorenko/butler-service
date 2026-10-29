@@ -58,7 +58,7 @@ from ..adapters.orm import (
 )
 from . import allocation, fund_drafts
 from .fund import FundConflict, FundError, get_settings
-from .fund_drafts import _COLOR, _WEIGHT_MAX, FundFileError, _file_weight, kind_titles
+from .fund_drafts import _COLOR, _WEIGHT_MAX, FundFileError, _file_weight, unknown_kind_message
 from .fund_versions import INITIAL_DATE, fund_on
 from .fund_xlsx import (
     HEAD,
@@ -158,8 +158,7 @@ def plan_load(parsed: ParsedFund, kinds: list[CategoryKind]) -> tuple[dict, list
         if not c.kind.strip():
             err(SHEET_CATEGORIES, c.row_no, "не указан вид категории")
         elif kind is None:
-            err(SHEET_CATEGORIES, c.row_no, f"вид «{c.kind}» — нет в справочнике видов: "
-                                            + ", ".join(kind_titles(kinds)))
+            err(SHEET_CATEGORIES, c.row_no, unknown_kind_message(c.kind, kinds))
         weight = _file_weight(c.weight)
         if weight is None:
             err(SHEET_CATEGORIES, c.row_no, f"вес {c.weight} — ожидается число больше 0 и не больше {_WEIGHT_MAX}")

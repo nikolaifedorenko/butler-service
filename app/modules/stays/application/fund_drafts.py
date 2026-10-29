@@ -883,6 +883,14 @@ def kind_titles(kinds: Sequence[CategoryKind]) -> list[str]:
     return [k.title for k in kinds if not k.archived]
 
 
+def unknown_kind_message(title: str, kinds: Sequence[CategoryKind]) -> str:
+    """Ошибка «вида нет в справочнике»; пустой справочник — подсказка, где его завести."""
+    names = kind_titles(kinds)
+    if not names:
+        return f"вид «{title}» — справочник видов пуст: сначала заведите вид на вкладке «Виды»"
+    return f"вид «{title}» — нет в справочнике видов: " + ", ".join(names)
+
+
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 _WEIGHT_MAX = Decimal("999.99")                 # Numeric(5, 2)
 
@@ -1003,8 +1011,7 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dic
             k = kind_by_title.get(c.kind.casefold())
             kind = k.id if k is not None else None
             if k is None:
-                err(SHEET_CATEGORIES, c.row_no, f"вид «{c.kind}» — нет в справочнике видов: "
-                                                + ", ".join(kind_titles(kinds)))
+                err(SHEET_CATEGORIES, c.row_no, unknown_kind_message(c.kind, kinds))
             elif k.archived and not (c.id in hc and hc[c.id]["kind_id"] == k.id):
                 err(SHEET_CATEGORIES, c.row_no, f"вид «{k.title}» в архиве")
         elif c.id in hc:
@@ -1147,7 +1154,8 @@ def save_kind(db: Session, data: dict, kind_id: int | None) -> int:
     lock_module(db)
     row = _kind_row(db, kind_id) if kind_id is not None else None
     title = _text(data, "title", row.title if row else None, 40, "название вида")
-    taken = db.scalar(select(CategoryKind.id).where(CategoryKind.title == title))
+    folded = title.casefold()                     # как в файле: без учёта регистра
+    taken = next((k.id for k in db.scalars(select(CategoryKind)) if k.title.casefold() == folded), None)
     if taken is not None and taken != kind_id:
         raise FundConflict(f"вид «{title}» уже есть")
     if row is None:

@@ -123,7 +123,7 @@ def test_empty_id_creates(manager_role_client, db):
         ws.append([None, s["code"] + "-3", s["code"], f"Корпус {s['code']} / Блок", "5", None])
         ws.cell(ws.max_row, col, "да")
         ws = wb["Дерево"]
-        ws.append([None, f"Корпус {s['code']} / Флигель", 9])
+        ws.append([None, "Флигель", f"Корпус {s['code']}", 9])
     r = _upload(c, _edit(_export(c), add))
     assert r.status_code == 200, r.text
     diff = r.json()["diff"]
