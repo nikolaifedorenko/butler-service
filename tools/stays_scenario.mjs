@@ -163,7 +163,9 @@ async function fundCategory(code, labels) {
     rev = r.body.rev;
     return r.body;
   };
-  const cat = await step('categories', { code, title: code, kind: 'villa', escorted: true, weight: 4 });
+  const kinds = (await apiJson('GET', '/api/stays/fund/snapshot?date=' + today)).body.kinds;
+  const villa = kinds.find(k => k.title === 'вилла');
+  const cat = await step('categories', { code, title: code, kind_id: villa.id, escorted: true, weight: 4 });
   const units = [];
   for (const label of labels) units.push({ id: (await step('units', { label, category_id: cat.id })).id, label });
   await step('publish', {});
@@ -441,6 +443,30 @@ async function occupancyAndFund() {
   const n2 = rowsOf(korpus.id);
   check('флаг «Вид на море» сужает', n2 > 0 && n2 < n1, `${n1} → ${n2}`);
   check('флаги — значками в строке', $$('#view-stays [data-unit-row] .sb-flag').length >= n2);
+
+  /* раскрытие по умолчанию — из справочника видов (expanded): «номер» с «раскрывать» —
+     корпус открыт сразу; вернуть как было */
+  const room = snap.kinds.find(k => k.title === 'номер');
+  const setRoom = expanded => apiJson('PUT', '/api/stays/fund/kinds/' + room.id,
+    { title: room.title, sort_order: room.sort_order, expanded });
+  check('вид «номер» по умолчанию не раскрывается', room && room.expanded === false, JSON.stringify(room));
+  check('вид «номер»: «раскрывать» включено', (await setRoom(true)).status === 200);
+  window.eval('staysState.fund = null; staysState.collapsed = {}');
+  await openMonth(today);
+  await resetFilters();
+  await setCheck(`[data-sf-group="${korpus.id}"]`, true);
+  check('expanded у вида — раздел «Корпус» развёрнут сразу', await waitFor(() => rowsOf(korpus.id) > 0),
+    String(rowsOf(korpus.id)));
+  await setRoom(false);
+  window.eval('staysState.fund = null; staysState.collapsed = {}');
+  await openMonth(today);
+  await resetFilters();
+  await setCheck(`[data-sf-group="${korpus.id}"]`, true);
+  check('без expanded — «Корпус» снова свёрнут', await waitFor(() => !!$(`[data-sec="${korpus.id}"]`)) && rowsOf(korpus.id) === 0);
+  /* фильтры и раскрытие — как до проверки (на них опираются шаги «Загрузки») */
+  await setCheck(`[data-sf-group="${villas.id}"]`, true);
+  await setCheck(`[data-sf-flag="${sea.id}"]`, true);
+  window.eval(`staysState.collapsed[${JSON.stringify(String(korpus.id))}] = false`);
 
   check('«Загрузка» открылась', await openMonth(today, 'occupancy'));
   const [y, m] = today.split('-').map(Number);

@@ -130,7 +130,7 @@ def test_reset_tables_cover_whole_stays_schema():
     keep = {m.__tablename__ for m in fr.KEEP}
     assert not wipe & keep
     assert wipe | keep == stays, stays ^ (wipe | keep)
-    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts"}
+    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts", "stays_category_kinds"}
 
 
 def test_reset_requires_stays_reset_perm(manager_role_client, admin_client, db):

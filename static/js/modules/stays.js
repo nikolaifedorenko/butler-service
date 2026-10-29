@@ -19,9 +19,8 @@ const staysState = {
   sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {},
   ocOpen: {}, ocMode: 'pct', focusDay: null,
 };
-const STAYS_OPEN_KINDS = new Set(['villa', 'estate', 'apartment']);   // разделы с ними развёрнуты сразу
 function staysEmptyFilters() {
-  return { group_ids: [], category_ids: [], flag_ids: [], kinds: [], escorted: false, vip: false, q: '' };
+  return { group_ids: [], category_ids: [], flag_ids: [], kind_ids: [], escorted: false, vip: false, q: '' };
 }
 
 /* PoC §5.1: ordinal как в Python date.toordinal() — клиент и сервер считают позиции одинаково */
@@ -87,7 +86,7 @@ function staysFundParams(p) {
   f.group_ids.forEach(v => p.append('group_ids', v));
   f.category_ids.forEach(v => p.append('category_ids', v));
   f.flag_ids.forEach(v => p.append('flag_ids', v));
-  f.kinds.forEach(v => p.append('kinds', v));
+  f.kind_ids.forEach(v => p.append('kind_ids', v));
   return p;
 }
 /* панель фильтров вида: изменение — новые фильтры и перерисовка вида */
@@ -111,7 +110,7 @@ async function staysFund(force = false) {
     const [dicts, snap] = await Promise.all([api('/api/stays/fund', { silent: true }),
       api('/api/stays/fund/snapshot?date=' + staysToday(), { silent: true })]);
     const groups = Object.fromEntries(snap.groups.map(g => [g.id, g]));
-    staysState.fund = { ...dicts, categories: snap.categories, groups: snap.groups, flags: snap.flags,
+    staysState.fund = { ...dicts, categories: snap.categories, groups: snap.groups, flags: snap.flags, kinds: snap.kinds,
       /* объект снимка есть в фонде дня — «активен»; путь узла названиями — для подписи */
       units: snap.units.map(u => ({ ...u, active: true, group: u.path.map(id => groups[id]?.title || '').join(' / ') })) };
   }
@@ -262,9 +261,9 @@ async function renderUnitsBoard(body) {
   staysFocusDay(body);
 }
 
-/* Разделы дерева: по умолчанию развёрнуты корневые разделы с виллами, имениями и
-   апартаментами (§6: «виллы развёрнуты, основной корпус свёрнут»), вложенные — развёрнуты;
-   выбор пользователя — staysState.collapsed. Строки свёрнутого раздела в DOM не рисуются. */
+/* Разделы дерева: по умолчанию развёрнут корневой раздел, где есть категория вида с
+   «раскрывать» (справочник видов, §1 дополнения: виллы развёрнуты, корпус свёрнут), вложенные —
+   развёрнуты; выбор пользователя — staysState.collapsed. Строки свёрнутого раздела в DOM не рисуются. */
 function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
   const days = data.days;
   const n = days.length;
@@ -274,6 +273,7 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
   const cats = Object.fromEntries(fund.categories.map(c => [c.id, c]));
   const groups = Object.fromEntries(fund.groups.map(g => [g.id, g]));
   const flags = Object.fromEntries((fund.flags || []).map(f => [f.id, f]));
+  const expanded = new Set((fund.kinds || []).filter(k => k.expanded).map(k => k.id));
   const st = staysState.sort;
   const rows = staysSortRows(data.units, st, fund);
   const pathOf = u => (u.group_path.length ? u.group_path.map(String) : ['none']);
@@ -281,7 +281,7 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
   rows.forEach(u => pathOf(u).forEach(k => { (under[k] ||= []).push(u); }));
   const open = (key, depth) => {
     if (key in staysState.collapsed) return !staysState.collapsed[key];
-    return depth > 0 || under[key].some(u => u.categories.some(c => STAYS_OPEN_KINDS.has(cats[c.category_id]?.kind)));
+    return depth > 0 || under[key].some(u => u.categories.some(c => expanded.has(cats[c.category_id]?.kind_id)));
   };
   const title = (u, i) => (u.group_path.length ? groups[u.group_path[i]]?.title || u.group.split(' / ')[i] || '#' + u.group_path[i] : 'Без группы');
   const pct = (a, b) => `left:${a / n * 100}%;width:${(b - a + 1) / n * 100}%`;

@@ -178,7 +178,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         items.append(it)
 
     # фильтры фонда: бронь проходит, если хотя бы одна её часть в окне проходит по фонду дня части
-    has_fund_filter = bool(f.group_ids or f.category_ids or f.flag_ids or f.kinds or f.floor or f.escorted_only)
+    has_fund_filter = bool(f.group_ids or f.category_ids or f.flag_ids or f.kind_ids or f.floor or f.escorted_only)
     if has_fund_filter or q.unassigned:
         win_a, win_b = (q.first, q.last) if q.mode == "stay" else (dt.date.min, dt.date.max)
         kept = []

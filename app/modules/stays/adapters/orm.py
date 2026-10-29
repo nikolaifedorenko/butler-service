@@ -67,6 +67,19 @@ class UnitFlag(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class CategoryKind(Base):
+    """Справочник видов категорий (вилла, номер…). Не версионируется; использованный вид
+    архивируется. expanded — раздел дерева шахматки с категорией этого вида раскрыт сразу."""
+
+    __tablename__ = "stays_category_kinds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(40), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    expanded: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class FundVersion(Base):
     """Версия фонда «с даты»: полный снимок категорий, узлов и объектов. Действует с вечера
     valid_from (§3.3). rev — счётчик правок черновика (оптимистичная блокировка)."""
@@ -100,7 +113,7 @@ class CategoryState(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"), primary_key=True)
     code: Mapped[str] = mapped_column(String(16))
     title: Mapped[str] = mapped_column(String(120))
-    kind: Mapped[str] = mapped_column(String(16), default="room")    # villa | estate | apartment | room
+    kind_id: Mapped[int] = mapped_column(ForeignKey("stays_category_kinds.id"))
     weight: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("1"))
     escorted: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)

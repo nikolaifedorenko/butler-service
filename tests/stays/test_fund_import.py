@@ -12,7 +12,7 @@ from app.modules.stays.adapters.orm import Category, FundVersion, Unit, UnitFlag
 from app.modules.stays.application import fund_drafts as fd
 from app.modules.stays.application import fund_xlsx as fx
 
-from .helpers import API, FundDraft, uniq
+from .helpers import API, FundDraft, kind_id, uniq
 from .test_fund_versions_api import _clean  # noqa: F401 — autouse: снять версии и сущности теста
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -26,7 +26,7 @@ def _seed(c) -> dict:
     """Своя категория (дробный вес), два уровня дерева с порядком, два объекта, флаг."""
     d = FundDraft(c)
     code = "T" + uniq()
-    cat = d.call("POST", "categories", code=code, title="Кат " + code, kind="villa", weight=1.5,
+    cat = d.call("POST", "categories", code=code, title="Кат " + code, kind_id=kind_id("villa"), weight=1.5,
                  escorted=True, sort_order=7)["id"]
     top = d.call("POST", "groups", title="Корпус " + code, sort_order=3)["id"]
     sub = d.call("POST", "groups", title="Блок", parent_id=top, sort_order=2)["id"]

@@ -23,6 +23,7 @@ from app.modules.timesheet.application.roster import roster
 
 from ..adapters.orm import (
     Assignment,
+    CategoryKind,
     CategoryState,
     CoverageLine,
     Guest,
@@ -47,6 +48,9 @@ CATEGORIES = [  # код, название, вид, сопровождение, 
     ("FAM", "Семейный", "room", False, 1, 60), ("JST", "Джуниор сюит", "room", False, 1, 40),
     ("SUI", "Сюит", "room", True, 2, 20), ("PRS", "Президентский", "room", True, 3, 10),
 ]
+# виды категорий: код в CATEGORIES, название в справочнике, раскрывать раздел на шахматке
+KINDS = {"villa": ("вилла", True), "estate": ("имение", True), "apartment": ("апартаменты", True),
+         "room": ("номер", False)}
 LABELS = [("От руководства", "#d8833b"), ("Открытый рынок", "#3b6fd8"), ("Корпоративный", "#7a4fd0")]
 SURNAMES = ["Орлов", "Гусев", "Лебедев", "Фомина", "Зайцев", "Кузьмин", "Белова", "Новиков", "Соловьёва",
             "Васильев", "Павлова", "Семёнов", "Голубева", "Виноградов", "Богданова", "Воробьёв", "Фролова",
@@ -123,12 +127,23 @@ def _unit_specs() -> list[dict]:
     return specs
 
 
+def _seed_kinds(db: Session) -> dict[str, int]:
+    """Четыре вида демо (ревизия 0012 могла уже завести их в базе с прежними данными)."""
+    have = dict(db.execute(select(CategoryKind.title, CategoryKind.id)).all())
+    out = {}
+    for i, (code, (title, expanded)) in enumerate(KINDS.items()):
+        out[code] = have.get(title) or fund_drafts.save_kind(
+            db, {"title": title, "sort_order": i * 10, "expanded": expanded}, None)
+    return out
+
+
 def _seed_fund(db: Session) -> tuple[dict, dict]:
     """Фонд демо: исходная версия через seed_initial, затем будущая версия с делением коннекта."""
     specs = _unit_specs()
+    kind_ids = _seed_kinds(db)
     fund_drafts.seed_initial(
         db,
-        categories=[{"code": c, "title": t, "kind": k, "escorted": e, "weight": w}
+        categories=[{"code": c, "title": t, "kind_id": kind_ids[k], "escorted": e, "weight": w}
                     for c, t, k, e, w, _n in [*CATEGORIES, CONNECT]],
         groups=[{"path": list(p)} for p in _tree()],
         flags=[{"title": t, "color": c} for t, c in FLAGS],

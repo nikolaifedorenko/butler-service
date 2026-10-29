@@ -50,7 +50,7 @@ class ParsedCategory:
     id: int | None
     code: str
     title: str
-    kind: str
+    kind: str             # название вида (справочник видов); пусто — не указан
     weight: float
     escorted: bool
     sort_order: int
@@ -133,7 +133,7 @@ def export_fund(snapshot: FundSnapshot, flags: list[UnitFlag]) -> bytes:
     _setup_sheet(ws, [ID_HEADER, "код", "название", "вид", "вес", "сопровождение (да/нет)", "порядок"],
                  [16, 14, 28, 14, 8, 22, 10])
     for r, c in enumerate(sorted(snapshot.categories.values(), key=lambda c: (c.sort_order, c.id)), start=2):
-        _put_row(ws, r, [c.id, c.code, c.title, c.kind, c.weight, _yn(c.escorted), c.sort_order])
+        _put_row(ws, r, [c.id, c.code, c.title, c.kind_title, c.weight, _yn(c.escorted), c.sort_order])
 
     ws = wb.create_sheet(SHEET_TREE)
     _setup_sheet(ws, [ID_HEADER, "путь узла", "порядок"], [16, 50, 10])

@@ -13,8 +13,8 @@ def snap() -> FundSnapshot:
     return FundSnapshot(
         version_id=1, valid_from=dt.date(2026, 1, 1),
         categories={
-            1: CategoryInfo(1, "DLX", "Делюкс", "room", 1.5, True, 10),
-            2: CategoryInfo(2, "CONN", "Коннект", "room", 2.0, False, 20),
+            1: CategoryInfo(1, "DLX", "Делюкс", 4, 1.5, True, 10, "номер"),
+            2: CategoryInfo(2, "CONN", "Коннект", 4, 2.0, False, 20, "номер"),
         },
         groups={
             10: GroupInfo(10, None, "Корпус", 1, (10,)),
@@ -85,7 +85,7 @@ def test_parse_roundtrip_equals_snapshot():
     parsed, e = fx.parse_fund(fx.export_fund(s, flags()))
     assert e == [] and parsed is not None
     assert {(c.id, c.code, c.title, c.kind, c.weight, c.escorted, c.sort_order) for c in parsed.categories} == {
-        (c.id, c.code, c.title, c.kind, c.weight, c.escorted, c.sort_order) for c in s.categories.values()}
+        (c.id, c.code, c.title, c.kind_title, c.weight, c.escorted, c.sort_order) for c in s.categories.values()}
     assert {(g.id, g.path, g.sort_order) for g in parsed.groups} == {
         (g.id, s.path_titles(g.id), g.sort_order) for g in s.groups.values()}
     assert {(f.id, f.title, f.color) for f in parsed.flags} == {(5, "Курящий", "#112233"), (6, "Тихий", "#445566")}

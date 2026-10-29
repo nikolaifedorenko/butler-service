@@ -56,7 +56,7 @@ class BoardFilters:
     group_ids: tuple[int, ...] = ()         # узлы дерева фонда: объекты их веток
     category_ids: tuple[int, ...] = ()
     flag_ids: tuple[int, ...] = ()
-    kinds: tuple[str, ...] = ()
+    kind_ids: tuple[int, ...] = ()          # виды категорий (справочник)
     floor: str | None = None
     escorted_only: bool = False
     vip: bool = False
@@ -82,7 +82,7 @@ def fund_match(snap: FundSnapshot, unit_id: int | None, category_id: int | None,
     cat = snap.categories.get(cid)
     return ((not f.group_ids or bool(set(f.group_ids) & set(snap.unit_path(unit_id))))
             and (not f.category_ids or cid in f.category_ids)
-            and (not f.kinds or (cat is not None and cat.kind in f.kinds))
+            and (not f.kind_ids or (cat is not None and cat.kind_id in f.kind_ids))
             and (not f.flag_ids or set(f.flag_ids) <= u.flags)
             and (not f.floor or u.floor == f.floor))
 

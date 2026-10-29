@@ -123,10 +123,12 @@ def big_fund(app_stack):
     from app.modules.stays.application import fund_drafts as fd
     from app.modules.stays.application.allocation import run_allocation
 
+    from .helpers import kind_id
+
     with SessionLocal() as s:
         if s.scalar(select(CategoryState.category_id).where(CategoryState.code == "BIGDLX")) is None:
             draft = fd.open_draft(s, local_date(), None, "big_fund")
-            cat_ids = [fd.save_category(s, draft.rev, {"code": f"BIG{k}", "title": k, "kind": "room",
+            cat_ids = [fd.save_category(s, draft.rev, {"code": f"BIG{k}", "title": k, "kind_id": kind_id("room"),
                                                        "escorted": k == "VIL", "weight": 1}, None)
                        for k in ("DLX", "STE", "VIL")]
             for i in range(440):

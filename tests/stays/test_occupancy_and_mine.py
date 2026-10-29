@@ -1,7 +1,7 @@
 """Шахматка, задача 17: сводная загрузка, «Мои гости», правка своих броней батлером, матрица ролей."""
 from __future__ import annotations
 
-from .helpers import API, FundDraft, create_res, make_category, make_guest, uniq
+from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, uniq
 
 
 def _doc(c, rid):
@@ -120,7 +120,7 @@ def test_occupancy_total_is_sum_of_selected_nodes(manager_role_client, manager_c
         assert {k: t[k] for k in keys} == {k: sum(n["days"][i][k] for n in body["nodes"]) for k in keys}
     assert body["total"]["path"] == ["Итого по выбранному"] and body["total"]["days"][2]["living"] == 2
     # фильтры категорий и видов сужают и узлы, и итог
-    rooms = _occ(manager_client, "2038-03-01", "2038-03-05", group_ids=[a, b], kinds="room")
+    rooms = _occ(manager_client, "2038-03-01", "2038-03-05", group_ids=[a, b], kind_ids=kind_id("room"))
     assert [n["days"][0]["total"] for n in rooms["nodes"]] == [0, 3] and rooms["total"]["days"][0]["total"] == 3
     # узел и его потомок выбраны вместе — объекты в итоге не удваиваются
     child = _group(manager_role_client, parent_id=a)

@@ -23,6 +23,8 @@ from app.modules.stays.application import fund_drafts as fd
 from app.modules.stays.application.fund import FundConflict, FundError
 from app.modules.stays.application.fund_versions import fund_on, snapshot_of
 
+from .helpers import kind_id
+
 V0 = dt.date(2093, 1, 1)          # опубликованная версия-основа
 NOW = "2093-01-10"
 D = dt.date(2093, 2, 1)           # дата черновика в тестах
@@ -43,8 +45,8 @@ def world(db, today):
     v = FundVersion(valid_from=V0, status="published", rev=1)
     db.add(v)
     db.flush()
-    db.add_all([CategoryState(version_id=v.id, category_id=a.id, code="TA", title="Кат А"),
-                CategoryState(version_id=v.id, category_id=b.id, code="TB", title="Кат Б")])
+    db.add_all([CategoryState(version_id=v.id, category_id=a.id, code="TA", title="Кат А", kind_id=kind_id("room")),
+                CategoryState(version_id=v.id, category_id=b.id, code="TB", title="Кат Б", kind_id=kind_id("room"))])
     db.add(GroupState(version_id=v.id, group_id=g1.id, parent_id=None, title="Корпус"))
     db.flush()
     db.add(GroupState(version_id=v.id, group_id=g2.id, parent_id=g1.id, title="Этаж"))

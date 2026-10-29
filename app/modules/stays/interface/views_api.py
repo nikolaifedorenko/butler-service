@@ -21,20 +21,20 @@ router = APIRouter(prefix="/api/stays", tags=["stays"])
 SEE = require_perm("stays.view", "stays.occupancy")
 
 
-REMOVED_PARAMS = ("building", "category_id", "kind")
+REMOVED_PARAMS = ("building", "category_id", "kind", "kinds")
 
 
 def fund_filters(request: Request, group_ids: list[int] = Query(default=[]),
                  category_ids: list[int] = Query(default=[]), flag_ids: list[int] = Query(default=[]),
-                 kinds: list[str] = Query(default=[]), floor: Optional[str] = None) -> dict:
+                 kind_ids: list[int] = Query(default=[]), floor: Optional[str] = None) -> dict:
     """Измерения фонда (§7) — повторяющиеся параметры. Прежние одиночные параметры — 422, а не
     молча без фильтра: старый клиент иначе показал бы весь фонд как отфильтрованный."""
     old = [p for p in REMOVED_PARAMS if p in request.query_params]
     if old:
         raise HTTPException(status_code=422, detail=f"Параметр {', '.join(old)} больше не поддерживается: "
-                                                    "group_ids, category_ids, flag_ids, kinds")
+                                                    "group_ids, category_ids, flag_ids, kind_ids")
     return {"group_ids": tuple(group_ids), "category_ids": tuple(category_ids), "flag_ids": tuple(flag_ids),
-            "kinds": tuple(kinds), "floor": floor or None}
+            "kind_ids": tuple(kind_ids), "floor": floor or None}
 
 
 @router.get("/board/units")

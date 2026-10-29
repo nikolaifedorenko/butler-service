@@ -42,7 +42,7 @@ class CategoryIn(BaseModel):
 
     code: str = Field(min_length=1, max_length=16)
     title: str = Field(min_length=1, max_length=120)
-    kind: Literal["villa", "estate", "apartment", "room"]
+    kind_id: int                       # вид из справочника видов категорий
     escorted: bool = False
     weight: float = Field(ge=0, le=100)
     sort_order: int = SORT

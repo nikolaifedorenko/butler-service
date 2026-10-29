@@ -51,7 +51,7 @@ class DayFilters:
     group_ids: tuple[int, ...] = ()
     category_ids: tuple[int, ...] = ()
     flag_ids: tuple[int, ...] = ()
-    kinds: tuple[str, ...] = ()
+    kind_ids: tuple[int, ...] = ()
     floor: str | None = None
     escorted_only: bool = False
     vip: bool = False

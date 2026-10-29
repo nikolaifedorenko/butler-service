@@ -21,7 +21,7 @@ from app.modules.stays.adapters.orm import (
 )
 from app.modules.stays.application import fund_drafts as fd
 
-from .helpers import API, make_category, uniq
+from .helpers import API, kind_id, make_category, uniq
 
 
 @pytest.fixture(autouse=True)
@@ -101,7 +101,7 @@ def test_publish_flow_via_api(manager_role_client, db):
     assert c.post(f"{API}/fund/draft", json={"valid_from": _today(db)}).status_code == 409   # черновик один
     code = "T" + uniq()
     cat = c.post(f"{API}/fund/draft/categories", json={"rev": rev, "code": code, "title": code,
-                                                       "kind": "villa", "weight": 3})
+                                                       "kind_id": kind_id("villa"), "weight": 3})
     assert cat.status_code == 200, cat.text
     rev = cat.json()["rev"]
     assert rev == opened.json()["rev"] + 1
@@ -136,7 +136,7 @@ def test_group_split_merge_and_flags_via_api(manager_role_client, db):
         return r.json()
 
     code = "T" + uniq()
-    cat = call("POST", "categories", code=code, title=code, kind="room", weight=1)["id"]
+    cat = call("POST", "categories", code=code, title=code, kind_id=kind_id("room"), weight=1)["id"]
     grp = call("POST", "groups", title="Корпус " + code)["id"]
     u = call("POST", "units", label=code + "-A", category_id=cat, group_id=grp, floor="2")["id"]
     parts = call("POST", f"units/{u}/split", parts=[{"label": code + "-B"}, {"label": code + "-C"}])["ids"]
@@ -160,9 +160,9 @@ def test_group_split_merge_and_flags_via_api(manager_role_client, db):
 
 def test_validation_errors(manager_role_client, db):
     c = manager_role_client
-    assert c.post(f"{API}/fund/draft/categories", json={"rev": 1, "code": "X", "title": "x", "kind": "room",
+    assert c.post(f"{API}/fund/draft/categories", json={"rev": 1, "code": "X", "title": "x", "kind_id": kind_id("room"),
                                                         "weight": 1, "sort_order": 3_000_000_000}).status_code == 422
-    assert c.post(f"{API}/fund/draft/categories", json={"rev": 1, "code": "X", "title": "x", "kind": "castle",
+    assert c.post(f"{API}/fund/draft/categories", json={"rev": 1, "code": "X", "title": "x", "kind_id": "castle",
                                                         "weight": 1}).status_code == 422
     assert c.post(f"{API}/fund/draft/units", json={"rev": 1, "label": "U", "category_id": 1}).status_code == 409  # черновика нет
     assert c.post(f"{API}/fund/draft/units/1/split", json={"rev": 1, "parts": [{"label": "a"}]}).status_code == 422  # одна часть
@@ -183,7 +183,7 @@ def test_repeated_ids_in_merge_and_flags_via_api(manager_role_client, db):
         return r.json()
 
     code = "T" + uniq()
-    cat = call("POST", "categories", code=code, title=code, kind="room", weight=1)["id"]
+    cat = call("POST", "categories", code=code, title=code, kind_id=kind_id("room"), weight=1)["id"]
     a, b = (call("POST", "units", label=f"{code}-{i}", category_id=cat)["id"] for i in (1, 2))
     flag = c.post(f"{API}/fund/flags", json={"title": "апи-флаг-" + uniq()}).json()["id"]
     call("PUT", "flags", flag_id=flag, unit_ids=[a, a], value=True)

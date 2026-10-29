@@ -1115,15 +1115,9 @@
             "title": "Escorted",
             "type": "boolean"
           },
-          "kind": {
-            "enum": [
-              "villa",
-              "estate",
-              "apartment",
-              "room"
-            ],
-            "title": "Kind",
-            "type": "string"
+          "kind_id": {
+            "title": "Kind Id",
+            "type": "integer"
           },
           "rev": {
             "title": "Rev",
@@ -1152,7 +1146,7 @@
         "required": [
           "code",
           "title",
-          "kind",
+          "kind_id",
           "weight",
           "rev"
         ],
@@ -1921,29 +1915,6 @@
           "reservation_ids"
         ],
         "title": "JoinIn",
-        "type": "object"
-      },
-      "KindIn": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "text": {
-            "default": "",
-            "title": "Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "name"
-        ],
-        "title": "KindIn",
         "type": "object"
       },
       "KindUpdate": {
@@ -3456,6 +3427,29 @@
         "title": "StatusIn",
         "type": "object"
       },
+      "app__modules__docs__interface__docs_api__KindIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "KindIn",
+        "type": "object"
+      },
       "app__modules__notify__interface__notify_api__TemplateIn": {
         "properties": {
           "text": {
@@ -3617,6 +3611,33 @@
           "daily_limit"
         ],
         "title": "SettingsIn",
+        "type": "object"
+      },
+      "app__modules__stays__interface__fund_versions_api__KindIn": {
+        "properties": {
+          "expanded": {
+            "default": false,
+            "title": "Expanded",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "KindIn",
         "type": "object"
       },
       "app__modules__stays__interface__reservations_api__GroupIn": {
@@ -5479,7 +5500,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/KindIn"
+                "$ref": "#/components/schemas/app__modules__docs__interface__docs_api__KindIn"
               }
             }
           },
@@ -11011,14 +11032,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -11285,14 +11306,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -11559,14 +11580,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -12100,14 +12121,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -13475,6 +13496,183 @@
         ]
       }
     },
+    "/api/stays/fund/kinds": {
+      "post": {
+        "operationId": "create_kind_api_stays_fund_kinds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__KindIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Kind",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/kinds/{kid}": {
+      "delete": {
+        "operationId": "remove_kind_api_stays_fund_kinds__kid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kid",
+            "required": true,
+            "schema": {
+              "title": "Kid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Kind",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_kind_api_stays_fund_kinds__kid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kid",
+            "required": true,
+            "schema": {
+              "title": "Kid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__KindIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Kind",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/kinds/{kid}/archive": {
+      "put": {
+        "operationId": "archive_kind_api_stays_fund_kinds__kid__archive_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kid",
+            "required": true,
+            "schema": {
+              "title": "Kid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Kind",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/fund/reset": {
       "post": {
         "description": "«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,\nпредупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и\nfingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки\nфайла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания.",
@@ -14482,14 +14680,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
