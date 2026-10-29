@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, aliased
 
 from ..adapters.orm import Guest, GuestLink
-from ..domain.kinship import FamilyGraph, Person, kin_of
+from ..domain.kinship import FamilyGraph, Person, children_of, kin_of
 from .guests import format_phone
 from .visibility import Level, at_least
 
@@ -116,9 +116,10 @@ def kin_among(db: Session, present: set[int], seeds: set[int] | None = None) -> 
                       .where(GuestLink.kind.in_(FAMILY_KINDS))).all()
     graph = graph_of((a, b, kind, former) for a, b, kind, former, _, _ in rows)
     people = {i: Person(i, g) for a, b, _, _, g_a, g_b in rows for i, g in ((a, g_a), (b, g_b))}
+    children = children_of(graph.parents)
     out: dict[int, list[tuple[int, str]]] = {}
     for gid in sorted(seeds & set(people)):
-        rel = [(k.person_id, k.title) for k in kin_of(gid, people, graph.parents, graph.spouses)
+        rel = [(k.person_id, k.title) for k in kin_of(gid, people, graph.parents, graph.spouses, children)
                if k.person_id in present]
         if rel:
             out[gid] = rel

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..adapters.orm import CustomField, Guest, GuestLink, Reservation
 from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
 from .fund import FundConflict, FundError, as_dict, changes
+from .locking import lock_module
 
 LEVELS = ("regular", "vip", "vvip")
 GENDERS = ("m", "f", "")
@@ -203,6 +204,7 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
     предок и не потомок; ошибка — 422 с объяснением."""
     from .family import family_graph
 
+    lock_module(db)        # проверки графа и вставка — под замком: две записи не пропустят третьего родителя
     if kind not in LINK_KINDS:
         raise GuestError("Неизвестный вид связи")
     if former and kind != "spouse":
@@ -220,6 +222,10 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
         graph = family_graph(db, {guest_id, other_id})
         err = (check_parent(other_id, guest_id, graph) if kind == "parent"
                else check_spouse(guest_id, other_id, graph))
+        if not err and kind == "spouse" and not former:
+            current = [x for x in (guest_id, other_id) if any(not f for _, f in graph.spouses.get(x, ()))]
+            if current:
+                err = "У гостя уже есть супруг(а)"
         if err:
             raise GuestError(err)
     row = GuestLink(guest_a_id=guest_id, guest_b_id=other_id, kind=kind, former=former)
@@ -229,6 +235,7 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
 
 
 def delete_link(db: Session, link_id: int) -> GuestLink:
+    lock_module(db)
     row = db.get(GuestLink, link_id)
     if row is None:
         raise GuestError("Связь не найдена")

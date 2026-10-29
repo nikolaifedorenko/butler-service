@@ -106,13 +106,20 @@ def _current_spouses(spouses: Spouses, pid: int) -> list[int]:
     return [s for s, former in spouses.get(pid, ()) if not former]
 
 
-def kin_of(person_id: int, people: Mapping[int, Person], parents: Parents, spouses: Spouses) -> list[Kin]:
-    """Все родственники гостя с названиями — кем каждый приходится гостю."""
+def children_of(parents: Parents) -> dict[int, list[int]]:
+    """Обратная карта «родитель → дети» — построить один раз для многих вызовов kin_of."""
+    return _children(parents)
+
+
+def kin_of(person_id: int, people: Mapping[int, Person], parents: Parents, spouses: Spouses,
+           children: Mapping[int, list[int]] | None = None) -> list[Kin]:
+    """Все родственники гостя с названиями — кем каждый приходится гостю. children — готовая
+    карта children_of(parents) (иначе строится здесь)."""
     def gender(pid: int) -> str:
         p = people.get(pid)
         return p.gender if p else ""
 
-    children = _children(parents)
+    children = _children(parents) if children is None else children
     down = lambda p: children.get(p, ())      # noqa: E731
     found: dict[int, Kin] = {}
 

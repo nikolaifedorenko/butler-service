@@ -301,3 +301,31 @@ def test_relatives_among_occupants_on_card_and_day_board(manager_role_client, ma
         ("сын", guests[g["ivan"]["id"]]["name"]), ("невестка", guests[g["maria"]["id"]]["name"])}
     occ = occupancy_client.get(f"{API}/day", params={"date": "2031-03-12"}).json()
     assert all("guests" not in row for row in occ["in_house"])
+
+
+def test_link_writes_take_module_lock(manager_client, monkeypatch):
+    """Проверки графа и вставка/удаление связи — под lock_module (две записи одновременно не
+    пропустят третьего родителя или супруга-предка)."""
+    from app.modules.stays.application import guests as gmod
+
+    calls = []
+    real = gmod.lock_module
+    monkeypatch.setattr(gmod, "lock_module", lambda s: (calls.append("lock"), real(s)))
+    a, b = _guest(manager_client), _guest(manager_client)
+    r = _link(manager_client, a, b, "parent")
+    assert r.status_code == 200 and calls == ["lock"]
+    assert manager_client.delete(f"{API}/guest-links/{r.json()['id']}").status_code == 200
+    assert calls == ["lock", "lock"]
+
+
+def test_second_current_spouse_422(manager_client):
+    a, b, c = (_guest(manager_client) for _ in range(3))
+    assert _link(manager_client, a, b, "spouse").status_code == 200
+    for x, y in ((a, c), (c, b)):
+        r = _link(manager_client, x, y, "spouse")
+        assert r.status_code == 422 and r.json()["detail"] == "У гостя уже есть супруг(а)"
+    # бывшие супруги не мешают: прежний брак — former, новый — действующий
+    d = _guest(manager_client)
+    assert _link(manager_client, a, d, "spouse", former=True).status_code == 200
+    e = _guest(manager_client)
+    assert _link(manager_client, d, e, "spouse").status_code == 200
