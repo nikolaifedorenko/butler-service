@@ -193,6 +193,8 @@ def save_reservation(db: Session, doc: dict, rid: int | None,
         if r.version != expected_version:
             raise ReservationConflict()
         before = reservation_snapshot(db, r)
+    if doc.get("paid_category_id") == doc["category_id"]:
+        doc = {**doc, "paid_category_id": None}      # форма шлёт оплату = своей категории: это «по умолчанию»
     joining = doc.get("group_id") is not None and (rid is None or r.group_id != doc["group_id"])
     others = _group_others(db, doc.get("group_id"), rid)
     if joining and others:

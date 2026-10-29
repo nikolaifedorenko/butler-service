@@ -298,3 +298,24 @@ def test_paid_category_before_fund_start_refused(manager_role_client, manager_cl
     r = manager_client.post(f"{API}/reservations", json=res_body(
         cat, "1990-05-02", "1990-05-05", [(g["id"], "main", None, None)], paid_category_id=other["id"]))
     assert r.status_code == 422, r.text
+
+
+def test_group_join_form_payload_no_false_upgrade(manager_role_client, manager_client):
+    cat, other = make_category(manager_role_client), make_category(manager_role_client)
+    g = make_guest(manager_client)
+    gid = manager_client.post(f"{API}/groups", json={"title": "Форма"}).json()["id"]
+    create_res(manager_client, cat, "2028-01-02", "2028-01-05", group_id=gid)
+    # как форма: оплата явно равна выбранной категории брони
+    b = create_res(manager_client, other, "2028-01-02", "2028-01-05", [(g["id"], "main", None, None)],
+                   group_id=gid, paid_category_id=other["id"])
+    assert b["category_id"] == cat["id"] and _upgrade(manager_client, b["id"]) == ""
+    from app.core.db import SessionLocal
+    from app.modules.stays.adapters.orm import Reservation
+    with SessionLocal() as s:
+        assert s.get(Reservation, b["id"]).paid_category_id is None
+    # правка: бронь без группы, затем вступление в группу с той же формой
+    solo = create_res(manager_client, other, "2028-02-02", "2028-02-05", [(g["id"], "main", None, None)],
+                      paid_category_id=other["id"])
+    r = _put(manager_client, solo, group_id=gid, category_id=other["id"], paid_category_id=other["id"])
+    assert r.status_code == 200, r.text
+    assert _upgrade(manager_client, solo["id"]) == ""
