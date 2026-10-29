@@ -402,3 +402,27 @@ def test_archived_flag_renamed_still_checked(manager_role_client, db):
     r = _upload(c, _edit(_export(c), rename_and_set))
     assert r.status_code == 422, r.text
     assert any(e["sheet"] == "Объекты" and "в архиве" in e["message"] for e in r.json()["errors"])
+
+
+def test_slash_in_node_title_rejected(manager_role_client, db):
+    c = manager_role_client
+    s = _seed(c)
+
+    def add(wb):
+        wb["Дерево"].append([None, "Корпус / Блок", None, 9])
+    r = _upload(c, _edit(_export(c), add))
+    assert r.status_code == 422, r.text
+    assert any(e["sheet"] == "Дерево" and "«/»" in e["message"] for e in r.json()["errors"]), r.json()
+    assert _draft(db) is None and s
+
+
+def test_old_tree_format_rejected(manager_role_client, db):
+    c = manager_role_client
+
+    def old(wb):
+        ws = wb["Дерево"]
+        ws.delete_cols(3)                       # прежний формат: ID | путь | порядок
+    r = _upload(c, _edit(_export(c), old))
+    assert r.status_code == 422, r.text
+    assert any(e["sheet"] == "Дерево" and "выгрузите фонд заново" in e["message"] for e in r.json()["errors"])
+    assert _draft(db) is None

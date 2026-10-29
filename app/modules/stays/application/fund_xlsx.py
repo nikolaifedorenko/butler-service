@@ -313,6 +313,11 @@ def parse_fund(data: bytes, known_unit_ids: set[int] | None = None) -> tuple[Par
 
 
 def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund | None, list[FileError]]:
+    if SHEET_TREE in wb.sheetnames:       # прежний формат: «ID | путь узла | порядок» без «Родителя»
+        head = next(wb[SHEET_TREE].iter_rows(min_row=1, max_row=1, max_col=4, values_only=True), ())
+        if len(head) < 3 or not _text(head[2]).lower().startswith("родитель"):
+            ctx.err(SHEET_TREE, 1, "старый формат файла: нет колонки «Родитель» — выгрузите фонд заново")
+            return None, ctx.errors
     cats_raw = _read_sheet(wb, SHEET_CATEGORIES, 7, ctx)
     tree_raw = _read_sheet(wb, SHEET_TREE, 4, ctx)
     flags_raw = _read_sheet(wb, SHEET_FLAGS, 3, ctx)
@@ -348,6 +353,9 @@ def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund |
         pp = _path(parent) if parent else ()
         if not title:
             ctx.err(SHEET_TREE, n, "не указано название узла")
+            continue
+        if "/" in title:
+            ctx.err(SHEET_TREE, n, "в названии узла нельзя использовать «/»")
             continue
         if any(not x for x in pp):
             ctx.err(SHEET_TREE, n, "родитель содержит пустое звено")

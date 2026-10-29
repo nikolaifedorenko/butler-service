@@ -281,4 +281,4 @@ def test_reset_plan_empty_kind_dictionary_hint():
                               sort_order=1)]
     _, errors = fr.plan_load(fx.ParsedFund(categories=cats, groups=[], flags=[], units=[]),
                              [CategoryKind(id=2, title="старое", archived=True)])
-    assert errors and "сначала заведите вид на вкладке «Виды»" in errors[0].message
+    assert errors and "нет активных видов: сначала заведите вид на вкладке «Виды»" in errors[0].message
