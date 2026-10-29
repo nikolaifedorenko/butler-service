@@ -858,8 +858,20 @@ async function guestsTab() {
   click($('#view-stays [data-stab="guests"]'));
   check('вкладка «Гости» отрисована', await waitFor(() => !!$('#gl-total')));
   const rerendered = async (sel, act) => { const old = $(sel); act(); return waitFor(() => $(sel) && $(sel) !== old); };
-  check('поиск по фамилии', await rerendered('#gl-total', () => input($('#gl-q'), `дублёв${uniq}`))
-    && $$('[data-gl-row]').length === 2, text('#gl-total'));
+  /* посимвольный ввод с паузой дольше задержки поиска: поле не перерисовывается, фокус и текст на месте */
+  const q = $('#gl-q');
+  q.focus();
+  const typed = `дублёв${uniq}`.toLowerCase();
+  const firstTotal = $('#gl-total');
+  for (const [i, ch] of [...typed].entries()) {
+    q.value += ch;
+    q.dispatchEvent(new window.Event('input', { bubbles: true }));
+    await sleep(i === 3 ? 700 : 40);           // на 4-м символе поиск успевает уйти и вернуться
+  }
+  check('поиск по фамилии', await waitFor(() => $('#gl-total') !== firstTotal && $$('[data-gl-row]').length === 2),
+    text('#gl-total'));
+  check('при вводе поле поиска не теряет фокус и текст', $('#gl-q') === q && window.document.activeElement === q
+    && q.value === typed, `${window.document.activeElement?.id} «${q.value}»`);
   check('телефон виден полному уровню', text('#gl-result').includes('+7 916 400-11-22'));
   await rerendered('#gl-total', () => input($('#gl-q'), `GS${uniq}`));
   check('поиск по номеру брони — гость брони', $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(drop.id));

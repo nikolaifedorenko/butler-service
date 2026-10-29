@@ -74,37 +74,39 @@ def list_guests(q: str = "", principal: Principal = Depends(require_perm("stays.
             for g in guests.search_guests(db, q)]
 
 
+def _require_full(db: Session, principal: Principal) -> None:
+    """Вкладка «Гости» и всё, что из неё (addendum §3): только полный уровень — stays.guests
+    вместе с доступом к шахматке с фамилиями."""
+    if level_for(db, principal) != "full":
+        raise HTTPException(status_code=403, detail="Справочник гостей — с правом «Профили гостей целиком»")
+
+
 @router.get("/guests/list")
 def guests_tab(q: str = "", level: Literal["", "regular", "vip", "vvip"] = "",
                stayed_from: Optional[dt.date] = None, stayed_to: Optional[dt.date] = None,
                birthday_days: Optional[int] = Query(None, ge=0, le=guests_list.MAX_BIRTHDAY_DAYS),
                sort: Literal["name", "level", "last_stay", "stays"] = "name", dir: Literal["asc", "desc"] = "asc",
                offset: int = Query(0, ge=0), limit: int = Query(guests_list.MAX_LIMIT, ge=1, le=guests_list.MAX_LIMIT),
-               principal: Principal = Depends(require_perm("stays.view", "stays.guests")),
-               db: Session = Depends(get_db)):
-    """Вкладка «Гости»: с уровня «с фамилиями»; телефон, поиск по нему и фильтр по дню
-    рождения — только полный уровень (stays.guests)."""
-    level_ = level_for(db, principal)
+               principal: Principal = Depends(require_perm("stays.guests")), db: Session = Depends(get_db)):
+    """Вкладка «Гости»: только полный уровень (stays.guests), остальным — 403."""
+    _require_full(db, principal)
     try:
         query = guests_list.GuestQuery(q, level, stayed_from, stayed_to, birthday_days, sort, dir, offset, limit)
-        return guests_list.list_guests(db, query, level_)
     except FundError as e:
         raise _err(e) from e
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
+    return guests_list.list_guests(db, query)
 
 
 @router.post("/guests/merge")
 def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
                  principal: Principal = Depends(require_perm("stays.edit")), db: Session = Depends(get_db)):
     """Объединение дублей: ?preview=1 — что перенесётся, тем же кодом с откатом."""
-    if "stays.guests" not in principal.gate_permissions:
-        raise HTTPException(status_code=403, detail="Объединение гостей — с правом «Профили гостей целиком»")
+    _require_full(db, principal)
 
     def op() -> dict:
         out = guests.merge_guests(db, payload.keep_id, payload.drop_id)
         audit(db, principal, "stays_guest_merge", f"guest:{payload.keep_id}",
-              {"drop_id": payload.drop_id, "dropped": out.pop("dropped"), "moves": out["moves"]})
+              {"drop_id": payload.drop_id, "not_carried": out.pop("not_carried"), "moves": out["moves"]})
         return out
 
     done = run(db, op, preview_flag, None)
@@ -134,6 +136,7 @@ def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guest
 def guest_stays(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
                 db: Session = Depends(get_db)):
     """История проживаний гостя: все брони, где он жил, с объектами по фонду дня и батлерами."""
+    _require_full(db, principal)
     if db.get(Guest, gid) is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
     return history.guest_stays(db, gid)

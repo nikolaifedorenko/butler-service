@@ -470,7 +470,6 @@
   "staysGuestRowHtml": "readonly",
   "staysGuests": "readonly",
   "staysGuestsEmpty": "readonly",
-  "staysGuestsFull": "readonly",
   "staysGuestsParams": "readonly",
   "staysGuestsTableHtml": "readonly",
   "staysGuestsToolbar": "readonly",
@@ -989,7 +988,6 @@
   "staysGuestRowHtml": "modules/stays_guests.js",
   "staysGuests": "modules/stays_guests.js",
   "staysGuestsEmpty": "modules/stays_guests.js",
-  "staysGuestsFull": "modules/stays_guests.js",
   "staysGuestsParams": "modules/stays_guests.js",
   "staysGuestsTableHtml": "modules/stays_guests.js",
   "staysGuestsToolbar": "modules/stays_guests.js",
@@ -1214,6 +1212,7 @@
    "staysMonthRange",
    "staysPanelInto",
    "staysState",
+   "staysTabAllowed",
    "staysToday"
   ],
   "modules/stays_board.js": [

@@ -282,10 +282,16 @@ def _symmetric(kind: str) -> bool:
     return a == b
 
 
-def _plan_links(db: Session, keep_id: int, drop_id: int) -> list[tuple[GuestLink, str, int, int]]:
-    """Что станет со связями дубля: (связь, moved | duplicate | removed, новая A, новая B).
-    Семейные перенесённые связи проверяются по графу семьи тем же кодом, что и add_link;
-    нарушение (третий родитель, цикл, второй действующий супруг) — FundConflict, до записи."""
+Plan = list[tuple[GuestLink, str, int, int, GuestLink | None]]
+
+
+def _plan_links(db: Session, keep_id: int, drop_id: int) -> Plan:
+    """Что станет со связями дубля: (связь, итог, новая A, новая B, связь keep для «current»).
+    Итог: moved — переносится; duplicate — такая уже есть у keep; removed — связь между ними;
+    current — у keep с тем же человеком бывший брак, у дубля действующий: брак keep становится
+    действующим, связь дубля удаляется. Семейные перенесённые связи проверяются по графу семьи
+    тем же кодом, что и add_link; нарушение (третий родитель, цикл, второй действующий
+    супруг) — FundConflict, до записи."""
     from .family import family_links, graph_of
 
     def sub(x: int) -> int:
@@ -293,43 +299,59 @@ def _plan_links(db: Session, keep_id: int, drop_id: int) -> list[tuple[GuestLink
 
     rows = list(db.scalars(select(GuestLink).where(or_(GuestLink.guest_a_id == drop_id,
                                                        GuestLink.guest_b_id == drop_id)).order_by(GuestLink.id)))
-    existing = {(ln.guest_a_id, ln.guest_b_id, ln.kind) for ln in db.scalars(select(GuestLink).where(
+    existing = {(ln.guest_a_id, ln.guest_b_id, ln.kind): ln for ln in db.scalars(select(GuestLink).where(
         or_(GuestLink.guest_a_id == keep_id, GuestLink.guest_b_id == keep_id)))}
     family = [(ln.guest_a_id, ln.guest_b_id, ln.kind, ln.former) for ln in family_links(db, {keep_id, drop_id})
               if drop_id not in (ln.guest_a_id, ln.guest_b_id)]
-    plan = []
+
+    def conflict(err: str) -> FundConflict:
+        return FundConflict(f"Объединение нарушит семейное дерево: {err}")
+
+    def has_current_spouse(x: int) -> bool:
+        return any(not f for _, f in graph_of(family).spouses.get(x, ()))
+
+    plan: Plan = []
     for ln in rows:
         a, b = sub(ln.guest_a_id), sub(ln.guest_b_id)
         if a == b:
-            plan.append((ln, "removed", a, b))
+            plan.append((ln, "removed", a, b, None))
             continue
-        if (a, b, ln.kind) in existing or (_symmetric(ln.kind) and (b, a, ln.kind) in existing):
-            plan.append((ln, "duplicate", a, b))
+        mine = existing.get((a, b, ln.kind)) or (existing.get((b, a, ln.kind)) if _symmetric(ln.kind) else None)
+        if mine is not None:
+            if ln.kind == "spouse" and mine.former and not ln.former:      # действующий брак важнее бывшего
+                if has_current_spouse(a) or has_current_spouse(b):
+                    raise conflict("У гостя уже есть супруг(а)")
+                family = [t for t in family if not (t[2] == "spouse" and {t[0], t[1]} == {a, b})]
+                family.append((a, b, "spouse", False))
+                plan.append((ln, "current", a, b, mine))
+            else:
+                plan.append((ln, "duplicate", a, b, None))
             continue
         if ln.kind in FAMILY_KINDS:
             graph = graph_of(family)
             err = check_parent(b, a, graph) if ln.kind == "parent" else check_spouse(a, b, graph)
-            if not err and ln.kind == "spouse" and not ln.former and any(
-                    not f for x in (a, b) for _, f in graph.spouses.get(x, ())):
+            if not err and ln.kind == "spouse" and not ln.former and (has_current_spouse(a) or has_current_spouse(b)):
                 err = "У гостя уже есть супруг(а)"
             if err:
-                raise FundConflict(f"Объединение нарушит семейное дерево: {err}")
+                raise conflict(err)
             family.append((a, b, ln.kind, ln.former))
-        existing.add((a, b, ln.kind))
-        plan.append((ln, "moved", a, b))
+        existing[(a, b, ln.kind)] = ln
+        plan.append((ln, "moved", a, b, None))
     return plan
 
 
-def _apply_links(db: Session, plan: list[tuple[GuestLink, str, int, int]], keep_id: int) -> list[dict]:
-    others = {a if b == keep_id else b for _, _, a, b in plan}
+def _apply_links(db: Session, plan: Plan, keep_id: int) -> list[dict]:
+    others = {a if b == keep_id else b for _, _, a, b, _ in plan}
     names = {g.id: short_name(g) for g in db.scalars(select(Guest).where(Guest.id.in_(others)))} if others else {}
     out = [{"guest_id": (a if b == keep_id else b), "name": names.get(a if b == keep_id else b, ""),
-            "kind": ln.kind, "former": ln.former, "result": result} for ln, result, a, b in plan]
-    for ln, result, _, _ in plan:            # сначала удаления: перенос не должен задеть уникальность
+            "kind": ln.kind, "former": ln.former, "result": result} for ln, result, a, b, _ in plan]
+    for ln, result, _, _, mine in plan:      # сначала удаления: перенос не должен задеть уникальность
         if result != "moved":
             db.delete(ln)
+        if mine is not None:
+            mine.former = False
     db.flush()
-    for ln, result, a, b in plan:
+    for ln, result, a, b, _ in plan:
         if result == "moved":
             ln.guest_a_id, ln.guest_b_id = a, b
     db.flush()
@@ -428,6 +450,26 @@ def _merge_profile(keep: Guest, drop: Guest) -> dict:
     return {"profile": profile, "preferences": pref_added, "fields": fields_added, "special_dates": dates_added}
 
 
+def _not_carried(dropped: dict, kept: dict) -> dict:
+    """Что из профиля дубля не перешло оставляемому (значения keep победили) — только это
+    пишется в журнал: персональных данных в аудите — не больше необходимого."""
+    out: dict = {}
+    for k, v in dropped.items():
+        if k in ("id", "phone_display") or v in (None, "", [], {}) or (k == "level" and v == "regular"):
+            continue
+        if isinstance(v, dict):
+            lost = {kk: vv for kk, vv in v.items() if vv not in (None, "") and kept[k].get(kk) != vv}
+        elif isinstance(v, list):
+            lost = [x for x in v if x not in kept[k]]
+        elif k == "note":
+            lost = v if v.strip() not in (kept[k] or "") else None
+        else:
+            lost = v if kept[k] != v else None
+        if lost:
+            out[k] = lost
+    return out
+
+
 def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
     """Объединить дубль drop в keep (addendum §3): проживания, строки покрытия, связи,
     предпочтения, особые даты, настраиваемые поля переходят к keep, профиль drop удаляется.
@@ -449,5 +491,5 @@ def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
     db.flush()
     keep.search_text = guest_search_text(keep, searchable_codes(db, "guest"))
     db.flush()
-    return {"keep_id": keep_id, "drop_id": drop_id, "dropped": dropped,
+    return {"keep_id": keep_id, "drop_id": drop_id, "not_carried": _not_carried(dropped, guest_dict(keep)),
             "moves": {"reservations": reservations, "links": links, "coverage": coverage, **merged}}

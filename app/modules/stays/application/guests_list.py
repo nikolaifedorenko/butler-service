@@ -1,5 +1,5 @@
-"""Вкладка «Гости» (спека addendum §3): справочник гостей — ФИО, уровень, телефон (только полный
-уровень), последний заезд, число проживаний; поиск по ФИО, телефону и номеру брони, фильтры
+"""Вкладка «Гости» (спека addendum §3, только полный уровень — проверка в API): справочник
+гостей — ФИО, уровень, телефон, последний заезд, число проживаний; поиск по ФИО, телефону и номеру брони, фильтры
 «уровень», «был в периоде», «день рождения в ближайшие N дней», сортировка на сервере, по 200.
 Два запроса: гости и записи «проживающий» с номером и статусом брони; остальное — в памяти."""
 from __future__ import annotations
@@ -15,9 +15,8 @@ from app.core.time import local_date
 
 from ..adapters.orm import Guest, Occupant, Reservation
 from .family import full_name
-from .guests import LEVELS, GuestError, format_phone, guest_text, search_query
+from .guests import LEVELS, GuestError, format_phone, search_query
 from .views import LEVEL_RANK
-from .visibility import Level, at_least
 
 SORTS = ("name", "level", "last_stay", "stays")
 MAX_LIMIT = 200
@@ -101,15 +100,8 @@ def _sort_key(sort: str, stays: dict[int, _Stays]):
     }[sort]
 
 
-def find_guests(db: Session, q: GuestQuery, level: Level, today: dt.date | None = None) -> list[dict]:
-    """Все подходящие гости в порядке сортировки (без среза страницы). Без полного уровня
-    телефон не отдаётся и не ищется, а фильтр по дню рождения — PermissionError (иначе ответ
-    выдавал бы дату рождения)."""
-    if not at_least(level, "names"):
-        raise PermissionError("Справочник гостей — с уровня «с фамилиями»")
-    full = level == "full"
-    if q.birthday_days is not None and not full:
-        raise PermissionError("Фильтр по дню рождения — только с правом «Профили гостей целиком»")
+def find_guests(db: Session, q: GuestQuery, today: dt.date | None = None) -> list[dict]:
+    """Все подходящие гости в порядке сортировки (без среза страницы)."""
     stmt = select(Guest)
     if q.level:
         stmt = stmt.where(Guest.level == q.level)
@@ -118,7 +110,7 @@ def find_guests(db: Session, q: GuestQuery, level: Level, today: dt.date | None 
     empty = _Stays()
     needle = search_query(q.q) if q.q.strip() else ""
     if needle:
-        guests = [g for g in guests if needle in guest_text(g, full)
+        guests = [g for g in guests if needle in (g.search_text or "")
                   or any(needle in n for n in stays.get(g.id, empty).numbers)]
     if q.stayed_from or q.stayed_to:
         lo, hi = q.stayed_from or dt.date.min, q.stayed_to or dt.date.max
@@ -132,13 +124,12 @@ def find_guests(db: Session, q: GuestQuery, level: Level, today: dt.date | None 
     rows = []
     for g in guests:
         s = stays.get(g.id, empty)
-        row = {"id": g.id, "name": full_name(g), "level": g.level, "gender": g.gender}
-        if full:
-            row["phone"] = format_phone(g.phone)
-        rows.append(row | {"last_stay": s.last.isoformat() if s.last else None, "stays": len(s.rids)})
+        rows.append({"id": g.id, "name": full_name(g), "level": g.level, "gender": g.gender,
+                     "phone": format_phone(g.phone), "last_stay": s.last.isoformat() if s.last else None,
+                     "stays": len(s.rids)})
     return rows
 
 
-def list_guests(db: Session, q: GuestQuery, level: Level) -> dict:
-    rows = find_guests(db, q, level)
+def list_guests(db: Session, q: GuestQuery) -> dict:
+    rows = find_guests(db, q)
     return {"total": len(rows), "rows": rows[q.offset:q.offset + q.limit]}

@@ -14151,7 +14151,7 @@
     },
     "/api/stays/guests/list": {
       "get": {
-        "description": "Вкладка «Гости»: с уровня «с фамилиями»; телефон, поиск по нему и фильтр по дню\nрождения — только полный уровень (stays.guests).",
+        "description": "Вкладка «Гости»: только полный уровень (stays.guests), остальным — 403.",
         "operationId": "guests_tab_api_stays_guests_list_get",
         "parameters": [
           {

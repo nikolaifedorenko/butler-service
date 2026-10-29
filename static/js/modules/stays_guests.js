@@ -5,6 +5,7 @@
    клиент держит накопленные страницы («Показать ещё»). Карточка гостя — openGuestCard,
    новый гость — openGuestForm (stays_forms.js). Объединение: отметить двух гостей →
    «Объединить…» → кого оставить → «Проверить» (что перенесётся) → «Объединить».
+   Вкладка — только полный уровень (stays.guests, см. staysTabAllowed в stays.js).
    Использует хелперы app.js: $ $$ esc api toast can dateRu openModal closeModal.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
@@ -15,7 +16,8 @@ const STAYS_GUEST_COLS = [['name', 'Гость'], ['level', 'Уровень'], [
 const STAYS_GUEST_LEVELS = [['', 'все уровни'], ['regular', 'обычный'], ['vip', 'VIP'], ['vvip', 'VVIP']];
 const STAYS_GUEST_PAGE = 200;
 const STAYS_BIRTHDAY_DAYS = 30;
-const STAYS_MERGE_RESULT = { moved: 'перенесётся', duplicate: 'уже есть — дубль удалится', removed: 'связь между ними — удалится' };
+const STAYS_MERGE_RESULT = { moved: 'перенесётся', duplicate: 'уже есть — дубль удалится', removed: 'связь между ними — удалится',
+  current: 'бывший брак станет действующим' };
 const STAYS_MERGE_KIND = { parent: 'родитель — ребёнок' };
 const STAYS_MERGE_PROFILE = { first_name: 'имя', middle_name: 'отчество', phone: 'телефон', email: 'email',
   birth_date: 'дата рождения', gender: 'пол', external_id: 'внешний id', source: 'источник', level: 'уровень', note: 'примечание' };
@@ -25,9 +27,6 @@ function staysGuestsEmpty() {
 }
 const staysGuests = staysGuestsEmpty();
 
-/* полный уровень (телефоны, дни рождения) — stays.guests вместе с stays.view, как на сервере */
-function staysGuestsFull() { return can('stays.guests') && can('stays.view'); }
-
 function staysGuestsParams(offset) {
   const s = staysGuests;
   const p = new URLSearchParams({ sort: s.sort, dir: s.dir, offset, limit: STAYS_GUEST_PAGE });
@@ -35,7 +34,7 @@ function staysGuestsParams(offset) {
   if (s.level) p.set('level', s.level);
   if (s.stayed_from) p.set('stayed_from', s.stayed_from);
   if (s.stayed_to) p.set('stayed_to', s.stayed_to);
-  if (s.birthday && staysGuestsFull()) p.set('birthday_days', STAYS_BIRTHDAY_DAYS);
+  if (s.birthday) p.set('birthday_days', STAYS_BIRTHDAY_DAYS);
   return p;
 }
 
@@ -43,13 +42,13 @@ function staysGuestsToolbar() {
   const s = staysGuests;
   const edit = can('stays.edit');
   return `<div class="sb-toolbar">
-    <input type="search" id="gl-q" value="${esc(s.q)}" placeholder="Фамилия, ${staysGuestsFull() ? 'телефон, ' : ''}номер брони">
+    <input type="search" id="gl-q" value="${esc(s.q)}" placeholder="Фамилия, телефон, номер брони">
     <select id="gl-level" title="Уровень гостя">${STAYS_GUEST_LEVELS.map(([v, t]) =>
     `<option value="${v}"${v === s.level ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
     <label class="muted">был с <input type="date" id="gl-from" value="${esc(s.stayed_from)}"></label>
     <label class="muted">по <input type="date" id="gl-to" value="${esc(s.stayed_to)}"${s.stayed_from ? ` min="${esc(s.stayed_from)}"` : ''}></label>
-    ${staysGuestsFull() ? `<label class="chk"><input type="checkbox" id="gl-birthday"${s.birthday ? ' checked' : ''}>
-      день рождения в ближайшие ${STAYS_BIRTHDAY_DAYS} дней</label>` : ''}
+    <label class="chk"><input type="checkbox" id="gl-birthday"${s.birthday ? ' checked' : ''}>
+      день рождения в ближайшие ${STAYS_BIRTHDAY_DAYS} дней</label>
     ${edit ? `<button class="btn btn-sm" id="gl-merge" title="Отметьте двух гостей"${s.picked.length === 2 ? '' : ' disabled'}>Объединить…</button>
       <button class="btn btn-sm btn-primary" id="gl-new">Новый гость</button>` : ''}
   </div>`;
@@ -60,7 +59,7 @@ function staysGuestRowHtml(r, edit) {
   return `<tr class="bk-row" data-gl-row="${r.id}" tabindex="0">
     ${edit ? `<td><input type="checkbox" data-gl-pick="${r.id}"${staysGuests.picked.includes(r.id) ? ' checked' : ''} title="Для объединения"></td>` : ''}
     <td>${mark}${esc(r.name)}</td><td>${esc({ regular: 'обычный', vip: 'VIP', vvip: 'VVIP' }[r.level] || r.level)}</td>
-    <td>${r.phone === undefined ? '<span class="muted">—</span>' : esc(r.phone || '—')}</td>
+    <td>${esc(r.phone || '—')}</td>
     <td>${r.last_stay ? esc(dateRu(r.last_stay)) : '<span class="muted">—</span>'}</td><td>${r.stays}</td></tr>`;
 }
 
@@ -75,24 +74,20 @@ function staysGuestsTableHtml(rows, total) {
     ${rows.length < total ? `<button class="btn" id="gl-more">Показать ещё ${Math.min(STAYS_GUEST_PAGE, total - rows.length)}</button>` : ''}`;
 }
 
-async function renderGuestsTab(body) {
-  const fresh = loadGenerationFor(body);
+/* панель фильтров рисуется один раз и не перерисовывается: поиск печатается без потери фокуса;
+   смена фильтра или сортировки перегружает только список (#gl-result) */
+function renderGuestsTab(body) {
   const s = staysGuests;
+  body.innerHTML = `${staysGuestsToolbar()}<div id="gl-result"><div class="empty">Загрузка…</div></div>`;
+  const result = $('#gl-result', body);
+  const known = new Map();
+  const mergeBtn = $('#gl-merge', body);
+  const syncMerge = () => { if (mergeBtn) mergeBtn.disabled = s.picked.length !== 2; };
   let rows = [];
   let total = 0;
   let error = '';
   const page = offset => api('/api/stays/guests/list?' + staysGuestsParams(offset), { silent: true });
-  try {
-    ({ rows, total } = await page(0));
-  } catch (e) {
-    error = e.message;
-  }
-  if (!fresh()) return;
-  body.innerHTML = `${staysGuestsToolbar()}<div id="gl-result"></div>`;
-  const rerender = () => renderGuestsTab(body);
-  const result = $('#gl-result', body);
-  const known = new Map();
-  const paint = () => {
+  const paint = fresh => {
     rows.forEach(r => known.set(r.id, r));
     result.innerHTML = error ? `<div class="panel"><p class="muted">${esc(error)}</p></div>` : staysGuestsTableHtml(rows, total);
     const more = $('#gl-more', result);
@@ -104,17 +99,26 @@ async function renderGuestsTab(body) {
         rows = rows.concat(next.rows);
         total = next.total;
       } catch (e) { toast(e.message, 'warn'); }
-      paint();
+      paint(fresh);
     };
   };
-  paint();
-  const mergeBtn = () => $('#gl-merge', body);
+  const reload = async () => {
+    const fresh = loadGenerationFor(result);
+    try {
+      ({ rows, total } = await page(0));
+      error = '';
+    } catch (e) {
+      rows = []; total = 0; error = e.message;
+    }
+    if (fresh()) paint(fresh);
+  };
+
   result.onclick = e => {
     const th = e.target.closest('[data-gl-sort]');
     if (th) {
       const key = th.dataset.glSort;
       if (s.sort === key) s.dir = s.dir === 'asc' ? 'desc' : 'asc'; else { s.sort = key; s.dir = 'asc'; }
-      rerender();
+      reload();
       return;
     }
     const pick = e.target.closest('[data-gl-pick]');
@@ -122,11 +126,11 @@ async function renderGuestsTab(body) {
       const id = Number(pick.dataset.glPick);
       s.picked = pick.checked ? [...s.picked.filter(x => x !== id), id].slice(-2) : s.picked.filter(x => x !== id);
       $$('[data-gl-pick]', result).forEach(cb => { cb.checked = s.picked.includes(Number(cb.dataset.glPick)); });
-      if (mergeBtn()) mergeBtn().disabled = s.picked.length !== 2;
+      syncMerge();
       return;
     }
     const tr = e.target.closest('[data-gl-row]');
-    if (tr) openGuestCard(Number(tr.dataset.glRow), rerender).catch(err => toast(err.message, 'warn'));
+    if (tr) openGuestCard(Number(tr.dataset.glRow), reload).catch(err => toast(err.message, 'warn'));
   };
   result.onkeydown = e => {
     const tr = e.target.closest?.('[data-gl-row]');
@@ -136,19 +140,26 @@ async function renderGuestsTab(body) {
   let timer = null;
   $('#gl-q', body).oninput = e => {
     clearTimeout(timer);
-    timer = setTimeout(() => { s.q = e.target.value; rerender(); }, 300);
+    timer = setTimeout(() => { s.q = e.target.value; reload(); }, 300);
   };
-  $('#gl-level', body).onchange = e => { s.level = e.target.value; rerender(); };
-  $('#gl-from', body).onchange = e => { s.stayed_from = e.target.value; if (s.stayed_to && s.stayed_to < s.stayed_from) s.stayed_to = s.stayed_from; rerender(); };
-  $('#gl-to', body).onchange = e => { s.stayed_to = e.target.value; rerender(); };
-  const bd = $('#gl-birthday', body);
-  if (bd) bd.onchange = e => { s.birthday = e.target.checked; rerender(); };
+  $('#gl-level', body).onchange = e => { s.level = e.target.value; reload(); };
+  const from = $('#gl-from', body);
+  const to = $('#gl-to', body);
+  from.onchange = () => {
+    s.stayed_from = from.value;
+    to.min = from.value;
+    if (s.stayed_to && s.stayed_from && s.stayed_to < s.stayed_from) { s.stayed_to = s.stayed_from; to.value = s.stayed_to; }
+    reload();
+  };
+  to.onchange = () => { s.stayed_to = to.value; reload(); };
+  $('#gl-birthday', body).onchange = e => { s.birthday = e.target.checked; reload(); };
   const add = $('#gl-new', body);
-  if (add) add.onclick = () => openGuestForm(null, rerender);
-  if (mergeBtn()) mergeBtn().onclick = () => {
+  if (add) add.onclick = () => openGuestForm(null, reload);
+  if (mergeBtn) mergeBtn.onclick = () => {
     const [a, b] = s.picked.map(id => known.get(id) || { id, name: '#' + id });
-    openGuestMerge(a, b, () => { s.picked = []; rerender(); });
+    openGuestMerge(a, b, () => { s.picked = []; syncMerge(); reload(); });
   };
+  return reload();
 }
 
 /* что перенесётся при объединении (ответ ?preview=1 и сохранения — одинаковые moves) */
@@ -181,19 +192,25 @@ function openGuestMerge(a, b, onDone) {
       };
       $$('[name="gm-keep"]', m).forEach(x => { x.onchange = () => { $('#gm-out', m).innerHTML = ''; }; });
       $('[data-close]', m).onclick = closeModal;
+      /* пока запрос идёт, обе кнопки заперты: двойной клик не отправит объединение дважды */
+      const buttons = [$('#gm-preview', m), $('[data-save]', m)];
+      const busy = on => buttons.forEach(x => { x.disabled = on; });
       $('#gm-preview', m).onclick = async () => {
+        busy(true);
         try {
           const r = await api('/api/stays/guests/merge?preview=1', { method: 'POST', body: ids() });
           $('#gm-out', m).innerHTML = staysMergeMovesHtml(r.moves);
         } catch (e) { $('#gm-out', m).innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+        busy(false);
       };
       $('[data-save]', m).onclick = async () => {
+        busy(true);
         try {
           await api('/api/stays/guests/merge', { method: 'POST', body: ids() });
           closeModal();
           toast('Гости объединены');
           if (onDone) onDone();
-        } catch (e) { toast(e.message, 'err'); }
+        } catch (e) { busy(false); toast(e.message, 'err'); }
       };
     },
   });

@@ -96,19 +96,17 @@ def test_guests_list_search_filters_sort(manager_role_client, manager_client):
 
 
 def test_guests_list_phone_only_full_level(manager_client, names_client, mgmt_client):
+    """Справочник — только полный уровень (stays.guests): ему телефоны и фильтр по дню рождения,
+    уровню «с фамилиями» — 403 на список и историю проживаний."""
     u = uniq()
     typed, shown, digits = _phone()
     g = _guest(manager_client, f"Телефонов{u}", phone=typed, birth_date=_birth_in(3))
-    full = _list(mgmt_client, q=u)["rows"]
-    assert [row["phone"] for row in full] == [shown]
-    names = _list(names_client, q=u)["rows"]
-    assert [row["id"] for row in names] == [g["id"]] and "phone" not in names[0]
-    # без полного уровня телефон не ищется и дни рождения не фильтруются: иначе ответ — оракул
-    assert _ids(names_client, q=digits) == []
+    assert [row["phone"] for row in _list(mgmt_client, q=u)["rows"]] == [shown]
     assert _ids(mgmt_client, q=digits) == [g["id"]]
-    r = names_client.get(LIST, params={"q": u, "birthday_days": 30})
-    assert r.status_code == 403
+    assert _ids(mgmt_client, q=u, birthday_days=30) == [g["id"]]
+    assert names_client.get(LIST, params={"q": u}).status_code == 403
     assert names_client.get(f"{API}/guests/{g['id']}/stays").status_code == 403
+    assert mgmt_client.get(f"{API}/guests/{g['id']}/stays").status_code == 200
 
 
 def test_guests_tab_occupancy_403(occupancy_client, mgmt_client, manager_client):
@@ -172,7 +170,9 @@ def test_merge_guests_moves_everything(manager_role_client, manager_client, db):
     a = db.scalars(select(AuditLog).where(AuditLog.action == "stays_guest_merge",
                                           AuditLog.target == f"guest:{keep['id']}")).one()
     payload = json.loads(a.payload_json)
-    assert payload["drop_id"] == drop["id"] and payload["dropped"]["last_name"] == f"Дубль{u}"
+    assert payload["drop_id"] == drop["id"]
+    # в журнал — только то, что не перешло (значения keep победили), без перенесённых ПД
+    assert payload["not_carried"] == {"last_name": f"Дубль{u}", "first_name": "Ваня", "preferences": {"food": "веган"}}
     assert payload["moves"]["reservations"][0]["id"] == res["id"]
 
 
@@ -276,3 +276,34 @@ def test_merge_keeps_family_links_without_duplicates(manager_client, db):
         "Объединение нарушит семейное дерево: Нельзя стать своим предком: этот гость — потомок ребёнка"
     assert db.get(Guest, d["id"]) is not None
     assert manager_client.post(MERGE, json={"keep_id": a["id"], "drop_id": a["id"]}).status_code == 422
+
+
+def test_merge_spouse_current_beats_former(manager_client, db):
+    """У keep с W бывший брак, у дубля с W — действующий: остаётся действующий брак keep–W,
+    связь дубля удаляется; если у keep уже есть другой действующий супруг — 409."""
+    from app.modules.stays.adapters.orm import Guest, GuestLink
+
+    u = uniq()
+    keep, drop, w = (_guest(manager_client, f"{n}{u}") for n in ("Оставить", "Дубль", "Жена"))
+
+    def link(a, b, former):
+        r = manager_client.post(f"{API}/guests/{a['id']}/links", json={"guest_id": b["id"], "kind": "spouse", "former": former})
+        assert r.status_code == 200, r.text
+
+    link(keep, w, True)
+    link(w, drop, False)
+    r = manager_client.post(MERGE, json={"keep_id": keep["id"], "drop_id": drop["id"]})
+    assert r.status_code == 200, r.text
+    assert [(x["guest_id"], x["result"]) for x in r.json()["moves"]["links"]] == [(w["id"], "current")]
+    rows = db.scalars(select(GuestLink).where(GuestLink.kind == "spouse", (GuestLink.guest_a_id == w["id"])
+                                              | (GuestLink.guest_b_id == w["id"]))).all()
+    assert [(x.guest_a_id, x.guest_b_id, x.former) for x in rows] == [(keep["id"], w["id"], False)]
+
+    k2, d2, w2, x2 = (_guest(manager_client, f"{n}2{u}") for n in ("Оставить", "Дубль", "Жена", "Другая"))
+    link(k2, w2, True)
+    link(k2, x2, False)
+    link(d2, w2, False)
+    r = manager_client.post(MERGE, json={"keep_id": k2["id"], "drop_id": d2["id"]})
+    assert r.status_code == 409 and r.json()["detail"] == "Объединение нарушит семейное дерево: У гостя уже есть супруг(а)"
+    db.expire_all()
+    assert db.get(Guest, d2["id"]) is not None
