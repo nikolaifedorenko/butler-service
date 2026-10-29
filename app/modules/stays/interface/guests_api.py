@@ -15,8 +15,9 @@ from app.core.db import get_db
 from app.core.permissions import require_perm
 
 from ..adapters.orm import Guest
-from ..application import guests, mine
+from ..application import family, guests, mine
 from ..application.fund import FundConflict, FundError
+from ..application.visibility import at_least, level_for
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 
@@ -37,6 +38,7 @@ class GuestIn(BaseModel):
     phone: str = Field("", max_length=40)
     email: str = Field("", max_length=120)
     birth_date: Optional[dt.date] = None
+    gender: Literal["m", "f", ""] = ""
     level: Literal["regular", "vip", "vvip"] = "regular"
     preferences: dict[str, str] = {}
     special_dates: list[SpecialDate] = []
@@ -45,8 +47,10 @@ class GuestIn(BaseModel):
 
 
 class LinkIn(BaseModel):
+    """parent — гость из пути родитель guest_id; former — бывшие супруги."""
     guest_id: int
     kind: str
+    former: bool = False
 
 
 def _card(db: Session, g: Guest) -> dict:
@@ -115,13 +119,27 @@ def update_guest(gid: int, payload: GuestIn, principal: Principal = Depends(requ
 def create_link(gid: int, payload: LinkIn, principal: Principal = Depends(require_perm("stays.edit")),
                 db: Session = Depends(get_db)):
     try:
-        row = guests.add_link(db, gid, payload.guest_id, payload.kind)
+        row = guests.add_link(db, gid, payload.guest_id, payload.kind, payload.former)
     except FundError as e:
         raise _err(e) from e
     audit(db, principal, "stays_guest_link", f"guest:{gid}",
-          {"added": {"guest_id": payload.guest_id, "kind": payload.kind, "link_id": row.id}})
+          {"added": {"guest_id": payload.guest_id, "kind": payload.kind, "former": payload.former,
+                     "link_id": row.id}})
     db.commit()
     return {"id": row.id}
+
+
+@router.get("/guests/{gid}/family")
+def guest_family(gid: int, principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
+                 db: Session = Depends(get_db)):
+    """Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только
+    полный уровень. Граф — до 3 поколений вверх и вниз и через брак."""
+    level = level_for(db, principal)
+    if not at_least(level, "names"):
+        raise HTTPException(status_code=403, detail="Семейное дерево — с уровня «с фамилиями»")
+    if db.get(Guest, gid) is None:
+        raise HTTPException(status_code=404, detail="Гость не найден")
+    return family.family(db, gid, level)
 
 
 @router.delete("/guest-links/{link_id}")

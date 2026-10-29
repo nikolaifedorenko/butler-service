@@ -340,7 +340,7 @@ async function openReservationCard(rid, onChanged) {
         <div><h4>Объекты</h4>${card.segments.map(s => `<div>${esc(dateRu(s.start))}–${esc(dateRu(s.end))}: <b>${esc(s.unit || 'без объекта')}</b>
           ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}</div>
         <div><h4>Гости</h4>${card.occupants.map(o => `<div>${o.level !== 'regular' ? esc(STAYS_LEVEL_MARK[o.level]) : ''}${esc(o.guest)}
-          <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>
+          <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>${staysRelativesHtml(o.relatives)}
           ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}</div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
       </div>
       ${card.companions?.length ? `<h4>Сопровождающие</h4>${card.companions.map(c => `<div>${esc(STAYS_COMPANION[c.kind] || c.kind)} — ${esc(c.description)}</div>`).join('')}` : ''}

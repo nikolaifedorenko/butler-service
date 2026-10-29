@@ -15,6 +15,7 @@ from ..domain.types import OFF, StayDay
 from ..ports.duty import DutyPort
 from .context import NO_GUESTS, StaysContext, load_context
 from .coverage import _known, rank_in_ctx
+from .family import kin_among
 from .guests import search_query
 from .views import fund_match
 from .visibility import Level
@@ -108,12 +109,16 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     all_guests = {g for s in stays_now.values() for g in s.guests if g != NO_GUESTS}
     known = _known(db, all_guests, day) if names and all_guests else {}
     needle = search_query(f.q) if names and f.q.strip() else ""
+    # родственники среди проживающих в эту и прошлую ночь (§4: «мать — Петрова М.»)
+    present = all_guests | {g for s in stays_prev.values() for g in s.guests if g != NO_GUESTS}
+    relatives = {gid: [{"guest_id": o, "title": t, "name": ctx.guest_name(o)} for o, t in rel]
+                 for gid, rel in kin_among(db, present).items()} if names else {}
 
     def guests_of(r: Reservation, night: dt.date) -> list[dict]:
         occ = sorted((o for o in ctx.occ.get(r.id, ()) if o.date_from <= night < o.date_to and o.guest_id in ctx.guests),
                      key=lambda o: (o.role != "main", o.id))
         return [{"guest_id": o.guest_id, "name": ctx.guest_name(o.guest_id), "level": ctx.guests[o.guest_id].level,
-                 "role": o.role} for o in occ]
+                 "role": o.role, **({"relatives": relatives.get(o.guest_id, [])} if names else {})} for o in occ]
 
     def row(r: Reservation, kind: str) -> dict | None:
         night = prev if kind == "departure" else day

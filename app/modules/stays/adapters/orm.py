@@ -217,6 +217,7 @@ class Guest(Base):
     phone: Mapped[str] = mapped_column(String(24), default="")      # нормализованный: +79161234567
     email: Mapped[str] = mapped_column(String(120), default="")
     birth_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    gender: Mapped[str] = mapped_column(String(1), default="")         # m | f | '' (не указан)
     level: Mapped[str] = mapped_column(String(8), default="regular")  # regular | vip | vvip
     preferences_json: Mapped[str] = mapped_column(Text, default="{}")
     special_dates_json: Mapped[str] = mapped_column(Text, default="[]")
@@ -231,7 +232,9 @@ class Guest(Base):
 
 
 class GuestLink(Base):
-    """Связь «кто кому»: одна строка, подпись для каждой стороны — LINK_KINDS."""
+    """Связь «кто кому»: одна строка, подпись для каждой стороны — LINK_KINDS. Семейные —
+    только parent (A — родитель B) и spouse (former — бывшие); остальное родство вычисляется
+    (domain/kinship.py)."""
 
     __tablename__ = "stays_guest_links"
     __table_args__ = (UniqueConstraint("guest_a_id", "guest_b_id", "kind", name="uq_stays_guest_link"),)
@@ -240,6 +243,7 @@ class GuestLink(Base):
     guest_a_id: Mapped[int] = mapped_column(ForeignKey("stays_guests.id"), index=True)
     guest_b_id: Mapped[int] = mapped_column(ForeignKey("stays_guests.id"), index=True)
     kind: Mapped[str] = mapped_column(String(16))
+    former: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 # ── 3.3 Брони ──────────────────────────────────────────────────────────────

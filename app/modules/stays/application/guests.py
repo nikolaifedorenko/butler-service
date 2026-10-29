@@ -10,13 +10,16 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..adapters.orm import CustomField, Guest, GuestLink, Reservation
+from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
 from .fund import FundConflict, FundError, as_dict, changes
 
 LEVELS = ("regular", "vip", "vvip")
-# вид связи → (подпись B в профиле A, подпись A в профиле B)
+GENDERS = ("m", "f", "")
+# вид связи → (подпись B в профиле A, подпись A в профиле B); parent — A родитель B, семейные
+# (parent, spouse) подписываются по полу (domain/kinship.py), остальное родство вычисляется
 LINK_KINDS = {
     "spouse": ("супруг(а)", "супруг(а)"),
-    "child": ("ребёнок", "родитель"),
+    "parent": ("ребёнок", "родитель"),
     "relative": ("родственник", "родственник"),
     "assistant": ("ассистент", "работодатель"),
     "security": ("охрана", "под охраной"),
@@ -27,7 +30,7 @@ LINK_KINDS = {
 }
 PHONE_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 PROFILE_FIELDS = ("id", "last_name", "first_name", "middle_name", "phone", "email", "birth_date",
-                  "level", "note", "external_id", "source")
+                  "gender", "level", "note", "external_id", "source")
 
 
 class GuestError(FundError):
@@ -134,6 +137,8 @@ def guest_dict(g: Guest) -> dict:
 def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
     if data.get("level", "regular") not in LEVELS:
         raise GuestError("Уровень гостя: обычный, VIP или VVIP")
+    if data.get("gender", "") not in GENDERS:
+        raise GuestError("Пол гостя: мужской, женский или не указан")
     if gid is None:
         g = Guest()
         db.add(g)
@@ -143,7 +148,7 @@ def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
         if g is None:
             raise GuestError("Гость не найден")
         before = guest_dict(g)
-    for k in ("last_name", "first_name", "middle_name", "email", "level", "note", "external_id",
+    for k in ("last_name", "first_name", "middle_name", "email", "gender", "level", "note", "external_id",
               "source"):
         if k in data:
             setattr(g, k, data[k])
@@ -176,25 +181,48 @@ def links_of(db: Session, guest_id: int) -> list[dict]:
     for r in rows:
         mine_is_a = r.guest_a_id == guest_id
         other = r.guest_b_id if mine_is_a else r.guest_a_id
-        label = LINK_KINDS[r.kind][0 if mine_is_a else 1]
         g = names.get(other)
-        out.append({"id": r.id, "guest_id": other, "kind": r.kind, "label": label,
+        label = _link_label(r, mine_is_a, g.gender if g else "")
+        out.append({"id": r.id, "guest_id": other, "kind": r.kind, "former": r.former, "label": label,
                     "name": short_name(g) if g else "", "level": g.level if g else "regular"})
     return out
 
 
-def add_link(db: Session, guest_id: int, other_id: int, kind: str) -> GuestLink:
+def _link_label(r: GuestLink, mine_is_a: bool, other_gender: str) -> str:
+    """Подпись второй стороны: семейные — по её полу («дочь», «бывший муж»)."""
+    if r.kind == "spouse":
+        return spouse_title(other_gender, r.former)
+    if r.kind == "parent":
+        return child_title(other_gender) if mine_is_a else parent_title(other_gender)
+    return LINK_KINDS.get(r.kind, ("связь", "связь"))[0 if mine_is_a else 1]
+
+
+def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool = False) -> GuestLink:
+    """Связь guest_id → other_id; parent — guest_id родитель other_id. Семейные проверяются
+    по всему графу семьи (§4): не больше двух родителей, не стать своим предком, супруг — не
+    предок и не потомок; ошибка — 422 с объяснением."""
+    from .family import family_graph
+
     if kind not in LINK_KINDS:
         raise GuestError("Неизвестный вид связи")
+    if former and kind != "spouse":
+        raise GuestError("«Бывшие» — только для супругов")
     if guest_id == other_id:
         raise GuestError("Гость не может быть связан сам с собой")
     if db.get(Guest, guest_id) is None or db.get(Guest, other_id) is None:
         raise GuestError("Гость не найден")
-    if db.scalar(select(GuestLink.id).where(GuestLink.guest_a_id == guest_id,
-                                            GuestLink.guest_b_id == other_id,
-                                            GuestLink.kind == kind)) is not None:
+    pair = (GuestLink.guest_a_id == guest_id) & (GuestLink.guest_b_id == other_id)
+    if kind == "spouse":       # супруги — связь без направления
+        pair = pair | ((GuestLink.guest_a_id == other_id) & (GuestLink.guest_b_id == guest_id))
+    if db.scalar(select(GuestLink.id).where(pair, GuestLink.kind == kind)) is not None:
         raise FundConflict("Такая связь уже есть")
-    row = GuestLink(guest_a_id=guest_id, guest_b_id=other_id, kind=kind)
+    if kind in ("parent", "spouse"):
+        graph = family_graph(db, {guest_id, other_id})
+        err = (check_parent(other_id, guest_id, graph) if kind == "parent"
+               else check_spouse(guest_id, other_id, graph))
+        if err:
+            raise GuestError(err)
+    row = GuestLink(guest_a_id=guest_id, guest_b_id=other_id, kind=kind, former=former)
     db.add(row)
     db.flush()
     return row

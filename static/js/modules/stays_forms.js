@@ -12,8 +12,17 @@ const STAYS_STATUS = { tentative: 'предварительная', confirmed: '
   checked_out: 'выехал', cancelled: 'отменена', no_show: 'не заехал' };
 
 const STAYS_COMPANION = { security: 'охрана', driver: 'водитель', nanny: 'няня', pet: 'животное', other: 'другое' };
-const STAYS_LINK = { spouse: 'супруг(а)', child: 'ребёнок', relative: 'родственник', assistant: 'ассистент',
-  security: 'охрана', driver: 'водитель', nanny: 'няня', colleague: 'коллега', other: 'другое' };
+/* кем выбранный гость приходится открытому; семейные связи — только «родитель» (parent) и «супруг»
+   (spouse, former — бывшие), остальное родство вычисляет сервер (§4) */
+const STAYS_LINK = { spouse: 'супруг(а)', spouse_former: 'бывший(ая) супруг(а)', parent: 'ребёнок', child_of: 'родитель',
+  relative: 'родственник', assistant: 'ассистент', security: 'охрана', driver: 'водитель', nanny: 'няня',
+  colleague: 'коллега', other: 'другое' };
+const STAYS_GENDER = { '': 'не указан', m: 'мужской', f: 'женский' };
+
+/* родственники среди проживающих (§4): «мать — Петрова М.» */
+function staysRelativesHtml(rel) {
+  return rel?.length ? `<div class="muted">${rel.map(x => `${esc(x.title)} — ${esc(x.name)}`).join(', ')}</div>` : '';
+}
 
 /* настраиваемые поля (§3.5): элемент ввода по типу поля; attr — data-атрибут с кодом */
 function staysFieldInputs(defs, values, attr) {
@@ -490,7 +499,11 @@ async function openGuestCard(gid, onChanged) {
       };
       $('#gc-link-add', m).onclick = async () => {
         try {
-          await api(`/api/stays/guests/${gid}/links`, { method: 'POST', body: { guest_id: picked, kind: $('#gc-link-kind', m).value } });
+          const choice = $('#gc-link-kind', m).value;
+          /* «родитель» — выбранный гость родитель открытого: связь parent от него */
+          const [from, to] = choice === 'child_of' ? [picked, gid] : [gid, picked];
+          const kind = { child_of: 'parent', spouse_former: 'spouse' }[choice] || choice;
+          await api(`/api/stays/guests/${from}/links`, { method: 'POST', body: { guest_id: to, kind, former: choice === 'spouse_former' } });
           toast('Связь добавлена'); reopen();
         } catch (e) { toast(e.message, 'err'); }
       };
@@ -530,6 +543,7 @@ async function openGuestForm(id, onSaved, opts = {}) {
     sfRow('Фамилия', lock(sfInput('gf-last', g?.last_name))), sfRow('Имя', lock(sfInput('gf-first', g?.first_name))),
     sfRow('Отчество', lock(sfInput('gf-middle', g?.middle_name))), sfRow('Телефон', lock(sfInput('gf-phone', g?.phone_display))),
     sfRow('Email', lock(sfInput('gf-email', g?.email))), sfRow('Дата рождения', lock(sfInput('gf-birth', g?.birth_date, 'date'))),
+    sfRow('Пол', lock(sfSelect('gf-gender', Object.entries(STAYS_GENDER), g?.gender || ''))),
     sfRow('Уровень', lock(sfSelect('gf-level', Object.entries(level), g?.level || 'regular'))),
     sfRow('Аллергии', sfInput('gf-allergy', g?.preferences?.allergy)), sfRow('Питание', sfInput('gf-food', g?.preferences?.food)),
     sfRow('Привычки', sfInput('gf-habits', g?.preferences?.habits)),
@@ -539,7 +553,7 @@ async function openGuestForm(id, onSaved, opts = {}) {
   ], async m => {
     const v = sel => $(sel, m).value;
     const body = { last_name: v('#gf-last'), first_name: v('#gf-first'), middle_name: v('#gf-middle'),
-      phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, level: v('#gf-level'),
+      phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, gender: v('#gf-gender'), level: v('#gf-level'),
       preferences: { ...(g?.preferences || {}), allergy: v('#gf-allergy'), food: v('#gf-food'), habits: v('#gf-habits') },
       special_dates: dates.filter(d => d.date && d.what),
       fields: { ...(g?.fields || {}), ...staysFieldValues(m, 'data-gf-field') }, note: v('#gf-note') };

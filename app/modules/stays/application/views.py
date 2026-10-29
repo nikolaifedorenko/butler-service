@@ -25,7 +25,7 @@ from ..adapters.orm import (
 from ..domain.allocate import natural_key
 from ..domain.halfday import PIECE_BASE, PM, Piece, hold_span, pieces, pos, segments
 from ..ports.duty import DutyPort
-from . import allocation
+from . import allocation, family
 from .context import butlers_on, load_context, nights
 from .fund_versions import (
     CategoryInfo,
@@ -367,6 +367,19 @@ def card_coverage(db: Session, r: Reservation, duty: DutyPort | None) -> list[di
     return out
 
 
+def _relatives_in_house(db: Session, r: Reservation, guests: dict[int, Guest]) -> dict[int, list[dict]]:
+    """Родственники гостей брони среди всех, кто проживает в те же даты (§4)."""
+    if not guests:
+        return {}
+    present = set(db.scalars(select(Occupant.guest_id).join(Reservation, Reservation.id == Occupant.reservation_id)
+                             .where(Reservation.status.in_(allocation.OCCUPYING),
+                                    Occupant.date_from < r.check_out, Occupant.date_to > r.check_in)))
+    kin = family.kin_among(db, present | set(guests), set(guests))
+    others = {o for rel in kin.values() for o, _ in rel} - set(guests)
+    known = {**{g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(others)))}, **guests} if others else guests
+    return {gid: [{"guest_id": o, "title": t, "name": short_name(known[o])} for o, t in rel] for gid, rel in kin.items()}
+
+
 def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None = None) -> dict:
     """Карточка брони (§6.5): уровень «с фамилиями» — состав по датам; «полный» — плюс
     заказчик, примечания, сопровождающие, логистика, настраиваемые поля."""
@@ -387,6 +400,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     paid = fund.category(paid_id, r.check_in)
     paid_code = paid.code if paid else "?"
     lb = db.get(Label, r.label_id) if r.label_id else None
+    relatives = _relatives_in_house(db, r, guests) if at_least(level, "names") else {}
     card = {
         "id": r.id, "number": r.number, "status": r.status, "status_title": STATUS_TITLES[r.status],
         "check_in": _d(r.check_in), "check_out": _d(r.check_out), "early": r.early, "late": r.late,
@@ -400,7 +414,8 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
                      for s in segs],
         "occupants": [{"guest_id": o.guest_id, "guest": short_name(guests[o.guest_id]),
                        "level": guests[o.guest_id].level, "date_from": _d(o.date_from),
-                       "date_to": _d(o.date_to), "role": o.role} for o in occ if o.guest_id in guests],
+                       "date_to": _d(o.date_to), "role": o.role,
+                       "relatives": relatives.get(o.guest_id, [])} for o in occ if o.guest_id in guests],
         "coverage": card_coverage(db, r, duty) if r.status in allocation.OCCUPYING else [
             {"day": d.isoformat(), "butlers": [], "warnings": []} for d in nights(r.check_in, r.check_out)],
     }

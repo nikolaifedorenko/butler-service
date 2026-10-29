@@ -1686,6 +1686,16 @@
             "title": "First Name",
             "type": "string"
           },
+          "gender": {
+            "default": "",
+            "enum": [
+              "m",
+              "f",
+              ""
+            ],
+            "title": "Gender",
+            "type": "string"
+          },
           "last_name": {
             "maxLength": 80,
             "minLength": 1,
@@ -1979,7 +1989,13 @@
         "type": "object"
       },
       "LinkIn": {
+        "description": "parent — гость из пути родитель guest_id; former — бывшие супруги.",
         "properties": {
+          "former": {
+            "default": false,
+            "title": "Former",
+            "type": "boolean"
+          },
           "guest_id": {
             "title": "Guest Id",
             "type": "integer"
@@ -14237,6 +14253,47 @@
           }
         },
         "summary": "Guest Card",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guests/{gid}/family": {
+      "get": {
+        "description": "Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только\nполный уровень. Граф — до 3 поколений вверх и вниз и через брак.",
+        "operationId": "guest_family_api_stays_guests__gid__family_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guest Family",
         "tags": [
           "stays"
         ]

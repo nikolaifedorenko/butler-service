@@ -53,6 +53,7 @@
   "STAYS_DUTY": "readonly",
   "STAYS_FIELD_KINDS": "readonly",
   "STAYS_FILTERS_KEY": "readonly",
+  "STAYS_GENDER": "readonly",
   "STAYS_LEVEL_MARK": "readonly",
   "STAYS_LINK": "readonly",
   "STAYS_ROLE": "readonly",
@@ -464,6 +465,7 @@
   "staysOrdinal": "readonly",
   "staysPanelInto": "readonly",
   "staysPos": "readonly",
+  "staysRelativesHtml": "readonly",
   "staysResetUserState": "readonly",
   "staysRowChanges": "readonly",
   "staysSaveFilter": "readonly",
@@ -552,6 +554,7 @@
   "STAYS_DUTY": "modules/stays_board.js",
   "STAYS_FIELD_KINDS": "modules/stays_settings.js",
   "STAYS_FILTERS_KEY": "modules/stays_filters.js",
+  "STAYS_GENDER": "modules/stays_forms.js",
   "STAYS_LEVEL_MARK": "modules/stays.js",
   "STAYS_LINK": "modules/stays_forms.js",
   "STAYS_ROLE": "modules/stays_forms.js",
@@ -963,6 +966,7 @@
   "staysOrdinal": "modules/stays.js",
   "staysPanelInto": "modules/stays.js",
   "staysPos": "modules/stays.js",
+  "staysRelativesHtml": "modules/stays_forms.js",
   "staysResetUserState": "modules/stays_filters.js",
   "staysRowChanges": "modules/stays.js",
   "staysSaveFilter": "modules/stays_filters.js",
@@ -1208,7 +1212,8 @@
    "openReservationForm",
    "openStatusForm",
    "openTransferForm",
-   "renderPreview"
+   "renderPreview",
+   "staysRelativesHtml"
   ],
   "modules/stays_fund.js": [],
   "modules/stays_settings.js": [

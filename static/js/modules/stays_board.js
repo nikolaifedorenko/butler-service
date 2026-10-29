@@ -133,6 +133,7 @@ function dayStatusHtml(r) {
 
 function dayRowHtml(r, names) {
   const guests = names ? r.guests.map(g => `${g.level !== 'regular' ? esc(STAYS_LEVEL_MARK[g.level]) : ''}${esc(g.name)}`).join(', ')
+    + r.guests.filter(g => g.relatives?.length).map(g => staysRelativesHtml(g.relatives.map(x => ({ ...x, title: `${g.name}: ${x.title}` })))).join('')
     : `${r.guests_count} гост.`;
   const det = r.details ? [...r.details.logistics.map(l => `${l.time} ${l.description}`), ...r.details.companions.map(c => c.description),
     ...r.details.allergies.map(a => 'аллергия: ' + a)].filter(Boolean).join(' · ') : '';
