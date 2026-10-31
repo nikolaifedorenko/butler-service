@@ -13,13 +13,14 @@ const STAYS_STATUS = { tentative: 'предварительная', confirmed: '
 
 const STAYS_COMPANION = { security: 'охрана', driver: 'водитель', nanny: 'няня', pet: 'животное', other: 'другое' };
 /* кем выбранный гость приходится открытому; семейные связи — только «родитель» (parent) и «супруг»
-   (spouse, former — бывшие), остальное родство вычисляет сервер (§4) */
-const STAYS_LINK = { spouse: 'супруг(а)', spouse_former: 'бывший(ая) супруг(а)', parent: 'ребёнок', child_of: 'родитель',
+   (spouse, former — бывшие): их подписи нужны предпросмотру объединения, правятся они в дереве
+   (stays_family.js), остальное родство вычисляет сервер (§4) */
+const STAYS_LINK = { spouse: 'супруг(а)', spouse_former: 'бывший(ая) супруг(а)', parent: 'ребёнок',
   relative: 'родственник', assistant: 'ассистент', security: 'охрана', driver: 'водитель', nanny: 'няня',
   colleague: 'коллега', other: 'другое' };
 const STAYS_GENDER = { '': 'не указан', m: 'мужской', f: 'женский' };
 /* семейные связи правятся в дереве (stays_family.js); в «Прочих связях» карточки — остальные виды */
-const STAYS_FAMILY_LINK = new Set(['spouse', 'spouse_former', 'parent', 'child_of']);
+const STAYS_FAMILY_LINK = new Set(['spouse', 'spouse_former', 'parent']);
 
 /* родственники среди проживающих (§4): «мать — Петрова М.» */
 function staysRelativesHtml(rel) {

@@ -2003,24 +2003,56 @@
         "type": "object"
       },
       "LinkIn": {
-        "description": "parent — гость из пути родитель guest_id; former — бывшие супруги.",
+        "description": "parent — гость из пути родитель guest_id; former — бывшие супруги. Вторая сторона —\nguest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая\nсторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка.",
         "properties": {
+          "also_parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Also Parent Id"
+          },
           "former": {
             "default": false,
             "title": "Former",
             "type": "boolean"
           },
           "guest_id": {
-            "title": "Guest Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Id"
           },
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "new_guest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewGuestIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "other_is_parent": {
+            "default": false,
+            "title": "Other Is Parent",
+            "type": "boolean"
           }
         },
         "required": [
-          "guest_id",
           "kind"
         ],
         "title": "LinkIn",
@@ -2254,6 +2286,37 @@
           "category_id"
         ],
         "title": "MoveIn",
+        "type": "object"
+      },
+      "NewGuestIn": {
+        "properties": {
+          "first_name": {
+            "default": "",
+            "maxLength": 80,
+            "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "default": "",
+            "enum": [
+              "m",
+              "f",
+              ""
+            ],
+            "title": "Gender",
+            "type": "string"
+          },
+          "last_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Last Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "last_name"
+        ],
+        "title": "NewGuestIn",
         "type": "object"
       },
       "NoteIn": {
@@ -14600,6 +14663,7 @@
     },
     "/api/stays/guests/{gid}/links": {
       "post": {
+        "description": "Связь, при необходимости — с новым гостем и вторым родителем: всё одной записью под\nзамком модуля; отказ любой проверки — 422, не создаётся ничего.",
         "operationId": "create_link_api_stays_guests__gid__links_post",
         "parameters": [
           {

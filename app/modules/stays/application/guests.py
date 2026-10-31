@@ -210,9 +210,43 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
     """Связь guest_id → other_id; parent — guest_id родитель other_id. Семейные проверяются
     по всему графу семьи (§4): не больше двух родителей, не стать своим предком, супруг — не
     предок и не потомок; ошибка — 422 с объяснением."""
+    lock_module(db)        # проверки графа и вставка — под замком: две записи не пропустят третьего родителя
+    return _add_link_locked(db, guest_id, other_id, kind, former)
+
+
+def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = None, new_guest: dict | None = None,
+              former: bool = False, other_is_parent: bool = False,
+              also_parent_id: int | None = None) -> tuple[list[GuestLink], int]:
+    """Связь из редактора дерева (§4) одной записью под одним замком → (связи, id второй стороны).
+    Вторая сторона — существующий гость other_id или новый new_guest (фамилия, имя, пол);
+    other_is_parent — она родитель guest_id (иначе guest_id — её родитель при kind=parent);
+    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»). Любой отказ —
+    исключение после частичных flush: вызывающий откатывает, не остаётся ни гостя, ни связи."""
+    lock_module(db)
+    if (other_id is None) == (new_guest is None):
+        raise GuestError("Укажите гостя для связи: существующего или нового")
+    if other_is_parent and kind != "parent":
+        raise GuestError("«Родитель» — только для связи родитель — ребёнок")
+    if also_parent_id is not None and (kind != "parent" or other_is_parent):
+        raise GuestError("Второй родитель — только при добавлении ребёнка")
+    if also_parent_id is not None and also_parent_id == guest_id:
+        raise GuestError("Второй родитель совпадает с первым")
+    if db.get(Guest, guest_id) is None:
+        raise GuestError("Гость не найден")
+    if new_guest is not None:
+        other_id = save_guest(db, {"middle_name": "", "phone": "", "email": "", "level": "regular", "note": "",
+                                   **new_guest}, None)[0].id
+    a, b = (other_id, guest_id) if other_is_parent else (guest_id, other_id)
+    rows = [_add_link_locked(db, a, b, kind, former)]
+    if also_parent_id is not None:
+        rows.append(_add_link_locked(db, also_parent_id, other_id, "parent"))
+    return rows, other_id
+
+
+def _add_link_locked(db: Session, guest_id: int, other_id: int, kind: str, former: bool = False) -> GuestLink:
+    """Проверки и вставка связи; замок модуля уже взят вызывающим."""
     from .family import family_graph
 
-    lock_module(db)        # проверки графа и вставка — под замком: две записи не пропустят третьего родителя
     if kind not in LINK_KINDS:
         raise GuestError("Неизвестный вид связи")
     if former and kind != "spouse":

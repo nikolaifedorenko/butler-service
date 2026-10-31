@@ -375,7 +375,11 @@ async function openReservationCard(rid, onChanged) {
         b.onclick = () => {
           const box = $(`[data-family-box="${b.dataset.family}"]`, m);
           box.hidden = !box.hidden;
-          if (!box.hidden && !box.childElementCount) renderFamilyTree(box, Number(b.dataset.family)).catch(e => toast(e.message, 'err'));
+          /* загружено — только при успехе: после ошибки следующий клик запросит дерево снова */
+          if (!box.hidden && box.dataset.loaded !== '1') {
+            renderFamilyTree(box, Number(b.dataset.family)).then(ok => { if (ok) box.dataset.loaded = '1'; })
+              .catch(e => toast(e.message, 'err'));
+          }
         };
       });
       const grp = $('#rc-group', m);

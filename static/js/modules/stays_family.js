@@ -5,7 +5,9 @@
    дети снизу, братья и сёстры по бокам — из GET /api/stays/guests/{id}/family; клик по человеку —
    он в центре (граф запрашивается заново: сервер отдаёт его вокруг центра). Редактор
    (editable — право stays.edit, им же защищены записи связей): «+ родитель / + супруг(а) /
-   + ребёнок» — поиск гостя или новый (фамилия, имя, пол) → POST /guests/{id}/links; крестик на
+   + ребёнок» — поиск гостя или новый (фамилия, имя, пол) → один POST /guests/{id}/links (новый
+   гость и обе связи «и ребёнок супруги» — одной записью на сервере: отказ не оставит ни гостя,
+   ни половины связей); крестик на
    линии → DELETE /guest-links/{id}; «бывшие» на линии супругов → PATCH /guest-links/{id};
    ошибка сервера (422 — третий родитель, свой предок…) — тост с её текстом.
    Под деревом — «Все родственники» (вычисленные сервером названия, kin).
@@ -61,7 +63,7 @@ function staysFamilyHtml(fam, c, editable, home) {
       <span class="muted">— ${esc(k.title)}</span></div>`).join('') || '<span class="muted">родственников нет</span>'}</div>`;
 }
 
-function staysFamilyPanelHtml(kind, spouse) {
+function staysFamilyPanelHtml(kind, spouse, blocked) {
   return `<div class="ft-add">
     <b>${esc(STAYS_FAMILY_ADD_TITLE[kind])}</b>
     <div class="sb-line"><input type="search" data-ft-q placeholder="Найти гостя: фамилия"></div>
@@ -69,7 +71,8 @@ function staysFamilyPanelHtml(kind, spouse) {
     <div class="sb-line"><span class="muted">или новый:</span>
       <input data-ft-last placeholder="Фамилия"><input data-ft-first placeholder="Имя">
       <select data-ft-gender title="Пол">${Object.entries(STAYS_GENDER).map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select>
-      <button type="button" class="btn btn-sm btn-primary" data-ft-create>Создать и связать</button></div>
+      <button type="button" class="btn btn-sm btn-primary" data-ft-create${blocked ? ' disabled' : ''}>Создать и связать</button></div>
+    ${blocked ? `<div class="muted" data-ft-blocked>${esc(blocked)}</div>` : ''}
     ${spouse ? `<label class="chk"><input type="checkbox" data-ft-both checked> и ребёнок: ${esc(spouse.name)}</label>` : ''}
     <div><button type="button" class="btn btn-sm btn-ghost" data-ft-cancel>Отмена</button></div></div>`;
 }
@@ -79,26 +82,25 @@ async function renderFamilyTree(host, guestId, { editable = false, onChange = nu
   let fam = null;
   const changed = () => { if (onChange) onChange(); };
 
-  /* связь выбранного other с центром: parent — other родитель центра; child — центр родитель
-     other (и, если отмечено, действующий супруг центра — тоже) */
-  const link = async (kind, other, spouseId) => {
-    if (kind === 'parent') await api(`/api/stays/guests/${other}/links`, { method: 'POST', body: { guest_id: centre, kind: 'parent' } });
-    if (kind === 'spouse') await api(`/api/stays/guests/${centre}/links`, { method: 'POST', body: { guest_id: other, kind: 'spouse' } });
-    if (kind === 'child') {
-      await api(`/api/stays/guests/${centre}/links`, { method: 'POST', body: { guest_id: other, kind: 'parent' } });
-      if (spouseId) await api(`/api/stays/guests/${spouseId}/links`, { method: 'POST', body: { guest_id: other, kind: 'parent' } });
-    }
-  };
+  /* связь центра со второй стороной (target: {guest_id} или {new_guest}) — один запрос:
+     parent — она родитель центра; child — центр её родитель (и, если отмечено, действующий супруг) */
+  const link = (kind, target, spouseId) => api(`/api/stays/guests/${centre}/links`, { method: 'POST', body: {
+    ...target, kind: kind === 'spouse' ? 'spouse' : 'parent', other_is_parent: kind === 'parent',
+    ...(kind === 'child' && spouseId ? { also_parent_id: spouseId } : {}) } });
 
   const openPanel = kind => {
     const panel = $('[data-ft-panel]', host);
-    const current = kind === 'child' ? staysFamilyAround(fam, centre).spouses.find(s => !s.link.former) : null;
-    const spouse = current ? fam.people.find(p => p.id === current.id) : null;
-    panel.innerHTML = staysFamilyPanelHtml(kind, spouse);
+    const around = staysFamilyAround(fam, centre);
+    const current = around.spouses.find(s => !s.link.former);
+    const spouse = kind === 'child' && current ? fam.people.find(p => p.id === current.id) : null;
+    /* заранее видно, что сервер откажет: новый гость не создаётся (поиск — сервер ответит тостом) */
+    const blocked = (kind === 'parent' && around.parents.length >= 2 && 'У гостя уже два родителя — сначала удалите связь')
+      || (kind === 'spouse' && current && 'У гостя уже есть супруг(а) — отметьте прежний брак «бывшие»') || '';
+    panel.innerHTML = staysFamilyPanelHtml(kind, spouse, blocked);
     const both = () => (spouse && $('[data-ft-both]', panel).checked ? spouse.id : null);
-    const done = async other => {
+    const done = async target => {
       try {
-        await link(kind, other, both());
+        await link(kind, target, both());
         toast('Связь добавлена');
         changed();
         await draw();
@@ -121,18 +123,14 @@ async function renderFamilyTree(host, guestId, { editable = false, onChange = nu
     };
     $('[data-ft-found]', panel).onclick = e => {
       const b = e.target.closest('[data-ft-pick]');
-      if (b) { b.disabled = true; done(Number(b.dataset.ftPick)); }
+      if (b) { b.disabled = true; done({ guest_id: Number(b.dataset.ftPick) }); }
     };
     $('[data-ft-create]', panel).onclick = async e => {
       const last = $('[data-ft-last]', panel).value.trim();
       if (!last) { toast('Укажите фамилию', 'warn'); return; }
       e.target.disabled = true;
-      let g;
-      try {
-        g = await api('/api/stays/guests', { method: 'POST', body: { last_name: last,
-          first_name: $('[data-ft-first]', panel).value.trim(), gender: $('[data-ft-gender]', panel).value } });
-      } catch (err) { e.target.disabled = false; toast(err.message, 'err'); return; }
-      done(g.id);
+      done({ new_guest: { last_name: last, first_name: $('[data-ft-first]', panel).value.trim(),
+        gender: $('[data-ft-gender]', panel).value } });
     };
     $('[data-ft-cancel]', panel).onclick = () => { panel.innerHTML = ''; };
     q.focus();
@@ -145,11 +143,12 @@ async function renderFamilyTree(host, guestId, { editable = false, onChange = nu
       data = await api(`/api/stays/guests/${centre}/family`, { silent: true });
     } catch (e) {
       if (fresh()) host.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
-      return;
+      return false;
     }
-    if (!fresh()) return;
+    if (!fresh()) return false;
     fam = data;
     host.innerHTML = staysFamilyHtml(fam, centre, editable, guestId);
+    return true;
   };
 
   host.onclick = async e => {
@@ -180,5 +179,5 @@ async function renderFamilyTree(host, guestId, { editable = false, onChange = nu
     } catch (err) { toast(err.message, 'err'); }
     await draw();
   };
-  await draw();
+  return draw();          // true — дерево нарисовано (false — ошибка: можно запросить снова)
 }

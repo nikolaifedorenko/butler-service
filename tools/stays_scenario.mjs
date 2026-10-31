@@ -749,7 +749,7 @@ async function moreForms() {
   check('поиск гостя для связи', await waitFor(() => !!$(`[data-link-pick="${g2.id}"]`)));
   click($(`[data-link-pick="${g2.id}"]`));
   check('семейных видов нет в «Прочих связях» — семья правится в дереве',
-    !$$('#gc-link-kind option').some(o => ['spouse', 'spouse_former', 'parent', 'child_of'].includes(o.value)));
+    !$$('#gc-link-kind option').some(o => ['spouse', 'spouse_former', 'parent'].includes(o.value)));
   change($('#gc-link-kind'), 'colleague');
   click($('#gc-link-add'));
   check('связь «коллега» в карточке', await waitFor(() => text('#gc-links').includes('Связанов' + uniq)
@@ -974,6 +974,17 @@ async function familyEditor() {
   click($(`#gc-family [data-ft-pick="${stranger.id}"]`));
   check('третий родитель — тост с текстом сервера', await toastHas('У ребёнка не больше двух родителей'), text('#toast-host'));
   check('третий родитель не добавлен', (await fam(son.id)).parents.filter(([c]) => c === son.id).length === 2);
+  /* новый третий родитель: кнопка заперта с пояснением; в обход — сервер отказывает и гостя не создаёт */
+  click($('#gc-family [data-ft-add="parent"]'));
+  await waitFor(() => !!$('#gc-family [data-ft-create]'));
+  check('два родителя: «Создать и связать» заперта с пояснением', $('#gc-family [data-ft-create]').disabled
+    && text('#gc-family [data-ft-blocked]').includes('два родителя'));
+  $('#gc-family [data-ft-last]').value = 'Лишний' + uniq;
+  $('#gc-family [data-ft-create]').disabled = false;
+  $('#toast-host').innerHTML = '';
+  click($('#gc-family [data-ft-create]'));
+  check('новый третий родитель — тост с текстом сервера', await toastHas('У ребёнка не больше двух родителей'), text('#toast-host'));
+  check('новый третий родитель — гость не создан', !(await apiJson('GET', `/api/stays/guests?q=${encodeURIComponent('Лишний' + uniq)}`)).body.length);
 
   /* «бывшие» на линии супругов */
   click($('#gc-family [data-ft-home]'));

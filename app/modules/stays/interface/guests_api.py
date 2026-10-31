@@ -48,11 +48,22 @@ class GuestIn(BaseModel):
     note: str = Field("", max_length=4000)
 
 
+class NewGuestIn(BaseModel):
+    last_name: str = Field(min_length=1, max_length=80)
+    first_name: str = Field("", max_length=80)
+    gender: Literal["m", "f", ""] = ""
+
+
 class LinkIn(BaseModel):
-    """parent — гость из пути родитель guest_id; former — бывшие супруги."""
-    guest_id: int
+    """parent — гость из пути родитель guest_id; former — бывшие супруги. Вторая сторона —
+    guest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая
+    сторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка."""
+    guest_id: Optional[int] = None
+    new_guest: Optional[NewGuestIn] = None
     kind: str
     former: bool = False
+    other_is_parent: bool = False
+    also_parent_id: Optional[int] = None
 
 
 class FormerIn(BaseModel):
@@ -180,15 +191,23 @@ def update_guest(gid: int, payload: GuestIn, principal: Principal = Depends(requ
 @router.post("/guests/{gid}/links")
 def create_link(gid: int, payload: LinkIn, principal: Principal = Depends(require_perm("stays.edit")),
                 db: Session = Depends(get_db)):
+    """Связь, при необходимости — с новым гостем и вторым родителем: всё одной записью под
+    замком модуля; отказ любой проверки — 422, не создаётся ничего."""
     try:
-        row = guests.add_link(db, gid, payload.guest_id, payload.kind, payload.former)
+        rows, other = guests.add_links(
+            db, gid, payload.kind, other_id=payload.guest_id,
+            new_guest=payload.new_guest.model_dump() if payload.new_guest else None, former=payload.former,
+            other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id)
     except FundError as e:
+        db.rollback()          # новый гость и первая связь уже в flush — откат целиком
         raise _err(e) from e
-    audit(db, principal, "stays_guest_link", f"guest:{gid}",
-          {"added": {"guest_id": payload.guest_id, "kind": payload.kind, "former": payload.former,
-                     "link_id": row.id}})
+    if payload.new_guest:
+        audit(db, principal, "stays_guest", f"guest:{other}", {"created": payload.new_guest.model_dump()})
+    for row in rows:
+        audit(db, principal, "stays_guest_link", f"guest:{row.guest_a_id}",
+              {"added": {"guest_id": row.guest_b_id, "kind": row.kind, "former": row.former, "link_id": row.id}})
     db.commit()
-    return {"id": row.id}
+    return {"id": rows[0].id, "guest_id": other, "ids": [r.id for r in rows]}
 
 
 @router.get("/guests/{gid}/family")

@@ -375,3 +375,88 @@ def test_toggle_former_requires_edit(names_client, manager_client):
     a, b = _guest(manager_client), _guest(manager_client)
     link = _link(manager_client, a, b, "spouse").json()["id"]
     assert names_client.patch(f"{API}/guest-links/{link}", json={"former": True}).status_code == 403
+
+
+def _guest_count(db) -> int:
+    from sqlalchemy import func
+
+    from app.modules.stays.adapters.orm import Guest
+    db.expire_all()
+    return db.scalar(select(func.count(Guest.id)))
+
+
+def _link_count(db) -> int:
+    from sqlalchemy import func
+
+    from app.modules.stays.adapters.orm import GuestLink
+    db.expire_all()
+    return db.scalar(select(func.count(GuestLink.id)))
+
+
+def test_new_guest_as_parent_in_one_transaction(manager_client, db):
+    """«+ родитель» с новым гостем: гость и связь — одной записью под замком модуля."""
+    kid = _guest(manager_client)
+    r = manager_client.post(f"{API}/guests/{kid['id']}/links", json={
+        "new_guest": {"last_name": "Мамина" + _uniq(), "first_name": "Ольга", "gender": "f"},
+        "kind": "parent", "other_is_parent": True})
+    assert r.status_code == 200, r.text
+    mom = r.json()["guest_id"]
+    assert manager_client.get(f"{API}/guests/{mom}").json()["gender"] == "f"
+    fam = manager_client.get(f"{API}/guests/{kid['id']}/family").json()
+    assert [kid["id"], mom] in fam["parents"]
+
+
+def test_new_guest_third_parent_creates_nothing(manager_client, db):
+    kid, p1, p2 = (_guest(manager_client) for _ in range(3))
+    for p in (p1, p2):
+        assert _link(manager_client, p, kid, "parent").status_code == 200
+    guests_before, links_before = _guest_count(db), _link_count(db)
+    r = manager_client.post(f"{API}/guests/{kid['id']}/links", json={
+        "new_guest": {"last_name": "Лишний" + _uniq(), "first_name": "", "gender": "m"},
+        "kind": "parent", "other_is_parent": True})
+    assert r.status_code == 422 and r.json()["detail"] == "У ребёнка не больше двух родителей"
+    assert (_guest_count(db), _link_count(db)) == (guests_before, links_before)
+
+
+def test_new_child_of_both_spouses(manager_client):
+    """«+ ребёнок … и ребёнок супруги»: обе связи parent — в той же записи."""
+    dad, mom = _guest(manager_client, gender="m"), _guest(manager_client, gender="f")
+    r = manager_client.post(f"{API}/guests/{dad['id']}/links", json={
+        "new_guest": {"last_name": "Сынов" + _uniq(), "first_name": "Сын", "gender": "m"},
+        "kind": "parent", "also_parent_id": mom["id"]})
+    assert r.status_code == 200, r.text
+    son = r.json()["guest_id"]
+    parents = manager_client.get(f"{API}/guests/{son}/family").json()["parents"]
+    assert sorted(p for c, p in parents if c == son) == sorted([dad["id"], mom["id"]])
+
+
+def test_also_parent_failure_creates_nothing(manager_client, db):
+    """Вторая связь «и ребёнок супруги» отклонена → не остаётся ни первой связи, ни нового гостя."""
+    dad, mom, other = (_guest(manager_client) for _ in range(3))
+    kid = _guest(manager_client)
+    assert _link(manager_client, other, kid, "parent").status_code == 200
+    links_before = _link_count(db)
+    # dad → kid проходит (второй родитель), mom → kid — третий: отказ и откат первой связи
+    r = manager_client.post(f"{API}/guests/{dad['id']}/links", json={
+        "guest_id": kid["id"], "kind": "parent", "also_parent_id": mom["id"]})
+    assert r.status_code == 422 and r.json()["detail"] == "У ребёнка не больше двух родителей"
+    assert _link_count(db) == links_before
+    # новый гость, второй родитель не найден — 422 после создания гостя и первой связи: откат всего
+    guests_before = _guest_count(db)
+    r = manager_client.post(f"{API}/guests/{dad['id']}/links", json={
+        "new_guest": {"last_name": "Внуков" + _uniq()}, "kind": "parent", "also_parent_id": 999999999})
+    assert r.status_code == 422 and r.json()["detail"] == "Гость не найден"
+    assert (_guest_count(db), _link_count(db)) == (guests_before, links_before)
+
+
+def test_link_target_validation(manager_client):
+    a, b = _guest(manager_client), _guest(manager_client)
+    url = f"{API}/guests/{a['id']}/links"
+    both = {"guest_id": b["id"], "new_guest": {"last_name": "Икс"}, "kind": "parent"}
+    assert manager_client.post(url, json=both).status_code == 422
+    assert manager_client.post(url, json={"kind": "parent"}).status_code == 422
+    for extra in ({"also_parent_id": a["id"]}, {"other_is_parent": True, "also_parent_id": b["id"]}):
+        r = manager_client.post(url, json={"guest_id": b["id"], "kind": "parent", **extra})
+        assert r.status_code == 422, extra
+    r = manager_client.post(url, json={"guest_id": b["id"], "kind": "spouse", "other_is_parent": True})
+    assert r.status_code == 422
