@@ -347,7 +347,9 @@ async function openReservationCard(rid, onChanged) {
           ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}</div>
         <div><h4>Гости</h4>${card.occupants.map(o => `<div>${o.level !== 'regular' ? esc(STAYS_LEVEL_MARK[o.level]) : ''}${esc(o.guest)}
           <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>${staysRelativesHtml(o.relatives)}
-          ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}</div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
+          <button class="btn btn-sm btn-ghost" data-family="${o.guest_id}">Семья</button>
+          ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}
+          <div class="ft" data-family-box="${o.guest_id}" hidden></div></div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
       </div>
       ${card.companions?.length ? `<h4>Сопровождающие</h4>${card.companions.map(c => `<div>${esc(STAYS_COMPANION[c.kind] || c.kind)} — ${esc(c.description)}</div>`).join('')}` : ''}
       ${card.logistics ? `<h4>Логистика</h4>${card.logistics.map(l => `<div>${esc(l.date ? dateRu(l.date) : '')} ${esc(l.time)} ${esc(l.description)}</div>`).join('') || '<span class="muted">нет</span>'}
@@ -368,6 +370,14 @@ async function openReservationCard(rid, onChanged) {
       const st = $('#rc-status', m);
       if (st) st.onclick = () => openStatusForm(card, onChanged);
       $$('[data-guest-card]', m).forEach(b => { b.onclick = () => openGuestCard(Number(b.dataset.guestCard), onChanged); });
+      /* семейное дерево гостя — только просмотр: правится в карточке гостя (§4, с уровня «с фамилиями») */
+      $$('[data-family]', m).forEach(b => {
+        b.onclick = () => {
+          const box = $(`[data-family-box="${b.dataset.family}"]`, m);
+          box.hidden = !box.hidden;
+          if (!box.hidden && !box.childElementCount) renderFamilyTree(box, Number(b.dataset.family)).catch(e => toast(e.message, 'err'));
+        };
+      });
       const grp = $('#rc-group', m);
       if (grp) grp.onclick = () => openGroupForm(card, onChanged);
       $$('[data-move-seg]', m).forEach(b => { b.onclick = () => openTransferForm(rid, Number(b.dataset.moveSeg), onChanged); });

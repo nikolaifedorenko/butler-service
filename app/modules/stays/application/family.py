@@ -82,7 +82,8 @@ def full_name(g: Guest) -> str:
 
 
 def family(db: Session, gid: int, level: Level) -> dict:
-    """Граф семьи для карточки гостя: люди, первичные связи, вычисленные родственники.
+    """Граф семьи для карточки гостя: люди, первичные связи (links — с id для редактора: parent —
+    a родитель b), вычисленные родственники.
     Уровень «с фамилиями» — фамилия и имя; полный — ФИО, телефон, дата рождения (§4)."""
     ids = set(_family_people(db, gid))
     links = list(db.scalars(select(GuestLink).where(
@@ -103,6 +104,8 @@ def family(db: Session, gid: int, level: Level) -> dict:
     return {"people": [person(people[i]) for i in sorted(people)],
             "parents": [[ln.guest_b_id, ln.guest_a_id] for ln in links if ln.kind == "parent"],
             "spouses": [[ln.guest_a_id, ln.guest_b_id, ln.former] for ln in links if ln.kind == "spouse"],
+            "links": [{"id": ln.id, "kind": ln.kind, "a": ln.guest_a_id, "b": ln.guest_b_id, "former": ln.former}
+                      for ln in links],
             "kin": [{"person_id": k.person_id, "title": k.title, "degree": k.degree} for k in kin]}
 
 

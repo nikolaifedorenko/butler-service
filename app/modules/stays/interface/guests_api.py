@@ -55,6 +55,11 @@ class LinkIn(BaseModel):
     former: bool = False
 
 
+class FormerIn(BaseModel):
+    """former — супруги бывшие (true) или действующие (false)."""
+    former: bool
+
+
 class MergeIn(BaseModel):
     """keep_id — кого оставить, drop_id — дубль, который удаляется."""
     keep_id: int
@@ -197,6 +202,21 @@ def guest_family(gid: int, principal: Principal = Depends(require_perm("stays.vi
     if db.get(Guest, gid) is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
     return family.family(db, gid, level)
+
+
+@router.patch("/guest-links/{link_id}")
+def set_link_former(link_id: int, payload: FormerIn, principal: Principal = Depends(require_perm("stays.edit")),
+                    db: Session = Depends(get_db)):
+    """«Бывшие» на линии супругов в редакторе дерева: снять — только если у обоих нет
+    другого действующего супруга (422)."""
+    try:
+        row, before = guests.set_former(db, link_id, payload.former)
+    except FundError as e:
+        raise _err(e) from e
+    audit(db, principal, "stays_guest_link", f"guest:{row.guest_a_id}",
+          {"former": [before, row.former], "guest_id": row.guest_b_id, "link_id": link_id})
+    db.commit()
+    return {"id": row.id, "former": row.former}
 
 
 @router.delete("/guest-links/{link_id}")

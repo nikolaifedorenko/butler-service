@@ -242,6 +242,29 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
     return row
 
 
+def _has_current_spouse(db: Session, guest_id: int, except_link: int) -> bool:
+    return db.scalar(select(GuestLink.id).where(
+        GuestLink.kind == "spouse", GuestLink.former.is_(False), GuestLink.id != except_link,
+        or_(GuestLink.guest_a_id == guest_id, GuestLink.guest_b_id == guest_id))) is not None
+
+
+def set_former(db: Session, link_id: int, former: bool) -> tuple[GuestLink, bool]:
+    """Признак «бывшие» у супружеской связи (редактор дерева, §4) → (связь, прежнее значение).
+    Снять «бывшие» нельзя, если у кого-то из пары уже есть действующий супруг — 422."""
+    lock_module(db)
+    row = db.get(GuestLink, link_id)
+    if row is None:
+        raise GuestError("Связь не найдена")
+    if row.kind != "spouse":
+        raise GuestError("«Бывшие» — только для супругов")
+    before = row.former
+    if before and not former and any(_has_current_spouse(db, x, row.id) for x in (row.guest_a_id, row.guest_b_id)):
+        raise GuestError("У гостя уже есть супруг(а)")
+    row.former = former
+    db.flush()
+    return row, before
+
+
 def delete_link(db: Session, link_id: int) -> GuestLink:
     lock_module(db)
     row = db.get(GuestLink, link_id)

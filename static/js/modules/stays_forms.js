@@ -18,6 +18,8 @@ const STAYS_LINK = { spouse: 'супруг(а)', spouse_former: 'бывший(а
   relative: 'родственник', assistant: 'ассистент', security: 'охрана', driver: 'водитель', nanny: 'няня',
   colleague: 'коллега', other: 'другое' };
 const STAYS_GENDER = { '': 'не указан', m: 'мужской', f: 'женский' };
+/* семейные связи правятся в дереве (stays_family.js); в «Прочих связях» карточки — остальные виды */
+const STAYS_FAMILY_LINK = new Set(['spouse', 'spouse_former', 'parent', 'child_of']);
 
 /* родственники среди проживающих (§4): «мать — Петрова М.» */
 function staysRelativesHtml(rel) {
@@ -447,12 +449,13 @@ async function openGroupForm(card, onSaved) {
   });
 }
 
-/* ─────────────── Карточка гостя (§6.5): профиль, связи, история проживаний ─────────────── */
+/* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
 async function openGuestCard(gid, onChanged) {
   const [g, fund] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund()]);
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   const edit = can('stays.edit');
   const role = { main: 'главный', guest: 'проживает' };
+  const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
   openModal({
     title: `${STAYS_LEVEL_MARK[g.level] || ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
     subtitle: [g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
@@ -461,12 +464,13 @@ async function openGuestCard(gid, onChanged) {
           ${g.special_dates.length ? `<h4>Особые даты</h4>${g.special_dates.map(d => `<div>${esc(dateRu(d.date))} — ${esc(d.what)}</div>`).join('')}` : ''}
           ${Object.keys(g.fields).length ? `<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => `<div>${esc(titles[k] || k)}: ${esc(String(v))}</div>`).join('')}` : ''}
           ${g.note ? `<h4>Примечание</h4><p>${esc(g.note)}</p>` : ''}</div>
-        <div><h4>Связи</h4><div id="gc-links">${g.links.map(l => `<div class="sb-line">${esc(l.name)} <span class="muted">${esc(l.label)}</span>
+        <div><h4>Прочие связи</h4><div id="gc-links">${other.map(l => `<div class="sb-line">${esc(l.name)} <span class="muted">${esc(l.label)}</span>
             ${edit ? `<button class="btn btn-sm btn-ghost" data-link-del="${l.id}">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}</div>
           ${edit ? `<div class="sb-line"><input type="search" id="gc-link-q" placeholder="Связать с гостем: фамилия">
-            <select id="gc-link-kind">${Object.entries(STAYS_LINK).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select>
+            <select id="gc-link-kind">${Object.entries(STAYS_LINK).filter(([k]) => !STAYS_FAMILY_LINK.has(k)).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select>
             <button class="btn btn-sm" id="gc-link-add" disabled>Связать</button></div><div id="gc-link-res"></div>` : ''}</div>
       </div>
+      <h4>Семейное дерево</h4><div id="gc-family" class="ft"><div class="muted">Загрузка…</div></div>
       <h4>История проживаний</h4>
       <div id="gc-history" class="sb-history">${g.stays.map(x => `<div><b>${esc(x.number || '#' + x.reservation_id)}</b> · ${esc(x.units.join(' → ') || 'без объекта')}
         · ${esc(dateRu(x.date_from))}–${esc(dateRu(x.date_to))} · ${esc(role[x.role])} · ${esc(x.status_title)}
@@ -475,6 +479,7 @@ async function openGuestCard(gid, onChanged) {
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       const reopen = () => openGuestCard(gid, onChanged);
+      renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
       const ed = $('#gc-edit', m);
       if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); });
       $$('[data-link-del]', m).forEach(b => {
@@ -499,11 +504,7 @@ async function openGuestCard(gid, onChanged) {
       };
       $('#gc-link-add', m).onclick = async () => {
         try {
-          const choice = $('#gc-link-kind', m).value;
-          /* «родитель» — выбранный гость родитель открытого: связь parent от него */
-          const [from, to] = choice === 'child_of' ? [picked, gid] : [gid, picked];
-          const kind = { child_of: 'parent', spouse_former: 'spouse' }[choice] || choice;
-          await api(`/api/stays/guests/${from}/links`, { method: 'POST', body: { guest_id: to, kind, former: choice === 'spouse_former' } });
+          await api(`/api/stays/guests/${gid}/links`, { method: 'POST', body: { guest_id: picked, kind: $('#gc-link-kind', m).value } });
           toast('Связь добавлена'); reopen();
         } catch (e) { toast(e.message, 'err'); }
       };

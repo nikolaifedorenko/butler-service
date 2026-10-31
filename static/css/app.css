@@ -1280,3 +1280,23 @@ tr.fund-retired td .badge { text-decoration: none; }
 /* §6.1: от 50 % — синий, от 80 % — жёлтый, 100 % и больше — красный */
 .oc-cell.heat1 { background: #dce8fb; } .oc-cell.heat2 { background: #fff2c6; } .oc-cell.heat3 { background: #ffd3c4; }
 .mine-card .mine-guest { padding: 6px 0; border-top: 1px solid #efe9df; }
+/* семейное дерево гостя (addendum §4): ряды переносятся — на ширине телефона без вылезания вбок */
+.ft { min-width: 0; max-width: 100%; }
+.ft-tree { overflow-x: auto; padding: 8px; margin-bottom: 8px; border: 1px solid var(--line-soft); border-radius: var(--r-sm); }
+.ft-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px; margin: 4px 0; }
+.ft-node { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.ft-col { flex-direction: column; }
+.ft-person { max-width: 170px; padding: 5px 9px; border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent;
+  color: inherit; font: inherit; font-size: 13px; line-height: 1.25; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+.ft-person small { display: block; color: var(--muted); font-size: 11px; }
+.ft-person:hover, .ft-person:focus-visible { border-color: var(--accent); }
+.ft-centre { border: 2px solid var(--accent); font-weight: 700; cursor: default; }
+.ft-sib { border-style: dashed; }
+.ft-link { display: inline-flex; align-items: center; gap: 2px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ft-former { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; }
+.ft-del { padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; }
+.ft-del:hover, .ft-del:focus-visible { color: #a1001d; }
+.ft-add { margin: 6px 0; padding: 8px 10px; border: 1px dashed var(--line); border-radius: var(--r-sm); }
+.ft-add input:not([type=checkbox]), .ft-add select { min-width: 0; max-width: 100%; }
+.ft-kin > div { padding: 2px 0; font-size: 13px; }
+.ft-kin-name { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline dotted; cursor: pointer; }

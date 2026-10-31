@@ -1611,6 +1611,20 @@
         "title": "FlagValueIn",
         "type": "object"
       },
+      "FormerIn": {
+        "description": "former — супруги бывшие (true) или действующие (false).",
+        "properties": {
+          "former": {
+            "title": "Former",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "former"
+        ],
+        "title": "FormerIn",
+        "type": "object"
+      },
       "GiveIn": {
         "properties": {
           "employee_id": {
@@ -14065,6 +14079,55 @@
           }
         },
         "summary": "Remove Link",
+        "tags": [
+          "stays"
+        ]
+      },
+      "patch": {
+        "description": "«Бывшие» на линии супругов в редакторе дерева: снять — только если у обоих нет\nдругого действующего супруга (422).",
+        "operationId": "set_link_former_api_stays_guest_links__link_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Link Former",
         "tags": [
           "stays"
         ]

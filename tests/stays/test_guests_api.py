@@ -329,3 +329,49 @@ def test_second_current_spouse_422(manager_client):
     assert _link(manager_client, a, d, "spouse", former=True).status_code == 200
     e = _guest(manager_client)
     assert _link(manager_client, d, e, "spouse").status_code == 200
+
+
+def test_family_links_carry_ids(manager_client):
+    """Редактор дерева удаляет связь крестиком на линии — граф отдаёт id каждой связи."""
+    g = _owner_family(manager_client)
+    fam = manager_client.get(f"{API}/guests/{g['ivan']['id']}/family").json()
+    by_pair = {(ln["kind"], ln["a"], ln["b"]): ln for ln in fam["links"]}
+    sp = by_pair[("spouse", g["ivan"]["id"], g["maria"]["id"])]
+    assert sp["former"] is False and isinstance(sp["id"], int)
+    assert ("parent", g["mother"]["id"], g["ivan"]["id"]) in by_pair
+    assert len(fam["links"]) == len(fam["parents"]) + len(fam["spouses"])
+
+
+def test_toggle_spouse_former(manager_client, monkeypatch, db):
+    """«Бывшие» на линии супругов: переключается под замком модуля; снять «бывшие», когда у
+    кого-то из пары уже есть действующий супруг, — 422; у не-супружеской связи — 422."""
+    from app.modules.stays.application import guests as gmod
+
+    a, b, c = (_guest(manager_client) for _ in range(3))
+    link = _link(manager_client, a, b, "spouse").json()["id"]
+    calls = []
+    real = gmod.lock_module
+    monkeypatch.setattr(gmod, "lock_module", lambda s: (calls.append("lock"), real(s)))
+    r = manager_client.patch(f"{API}/guest-links/{link}", json={"former": True})
+    assert r.status_code == 200 and r.json()["former"] is True and calls == ["lock"]
+    label = {x["guest_id"]: x["label"] for x in manager_client.get(f"{API}/guests/{a['id']}").json()["links"]}
+    assert label[b["id"]].startswith("бывш")
+    assert _link(manager_client, a, c, "spouse").status_code == 200       # новый брак — действующий
+    r = manager_client.patch(f"{API}/guest-links/{link}", json={"former": False})
+    assert r.status_code == 422 and r.json()["detail"] == "У гостя уже есть супруг(а)"
+    # повторная установка того же значения — без ошибки
+    assert manager_client.patch(f"{API}/guest-links/{link}", json={"former": True}).status_code == 200
+    kid = _guest(manager_client)
+    parent = _link(manager_client, a, kid, "parent").json()["id"]
+    r = manager_client.patch(f"{API}/guest-links/{parent}", json={"former": True})
+    assert r.status_code == 422 and r.json()["detail"] == "«Бывшие» — только для супругов"
+    assert manager_client.patch(f"{API}/guest-links/999999999", json={"former": True}).status_code == 422
+    rows = db.scalars(select(AuditLog).where(AuditLog.action == "stays_guest_link",
+                                             AuditLog.target == f"guest:{a['id']}")).all()
+    assert any("former" in json.loads(x.payload_json or "{}") for x in rows)
+
+
+def test_toggle_former_requires_edit(names_client, manager_client):
+    a, b = _guest(manager_client), _guest(manager_client)
+    link = _link(manager_client, a, b, "spouse").json()["id"]
+    assert names_client.patch(f"{API}/guest-links/{link}", json={"former": True}).status_code == 403
