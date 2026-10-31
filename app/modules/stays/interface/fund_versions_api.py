@@ -363,9 +363,11 @@ def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: P
                 "skipped": res.skipped, "transfers": res.transfers}
     out = run(db, op, preview_flag, None)
     added = out["diff"]["warnings_added"]
+    # «unassigned» в ответе — брони без объекта: с части 2 это предупреждение overbooked
     out["result"]["affected"] = {"moved": out["diff"]["moved"],
-                                 **{k: [w for w in added if w["kind"] == k]
-                                    for k in ("unassigned", "pin_invalid", "category_missing")}}
+                                 **{k: [w for w in added if w["kind"] == kind]
+                                    for k, kind in (("unassigned", "overbooked"), ("pin_invalid", "pin_invalid"),
+                                                    ("category_missing", "category_missing"))}}
     return out
 
 

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.time import local_date
 
 from ..adapters.orm import Assignment, Move, Ooo, Reservation
-from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitSpan, allocate, pin_invalid
+from ..domain.allocate import AllocItem, AllocWarning, Key, OooRef, UnitSpan, allocate, pin_invalid
 from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, ooo_span, pieces, pos, segments
 from .fund_versions import FundTimeline, boundary_pos, fund_for
 
@@ -126,13 +126,13 @@ def compute(db: Session) -> AllocationState:
     spans = unit_spans(timeline, pos(first, AM), pos(last, PM))
     codes = {c.id: c.code for snap in timeline.snapshots() for c in snap.categories.values()}
 
-    holds: list[HoldRef] = []
+    holds: list[OooRef] = []
     warnings: list[AllocWarning] = []
     members: dict[Key, list[int]] = {}
     for h in hold_rows:
         title = h.reason or "OOO"
         hs, he = ooo_span(h.start, h.start_half, h.end, h.end_half)
-        holds.append(HoldRef(h.unit_id, hs, he, title))
+        holds.append(OooRef(h.unit_id, hs, he, title))
         # OOO/блок на дни, когда объекта нет в фонде (спецификация версий §14); прошлое — не тревога
         for a, z in _absent(spans, h.unit_id, max(hs, pos(today, AM)), he):
             u = timeline.unit(h.unit_id, dt.date.fromordinal(a // 2))
@@ -236,7 +236,9 @@ def compute(db: Session) -> AllocationState:
                 fixed.get(prev.index) if prev is not None and prev.seg_index == p.seg_index else None)
             if ref is not None:
                 relocated[(key, p.index)] = (number, p, ref)
-        items.append(AllocItem(key, number, tuple(ps), pinned, fixed))
+        # приоритет части 2 §4.2: предварительные — после подтверждённых и заселённых
+        rank = 0 if any(r.status != "tentative" for r in rs) else 1
+        items.append(AllocItem(key, number, tuple(ps), pinned, fixed, rank=rank, in_house=settled))
         members[key] = [r.id for r in rs]
 
     for r in res:
@@ -246,7 +248,8 @@ def compute(db: Session) -> AllocationState:
     for gid, rs in groups.items():
         add_item(("g", gid), rs[0].number or f"группа {gid}", rs, envelopes[gid])
 
-    got, alloc_warnings = allocate(spans, holds, items, codes)
+    # слоты блоков, пожелания и обороты HK подключает расчёт части 2 (Task 3)
+    got, _slots, alloc_warnings = allocate(spans, holds, [], items, codes, {})
     warnings += alloc_warnings
     for (key, index), (number, p, ref) in relocated.items():
         if got.get((key, index)) != ref:

@@ -79,6 +79,8 @@ def test_preview_equals_save(manager_role_client, manager_client, db, today, nam
 
 def test_preview_shows_other_reservation_shift(manager_role_client, manager_client):
     cat, a, b = _setup(manager_role_client, manager_client)
+    # второй объект тоже с выездом 14-го — HK не уводит B из первого (часть 2 §4.3)
+    create_res(manager_client, cat, "2028-03-12", "2028-03-14")
     # A продлевается на 15-е и закреплена за первым объектом → B вытесняется во второй
     body = _put_body(a, check_out="2028-03-15", pins={"0": cat["units"][0]["id"]})
     pv = manager_client.put(f"{API}/reservations/{a['id']}", params={"preview": 1}, json=body).json()
@@ -86,13 +88,13 @@ def test_preview_shows_other_reservation_shift(manager_role_client, manager_clie
     assert (b["id"], b["number"], cat["units"][0]["id"], cat["units"][1]["id"]) in moved
 
 
-def test_preview_reports_new_unassigned_warning(manager_role_client, manager_client):
+def test_preview_reports_new_overbooked_warning(manager_role_client, manager_client):
     cat = make_category(manager_role_client, n_units=1)
     create_res(manager_client, cat, "2028-04-10", "2028-04-14")
     pv = manager_client.post(f"{API}/reservations", params={"preview": 1},
                              json=res_body(cat, "2028-04-11", "2028-04-13", number="777")).json()
     alloc = [w["kind"] for w in pv["diff"]["warnings_added"] if w["day"] is None]   # без дня — распределение
-    assert alloc == ["unassigned"] and pv["diff"]["warnings_removed"] == []
+    assert alloc == ["overbooked"] and pv["diff"]["warnings_removed"] == []
 
 
 def test_preview_stale_version_409(manager_role_client, manager_client):

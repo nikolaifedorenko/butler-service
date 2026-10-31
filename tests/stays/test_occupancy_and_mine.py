@@ -78,7 +78,8 @@ def test_occupancy_rows(manager_role_client, manager_client, db):
                     "free": 0, "ooo": 1, "blocks": 1, "pct": 1.0}       # (1 + 1) / (3 − 1)
     nxt = _by_day(body["nodes"][0], body["days"])["2038-02-11"]
     assert (nxt["living"], nxt["ooo"], nxt["blocks"], nxt["free"], nxt["pct"]) == (1, 0, 0, 2, round(1 / 3, 3))
-    # один объект: занят (закреплён) и в OOO — «Свободно» 0, а не −1; весь фонд в OOO — pct None
+    # один объект: закреплённая бронь и OOO — OOO главнее, бронь без объекта (овербукинг, часть 2
+    # §4.4; «Свободно» −1 — Task 6); весь фонд в OOO — pct None
     solo_g = _group(manager_role_client)
     solo = make_category(manager_role_client, n_units=1, group_id=solo_g)
     create_res(manager_client, solo, d, "2038-02-11", pins={0: solo["units"][0]["id"]})
@@ -86,7 +87,7 @@ def test_occupancy_rows(manager_role_client, manager_client, db):
                                                      "kind": "ooo"}).status_code == 200
     body = _occ(manager_client, d, d, group_ids=solo_g)
     cell = body["nodes"][0]["days"][0]
-    assert (cell["total"], cell["living"], cell["ooo"], cell["free"], cell["pct"]) == (1, 1, 1, 0, None)
+    assert (cell["total"], cell["living"], cell["ooo"], cell["free"], cell["pct"]) == (1, 0, 1, 0, None)
 
 
 def test_occupancy_by_tree_totals_per_day(manager_role_client, manager_client, today):
