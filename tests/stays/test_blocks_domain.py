@@ -104,6 +104,30 @@ def test_block_never_moves_in_house():
     assert [(w.kind, w.text) for w in warns] == [("block_short", "Блок Гендир: не хватает 1 DLX на 10–11.09")]
 
 
+def test_in_house_displaced_by_ooo_beats_block():
+    """OOO отнимает объект у заселённого гостя с ночи 10; блок на ту же ночь и последний
+    свободный объект: гость переезжает раньше блока (блок заселённого не трогает) — у блока
+    нехватка, овербукинга нет."""
+    T, Dn = pos(D(8), PM), pos(D(10), PM)
+    guest = booking(1, 5, 13, in_house=True, bounds=[T, Dn], fixed={0: 100})
+    got, placed, warns = run(2, slots(grid(3, 10, 11), {3: "Гендир"}), [guest],
+                             ooo=[OooRef(100, pos(D(10), PM), pos(D(12), AM), "ремонт")])
+    assert [got[(("r", 1), i)] for i in (0, 1, 2)] == [100, 100, 101]
+    assert set(placed.values()) == {None}
+    assert [(w.kind, w.text) for w in warns] == [("block_short", "Блок Гендир: не хватает 1 DLX на 10–11.09")]
+
+
+def test_in_house_pinned_displaced_moves_with_pin():
+    """Закреплённый заселённый гость под OOO: переезд с ночи OOO, закрепление переносится."""
+    T, Dn = pos(D(8), PM), pos(D(10), PM)
+    b = booking(1, 5, 13, number="7", in_house=True, bounds=[T, Dn], fixed={0: 100})
+    guest = AllocItem(b.key, b.number, b.segments, {0: 100}, b.fixed, in_house=True)
+    got, _, warns = run(2, [], [guest], ooo=[OooRef(100, pos(D(10), PM), pos(D(12), AM), "ремонт")])
+    assert [got[(("r", 1), i)] for i in (0, 1, 2)] == [100, 100, 101]
+    assert [(w.kind, w.piece_index, w.text) for w in warns] == [
+        ("pin_conflict", 2, "Бронь 7: закреплённый объект 1 занят «ремонт» — бронь перенесена вместе с закреплением")]
+
+
 def test_slot_avoids_unit_pinned_by_booking():
     """Слот при выборе обходит объект, закреплённый за бронью, если есть другой свободный."""
     b = booking(1, 9, 13)

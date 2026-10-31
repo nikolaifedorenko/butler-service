@@ -161,18 +161,22 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
     rids = list(res)
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
+    starts: dict[int, list[int]] = {}
     occ: dict[int, list[Occupant]] = {rid: [] for rid in rids}
     if rids:
         for m in db.scalars(select(Move).where(Move.reservation_id.in_(rids))):
             moves[m.reservation_id].append((m.move_date, m.category_id))
         for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_(rids))):
             asg[(a.reservation_id, a.seg_index)] = a.unit_id
+            if a.start_pos is not None:
+                starts.setdefault(a.reservation_id, []).append(a.start_pos)
         for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_(rids))):
             occ[o.reservation_id].append(o)
     gids = {o.guest_id for os in occ.values() for o in os}
     guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
     cuts = [boundary_pos(d) for d in fund.boundaries()]
-    segs = {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[rid]), cuts)
+    segs = {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[rid]),
+                        allocation.own_cuts(cuts, starts, rid))
             for rid, r in res.items()}
     lines = _line_rows(db, first, last)
     active_staff = dict(db.execute(select(Employee.id, Employee.full_name).where(Employee.active.is_(True))).all())
@@ -188,10 +192,10 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
                         occ, guests, lines, escorts, staff, got)
 
 
-def butlers_on(db: Session, day: dt.date, res: list[Reservation], moves: dict[int, list], asg: dict,
+def butlers_on(db: Session, day: dt.date, res: list[Reservation], parts: dict[int, list[Piece]], asg: dict,
                occ: dict[int, list[Occupant]], guests: dict[int, Guest],
-               fund: FundTimeline, cuts: list[int]) -> dict[int, list[str]]:
-    """«Кто ведёт сегодня» из уже загруженных броней (шахматка объектов): строки покрытия дня
+               fund: FundTimeline) -> dict[int, list[str]]:
+    """«Кто ведёт сегодня» из уже загруженных броней и их частей (шахматка объектов): строки покрытия дня
     и имена батлеров — два запроса вместо полного контекста (бюджет SQL, §10)."""
     lines = _line_rows(db, day, day)
     if not lines:
@@ -199,10 +203,8 @@ def butlers_on(db: Session, day: dt.date, res: list[Reservation], moves: dict[in
     staff = {e.id: e.short_name or e.full_name for e in db.scalars(
         select(Employee).where(Employee.id.in_({ln.employee_id for ln in lines})))}
     live = {r.id: r for r in res if r.check_in <= day < r.check_out}
-    ctx = StaysContext(day, day, 0.0, 0.0, 0.0, frozenset(), fund, live,
-                       {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id,
-                                             moves.get(rid, [])), cuts)
-                        for rid, r in live.items()}, asg, occ, guests, lines, [], staff, {})
+    ctx = StaysContext(day, day, 0.0, 0.0, 0.0, frozenset(), fund, live, {rid: parts[rid] for rid in live},
+                       asg, occ, guests, lines, [], staff, {})
     out: dict[int, list[str]] = {}
     for (rid, _g), emps in ctx.cover(day).by_guest.items():
         for e in emps:

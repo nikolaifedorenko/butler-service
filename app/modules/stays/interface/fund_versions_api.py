@@ -361,7 +361,7 @@ def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: P
         return {"version": {"id": v.id, "valid_from": v.valid_from.isoformat(), "rev": v.rev},
                 "fund_diff": res.fund_diff, "propagated": res.propagated, "kept": res.kept,
                 "skipped": res.skipped, "transfers": res.transfers}
-    out = run(db, op, preview_flag, None)
+    out = run(db, op, preview_flag, None, principal)
     added = out["diff"]["warnings_added"]
     # «unassigned» в ответе — брони без объекта: с части 2 это предупреждение overbooked
     out["result"]["affected"] = {"moved": out["diff"]["moved"],

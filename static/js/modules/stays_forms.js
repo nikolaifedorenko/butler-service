@@ -52,8 +52,10 @@ function staysFieldValues(m, attr) {
   return out;
 }
 
-function renderPreview(diff, el) {
+function renderPreview(diff, el, refused) {
   const items = [];
+  // новый овербукинг без права «Овербукинг»: сохранение будет отклонено (409)
+  if (refused) items.push(`<li class="sp-warn"><b>Не сохранится:</b> ${esc(refused)}</li>`);
   (diff.moved || []).forEach(m => {
     const who = m.new ? 'Новая бронь' : `Бронь ${m.number || '#' + m.reservation_id}`;
     // seg_index — сегмент; since — дата части сегмента за границей версии фонда
@@ -73,7 +75,7 @@ function previewThenSave({ url, method, body, out }) {
   return {
     async preview() {
       const r = await api(`${url}${url.includes('?') ? '&' : '?'}preview=1`, { method, body: body() });
-      renderPreview(r.diff, out());
+      renderPreview(r.diff, out(), r.overbook_refused);
       return r;
     },
     async save() { return api(url, { method, body: body() }); },

@@ -354,7 +354,9 @@ class Assignment(Base):
     """Часть сегмента брони → объект; pinned — закреплён вручную (PoC §4.8).
 
     seg_index — индекс части: сегмент * PIECE_BASE + номер части между границами версий фонда
-    (ревизия 0011; спецификация версий §5)."""
+    (ревизия 0011; спецификация версий §5). start_pos — начало части (позиция половинки): часть
+    режется ещё и там, где заселённый гость переехал из-за OOO (ревизия 0016), — читатели режут
+    сегменты по границам версий и по start_pos строк брони."""
 
     __tablename__ = "stays_assignments"
     __table_args__ = (UniqueConstraint("reservation_id", "seg_index", name="uq_stays_assignment"),)
@@ -365,6 +367,7 @@ class Assignment(Base):
     unit_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_units.id"), nullable=True,
                                                    index=True)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    start_pos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class Occupant(Base):

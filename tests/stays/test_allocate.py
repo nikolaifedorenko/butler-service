@@ -82,7 +82,7 @@ def test_pin_transferred_on_move():
                      [item(1, 2, 5, pinned={0: 100}, number="555")])
     assert got[(("r", 1), 0)] == 101
     assert [(w.kind, w.text) for w in warns] == [
-        ("pin_conflict", "Бронь 555: закреплённый объект 1 конфликтует с «OOO»")]
+        ("pin_conflict", "Бронь 555: закреплённый объект 1 занят «OOO» — бронь перенесена вместе с закреплением")]
 
 
 def test_pin_wrong_category_released():

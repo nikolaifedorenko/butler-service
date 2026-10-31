@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
+from app.modules.stays.adapters.orm import Assignment
+
 from .helpers import API, create_res, make_category, units_of
 
 
@@ -31,8 +33,6 @@ def _rename(cat: dict, i: int) -> tuple:
 
 
 def _rows(db, rid: int) -> dict[int, tuple]:
-    from app.modules.stays.adapters.orm import Assignment
-
     db.expire_all()
     return {a.seg_index: (a.unit_id, bool(a.pinned))
             for a in db.scalars(select(Assignment).where(Assignment.reservation_id == rid))}
@@ -233,3 +233,33 @@ def test_repin_with_past_pinned_piece(manager_role_client, manager_client, today
     assert (doc["segments"][0]["unit_id"], doc["segments"][0]["pinned"]) == (z, True)
     assert _put(manager_client, doc, pins=_form_pins(doc)).status_code == 200      # повторное сохранение — без изменений
     assert _rows(db, r["id"]) == {0: (x, True), 1: (z, True)}
+
+
+def _ooo_bars(client, cat, rid, first, last):
+    board = client.get(f"{API}/board/units", params={"first": first, "last": last, "category_ids": cat["id"]}).json()
+    return ([(b["unit_id"], b["start"], b["end"]) for b in board["bars"] if b["reservation_id"] == rid],
+            [w["text"] for w in board["warnings"] if rid in w["reservation_ids"]])
+
+
+def test_in_house_moved_by_ooo_from_first_night(manager_role_client, manager_client, today, db):
+    """OOO на объект заселённого гостя с 07.05: прошлое и сегодня на месте, с ночи 06.05 (утро 07.05
+    уже OOO) — переезд до выезда; разрез хранится в start_pos и виден читателям."""
+    today("2034-05-01")
+    cat = make_category(manager_role_client, n_units=2)
+    u1, u2 = (u["id"] for u in cat["units"])
+    a = create_res(manager_client, cat, "2034-05-01", "2034-05-10", number="5")
+    st = manager_client.post(f"{API}/reservations/{a['id']}/status", json={"status": "in_house", "version": a["version"]})
+    assert st.status_code == 200, st.text
+    today("2034-05-05")
+    r = manager_client.post(f"{API}/holds", json={"unit_id": u1, "start": "2034-05-07", "end": "2034-05-08",
+                                                  "kind": "ooo", "title": "Ремонт"})
+    assert r.status_code == 200, r.text
+    moved = r.json()["diff"]["moved"]
+    assert [(m["from_unit"], m["to_unit"], m["since"]) for m in moved] == [(u1, u2, "2034-05-06")]
+    bars, warns = _ooo_bars(manager_client, cat, a["id"], "2034-05-01", "2034-05-12")
+    assert bars == [(u1, "2034-05-01", "2034-05-06"), (u2, "2034-05-06", "2034-05-10")]
+    assert warns == [f"Бронь 5 (заселена): объект {cat['units'][0]['label']} — OOO «Ремонт» с 07.05 — "
+                     f"переезд в {cat['units'][1]['label']} с 06.05 до выезда"]
+    db.expire_all()
+    rows = sorted((x.start_pos, x.unit_id) for x in db.scalars(select(Assignment).where(Assignment.reservation_id == a["id"])))
+    assert [u for _p, u in rows] == [u1, u2]

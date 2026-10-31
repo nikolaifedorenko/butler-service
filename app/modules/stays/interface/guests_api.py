@@ -125,7 +125,7 @@ def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
               {"drop_id": payload.drop_id, "not_carried": out.pop("not_carried"), "moves": out["moves"]})
         return out
 
-    done = run(db, op, preview_flag, None)
+    done = run(db, op, preview_flag, None, principal)
     return {"preview": done["preview"], **done["result"], "diff": done["diff"]}
 
 

@@ -297,6 +297,9 @@ async function unitsBoard() {
 
   const a = (await apiJson('GET', '/api/stays/board/units?first=2030-01-01&last=2030-01-14&category_ids=' + cat.id))
     .body.bars.find(b => b.number === 'A' + uniq);
+  // во втором объекте тоже выезд 07.01 — правило HK (часть 2 §4.3) не уводит B из первого объекта
+  await apiJson('POST', '/api/stays/reservations', { number: 'C' + uniq, check_in: '2030-01-05',
+    check_out: '2030-01-07', category_id: cat.id });
   const b = (await apiJson('POST', '/api/stays/reservations', { number: 'B' + uniq, check_in: '2030-01-07',
     check_out: '2030-01-10', category_id: cat.id })).body.result;
   check('вторая бронь встала в тот же объект', b.segments[0].unit_id === u1.id);

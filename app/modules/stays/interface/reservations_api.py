@@ -17,6 +17,7 @@ from app.core.permissions import require_perm
 
 from ..adapters.orm import Ooo, Reservation, StayGroup
 from ..application import allocation, coverage, mine, reservations
+from ..application.preview import change_window
 from ._ops import PREVIEW, run
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -121,7 +122,7 @@ def create_reservation(payload: ReservationIn, preview_flag: bool = PREVIEW,
         audit(db, principal, "stays_reservation", f"reservation:{r.id}",
               {"diff": reservations.diff_of(before, db, r)})
         return _result(db, r)
-    return run(db, op, preview_flag, _window(None, doc))
+    return run(db, op, preview_flag, _window(None, doc), principal)
 
 
 EDIT_OR_MINE = require_perm("stays.edit", "stays.edit_mine")
@@ -167,7 +168,7 @@ def update_reservation(rid: int, payload: ReservationIn, preview_flag: bool = PR
               {"diff": reservations.diff_of(before, db, r)})
         _cleanup(db, principal, r, old_group)
         return _result(db, r)
-    return run(db, op, preview_flag, window)
+    return run(db, op, preview_flag, window, principal)
 
 
 @router.post("/reservations/{rid}/status")
@@ -182,7 +183,7 @@ def change_status(rid: int, payload: StatusIn, preview_flag: bool = PREVIEW,
               {"diff": reservations.diff_of(before, db, r)})
         _cleanup(db, principal, r)
         return _result(db, r)
-    return run(db, op, preview_flag, window)
+    return run(db, op, preview_flag, window, principal)
 
 
 class JoinIn(BaseModel):
@@ -217,7 +218,7 @@ def join_group(payload: JoinIn, preview_flag: bool = PREVIEW, principal: Princip
             audit(db, principal, "stays_reservation", f"reservation:{r.id}",
                   {"diff": reservations.diff_of(before, db, r)})
         return {"group_id": gid}
-    return run(db, op, preview_flag, _span(found) if found else None)
+    return run(db, op, preview_flag, _span(found) if found else None, principal)
 
 
 @router.post("/groups/leave")
@@ -230,7 +231,7 @@ def leave_group(payload: LeaveIn, preview_flag: bool = PREVIEW, principal: Princ
         audit(db, principal, "stays_reservation", f"reservation:{r.id}", {"diff": reservations.diff_of(before, db, r)})
         _cleanup(db, principal, r, old)
         return _result(db, r)
-    return run(db, op, preview_flag, _span([r0]) if r0 else None)
+    return run(db, op, preview_flag, _span([r0]) if r0 else None, principal)
 
 
 @router.post("/groups")
@@ -260,17 +261,21 @@ def _hold_op(db: Session, principal: Principal, payload: Optional[HoldIn], hid: 
 @router.post("/holds")
 def create_hold(payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
-    return run(db, _hold_op(db, principal, payload, None), preview_flag, (payload.start, payload.end))
+    return run(db, _hold_op(db, principal, payload, None), preview_flag, change_window(payload.start, payload.end),
+               principal)
 
 
 @router.put("/holds/{hid}")
 def update_hold(hid: int, payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
-    return run(db, _hold_op(db, principal, payload, hid), preview_flag, (payload.start, payload.end))
+    h = db.get(Ooo, hid)
+    first, last = min([payload.start, *([h.start] if h else [])]), max([payload.end, *([h.end] if h else [])])
+    return run(db, _hold_op(db, principal, payload, hid), preview_flag, change_window(first, last), principal)
 
 
 @router.delete("/holds/{hid}")
 def remove_hold(hid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
     h = db.get(Ooo, hid)
-    return run(db, _hold_op(db, principal, None, hid), preview_flag, (h.start, h.end) if h else None)
+    return run(db, _hold_op(db, principal, None, hid), preview_flag, change_window(h.start, h.end) if h else None,
+               principal)

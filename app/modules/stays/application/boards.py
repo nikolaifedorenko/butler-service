@@ -128,6 +128,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
             return None
         guests = guests_of(r, night)
         base = {"reservation_id": r.id, "status": r.status, "unit": ctx.unit_label(unit_id, night),
+                **({"overbooked": True} if unit_id is None else {}),
                 "time": {"arrival": "РЗ" if r.early else "14:00", "departure": "ПВ" if r.late else "12:00"}.get(kind, ""),
                 "guests_count": len(guests) or 1}
         if not names:
@@ -169,6 +170,8 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
                    "need_replacement": statuses.count("replacement"), "declined": statuses.count("declined"),
                    "not_required": statuses.count("not_required"), "vip": guests.count("vip"),
                    "vvip": guests.count("vvip")}
-        out["attention"] = [x for x in in_house if x["cover_status"] in ("uncovered", "replacement")]
+        # овербукинг (бронь без объекта) — тоже «Требуют внимания» (часть 2 §4.2)
+        out["attention"] = [x for x in in_house if x["cover_status"] in ("uncovered", "replacement")
+                            or x.get("overbooked")]
     out["totals"] = totals
     return out

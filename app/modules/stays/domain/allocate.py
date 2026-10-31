@@ -4,7 +4,9 @@
 
 1. OOO — занимает объект безусловно.
 2. Заморожено: `AllocItem.fixed` (прошлые части, L1) и части заселённой брони (`in_house`) после
-   замороженной, пока её объект подходит по фонду и не занят OOO — блок их не трогает.
+   замороженной, пока её объект подходит по фонду и не занят OOO — блок их не трогает. Заселённая,
+   у которой OOO или фонд отняли объект, переезжает здесь же, до слотов: блок не оставляет
+   живущего гостя без объекта (закрепление переносится, как в шаге 4).
 3. Слоты блоков — по ночам: слот держит объект прошлой ночи, если он свободен, иначе первый
    свободный (обходя объекты, закреплённые за бронями, и обороты HK); не хватило — `block_short`,
    блок не уменьшается.
@@ -196,8 +198,9 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
                                                      if u.start_pos <= p.start_pos <= u.end_pos), ())
                 result[(it.key, p.index)] = uid
 
-    def hold(it: AllocItem, run: list[Piece]) -> int:
-        """Начатый сегмент держит объект предыдущей части, пока тот подходит и свободен; сколько частей."""
+    def hold(it: AllocItem, run: list[Piece]) -> tuple[int, int | None]:
+        """Начатый сегмент держит объект предыдущей части, пока тот подходит и свободен:
+        (сколько частей удержано, удерживаемый объект или None — удерживать нечего)."""
         prev = prev_of.get((it.key, run[0].index))
         held = result.get((it.key, prev.index)) if prev is not None and prev.seg_index == run[0].seg_index else None
         n = 0
@@ -207,88 +210,37 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
                 break
             place(it, run[n], unit)
             n += 1
-        return n
+        return n, held
 
-    open_runs: list[tuple[AllocItem, list[Piece]]] = []
-    for it in by_number:
-        for run in runs(it):
-            # у заселённой — остаток с части, где объект отнят: один переезд до конца сегмента
-            n = hold(it, run) if it.in_house else 0
-            if n < len(run):
-                open_runs.append((it, run[n:]))
-
-    # 3. слоты блоков — по ночам
-    pinned_at: dict[int, list[tuple[int, int]]] = {}
-    for it, run in open_runs:
-        if (uid := it.pinned.get(run[0].seg_index)) is not None:
-            pinned_at.setdefault(uid, []).append((run[0].start_pos, run[-1].end_pos))
-    slot_units: dict[SlotKey, int | None] = {}
-    by_night: dict[int, list[SlotRef]] = {}
-    for s in slots:
-        for n in range(s.start_pos // 2, s.end_pos // 2):
-            by_night.setdefault(n, []).append(s)
-    missing: dict[tuple[int, int], dict[int, int]] = {}
-    titles: dict[int, str] = {}
-    for n in sorted(by_night):
-        a, z = 2 * n + 1, 2 * n + 2            # pos(n, PM)..pos(n+1, AM)
-        fresh = []
-        for s in sorted(by_night[n], key=lambda s: (s.block_id, s.category_id, s.slot)):
-            uid = slot_units.get((s.block_id, s.category_id, s.slot, n - 1))
-            if uid is not None and any(u.unit_id == uid for u in covering(s.category_id, a, z)) and free(uid, a, z):
-                occupy(uid, a, z, f"блок {s.title}")
-                slot_units[(s.block_id, s.category_id, s.slot, n)] = uid
-            else:
-                fresh.append(s)
-        for s in fresh:
-            cands = [u for u in covering(s.category_id, a, z) if free(u.unit_id, a, z)]
-            spare = [u for u in cands if not any(overlaps(a, z, pa, pz) for pa, pz in pinned_at.get(u.unit_id, ()))]
-            cands = hk(spare or cands, a)
-            key = (s.block_id, s.category_id, s.slot, n)
-            if cands:
-                occupy(cands[0].unit_id, a, z, f"блок {s.title}")
-                slot_units[key] = cands[0].unit_id
-            else:
-                slot_units[key] = None
-                per_night = missing.setdefault((s.block_id, s.category_id), {})
-                per_night[n] = per_night.get(n, 0) + 1
-                titles[s.block_id] = s.title
-    for (block_id, cat), per_night in sorted(missing.items()):
-        nights = sorted(per_night)
-        start = 0
-        for i, n in enumerate(nights):
-            if i + 1 < len(nights) and nights[i + 1] == n + 1 and per_night[nights[i + 1]] == per_night[n]:
-                continue
-            first = nights[start]
-            warnings.append(AllocWarning(
-                "block_short", ("b", block_id), first,
-                f"Блок {titles[block_id]}: не хватает {per_night[n]} {category_codes.get(cat, '?')} на "
-                f"{_nights(first, n)}"))
-            start = i + 1
-
-    # 4. закрепления броней — если объект свободен на весь остаток сегмента
-    todo: list[tuple[AllocItem, list[Piece]]] = []
-    pinned_runs = []
-    for it, run in open_runs:
-        if (uid := it.pinned.get(run[0].seg_index)) is None:
-            todo.append((it, run))
-        else:
-            pinned_runs.append((it, run, uid))
-    for it, run, uid in sorted(pinned_runs, key=lambda t: _order(t[0], t[1])):
+    def runs_after_pin(it: AllocItem, run: list[Piece], uid: int) -> list[list[Piece]]:
+        """Закрепление (шаг 4): объект свободен на всю цепочку — бронь в нём; части, которым он не
+        подходит по фонду, — pin_invalid. Объект занят — pin_conflict: бронь распределяется как
+        обычная, и закрепление переходит на новый объект (§4.4). Возвращает цепочки для обычного
+        распределения."""
         ok = {p.index: unit for p in run if (unit := fit(uid, p)) is not None}
-        warnings += [pin_invalid(it.number, it.key, p) for p in run if p.index not in ok]
+        warnings.extend(pin_invalid(it.number, it.key, p) for p in run if p.index not in ok)
         clash = next((desc for p in run if p.index in ok for bs, be, desc in busy.get(uid, ())
                       if overlaps(p.start_pos, p.end_pos, bs, be)), None)
         if clash is None:
             for p in run:
                 if p.index in ok:
                     place(it, p, ok[p.index])
-            todo += [(it, r) for r in runs(it, {p.index for p in run if p.index not in ok})]
-            continue
+            return runs(it, {p.index for p in run if p.index not in ok})
         first = next(p for p in run if p.index in ok)
         warnings.append(AllocWarning(
             "pin_conflict", it.key, first.index,
-            f"Бронь {it.number}: закреплённый объект {ok[first.index].label} конфликтует с «{clash}»"))
-        todo.append((it, run))
+            f"Бронь {it.number}: закреплённый объект {ok[first.index].label} занят «{clash}» — "
+            f"бронь перенесена вместе с закреплением"))
+        return [run]
+
+    open_runs: list[tuple[AllocItem, list[Piece]]] = []
+    displaced: list[tuple[AllocItem, list[Piece]]] = []
+    for it in by_number:
+        for run in runs(it):
+            # у заселённой — остаток с части, где объект отнят: один переезд до конца сегмента
+            n, held = hold(it, run) if it.in_house else (0, None)
+            if n < len(run):
+                (displaced if held is not None else open_runs).append((it, run[n:]))
 
     def choose(it: AllocItem, chunk: list[Piece], cands: list[UnitSpan]) -> UnitSpan:
         p0 = chunk[0]
@@ -352,6 +304,72 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
                 for p in chunk:
                     unplaced(it, p)
             i = end
+
+    # 2б. заселённые, у которых OOO или фонд отняли объект, переезжают до слотов блоков: блок
+    # не оставляет живущего гостя без объекта (решение владельца «блок заселённого не трогает»)
+    for it, run in sorted(displaced, key=lambda t: _order(t[0], t[1])):
+        uid = it.pinned.get(run[0].seg_index)
+        for rest in (runs_after_pin(it, run, uid) if uid is not None else [run]):
+            place_run(it, rest)
+
+    # 3. слоты блоков — по ночам
+    pinned_at: dict[int, list[tuple[int, int]]] = {}
+    for it, run in open_runs:
+        if (uid := it.pinned.get(run[0].seg_index)) is not None:
+            pinned_at.setdefault(uid, []).append((run[0].start_pos, run[-1].end_pos))
+    slot_units: dict[SlotKey, int | None] = {}
+    by_night: dict[int, list[SlotRef]] = {}
+    for s in slots:
+        for n in range(s.start_pos // 2, s.end_pos // 2):
+            by_night.setdefault(n, []).append(s)
+    missing: dict[tuple[int, int], dict[int, int]] = {}
+    titles: dict[int, str] = {}
+    for n in sorted(by_night):
+        a, z = 2 * n + 1, 2 * n + 2            # pos(n, PM)..pos(n+1, AM)
+        fresh = []
+        for s in sorted(by_night[n], key=lambda s: (s.block_id, s.category_id, s.slot)):
+            uid = slot_units.get((s.block_id, s.category_id, s.slot, n - 1))
+            if uid is not None and any(u.unit_id == uid for u in covering(s.category_id, a, z)) and free(uid, a, z):
+                occupy(uid, a, z, f"блок {s.title}")
+                slot_units[(s.block_id, s.category_id, s.slot, n)] = uid
+            else:
+                fresh.append(s)
+        for s in fresh:
+            cands = [u for u in covering(s.category_id, a, z) if free(u.unit_id, a, z)]
+            spare = [u for u in cands if not any(overlaps(a, z, pa, pz) for pa, pz in pinned_at.get(u.unit_id, ()))]
+            cands = hk(spare or cands, a)
+            key = (s.block_id, s.category_id, s.slot, n)
+            if cands:
+                occupy(cands[0].unit_id, a, z, f"блок {s.title}")
+                slot_units[key] = cands[0].unit_id
+            else:
+                slot_units[key] = None
+                per_night = missing.setdefault((s.block_id, s.category_id), {})
+                per_night[n] = per_night.get(n, 0) + 1
+                titles[s.block_id] = s.title
+    for (block_id, cat), per_night in sorted(missing.items()):
+        nights = sorted(per_night)
+        start = 0
+        for i, n in enumerate(nights):
+            if i + 1 < len(nights) and nights[i + 1] == n + 1 and per_night[nights[i + 1]] == per_night[n]:
+                continue
+            first = nights[start]
+            warnings.append(AllocWarning(
+                "block_short", ("b", block_id), first,
+                f"Блок {titles[block_id]}: не хватает {per_night[n]} {category_codes.get(cat, '?')} на "
+                f"{_nights(first, n)}"))
+            start = i + 1
+
+    # 4. закрепления броней — если объект свободен на весь остаток сегмента
+    todo: list[tuple[AllocItem, list[Piece]]] = []
+    pinned_runs = []
+    for it, run in open_runs:
+        if (uid := it.pinned.get(run[0].seg_index)) is None:
+            todo.append((it, run))
+        else:
+            pinned_runs.append((it, run, uid))
+    for it, run, uid in sorted(pinned_runs, key=lambda t: _order(t[0], t[1])):
+        todo += [(it, r) for r in runs_after_pin(it, run, uid)]
 
     # 5. брони: rank 0, затем rank 1
     for it, run in sorted(todo, key=lambda t: _order(t[0], t[1])):

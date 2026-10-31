@@ -216,17 +216,21 @@ def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int]) -> 
     rids = [r.id for r in res]
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
+    starts: dict[int, list[int]] = {}
     occ: dict[int, list[Occupant]] = {rid: [] for rid in rids}
     if rids:
         for m in db.scalars(select(Move).where(Move.reservation_id.in_(rids))):
             moves[m.reservation_id].append((m.move_date, m.category_id))
         for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_(rids))):
             asg[(a.reservation_id, a.seg_index)] = a.unit_id
+            if a.start_pos is not None:
+                starts.setdefault(a.reservation_id, []).append(a.start_pos)
         for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_(rids))
                             .order_by(Occupant.date_from, Occupant.id)):
             occ[o.reservation_id].append(o)
     segs = {r.id: segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]) for r in res}
-    return _Stays(res, moves, asg, occ, segs, {r.id: pieces(segs[r.id], cuts) for r in res})
+    return _Stays(res, moves, asg, occ, segs,
+                  {r.id: pieces(segs[r.id], allocation.own_cuts(cuts, starts, r.id)) for r in res})
 
 
 def _occupied(st: _Stays, first: dt.date, last: dt.date) -> dict[tuple[int, dt.date], int]:
@@ -262,7 +266,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     visible_cats = {cid for u in units for _, cid in u.categories}
     cuts = version_cuts(db)
     st = _load_stays(db, first, last, cuts)
-    res, moves, asg, occ = st.res, st.moves, st.asg, st.occ
+    res, asg, occ = st.res, st.asg, st.occ
     occupied = _occupied(st, first, last)
     names = level != "occupancy"
     guests = {}
@@ -275,7 +279,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     today = local_date()
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
-        on_duty = butlers_on(db, today, res, moves, asg, occ, guests, fund, cuts)
+        on_duty = butlers_on(db, today, res, st.parts, asg, occ, guests, fund)
 
     bars = []
     for r in res:
@@ -322,8 +326,10 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         state = allocation.current_state(db)
         shown = {b["reservation_id"] for b in bars}
         shown_holds = {("h", h["id"]) for h in holds}
+        # нехватка блока (block_short) — без броней; piece_index у неё — ordinal первой ночи
         warnings = [{"kind": w.kind, "reservation_ids": state.members[w.key], "text": w.text}
-                    for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds]
+                    for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds
+                    or (w.kind == "block_short" and w.piece_index <= last.toordinal())]
     return {"days": [_d(d) for d in days], "visibility": level,
             "units": [{"unit_id": u.id, "label": u.label,
                        "labels": [{"from": _d(d), "label": lb} for d, lb in u.labels],
