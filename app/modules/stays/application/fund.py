@@ -20,7 +20,6 @@ from ..adapters.orm import (
     StaysSettings,
 )
 
-KINDS = {"villa": "вилла", "estate": "имение", "apartment": "апартаменты", "room": "номер"}
 FIELD_KINDS = {"text", "choice", "bool", "date"}
 FIELD_TARGETS = {"guest", "reservation"}
 
@@ -174,10 +173,9 @@ def save_settings(db: Session, vip_bonus: float, vvip_bonus: float, daily_limit:
 
 def list_fund(db: Session, with_staff: bool = False) -> dict:
     """with_staff — список активных сотрудников для экрана «Сопровождение» (только stays.setup).
-    Категории и объекты — в GET /fund/snapshot (фонд на дату)."""
+    Категории, объекты, флаги и виды — в GET /fund/snapshot (фонд на дату)."""
     names = dict(db.execute(select(Employee.id, Employee.full_name)).all())
     out = {
-        "kinds": [{"code": k, "title": v} for k, v in KINDS.items()],
         "labels": [as_dict(lb, LABEL_FIELDS) for lb in db.scalars(select(Label).order_by(Label.title))],
         "fields": [field_dict(f) for f in
                    db.scalars(select(CustomField).order_by(CustomField.target, CustomField.sort_order))],

@@ -1,7 +1,7 @@
 """Шахматка, задача 17: сводная загрузка, «Мои гости», правка своих броней батлером, матрица ролей."""
 from __future__ import annotations
 
-from .helpers import API, FundDraft, create_res, make_category, make_guest, uniq
+from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, uniq
 
 
 def _doc(c, rid):
@@ -10,7 +10,7 @@ def _doc(c, rid):
 
 def _body(res, **ch):
     return {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late", "group_id",
-                                   "note", "declined_butler", "label_id", "customer", "purpose", "paid_by", "fields")},
+                                   "note", "declined_butler", "label_id", "customer", "paid_category_id", "fields")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **ch}
 
@@ -120,7 +120,7 @@ def test_occupancy_total_is_sum_of_selected_nodes(manager_role_client, manager_c
         assert {k: t[k] for k in keys} == {k: sum(n["days"][i][k] for n in body["nodes"]) for k in keys}
     assert body["total"]["path"] == ["Итого по выбранному"] and body["total"]["days"][2]["living"] == 2
     # фильтры категорий и видов сужают и узлы, и итог
-    rooms = _occ(manager_client, "2038-03-01", "2038-03-05", group_ids=[a, b], kinds="room")
+    rooms = _occ(manager_client, "2038-03-01", "2038-03-05", group_ids=[a, b], kind_ids=kind_id("room"))
     assert [n["days"][0]["total"] for n in rooms["nodes"]] == [0, 3] and rooms["total"]["days"][0]["total"] == 3
     # узел и его потомок выбраны вместе — объекты в итоге не удваиваются
     child = _group(manager_role_client, parent_id=a)
@@ -200,3 +200,12 @@ def test_role_matrix(manager_client, mgmt_client, occupancy_client, butler_clien
 def test_demo_butler_has_tonight(butler_client):
     """Демо: у входа ivanov в «Моих гостях» есть бронь на сегодня (§11)."""
     assert butler_client.get(f"{API}/mine").json()["reservations"]
+
+
+def test_butler_cannot_change_paid_category(butler_client, own_reservation, manager_role_client):
+    rid = own_reservation["mine"]["id"]
+    doc = _doc(butler_client, rid)
+    other = make_category(manager_role_client)
+    r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, paid_category_id=other["id"]))
+    assert r.status_code == 403
+    assert r.json()["detail"] == "Батлер может менять только состав, логистику и сведения о гостях"

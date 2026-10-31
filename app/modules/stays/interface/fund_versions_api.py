@@ -27,7 +27,7 @@ from ..application import fund_drafts as fd
 from ..application import fund_reset as fr
 from ..application import fund_xlsx as fx
 from ..application.fund import FundError
-from ..application.fund_versions import FundSnapshot, fund_on, snapshot_of
+from ..application.fund_versions import FundSnapshot, fund_on, kind_dict, kinds, snapshot_of
 from ._ops import PREVIEW, run
 from .fund_api import READ, SETUP, SORT, CategoryIn, _err
 
@@ -125,6 +125,12 @@ class FlagIn(BaseModel):
         return v
 
 
+class KindIn(BaseModel):
+    title: str = Field(min_length=1, max_length=40)
+    sort_order: int = SORT
+    expanded: bool = False
+
+
 class ArchiveIn(BaseModel):
     archived: bool
 
@@ -139,7 +145,7 @@ def _version_dict(v: FundVersion) -> dict:
 def _snapshot_dict(db: Session, version: FundVersion, snap: FundSnapshot) -> dict:
     return {
         "version": _version_dict(version),
-        "categories": [{"id": c.id, "code": c.code, "title": c.title, "kind": c.kind, "weight": c.weight,
+        "categories": [{"id": c.id, "code": c.code, "title": c.title, "kind_id": c.kind_id, "weight": c.weight,
                         "escorted": c.escorted, "sort_order": c.sort_order}
                        for c in sorted(snap.categories.values(), key=lambda c: (c.sort_order, c.id))],
         "groups": [{"id": g.id, "parent_id": g.parent_id, "title": g.title, "sort_order": g.sort_order,
@@ -152,6 +158,7 @@ def _snapshot_dict(db: Session, version: FundVersion, snap: FundSnapshot) -> dic
         "flags": [{"id": f.id, "title": f.title, "color": f.color, "sort_order": f.sort_order,
                    "archived": f.archived}
                   for f in db.scalars(select(UnitFlag).order_by(UnitFlag.sort_order, UnitFlag.id))],
+        "kinds": [kind_dict(k) for k in kinds(db)],
     }
 
 
@@ -517,3 +524,38 @@ def archive_flag(fid: int, payload: ArchiveIn, principal: Principal = Depends(SE
 def remove_flag(fid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     _run(fd.delete_flag, db, fid)
     return _flag_done(db, principal, fid, {"delete": True})
+
+
+# ── справочник видов категорий (вне черновика) ─────────────────────────────
+
+
+def _kind_done(db: Session, principal: Principal, kind_id: int, payload: dict) -> dict:
+    audit(db, principal, "stays_fund", f"kind:{kind_id}", payload)
+    db.commit()
+    return {"id": kind_id}
+
+
+@router.post("/fund/kinds")
+def create_kind(payload: KindIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    kid = _run(fd.save_kind, db, payload.model_dump(), None)
+    return _kind_done(db, principal, kid, payload.model_dump())
+
+
+@router.put("/fund/kinds/{kid}")
+def update_kind(kid: int, payload: KindIn, principal: Principal = Depends(SETUP),
+                db: Session = Depends(get_db)):
+    _run(fd.save_kind, db, payload.model_dump(), kid)
+    return _kind_done(db, principal, kid, payload.model_dump())
+
+
+@router.put("/fund/kinds/{kid}/archive")
+def archive_kind(kid: int, payload: ArchiveIn, principal: Principal = Depends(SETUP),
+                 db: Session = Depends(get_db)):
+    _run(fd.archive_kind, db, kid, payload.archived)
+    return _kind_done(db, principal, kid, {"archived": payload.archived})
+
+
+@router.delete("/fund/kinds/{kid}")
+def remove_kind(kid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    _run(fd.delete_kind, db, kid)
+    return _kind_done(db, principal, kid, {"delete": True})

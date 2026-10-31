@@ -25,7 +25,7 @@ from ..adapters.orm import (
 from ..domain.allocate import natural_key
 from ..domain.halfday import PIECE_BASE, PM, Piece, hold_span, pieces, pos, segments
 from ..ports.duty import DutyPort
-from . import allocation
+from . import allocation, family
 from .context import butlers_on, load_context, nights
 from .fund_versions import (
     CategoryInfo,
@@ -56,7 +56,7 @@ class BoardFilters:
     group_ids: tuple[int, ...] = ()         # узлы дерева фонда: объекты их веток
     category_ids: tuple[int, ...] = ()
     flag_ids: tuple[int, ...] = ()
-    kinds: tuple[str, ...] = ()
+    kind_ids: tuple[int, ...] = ()          # виды категорий (справочник)
     floor: str | None = None
     escorted_only: bool = False
     vip: bool = False
@@ -82,7 +82,7 @@ def fund_match(snap: FundSnapshot, unit_id: int | None, category_id: int | None,
     cat = snap.categories.get(cid)
     return ((not f.group_ids or bool(set(f.group_ids) & set(snap.unit_path(unit_id))))
             and (not f.category_ids or cid in f.category_ids)
-            and (not f.kinds or (cat is not None and cat.kind in f.kinds))
+            and (not f.kind_ids or (cat is not None and cat.kind_id in f.kind_ids))
             and (not f.flag_ids or set(f.flag_ids) <= u.flags)
             and (not f.floor or u.floor == f.floor))
 
@@ -295,8 +295,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                 "mains": [{"guest": short_name(guests[o.guest_id]), "from": _d(o.date_from), "to": _d(o.date_to)}
                           for o in mains if o.guest_id in guests],
                 "level": top, "butlers_today": on_duty.get(r.id, []),
-                "customer": r.customer, "purpose": r.purpose, "paid_by": r.paid_by, "note": r.note,
-                "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}")}
+                "customer": r.customer, "paid_category_id": r.paid_category_id or r.category_id,
+                "note": r.note, "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}")}
         # полоса — соседние части сегмента с одним объектом; seg_index полосы — индекс её первой
         # части (seg_index // PIECE_BASE — сегмент; 0 — начало брони)
         for run in _glued(st.parts[r.id], lambda p, rid=r.id: asg.get((rid, p.index))):
@@ -367,6 +367,19 @@ def card_coverage(db: Session, r: Reservation, duty: DutyPort | None) -> list[di
     return out
 
 
+def _relatives_in_house(db: Session, r: Reservation, guests: dict[int, Guest]) -> dict[int, list[dict]]:
+    """Родственники гостей брони среди всех, кто проживает в те же даты (§4)."""
+    if not guests:
+        return {}
+    present = set(db.scalars(select(Occupant.guest_id).join(Reservation, Reservation.id == Occupant.reservation_id)
+                             .where(Reservation.status.in_(allocation.OCCUPYING),
+                                    Occupant.date_from < r.check_out, Occupant.date_to > r.check_in)))
+    kin = family.kin_among(db, present | set(guests), set(guests))
+    others = {o for rel in kin.values() for o, _ in rel} - set(guests)
+    known = {**{g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(others)))}, **guests} if others else guests
+    return {gid: [{"guest_id": o, "title": t, "name": short_name(known[o])} for o, t in rel] for gid, rel in kin.items()}
+
+
 def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None = None) -> dict:
     """Карточка брони (§6.5): уровень «с фамилиями» — состав по датам; «полный» — плюс
     заказчик, примечания, сопровождающие, логистика, настраиваемые поля."""
@@ -383,11 +396,17 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == rid)
                           .order_by(Occupant.date_from, Occupant.id)))
     guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_({o.guest_id for o in occ})))} if occ else {}
+    paid_id = r.paid_category_id or r.category_id
+    paid = fund.category(paid_id, r.check_in)
+    paid_code = paid.code if paid else "?"
     lb = db.get(Label, r.label_id) if r.label_id else None
+    relatives = _relatives_in_house(db, r, guests) if at_least(level, "names") else {}
     card = {
         "id": r.id, "number": r.number, "status": r.status, "status_title": STATUS_TITLES[r.status],
         "check_in": _d(r.check_in), "check_out": _d(r.check_out), "early": r.early, "late": r.late,
         "category": category.code if category else "?",
+        "paid_category_id": paid_id, "paid_category": paid_code,
+        "upgrade": f"апгрейд: оплачена {paid_code}" if paid_id != r.category_id else "",
         "label": {"title": lb.title, "color": lb.color} if lb else None,
         "group_id": r.group_id, "version": r.version,
         "segments": [{"index": s.index, "start": _d(s.start), "end": _d(s.end), "unit_id": asg.get(s.index),
@@ -395,12 +414,13 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
                      for s in segs],
         "occupants": [{"guest_id": o.guest_id, "guest": short_name(guests[o.guest_id]),
                        "level": guests[o.guest_id].level, "date_from": _d(o.date_from),
-                       "date_to": _d(o.date_to), "role": o.role} for o in occ if o.guest_id in guests],
+                       "date_to": _d(o.date_to), "role": o.role,
+                       "relatives": relatives.get(o.guest_id, [])} for o in occ if o.guest_id in guests],
         "coverage": card_coverage(db, r, duty) if r.status in allocation.OCCUPYING else [
             {"day": d.isoformat(), "butlers": [], "warnings": []} for d in nights(r.check_in, r.check_out)],
     }
     if at_least(level, "full"):
-        card |= {"customer": r.customer, "purpose": r.purpose, "paid_by": r.paid_by, "note": r.note,
+        card |= {"customer": r.customer, "note": r.note,
                  "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}"),
                  "companions": [{"kind": c.kind, "description": c.description} for c in
                                 db.scalars(select(Companion).where(Companion.reservation_id == rid))],

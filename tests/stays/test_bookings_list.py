@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.core.audit import AuditLog
 from app.modules.stays.domain.allocate import natural_key
 
-from .helpers import API, create_res, make_category, make_guest, uniq
+from .helpers import API, create_res, kind_id, make_category, make_guest, uniq
 from .test_board_filters import _flag, _groups, _set_flag
 
 URL = f"{API}/bookings"
@@ -160,7 +160,7 @@ def test_filters_reuse_board_semantics(manager_role_client, manager_client):
     assert set(_numbers(manager_client, **day, **scope, group_ids=[corp, villas])) == both            # узлы — «или»
     assert set(_numbers(manager_client, **day, group_ids=[corp])) >= set(by_cat[rooms["code"]])
     assert not set(_numbers(manager_client, **day, group_ids=[corp])) & set(by_cat[vil["code"]])
-    assert set(_numbers(manager_client, **day, **scope, kinds=["villa"])) == set(by_cat[vil["code"]])
+    assert set(_numbers(manager_client, **day, **scope, kind_ids=[kind_id("villa")])) == set(by_cat[vil["code"]])
     only_sea = _get(manager_client, **day, **scope, flag_ids=[sea])["rows"]
     units_sea = {r["unit"] for r in only_sea}
     assert units_sea == {vil["units"][0]["label"], rooms["units"][0]["label"]}
@@ -208,7 +208,7 @@ def test_move_and_butlers_columns(manager_role_client, manager_client, db):
 def test_bookings_query_budget(manager_client, big_fund, sql_counter):
     win = {"first": "2029-06-01", "last": "2029-06-30"}
     with sql_counter() as c:
-        r = manager_client.get(URL, params={**win, "kinds": ["room"], "q": "большой"})
+        r = manager_client.get(URL, params={**win, "kind_ids": [kind_id("room")], "q": "большой"})
     assert r.status_code == 200 and r.json()["total"] > 0
     with sql_counter() as c:
         r = manager_client.get(URL, params=win)

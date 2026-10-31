@@ -12,8 +12,20 @@ const STAYS_STATUS = { tentative: 'предварительная', confirmed: '
   checked_out: 'выехал', cancelled: 'отменена', no_show: 'не заехал' };
 
 const STAYS_COMPANION = { security: 'охрана', driver: 'водитель', nanny: 'няня', pet: 'животное', other: 'другое' };
-const STAYS_LINK = { spouse: 'супруг(а)', child: 'ребёнок', relative: 'родственник', assistant: 'ассистент',
-  security: 'охрана', driver: 'водитель', nanny: 'няня', colleague: 'коллега', other: 'другое' };
+/* кем выбранный гость приходится открытому; семейные связи — только «родитель» (parent) и «супруг»
+   (spouse, former — бывшие): их подписи нужны предпросмотру объединения, правятся они в дереве
+   (stays_family.js), остальное родство вычисляет сервер (§4) */
+const STAYS_LINK = { spouse: 'супруг(а)', spouse_former: 'бывший(ая) супруг(а)', parent: 'ребёнок',
+  relative: 'родственник', assistant: 'ассистент', security: 'охрана', driver: 'водитель', nanny: 'няня',
+  colleague: 'коллега', other: 'другое' };
+const STAYS_GENDER = { '': 'не указан', m: 'мужской', f: 'женский' };
+/* семейные связи правятся в дереве (stays_family.js); в «Прочих связях» карточки — остальные виды */
+const STAYS_FAMILY_LINK = new Set(['spouse', 'spouse_former', 'parent']);
+
+/* родственники среди проживающих (§4): «мать — Петрова М.» */
+function staysRelativesHtml(rel) {
+  return rel?.length ? `<div class="muted">${rel.map(x => `${esc(x.title)} — ${esc(x.name)}`).join(', ')}</div>` : '';
+}
 
 /* настраиваемые поля (§3.5): элемент ввода по типу поля; attr — data-атрибут с кодом */
 function staysFieldInputs(defs, values, attr) {
@@ -96,12 +108,20 @@ async function openReservationForm(id, opts = {}) {
   };
   const opt = (v, t, cur) => `<option value="${esc(String(v ?? ''))}"${String(v ?? '') === String(cur ?? '') ? ' selected' : ''}>${esc(t)}</option>`;
   const catCode = cid => fund.categories.find(c => c.id === Number(cid))?.code || '?';
+  /* категории фонда на дату заезда (§5); текущее значение, которого в фонде нет, остаётся выбранным —
+     иначе браузер молча подставит первую категорию, и сохранение запишет ложный «апгрейд» */
+  const catOptions = (cats, cur) => {
+    const list = cur != null && cur !== '' && !cats.some(c => c.id === Number(cur))
+      ? [...cats, { id: Number(cur), code: fund.categories.find(c => c.id === Number(cur))?.code || '#' + cur, title: 'нет в фонде на эту дату' }]
+      : cats;
+    return list.map(c => opt(c.id, `${c.code} · ${c.title}`, cur)).join('');
+  };
   openModal({
     title: r ? `Бронь ${r.number || '#' + r.id}` : 'Новая бронь', wide: true,
     body: `
       <div class="grid-2">
         ${sfRow('Номер брони (Fidelio)', sfInput('rf-number', r?.number))}
-        ${sfRow('Категория', `<select id="rf-category">${fund.categories.map(c => opt(c.id, `${c.code} · ${c.title}`, r?.category_id)).join('')}</select>`)}
+        ${sfRow('Категория', `<select id="rf-category">${catOptions(fund.categories, r?.category_id)}</select>`)}
         ${sfRow('Заезд', sfInput('rf-check-in', r?.check_in, 'date'))}
         ${sfRow('Выезд', sfInput('rf-check-out', r?.check_out, 'date'))}
       </div>
@@ -110,8 +130,7 @@ async function openReservationForm(id, opts = {}) {
       <div class="grid-2">
         ${sfRow('Метка', `<select id="rf-label">${opt('', '—', r?.label_id)}${fund.labels.map(l => opt(l.id, l.title, r?.label_id)).join('')}</select>`)}
         ${sfRow('Заказчик', sfInput('rf-customer', r?.customer))}
-        ${sfRow('Повод визита', sfInput('rf-purpose', r?.purpose))}
-        ${sfRow('Оплата за', sfInput('rf-paid', r?.paid_by))}
+        ${sfRow('Оплата за', `<select id="rf-paid">${catOptions(fund.categories, r?.paid_category_id ?? r?.category_id)}</select>`)}
       </div>
       ${sfRow('Примечание', `<textarea id="rf-note" rows="2">${esc(r?.note || '')}</textarea>`)}
       <h4>Гости</h4><div id="rf-occupants"></div>
@@ -132,10 +151,11 @@ async function openReservationForm(id, opts = {}) {
       const val = sel => $(sel, m).value;
       if (opts.mine) {
         ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-declined',
-          '#rf-label', '#rf-customer', '#rf-purpose', '#rf-paid', '#rf-move-add', '#rf-new-add', '#rf-new-last']
+          '#rf-label', '#rf-customer', '#rf-paid', '#rf-move-add', '#rf-new-add', '#rf-new-last']
           .forEach(sel => { const el = $(sel, m); if (el) el.disabled = true; });
         if (r) {
           $('#rf-category', m).innerHTML = `<option value="${r.category_id}">—</option>`;
+          $('#rf-paid', m).innerHTML = `<option value="${r.paid_category_id ?? r.category_id}">—</option>`;
           $('#rf-label', m).innerHTML = `<option value="${r.label_id ?? ''}">—</option>`;
         }
       }
@@ -205,9 +225,27 @@ async function openReservationForm(id, opts = {}) {
         });
         prev = { ci, co }; drawOcc();
       };
-      $('#rf-check-in', m).onchange = follow;
+      /* «Категория» и «Оплата за» — из фонда на дату заезда; пока даты нет — из фонда на сегодня */
+      const snapCats = {};
+      const reloadCats = async () => {
+        const d = val('#rf-check-in');
+        if (!/^\d{4}-\d\d-\d\d$/.test(d)) return;
+        if (!snapCats[d]) {
+          try { snapCats[d] = (await api('/api/stays/fund/snapshot?date=' + d, { silent: true })).categories; } catch (e) { return; }
+        }
+        if (val('#rf-check-in') !== d) return;            // дату успели сменить — этот ответ устарел
+        const catSel = $('#rf-category', m), paidSel = $('#rf-paid', m);
+        const [c, p] = [catSel.value, paidSel.value];
+        catSel.innerHTML = catOptions(snapCats[d], c);
+        paidSel.innerHTML = catOptions(snapCats[d], p);
+      };
+      $('#rf-check-in', m).onchange = () => { follow(); if (!opts.mine) reloadCats(); };
+      if (r?.check_in && !opts.mine) reloadCats();
       $('#rf-check-out', m).onchange = follow;
-      $('#rf-category', m).onchange = drawPins;
+      /* «оплата за» следует за категорией, пока её не выбрали отдельно */
+      let paidTouched = !!r && (r.paid_category_id ?? r.category_id) !== r.category_id;
+      $('#rf-paid', m).onchange = () => { paidTouched = true; };
+      $('#rf-category', m).onchange = () => { if (!paidTouched) $('#rf-paid', m).value = val('#rf-category'); drawPins(); };
       $('#rf-move-add', m).onclick = () => { form.moves.push({ move_date: '', category_id: Number(val('#rf-category')) }); drawMoves(); drawPins(); };
       $('#rf-log-add', m).onclick = () => { form.logistics.push({ kind: 'transfer', date: val('#rf-check-in'), time: '', description: '' }); drawLog(); };
       let timer = null;
@@ -235,7 +273,7 @@ async function openReservationForm(id, opts = {}) {
         check_in: val('#rf-check-in'), check_out: val('#rf-check-out'),
         early: $('#rf-early', m).checked, late: $('#rf-late', m).checked, declined_butler: $('#rf-declined', m).checked,
         label_id: opts.mine ? (r?.label_id ?? null) : (val('#rf-label') ? Number(val('#rf-label')) : null),
-        customer: val('#rf-customer'), purpose: val('#rf-purpose'), paid_by: val('#rf-paid'), note: val('#rf-note'),
+        customer: val('#rf-customer'), paid_category_id: Number(val('#rf-paid')), note: val('#rf-note'),
         group_id: r?.group_id ?? null, fields: { ...(r?.fields || {}), ...staysFieldValues(m, 'data-rf-field') },
         occupants: form.occupants.map(({ id: oid, guest_id, role, date_from, date_to }) => ({ id: oid, guest_id, role, date_from, date_to })),
         moves: form.moves.filter(mv => mv.move_date), logistics: form.logistics, companions: form.companions,
@@ -435,12 +473,13 @@ async function openGroupForm(card, onSaved) {
   });
 }
 
-/* ─────────────── Карточка гостя (§6.5): профиль, связи, история проживаний ─────────────── */
+/* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
 async function openGuestCard(gid, onChanged) {
   const [g, fund] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund()]);
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   const edit = can('stays.edit');
   const role = { main: 'главный', guest: 'проживает' };
+  const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
   openModal({
     title: `${STAYS_LEVEL_MARK[g.level] || ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
     subtitle: [g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
@@ -449,12 +488,13 @@ async function openGuestCard(gid, onChanged) {
           ${g.special_dates.length ? `<h4>Особые даты</h4>${g.special_dates.map(d => `<div>${esc(dateRu(d.date))} — ${esc(d.what)}</div>`).join('')}` : ''}
           ${Object.keys(g.fields).length ? `<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => `<div>${esc(titles[k] || k)}: ${esc(String(v))}</div>`).join('')}` : ''}
           ${g.note ? `<h4>Примечание</h4><p>${esc(g.note)}</p>` : ''}</div>
-        <div><h4>Связи</h4><div id="gc-links">${g.links.map(l => `<div class="sb-line">${esc(l.name)} <span class="muted">${esc(l.label)}</span>
+        <div><h4>Прочие связи</h4><div id="gc-links">${other.map(l => `<div class="sb-line">${esc(l.name)} <span class="muted">${esc(l.label)}</span>
             ${edit ? `<button class="btn btn-sm btn-ghost" data-link-del="${l.id}">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}</div>
           ${edit ? `<div class="sb-line"><input type="search" id="gc-link-q" placeholder="Связать с гостем: фамилия">
-            <select id="gc-link-kind">${Object.entries(STAYS_LINK).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select>
+            <select id="gc-link-kind">${Object.entries(STAYS_LINK).filter(([k]) => !STAYS_FAMILY_LINK.has(k)).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select>
             <button class="btn btn-sm" id="gc-link-add" disabled>Связать</button></div><div id="gc-link-res"></div>` : ''}</div>
       </div>
+      <h4>Семейное дерево</h4><div id="gc-family" class="ft"><div class="muted">Загрузка…</div></div>
       <h4>История проживаний</h4>
       <div id="gc-history" class="sb-history">${g.stays.map(x => `<div><b>${esc(x.number || '#' + x.reservation_id)}</b> · ${esc(x.units.join(' → ') || 'без объекта')}
         · ${esc(dateRu(x.date_from))}–${esc(dateRu(x.date_to))} · ${esc(role[x.role])} · ${esc(x.status_title)}
@@ -463,6 +503,7 @@ async function openGuestCard(gid, onChanged) {
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       const reopen = () => openGuestCard(gid, onChanged);
+      renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
       const ed = $('#gc-edit', m);
       if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); });
       $$('[data-link-del]', m).forEach(b => {
@@ -527,6 +568,7 @@ async function openGuestForm(id, onSaved, opts = {}) {
     sfRow('Фамилия', lock(sfInput('gf-last', g?.last_name))), sfRow('Имя', lock(sfInput('gf-first', g?.first_name))),
     sfRow('Отчество', lock(sfInput('gf-middle', g?.middle_name))), sfRow('Телефон', lock(sfInput('gf-phone', g?.phone_display))),
     sfRow('Email', lock(sfInput('gf-email', g?.email))), sfRow('Дата рождения', lock(sfInput('gf-birth', g?.birth_date, 'date'))),
+    sfRow('Пол', lock(sfSelect('gf-gender', Object.entries(STAYS_GENDER), g?.gender || ''))),
     sfRow('Уровень', lock(sfSelect('gf-level', Object.entries(level), g?.level || 'regular'))),
     sfRow('Аллергии', sfInput('gf-allergy', g?.preferences?.allergy)), sfRow('Питание', sfInput('gf-food', g?.preferences?.food)),
     sfRow('Привычки', sfInput('gf-habits', g?.preferences?.habits)),
@@ -536,7 +578,7 @@ async function openGuestForm(id, onSaved, opts = {}) {
   ], async m => {
     const v = sel => $(sel, m).value;
     const body = { last_name: v('#gf-last'), first_name: v('#gf-first'), middle_name: v('#gf-middle'),
-      phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, level: v('#gf-level'),
+      phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, gender: v('#gf-gender'), level: v('#gf-level'),
       preferences: { ...(g?.preferences || {}), allergy: v('#gf-allergy'), food: v('#gf-food'), habits: v('#gf-habits') },
       special_dates: dates.filter(d => d.date && d.what),
       fields: { ...(g?.fields || {}), ...staysFieldValues(m, 'data-gf-field') }, note: v('#gf-note') };

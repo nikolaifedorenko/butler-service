@@ -101,3 +101,15 @@ def test_seed_initial_refuses_filled_version(db):
 
     with pytest.raises(FundConflict):
         fund_drafts.seed_initial(db, [], [], [], [])
+
+
+def test_demo_three_generation_family(db):
+    """Демо (B1): семья Петровых из трёх поколений — родство вычисляется, правнук виден у прабабушки."""
+    from app.modules.stays.adapters.orm import Guest
+    from app.modules.stays.application.family import family
+
+    by = {(g.last_name, g.first_name): g for g in db.scalars(select(Guest).where(Guest.source == "demo"))}
+    anna, petr = by[("Смирнова", "Анна")], by[("Петров", "Пётр")]
+    kin = {k["person_id"]: k["title"] for k in family(db, anna.id, "names")["kin"]}
+    assert kin[petr.id] == "правнук"
+    assert all(g.gender in ("m", "f") for g in by.values())

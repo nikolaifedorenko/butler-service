@@ -30,6 +30,7 @@ from app.core.time import local_date, now_local
 from ..adapters.orm import (
     Assignment,
     Category,
+    CategoryKind,
     CategoryState,
     Companion,
     CoverageGuest,
@@ -56,8 +57,8 @@ from ..adapters.orm import (
     UnitStateFlag,
 )
 from . import allocation, fund_drafts
-from .fund import KINDS, FundConflict, FundError, get_settings
-from .fund_drafts import _COLOR, _KIND_BY_TITLE, _WEIGHT_MAX, FundFileError, _file_weight
+from .fund import FundConflict, FundError, get_settings
+from .fund_drafts import _COLOR, _WEIGHT_MAX, FundFileError, _file_weight, unknown_kind_message
 from .fund_versions import INITIAL_DATE, fund_on
 from .fund_xlsx import (
     HEAD,
@@ -86,7 +87,7 @@ BACKUP_NAME = re.compile(r"stays-\d{8}-\d{6}\.xlsx")
 WIPE = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
         StayGroup, GuestLink, Guest, Hold, UnitLineage, UnitStateFlag, UnitState, GroupState,
         CategoryState, FundVersion, UnitFlag, Unit, Category, FundGroup)
-KEEP = (StaysSettings, Label, CustomField, Escort)
+KEEP = (StaysSettings, Label, CustomField, Escort, CategoryKind)
 
 # что будет удалено (предпросмотр) — тот же словарь служит отпечатком для 409 при повторе
 COUNTED = {"units": Unit, "categories": Category, "groups": FundGroup, "flags": UnitFlag,
@@ -126,7 +127,7 @@ def parse_fingerprint(s: str) -> dict:
 # ── файл → данные исходной версии ──────────────────────────────────────────
 
 
-def plan_load(parsed: ParsedFund) -> tuple[dict, list[FileError]]:
+def plan_load(parsed: ParsedFund, kinds: list[CategoryKind]) -> tuple[dict, list[FileError]]:
     """Разобранный файл → аргументы fund_drafts.seed_initial. ID и «Из чего» игнорируются.
     seed_initial не проверяет входные данные (демо-сид), поэтому всё, что упало бы на
     KeyError или ограничении БД, — здесь ошибкой файла с листом и строкой."""
@@ -142,6 +143,7 @@ def plan_load(parsed: ParsedFund) -> tuple[dict, list[FileError]]:
         seen[key] = row
         return False
 
+    by_title = {k.title.casefold(): k.id for k in kinds if not k.archived}
     cats: list[dict] = []
     codes: dict[str, int] = {}
     for c in parsed.categories:
@@ -152,14 +154,15 @@ def plan_load(parsed: ParsedFund) -> tuple[dict, list[FileError]]:
             err(SHEET_CATEGORIES, c.row_no, "код категории длиннее 16 символов")
         if len(c.title) > 120:
             err(SHEET_CATEGORIES, c.row_no, "название категории длиннее 120 символов")
-        k = c.kind.strip().lower()
-        kind = "room" if not k else k if k in KINDS else _KIND_BY_TITLE.get(k)
-        if kind is None:
-            err(SHEET_CATEGORIES, c.row_no, f"вид «{c.kind}» — ожидается одно из: " + ", ".join(KINDS))
+        kind = by_title.get(c.kind.strip().casefold())
+        if not c.kind.strip():
+            err(SHEET_CATEGORIES, c.row_no, "не указан вид категории")
+        elif kind is None:
+            err(SHEET_CATEGORIES, c.row_no, unknown_kind_message(c.kind, kinds))
         weight = _file_weight(c.weight)
         if weight is None:
             err(SHEET_CATEGORIES, c.row_no, f"вес {c.weight} — ожидается число больше 0 и не больше {_WEIGHT_MAX}")
-        cats.append({"code": c.code, "title": c.title, "kind": kind, "escorted": c.escorted,
+        cats.append({"code": c.code, "title": c.title, "kind_id": kind, "escorted": c.escorted,
                      "weight": weight, "sort_order": c.sort_order})
 
     groups: list[dict] = []
@@ -230,7 +233,7 @@ def _not_in_production(db: Session) -> None:
 def preview(db: Session, parsed: ParsedFund) -> dict:
     """Что удалит и загрузит начальная загрузка; fingerprint — для подтверждения."""
     _not_in_production(db)
-    plan, errors = plan_load(parsed)
+    plan, errors = plan_load(parsed, list(db.scalars(select(CategoryKind))))
     if errors:
         raise FundFileError(errors)
     state = reset_state(db)
@@ -291,11 +294,11 @@ def backup_bytes(db: Session) -> bytes:
     yn = {True: "да", False: ""}
     _sheet(wb, SHEET_RESERVATIONS,
            ["ID", "номер", "статус", "заезд", "выезд", "РЗ", "ПВ", "категория (код)", "объекты", "гости",
-            "метка", "заказчик", "оплачивает", "повод", "примечание", "без батлера", "источник", "внешний ID",
+            "метка", "заказчик", "оплата за (код)", "примечание", "без батлера", "источник", "внешний ID",
             "поля"],
            ([r.id, r.number, r.status, r.check_in, r.check_out, yn[bool(r.early)], yn[bool(r.late)],
              code.get(r.category_id, f"#{r.category_id}"), ", ".join(units.get(r.id, [])),
-             "; ".join(occ.get(r.id, [])), labels.get(r.label_id, ""), r.customer, r.paid_by, r.purpose,
+             "; ".join(occ.get(r.id, [])), labels.get(r.label_id, ""), r.customer, code.get(r.paid_category_id or r.category_id, ""),
              r.note, yn[bool(r.declined_butler)], r.source, r.external_id or "", r.fields_json]
             for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id))))
     _sheet(wb, SHEET_GUESTS,
@@ -427,7 +430,7 @@ def initial_load(db: Session, parsed: ParsedFund, principal, expected_state: dic
     state = reset_state(db)
     if json.loads(fingerprint(state)) != expected_state:
         raise FundConflict("Данные шахматки изменились после предпросмотра — повторите предпросмотр")
-    plan, errors = plan_load(parsed)
+    plan, errors = plan_load(parsed, list(db.scalars(select(CategoryKind))))
     if errors:
         raise FundFileError(errors)
     counts = state["counts"]

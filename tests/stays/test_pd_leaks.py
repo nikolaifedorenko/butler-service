@@ -29,7 +29,7 @@ def test_occupancy_level_never_sees_guests(app_stack, occupancy_client, manager_
         if not (isinstance(r, APIRoute) and r.path.startswith(API) and "GET" in r.methods):
             continue
         path = re.sub(r"\{(\w+)\}", lambda m: fill.get(m.group(1), "1"), r.path)
-        # kind — параметр выгрузки; видам шахматки прежний одиночный kind — 422 (kinds, §7)
+        # kind — параметр выгрузки; видам шахматки прежний одиночный kind — 422 (kind_ids, §7)
         resp = occupancy_client.get(path, params=query if "export" in path else
                                     {k: v for k, v in query.items() if k != "kind"})
         if resp.status_code == 200 and resp.headers["content-type"].startswith("application/json"):

@@ -13,8 +13,8 @@ def snap() -> FundSnapshot:
     return FundSnapshot(
         version_id=1, valid_from=dt.date(2026, 1, 1),
         categories={
-            1: CategoryInfo(1, "DLX", "Делюкс", "room", 1.5, True, 10),
-            2: CategoryInfo(2, "CONN", "Коннект", "room", 2.0, False, 20),
+            1: CategoryInfo(1, "DLX", "Делюкс", 4, 1.5, True, 10, "номер"),
+            2: CategoryInfo(2, "CONN", "Коннект", 4, 2.0, False, 20, "номер"),
         },
         groups={
             10: GroupInfo(10, None, "Корпус", 1, (10,)),
@@ -41,8 +41,8 @@ def book(cats=None, tree=None, flg=None, units=None, ucols=None) -> bytes:
     for r in (cats if cats is not None else [[None, "DLX", "Делюкс", "room", 1, "да", 1]]):
         ws.append(r)
     ws = wb.create_sheet("Дерево")
-    ws.append(["ID", "путь", "порядок"])
-    for r in (tree if tree is not None else [[None, "Корпус", 1], [None, "Корпус / Блок", 2]]):
+    ws.append(["ID", "название", "родитель", "порядок"])
+    for r in (tree if tree is not None else [[None, "Корпус", None, 1], [None, "Блок", "Корпус", 2]]):
         ws.append(r)
     ws = wb.create_sheet("Флаги")
     ws.append(["ID", "название", "цвет"])
@@ -69,15 +69,18 @@ def errs(data, **kw):
 
 def test_export_has_four_sheets_and_id_column():
     wb = load_workbook(io.BytesIO(fx.export_fund(snap(), flags())))
-    assert wb.sheetnames == ["Категории", "Дерево", "Флаги", "Объекты"]
+    assert wb.sheetnames == ["Категории", "Дерево", "Флаги", "Объекты", "Списки"]
     ws = wb["Объекты"]
-    assert [c.value for c in ws[1]][1:] == ["номер", "категория (код)", "узел (путь)", "этаж",
+    assert [c.value for c in ws[1]][1:] == ["номер", "категория (код)", "узел", "этаж",
                                             "из чего (ID через запятую)", "Курящий", "Тихий"]
     assert ws["A2"].value == 57 and ws["D2"].value == "Корпус / Блок B / Вид на море"
     assert ws["G2"].value == "да" and ws["H2"].value == "нет"
     assert ws["A2"].protection.locked and not ws["B2"].protection.locked
     assert ws["A2"].fill.fgColor.rgb.endswith("D9D9D9") and ws.protection.sheet
-    assert wb["Дерево"]["B4"].value == "Корпус / Блок B / Вид на море"
+    tree = wb["Дерево"]
+    assert [c.value for c in tree[1]][1:] == ["название", "родитель", "порядок"]
+    assert [tree.cell(4, i).value for i in (2, 3, 4)] == ["Вид на море", "Корпус / Блок B", 3]
+    assert tree["C2"].value is None                      # корневой узел — «Родитель» пуст
 
 
 def test_parse_roundtrip_equals_snapshot():
@@ -85,7 +88,7 @@ def test_parse_roundtrip_equals_snapshot():
     parsed, e = fx.parse_fund(fx.export_fund(s, flags()))
     assert e == [] and parsed is not None
     assert {(c.id, c.code, c.title, c.kind, c.weight, c.escorted, c.sort_order) for c in parsed.categories} == {
-        (c.id, c.code, c.title, c.kind, c.weight, c.escorted, c.sort_order) for c in s.categories.values()}
+        (c.id, c.code, c.title, c.kind_title, c.weight, c.escorted, c.sort_order) for c in s.categories.values()}
     assert {(g.id, g.path, g.sort_order) for g in parsed.groups} == {
         (g.id, s.path_titles(g.id), g.sort_order) for g in s.groups.values()}
     assert {(f.id, f.title, f.color) for f in parsed.flags} == {(5, "Курящий", "#112233"), (6, "Тихий", "#445566")}
@@ -119,14 +122,59 @@ def test_duplicate_id_number_code():
     assert "код «A» повторяется" in parsed_msgs and "номер «1» повторяется" in parsed_msgs
 
 
-def test_path_without_parent():
-    e = errs(book(tree=[[None, "Корпус / Блок / Вид", 1]]))
-    assert "нет родителя" in e[("Дерево", 2)]
+def test_tree_missing_parent_error_with_row():
+    e = errs(book(tree=[[None, "Корпус", None, 1], [None, "Вид", "Корпус / Блок", 1]], units=[]))
+    assert e[("Дерево", 3)] == "нет узла-родителя «Корпус / Блок»"
+
+
+def test_tree_parent_below_child():
+    parsed, e = fx.parse_fund(book(
+        tree=[[None, "Вид", "Корпус / Блок", 3], [None, "Блок", "Корпус", 2], [None, "Корпус", None, 1]],
+        units=[[None, "101", "DLX", "Корпус / Блок / Вид", "1", None]]))
+    assert e == []
+    assert {g.path for g in parsed.groups} == {("Корпус",), ("Корпус", "Блок"), ("Корпус", "Блок", "Вид")}
+    assert parsed.units[0].group_path == ("Корпус", "Блок", "Вид")
+
+
+def test_tree_depth_seven():
+    rows, parent = [], ""
+    for i in range(1, 8):
+        rows.append([None, f"Уровень{i}", parent or None, i])
+        parent = f"{parent} / Уровень{i}" if parent else f"Уровень{i}"
+    parsed, e = fx.parse_fund(book(tree=rows, units=[]))
+    assert e == [] and max(len(g.path) for g in parsed.groups) == 7
+
+
+def test_tree_empty_title_and_parent_link():
+    e = errs(book(tree=[[None, "", "Корпус", 1], [None, "Б", "А //  / В", 1]], units=[]))
+    assert "не указано название" in e[("Дерево", 2)] and "пустое звено" in e[("Дерево", 3)]
+
+
+def test_export_has_lists_sheet_and_validation():
+    wb = load_workbook(io.BytesIO(fx.export_fund(snap(), flags())))
+    lists = wb["Списки"]
+    assert lists.sheet_state == "hidden"
+    assert [lists.cell(r, 1).value for r in range(2, 6)] == [
+        "Корпус", "Корпус / Блок B", "Корпус / Блок B / Вид на море", None]
+    for sheet, col in (("Дерево", "C"), ("Объекты", "D")):
+        dvs = [d for d in wb[sheet].data_validations.dataValidation if d.type == "list"]
+        # OOXML: без «=» в начале, имя листа в кавычках (иначе Excel предлагает «восстановить» файл)
+        assert len(dvs) == 1 and dvs[0].formula1 == "'Списки'!$A$2:$A$4"
+        assert any(str(r).startswith(f"{col}2:") for r in dvs[0].sqref.ranges)
+
+
+def test_lists_sheet_guards_formulas():
+    s = snap()
+    s.groups[10] = GroupInfo(10, None, "=1+1", 1, (10,))
+    wb = load_workbook(io.BytesIO(fx.export_fund(s, flags())))
+    assert wb["Списки"]["A2"].value.startswith("'=")
+    parsed, e = fx.parse_fund(fx.export_fund(s, flags()))
+    assert e == [] and ("=1+1",) in {g.path for g in parsed.groups}
 
 
 def test_cycle_is_unrepresentable_but_repeating_node_is_ok_when_parent_exists():
     # В файле дерево задано путями, цикл в нём невозможен; «А / Б / А» — три разных узла.
-    parsed, e = fx.parse_fund(book(tree=[[None, "А", 1], [None, "А / Б", 1], [None, "А / Б / А", 1]], units=[]))
+    parsed, e = fx.parse_fund(book(tree=[[None, "А", None, 1], [None, "Б", "А", 1], [None, "А", "А / Б", 1]], units=[]))
     assert e == [] and len(parsed.groups) == 3
 
 
@@ -202,3 +250,13 @@ def test_too_many_flag_columns():
 def test_predecessors_on_row_with_id_is_error():
     e = errs(book(units=[[7, "1", "DLX", None, "", "57"]]))
     assert "только у новых" in e[("Объекты", 2)]
+
+
+def test_exported_validations_survive_reopen():
+    """Файл переоткрывается, валидации на месте, а ссылка указывает на существующий лист."""
+    wb = load_workbook(io.BytesIO(fx.export_fund(snap(), flags())))
+    for sheet in ("Дерево", "Объекты"):
+        dvs = wb[sheet].data_validations.dataValidation
+        assert len(dvs) == 1 and dvs[0].type == "list"
+        assert not dvs[0].formula1.startswith("=")
+        assert wb[dvs[0].formula1.split("!")[0].strip("'")]["A2"].value == "Корпус"

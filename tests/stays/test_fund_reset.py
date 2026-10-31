@@ -130,7 +130,7 @@ def test_reset_tables_cover_whole_stays_schema():
     keep = {m.__tablename__ for m in fr.KEEP}
     assert not wipe & keep
     assert wipe | keep == stays, stays ^ (wipe | keep)
-    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts"}
+    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts", "stays_category_kinds"}
 
 
 def test_reset_requires_stays_reset_perm(manager_role_client, admin_client, db):
@@ -267,7 +267,7 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
         names = _backups()
         assert len(names) == 1 and fr.BACKUP_NAME.fullmatch(names[0]), names   # без «.part»
         wb = load_workbook(fr.BACKUP_DIR / names[0])
-        assert wb.sheetnames == ["Категории", "Дерево", "Флаги", "Объекты", "Брони", "Гости",
+        assert wb.sheetnames == ["Категории", "Дерево", "Флаги", "Объекты", "Списки", "Брони", "Гости",
                                  *[sheet_of[m.__tablename__] for m in fr.WIPE]]
         seen["raw"] = {t: wb[sheet_of[t]].max_row - 1 for t in tables}
         rows = {t: [[x.value for x in r] for r in wb[sheet_of[t]].iter_rows()] for t in

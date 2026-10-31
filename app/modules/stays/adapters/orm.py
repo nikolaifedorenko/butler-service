@@ -67,6 +67,19 @@ class UnitFlag(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class CategoryKind(Base):
+    """Справочник видов категорий (вилла, номер…). Не версионируется; использованный вид
+    архивируется. expanded — раздел дерева шахматки с категорией этого вида раскрыт сразу."""
+
+    __tablename__ = "stays_category_kinds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(40), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    expanded: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class FundVersion(Base):
     """Версия фонда «с даты»: полный снимок категорий, узлов и объектов. Действует с вечера
     valid_from (§3.3). rev — счётчик правок черновика (оптимистичная блокировка)."""
@@ -100,7 +113,7 @@ class CategoryState(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"), primary_key=True)
     code: Mapped[str] = mapped_column(String(16))
     title: Mapped[str] = mapped_column(String(120))
-    kind: Mapped[str] = mapped_column(String(16), default="room")    # villa | estate | apartment | room
+    kind_id: Mapped[int] = mapped_column(ForeignKey("stays_category_kinds.id"))
     weight: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("1"))
     escorted: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
@@ -204,6 +217,7 @@ class Guest(Base):
     phone: Mapped[str] = mapped_column(String(24), default="")      # нормализованный: +79161234567
     email: Mapped[str] = mapped_column(String(120), default="")
     birth_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    gender: Mapped[str] = mapped_column(String(1), default="")         # m | f | '' (не указан)
     level: Mapped[str] = mapped_column(String(8), default="regular")  # regular | vip | vvip
     preferences_json: Mapped[str] = mapped_column(Text, default="{}")
     special_dates_json: Mapped[str] = mapped_column(Text, default="[]")
@@ -218,7 +232,9 @@ class Guest(Base):
 
 
 class GuestLink(Base):
-    """Связь «кто кому»: одна строка, подпись для каждой стороны — LINK_KINDS."""
+    """Связь «кто кому»: одна строка, подпись для каждой стороны — LINK_KINDS. Семейные —
+    только parent (A — родитель B) и spouse (former — бывшие); остальное родство вычисляется
+    (domain/kinship.py)."""
 
     __tablename__ = "stays_guest_links"
     __table_args__ = (UniqueConstraint("guest_a_id", "guest_b_id", "kind", name="uq_stays_guest_link"),)
@@ -227,6 +243,7 @@ class GuestLink(Base):
     guest_a_id: Mapped[int] = mapped_column(ForeignKey("stays_guests.id"), index=True)
     guest_b_id: Mapped[int] = mapped_column(ForeignKey("stays_guests.id"), index=True)
     kind: Mapped[str] = mapped_column(String(16))
+    former: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 # ── 3.3 Брони ──────────────────────────────────────────────────────────────
@@ -256,10 +273,9 @@ class Reservation(Base):
     early: Mapped[bool] = mapped_column(Boolean, default=False)
     late: Mapped[bool] = mapped_column(Boolean, default=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"))
-    paid_by: Mapped[str] = mapped_column(String(120), default="")
+    paid_category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_categories.id"), nullable=True)
     label_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_labels.id"), nullable=True)
     customer: Mapped[str] = mapped_column(String(160), default="")
-    purpose: Mapped[str] = mapped_column(String(160), default="")
     note: Mapped[str] = mapped_column(Text, default="")
     declined_butler: Mapped[bool] = mapped_column(Boolean, default=False)
     fields_json: Mapped[str] = mapped_column(Text, default="{}")

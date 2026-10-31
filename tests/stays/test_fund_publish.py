@@ -27,7 +27,7 @@ from app.modules.stays.application import fund_drafts as fd
 from app.modules.stays.application.fund import FundConflict
 from app.modules.stays.application.fund_versions import fund_on
 
-from .helpers import API, create_res, make_category
+from .helpers import API, create_res, kind_id, make_category
 
 # ── перенос в поздние версии (без API) ──────────────────────────────────────
 
@@ -52,8 +52,8 @@ def world(db, today):
     v = FundVersion(valid_from=V0, status="published", rev=1)
     db.add(v)
     db.flush()
-    db.add_all([CategoryState(version_id=v.id, category_id=a.id, code="PA", title="Кат А"),
-                CategoryState(version_id=v.id, category_id=b.id, code="PB", title="Кат Б"),
+    db.add_all([CategoryState(version_id=v.id, category_id=a.id, code="PA", title="Кат А", kind_id=kind_id("room")),
+                CategoryState(version_id=v.id, category_id=b.id, code="PB", title="Кат Б", kind_id=kind_id("room")),
                 GroupState(version_id=v.id, group_id=g.id, parent_id=None, title="Корпус")])
     db.flush()
     db.add_all([UnitState(version_id=v.id, unit_id=u1.id, label="4003", category_id=a.id, group_id=g.id, floor="4"),

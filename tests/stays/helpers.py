@@ -11,6 +11,23 @@ def uniq() -> str:
     return uuid.uuid4().hex[:6].upper()
 
 
+# виды категорий демо-сида: код в тестах → название в справочнике видов
+KIND_TITLES = {"villa": "вилла", "estate": "имение", "apartment": "апартаменты", "room": "номер"}
+
+
+def kind_id(code: str) -> int:
+    """id вида демо-справочника по прежнему коду (villa, room…)."""
+    from sqlalchemy import select
+
+    from app.core.db import SessionLocal
+    from app.modules.stays.adapters.orm import CategoryKind
+
+    with SessionLocal() as s:
+        kid = s.scalar(select(CategoryKind.id).where(CategoryKind.title == KIND_TITLES[code]))
+    assert kid is not None, f"нет вида «{KIND_TITLES[code]}» в справочнике"
+    return kid
+
+
 class FundDraft:
     """Черновик фонда через API: открывает черновик на сегодня модуля (или берёт
     существующий), ведёт rev, публикует; при ошибке публикации черновик удаляется —
@@ -56,7 +73,7 @@ def make_category(setup_client, n_units: int = 2, kind: str = "villa", escorted:
     Возвращает {id, code, units: [{id, label}]}."""
     d = FundDraft(setup_client)
     code = "T" + uniq()
-    cat = {"id": d.call("POST", "categories", code=code, title=code, kind=kind, escorted=escorted,
+    cat = {"id": d.call("POST", "categories", code=code, title=code, kind_id=kind_id(kind), escorted=escorted,
                         weight=weight)["id"], "code": code}
     cat["units"] = []
     for i in range(n_units):

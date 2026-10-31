@@ -1115,15 +1115,9 @@
             "title": "Escorted",
             "type": "boolean"
           },
-          "kind": {
-            "enum": [
-              "villa",
-              "estate",
-              "apartment",
-              "room"
-            ],
-            "title": "Kind",
-            "type": "string"
+          "kind_id": {
+            "title": "Kind Id",
+            "type": "integer"
           },
           "rev": {
             "title": "Rev",
@@ -1152,7 +1146,7 @@
         "required": [
           "code",
           "title",
-          "kind",
+          "kind_id",
           "weight",
           "rev"
         ],
@@ -1617,6 +1611,20 @@
         "title": "FlagValueIn",
         "type": "object"
       },
+      "FormerIn": {
+        "description": "former — супруги бывшие (true) или действующие (false).",
+        "properties": {
+          "former": {
+            "title": "Former",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "former"
+        ],
+        "title": "FormerIn",
+        "type": "object"
+      },
       "GiveIn": {
         "properties": {
           "employee_id": {
@@ -1690,6 +1698,16 @@
             "default": "",
             "maxLength": 80,
             "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "default": "",
+            "enum": [
+              "m",
+              "f",
+              ""
+            ],
+            "title": "Gender",
             "type": "string"
           },
           "last_name": {
@@ -1923,29 +1941,6 @@
         "title": "JoinIn",
         "type": "object"
       },
-      "KindIn": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "text": {
-            "default": "",
-            "title": "Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "name"
-        ],
-        "title": "KindIn",
-        "type": "object"
-      },
       "KindUpdate": {
         "properties": {
           "active": {
@@ -2008,18 +2003,56 @@
         "type": "object"
       },
       "LinkIn": {
+        "description": "parent — гость из пути родитель guest_id; former — бывшие супруги. Вторая сторона —\nguest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая\nсторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка.",
         "properties": {
+          "also_parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Also Parent Id"
+          },
+          "former": {
+            "default": false,
+            "title": "Former",
+            "type": "boolean"
+          },
           "guest_id": {
-            "title": "Guest Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Id"
           },
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "new_guest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewGuestIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "other_is_parent": {
+            "default": false,
+            "title": "Other Is Parent",
+            "type": "boolean"
           }
         },
         "required": [
-          "guest_id",
           "kind"
         ],
         "title": "LinkIn",
@@ -2173,64 +2206,6 @@
         "title": "MembersIn",
         "type": "object"
       },
-      "MergeIn": {
-        "properties": {
-          "category_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category Id"
-          },
-          "floor": {
-            "default": "",
-            "maxLength": 8,
-            "title": "Floor",
-            "type": "string"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "label": {
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Label",
-            "type": "string"
-          },
-          "rev": {
-            "title": "Rev",
-            "type": "integer"
-          },
-          "unit_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "maxItems": 50,
-            "minItems": 2,
-            "title": "Unit Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "rev",
-          "unit_ids",
-          "label"
-        ],
-        "title": "MergeIn",
-        "type": "object"
-      },
       "ModifierIn": {
         "properties": {
           "date": {
@@ -2311,6 +2286,37 @@
           "category_id"
         ],
         "title": "MoveIn",
+        "type": "object"
+      },
+      "NewGuestIn": {
+        "properties": {
+          "first_name": {
+            "default": "",
+            "maxLength": 80,
+            "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "default": "",
+            "enum": [
+              "m",
+              "f",
+              ""
+            ],
+            "title": "Gender",
+            "type": "string"
+          },
+          "last_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Last Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "last_name"
+        ],
+        "title": "NewGuestIn",
         "type": "object"
       },
       "NoteIn": {
@@ -2835,11 +2841,16 @@
             "title": "Occupants",
             "type": "array"
           },
-          "paid_by": {
-            "default": "",
-            "maxLength": 120,
-            "title": "Paid By",
-            "type": "string"
+          "paid_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Category Id"
           },
           "pins": {
             "anyOf": [
@@ -2861,12 +2872,6 @@
               }
             ],
             "title": "Pins"
-          },
-          "purpose": {
-            "default": "",
-            "maxLength": 160,
-            "title": "Purpose",
-            "type": "string"
           },
           "status": {
             "default": "confirmed",
@@ -3456,6 +3461,29 @@
         "title": "StatusIn",
         "type": "object"
       },
+      "app__modules__docs__interface__docs_api__KindIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "KindIn",
+        "type": "object"
+      },
       "app__modules__notify__interface__notify_api__TemplateIn": {
         "properties": {
           "text": {
@@ -3617,6 +3645,110 @@
           "daily_limit"
         ],
         "title": "SettingsIn",
+        "type": "object"
+      },
+      "app__modules__stays__interface__fund_versions_api__KindIn": {
+        "properties": {
+          "expanded": {
+            "default": false,
+            "title": "Expanded",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "KindIn",
+        "type": "object"
+      },
+      "app__modules__stays__interface__fund_versions_api__MergeIn": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "floor": {
+            "default": "",
+            "maxLength": 8,
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Unit Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rev",
+          "unit_ids",
+          "label"
+        ],
+        "title": "MergeIn",
+        "type": "object"
+      },
+      "app__modules__stays__interface__guests_api__MergeIn": {
+        "description": "keep_id — кого оставить, drop_id — дубль, который удаляется.",
+        "properties": {
+          "drop_id": {
+            "title": "Drop Id",
+            "type": "integer"
+          },
+          "keep_id": {
+            "title": "Keep Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keep_id",
+          "drop_id"
+        ],
+        "title": "MergeIn",
         "type": "object"
       },
       "app__modules__stays__interface__reservations_api__GroupIn": {
@@ -5479,7 +5611,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/KindIn"
+                "$ref": "#/components/schemas/app__modules__docs__interface__docs_api__KindIn"
               }
             }
           },
@@ -11011,14 +11143,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -11285,14 +11417,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -11559,14 +11691,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -12100,14 +12232,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
@@ -12999,7 +13131,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MergeIn"
+                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__MergeIn"
               }
             }
           },
@@ -13475,6 +13607,183 @@
         ]
       }
     },
+    "/api/stays/fund/kinds": {
+      "post": {
+        "operationId": "create_kind_api_stays_fund_kinds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__KindIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Kind",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/kinds/{kid}": {
+      "delete": {
+        "operationId": "remove_kind_api_stays_fund_kinds__kid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kid",
+            "required": true,
+            "schema": {
+              "title": "Kid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Kind",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_kind_api_stays_fund_kinds__kid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kid",
+            "required": true,
+            "schema": {
+              "title": "Kid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__KindIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Kind",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/fund/kinds/{kid}/archive": {
+      "put": {
+        "operationId": "archive_kind_api_stays_fund_kinds__kid__archive_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kid",
+            "required": true,
+            "schema": {
+              "title": "Kid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Kind",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/fund/reset": {
       "post": {
         "description": "«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,\nпредупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и\nfingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки\nфайла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания.",
@@ -13836,6 +14145,55 @@
         "tags": [
           "stays"
         ]
+      },
+      "patch": {
+        "description": "«Бывшие» на линии супругов в редакторе дерева: снять — только если у обоих нет\nдругого действующего супруга (422).",
+        "operationId": "set_link_former_api_stays_guest_links__link_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Link Former",
+        "tags": [
+          "stays"
+        ]
       }
     },
     "/api/stays/guests": {
@@ -13912,6 +14270,223 @@
           }
         },
         "summary": "Create Guest",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guests/list": {
+      "get": {
+        "description": "Вкладка «Гости»: только полный уровень (stays.guests), остальным — 403.",
+        "operationId": "guests_tab_api_stays_guests_list_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "regular",
+                "vip",
+                "vvip"
+              ],
+              "title": "Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stayed_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stayed From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stayed_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stayed To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "birthday_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 366,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Birthday Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "level",
+                "last_stay",
+                "stays"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dir",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Dir",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guests Tab",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guests/merge": {
+      "post": {
+        "description": "Объединение дублей: ?preview=1 — что перенесётся, тем же кодом с откатом.",
+        "operationId": "merge_guests_api_stays_guests_merge_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__modules__stays__interface__guests_api__MergeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Merge Guests",
         "tags": [
           "stays"
         ]
@@ -14045,8 +14620,50 @@
         ]
       }
     },
+    "/api/stays/guests/{gid}/family": {
+      "get": {
+        "description": "Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только\nполный уровень. Граф — до 3 поколений вверх и вниз и через брак.",
+        "operationId": "guest_family_api_stays_guests__gid__family_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guest Family",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/guests/{gid}/links": {
       "post": {
+        "description": "Связь, при необходимости — с новым гостем и вторым родителем: всё одной записью под\nзамком модуля; отказ любой проверки — 422, не создаётся ничего.",
         "operationId": "create_link_api_stays_guests__gid__links_post",
         "parameters": [
           {
@@ -14090,6 +14707,47 @@
           }
         },
         "summary": "Create Link",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guests/{gid}/stays": {
+      "get": {
+        "description": "История проживаний гостя: все брони, где он жил, с объектами по фонду дня и батлерами.",
+        "operationId": "guest_stays_api_stays_guests__gid__stays_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guest Stays",
         "tags": [
           "stays"
         ]
@@ -14482,14 +15140,14 @@
           },
           {
             "in": "query",
-            "name": "kinds",
+            "name": "kind_ids",
             "required": false,
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "type": "integer"
               },
-              "title": "Kinds",
+              "title": "Kind Ids",
               "type": "array"
             }
           },
