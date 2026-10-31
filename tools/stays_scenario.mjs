@@ -157,9 +157,9 @@ async function resetFilters() {
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
    /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
-async function fundCategory(code, labels) {
+async function fundCategory(code, labels, validFrom) {
   const today = serverToday();
-  const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: today });
+  const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: validFrom || today });
   if (d.status !== 200) throw new Error(`черновик фонда (create): ${d.status} ${JSON.stringify(d.body)}`);
   let rev = d.body.rev;
   const step = async (path, body) => {
@@ -628,6 +628,33 @@ async function flagMidMonth() {
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
 }
 
+/* Форма брони берёт категории из фонда на дату заезда (§5): категория, которой сегодня нет,
+   остаётся выбранной и не подменяется первой — иначе сохранение записало бы ложный «апгрейд» */
+async function formFundOnCheckIn() {
+  console.log('\n7а · Форма брони: фонд на дату заезда');
+  const code = 'FU' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1'], '2038-06-01');
+  const res = (await apiJson('POST', '/api/stays/reservations', { number: 'FU' + uniq, check_in: '2038-06-05',
+    check_out: '2038-06-08', category_id: cat.id })).body.result;
+  check('бронь в категории из будущей версии фонда создана', !!res?.id, JSON.stringify(res));
+  window.navigate('stays');
+  window.eval(`openReservationForm(${res.id})`);
+  check('правка: «Оплата за» остаётся будущей категорией (не первой из списка)', await waitFor(() =>
+    $('#rf-paid')?.value === String(cat.id) && $('#rf-category')?.value === String(cat.id)),
+  `${$('#rf-paid')?.value} / ${$('#rf-category')?.value}`);
+  click($('[data-close]'));
+  window.eval('openReservationForm()');
+  check('новая бронь: категории на сегодня — будущей нет', await waitFor(() => !!$('#rf-check-in'))
+    && ![...$('#rf-paid').options].some(o => o.value === String(cat.id)));
+  change($('#rf-check-in'), '2038-06-05');
+  check('дата заезда введена — списки перечитаны по фонду на эту дату', await waitFor(() =>
+    [...$('#rf-category').options].some(o => o.value === String(cat.id))
+    && [...$('#rf-paid').options].some(o => o.value === String(cat.id))));
+  change($('#rf-category'), String(cat.id));
+  check('«Оплата за» следует за категорией из версии на дату', $('#rf-paid').value === String(cat.id));
+  click($('[data-close]'));
+}
+
 const DEMO_SURNAMES = ['Лебедев', 'Фомина', 'Зайцев', 'Гусев', 'Кузьмин', 'Белова'];
 
 async function roleSmoke() {
@@ -1079,6 +1106,7 @@ async function main() {
     await moreForms();
     await savedFilters();
     await flagMidMonth();
+    await formFundOnCheckIn();
     await bookingsTab();
     await guestsTab();
     await familyEditor();

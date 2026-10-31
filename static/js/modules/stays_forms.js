@@ -108,12 +108,20 @@ async function openReservationForm(id, opts = {}) {
   };
   const opt = (v, t, cur) => `<option value="${esc(String(v ?? ''))}"${String(v ?? '') === String(cur ?? '') ? ' selected' : ''}>${esc(t)}</option>`;
   const catCode = cid => fund.categories.find(c => c.id === Number(cid))?.code || '?';
+  /* категории фонда на дату заезда (§5); текущее значение, которого в фонде нет, остаётся выбранным —
+     иначе браузер молча подставит первую категорию, и сохранение запишет ложный «апгрейд» */
+  const catOptions = (cats, cur) => {
+    const list = cur != null && cur !== '' && !cats.some(c => c.id === Number(cur))
+      ? [...cats, { id: Number(cur), code: fund.categories.find(c => c.id === Number(cur))?.code || '#' + cur, title: 'нет в фонде на эту дату' }]
+      : cats;
+    return list.map(c => opt(c.id, `${c.code} · ${c.title}`, cur)).join('');
+  };
   openModal({
     title: r ? `Бронь ${r.number || '#' + r.id}` : 'Новая бронь', wide: true,
     body: `
       <div class="grid-2">
         ${sfRow('Номер брони (Fidelio)', sfInput('rf-number', r?.number))}
-        ${sfRow('Категория', `<select id="rf-category">${fund.categories.map(c => opt(c.id, `${c.code} · ${c.title}`, r?.category_id)).join('')}</select>`)}
+        ${sfRow('Категория', `<select id="rf-category">${catOptions(fund.categories, r?.category_id)}</select>`)}
         ${sfRow('Заезд', sfInput('rf-check-in', r?.check_in, 'date'))}
         ${sfRow('Выезд', sfInput('rf-check-out', r?.check_out, 'date'))}
       </div>
@@ -122,7 +130,7 @@ async function openReservationForm(id, opts = {}) {
       <div class="grid-2">
         ${sfRow('Метка', `<select id="rf-label">${opt('', '—', r?.label_id)}${fund.labels.map(l => opt(l.id, l.title, r?.label_id)).join('')}</select>`)}
         ${sfRow('Заказчик', sfInput('rf-customer', r?.customer))}
-        ${sfRow('Оплата за', `<select id="rf-paid">${fund.categories.map(c => opt(c.id, `${c.code} · ${c.title}`, r?.paid_category_id ?? r?.category_id)).join('')}</select>`)}
+        ${sfRow('Оплата за', `<select id="rf-paid">${catOptions(fund.categories, r?.paid_category_id ?? r?.category_id)}</select>`)}
       </div>
       ${sfRow('Примечание', `<textarea id="rf-note" rows="2">${esc(r?.note || '')}</textarea>`)}
       <h4>Гости</h4><div id="rf-occupants"></div>
@@ -217,7 +225,22 @@ async function openReservationForm(id, opts = {}) {
         });
         prev = { ci, co }; drawOcc();
       };
-      $('#rf-check-in', m).onchange = follow;
+      /* «Категория» и «Оплата за» — из фонда на дату заезда; пока даты нет — из фонда на сегодня */
+      const snapCats = {};
+      const reloadCats = async () => {
+        const d = val('#rf-check-in');
+        if (!/^\d{4}-\d\d-\d\d$/.test(d)) return;
+        if (!snapCats[d]) {
+          try { snapCats[d] = (await api('/api/stays/fund/snapshot?date=' + d, { silent: true })).categories; } catch (e) { return; }
+        }
+        if (val('#rf-check-in') !== d) return;            // дату успели сменить — этот ответ устарел
+        const catSel = $('#rf-category', m), paidSel = $('#rf-paid', m);
+        const [c, p] = [catSel.value, paidSel.value];
+        catSel.innerHTML = catOptions(snapCats[d], c);
+        paidSel.innerHTML = catOptions(snapCats[d], p);
+      };
+      $('#rf-check-in', m).onchange = () => { follow(); if (!opts.mine) reloadCats(); };
+      if (r?.check_in && !opts.mine) reloadCats();
       $('#rf-check-out', m).onchange = follow;
       /* «оплата за» следует за категорией, пока её не выбрали отдельно */
       let paidTouched = !!r && (r.paid_category_id ?? r.category_id) !== r.category_id;

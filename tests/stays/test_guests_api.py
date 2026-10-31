@@ -312,9 +312,23 @@ def test_link_writes_take_module_lock(manager_client, monkeypatch):
     real = gmod.lock_module
     monkeypatch.setattr(gmod, "lock_module", lambda s: (calls.append("lock"), real(s)))
     a, b = _guest(manager_client), _guest(manager_client)
+    calls.clear()              # создание гостей тоже берёт замок — считаем только связь
     r = _link(manager_client, a, b, "parent")
     assert r.status_code == 200 and calls == ["lock"]
     assert manager_client.delete(f"{API}/guest-links/{r.json()['id']}").status_code == 200
+    assert calls == ["lock", "lock"]
+
+
+def test_save_guest_takes_module_lock(manager_client, monkeypatch):
+    """Создание и правка профиля — под lock_module: слияние удаляет гостей параллельно."""
+    from app.modules.stays.application import guests as gmod
+
+    calls = []
+    real = gmod.lock_module
+    monkeypatch.setattr(gmod, "lock_module", lambda s: (calls.append("lock"), real(s)))
+    gid = _guest(manager_client)["id"]
+    assert calls == ["lock"]
+    assert manager_client.put(f"{API}/guests/{gid}", json={"last_name": "Орлов", "first_name": "Андрей", "note": "х"}).status_code == 200
     assert calls == ["lock", "lock"]
 
 

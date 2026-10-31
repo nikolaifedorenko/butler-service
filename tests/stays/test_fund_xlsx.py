@@ -158,7 +158,8 @@ def test_export_has_lists_sheet_and_validation():
         "Корпус", "Корпус / Блок B", "Корпус / Блок B / Вид на море", None]
     for sheet, col in (("Дерево", "C"), ("Объекты", "D")):
         dvs = [d for d in wb[sheet].data_validations.dataValidation if d.type == "list"]
-        assert len(dvs) == 1 and dvs[0].formula1 == "=Списки!$A$2:$A$4"
+        # OOXML: без «=» в начале, имя листа в кавычках (иначе Excel предлагает «восстановить» файл)
+        assert len(dvs) == 1 and dvs[0].formula1 == "'Списки'!$A$2:$A$4"
         assert any(str(r).startswith(f"{col}2:") for r in dvs[0].sqref.ranges)
 
 
@@ -249,3 +250,13 @@ def test_too_many_flag_columns():
 def test_predecessors_on_row_with_id_is_error():
     e = errs(book(units=[[7, "1", "DLX", None, "", "57"]]))
     assert "только у новых" in e[("Объекты", 2)]
+
+
+def test_exported_validations_survive_reopen():
+    """Файл переоткрывается, валидации на месте, а ссылка указывает на существующий лист."""
+    wb = load_workbook(io.BytesIO(fx.export_fund(snap(), flags())))
+    for sheet in ("Дерево", "Объекты"):
+        dvs = wb[sheet].data_validations.dataValidation
+        assert len(dvs) == 1 and dvs[0].type == "list"
+        assert not dvs[0].formula1.startswith("=")
+        assert wb[dvs[0].formula1.split("!")[0].strip("'")]["A2"].value == "Корпус"

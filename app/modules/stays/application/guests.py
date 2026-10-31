@@ -144,6 +144,7 @@ def guest_dict(g: Guest) -> dict:
 
 
 def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
+    lock_module(db)        # слияние удаляет гостей: правка профиля не должна идти параллельно с ним
     if data.get("level", "regular") not in LEVELS:
         raise GuestError("Уровень гостя: обычный, VIP или VVIP")
     if data.get("gender", "") not in GENDERS:

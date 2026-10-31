@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Protection
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, quote_sheetname
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from app.core.format import safe_sheet_cell
@@ -169,7 +169,7 @@ def export_fund(snapshot: FundSnapshot, flags: list[UnitFlag]) -> bytes:
     lists.column_dimensions["A"].width = 60
     lists.protection.sheet = True
     lists.sheet_state = "hidden"
-    source = f"={SHEET_LISTS}!$A$2:$A${max(len(groups) + 1, 2)}"
+    source = f"{quote_sheetname(SHEET_LISTS)}!$A$2:$A${max(len(groups) + 1, 2)}"
     for sheet, col in ((tree_ws, "C"), (ws, "D")):
         dv = DataValidation(type="list", formula1=source, allow_blank=True, showErrorMessage=False)
         dv.add(f"{col}2:{col}{MAX_ROWS + 1}")
