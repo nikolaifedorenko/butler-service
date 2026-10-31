@@ -20,8 +20,8 @@ from .context import load_context
 from .fund import FundError
 from .guests import format_phone, short_name
 
-LOCKED = ("number", "check_in", "check_out", "early", "late", "category_id", "label_id", "customer", "paid_by",
-          "purpose", "declined_butler", "group_id")
+LOCKED = ("number", "check_in", "check_out", "early", "late", "category_id", "label_id", "customer",
+          "paid_category_id", "declined_butler", "group_id")
 GUEST_FREE = ("preferences", "special_dates", "fields", "note")
 MINE_TEXT = "Батлер может менять только состав, логистику и сведения о гостях"
 
@@ -79,7 +79,10 @@ def check_reservation_change(db: Session, before: dict, doc: dict) -> None:
     """Сравнить документ батлера с текущим: запертые поля, переезды, закрепления, главный гость;
     новые проживающие — только связанные «кто кому» с гостями этой брони (иначе так можно
     было бы открыть себе профиль любого гостя)."""
-    if any(_iso(doc.get(k)) != _iso(before.get(k)) for k in LOCKED):
+    def locked(d: dict, k: str):
+        # пустая «оплата за» — категория брони
+        return _iso(d.get(k) or d.get("category_id")) if k == "paid_category_id" else _iso(d.get(k))
+    if any(locked(doc, k) != locked(before, k) for k in LOCKED):
         raise MineForbidden(MINE_TEXT)
     if [(_iso(m["move_date"]), m["category_id"]) for m in doc["moves"]] != \
             [(m["move_date"], m["category_id"]) for m in before["moves"]]:

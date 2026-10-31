@@ -406,7 +406,11 @@ class TestPayRulesAndConflicts(unittest.TestCase):
     def test_10_config_error_is_409_not_500(self):
         """Повреждённая конфигурация — типизированный отказ 409 с человеческим текстом."""
         from app.modules.timesheet.application.catalog import DayModifier
-        day = dt.date.today() + dt.timedelta(days=2)
+        # день строго в текущем месяце: /api/presence/board читает настройки месяца «сегодня»
+        today = dt.date.today()
+        day = today + dt.timedelta(days=2)
+        if day.month != today.month:
+            day = today - dt.timedelta(days=2)
         db = SessionLocal()
         try:
             db.add(DayModifier(name="pays_overtime", value="0", group="Смена 2", date=day,

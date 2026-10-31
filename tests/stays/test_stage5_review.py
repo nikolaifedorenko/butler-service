@@ -100,13 +100,14 @@ def test_butlers_board_memoizes_days(monkeypatch, db):
 
 
 def test_day_board_budget_with_coverage(manager_client, sql_counter):
-    """I5: табло дня полного уровня со строками покрытия и дырами — не больше 30 запросов."""
+    """I5: табло дня полного уровня со строками покрытия и дырами — не больше 31 запроса (30 + один
+    на семейные связи: родственники среди проживающих, addendum §4)."""
     from app.core.time import local_date
     day = local_date() + dt.timedelta(days=3)          # демо-данные: батлеры, строки, дыры
     with sql_counter() as c:
         r = manager_client.get(f"{API}/day", params={"date": day.isoformat()})
     assert r.status_code == 200 and r.json()["totals"]["covered"] > 0 and r.json()["totals"]["uncovered"] > 0
-    assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:5]
+    assert c["total"] <= 31, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:5]
 
 
 def test_butlers_board_budget_with_coverage(manager_client, sql_counter):

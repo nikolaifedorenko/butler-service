@@ -181,8 +181,8 @@ async function fundFlow() {
   check('дерево фонда отрисовано', await waitFor(() => $$('#st-body [data-fund-node]').length > 5
     && text('#st-body').includes('Винные виллы') && text('#st-body').includes('Корпус')));
   check('объекты справа, #id мелким', text('#st-body').includes('12134') && $('#st-body').innerHTML.includes(`#${connect.id}`));
-  check('вкладки «Объекты / Флаги объектов / Категории»',
-    ['units', 'flags', 'cats'].every(t => !!$(`#st-body [data-fund-tab="${t}"]`)));
+  check('вкладки «Объекты / Флаги объектов / Категории / Виды»',
+    ['units', 'flags', 'cats', 'kinds'].every(t => !!$(`#st-body [data-fund-tab="${t}"]`)));
   check('история версий: исходная, действующая и будущая', $$('#fund-history [data-fund-ver]').length >= 2
     && text('#fund-history').includes('будущая') && text('#fund-history').includes('действует'), text('#fund-history'));
 
@@ -389,6 +389,58 @@ async function fundFileFlow() {
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
 }
 
+async function kindsFlow() {
+  console.log('\n6 · Справочник видов категорий');
+  const kindsOf = async () => (await apiJson('GET', '/api/stays/fund/snapshot?date=' + serverToday())).body.kinds;
+  await go('stays_fund');
+  await waitFor(() => !!$('[data-fund-tab="kinds"]'));
+  click($('[data-fund-tab="kinds"]'));
+  check('вкладка «Виды»: четыре вида демо', await waitFor(() => ['вилла', 'имение', 'апартаменты', 'номер']
+    .every(t => text('#st-body').includes(t))), text('#fund-tab-body'));
+  click($('#fund-kind-add'));
+  check('форма вида', await waitFor(() => !!$('#fk-title')));
+  const title = 'Шале ' + uniq;
+  input($('#fk-title'), title);
+  $('#fk-expanded').checked = true;
+  click($('[data-save]'));
+  check('вид сохранён и в таблице', await waitFor(() => text('#fund-tab-body').includes(title)));
+  const kind = (await kindsOf()).find(k => k.title === title);
+  check('вид в снимке: «раскрывать» = да', kind?.expanded === true, JSON.stringify(kind));
+  click($(`[data-fund-kind-arch="${kind.id}"]`));
+  check('вид в архиве — пометка', await waitFor(() => ($(`[data-fund-kind="${kind.id}"]`)?.textContent || '').includes('архив')));
+
+  /* форма категории в черновике: выбор вида из справочника, архивного вида нет */
+  const today = serverToday();
+  const opened = await apiJson('POST', '/api/stays/fund/draft', { valid_from: addDays(today, 1) });
+  check('черновик открыт', opened.status === 200, JSON.stringify(opened.body));
+  window.eval("fundUI.view = 'draft'");
+  await go('stays_fund');
+  await waitFor(() => !!$('[data-fund-tab="cats"]'));
+  click($('[data-fund-tab="cats"]'));
+  await waitFor(() => !!$('#fund-cat-add'));
+  click($('#fund-cat-add'));
+  check('форма категории: выбор вида', await waitFor(() => !!$('#fc-kind')));
+  const opts = [...$('#fc-kind').options].map(o => o.textContent);
+  check('в выборе — виды справочника, без архивного', opts.includes('вилла') && opts.includes('номер') && !opts.some(o => o.includes(title)),
+    opts.join(', '));
+  click($('[data-close]'));
+  const draft = (await apiJson('GET', '/api/stays/fund/versions')).body.find(v => v.status === 'draft');
+  if (draft) await apiJson('DELETE', '/api/stays/fund/versions/' + draft.id);
+
+  await go('stays_fund');
+  await waitFor(() => !!$('[data-fund-tab="kinds"]'));
+  click($('[data-fund-tab="kinds"]'));
+  await waitFor(() => !!$(`[data-fund-kind-del="${kind.id}"]`));
+  click($(`[data-fund-kind-del="${kind.id}"]`));
+  await waitFor(() => !!$('[data-yes]'));
+  click($('[data-yes]'));
+  check('неиспользуемый вид удалён', await waitFor(() => !text('#fund-tab-body').includes(title)));
+  const villa = (await kindsOf()).find(k => k.title === 'вилла');
+  const busy = await apiJson('DELETE', '/api/stays/fund/kinds/' + villa.id);
+  check('использованный вид — 409', busy.status === 409, JSON.stringify(busy.body));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
+}
+
 async function noAccess() {
   console.log(`\nДоступ под логином ${LOGIN}`);
   const me = (await apiJson('GET', '/api/auth/me')).body;
@@ -411,7 +463,7 @@ async function main() {
   await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
   check('вход выполнен', !$('#app').classList.contains('hidden'), text('#login-error'));
   await sleep(500);
-  if (LOGIN === 'admin') { await fundFlow(); await fundFileFlow(); }
+  if (LOGIN === 'admin') { await fundFlow(); await fundFileFlow(); await kindsFlow(); }
   else await noAccess();
 
   console.log(`\n=== ошибки консоли ===`);

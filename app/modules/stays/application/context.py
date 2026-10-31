@@ -122,7 +122,7 @@ class StaysContext:
 
     def category(self, cat_id: int, day: dt.date) -> CategoryInfo:
         """Категория в фонде дня: вес нагрузки и сопровождение — из версии этого дня (§5)."""
-        return self.fund.category(cat_id, day) or CategoryInfo(cat_id, "?", "", "", 0.0, False, 0)
+        return self.fund.category(cat_id, day) or CategoryInfo(cat_id, "?", "", 0, 0.0, False, 0)
 
     def guest_name(self, guest_id: int) -> str:
         return short_name(self.guests[guest_id]) if guest_id in self.guests else "гость брони"

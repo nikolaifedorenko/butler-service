@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -18,7 +17,7 @@ from ..domain.allocate import natural_key
 from ..domain.halfday import Piece, pieces, segments
 from . import allocation
 from .fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
-from .guests import search_query, short_name
+from .guests import guest_text, search_query, short_name
 from .reservations import STATUS_TITLES
 from .views import LEVEL_RANK, BoardFilters, ViewError, fund_match
 from .visibility import LEVEL_ORDER, Level
@@ -75,14 +74,7 @@ class _Item:
     butler_ids: set[int] = field(default_factory=set)
     main: str = ""
     top: str = "regular"
-
-
-def _guest_text(g: Guest, can_guests: bool) -> str:
-    """Текст поиска по гостю. Телефон — персональные данные уровня stays.guests: без права цифры
-    телефона из текста убираются, иначе по ответу можно было бы подобрать номер."""
-    text = g.search_text or ""
-    digits = re.sub(r"\D", "", g.phone or "")
-    return text if can_guests or not digits else text.replace(digits, "", 1)
+    upgrade: str = ""            # «апгрейд: оплачена DKG», если оплата за другую категорию
 
 
 def _candidates(db: Session, q: BookingQuery):
@@ -169,6 +161,9 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
             if not cats or cats[-1] != code:
                 cats.append(code)
         it = _Item(r, lb, occ[r.id], ps, units, cats)
+        if r.paid_category_id and r.paid_category_id != r.category_id:
+            paid = fund.category(r.paid_category_id, r.check_in) if fund.parts else None
+            it.upgrade = f"апгрейд: оплачена {paid.code if paid else '?'}"
         it.top = max((guests[o.guest_id].level for o in it.occ if o.guest_id in guests),
                      key=lambda lv: LEVEL_RANK[lv], default="regular")
         mains = [o for o in it.occ if o.role == "main"]
@@ -178,7 +173,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         items.append(it)
 
     # фильтры фонда: бронь проходит, если хотя бы одна её часть в окне проходит по фонду дня части
-    has_fund_filter = bool(f.group_ids or f.category_ids or f.flag_ids or f.kinds or f.floor or f.escorted_only)
+    has_fund_filter = bool(f.group_ids or f.category_ids or f.flag_ids or f.kind_ids or f.floor or f.escorted_only)
     if has_fund_filter or q.unassigned:
         win_a, win_b = (q.first, q.last) if q.mode == "stay" else (dt.date.min, dt.date.max)
         kept = []
@@ -203,7 +198,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         needle = search_query(f.q)
         unit_text = {it.r.id: " ".join(lbl for _, lbl in it.units).lower() for it in items}
         items = [it for it in items if needle in (it.r.search_text or "") or needle in unit_text[it.r.id]
-                 or any(needle in _guest_text(guests[o.guest_id], can_guests) for o in it.occ if o.guest_id in guests)]
+                 or any(needle in guest_text(guests[o.guest_id], can_guests) for o in it.occ if o.guest_id in guests)]
     if q.with_warnings:
         state = allocation.current_state(db)
         flagged = {rid for w in state.warnings for rid in state.members[w.key]}
@@ -272,7 +267,7 @@ def _row(it: _Item) -> dict:
             "category": " → ".join(it.categories), "unit": " → ".join(lbl for _, lbl in it.units),
             "status": r.status, "status_title": STATUS_TITLES[r.status],
             "label": {"title": it.label.title, "color": it.label.color} if it.label else None,
-            "butlers": it.butlers, "early": r.early, "late": r.late,
+            "upgrade": it.upgrade, "butlers": it.butlers, "early": r.early, "late": r.late,
             "created_at": r.created_at.isoformat(timespec="minutes")}
 
 

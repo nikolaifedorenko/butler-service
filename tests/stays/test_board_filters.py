@@ -4,7 +4,7 @@
 бюджет SQL месяца; прежние параметры — 422; поиск и VIP для уровня occupancy не применяются."""
 from __future__ import annotations
 
-from .helpers import API, FundDraft, create_res, make_category, make_guest, uniq
+from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, uniq
 
 MONTH = {"first": "2036-11-01", "last": "2036-11-30"}
 
@@ -70,8 +70,8 @@ def test_or_within_dimension_and_between(manager_role_client, manager_client):
     assert set(_rows(manager_client, group_ids=[villas], flag_ids=[sea])) == _ids(vil, 0)
     # категории — «или», вид — «и» с узлами
     assert set(_rows(manager_client, category_ids=[rooms["id"], vil["id"]])) == _ids(rooms, 0, 1) | _ids(vil, 0, 1)
-    assert set(_rows(manager_client, group_ids=[corp, villas], kinds=["villa"])) == _ids(vil, 0, 1)
-    assert set(_rows(manager_client, group_ids=[corp], kinds=["villa", "room"])) == _ids(rooms, 0, 1)
+    assert set(_rows(manager_client, group_ids=[corp, villas], kind_ids=[kind_id("villa")])) == _ids(vil, 0, 1)
+    assert set(_rows(manager_client, group_ids=[corp], kind_ids=[kind_id("villa"), kind_id("room")])) == _ids(rooms, 0, 1)
     row = _rows(manager_client, group_ids=[villas])[vil["units"][0]["id"]]
     assert row["flags"] == [sea] and row["group_path"] == [villas] and row["off"] == []
     assert row["category_id"] == vil["id"] and row["label"] == vil["units"][0]["label"]
@@ -178,12 +178,12 @@ def test_day_board_filters_by_group_and_flags(manager_role_client, manager_clien
     assert arrivals(group_ids=[villas]) == {v1["id"], v2["id"]}
     assert arrivals(group_ids=[villas], flag_ids=[sea]) == {v1["id"]}
     assert arrivals(category_ids=[rooms["id"]]) == {rr["id"]}
-    assert arrivals(group_ids=[corp, villas], kinds=["room"]) == {rr["id"]}
+    assert arrivals(group_ids=[corp, villas], kind_ids=[kind_id("room")]) == {rr["id"]}
 
 
 def test_month_query_budget_440_units(manager_client, big_fund, sql_counter):
     """31 день × 440 объектов с фильтрами по дням — бюджет ≤ 30 запросов (§6)."""
-    params = {"first": "2029-06-01", "last": "2029-07-01", "kinds": ["room"], "flag_ids": []}
+    params = {"first": "2029-06-01", "last": "2029-07-01", "kind_ids": [kind_id("room")], "flag_ids": []}
     with sql_counter() as c:
         r = manager_client.get(f"{API}/board/units", params=params)
     assert r.status_code == 200
@@ -200,7 +200,7 @@ def test_month_query_budget_440_units(manager_client, big_fund, sql_counter):
 def test_removed_params_422(manager_client):
     base = {"first": "2036-11-01", "last": "2036-11-02"}
     for path, extra in (("/board/units", base), ("/occupancy", base), ("/day", {"date": "2036-11-01"})):
-        for old in ("building", "category_id", "kind"):
+        for old in ("building", "category_id", "kind", "kinds"):
             r = manager_client.get(f"{API}{path}", params={**extra, old: "1"})
             assert r.status_code == 422, (path, old, r.text)
 

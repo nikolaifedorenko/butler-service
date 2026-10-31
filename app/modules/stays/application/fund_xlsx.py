@@ -9,7 +9,8 @@ from dataclasses import dataclass, field
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Protection
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, quote_sheetname
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from app.core.format import safe_sheet_cell
 
@@ -20,6 +21,7 @@ SHEET_CATEGORIES = "Категории"
 SHEET_TREE = "Дерево"
 SHEET_FLAGS = "Флаги"
 SHEET_UNITS = "Объекты"
+SHEET_LISTS = "Списки"      # скрытый: все пути дерева для выпадающих списков
 
 PATH_SEP = " / "
 ID_HEADER = "ID (не менять; пусто — новая запись)"
@@ -32,7 +34,7 @@ HEAD = Font(bold=True)
 GREY = PatternFill("solid", fgColor="D9D9D9")
 _TRUE = {"да", "1", "true", "yes"}
 _FALSE = {"нет", "0", "false", "no"}
-_UNIT_FIXED = ["номер", "категория (код)", "узел (путь)", "этаж", "из чего (ID через запятую)"]
+_UNIT_FIXED = ["номер", "категория (код)", "узел", "этаж", "из чего (ID через запятую)"]
 
 
 # ---------------------------------------------------------------- результат разбора
@@ -50,7 +52,7 @@ class ParsedCategory:
     id: int | None
     code: str
     title: str
-    kind: str
+    kind: str             # название вида (справочник видов); пусто — не указан
     weight: float
     escorted: bool
     sort_order: int
@@ -133,13 +135,15 @@ def export_fund(snapshot: FundSnapshot, flags: list[UnitFlag]) -> bytes:
     _setup_sheet(ws, [ID_HEADER, "код", "название", "вид", "вес", "сопровождение (да/нет)", "порядок"],
                  [16, 14, 28, 14, 8, 22, 10])
     for r, c in enumerate(sorted(snapshot.categories.values(), key=lambda c: (c.sort_order, c.id)), start=2):
-        _put_row(ws, r, [c.id, c.code, c.title, c.kind, c.weight, _yn(c.escorted), c.sort_order])
+        _put_row(ws, r, [c.id, c.code, c.title, c.kind_title, c.weight, _yn(c.escorted), c.sort_order])
 
     ws = wb.create_sheet(SHEET_TREE)
-    _setup_sheet(ws, [ID_HEADER, "путь узла", "порядок"], [16, 50, 10])
+    tree_ws = ws
+    _setup_sheet(ws, [ID_HEADER, "название", "родитель", "порядок"], [16, 28, 50, 10])
     groups = sorted(snapshot.groups.values(), key=lambda g: ([snapshot.groups[i].sort_order for i in g.path], g.id))
     for r, g in enumerate(groups, start=2):
-        _put_row(ws, r, [g.id, PATH_SEP.join(snapshot.path_titles(g.id)), g.sort_order])
+        parent = PATH_SEP.join(snapshot.path_titles(g.parent_id)) if g.parent_id in snapshot.groups else ""
+        _put_row(ws, r, [g.id, g.title, parent, g.sort_order])
 
     ws = wb.create_sheet(SHEET_FLAGS)
     _setup_sheet(ws, [ID_HEADER, "название", "цвет"], [16, 28, 12])
@@ -155,6 +159,21 @@ def export_fund(snapshot: FundSnapshot, flags: list[UnitFlag]) -> bytes:
         # «Из чего» — история, а не состояние фонда: выгрузка оставляет колонку пустой (§9.1).
         _put_row(ws, r, [u.id, u.label, cat.code if cat else "", path, u.floor, "",
                          *[_yn(f.id in u.flags) for f in cols]])
+
+    # Скрытый «Списки»: все пути в порядке дерева; на них ссылаются списки «Родитель» и «Узел».
+    # Ссылка на диапазон, а не перечисление в формуле — лимит Excel в 255 знаков её не касается.
+    lists = wb.create_sheet(SHEET_LISTS)
+    lists.cell(row=1, column=1, value=safe_sheet_cell("путь")).font = HEAD
+    for r, g in enumerate(groups, start=2):
+        lists.cell(row=r, column=1, value=safe_sheet_cell(PATH_SEP.join(snapshot.path_titles(g.id))))
+    lists.column_dimensions["A"].width = 60
+    lists.protection.sheet = True
+    lists.sheet_state = "hidden"
+    source = f"{quote_sheetname(SHEET_LISTS)}!$A$2:$A${max(len(groups) + 1, 2)}"
+    for sheet, col in ((tree_ws, "C"), (ws, "D")):
+        dv = DataValidation(type="list", formula1=source, allow_blank=True, showErrorMessage=False)
+        dv.add(f"{col}2:{col}{MAX_ROWS + 1}")
+        sheet.add_data_validation(dv)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -294,8 +313,13 @@ def parse_fund(data: bytes, known_unit_ids: set[int] | None = None) -> tuple[Par
 
 
 def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund | None, list[FileError]]:
+    if SHEET_TREE in wb.sheetnames:       # прежний формат: «ID | путь узла | порядок» без «Родителя»
+        head = next(wb[SHEET_TREE].iter_rows(min_row=1, max_row=1, max_col=4, values_only=True), ())
+        if len(head) < 3 or not _text(head[2]).lower().startswith("родитель"):
+            ctx.err(SHEET_TREE, 1, "старый формат файла: нет колонки «Родитель» — выгрузите фонд заново")
+            return None, ctx.errors
     cats_raw = _read_sheet(wb, SHEET_CATEGORIES, 7, ctx)
-    tree_raw = _read_sheet(wb, SHEET_TREE, 3, ctx)
+    tree_raw = _read_sheet(wb, SHEET_TREE, 4, ctx)
     flags_raw = _read_sheet(wb, SHEET_FLAGS, 3, ctx)
     units_raw = _read_sheet(wb, SHEET_UNITS, 6, ctx)
     if cats_raw is None or tree_raw is None or flags_raw is None or units_raw is None:
@@ -321,22 +345,29 @@ def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund |
     _dup_ids(cats, SHEET_CATEGORIES, ctx)
     _dup_keys(cats, lambda c: c.code, SHEET_CATEGORIES, "код", ctx)
 
+    # Узел — «Название» + «Родитель» (полный путь родителя; пусто — корень). Строки в любом порядке:
+    # родитель может стоять ниже ребёнка, поэтому наличие родителя проверяется по всему листу.
     groups: list[ParsedGroup] = []
     for n, v in tree_raw[1]:
-        s = _text(v[1])
-        p = _path(s)
-        if not s or any(not x for x in p):
-            ctx.err(SHEET_TREE, n, "путь узла пуст или содержит пустое звено")
+        title, parent = _text(v[1]), _text(v[2])
+        pp = _path(parent) if parent else ()
+        if not title:
+            ctx.err(SHEET_TREE, n, "не указано название узла")
             continue
-        groups.append(ParsedGroup(n, _int(v[0], ctx, SHEET_TREE, n, "ID"), p,
-                                  _int(v[2], ctx, SHEET_TREE, n, "порядок", default=100) or 0))
+        if "/" in title:
+            ctx.err(SHEET_TREE, n, "в названии узла нельзя использовать «/»")
+            continue
+        if any(not x for x in pp):
+            ctx.err(SHEET_TREE, n, "родитель содержит пустое звено")
+            continue
+        groups.append(ParsedGroup(n, _int(v[0], ctx, SHEET_TREE, n, "ID"), (*pp, title),
+                                  _int(v[3], ctx, SHEET_TREE, n, "порядок", default=100) or 0))
     _dup_ids(groups, SHEET_TREE, ctx)
     _dup_keys(groups, lambda g: g.path, SHEET_TREE, "путь", ctx)
     paths = {g.path for g in groups}
     for g in groups:
         if len(g.path) > 1 and g.path[:-1] not in paths:
-            ctx.err(SHEET_TREE, g.row_no, f"нет родителя «{PATH_SEP.join(g.path[:-1])}» для узла "
-                                          f"«{PATH_SEP.join(g.path)}»")
+            ctx.err(SHEET_TREE, g.row_no, f"нет узла-родителя «{PATH_SEP.join(g.path[:-1])}»")
 
     flags: list[ParsedFlag] = []
     for n, v in flags_raw[1]:

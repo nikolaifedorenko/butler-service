@@ -11,7 +11,12 @@
   6. сохранённые наборы фильтров (localStorage, без хранилища — пустой список);
   7. флаг и выбытие объекта с середины месяца: «вне фильтра» / «нет в фонде», полосы не скрыты;
   8. вкладка «Брони»: свой период, сортировка «Выезд ↓», «Показать ещё», карточка по клику,
-     лимит 366 дней, экранирование; у уровня «занятость» вкладки нет.
+     лимит 366 дней, экранирование; у уровня «занятость» вкладки нет;
+  9. вкладка «Гости»: поиск, фильтр «день рождения», карточка по клику, объединение дублей
+     с предпросмотром «что перенесётся»;
+ 10. семейное дерево: + ребёнок Ивану и Марии → «правнук» у бабушки Ивана, перецентровка,
+     третий родитель — тост с текстом сервера, «бывшие», удаление связи; в карточке брони —
+     дерево только для чтения (и под логином уровня «с фамилиями»).
 
 Запуск: tools/run_stays_scenario.sh [порт] [логин]   (нужен jsdom: npm i)
 Код возврата: 0 — сценарий пройден, 2 — есть проваленные проверки. */
@@ -152,9 +157,9 @@ async function resetFilters() {
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
    /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
-async function fundCategory(code, labels) {
+async function fundCategory(code, labels, validFrom) {
   const today = serverToday();
-  const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: today });
+  const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: validFrom || today });
   if (d.status !== 200) throw new Error(`черновик фонда (create): ${d.status} ${JSON.stringify(d.body)}`);
   let rev = d.body.rev;
   const step = async (path, body) => {
@@ -163,7 +168,9 @@ async function fundCategory(code, labels) {
     rev = r.body.rev;
     return r.body;
   };
-  const cat = await step('categories', { code, title: code, kind: 'villa', escorted: true, weight: 4 });
+  const kinds = (await apiJson('GET', '/api/stays/fund/snapshot?date=' + today)).body.kinds;
+  const villa = kinds.find(k => k.title === 'вилла');
+  const cat = await step('categories', { code, title: code, kind_id: villa.id, escorted: true, weight: 4 });
   const units = [];
   for (const label of labels) units.push({ id: (await step('units', { label, category_id: cat.id })).id, label });
   await step('publish', {});
@@ -222,7 +229,7 @@ async function unitsBoard() {
   await apiJson('POST', '/api/stays/guests', { last_name: guest });
 
   window.navigate('stays');
-  check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 5));
+  check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 6));
   /* панель фильтров появляется после загрузки фонда и шахматки: в медленном CI сценарий
      менял фильтры раньше — change() уходил в пустоту (падало через раз, 25.10.2026) */
   check('шахматка отрисована (месяц и панель фильтров)', await waitFor(() => $('#sm-label') && $('.sf-panel')));
@@ -273,6 +280,8 @@ async function unitsBoard() {
   check('форма брони открылась', await waitFor(() => !!$('#rf-check-in')));
   input($('#rf-number'), 'A' + uniq);
   change($('#rf-category'), String(cat.id));
+  check('«Оплата за» — список категорий, следует за категорией брони', $('#rf-paid')?.tagName === 'SELECT'
+    && $('#rf-paid').value === String(cat.id) && !$('#rf-purpose'));
   change($('#rf-check-in'), '2030-01-03');
   change($('#rf-check-out'), '2030-01-07');
   input($('#rf-guest-q'), guest);
@@ -442,6 +451,30 @@ async function occupancyAndFund() {
   check('флаг «Вид на море» сужает', n2 > 0 && n2 < n1, `${n1} → ${n2}`);
   check('флаги — значками в строке', $$('#view-stays [data-unit-row] .sb-flag').length >= n2);
 
+  /* раскрытие по умолчанию — из справочника видов (expanded): «номер» с «раскрывать» —
+     корпус открыт сразу; вернуть как было */
+  const room = snap.kinds.find(k => k.title === 'номер');
+  const setRoom = expanded => apiJson('PUT', '/api/stays/fund/kinds/' + room.id,
+    { title: room.title, sort_order: room.sort_order, expanded });
+  check('вид «номер» по умолчанию не раскрывается', room && room.expanded === false, JSON.stringify(room));
+  check('вид «номер»: «раскрывать» включено', (await setRoom(true)).status === 200);
+  window.eval('staysState.fund = null; staysState.collapsed = {}');
+  await openMonth(today);
+  await resetFilters();
+  await setCheck(`[data-sf-group="${korpus.id}"]`, true);
+  check('expanded у вида — раздел «Корпус» развёрнут сразу', await waitFor(() => rowsOf(korpus.id) > 0),
+    String(rowsOf(korpus.id)));
+  await setRoom(false);
+  window.eval('staysState.fund = null; staysState.collapsed = {}');
+  await openMonth(today);
+  await resetFilters();
+  await setCheck(`[data-sf-group="${korpus.id}"]`, true);
+  check('без expanded — «Корпус» снова свёрнут', await waitFor(() => !!$(`[data-sec="${korpus.id}"]`)) && rowsOf(korpus.id) === 0);
+  /* фильтры и раскрытие — как до проверки (на них опираются шаги «Загрузки») */
+  await setCheck(`[data-sf-group="${villas.id}"]`, true);
+  await setCheck(`[data-sf-flag="${sea.id}"]`, true);
+  window.eval(`staysState.collapsed[${JSON.stringify(String(korpus.id))}] = false`);
+
   check('«Загрузка» открылась', await openMonth(today, 'occupancy'));
   const [y, m] = today.split('-').map(Number);
   const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -595,6 +628,33 @@ async function flagMidMonth() {
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
 }
 
+/* Форма брони берёт категории из фонда на дату заезда (§5): категория, которой сегодня нет,
+   остаётся выбранной и не подменяется первой — иначе сохранение записало бы ложный «апгрейд» */
+async function formFundOnCheckIn() {
+  console.log('\n7а · Форма брони: фонд на дату заезда');
+  const code = 'FU' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1'], '2038-06-01');
+  const res = (await apiJson('POST', '/api/stays/reservations', { number: 'FU' + uniq, check_in: '2038-06-05',
+    check_out: '2038-06-08', category_id: cat.id })).body.result;
+  check('бронь в категории из будущей версии фонда создана', !!res?.id, JSON.stringify(res));
+  window.navigate('stays');
+  window.eval(`openReservationForm(${res.id})`);
+  check('правка: «Оплата за» остаётся будущей категорией (не первой из списка)', await waitFor(() =>
+    $('#rf-paid')?.value === String(cat.id) && $('#rf-category')?.value === String(cat.id)),
+  `${$('#rf-paid')?.value} / ${$('#rf-category')?.value}`);
+  click($('[data-close]'));
+  window.eval('openReservationForm()');
+  check('новая бронь: категории на сегодня — будущей нет', await waitFor(() => !!$('#rf-check-in'))
+    && ![...$('#rf-paid').options].some(o => o.value === String(cat.id)));
+  change($('#rf-check-in'), '2038-06-05');
+  check('дата заезда введена — списки перечитаны по фонду на эту дату', await waitFor(() =>
+    [...$('#rf-category').options].some(o => o.value === String(cat.id))
+    && [...$('#rf-paid').options].some(o => o.value === String(cat.id))));
+  change($('#rf-category'), String(cat.id));
+  check('«Оплата за» следует за категорией из версии на дату', $('#rf-paid').value === String(cat.id));
+  click($('[data-close]'));
+}
+
 const DEMO_SURNAMES = ['Лебедев', 'Фомина', 'Зайцев', 'Гусев', 'Кузьмин', 'Белова'];
 
 async function roleSmoke() {
@@ -616,7 +676,11 @@ async function roleSmoke() {
     const names = me.permissions.includes('stays.view');
     check(names ? 'вкладка «Брони» есть (с фамилиями)' : 'вкладки «Брони» нет (занятость)',
       !!$('#view-stays [data-stab="bookings"]') === names);
+    const full = names && me.permissions.includes('stays.guests');
+    check(full ? 'вкладка «Гости» есть (полный уровень)' : 'вкладки «Гости» нет',
+      !!$('#view-stays [data-stab="guests"]') === full);
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+    if (names && !me.permissions.includes('stays.edit')) await familyReadOnly();
   }
   if (menu.includes('mystays')) {
     window.navigate('mystays');
@@ -711,10 +775,12 @@ async function moreForms() {
   input($('#gc-link-q'), 'Связанов' + uniq);
   check('поиск гостя для связи', await waitFor(() => !!$(`[data-link-pick="${g2.id}"]`)));
   click($(`[data-link-pick="${g2.id}"]`));
-  change($('#gc-link-kind'), 'spouse');
+  check('семейных видов нет в «Прочих связях» — семья правится в дереве',
+    !$$('#gc-link-kind option').some(o => ['spouse', 'spouse_former', 'parent'].includes(o.value)));
+  change($('#gc-link-kind'), 'colleague');
   click($('#gc-link-add'));
-  check('связь «супруг(а)» в карточке', await waitFor(() => text('#gc-links').includes('Связанов' + uniq)
-    && text('#gc-links').includes('супруг(а)')));
+  check('связь «коллега» в карточке', await waitFor(() => text('#gc-links').includes('Связанов' + uniq)
+    && text('#gc-links').includes('коллега')));
   click($('#gc-edit'));
   check('форма гостя: особые даты', await waitFor(() => !!$('#gf-sd-add')));
   click($('#gf-sd-add'));
@@ -726,7 +792,7 @@ async function moreForms() {
   const gc = (await apiJson('GET', `/api/stays/guests/${g.id}`)).body;
   check('особая дата сохранена', gc.special_dates.some(x => x.what === 'юбилей' && x.date === day(30)), JSON.stringify(gc.special_dates));
   check('поле гостя сохранено', gc.fields[gField] === 'кот');
-  check('связь видна в профиле', gc.links.some(l => l.guest_id === g2.id && l.label === 'супруг(а)'));
+  check('связь видна в профиле', gc.links.some(l => l.guest_id === g2.id && l.label === 'коллега'));
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML + ($('#modal')?.innerHTML || '')));
   void u1;
 }
@@ -801,6 +867,216 @@ async function bookingsTab() {
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
 }
 
+/* 9 · вкладка «Гости»: справочник, поиск, «день рождения в ближайшие 30 дней», карточка, объединение */
+async function guestsTab() {
+  console.log('\n9 · Вкладка «Гости»');
+  const today = serverToday();
+  const soon = addDays(today, 10);
+  const birth = `${Number(soon.slice(0, 4)) - 40}${soon.slice(4)}`.replace(/-02-29$/, '-02-28');
+  const code = 'GS' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1']);
+  const mk = body => apiJson('POST', '/api/stays/guests', body).then(r => r.body);
+  const keep = await mk({ last_name: `Дублёв${uniq}`, first_name: 'Пётр', phone: '+7 916 400-11-22', birth_date: birth });
+  const drop = await mk({ last_name: `Дублёв${uniq}`, first_name: 'Петя', preferences: { food: 'без лактозы' },
+    special_dates: [{ date: '2020-06-01', what: 'годовщина' }] });
+  const res = await apiJson('POST', '/api/stays/reservations', { number: `GS${uniq}`, check_in: addDays(today, 50),
+    check_out: addDays(today, 52), category_id: cat.id, occupants: [{ guest_id: drop.id, role: 'main',
+      date_from: addDays(today, 50), date_to: addDays(today, 52) }] });
+  check('гости и бронь дубля созданы', !!keep.id && !!drop.id && res.status === 200, JSON.stringify(res.body));
+
+  window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
+  window.navigate('stays');
+  await waitFor(() => $$('#view-stays [data-stab]').length > 0);
+  check('вкладка «Гости» есть', !!$('#view-stays [data-stab="guests"]'));
+  click($('#view-stays [data-stab="guests"]'));
+  check('вкладка «Гости» отрисована', await waitFor(() => !!$('#gl-total')));
+  const rerendered = async (sel, act) => { const old = $(sel); act(); return waitFor(() => $(sel) && $(sel) !== old); };
+  /* посимвольный ввод с паузой дольше задержки поиска: поле не перерисовывается, фокус и текст на месте */
+  const q = $('#gl-q');
+  q.focus();
+  const typed = `дублёв${uniq}`.toLowerCase();
+  const firstTotal = $('#gl-total');
+  for (const [i, ch] of [...typed].entries()) {
+    q.value += ch;
+    q.dispatchEvent(new window.Event('input', { bubbles: true }));
+    await sleep(i === 3 ? 700 : 40);           // на 4-м символе поиск успевает уйти и вернуться
+  }
+  check('поиск по фамилии', await waitFor(() => $('#gl-total') !== firstTotal && $$('[data-gl-row]').length === 2),
+    text('#gl-total'));
+  check('при вводе поле поиска не теряет фокус и текст', $('#gl-q') === q && window.document.activeElement === q
+    && q.value === typed, `${window.document.activeElement?.id} «${q.value}»`);
+  check('телефон виден полному уровню', text('#gl-result').includes('+7 916 400-11-22'));
+  await rerendered('#gl-total', () => input($('#gl-q'), `GS${uniq}`));
+  check('поиск по номеру брони — гость брони', $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(drop.id));
+  await rerendered('#gl-total', () => input($('#gl-q'), `дублёв${uniq}`));
+  await rerendered('#gl-total', () => { $('#gl-birthday').checked = true; change($('#gl-birthday')); });
+  check('фильтр «день рождения в ближайшие 30 дней»', $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(keep.id),
+    text('#gl-total'));
+  await rerendered('#gl-total', () => { $('#gl-birthday').checked = false; change($('#gl-birthday')); });
+
+  click($(`[data-gl-row="${drop.id}"] td:nth-child(2)`));
+  check('клик по строке открывает карточку гостя', await waitFor(() => text('#modal').includes('История проживаний')
+    && text('#modal').includes(`GS${uniq}`)), text('#modal'));
+  click($('#modal [data-close]'));
+  await sleep(200);
+
+  for (const id of [keep.id, drop.id]) click($(`[data-gl-pick="${id}"]`));     // клик отмечает флажок
+  check('«Объединить…» доступна для двух отмеченных', $('#gl-merge') && !$('#gl-merge').disabled);
+  click($('#gl-merge'));
+  check('окно объединения', await waitFor(() => !!$('#gm-preview')));
+  click($('#gm-preview'));
+  check('предпросмотр: что перенесётся', await waitFor(() => text('#gm-out').includes(`GS${uniq}`)
+    && text('#gm-out').includes('food') && text('#gm-out').includes('годовщина')), text('#gm-out'));
+  const still = (await apiJson('GET', `/api/stays/guests/${drop.id}`)).status;
+  check('предпросмотр ничего не сохранил', still === 200, String(still));
+  click($('#modal [data-save]'));
+  check('после объединения в списке один гость', await waitFor(() => !$('#modal').innerHTML
+    && $$('[data-gl-row]').length === 1 && !!$(`[data-gl-row="${keep.id}"]`)), text('#gl-total'));
+  const card = (await apiJson('GET', `/api/stays/guests/${keep.id}/card`)).body;
+  check('бронь и предпочтения перешли оставленному', card.stays.some(x => x.number === `GS${uniq}`)
+    && card.preferences.food === 'без лактозы', JSON.stringify(card.stays));
+  check('дубль удалён', (await apiJson('GET', `/api/stays/guests/${drop.id}`)).status === 404);
+  window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
+/* 10 · семейное дерево: визуальный редактор в карточке гостя (addendum §4) */
+async function familyEditor() {
+  console.log('\n10 · Семейное дерево: визуальный редактор');
+  const mk = (last, first, gender) => apiJson('POST', '/api/stays/guests', { last_name: last + uniq, first_name: first, gender })
+    .then(r => r.body);
+  const grandma = await mk('Бабушкина', 'Анна', 'f');
+  const mother = await mk('Матвеева', 'Ольга', 'f');
+  const ivan = await mk('Семьин', 'Иван', 'm');
+  const maria = await mk('Семьина', 'Мария', 'f');
+  const stranger = await mk('Чужов', '<i>Пётр</i>', 'm');
+  const father = await mk('Отцов', 'Николай', 'm');
+  const link = (a, b, kind) => apiJson('POST', `/api/stays/guests/${a.id}/links`, { guest_id: b.id, kind });
+  for (const [a, b, kind] of [[grandma, mother, 'parent'], [mother, ivan, 'parent'], [ivan, maria, 'spouse']]) await link(a, b, kind);
+  const fam = async id => (await apiJson('GET', `/api/stays/guests/${id}/family`)).body;
+  const centre = () => Number($('#gc-family .ft-centre')?.dataset.ftPerson);
+  const tree = () => text('#gc-family .ft-tree');
+  const toastHas = s => waitFor(() => text('#toast-host').includes(s));
+
+  window.navigate('stays');
+  await waitFor(() => $$('#view-stays [data-stab]').length > 0);
+  window.eval(`openGuestCard(${ivan.id})`);
+  check('дерево в карточке гостя: Иван в центре', await waitFor(() => centre() === ivan.id));
+  check('родитель сверху, супруга рядом', tree().includes('Матвеева' + uniq) && tree().includes('мать')
+    && tree().includes('Семьина' + uniq) && !!$('#gc-family [data-ft-former]'));
+  check('редактор: кнопки «+ родитель / + супруг(а) / + ребёнок»', ['parent', 'spouse', 'child']
+    .every(k => !!$(`#gc-family [data-ft-add="${k}"]`)));
+
+  /* пример владельца: Ивану и Марии — сын (новый гость, «и ребёнок супруги» отмечено) */
+  click($('#gc-family [data-ft-add="child"]'));
+  check('панель «Добавить ребёнка»', await waitFor(() => !!$('#gc-family [data-ft-last]')));
+  check('«и ребёнок: Мария» отмечено', $('#gc-family [data-ft-both]')?.checked === true);
+  $('#gc-family [data-ft-last]').value = 'Семьин' + uniq;
+  $('#gc-family [data-ft-first]').value = 'Сын';
+  change($('#gc-family [data-ft-gender]'), 'm');
+  click($('#gc-family [data-ft-create]'));
+  check('сын появился в дереве снизу', await waitFor(() => tree().includes('Сын') && tree().includes('сын')), tree());
+  const son = (await fam(ivan.id)).people.find(p => p.name.includes('Сын'));
+  const sonFam = son ? await fam(son.id) : { parents: [] };
+  check('у сына оба родителя — Иван и Мария', son && [ivan.id, maria.id].every(p => sonFam.parents.some(([c, x]) => c === son.id && x === p)),
+    JSON.stringify(sonFam.parents));
+
+  click($(`#gc-family .ft-tree [data-ft-person="${mother.id}"]`));
+  check('клик по матери — она в центре', await waitFor(() => centre() === mother.id));
+  click($(`#gc-family .ft-tree [data-ft-person="${grandma.id}"]`));
+  check('клик по бабушке — она в центре', await waitFor(() => centre() === grandma.id));
+  const kin = text('#gc-family .ft-kin');
+  check('у бабушки Ивана в «Все родственники» — правнук', kin.includes('Сын') && /правнук/.test(kin) && kin.includes('внук'), kin);
+  click($('#gc-family [data-ft-home]'));
+  check('«← к Ивану» возвращает в центр', await waitFor(() => centre() === ivan.id));
+
+  /* запрет третьего родителя: тост с текстом сервера */
+  click($(`#gc-family .ft-tree [data-ft-person="${son.id}"]`));
+  await waitFor(() => centre() === son.id);
+  click($('#gc-family [data-ft-add="parent"]'));
+  await waitFor(() => !!$('#gc-family [data-ft-q]'));
+  input($('#gc-family [data-ft-q]'), 'Чужов' + uniq);
+  check('поиск гостя для связи', await waitFor(() => !!$(`#gc-family [data-ft-pick="${stranger.id}"]`)));
+  check('имя в поиске экранировано', !$('#gc-family i'));
+  click($(`#gc-family [data-ft-pick="${stranger.id}"]`));
+  check('третий родитель — тост с текстом сервера', await toastHas('У ребёнка не больше двух родителей'), text('#toast-host'));
+  check('третий родитель не добавлен', (await fam(son.id)).parents.filter(([c]) => c === son.id).length === 2);
+  /* новый третий родитель: кнопка заперта с пояснением; в обход — сервер отказывает и гостя не создаёт */
+  click($('#gc-family [data-ft-add="parent"]'));
+  await waitFor(() => !!$('#gc-family [data-ft-create]'));
+  check('два родителя: «Создать и связать» заперта с пояснением', $('#gc-family [data-ft-create]').disabled
+    && text('#gc-family [data-ft-blocked]').includes('два родителя'));
+  $('#gc-family [data-ft-last]').value = 'Лишний' + uniq;
+  $('#gc-family [data-ft-create]').disabled = false;
+  $('#toast-host').innerHTML = '';
+  click($('#gc-family [data-ft-create]'));
+  check('новый третий родитель — тост с текстом сервера', await toastHas('У ребёнка не больше двух родителей'), text('#toast-host'));
+  check('новый третий родитель — гость не создан', !(await apiJson('GET', `/api/stays/guests?q=${encodeURIComponent('Лишний' + uniq)}`)).body.length);
+
+  /* «бывшие» на линии супругов */
+  click($('#gc-family [data-ft-home]'));
+  await waitFor(() => centre() === ivan.id);
+  const former = $('#gc-family [data-ft-former]');
+  former.checked = true;
+  change(former);
+  check('«бывшие» сохранены', await waitFor(() => $('#gc-family [data-ft-former]') !== former
+    && $('#gc-family [data-ft-former]').checked));
+  check('API: брак бывший', (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && l.former));
+  const back = $('#gc-family [data-ft-former]');
+  back.checked = false;
+  change(back);
+  await waitFor(() => $('#gc-family [data-ft-former]') !== back);
+  check('«бывшие» сняты', (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && !l.former));
+
+  /* второй родитель Ивана через поиск — и удаление связи крестиком на линии */
+  click($('#gc-family [data-ft-add="parent"]'));
+  await waitFor(() => !!$('#gc-family [data-ft-q]'));
+  input($('#gc-family [data-ft-q]'), 'Отцов' + uniq);
+  await waitFor(() => !!$(`#gc-family [data-ft-pick="${father.id}"]`));
+  click($(`#gc-family [data-ft-pick="${father.id}"]`));
+  check('отец добавлен сверху', await waitFor(() => tree().includes('Отцов' + uniq) && tree().includes('отец')), tree());
+  const fl = (await fam(ivan.id)).links.find(l => l.kind === 'parent' && l.a === father.id && l.b === ivan.id);
+  click($(`#gc-family [data-ft-del="${fl?.id}"]`));
+  check('связь удалена крестиком', await waitFor(() => !tree().includes('Отцов' + uniq)), tree());
+  check('API: связи с отцом нет', !(await fam(ivan.id)).links.some(l => l.a === father.id));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#modal').innerHTML));
+  click($('#modal [data-close]'));
+  await sleep(200);
+
+  /* карточка брони: дерево только для чтения */
+  const code = 'FT' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1']);
+  const ci = addDays(serverToday(), 70);
+  const res = (await apiJson('POST', '/api/stays/reservations', { number: code, check_in: ci, check_out: addDays(ci, 2),
+    category_id: cat.id, occupants: [{ guest_id: ivan.id, role: 'main', date_from: ci, date_to: addDays(ci, 2) }] })).body.result;
+  window.eval(`openReservationCard(${res.id})`);
+  await waitFor(() => !!$(`#modal [data-family="${ivan.id}"]`));
+  click($(`#modal [data-family="${ivan.id}"]`));
+  const box = `#modal [data-family-box="${ivan.id}"]`;
+  check('карточка брони: дерево семьи', await waitFor(() => !!$(`${box} .ft-centre`) && text(`${box} .ft-kin`).includes('сын')),
+    text(box));
+  check('карточка брони: только просмотр', !$(`${box} [data-ft-add]`) && !$(`${box} [data-ft-del]`) && !$(`${box} [data-ft-former]`));
+  click($('#modal [data-close]'));
+  await sleep(200);
+}
+
+/* уровень «с фамилиями» без права записи: дерево в карточке брони — без кнопок редактора */
+async function familyReadOnly() {
+  const day = (await apiJson('GET', `/api/stays/day?date=${serverToday()}`)).body;
+  const row = (day.in_house || []).find(r => r.guests?.some(g => g.relatives?.length));
+  if (!row) { check('табло дня: семья среди проживающих (демо)', false); return; }
+  const gid = row.guests.find(g => g.relatives?.length).guest_id;
+  window.eval(`openReservationCard(${row.reservation_id})`);
+  await waitFor(() => !!$(`#modal [data-family="${gid}"]`));
+  click($(`#modal [data-family="${gid}"]`));
+  const box = `#modal [data-family-box="${gid}"]`;
+  check('«с фамилиями»: семейное дерево в карточке брони', await waitFor(() => !!$(`${box} .ft-centre`)
+    && text(`${box} .ft-kin`).length > 0), text(box));
+  check('«с фамилиями» без права записи: дерево только для чтения', !$(`${box} [data-ft-add]`) && !$(`${box} [data-ft-del]`));
+  click($('#modal [data-close]'));
+  await sleep(200);
+}
+
 /* выход уже нажат: вход другим логином тем же путём, что в main (JSON-вход + bootApp) */
 async function relogin(username) {
   await sleep(300);
@@ -830,7 +1106,10 @@ async function main() {
     await moreForms();
     await savedFilters();
     await flagMidMonth();
+    await formFundOnCheckIn();
     await bookingsTab();
+    await guestsTab();
+    await familyEditor();
   } else {
     await roleSmoke();
   }

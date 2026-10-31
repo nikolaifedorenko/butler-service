@@ -19,7 +19,7 @@ registerModule({ screens: { stays_fund: { render: renderStaysFund, icon: 'home' 
 
 const FUND_STATUS = { draft: 'черновик', future: 'будущая', current: 'действует', archive: 'архив' };
 const FUND_ENTITY = { unit: 'объект', group: 'узел', category: 'категория' };
-const FUND_TABS = [['units', 'Объекты'], ['flags', 'Флаги объектов'], ['cats', 'Категории']];
+const FUND_TABS = [['units', 'Объекты'], ['flags', 'Флаги объектов'], ['cats', 'Категории'], ['kinds', 'Виды']];
 /* что открыто на экране: view — 'current' | 'draft' | id версии; node — узел дерева */
 const fundUI = { view: null, node: null, tab: 'units', picked: new Set(), rev: null, host: null, data: null, drag: null };
 
@@ -100,6 +100,7 @@ function fundGroupOptions(snapshot, exclude = null) {
     .map(g => [g.id, fundGroupTitle(snapshot, g.id)])
     .sort((a, b) => a[1].localeCompare(b[1], 'ru'))];
 }
+const fundKindTitle = (snapshot, id) => (snapshot.kinds || []).find(k => k.id === id)?.title || `#${id}`;
 const fundCatOptions = snapshot => snapshot.categories.map(c => [c.id, `${c.code} · ${c.title}`]);
 const fundId = id => `<small class="muted">#${esc(String(id))}</small>`;
 const fundSwatch = f => `<span class="stays-swatch" style="background:${esc(f.color)}" title="${esc(f.title)}"></span>`;
@@ -112,9 +113,10 @@ function fundDiffLines(diff, snapshot) {
   const grp = id => (id == null ? 'без узла' : fundGroupTitle(snapshot, id) || `#${id}`);
   const unitLabel = id => snapshot.units.find(u => u.id === id)?.label || `#${id}`;
   const flagTitle = id => snapshot.flags.find(f => f.id === id)?.title || `#${id}`;
-  const show = { category_id: cat, group_id: grp, parent_id: grp };
+  const kind = id => fundKindTitle(snapshot, id);
+  const show = { category_id: cat, group_id: grp, parent_id: grp, kind_id: kind };
   const names = { label: 'обозначение', category_id: 'категория', group_id: 'узел', floor: 'этаж', code: 'код',
-    title: 'название', kind: 'вид', weight: 'вес', escorted: 'сопровождение', sort_order: 'порядок', parent_id: 'родитель' };
+    title: 'название', kind_id: 'вид', weight: 'вес', escorted: 'сопровождение', sort_order: 'порядок', parent_id: 'родитель' };
   const fields = e => Object.keys(e.after).filter(k => JSON.stringify(e.before[k]) !== JSON.stringify(e.after[k]))
     .map(k => `${names[k] || k}: ${(show[k] || String)(e.before[k])} → ${(show[k] || String)(e.after[k])}`).join(', ');
   const line = (what, name, e, female) => {
@@ -222,7 +224,7 @@ async function renderStaysFund(host) {
       <div class="fund-main">
         <div class="layer-tabs">${FUND_TABS.map(([id, t]) =>
           `<button class="btn btn-sm${fundUI.tab === id ? ' btn-primary' : ''}" data-fund-tab="${id}">${esc(t)}</button>`).join('')}</div>
-        <div id="fund-tab-body">${{ units: fundUnitsTab, flags: fundFlagsTab, cats: fundCatsTab }[fundUI.tab](data, editing)}</div>
+        <div id="fund-tab-body">${{ units: fundUnitsTab, flags: fundFlagsTab, cats: fundCatsTab, kinds: fundKindsTab }[fundUI.tab](data, editing)}</div>
       </div>
     </div>
     ${settingsPanel('История версий', `<div class="table-wrap" id="fund-history"><table class="data">
@@ -310,8 +312,7 @@ function fundFlagsTab(data, editing) {
 }
 
 function fundCatsTab(data, editing) {
-  const { snap, dicts } = data;
-  const kinds = Object.fromEntries(dicts.kinds.map(k => [k.code, k.title]));
+  const { snap } = data;
   const marks = {};
   if (editing && data.diff) data.diff.categories.forEach(e => { marks[e.id] = e; });
   const since = data.draft ? dateRu(data.draft.valid_from).slice(0, 5) : '';
@@ -320,12 +321,61 @@ function fundCatsTab(data, editing) {
       <thead><tr><th>Код</th><th>Название</th><th>Вид</th><th>Сопровождение</th><th class="num">Вес</th><th class="num">Объектов</th><th></th></tr></thead>
       <tbody>${snap.categories.map(c => `<tr data-fund-cat="${c.id}">
         <td><b>${esc(c.code)}</b> ${fundId(c.id)} ${fundMark(marks[c.id], since, true)}</td>
-        <td>${esc(c.title)}</td><td>${esc(kinds[c.kind] || c.kind)}</td>
+        <td>${esc(c.title)}</td><td>${esc(fundKindTitle(snap, c.kind_id))}</td>
         <td>${c.escorted ? '<span class="badge ok">с батлером</span>' : '<span class="muted">нет</span>'}</td>
         <td class="num">${esc(String(c.weight))}</td><td class="num">${snap.units.filter(u => u.category_id === c.id).length}</td>
         <td class="num">${editing ? `<button class="btn btn-sm btn-ghost" data-fund-cat-edit="${c.id}">Изменить</button>
           <button class="btn btn-sm btn-ghost" data-fund-cat-retire="${c.id}">Вывести</button>` : ''}</td></tr>`).join('')
         || '<tr><td colspan="7" class="empty">Категорий пока нет</td></tr>'}</tbody></table></div>`;
+}
+
+/* справочник видов — вне черновика, правится сразу (права stays.setup — у самого экрана) */
+function fundKindsTab(data) {
+  const { snap } = data;
+  const used = new Set(snap.categories.map(c => c.kind_id));
+  return `<p class="hint">Справочник правится сразу, без черновика. «Раскрывать» — раздел дерева шахматки с категорией
+      этого вида открыт по умолчанию. Использованный вид удалить нельзя — только в архив.</p>
+    <div class="sb-toolbar"><button class="btn btn-sm btn-primary" id="fund-kind-add">+ Вид</button></div>
+    <div class="table-wrap"><table class="data">
+      <thead><tr><th>Название</th><th class="num">Порядок</th><th>Раскрывать</th><th></th></tr></thead>
+      <tbody>${(snap.kinds || []).map(k => `<tr data-fund-kind="${k.id}"${k.archived ? ' class="fund-retired"' : ''}>
+        <td><b>${esc(k.title)}</b> ${fundId(k.id)}${k.archived ? ' <span class="badge muted">архив</span>' : ''}${used.has(k.id) ? '' : ' <span class="muted">не используется</span>'}</td>
+        <td class="num">${esc(String(k.sort_order))}</td><td>${k.expanded ? 'да' : '<span class="muted">нет</span>'}</td>
+        <td class="num"><button class="btn btn-sm btn-ghost" data-fund-kind-edit="${k.id}">Изменить</button>
+          <button class="btn btn-sm btn-ghost" data-fund-kind-arch="${k.id}">${k.archived ? 'Из архива' : 'В архив'}</button>
+          <button class="btn btn-sm btn-ghost" data-fund-kind-del="${k.id}">Удалить</button></td></tr>`).join('')
+        || '<tr><td colspan="4" class="empty">Видов пока нет</td></tr>'}</tbody></table></div>`;
+}
+
+function fundKindForm(kind, onSaved) {
+  fundForm(kind ? `Вид «${kind.title}»` : 'Новый вид', `
+    ${sfRow('Название', sfInput('fk-title', kind?.title))}
+    ${sfRow('Порядок', sfInput('fk-sort', kind?.sort_order ?? 100, 'number'))}
+    ${sfCheck('fk-expanded', 'Раскрывать раздел на шахматке', kind?.expanded)}`,
+  async m => {
+    const body = { title: $('#fk-title', m).value, sort_order: Number($('#fk-sort', m).value), expanded: $('#fk-expanded', m).checked };
+    await api(kind ? `/api/stays/fund/kinds/${kind.id}` : '/api/stays/fund/kinds', { method: kind ? 'PUT' : 'POST', body });
+    toast('Вид сохранён');
+  }, onSaved);
+}
+
+function fundBindKinds(host, snap, rerender) {
+  const kindOf = el => (snap.kinds || []).find(k => k.id === Number(el));
+  fundOn(host, '#fund-kind-add', () => fundKindForm(null, rerender));
+  $$('[data-fund-kind-edit]', host).forEach(b => { b.onclick = () => fundKindForm(kindOf(b.dataset.fundKindEdit), rerender); });
+  $$('[data-fund-kind-arch]', host).forEach(b => {
+    b.onclick = async () => {
+      const k = kindOf(b.dataset.fundKindArch);
+      try { await api(`/api/stays/fund/kinds/${k.id}/archive`, { method: 'PUT', body: { archived: !k.archived } }); rerender(); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+  });
+  $$('[data-fund-kind-del]', host).forEach(b => {
+    b.onclick = () => confirmDialog('Удалить вид?', 'Вид, который стоит у категории, удалить нельзя — только в архив.', async () => {
+      try { await api(`/api/stays/fund/kinds/${b.dataset.fundKindDel}`, { method: 'DELETE' }); toast('Вид удалён'); rerender(); }
+      catch (e) { toast(e.message, 'err'); }
+    }, 'Удалить');
+  });
 }
 
 function fundOn(host, sel, fn) { const el = $(sel, host); if (el) el.onclick = fn; }
@@ -405,6 +455,7 @@ function fundBind(host, data, editing) {
       catch (e) { toast(e.message, 'err'); }
     }, 'Удалить'));
   }
+  fundBindKinds(host, snap, rerender);
   if (!editing) return;
 
   /* дерево */
@@ -592,18 +643,26 @@ function openFundGroupForm(group, snapshot, onSaved) {
   }, onSaved);
 }
 
+/* виды для формы категории: архивный — только тот, что уже стоит у этой категории */
+function fundKindOptions(snapshot, cat) {
+  const kinds = (snapshot.kinds || []).filter(k => !k.archived || k.id === cat?.kind_id);
+  return [...(cat ? [] : [['', '— выберите вид']]), ...kinds.map(k => [k.id, k.archived ? `${k.title} (архив)` : k.title])];
+}
+
 function fundCategoryForm(cat, data, onSaved) {
+  const noKinds = !(data.snap.kinds || []).some(k => !k.archived || k.id === cat?.kind_id);
   fundForm(cat ? `Категория ${cat.code}` : 'Новая категория', `
     <div class="grid-2">
       ${sfRow('Код', sfInput('fc-code', cat?.code))}
       ${sfRow('Название', sfInput('fc-title', cat?.title))}
-      ${sfRow('Вид', sfSelect('fc-kind', data.dicts.kinds.map(k => [k.code, k.title]), cat?.kind || 'room'))}
+      ${sfRow('Вид', sfSelect('fc-kind', fundKindOptions(data.snap, cat), cat?.kind_id ?? ''))}
       ${sfRow('Вес нагрузки', sfInput('fc-weight', cat?.weight ?? 1, 'number'))}
       ${sfRow('Порядок', sfInput('fc-sort', cat?.sort_order ?? 100, 'number'))}
     </div>
+    ${noKinds ? '<p class="hint">Сначала заведите вид на вкладке «Виды».</p>' : ''}
     ${sfCheck('fc-escorted', 'С сопровождением батлером', cat?.escorted)}`,
   async m => {
-    const body = { code: $('#fc-code', m).value, title: $('#fc-title', m).value, kind: $('#fc-kind', m).value,
+    const body = { code: $('#fc-code', m).value, title: $('#fc-title', m).value, kind_id: fundNum($('#fc-kind', m).value),
       weight: Number($('#fc-weight', m).value), sort_order: Number($('#fc-sort', m).value), escorted: $('#fc-escorted', m).checked };
     await fundWrite(cat ? 'PUT' : 'POST', cat ? `/api/stays/fund/draft/categories/${cat.id}` : '/api/stays/fund/draft/categories', body);
     toast('Категория сохранена');

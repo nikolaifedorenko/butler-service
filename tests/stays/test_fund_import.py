@@ -12,7 +12,7 @@ from app.modules.stays.adapters.orm import Category, FundVersion, Unit, UnitFlag
 from app.modules.stays.application import fund_drafts as fd
 from app.modules.stays.application import fund_xlsx as fx
 
-from .helpers import API, FundDraft, uniq
+from .helpers import API, FundDraft, kind_id, uniq
 from .test_fund_versions_api import _clean  # noqa: F401 — autouse: снять версии и сущности теста
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -26,7 +26,7 @@ def _seed(c) -> dict:
     """Своя категория (дробный вес), два уровня дерева с порядком, два объекта, флаг."""
     d = FundDraft(c)
     code = "T" + uniq()
-    cat = d.call("POST", "categories", code=code, title="Кат " + code, kind="villa", weight=1.5,
+    cat = d.call("POST", "categories", code=code, title="Кат " + code, kind_id=kind_id("villa"), weight=1.5,
                  escorted=True, sort_order=7)["id"]
     top = d.call("POST", "groups", title="Корпус " + code, sort_order=3)["id"]
     sub = d.call("POST", "groups", title="Блок", parent_id=top, sort_order=2)["id"]
@@ -123,7 +123,7 @@ def test_empty_id_creates(manager_role_client, db):
         ws.append([None, s["code"] + "-3", s["code"], f"Корпус {s['code']} / Блок", "5", None])
         ws.cell(ws.max_row, col, "да")
         ws = wb["Дерево"]
-        ws.append([None, f"Корпус {s['code']} / Флигель", 9])
+        ws.append([None, "Флигель", f"Корпус {s['code']}", 9])
     r = _upload(c, _edit(_export(c), add))
     assert r.status_code == 200, r.text
     diff = r.json()["diff"]
@@ -402,3 +402,27 @@ def test_archived_flag_renamed_still_checked(manager_role_client, db):
     r = _upload(c, _edit(_export(c), rename_and_set))
     assert r.status_code == 422, r.text
     assert any(e["sheet"] == "Объекты" and "в архиве" in e["message"] for e in r.json()["errors"])
+
+
+def test_slash_in_node_title_rejected(manager_role_client, db):
+    c = manager_role_client
+    s = _seed(c)
+
+    def add(wb):
+        wb["Дерево"].append([None, "Корпус / Блок", None, 9])
+    r = _upload(c, _edit(_export(c), add))
+    assert r.status_code == 422, r.text
+    assert any(e["sheet"] == "Дерево" and "«/»" in e["message"] for e in r.json()["errors"]), r.json()
+    assert _draft(db) is None and s
+
+
+def test_old_tree_format_rejected(manager_role_client, db):
+    c = manager_role_client
+
+    def old(wb):
+        ws = wb["Дерево"]
+        ws.delete_cols(3)                       # прежний формат: ID | путь | порядок
+    r = _upload(c, _edit(_export(c), old))
+    assert r.status_code == 422, r.text
+    assert any(e["sheet"] == "Дерево" and "выгрузите фонд заново" in e["message"] for e in r.json()["errors"])
+    assert _draft(db) is None

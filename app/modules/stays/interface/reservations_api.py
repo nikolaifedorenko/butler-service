@@ -56,10 +56,9 @@ class ReservationIn(BaseModel):
     early: bool = False
     late: bool = False
     category_id: int
-    paid_by: str = Field("", max_length=120)
+    paid_category_id: Optional[int] = None                       # пусто — категория брони
     label_id: Optional[int] = None
     customer: str = Field("", max_length=160)
-    purpose: str = Field("", max_length=160)
     note: str = Field("", max_length=4000)
     declined_butler: bool = False
     fields: dict = {}

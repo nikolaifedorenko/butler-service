@@ -23,6 +23,7 @@ from app.modules.timesheet.application.roster import roster
 
 from ..adapters.orm import (
     Assignment,
+    CategoryKind,
     CategoryState,
     CoverageLine,
     Guest,
@@ -47,6 +48,9 @@ CATEGORIES = [  # код, название, вид, сопровождение, 
     ("FAM", "Семейный", "room", False, 1, 60), ("JST", "Джуниор сюит", "room", False, 1, 40),
     ("SUI", "Сюит", "room", True, 2, 20), ("PRS", "Президентский", "room", True, 3, 10),
 ]
+# виды категорий: код в CATEGORIES, название в справочнике, раскрывать раздел на шахматке
+KINDS = {"villa": ("вилла", True), "estate": ("имение", True), "apartment": ("апартаменты", True),
+         "room": ("номер", False)}
 LABELS = [("От руководства", "#d8833b"), ("Открытый рынок", "#3b6fd8"), ("Корпоративный", "#7a4fd0")]
 SURNAMES = ["Орлов", "Гусев", "Лебедев", "Фомина", "Зайцев", "Кузьмин", "Белова", "Новиков", "Соловьёва",
             "Васильев", "Павлова", "Семёнов", "Голубева", "Виноградов", "Богданова", "Воробьёв", "Фролова",
@@ -57,6 +61,17 @@ SURNAMES = ["Орлов", "Гусев", "Лебедев", "Фомина", "За�
             "Афанасьев", "Карпова", "Ершов", "Никитина", "Соболев", "Третьякова", "Субботин", "Шарова",
             "Ларионов", "Кононова", "Блинов"]
 FIRST = ["Андрей", "Мария", "Пётр", "Елена", "Дмитрий", "Ольга", "Игорь", "Анна", "Сергей", "Наталья"]
+# семья из трёх поколений (§4): ключ, фамилия, имя, пол, уровень
+FAMILY = (("ivan", "Петров", "Иван", "m", "vip"), ("maria", "Петрова", "Мария", "f", "vip"),
+          ("petr", "Петров", "Пётр", "m", "regular"), ("olga", "Петрова", "Ольга", "f", "regular"),
+          ("nikolay", "Петров", "Николай", "m", "regular"), ("anna", "Смирнова", "Анна", "f", "regular"),
+          ("viktor", "Козлов", "Виктор", "m", "regular"), ("galina", "Козлова", "Галина", "f", "regular"),
+          ("elena", "Петрова", "Елена", "f", "regular"))
+# первичные связи: parent — первый родитель второго; остальное родство вычисляется
+FAMILY_LINKS = (("ivan", "maria", "spouse"), ("nikolay", "olga", "spouse"), ("viktor", "galina", "spouse"),
+                ("olga", "ivan", "parent"), ("nikolay", "ivan", "parent"), ("olga", "elena", "parent"),
+                ("nikolay", "elena", "parent"), ("anna", "olga", "parent"), ("viktor", "maria", "parent"),
+                ("galina", "maria", "parent"), ("ivan", "petr", "parent"), ("maria", "petr", "parent"))
 DEMO_BUTLERS = ("Сидоров", "Морозова", "Петров", "Орлов", "Фёдоров")
 
 
@@ -123,12 +138,23 @@ def _unit_specs() -> list[dict]:
     return specs
 
 
+def _seed_kinds(db: Session) -> dict[str, int]:
+    """Четыре вида демо (ревизия 0012 могла уже завести их в базе с прежними данными)."""
+    have = dict(db.execute(select(CategoryKind.title, CategoryKind.id)).all())
+    out = {}
+    for i, (code, (title, expanded)) in enumerate(KINDS.items()):
+        out[code] = have.get(title) or fund_drafts.save_kind(
+            db, {"title": title, "sort_order": i * 10, "expanded": expanded}, None)
+    return out
+
+
 def _seed_fund(db: Session) -> tuple[dict, dict]:
     """Фонд демо: исходная версия через seed_initial, затем будущая версия с делением коннекта."""
     specs = _unit_specs()
+    kind_ids = _seed_kinds(db)
     fund_drafts.seed_initial(
         db,
-        categories=[{"code": c, "title": t, "kind": k, "escorted": e, "weight": w}
+        categories=[{"code": c, "title": t, "kind_id": kind_ids[k], "escorted": e, "weight": w}
                     for c, t, k, e, w, _n in [*CATEGORIES, CONNECT]],
         groups=[{"path": list(p)} for p in _tree()],
         flags=[{"title": t, "color": c} for t, c in FLAGS],
@@ -168,16 +194,25 @@ def seed_stays_demo(db: Session) -> None:
     guests = []
     for i, last in enumerate(SURNAMES):
         level = "vvip" if i in (0, 1) else "vip" if i in range(2, 10) else "regular"
-        g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], level=level, source="demo",
+        g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], gender="mf"[i % 2], level=level, source="demo",
                   phone=f"+7916{1000000 + i * 7919:07d}",
                   preferences_json='{"allergy": "орехи"}' if i % 9 == 0 else "{}")
         g.search_text = guest_search_text(g, set())
         guests.append(g)
     db.add_all(guests)
     db.flush()
-    for a, b, kind in ((0, 10, "spouse"), (0, 11, "child"), (0, 12, "assistant"), (1, 13, "spouse"),
-                       (2, 14, "security"), (3, 15, "child"), (4, 16, "spouse")):
+    for a, b, kind in ((0, 10, "spouse"), (0, 11, "parent"), (0, 12, "assistant"), (1, 13, "spouse"),
+                       (2, 14, "security"), (3, 15, "parent"), (4, 16, "spouse")):
         db.add(GuestLink(guest_a_id=guests[a].id, guest_b_id=guests[b].id, kind=kind))
+    family = {key: Guest(last_name=last, first_name=first, middle_name="", phone="", email="", gender=gender,
+                         level=level, source="demo")
+              for key, last, first, gender, level in FAMILY}
+    for g in family.values():
+        g.search_text = guest_search_text(g, set())
+    db.add_all(family.values())
+    db.flush()
+    for a, b, kind in FAMILY_LINKS:
+        db.add(GuestLink(guest_a_id=family[a].id, guest_b_id=family[b].id, kind=kind))
 
     made: list[Reservation] = []
     gi = iter(range(10_000))
@@ -240,6 +275,12 @@ def seed_stays_demo(db: Session) -> None:
                          date_to=sw.check_in + dt.timedelta(days=3), role="main"),
                 Occupant(reservation_id=sw.id, guest_id=guests[15].id, date_from=sw.check_in + dt.timedelta(days=3),
                          date_to=sw.check_out, role="main")])
+    # семья Петровых живёт сегодня в двух объектах: родственники видны на табло дня и в карточке брони
+    staying = [r for r in made if r.status == "in_house" and r.check_out > today + dt.timedelta(days=1)][:2]
+    for r, keys in zip(staying, (("ivan", "maria", "petr"), ("olga", "anna")), strict=False):
+        for key in keys:
+            db.add(Occupant(reservation_id=r.id, guest_id=family[key].id, date_from=r.check_in,
+                            date_to=r.check_out, role="guest"))
     ns = book("PRS", today - dt.timedelta(days=1), today + dt.timedelta(days=3), None, status="no_show")
     live(ns, guests[5])
     db.flush()

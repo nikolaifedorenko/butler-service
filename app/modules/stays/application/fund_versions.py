@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..adapters.orm import (
     Category,
+    CategoryKind,
     CategoryState,
     FundVersion,
     GroupState,
@@ -31,10 +32,11 @@ class CategoryInfo:
     id: int
     code: str
     title: str
-    kind: str
+    kind_id: int
     weight: float
     escorted: bool
     sort_order: int
+    kind_title: str = ""        # название вида из справочника (для файла фонда и подписей)
 
 
 @dataclass(frozen=True)
@@ -159,9 +161,9 @@ def _group_paths(rows: list[GroupState]) -> dict[int, GroupInfo]:
                                   sort_order=r.sort_order, path=path(r.group_id)) for r in rows}
 
 
-def _category_info(r: CategoryState) -> CategoryInfo:
-    return CategoryInfo(id=r.category_id, code=r.code, title=r.title, kind=r.kind, weight=float(r.weight),
-                        escorted=bool(r.escorted), sort_order=r.sort_order)
+def _category_info(r: CategoryState, kind_title: str | None) -> CategoryInfo:
+    return CategoryInfo(id=r.category_id, code=r.code, title=r.title, kind_id=r.kind_id, weight=float(r.weight),
+                        escorted=bool(r.escorted), sort_order=r.sort_order, kind_title=kind_title or "")
 
 
 def _load(db: Session, versions: list[tuple[int, dt.date]],
@@ -171,8 +173,10 @@ def _load(db: Session, versions: list[tuple[int, dt.date]],
     ids = [v for v, _ in versions]
     if cats is None:
         cats = defaultdict(dict)
-        for r in db.scalars(select(CategoryState).where(CategoryState.version_id.in_(ids))):
-            cats[r.version_id][r.category_id] = _category_info(r)
+        for r, kind in db.execute(select(CategoryState, CategoryKind.title)
+                                  .outerjoin(CategoryKind, CategoryKind.id == CategoryState.kind_id)
+                                  .where(CategoryState.version_id.in_(ids))):
+            cats[r.version_id][r.category_id] = _category_info(r, kind)
     group_rows: dict[int, list[GroupState]] = defaultdict(list)
     for r in db.scalars(select(GroupState).where(GroupState.version_id.in_(ids))):
         group_rows[r.version_id].append(r)
@@ -202,18 +206,19 @@ def fund_for(db: Session, first: dt.date, last: dt.date) -> FundTimeline:
     published = FundVersion.status == "published"
     on_first = select(func.max(FundVersion.valid_from)).where(published, FundVersion.valid_from <= first)
     rows = db.execute(
-        select(FundVersion.id, FundVersion.valid_from, CategoryState)
+        select(FundVersion.id, FundVersion.valid_from, CategoryState, CategoryKind.title)
         .outerjoin(CategoryState, CategoryState.version_id == FundVersion.id)
+        .outerjoin(CategoryKind, CategoryKind.id == CategoryState.kind_id)
         .where(published, FundVersion.valid_from <= last,
                FundVersion.valid_from >= func.coalesce(on_first.scalar_subquery(), dt.date.min))
         .order_by(FundVersion.valid_from)).all()
     if not rows:
         return FundTimeline([])
-    versions = list(dict.fromkeys((vid, d) for vid, d, _ in rows))
+    versions = list(dict.fromkeys((vid, d) for vid, d, _c, _k in rows))
     cats: dict[int, dict[int, CategoryInfo]] = defaultdict(dict)
-    for vid, _d, c in rows:
+    for vid, _d, c, kind in rows:
         if c is not None:
-            cats[vid][c.category_id] = _category_info(c)
+            cats[vid][c.category_id] = _category_info(c, kind)
     snaps = _load(db, versions, cats)
     return FundTimeline([(s.valid_from, s) for s in snaps])
 
@@ -232,6 +237,16 @@ def snapshot_of(db: Session, version_id: int) -> FundSnapshot:
     if d is None:
         raise LookupError(f"версия фонда {version_id} не найдена")
     return _load(db, [(version_id, d)])[0]
+
+
+def kinds(db: Session) -> list[CategoryKind]:
+    """Справочник видов категорий по порядку (с архивными: их показывают у прежних категорий)."""
+    return list(db.scalars(select(CategoryKind).order_by(CategoryKind.sort_order, CategoryKind.id)))
+
+
+def kind_dict(k: CategoryKind) -> dict:
+    return {"id": k.id, "title": k.title, "sort_order": k.sort_order, "expanded": bool(k.expanded),
+            "archived": bool(k.archived)}
 
 
 def category_exists(db: Session, category_id: int) -> bool:

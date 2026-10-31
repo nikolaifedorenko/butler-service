@@ -49,6 +49,7 @@ MODULE = ModuleManifest(
         "stays_in_production": "Шахматка: переключатель «в эксплуатации»",
         "stays_guest": "Шахматка: профиль гостя",
         "stays_guest_link": "Шахматка: связь гостей",
+        "stays_guest_merge": "Шахматка: объединение гостей",
         "stays_reservation": "Шахматка: бронь",
         "stays_reservation_status": "Шахматка: статус брони",
         "stays_hold": "Шахматка: блок / OOO",

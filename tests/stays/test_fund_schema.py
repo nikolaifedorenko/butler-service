@@ -22,6 +22,8 @@ from app.modules.stays.adapters.orm import (
     UnitStateFlag,
 )
 
+from .helpers import kind_id
+
 _D = dt.date(2099, 1, 1)
 
 
@@ -51,7 +53,7 @@ def _cat(db, created, vid, code=None):
     db.flush()
     created["cats"].append(c.id)
     db.add(CategoryState(version_id=vid, category_id=c.id, code=code or uuid.uuid4().hex[:8],
-                         title="Кат", kind="room", weight=1, escorted=False, sort_order=1))
+                         title="Кат", kind_id=kind_id("room"), weight=1, escorted=False, sort_order=1))
     db.flush()
     return c.id
 
@@ -231,9 +233,10 @@ def test_migration_with_data_roundtrip(iso_engine):
             units = c.execute(text("SELECT unit_id, label, category_id, group_id, floor FROM stays_unit_states "
                                    "WHERE version_id = :v AND unit_id >= 9000 ORDER BY unit_id"), {"v": v}).all()
             assert [tuple(r) for r in units] == [(9101, "M-1", 9001, None, "2"), (9102, "M-2", 9001, None, "")]
-            cat = c.execute(text("SELECT code, title, kind, weight, escorted, sort_order FROM stays_category_states "
-                                 "WHERE version_id = :v AND category_id = 9001"), {"v": v}).one()
-            assert (cat[0], cat[1], cat[2], float(cat[3]), bool(cat[4]), cat[5]) == ("MIG", "Миграция", "villa", 4.0, True, 7)
+            cat = c.execute(text("SELECT s.code, s.title, k.title, s.weight, s.escorted, s.sort_order "
+                                 "FROM stays_category_states s JOIN stays_category_kinds k ON k.id = s.kind_id "
+                                 "WHERE s.version_id = :v AND s.category_id = 9001"), {"v": v}).one()
+            assert (cat[0], cat[1], cat[2], float(cat[3]), bool(cat[4]), cat[5]) == ("MIG", "Миграция", "вилла", 4.0, True, 7)
             assert c.execute(text("SELECT unit_id FROM stays_assignments WHERE reservation_id = 9201")).scalar_one() == 9101
         command.downgrade(config(), "0009")
         with engine.connect() as c:
@@ -270,9 +273,9 @@ def test_assignment_pieces_migration(iso_engine):
         for uid in (9101, 9102):
             c.execute(text("INSERT INTO stays_units (id) VALUES (:i)"), {"i": uid})
         c.execute(text("INSERT INTO stays_reservations (id, number, status, check_in, check_out, early, late, "
-                       "category_id, paid_by, customer, purpose, note, declined_butler, fields_json, source, "
+                       "category_id, customer, note, declined_butler, fields_json, source, "
                        "version, search_text, created_at, updated_at) VALUES (9201, 'M1', 'confirmed', "
-                       "'2099-01-01', '2099-01-09', 0, 0, 9001, '', '', '', '', 0, '{}', '', 1, '', "
+                       "'2099-01-01', '2099-01-09', 0, 0, 9001, '', '', 0, '{}', '', 1, '', "
                        "'2099-01-01 00:00:00', '2099-01-01 00:00:00')"))
         for seg, uid, pinned in ((0, 9101, 1), (1000, 9102, 0), (1001, 9101, 0)):
             c.execute(text("INSERT INTO stays_assignments (reservation_id, seg_index, unit_id, pinned) "

@@ -25,6 +25,7 @@ from app.core.time import local_date, now_local
 
 from ..adapters.orm import (
     Category,
+    CategoryKind,
     CategoryState,
     FundGroup,
     FundVersion,
@@ -38,7 +39,7 @@ from ..adapters.orm import (
 )
 from . import allocation as _allocation
 from . import reservations
-from .fund import KINDS, FundConflict, FundError
+from .fund import FundConflict, FundError
 from .fund_versions import INITIAL_DATE, FundSnapshot, fund_on, snapshot_of
 from .fund_xlsx import SHEET_CATEGORIES, SHEET_FLAGS, SHEET_TREE, SHEET_UNITS, FileError, ParsedFund
 from .locking import lock_module
@@ -67,7 +68,7 @@ def _published_on(db: Session, day: dt.date) -> FundVersion | None:
 def _copy_states(db: Session, src: int, dst: int) -> None:
     """Полная копия снимка версии src в версию dst (порядок учитывает составные FK)."""
     for model, cols in (
-        (CategoryState, ("category_id", "code", "title", "kind", "weight", "escorted", "sort_order")),
+        (CategoryState, ("category_id", "code", "title", "kind_id", "weight", "escorted", "sort_order")),
         (GroupState, ("group_id", "parent_id", "title", "sort_order")),
         (UnitState, ("unit_id", "label", "category_id", "group_id", "floor")),
         (UnitStateFlag, ("unit_id", "flag_id")),
@@ -217,14 +218,25 @@ def _remove_unit(db: Session, vid: int, unit_id: int) -> None:
 # ── категории ──────────────────────────────────────────────────────────────
 
 
+def _kind_for(db: Session, kind_id, current: int | None) -> int:
+    """Вид категории из справочника: обязателен; архивный — только тот, что уже стоит у категории
+    (новой категории и смене вида архивный вид не дают)."""
+    if kind_id is None:
+        raise FundError("вид категории: укажите значение")
+    kind = db.get(CategoryKind, kind_id) if isinstance(kind_id, int) and not isinstance(kind_id, bool) else None
+    if kind is None:
+        raise FundError("вида категории нет в справочнике")
+    if kind.archived and kind.id != current:
+        raise FundError(f"вид «{kind.title}» в архиве")
+    return kind.id
+
+
 def save_category(db: Session, rev: int, data: dict, category_id: int | None) -> int:
     draft = _draft(db, rev)
     row = _cat(db, draft.id, category_id) if category_id is not None else None
     code = _text(data, "code", row.code if row else None, 16, "код категории")
     title = _text(data, "title", row.title if row else None, 120, "название категории")
-    kind = data.get("kind", row.kind if row else "room")
-    if kind not in KINDS:
-        raise FundError("вид категории: " + ", ".join(KINDS))
+    kind = _kind_for(db, data.get("kind_id", row.kind_id if row else None), row.kind_id if row else None)
     try:
         weight = Decimal(str(data.get("weight", row.weight if row else 1)))
     except InvalidOperation:
@@ -242,7 +254,7 @@ def save_category(db: Session, rev: int, data: dict, category_id: int | None) ->
         category_id = cat.id
         row = CategoryState(version_id=draft.id, category_id=category_id)
         db.add(row)
-    row.code, row.title, row.kind, row.weight = code, title, kind, weight
+    row.code, row.title, row.kind_id, row.weight = code, title, kind, weight
     row.escorted = bool(data.get("escorted", row.escorted if row.escorted is not None else False))
     row.sort_order = _sort_order(data, row.sort_order)
     bump(draft)
@@ -454,7 +466,7 @@ def _entries(before: dict[int, dict], after: dict[int, dict]) -> list[dict]:
 
 def _plain(s: FundSnapshot):
     def cat(c):
-        return {"code": c.code, "title": c.title, "kind": c.kind, "weight": c.weight,
+        return {"code": c.code, "title": c.title, "kind_id": c.kind_id, "weight": c.weight,
                 "escorted": c.escorted, "sort_order": c.sort_order}
 
     def grp(g):
@@ -483,7 +495,7 @@ def diff(db: Session, base_id: int, other_id: int) -> FundDiff:
 
 # сущность → (модель, ключ, поля в версии); порядок — порядок составных FK
 _STATE = {
-    "category": (CategoryState, "category_id", ("code", "title", "kind", "weight", "escorted", "sort_order")),
+    "category": (CategoryState, "category_id", ("code", "title", "kind_id", "weight", "escorted", "sort_order")),
     "group": (GroupState, "group_id", ("parent_id", "title", "sort_order")),
     "unit": (UnitState, "unit_id", ("label", "category_id", "group_id", "floor")),
 }
@@ -800,7 +812,7 @@ def delete_version(db: Session, version_id: int) -> None:
 def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags: list[dict],
                  units: list[dict]) -> None:
     """Заполняет исходную версию (INITIAL_DATE) напрямую, минуя черновик. Только для демо-сида
-    и начальной загрузки. Ключи — как в телах API: категория — code/title/kind/escorted/weight/
+    и начальной загрузки. Ключи — как в телах API: категория — code/title/kind_id/escorted/weight/
     sort_order; узел — path (названия от корня; недостающие предки заводятся сами) и sort_order;
     флаг — title/color/sort_order; объект — label, category (код), path, floor, flags (названия).
     FundConflict, если в исходной версии уже есть объекты."""
@@ -815,7 +827,7 @@ def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags:
     for i, c in enumerate(categories):
         cats[c["code"]] = cid = _add(db, Category())
         db.add(CategoryState(version_id=vid, category_id=cid, code=c["code"], title=c["title"],
-                             kind=c.get("kind", "room"), escorted=bool(c.get("escorted", False)),
+                             kind_id=c["kind_id"], escorted=bool(c.get("escorted", False)),
                              weight=Decimal(str(c.get("weight", 1))), sort_order=c.get("sort_order", i * 10)))
     nodes: dict[tuple[str, ...], int] = {}
 
@@ -866,7 +878,20 @@ class FundFileError(FundError):
         self.errors = errors
 
 
-_KIND_BY_TITLE = {t: k for k, t in KINDS.items()}
+def kind_titles(kinds: Sequence[CategoryKind]) -> list[str]:
+    """Названия видов, которые можно указать в файле (без архивных) — для текста ошибки."""
+    return [k.title for k in kinds if not k.archived]
+
+
+def unknown_kind_message(title: str, kinds: Sequence[CategoryKind]) -> str:
+    """Ошибка «вида нет в справочнике»; пустой справочник — подсказка, где его завести."""
+    names = kind_titles(kinds)
+    if not names:
+        return (f"вид «{title}» — нет активных видов: сначала заведите вид на вкладке «Виды»"
+                " (архивные для новых категорий недоступны)")
+    return f"вид «{title}» — нет в справочнике видов: " + ", ".join(names)
+
+
 _COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 _WEIGHT_MAX = Decimal("999.99")                 # Numeric(5, 2)
 
@@ -972,6 +997,8 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dic
 
     dictionary = {f.id: f for f in db.scalars(select(UnitFlag))}
     plan = _plan_flags(parsed, dictionary, err)
+    kinds = list(db.scalars(select(CategoryKind).order_by(CategoryKind.sort_order, CategoryKind.id)))
+    kind_by_title = {k.title.casefold(): k for k in kinds}
 
     cats: dict[int, dict] = {}                   # ParsedCategory.row_no → поля
     for c in parsed.categories:
@@ -981,15 +1008,22 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dic
             err(SHEET_CATEGORIES, c.row_no, "код категории длиннее 16 символов")
         if len(c.title) > 120:
             err(SHEET_CATEGORIES, c.row_no, "название категории длиннее 120 символов")
-        kind = c.kind.lower() if c.kind.lower() in KINDS else _KIND_BY_TITLE.get(c.kind.lower())
-        if not c.kind:
-            kind = hc[c.id]["kind"] if c.id in hc else "room"
-        if kind is None:
-            err(SHEET_CATEGORIES, c.row_no, f"вид «{c.kind}» — ожидается одно из: " + ", ".join(KINDS))
+        if c.kind:
+            k = kind_by_title.get(c.kind.casefold())
+            kind = k.id if k is not None else None
+            if k is None:
+                err(SHEET_CATEGORIES, c.row_no, unknown_kind_message(c.kind, kinds))
+            elif k.archived and not (c.id in hc and hc[c.id]["kind_id"] == k.id):
+                err(SHEET_CATEGORIES, c.row_no, f"вид «{k.title}» в архиве")
+        elif c.id in hc:
+            kind = hc[c.id]["kind_id"]                     # пусто — вид категории не меняется
+        else:
+            kind = None
+            err(SHEET_CATEGORIES, c.row_no, "не указан вид категории")
         weight = _file_weight(c.weight)
         if weight is None:
             err(SHEET_CATEGORIES, c.row_no, f"вес {c.weight} — ожидается число больше 0 и не больше {_WEIGHT_MAX}")
-        cats[c.row_no] = {"code": c.code, "title": c.title, "kind": kind, "weight": weight,
+        cats[c.row_no] = {"code": c.code, "title": c.title, "kind_id": kind, "weight": weight,
                           "escorted": c.escorted, "sort_order": c.sort_order}
     for g in parsed.groups:
         if g.id is not None and g.id not in hg:
@@ -1105,3 +1139,47 @@ def delete_flag(db: Session, flag_id: int) -> None:
     db.delete(row)
     db.flush()
 
+
+
+# ── справочник видов категорий (вне черновика) ─────────────────────────────
+
+
+def _kind_row(db: Session, kind_id: int) -> CategoryKind:
+    row = db.get(CategoryKind, kind_id)
+    if row is None:
+        raise FundError("вида нет в справочнике")
+    return row
+
+
+def save_kind(db: Session, data: dict, kind_id: int | None) -> int:
+    lock_module(db)
+    row = _kind_row(db, kind_id) if kind_id is not None else None
+    title = _text(data, "title", row.title if row else None, 40, "название вида")
+    folded = title.casefold()                     # как в файле: без учёта регистра
+    taken = next((k.id for k in db.scalars(select(CategoryKind)) if k.title.casefold() == folded), None)
+    if taken is not None and taken != kind_id:
+        raise FundConflict(f"вид «{title}» уже есть")
+    if row is None:
+        row = CategoryKind(archived=False)
+        db.add(row)
+    row.title = title
+    row.sort_order = _sort_order(data, row.sort_order)
+    row.expanded = bool(data.get("expanded", row.expanded or False))
+    db.flush()
+    return row.id
+
+
+def archive_kind(db: Session, kind_id: int, archived: bool) -> None:
+    lock_module(db)
+    _kind_row(db, kind_id).archived = archived
+    db.flush()
+
+
+def delete_kind(db: Session, kind_id: int) -> None:
+    """Вид, на который ссылается категория хоть одной версии фонда (и черновика), не удаляется — 409."""
+    lock_module(db)
+    row = _kind_row(db, kind_id)
+    if db.scalar(select(func.count()).select_from(CategoryState).where(CategoryState.kind_id == kind_id)):
+        raise FundConflict("вид используется — отправьте его в архив")
+    db.delete(row)
+    db.flush()

@@ -10,7 +10,8 @@
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
-const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони']];
+const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони'],
+  ['guests', 'Гости']];
 const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
 /* месяц видов — общий state.year / state.month (как Табель и График, §6); фильтры — одна
    панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
@@ -19,9 +20,8 @@ const staysState = {
   sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {},
   ocOpen: {}, ocMode: 'pct', focusDay: null,
 };
-const STAYS_OPEN_KINDS = new Set(['villa', 'estate', 'apartment']);   // разделы с ними развёрнуты сразу
 function staysEmptyFilters() {
-  return { group_ids: [], category_ids: [], flag_ids: [], kinds: [], escorted: false, vip: false, q: '' };
+  return { group_ids: [], category_ids: [], flag_ids: [], kind_ids: [], escorted: false, vip: false, q: '' };
 }
 
 /* PoC §5.1: ordinal как в Python date.toordinal() — клиент и сервер считают позиции одинаково */
@@ -87,7 +87,7 @@ function staysFundParams(p) {
   f.group_ids.forEach(v => p.append('group_ids', v));
   f.category_ids.forEach(v => p.append('category_ids', v));
   f.flag_ids.forEach(v => p.append('flag_ids', v));
-  f.kinds.forEach(v => p.append('kinds', v));
+  f.kind_ids.forEach(v => p.append('kind_ids', v));
   return p;
 }
 /* панель фильтров вида: изменение — новые фильтры и перерисовка вида */
@@ -111,7 +111,7 @@ async function staysFund(force = false) {
     const [dicts, snap] = await Promise.all([api('/api/stays/fund', { silent: true }),
       api('/api/stays/fund/snapshot?date=' + staysToday(), { silent: true })]);
     const groups = Object.fromEntries(snap.groups.map(g => [g.id, g]));
-    staysState.fund = { ...dicts, categories: snap.categories, groups: snap.groups, flags: snap.flags,
+    staysState.fund = { ...dicts, categories: snap.categories, groups: snap.groups, flags: snap.flags, kinds: snap.kinds,
       /* объект снимка есть в фонде дня — «активен»; путь узла названиями — для подписи */
       units: snap.units.map(u => ({ ...u, active: true, group: u.path.map(id => groups[id]?.title || '').join(' / ') })) };
   }
@@ -122,7 +122,7 @@ async function loadStays() {
   const host = $('#view-stays');
   host.innerHTML = `
     <div class="page-head"><div><h2>Шахматка</h2><div class="sub">Кто где живёт и кто из батлеров ведёт гостей</div></div></div>
-    <div class="layer-tabs">${STAYS_TABS.filter(([id]) => (id !== 'butlers' && id !== 'bookings') || can('stays.view')).map(([id, t]) =>
+    <div class="layer-tabs">${STAYS_TABS.filter(staysTabAllowed).map(([id, t]) =>
       `<button class="btn btn-sm${staysState.tab === id ? ' btn-primary' : ''}" data-stab="${id}">${esc(t)}</button>`).join('')}</div>
     <div id="stays-body"><div class="empty">Загрузка…</div></div>`;
   $$('[data-stab]', host).forEach(b => { b.onclick = () => { staysState.tab = b.dataset.stab; loadStays(); }; });
@@ -134,10 +134,15 @@ async function loadStays() {
     body.innerHTML = `<div class="panel"><p class="muted">${esc(e.message)}</p></div>`;
   }
 }
+/* «Батлеры» и «Брони» — с уровня «с фамилиями»; «Гости» — справочник целиком (stays.guests, §3) */
+function staysTabAllowed([id]) {
+  if (id === 'guests') return can('stays.guests') && can('stays.view');
+  return (id !== 'butlers' && id !== 'bookings') || can('stays.view');
+}
 /* вкладки из других файлов раздела — по имени при вызове: файлы грузятся по алфавиту */
 function staysTabRender(tab) {
   return { units: renderUnitsBoard, butlers: renderButlersBoard, day: renderDayBoard,
-    occupancy: renderOccupancyGrid, bookings: renderBookings }[tab] || renderUnitsBoard;
+    occupancy: renderOccupancyGrid, bookings: renderBookings, guests: renderGuestsTab }[tab] || renderUnitsBoard;
 }
 
 async function loadMyStays() {
@@ -262,9 +267,9 @@ async function renderUnitsBoard(body) {
   staysFocusDay(body);
 }
 
-/* Разделы дерева: по умолчанию развёрнуты корневые разделы с виллами, имениями и
-   апартаментами (§6: «виллы развёрнуты, основной корпус свёрнут»), вложенные — развёрнуты;
-   выбор пользователя — staysState.collapsed. Строки свёрнутого раздела в DOM не рисуются. */
+/* Разделы дерева: по умолчанию развёрнут корневой раздел, где есть категория вида с
+   «раскрывать» (справочник видов, §1 дополнения: виллы развёрнуты, корпус свёрнут), вложенные —
+   развёрнуты; выбор пользователя — staysState.collapsed. Строки свёрнутого раздела в DOM не рисуются. */
 function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
   const days = data.days;
   const n = days.length;
@@ -274,6 +279,7 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
   const cats = Object.fromEntries(fund.categories.map(c => [c.id, c]));
   const groups = Object.fromEntries(fund.groups.map(g => [g.id, g]));
   const flags = Object.fromEntries((fund.flags || []).map(f => [f.id, f]));
+  const expanded = new Set((fund.kinds || []).filter(k => k.expanded).map(k => k.id));
   const st = staysState.sort;
   const rows = staysSortRows(data.units, st, fund);
   const pathOf = u => (u.group_path.length ? u.group_path.map(String) : ['none']);
@@ -281,7 +287,7 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
   rows.forEach(u => pathOf(u).forEach(k => { (under[k] ||= []).push(u); }));
   const open = (key, depth) => {
     if (key in staysState.collapsed) return !staysState.collapsed[key];
-    return depth > 0 || under[key].some(u => u.categories.some(c => STAYS_OPEN_KINDS.has(cats[c.category_id]?.kind)));
+    return depth > 0 || under[key].some(u => u.categories.some(c => expanded.has(cats[c.category_id]?.kind_id)));
   };
   const title = (u, i) => (u.group_path.length ? groups[u.group_path[i]]?.title || u.group.split(' / ')[i] || '#' + u.group_path[i] : 'Без группы');
   const pct = (a, b) => `left:${a / n * 100}%;width:${(b - a + 1) / n * 100}%`;
@@ -335,13 +341,15 @@ async function openReservationCard(rid, onChanged) {
   openModal({
     title: `Бронь ${card.number || '#' + card.id}`, wide: true,
     subtitle: `${card.status_title} · ${dateRu(card.check_in)}–${dateRu(card.check_out)}`,
-    body: `
+    body: `${card.upgrade ? `<p><span class="badge muted">${esc(card.upgrade)}</span></p>` : ''}
       <div class="grid-2">
         <div><h4>Объекты</h4>${card.segments.map(s => `<div>${esc(dateRu(s.start))}–${esc(dateRu(s.end))}: <b>${esc(s.unit || 'без объекта')}</b>
           ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}</div>
         <div><h4>Гости</h4>${card.occupants.map(o => `<div>${o.level !== 'regular' ? esc(STAYS_LEVEL_MARK[o.level]) : ''}${esc(o.guest)}
-          <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>
-          ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}</div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
+          <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>${staysRelativesHtml(o.relatives)}
+          <button class="btn btn-sm btn-ghost" data-family="${o.guest_id}">Семья</button>
+          ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}
+          <div class="ft" data-family-box="${o.guest_id}" hidden></div></div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
       </div>
       ${card.companions?.length ? `<h4>Сопровождающие</h4>${card.companions.map(c => `<div>${esc(STAYS_COMPANION[c.kind] || c.kind)} — ${esc(c.description)}</div>`).join('')}` : ''}
       ${card.logistics ? `<h4>Логистика</h4>${card.logistics.map(l => `<div>${esc(l.date ? dateRu(l.date) : '')} ${esc(l.time)} ${esc(l.description)}</div>`).join('') || '<span class="muted">нет</span>'}
@@ -362,6 +370,18 @@ async function openReservationCard(rid, onChanged) {
       const st = $('#rc-status', m);
       if (st) st.onclick = () => openStatusForm(card, onChanged);
       $$('[data-guest-card]', m).forEach(b => { b.onclick = () => openGuestCard(Number(b.dataset.guestCard), onChanged); });
+      /* семейное дерево гостя — только просмотр: правится в карточке гостя (§4, с уровня «с фамилиями») */
+      $$('[data-family]', m).forEach(b => {
+        b.onclick = () => {
+          const box = $(`[data-family-box="${b.dataset.family}"]`, m);
+          box.hidden = !box.hidden;
+          /* загружено — только при успехе: после ошибки следующий клик запросит дерево снова */
+          if (!box.hidden && box.dataset.loaded !== '1') {
+            renderFamilyTree(box, Number(b.dataset.family)).then(ok => { if (ok) box.dataset.loaded = '1'; })
+              .catch(e => toast(e.message, 'err'));
+          }
+        };
+      });
       const grp = $('#rc-group', m);
       if (grp) grp.onclick = () => openGroupForm(card, onChanged);
       $$('[data-move-seg]', m).forEach(b => { b.onclick = () => openTransferForm(rid, Number(b.dataset.moveSeg), onChanged); });

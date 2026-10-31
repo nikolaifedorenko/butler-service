@@ -30,6 +30,8 @@ from app.modules.stays.application.fund_versions import (
 )
 from app.modules.stays.domain import halfday
 
+from .helpers import kind_id
+
 D1, D2, D3 = dt.date(2097, 11, 15), dt.date(2097, 12, 10), dt.date(2098, 1, 5)
 
 
@@ -46,7 +48,7 @@ def world(db):
         db.flush()
         versions[key] = v
         db.add(CategoryState(version_id=v.id, category_id=cat.id, code=f"C{uuid.uuid4().hex[:6]}",
-                             title=f"Кат {key}", kind="room", weight=1.5, escorted=True, sort_order=3))
+                             title=f"Кат {key}", kind_id=kind_id("room"), weight=1.5, escorted=True, sort_order=3))
         db.flush()
         db.add(UnitState(version_id=v.id, unit_id=unit.id, label=f"U{key}", category_id=cat.id, floor="2"))
     db.commit()
@@ -135,7 +137,7 @@ def test_category_exists(db, world):
 
 
 def _snap(vid: int, d: dt.date, units: dict[int, str], cats: dict[int, str]) -> FundSnapshot:
-    return FundSnapshot(vid, d, {c: CategoryInfo(c, code, code, "room", 1.0, False, 0) for c, code in cats.items()},
+    return FundSnapshot(vid, d, {c: CategoryInfo(c, code, code, 1, 1.0, False, 0) for c, code in cats.items()},
                         {}, {u: UnitInfo(u, label, 1, None, "", frozenset()) for u, label in units.items()})
 
 

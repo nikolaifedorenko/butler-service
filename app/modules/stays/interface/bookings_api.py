@@ -63,7 +63,7 @@ def bookings_export(query: bookings.BookingQuery = Depends(_query),
         "sort": query.sort, "dir": query.dir, "rows": len(rows), "statuses": list(query.statuses),
         "label_ids": list(query.label_ids), "unassigned": query.unassigned, "with_warnings": query.with_warnings,
         "group_ids": list(f.group_ids), "category_ids": list(f.category_ids), "flag_ids": list(f.flag_ids),
-        "kinds": list(f.kinds), "floor": f.floor, "escorted": f.escorted_only, "vip": f.vip,
+        "kind_ids": list(f.kind_ids), "floor": f.floor, "escorted": f.escorted_only, "vip": f.vip,
         "employee_id": f.employee_id, "q": f.q})
     db.commit()
     name = f"bookings_{query.first.isoformat()}_{query.last.isoformat()}.xlsx"

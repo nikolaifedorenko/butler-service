@@ -198,3 +198,124 @@ def test_edit_requires_perm(manager_role_client, manager_client, employee_client
     body = res_body(cat, "2027-09-01", "2027-09-03")
     assert employee_client.post(f"{API}/reservations", json=body).status_code == 403
     assert mgmt_client.post(f"{API}/reservations", json=body).status_code == 403
+
+
+def _fund_with_new_category(setup_client):
+    """Категория, появившаяся в фонде только с версии «сегодня» — позже дат тестовой брони в прошлом."""
+    from .helpers import FundDraft, kind_id, uniq
+    d = FundDraft(setup_client)
+    code = "P" + uniq()
+    cid = d.call("POST", "categories", code=code, title=code, kind_id=kind_id("villa"), escorted=False,
+                 weight=1)["id"]
+    d.call("POST", "units", label=code + "-1", category_id=cid)
+    d.publish()
+    return {"id": cid, "code": code}
+
+
+def test_paid_category_defaults_to_booking_category(manager_role_client, manager_client):
+    cat = make_category(manager_role_client)
+    g = make_guest(manager_client)
+    res = create_res(manager_client, cat, "2027-05-02", "2027-05-05", [(g["id"], "main", None, None)])
+    assert res["paid_category_id"] == cat["id"]
+    other = make_category(manager_role_client)
+    res2 = create_res(manager_client, cat, "2027-06-02", "2027-06-05", [(g["id"], "main", None, None)],
+                      paid_category_id=other["id"])
+    assert res2["paid_category_id"] == other["id"]
+    r = _put(manager_client, res2, paid_category_id=None)
+    assert r.status_code == 200 and r.json()["result"]["paid_category_id"] == cat["id"]
+
+
+def test_paid_category_must_exist_on_check_in(manager_role_client, manager_client):
+    cat = make_category(manager_role_client)
+    g = make_guest(manager_client)
+    late = _fund_with_new_category(manager_role_client)
+    r = manager_client.post(f"{API}/reservations", json=res_body(
+        cat, "2020-05-02", "2020-05-05", [(g["id"], "main", None, None)], paid_category_id=late["id"]))
+    assert r.status_code == 422, r.text
+    r = manager_client.post(f"{API}/reservations", json=res_body(
+        cat, "2027-05-02", "2027-05-05", [(g["id"], "main", None, None)], paid_category_id=9_999_999))
+    assert r.status_code == 422
+
+
+def test_upgrade_mark_in_card_and_bookings(manager_role_client, manager_client):
+    cat, paid = make_category(manager_role_client), make_category(manager_role_client)
+    g = make_guest(manager_client)
+    res = create_res(manager_client, cat, "2027-07-02", "2027-07-05", [(g["id"], "main", None, None)],
+                     paid_category_id=paid["id"])
+    card = manager_client.get(f"{API}/reservations/{res['id']}/card").json()
+    assert card["upgrade"] == f"апгрейд: оплачена {paid['code']}" and card["paid_category"] == paid["code"]
+    rows = manager_client.get(f"{API}/bookings", params={"first": "2027-07-01", "last": "2027-07-10"}).json()["rows"]
+    assert [x["upgrade"] for x in rows if x["id"] == res["id"]] == [f"апгрейд: оплачена {paid['code']}"]
+    plain = create_res(manager_client, cat, "2027-08-02", "2027-08-05", [(g["id"], "main", None, None)])
+    assert manager_client.get(f"{API}/reservations/{plain['id']}/card").json()["upgrade"] == ""
+
+
+def test_purpose_removed_from_api_and_export(manager_role_client, manager_client):
+    import io
+
+    from openpyxl import load_workbook
+    cat = make_category(manager_role_client)
+    g = make_guest(manager_client)
+    res = create_res(manager_client, cat, "2027-09-02", "2027-09-05", [(g["id"], "main", None, None)],
+                     purpose="отпуск", paid_by="гость")
+    assert "purpose" not in res and "paid_by" not in res
+    card = manager_client.get(f"{API}/reservations/{res['id']}/card").json()
+    assert "purpose" not in card and "paid_by" not in card
+    r = manager_role_client.get(f"{API}/export", params={"first": "2027-09-01", "last": "2027-09-10", "kind": "full"})
+    heads = [c.value for ws in load_workbook(io.BytesIO(r.content)).worksheets for row in ws.iter_rows(max_row=1)
+             for c in row]
+    assert not any("повод" in str(h).lower() for h in heads)
+
+
+def _upgrade(c, rid) -> str:
+    return c.get(f"{API}/reservations/{rid}/card").json()["upgrade"]
+
+
+def test_paid_category_follows_category_change(manager_role_client, manager_client):
+    cat, other = make_category(manager_role_client), make_category(manager_role_client)
+    g = make_guest(manager_client)
+    res = create_res(manager_client, cat, "2027-10-02", "2027-10-05", [(g["id"], "main", None, None)])
+    r = _put(manager_client, res, category_id=other["id"])        # эхо старой нагрузки: оплата не указана
+    assert r.status_code == 200, r.text
+    assert r.json()["result"]["paid_category_id"] == other["id"] and _upgrade(manager_client, res["id"]) == ""
+
+
+def test_group_join_keeps_default_paid(manager_role_client, manager_client):
+    cat, other, third = (make_category(manager_role_client) for _ in range(3))
+    g = make_guest(manager_client)
+    gid = manager_client.post(f"{API}/groups", json={"title": "Семья"}).json()["id"]
+    create_res(manager_client, cat, "2027-11-02", "2027-11-05", group_id=gid)
+    b = create_res(manager_client, other, "2027-11-02", "2027-11-05", [(g["id"], "main", None, None)],
+                   group_id=gid)                                   # категория группы перекрывает свою
+    assert b["category_id"] == cat["id"] and _upgrade(manager_client, b["id"]) == ""
+    c = create_res(manager_client, other, "2027-11-02", "2027-11-05", group_id=gid, paid_category_id=third["id"])
+    assert _upgrade(manager_client, c["id"]) == f"апгрейд: оплачена {third['code']}"
+
+
+def test_paid_category_before_fund_start_refused(manager_role_client, manager_client):
+    cat, other = make_category(manager_role_client), make_category(manager_role_client)
+    g = make_guest(manager_client)
+    r = manager_client.post(f"{API}/reservations", json=res_body(
+        cat, "1990-05-02", "1990-05-05", [(g["id"], "main", None, None)], paid_category_id=other["id"]))
+    assert r.status_code == 422, r.text
+
+
+def test_group_join_form_payload_no_false_upgrade(manager_role_client, manager_client):
+    cat, other = make_category(manager_role_client), make_category(manager_role_client)
+    g = make_guest(manager_client)
+    gid = manager_client.post(f"{API}/groups", json={"title": "Форма"}).json()["id"]
+    create_res(manager_client, cat, "2028-01-02", "2028-01-05", group_id=gid)
+    # как форма: оплата явно равна выбранной категории брони
+    b = create_res(manager_client, other, "2028-01-02", "2028-01-05", [(g["id"], "main", None, None)],
+                   group_id=gid, paid_category_id=other["id"])
+    assert b["category_id"] == cat["id"] and _upgrade(manager_client, b["id"]) == ""
+    from app.core.db import SessionLocal
+    from app.modules.stays.adapters.orm import Reservation
+    with SessionLocal() as s:
+        assert s.get(Reservation, b["id"]).paid_category_id is None
+    # правка: бронь без группы, затем вступление в группу с той же формой
+    solo = create_res(manager_client, other, "2028-02-02", "2028-02-05", [(g["id"], "main", None, None)],
+                      paid_category_id=other["id"])
+    r = _put(manager_client, solo, group_id=gid, category_id=other["id"], paid_category_id=other["id"])
+    assert r.status_code == 200, r.text
+    assert _upgrade(manager_client, solo["id"]) == ""

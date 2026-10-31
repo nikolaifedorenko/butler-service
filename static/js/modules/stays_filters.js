@@ -72,7 +72,7 @@ function staysDeleteFilter(name) {
 function staysCleanFilters(f) {
   const ids = v => (Array.isArray(v) ? v.map(Number).filter(Number.isInteger) : []);
   return { ...staysEmptyFilters(), group_ids: ids(f?.group_ids), category_ids: ids(f?.category_ids),
-    flag_ids: ids(f?.flag_ids), kinds: Array.isArray(f?.kinds) ? f.kinds.map(String) : [],
+    flag_ids: ids(f?.flag_ids), kind_ids: ids(f?.kind_ids),
     escorted: !!f?.escorted, vip: !!f?.vip, q: typeof f?.q === 'string' ? f.q : '' };
 }
 
@@ -86,6 +86,12 @@ function staysTreeOrder(groups) {
   const walk = (key, depth) => (kids[key] || []).forEach(g => { out.push({ g, depth }); walk(g.id, depth + 1); });
   walk('root', 0);
   return out;
+}
+
+/* виды для фильтра: архивный вид — только пока он стоит у категории фонда */
+function staysKindChoices(fund) {
+  const used = new Set(fund.categories.map(c => c.kind_id));
+  return (fund.kinds || []).filter(k => !k.archived || used.has(k.id));
 }
 
 /* people — фильтры по гостям (поиск, VIP); уровню occupancy их не показываем: сервер их
@@ -107,7 +113,7 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
     ${list('group', 'Где', staysTreeOrder(fund.groups).map(({ g, depth }) => ({ value: g.id, label: g.title, depth })), f.group_ids)}
     ${list('cat', 'Категории', fund.categories.map(c => ({ value: c.id, label: c.code })), f.category_ids)}
     ${list('flag', 'Флаги', (fund.flags || []).filter(x => !x.archived).map(x => ({ value: x.id, label: x.title })), f.flag_ids)}
-    ${list('kind', 'Вид', fund.kinds.map(k => ({ value: k.code, label: k.title })), f.kinds)}
+    ${list('kind', 'Вид', staysKindChoices(fund).map(k => ({ value: k.id, label: k.title })), f.kind_ids)}
     <label class="chk"><input type="checkbox" id="sf-esc"${f.escorted ? ' checked' : ''}> с сопровождением</label>
     ${people ? `<label class="chk"><input type="checkbox" id="sf-vip"${f.vip ? ' checked' : ''}> VIP/VVIP</label>
       <input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" value="${esc(staysSearchDraft?.value ?? f.q)}">` : ''}
@@ -122,7 +128,7 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
   $$('[data-sf-dd]', el).forEach(d => {
     d.addEventListener('toggle', () => { if (d.open) staysFilterOpen.add(d.dataset.sfDd); else staysFilterOpen.delete(d.dataset.sfDd); });
   });
-  [['group', 'group_ids', Number], ['cat', 'category_ids', Number], ['flag', 'flag_ids', Number], ['kind', 'kinds', String]]
+  [['group', 'group_ids', Number], ['cat', 'category_ids', Number], ['flag', 'flag_ids', Number], ['kind', 'kind_ids', Number]]
     .forEach(([key, field, cast]) => {
       $$(`[data-sf-${key}]`, el).forEach(cb => {
         cb.onchange = () => emit({ [field]: $$(`[data-sf-${key}]`, el).filter(x => x.checked).map(x => cast(x.getAttribute(`data-sf-${key}`))) });
