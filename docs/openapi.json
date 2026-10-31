@@ -1820,11 +1820,8 @@
             "type": "string"
           },
           "kind": {
-            "default": "block",
-            "enum": [
-              "block",
-              "ooo"
-            ],
+            "const": "ooo",
+            "default": "ooo",
             "title": "Kind",
             "type": "string"
           },

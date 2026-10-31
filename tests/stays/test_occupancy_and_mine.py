@@ -1,6 +1,10 @@
 """Шахматка, задача 17: сводная загрузка, «Мои гости», правка своих броней батлером, матрица ролей."""
 from __future__ import annotations
 
+import datetime as dt
+
+from app.modules.stays.adapters.orm import Block, BlockNight
+
 from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, uniq
 
 
@@ -48,21 +52,26 @@ def test_occupancy_grid_counts(manager_role_client, manager_client, occupancy_cl
         assert cells["2038-01-03"]["pct"] == round(2 / 3, 3)
 
 
-def test_occupancy_rows(manager_role_client, manager_client):
+def test_occupancy_rows(manager_role_client, manager_client, db):
     """Строки §6.1 на один день: выезд и заезд в тот же объект — по 1 в «Заездах» и «Выездах» и
     1 в «Проживают»; OOO уменьшает знаменатель; блок — в числителе; «Свободно» не меньше 0;
     «Гостей» — по составу; всё в OOO — pct None."""
     gid = _group(manager_role_client)
     cat = make_category(manager_role_client, n_units=3, group_id=gid)
-    u1, u2, u3 = (u["id"] for u in cat["units"])
+    u1, u2, _u3 = (u["id"] for u in cat["units"])
     gs = [make_guest(manager_client)["id"] for _ in range(3)]
     d = "2038-02-10"
     create_res(manager_client, cat, "2038-02-08", d, [(gs[0], "main", None, None)], pins={0: u1})
     create_res(manager_client, cat, d, "2038-02-12", [(gs[1], "main", None, None), (gs[2], "guest", None, None)],
                pins={0: u1})
-    for unit, kind in ((u2, "ooo"), (u3, "block")):
-        r = manager_client.post(f"{API}/holds", json={"unit_id": unit, "start": d, "end": d, "kind": kind})
-        assert r.status_code == 200, r.text
+    r = manager_client.post(f"{API}/holds", json={"unit_id": u2, "start": d, "end": d, "kind": "ooo"})
+    assert r.status_code == 200, r.text
+    day = dt.date.fromisoformat(d)       # блок держит один объект категории в ночь d
+    blk = Block(title="", start=day, end=day)
+    db.add(blk)
+    db.flush()
+    db.add(BlockNight(block_id=blk.id, category_id=cat["id"], night=day, quantity=1))
+    db.commit()
     body = _occ(manager_client, "2038-02-09", "2038-02-11", group_ids=gid)
     cell = _by_day(body["nodes"][0], body["days"])[d]
     assert cell == {"total": 3, "living": 1, "guests": 2, "arrivals": 1, "departures": 1,

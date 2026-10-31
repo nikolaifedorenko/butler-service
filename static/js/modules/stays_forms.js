@@ -413,20 +413,19 @@ async function openHoldForm(hold, onSaved) {
   const isNew = !hold.id;
   const first = hold.start || staysToday();
   openModal({
-    title: isNew ? 'Блок / OOO' : `${hold.kind === 'ooo' ? 'OOO' : 'Блок'} · ${dateRu(hold.start)}–${dateRu(hold.end)}`,
-    subtitle: 'Занимает объект целыми сутками с–по; брони на эти дни перераспределятся',
+    title: isNew ? 'OOO — не в продаже' : `OOO · ${dateRu(hold.start)}–${dateRu(hold.end)}`,
+    subtitle: 'Объект не в продаже целыми сутками с–по; брони на эти дни перераспределятся. Блоки по категориям — в следующей версии',
     body: `<div class="grid-2">
         ${sfRow('Объект', sfSelect('hf-unit', fund.units.filter(u => u.active).map(u => [u.id, u.label]), hold.unit_id))}
-        ${sfRow('Тип', sfSelect('hf-kind', [['block', 'блок'], ['ooo', 'OOO — не в продаже']], hold.kind || 'block'))}
         ${sfRow('С', sfInput('hf-start', first, 'date'))}
         ${sfRow('По', sfInput('hf-end', hold.end || first, 'date'))}
       </div>
-      ${sfRow('Название', sfInput('hf-title', hold.title))}
+      ${sfRow('Причина', sfInput('hf-title', hold.title))}
       <div id="rf-preview-out" class="sp-out"></div>`,
     footer: `${isNew ? '' : '<button class="btn btn-danger" id="hf-delete">Удалить…</button>'}${staysFormFoot()}`,
     onMount(m) {
       const out = () => $('#rf-preview-out', m);
-      const body = () => ({ unit_id: Number($('#hf-unit', m).value), kind: $('#hf-kind', m).value,
+      const body = () => ({ unit_id: Number($('#hf-unit', m).value), kind: 'ooo',
         start: $('#hf-start', m).value, end: $('#hf-end', m).value, title: $('#hf-title', m).value });
       const edit = previewThenSave({ url: isNew ? '/api/stays/holds' : `/api/stays/holds/${hold.id}`,
         method: isNew ? 'POST' : 'PUT', body, out });

@@ -761,7 +761,7 @@ async function fundPostFile(url, fields) {
 }
 
 const FUND_RESET_COUNTS = [['units', 'объектов'], ['reservations', 'броней'], ['guests', 'гостей'],
-  ['coverage', 'назначений батлеров'], ['holds', 'OOO и блоков'], ['versions', 'версий фонда'],
+  ['coverage', 'назначений батлеров'], ['ooo', 'OOO'], ['blocks', 'блоков'], ['versions', 'версий фонда'],
   ['categories', 'категорий'], ['groups', 'узлов'], ['flags', 'флагов']];
 const FUND_LOAD_COUNTS = [['categories', 'категорий'], ['groups', 'узлов'], ['flags', 'флагов'], ['units', 'объектов']];
 

@@ -13,17 +13,18 @@ from app.core.time import local_date
 
 from ..adapters.orm import (
     Assignment,
+    BlockNight,
     Companion,
     Guest,
-    Hold,
     Label,
     Logistics,
     Move,
     Occupant,
+    Ooo,
     Reservation,
 )
 from ..domain.allocate import natural_key
-from ..domain.halfday import PIECE_BASE, PM, Piece, hold_span, pieces, pos, segments
+from ..domain.halfday import PIECE_BASE, PM, Piece, ooo_span, pieces, pos, segments
 from ..ports.duty import DutyPort
 from . import allocation, family
 from .context import butlers_on, load_context, nights
@@ -309,10 +310,12 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                                        "end_pos": p1.end_pos, "early": r.early and p0.index == 0,
                                        "late": r.late and p1.end_pos == segs[-1].end_pos}, level))
 
-    holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": h.kind,
-              # название блока — свободный текст (в нём бывает фамилия): только с уровня names
-              "title": h.title if names else "", **dict(zip(("start_pos", "end_pos"), hold_span(h.start, h.end), strict=True))}
-             for h in db.scalars(select(Hold).where(Hold.start <= last, Hold.end >= first))
+    holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
+              "start_half": h.start_half, "end_half": h.end_half,
+              # причина OOO — свободный текст (в нём бывает фамилия): только с уровня names
+              "title": h.reason if names else "",
+              **dict(zip(("start_pos", "end_pos"), ooo_span(h.start, h.start_half, h.end, h.end_half), strict=True))}
+             for h in db.scalars(select(Ooo).where(Ooo.start <= last, Ooo.end >= first))
              if h.unit_id in unit_ids]
     warnings = []
     if names:
@@ -477,12 +480,18 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
     st = _load_stays(db, first - one, last, version_cuts(db))
     occupied = _occupied(st, first - one, last)
     unit_of = {(rid, d): uid for (uid, d), rid in occupied.items()}
-    holds: dict[tuple[int, dt.date], set[str]] = {}
-    for h in db.scalars(select(Hold).where(Hold.start <= last, Hold.end >= first)):
+    # временный адаптер (до Task 2–4): OOO занимает объект в каждый день своего интервала (хотя бы
+    # половина суток); блоки не размещаются по объектам — «Блоки» = сумма количеств на ночь
+    ooo_days: set[tuple[int, dt.date]] = set()
+    for h in db.scalars(select(Ooo).where(Ooo.start <= last, Ooo.end >= first)):
         d = max(h.start, first)
-        while d <= min(h.end, last):                  # блок и OOO — целые сутки с–по
-            holds.setdefault((h.unit_id, d), set()).add(h.kind)
+        while d <= min(h.end, last):
+            ooo_days.add((h.unit_id, d))
             d += one
+    block_qty: dict[tuple[int, dt.date], int] = {}
+    for cid, night, qty in db.execute(select(BlockNight.category_id, BlockNight.night, BlockNight.quantity)
+                                      .where(BlockNight.night >= first, BlockNight.night <= last)):
+        block_qty[(cid, night)] = block_qty.get((cid, night), 0) + qty
     arrive: dict[dt.date, list[int | None]] = {}
     leave: dict[dt.date, list[int | None]] = {}
     for r in st.res:                                   # выезд + заезд в тот же объект — в обеих строках
@@ -502,10 +511,10 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
                          else {u for u in ok if not snap.unit_path(u)})
         return memo[key]
 
-    def cell(units: set[int], before: set[int], d: dt.date) -> dict:
+    def cell(units: set[int], before: set[int], d: dt.date, snap: FundSnapshot) -> dict:
         living = [u for u in units if (u, d) in occupied]
-        ooo = sum("ooo" in holds.get((u, d), ()) for u in units)
-        blocks = sum("block" in holds.get((u, d), ()) for u in units)
+        ooo = sum((u, d) in ooo_days for u in units)
+        blocks = sum(block_qty.get((cid, d), 0) for cid in {snap.units[u].category_id for u in units if u in snap.units})
         total = len(units)
         return {"total": total, "living": len(living),
                 "guests": sum(people(occupied[(u, d)], d) for u in living),
@@ -523,8 +532,8 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
             now, before = members(snap, gid), members(prev, gid)
             every |= now
             every_prev |= before
-            rows[gid].append(cell(now, before, d))
-        total_days.append(cell(every, every_prev, d))
+            rows[gid].append(cell(now, before, d, snap))
+        total_days.append(cell(every, every_prev, d, snap))
     return {"days": [_d(d) for d in days],
             "total": {"group_id": None, "path": [TOTAL], "days": total_days},
             "nodes": [{"group_id": gid, "path": list(path), "days": rows[gid]} for gid, path in nodes]}

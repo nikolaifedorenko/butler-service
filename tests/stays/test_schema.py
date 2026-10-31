@@ -6,7 +6,7 @@ from sqlalchemy import inspect, select
 
 def test_stays_tables_created(db):
     names = set(inspect(db.get_bind()).get_table_names())
-    assert {"stays_categories", "stays_units", "stays_holds", "stays_labels", "stays_guests",
+    assert {"stays_categories", "stays_units", "stays_ooo", "stays_blocks", "stays_block_nights", "stays_guest_prefs", "stays_labels", "stays_guests",
             "stays_guest_links", "stays_groups", "stays_reservations", "stays_moves",
             "stays_assignments", "stays_occupants", "stays_companions", "stays_logistics",
             "stays_escorts", "stays_coverage", "stays_coverage_guests", "stays_fields",

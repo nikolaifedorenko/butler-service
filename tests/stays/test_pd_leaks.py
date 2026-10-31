@@ -19,7 +19,7 @@ def test_occupancy_level_never_sees_guests(app_stack, occupancy_client, manager_
                      note="УтечкаЗаметка", customer="УтечкаЗаказчик",
                      logistics=[{"kind": "flight", "date": "2038-03-02", "time": "07:00", "description": "УтечкаРейс"}])
     manager_client.post(f"{API}/holds", json={"unit_id": cat["units"][1]["id"], "start": "2038-03-01",
-                                              "end": "2038-03-02", "kind": "block", "title": "Под Утечкина"})
+                                              "end": "2038-03-02", "kind": "ooo", "title": "Под Утечкина"})
     words = {"Утечкин", "УтечкаЗаметка", "УтечкаЗаказчик", "УтечкаРейс", res["number"]}
     fill = {"rid": str(res["id"]), "gid": str(g["id"]), "line_id": "1"}
     query = {"first": "2038-03-01", "last": "2038-03-07", "date": "2038-03-03", "day": "2038-03-03",

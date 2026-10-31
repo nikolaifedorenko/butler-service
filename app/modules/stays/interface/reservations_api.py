@@ -15,7 +15,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 
-from ..adapters.orm import Hold, Reservation, StayGroup
+from ..adapters.orm import Ooo, Reservation, StayGroup
 from ..application import allocation, coverage, mine, reservations
 from ._ops import PREVIEW, run
 
@@ -85,7 +85,7 @@ class HoldIn(BaseModel):
     unit_id: int
     start: dt.date
     end: dt.date
-    kind: Literal["block", "ooo"] = "block"
+    kind: Literal["ooo"] = "ooo"
     title: str = Field("", max_length=120)
 
 
@@ -249,9 +249,9 @@ def _hold_op(db: Session, principal: Principal, payload: Optional[HoldIn], hid: 
             before = reservations.delete_hold(db, hid)
             after = {k: None for k in before}
         else:
-            h, before = reservations.save_hold(db, payload.model_dump(), hid)
+            h, before = reservations.save_hold(db, payload.model_dump(), hid, principal.user.id)
             after = reservations.hold_dict(h)
-        audit(db, principal, "stays_hold", f"hold:{after['id'] or hid}",
+        audit(db, principal, "stays_ooo", f"ooo:{after['id'] or hid}",
               {"diff": reservations.changes(before, after)})
         return after
     return op
@@ -272,5 +272,5 @@ def update_hold(hid: int, payload: HoldIn, preview_flag: bool = PREVIEW, princip
 @router.delete("/holds/{hid}")
 def remove_hold(hid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
-    h = db.get(Hold, hid)
+    h = db.get(Ooo, hid)
     return run(db, _hold_op(db, principal, None, hid), preview_flag, (h.start, h.end) if h else None)

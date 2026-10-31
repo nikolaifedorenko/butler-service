@@ -22,9 +22,9 @@ from sqlalchemy.orm import Session
 
 from app.core.time import local_date
 
-from ..adapters.orm import Assignment, Hold, Move, Reservation
+from ..adapters.orm import Assignment, Move, Ooo, Reservation
 from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitSpan, allocate, pin_invalid
-from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, hold_span, pieces, pos, segments
+from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, ooo_span, pieces, pos, segments
 from .fund_versions import FundTimeline, boundary_pos, fund_for
 
 # статусы, которые занимают объект (отменённая и no-show — нет, §4.7)
@@ -115,7 +115,7 @@ def _envelope(rs: list[Reservation], moves: dict[int, list[tuple]]) -> list[Segm
 def compute(db: Session) -> AllocationState:
     """Распределение без записи: им пользуются и сохранение, и снимок предпросмотра."""
     today = local_date()
-    hold_rows = list(db.scalars(select(Hold).where(Hold.end >= today)))
+    hold_rows = list(db.scalars(select(Ooo).where(Ooo.end >= today)))
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(OCCUPYING),
                                                     Reservation.check_out >= today)))
     # фонд — с дня до самого раннего заезда: AM этого заезда принадлежит предыдущей версии
@@ -130,8 +130,8 @@ def compute(db: Session) -> AllocationState:
     warnings: list[AllocWarning] = []
     members: dict[Key, list[int]] = {}
     for h in hold_rows:
-        title = h.title or ("OOO" if h.kind == "ooo" else "Блок")
-        hs, he = hold_span(h.start, h.end)
+        title = h.reason or "OOO"
+        hs, he = ooo_span(h.start, h.start_half, h.end, h.end_half)
         holds.append(HoldRef(h.unit_id, hs, he, title))
         # OOO/блок на дни, когда объекта нет в фонде (спецификация версий §14); прошлое — не тревога
         for a, z in _absent(spans, h.unit_id, max(hs, pos(today, AM)), he):

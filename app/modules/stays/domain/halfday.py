@@ -27,6 +27,11 @@ def hold_span(start: dt.date, end: dt.date) -> tuple[int, int]:
     return pos(start, AM), pos(end, PM)
 
 
+def ooo_span(start: dt.date, start_half: str, end: dt.date, end_half: str) -> tuple[int, int]:
+    """OOO — отрезок [pos(start, start_half), pos(end, end_half)] по половинам суток."""
+    return pos(start, PM if start_half == "PM" else AM), pos(end, PM if end_half == "PM" else AM)
+
+
 @dataclass(frozen=True)
 class Segment:
     index: int

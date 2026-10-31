@@ -29,6 +29,8 @@ from app.core.time import local_date, now_local
 
 from ..adapters.orm import (
     Assignment,
+    Block,
+    BlockNight,
     Category,
     CategoryKind,
     CategoryState,
@@ -42,11 +44,12 @@ from ..adapters.orm import (
     GroupState,
     Guest,
     GuestLink,
-    Hold,
+    GuestPref,
     Label,
     Logistics,
     Move,
     Occupant,
+    Ooo,
     Reservation,
     StayGroup,
     StaysSettings,
@@ -85,14 +88,14 @@ BACKUP_NAME = re.compile(r"stays-\d{8}-\d{6}\.xlsx")
 # Таблицы stays_*: каждая — либо данные шахматки (удаляются, в порядке внешних ключей: сначала
 # ссылающиеся), либо настройки модуля (остаются). Тест сверяет списки со всей схемой модуля.
 WIPE = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
-        StayGroup, GuestLink, Guest, Hold, UnitLineage, UnitStateFlag, UnitState, GroupState,
+        StayGroup, GuestLink, GuestPref, Guest, BlockNight, Block, Ooo, UnitLineage, UnitStateFlag, UnitState, GroupState,
         CategoryState, FundVersion, UnitFlag, Unit, Category, FundGroup)
 KEEP = (StaysSettings, Label, CustomField, Escort, CategoryKind)
 
 # что будет удалено (предпросмотр) — тот же словарь служит отпечатком для 409 при повторе
 COUNTED = {"units": Unit, "categories": Category, "groups": FundGroup, "flags": UnitFlag,
            "versions": FundVersion, "reservations": Reservation, "guests": Guest,
-           "coverage": CoverageLine, "holds": Hold}
+           "coverage": CoverageLine, "ooo": Ooo, "blocks": Block}
 
 
 def reset_counts(db: Session) -> dict[str, int]:

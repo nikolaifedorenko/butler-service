@@ -178,18 +178,54 @@ class UnitLineage(Base):
     version_id: Mapped[int] = mapped_column(ForeignKey("stays_fund_versions.id"))
 
 
-class Hold(Base):
-    """Блок или OOO: занимает объект целыми сутками с–по (PoC §5.2)."""
+class Ooo(Base):
+    """OOO — объект не в продаже: интервал по половинам суток [start/start_half, end/end_half]
+    (спецификация OOO и блоков §3). Позиция половины — pos(день, AM|PM)."""
 
-    __tablename__ = "stays_holds"
-    __table_args__ = (Index("ix_stays_holds_unit_start", "unit_id", "start"),)
+    __tablename__ = "stays_ooo"
+    __table_args__ = (
+        CheckConstraint("start_half IN ('AM', 'PM')", name="ck_stays_ooo_start_half"),
+        CheckConstraint("end_half IN ('AM', 'PM')", name="ck_stays_ooo_end_half"),
+        Index("ix_stays_ooo_unit_start", "unit_id", "start"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     unit_id: Mapped[int] = mapped_column(ForeignKey("stays_units.id"))
     start: Mapped[dt.date] = mapped_column(Date)
     end: Mapped[dt.date] = mapped_column(Date)
-    kind: Mapped[str] = mapped_column(String(8), default="block")    # block | ooo
+    start_half: Mapped[str] = mapped_column(String(2), default="AM")
+    end_half: Mapped[str] = mapped_column(String(2), default="PM")
+    reason: Mapped[str] = mapped_column(String(120), default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class Block(Base):
+    """Блок — резерв на категорию без привязки к объекту: количество по ночам и категориям
+    лежит в BlockNight (спецификация OOO и блоков §3)."""
+
+    __tablename__ = "stays_blocks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(120), default="")
+    start: Mapped[dt.date] = mapped_column(Date)
+    end: Mapped[dt.date] = mapped_column(Date)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class BlockNight(Base):
+    """Сколько объектов категории блок держит в ночь night (ночь D — от PM дня D до AM дня D+1)."""
+
+    __tablename__ = "stays_block_nights"
+    __table_args__ = (CheckConstraint("quantity >= 1", name="ck_stays_block_nights_quantity"),)
+
+    block_id: Mapped[int] = mapped_column(ForeignKey("stays_blocks.id", ondelete="CASCADE"), primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"), primary_key=True)
+    night: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    quantity: Mapped[int] = mapped_column(Integer)
 
 
 class Label(Base):
@@ -244,6 +280,19 @@ class GuestLink(Base):
     guest_b_id: Mapped[int] = mapped_column(ForeignKey("stays_guests.id"), index=True)
     kind: Mapped[str] = mapped_column(String(16))
     former: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class GuestPref(Base):
+    """Пожелание гостя к объекту: группа фонда, флаг или конкретный объект; priority — порядок (1 — главное)."""
+
+    __tablename__ = "stays_guest_prefs"
+    __table_args__ = (CheckConstraint("kind IN ('group', 'flag', 'unit')", name="ck_stays_guest_prefs_kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    guest_id: Mapped[int] = mapped_column(ForeignKey("stays_guests.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))          # group | flag | unit
+    ref_id: Mapped[int] = mapped_column(Integer)
+    priority: Mapped[int] = mapped_column(Integer, default=1)
 
 
 # ── 3.3 Брони ──────────────────────────────────────────────────────────────

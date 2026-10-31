@@ -15,11 +15,11 @@ from ..adapters.orm import (
     Assignment,
     Companion,
     Guest,
-    Hold,
     Label,
     Logistics,
     Move,
     Occupant,
+    Ooo,
     Reservation,
     StayGroup,
 )
@@ -380,33 +380,35 @@ def diff_of(before: dict, db: Session, r: Reservation) -> dict:
     return changes(before, reservation_snapshot(db, r))
 
 
-def save_hold(db: Session, data: dict, hid: int | None) -> tuple[Hold, dict]:
+def save_hold(db: Session, data: dict, hid: int | None, author_id: int | None = None) -> tuple[Ooo, dict]:
+    """Временный путь /holds (до Task 3): только OOO на целые сутки с–по; блоки — отдельная модель."""
     if not unit_exists(db, data["unit_id"]):
         raise ReservationInvalid("Объект не найден")
     if data["end"] < data["start"]:
         raise ReservationInvalid("Конец блока раньше начала")
-    if data["kind"] not in ("block", "ooo"):
-        raise ReservationInvalid("Тип: блок или OOO")
+    if data["kind"] != "ooo":
+        raise ReservationInvalid("Блоки создаются по категориям, не по объектам; здесь — только OOO")
     if hid is None:
-        h = Hold()
+        h = Ooo(author_id=author_id)
         db.add(h)
         before: dict = {}
     else:
-        h = db.get(Hold, hid)
+        h = db.get(Ooo, hid)
         if h is None:
-            raise ReservationInvalid("Блок не найден")
+            raise ReservationInvalid("OOO не найден")
         before = hold_dict(h)
-    for k in ("unit_id", "start", "end", "kind", "title"):
-        setattr(h, k, data[k])
+        h.version += 1
+    h.unit_id, h.start, h.end, h.reason = data["unit_id"], data["start"], data["end"], data["title"]
+    h.start_half, h.end_half = "AM", "PM"
     db.flush()
     allocation.run_allocation(db)
     return h, before
 
 
 def delete_hold(db: Session, hid: int) -> dict:
-    h = db.get(Hold, hid)
+    h = db.get(Ooo, hid)
     if h is None:
-        raise ReservationInvalid("Блок не найден")
+        raise ReservationInvalid("OOO не найден")
     before = hold_dict(h)
     db.delete(h)
     db.flush()
@@ -414,9 +416,9 @@ def delete_hold(db: Session, hid: int) -> dict:
     return before
 
 
-def hold_dict(h: Hold) -> dict:
-    return {"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": h.kind,
-            "title": h.title}
+def hold_dict(h: Ooo) -> dict:
+    return {"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
+            "start_half": h.start_half, "end_half": h.end_half, "title": h.reason}
 
 
 def doc_of(db: Session, r: Reservation, **changes) -> dict:

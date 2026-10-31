@@ -303,7 +303,7 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
           style="${pct(dayIdx[a], dayIdx[b])}" title="${esc(OFF[why] || why)}"></div>`).join('')}
         ${(holdsBy[u.unit_id] || []).map(h => {
           const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
-          return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.kind === 'ooo' ? 'OOO' : (h.title || 'Блок'))}</div>`;
+          return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.title || 'OOO')}</div>`;
         }).join('')}
         ${(byUnit[u.unit_id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
       </div></div>`;

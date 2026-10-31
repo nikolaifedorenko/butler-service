@@ -179,7 +179,7 @@ def test_hold_triggers_reallocation(manager_role_client, manager_client):
 def test_hold_bad_dates_refused(manager_role_client, manager_client):
     cat = make_category(manager_role_client, n_units=1)
     r = manager_client.post(f"{API}/holds", json={"unit_id": cat["units"][0]["id"], "start": "2027-08-09",
-                                                  "end": "2027-08-01", "kind": "block", "title": ""})
+                                                  "end": "2027-08-01", "kind": "ooo", "title": ""})
     assert r.status_code == 422 and r.json()["detail"] == "Конец блока раньше начала"
 
 

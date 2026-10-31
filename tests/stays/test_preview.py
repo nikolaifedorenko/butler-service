@@ -8,7 +8,7 @@ from app.core.audit import AuditLog
 
 from .helpers import API, create_res, make_category, res_body
 
-TABLES = ("stays_reservations", "stays_moves", "stays_assignments", "stays_occupants", "stays_holds",
+TABLES = ("stays_reservations", "stays_moves", "stays_assignments", "stays_occupants", "stays_ooo",
           "stays_groups", "stays_companions", "stays_logistics")
 
 
