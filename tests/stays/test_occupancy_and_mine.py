@@ -294,3 +294,27 @@ def test_occupancy_free_negative(manager_role_client, manager_client):
     body = _occ(manager_client, "2039-08-09", "2039-08-11", group_ids=gid2)
     cell = _by_day(body["nodes"][0], body["days"])["2039-08-10"]
     assert (cell["total"], cell["blocks"], cell["free"]) == (2, 2, -1)
+
+
+def test_occupancy_past_blocks_from_recorded_nights(manager_role_client, manager_client, today, monkeypatch):
+    """§4.5: за прошлые ночи «Блоки» — то, что записано сейчас (остаток категории), «Свободно» уменьшается;
+    категория, разнесённая по узлам, — один раз (в первом узле)."""
+    today("2040-09-01")
+    a, b = _group(manager_role_client), _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=2, group_id=a)
+    d = FundDraft(manager_role_client)
+    code = "P" + uniq()
+    cid = d.call("POST", "categories", code=code, title=code, kind_id=kind_id("villa"), escorted=True, weight=4)["id"]
+    d.call("POST", "units", label=code + "-1", category_id=cid, group_id=a)
+    d.call("POST", "units", label=code + "-2", category_id=cid, group_id=b)
+    d.publish()
+    today("2040-09-20")
+    from app.modules.stays.application import views
+    monkeypatch.setattr(views, "local_date", lambda: dt.date(2040, 9, 20))
+    _block(manager_client, "2040-09-10", "2040-09-12", {cat["id"]: {"2040-09-10": 2}, cid: {"2040-09-10": 1, "2040-09-11": 1}})
+    body = _occ(manager_client, "2040-09-09", "2040-09-12", group_ids=[a, b])
+    rows = {n["group_id"]: _by_day(n, body["days"]) for n in body["nodes"]}
+    total = _by_day(body["total"], body["days"])
+    assert rows[a]["2040-09-10"]["blocks"] == 3 and rows[b]["2040-09-10"]["blocks"] == 0
+    assert total["2040-09-10"]["blocks"] == 3 and total["2040-09-11"]["blocks"] == 1
+    assert total["2040-09-10"]["free"] == 4 - 3 and total["2040-09-09"]["blocks"] == 0

@@ -6,7 +6,7 @@ import datetime as dt
 import json
 from dataclasses import dataclass, field, replace
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
@@ -14,6 +14,7 @@ from app.core.time import local_date
 from ..adapters.orm import (
     Assignment,
     Block,
+    BlockNight,
     Companion,
     Guest,
     Label,
@@ -582,6 +583,15 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
     slot_days = {(uid, dt.date.fromordinal(n)) for (_b, _c, _k, n), uid in state.slots.items()
                  if uid is not None and first.toordinal() <= n <= last.toordinal()}
     unplaced = _unplaced_demand(state, st, first, last)
+    # прошлые ночи (до сегодня) слотов не имеют — показываем то, что записано сейчас (§4.5): остаток
+    # блока по категории, целиком в первом узле дерева, где в этот день есть объекты категории
+    today = local_date()
+    past_blocks: dict[tuple[int, dt.date], int] = {}
+    if first < today:
+        for cid, night, qty in db.execute(select(BlockNight.category_id, BlockNight.night, func.sum(BlockNight.quantity))
+                                          .where(BlockNight.night >= first, BlockNight.night < min(today, last + one))
+                                          .group_by(BlockNight.category_id, BlockNight.night)):
+            past_blocks[(cid, night)] = qty
     arrive: dict[dt.date, list[int | None]] = {}
     leave: dict[dt.date, list[int | None]] = {}
     for r in st.res:                                   # выезд + заезд в тот же объект — в обеих строках
@@ -604,7 +614,8 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
     def cell(units: set[int], before: set[int], d: dt.date, snap: FundSnapshot, owned: set[int]) -> dict:
         living = [u for u in units if (u, d) in occupied]
         ooo = sum((u, d) in ooo_days for u in units)
-        blocks = sum((u, d) in slot_days for u in units)
+        blocks = (sum(past_blocks.get((c, d), 0) for c in owned) if d < today
+                  else sum((u, d) in slot_days for u in units))
         total = len(units)
         # без объекта остались бронь (овербукинг) и слот блока (нехватка): «Свободно» уходит в минус
         short = sum(unplaced.get((c, d), 0) for c in owned)
