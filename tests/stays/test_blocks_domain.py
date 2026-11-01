@@ -117,6 +117,17 @@ def test_in_house_displaced_by_ooo_beats_block():
     assert [(w.kind, w.text) for w in warns] == [("block_short", "Блок Гендир: не хватает 1 DLX на 10–11.09")]
 
 
+def test_in_house_without_unit_takes_freed_unit_before_block():
+    """Заселённый гость уже без объекта (прошлое — овербукинг); объект освободился, блок тоже
+    хочет его на эти ночи: объект достаётся гостю, у блока — нехватка."""
+    T = pos(D(8), PM)
+    guest = booking(1, 5, 13, in_house=True, bounds=[T], fixed={0: None})
+    got, placed, warns = run(1, slots(grid(3, 9, 10), {3: "Гендир"}), [guest])
+    assert got == {(("r", 1), 0): None, (("r", 1), 1): 100}
+    assert set(placed.values()) == {None}
+    assert [(w.kind, w.text) for w in warns] == [("block_short", "Блок Гендир: не хватает 1 DLX на 09–10.09")]
+
+
 def test_in_house_pinned_displaced_moves_with_pin():
     """Закреплённый заселённый гость под OOO: переезд с ночи OOO, закрепление переносится."""
     T, Dn = pos(D(8), PM), pos(D(10), PM)
