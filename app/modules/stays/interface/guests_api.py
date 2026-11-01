@@ -126,7 +126,8 @@ def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
         return out
 
     done = run(db, op, preview_flag, None, principal)
-    return {"preview": done["preview"], **done["result"], "diff": done["diff"]}
+    return {"preview": done["preview"], **done["result"], "diff": done["diff"],
+            **({"overbook_refused": done["overbook_refused"]} if "overbook_refused" in done else {})}
 
 
 def _own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> bool:

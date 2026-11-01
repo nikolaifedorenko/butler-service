@@ -281,8 +281,8 @@ def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
                 live.setdefault(p.seg_index, []).append(p.index)
         for seg, uid in pins.items():
             parts = rows.get((m.id, int(seg)), {})
-            pinned_to = allocation.effective_pin({i: a.unit_id for i, a in parts.items()
-                                                  if a.pinned and a.unit_id is not None},
+            pinned_to = allocation.effective_pin({i: t for i, a in parts.items()
+                                                  if (t := allocation.pin_target(a)) is not None},
                                                  set(live.get(int(seg), [])))
             if uid == pinned_to:
                 continue                     # закрепление сегмента не меняется
@@ -296,7 +296,7 @@ def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
                 if a is None:
                     a = Assignment(reservation_id=m.id, seg_index=i)
                     db.add(a)
-                a.unit_id, a.pinned = uid, True
+                a.unit_id, a.pinned, a.pin_unit_id = uid, True, None
     db.flush()
 
 
@@ -356,8 +356,8 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
     for a in rows:
         if a.seg_index % PIECE_BASE == 0:
             first[a.seg_index // PIECE_BASE] = a.unit_id
-        if a.pinned and a.unit_id is not None:
-            pin_rows.setdefault(a.seg_index // PIECE_BASE, {})[a.seg_index] = a.unit_id
+        if (t := allocation.pin_target(a)) is not None:
+            pin_rows.setdefault(a.seg_index // PIECE_BASE, {})[a.seg_index] = t
     pinned = {seg: allocation.effective_pin(rows, live) for seg, rows in pin_rows.items()}
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == r.id)
                           .order_by(Occupant.date_from, Occupant.id)))

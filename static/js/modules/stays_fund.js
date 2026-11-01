@@ -707,7 +707,7 @@ async function openFundPublish(onDone) {
         return `<div class="sb-line"><label class="chk"><input type="checkbox" data-fp-transfer="${rid}"${p.on ? ' checked' : ''}> ${esc(t)}</label>
           → ${sfSelect(`fp-cat-${rid}`, opts, p.category_id).replace('<select ', `<select data-fp-transfer-cat="${rid}" `)}</div>`;
       }).join('')}<p class="hint">Перевод входит в публикацию; «Проверить» покажет размещение с переводом.</p>` : ''}`;
-    renderPreview(r.diff, $('#fp-alloc', m));
+    renderPreview(r.diff, $('#fp-alloc', m), r.overbook_refused);
     $$('[data-fp-transfer]', m).forEach(cb => { cb.onchange = () => { picks[cb.dataset.fpTransfer].on = cb.checked; }; });
     $$('[data-fp-transfer-cat]', m).forEach(s => { s.onchange = () => { picks[s.dataset.fpTransferCat].category_id = Number(s.value); }; });
   };

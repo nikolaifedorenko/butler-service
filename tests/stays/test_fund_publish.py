@@ -260,6 +260,41 @@ def test_publish_preview_stale_rev_409(manager_role_client, manager_client, toda
     assert resp.status_code == 409
 
 
+@pytest.fixture()
+def setup_no_overbook_client(app_stack):
+    """Настройка фонда (stays.setup, stays.view) без права «Овербукинг»."""
+    from app.core.db import SessionLocal
+    from app.core.identity import AccessGrant, Role
+
+    from .conftest import _role_user
+
+    with SessionLocal() as s:
+        if s.get(Role, "stays_setup_only") is None:
+            s.add(Role(code="stays_setup_only", title="Фонд без овербукинга", rank=20, max_assignable_rank=-1,
+                       builtin=False))
+            s.add_all(AccessGrant(role="stays_setup_only", permission=p, effect="allow")
+                      for p in ("stays.view", "stays.setup"))
+            s.commit()
+    return _role_user(app_stack, "stays_setup_only_user", "stays_setup_only")
+
+
+def test_publish_new_overbooking_without_perm(manager_role_client, manager_client, setup_no_overbook_client,
+                                              today, db):
+    """Публикация, после которой бронь остаётся без объекта, без права «Овербукинг»: предпросмотр —
+    200 с overbook_refused и списком affected; сохранение — 409, черновик не опубликован."""
+    today(TODAY)
+    conn, dlx, (r1, r2, _), rev = _connect_split(manager_role_client, manager_client)
+    pv = setup_no_overbook_client.post(f"{API}/fund/draft/publish", params={"preview": 1}, json={"rev": rev})
+    assert pv.status_code == 200, pv.text
+    out = pv.json()
+    assert out["overbook_refused"].startswith("Нет объекта: Бронь ")
+    assert [w["reservation_id"] for w in out["result"]["affected"]["unassigned"]] in ([r1["id"]], [r2["id"]])
+    sv = setup_no_overbook_client.post(f"{API}/fund/draft/publish", json={"rev": rev})
+    assert sv.status_code == 409 and sv.json()["detail"]["message"] == out["overbook_refused"]
+    db.expire_all()
+    assert fd.current_draft(db) is not None
+
+
 def _journal(db, rid: int) -> list[dict]:
     import json
     db.expire_all()

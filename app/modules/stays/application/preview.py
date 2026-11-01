@@ -48,9 +48,11 @@ CHANGE_DAYS = 62
 class OverbookRefused(Exception):
     """Операция создаёт новый овербукинг, а права stays.overbook нет (§7) → 409 с предпросмотром."""
 
-    def __init__(self, text: str, diff: dict):
+    def __init__(self, text: str, diff: dict, result=None):
         super().__init__(text)
-        self.text, self.diff = text, diff
+        # result — уже сериализованный результат операции (она выполнена до проверки): предпросмотр
+        # отдаёт его как обычно, вызывающие (публикация фонда, объединение гостей) на него опираются
+        self.text, self.diff, self.result = text, diff, result
 
 
 def overbooked_keys(state: allocation.AllocationState) -> frozenset[tuple[int, int]]:
@@ -59,11 +61,13 @@ def overbooked_keys(state: allocation.AllocationState) -> frozenset[tuple[int, i
     return state.overbooked
 
 
-def change_window(first: dt.date, last: dt.date) -> Window:
-    """Окно снимка предпросмотра OOO и блока (§7, находка P2 аудита): ±62 дня вокруг изменения,
-    у длинного изменения — не дальше 62 дней от его начала."""
+def change_window(*ranges: tuple[dt.date, dt.date]) -> Window:
+    """Окно снимка предпросмотра OOO и блока (§7, находка P2 аудита): ±62 дня вокруг изменения —
+    от самого раннего до самого позднего из дат «было» и «стало»; изменение длиннее 124 дней
+    обрезается, чтобы окно оставалось ограниченным."""
     span = dt.timedelta(days=CHANGE_DAYS)
-    return first - span, min(last, first) + span
+    first, last = min(a for a, _ in ranges), max(z for _, z in ranges)
+    return first - span, min(last, first + 2 * span) + span
 
 
 def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | None = None) -> Snapshot:
@@ -212,7 +216,8 @@ def run_operation(db: Session, op: Callable[[], T], window: Window | None = None
     new = after.overbooked - before.overbooked
     if new and not may_overbook:
         rids = {rid for rid, _ in new}
-        texts = sorted({text for kind, _d, _e, rid, text in after.warnings if kind == "overbooked" and rid in rids})
+        texts = sorted({text for kind, _d, _e, rid, text in after.warnings
+                        if kind in ("overbooked", "category_missing") and rid in rids})
         raise OverbookRefused("Нет объекта: " + "; ".join(texts or ["бронь остаётся без объекта"])
-                              + ". Сохранить с овербукингом может сотрудник с правом «Овербукинг»", d)
+                              + ". Сохранить с овербукингом может сотрудник с правом «Овербукинг»", d, result)
     return result, d

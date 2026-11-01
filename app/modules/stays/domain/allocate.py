@@ -85,6 +85,8 @@ class AllocWarning:
     key: Key
     piece_index: int                   # у block_short — ordinal первой ночи
     text: str
+    category_id: int | None = None     # у block_short — категория нехватки
+    last: int | None = None            # у block_short — ordinal последней ночи
 
 
 def natural_key(s: str) -> tuple:
@@ -227,11 +229,13 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
                     place(it, p, ok[p.index])
             return runs(it, {p.index for p in run if p.index not in ok})
         first = next(p for p in run if p.index in ok)
-        warnings.append(AllocWarning(
-            "pin_conflict", it.key, first.index,
-            f"Бронь {it.number}: закреплённый объект {ok[first.index].label} занят «{clash}» — "
-            f"бронь перенесена вместе с закреплением"))
+        conflicts.append((len(warnings), it, first, f"Бронь {it.number}: закреплённый объект "
+                                                    f"{ok[first.index].label} занят «{clash}» — "))
+        warnings.append(AllocWarning("pin_conflict", it.key, first.index,
+                                     conflicts[-1][3] + "бронь перенесена вместе с закреплением"))
         return [run]
+
+    conflicts: list[tuple[int, AllocItem, Piece, str]] = []     # (место в warnings, бронь, часть, начало текста)
 
     open_runs: list[tuple[AllocItem, list[Piece]]] = []
     displaced: list[tuple[AllocItem, list[Piece]]] = []
@@ -357,7 +361,7 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
             warnings.append(AllocWarning(
                 "block_short", ("b", block_id), first,
                 f"Блок {titles[block_id]}: не хватает {per_night[n]} {category_codes.get(cat, '?')} на "
-                f"{_nights(first, n)}"))
+                f"{_nights(first, n)}", category_id=cat, last=n))
             start = i + 1
 
     # 4. закрепления броней — если объект свободен на весь остаток сегмента
@@ -374,4 +378,9 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
     # 5. брони: rank 0, затем rank 1
     for it, run in sorted(todo, key=lambda t: _order(t[0], t[1])):
         place_run(it, run)
+    # закреплённая бронь, которой не нашлось объекта, — овербукинг; закрепление сохраняется (§4.4)
+    for i, it, p, head in conflicts:
+        if result.get((it.key, p.index)) is None:
+            warnings[i] = AllocWarning("pin_conflict", it.key, p.index,
+                                       head + "свободного объекта нет: бронь без объекта, закрепление сохранено")
     return result, slot_units, warnings

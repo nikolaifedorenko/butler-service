@@ -326,10 +326,14 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         state = allocation.current_state(db)
         shown = {b["reservation_id"] for b in bars}
         shown_holds = {("h", h["id"]) for h in holds}
-        # нехватка блока (block_short) — без броней; piece_index у неё — ordinal первой ночи
+        # нехватка блока (block_short) — без броней: по ночам периода и категории фильтра
+        # (у неё piece_index — ordinal первой ночи, last — последней)
+        def block_short(w) -> bool:
+            return (w.kind == "block_short" and w.piece_index <= last.toordinal() and w.last >= first.toordinal()
+                    and (not f.category_ids or w.category_id in f.category_ids))
         warnings = [{"kind": w.kind, "reservation_ids": state.members[w.key], "text": w.text}
                     for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds
-                    or (w.kind == "block_short" and w.piece_index <= last.toordinal())]
+                    or block_short(w)]
     return {"days": [_d(d) for d in days], "visibility": level,
             "units": [{"unit_id": u.id, "label": u.label,
                        "labels": [{"from": _d(d), "label": lb} for d, lb in u.labels],

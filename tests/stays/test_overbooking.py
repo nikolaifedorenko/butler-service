@@ -122,8 +122,11 @@ def test_overbooked_booking_has_hole_and_load(manager_role_client, manager_clien
     d1 = d + dt.timedelta(days=1)
     cat = make_category(manager_role_client, n_units=1, weight=4)
     ga, gb = make_guest(manager_client), make_guest(manager_client)
-    a = create_res(manager_client, cat, d.isoformat(), (d + dt.timedelta(days=2)).isoformat(), [(ga["id"], "main", None, None)])
-    b = create_res(manager_client, cat, d.isoformat(), (d + dt.timedelta(days=2)).isoformat(), [(gb["id"], "main", None, None)])
+    # одинаковые даты — порядок по номеру: A получает объект, B остаётся без объекта
+    a = create_res(manager_client, cat, d.isoformat(), (d + dt.timedelta(days=2)).isoformat(),
+                   [(ga["id"], "main", None, None)], number="1")
+    b = create_res(manager_client, cat, d.isoformat(), (d + dt.timedelta(days=2)).isoformat(),
+                   [(gb["id"], "main", None, None)], number="2")
     assert a["segments"][0]["unit_id"] == cat["units"][0]["id"] and b["segments"][0]["unit_id"] is None
     def cell():
         board = manager_client.get(f"{API}/board/butlers", params={"first": d.isoformat(), "last": d.isoformat()})
@@ -134,7 +137,8 @@ def test_overbooked_booking_has_hole_and_load(manager_role_client, manager_clien
                                                         "employee_id": butlers["a"]})
     assert r.status_code == 200, r.text
     now = cell()
-    assert now["load"] == load0 + 4.0                           # вес категории брони
+    # вес категории брони; нагрузка в ответе округлена до сотых — сравнение с допуском округления
+    assert now["load"] == pytest.approx(load0 + 4.0, abs=0.011)
     assert "без объекта" in {u["label"] for u in now["units"]}
     day = manager_client.get(f"{API}/day", params={"date": d.isoformat()}).json()
     row_b = next(x for x in day["in_house"] if x["reservation_id"] == b["id"])
@@ -262,3 +266,65 @@ def test_board_query_budget_with_blocks(manager_client, big_fund, sql_counter, b
         with SessionLocal() as s:
             s.execute(delete(Ooo).where(Ooo.id.in_(ids)))
             s.commit()
+
+
+def test_pinned_booking_without_unit_keeps_pin(manager_role_client, manager_client, today, db):
+    """OOO на закреплённый объект, другого свободного нет (§4.4): овербукинг, закрепление сохранено;
+    OOO сняли — бронь возвращается в свой объект."""
+    today("2036-08-01")
+    cat = make_category(manager_role_client, n_units=1)
+    u1 = cat["units"][0]["id"]
+    a = create_res(manager_client, cat, "2036-08-10", "2036-08-14", number="9", pins={"0": u1})
+    r = manager_client.post(f"{API}/holds", json={"unit_id": u1, "start": "2036-08-11", "end": "2036-08-11",
+                                                  "kind": "ooo", "title": "Ремонт"})
+    assert r.status_code == 200, r.text
+    got = manager_client.get(f"{API}/reservations/{a['id']}").json()
+    assert got["segments"][0]["pinned"] is True and got["segments"][0]["unit_id"] == u1
+    assert f"Бронь 9: закреплённый объект {cat['units'][0]['label']} занят «Ремонт» — свободного объекта нет: " \
+           f"бронь без объекта, закрепление сохранено" in got["warnings"]
+    card = manager_client.get(f"{API}/reservations/{a['id']}/card").json()
+    assert card["segments"][0]["unit_id"] is None                       # фактически — без объекта
+    gone = manager_client.delete(f"{API}/holds/{r.json()['result']['id']}")
+    assert gone.status_code == 200, gone.text
+    back = manager_client.get(f"{API}/reservations/{a['id']}").json()
+    assert back["segments"][0]["pinned"] is True and back["segments"][0]["unit_id"] == u1
+    assert manager_client.get(f"{API}/reservations/{a['id']}/card").json()["segments"][0]["unit_id"] == u1
+    assert back["warnings"] == []
+
+
+def test_category_missing_needs_perm(manager_role_client, no_overbook_client):
+    """Бронь в категории без объектов в фонде — тоже новая бронь без объекта: без права — 409."""
+    cat = make_category(manager_role_client, n_units=0)
+    r = no_overbook_client.post(f"{API}/reservations", json=res_body(cat, "2036-09-10", "2036-09-12", number="991"))
+    assert r.status_code == 409, r.text
+    assert f"Бронь 991: категории {cat['code']} нет в фонде" in r.json()["detail"]["message"]
+
+
+def test_change_window_covers_old_and_new_dates():
+    from app.modules.stays.application.preview import change_window
+
+    d = dt.date
+    assert change_window((d(2036, 1, 10), d(2036, 1, 12))) == (d(2035, 11, 9), d(2036, 3, 14))
+    lo, hi = change_window((d(2036, 6, 1), d(2036, 6, 3)), (d(2036, 1, 10), d(2036, 1, 12)))
+    assert lo == d(2035, 11, 9) and hi >= d(2036, 6, 3)                  # перенос OOO январь → июнь
+    lo, hi = change_window((d(2036, 1, 1), d(2036, 12, 31)))
+    assert (hi - lo).days == 62 + 124 + 62                               # длинное изменение — окно ограничено
+
+
+def test_block_short_board_filters(manager_role_client, manager_client, today, blocks):
+    """Нехватку блока шахматка показывает только за ночи периода и в категориях фильтра."""
+    today("2036-10-01")
+    cat = make_category(manager_role_client, n_units=1)
+    other = make_category(manager_role_client, n_units=1)
+    blocks("Форум", {(cat["id"], n): 2 for n in _nights("2036-10-10", 2)})
+
+    def shorts(first, last, cid):
+        board = manager_client.get(f"{API}/board/units", params={"first": first, "last": last,
+                                                                 "category_ids": cid}).json()
+        return [w["text"] for w in board["warnings"] if w["kind"] == "block_short"]
+
+    text = f"Блок Форум: не хватает 1 {cat['code']} на 10–11.10"
+    assert shorts("2036-10-01", "2036-10-31", cat["id"]) == [text]
+    assert shorts("2036-10-12", "2036-10-31", cat["id"]) == []           # после последней ночи блока
+    assert shorts("2036-10-01", "2036-10-09", cat["id"]) == []
+    assert shorts("2036-10-01", "2036-10-31", other["id"]) == []         # другая категория

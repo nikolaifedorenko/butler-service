@@ -261,7 +261,7 @@ def _hold_op(db: Session, principal: Principal, payload: Optional[HoldIn], hid: 
 @router.post("/holds")
 def create_hold(payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
-    return run(db, _hold_op(db, principal, payload, None), preview_flag, change_window(payload.start, payload.end),
+    return run(db, _hold_op(db, principal, payload, None), preview_flag, change_window((payload.start, payload.end)),
                principal)
 
 
@@ -269,13 +269,13 @@ def create_hold(payload: HoldIn, preview_flag: bool = PREVIEW, principal: Princi
 def update_hold(hid: int, payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
     h = db.get(Ooo, hid)
-    first, last = min([payload.start, *([h.start] if h else [])]), max([payload.end, *([h.end] if h else [])])
-    return run(db, _hold_op(db, principal, payload, hid), preview_flag, change_window(first, last), principal)
+    window = change_window((payload.start, payload.end), *([(h.start, h.end)] if h else []))
+    return run(db, _hold_op(db, principal, payload, hid), preview_flag, window, principal)
 
 
 @router.delete("/holds/{hid}")
 def remove_hold(hid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
     h = db.get(Ooo, hid)
-    return run(db, _hold_op(db, principal, None, hid), preview_flag, change_window(h.start, h.end) if h else None,
+    return run(db, _hold_op(db, principal, None, hid), preview_flag, change_window((h.start, h.end)) if h else None,
                principal)

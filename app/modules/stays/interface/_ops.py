@@ -41,7 +41,7 @@ def run(db: Session, op, preview_flag: bool, window: tuple[dt.date, dt.date] | N
         db.rollback()
         if not preview_flag:
             raise HTTPException(status_code=409, detail={"message": e.text, "overbook": True, "diff": e.diff}) from e
-        refused, result, d = e.text, None, e.diff
+        refused, result, d = e.text, e.result, e.diff
     if preview_flag:
         db.rollback()          # предпросмотр: тот же код, но ничего не сохраняется
     else:

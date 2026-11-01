@@ -85,6 +85,17 @@ def test_pin_transferred_on_move():
         ("pin_conflict", "Бронь 555: закреплённый объект 1 занят «OOO» — бронь перенесена вместе с закреплением")]
 
 
+def test_pin_conflict_without_free_unit_keeps_pin_text():
+    """Закреплённый объект под OOO и другого свободного нет: овербукинг, закрепление сохранено (§4.4)."""
+    got, warns = run(units("1"), [OooRef(100, *hold_span(D(3), D(3)), "OOO")],
+                     [item(1, 2, 5, pinned={0: 100}, number="556")])
+    assert got[(("r", 1), 0)] is None
+    assert [(w.kind, w.text) for w in warns] == [
+        ("pin_conflict", "Бронь 556: закреплённый объект 1 занят «OOO» — свободного объекта нет: бронь без объекта, "
+                         "закрепление сохранено"),
+        ("overbooked", "Бронь 556: нет свободных объектов категории DLX на 02.09–05.09")]
+
+
 def test_pin_wrong_category_released():
     us = units("1") + [span(200, VIL, "4003")]
     got, warns = run(us, [], [item(1, 2, 5, pinned={0: 200}, number="9")])

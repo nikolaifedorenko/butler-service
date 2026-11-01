@@ -6,7 +6,9 @@
 режутся на части в границах версий; Assignment.seg_index — индекс части
 (seg_index * PIECE_BASE + n), закрепление хранится на частях, но действует на сегмент.
 Переезд заселённого из-за OOO с ночи D режет часть ещё и в D: такие разрезы хранятся в
-Assignment.start_pos, читатели режут сегменты по границам версий и по ним (own_cuts).
+Assignment.start_pos (пишется у каждой строки), читатели режут сегменты по границам версий и
+по ним (own_cuts). Закреплённая часть, оставшаяся без объекта, хранит объект закрепления в
+Assignment.pin_unit_id (§4.4).
 
 Окно (ревью этапа 2, C1): в расчёт идут только брони с выездом не раньше сегодня; прошлые
 не трогаются вовсе. Части до сегодняшнего вечера у заселённых и выехавших и части,
@@ -48,6 +50,8 @@ class AllocationState:
     spans: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
     slots: dict[SlotKey, int | None] = field(default_factory=dict)   # (блок, категория, слот, ночь) → объект
     overbooked: frozenset[tuple[int, int]] = frozenset()            # (бронь, ordinal ночи) без объекта
+    # закреплённая часть без объекта → объект закрепления (сохраняется до свободного объекта, §4.4)
+    pin_units: dict[tuple[int, int], int] = field(default_factory=dict)
 
 
 def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
@@ -101,6 +105,14 @@ def _day(p: int) -> str:
     return dt.date.fromordinal(p // 2).strftime("%d.%m")
 
 
+def pin_target(a: Assignment) -> int | None:
+    """Объект закрепления строки: её объект, а у закреплённой части без объекта (овербукинг под
+    OOO, §4.4) — сохранённый pin_unit_id; не закреплена — None."""
+    if not a.pinned:
+        return None
+    return a.unit_id if a.unit_id is not None else a.pin_unit_id
+
+
 def effective_pin(pinned: dict[int, int], live: set[int]) -> int | None:
     """Объект закрепления сегмента по его закреплённым строкам (индекс части → объект): последней
     живой части (end_pos >= сегодня AM), иначе — последней прошлой. Прошлые строки не
@@ -143,6 +155,11 @@ class _Row:
     seg_index: int
     unit_id: int | None
     pinned: bool
+    pin_unit_id: int | None = None          # объект закрепления части без объекта
+
+    @property
+    def pin_target(self) -> int | None:
+        return (self.unit_id if self.unit_id is not None else self.pin_unit_id) if self.pinned else None
 
 
 @dataclass
@@ -152,7 +169,7 @@ class _Info:
     number: str
     pieces: list[Piece]
     extra: set[int]
-    fixed_pin: dict[int, bool]
+    fixed_pin: dict[int, tuple[bool, int | None]]      # часть → (закреплена, объект закрепления без объекта)
     lost: dict[int, int]                     # часть → объект строки, который ей больше не подходит
     settled: bool
 
@@ -163,8 +180,8 @@ def compute(db: Session) -> AllocationState:
     Части распределения — части фонда, дополнительно разрезанные у заселённых броней по
     сегодняшнему вечеру и по началу каждого OOO на их объекте: прошлое заморожено (L1), будущее
     держит объект, пока OOO или фонд его не отнимут, и тогда переезжает один раз с ночи D до
-    конца (§4.3). Лишние разрезы (объект по обе стороны тот же) при записи склеиваются; разрезы,
-    где объект сменился, хранятся в Assignment.start_pos и видны читателям."""
+    конца (§4.3). Лишние разрезы (объект и закрепление по обе стороны те же) при записи
+    склеиваются; оставшиеся видны читателям по Assignment.start_pos."""
     today = local_date()
     morning, evening = pos(today, AM), pos(today, PM)
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(OCCUPYING),
@@ -219,7 +236,7 @@ def compute(db: Session) -> AllocationState:
                 starts.setdefault(a.reservation_id, []).append(a.start_pos)
     stored: dict[int, list[_Row]] = {}
     for r in res:
-        stored[r.id] = [_Row(r.id, p.start_pos, p.end_pos, p.seg_index, a.unit_id, bool(a.pinned))
+        stored[r.id] = [_Row(r.id, p.start_pos, p.end_pos, p.seg_index, a.unit_id, bool(a.pinned), a.pin_unit_id)
                         for p in pieces(own_segs[r.id], own_cuts(cuts, starts, r.id))
                         if (a := rows_of[r.id].get(p.index)) is not None]
     by_rid = {r.id: r for r in res}
@@ -259,12 +276,12 @@ def compute(db: Session) -> AllocationState:
 
         pins: dict[int, int] = {}
         for seg in {s.index for s in segs}:
-            rows = [row for row in mine if row.seg_index == seg and row.pinned and row.unit_id is not None]
+            rows = [row for row in mine if row.seg_index == seg and row.pin_target is not None]
             live = [row for row in rows if row.end_pos >= morning]
             if rows:
-                pins[seg] = (live or rows)[-1].unit_id         # как effective_pin: последняя живая часть
+                pins[seg] = (live or rows)[-1].pin_target      # как effective_pin: последняя живая часть
         fixed: dict[int, int | None] = {}
-        fixed_pin: dict[int, bool] = {}
+        fixed_pin: dict[int, tuple[bool, int | None]] = {}
         lost: dict[int, int] = {}
         prev: Piece | None = None
         for p in ps:
@@ -274,13 +291,15 @@ def compute(db: Session) -> AllocationState:
             if p.end_pos < morning or (p.start_pos < evening and (uid is not None or settled)):
                 # закончившаяся до сегодняшнего утра — заморожена и без объекта (L1); заселённая до
                 # сегодняшнего вечера — в своём объекте или без объекта, как было
-                fixed[p.index], fixed_pin[p.index] = uid, bool(ok and row.pinned)
+                kept = ok and row.pinned
+                fixed[p.index] = uid
+                fixed_pin[p.index] = (kept, row.pin_unit_id if kept and uid is None else None)
             elif settled and uid is not None and (prev is None or prev.seg_index != p.seg_index
                                                   or (prev.index in fixed and fixed[prev.index] is None)):
                 # перед частью нет замороженной с объектом (заезд сегодня, переезд по категории,
                 # прошлое без объекта): держит объект строки, пока тот есть в фонде и не под OOO
                 if unit_cat(uid, p) is not None and under_ooo(uid, p) is None:
-                    fixed[p.index], fixed_pin[p.index] = uid, row.pinned
+                    fixed[p.index], fixed_pin[p.index] = uid, (row.pinned, None)
                 else:
                     lost[p.index] = uid
             prev = p
@@ -304,27 +323,35 @@ def compute(db: Session) -> AllocationState:
     warnings += alloc_warnings
     members.update({w.key: [] for w in alloc_warnings if w.key[0] == "b"})
     released = {(w.key, w.piece_index) for w in alloc_warnings if w.kind == "pin_invalid"}
-    pinned_now = {(w.key, w.piece_index // PIECE_BASE): got.get((w.key, w.piece_index))
-                  for w in alloc_warnings if w.kind == "pin_conflict"}   # закрепление переехало
-    overbooked = {(w.key, w.piece_index) for w in alloc_warnings if w.kind == "overbooked"}
+    # закрепление переехало на новый объект; без объекта — остаётся прежним (§4.4)
+    pinned_now = {(w.key, w.piece_index // PIECE_BASE): uid for w in alloc_warnings
+                  if w.kind == "pin_conflict" and (uid := got.get((w.key, w.piece_index))) is not None}
+    # бронь без объекта — и овербукинг, и категория, которой нет в фонде: обе — новая бронь без
+    # объекта, проверка права stays.overbook видит их одинаково (§7)
+    overbooked = {(w.key, w.piece_index) for w in alloc_warnings if w.kind in ("overbooked", "category_missing")}
 
     out_units: dict[tuple[int, int], int | None] = {}
     out_pinned: dict[tuple[int, int], bool] = {}
+    out_pin_units: dict[tuple[int, int], int] = {}
     out_spans: dict[tuple[int, int], tuple[int, int]] = {}
     out_overbooked: set[tuple[int, int]] = set()
     for it in items:
         inf = info[it.key]
-        state: dict[int, tuple[int | None, bool]] = {}
+        state: dict[int, tuple[int | None, bool, int | None]] = {}
         for p in inf.pieces:
             if p.index in it.fixed:
-                state[p.index] = (it.fixed[p.index], inf.fixed_pin[p.index])
+                state[p.index] = (it.fixed[p.index], *inf.fixed_pin[p.index])
                 continue
             uid = got.get((it.key, p.index))
             seg = p.seg_index
             # закреплена часть в объекте закрепления — прежнем или перенесённом (pin_conflict); часть
             # заселённого, удержанная в другом объекте до переезда, — нет
             pin = pinned_now.get((it.key, seg), it.pinned.get(seg))
-            state[p.index] = (uid, pin is not None and (it.key, p.index) not in released and uid == pin)
+            held = pin is not None and (it.key, p.index) not in released
+            if uid is None and held:
+                state[p.index] = (None, True, pin)       # овербукинг закреплённой — закрепление сохранено
+            else:
+                state[p.index] = (uid, held and uid == pin, None)
         _place_warnings(it, inf, got, timeline, unit_cat, under_ooo, past_ooo, warnings)
         # разрезы, по обе стороны которых объект и закрепление те же, не хранятся
         keep = []
@@ -338,13 +365,15 @@ def compute(db: Session) -> AllocationState:
                 p = next((q for q in inf.pieces if q.start_pos <= mp.start_pos <= q.end_pos), None)
                 if p is None:
                     continue
-                out_units[(r.id, mp.index)], out_pinned[(r.id, mp.index)] = state[p.index]
+                out_units[(r.id, mp.index)], out_pinned[(r.id, mp.index)], pin_unit = state[p.index]
+                if pin_unit is not None:
+                    out_pin_units[(r.id, mp.index)] = pin_unit
                 out_spans[(r.id, mp.index)] = (mp.start_pos, mp.end_pos)
                 if (it.key, p.index) in overbooked:
                     lo, hi = max(mp.start_pos, p.start_pos), min(mp.end_pos, p.end_pos)
                     out_overbooked |= {(r.id, n) for n in range(lo // 2, hi // 2 + 1) if lo <= 2 * n + 1 <= hi}
     return AllocationState(out_units, out_pinned, warnings, members, out_spans, slot_units,
-                           frozenset(out_overbooked))
+                           frozenset(out_overbooked), out_pin_units)
 
 
 def _place_warnings(it: AllocItem, inf: _Info, got, timeline: FundTimeline, unit_cat, under_ooo,
@@ -410,6 +439,7 @@ def run_allocation(db: Session) -> AllocationState:
         a.unit_id = uid
         a.pinned = state.pinned[(rid, piece)]
         a.start_pos = state.spans[(rid, piece)][0]
+        a.pin_unit_id = state.pin_units.get((rid, piece))
     db.flush()
     db.info[CACHE_KEY] = state
     return state
