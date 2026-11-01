@@ -181,7 +181,7 @@ def plan_load(parsed: ParsedFund, kinds: list[CategoryKind]) -> tuple[dict, list
             err(SHEET_TREE, g.row_no, "название узла длиннее 120 символов")
         if len(g.path) > 1 and g.path[:-1] not in paths:
             err(SHEET_TREE, g.row_no, f"нет родителя «{PATH_SEP.join(g.path[:-1])}»")
-        groups.append({"path": list(g.path), "sort_order": g.sort_order})
+        groups.append({"path": list(g.path), "sort_order": g.sort_order, "escorted": g.escorted})
 
     flags: list[dict] = []
     titles: dict[str, int] = {}

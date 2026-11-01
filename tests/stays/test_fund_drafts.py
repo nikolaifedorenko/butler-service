@@ -363,3 +363,61 @@ def test_bad_sort_order_422(db, world, bad):
 def test_fund_on_before_first_version(db, world):
     with pytest.raises(LookupError, match="дата раньше начала фонда"):     # не IndexError пустой ленты
         fund_on(db, dt.date(1999, 12, 31))
+
+
+def test_group_escorted_versioned(db, world):
+    d = _open(db)
+    fd.save_group(db, d.rev, {"escorted": True}, world["g1"])
+    fd.publish(db, None)
+    assert fund_on(db, D - dt.timedelta(days=1)).groups[world["g1"]].escorted is False
+    assert fund_on(db, D).groups[world["g1"]].escorted is True
+    assert fund_on(db, D).groups[world["g2"]].escorted is False       # узел отмечается сам, не потомки
+
+
+def test_branch_inherits_escorted(db, world):
+    d = _open(db)
+    fd.save_group(db, d.rev, {"escorted": True}, world["g1"])
+    fd.publish(db, None)
+    snap, before = fund_on(db, D), fund_on(db, D - dt.timedelta(days=1))
+    assert snap.unit_escorted(world["u1"]) and snap.unit_escorted(world["u2"])   # u1 — во внуке, u2 — в самом узле
+    assert not before.unit_escorted(world["u1"]) and not snap.unit_escorted(None) and not snap.unit_escorted(-1)
+
+
+def test_unit_escorted_by_category(db, world):
+    d = _open(db)
+    fd.save_category(db, d.rev, {"escorted": True}, world["b"])
+    fd.publish(db, None)
+    snap = fund_on(db, D)
+    assert snap.unit_escorted(world["u2"]) and not snap.unit_escorted(world["u1"])
+
+
+def test_group_escorted_in_diff(db, world):
+    d = _open(db)
+    fd.save_group(db, d.rev, {"escorted": True}, world["g2"])
+    out = fd.diff(db, world["v0"], d.id)
+    (entry,) = out.groups
+    assert entry["id"] == world["g2"] and entry["kind"] == "changed"
+    assert entry["before"]["escorted"] is False and entry["after"]["escorted"] is True
+
+
+def test_carry_to_later_versions_keeps_escorted(db, world):
+    later = fd.open_draft(db, dt.date(2093, 3, 1), None)
+    fd.save_unit(db, later.rev, {"floor": "9"}, world["u1"])
+    fd.publish(db, None)
+    d = _open(db)
+    fd.save_group(db, d.rev, {"escorted": True}, world["g1"])
+    fd.publish(db, None)
+    assert fund_on(db, dt.date(2093, 3, 2)).groups[world["g1"]].escorted is True      # перенесено
+    assert fund_on(db, dt.date(2093, 3, 2)).units[world["u1"]].floor == "9"
+
+
+def test_apply_file_sets_group_escorted(db, world):
+    from app.modules.stays.application import fund_xlsx as fx
+    d = _open(db)
+    parsed, errs = fx.parse_fund(fx.export_fund(snapshot_of(db, d.id), []))
+    assert errs == []
+    for g in parsed.groups:
+        g.escorted = g.id == world["g2"]
+    out, _ = fd.apply_file(db, d.rev, parsed)
+    assert [e["id"] for e in out.groups] == [world["g2"]]
+    assert snapshot_of(db, d.id).groups[world["g2"]].escorted is True

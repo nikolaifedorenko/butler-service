@@ -1248,6 +1248,11 @@
       },
       "DraftGroupIn": {
         "properties": {
+          "escorted": {
+            "default": false,
+            "title": "Escorted",
+            "type": "boolean"
+          },
           "parent_id": {
             "anyOf": [
               {

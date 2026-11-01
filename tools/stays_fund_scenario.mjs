@@ -282,6 +282,18 @@ async function fundFlow() {
   check('цикл отклонён сервером — тост', await waitFor(() => toastHas('нельзя вложить')), text('#toast-host'));
   check('цикл: дерево не изменилось', (await draftGroups()).find(g => g.id === villas.id)?.parent_id == null);
 
+  console.log('\n3b · Узел с сопровождением');
+  click($(`#st-body [data-fund-node="${first.id}"]`));
+  await waitFor(() => !!$('#fund-node-edit'));
+  click($('#fund-node-edit'));
+  check('в карточке узла — галочка «С сопровождением»', await waitFor(() => !!$('#fg-escorted')) && $('#fg-escorted').checked === false);
+  $('#fg-escorted').checked = true;
+  click($('[data-save]'));
+  check('галочка сохранена в черновик', await poll(async () => (await draftGroups()).find(g => g.id === first.id)?.escorted === true));
+  check('в дереве узел отмечен', await waitFor(() => ($(`#st-body [data-fund-node="${first.id}"]`)?.textContent || '').includes('с батлером')));
+  check('в разнице черновика — «сопровождение»', await waitFor(() => /сопровождение: false → true/.test(text('#fund-draft-bar'))),
+    text('#fund-draft-bar'));
+
   console.log('\n4 · Предпросмотр, перевод брони, публикация');
   click($('#fund-publish'));
   check('предпросмотр: бронь коннекта без объекта', await waitFor(() => !!$(`[data-fp-transfer="${rid}"]`)

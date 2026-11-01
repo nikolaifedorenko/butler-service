@@ -46,6 +46,7 @@ class GroupInfo:
     title: str
     sort_order: int
     path: tuple[int, ...]       # id от корня, включая сам узел
+    escorted: bool = False      # узел «с сопровождением»: наследуется всей веткой
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,14 @@ class FundSnapshot:
         """Путь узла объекта от корня; объект без узла (или не в фонде) — пустой путь."""
         u = self.units.get(unit_id)
         return self.groups[u.group_id].path if u is not None and u.group_id in self.groups else ()
+
+    def unit_escorted(self, unit_id: int | None) -> bool:
+        """Объект «с сопровождением»: его категория escorted или любой узел на пути объекта escorted."""
+        u = self.units.get(unit_id)
+        if u is None:
+            return False
+        cat = self.categories.get(u.category_id)
+        return bool(cat is not None and cat.escorted) or any(self.groups[g].escorted for g in self.unit_path(unit_id))
 
 
 @dataclass(frozen=True)
@@ -158,7 +167,8 @@ def _group_paths(rows: list[GroupState]) -> dict[int, GroupInfo]:
         return tuple(reversed(chain))
 
     return {r.group_id: GroupInfo(id=r.group_id, parent_id=r.parent_id, title=r.title,
-                                  sort_order=r.sort_order, path=path(r.group_id)) for r in rows}
+                                  sort_order=r.sort_order, path=path(r.group_id),
+                                  escorted=bool(r.escorted)) for r in rows}
 
 
 def _category_info(r: CategoryState, kind_title: str | None) -> CategoryInfo:

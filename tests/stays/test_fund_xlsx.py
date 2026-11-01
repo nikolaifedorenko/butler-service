@@ -78,8 +78,8 @@ def test_export_has_four_sheets_and_id_column():
     assert ws["A2"].protection.locked and not ws["B2"].protection.locked
     assert ws["A2"].fill.fgColor.rgb.endswith("D9D9D9") and ws.protection.sheet
     tree = wb["Дерево"]
-    assert [c.value for c in tree[1]][1:] == ["название", "родитель", "порядок"]
-    assert [tree.cell(4, i).value for i in (2, 3, 4)] == ["Вид на море", "Корпус / Блок B", 3]
+    assert [c.value for c in tree[1]][1:] == ["название", "родитель", "сопровождение (да/нет)", "порядок"]
+    assert [tree.cell(4, i).value for i in (2, 3, 4, 5)] == ["Вид на море", "Корпус / Блок B", "нет", 3]
     assert tree["C2"].value is None                      # корневой узел — «Родитель» пуст
 
 
@@ -260,3 +260,30 @@ def test_exported_validations_survive_reopen():
         assert len(dvs) == 1 and dvs[0].type == "list"
         assert not dvs[0].formula1.startswith("=")
         assert wb[dvs[0].formula1.split("!")[0].strip("'")]["A2"].value == "Корпус"
+
+
+def test_xlsx_tree_escorted_roundtrip_empty_draft():
+    s = snap()
+    s.groups[11] = GroupInfo(11, 10, "Блок B", 2, (10, 11), escorted=True)
+    wb = load_workbook(io.BytesIO(fx.export_fund(s, flags())))
+    assert [wb["Дерево"].cell(r, 4).value for r in (2, 3, 4)] == ["нет", "да", "нет"]
+    parsed, e = fx.parse_fund(fx.export_fund(s, flags()))
+    assert e == []
+    assert {(g.id, g.escorted, g.sort_order) for g in parsed.groups} == {(10, False, 1), (11, True, 2), (12, False, 3)}
+
+
+def test_xlsx_tree_without_escorted_column():
+    parsed, e = fx.parse_fund(book(tree=[[None, "Корпус", None, 1], [None, "Блок", "Корпус", 2]]))
+    assert e == []
+    assert [(g.path, g.sort_order, g.escorted) for g in parsed.groups] == [
+        (("Корпус",), 1, False), (("Корпус", "Блок"), 2, False)]
+
+
+def test_xlsx_tree_bad_escorted_value_row():
+    data = book(tree=[[None, "Корпус", None, "да", 1], [None, "Блок", "Корпус", "может", 2]])
+    wb = load_workbook(io.BytesIO(data))
+    wb["Дерево"]["D1"] = "сопровождение (да/нет)"
+    b = io.BytesIO()
+    wb.save(b)
+    e = errs(b.getvalue())
+    assert list(e) == [("Дерево", 3)] and "сопровождение" in e[("Дерево", 3)] and "«может»" in e[("Дерево", 3)]

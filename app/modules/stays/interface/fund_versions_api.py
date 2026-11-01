@@ -68,6 +68,7 @@ class DraftGroupIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     parent_id: Optional[int] = None
     sort_order: int = SORT
+    escorted: bool = False
 
 
 class UnitFields(BaseModel):
@@ -149,7 +150,7 @@ def _snapshot_dict(db: Session, version: FundVersion, snap: FundSnapshot) -> dic
                         "escorted": c.escorted, "sort_order": c.sort_order}
                        for c in sorted(snap.categories.values(), key=lambda c: (c.sort_order, c.id))],
         "groups": [{"id": g.id, "parent_id": g.parent_id, "title": g.title, "sort_order": g.sort_order,
-                    "path": list(g.path)}
+                    "escorted": g.escorted, "path": list(g.path)}
                    for g in sorted(snap.groups.values(), key=lambda g: (g.sort_order, g.id))],
         "units": [{"id": u.id, "label": u.label, "category_id": u.category_id, "group_id": u.group_id,
                    "floor": u.floor, "flags": sorted(u.flags),
