@@ -54,6 +54,7 @@ class UnitSpan:
     group_path: tuple[int, ...]        # узел дерева фонда от корня; () — без узла
     start_pos: int
     end_pos: int
+    flags: frozenset[int] = frozenset()    # флаги объекта в версии фонда этого интервала (пожелания гостя)
 
 
 @dataclass(frozen=True)

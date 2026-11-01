@@ -9,9 +9,24 @@ import re
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import CoverageGuest, CustomField, Guest, GuestLink, Occupant, Reservation
+from app.core.time import local_date
+
+from ..adapters.orm import (
+    CoverageGuest,
+    CustomField,
+    FundGroup,
+    Guest,
+    GuestLink,
+    GuestPref,
+    Occupant,
+    Reservation,
+    Unit,
+    UnitFlag,
+)
 from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
+from ..domain.prefs import KINDS as PREF_KINDS
 from .fund import FundConflict, FundError, as_dict, changes
+from .fund_versions import fund_for
 from .locking import lock_module
 
 LEVELS = ("regular", "vip", "vvip")
@@ -528,6 +543,73 @@ def _not_carried(dropped: dict, kept: dict) -> dict:
     return out
 
 
+MAX_PREFS = 20
+MAX_PRIORITY = 1000
+_PREF_REFS = {"group": FundGroup, "flag": UnitFlag, "unit": Unit}
+
+
+def prefs_of(db: Session, guest_id: int) -> list[dict]:
+    """Пожелания гостя к объекту (часть 2 §5), главные — первыми; подписи — по фонду сегодня,
+    выбывшее из фонда — «#id». priority: больше — важнее."""
+    rows = list(db.scalars(select(GuestPref).where(GuestPref.guest_id == guest_id)
+                           .order_by(GuestPref.priority.desc(), GuestPref.id)))
+    if not rows:
+        return []
+    today = local_date()
+    timeline = fund_for(db, today, today)
+    snap = timeline.on(today) if timeline.parts else None
+    flags = {f.id: f.title for f in db.scalars(select(UnitFlag).where(
+        UnitFlag.id.in_([r.ref_id for r in rows if r.kind == "flag"])))}
+
+    def title(r: GuestPref) -> str:
+        if r.kind == "flag":
+            return flags.get(r.ref_id, f"#{r.ref_id}")
+        if snap is not None and r.kind == "group" and r.ref_id in snap.groups:
+            return " / ".join(snap.path_titles(r.ref_id))
+        unit = timeline.unit(r.ref_id, today) if r.kind == "unit" and snap is not None else None
+        return unit.label if unit is not None else f"#{r.ref_id}"
+    return [{"kind": r.kind, "ref_id": r.ref_id, "priority": r.priority, "title": title(r)} for r in rows]
+
+
+def save_prefs(db: Session, guest_id: int, prefs: list[dict]) -> list[dict]:
+    """Заменить пожелания гостя целиком: [{kind, ref_id, priority}]. Ввод — 422 (вид, повтор
+    вида и объекта, несуществующий узел, флаг или объект), всё под замком модуля: пожелания
+    читает распределение. Ничего не коммитит."""
+    lock_module(db)
+    if db.get(Guest, guest_id) is None:
+        raise GuestError("Гость не найден")
+    if len(prefs) > MAX_PREFS:
+        raise GuestError(f"Пожеланий не больше {MAX_PREFS}")
+    seen: set[tuple[str, int]] = set()
+    for p in prefs:
+        if p["kind"] not in PREF_KINDS:
+            raise GuestError("Вид пожелания: узел, флаг или объект")
+        if not 1 <= p["priority"] <= MAX_PRIORITY:
+            raise GuestError(f"Приоритет — от 1 до {MAX_PRIORITY}")
+        key = (p["kind"], p["ref_id"])
+        if key in seen:
+            raise GuestError("Одно и то же пожелание указано дважды")
+        seen.add(key)
+        if db.get(_PREF_REFS[p["kind"]], p["ref_id"]) is None:
+            raise GuestError({"group": "Узла фонда нет", "flag": "Флага нет", "unit": "Объекта нет"}[p["kind"]])
+    db.execute(delete(GuestPref).where(GuestPref.guest_id == guest_id))
+    db.add_all(GuestPref(guest_id=guest_id, kind=p["kind"], ref_id=p["ref_id"], priority=p["priority"]) for p in prefs)
+    db.flush()
+    return prefs_of(db, guest_id)
+
+
+def _merge_prefs(db: Session, keep_id: int, drop_id: int) -> int:
+    """Пожелания дубля — оставляемому без повторов: тот же вид и объект — приоритет keep.
+    Массовыми запросами, как покрытие: без связи в ORM порядок с удалением гостя не определён."""
+    mine = {(p.kind, p.ref_id) for p in db.scalars(select(GuestPref).where(GuestPref.guest_id == keep_id))}
+    theirs = list(db.scalars(select(GuestPref).where(GuestPref.guest_id == drop_id)))
+    dup = [p.id for p in theirs if (p.kind, p.ref_id) in mine]
+    if dup:
+        db.execute(delete(GuestPref).where(GuestPref.id.in_(dup)))
+    db.execute(update(GuestPref).where(GuestPref.guest_id == drop_id).values(guest_id=keep_id))
+    return len(theirs) - len(dup)
+
+
 def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
     """Объединить дубль drop в keep (addendum §3): проживания, строки покрытия, связи,
     предпочтения, особые даты, настраиваемые поля переходят к keep, профиль drop удаляется.
@@ -544,10 +626,11 @@ def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
     reservations = _merge_occupants(db, keep_id, drop_id)
     coverage = _merge_coverage(db, keep_id, drop_id)
     links = _apply_links(db, plan, keep_id)
+    prefs = _merge_prefs(db, keep_id, drop_id)
     merged = _merge_profile(keep, drop)
     db.delete(drop)
     db.flush()
     keep.search_text = guest_search_text(keep, searchable_codes(db, "guest"))
     db.flush()
     return {"keep_id": keep_id, "drop_id": drop_id, "not_carried": _not_carried(dropped, guest_dict(keep)),
-            "moves": {"reservations": reservations, "links": links, "coverage": coverage, **merged}}
+            "moves": {"reservations": reservations, "links": links, "coverage": coverage, "prefs": prefs, **merged}}

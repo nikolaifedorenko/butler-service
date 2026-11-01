@@ -485,7 +485,7 @@ async function openGroupForm(card, onSaved) {
 
 /* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
 async function openGuestCard(gid, onChanged) {
-  const [g, fund] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund()]);
+  const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund(), api(`/api/stays/guests/${gid}/prefs`)]);
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   const edit = can('stays.edit');
   const role = { main: 'главный', guest: 'проживает' };
@@ -495,6 +495,7 @@ async function openGuestCard(gid, onChanged) {
     subtitle: [g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
     body: `<div class="grid-2">
         <div><h4>Предпочтения</h4>${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('') || '<span class="muted">нет</span>'}
+          <h4>Предпочитает</h4><div id="gc-prefs"></div>
           ${g.special_dates.length ? `<h4>Особые даты</h4>${g.special_dates.map(d => `<div>${esc(dateRu(d.date))} — ${esc(d.what)}</div>`).join('')}` : ''}
           ${Object.keys(g.fields).length ? `<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => `<div>${esc(titles[k] || k)}: ${esc(String(v))}</div>`).join('')}` : ''}
           ${g.note ? `<h4>Примечание</h4><p>${esc(g.note)}</p>` : ''}</div>
@@ -514,6 +515,7 @@ async function openGuestCard(gid, onChanged) {
       $('[data-close]', m).onclick = closeModal;
       const reopen = () => openGuestCard(gid, onChanged);
       renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
+      renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit);
       const ed = $('#gc-edit', m);
       if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); });
       $$('[data-link-del]', m).forEach(b => {
@@ -544,6 +546,50 @@ async function openGuestCard(gid, onChanged) {
       };
     },
   });
+}
+
+/* Пожелания гостя к объекту (часть 2 §5): порядок в списке — важность (первое главное); в запросе
+   priority убывает с позицией. Каждая правка сохраняется сразу — список целиком, PUT /guests/{id}/prefs. */
+const STAYS_PREF_KIND = { group: 'узел', flag: 'флаг', unit: 'объект' };
+function renderGuestPrefs(host, gid, initial, fund, editable) {
+  let list = initial.map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
+  const options = {
+    group: fund.groups.map(x => [x.id, x.path.map(i => fund.groups.find(y => y.id === i)?.title || '').join(' / ')]),
+    flag: fund.flags.filter(f => !f.archived).map(f => [f.id, f.title]),
+    unit: fund.units.map(u => [u.id, u.label]),
+  };
+  const save = async next => {
+    try {
+      const body = { prefs: next.map((p, i) => ({ kind: p.kind, ref_id: p.ref_id, priority: next.length - i })) };
+      list = (await api(`/api/stays/guests/${gid}/prefs`, { method: 'PUT', body })).map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
+    } catch (e) { toast(e.message, 'err'); }
+    draw();
+  };
+  const draw = () => {
+    const kind = host.querySelector('[data-pref-kind]')?.value || 'group';
+    host.innerHTML = `${list.map((p, i) => `<div class="sb-line" data-pref-row="${i}"><b>${i + 1}.</b> ${esc(STAYS_PREF_KIND[p.kind])}: ${esc(p.title)}
+        ${editable ? `<button class="btn btn-sm btn-ghost" data-pref-up="${i}"${i ? '' : ' disabled'} title="Важнее">↑</button>
+          <button class="btn btn-sm btn-ghost" data-pref-del="${i}" title="Убрать">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}
+      ${editable ? `<div class="sb-line"><select data-pref-kind>${Object.entries(STAYS_PREF_KIND).map(([k, t]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        <select data-pref-ref>${options[kind].map(([id, t]) => `<option value="${id}">${esc(t)}</option>`).join('')}</select>
+        <button class="btn btn-sm" data-pref-add>Добавить</button></div>` : ''}`;
+    $$('[data-pref-up]', host).forEach(b => {
+      b.onclick = () => { const i = Number(b.dataset.prefUp); const n = [...list]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; save(n); };
+    });
+    $$('[data-pref-del]', host).forEach(b => { b.onclick = () => save(list.filter((_, i) => i !== Number(b.dataset.prefDel))); });
+    const k = $('[data-pref-kind]', host);
+    if (k) k.onchange = draw;
+    const add = $('[data-pref-add]', host);
+    if (add) {
+      add.onclick = () => {
+        const ref = Number($('[data-pref-ref]', host).value);
+        if (!ref) return;
+        if (list.some(p => p.kind === k.value && p.ref_id === ref)) { toast('Такое пожелание уже есть', 'warn'); return; }
+        save([...list, { kind: k.value, ref_id: ref }]);
+      };
+    }
+  };
+  draw();
 }
 
 /* ─────────────── Статус брони ─────────────── */

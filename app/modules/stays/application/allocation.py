@@ -21,16 +21,18 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field, replace
+from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
 
-from ..adapters.orm import Assignment, Block, BlockNight, Move, Ooo, Reservation
+from ..adapters.orm import Assignment, Block, BlockNight, GuestPref, Move, Occupant, Ooo, Reservation, UnitLineage
 from ..domain.allocate import AllocItem, AllocWarning, Key, OooRef, SlotKey, UnitSpan, allocate
 from ..domain.blocks import slots
 from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, ooo_span, overlaps, pieces, pos, segments
+from ..domain.prefs import Pref, scorer, successors
 from .fund_versions import FundTimeline, boundary_pos, fund_for
 
 # статусы, которые занимают объект (отменённая и no-show — нет, §4.7)
@@ -62,6 +64,37 @@ def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
     return out
 
 
+def load_prefs(db: Session, rids: list[int]) -> tuple[dict[int, list[Pref]], dict[int, frozenset[int]]]:
+    """Пожелания главного гостя по броням (часть 2 §5): бронь → пожелания и наследники объектов
+    по lineage. Главный — первый по дате проживающий с ролью main; у брони без главного или без
+    пожеланий записи нет. Запросов: проживающие, пожелания, lineage (только при пожеланиях-объектах)."""
+    if not rids:
+        return {}, {}
+    main: dict[int, int] = {}
+    for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_(rids), Occupant.role == "main")
+                        .order_by(Occupant.date_from, Occupant.id)):
+        main.setdefault(o.reservation_id, o.guest_id)
+    by_guest: dict[int, list[Pref]] = {}
+    if main:
+        for p in db.scalars(select(GuestPref).where(GuestPref.guest_id.in_(set(main.values())))):
+            by_guest.setdefault(p.guest_id, []).append(Pref(p.kind, p.ref_id, p.priority))
+    heirs = {}
+    if any(p.kind == "unit" for ps in by_guest.values() for p in ps):
+        heirs = successors([(p, u) for p, u in db.execute(select(UnitLineage.predecessor_id, UnitLineage.unit_id))])
+    return {rid: by_guest[gid] for rid, gid in main.items() if gid in by_guest}, heirs
+
+
+def pref_scorers(db: Session, rids: list[int]) -> dict[int, Callable[[UnitSpan], int]]:
+    """Бронь → счёт пожеланий по интервалу объекта: узел и флаг читаются из интервала (он лежит в
+    одной версии фонда), объект — по постоянному id и наследникам."""
+    prefs, heirs = load_prefs(db, rids)
+    out: dict[int, Callable[[UnitSpan], int]] = {}
+    for rid, ps in prefs.items():
+        score = scorer(ps, heirs)
+        out[rid] = lambda u, score=score: score(u.unit_id, u.group_path, u.flags)
+    return out
+
+
 def unit_spans(timeline: FundTimeline, lo: int, hi: int) -> list[UnitSpan]:
     """Интервалы объектов по частям фонда на [lo, hi]: часть версии с valid_from D начинается
     вечером D; соседние части с тем же состоянием объекта (категория, узел, обозначение)
@@ -75,7 +108,7 @@ def unit_spans(timeline: FundTimeline, lo: int, hi: int) -> list[UnitSpan]:
         here: dict[int, UnitSpan] = {}
         for u in snap.units.values():
             span = UnitSpan(u.id, u.category_id, snap.categories[u.category_id].sort_order, u.label,
-                            snap.unit_path(u.id), a, z)
+                            snap.unit_path(u.id), a, z, u.flags)
             prev = open_.pop(u.id, None)
             if prev is not None and replace(prev, start_pos=a, end_pos=z) == span:
                 span = replace(prev, end_pos=z)
@@ -256,6 +289,7 @@ def compute(db: Session) -> AllocationState:
 
     items: list[AllocItem] = []
     info: dict[Key, _Info] = {}
+    scorers = pref_scorers(db, [r.id for r in res])
 
     def add_item(key: Key, number: str, rs: list[Reservation], segs: list[Segment]) -> None:
         settled = any(r.status in FROZEN_STATUSES for r in rs)
@@ -305,7 +339,9 @@ def compute(db: Session) -> AllocationState:
             prev = p
         # приоритет части 2 §4.2: предварительные — после подтверждённых и заселённых
         rank = 0 if any(r.status != "tentative" for r in rs) else 1
-        items.append(AllocItem(key, number, tuple(ps), pins, fixed, rank=rank, in_house=settled))
+        # пожелания — главного гостя; у группы — первой по номеру брони, у которой он есть
+        prefs = next((scorers[r.id] for r in rs if r.id in scorers), None)
+        items.append(AllocItem(key, number, tuple(ps), pins, fixed, rank=rank, in_house=settled, prefs=prefs))
         members[key] = [r.id for r in rs]
         info[key] = _Info(rs, number, ps, extra, fixed_pin, lost, settled)
 
@@ -317,8 +353,7 @@ def compute(db: Session) -> AllocationState:
 
     block_slots = slots({(n.block_id, n.category_id, n.night): n.quantity for n in night_rows},
                         {n.block_id: n.title for n in night_rows})
-    # пожелания главного гостя подключает Task 5; обороты вне расчёта не нужны — все выезды с
-    # сегодня есть среди броней расчёта
+    # обороты вне расчёта не нужны — все выезды с сегодня есть среди броней расчёта
     got, slot_units, alloc_warnings = allocate(spans, ooo, block_slots, items, codes, {})
     warnings += alloc_warnings
     members.update({w.key: [] for w in alloc_warnings if w.key[0] == "b"})

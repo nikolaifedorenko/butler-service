@@ -2671,6 +2671,55 @@
         "title": "PeriodAction",
         "type": "object"
       },
+      "PrefIn": {
+        "description": "Пожелание к объекту: узел фонда, флаг или объект; priority — больше, важнее.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "group",
+              "flag",
+              "unit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "priority": {
+            "default": 1,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "ref_id": {
+            "minimum": 1.0,
+            "title": "Ref Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "ref_id"
+        ],
+        "title": "PrefIn",
+        "type": "object"
+      },
+      "PrefsIn": {
+        "properties": {
+          "prefs": {
+            "items": {
+              "$ref": "#/components/schemas/PrefIn"
+            },
+            "maxItems": 20,
+            "title": "Prefs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prefs"
+        ],
+        "title": "PrefsIn",
+        "type": "object"
+      },
       "PublishIn": {
         "properties": {
           "propagate": {
@@ -15317,6 +15366,96 @@
           }
         },
         "summary": "Create Link",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guests/{gid}/prefs": {
+      "get": {
+        "description": "Пожелания гостя к объекту (часть 2 §5): только полный уровень (stays.guests).",
+        "operationId": "guest_prefs_api_stays_guests__gid__prefs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guest Prefs",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "description": "Заменить пожелания гостя целиком; они влияют на выбор объекта следующих распределений.",
+        "operationId": "set_guest_prefs_api_stays_guests__gid__prefs_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrefsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Guest Prefs",
         "tags": [
           "stays"
         ]

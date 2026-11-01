@@ -1064,6 +1064,56 @@ async function familyEditor() {
   await sleep(200);
 }
 
+/* 11 · пожелания гостя (часть 2 §5): «Первая линия» в карточке → следующая бронь на первой линии */
+async function guestPrefs() {
+  console.log('\n11 · Пожелания гостя к объекту');
+  const day = n => addDays(serverToday(), n);
+  const code = 'PF' + uniq;
+  const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: serverToday() });
+  let rev = d.body.rev;
+  const step = async (path, body) => {
+    const r = await apiJson('POST', '/api/stays/fund/draft/' + path, { rev, ...body });
+    if (r.status !== 200) throw new Error(`черновик фонда ${path}: ${r.status} ${JSON.stringify(r.body)}`);
+    rev = r.body.rev;
+    return r.body;
+  };
+  const snap = (await apiJson('GET', '/api/stays/fund/snapshot?date=' + serverToday())).body;
+  const cat = await step('categories', { code, title: code, kind_id: snap.kinds.find(k => k.title === 'вилла').id, escorted: true, weight: 4 });
+  const second = await step('groups', { title: 'Вторая линия ' + uniq });
+  const first = await step('groups', { title: 'Первая линия ' + uniq });
+  const far = await step('units', { label: code + '-1', category_id: cat.id, group_id: second.id });
+  const near = await step('units', { label: code + '-2', category_id: cat.id, group_id: first.id });
+  await step('publish', {});
+  const guest = (await apiJson('POST', '/api/stays/guests', { last_name: 'Линейный' + uniq })).body;
+  const book = async (ci, co) => (await apiJson('POST', '/api/stays/reservations', { number: `PF${uniq}-${ci}`, check_in: day(ci), check_out: day(co),
+    category_id: cat.id, occupants: [{ guest_id: guest.id, role: 'main', date_from: day(ci), date_to: day(co) }] })).body.result;
+  check('без пожеланий бронь — по порядку объектов', (await book(40, 42)).segments[0].unit_id === far.id);
+
+  window.eval('staysState.fund = null;');          // фонд в кэше интерфейса — до новой категории
+  window.navigate('stays');
+  await waitFor(() => $$('#view-stays [data-stab]').length > 0);
+  window.eval(`openGuestCard(${guest.id})`);
+  check('в карточке гостя есть блок «Предпочитает»', await waitFor(() => !!$('#gc-prefs [data-pref-add]')));
+  change($('#gc-prefs [data-pref-kind]'), 'group');
+  const opt = [...$$('#gc-prefs [data-pref-ref] option')].find(o => o.textContent.includes('Первая линия ' + uniq));
+  check('узел «Первая линия» в списке', !!opt);
+  if (opt) change($('#gc-prefs [data-pref-ref]'), opt.value);
+  click($('#gc-prefs [data-pref-add]'));
+  check('пожелание добавлено и показано', await waitFor(() => [...$$('#gc-prefs [data-pref-row]')].some(r => r.textContent.includes('Первая линия ' + uniq))), text('#gc-prefs'));
+  const saved = (await apiJson('GET', `/api/stays/guests/${guest.id}/prefs`)).body;
+  check('пожелание сохранено на сервере', saved.length === 1 && saved[0].kind === 'group' && saved[0].ref_id === first.id, JSON.stringify(saved));
+  click($('#modal [data-close]'));
+  await sleep(200);
+
+  const r = await book(45, 47);
+  check('следующая бронь встала на первую линию', r.segments[0].unit_id === near.id, JSON.stringify(r.segments));
+  window.eval(`openReservationCard(${r.id})`);
+  check('на карточке брони «пожелание выполнено»', await waitFor(() => $('[data-pref-status="met"]')?.textContent.includes('пожелание выполнено')), text('#modal'));
+  click($('#modal [data-close]'));
+  await sleep(200);
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
 /* уровень «с фамилиями» без права записи: дерево в карточке брони — без кнопок редактора */
 async function familyReadOnly() {
   const day = (await apiJson('GET', `/api/stays/day?date=${serverToday()}`)).body;
@@ -1114,6 +1164,7 @@ async function main() {
     await bookingsTab();
     await guestsTab();
     await familyEditor();
+    await guestPrefs();
   } else {
     await roleSmoke();
   }

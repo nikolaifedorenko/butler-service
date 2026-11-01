@@ -71,6 +71,17 @@ class FormerIn(BaseModel):
     former: bool
 
 
+class PrefIn(BaseModel):
+    """Пожелание к объекту: узел фонда, флаг или объект; priority — больше, важнее."""
+    kind: Literal["group", "flag", "unit"]
+    ref_id: int = Field(ge=1)
+    priority: int = Field(1, ge=1, le=guests.MAX_PRIORITY)
+
+
+class PrefsIn(BaseModel):
+    prefs: list[PrefIn] = Field(max_length=guests.MAX_PREFS)
+
+
 class MergeIn(BaseModel):
     """keep_id — кого оставить, drop_id — дубль, который удаляется."""
     keep_id: int
@@ -157,6 +168,34 @@ def guest_stays(gid: int, principal: Principal = Depends(require_perm("stays.gue
     if db.get(Guest, gid) is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
     return history.guest_stays(db, gid)
+
+
+@router.get("/guests/{gid}/prefs")
+def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
+                db: Session = Depends(get_db)):
+    """Пожелания гостя к объекту (часть 2 §5): только полный уровень (stays.guests)."""
+    _require_full(db, principal)
+    if db.get(Guest, gid) is None:
+        raise HTTPException(status_code=404, detail="Гость не найден")
+    return guests.prefs_of(db, gid)
+
+
+@router.put("/guests/{gid}/prefs")
+def set_guest_prefs(gid: int, payload: PrefsIn, principal: Principal = Depends(require_perm("stays.guests")),
+                    db: Session = Depends(get_db)):
+    """Заменить пожелания гостя целиком; они влияют на выбор объекта следующих распределений."""
+    _require_full(db, principal)
+    if db.get(Guest, gid) is None:
+        raise HTTPException(status_code=404, detail="Гость не найден")
+    before = guests.prefs_of(db, gid)
+    try:
+        after = guests.save_prefs(db, gid, [p.model_dump() for p in payload.prefs])
+    except FundError as e:
+        db.rollback()
+        raise _err(e) from e
+    audit(db, principal, "stays_guest_prefs", f"guest:{gid}", {"diff": {"prefs": [before, after]}})
+    db.commit()
+    return after
 
 
 def _save(db: Session, principal: Principal, payload: GuestIn, gid: Optional[int]) -> dict:

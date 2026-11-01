@@ -24,7 +24,8 @@ from ..adapters.orm import (
     Reservation,
 )
 from ..domain.allocate import natural_key
-from ..domain.halfday import PIECE_BASE, PM, Piece, ooo_span, pieces, pos, segments
+from ..domain.halfday import PIECE_BASE, PM, Piece, Segment, ooo_span, pieces, pos, segments
+from ..domain.prefs import scorer
 from ..ports.duty import DutyPort
 from . import allocation, family
 from .context import butlers_on, load_context, nights
@@ -393,6 +394,23 @@ def _relatives_in_house(db: Session, r: Reservation, guests: dict[int, Guest]) -
     return {gid: [{"guest_id": o, "title": t, "name": short_name(known[o])} for o, t in rel] for gid, rel in kin.items()}
 
 
+def _pref_status(db: Session, rid: int, segs: list[Segment], asg: dict[int, int | None],
+                 fund: FundTimeline) -> dict | None:
+    """«Пожелание выполнено / нет» (часть 2 §5): у главного гостя есть пожелания; выполнено, если в
+    каждом сегменте объект удовлетворяет хотя бы одному (по фонду дня начала сегмента). Без
+    подписей пожеланий — персональных данных строка не содержит."""
+    prefs, heirs = allocation.load_prefs(db, [rid])
+    if rid not in prefs:
+        return None
+    score = scorer(prefs[rid], heirs)
+    met = True
+    for s in segs:
+        snap = fund.on(fund_day(s.start_pos))
+        u = snap.units.get(asg.get(s.index))
+        met = met and u is not None and score(u.id, snap.unit_path(u.id), u.flags) > 0
+    return {"met": met, "title": "пожелание выполнено" if met else "пожелание не выполнено"}
+
+
 def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None = None) -> dict:
     """Карточка брони (§6.5): уровень «с фамилиями» — состав по датам; «полный» — плюс
     заказчик, примечания, сопровождающие, логистика, настраиваемые поля."""
@@ -432,6 +450,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
         "coverage": card_coverage(db, r, duty) if r.status in allocation.OCCUPYING else [
             {"day": d.isoformat(), "butlers": [], "warnings": []} for d in nights(r.check_in, r.check_out)],
     }
+    card["pref"] = _pref_status(db, rid, segs, asg, fund)
     if at_least(level, "full"):
         card |= {"customer": r.customer, "note": r.note,
                  "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}"),
