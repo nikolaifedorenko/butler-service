@@ -89,9 +89,9 @@ BACKUP_NAME = re.compile(r"stays-\d{8}-\d{6}\.xlsx")
 # Таблицы stays_*: каждая — либо данные шахматки (удаляются, в порядке внешних ключей: сначала
 # ссылающиеся), либо настройки модуля (остаются). Тест сверяет списки со всей схемой модуля.
 WIPE = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
-        StayGroup, GuestLink, GuestPref, Guest, VipCode, BlockNight, Block, Ooo, UnitLineage, UnitStateFlag, UnitState, GroupState,
+        StayGroup, GuestLink, GuestPref, Guest, BlockNight, Block, Ooo, UnitLineage, UnitStateFlag, UnitState, GroupState,
         CategoryState, FundVersion, UnitFlag, Unit, Category, FundGroup)
-KEEP = (StaysSettings, Label, CustomField, Escort, CategoryKind)
+KEEP = (StaysSettings, Label, CustomField, Escort, CategoryKind, VipCode)
 
 # что будет удалено (предпросмотр) — тот же словарь служит отпечатком для 409 при повторе
 COUNTED = {"units": Unit, "categories": Category, "groups": FundGroup, "flags": UnitFlag,

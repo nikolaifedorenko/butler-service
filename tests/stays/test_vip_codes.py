@@ -1,11 +1,9 @@
 """Правила сопровождения, задача 1: справочник VIP-кодов, коэффициент «Особого гостя», ревизия 0017."""
 from __future__ import annotations
 
-import io
 from decimal import Decimal
 
 import pytest
-from openpyxl import load_workbook
 from sqlalchemy import delete, select
 
 from app.modules.stays.adapters.orm import Guest, Reservation, StaysSettings, VipCode
@@ -260,21 +258,6 @@ def test_migration_copies_declined_and_level(iso_engine):  # noqa: F811
     with engine.connect() as c:
         assert dict(c.execute(text("SELECT id, escort_mode FROM stays_reservations WHERE id >= 9401")).all()) == {
             9401: "rules", 9402: "declined"}
-
-
-def test_reset_backs_up_vip_codes(manager_role_client, db):
-    """Справочник кодов — в WIPE (стирается вместе с гостями и бронями), его копия — лист в файле копии."""
-    from app.modules.stays.application import fund_reset as fr
-
-    code = _new(manager_role_client, title="Копия", escorted=True, factor=1.5)
-    db.expire_all()
-    assert VipCode in fr.WIPE
-    wb = load_workbook(io.BytesIO(fr.backup_bytes(db)))
-    ws = wb[fr.raw_sheet_names()["stays_vip_codes"]]
-    head = [x.value for x in ws[1]]
-    assert head == ["id", "code", "title", "escorted", "factor", "sort_order", "archived"]
-    rows = {r[0].value: [x.value for x in r] for r in ws.iter_rows(min_row=2)}
-    assert rows[code["id"]][1:] == [code["code"], "Копия", 1, 1.5, 100, 0]
 
 
 def test_demo_has_codes_03_13_14(tmp_path):
