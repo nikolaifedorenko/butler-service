@@ -1,6 +1,10 @@
 """Шахматка, задача 17: сводная загрузка, «Мои гости», правка своих броней батлером, матрица ролей."""
 from __future__ import annotations
 
+import datetime as dt
+
+from app.modules.stays.adapters.orm import Block, BlockNight
+
 from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, uniq
 
 
@@ -48,36 +52,42 @@ def test_occupancy_grid_counts(manager_role_client, manager_client, occupancy_cl
         assert cells["2038-01-03"]["pct"] == round(2 / 3, 3)
 
 
-def test_occupancy_rows(manager_role_client, manager_client):
+def test_occupancy_rows(manager_role_client, manager_client, db):
     """Строки §6.1 на один день: выезд и заезд в тот же объект — по 1 в «Заездах» и «Выездах» и
     1 в «Проживают»; OOO уменьшает знаменатель; блок — в числителе; «Свободно» не меньше 0;
     «Гостей» — по составу; всё в OOO — pct None."""
     gid = _group(manager_role_client)
     cat = make_category(manager_role_client, n_units=3, group_id=gid)
-    u1, u2, u3 = (u["id"] for u in cat["units"])
+    u1, u2, _u3 = (u["id"] for u in cat["units"])
     gs = [make_guest(manager_client)["id"] for _ in range(3)]
     d = "2038-02-10"
     create_res(manager_client, cat, "2038-02-08", d, [(gs[0], "main", None, None)], pins={0: u1})
     create_res(manager_client, cat, d, "2038-02-12", [(gs[1], "main", None, None), (gs[2], "guest", None, None)],
                pins={0: u1})
-    for unit, kind in ((u2, "ooo"), (u3, "block")):
-        r = manager_client.post(f"{API}/holds", json={"unit_id": unit, "start": d, "end": d, "kind": kind})
-        assert r.status_code == 200, r.text
+    r = manager_client.post(f"{API}/ooo", json={"unit_id": u2, "start": d, "end": d, "start_half": "AM", "end_half": "PM"})
+    assert r.status_code == 200, r.text
+    day = dt.date.fromisoformat(d)       # блок держит один объект категории в ночь d
+    blk = Block(title="", start=day, end=day)
+    db.add(blk)
+    db.flush()
+    db.add(BlockNight(block_id=blk.id, category_id=cat["id"], night=day, quantity=1))
+    db.commit()
     body = _occ(manager_client, "2038-02-09", "2038-02-11", group_ids=gid)
     cell = _by_day(body["nodes"][0], body["days"])[d]
     assert cell == {"total": 3, "living": 1, "guests": 2, "arrivals": 1, "departures": 1,
                     "free": 0, "ooo": 1, "blocks": 1, "pct": 1.0}       # (1 + 1) / (3 − 1)
     nxt = _by_day(body["nodes"][0], body["days"])["2038-02-11"]
     assert (nxt["living"], nxt["ooo"], nxt["blocks"], nxt["free"], nxt["pct"]) == (1, 0, 0, 2, round(1 / 3, 3))
-    # один объект: занят (закреплён) и в OOO — «Свободно» 0, а не −1; весь фонд в OOO — pct None
+    # один объект: закреплённая бронь и OOO — OOO главнее, бронь без объекта (овербукинг, часть 2
+    # §4.4; «Свободно» −1); весь фонд в OOO — pct None
     solo_g = _group(manager_role_client)
     solo = make_category(manager_role_client, n_units=1, group_id=solo_g)
     create_res(manager_client, solo, d, "2038-02-11", pins={0: solo["units"][0]["id"]})
-    assert manager_client.post(f"{API}/holds", json={"unit_id": solo["units"][0]["id"], "start": d, "end": d,
-                                                     "kind": "ooo"}).status_code == 200
+    assert manager_client.post(f"{API}/ooo", json={"unit_id": solo["units"][0]["id"], "start": d, "end": d,
+                                                     "start_half": "AM", "end_half": "PM"}).status_code == 200
     body = _occ(manager_client, d, d, group_ids=solo_g)
     cell = body["nodes"][0]["days"][0]
-    assert (cell["total"], cell["living"], cell["ooo"], cell["free"], cell["pct"]) == (1, 1, 1, 0, None)
+    assert (cell["total"], cell["living"], cell["ooo"], cell["free"], cell["pct"]) == (1, 0, 1, -1, None)
 
 
 def test_occupancy_by_tree_totals_per_day(manager_role_client, manager_client, today):
@@ -209,3 +219,102 @@ def test_butler_cannot_change_paid_category(butler_client, own_reservation, mana
     r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, paid_category_id=other["id"]))
     assert r.status_code == 403
     assert r.json()["detail"] == "Батлер может менять только состав, логистику и сведения о гостях"
+
+
+# ── часть 2, задача 6: «Загрузка» — OOO по половинкам, блоки по слотам, «Свободно» без нижней границы ──
+
+def _ooo(c, unit_id, start, end, **kw):
+    r = c.post(f"{API}/ooo", json={"unit_id": unit_id, "start": start, "end": end, **kw})
+    assert r.status_code == 200, r.text
+    return r.json()["result"]
+
+
+def _block(c, start, end, grid, title="Б"):
+    r = c.post(f"{API}/blocks", json={"title": title, "start": start, "end": end, "grid": grid})
+    assert r.status_code == 200, r.text
+    return r.json()["result"]
+
+
+def test_occupancy_ooo_counts_by_pm_half(manager_role_client, manager_client):
+    """Ночь D занята OOO, если занята половинка PM дня D: «до утра» последнего дня его не считает,
+    «с вечера» первого — считает; сутки целиком — обе границы."""
+    gid = _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=3, group_id=gid)
+    u1, u2, u3 = (u["id"] for u in cat["units"])
+    _ooo(manager_client, u1, "2039-05-10", "2039-05-12")                                   # PM10 … AM12
+    _ooo(manager_client, u2, "2039-05-10", "2039-05-12", start_half="AM", end_half="PM")   # AM10 … PM12
+    _ooo(manager_client, u3, "2039-05-11", "2039-05-12", start_half="AM", end_half="AM")   # AM11 … AM12
+    body = _occ(manager_client, "2039-05-09", "2039-05-13", group_ids=gid)
+    cells = _by_day(body["nodes"][0], body["days"])
+    assert [cells[d]["ooo"] for d in ("2039-05-09", "2039-05-10", "2039-05-11", "2039-05-12", "2039-05-13")] \
+        == [0, 2, 3, 1, 0]
+
+
+def test_occupancy_blocks_sum_remainder(manager_role_client, manager_client):
+    """«Блоки» узла — объекты узла, занятые слотами блока в эту ночь: категория, разнесённая по двум
+    узлам, не считается дважды; итог — те же объекты без двойного счёта (сумма остатков = 3)."""
+    a, b = _group(manager_role_client), _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=2, group_id=a)
+    d = FundDraft(manager_role_client)                    # вторая категория: по объекту в узлах a и b
+    code = "S" + uniq()
+    cid = d.call("POST", "categories", code=code, title=code, kind_id=kind_id("villa"), escorted=True, weight=4)["id"]
+    d.call("POST", "units", label=code + "-1", category_id=cid, group_id=a)
+    d.call("POST", "units", label=code + "-2", category_id=cid, group_id=b)
+    d.publish()
+    _block(manager_client, "2039-06-10", "2039-06-12", {cid: {"2039-06-10": 1, "2039-06-11": 1}})
+    _block(manager_client, "2039-06-10", "2039-06-11", {cat["id"]: {"2039-06-10": 2}})
+    body = _occ(manager_client, "2039-06-09", "2039-06-12", group_ids=[a, b])
+    rows = {n["group_id"]: _by_day(n, body["days"]) for n in body["nodes"]}
+    total = _by_day(body["total"], body["days"])
+    n10 = (rows[a]["2039-06-10"]["blocks"], rows[b]["2039-06-10"]["blocks"])
+    assert sum(n10) == 3 and n10[0] >= 2 and total["2039-06-10"]["blocks"] == 3     # не 4: остаток X не удвоен
+    assert sum(rows[g]["2039-06-11"]["blocks"] for g in (a, b)) == 1 and total["2039-06-11"]["blocks"] == 1
+    assert total["2039-06-09"]["blocks"] == 0 and total["2039-06-12"]["blocks"] == 0
+    assert all(rows[g]["2039-06-10"]["free"] >= 0 for g in (a, b))
+
+
+def test_occupancy_free_negative(manager_role_client, manager_client):
+    """«Свободно» без нижней границы: бронь без объекта (овербукинг) и нехватка блока дают
+    отрицательное значение; «Блоки» — размещённые слоты."""
+    gid = _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=2, group_id=gid)
+    u1, u2 = (u["id"] for u in cat["units"])
+    _ooo(manager_client, u1, "2039-07-10", "2039-07-12")
+    _ooo(manager_client, u2, "2039-07-10", "2039-07-12")
+    create_res(manager_client, cat, "2039-07-10", "2039-07-12")            # некуда: оба объекта в OOO
+    body = _occ(manager_client, "2039-07-09", "2039-07-12", group_ids=gid)
+    cells = _by_day(body["nodes"][0], body["days"])
+    assert cells["2039-07-10"]["free"] == -1 and cells["2039-07-11"]["free"] == -1
+    assert cells["2039-07-09"]["free"] == 2 and cells["2039-07-12"]["free"] == 2
+    assert _by_day(body["total"], body["days"])["2039-07-10"]["free"] == -1
+    # блок, которому не хватило объектов: «Блоки» — размещённые, недостающий — в минус «Свободно»
+    gid2 = _group(manager_role_client)
+    cat2 = make_category(manager_role_client, n_units=2, group_id=gid2)
+    _block(manager_client, "2039-08-10", "2039-08-11", {cat2["id"]: {"2039-08-10": 3}}, "Много")
+    body = _occ(manager_client, "2039-08-09", "2039-08-11", group_ids=gid2)
+    cell = _by_day(body["nodes"][0], body["days"])["2039-08-10"]
+    assert (cell["total"], cell["blocks"], cell["free"]) == (2, 2, -1)
+
+
+def test_occupancy_past_blocks_from_recorded_nights(manager_role_client, manager_client, today, monkeypatch):
+    """§4.5: за прошлые ночи «Блоки» — то, что записано сейчас (остаток категории), «Свободно» уменьшается;
+    категория, разнесённая по узлам, — один раз (в первом узле)."""
+    today("2040-09-01")
+    a, b = _group(manager_role_client), _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=2, group_id=a)
+    d = FundDraft(manager_role_client)
+    code = "P" + uniq()
+    cid = d.call("POST", "categories", code=code, title=code, kind_id=kind_id("villa"), escorted=True, weight=4)["id"]
+    d.call("POST", "units", label=code + "-1", category_id=cid, group_id=a)
+    d.call("POST", "units", label=code + "-2", category_id=cid, group_id=b)
+    d.publish()
+    today("2040-09-20")
+    from app.modules.stays.application import views
+    monkeypatch.setattr(views, "local_date", lambda: dt.date(2040, 9, 20))
+    _block(manager_client, "2040-09-10", "2040-09-12", {cat["id"]: {"2040-09-10": 2}, cid: {"2040-09-10": 1, "2040-09-11": 1}})
+    body = _occ(manager_client, "2040-09-09", "2040-09-12", group_ids=[a, b])
+    rows = {n["group_id"]: _by_day(n, body["days"]) for n in body["nodes"]}
+    total = _by_day(body["total"], body["days"])
+    assert rows[a]["2040-09-10"]["blocks"] == 3 and rows[b]["2040-09-10"]["blocks"] == 0
+    assert total["2040-09-10"]["blocks"] == 3 and total["2040-09-11"]["blocks"] == 1
+    assert total["2040-09-10"]["free"] == 4 - 3 and total["2040-09-09"]["blocks"] == 0

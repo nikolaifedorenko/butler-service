@@ -52,8 +52,10 @@ function staysFieldValues(m, attr) {
   return out;
 }
 
-function renderPreview(diff, el) {
+function renderPreview(diff, el, refused) {
   const items = [];
+  // новый овербукинг без права «Овербукинг»: сохранение будет отклонено (409)
+  if (refused) items.push(`<li class="sp-warn"><b>Не сохранится:</b> ${esc(refused)}</li>`);
   (diff.moved || []).forEach(m => {
     const who = m.new ? 'Новая бронь' : `Бронь ${m.number || '#' + m.reservation_id}`;
     // seg_index — сегмент; since — дата части сегмента за границей версии фонда
@@ -73,7 +75,7 @@ function previewThenSave({ url, method, body, out }) {
   return {
     async preview() {
       const r = await api(`${url}${url.includes('?') ? '&' : '?'}preview=1`, { method, body: body() });
-      renderPreview(r.diff, out());
+      renderPreview(r.diff, out(), r.overbook_refused);
       return r;
     },
     async save() { return api(url, { method, body: body() }); },
@@ -90,6 +92,36 @@ function staysBindFoot(m, flow, onSaved, okText) {
   $('[data-save]', m).onclick = async () => {
     try { await flow.save(); closeModal(); toast(okText); if (onSaved) onSaved(); } catch (e) { toast(e.message, 'err'); }
   };
+}
+
+/* Подвал форм OOO и блоков: «Сохранить» недоступно, пока предпросмотр говорит «не сохранится»
+   (новый овербукинг без права stays.overbook) или сервер ответил 409 с этим же текстом; любая
+   правка полей снимает запрет — предпросмотр устарел. done(результат) — что делать после записи
+   (по умолчанию закрыть окно и обновить вид). */
+function staysBindGatedFoot(m, flow, { onSaved, okText = 'Готово', out, done }) {
+  const save = $('[data-save]', m);
+  const gate = text => { save.disabled = !!text; save.title = text || ''; };
+  $('[data-close]', m).onclick = closeModal;
+  $('#rf-preview', m).onclick = async () => {
+    try { gate((await flow.preview())?.overbook_refused); } catch (e) { toast(e.message, 'err'); }
+  };
+  save.onclick = async () => {
+    try {
+      const r = await flow.save();
+      toast(okText);
+      if (done) done(r); else { closeModal(); if (onSaved) onSaved(); }
+    } catch (e) {
+      if (e.status === 409 && e.payload?.overbook) {
+        renderPreview(e.payload.diff || {}, out(), e.message);
+        gate(e.message);
+      }
+      toast(e.message, 'err');
+    }
+  };
+  const reset = () => gate('');
+  m.addEventListener('input', reset);
+  m.addEventListener('change', reset);
+  return { reset };
 }
 
 /* ─────────────── Бронь ─────────────── */
@@ -407,45 +439,6 @@ async function openCoverageForm(card, onSaved) {
   });
 }
 
-/* ─────────────── Блок / OOO (§3.1, §4.6): создание, правка, удаление — с предпросмотром ─────────────── */
-async function openHoldForm(hold, onSaved) {
-  const fund = await staysFund();
-  const isNew = !hold.id;
-  const first = hold.start || staysToday();
-  openModal({
-    title: isNew ? 'Блок / OOO' : `${hold.kind === 'ooo' ? 'OOO' : 'Блок'} · ${dateRu(hold.start)}–${dateRu(hold.end)}`,
-    subtitle: 'Занимает объект целыми сутками с–по; брони на эти дни перераспределятся',
-    body: `<div class="grid-2">
-        ${sfRow('Объект', sfSelect('hf-unit', fund.units.filter(u => u.active).map(u => [u.id, u.label]), hold.unit_id))}
-        ${sfRow('Тип', sfSelect('hf-kind', [['block', 'блок'], ['ooo', 'OOO — не в продаже']], hold.kind || 'block'))}
-        ${sfRow('С', sfInput('hf-start', first, 'date'))}
-        ${sfRow('По', sfInput('hf-end', hold.end || first, 'date'))}
-      </div>
-      ${sfRow('Название', sfInput('hf-title', hold.title))}
-      <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: `${isNew ? '' : '<button class="btn btn-danger" id="hf-delete">Удалить…</button>'}${staysFormFoot()}`,
-    onMount(m) {
-      const out = () => $('#rf-preview-out', m);
-      const body = () => ({ unit_id: Number($('#hf-unit', m).value), kind: $('#hf-kind', m).value,
-        start: $('#hf-start', m).value, end: $('#hf-end', m).value, title: $('#hf-title', m).value });
-      const edit = previewThenSave({ url: isNew ? '/api/stays/holds' : `/api/stays/holds/${hold.id}`,
-        method: isNew ? 'POST' : 'PUT', body, out });
-      const remove = {
-        async preview() { renderPreview((await api(`/api/stays/holds/${hold.id}?preview=1`, { method: 'DELETE' })).diff, out()); },
-        save: () => api(`/api/stays/holds/${hold.id}`, { method: 'DELETE' }),
-      };
-      let mode = edit;
-      const del = $('#hf-delete', m);
-      if (del) del.onclick = async () => {
-        mode = remove;
-        $('[data-save]', m).textContent = 'Удалить';
-        try { await remove.preview(); } catch (e) { toast(e.message, 'err'); }
-      };
-      staysBindFoot(m, { preview: () => mode.preview(), save: () => mode.save() }, onSaved, 'Готово');
-    },
-  });
-}
-
 /* ─────────────── Совместное проживание (§3.3): одна операция с предпросмотром ─────────────── */
 async function openGroupForm(card, onSaved) {
   const cands = await api(`/api/stays/reservations/${card.id}/cohabit`);
@@ -475,7 +468,7 @@ async function openGroupForm(card, onSaved) {
 
 /* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
 async function openGuestCard(gid, onChanged) {
-  const [g, fund] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund()]);
+  const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund(), api(`/api/stays/guests/${gid}/prefs`)]);
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   const edit = can('stays.edit');
   const role = { main: 'главный', guest: 'проживает' };
@@ -485,6 +478,7 @@ async function openGuestCard(gid, onChanged) {
     subtitle: [g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
     body: `<div class="grid-2">
         <div><h4>Предпочтения</h4>${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('') || '<span class="muted">нет</span>'}
+          <h4>Предпочитает</h4><div id="gc-prefs"></div>
           ${g.special_dates.length ? `<h4>Особые даты</h4>${g.special_dates.map(d => `<div>${esc(dateRu(d.date))} — ${esc(d.what)}</div>`).join('')}` : ''}
           ${Object.keys(g.fields).length ? `<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => `<div>${esc(titles[k] || k)}: ${esc(String(v))}</div>`).join('')}` : ''}
           ${g.note ? `<h4>Примечание</h4><p>${esc(g.note)}</p>` : ''}</div>
@@ -504,6 +498,7 @@ async function openGuestCard(gid, onChanged) {
       $('[data-close]', m).onclick = closeModal;
       const reopen = () => openGuestCard(gid, onChanged);
       renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
+      renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit, onChanged);
       const ed = $('#gc-edit', m);
       if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); });
       $$('[data-link-del]', m).forEach(b => {
@@ -534,6 +529,74 @@ async function openGuestCard(gid, onChanged) {
       };
     },
   });
+}
+
+/* Пожелания гостя к объекту (часть 2 §5): порядок в списке — важность (первое главное); в запросе
+   priority убывает с позицией. Каждая правка сохраняется сразу — список целиком, PUT /guests/{id}/prefs. */
+const STAYS_PREF_KIND = { group: 'узел', flag: 'флаг', unit: 'объект' };
+function renderGuestPrefs(host, gid, initial, fund, editable, onChanged) {
+  let list = initial.map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
+  const options = {
+    group: fund.groups.map(x => [x.id, x.path.map(i => fund.groups.find(y => y.id === i)?.title || '').join(' / ')]),
+    flag: fund.flags.filter(f => !f.archived).map(f => [f.id, f.title]),
+    unit: fund.units.map(u => [u.id, u.label]),
+  };
+  /* правка пожеланий пересчитывает распределение: сначала предпросмотр (?preview=1) — если чьи-то брони
+     переедут или сервер откажет в овербукинге, показываем разницу и ждём «Применить» */
+  const body = next => ({ prefs: next.map((p, i) => ({ kind: p.kind, ref_id: p.ref_id, priority: next.length - i })) });
+  const url = `/api/stays/guests/${gid}/prefs`;
+  let pending = null;
+  const apply = async next => {
+    pending = null;
+    try {
+      const r = await api(url, { method: 'PUT', body: body(next) });
+      list = r.result.map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
+      if (onChanged) onChanged();
+    } catch (e) { toast(e.message, 'err'); }
+    draw();
+  };
+  const save = async next => {
+    try {
+      const r = await api(`${url}?preview=1`, { method: 'PUT', body: body(next) });
+      if (!r.diff.moved.length && !r.diff.warnings_added.length && !r.overbook_refused) { await apply(next); return; }
+      pending = { next, diff: r.diff, refused: r.overbook_refused };
+    } catch (e) { toast(e.message, 'err'); }
+    draw();
+  };
+  const draw = () => {
+    const kind = host.querySelector('[data-pref-kind]')?.value || 'group';
+    host.innerHTML = `${list.map((p, i) => `<div class="sb-line" data-pref-row="${i}"><b>${i + 1}.</b> ${esc(STAYS_PREF_KIND[p.kind])}: ${esc(p.title)}
+        ${editable ? `<button class="btn btn-sm btn-ghost" data-pref-up="${i}"${i ? '' : ' disabled'} title="Важнее">↑</button>
+          <button class="btn btn-sm btn-ghost" data-pref-del="${i}" title="Убрать">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}
+      ${editable ? `<div class="sb-line"><select data-pref-kind>${Object.entries(STAYS_PREF_KIND).map(([k, t]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        <select data-pref-ref>${options[kind].map(([id, t]) => `<option value="${id}">${esc(t)}</option>`).join('')}</select>
+        <button class="btn btn-sm" data-pref-add${options[kind].length ? '' : ' disabled'}>Добавить</button>
+        ${options[kind].length ? '' : '<span class="muted">в справочнике пока нет вариантов</span>'}</div>
+        ${pending ? `<div class="sp-out" id="gc-pref-out"></div><div class="sb-line">
+          <button class="btn btn-sm btn-primary" data-pref-apply${pending.refused ? ' disabled' : ''}>Применить</button>
+          <button class="btn btn-sm btn-ghost" data-pref-cancel>Отмена</button></div>` : ''}` : ''}`;
+    if (pending) {
+      renderPreview(pending.diff, $('#gc-pref-out', host), pending.refused);
+      $('[data-pref-apply]', host).onclick = () => apply(pending.next);
+      $('[data-pref-cancel]', host).onclick = () => { pending = null; draw(); };
+    }
+    $$('[data-pref-up]', host).forEach(b => {
+      b.onclick = () => { const i = Number(b.dataset.prefUp); const n = [...list]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; save(n); };
+    });
+    $$('[data-pref-del]', host).forEach(b => { b.onclick = () => save(list.filter((_, i) => i !== Number(b.dataset.prefDel))); });
+    const k = $('[data-pref-kind]', host);
+    if (k) k.onchange = draw;
+    const add = $('[data-pref-add]', host);
+    if (add) {
+      add.onclick = () => {
+        const ref = Number($('[data-pref-ref]', host).value);
+        if (!ref) return;
+        if (list.some(p => p.kind === k.value && p.ref_id === ref)) { toast('Такое пожелание уже есть', 'warn'); return; }
+        save([...list, { kind: k.value, ref_id: ref }]);
+      };
+    }
+  };
+  draw();
 }
 
 /* ─────────────── Статус брони ─────────────── */

@@ -68,10 +68,12 @@ def test_new_group_member_adopts_group_moves(manager_role_client, manager_client
     assert b["moves"] == mv
 
 
-def test_hold_title_hidden_for_occupancy(manager_role_client, manager_client, occupancy_client):
+def test_hold_title_visible_to_all_levels(manager_role_client, manager_client, occupancy_client):
+    """Решение владельца (часть 2): причина OOO и название блока — без персональных данных, видны всем
+    уровням, в том числе «занятости», и на шахматке."""
     cat = make_category(manager_role_client, n_units=1)
-    manager_client.post(f"{API}/holds", json={"unit_id": cat["units"][0]["id"], "start": "2033-05-01",
-                                              "end": "2033-05-03", "kind": "block", "title": "Под Иванова"})
+    manager_client.post(f"{API}/ooo", json={"unit_id": cat["units"][0]["id"], "start": "2033-05-01",
+                                              "end": "2033-05-03", "start_half": "AM", "end_half": "PM", "reason": "Замена окон"})
     q = {"first": "2033-05-01", "last": "2033-05-05", "category_ids": cat["id"]}
-    assert "Под Иванова" not in occupancy_client.get(f"{API}/board/units", params=q).text
-    assert "Под Иванова" in manager_client.get(f"{API}/board/units", params=q).text
+    for c in (occupancy_client, manager_client):
+        assert [h["title"] for h in c.get(f"{API}/board/units", params=q).json()["holds"]] == ["Замена окон"]

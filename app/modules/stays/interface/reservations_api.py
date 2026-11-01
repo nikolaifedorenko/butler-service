@@ -1,5 +1,5 @@
 """API броней (§3.3, §4.7, §9): документ брони, статусы с no-show, группы совместного
-проживания, блоки и OOO. Каждая операция пересчитывает распределение по объектам и
+проживания. Каждая операция пересчитывает распределение по объектам и
 пишет журнал «было → стало»; устаревшая версия брони — 409."""
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 
-from ..adapters.orm import Hold, Reservation, StayGroup
+from ..adapters.orm import Reservation, StayGroup
 from ..application import allocation, coverage, mine, reservations
 from ._ops import PREVIEW, run
 
@@ -81,14 +81,6 @@ class GroupIn(BaseModel):
     title: str = Field("", max_length=120)
 
 
-class HoldIn(BaseModel):
-    unit_id: int
-    start: dt.date
-    end: dt.date
-    kind: Literal["block", "ooo"] = "block"
-    title: str = Field("", max_length=120)
-
-
 def _doc(payload: ReservationIn) -> dict:
     return payload.model_dump(exclude={"version"})
 
@@ -121,7 +113,7 @@ def create_reservation(payload: ReservationIn, preview_flag: bool = PREVIEW,
         audit(db, principal, "stays_reservation", f"reservation:{r.id}",
               {"diff": reservations.diff_of(before, db, r)})
         return _result(db, r)
-    return run(db, op, preview_flag, _window(None, doc))
+    return run(db, op, preview_flag, _window(None, doc), principal)
 
 
 EDIT_OR_MINE = require_perm("stays.edit", "stays.edit_mine")
@@ -167,7 +159,7 @@ def update_reservation(rid: int, payload: ReservationIn, preview_flag: bool = PR
               {"diff": reservations.diff_of(before, db, r)})
         _cleanup(db, principal, r, old_group)
         return _result(db, r)
-    return run(db, op, preview_flag, window)
+    return run(db, op, preview_flag, window, principal)
 
 
 @router.post("/reservations/{rid}/status")
@@ -182,7 +174,7 @@ def change_status(rid: int, payload: StatusIn, preview_flag: bool = PREVIEW,
               {"diff": reservations.diff_of(before, db, r)})
         _cleanup(db, principal, r)
         return _result(db, r)
-    return run(db, op, preview_flag, window)
+    return run(db, op, preview_flag, window, principal)
 
 
 class JoinIn(BaseModel):
@@ -217,7 +209,7 @@ def join_group(payload: JoinIn, preview_flag: bool = PREVIEW, principal: Princip
             audit(db, principal, "stays_reservation", f"reservation:{r.id}",
                   {"diff": reservations.diff_of(before, db, r)})
         return {"group_id": gid}
-    return run(db, op, preview_flag, _span(found) if found else None)
+    return run(db, op, preview_flag, _span(found) if found else None, principal)
 
 
 @router.post("/groups/leave")
@@ -230,7 +222,7 @@ def leave_group(payload: LeaveIn, preview_flag: bool = PREVIEW, principal: Princ
         audit(db, principal, "stays_reservation", f"reservation:{r.id}", {"diff": reservations.diff_of(before, db, r)})
         _cleanup(db, principal, r, old)
         return _result(db, r)
-    return run(db, op, preview_flag, _span([r0]) if r0 else None)
+    return run(db, op, preview_flag, _span([r0]) if r0 else None, principal)
 
 
 @router.post("/groups")
@@ -241,36 +233,3 @@ def create_group(payload: GroupIn, principal: Principal = Depends(EDIT), db: Ses
     audit(db, principal, "stays_reservation", f"group:{g.id}", {"title": payload.title})
     db.commit()
     return {"id": g.id, "title": g.title}
-
-
-def _hold_op(db: Session, principal: Principal, payload: Optional[HoldIn], hid: Optional[int]):
-    def op():
-        if payload is None:
-            before = reservations.delete_hold(db, hid)
-            after = {k: None for k in before}
-        else:
-            h, before = reservations.save_hold(db, payload.model_dump(), hid)
-            after = reservations.hold_dict(h)
-        audit(db, principal, "stays_hold", f"hold:{after['id'] or hid}",
-              {"diff": reservations.changes(before, after)})
-        return after
-    return op
-
-
-@router.post("/holds")
-def create_hold(payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
-                db: Session = Depends(get_db)):
-    return run(db, _hold_op(db, principal, payload, None), preview_flag, (payload.start, payload.end))
-
-
-@router.put("/holds/{hid}")
-def update_hold(hid: int, payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
-                db: Session = Depends(get_db)):
-    return run(db, _hold_op(db, principal, payload, hid), preview_flag, (payload.start, payload.end))
-
-
-@router.delete("/holds/{hid}")
-def remove_hold(hid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
-                db: Session = Depends(get_db)):
-    h = db.get(Hold, hid)
-    return run(db, _hold_op(db, principal, None, hid), preview_flag, (h.start, h.end) if h else None)

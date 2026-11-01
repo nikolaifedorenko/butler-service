@@ -252,11 +252,16 @@ def move_draft(payload: DraftMoveIn, principal: Principal = Depends(SETUP), db: 
 
 
 @router.delete("/fund/versions/{vid}")
-def remove_version(vid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    _run(fd.delete_version, db, vid)
-    audit(db, principal, "stays_fund_version", f"fund_version:{vid}", {"delete": True})
-    db.commit()
-    return {"ok": True}
+def remove_version(vid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
+                   db: Session = Depends(get_db)):
+    """Удаление черновика или будущей версии и его предпросмотр (?preview=1) — одна операция, как
+    публикация: удаление опубликованной версии перераспределяет брони, новый овербукинг без права
+    stays.overbook — 409 (часть 2 §7)."""
+    def op():
+        fd.delete_version(db, vid)
+        audit(db, principal, "stays_fund_version", f"fund_version:{vid}", {"delete": True})
+        return {"ok": True}
+    return run(db, op, preview_flag, None, principal)
 
 
 def _data(payload: BaseModel) -> dict:
@@ -361,11 +366,13 @@ def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: P
         return {"version": {"id": v.id, "valid_from": v.valid_from.isoformat(), "rev": v.rev},
                 "fund_diff": res.fund_diff, "propagated": res.propagated, "kept": res.kept,
                 "skipped": res.skipped, "transfers": res.transfers}
-    out = run(db, op, preview_flag, None)
+    out = run(db, op, preview_flag, None, principal)
     added = out["diff"]["warnings_added"]
+    # «unassigned» в ответе — брони без объекта: с части 2 это предупреждение overbooked
     out["result"]["affected"] = {"moved": out["diff"]["moved"],
-                                 **{k: [w for w in added if w["kind"] == k]
-                                    for k in ("unassigned", "pin_invalid", "category_missing")}}
+                                 **{k: [w for w in added if w["kind"] == kind]
+                                    for k, kind in (("unassigned", "overbooked"), ("pin_invalid", "pin_invalid"),
+                                                    ("category_missing", "category_missing"))}}
     return out
 
 

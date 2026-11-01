@@ -38,9 +38,36 @@ class Snapshot:
     names: dict = field(default_factory=dict)          # подписи батлеров и гостей для разницы
     limit: float = 0.0
     spans: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)   # часть → (start_pos, end_pos)
+    overbooked: frozenset[tuple[int, int]] = frozenset()                           # (бронь, ночь) без объекта
 
 
 Window = tuple[dt.date, dt.date]
+CHANGE_DAYS = 62
+
+
+class OverbookRefused(Exception):
+    """Операция создаёт новый овербукинг, а права stays.overbook нет (§7) → 409 с предпросмотром."""
+
+    def __init__(self, text: str, diff: dict, result=None):
+        super().__init__(text)
+        # result — уже сериализованный результат операции (она выполнена до проверки): предпросмотр
+        # отдаёт его как обычно, вызывающие (публикация фонда, объединение гостей) на него опираются
+        self.text, self.diff, self.result = text, diff, result
+
+
+def overbooked_keys(state: allocation.AllocationState) -> frozenset[tuple[int, int]]:
+    """Овербукинг по тождеству: (бронь, ordinal ночи) без объекта. Ночи, а не индексы частей:
+    индекс части зависит от границ версий фонда и от разрезов переезда."""
+    return state.overbooked
+
+
+def change_window(*ranges: tuple[dt.date, dt.date]) -> Window:
+    """Окно снимка предпросмотра OOO и блока (§7, находка P2 аудита): ±62 дня вокруг изменения —
+    от самого раннего до самого позднего из дат «было» и «стало»; изменение длиннее 124 дней
+    обрезается, чтобы окно оставалось ограниченным."""
+    span = dt.timedelta(days=CHANGE_DAYS)
+    first, last = min(a for a, _ in ranges), max(z for _, z in ranges)
+    return first - span, min(last, first + 2 * span) + span
 
 
 def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | None = None) -> Snapshot:
@@ -53,7 +80,7 @@ def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | No
         for rid in state.members[w.key] or [None]:         # предупреждение блока — без брони
             warns.add((w.kind, None, None, rid, w.text))
     snap = Snapshot(dict(state.units), frozenset(warns), frozenset(db.scalars(select(Reservation.id))),
-                    spans=dict(state.spans))
+                    spans=dict(state.spans), overbooked=overbooked_keys(state))
     if window is None:
         return snap
     ctx = load_context(db, window[0], window[1], duty)
@@ -64,7 +91,8 @@ def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | No
         warns |= {(w.kind, d.isoformat(), w.employee_id, w.reservation_id, ctx.warning_text(w))
                   for w in ctx.warnings(d)}
     names = {("e", e): n for e, n in ctx.staff.items()} | {("g", g): ctx.guest_name(g) for g in ctx.guests}
-    return Snapshot(snap.units, frozenset(warns), snap.reservations, coverage, loads, names, ctx.limit, snap.spans)
+    return Snapshot(snap.units, frozenset(warns), snap.reservations, coverage, loads, names, ctx.limit, snap.spans,
+                    snap.overbooked)
 
 
 def _warning(k: WarningKey, known: frozenset[int]) -> dict:
@@ -171,12 +199,25 @@ def _coverage_changes(before: Snapshot, after: Snapshot) -> list[dict]:
 
 
 def run_operation(db: Session, op: Callable[[], T], window: Window | None = None,
-                  duty: DutyPort | None = None) -> tuple[T, dict]:
+                  duty: DutyPort | None = None, *, may_overbook: bool) -> tuple[T, dict]:
     """Выполнить op и снять разницу. op пишет и журнал аудита, и возвращает уже
     сериализованный результат: после отката ORM-объекты просрочены. Фиксирует или
-    откатывает транзакцию обработчик (commit — только в обработчиках)."""
+    откатывает транзакцию обработчик (commit — только в обработчиках).
+
+    may_overbook=False (нет права stays.overbook): если после op появился новый овербукинг —
+    ночь брони без объекта, которой до op не было, — OverbookRefused с предпросмотром. Уже
+    существующий овербукинг не мешает. Импорт из Fidelio передаёт may_overbook=True (§7)."""
     lock_module(db)                              # до первого чтения состояния (ревью этапа 2, I1)
     db.info.pop(allocation.CACHE_KEY, None)
     before = take_snapshot(db, window, duty)
     result = op()
-    return result, diff(db, before, take_snapshot(db, window, duty))
+    after = take_snapshot(db, window, duty)
+    d = diff(db, before, after)
+    new = after.overbooked - before.overbooked
+    if new and not may_overbook:
+        rids = {rid for rid, _ in new}
+        texts = sorted({text for kind, _d, _e, rid, text in after.warnings
+                        if kind in ("overbooked", "category_missing") and rid in rids})
+        raise OverbookRefused("Нет объекта: " + "; ".join(texts or ["бронь остаётся без объекта"])
+                              + ". Сохранить с овербукингом может сотрудник с правом «Овербукинг»", d, result)
+    return result, d

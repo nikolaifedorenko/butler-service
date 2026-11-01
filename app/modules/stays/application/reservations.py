@@ -15,7 +15,6 @@ from ..adapters.orm import (
     Assignment,
     Companion,
     Guest,
-    Hold,
     Label,
     Logistics,
     Move,
@@ -163,13 +162,14 @@ def _sync_group(db: Session, r: Reservation, doc: dict) -> None:
 def reservation_snapshot(db: Session, r: Reservation) -> dict:
     """Плоский снимок брони для журнала «было → стало» (§3.6)."""
     moves = _moves_of(db, r.id)
+    rows = list(db.scalars(select(Assignment).where(Assignment.reservation_id == r.id).order_by(Assignment.seg_index)))
     # обозначение — по фонду части (фонд меняется версиями с вечера даты)
-    starts = {p.index: fund_day(p.start_pos) for p in pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id,
-                                                        moves), version_cuts(db))}
+    starts = {p.index: fund_day(p.start_pos) for p in pieces(
+        segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves),
+        [*version_cuts(db), *(a.start_pos for a in rows if a.start_pos is not None)])}
     fund = fund_for_stays(db, r.check_in, r.check_out)
     units = [u.label if a.unit_id and (u := fund.unit(a.unit_id, starts.get(a.seg_index, r.check_in))) else None
-             for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)
-                                 .order_by(Assignment.seg_index))]
+             for a in rows]
     occ = [[o.guest_id, _d(o.date_from), _d(o.date_to), o.role] for o in
            db.scalars(select(Occupant).where(Occupant.reservation_id == r.id).order_by(Occupant.id))]
     return {**{k: _d(getattr(r, k)) for k in SCALARS}, "status": r.status,
@@ -266,18 +266,22 @@ def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
         return
     members = [r, *_group_others(db, r.group_id, r.id)]
     rows: dict[tuple[int, int], dict[int, Assignment]] = {}
+    starts: dict[int, list[int]] = {}
     for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([m.id for m in members]))):
         rows.setdefault((a.reservation_id, a.seg_index // PIECE_BASE), {})[a.seg_index] = a
+        if a.start_pos is not None:
+            starts.setdefault(a.reservation_id, []).append(a.start_pos)
     cuts, morning = version_cuts(db), pos(local_date(), AM)
     for m in members:
         live: dict[int, list[int]] = {}
-        for p in pieces(segments(m.check_in, m.check_out, m.early, m.late, m.category_id, _moves_of(db, m.id)), cuts):
+        for p in pieces(segments(m.check_in, m.check_out, m.early, m.late, m.category_id, _moves_of(db, m.id)),
+                        allocation.own_cuts(cuts, starts, m.id)):
             if p.end_pos >= morning:
                 live.setdefault(p.seg_index, []).append(p.index)
         for seg, uid in pins.items():
             parts = rows.get((m.id, int(seg)), {})
-            pinned_to = allocation.effective_pin({i: a.unit_id for i, a in parts.items()
-                                                  if a.pinned and a.unit_id is not None},
+            pinned_to = allocation.effective_pin({i: t for i, a in parts.items()
+                                                  if (t := allocation.pin_target(a)) is not None},
                                                  set(live.get(int(seg), [])))
             if uid == pinned_to:
                 continue                     # закрепление сегмента не меняется
@@ -291,7 +295,7 @@ def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
                 if a is None:
                     a = Assignment(reservation_id=m.id, seg_index=i)
                     db.add(a)
-                a.unit_id, a.pinned = uid, True
+                a.unit_id, a.pinned, a.pin_unit_id = uid, True, None
     db.flush()
 
 
@@ -340,17 +344,19 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
     moves = _moves_of(db, r.id)
     segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)
     # сегмент формы: закреплён, если закреплена любая часть, — объект закрепления по тому же
-    # правилу, что у распределения (effective_pin: первая живая закреплённая часть); его форма шлёт
+    # правилу, что у распределения (effective_pin: последняя живая закреплённая часть); его форма шлёт
     # обратно, и _apply_pins видит «без изменений». Иначе — объект первой части
     morning = pos(local_date(), AM)
-    live = {p.index for p in pieces(segs, version_cuts(db)) if p.end_pos >= morning}
+    rows = list(db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)))
+    live = {p.index for p in pieces(segs, [*version_cuts(db), *(a.start_pos for a in rows if a.start_pos is not None)])
+            if p.end_pos >= morning}
     first: dict[int, int | None] = {}
     pin_rows: dict[int, dict[int, int]] = {}
-    for a in db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)):
+    for a in rows:
         if a.seg_index % PIECE_BASE == 0:
             first[a.seg_index // PIECE_BASE] = a.unit_id
-        if a.pinned and a.unit_id is not None:
-            pin_rows.setdefault(a.seg_index // PIECE_BASE, {})[a.seg_index] = a.unit_id
+        if (t := allocation.pin_target(a)) is not None:
+            pin_rows.setdefault(a.seg_index // PIECE_BASE, {})[a.seg_index] = t
     pinned = {seg: allocation.effective_pin(rows, live) for seg, rows in pin_rows.items()}
     occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id == r.id)
                           .order_by(Occupant.date_from, Occupant.id)))
@@ -378,45 +384,6 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
 
 def diff_of(before: dict, db: Session, r: Reservation) -> dict:
     return changes(before, reservation_snapshot(db, r))
-
-
-def save_hold(db: Session, data: dict, hid: int | None) -> tuple[Hold, dict]:
-    if not unit_exists(db, data["unit_id"]):
-        raise ReservationInvalid("Объект не найден")
-    if data["end"] < data["start"]:
-        raise ReservationInvalid("Конец блока раньше начала")
-    if data["kind"] not in ("block", "ooo"):
-        raise ReservationInvalid("Тип: блок или OOO")
-    if hid is None:
-        h = Hold()
-        db.add(h)
-        before: dict = {}
-    else:
-        h = db.get(Hold, hid)
-        if h is None:
-            raise ReservationInvalid("Блок не найден")
-        before = hold_dict(h)
-    for k in ("unit_id", "start", "end", "kind", "title"):
-        setattr(h, k, data[k])
-    db.flush()
-    allocation.run_allocation(db)
-    return h, before
-
-
-def delete_hold(db: Session, hid: int) -> dict:
-    h = db.get(Hold, hid)
-    if h is None:
-        raise ReservationInvalid("Блок не найден")
-    before = hold_dict(h)
-    db.delete(h)
-    db.flush()
-    allocation.run_allocation(db)
-    return before
-
-
-def hold_dict(h: Hold) -> dict:
-    return {"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": h.kind,
-            "title": h.title}
 
 
 def doc_of(db: Session, r: Reservation, **changes) -> dict:

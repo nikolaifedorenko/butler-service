@@ -23,6 +23,8 @@ from app.modules.timesheet.application.roster import roster
 
 from ..adapters.orm import (
     Assignment,
+    Block,
+    BlockNight,
     CategoryKind,
     CategoryState,
     CoverageLine,
@@ -32,6 +34,7 @@ from ..adapters.orm import (
     Logistics,
     Move,
     Occupant,
+    Ooo,
     Reservation,
     StayGroup,
 )
@@ -283,12 +286,32 @@ def seed_stays_demo(db: Session) -> None:
                             date_to=r.check_out, role="guest"))
     ns = book("PRS", today - dt.timedelta(days=1), today + dt.timedelta(days=3), None, status="no_show")
     live(ns, guests[5])
+    _demo_ooo_blocks(db, today, units, cats)
     db.flush()
     allocation.run_allocation(db)
 
     seed_escorts_from_positions(db)
     _demo_coverage(db, today, made, units)
     _demo_users(db)
+
+
+def _demo_ooo_blocks(db: Session, today: dt.date, units: dict, cats: dict) -> None:
+    """Два OOO (целые сутки и с половинками: с обеда по утро) и два блока, один — с переменным остатком по ночам."""
+    one = dt.timedelta(days=1)
+    db.add_all([
+        Ooo(unit_id=units["PRS"][0].id, start=today + 2 * one, end=today + 5 * one, start_half="AM",
+            end_half="PM", reason="Ремонт ванной"),
+        Ooo(unit_id=units["JST"][0].id, start=today + 8 * one, end=today + 10 * one, start_half="PM",
+            end_half="AM", reason="Замена мебели")])
+    fixed = Block(title="Конференция «Лето»", start=today + 12 * one, end=today + 15 * one)
+    varying = Block(title="Свадьба Орловых", start=today + 20 * one, end=today + 24 * one)
+    db.add_all([fixed, varying])
+    db.flush()
+    for n in range(3):
+        db.add(BlockNight(block_id=fixed.id, category_id=cats["DLX"].id, night=fixed.start + n * one, quantity=2))
+    for n, qty in enumerate((4, 4, 3, 2)):      # остаток блока убывает к ночи заезда гостей
+        db.add(BlockNight(block_id=varying.id, category_id=cats["FAM"].id, night=varying.start + n * one,
+                          quantity=qty))
 
 
 def _demo_users(db: Session) -> None:

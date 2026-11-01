@@ -260,6 +260,41 @@ def test_publish_preview_stale_rev_409(manager_role_client, manager_client, toda
     assert resp.status_code == 409
 
 
+@pytest.fixture()
+def setup_no_overbook_client(app_stack):
+    """Настройка фонда (stays.setup, stays.view) без права «Овербукинг»."""
+    from app.core.db import SessionLocal
+    from app.core.identity import AccessGrant, Role
+
+    from .conftest import _role_user
+
+    with SessionLocal() as s:
+        if s.get(Role, "stays_setup_only") is None:
+            s.add(Role(code="stays_setup_only", title="Фонд без овербукинга", rank=20, max_assignable_rank=-1,
+                       builtin=False))
+            s.add_all(AccessGrant(role="stays_setup_only", permission=p, effect="allow")
+                      for p in ("stays.view", "stays.setup"))
+            s.commit()
+    return _role_user(app_stack, "stays_setup_only_user", "stays_setup_only")
+
+
+def test_publish_new_overbooking_without_perm(manager_role_client, manager_client, setup_no_overbook_client,
+                                              today, db):
+    """Публикация, после которой бронь остаётся без объекта, без права «Овербукинг»: предпросмотр —
+    200 с overbook_refused и списком affected; сохранение — 409, черновик не опубликован."""
+    today(TODAY)
+    conn, dlx, (r1, r2, _), rev = _connect_split(manager_role_client, manager_client)
+    pv = setup_no_overbook_client.post(f"{API}/fund/draft/publish", params={"preview": 1}, json={"rev": rev})
+    assert pv.status_code == 200, pv.text
+    out = pv.json()
+    assert out["overbook_refused"].startswith("Нет объекта: Бронь ")
+    assert [w["reservation_id"] for w in out["result"]["affected"]["unassigned"]] in ([r1["id"]], [r2["id"]])
+    sv = setup_no_overbook_client.post(f"{API}/fund/draft/publish", json={"rev": rev})
+    assert sv.status_code == 409 and sv.json()["detail"]["message"] == out["overbook_refused"]
+    db.expire_all()
+    assert fd.current_draft(db) is not None
+
+
 def _journal(db, rid: int) -> list[dict]:
     import json
     db.expire_all()
@@ -379,3 +414,32 @@ def test_preview_real_unit_change_at_boundary_one_row(manager_role_client, manag
     rows = _moved_of(out, r["id"])
     assert len(rows) == 1, rows
     assert rows[0]["from_unit"] == was and rows[0]["to_unit"] == other and rows[0]["since"] == DAY
+
+
+def test_delete_future_version_overbook_check(manager_role_client, manager_client, setup_no_overbook_client, db):
+    """Финальное ревью, Important 2: удаление будущей опубликованной версии, которая добавила
+    объект, оставляет бронь без объекта. Как и публикация, — одна операция с предпросмотром:
+    ?preview=1 — 200 с overbook_refused, ничего не удалено; без права «Овербукинг» — 409, версия
+    на месте; с правом — удаляется, в разнице — овербукинг."""
+    from .test_allocation_versions import _version
+
+    cat = make_category(manager_role_client, n_units=1)
+    vid = _version(manager_role_client, "2052-01-01",
+                   ("POST", "units", {"label": cat["code"] + "-2052", "category_id": cat["id"]}))["result"]["version"]["id"]
+    create_res(manager_client, cat, "2052-01-05", "2052-01-07")
+    create_res(manager_client, cat, "2052-01-05", "2052-01-07")
+    pv = setup_no_overbook_client.delete(f"{API}/fund/versions/{vid}", params={"preview": 1})
+    assert pv.status_code == 200, pv.text
+    assert pv.json()["preview"] is True and pv.json()["overbook_refused"].startswith("Нет объекта: Бронь ")
+    assert "overbooked" in {w["kind"] for w in pv.json()["diff"]["warnings_added"]}
+    db.expire_all()
+    assert db.get(FundVersion, vid) is not None
+    sv = setup_no_overbook_client.delete(f"{API}/fund/versions/{vid}")
+    assert sv.status_code == 409 and sv.json()["detail"]["overbook"] is True
+    assert sv.json()["detail"]["message"] == pv.json()["overbook_refused"]
+    db.expire_all()
+    assert db.get(FundVersion, vid) is not None
+    ok = manager_role_client.delete(f"{API}/fund/versions/{vid}")
+    assert ok.status_code == 200 and ok.json()["diff"] == pv.json()["diff"]
+    db.expire_all()
+    assert db.get(FundVersion, vid) is None

@@ -11,7 +11,7 @@
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
 const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони'],
-  ['guests', 'Гости']];
+  ['blocks', 'Блоки'], ['ooo', 'OOO'], ['guests', 'Гости']];
 const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
 /* месяц видов — общий state.year / state.month (как Табель и График, §6); фильтры — одна
    панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
@@ -142,7 +142,7 @@ function staysTabAllowed([id]) {
 /* вкладки из других файлов раздела — по имени при вызове: файлы грузятся по алфавиту */
 function staysTabRender(tab) {
   return { units: renderUnitsBoard, butlers: renderButlersBoard, day: renderDayBoard,
-    occupancy: renderOccupancyGrid, bookings: renderBookings, guests: renderGuestsTab }[tab] || renderUnitsBoard;
+    occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab, guests: renderGuestsTab }[tab] || renderUnitsBoard;
 }
 
 async function loadMyStays() {
@@ -206,6 +206,18 @@ function staysBarHtml(b, base, span, names) {
     style="left:${left}%;width:${right - left}%;background:${esc(color)}" title="${esc(tip)}">${textHtml}</div>`;
 }
 
+/* Цвет блока — по его номеру из небольшой палитры (в БД цвета нет); полосы блока пунктиром и не
+   перетаскиваются: слот блока не закреплён за объектом, объект выбирает распределение (§2, §6) */
+const STAYS_BLOCK_HUES = [262, 28, 172, 330, 48, 200, 94, 8];
+function staysBlockBarHtml(b, base, span) {
+  const left = Math.max(0, (b.start_pos - base) / span * 100);
+  const right = Math.min(100, (b.end_pos - base + 1) / span * 100);
+  if (right <= 0 || left >= 100) return '';
+  const hue = STAYS_BLOCK_HUES[b.block_id % STAYS_BLOCK_HUES.length];
+  return `<div class="sb-block" data-block="${b.block_id}" data-slot="${b.slot}" draggable="false"
+    style="left:${left}%;width:${right - left}%;--bh:${hue}" title="${esc((b.title || 'Блок') + ' · ' + dateRu(b.start) + '–' + dateRu(b.end))}">${esc(b.title || 'Блок')}</div>`;
+}
+
 async function renderUnitsBoard(body) {
   const fund = await staysFund();
   /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
@@ -218,18 +230,20 @@ async function renderUnitsBoard(body) {
   data.bars.forEach(b => { (byUnit[b.unit_id ?? 'none'] ||= []).push(b); });
   const holdsBy = {};
   data.holds.forEach(h => { (holdsBy[h.unit_id] ||= []).push(h); });
+  const blocksBy = {};
+  data.blocks.forEach(b => { (blocksBy[b.unit_id] ||= []).push(b); });
   const rerender = () => renderUnitsBoard(body);
   body.innerHTML = `
     ${staysToolbar()}
     <div data-sf-slot></div>
     ${data.warnings.length ? `<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map(w => esc(w.text)).join('<br>')}</span></div>` : ''}
     <div class="sb-grid" style="--days:${data.days.length}"></div>
-    ${(byUnit.none || []).length ? `<div class="panel"><h3 class="panel-title">Без объекта</h3>${byUnit.none.map(b =>
-      `<div class="sb-unassigned" data-bar="${b.reservation_id}">${esc(names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь')} · ${esc(dateRu(b.start))}–${esc(dateRu(b.end))}</div>`).join('')}</div>` : ''}`;
+    ${(byUnit.none || []).length ? `<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
+      `<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar="${b.reservation_id}">${b.overbooked ? '<span class="badge danger">овербукинг</span> ' : ''}${esc(names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь')} · ${esc(dateRu(b.start))}–${esc(dateRu(b.end))}</div>`).join('')}</div>` : ''}`;
   staysPanelInto(body, fund, rerender, { people: names });
   const grid = $('.sb-grid', body);
   /* сортировка и разделы — без нового запроса: перерисовка одной сетки */
-  const paint = () => { grid.innerHTML = staysUnitsGridHtml(data, fund, byUnit, holdsBy, names); };
+  const paint = () => { grid.innerHTML = staysUnitsGridHtml(data, fund, byUnit, holdsBy, blocksBy, names); };
   paint();
   staysBindMonthNav(body, rerender);
   const st = staysState.sort;
@@ -254,15 +268,18 @@ async function renderUnitsBoard(body) {
       paint();
       return;
     }
+    /* слот блока — карточка блока (сетка, разложено, нехватка); полоса не перетаскивается */
+    const blk = e.target.closest('[data-block]');
+    if (blk) { openBlockCard(Number(blk.dataset.block), rerender); return; }
     const bar = e.target.closest('[data-bar]');
     if (bar) { if (names) openReservationCard(Number(bar.dataset.bar), rerender); return; }
     if (!can('stays.edit')) return;
     /* блок / OOO: клик по объекту — новый, по полосе блока — правка или удаление */
     const hold = e.target.closest('[data-hold]');
-    if (hold) { openHoldForm(data.holds.find(h => h.id === Number(hold.dataset.hold)), rerender); return; }
+    if (hold) { openOooForm(data.holds.find(h => h.id === Number(hold.dataset.hold)), rerender); return; }
     const unit = e.target.closest('.sb-unit');
     const row = unit && unit.closest('[data-unit-row]');
-    if (row) openHoldForm({ unit_id: Number(row.dataset.unitRow) }, rerender);
+    if (row) openOooForm({ unit_id: Number(row.dataset.unitRow) }, rerender);
   };
   staysFocusDay(body);
 }
@@ -270,7 +287,7 @@ async function renderUnitsBoard(body) {
 /* Разделы дерева: по умолчанию развёрнут корневой раздел, где есть категория вида с
    «раскрывать» (справочник видов, §1 дополнения: виллы развёрнуты, корпус свёрнут), вложенные —
    развёрнуты; выбор пользователя — staysState.collapsed. Строки свёрнутого раздела в DOM не рисуются. */
-function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
+function staysUnitsGridHtml(data, fund, byUnit, holdsBy, blocksBy, names) {
   const days = data.days;
   const n = days.length;
   const base = staysPos(days[0], 0);
@@ -303,8 +320,10 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
           style="${pct(dayIdx[a], dayIdx[b])}" title="${esc(OFF[why] || why)}"></div>`).join('')}
         ${(holdsBy[u.unit_id] || []).map(h => {
           const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
-          return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.kind === 'ooo' ? 'OOO' : (h.title || 'Блок'))}</div>`;
+          const tip = `OOO · ${dateRu(h.start)} ${h.start_half === 'AM' ? 'с утра' : 'с вечера'} – ${dateRu(h.end)} ${h.end_half === 'PM' ? 'до вечера' : 'до утра'}`;
+          return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%" title="${esc(tip + (h.title ? ' · ' + h.title : ''))}">${esc(h.title || 'OOO')}</div>`;
         }).join('')}
+        ${(blocksBy[u.unit_id] || []).map(b => staysBlockBarHtml(b, base, span)).join('')}
         ${(byUnit[u.unit_id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
       </div></div>`;
   };
@@ -344,7 +363,8 @@ async function openReservationCard(rid, onChanged) {
     body: `${card.upgrade ? `<p><span class="badge muted">${esc(card.upgrade)}</span></p>` : ''}
       <div class="grid-2">
         <div><h4>Объекты</h4>${card.segments.map(s => `<div>${esc(dateRu(s.start))}–${esc(dateRu(s.end))}: <b>${esc(s.unit || 'без объекта')}</b>
-          ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}</div>
+          ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}
+          ${card.pref ? `<div class="muted" data-pref-status="${card.pref.met ? 'met' : card.pref.partial ? 'partial' : card.pref.met === null ? 'none' : 'unmet'}">${esc(card.pref.title)}</div>` : ''}</div>
         <div><h4>Гости</h4>${card.occupants.map(o => `<div>${o.level !== 'regular' ? esc(STAYS_LEVEL_MARK[o.level]) : ''}${esc(o.guest)}
           <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>${staysRelativesHtml(o.relatives)}
           <button class="btn btn-sm btn-ghost" data-family="${o.guest_id}">Семья</button>

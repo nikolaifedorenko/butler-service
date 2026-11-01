@@ -82,7 +82,7 @@ def template(payload: TemplateIn, preview_flag: bool = PREVIEW, principal: Princ
               {"template": payload.kind, "butlers": payload.butlers, "replace": payload.replace,
                "guest_ids": payload.guest_ids, "days": [[d.isoformat(), e] for d, e in plan]})
         return {"written": len(plan)}
-    return run(db, op, preview_flag, (payload.first, payload.last))
+    return run(db, op, preview_flag, (payload.first, payload.last), principal)
 
 
 @router.put("/day")
@@ -94,7 +94,7 @@ def set_day(payload: DayIn, preview_flag: bool = PREVIEW, principal: Principal =
         audit(db, principal, "stays_coverage", _target(payload),
               {"day": payload.day.isoformat(), "employee_id": payload.employee_id, "guest_ids": payload.guest_ids})
         return {"line_id": row.id if row else None}
-    return run(db, op, preview_flag, (payload.day, payload.day))
+    return run(db, op, preview_flag, (payload.day, payload.day), principal)
 
 
 @router.put("/days")
@@ -108,7 +108,7 @@ def set_days(payload: DaysIn, preview_flag: bool = PREVIEW, principal: Principal
         audit(db, principal, "stays_coverage", _target(payload),
               {"days": [[d.isoformat(), e] for d, e in days], "guest_ids": payload.guest_ids})
         return {"written": n}
-    return run(db, op, preview_flag, (min(d for d, _ in days), max(d for d, _ in days)))
+    return run(db, op, preview_flag, (min(d for d, _ in days), max(d for d, _ in days)), principal)
 
 
 @router.delete("/{line_id}")
@@ -123,7 +123,7 @@ def remove_line(line_id: int, preview_flag: bool = PREVIEW, principal: Principal
         audit(db, principal, "stays_coverage", target,
               {"removed": {"day": gone.day.isoformat(), "employee_id": gone.employee_id, "line_id": line_id}})
         return {"ok": True}
-    return run(db, op, preview_flag, window)
+    return run(db, op, preview_flag, window, principal)
 
 
 def _target(p: ScopeIn) -> str:

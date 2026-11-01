@@ -6,24 +6,27 @@ import datetime as dt
 import json
 from dataclasses import dataclass, field, replace
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
 
 from ..adapters.orm import (
     Assignment,
+    Block,
+    BlockNight,
     Companion,
     Guest,
-    Hold,
     Label,
     Logistics,
     Move,
     Occupant,
+    Ooo,
     Reservation,
 )
 from ..domain.allocate import natural_key
-from ..domain.halfday import PIECE_BASE, PM, Piece, hold_span, pieces, pos, segments
+from ..domain.halfday import PIECE_BASE, PM, Piece, ooo_span, pieces, pos, segments
+from ..domain.prefs import scorer
 from ..ports.duty import DutyPort
 from . import allocation, family
 from .context import butlers_on, load_context, nights
@@ -215,17 +218,21 @@ def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int]) -> 
     rids = [r.id for r in res]
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
+    starts: dict[int, list[int]] = {}
     occ: dict[int, list[Occupant]] = {rid: [] for rid in rids}
     if rids:
         for m in db.scalars(select(Move).where(Move.reservation_id.in_(rids))):
             moves[m.reservation_id].append((m.move_date, m.category_id))
         for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_(rids))):
             asg[(a.reservation_id, a.seg_index)] = a.unit_id
+            if a.start_pos is not None:
+                starts.setdefault(a.reservation_id, []).append(a.start_pos)
         for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_(rids))
                             .order_by(Occupant.date_from, Occupant.id)):
             occ[o.reservation_id].append(o)
     segs = {r.id: segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]) for r in res}
-    return _Stays(res, moves, asg, occ, segs, {r.id: pieces(segs[r.id], cuts) for r in res})
+    return _Stays(res, moves, asg, occ, segs,
+                  {r.id: pieces(segs[r.id], allocation.own_cuts(cuts, starts, r.id)) for r in res})
 
 
 def _occupied(st: _Stays, first: dt.date, last: dt.date) -> dict[tuple[int, dt.date], int]:
@@ -261,7 +268,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     visible_cats = {cid for u in units for _, cid in u.categories}
     cuts = version_cuts(db)
     st = _load_stays(db, first, last, cuts)
-    res, moves, asg, occ = st.res, st.moves, st.asg, st.occ
+    res, asg, occ = st.res, st.asg, st.occ
     occupied = _occupied(st, first, last)
     names = level != "occupancy"
     guests = {}
@@ -274,7 +281,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     today = local_date()
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
-        on_duty = butlers_on(db, today, res, moves, asg, occ, guests, fund, cuts)
+        on_duty = butlers_on(db, today, res, st.parts, asg, occ, guests, fund)
+    state = allocation.current_state(db)          # слоты блоков и овербукинг — из распределения
 
     bars = []
     for r in res:
@@ -304,23 +312,32 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
             uid = asg.get((r.id, p0.index))
             if uid not in unit_ids and not (uid is None and p0.category_id in visible_cats):
                 continue
+            over = uid is None and _is_overbooked(state, r.id, p0.start_pos, p1.end_pos)
             bars.append(serialize_bar({**base, "seg_index": p0.index, "unit_id": uid, "category_id": p0.category_id,
+                                       "overbooked": over,
                                        "start": _d(p0.start), "end": _d(p1.end), "start_pos": p0.start_pos,
                                        "end_pos": p1.end_pos, "early": r.early and p0.index == 0,
                                        "late": r.late and p1.end_pos == segs[-1].end_pos}, level))
 
-    holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": h.kind,
-              # название блока — свободный текст (в нём бывает фамилия): только с уровня names
-              "title": h.title if names else "", **dict(zip(("start_pos", "end_pos"), hold_span(h.start, h.end), strict=True))}
-             for h in db.scalars(select(Hold).where(Hold.start <= last, Hold.end >= first))
+    holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
+              "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
+              # причина OOO — без персональных данных (решение владельца): видна всем уровням
+              "title": h.reason,
+              **dict(zip(("start_pos", "end_pos"), ooo_span(h.start, h.start_half, h.end, h.end_half), strict=True))}
+             for h in db.scalars(select(Ooo).where(Ooo.start <= last, Ooo.end >= first))
              if h.unit_id in unit_ids]
     warnings = []
     if names:
-        state = allocation.current_state(db)
         shown = {b["reservation_id"] for b in bars}
         shown_holds = {("h", h["id"]) for h in holds}
+        # нехватка блока (block_short) — без броней: по ночам периода и категории фильтра
+        # (у неё piece_index — ordinal первой ночи, last — последней)
+        def block_short(w) -> bool:
+            return (w.kind == "block_short" and w.piece_index <= last.toordinal() and w.last >= first.toordinal()
+                    and (not f.category_ids or w.category_id in f.category_ids))
         warnings = [{"kind": w.kind, "reservation_ids": state.members[w.key], "text": w.text}
-                    for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds]
+                    for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds
+                    or block_short(w)]
     return {"days": [_d(d) for d in days], "visibility": level,
             "units": [{"unit_id": u.id, "label": u.label,
                        "labels": [{"from": _d(d), "label": lb} for d, lb in u.labels],
@@ -329,7 +346,36 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                        "group_path": list(u.group_path), "group": u.group, "floor": u.info.floor,
                        "flags": sorted(u.info.flags), "load": _load(u, occupied), "off": u.off}
                       for u in units],
-            "bars": bars, "holds": holds, "warnings": warnings}
+            "bars": bars, "holds": holds, "blocks": _block_bars(db, state, unit_ids, first, last),
+            "warnings": warnings}
+
+
+def _is_overbooked(state: allocation.AllocationState, rid: int, start_pos: int, end_pos: int) -> bool:
+    """Хотя бы одна ночь части [start_pos, end_pos] брони — без объекта по овербукингу."""
+    return any((rid, n) in state.overbooked for n in range(start_pos // 2, end_pos // 2 + 1)
+               if start_pos <= 2 * n + 1 <= end_pos)
+
+
+def _block_bars(db: Session, state: allocation.AllocationState, unit_ids: set[int],
+                first: dt.date, last: dt.date) -> list[dict]:
+    """Полосы слотов блоков: соседние ночи одного слота в одном объекте — одна полоса. Слот без
+    объекта (нехватка) полосы не имеет — о нём говорит предупреждение. Название блока — без ПД,
+    видно всем уровням. Полосы не перетаскиваются (ключ block_id, не reservation_id)."""
+    lo, hi = first.toordinal(), last.toordinal()
+    runs: list[list] = []                       # [block, category, slot, unit, первая ночь, последняя ночь]
+    for (block, cat, slot, night), uid in sorted(state.slots.items()):
+        if uid is None or uid not in unit_ids:
+            continue
+        if runs and runs[-1][:4] == [block, cat, slot, uid] and runs[-1][5] == night - 1:
+            runs[-1][5] = night
+        else:
+            runs.append([block, cat, slot, uid, night, night])
+    runs = [r for r in runs if r[5] >= lo and r[4] <= hi]
+    titles = dict(db.execute(select(Block.id, Block.title).where(Block.id.in_({r[0] for r in runs}))).all()) if runs else {}
+    return [{"block_id": b, "category_id": c, "slot": k, "unit_id": u, "title": titles.get(b, ""),
+             "start": _d(dt.date.fromordinal(a)), "end": _d(dt.date.fromordinal(z + 1)),
+             "start_pos": 2 * a + 1, "end_pos": 2 * (z + 1)}
+            for b, c, k, u, a, z in runs]
 
 
 def _search(q: str, res, occ, guests, units, asg) -> set[int]:
@@ -380,6 +426,30 @@ def _relatives_in_house(db: Session, r: Reservation, guests: dict[int, Guest]) -
     return {gid: [{"guest_id": o, "title": t, "name": short_name(known[o])} for o, t in rel] for gid, rel in kin.items()}
 
 
+def _pref_status(db: Session, r: Reservation, fund: FundTimeline) -> dict | None:
+    """«Пожелание выполнено / нет» (часть 2 §5): у главного гостя есть пожелания. Оценивается каждая
+    часть назначения (объект по фонду её начала): все удовлетворяют хотя бы одному пожеланию —
+    выполнено, часть — «частично», ни одна — не выполнено. Отменённая и не заехавшая — «—».
+    Подписей пожеланий нет — персональных данных строка не содержит."""
+    prefs, heirs = allocation.load_prefs(db, [r.id])
+    if r.id not in prefs:
+        return None
+    if r.status in ("cancelled", "no_show"):
+        return {"met": None, "partial": False, "title": "—"}
+    score = scorer(prefs[r.id], heirs)
+    rows = list(db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)))
+    ok = 0
+    for a in rows:
+        snap = fund.on(fund_day(a.start_pos if a.start_pos is not None else pos(r.check_in, PM)))
+        u = snap.units.get(a.unit_id)
+        ok += u is not None and score(u.id, snap.unit_path(u.id), u.flags) > 0
+    met = bool(rows) and ok == len(rows)
+    partial = 0 < ok < len(rows)
+    return {"met": met, "partial": partial,
+            "title": "пожелание выполнено" if met else "пожелание выполнено частично" if partial
+            else "пожелание не выполнено"}
+
+
 def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None = None) -> dict:
     """Карточка брони (§6.5): уровень «с фамилиями» — состав по датам; «полный» — плюс
     заказчик, примечания, сопровождающие, логистика, настраиваемые поля."""
@@ -419,6 +489,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
         "coverage": card_coverage(db, r, duty) if r.status in allocation.OCCUPYING else [
             {"day": d.isoformat(), "butlers": [], "warnings": []} for d in nights(r.check_in, r.check_out)],
     }
+    card["pref"] = _pref_status(db, r, fund)
     if at_least(level, "full"):
         card |= {"customer": r.customer, "note": r.note,
                  "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}"),
@@ -461,6 +532,26 @@ def _pct(living: int, blocks: int, total: int, ooo: int) -> float | None:
     return round((living + blocks) / (total - ooo), 3) if total - ooo > 0 else None
 
 
+def _unplaced_demand(state: allocation.AllocationState, st: _Stays, first: dt.date,
+                     last: dt.date) -> dict[tuple[int, dt.date], int]:
+    """(категория, ночь) → сколько объектов не хватило: брони без объекта (овербукинг) и слоты
+    блоков без объекта (block_short)."""
+    out: dict[tuple[int, dt.date], int] = {}
+    lo, hi = first.toordinal(), last.toordinal()
+    for r in st.res:
+        for p in st.parts[r.id]:
+            for n in range(max(p.start_pos // 2, lo), min(p.end_pos // 2, hi) + 1):
+                if p.start_pos <= 2 * n + 1 <= p.end_pos and (r.id, n) in state.overbooked:
+                    key = (p.category_id, dt.date.fromordinal(n))
+                    out[key] = out.get(key, 0) + 1
+    for w in state.warnings:
+        if w.kind == "block_short":
+            for n in range(max(w.piece_index, lo), min(w.last, hi) + 1):
+                key = (w.category_id, dt.date.fromordinal(n))
+                out[key] = out.get(key, 0) + w.missing
+    return out
+
+
 def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) -> dict:
     """Сводная загрузка (§6.1): узлы дерева × дни и «Итого по выбранному» (объекты всех узлов —
     без двойного счёта, если выбраны узел и его потомок). Всё — по фонду дня; данных гостей
@@ -477,12 +568,30 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
     st = _load_stays(db, first - one, last, version_cuts(db))
     occupied = _occupied(st, first - one, last)
     unit_of = {(rid, d): uid for (uid, d), rid in occupied.items()}
-    holds: dict[tuple[int, dt.date], set[str]] = {}
-    for h in db.scalars(select(Hold).where(Hold.start <= last, Hold.end >= first)):
+    # OOO — по половинкам: ночь d занята, если занята половинка PM дня d (последний день с «до утра»
+    # ночь не занимает). Блоки — слоты, размещённые распределением по объектам на эту ночь (с
+    # сегодняшней ночи: прошлое запасов не держит), поэтому категория, разнесённая по узлам, не
+    # считается дважды
+    ooo_days: set[tuple[int, dt.date]] = set()
+    for h in db.scalars(select(Ooo).where(Ooo.start <= last, Ooo.end >= first)):
         d = max(h.start, first)
-        while d <= min(h.end, last):                  # блок и OOO — целые сутки с–по
-            holds.setdefault((h.unit_id, d), set()).add(h.kind)
+        while d <= min(h.end, last):
+            if not (d == h.end and h.end_half == "AM"):
+                ooo_days.add((h.unit_id, d))
             d += one
+    state = allocation.current_state(db)
+    slot_days = {(uid, dt.date.fromordinal(n)) for (_b, _c, _k, n), uid in state.slots.items()
+                 if uid is not None and first.toordinal() <= n <= last.toordinal()}
+    unplaced = _unplaced_demand(state, st, first, last)
+    # прошлые ночи (до сегодня) слотов не имеют — показываем то, что записано сейчас (§4.5): остаток
+    # блока по категории, целиком в первом узле дерева, где в этот день есть объекты категории
+    today = local_date()
+    past_blocks: dict[tuple[int, dt.date], int] = {}
+    if first < today:
+        for cid, night, qty in db.execute(select(BlockNight.category_id, BlockNight.night, func.sum(BlockNight.quantity))
+                                          .where(BlockNight.night >= first, BlockNight.night < min(today, last + one))
+                                          .group_by(BlockNight.category_id, BlockNight.night)):
+            past_blocks[(cid, night)] = qty
     arrive: dict[dt.date, list[int | None]] = {}
     leave: dict[dt.date, list[int | None]] = {}
     for r in st.res:                                   # выезд + заезд в тот же объект — в обеих строках
@@ -502,29 +611,41 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
                          else {u for u in ok if not snap.unit_path(u)})
         return memo[key]
 
-    def cell(units: set[int], before: set[int], d: dt.date) -> dict:
+    def cell(units: set[int], before: set[int], d: dt.date, snap: FundSnapshot, owned: set[int]) -> dict:
         living = [u for u in units if (u, d) in occupied]
-        ooo = sum("ooo" in holds.get((u, d), ()) for u in units)
-        blocks = sum("block" in holds.get((u, d), ()) for u in units)
+        ooo = sum((u, d) in ooo_days for u in units)
+        blocks = (sum(past_blocks.get((c, d), 0) for c in owned) if d < today
+                  else sum((u, d) in slot_days for u in units))
         total = len(units)
+        # без объекта остались бронь (овербукинг) и слот блока (нехватка): «Свободно» уходит в минус
+        short = sum(unplaced.get((c, d), 0) for c in owned)
         return {"total": total, "living": len(living),
                 "guests": sum(people(occupied[(u, d)], d) for u in living),
                 "arrivals": sum(u in units for u in arrive.get(d, ())),
                 "departures": sum(u in before for u in leave.get(d, ())),
-                "free": max(0, total - len(living) - ooo - blocks), "ooo": ooo, "blocks": blocks,
+                "free": total - len(living) - ooo - blocks - short, "ooo": ooo, "blocks": blocks,
                 "pct": _pct(len(living), blocks, total, ooo)}
+
+    def cats_of(snap: FundSnapshot, units: set[int]) -> set[int]:
+        return {snap.units[u].category_id for u in units if u in snap.units}
 
     rows = {gid: [] for gid, _ in nodes}
     total_days = []
     for d in days:
         snap, prev = fund.on(d), fund.on(d - one)
         every, every_prev = set(), set()
+        sets = []
         for gid, _ in nodes:
-            now, before = members(snap, gid), members(prev, gid)
+            sets.append((gid, members(snap, gid), members(prev, gid)))
+        owner: dict[int, int | None] = {}       # категория без объекта — в первом узле, где она есть
+        for gid, now, _before in sets:
+            for c in cats_of(snap, now):
+                owner.setdefault(c, gid)
+        for gid, now, before in sets:
             every |= now
             every_prev |= before
-            rows[gid].append(cell(now, before, d))
-        total_days.append(cell(every, every_prev, d))
+            rows[gid].append(cell(now, before, d, snap, {c for c in cats_of(snap, now) if owner[c] == gid}))
+        total_days.append(cell(every, every_prev, d, snap, cats_of(snap, every)))
     return {"days": [_d(d) for d in days],
             "total": {"group_id": None, "path": [TOTAL], "days": total_days},
             "nodes": [{"group_id": gid, "path": list(path), "days": rows[gid]} for gid, path in nodes]}

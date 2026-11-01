@@ -406,10 +406,12 @@ function fundBind(host, data, editing) {
     };
   });
   $$('[data-fund-vdel]', host).forEach(b => {
-    b.onclick = () => confirmDialog('Удалить версию фонда?', 'Удалить можно черновик и версию, чья дата ещё не наступила.', async () => {
-      try { await api(`/api/stays/fund/versions/${b.dataset.fundVdel}`, { method: 'DELETE' }); toast('Версия удалена'); fundUI.view = null; rerender(); }
-      catch (e) { toast(e.message, 'err'); }
-    }, 'Удалить');
+    const v = data.versions.find(x => x.id === Number(b.dataset.fundVdel));
+    b.onclick = () => (v && v.status === 'published' ? openFundVersionDelete(v, rerender)
+      : confirmDialog('Удалить версию фонда?', 'Удалить можно черновик и версию, чья дата ещё не наступила.', async () => {
+        try { await api(`/api/stays/fund/versions/${b.dataset.fundVdel}`, { method: 'DELETE' }); toast('Версия удалена'); fundUI.view = null; rerender(); }
+        catch (e) { toast(e.message, 'err'); }
+      }, 'Удалить'));
   });
   fundOn(host, '#fund-flags-dict', () => openFundFlagsDict());
   fundOn(host, '#fund-export', () => {
@@ -707,7 +709,7 @@ async function openFundPublish(onDone) {
         return `<div class="sb-line"><label class="chk"><input type="checkbox" data-fp-transfer="${rid}"${p.on ? ' checked' : ''}> ${esc(t)}</label>
           → ${sfSelect(`fp-cat-${rid}`, opts, p.category_id).replace('<select ', `<select data-fp-transfer-cat="${rid}" `)}</div>`;
       }).join('')}<p class="hint">Перевод входит в публикацию; «Проверить» покажет размещение с переводом.</p>` : ''}`;
-    renderPreview(r.diff, $('#fp-alloc', m));
+    renderPreview(r.diff, $('#fp-alloc', m), r.overbook_refused);
     $$('[data-fp-transfer]', m).forEach(cb => { cb.onchange = () => { picks[cb.dataset.fpTransfer].on = cb.checked; }; });
     $$('[data-fp-transfer-cat]', m).forEach(s => { s.onchange = () => { picks[s.dataset.fpTransferCat].category_id = Number(s.value); }; });
   };
@@ -740,6 +742,32 @@ async function openFundPublish(onDone) {
   });
 }
 
+/* Удаление будущей опубликованной версии перераспределяет брони — как публикация: сначала
+   предпросмотр (что изменится), «Удалить» недоступно, пока появляется овербукинг без права
+   «Овербукинг» (сервер ответит 409 с тем же текстом) */
+function openFundVersionDelete(v, onDone) {
+  const url = `/api/stays/fund/versions/${v.id}`;
+  const out = m => $('#fvd-out', m);
+  openModal({
+    title: `Удалить версию фонда с ${dateRu(v.valid_from)}`, wide: true,
+    body: '<p class="hint">Брони с этой даты распределятся по фонду предыдущей версии.</p><div id="fvd-out" class="sp-out"><div class="muted">Проверяем…</div></div>',
+    footer: staysFormFoot().replace('>Сохранить<', '>Удалить<'),
+    onMount(m) {
+      const flow = {
+        async preview() {
+          const r = await api(`${url}?preview=1`, { method: 'DELETE' });
+          renderPreview(r.diff, out(m), r.overbook_refused);
+          return r;
+        },
+        save: () => api(url, { method: 'DELETE' }),
+      };
+      staysBindGatedFoot(m, flow, { okText: 'Версия удалена', out: () => out(m),
+        onSaved: () => { fundUI.view = null; if (onDone) onDone(); } });
+      $('#rf-preview', m).click();
+    },
+  });
+}
+
 /* ─────────────── файл фонда (§9) ─────────────── */
 /* multipart-запрос: api() шлёт только JSON. Ошибки файла — 422 {errors: [{sheet, row, message}]} */
 async function fundPostFile(url, fields) {
@@ -761,7 +789,7 @@ async function fundPostFile(url, fields) {
 }
 
 const FUND_RESET_COUNTS = [['units', 'объектов'], ['reservations', 'броней'], ['guests', 'гостей'],
-  ['coverage', 'назначений батлеров'], ['holds', 'OOO и блоков'], ['versions', 'версий фонда'],
+  ['coverage', 'назначений батлеров'], ['ooo', 'OOO'], ['blocks', 'блоков'], ['versions', 'версий фонда'],
   ['categories', 'категорий'], ['groups', 'узлов'], ['flags', 'флагов']];
 const FUND_LOAD_COUNTS = [['categories', 'категорий'], ['groups', 'узлов'], ['flags', 'флагов'], ['units', 'объектов']];
 

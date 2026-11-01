@@ -16,7 +16,7 @@ from app.core.db import get_db
 from app.core.permissions import require_perm
 
 from ..adapters.orm import Guest
-from ..application import family, guests, guests_list, history, mine
+from ..application import allocation, family, guests, guests_list, history, mine
 from ..application.fund import FundConflict, FundError
 from ..application.visibility import at_least, level_for
 from ._ops import PREVIEW, run
@@ -69,6 +69,17 @@ class LinkIn(BaseModel):
 class FormerIn(BaseModel):
     """former — супруги бывшие (true) или действующие (false)."""
     former: bool
+
+
+class PrefIn(BaseModel):
+    """Пожелание к объекту: узел фонда, флаг или объект; priority — больше, важнее."""
+    kind: Literal["group", "flag", "unit"]
+    ref_id: int = Field(ge=1)
+    priority: int = Field(1, ge=1, le=guests.MAX_PRIORITY)
+
+
+class PrefsIn(BaseModel):
+    prefs: list[PrefIn] = Field(max_length=guests.MAX_PREFS)
 
 
 class MergeIn(BaseModel):
@@ -125,8 +136,9 @@ def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
               {"drop_id": payload.drop_id, "not_carried": out.pop("not_carried"), "moves": out["moves"]})
         return out
 
-    done = run(db, op, preview_flag, None)
-    return {"preview": done["preview"], **done["result"], "diff": done["diff"]}
+    done = run(db, op, preview_flag, None, principal)
+    return {"preview": done["preview"], **done["result"], "diff": done["diff"],
+            **({"overbook_refused": done["overbook_refused"]} if "overbook_refused" in done else {})}
 
 
 def _own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> bool:
@@ -156,6 +168,36 @@ def guest_stays(gid: int, principal: Principal = Depends(require_perm("stays.gue
     if db.get(Guest, gid) is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
     return history.guest_stays(db, gid)
+
+
+@router.get("/guests/{gid}/prefs")
+def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
+                db: Session = Depends(get_db)):
+    """Пожелания гостя к объекту (часть 2 §5): только полный уровень (stays.guests)."""
+    _require_full(db, principal)
+    if db.get(Guest, gid) is None:
+        raise HTTPException(status_code=404, detail="Гость не найден")
+    return guests.prefs_of(db, gid)
+
+
+@router.put("/guests/{gid}/prefs")
+def set_guest_prefs(gid: int, payload: PrefsIn, preview_flag: bool = PREVIEW,
+                    principal: Principal = Depends(require_perm("stays.guests")),
+                    _edit: Principal = Depends(require_perm("stays.edit")), db: Session = Depends(get_db)):
+    """Заменить пожелания гостя целиком. Распределение пересчитывается тут же (брони гостя могут
+    переехать): ?preview=1 показывает, кто переедет; новый овербукинг без права stays.overbook — 409."""
+    _require_full(db, principal)
+    if db.get(Guest, gid) is None:
+        raise HTTPException(status_code=404, detail="Гость не найден")
+
+    def op() -> list[dict]:
+        before = guests.prefs_of(db, gid)               # под замком модуля (run_operation)
+        after = guests.save_prefs(db, gid, [p.model_dump() for p in payload.prefs])
+        allocation.run_allocation(db)
+        audit(db, principal, "stays_guest_prefs", f"guest:{gid}", {"diff": {"prefs": [before, after]}})
+        return after
+
+    return run(db, op, preview_flag, None, principal)
 
 
 def _save(db: Session, principal: Principal, payload: GuestIn, gid: Optional[int]) -> dict:

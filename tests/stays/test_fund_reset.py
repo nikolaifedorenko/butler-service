@@ -21,8 +21,8 @@ from app.modules.stays.adapters.orm import (
     Escort,
     FundVersion,
     GroupState,
-    Hold,
     Label,
+    Ooo,
     StaysSettings,
     UnitState,
 )
@@ -245,9 +245,9 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
     c = admin_client
     data = _export(c)
     unit = db.scalar(select(UnitState.unit_id).limit(1))
-    db.add(Hold(unit_id=unit, start=fr.local_date(), end=fr.local_date(), kind="ooo", title="ремонт-резерв"))
+    db.add(Ooo(unit_id=unit, start=fr.local_date(), end=fr.local_date(), reason="ремонт-резерв"))
     db.commit()
-    hold = db.scalar(select(Hold).where(Hold.title == "ремонт-резерв"))
+    hold = db.scalar(select(Ooo).where(Ooo.reason == "ремонт-резерв"))
     cover = db.scalar(select(CoverageLine).limit(1))
     assert cover is not None, "в демо есть назначения батлеров"
     today = fr.local_date()
@@ -271,8 +271,8 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
                                  *[sheet_of[m.__tablename__] for m in fr.WIPE]]
         seen["raw"] = {t: wb[sheet_of[t]].max_row - 1 for t in tables}
         rows = {t: [[x.value for x in r] for r in wb[sheet_of[t]].iter_rows()] for t in
-                ("stays_holds", "stays_coverage", "stays_unit_states")}
-        seen["hold"] = [r for r in rows["stays_holds"][1:] if r[0] == hold.id]
+                ("stays_ooo", "stays_coverage", "stays_unit_states")}
+        seen["hold"] = [r for r in rows["stays_ooo"][1:] if r[0] == hold.id]
         seen["cover"] = [r for r in rows["stays_coverage"][1:] if r[0] == cover.id]
         head = rows["stays_unit_states"][0]
         seen["future"] = [r for r in rows["stays_unit_states"][1:]
@@ -288,7 +288,7 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
     assert r.status_code == 200, r.text
     body = r.json()
     assert seen["raw"] == tables                 # по листу на каждую удаляемую таблицу, все строки
-    assert len(seen["hold"]) == 1 and "ремонт-резерв" in seen["hold"][0] and "ooo" in seen["hold"][0]
+    assert len(seen["hold"]) == 1 and "ремонт-резерв" in seen["hold"][0] and "AM" in seen["hold"][0]
     assert len(seen["cover"]) == 1 and cover.employee_id in seen["cover"][0]
     assert cover.day.isoformat() in seen["cover"][0]
     assert len(seen["future"]) == 1
@@ -330,8 +330,8 @@ def test_reset_keeps_employees_schedule_tabel_audit_and_module_settings(admin_cl
     assert {m: _rows(db, m) for m in keep} == keep
     assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.id <= audit_max)) == audit_n
     after = _counts(db)
-    assert {k: after[k] for k in ("reservations", "guests", "coverage", "holds")} == dict.fromkeys(
-        ("reservations", "guests", "coverage", "holds"), 0)
+    assert {k: after[k] for k in ("reservations", "guests", "coverage", "ooo", "blocks")} == dict.fromkeys(
+        ("reservations", "guests", "coverage", "ooo", "blocks"), 0)
     assert after["versions"] == 1
     assert r.json()["loaded"] == {"categories": len(parsed.categories), "groups": len(parsed.groups),
                                   "flags": len(parsed.flags), "units": len(parsed.units)}
@@ -424,7 +424,7 @@ def test_reset_ignores_ids_with_warning(admin_client, db):
     p = _preview(c, data).json()
     assert p["warnings"] == ["ID в файле будут проигнорированы"]
     assert set(p["counts"]) == {"units", "categories", "groups", "flags", "versions", "reservations",
-                                "guests", "coverage", "holds"}
+                                "guests", "coverage", "ooo", "blocks"}
     assert p["will_load"]["units"] == len(fx.parse_fund(data)[0].units)
     assert _preview(c, _no_ids(data)).json()["warnings"] == []
     old_max = db.scalar(select(func.max(UnitState.unit_id)))

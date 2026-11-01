@@ -119,6 +119,7 @@ async function openReplace(rid, day, onChanged) {
 }
 
 /* ─────────────── Табло дня ─────────────── */
+/* «Требуют внимания» — всем уровням: OOO дня и овербукинг (на уровне «занятость» — без гостей) */
 const DAY_TABS = [['arrivals', 'Заезды'], ['departures', 'Выезды'], ['in_house', 'Проживают'], ['attention', 'Требуют внимания']];
 
 function dayStatusHtml(r) {
@@ -131,14 +132,25 @@ function dayStatusHtml(r) {
   }
 }
 
+/* OOO в «Требуют внимания»: начинается и/или заканчивается в этот день */
+function dayOooHtml(r) {
+  const ev = r.events.map(e => (e === 'starts' ? 'начинается' : 'заканчивается')).join(' и ');
+  return `<div class="db-row db-ooo" data-db-ooo="${r.id}">
+    <div class="db-time"><span class="badge danger">OOO</span></div><div class="db-unit"><b>${esc(r.unit)}</b></div>
+    <div class="db-guests">${esc(r.title || 'без причины')}</div>
+    <div class="db-status">${esc(ev)} · ${esc(dateRu(r.start))} ${r.start_half === 'AM' ? 'с утра' : 'с вечера'} – ${esc(dateRu(r.end))} ${r.end_half === 'PM' ? 'до вечера' : 'до утра'}</div>
+    <div class="db-det muted"></div></div>`;
+}
+
 function dayRowHtml(r, names) {
+  if (r.kind === 'ooo') return dayOooHtml(r);
   const guests = names ? r.guests.map(g => `${g.level !== 'regular' ? esc(STAYS_LEVEL_MARK[g.level]) : ''}${esc(g.name)}`).join(', ')
     + r.guests.filter(g => g.relatives?.length).map(g => staysRelativesHtml(g.relatives.map(x => ({ ...x, title: `${g.name}: ${x.title}` })))).join('')
     : `${r.guests_count} гост.`;
   const det = r.details ? [...r.details.logistics.map(l => `${l.time} ${l.description}`), ...r.details.companions.map(c => c.description),
     ...r.details.allergies.map(a => 'аллергия: ' + a)].filter(Boolean).join(' · ') : '';
   return `<div class="db-row" data-db-row="${r.reservation_id}">
-    <div class="db-time">${esc(r.time)}</div><div class="db-unit"><b>${esc(r.unit)}</b></div>
+    <div class="db-time">${esc(r.time)}</div><div class="db-unit"><b>${esc(r.unit)}</b>${r.overbooked ? ' <span class="badge danger">овербукинг</span>' : ''}</div>
     <div class="db-guests">${guests}</div><div class="db-status">${names ? dayStatusHtml(r) : esc(STAYS_STATUS[r.status] || r.status)}</div>
     <div class="db-det muted">${esc(det)}</div></div>`;
 }
@@ -156,7 +168,6 @@ async function renderDayBoard(body) {
   if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
   const t = data.totals;
-  const tabs = DAY_TABS.filter(([id]) => names || id !== 'attention');
   const list = data[boardState.tab] || data.arrivals;
   body.innerHTML = `
     <div class="sb-toolbar">
@@ -170,8 +181,9 @@ async function renderDayBoard(body) {
         <div class="warn">↔ Нужна подмена <b>${t.need_replacement}</b></div><div>— Не требуется <b>${t.not_required}</b></div>
         <div>★ VIP ${t.vip} · VVIP ${t.vvip}</div>` : ''}
       <div>Не заехали <b>${t.no_show}</b></div>
+      ${t.overbooked ? `<div class="danger">Овербукинг <b>${t.overbooked}</b></div>` : ''}
     </div>
-    <div class="layer-tabs">${tabs.map(([id, title]) => `<button class="btn btn-sm${boardState.tab === id ? ' btn-primary' : ''}" data-dtab="${id}">${esc(title)}
+    <div class="layer-tabs">${DAY_TABS.map(([id, title]) => `<button class="btn btn-sm${boardState.tab === id ? ' btn-primary' : ''}" data-dtab="${id}">${esc(title)}
       ${(data[id] || []).length}</button>`).join('')}</div>
     <div class="db-list">${list.map(r => dayRowHtml(r, names)).join('') || '<div class="empty">Нет броней</div>'}</div>
     ${boardState.tab === 'arrivals' && data.no_show.length ? `<h4>Не заехали</h4>${data.no_show.map(r =>
@@ -186,6 +198,9 @@ async function renderDayBoard(body) {
   staysPanelInto(body, fund, rerender, { people: names });
   if (names) {
     $$('[data-db-row]', body).forEach(el => { el.onclick = () => openReservationCard(Number(el.dataset.dbRow), rerender); });
+    $$('[data-db-ooo]', body).forEach(el => {
+      el.onclick = () => { if (can('stays.edit')) openOooForm(list.find(x => x.kind === 'ooo' && x.id === Number(el.dataset.dbOoo)), rerender); };
+    });
   }
 }
 
@@ -195,6 +210,8 @@ async function renderDayBoard(body) {
    Клик по названию — свернуть / развернуть; по клетке «Проживают» — шахматка узла с этого дня. */
 const OC_ROWS = [['total', 'Всего объектов'], ['living', 'Проживают'], ['guests', 'Гостей'], ['arrivals', '▲ Заезды'],
   ['departures', '▼ Выезды'], ['free', 'Свободно'], ['ooo', 'OOO'], ['blocks', 'Блоки']];
+/* «OOO» и «Блоки» — по половинкам: ночь занята, если занята половинка PM дня (часть 2 §6); «Свободно»
+   без нижней границы 0 — отрицательное значение это овербукинг */
 
 function ocHeat(pct) { return pct == null ? '' : pct >= 1 ? 'heat3' : pct >= 0.8 ? 'heat2' : pct >= 0.5 ? 'heat1' : ''; }
 
@@ -266,7 +283,9 @@ function ocGridHtml(data) {
       ${n.days.map((x, d) => (field === 'living'
         ? `<div class="oc-cell ${ocHeat(x.pct)}"${node != null ? ` data-oc-living data-oc-node="${esc(node)}" data-day="${esc(data.days[d])}"` : ''}
             title="${x.pct == null ? 'загрузка —' : 'загрузка ' + Math.round(x.pct * 100) + '%'}">${x.living}</div>`
-        : `<div class="oc-cell">${x[field]}</div>`)).join('')}</div>`).join('')}</div>`;
+        : field === 'free' && x.free < 0
+          ? `<div class="oc-cell oc-neg" title="овербукинг: броней и блоков больше, чем свободных объектов">${x.free}</div>`
+          : `<div class="oc-cell">${x[field]}</div>`)).join('')}</div>`).join('')}</div>`;
   };
   return `<div class="bb-row sb-head oc-head"><div class="sb-unit">Узел</div>${data.days.map(d => staysDayHead(d, today)).join('')}</div>
     ${data.nodes.length ? nodeHtml(data.total, 'total') + data.nodes.map(n => nodeHtml(n, n.group_id == null ? 'none' : String(n.group_id))).join('')

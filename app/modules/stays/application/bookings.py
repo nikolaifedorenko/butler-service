@@ -129,10 +129,15 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         select(literal("m").label("kind"), Move.reservation_id.label("rid"), Move.category_id.label("a"),
                literal(0).label("b"), Move.move_date.label("d")).where(Move.reservation_id.in_(rids)),
         select(literal("a"), Assignment.reservation_id, Assignment.seg_index, Assignment.unit_id,
-               cast(null(), Date)).where(Assignment.reservation_id.in_(rids)))
+               cast(null(), Date)).where(Assignment.reservation_id.in_(rids)),
+        select(literal("s"), Assignment.reservation_id, Assignment.start_pos, literal(0),
+               cast(null(), Date)).where(Assignment.reservation_id.in_(rids), Assignment.start_pos.is_not(None)))
+    starts: dict[int, list[int]] = {}
     for kind, rid, a, b, d in db.execute(both):
         if kind == "m":
             moves[rid].append((d, a))
+        elif kind == "s":
+            starts.setdefault(rid, []).append(a)
         else:
             asg[(rid, a)] = b
     occ: dict[int, list[Occupant]] = {rid: [] for rid in rids}
@@ -147,7 +152,8 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
     cuts = [boundary_pos(d) for d in fund.boundaries()]
     items: list[_Item] = []
     for r, lb in cand:
-        ps = pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]), cuts)
+        ps = pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]),
+                    allocation.own_cuts(cuts, starts, r.id))
         live = r.status in allocation.OCCUPYING
         units: list[tuple[int | None, str]] = []
         cats: list[str] = []

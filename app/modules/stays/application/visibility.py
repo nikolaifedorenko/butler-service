@@ -18,7 +18,7 @@ from app.core.permissions import principal_permissions
 Level = Literal["occupancy", "names", "full"]
 LEVEL_ORDER = {"occupancy": 0, "names": 1, "full": 2}
 OCCUPANCY_BAR = ("reservation_id", "seg_index", "unit_id", "category_id", "status", "start", "end",
-                 "start_pos", "end_pos", "early", "late", "guests_count")
+                 "start_pos", "end_pos", "early", "late", "guests_count", "overbooked")
 NAMES_BAR = (*OCCUPANCY_BAR, "number", "label", "main_guest", "mains", "level", "butlers_today")
 FULL_BAR = (*NAMES_BAR, "customer", "paid_category_id", "note", "declined_butler", "fields")
 BAR_FIELDS = {"occupancy": OCCUPANCY_BAR, "names": NAMES_BAR, "full": FULL_BAR}

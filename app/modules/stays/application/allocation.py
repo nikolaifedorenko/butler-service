@@ -5,26 +5,34 @@
 Версии фонда (спецификация версий §5): объекты — интервалами по частям FundTimeline, сегменты
 режутся на части в границах версий; Assignment.seg_index — индекс части
 (seg_index * PIECE_BASE + n), закрепление хранится на частях, но действует на сегмент.
+Переезд заселённого из-за OOO с ночи D режет часть ещё и в D: такие разрезы хранятся в
+Assignment.start_pos (пишется у каждой строки), читатели режут сегменты по границам версий и
+по ним (own_cuts). Закреплённая часть, оставшаяся без объекта, хранит объект закрепления в
+Assignment.pin_unit_id (§4.4).
 
 Окно (ревью этапа 2, C1): в расчёт идут только брони с выездом не раньше сегодня; прошлые
-не трогаются вовсе. Заселённые и выехавшие брони и части, закончившиеся к сегодня, заморожены:
-их объект — неявное закрепление. Часть, закончившаяся до сегодняшнего утра без объекта, тоже
-заморожена — «без объекта» как исторический факт (находка L1 аудита). Так распределение не
-«переселяет» живущего гостя и не переписывает историю, а время расчёта не растёт с
-накоплением броней."""
+не трогаются вовсе. Части до сегодняшнего вечера у заселённых и выехавших и части,
+закончившиеся к сегодня, заморожены: их объект — неявное закрепление. Часть, закончившаяся
+до сегодняшнего утра без объекта, тоже заморожена — «без объекта» как исторический факт
+(находка L1 аудита). Будущее заселённой брони держит объект, пока его не отнимут OOO или фонд
+(часть 2 §4.3): тогда один переезд до выезда, раньше слотов блоков. Части 2: слоты блоков и
+OOO — в расчёте, назначения слотов — только в AllocationState (без таблицы)."""
 from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field, replace
+from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
 
-from ..adapters.orm import Assignment, Hold, Move, Reservation
-from ..domain.allocate import AllocItem, AllocWarning, HoldRef, Key, UnitSpan, allocate, pin_invalid
-from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, hold_span, pieces, pos, segments
+from ..adapters.orm import Assignment, Block, BlockNight, GuestPref, Move, Occupant, Ooo, Reservation, UnitLineage
+from ..domain.allocate import AllocItem, AllocWarning, Key, OooRef, SlotKey, UnitSpan, allocate
+from ..domain.blocks import slots
+from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, ooo_span, overlaps, pieces, pos, segments
+from ..domain.prefs import Pref, scorer, successors
 from .fund_versions import FundTimeline, boundary_pos, fund_for
 
 # статусы, которые занимают объект (отменённая и no-show — нет, §4.7)
@@ -38,10 +46,14 @@ class AllocationState:
     units: dict[tuple[int, int], int | None]      # (reservation_id, индекс части) → unit_id
     pinned: dict[tuple[int, int], bool]
     warnings: list[AllocWarning]
-    members: dict[Key, list[int]]                 # элемент распределения → брони; ("h", id) блока — []
+    members: dict[Key, list[int]]                 # элемент распределения → брони; ("h"|"b", id) — []
     # (бронь, индекс части) → (start_pos, end_pos) части: индекс зависит от границ версий,
     # предпросмотр публикации сравнивает части «до/после» по покрытию, а не по индексу
     spans: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
+    slots: dict[SlotKey, int | None] = field(default_factory=dict)   # (блок, категория, слот, ночь) → объект
+    overbooked: frozenset[tuple[int, int]] = frozenset()            # (бронь, ordinal ночи) без объекта
+    # закреплённая часть без объекта → объект закрепления (сохраняется до свободного объекта, §4.4)
+    pin_units: dict[tuple[int, int], int] = field(default_factory=dict)
 
 
 def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
@@ -49,6 +61,37 @@ def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
     if rids:
         for m in db.scalars(select(Move).where(Move.reservation_id.in_(rids))):
             out[m.reservation_id].append((m.move_date, m.category_id))
+    return out
+
+
+def load_prefs(db: Session, rids: list[int]) -> tuple[dict[int, list[Pref]], dict[int, frozenset[int]]]:
+    """Пожелания главного гостя по броням (часть 2 §5): бронь → пожелания и наследники объектов
+    по lineage. Главный — первый по дате проживающий с ролью main; у брони без главного или без
+    пожеланий записи нет. Запросов: проживающие, пожелания, lineage (только при пожеланиях-объектах)."""
+    if not rids:
+        return {}, {}
+    main: dict[int, int] = {}
+    for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_(rids), Occupant.role == "main")
+                        .order_by(Occupant.date_from, Occupant.id)):
+        main.setdefault(o.reservation_id, o.guest_id)
+    by_guest: dict[int, list[Pref]] = {}
+    if main:
+        for p in db.scalars(select(GuestPref).where(GuestPref.guest_id.in_(set(main.values())))):
+            by_guest.setdefault(p.guest_id, []).append(Pref(p.kind, p.ref_id, p.priority))
+    heirs = {}
+    if any(p.kind == "unit" for ps in by_guest.values() for p in ps):
+        heirs = successors([(p, u) for p, u in db.execute(select(UnitLineage.predecessor_id, UnitLineage.unit_id))])
+    return {rid: by_guest[gid] for rid, gid in main.items() if gid in by_guest}, heirs
+
+
+def pref_scorers(db: Session, rids: list[int]) -> dict[int, Callable[[UnitSpan], int]]:
+    """Бронь → счёт пожеланий по интервалу объекта: узел и флаг читаются из интервала (он лежит в
+    одной версии фонда), объект — по постоянному id и наследникам."""
+    prefs, heirs = load_prefs(db, rids)
+    out: dict[int, Callable[[UnitSpan], int]] = {}
+    for rid, ps in prefs.items():
+        score = scorer(ps, heirs)
+        out[rid] = lambda u, score=score: score(u.unit_id, u.group_path, u.flags)
     return out
 
 
@@ -65,7 +108,7 @@ def unit_spans(timeline: FundTimeline, lo: int, hi: int) -> list[UnitSpan]:
         here: dict[int, UnitSpan] = {}
         for u in snap.units.values():
             span = UnitSpan(u.id, u.category_id, snap.categories[u.category_id].sort_order, u.label,
-                            snap.unit_path(u.id), a, z)
+                            snap.unit_path(u.id), a, z, u.flags)
             prev = open_.pop(u.id, None)
             if prev is not None and replace(prev, start_pos=a, end_pos=z) == span:
                 span = replace(prev, end_pos=z)
@@ -77,7 +120,7 @@ def unit_spans(timeline: FundTimeline, lo: int, hi: int) -> list[UnitSpan]:
     return done + list(open_.values())
 
 
-def _absent(spans: list[UnitSpan], unit_id: int, a: int, z: int) -> list[tuple[int, int]]:
+def absent_parts(spans: list[UnitSpan], unit_id: int, a: int, z: int) -> list[tuple[int, int]]:
     """Отрезки [a, z], где объекта нет в фонде (не покрыты его интервалами)."""
     out, p = [], a
     for s in sorted((s for s in spans if s.unit_id == unit_id), key=lambda s: s.start_pos):
@@ -91,15 +134,24 @@ def _absent(spans: list[UnitSpan], unit_id: int, a: int, z: int) -> list[tuple[i
     return out
 
 
-def _day(p: int) -> str:
+def day_label(p: int) -> str:
     return dt.date.fromordinal(p // 2).strftime("%d.%m")
 
 
+def pin_target(a: Assignment) -> int | None:
+    """Объект закрепления строки: её объект, а у закреплённой части без объекта (овербукинг под
+    OOO, §4.4) — сохранённый pin_unit_id; не закреплена — None."""
+    if not a.pinned:
+        return None
+    return a.unit_id if a.unit_id is not None else a.pin_unit_id
+
+
 def effective_pin(pinned: dict[int, int], live: set[int]) -> int | None:
-    """Объект закрепления сегмента по его закреплённым строкам (индекс части → объект): первой
-    живой части (end_pos >= сегодня AM), иначе — первой прошлой. Прошлые строки не
-    переписываются, поэтому новое закрепление видно по живым частям."""
-    order = sorted(pinned)
+    """Объект закрепления сегмента по его закреплённым строкам (индекс части → объект): последней
+    живой части (end_pos >= сегодня AM), иначе — последней прошлой. Прошлые строки не
+    переписываются, поэтому новое закрепление видно по живым частям; закрепление, перенесённое
+    при переезде заселённого (OOO с ночи D), — по частям с D."""
+    order = sorted(pinned, reverse=True)
     return next((pinned[i] for i in order if i in live), next((pinned[i] for i in order), None))
 
 
@@ -112,33 +164,92 @@ def _envelope(rs: list[Reservation], moves: dict[int, list[tuple]]) -> list[Segm
                     moves[rs[0].id])
 
 
+def own_cuts(cuts: list[int], starts: dict[int, list[int]], rid: int) -> list[int]:
+    """Границы частей брони: границы версий фонда и начала её строк назначений — так виден
+    переезд заселённого гостя посреди части фонда (OOO с ночи D, ревизия 0016)."""
+    return [*cuts, *starts.get(rid, ())]
+
+
+def _night_start(p: int) -> int:
+    """Начало первой ночи, задетой половинкой p: вечер этого дня или, для утра, вечер накануне."""
+    return p if p % 2 == PM else p - 1
+
+
+def _days(a: int, z: int) -> str:
+    return f"{day_label(a)}–{day_label(z)}" if a // 2 != z // 2 else day_label(a)
+
+
+@dataclass(frozen=True)
+class _Row:
+    """Строка назначения в частях, как их видят читатели: (начало, конец) части, сегмент."""
+    rid: int
+    start_pos: int
+    end_pos: int
+    seg_index: int
+    unit_id: int | None
+    pinned: bool
+    pin_unit_id: int | None = None          # объект закрепления части без объекта
+
+    @property
+    def pin_target(self) -> int | None:
+        return (self.unit_id if self.unit_id is not None else self.pin_unit_id) if self.pinned else None
+
+
+@dataclass
+class _Info:
+    """Элемент распределения для записи: брони, части расчёта, разрезы сверх границ версий."""
+    rs: list[Reservation]
+    number: str
+    pieces: list[Piece]
+    extra: set[int]
+    fixed_pin: dict[int, tuple[bool, int | None]]      # часть → (закреплена, объект закрепления без объекта)
+    lost: dict[int, int]                     # часть → объект строки, который ей больше не подходит
+    settled: bool
+
+
 def compute(db: Session) -> AllocationState:
-    """Распределение без записи: им пользуются и сохранение, и снимок предпросмотра."""
+    """Распределение без записи: им пользуются и сохранение, и снимок предпросмотра.
+
+    Части распределения — части фонда, дополнительно разрезанные у заселённых броней по
+    сегодняшнему вечеру и по началу каждого OOO на их объекте: прошлое заморожено (L1), будущее
+    держит объект, пока OOO или фонд его не отнимут, и тогда переезжает один раз с ночи D до
+    конца (§4.3). Лишние разрезы (объект и закрепление по обе стороны те же) при записи
+    склеиваются; оставшиеся видны читателям по Assignment.start_pos."""
     today = local_date()
-    hold_rows = list(db.scalars(select(Hold).where(Hold.end >= today)))
+    morning, evening = pos(today, AM), pos(today, PM)
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(OCCUPYING),
                                                     Reservation.check_out >= today)))
     # фонд — с дня до самого раннего заезда: AM этого заезда принадлежит предыдущей версии
     first = min([today, *(r.check_in for r in res)]) - dt.timedelta(days=1)
-    last = max([today, *(r.check_out for r in res), *(h.end for h in hold_rows)])
+    # OOO — и прошлые, пока в окне живут брони: наложение на прошлые части видно предупреждением
+    ooo_rows = list(db.scalars(select(Ooo).where(Ooo.end >= first)))
+    night_rows = db.execute(select(BlockNight.block_id, BlockNight.category_id, BlockNight.night,
+                                   BlockNight.quantity, Block.title)
+                            .join(Block, Block.id == BlockNight.block_id).where(BlockNight.night >= today)).all()
+    last = max([today, *(r.check_out for r in res), *(h.end for h in ooo_rows),
+                *(n.night + dt.timedelta(days=1) for n in night_rows)])
     timeline = fund_for(db, first, last)
     cuts = [boundary_pos(d) for d in timeline.boundaries()]
     spans = unit_spans(timeline, pos(first, AM), pos(last, PM))
     codes = {c.id: c.code for snap in timeline.snapshots() for c in snap.categories.values()}
 
-    holds: list[HoldRef] = []
+    ooo: list[OooRef] = []                 # распределению — OOO, не закончившиеся к сегодняшнему утру
+    past_ooo: list[OooRef] = []
     warnings: list[AllocWarning] = []
     members: dict[Key, list[int]] = {}
-    for h in hold_rows:
-        title = h.title or ("OOO" if h.kind == "ooo" else "Блок")
-        hs, he = hold_span(h.start, h.end)
-        holds.append(HoldRef(h.unit_id, hs, he, title))
-        # OOO/блок на дни, когда объекта нет в фонде (спецификация версий §14); прошлое — не тревога
-        for a, z in _absent(spans, h.unit_id, max(hs, pos(today, AM)), he):
+    for h in ooo_rows:
+        title = h.reason or "OOO"
+        hs, he = ooo_span(h.start, h.start_half, h.end, h.end_half)
+        past_ooo.append(OooRef(h.unit_id, hs, he, title))
+        if he < morning:
+            continue
+        ooo.append(OooRef(h.unit_id, hs, he, title))
+        # OOO на дни, когда объекта нет в фонде (спецификация версий §14); прошлое — не тревога
+        for a, z in absent_parts(spans, h.unit_id, max(hs, morning), he):
             u = timeline.unit(h.unit_id, dt.date.fromordinal(a // 2))
             label = u.label if u is not None else f"#{h.unit_id}"
             warnings.append(AllocWarning("hold_absent", ("h", h.id), 0,
-                                         f"{title}: объекта {label} нет в фонде {_day(a)}–{_day(z)}"))
+                                         f"{title}: объекта {label} нет в фонде {day_label(a)}–{day_label(z)}"))
             members[("h", h.id)] = []
 
     moves = _moves(db, [r.id for r in res])
@@ -147,36 +258,21 @@ def compute(db: Session) -> AllocationState:
         if r.group_id is not None:
             groups.setdefault(r.group_id, []).append(r)
     envelopes = {gid: _envelope(rs, moves) for gid, rs in groups.items()}
-    # строки членов группы — по их собственным частям (читатели строят части из дат брони);
-    # распределение группы идёт по частям оболочки: (член, своя часть) ↔ часть оболочки
-    to_env: dict[tuple[int, int], int] = {}
-    from_env: dict[tuple[int, int], list[Piece]] = {}
-    for gid, rs in groups.items():
-        env = pieces(envelopes[gid], cuts)
-        for r in rs:
-            for p in pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]), cuts):
-                e = next((e for e in env if e.start_pos <= p.start_pos <= e.end_pos), None)
-                if e is not None:
-                    to_env[(r.id, p.index)] = e.index
-                    from_env.setdefault((r.id, e.index), []).append(p)
-    current: dict[tuple[int, int], int] = {}
-    pinned_rows: set[tuple[int, int]] = set()
-    pin_rows: dict[tuple[int, int], dict[int, int]] = {}   # (бронь, сегмент) → {часть: объект}
-    in_group = {r.id for rs in groups.values() for r in rs}
+    own_segs = {r.id: segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]) for r in res}
+    # строки назначений — по частям, как их режут читатели (границы версий и start_pos строк)
+    rows_of: dict[int, dict[int, Assignment]] = {r.id: {} for r in res}
+    starts: dict[int, list[int]] = {}
     if res:
-        for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([r.id for r in res]))
-                            .order_by(Assignment.seg_index)):
-            rid, index = a.reservation_id, a.seg_index
-            if rid in in_group:
-                if (rid, index) not in to_env:
-                    continue                       # не часть брони — строка удаляется при записи
-                index = to_env[(rid, index)]
-            if a.unit_id is not None:
-                current[(rid, index)] = a.unit_id
-                if a.pinned:
-                    pinned_rows.add((rid, index))
-                    pin_rows.setdefault((rid, index // PIECE_BASE), {})[index] = a.unit_id
-    morning, evening = pos(today, AM), pos(today, PM)
+        for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([r.id for r in res]))):
+            rows_of[a.reservation_id][a.seg_index] = a
+            if a.start_pos is not None:
+                starts.setdefault(a.reservation_id, []).append(a.start_pos)
+    stored: dict[int, list[_Row]] = {}
+    for r in res:
+        stored[r.id] = [_Row(r.id, p.start_pos, p.end_pos, p.seg_index, a.unit_id, bool(a.pinned), a.pin_unit_id)
+                        for p in pieces(own_segs[r.id], own_cuts(cuts, starts, r.id))
+                        if (a := rows_of[r.id].get(p.index)) is not None]
+    by_rid = {r.id: r for r in res}
 
     by_unit: dict[int, list[UnitSpan]] = {}
     for u in spans:
@@ -187,95 +283,176 @@ def compute(db: Session) -> AllocationState:
         return next((u.category_id for u in by_unit.get(uid, ()) if u.start_pos <= p.start_pos
                      and p.end_pos <= u.end_pos), None)
 
-    def frozen_unit(rs: list[Reservation], p: Piece, prev: Piece | None) -> tuple[bool, int | None, int | None]:
-        """(заморожена ли часть, её объект, объект, который ей больше не подходит).
-
-        Закончившаяся до сегодняшнего утра — заморожена безусловно, и без объекта (L1).
-        Заселённая/выехавшая или закончившаяся к сегодня — с текущим объектом. Часть, которая
-        начинается с сегодняшнего вечера или позже (за границей версии — версия публикуется не
-        раньше сегодня), заморожена, только пока объект есть в фонде на всей части и не сменил
-        на границе категорию на чужую; иначе она распределяется заново, как незамороженная."""
-        uid = next((current[(r.id, p.index)] for r in rs if (r.id, p.index) in current
-                    and (r.status in FROZEN_STATUSES or p.end <= today)), None)
-        if p.end_pos < morning:
-            return True, uid, None
-        if uid is None:
-            return False, None, None
-        if p.start_pos < evening:
-            return True, uid, None          # фонд этой части уже действует — его не меняют
-        cat = unit_cat(uid, p)
-        before = unit_cat(uid, prev) if prev is not None and prev.seg_index == p.seg_index else cat
-        if cat is not None and (cat == p.category_id or cat == before):
-            return True, uid, None
-        return False, None, uid
+    def under_ooo(uid: int, p: Piece) -> OooRef | None:
+        return next((o for o in ooo if o.unit_id == uid and overlaps(o.start_pos, o.end_pos, p.start_pos, p.end_pos)),
+                    None)
 
     items: list[AllocItem] = []
-    relocated: dict[tuple[Key, int], tuple[str, Piece, int]] = {}   # часть заселённой брони → прежний объект
+    info: dict[Key, _Info] = {}
+    scorers = pref_scorers(db, [r.id for r in res])
 
-    def add_item(key: Key, number: str, rs: list[Reservation], segs) -> None:
-        ps = pieces(segs, cuts)
-        live = {p.index for p in ps if p.end_pos >= morning}
-        pinned = {s.index: uid for s in segs
-                  if (uid := next((effective_pin(pin_rows[(r.id, s.index)], live) for r in rs
-                                   if (r.id, s.index) in pin_rows), None)) is not None}
-        fixed: dict[int, int | None] = {}
+    def add_item(key: Key, number: str, rs: list[Reservation], segs: list[Segment]) -> None:
         settled = any(r.status in FROZEN_STATUSES for r in rs)
-        for prev, p in zip((None, *ps), ps, strict=False):
-            frozen, uid, lost = frozen_unit(rs, p, prev)
-            pin = pinned.get(p.seg_index)
-            if frozen:
+        mine = sorted((row for r in rs for row in stored[r.id]), key=lambda row: (row.start_pos, row.rid))
+        extra = {row.start_pos for row in mine if row.start_pos <= evening}     # прошлые переезды — история
+        if settled:
+            extra.add(evening)
+            held = {row.unit_id for row in mine if row.unit_id is not None}
+            lo, hi = max(segs[0].start_pos, evening), segs[-1].end_pos
+            extra |= {max(evening, _night_start(o.start_pos)) for o in ooo
+                      if o.unit_id in held and overlaps(o.start_pos, o.end_pos, lo, hi)}
+        ps = pieces(segs, [*cuts, *extra])
+
+        def stored_at(p: Piece) -> _Row | None:
+            """Строка, чья часть содержит начало p (у группы — любого члена), иначе первая пересекающая."""
+            over = [row for row in mine if overlaps(row.start_pos, row.end_pos, p.start_pos, p.end_pos)]
+            return next((row for row in over if row.start_pos <= p.start_pos), over[0] if over else None)
+
+        pins: dict[int, int] = {}
+        for seg in {s.index for s in segs}:
+            rows = [row for row in mine if row.seg_index == seg and row.pin_target is not None]
+            live = [row for row in rows if row.end_pos >= morning]
+            if rows:
+                pins[seg] = (live or rows)[-1].pin_target      # как effective_pin: последняя живая часть
+        fixed: dict[int, int | None] = {}
+        fixed_pin: dict[int, tuple[bool, int | None]] = {}
+        lost: dict[int, int] = {}
+        prev: Piece | None = None
+        for p in ps:
+            row = stored_at(p)
+            ok = row is not None and (by_rid[row.rid].status in FROZEN_STATUSES or p.end <= today)
+            uid = row.unit_id if ok else None
+            if p.end_pos < morning or (p.start_pos < evening and (uid is not None or settled)):
+                # закончившаяся до сегодняшнего утра — заморожена и без объекта (L1); заселённая до
+                # сегодняшнего вечера — в своём объекте или без объекта, как было
+                kept = ok and row.pinned
                 fixed[p.index] = uid
-                if pin is not None and pin != uid and p.end_pos >= morning and unit_cat(pin, p) != p.category_id:
-                    # часть уже отпущена с закрепления (pin_invalid): предупреждение остаётся
-                    warnings.append(pin_invalid(number, key, p))
-                continue
-            if not settled or pin is not None:
-                continue                  # у закреплённого сегмента о смене объекта скажет pin_invalid
-            # заселённая бронь переезжает по фонду: объект строки или предыдущей части сегмента
-            ref = lost if lost is not None else (
-                fixed.get(prev.index) if prev is not None and prev.seg_index == p.seg_index else None)
-            if ref is not None:
-                relocated[(key, p.index)] = (number, p, ref)
-        items.append(AllocItem(key, number, tuple(ps), pinned, fixed))
+                fixed_pin[p.index] = (kept, row.pin_unit_id if kept and uid is None else None)
+            elif settled and uid is not None and (prev is None or prev.seg_index != p.seg_index
+                                                  or (prev.index in fixed and fixed[prev.index] is None)):
+                # перед частью нет замороженной с объектом (заезд сегодня, переезд по категории,
+                # прошлое без объекта): держит объект строки, пока тот есть в фонде и не под OOO
+                if unit_cat(uid, p) is not None and under_ooo(uid, p) is None:
+                    fixed[p.index], fixed_pin[p.index] = uid, (row.pinned, None)
+                else:
+                    lost[p.index] = uid
+            prev = p
+        # приоритет части 2 §4.2: предварительные — после подтверждённых и заселённых
+        rank = 0 if any(r.status != "tentative" for r in rs) else 1
+        # пожелания — главного гостя; у группы — первой по номеру брони, у которой он есть
+        prefs = next((scorers[r.id] for r in rs if r.id in scorers), None)
+        items.append(AllocItem(key, number, tuple(ps), pins, fixed, rank=rank, in_house=settled, prefs=prefs))
         members[key] = [r.id for r in rs]
+        info[key] = _Info(rs, number, ps, extra, fixed_pin, lost, settled)
 
     for r in res:
         if r.group_id is None:
-            add_item(("r", r.id), r.number or str(r.id), [r],
-                     segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[r.id]))
+            add_item(("r", r.id), r.number or str(r.id), [r], own_segs[r.id])
     for gid, rs in groups.items():
         add_item(("g", gid), rs[0].number or f"группа {gid}", rs, envelopes[gid])
 
-    got, alloc_warnings = allocate(spans, holds, items, codes)
+    block_slots = slots({(n.block_id, n.category_id, n.night): n.quantity for n in night_rows},
+                        {n.block_id: n.title for n in night_rows})
+    # обороты вне расчёта не нужны — все выезды с сегодня есть среди броней расчёта
+    got, slot_units, alloc_warnings = allocate(spans, ooo, block_slots, items, codes, {})
     warnings += alloc_warnings
-    for (key, index), (number, p, ref) in relocated.items():
-        if got.get((key, index)) != ref:
-            u, new = timeline.unit(ref, p.start), got.get((key, index))
-            nu = timeline.unit(new, p.start) if new is not None else None
-            warnings.append(AllocWarning(
-                "unit_invalid", key, index,
-                f"Бронь {number}: объект {u.label if u else ref} не подходит по фонду с "
-                f"{p.start.strftime('%d.%m')} — {'переезд в ' + nu.label if nu else 'без объекта'}"))
+    members.update({w.key: [] for w in alloc_warnings if w.key[0] == "b"})
     released = {(w.key, w.piece_index) for w in alloc_warnings if w.kind == "pin_invalid"}
-    fixed_keys = {(it.key, i) for it in items for i in it.fixed}
+    # закрепление переехало на новый объект; без объекта — остаётся прежним (§4.4)
+    pinned_now = {(w.key, w.piece_index // PIECE_BASE): uid for w in alloc_warnings
+                  if w.kind == "pin_conflict" and (uid := got.get((w.key, w.piece_index))) is not None}
+    # бронь без объекта — и овербукинг, и категория, которой нет в фонде: обе — новая бронь без
+    # объекта, проверка права stays.overbook видит их одинаково (§7)
+    overbooked = {(w.key, w.piece_index) for w in alloc_warnings if w.kind in ("overbooked", "category_missing")}
+
     out_units: dict[tuple[int, int], int | None] = {}
     out_pinned: dict[tuple[int, int], bool] = {}
+    out_pin_units: dict[tuple[int, int], int] = {}
     out_spans: dict[tuple[int, int], tuple[int, int]] = {}
-    span_of = {(it.key, p.index): (p.start_pos, p.end_pos) for it in items for p in it.segments}
-    for (key, piece), uid in got.items():
-        for rid in members[key]:
-            if (key, piece) in fixed_keys:
-                pinned = (rid, piece) in pinned_rows
+    out_overbooked: set[tuple[int, int]] = set()
+    for it in items:
+        inf = info[it.key]
+        state: dict[int, tuple[int | None, bool, int | None]] = {}
+        for p in inf.pieces:
+            if p.index in it.fixed:
+                state[p.index] = (it.fixed[p.index], *inf.fixed_pin[p.index])
+                continue
+            uid = got.get((it.key, p.index))
+            seg = p.seg_index
+            # закреплена часть в объекте закрепления — прежнем или перенесённом (pin_conflict); часть
+            # заселённого, удержанная в другом объекте до переезда, — нет
+            pin = pinned_now.get((it.key, seg), it.pinned.get(seg))
+            held = pin is not None and (it.key, p.index) not in released
+            if uid is None and held:
+                state[p.index] = (None, True, pin)       # овербукинг закреплённой — закрепление сохранено
             else:
-                pinned = (rid, piece // PIECE_BASE) in pin_rows and (key, piece) not in released
-            own = ([(p.index, (p.start_pos, p.end_pos)) for p in from_env.get((rid, piece), ())]
-                   if key[0] == "g" else [(piece, span_of.get((key, piece)))])
-            for index, span in own:
-                out_units[(rid, index)] = uid
-                out_pinned[(rid, index)] = pinned
-                if span is not None:
-                    out_spans[(rid, index)] = span
-    return AllocationState(out_units, out_pinned, warnings, members, out_spans)
+                state[p.index] = (uid, held and uid == pin, None)
+        _place_warnings(it, inf, got, timeline, unit_cat, under_ooo, past_ooo, warnings)
+        # разрезы, по обе стороны которых объект и закрепление те же, не хранятся
+        keep = []
+        for left, right in zip(inf.pieces, inf.pieces[1:], strict=False):
+            if (right.start_pos in inf.extra and left.seg_index == right.seg_index
+                    and state[left.index] != state[right.index]):
+                keep.append(right.start_pos)
+        final = [*cuts, *keep]
+        for r in inf.rs:
+            for mp in pieces(own_segs[r.id], final):
+                p = next((q for q in inf.pieces if q.start_pos <= mp.start_pos <= q.end_pos), None)
+                if p is None:
+                    continue
+                out_units[(r.id, mp.index)], out_pinned[(r.id, mp.index)], pin_unit = state[p.index]
+                if pin_unit is not None:
+                    out_pin_units[(r.id, mp.index)] = pin_unit
+                out_spans[(r.id, mp.index)] = (mp.start_pos, mp.end_pos)
+                if (it.key, p.index) in overbooked:
+                    lo, hi = max(mp.start_pos, p.start_pos), min(mp.end_pos, p.end_pos)
+                    out_overbooked |= {(r.id, n) for n in range(lo // 2, hi // 2 + 1) if lo <= 2 * n + 1 <= hi}
+    return AllocationState(out_units, out_pinned, warnings, members, out_spans, slot_units,
+                           frozenset(out_overbooked), out_pin_units)
+
+
+def _place_warnings(it: AllocItem, inf: _Info, got, timeline: FundTimeline, unit_cat, under_ooo,
+                    past_ooo: list[OooRef], warnings: list[AllocWarning]) -> None:
+    """Переезд заселённой брони (фонд или OOO с ночи D) и наложение OOO на прошлые части."""
+    def label(uid: int | None, p: Piece) -> str | None:
+        u = timeline.unit(uid, p.start) if uid is not None else None
+        return u.label if u is not None else None
+
+    for p in inf.pieces:
+        uid = it.fixed.get(p.index)
+        if p.index not in it.fixed or uid is None:
+            continue
+        for o in past_ooo:
+            if o.unit_id == uid and overlaps(o.start_pos, o.end_pos, p.start_pos, p.end_pos):
+                a, z = max(o.start_pos, p.start_pos), min(o.end_pos, p.end_pos)
+                warnings.append(AllocWarning(
+                    "ooo_overlap", it.key, p.index,
+                    f"Бронь {inf.number}: объект {label(uid, p) or uid} в OOO «{o.title}» {_days(a, z)} — "
+                    f"прошлые дни проживания не переселяются"))
+    if not inf.settled:
+        return
+    prev: Piece | None = None
+    for p in inf.pieces:
+        same = prev is not None and prev.seg_index == p.seg_index
+        ref = (got.get((it.key, prev.index)) if same else None) if p.index not in inf.lost else inf.lost[p.index]
+        prev = p
+        if p.index in it.fixed or ref is None or p.seg_index in it.pinned:
+            continue              # у закреплённого сегмента о переезде скажет pin_invalid / pin_conflict
+        new = got.get((it.key, p.index))
+        if new == ref:
+            continue
+        where = "переезд в " + (label(new, p) or str(new)) if new is not None else "без объекта"
+        o = under_ooo(ref, p) if unit_cat(ref, p) == p.category_id else None
+        if o is None:
+            warnings.append(AllocWarning(
+                "unit_invalid", it.key, p.index,
+                f"Бронь {inf.number}: объект {label(ref, p) or ref} не подходит по фонду с "
+                f"{p.start.strftime('%d.%m')} — {where}"))
+        else:
+            warnings.append(AllocWarning(
+                "ooo_move", it.key, p.index,
+                f"Бронь {inf.number} (заселена): объект {label(ref, p) or ref} — OOO «{o.title}» с "
+                f"{day_label(max(o.start_pos, p.start_pos))} — {where} с {p.start.strftime('%d.%m')} до выезда"))
 
 
 def run_allocation(db: Session) -> AllocationState:
@@ -296,6 +473,8 @@ def run_allocation(db: Session) -> AllocationState:
             db.add(a)
         a.unit_id = uid
         a.pinned = state.pinned[(rid, piece)]
+        a.start_pos = state.spans[(rid, piece)][0]
+        a.pin_unit_id = state.pin_units.get((rid, piece))
     db.flush()
     db.info[CACHE_KEY] = state
     return state

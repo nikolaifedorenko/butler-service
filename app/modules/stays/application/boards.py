@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import Companion, Logistics, Reservation
+from ..adapters.orm import Companion, Logistics, Ooo, Reservation
 from ..domain.types import OFF, StayDay
 from ..ports.duty import DutyPort
 from .context import NO_GUESTS, StaysContext, load_context
@@ -86,6 +86,20 @@ def _candidates(ctx: StaysContext, s: StayDay, day: dt.date, known) -> list[dict
     return rank_in_ctx(ctx, day, [s], set(s.guests), known)[:3]
 
 
+def _ooo_today(db: Session, ctx: StaysContext, day: dt.date, f: DayFilters) -> list[dict]:
+    """OOO, которые начинаются или заканчиваются в этот день (часть 2 §6) — в «Требуют внимания».
+    Причина — без персональных данных (решение владельца). Объект — по фильтрам фонда дня."""
+    out = []
+    for h in db.scalars(select(Ooo).where((Ooo.start == day) | (Ooo.end == day)).order_by(Ooo.start, Ooo.id)):
+        if not fund_match(ctx.fund.on(day), h.unit_id, None, f):
+            continue
+        out.append({"kind": "ooo", "id": h.id, "unit_id": h.unit_id, "unit": ctx.unit_label(h.unit_id, day),
+                    "title": h.reason, "start": h.start.isoformat(), "end": h.end.isoformat(),
+                    "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
+                    "events": [e for e, d in (("starts", h.start), ("ends", h.end)) if d == day]})
+    return out
+
+
 def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: DutyPort) -> dict:
     prev = day - dt.timedelta(days=1)
     ctx = load_context(db, prev, day, duty)
@@ -128,6 +142,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
             return None
         guests = guests_of(r, night)
         base = {"reservation_id": r.id, "status": r.status, "unit": ctx.unit_label(unit_id, night),
+                **({"overbooked": True} if unit_id is None else {}),
                 "time": {"arrival": "РЗ" if r.early else "14:00", "departure": "ПВ" if r.late else "12:00"}.get(kind, ""),
                 "guests_count": len(guests) or 1}
         if not names:
@@ -160,8 +175,9 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     out = {"date": day.isoformat(), "visibility": level, "arrivals": arrivals, "departures": departures,
            "in_house": in_house, "no_show": [{"reservation_id": r.id, "status": r.status, **(
                {"number": r.number} if names else {})} for r in no_show]}
+    overbooked = [x for x in in_house if x.get("overbooked")]
     totals = {"arrivals": len(arrivals), "departures": len(departures), "in_house": len(in_house),
-              "no_show": len(no_show)}
+              "no_show": len(no_show), "overbooked": len(overbooked)}
     if names:
         statuses = [x["cover_status"] for x in in_house]
         guests = [g["level"] for x in in_house for g in x["guests"]]
@@ -169,6 +185,10 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
                    "need_replacement": statuses.count("replacement"), "declined": statuses.count("declined"),
                    "not_required": statuses.count("not_required"), "vip": guests.count("vip"),
                    "vvip": guests.count("vvip")}
-        out["attention"] = [x for x in in_house if x["cover_status"] in ("uncovered", "replacement")]
+    # «Требуют внимания» — всем уровням (решение владельца: OOO видны всем): овербукинг (бронь без
+    # объекта, часть 2 §4.2) и OOO дня; на уровне «занятость» строки броней — без данных гостей,
+    # непокрытые и подмены — только с уровня «имена»
+    out["attention"] = [x for x in in_house if x.get("overbooked") or (
+        names and x["cover_status"] in ("uncovered", "replacement"))] + _ooo_today(db, ctx, day, f)
     out["totals"] = totals
     return out

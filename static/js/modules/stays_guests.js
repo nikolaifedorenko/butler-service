@@ -199,7 +199,9 @@ function openGuestMerge(a, b, onDone) {
         busy(true);
         try {
           const r = await api('/api/stays/guests/merge?preview=1', { method: 'POST', body: ids() });
-          $('#gm-out', m).innerHTML = staysMergeMovesHtml(r.moves);
+          // новый овербукинг без права «Овербукинг» — объединение не сохранится (409)
+          $('#gm-out', m).innerHTML = (r.overbook_refused ? `<p class="sp-warn"><b>Не сохранится:</b> ${esc(r.overbook_refused)}</p>` : '')
+            + staysMergeMovesHtml(r.moves);
         } catch (e) { $('#gm-out', m).innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
         busy(false);
       };
