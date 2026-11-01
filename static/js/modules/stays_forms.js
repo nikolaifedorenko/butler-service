@@ -218,6 +218,11 @@ async function openReservationForm(id, opts = {}) {
       const takeCode = o => {
         if (opts.mine || o.vip_code_id === undefined) return;
         const sel = $('#rf-vip-code', m), v = String(o.vip_code_id ?? '');
+        /* архивный код профиля в списке не предлагается, но копия из профиля его принимает (§3.1) */
+        const c = (fund.vip_codes || []).find(x => String(x.id) === v);
+        if (c && ![...sel.options].some(x => x.value === v)) {
+          sel.insertAdjacentHTML('beforeend', opt(c.id, `${c.code}${c.title ? ' — ' + c.title : ''} (в архиве)`));
+        }
         if ([...sel.options].some(x => x.value === v)) sel.value = v;
       };
       const addGuest = (gid, name, vipCode) => {

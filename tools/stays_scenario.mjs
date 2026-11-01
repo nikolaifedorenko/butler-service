@@ -720,6 +720,27 @@ async function escortBookingForm() {
   check('другой брони архивный код не предлагается', await waitFor(() => !!$('#rf-vip-code'))
     && ![...$('#rf-vip-code').options].some(o => o.value === String(arch.id)));
   click($('[data-close]'));
+  // главный заменён на гостя с архивным кодом профиля (демо: у Гусева — «03») — код подставлен с пометкой
+  const c03 = (await apiJson('GET', '/api/stays/fund')).body.vip_codes.find(c => c.code === '03');
+  await apiJson('PUT', `/api/stays/vip-codes/${c03?.id}/archive`, { archived: true });
+  await window.eval('staysFund(true)');
+  window.eval('openReservationForm()');
+  await waitFor(() => !!$('#rf-guest-q'));
+  input($('#rf-guest-q'), 'Орлов');
+  await waitFor(() => !!$(pick));
+  click($(pick));
+  await waitFor(() => $('#rf-vip-code').value === String(c13?.id));
+  click($('[data-occ-del="0"]'));
+  input($('#rf-guest-q'), 'Гусев');
+  const pick03 = `[data-pick-guest][data-code="${c03?.id}"]`;
+  await waitFor(() => !!$(pick03));
+  click($(pick03));
+  check('главный с архивным кодом профиля — код подставлен с пометкой «в архиве»', await waitFor(() =>
+    $('#rf-vip-code').value === String(c03?.id) && /в архиве/.test($('#rf-vip-code').selectedOptions[0]?.textContent || '')),
+  $('#rf-vip-code').value);
+  click($('[data-close]'));
+  await apiJson('PUT', `/api/stays/vip-codes/${c03?.id}/archive`, { archived: false });
+  await window.eval('staysFund(true)');
 }
 
 const DEMO_SURNAMES = ['Лебедев', 'Фомина', 'Зайцев', 'Гусев', 'Кузьмин', 'Белова'];

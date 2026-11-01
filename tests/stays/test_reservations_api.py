@@ -429,6 +429,21 @@ def test_archived_code_not_selectable_new_422(manager_role_client, manager_clien
     assert r.status_code == 422
 
 
+def test_archived_profile_code_copied(manager_role_client, manager_client):
+    """Копия кода из профиля главного принимает архивный код (он уже стоит у гостя) — при создании
+    и при смене главного; ручной выбор архивного — 422 (test_archived_code_not_selectable_new_422)."""
+    cat, code = make_category(manager_role_client), make_code(manager_role_client)
+    g = _coded_guest(manager_client, code)
+    archive_code(manager_role_client, code["id"])
+    res = create_res(manager_client, cat, "2041-08-12", "2041-08-15", [(g["id"], "main", None, None)])
+    assert res["vip_code"]["id"] == code["id"] and res["vip_code"]["archived"] is True
+    other = create_res(manager_client, cat, "2041-08-12", "2041-08-15", [(make_guest(manager_client)["id"], "main",
+                                                                          None, None)])
+    r = _put(manager_client, other, occupants=[_main(g["id"], "2041-08-12", "2041-08-15")])
+    assert r.status_code == 200, r.text
+    assert r.json()["result"]["vip_code"] == {"id": code["id"], "code": code["code"], "title": "тест", "archived": True}
+
+
 def test_escort_mode_values_and_422(manager_role_client, manager_client):
     cat = make_category(manager_role_client)
     res = create_res(manager_client, cat, "2041-09-02", "2041-09-05")
