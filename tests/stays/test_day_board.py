@@ -24,7 +24,7 @@ def _setup(sup, mgr, DAY=DAY):
     stay = create_res(mgr, villa, _iso(DAY - dt.timedelta(days=1)), _iso(DAY + dt.timedelta(days=2)),
                       [(stay_g["id"], "main", None, None)])
     room_r = create_res(mgr, room, _iso(DAY), _iso(DAY + dt.timedelta(days=1)), [(room_g["id"], "main", None, None)])
-    return {"arr": arr, "dep": dep, "stay": stay, "room": room_r}
+    return {"arr": arr, "dep": dep, "stay": stay, "room": room_r, "villa": villa}
 
 
 def _row(rows, rid):
@@ -97,6 +97,29 @@ def test_day_board_filters(manager_role_client, manager_client):
     assert [r["reservation_id"] for r in b["arrivals"]] == [s["arr"]["id"]]
     b = manager_client.get(f"{API}/day", params={"date": _iso(day), "q": "табложивёт"}).json()
     assert [r["reservation_id"] for r in b["in_house"]] == [s["stay"]["id"]]
+
+
+def test_day_board_status_reasons(manager_role_client, manager_client, db):
+    """Статус сопровождения несёт причины (§4.1): категория; без правил — пусто; отказ при
+    действующих правилах — «declined» с причиной «гость отказался»."""
+    from app.modules.stays.adapters.orm import Reservation
+    day = DAY + dt.timedelta(days=80)
+    s = _setup(manager_role_client, manager_client, day)
+    b = manager_client.get(f"{API}/day", params={"date": _iso(day)}).json()
+    arr, room = _row(b["arrivals"], s["arr"]["id"]), _row(b["arrivals"], s["room"]["id"])
+    assert (arr["cover_status"], arr["escort_reasons"]) == ("uncovered", [f"категория {s['villa']['code']}"])
+    assert room["cover_status"] == "not_required" and room["escort_reasons"] == []
+    row = db.get(Reservation, s["stay"]["id"])
+    row.escort_mode = "declined"
+    db.commit()
+    try:
+        b = manager_client.get(f"{API}/day", params={"date": _iso(day)}).json()
+        got = _row(b["in_house"], s["stay"]["id"])
+        assert (got["cover_status"], got["escort_reasons"]) == ("declined", ["гость отказался"])
+        assert b["totals"]["declined"] == 1
+    finally:
+        row.escort_mode = "rules"
+        db.commit()
 
 
 def test_day_board_query_budget(manager_client, big_fund, sql_counter):

@@ -52,9 +52,10 @@ def test_double_whole_cover_warns():
     from datetime import date
 
     from app.modules.stays.domain.coverage import resolve_day
+    from app.modules.stays.domain.escort import EscortNeed
     from app.modules.stays.domain.types import Line, StayDay
     d = date(2030, 1, 1)
-    s = StayDay(d, 10, 7, 100, "1", 4.0, True, False, {50: "regular"})
+    s = StayDay(d, 10, 7, 100, (1,), 4.0, EscortNeed(True, ()), None, {50: False})
     cover = resolve_day([s], [Line(1, d, 1, 10, None, frozenset(), "manual", False),
                               Line(2, d, 2, None, 7, frozenset(), "manual", False)])
     assert cover.double == [(10, 50, (1, 2))]
@@ -100,14 +101,15 @@ def test_butlers_board_memoizes_days(monkeypatch, db):
 
 
 def test_day_board_budget_with_coverage(manager_client, sql_counter):
-    """I5: табло дня полного уровня со строками покрытия и дырами — не больше 32 запросов (30 + один
-    на семейные связи: родственники среди проживающих, addendum §4, + один на OOO дня — часть 2 §6)."""
+    """I5: табло дня полного уровня со строками покрытия и дырами — не больше 33 запросов (30 + один
+    на семейные связи: родственники среди проживающих, addendum §4, + один на OOO дня — часть 2 §6,
+    + один на справочник VIP-кодов в контексте покрытия — правила сопровождения, часть 3 §4.1)."""
     from app.core.time import local_date
     day = local_date() + dt.timedelta(days=3)          # демо-данные: батлеры, строки, дыры
     with sql_counter() as c:
         r = manager_client.get(f"{API}/day", params={"date": day.isoformat()})
     assert r.status_code == 200 and r.json()["totals"]["covered"] > 0 and r.json()["totals"]["uncovered"] > 0
-    assert c["total"] <= 32, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:5]
+    assert c["total"] <= 33, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:5]
 
 
 def test_butlers_board_budget_with_coverage(manager_client, sql_counter):

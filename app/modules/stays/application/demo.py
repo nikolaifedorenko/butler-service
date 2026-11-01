@@ -265,7 +265,8 @@ def seed_stays_demo(db: Session) -> None:
                 co = d + dt.timedelta(days=rnd.randint(3, 7))
                 if co < today + dt.timedelta(days=1):
                     co = today + dt.timedelta(days=1)
-                r = book(code, d, co, u, declined_butler=(len(made) % 23 == 0))
+                no = len(made) % 23 == 0       # гость отказался; покрытие читает escort_mode
+                r = book(code, d, co, u, declined_butler=no, escort_mode="declined" if no else "rules")
                 live(r, guest(), *([guest()] if rnd.random() < 0.4 else []))
                 if rnd.random() < 0.3:
                     db.add(Logistics(reservation_id=r.id, kind="transfer", date=d, time="14:30",

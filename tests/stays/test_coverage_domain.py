@@ -5,6 +5,7 @@ from datetime import date
 
 from app.modules.stays.domain.candidates import rank_candidates
 from app.modules.stays.domain.coverage import fill_template, resolve_day
+from app.modules.stays.domain.escort import EscortNeed
 from app.modules.stays.domain.load import day_loads
 from app.modules.stays.domain.types import Line, StayDay
 from app.modules.stays.domain.warnings import day_warnings
@@ -16,8 +17,11 @@ A, B, X, Y = 1, 2, 3, 4
 CODES = frozenset({"ОТ", "Б"})
 
 
-def stay(rid=10, unit=100, guests=None, weight=4.0, escorted=True, declined=False, group=None, path=(1,)):
-    return StayDay(D, rid, group, unit, path, weight, escorted, declined, guests or {50: "regular"})
+NEEDED = EscortNeed(True, ("категория Вилла",))
+
+
+def stay(rid=10, unit=100, guests=None, weight=4.0, need=NEEDED, group=None, path=(1,), code_factor=None):
+    return StayDay(D, rid, group, unit, path, weight, need, code_factor, guests or {50: False})
 
 
 def line(emp, rid=10, guests=(), group=None, lid=1):
@@ -50,26 +54,26 @@ def test_template_keeps_busy_days():
 
 
 def test_explicit_guests_override_whole_booking():
-    s = stay(guests={50: "vvip", 51: "regular", 52: "regular"})
+    s = stay(guests={50: True, 51: False, 52: False})
     cover = resolve_day([s], [line(X, lid=1), line(Y, guests=[51], lid=2)])
     assert cover.by_guest[(10, 50)] == (X,) and cover.by_guest[(10, 51)] == (Y,) and cover.by_guest[(10, 52)] == (X,)
     assert cover.uncovered == {} and cover.double == []
 
 
 def test_group_line_covers_all_group_stays():
-    s1, s2 = stay(rid=10, group=7, guests={50: "regular"}), stay(rid=11, group=7, guests={60: "regular"})
+    s1, s2 = stay(rid=10, group=7, guests={50: False}), stay(rid=11, group=7, guests={60: False})
     cover = resolve_day([s1, s2], [line(X, group=7)])
     assert cover.by_guest == {(10, 50): (X,), (11, 60): (X,)}
 
 
 def test_double_explicit_warns():
-    s = stay(guests={50: "regular"})
+    s = stay(guests={50: False})
     cover = resolve_day([s], [line(X, guests=[50], lid=1), line(Y, guests=[50], lid=2)])
     assert cover.double == [(10, 50, (X, Y))]
 
 
 def test_uncovered_guests_listed():
-    s = stay(guests={50: "regular", 51: "regular"})
+    s = stay(guests={50: False, 51: False})
     cover = resolve_day([s], [line(X, guests=[50])])
     assert cover.uncovered == {10: (51,)}
 
@@ -78,38 +82,38 @@ def test_move_day_butler_follows_guest():
     """«На что смотреть» №2: в день переезда объект — новый, вес считается один раз."""
     s = stay(unit=200)                     # StayDay уже несёт объект ночи (новый)
     cover = resolve_day([s], [line(X)])
-    assert day_loads([s], cover, 1.0, 2.0) == {X: 4.0}
+    assert day_loads([s], cover, 2.0) == {X: 4.0}
 
 
-def test_weight_split_and_vip_bonus():
-    s = stay(guests={50: "vvip", 51: "regular", 52: "regular"})
+def test_weight_split_with_special():
+    s = stay(guests={50: True, 51: False, 52: False})
     cover = resolve_day([s], [line(X, guests=[50], lid=1), line(Y, guests=[51, 52], lid=2)])
-    assert day_loads([s], cover, 1.0, 2.0) == {X: 4.0, Y: 2.0}       # 4/2 + 2 (VVIP) и 4/2
+    assert day_loads([s], cover, 2.0) == {X: 4.0, Y: 4.0}       # 4 × 2 («Особый») поровну, без надбавок
 
 
-def test_shared_guest_bonus_split():
-    s = stay(guests={50: "vip"})
+def test_shared_guest_weight_split():
+    s = stay(guests={50: True})
     cover = resolve_day([s], [line(X, lid=1), line(Y, lid=2)])
-    assert day_loads([s], cover, 1.0, 2.0) == {X: 2.5, Y: 2.5}
+    assert day_loads([s], cover, 1.5) == {X: 3.0, Y: 3.0}
     assert cover.double == [(10, 50, (X, Y))]          # два «целиком» на одного гостя — предупреждение
 
 
 def test_group_unit_weight_once():
-    s1, s2 = stay(rid=10, group=7, guests={50: "regular"}), stay(rid=11, group=7, guests={60: "regular"})
+    s1, s2 = stay(rid=10, group=7, guests={50: False}), stay(rid=11, group=7, guests={60: False})
     cover = resolve_day([s1, s2], [line(X, group=7)])
-    assert day_loads([s1, s2], cover, 1.0, 2.0) == {X: 4.0}
+    assert day_loads([s1, s2], cover, 2.0) == {X: 4.0}
 
 
 def _warn(stays, lines, duty, limit=8.0):
     cover = resolve_day(stays, lines)
-    loads = day_loads(stays, cover, 1.0, 2.0)
+    loads = day_loads(stays, cover, 2.0)
     return [(w.kind, w.employee_id, w.reservation_id) for w in day_warnings(D, stays, lines, cover, loads, duty, limit, CODES)]
 
 
 def test_hole_and_not_for_declined_or_unescorted():
     assert _warn([stay()], [], {}) == [("hole", None, 10)]
-    assert _warn([stay(declined=True)], [], {}) == []
-    assert _warn([stay(escorted=False)], [], {}) == []
+    assert _warn([stay(need=EscortNeed(False, ("гость отказался",), declined=True))], [], {}) == []
+    assert _warn([stay(need=EscortNeed(False, ()))], [], {}) == []
 
 
 def test_off_shift_and_overload():

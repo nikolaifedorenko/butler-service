@@ -63,11 +63,12 @@ class DayFilters:
 def _status(ctx: StaysContext, s: StayDay | None, night: dt.date, known, day: dt.date) -> dict:
     """Статус сопровождения брони в ночь night (§6.3): кто — кого / не назначено / подмена."""
     if s is None:
-        return {"cover_status": "not_required"}
-    if not s.escorted:
-        return {"cover_status": "not_required"}
-    if s.declined:
-        return {"cover_status": "declined"}
+        return {"cover_status": "not_required", "escort_reasons": []}
+    reasons = {"escort_reasons": list(s.need.reasons)}        # почему нужен / не нужен (§4.1)
+    if s.need.declined:
+        return {"cover_status": "declined", **reasons}
+    if not s.need.required:
+        return {"cover_status": "not_required", **reasons}
     cover = ctx.cover(night)
     pairs: dict[int, list[str]] = {}
     for (rid, g), emps in cover.by_guest.items():
@@ -78,8 +79,8 @@ def _status(ctx: StaysContext, s: StayDay | None, night: dt.date, known, day: dt
     replacement = [w for w in ctx.warnings(night) if w.kind == "need_replacement" and w.reservation_id == s.reservation_id]
     if s.reservation_id in cover.uncovered or replacement:
         return {"cover_status": "replacement" if replacement else "uncovered", "covered": covered,
-                "candidates": _candidates(ctx, s, night, known) if night == day else []}
-    return {"cover_status": "covered", "covered": covered}
+                "candidates": _candidates(ctx, s, night, known) if night == day else [], **reasons}
+    return {"cover_status": "covered", "covered": covered, **reasons}
 
 
 def _candidates(ctx: StaysContext, s: StayDay, day: dt.date, known) -> list[dict]:

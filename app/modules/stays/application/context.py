@@ -20,8 +20,10 @@ from ..adapters.orm import (
     Move,
     Occupant,
     Reservation,
+    VipCode,
 )
 from ..domain.coverage import resolve_day
+from ..domain.escort import escort_need
 from ..domain.halfday import PM, Piece, pieces, pos, segments
 from ..domain.load import day_loads
 from ..domain.types import DayCover, Line, StayDay, Warning
@@ -43,8 +45,7 @@ def nights(a: dt.date, b: dt.date) -> list[dt.date]:
 class StaysContext:
     first: dt.date
     last: dt.date
-    vip_bonus: float
-    vvip_bonus: float
+    special_factor: float                         # коэффициент «Особого гостя» в весе места (§4.2)
     limit: float
     codes: frozenset[str]
     fund: FundTimeline
@@ -53,6 +54,7 @@ class StaysContext:
     asg: dict[tuple[int, int], int | None]        # (бронь, индекс части) → объект
     occ: dict[int, list[Occupant]]
     guests: dict[int, Guest]
+    vip_codes: dict[int, VipCode]                 # все VIP-коды, с архивными (действуют, где стоят)
     lines: list[Line]
     escorts: list[int]
     staff: dict[int, str]
@@ -75,20 +77,42 @@ class StaysContext:
         return self._memo[key]
 
     def _stays_on(self, day: dt.date) -> list[StayDay]:
-        out = []
+        """Брони ночи day: объект и гости, затем «Особые» по группам (сопровождение нужно всей
+        группе в его ночи, §4.1), затем — нужен ли батлер каждой брони."""
+        live = []
+        specials: dict[int, list[int]] = {}            # бронь → её «Особые» в эту ночь
         for rid, r in self.res.items():
             if not r.check_in <= day < r.check_out:
                 continue
-            unit_id, seg = self.unit_of(rid, day)
-            cat = self.category(seg.category_id if seg else r.category_id, day)
-            present = {o.guest_id: self.guests[o.guest_id].level for o in self.occ.get(rid, ())
+            present = {o.guest_id: bool(self.guests[o.guest_id].special) for o in self.occ.get(rid, ())
                        if o.date_from <= day < o.date_to and o.guest_id in self.guests}
             if not self.occ.get(rid):
-                present = {NO_GUESTS: "regular"}
+                present = {NO_GUESTS: False}
             if not present:
                 continue
-            out.append(StayDay(day, rid, r.group_id, unit_id, self.fund.on(day).unit_path(unit_id), cat.weight,
-                               cat.escorted, r.declined_butler, present))
+            live.append((r, present))
+            specials[rid] = sorted(g for g, sp in present.items() if sp)
+        if not live:
+            return []                                  # фонд дня не нужен (его может и не быть)
+        snap = self.fund.on(day)
+        by_group: dict[int, list[int]] = {}
+        for r, _present in live:
+            if r.group_id is not None:
+                by_group.setdefault(r.group_id, []).extend(specials[r.id])
+        out = []
+        for r, present in live:
+            unit_id, seg = self.unit_of(r.id, day)
+            cat = self.category(seg.category_id if seg else r.category_id, day)
+            path = snap.unit_path(unit_id)
+            # свои «Особые» — первыми, затем остальные из группы
+            names = list(dict.fromkeys(specials[r.id] + (by_group.get(r.group_id, []) if r.group_id is not None else [])))
+            code = self.vip_codes.get(r.vip_code_id) if r.vip_code_id is not None else None
+            need = escort_need(r.escort_mode, category=(cat.title, cat.escorted),
+                               nodes=[(snap.groups[g].title, snap.groups[g].escorted) for g in path],
+                               code=(code.code, code.title, bool(code.escorted)) if code else None,
+                               specials=[self.guest_name(g) for g in names])
+            out.append(StayDay(day, r.id, r.group_id, unit_id, path, cat.weight, need,
+                               float(code.factor) if code else None, present))
         return out
 
     def lines_on(self, day: dt.date) -> list[Line]:
@@ -103,7 +127,7 @@ class StaysContext:
     def loads(self, day: dt.date) -> dict[int, float]:
         key = ("loads", day)
         if key not in self._memo:
-            self._memo[key] = day_loads(self.stays_on(day), self.cover(day), self.vip_bonus, self.vvip_bonus)
+            self._memo[key] = day_loads(self.stays_on(day), self.cover(day), self.special_factor)
         return self._memo[key]
 
     def warnings(self, day: dt.date) -> list[Warning]:
@@ -174,6 +198,7 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
             occ[o.reservation_id].append(o)
     gids = {o.guest_id for os in occ.values() for o in os}
     guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
+    vip_codes = {c.id: c for c in db.scalars(select(VipCode))}
     cuts = [boundary_pos(d) for d in fund.boundaries()]
     segs = {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[rid]),
                         allocation.own_cuts(cuts, starts, rid))
@@ -187,9 +212,9 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
     if people:
         staff = {e.id: e.short_name or e.full_name for e in db.scalars(select(Employee).where(Employee.id.in_(people)))}
     got = dict(duty.duty(sorted(people), first, last)) if duty is not None and people else {}
-    return StaysContext(first, last, float(st.vip_bonus), float(st.vvip_bonus), float(st.daily_limit),
+    return StaysContext(first, last, float(st.special_factor), float(st.daily_limit),
                         frozenset(c for c in st.replacement_codes.split(",") if c), fund, res, segs, asg,
-                        occ, guests, lines, escorts, staff, got)
+                        occ, guests, vip_codes, lines, escorts, staff, got)
 
 
 def butlers_on(db: Session, day: dt.date, res: list[Reservation], parts: dict[int, list[Piece]], asg: dict,
@@ -203,8 +228,8 @@ def butlers_on(db: Session, day: dt.date, res: list[Reservation], parts: dict[in
     staff = {e.id: e.short_name or e.full_name for e in db.scalars(
         select(Employee).where(Employee.id.in_({ln.employee_id for ln in lines})))}
     live = {r.id: r for r in res if r.check_in <= day < r.check_out}
-    ctx = StaysContext(day, day, 0.0, 0.0, 0.0, frozenset(), fund, live, {rid: parts[rid] for rid in live},
-                       asg, occ, guests, lines, [], staff, {})
+    ctx = StaysContext(day, day, 0.0, 0.0, frozenset(), fund, live, {rid: parts[rid] for rid in live},
+                       asg, occ, guests, {}, lines, [], staff, {})
     out: dict[int, list[str]] = {}
     for (rid, _g), emps in ctx.cover(day).by_guest.items():
         for e in emps:
