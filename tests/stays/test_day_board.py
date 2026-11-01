@@ -108,7 +108,7 @@ def test_day_board_query_budget(manager_client, big_fund, sql_counter):
 
 def test_day_board_ooo_and_overbook_attention(manager_role_client, manager_client, occupancy_client):
     """Часть 2 §6: OOO, начинающиеся и заканчивающиеся в этот день, и овербукинг — в «Требуют
-    внимания»; OOO вне этого дня — нет; уровень «занятость» вкладки не получает."""
+    внимания»; OOO вне этого дня — нет; уровень «занятость» видит OOO и овербукинг без данных гостей."""
     day = dt.date(2047, 2, 10)
     cat = make_category(manager_role_client, n_units=1)
     u = cat["units"][0]["id"]
@@ -133,4 +133,15 @@ def test_day_board_ooo_and_overbook_attention(manager_role_client, manager_clien
     b2 = manager_client.get(f"{API}/day", params={"date": _iso(day + dt.timedelta(days=2))}).json()
     assert [x["reservation_id"] for x in b2["attention"] if x.get("kind") != "ooo"] == [over["id"]]
     assert next(x for x in b2["in_house"] if x["reservation_id"] == over["id"])["overbooked"] is True
-    assert "attention" not in occupancy_client.get(f"{API}/day", params={"date": _iso(day)}).json()
+    # уровень «занятость» (финальное ревью, T6): OOO видны всем — те же записи; овербукинг —
+    # строки и счётчик без данных гостей
+    o1 = occupancy_client.get(f"{API}/day", params={"date": _iso(day)}).json()
+    assert o1["attention"] == b1["attention"]
+    r2 = occupancy_client.get(f"{API}/day", params={"date": _iso(day + dt.timedelta(days=2))})
+    o2 = r2.json()
+    assert [x["reservation_id"] for x in o2["attention"] if x.get("kind") != "ooo"] == [over["id"]]
+    row = next(x for x in o2["attention"] if x.get("kind") != "ooo")
+    assert row["overbooked"] is True
+    assert not {"guests", "details", "cover_status", "covered", "candidates", "number"} & set(row)
+    assert "ТаблоОвер" not in r2.text
+    assert o2["totals"]["overbooked"] == b2["totals"]["overbooked"] == 1 and b1["totals"]["overbooked"] == 0

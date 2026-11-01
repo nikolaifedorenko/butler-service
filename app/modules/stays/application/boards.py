@@ -175,8 +175,9 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     out = {"date": day.isoformat(), "visibility": level, "arrivals": arrivals, "departures": departures,
            "in_house": in_house, "no_show": [{"reservation_id": r.id, "status": r.status, **(
                {"number": r.number} if names else {})} for r in no_show]}
+    overbooked = [x for x in in_house if x.get("overbooked")]
     totals = {"arrivals": len(arrivals), "departures": len(departures), "in_house": len(in_house),
-              "no_show": len(no_show)}
+              "no_show": len(no_show), "overbooked": len(overbooked)}
     if names:
         statuses = [x["cover_status"] for x in in_house]
         guests = [g["level"] for x in in_house for g in x["guests"]]
@@ -184,8 +185,10 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
                    "need_replacement": statuses.count("replacement"), "declined": statuses.count("declined"),
                    "not_required": statuses.count("not_required"), "vip": guests.count("vip"),
                    "vvip": guests.count("vvip")}
-        # овербукинг (бронь без объекта) — тоже «Требуют внимания» (часть 2 §4.2)
-        out["attention"] = [x for x in in_house if x["cover_status"] in ("uncovered", "replacement")
-                            or x.get("overbooked")] + _ooo_today(db, ctx, day, f)
+    # «Требуют внимания» — всем уровням (решение владельца: OOO видны всем): овербукинг (бронь без
+    # объекта, часть 2 §4.2) и OOO дня; на уровне «занятость» строки броней — без данных гостей,
+    # непокрытые и подмены — только с уровня «имена»
+    out["attention"] = [x for x in in_house if x.get("overbooked") or (
+        names and x["cover_status"] in ("uncovered", "replacement"))] + _ooo_today(db, ctx, day, f)
     out["totals"] = totals
     return out

@@ -252,11 +252,16 @@ def move_draft(payload: DraftMoveIn, principal: Principal = Depends(SETUP), db: 
 
 
 @router.delete("/fund/versions/{vid}")
-def remove_version(vid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    _run(fd.delete_version, db, vid)
-    audit(db, principal, "stays_fund_version", f"fund_version:{vid}", {"delete": True})
-    db.commit()
-    return {"ok": True}
+def remove_version(vid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
+                   db: Session = Depends(get_db)):
+    """Удаление черновика или будущей версии и его предпросмотр (?preview=1) — одна операция, как
+    публикация: удаление опубликованной версии перераспределяет брони, новый овербукинг без права
+    stays.overbook — 409 (часть 2 §7)."""
+    def op():
+        fd.delete_version(db, vid)
+        audit(db, principal, "stays_fund_version", f"fund_version:{vid}", {"delete": True})
+        return {"ok": True}
+    return run(db, op, preview_flag, None, principal)
 
 
 def _data(payload: BaseModel) -> dict:

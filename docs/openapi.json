@@ -14582,6 +14582,7 @@
     },
     "/api/stays/fund/versions/{vid}": {
       "delete": {
+        "description": "Удаление черновика или будущей версии и его предпросмотр (?preview=1) — одна операция, как\nпубликация: удаление опубликованной версии перераспределяет брони, новый овербукинг без права\nstays.overbook — 409 (часть 2 §7).",
         "operationId": "remove_version_api_stays_fund_versions__vid__delete",
         "parameters": [
           {
@@ -14591,6 +14592,18 @@
             "schema": {
               "title": "Vid",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
             }
           }
         ],

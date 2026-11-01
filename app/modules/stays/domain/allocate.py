@@ -8,7 +8,8 @@
    у которой OOO или фонд отняли объект или которая уже без объекта, размещается здесь же, до
    слотов: блок не оставляет живущего гостя без объекта (закрепление — как в шаге 4).
 3. Слоты блоков — по ночам: слот держит объект прошлой ночи, если он свободен, иначе первый
-   свободный (обходя объекты, закреплённые за бронями, и обороты HK); не хватило — `block_short`,
+   свободный (обходя объекты, закреплённые за бронями; сначала — объекты, где прошлой ночью стоял
+   слот той же категории любого блока; HK к слотам не применяется); не хватило — `block_short`,
    блок не уменьшается.
 4. Закрепления броней — если объект свободен на весь остаток сегмента; иначе `pin_conflict` и
    бронь распределяется как обычная (закрепление переносится на новый объект, §4.4).
@@ -343,10 +344,14 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
                 slot_units[(s.block_id, s.category_id, s.slot, n)] = uid
             else:
                 fresh.append(s)
+        # слоты той же категории (любого блока) прошлой ночи: их объекты — первыми, чтобы соседние
+        # блоки шли в один объект и не дробили его для броней; HK к слотам не применяется — слоты
+        # виртуальные, после них не убирают (финальное ревью, Important 1)
+        before = {(k[1], uid) for k, uid in slot_units.items() if k[3] == n - 1 and uid is not None}
         for s in fresh:
             cands = [u for u in covering(s.category_id, a, z) if free(u.unit_id, a, z)]
             spare = [u for u in cands if not any(overlaps(a, z, pa, pz) for pa, pz in pinned_at.get(u.unit_id, ()))]
-            cands = hk(spare or cands, a)
+            cands = sorted(spare or cands, key=lambda u: (s.category_id, u.unit_id) not in before)
             key = (s.block_id, s.category_id, s.slot, n)
             if cands:
                 occupy(cands[0].unit_id, a, z, f"блок {s.title}")

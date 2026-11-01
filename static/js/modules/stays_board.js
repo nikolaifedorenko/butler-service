@@ -119,6 +119,7 @@ async function openReplace(rid, day, onChanged) {
 }
 
 /* ─────────────── Табло дня ─────────────── */
+/* «Требуют внимания» — всем уровням: OOO дня и овербукинг (на уровне «занятость» — без гостей) */
 const DAY_TABS = [['arrivals', 'Заезды'], ['departures', 'Выезды'], ['in_house', 'Проживают'], ['attention', 'Требуют внимания']];
 
 function dayStatusHtml(r) {
@@ -167,7 +168,6 @@ async function renderDayBoard(body) {
   if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
   const t = data.totals;
-  const tabs = DAY_TABS.filter(([id]) => names || id !== 'attention');
   const list = data[boardState.tab] || data.arrivals;
   body.innerHTML = `
     <div class="sb-toolbar">
@@ -181,8 +181,9 @@ async function renderDayBoard(body) {
         <div class="warn">↔ Нужна подмена <b>${t.need_replacement}</b></div><div>— Не требуется <b>${t.not_required}</b></div>
         <div>★ VIP ${t.vip} · VVIP ${t.vvip}</div>` : ''}
       <div>Не заехали <b>${t.no_show}</b></div>
+      ${t.overbooked ? `<div class="danger">Овербукинг <b>${t.overbooked}</b></div>` : ''}
     </div>
-    <div class="layer-tabs">${tabs.map(([id, title]) => `<button class="btn btn-sm${boardState.tab === id ? ' btn-primary' : ''}" data-dtab="${id}">${esc(title)}
+    <div class="layer-tabs">${DAY_TABS.map(([id, title]) => `<button class="btn btn-sm${boardState.tab === id ? ' btn-primary' : ''}" data-dtab="${id}">${esc(title)}
       ${(data[id] || []).length}</button>`).join('')}</div>
     <div class="db-list">${list.map(r => dayRowHtml(r, names)).join('') || '<div class="empty">Нет броней</div>'}</div>
     ${boardState.tab === 'arrivals' && data.no_show.length ? `<h4>Не заехали</h4>${data.no_show.map(r =>

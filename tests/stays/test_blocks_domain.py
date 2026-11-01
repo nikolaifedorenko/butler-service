@@ -145,3 +145,23 @@ def test_slot_avoids_unit_pinned_by_booking():
     pinned = AllocItem(b.key, b.number, b.segments, {0: 100})
     got, placed, warns = run(2, slots(grid(4, 10, 11), {4: "Г"}), [pinned])
     assert got == {(("r", 1), 0): 100} and set(placed.values()) == {101} and warns == []
+
+
+def test_adjacent_blocks_share_unit_no_false_overbook():
+    """Финальное ревью, Important 1: блок P на ночь 10, блок Q на ночь 11, одна подтверждённая
+    бронь на ночи 10–11, два объекта. Слоты виртуальные — HK к ним не применяется: слот Q берёт
+    объект, который слот той же категории (другого блока) держал прошлой ночью, бронь — второй
+    объект, овербукинга нет."""
+    sl = slots({**grid(1, 10, 10), **grid(2, 11, 11)}, {1: "P", 2: "Q"})
+    got, placed, warns = run(2, sl, [booking(1, 10, 12)])
+    assert placed == {(1, DLX, 1, D(10).toordinal()): 100, (2, DLX, 1, D(11).toordinal()): 100}
+    assert got == {(("r", 1), 0): 101}
+    assert warns == []
+
+
+def test_fresh_slot_ignores_turnover_of_guest():
+    """Выезд гостя утром дня — не повод слоту уходить из объекта: слоты не убираются."""
+    sl = slots(grid(1, 11, 11), {1: "P"})
+    got, placed, warns = allocate(units(2), [], sl, [booking(1, 9, 11)], CODES, {(100, D(11).toordinal()): True})
+    assert placed == {(1, DLX, 1, D(11).toordinal()): 100}
+    assert warns == []

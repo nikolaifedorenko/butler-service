@@ -310,3 +310,17 @@ def test_long_block_overbook_beyond_window_needs_perm(manager_role_client, manag
     assert r.status_code == 409 and r.json()["detail"]["overbook"] is True
     assert manager_client.get(f"{API}/blocks", params={"q": "Длинный"}).json()["total"] == 0
     assert manager_client.post(f"{API}/blocks", json=body).status_code == 200      # с правом — сохраняется
+
+
+def test_adjacent_blocks_no_false_overbook(manager_role_client, manager_client, no_overbook_client):
+    """Финальное ревью, Important 1: 2 объекта, блок P на ночь 10, подтверждённая бронь на ночи
+    10–11; блок Q на ночь 11 становится в объект блока P, бронь — во второй объект, овербукинга
+    нет, поэтому сохранение без stays.overbook проходит."""
+    cat = make_category(manager_role_client, n_units=2)
+    create_res(manager_client, cat, "2051-03-10", "2051-03-12")
+    assert _block(manager_client, "P", "2051-03-10", "2051-03-11", _grid(cat, "2051-03-10", 1, 1)).status_code == 200
+    pv = _block(no_overbook_client, "Q", "2051-03-11", "2051-03-12", _grid(cat, "2051-03-11", 1, 1), preview=1)
+    assert pv.status_code == 200 and "overbook_refused" not in pv.json(), pv.text
+    r = _block(no_overbook_client, "Q", "2051-03-11", "2051-03-12", _grid(cat, "2051-03-11", 1, 1))
+    assert r.status_code == 200, r.text
+    assert "overbooked" not in {w["kind"] for w in r.json()["diff"]["warnings_added"]}
