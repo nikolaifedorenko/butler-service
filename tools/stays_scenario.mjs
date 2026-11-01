@@ -1245,9 +1245,13 @@ async function blocksAndOooTabs() {
   click($('#rf-preview'));
   check('предпросмотр блока', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))));
   click($('[data-save]'));
-  await sleep(600);
-  const mine = (await blockRows('&q=' + encodeURIComponent('Съезд ' + uniq)))[0];
-  check('блок создан на сервере', !!mine && mine.nights === 4, JSON.stringify(mine));
+  /* сохранение идёт через проверку овербукинга — на медленном CI дольше фиксированной паузы */
+  let mine;
+  for (const t0 = Date.now(); !mine && Date.now() - t0 < 12000; await sleep(200)) {
+    mine = (await blockRows('&q=' + encodeURIComponent('Съезд ' + uniq)))[0];
+  }
+  check('блок создан на сервере', !!mine && mine.nights === 4, JSON.stringify(mine) + ' ' + text('#modal'));
+  if (!mine) return;
   const saved = (await apiJson('GET', '/api/stays/blocks/' + mine.id)).body;
   check('сетка на сервере', saved.grid[cat.cat.id][day(10)] === 2 && saved.grid[cat.cat.id][day(11)] === 1, JSON.stringify(saved.grid));
   click($('#modal [data-close]'));
@@ -1268,8 +1272,11 @@ async function blocksAndOooTabs() {
     && cell(day(10))?.textContent.trim() === '2'));
   click(cell(day(10))); input($('#bg-qty'), '1'); click($('#bg-set'));
   click($('[data-save]'));
-  await sleep(700);
-  const edited = (await apiJson('GET', '/api/stays/blocks/' + mine.id)).body;
+  let edited;
+  for (const t0 = Date.now(); Date.now() - t0 < 12000; await sleep(200)) {
+    edited = (await apiJson('GET', '/api/stays/blocks/' + mine.id)).body;
+    if (edited.version > saved.version) break;
+  }
   check('быстрая правка ночи сохранена', edited.grid[cat.cat.id][day(10)] === 1 && edited.version === saved.version + 1, JSON.stringify(edited.grid));
   click($('#modal [data-close]'));
 
