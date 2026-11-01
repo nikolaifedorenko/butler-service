@@ -79,7 +79,7 @@ def test_occupancy_rows(manager_role_client, manager_client, db):
     nxt = _by_day(body["nodes"][0], body["days"])["2038-02-11"]
     assert (nxt["living"], nxt["ooo"], nxt["blocks"], nxt["free"], nxt["pct"]) == (1, 0, 0, 2, round(1 / 3, 3))
     # один объект: закреплённая бронь и OOO — OOO главнее, бронь без объекта (овербукинг, часть 2
-    # §4.4; «Свободно» −1 — Task 6); весь фонд в OOO — pct None
+    # §4.4; «Свободно» −1); весь фонд в OOO — pct None
     solo_g = _group(manager_role_client)
     solo = make_category(manager_role_client, n_units=1, group_id=solo_g)
     create_res(manager_client, solo, d, "2038-02-11", pins={0: solo["units"][0]["id"]})
@@ -87,7 +87,7 @@ def test_occupancy_rows(manager_role_client, manager_client, db):
                                                      "start_half": "AM", "end_half": "PM"}).status_code == 200
     body = _occ(manager_client, d, d, group_ids=solo_g)
     cell = body["nodes"][0]["days"][0]
-    assert (cell["total"], cell["living"], cell["ooo"], cell["free"], cell["pct"]) == (1, 0, 1, 0, None)
+    assert (cell["total"], cell["living"], cell["ooo"], cell["free"], cell["pct"]) == (1, 0, 1, -1, None)
 
 
 def test_occupancy_by_tree_totals_per_day(manager_role_client, manager_client, today):
@@ -219,3 +219,78 @@ def test_butler_cannot_change_paid_category(butler_client, own_reservation, mana
     r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, paid_category_id=other["id"]))
     assert r.status_code == 403
     assert r.json()["detail"] == "Батлер может менять только состав, логистику и сведения о гостях"
+
+
+# ── часть 2, задача 6: «Загрузка» — OOO по половинкам, блоки по слотам, «Свободно» без нижней границы ──
+
+def _ooo(c, unit_id, start, end, **kw):
+    r = c.post(f"{API}/ooo", json={"unit_id": unit_id, "start": start, "end": end, **kw})
+    assert r.status_code == 200, r.text
+    return r.json()["result"]
+
+
+def _block(c, start, end, grid, title="Б"):
+    r = c.post(f"{API}/blocks", json={"title": title, "start": start, "end": end, "grid": grid})
+    assert r.status_code == 200, r.text
+    return r.json()["result"]
+
+
+def test_occupancy_ooo_counts_by_pm_half(manager_role_client, manager_client):
+    """Ночь D занята OOO, если занята половинка PM дня D: «до утра» последнего дня его не считает,
+    «с вечера» первого — считает; сутки целиком — обе границы."""
+    gid = _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=3, group_id=gid)
+    u1, u2, u3 = (u["id"] for u in cat["units"])
+    _ooo(manager_client, u1, "2039-05-10", "2039-05-12")                                   # PM10 … AM12
+    _ooo(manager_client, u2, "2039-05-10", "2039-05-12", start_half="AM", end_half="PM")   # AM10 … PM12
+    _ooo(manager_client, u3, "2039-05-11", "2039-05-12", start_half="AM", end_half="AM")   # AM11 … AM12
+    body = _occ(manager_client, "2039-05-09", "2039-05-13", group_ids=gid)
+    cells = _by_day(body["nodes"][0], body["days"])
+    assert [cells[d]["ooo"] for d in ("2039-05-09", "2039-05-10", "2039-05-11", "2039-05-12", "2039-05-13")] \
+        == [0, 2, 3, 1, 0]
+
+
+def test_occupancy_blocks_sum_remainder(manager_role_client, manager_client):
+    """«Блоки» узла — объекты узла, занятые слотами блока в эту ночь: категория, разнесённая по двум
+    узлам, не считается дважды; итог — те же объекты без двойного счёта (сумма остатков = 3)."""
+    a, b = _group(manager_role_client), _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=2, group_id=a)
+    d = FundDraft(manager_role_client)                    # вторая категория: по объекту в узлах a и b
+    code = "S" + uniq()
+    cid = d.call("POST", "categories", code=code, title=code, kind_id=kind_id("villa"), escorted=True, weight=4)["id"]
+    d.call("POST", "units", label=code + "-1", category_id=cid, group_id=a)
+    d.call("POST", "units", label=code + "-2", category_id=cid, group_id=b)
+    d.publish()
+    _block(manager_client, "2039-06-10", "2039-06-12", {cid: {"2039-06-10": 1, "2039-06-11": 1}})
+    _block(manager_client, "2039-06-10", "2039-06-11", {cat["id"]: {"2039-06-10": 2}})
+    body = _occ(manager_client, "2039-06-09", "2039-06-12", group_ids=[a, b])
+    rows = {n["group_id"]: _by_day(n, body["days"]) for n in body["nodes"]}
+    total = _by_day(body["total"], body["days"])
+    n10 = (rows[a]["2039-06-10"]["blocks"], rows[b]["2039-06-10"]["blocks"])
+    assert sum(n10) == 3 and n10[0] >= 2 and total["2039-06-10"]["blocks"] == 3     # не 4: остаток X не удвоен
+    assert sum(rows[g]["2039-06-11"]["blocks"] for g in (a, b)) == 1 and total["2039-06-11"]["blocks"] == 1
+    assert total["2039-06-09"]["blocks"] == 0 and total["2039-06-12"]["blocks"] == 0
+    assert all(rows[g]["2039-06-10"]["free"] >= 0 for g in (a, b))
+
+
+def test_occupancy_free_negative(manager_role_client, manager_client):
+    """«Свободно» без нижней границы: бронь без объекта (овербукинг) и нехватка блока дают
+    отрицательное значение; «Блоки» — размещённые слоты."""
+    gid = _group(manager_role_client)
+    cat = make_category(manager_role_client, n_units=2, group_id=gid)
+    u1, u2 = (u["id"] for u in cat["units"])
+    _ooo(manager_client, u1, "2039-07-10", "2039-07-12")
+    _ooo(manager_client, u2, "2039-07-10", "2039-07-12")
+    create_res(manager_client, cat, "2039-07-10", "2039-07-12")            # некуда: оба объекта в OOO
+    body = _occ(manager_client, "2039-07-09", "2039-07-12", group_ids=gid)
+    cells = _by_day(body["nodes"][0], body["days"])
+    assert cells["2039-07-10"]["free"] == -1 and cells["2039-07-11"]["free"] == -1
+    assert cells["2039-07-09"]["free"] == 2 and cells["2039-07-12"]["free"] == 2
+    assert _by_day(body["total"], body["days"])["2039-07-10"]["free"] == -1
+    # блок, которому не хватило объектов: «Блоки» — размещённые, недостающий — в минус «Свободно»
+    gid2 = _group(manager_role_client)
+    cat2 = make_category(manager_role_client, n_units=2, group_id=gid2)
+    _block(manager_client, "2039-08-10", "2039-08-11", {cat2["id"]: {"2039-08-10": 3}}, "Много")
+    body = _occ(manager_client, "2039-08-09", "2039-08-11", group_ids=gid2)
+    cell = _by_day(body["nodes"][0], body["days"])["2039-08-10"]
+    assert (cell["total"], cell["blocks"], cell["free"]) == (2, 2, -1)

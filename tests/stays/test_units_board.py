@@ -1,7 +1,11 @@
 """Шахматка, задача 10: шахматка объектов с уровнями видимости (§6.1, §8) и бюджет SQL."""
 from __future__ import annotations
 
-from .helpers import API, FundDraft, make_category, uniq
+import datetime as dt
+
+from app.modules.stays.domain.halfday import AM, PM, pos
+
+from .helpers import API, FundDraft, create_res, make_category, uniq
 
 WIN = {"first": "2029-02-01", "last": "2029-02-10"}
 
@@ -109,3 +113,112 @@ def test_board_query_budget_440_units(manager_client, big_fund, sql_counter):
     assert r.status_code == 200
     assert len(r.json()["units"]) >= 440 and len(r.json()["bars"]) >= 300
     assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
+
+
+# ── часть 2, задача 6: OOO, блоки и овербукинг на шахматке ──
+
+def _ooo(c, unit_id, start, end, reason="Ремонт", **kw):
+    r = c.post(f"{API}/ooo", json={"unit_id": unit_id, "start": start, "end": end, "reason": reason, **kw})
+    assert r.status_code == 200, r.text
+    return r.json()["result"]
+
+
+def _mkblock(c, title, start, end, grid):
+    r = c.post(f"{API}/blocks", json={"title": title, "start": start, "end": end, "grid": grid})
+    assert r.status_code == 200, r.text
+    return r.json()["result"]
+
+
+def _brd(c, cat, first, last):
+    r = c.get(f"{API}/board/units", params={"first": first, "last": last, "category_ids": cat["id"]})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_ooo_bar_halves(manager_role_client, manager_client, occupancy_client):
+    """OOO — полоса по половинкам с причиной: по умолчанию с вечера «с» до утра «по»; «с утра» и
+    «до вечера» — сутки целиком. Причина без персональных данных — видна и уровню «занятость»."""
+    cat = make_category(manager_role_client, n_units=2)
+    u1, u2 = (u["id"] for u in cat["units"])
+    a = _ooo(manager_client, u1, "2046-03-10", "2046-03-12", "Покраска")
+    b = _ooo(manager_client, u2, "2046-03-10", "2046-03-12", "Сутки", start_half="AM", end_half="PM")
+    for c in (manager_client, occupancy_client):
+        holds = {h["id"]: h for h in _brd(c, cat, "2046-03-08", "2046-03-14")["holds"]}
+        d = dt.date(2046, 3, 10)
+        assert (holds[a["id"]]["start_pos"], holds[a["id"]]["end_pos"]) == (pos(d, PM), pos(dt.date(2046, 3, 12), AM))
+        assert (holds[b["id"]]["start_pos"], holds[b["id"]]["end_pos"]) == (pos(d, AM), pos(dt.date(2046, 3, 12), PM))
+        assert (holds[a["id"]]["title"], holds[b["id"]]["title"]) == ("Покраска", "Сутки")
+        assert holds[a["id"]]["kind"] == "ooo" and holds[a["id"]]["start_half"] == "PM"
+
+
+def test_block_slot_bars_merged(manager_role_client, manager_client, occupancy_client):
+    """Слот блока — полоса: соседние ночи одного слота в одном объекте склеены; слот 2 есть только
+    в ночах с остатком 2. Название блока видно всем уровням; полоса не бронь (без reservation_id)."""
+    cat = make_category(manager_role_client, n_units=3)
+    grid = {cat["id"]: {"2046-04-10": 2, "2046-04-11": 2, "2046-04-12": 1, "2046-04-13": 1}}
+    blk = _mkblock(manager_client, "Конгресс", "2046-04-10", "2046-04-14", grid)
+    for c in (manager_client, occupancy_client):
+        data = _brd(c, cat, "2046-04-08", "2046-04-16")
+        bars = sorted(data["blocks"], key=lambda x: (x["slot"], x["start"]))
+        assert [(x["slot"], x["start"], x["end"]) for x in bars] == [(1, "2046-04-10", "2046-04-14"),
+                                                                     (2, "2046-04-10", "2046-04-12")]
+        assert all(x["block_id"] == blk["id"] and x["title"] == "Конгресс" and x["category_id"] == cat["id"]
+                   and x["unit_id"] in {u["id"] for u in cat["units"]} and "reservation_id" not in x for x in bars)
+        assert bars[0]["unit_id"] != bars[1]["unit_id"]
+        assert (bars[0]["start_pos"], bars[0]["end_pos"]) == (pos(dt.date(2046, 4, 10), PM), pos(dt.date(2046, 4, 14), AM))
+
+
+def test_block_bar_split_when_slot_changes_unit(manager_role_client, manager_client):
+    """Слот, которому в середине пришлось сменить объект (OOO на ночь 11-го), — две полосы встык."""
+    cat = make_category(manager_role_client, n_units=2)
+    u1, u2 = (u["id"] for u in cat["units"])
+    _mkblock(manager_client, "Сдвиг", "2046-05-10", "2046-05-13", {cat["id"]: {"2046-05-10": 1, "2046-05-11": 1,
+                                                                              "2046-05-12": 1}})
+    first = sorted(_brd(manager_client, cat, "2046-05-08", "2046-05-16")["blocks"], key=lambda x: x["start"])
+    assert len(first) == 1 and first[0]["unit_id"] in (u1, u2)
+    _ooo(manager_client, first[0]["unit_id"], "2046-05-11", "2046-05-12")
+    bars = sorted(_brd(manager_client, cat, "2046-05-08", "2046-05-16")["blocks"], key=lambda x: x["start"])
+    assert [(x["start"], x["end"]) for x in bars] == [("2046-05-10", "2046-05-11"), ("2046-05-11", "2046-05-13")]
+    assert len({x["unit_id"] for x in bars}) == 2 and {x["slot"] for x in bars} == {1}
+
+
+def test_overbooked_in_unassigned(manager_role_client, manager_client, occupancy_client):
+    """Бронь без объекта (овербукинг) — в «Не распределено» с признаком overbooked; обычная — без."""
+    cat = make_category(manager_role_client, n_units=1)
+    u1 = cat["units"][0]["id"]
+    ok = create_res(manager_client, cat, "2046-06-01", "2046-06-03", pins={0: u1})
+    _ooo(manager_client, u1, "2046-06-05", "2046-06-08")
+    over = create_res(manager_client, cat, "2046-06-04", "2046-06-07")
+    for c in (manager_client, occupancy_client):
+        bars = {b["reservation_id"]: b for b in _brd(c, cat, "2046-06-01", "2046-06-10")["bars"]}
+        assert bars[over["id"]]["unit_id"] is None and bars[over["id"]]["overbooked"] is True
+        assert bars[ok["id"]]["unit_id"] == u1 and bars[ok["id"]]["overbooked"] is False
+
+
+def test_board_budget_with_ooo_and_blocks(manager_role_client, manager_client, big_fund, sql_counter):
+    """440 объектов × 31 день с OOO и блоком — не больше 30 запросов (часть 1)."""
+    from sqlalchemy import select
+
+    from app.core.db import SessionLocal
+    from app.modules.stays.adapters.orm import CategoryState
+
+    with SessionLocal() as s:
+        rows = list(s.execute(select(CategoryState.category_id, CategoryState.code)
+                              .where(CategoryState.code.in_(("BIGDLX", "BIGSTE"))).distinct()))
+    cats = {code: cid for cid, code in rows}
+    units = manager_client.get(f"{API}/board/units", params=big_fund).json()["units"]
+    victims = [u["unit_id"] for u in units][:5]
+    oo = [_ooo(manager_client, uid, "2029-06-10", "2029-06-12") for uid in victims]
+    blk = _mkblock(manager_client, "Бюджет", "2029-06-05", "2029-06-20",
+                   {cats["BIGDLX"]: {f"2029-06-{d:02d}": 3 for d in range(5, 20)}})
+    try:
+        with sql_counter() as c:
+            r = manager_client.get(f"{API}/board/units", params=big_fund)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["holds"] and body["blocks"]
+        assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
+    finally:
+        manager_client.delete(f"{API}/blocks/{blk['id']}", params={"version": 1})
+        for o in oo:
+            manager_client.delete(f"{API}/ooo/{o['id']}", params={"version": 1})

@@ -429,6 +429,7 @@ async function openHoldForm(hold, onSaved) {
         ${sfCheck('hf-end-pm', 'До вечера', wholeEnd)}
       </div>
       ${sfRow('Причина', sfInput('hf-title', hold.title))}
+      <div class="muted" data-hf-hint>без имён гостей — видно всем</div>
       <div id="rf-preview-out" class="sp-out"></div>`,
     footer: `${isNew ? '' : '<button class="btn btn-danger" id="hf-delete">Удалить…</button>'}${staysFormFoot()}`,
     onMount(m) {

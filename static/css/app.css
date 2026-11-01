@@ -1212,7 +1212,11 @@ tr.v4-click:hover td { background: #faf6ef; }
 .sb-hold { position: absolute; top: 3px; bottom: 3px; background: repeating-linear-gradient(45deg, #ddd, #ddd 6px, #eee 6px, #eee 12px);
   color: #666; font-size: 11px; padding: 4px 6px; border-radius: 4px; overflow: hidden; }
 .sb-hold.ooo { background: repeating-linear-gradient(45deg, #f3c9c0, #f3c9c0 6px, #f8dfd9 6px, #f8dfd9 12px); color: #8a2a1a; }
+.sb-block { position: absolute; top: 3px; bottom: 3px; box-sizing: border-box; cursor: pointer; border-radius: 4px; font-size: 11px; padding: 4px 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; --bh: 262;
+  color: hsl(var(--bh), 55%, 28%); background: hsl(var(--bh), 70%, 92%); border: 1px dashed hsl(var(--bh), 45%, 45%); }
 .sb-unassigned { padding: 6px 0; cursor: pointer; }
+.sb-unassigned.overbooked { color: var(--danger, #b3261e); font-weight: 600; }
 .sb-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
 /* вкладка «Брони»: плоский список, строка открывает карточку */
 .sb-scroll { overflow-x: auto; margin: 8px 0 12px; }
@@ -1277,6 +1281,8 @@ tr.fund-retired td .badge { text-decoration: none; }
 .oc-cell { text-align: center; }
 .oc-cell[data-oc-living] { cursor: pointer; text-decoration: underline dotted; }
 .oc-cell small { display: block; color: var(--muted); }
+.oc-cell.oc-neg { color: #b3261e; font-weight: 700; background: #fde4e0; }
+.db-ooo { background: #fbeeea; }
 /* §6.1: от 50 % — синий, от 80 % — жёлтый, 100 % и больше — красный */
 .oc-cell.heat1 { background: #dce8fb; } .oc-cell.heat2 { background: #fff2c6; } .oc-cell.heat3 { background: #ffd3c4; }
 .mine-card .mine-guest { padding: 6px 0; border-top: 1px solid #efe9df; }

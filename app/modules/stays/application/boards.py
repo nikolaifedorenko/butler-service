@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import Companion, Logistics, Reservation
+from ..adapters.orm import Companion, Logistics, Ooo, Reservation
 from ..domain.types import OFF, StayDay
 from ..ports.duty import DutyPort
 from .context import NO_GUESTS, StaysContext, load_context
@@ -84,6 +84,20 @@ def _status(ctx: StaysContext, s: StayDay | None, night: dt.date, known, day: dt
 
 def _candidates(ctx: StaysContext, s: StayDay, day: dt.date, known) -> list[dict]:
     return rank_in_ctx(ctx, day, [s], set(s.guests), known)[:3]
+
+
+def _ooo_today(db: Session, ctx: StaysContext, day: dt.date, f: DayFilters) -> list[dict]:
+    """OOO, которые начинаются или заканчиваются в этот день (часть 2 §6) — в «Требуют внимания».
+    Причина — без персональных данных (решение владельца). Объект — по фильтрам фонда дня."""
+    out = []
+    for h in db.scalars(select(Ooo).where((Ooo.start == day) | (Ooo.end == day)).order_by(Ooo.start, Ooo.id)):
+        if not fund_match(ctx.fund.on(day), h.unit_id, None, f):
+            continue
+        out.append({"kind": "ooo", "id": h.id, "unit_id": h.unit_id, "unit": ctx.unit_label(h.unit_id, day),
+                    "title": h.reason, "start": h.start.isoformat(), "end": h.end.isoformat(),
+                    "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
+                    "events": [e for e, d in (("starts", h.start), ("ends", h.end)) if d == day]})
+    return out
 
 
 def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: DutyPort) -> dict:
@@ -172,6 +186,6 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
                    "vvip": guests.count("vvip")}
         # овербукинг (бронь без объекта) — тоже «Требуют внимания» (часть 2 §4.2)
         out["attention"] = [x for x in in_house if x["cover_status"] in ("uncovered", "replacement")
-                            or x.get("overbooked")]
+                            or x.get("overbooked")] + _ooo_today(db, ctx, day, f)
     out["totals"] = totals
     return out

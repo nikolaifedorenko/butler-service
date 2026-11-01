@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from .helpers import API, create_res, make_category, make_guest
+from .helpers import API, create_res, make_category, make_guest, units_of
 
 DAY = dt.date(2036, 1, 10)
 
@@ -104,3 +104,33 @@ def test_day_board_query_budget(manager_client, big_fund, sql_counter):
         r = manager_client.get(f"{API}/day", params={"date": "2029-06-15"})
     assert r.status_code == 200 and r.json()["totals"]["in_house"] > 20
     assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
+
+
+def test_day_board_ooo_and_overbook_attention(manager_role_client, manager_client, occupancy_client):
+    """Часть 2 §6: OOO, начинающиеся и заканчивающиеся в этот день, и овербукинг — в «Требуют
+    внимания»; OOO вне этого дня — нет; уровень «занятость» вкладки не получает."""
+    day = dt.date(2047, 2, 10)
+    cat = make_category(manager_role_client, n_units=1)
+    u = cat["units"][0]["id"]
+    one = make_category(manager_role_client, n_units=2)
+    a, b = (x["id"] for x in one["units"])
+    mk = lambda uid, s, e, why, **kw: manager_client.post(f"{API}/ooo", json={  # noqa: E731
+        "unit_id": uid, "start": _iso(s), "end": _iso(e), "reason": why, **kw})
+    assert mk(a, day, day + dt.timedelta(days=3), "Начало").status_code == 200
+    assert mk(b, day - dt.timedelta(days=3), day, "Конец").status_code == 200
+    assert mk(u, day - dt.timedelta(days=5), day - dt.timedelta(days=4), "Давно").status_code == 200
+    # овербукинг: единственный объект категории — в OOO на дни проживания
+    assert mk(u, day + dt.timedelta(days=1), day + dt.timedelta(days=5), "Ремонт").status_code == 200
+    g = make_guest(manager_client, "ТаблоОвер")
+    over = create_res(manager_client, cat, _iso(day + dt.timedelta(days=2)), _iso(day + dt.timedelta(days=4)),
+                      [(g["id"], "main", None, None)])
+    assert units_of(over) == [None]
+    b1 = manager_client.get(f"{API}/day", params={"date": _iso(day)}).json()
+    oo = [x for x in b1["attention"] if x.get("kind") == "ooo"]
+    assert sorted((x["title"], x["events"]) for x in oo) == [("Конец", ["ends"]), ("Начало", ["starts"])]
+    assert all(x["unit"] and x["start"] and x["end"] for x in oo)
+    assert all(x.get("kind") == "ooo" for x in b1["attention"])      # овербукинга в этот день нет
+    b2 = manager_client.get(f"{API}/day", params={"date": _iso(day + dt.timedelta(days=2))}).json()
+    assert [x["reservation_id"] for x in b2["attention"] if x.get("kind") != "ooo"] == [over["id"]]
+    assert next(x for x in b2["in_house"] if x["reservation_id"] == over["id"])["overbooked"] is True
+    assert "attention" not in occupancy_client.get(f"{API}/day", params={"date": _iso(day)}).json()

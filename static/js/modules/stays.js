@@ -206,6 +206,18 @@ function staysBarHtml(b, base, span, names) {
     style="left:${left}%;width:${right - left}%;background:${esc(color)}" title="${esc(tip)}">${textHtml}</div>`;
 }
 
+/* Цвет блока — по его номеру из небольшой палитры (в БД цвета нет); полосы блока пунктиром и не
+   перетаскиваются: слот блока не закреплён за объектом, объект выбирает распределение (§2, §6) */
+const STAYS_BLOCK_HUES = [262, 28, 172, 330, 48, 200, 94, 8];
+function staysBlockBarHtml(b, base, span) {
+  const left = Math.max(0, (b.start_pos - base) / span * 100);
+  const right = Math.min(100, (b.end_pos - base + 1) / span * 100);
+  if (right <= 0 || left >= 100) return '';
+  const hue = STAYS_BLOCK_HUES[b.block_id % STAYS_BLOCK_HUES.length];
+  return `<div class="sb-block" data-block="${b.block_id}" data-slot="${b.slot}" draggable="false"
+    style="left:${left}%;width:${right - left}%;--bh:${hue}" title="${esc((b.title || 'Блок') + ' · ' + dateRu(b.start) + '–' + dateRu(b.end))}">${esc(b.title || 'Блок')}</div>`;
+}
+
 async function renderUnitsBoard(body) {
   const fund = await staysFund();
   /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
@@ -218,18 +230,20 @@ async function renderUnitsBoard(body) {
   data.bars.forEach(b => { (byUnit[b.unit_id ?? 'none'] ||= []).push(b); });
   const holdsBy = {};
   data.holds.forEach(h => { (holdsBy[h.unit_id] ||= []).push(h); });
+  const blocksBy = {};
+  data.blocks.forEach(b => { (blocksBy[b.unit_id] ||= []).push(b); });
   const rerender = () => renderUnitsBoard(body);
   body.innerHTML = `
     ${staysToolbar()}
     <div data-sf-slot></div>
     ${data.warnings.length ? `<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map(w => esc(w.text)).join('<br>')}</span></div>` : ''}
     <div class="sb-grid" style="--days:${data.days.length}"></div>
-    ${(byUnit.none || []).length ? `<div class="panel"><h3 class="panel-title">Без объекта</h3>${byUnit.none.map(b =>
-      `<div class="sb-unassigned" data-bar="${b.reservation_id}">${esc(names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь')} · ${esc(dateRu(b.start))}–${esc(dateRu(b.end))}</div>`).join('')}</div>` : ''}`;
+    ${(byUnit.none || []).length ? `<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
+      `<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar="${b.reservation_id}">${b.overbooked ? '<span class="badge danger">овербукинг</span> ' : ''}${esc(names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь')} · ${esc(dateRu(b.start))}–${esc(dateRu(b.end))}</div>`).join('')}</div>` : ''}`;
   staysPanelInto(body, fund, rerender, { people: names });
   const grid = $('.sb-grid', body);
   /* сортировка и разделы — без нового запроса: перерисовка одной сетки */
-  const paint = () => { grid.innerHTML = staysUnitsGridHtml(data, fund, byUnit, holdsBy, names); };
+  const paint = () => { grid.innerHTML = staysUnitsGridHtml(data, fund, byUnit, holdsBy, blocksBy, names); };
   paint();
   staysBindMonthNav(body, rerender);
   const st = staysState.sort;
@@ -254,6 +268,9 @@ async function renderUnitsBoard(body) {
       paint();
       return;
     }
+    /* слот блока — карточка блока (сетка, разложено, нехватка); полоса не перетаскивается */
+    const blk = e.target.closest('[data-block]');
+    if (blk) { openBlockCard(Number(blk.dataset.block), rerender); return; }
     const bar = e.target.closest('[data-bar]');
     if (bar) { if (names) openReservationCard(Number(bar.dataset.bar), rerender); return; }
     if (!can('stays.edit')) return;
@@ -270,7 +287,7 @@ async function renderUnitsBoard(body) {
 /* Разделы дерева: по умолчанию развёрнут корневой раздел, где есть категория вида с
    «раскрывать» (справочник видов, §1 дополнения: виллы развёрнуты, корпус свёрнут), вложенные —
    развёрнуты; выбор пользователя — staysState.collapsed. Строки свёрнутого раздела в DOM не рисуются. */
-function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
+function staysUnitsGridHtml(data, fund, byUnit, holdsBy, blocksBy, names) {
   const days = data.days;
   const n = days.length;
   const base = staysPos(days[0], 0);
@@ -303,8 +320,10 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
           style="${pct(dayIdx[a], dayIdx[b])}" title="${esc(OFF[why] || why)}"></div>`).join('')}
         ${(holdsBy[u.unit_id] || []).map(h => {
           const l = Math.max(0, (h.start_pos - base) / span * 100), r = Math.min(100, (h.end_pos - base + 1) / span * 100);
-          return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%">${esc(h.title || 'OOO')}</div>`;
+          const tip = `OOO · ${dateRu(h.start)} ${h.start_half === 'AM' ? 'с утра' : 'с вечера'} – ${dateRu(h.end)} ${h.end_half === 'PM' ? 'до вечера' : 'до утра'}`;
+          return `<div class="sb-hold ${h.kind}" data-hold="${h.id}" style="left:${l}%;width:${r - l}%" title="${esc(tip + (h.title ? ' · ' + h.title : ''))}">${esc(h.title || 'OOO')}</div>`;
         }).join('')}
+        ${(blocksBy[u.unit_id] || []).map(b => staysBlockBarHtml(b, base, span)).join('')}
         ${(byUnit[u.unit_id] || []).map(b => staysBarHtml(b, base, span, names)).join('')}
       </div></div>`;
   };
@@ -329,6 +348,22 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, names) {
   const today = staysToday();
   return `<div class="sb-row sb-head"><div class="sb-unit">Объект</div><div class="sb-track sb-days">${days.map(d => staysDayHead(d, today)).join('')}</div></div>
     ${out.join('') || '<div class="empty">Объектов по фильтру нет</div>'}`;
+}
+
+/* ─────────────── Карточка блока: ЗАГЛУШКА (только чтение) ───────────────
+   Редактируемую карточку с сеткой «категория × ночь» даёт вкладка «Блоки» (stays_blocks.js, задача 7):
+   она определяет openBlockCard(id, onChanged) и заменяет эту функцию — эту удалить. */
+async function openBlockCard(id, onChanged) {
+  const [card, fund] = await Promise.all([api('/api/stays/blocks/' + id), staysFund()]);
+  const code = cid => (fund.categories.find(c => c.id === cid)?.code) || '#' + cid;
+  openModal({
+    title: `Блок · ${card.title}`, subtitle: `${dateRu(card.start)}–${dateRu(card.end)} · ночей: ${card.nights}`,
+    body: `<p>Разложено по объектам: <b>${card.placed}</b>${card.missing ? ` · <span class="danger">нехватка: <b>${card.missing}</b></span>` : ''}</p>
+      ${card.top.length ? `<p class="muted">Наибольший остаток за ночь: ${esc(card.top.map(t => t.code + ' ' + t.max).join(', '))}</p>` : ''}
+      ${card.short.map(x => `<div class="sp-warn" data-block-short>⚠ ${esc(code(x.category_id))}: не хватает ${x.missing} с ${esc(dateRu(x.first))} по ${esc(dateRu(x.last))}</div>`).join('')}`,
+    footer: '<button class="btn btn-ghost" data-close>Закрыть</button>',
+    onMount(m) { $('[data-close]', m).onclick = closeModal; },
+  });
 }
 
 /* ─────────────── Карточка брони ─────────────── */
