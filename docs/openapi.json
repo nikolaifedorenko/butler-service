@@ -15412,7 +15412,7 @@
         ]
       },
       "put": {
-        "description": "Заменить пожелания гостя целиком; они влияют на выбор объекта следующих распределений.",
+        "description": "Заменить пожелания гостя целиком. Распределение пересчитывается тут же (брони гостя могут\nпереехать): ?preview=1 показывает, кто переедет; новый овербукинг без права stays.overbook — 409.",
         "operationId": "set_guest_prefs_api_stays_guests__gid__prefs_put",
         "parameters": [
           {
@@ -15422,6 +15422,18 @@
             "schema": {
               "title": "Gid",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
             }
           }
         ],

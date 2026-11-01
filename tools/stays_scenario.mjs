@@ -1087,7 +1087,8 @@ async function guestPrefs() {
   const guest = (await apiJson('POST', '/api/stays/guests', { last_name: 'Линейный' + uniq })).body;
   const book = async (ci, co) => (await apiJson('POST', '/api/stays/reservations', { number: `PF${uniq}-${ci}`, check_in: day(ci), check_out: day(co),
     category_id: cat.id, occupants: [{ guest_id: guest.id, role: 'main', date_from: day(ci), date_to: day(co) }] })).body.result;
-  check('без пожеланий бронь — по порядку объектов', (await book(40, 42)).segments[0].unit_id === far.id);
+  const first40 = await book(40, 42);
+  check('без пожеланий бронь — по порядку объектов', first40.segments[0].unit_id === far.id);
 
   window.eval('staysState.fund = null;');          // фонд в кэше интерфейса — до новой категории
   window.navigate('stays');
@@ -1099,12 +1100,19 @@ async function guestPrefs() {
   check('узел «Первая линия» в списке', !!opt);
   if (opt) change($('#gc-prefs [data-pref-ref]'), opt.value);
   click($('#gc-prefs [data-pref-add]'));
+  check('бронь переедет — показан предпросмотр с «Применить»', await waitFor(() => !!$('#gc-prefs [data-pref-apply]')
+    && text('#gc-pref-out').includes('PF' + uniq)), text('#gc-prefs'));
+  const stillFar = (await apiJson('GET', `/api/stays/reservations/${first40.id}`)).body.segments[0].unit_id;
+  check('предпросмотр ничего не сохранил', stillFar === far.id && (await apiJson('GET', `/api/stays/guests/${guest.id}/prefs`)).body.length === 0);
+  click($('#gc-prefs [data-pref-apply]'));
   check('пожелание добавлено и показано', await waitFor(() => [...$$('#gc-prefs [data-pref-row]')].some(r => r.textContent.includes('Первая линия ' + uniq))), text('#gc-prefs'));
   const saved = (await apiJson('GET', `/api/stays/guests/${guest.id}/prefs`)).body;
   check('пожелание сохранено на сервере', saved.length === 1 && saved[0].kind === 'group' && saved[0].ref_id === first.id, JSON.stringify(saved));
   click($('#modal [data-close]'));
   await sleep(200);
 
+  check('после пожелания прежняя бронь переехала на первую линию сразу',
+    (await apiJson('GET', `/api/stays/reservations/${first40.id}`)).body.segments[0].unit_id === near.id);
   const r = await book(45, 47);
   check('следующая бронь встала на первую линию', r.segments[0].unit_id === near.id, JSON.stringify(r.segments));
   window.eval(`openReservationCard(${r.id})`);

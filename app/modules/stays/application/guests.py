@@ -25,6 +25,7 @@ from ..adapters.orm import (
 )
 from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
 from ..domain.prefs import KINDS as PREF_KINDS
+from . import allocation
 from .fund import FundConflict, FundError, as_dict, changes
 from .fund_versions import fund_for
 from .locking import lock_module
@@ -607,6 +608,11 @@ def _merge_prefs(db: Session, keep_id: int, drop_id: int) -> int:
     if dup:
         db.execute(delete(GuestPref).where(GuestPref.id.in_(dup)))
     db.execute(update(GuestPref).where(GuestPref.guest_id == drop_id).values(guest_id=keep_id))
+    # не больше MAX_PREFS (иначе карточку нельзя сохранить): остаются самые важные
+    ids = list(db.scalars(select(GuestPref.id).where(GuestPref.guest_id == keep_id)
+                          .order_by(GuestPref.priority.desc(), GuestPref.id)))
+    if len(ids) > MAX_PREFS:
+        db.execute(delete(GuestPref).where(GuestPref.id.in_(ids[MAX_PREFS:])))
     return len(theirs) - len(dup)
 
 
@@ -632,5 +638,6 @@ def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
     db.flush()
     keep.search_text = guest_search_text(keep, searchable_codes(db, "guest"))
     db.flush()
+    allocation.run_allocation(db)               # пожелания keep теперь действуют на перенесённые брони
     return {"keep_id": keep_id, "drop_id": drop_id, "not_carried": _not_carried(dropped, guest_dict(keep)),
             "moves": {"reservations": reservations, "links": links, "coverage": coverage, "prefs": prefs, **merged}}

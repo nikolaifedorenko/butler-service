@@ -345,7 +345,7 @@ async function openReservationCard(rid, onChanged) {
       <div class="grid-2">
         <div><h4>Объекты</h4>${card.segments.map(s => `<div>${esc(dateRu(s.start))}–${esc(dateRu(s.end))}: <b>${esc(s.unit || 'без объекта')}</b>
           ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}
-          ${card.pref ? `<div class="muted" data-pref-status="${card.pref.met ? 'met' : 'unmet'}">${esc(card.pref.title)}</div>` : ''}</div>
+          ${card.pref ? `<div class="muted" data-pref-status="${card.pref.met ? 'met' : card.pref.partial ? 'partial' : card.pref.met === null ? 'none' : 'unmet'}">${esc(card.pref.title)}</div>` : ''}</div>
         <div><h4>Гости</h4>${card.occupants.map(o => `<div>${o.level !== 'regular' ? esc(STAYS_LEVEL_MARK[o.level]) : ''}${esc(o.guest)}
           <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>${staysRelativesHtml(o.relatives)}
           <button class="btn btn-sm btn-ghost" data-family="${o.guest_id}">Семья</button>

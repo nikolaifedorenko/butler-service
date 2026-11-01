@@ -283,7 +283,7 @@ class GuestLink(Base):
 
 
 class GuestPref(Base):
-    """Пожелание гостя к объекту: группа фонда, флаг или конкретный объект; priority — порядок (1 — главное)."""
+    """Пожелание гостя к объекту: группа фонда, флаг или конкретный объект; priority — вес: чем больше, тем важнее (счёт объекта — сумма весов выполненных)."""
 
     __tablename__ = "stays_guest_prefs"
     __table_args__ = (CheckConstraint("kind IN ('group', 'flag', 'unit')", name="ck_stays_guest_prefs_kind"),)

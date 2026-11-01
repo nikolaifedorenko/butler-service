@@ -515,7 +515,7 @@ async function openGuestCard(gid, onChanged) {
       $('[data-close]', m).onclick = closeModal;
       const reopen = () => openGuestCard(gid, onChanged);
       renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
-      renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit);
+      renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit, onChanged);
       const ed = $('#gc-edit', m);
       if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); });
       $$('[data-link-del]', m).forEach(b => {
@@ -551,17 +551,32 @@ async function openGuestCard(gid, onChanged) {
 /* Пожелания гостя к объекту (часть 2 §5): порядок в списке — важность (первое главное); в запросе
    priority убывает с позицией. Каждая правка сохраняется сразу — список целиком, PUT /guests/{id}/prefs. */
 const STAYS_PREF_KIND = { group: 'узел', flag: 'флаг', unit: 'объект' };
-function renderGuestPrefs(host, gid, initial, fund, editable) {
+function renderGuestPrefs(host, gid, initial, fund, editable, onChanged) {
   let list = initial.map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
   const options = {
     group: fund.groups.map(x => [x.id, x.path.map(i => fund.groups.find(y => y.id === i)?.title || '').join(' / ')]),
     flag: fund.flags.filter(f => !f.archived).map(f => [f.id, f.title]),
     unit: fund.units.map(u => [u.id, u.label]),
   };
+  /* правка пожеланий пересчитывает распределение: сначала предпросмотр (?preview=1) — если чьи-то брони
+     переедут или сервер откажет в овербукинге, показываем разницу и ждём «Применить» */
+  const body = next => ({ prefs: next.map((p, i) => ({ kind: p.kind, ref_id: p.ref_id, priority: next.length - i })) });
+  const url = `/api/stays/guests/${gid}/prefs`;
+  let pending = null;
+  const apply = async next => {
+    pending = null;
+    try {
+      const r = await api(url, { method: 'PUT', body: body(next) });
+      list = r.result.map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
+      if (onChanged) onChanged();
+    } catch (e) { toast(e.message, 'err'); }
+    draw();
+  };
   const save = async next => {
     try {
-      const body = { prefs: next.map((p, i) => ({ kind: p.kind, ref_id: p.ref_id, priority: next.length - i })) };
-      list = (await api(`/api/stays/guests/${gid}/prefs`, { method: 'PUT', body })).map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
+      const r = await api(`${url}?preview=1`, { method: 'PUT', body: body(next) });
+      if (!r.diff.moved.length && !r.diff.warnings_added.length && !r.overbook_refused) { await apply(next); return; }
+      pending = { next, diff: r.diff, refused: r.overbook_refused };
     } catch (e) { toast(e.message, 'err'); }
     draw();
   };
@@ -572,7 +587,16 @@ function renderGuestPrefs(host, gid, initial, fund, editable) {
           <button class="btn btn-sm btn-ghost" data-pref-del="${i}" title="Убрать">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}
       ${editable ? `<div class="sb-line"><select data-pref-kind>${Object.entries(STAYS_PREF_KIND).map(([k, t]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
         <select data-pref-ref>${options[kind].map(([id, t]) => `<option value="${id}">${esc(t)}</option>`).join('')}</select>
-        <button class="btn btn-sm" data-pref-add>Добавить</button></div>` : ''}`;
+        <button class="btn btn-sm" data-pref-add${options[kind].length ? '' : ' disabled'}>Добавить</button>
+        ${options[kind].length ? '' : '<span class="muted">в справочнике пока нет вариантов</span>'}</div>
+        ${pending ? `<div class="sp-out" id="gc-pref-out"></div><div class="sb-line">
+          <button class="btn btn-sm btn-primary" data-pref-apply${pending.refused ? ' disabled' : ''}>Применить</button>
+          <button class="btn btn-sm btn-ghost" data-pref-cancel>Отмена</button></div>` : ''}` : ''}`;
+    if (pending) {
+      renderPreview(pending.diff, $('#gc-pref-out', host), pending.refused);
+      $('[data-pref-apply]', host).onclick = () => apply(pending.next);
+      $('[data-pref-cancel]', host).onclick = () => { pending = null; draw(); };
+    }
     $$('[data-pref-up]', host).forEach(b => {
       b.onclick = () => { const i = Number(b.dataset.prefUp); const n = [...list]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; save(n); };
     });

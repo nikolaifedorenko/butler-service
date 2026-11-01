@@ -24,7 +24,7 @@ from ..adapters.orm import (
     Reservation,
 )
 from ..domain.allocate import natural_key
-from ..domain.halfday import PIECE_BASE, PM, Piece, Segment, ooo_span, pieces, pos, segments
+from ..domain.halfday import PIECE_BASE, PM, Piece, ooo_span, pieces, pos, segments
 from ..domain.prefs import scorer
 from ..ports.duty import DutyPort
 from . import allocation, family
@@ -394,21 +394,28 @@ def _relatives_in_house(db: Session, r: Reservation, guests: dict[int, Guest]) -
     return {gid: [{"guest_id": o, "title": t, "name": short_name(known[o])} for o, t in rel] for gid, rel in kin.items()}
 
 
-def _pref_status(db: Session, rid: int, segs: list[Segment], asg: dict[int, int | None],
-                 fund: FundTimeline) -> dict | None:
-    """«Пожелание выполнено / нет» (часть 2 §5): у главного гостя есть пожелания; выполнено, если в
-    каждом сегменте объект удовлетворяет хотя бы одному (по фонду дня начала сегмента). Без
-    подписей пожеланий — персональных данных строка не содержит."""
-    prefs, heirs = allocation.load_prefs(db, [rid])
-    if rid not in prefs:
+def _pref_status(db: Session, r: Reservation, fund: FundTimeline) -> dict | None:
+    """«Пожелание выполнено / нет» (часть 2 §5): у главного гостя есть пожелания. Оценивается каждая
+    часть назначения (объект по фонду её начала): все удовлетворяют хотя бы одному пожеланию —
+    выполнено, часть — «частично», ни одна — не выполнено. Отменённая и не заехавшая — «—».
+    Подписей пожеланий нет — персональных данных строка не содержит."""
+    prefs, heirs = allocation.load_prefs(db, [r.id])
+    if r.id not in prefs:
         return None
-    score = scorer(prefs[rid], heirs)
-    met = True
-    for s in segs:
-        snap = fund.on(fund_day(s.start_pos))
-        u = snap.units.get(asg.get(s.index))
-        met = met and u is not None and score(u.id, snap.unit_path(u.id), u.flags) > 0
-    return {"met": met, "title": "пожелание выполнено" if met else "пожелание не выполнено"}
+    if r.status in ("cancelled", "no_show"):
+        return {"met": None, "partial": False, "title": "—"}
+    score = scorer(prefs[r.id], heirs)
+    rows = list(db.scalars(select(Assignment).where(Assignment.reservation_id == r.id)))
+    ok = 0
+    for a in rows:
+        snap = fund.on(fund_day(a.start_pos if a.start_pos is not None else pos(r.check_in, PM)))
+        u = snap.units.get(a.unit_id)
+        ok += u is not None and score(u.id, snap.unit_path(u.id), u.flags) > 0
+    met = bool(rows) and ok == len(rows)
+    partial = 0 < ok < len(rows)
+    return {"met": met, "partial": partial,
+            "title": "пожелание выполнено" if met else "пожелание выполнено частично" if partial
+            else "пожелание не выполнено"}
 
 
 def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None = None) -> dict:
@@ -450,7 +457,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
         "coverage": card_coverage(db, r, duty) if r.status in allocation.OCCUPYING else [
             {"day": d.isoformat(), "butlers": [], "warnings": []} for d in nights(r.check_in, r.check_out)],
     }
-    card["pref"] = _pref_status(db, rid, segs, asg, fund)
+    card["pref"] = _pref_status(db, r, fund)
     if at_least(level, "full"):
         card |= {"customer": r.customer, "note": r.note,
                  "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}"),
