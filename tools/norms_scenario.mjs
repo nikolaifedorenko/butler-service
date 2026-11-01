@@ -140,6 +140,26 @@ async function main() {
   await sleep(500);
 
   const Y = window.eval('state.year'), M = window.eval('state.month');
+  /* сид ставит интервал Иванову на рабочий день не позже today−3 — в первые дни месяца это
+     ПРОШЛЫЙ месяц. Тогда тот же интервал (14:00–16:00, «выходной за часы») заводим в текущем,
+     на последний рабочий день Иванова — до первой отрисовки Графика. */
+  {
+    const s0 = await jget(`/api/schedule?year=${Y}&month=${M}`);
+    const iv = (s0.rows || []).find(r => r.employee.full_name.startsWith('Иванов'));
+    const hasInterval = (s0.rows || []).some(r => Object.values(r.cells || {})
+      .some(c => (c.absences || []).length));
+    if (iv && !hasInterval) {
+      const day = Object.keys(iv.cells).filter(d => (iv.cells[d].shifts || []).length
+        && (iv.cells[d].tabel?.hours || 0) > 0).sort().at(-1);
+      const kinds = await jget('/api/shift-types?include_archived=true');
+      const timeoff = (kinds || []).find(k => k.code === 'TIMEOFF_HOURS');
+      const r = await jsend('POST', '/api/schedule/absence', { employee_id: iv.employee.id,
+        date: day, from_time: '14:00', until_time: '16:00', kind_id: timeoff?.id ?? null,
+        note: 'Отпросился с 14:00 до 16:00 (заявление)' });
+      check('интервал Иванова заведён в текущем месяце (сид — в прошлом)', r.ok,
+        `${day}: ${JSON.stringify(r.json).slice(0, 160)}`);
+    }
+  }
   const tabel = await jget(`/api/tabel?year=${Y}&month=${M}`);
   check('Табель периода доступен', tabel.ok !== false && (tabel.rows || []).length > 0);
 
