@@ -116,6 +116,15 @@ async function waitFor(fn, ms = 12000) {
   while (Date.now() - t0 < ms) { if (fn()) return true; await sleep(150); }
   return false;
 }
+/* сохранение на медленном CI дольше любой фиксированной паузы — опрашиваем API, пока условие не выполнится */
+async function pollApi(url, ok, ms = 12000) {
+  const t0 = Date.now();
+  for (;;) {
+    const body = (await apiJson('GET', url)).body;
+    if (ok(body) || Date.now() - t0 >= ms) return body;
+    await sleep(200);
+  }
+}
 async function go(screen) {
   click($(`#st-nav [data-st="${screen}"]`));
   await waitFor(() => {
@@ -199,8 +208,7 @@ async function settingsScreens() {
     await waitFor(() => $$('#st-body [data-escort]').some(cb => cb.checked)));
   input($('#se-limit'), '9');
   click($('#se-save'));
-  await sleep(600);
-  const st = (await apiJson('GET', '/api/stays/fund')).body.settings;
+  const st = (await pollApi('/api/stays/fund', b => b.settings?.daily_limit === 9)).settings;
   check('лимит сохранён', st.daily_limit === 9, JSON.stringify(st));
   await apiJson('PUT', '/api/stays/settings', { ...st, daily_limit: 8 });
 
@@ -372,7 +380,7 @@ async function butlersAndDay() {
   click($('#rf-preview'));
   check('предпросмотр: Иванов получает гостя', await waitFor(() => text('#rf-preview-out').includes(guest)), text('#rf-preview-out'));
   click($('[data-save]'));
-  await sleep(500);
+  await waitFor(() => $('#modal-backdrop').classList.contains('hidden'));
 
   check('шахматка батлеров открылась', await openMonth(day(1), 'butlers'));
   check('батлеры: селектора дней нет, месяц целиком', !$('#bb-days') && !$('#bb-first')
@@ -412,8 +420,8 @@ async function butlersAndDay() {
   click($('#rf-preview'));
   check('предпросмотр ручной правки', await waitFor(() => text('#rf-preview-out').includes(guest)), text('#rf-preview-out'));
   click($('[data-save]'));
-  await sleep(600);
-  const card = (await apiJson('GET', `/api/stays/reservations/${res.id}/card`)).body;
+  const card = await pollApi(`/api/stays/reservations/${res.id}/card`,
+    b => b.coverage?.find(c => c.day === day(1))?.butlers.length === 0);
   check('первая ночь без батлера', card.coverage.find(c => c.day === day(1))?.butlers.length === 0);
 
   /* день батлера: «Назначить» бронь на свободный день */
@@ -425,8 +433,8 @@ async function butlersAndDay() {
   check('список броней дня без батлера', await waitFor(() => $$('#bb-res option').some(o => o.value === String(res.id))));
   change($('#bb-res'), String(res.id));
   click($('#bb-assign-save'));
-  await sleep(600);
-  const card2 = (await apiJson('GET', `/api/stays/reservations/${res.id}/card`)).body;
+  const card2 = await pollApi(`/api/stays/reservations/${res.id}/card`,
+    b => b.coverage?.find(c => c.day === day(1))?.butlers.length > 0);
   check('Иванов снова ведёт первую ночь', card2.coverage.find(c => c.day === day(1))?.butlers[0]?.employee_id === ivanov.employee_id);
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
 }
@@ -762,8 +770,7 @@ async function moreForms() {
   click($('#rf-preview'));
   check('предпросмотр совместного проживания', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))));
   click($('[data-save]'));
-  await sleep(600);
-  const da = (await apiJson('GET', `/api/stays/reservations/${ra.id}`)).body;
+  const da = await pollApi(`/api/stays/reservations/${ra.id}`, b => !!b.group_id);
   const db_ = (await apiJson('GET', `/api/stays/reservations/${rb.id}`)).body;
   check('брони в одной группе и одном объекте', da.group_id && da.group_id === db_.group_id
     && da.segments[0].unit_id === db_.segments[0].unit_id);
@@ -778,8 +785,7 @@ async function moreForms() {
   await waitFor(() => !!$('[data-cp-desc="0"]'));
   change($('[data-cp-kind="0"]'), 'security'); change($('[data-cp-desc="0"]'), 'Охрана 2 чел.');
   click($('[data-save]'));
-  await sleep(600);
-  const da2 = (await apiJson('GET', `/api/stays/reservations/${ra.id}`)).body;
+  const da2 = await pollApi(`/api/stays/reservations/${ra.id}`, b => b.fields?.[rField] === 'Москва' && b.companions?.length > 0);
   check('поле брони сохранено', da2.fields[rField] === 'Москва', JSON.stringify(da2.fields));
   check('сопровождающий сохранён', da2.companions.some(c => c.kind === 'security' && c.description === 'Охрана 2 чел.'));
 
@@ -804,8 +810,7 @@ async function moreForms() {
   change($('[data-sd-date="0"]'), day(30)); change($('[data-sd-what="0"]'), 'юбилей');
   input($(`[data-gf-field="${gField}"]`), 'кот');
   click($('[data-save]'));
-  await sleep(600);
-  const gc = (await apiJson('GET', `/api/stays/guests/${g.id}`)).body;
+  const gc = await pollApi(`/api/stays/guests/${g.id}`, b => b.fields?.[gField] === 'кот');
   check('особая дата сохранена', gc.special_dates.some(x => x.what === 'юбилей' && x.date === day(30)), JSON.stringify(gc.special_dates));
   check('поле гостя сохранено', gc.fields[gField] === 'кот');
   check('связь видна в профиле', gc.links.some(l => l.guest_id === g2.id && l.label === 'коллега'));
@@ -1217,7 +1222,6 @@ async function blocksAndOooTabs() {
   const cat = await fundCategory('TB' + uniq, ['TB' + uniq + '-1', 'TB' + uniq + '-2']);
   const cell = (iso, cid = cat.cat.id) => $(`#modal [data-bg-c="${cid}"][data-bg-n="${iso}"]`);
   const shiftClick = el => el?.dispatchEvent(new window.MouseEvent('click', { bubbles: true, shiftKey: true }));
-  const blockRows = async q => (await apiJson('GET', '/api/stays/blocks?limit=200' + (q || ''))).body.rows;
 
   window.navigate('stays');
   await openMonth(day(9));
@@ -1245,11 +1249,7 @@ async function blocksAndOooTabs() {
   click($('#rf-preview'));
   check('предпросмотр блока', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))));
   click($('[data-save]'));
-  /* сохранение идёт через проверку овербукинга — на медленном CI дольше фиксированной паузы */
-  let mine;
-  for (const t0 = Date.now(); !mine && Date.now() - t0 < 12000; await sleep(200)) {
-    mine = (await blockRows('&q=' + encodeURIComponent('Съезд ' + uniq)))[0];
-  }
+  const mine = (await pollApi('/api/stays/blocks?limit=200&q=' + encodeURIComponent('Съезд ' + uniq), b => b.rows.length > 0)).rows[0];
   check('блок создан на сервере', !!mine && mine.nights === 4, JSON.stringify(mine) + ' ' + text('#modal'));
   if (!mine) return;
   const saved = (await apiJson('GET', '/api/stays/blocks/' + mine.id)).body;
@@ -1272,11 +1272,7 @@ async function blocksAndOooTabs() {
     && cell(day(10))?.textContent.trim() === '2'));
   click(cell(day(10))); input($('#bg-qty'), '1'); click($('#bg-set'));
   click($('[data-save]'));
-  let edited;
-  for (const t0 = Date.now(); Date.now() - t0 < 12000; await sleep(200)) {
-    edited = (await apiJson('GET', '/api/stays/blocks/' + mine.id)).body;
-    if (edited.version > saved.version) break;
-  }
+  const edited = await pollApi('/api/stays/blocks/' + mine.id, b => b.version > saved.version);
   check('быстрая правка ночи сохранена', edited.grid[cat.cat.id][day(10)] === 1 && edited.version === saved.version + 1, JSON.stringify(edited.grid));
   click($('#modal [data-close]'));
 
