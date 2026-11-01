@@ -422,9 +422,11 @@ class TestNewFeatures(unittest.TestCase):
         g = _grid(anchor.year, anchor.month)
         row = _row(g, emp3["id"])
         checked = 0
+        # Табель заполняется на весь месяц (включая будущие дни) — проверяем все дни:
+        # в первые дни месяца прошедших дней меньше, чем нужно для проверки фазы
         for iso, cell in row["cells"].items():
             d = dt.date.fromisoformat(iso)
-            if not cell["employed"] or d > TODAY:
+            if not cell["employed"]:
                 continue
             idx = (d - anchor).days % 6
             expect_work = idx < 3

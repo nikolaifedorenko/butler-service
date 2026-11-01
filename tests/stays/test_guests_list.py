@@ -11,7 +11,15 @@ from sqlalchemy import select
 from app.core.audit import AuditLog
 from app.core.time import local_date
 
-from .helpers import API, create_res, make_category, uniq
+from .helpers import API, create_res, make_category
+from .helpers import uniq as _uniq
+
+
+def uniq() -> str:
+    """Метка поиска по ФИО. hex из одних цифр (~6 % случаев) search_query принимает за телефон
+    и меняет ведущую «8» на «7» — имя не находится. Буква в начале держит поиск текстовым."""
+    return "Z" + _uniq()
+
 
 LIST = f"{API}/guests/list"
 MERGE = f"{API}/guests/merge"

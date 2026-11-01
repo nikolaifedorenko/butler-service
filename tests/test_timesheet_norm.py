@@ -34,6 +34,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
+from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.modules.timesheet.application.catalog import (  # noqa: E402
     EngineSettingsVersion,
@@ -100,7 +101,7 @@ class TestTimesheetCodeNorm(unittest.TestCase):
 
     # ── 2. заполнение Табеля из циклов ──
     def test_03_overnight_shift_single_anchor_value(self):
-        today = dt.date.today()
+        today = local_date()
         first = today.replace(day=1)
         r = client.post("/api/tabel/fill-from-cycles", json={
             "year": first.year, "month": first.month, "overwrite": True})
@@ -210,6 +211,10 @@ class TestDailyShiftExample(unittest.TestCase):
     Присутствие режется полуночью на 01.10 08:00–24:00 и 02.10 00:00–08:00, из первого
     куска вырезается окно — переработка 01.10 ДЯ 2 (20:00–22:00) и ДН 2 (22:00–24:00),
     02.10 ДН 6 (00:00–06:00) и ДЯ 2 (06:00–08:00).
+
+    Даты — 1-е и 2-е число ПРОШЛОГО месяца (а не 01.10.2026 буквально): оба дня уже
+    прошли при любом сегодняшнем числе, а период открыт или последний закрытый
+    (test_api закрывает все месяцы до текущего) — тогда его пересчитывают.
     """
 
     @classmethod
@@ -218,8 +223,10 @@ class TestDailyShiftExample(unittest.TestCase):
         assert r.status_code == 200, r.text
         from app.bootstrap.seed import accounting_start
         cls.emp_id = 4
-        month = accounting_start(dt.date.today())
-        while (month.year, month.month) < (2026, 10):
+        first = local_date().replace(day=1)
+        cls.month = (first - dt.timedelta(days=1)).replace(day=1)
+        month = accounting_start(local_date())
+        while (month.year, month.month) < (cls.month.year, cls.month.month):
             cls._close(month)
             month = dt.date(month.year + (month.month == 12), month.month % 12 + 1, 1)
 
@@ -229,29 +236,45 @@ class TestDailyShiftExample(unittest.TestCase):
         return period_action("close", TestDailyShiftExample.emp_id, month.year, month.month)
 
     def test_11_daily_shift_split_by_midnight(self):
-        emp = self.emp_id
-        r = client.put("/api/tabel/cell", json={"employee_id": emp, "date": "2026-10-01",
+        emp, m = self.emp_id, self.month
+        d1, d2 = m.isoformat(), (m + dt.timedelta(days=1)).isoformat()
+        # демо-отметки сида (по фазе цикла сотрудника) в эти дни исказили бы факт примера
+        from app.modules.timesheet.adapters.orm import Punch
+        db = SessionLocal()
+        try:
+            db.query(Punch).filter(Punch.employee_id == emp,
+                                   Punch.ts >= dt.datetime.combine(m, dt.time()),
+                                   Punch.ts < dt.datetime.combine(m + dt.timedelta(days=2),
+                                                                  dt.time())).delete()
+            db.commit()
+        finally:
+            db.close()
+        r = client.put("/api/tabel/cell", json={"employee_id": emp, "date": d1,
                                                 "code": "Я", "hours": 10.75, "note": ""})
         self.assertEqual(r.status_code, 200, r.text)
-        r = client.put("/api/tabel/cell", json={"employee_id": emp, "date": "2026-10-02",
+        r = client.put("/api/tabel/cell", json={"employee_id": emp, "date": d2,
                                                 "code": "В", "note": ""})
         self.assertEqual(r.status_code, 200, r.text)
         r = client.put("/api/schedule/shift", json={
-            "employee_id": emp, "date": "2026-10-01",
+            "employee_id": emp, "date": d1,
             "shifts": [{"start": "08:00", "end": "08:00", "end_next_day": True, "note": "сутки"}]})
         self.assertEqual(r.status_code, 200, r.text)
-        for ts, kind in (("2026-10-01T08:00:00", "in"), ("2026-10-02T08:00:00", "out")):
+        for ts, kind in ((f"{d1}T08:00:00", "in"), (f"{d2}T08:00:00", "out")):
             r = client.post("/api/punches", json={"employee_id": emp, "ts": ts, "kind": kind,
                                                   "source": "manager", "note": "пример"})
             self.assertIn(r.status_code, (200, 409), r.text)
-        r = client.get("/api/mgmt", params={"year": 2026, "month": 10, "employee_id": emp,
-                                            "detail": True})
+        params = {"year": m.year, "month": m.month, "employee_id": emp, "detail": True}
+        r = client.get("/api/mgmt", params=params)
         self.assertEqual(r.status_code, 200, r.text)
         row = r.json()["rows"][0]
+        if row["state"]["closed"]:      # последний закрытый: правки входят пересчётом
+            res = period_action("recalc", emp, m.year, m.month)
+            self.assertFalse(res["errors"], res["errors"])
+            row = client.get("/api/mgmt", params=params).json()["rows"][0]
         self.assertIsNone(row.get("error"), row.get("error"))
         days = {d["day"]: d for d in row["days"]}
 
-        first = days["2026-10-01"]
+        first = days[d1]
         self.assertEqual(first["timesheet_value"], "Я 10,75")
         self.assertEqual(first["plan_minutes"], 720, "план карточки = длина окна 08:00–20:00")
         self.assertEqual(first["timesheet_plan_minutes"], 645, "план строки — информационный")
@@ -262,7 +285,7 @@ class TestDailyShiftExample(unittest.TestCase):
         self.assertEqual(dict(first["codes"]), {"ДЯ": 120, "ДН": 120},
                          "20:00–22:00 дневные, 22:00–24:00 ночные")
 
-        second = days["2026-10-02"]
+        second = days[d2]
         self.assertEqual(second["timesheet_value"], "В")
         self.assertEqual(second["plan_minutes"], 0, "у выходного окна нет")
         self.assertEqual(second["fact_minutes"], 8 * 60, "00:00–08:00 — кусок нового дня")
@@ -289,7 +312,7 @@ class TestTimeoffHours(unittest.TestCase):
             eid = emp.id
         finally:
             db.close()
-        today = dt.date.today()
+        today = local_date()
         first = today.replace(day=1)
         r = client.post("/api/tabel/fill-from-cycles", json={
             "year": first.year, "month": first.month, "overwrite": True})
@@ -318,7 +341,7 @@ class TestTimeoffHours(unittest.TestCase):
             eid = emp.id
         finally:
             db.close()
-        today = dt.date.today()
+        today = local_date()
         first = today.replace(day=1)
         client.post("/api/tabel/fill-from-cycles", json={
             "year": first.year, "month": first.month, "overwrite": True})
@@ -377,7 +400,7 @@ class TestPayRulesAndConflicts(unittest.TestCase):
         self.assertIsInstance(defaults["upcoming_versions"], list)
 
     def test_09_conflicting_modifier_rejected(self):
-        day = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+        day = (local_date() + dt.timedelta(days=1)).isoformat()
         first = {"name": "pays_overtime", "value": "0", "group": "Смена 1", "date": day,
                  "note": "первое"}
         r = client.post("/api/engine-settings/modifiers", json=first)
@@ -390,7 +413,7 @@ class TestPayRulesAndConflicts(unittest.TestCase):
         self.assertEqual(detail["conflict_with"]["id"], kept_id)
         self.assertIn("CHK-MODIFIER-CONFLICT", detail["message"])
         # расчёт не сломан: вкладки отвечают 200
-        today = dt.date.today()
+        today = local_date()
         self.assertEqual(client.get("/api/mgmt", params={"year": today.year,
                                                          "month": today.month}).status_code, 200)
         # другое правило (сотрудник + день) сильнее и конфликтом не считается
@@ -407,7 +430,7 @@ class TestPayRulesAndConflicts(unittest.TestCase):
         """Повреждённая конфигурация — типизированный отказ 409 с человеческим текстом."""
         from app.modules.timesheet.application.catalog import DayModifier
         # день строго в текущем месяце: /api/presence/board читает настройки месяца «сегодня»
-        today = dt.date.today()
+        today = local_date()
         day = today + dt.timedelta(days=2)
         if day.month != today.month:
             day = today - dt.timedelta(days=2)
@@ -429,6 +452,6 @@ class TestPayRulesAndConflicts(unittest.TestCase):
                 db.delete(row)
             db.commit()
             db.close()
-        today = dt.date.today()
+        today = local_date()
         self.assertEqual(client.get("/api/mgmt", params={"year": today.year,
                                                          "month": today.month}).status_code, 200)
