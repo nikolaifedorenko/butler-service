@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.core.time import local_date  # noqa: E402
 from app.main import app, init_db  # noqa: E402
+from tests.period_ops import period_action  # noqa: E402
 
 init_db()
 client = TestClient(app)
@@ -128,17 +129,27 @@ class TestApi(unittest.TestCase):
         today = local_date()
         emps = client.get("/api/employees").json()
         target = next(e for e in emps if e["full_name"].startswith("Иванов"))
-        # прошедший выходной день без отметок (демо-отметки ставятся только на рабочие)
-        grid = client.get("/api/schedule", params={"year": today.year, "month": today.month}).json()
-        row = next(x for x in grid["rows"] if x["employee"]["id"] == target["id"])
-        punches = client.get("/api/punches", params={"employee_id": target["id"],
-                                                     "year": today.year, "month": today.month}).json()
-        punched = {p["ts"][:10] for p in punches}
-        candidates = [d for d in grid["days"]
-                      if d["date"] < today.isoformat() and d["date"] not in punched
-                      and (row["cells"][d["date"]]["tabel"] or {}).get("code") == "В"]
+        # прошедший выходной день без отметок (демо-отметки ставятся только на рабочие).
+        # В первые дни месяца такого дня может не быть — тогда берём прошлый месяц: он
+        # последний закрытый (setUpClass), его правят и пересчитывают (recalculate).
+        this_month = today.replace(day=1)
+        candidates = []
+        for month in (this_month, (this_month - dt.timedelta(days=1)).replace(day=1)):
+            grid = client.get("/api/schedule", params={"year": month.year,
+                                                       "month": month.month}).json()
+            row = next(x for x in grid["rows"] if x["employee"]["id"] == target["id"])
+            punches = client.get("/api/punches", params={"employee_id": target["id"],
+                                                         "year": month.year,
+                                                         "month": month.month}).json()
+            punched = {p["ts"][:10] for p in punches}
+            candidates = [d for d in grid["days"]
+                          if d["date"] < today.isoformat() and d["date"] not in punched
+                          and (row["cells"][d["date"]]["tabel"] or {}).get("code") == "В"]
+            if candidates:
+                break
         assert candidates, "нет свободного прошедшего выходного для теста"
         day = dt.date.fromisoformat(candidates[-1]["date"])
+        closed = day < this_month
         morning = dt.datetime(day.year, day.month, day.day, 8, 5)
         evening = dt.datetime(day.year, day.month, day.day, 21, 10)
         for ts, kind in ((morning, "IN"), (evening, "OUT")):
@@ -148,6 +159,9 @@ class TestApi(unittest.TestCase):
             self.assertTrue(r.json()["backfill"])
 
         def card():
+            if closed:
+                res = period_action("recalc", target["id"], day.year, day.month)
+                assert not res["errors"], res["errors"]
             data = client.get("/api/mgmt", params={"year": day.year, "month": day.month,
                                                    "employee_id": target["id"],
                                                    "detail": "true"}).json()
@@ -167,7 +181,9 @@ class TestApi(unittest.TestCase):
         # окно 08:00–20:00: рабочее 12 ч, переработка 20:00–21:00 = 1 ч ДЯ
         self.assertEqual((c["plan_minutes"], c["fact_minutes"], c["work_minutes"],
                           c["overtime_minutes"]), (720, 780, 720, 60))
-        self.assertEqual(row0["ut"][day.isoformat()].get("ДЯ"), 60)
+        self.assertEqual(c["codes"], {"ДЯ": 60})
+        if not closed:      # в закрытом периоде переработка сначала гасит долг (settle)
+            self.assertEqual(row0["ut"][day.isoformat()].get("ДЯ"), 60)
 
     def test_08b_employee_cannot_backfill(self):
         today = local_date()
@@ -460,14 +476,18 @@ class TestApi(unittest.TestCase):
         # Эталон — не строка другого сотрудника: у демо-сотрудников «Смены 2» в истории
         # блоков индивидуальный шаблон (1/3 сутки), а переведённый сотрудник стоит на
         # базовом цикле блока (2/2 в противофазе со Сменой 1).
+        anchor = dt.date(2024, 1, 1)
         for i in range(4):
-            d = (first + dt.timedelta(days=i)).isoformat()
-            self.assertEqual(phase(moved, d), "work" if i % 4 >= 2 else "off",
+            day = first + dt.timedelta(days=i)
+            d = day.isoformat()
+            # фаза — от опорной даты базового цикла, а не от 1-го числа месяца
+            self.assertEqual(phase(moved, d), "work" if (day - anchor).days % 4 >= 2 else "off",
                              f"день {d}: фаза базового цикла 2/2 в противофазе со Сменой 1")
             self.assertEqual(phase(moved, d), "off" if phase(ref1, d) == "work" else "work",
                              f"день {d}: фаза не должна совпадать со Сменой 1")
-        self.assertEqual({phase(ref2, (first + dt.timedelta(days=i)).isoformat()) for i in range(3)},
-                         {"work"}, "демо-сотрудник Смены 2 работает по индивидуальному циклу 1/3")
+        # фаза его 1/3 от старта учёта зависит от длины прошлых месяцев — проверяем шаблон
+        self.assertTrue(any("1/3" in (b.get("pattern_label") or "") for b in ref2["blocks"]),
+                        "демо-сотрудник Смены 2 работает по индивидуальному циклу 1/3")
         # после перевода: фаза как у Смены 1
         d = (transfer + dt.timedelta(days=1)).isoformat()
         self.assertEqual(phase(moved, d), phase(ref1, d),

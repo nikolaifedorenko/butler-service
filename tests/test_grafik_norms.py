@@ -57,6 +57,9 @@ employee_client = TestClient(app)  # сотрудник (проверка пра
 
 TODAY = local_date()
 FIRST = TODAY.replace(day=1)
+# месяц с уже прошедшей первой неделей — для тестов с отметками задним числом
+# («Отметка не может быть в будущем»): в первые дни месяца — предыдущий месяц
+PAST_FIRST = FIRST if TODAY.day > 7 else (FIRST - dt.timedelta(days=1)).replace(day=1)
 
 
 def _login(c: TestClient, username: str) -> None:
@@ -100,14 +103,14 @@ def _month_end(day: dt.date) -> dt.date:
     return dt.date(day.year, day.month, calendar.monthrange(day.year, day.month)[1])
 
 
-def _fill_cycle(emp_id: int) -> None:
+def _fill_cycle(emp_id: int, first: dt.date = FIRST) -> None:
     """Цикл 2/2 сменами 08:00–20:00 на ВЕСЬ месяц: явки «Я 12» и выходные «В».
 
     Массовой правкой Табеля, как «Слой 0» в интерфейсе (прежний POST /api/schedule/fill-pattern
     удалён по решению владельца В-7); График перегенерируется из Табеля. Месяц заполняется
     целиком: Табель обязан покрывать период (RUL-TIMESHEET-COVERS-PERIOD).
     """
-    days = [FIRST + dt.timedelta(days=i) for i in range((_month_end(FIRST) - FIRST).days + 1)]
+    days = [first + dt.timedelta(days=i) for i in range((_month_end(first) - first).days + 1)]
     for code, hours, part in (("Я", 12, [d for i, d in enumerate(days) if i % 4 < 2]),
                               ("В", 0, [d for i, d in enumerate(days) if i % 4 >= 2])):
         r = client.post("/api/tabel/bulk", json={"employee_ids": [emp_id], "code": code,
@@ -115,9 +118,9 @@ def _fill_cycle(emp_id: int) -> None:
         assert r.status_code == 200 and r.json()["ok"], r.text
 
 
-def _work_days(emp_id: int) -> list[dt.date]:
+def _work_days(emp_id: int, first: dt.date = FIRST) -> list[dt.date]:
     """Дни месяца, где по Табелю стоит явка с часами."""
-    data = _tabel(TODAY.year, TODAY.month)
+    data = _tabel(first.year, first.month)
     row = next(r for r in data["rows"] if r["employee"]["id"] == emp_id)
     return [dt.date.fromisoformat(iso) for iso, cell in sorted(row["cells"].items())
             if cell["hours"]]
@@ -525,9 +528,11 @@ class TestFactMonthGantt(unittest.TestCase):
     def setUpClass(cls):
         _login(client, "admin")
         cls.emp = _create_employee("norm_gantt", "Гантов Гант Гантович")
-        _fill_cycle(cls.emp["id"])
-        days = _work_days(cls.emp["id"])
-        cls.day = next(d for d in days if d < TODAY - dt.timedelta(days=1))
+        _fill_cycle(cls.emp["id"], PAST_FIRST)
+        days = _work_days(cls.emp["id"], PAST_FIRST)
+        # смена и уход утром следующих суток — в прошлом и в том же месяце
+        cls.day = next(d for d in days if d < TODAY - dt.timedelta(days=1)
+                       and (d + dt.timedelta(days=1)).month == d.month)
         cls.next_day = cls.day + dt.timedelta(days=1)
         # ручная ночная смена 20:00–08:00 и непрерывные отметки через полночь
         r = client.put("/api/schedule/shift", json={
@@ -569,7 +574,7 @@ class TestFactMonthGantt(unittest.TestCase):
     def test_03_employee_sees_only_self(self):
         _login(client, "ivanov")
         data = client.get("/api/fact/month", params={
-            "year": TODAY.year, "month": TODAY.month}).json()
+            "year": self.day.year, "month": self.day.month}).json()
         self.assertEqual(len(data["rows"]), 1)
         self.assertEqual(data["rows"][0]["employee"]["id"],
                          client.get("/api/auth/me").json()["user"]["employee_id"])
@@ -629,22 +634,22 @@ class TestFactDayGrid(unittest.TestCase):
     def setUpClass(cls):
         _login(client, "admin")
         _login(employee_client, "ivanov")
-        # сотрудник, принятый в текущем месяце: первый период цепочки — текущий,
+        # сотрудник, принятый в месяце PAST_FIRST: первый период цепочки — этот месяц,
         # после посева OPENING_SEED (v7.1/R37) view_period работает без закрытий
         r = client.post("/api/employees", json={
             "full_name": "Номерова Номер Номеровна", "position": "Батлер (норматив T5)",
-            "hired_at": FIRST.isoformat(), "schedule_group": "Смена 1",
+            "hired_at": PAST_FIRST.isoformat(), "schedule_group": "Смена 1",
             "role": "employee", "username": "norm_t5_fact", "password": "demo1234"})
         assert r.status_code == 200, r.text
         cls.emp = r.json()
         r = client.post(f"/api/employees/{cls.emp['id']}/bank-adjust", json={
-            "hours": 0, "date": FIRST.isoformat(), "note": "начальный банк (тест T5)",
+            "hours": 0, "date": PAST_FIRST.isoformat(), "note": "начальный банк (тест T5)",
             "reason_code": "OPENING_SEED"})
         assert r.status_code == 200, r.text
         # цикл 2/2 покрывает месяц явками; целевой день переопределяем «Я 10,75»
         # (окно 08:00–20:00) и отмечаем 07:35 → 19:25
-        _fill_cycle(cls.emp["id"])
-        cls.day = min(FIRST + dt.timedelta(days=4), TODAY)
+        _fill_cycle(cls.emp["id"], PAST_FIRST)
+        cls.day = PAST_FIRST + dt.timedelta(days=4)     # прошедший день: уход 19:25 не в будущем
         r = client.put("/api/tabel/cell", json={
             "employee_id": cls.emp["id"], "date": cls.day.isoformat(),
             "code": "Я", "hours": 10.75, "note": ""})
@@ -728,7 +733,7 @@ class TestFactDayGrid(unittest.TestCase):
 
     def test_05_day_before_employment_excluded(self):
         """День до приёма: сотрудника нет в строках сетки (R35)."""
-        before = (FIRST - dt.timedelta(days=10)).isoformat()
+        before = (PAST_FIRST - dt.timedelta(days=10)).isoformat()
         r = client.get("/api/fact/day", params={"date": before})
         self.assertEqual(r.status_code, 200, r.text)
         ids = [x["employee"]["id"] for x in r.json()["rows"]]

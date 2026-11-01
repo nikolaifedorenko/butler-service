@@ -123,6 +123,9 @@ async function main() {
   if (loginRes.ok) window.eval('bootApp()');
   await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
   check('вход выполнен', !$('#app').classList.contains('hidden'), text('#login-error'));
+  /* «сегодня» — дата объекта (APP_TZ) с сервера, а не часы раннера CI (UTC) */
+  const today = (await (await proxy('GET', '/api/health')).json()).server_time_local.slice(0, 10);
+  const tomorrow = new Date(Date.parse(today + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
   await sleep(500);
 
   window.navigate('settings');
@@ -165,7 +168,6 @@ async function main() {
   change($('#wz-value'), '0');
   change($('#wz-scope'), 'all');
   change($('#wz-when'), 'day');
-  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   change($('#wz-date'), today);
   input($('#wz-note'), 'сценарий интерфейса');
   check('предпросмотр показывает уровень', /Уровень приоритета/.test(text('#wz-preview'))
@@ -241,6 +243,9 @@ async function main() {
   click($('[data-draft-publish]'));
   check('диалог публикации открылся', await waitFor(() => !!$('#pb-from')));
   check('честная дата применения', /Фактически применится/.test(text('#pb-preview')), text('#pb-preview'));
+  /* по умолчанию «Действует с» — начало ближайшего периода не раньше сегодня; 1-го числа это
+     сегодня, и версия законно вступает сразу. Завтра — следующий период при любом числе. */
+  change($('#pb-from'), tomorrow);
   input($('#pb-note'), 'сценарий интерфейса: окно «Я 10,5»');
   click($('#modal [data-save]'));
   check('версия опубликована', await waitFor(() => /опубликована/i.test(text('#toast-host')), 15000),
