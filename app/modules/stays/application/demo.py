@@ -37,8 +37,9 @@ from ..adapters.orm import (
     Ooo,
     Reservation,
     StayGroup,
+    VipCode,
 )
-from . import allocation, fund_drafts, fund_versions
+from . import allocation, fund_drafts, fund_versions, vip_codes
 from .fund import seed_escorts_from_positions
 from .fund_versions import INITIAL_DATE
 from .guests import guest_search_text
@@ -184,7 +185,22 @@ def seed_connect_split(db: Session) -> None:
     fund_drafts.publish(db, None, draft.rev)
 
 
+# VIP-коды демо: код, название, сопровождается, коэффициент
+VIP_CODES = (("03", "Простое сопровождение", True, 1), ("13", "Сложный гость", True, 1.5),
+             ("14", "Без сопровождения", False, 1))
+
+
+def _seed_vip_codes(db: Session) -> None:
+    """Три кода демо; уже заведённые (в том числе вручную) не трогаются."""
+    have = set(db.scalars(select(VipCode.code)))
+    for i, (code, title, escorted, factor) in enumerate(VIP_CODES):
+        if code not in have:
+            vip_codes.save_code(db, {"code": code, "title": title, "escorted": escorted, "factor": factor,
+                                     "sort_order": i * 10}, None)
+
+
 def seed_stays_demo(db: Session) -> None:
+    _seed_vip_codes(db)
     if db.scalar(select(CategoryState.category_id).where(CategoryState.code == "VEG")) is not None:
         return
     rnd = random.Random(23)

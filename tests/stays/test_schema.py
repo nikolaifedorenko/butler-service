@@ -30,3 +30,21 @@ def test_stays_roles_as_data(db):
     occ = role_permissions(db, "occupancy")
     assert "stays.occupancy" in occ and "stays.view" not in occ
     assert db.scalars(select(AccessGrant).where(AccessGrant.role == "occupancy")).first()
+
+
+def test_escort_rules_columns_and_defaults(db):
+    """Ревизия 0017: справочник VIP-кодов и новые поля модели; значения по умолчанию из модели."""
+    from decimal import Decimal
+
+    from app.modules.stays.adapters.orm import Guest, Reservation, StaysSettings
+    insp = inspect(db.get_bind())
+    assert {"stays_vip_codes"} <= set(insp.get_table_names())
+    cols = lambda t: {c["name"] for c in insp.get_columns(t)}  # noqa: E731
+    assert {"id", "code", "title", "escorted", "factor", "sort_order", "archived"} == cols("stays_vip_codes")
+    assert {"vip_code_id", "special", "level"} <= cols("stays_guests")
+    assert {"vip_code_id", "escort_mode", "declined_butler"} <= cols("stays_reservations")
+    assert {"special_factor", "vip_bonus", "vvip_bonus"} <= cols("stays_settings")
+    assert "escorted" in cols("stays_group_states")
+    assert Guest.__table__.c.special.default.arg is False
+    assert Reservation.__table__.c.escort_mode.default.arg == "rules"
+    assert StaysSettings.__table__.c.special_factor.default.arg == Decimal("2")

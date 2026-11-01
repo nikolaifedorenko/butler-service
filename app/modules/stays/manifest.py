@@ -47,6 +47,7 @@ MODULE = ModuleManifest(
     ),
     audit_actions={
         "stays_fund": "Шахматка: справочник фонда",
+        "stays_vip_code": "Шахматка: справочник VIP-кодов",
         "stays_fund_version": "Шахматка: версия фонда",
         "stays_fund_import": "Шахматка: импорт фонда",
         "stays_reset": "Шахматка: сброс данных",

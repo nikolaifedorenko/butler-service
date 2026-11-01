@@ -3582,6 +3582,58 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VipCodeArchiveIn": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "archived"
+        ],
+        "title": "VipCodeArchiveIn",
+        "type": "object"
+      },
+      "VipCodeIn": {
+        "properties": {
+          "code": {
+            "maxLength": 8,
+            "title": "Code",
+            "type": "string"
+          },
+          "escorted": {
+            "default": false,
+            "title": "Escorted",
+            "type": "boolean"
+          },
+          "factor": {
+            "default": 1.0,
+            "maximum": 99.0,
+            "minimum": 0.1,
+            "title": "Factor",
+            "type": "number"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "VipCodeIn",
+        "type": "object"
+      },
       "VipIn": {
         "properties": {
           "employee_id": {
@@ -3870,20 +3922,45 @@
             "title": "Replacement Codes",
             "type": "string"
           },
+          "special_factor": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Factor"
+          },
           "vip_bonus": {
-            "maximum": 999.0,
-            "title": "Vip Bonus",
-            "type": "number"
+            "anyOf": [
+              {
+                "maximum": 999.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Bonus"
           },
           "vvip_bonus": {
-            "maximum": 999.0,
-            "title": "Vvip Bonus",
-            "type": "number"
+            "anyOf": [
+              {
+                "maximum": 999.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vvip Bonus"
           }
         },
         "required": [
-          "vip_bonus",
-          "vvip_bonus",
           "daily_limit"
         ],
         "title": "SettingsIn",
@@ -16534,6 +16611,183 @@
           }
         },
         "summary": "Put Settings",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/vip-codes": {
+      "post": {
+        "operationId": "create_vip_code_api_stays_vip_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VipCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Vip Code",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/vip-codes/{cid}": {
+      "delete": {
+        "operationId": "remove_vip_code_api_stays_vip_codes__cid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Vip Code",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_vip_code_api_stays_vip_codes__cid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VipCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Vip Code",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/vip-codes/{cid}/archive": {
+      "put": {
+        "operationId": "archive_vip_code_api_stays_vip_codes__cid__archive_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VipCodeArchiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Vip Code",
         "tags": [
           "stays"
         ]
