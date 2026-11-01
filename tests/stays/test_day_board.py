@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from .helpers import API, create_res, make_category, make_guest, units_of
+from .helpers import API, create_res, make_category, make_guest, set_guest, units_of
 
 DAY = dt.date(2036, 1, 10)
 
@@ -17,6 +17,7 @@ def _setup(sup, mgr, DAY=DAY):
     villa = make_category(sup, n_units=3)
     room = make_category(sup, n_units=1, kind="room", escorted=False, weight=1)
     vip = make_guest(mgr, "ТаблоВип", level="vip")
+    set_guest(vip["id"], special=True)
     out_g, stay_g, room_g = make_guest(mgr, "ТаблоВыезд"), make_guest(mgr, "ТаблоЖивёт"), make_guest(mgr, "ТаблоНомер")
     arr = create_res(mgr, villa, _iso(DAY), _iso(DAY + dt.timedelta(days=3)), [(vip["id"], "main", None, None)],
                      early=True, logistics=[{"kind": "transfer", "date": _iso(DAY), "time": "07:40", "description": "SVO"}])
@@ -38,7 +39,7 @@ def test_day_board_totals_and_tabs(manager_role_client, manager_client):
     assert (t["arrivals"], t["departures"], t["in_house"]) == (2, 1, 3)
     assert (t["uncovered"], t["not_required"], t["vip"], t["no_show"]) == (2, 1, 1, 0)
     arr = _row(b["arrivals"], s["arr"]["id"])
-    assert arr["time"] == "РЗ" and arr["cover_status"] == "uncovered" and arr["guests"][0]["level"] == "vip"
+    assert arr["time"] == "РЗ" and arr["cover_status"] == "uncovered" and arr["guests"][0]["special"] is True
     assert arr["details"]["logistics"][0]["time"] == "07:40"
     assert _row(b["arrivals"], s["room"]["id"])["cover_status"] == "not_required"
     assert {r["reservation_id"] for r in b["attention"]} == {s["arr"]["id"], s["stay"]["id"]}
@@ -93,7 +94,7 @@ def test_day_board_occupancy_level(occupancy_client, manager_role_client, manage
 def test_day_board_filters(manager_role_client, manager_client):
     day = DAY + dt.timedelta(days=60)
     s = _setup(manager_role_client, manager_client, day)
-    b = manager_client.get(f"{API}/day", params={"date": _iso(day), "escorted_only": 1, "vip": 1}).json()
+    b = manager_client.get(f"{API}/day", params={"date": _iso(day), "escorted_only": 1, "special": 1}).json()
     assert [r["reservation_id"] for r in b["arrivals"]] == [s["arr"]["id"]]
     b = manager_client.get(f"{API}/day", params={"date": _iso(day), "q": "табложивёт"}).json()
     assert [r["reservation_id"] for r in b["in_house"]] == [s["stay"]["id"]]
@@ -107,7 +108,8 @@ def test_day_board_status_reasons(manager_role_client, manager_client, db):
     s = _setup(manager_role_client, manager_client, day)
     b = manager_client.get(f"{API}/day", params={"date": _iso(day)}).json()
     arr, room = _row(b["arrivals"], s["arr"]["id"]), _row(b["arrivals"], s["room"]["id"])
-    assert (arr["cover_status"], arr["escort_reasons"]) == ("uncovered", [f"категория {s['villa']['code']}"])
+    assert (arr["cover_status"], arr["escort_reasons"]) == ("uncovered", [f"категория {s['villa']['code']}",
+                                                                          "◆ Особый гость ТаблоВип"])
     assert room["cover_status"] == "not_required" and room["escort_reasons"] == []
     row = db.get(Reservation, s["stay"]["id"])
     row.escort_mode = "declined"

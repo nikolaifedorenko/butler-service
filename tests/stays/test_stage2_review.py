@@ -6,7 +6,7 @@ from .helpers import API, FundDraft, create_res, make_category, make_guest, res_
 
 def _body(res, **ch):
     return {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late",
-                                   "group_id", "note", "declined_butler")},
+                                   "group_id", "note", "escort_mode", "vip_code_id")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **ch}
 

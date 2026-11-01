@@ -5,7 +5,7 @@ import datetime as dt
 
 from app.modules.stays.adapters.orm import Block, BlockNight
 
-from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, uniq
+from .helpers import API, FundDraft, create_res, kind_id, make_category, make_code, make_guest, uniq
 
 
 def _doc(c, rid):
@@ -14,7 +14,7 @@ def _doc(c, rid):
 
 def _body(res, **ch):
     return {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late", "group_id",
-                                   "note", "declined_butler", "label_id", "customer", "paid_category_id", "fields")},
+                                   "note", "escort_mode", "vip_code_id", "label_id", "customer", "paid_category_id", "fields")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **ch}
 
@@ -210,6 +210,17 @@ def test_role_matrix(manager_client, mgmt_client, occupancy_client, butler_clien
 def test_demo_butler_has_tonight(butler_client):
     """Демо: у входа ivanov в «Моих гостях» есть бронь на сегодня (§11)."""
     assert butler_client.get(f"{API}/mine").json()["reservations"]
+
+
+def test_butler_cannot_change_code_or_mode(butler_client, own_reservation, manager_role_client):
+    """VIP-код и режим сопровождения брони — stays.edit; батлер их не меняет (§7)."""
+    rid = own_reservation["mine"]["id"]
+    code = make_code(manager_role_client)
+    for change in ({"vip_code_id": code["id"]}, {"escort_mode": "declined"}, {"escort_mode": "required"}):
+        r = butler_client.put(f"{API}/reservations/{rid}", json=_body(_doc(butler_client, rid), **change))
+        assert r.status_code == 403, (change, r.text)
+    r = butler_client.put(f"{API}/reservations/{rid}", json=_body(_doc(butler_client, rid), note="можно"))
+    assert r.status_code == 200, r.text
 
 
 def test_butler_cannot_change_paid_category(butler_client, own_reservation, manager_role_client):

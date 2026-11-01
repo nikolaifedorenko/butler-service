@@ -54,8 +54,9 @@ class DayFilters:
     flag_ids: tuple[int, ...] = ()
     kind_ids: tuple[int, ...] = ()
     floor: str | None = None
-    escorted_only: bool = False
-    vip: bool = False
+    escorted_only: bool = False             # по статусу сопровождения брони в ночь строки
+    special: bool = False                   # «◆ Особый гость» среди гостей строки
+    vip_code_ids: tuple[int, ...] = ()      # VIP-код брони — «или»
     employee_id: int | None = None
     q: str = ""
 
@@ -132,7 +133,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     def guests_of(r: Reservation, night: dt.date) -> list[dict]:
         occ = sorted((o for o in ctx.occ.get(r.id, ()) if o.date_from <= night < o.date_to and o.guest_id in ctx.guests),
                      key=lambda o: (o.role != "main", o.id))
-        return [{"guest_id": o.guest_id, "name": ctx.guest_name(o.guest_id), "level": ctx.guests[o.guest_id].level,
+        return [{"guest_id": o.guest_id, "name": ctx.guest_name(o.guest_id), "special": bool(ctx.guests[o.guest_id].special),
                  "role": o.role, **({"relatives": relatives.get(o.guest_id, [])} if names else {})} for o in occ]
 
     def row(r: Reservation, kind: str) -> dict | None:
@@ -151,7 +152,9 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
         st = _status(ctx, s, night, known, day)
         if f.escorted_only and st["cover_status"] == "not_required":
             return None
-        if f.vip and not any(g["level"] != "regular" for g in guests):
+        if f.special and not any(g["special"] for g in guests):
+            return None
+        if f.vip_code_ids and r.vip_code_id not in f.vip_code_ids:
             return None
         if f.employee_id and not any(c["employee_id"] == f.employee_id for c in st.get("covered", [])):
             return None
@@ -159,7 +162,8 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
                 needle in (ctx.guests[g["guest_id"]].search_text or "") for g in guests) \
                 and needle not in base["unit"].lower():
             return None
-        out = {**base, **st, "number": r.number, "guests": guests}
+        code = ctx.vip_codes.get(r.vip_code_id) if r.vip_code_id is not None else None
+        out = {**base, **st, "number": r.number, "vip_code": code.code if code else "", "guests": guests}
         if full:
             prefs = [json.loads(ctx.guests[g["guest_id"]].preferences_json or "{}") for g in guests]
             out["details"] = {"logistics": logistics.get(r.id, []), "companions": companions.get(r.id, []),
@@ -181,7 +185,8 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
               "no_show": len(no_show), "overbooked": len(overbooked)}
     if names:
         statuses = [x["cover_status"] for x in in_house]
-        guests = [g["level"] for x in in_house for g in x["guests"]]
+        # итоги VIP/VVIP — по прежнему уровню гостя, пока экран табло их показывает (заменит «Особый»)
+        guests = [ctx.guests[g["guest_id"]].level for x in in_house for g in x["guests"]]
         totals |= {"covered": statuses.count("covered"), "uncovered": statuses.count("uncovered"),
                    "need_replacement": statuses.count("replacement"), "declined": statuses.count("declined"),
                    "not_required": statuses.count("not_required"), "vip": guests.count("vip"),

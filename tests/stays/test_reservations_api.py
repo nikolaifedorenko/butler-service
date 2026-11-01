@@ -7,12 +7,22 @@ from sqlalchemy import select
 
 from app.core.audit import AuditLog
 
-from .helpers import API, create_res, make_category, make_guest, res_body, units_of
+from .helpers import (
+    API,
+    archive_code,
+    create_res,
+    make_category,
+    make_code,
+    make_guest,
+    res_body,
+    set_guest,
+    units_of,
+)
 
 
 def _put(c, res, **changes):
     body = {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late",
-                                   "group_id", "note", "declined_butler")},
+                                   "group_id", "note", "escort_mode", "vip_code_id")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **changes}
     return c.put(f"{API}/reservations/{res['id']}", json=body)
@@ -319,3 +329,134 @@ def test_group_join_form_payload_no_false_upgrade(manager_role_client, manager_c
     r = _put(manager_client, solo, group_id=gid, category_id=other["id"], paid_category_id=other["id"])
     assert r.status_code == 200, r.text
     assert _upgrade(manager_client, solo["id"]) == ""
+
+
+# --- VIP-код и режим сопровождения брони (правила сопровождения §2, §3.1, §6) ---
+
+def _coded_guest(c, code: dict | None = None, special: bool = False) -> dict:
+    g = make_guest(c)
+    set_guest(g["id"], vip_code_id=code["id"] if code else None, special=special)
+    return g
+
+
+def _main(gid: int, ci: str, co: str) -> dict:
+    return {"guest_id": gid, "role": "main", "date_from": ci, "date_to": co}
+
+
+def test_code_copied_from_main_on_create(manager_role_client, manager_client):
+    cat, code = make_category(manager_role_client), make_code(manager_role_client, title="простое")
+    g = _coded_guest(manager_client, code)
+    res = create_res(manager_client, cat, "2041-03-02", "2041-03-05", [(g["id"], "main", None, None)])
+    assert res["vip_code_id"] == code["id"]
+    assert res["vip_code"] == {"id": code["id"], "code": code["code"], "title": "простое", "archived": False}
+    plain = create_res(manager_client, cat, "2041-03-02", "2041-03-05", [(make_guest(manager_client)["id"], "main",
+                                                                          None, None)])
+    assert plain["vip_code_id"] is None and plain["vip_code"] is None
+
+
+def test_code_recopied_on_main_change_over_manual(manager_role_client, manager_client):
+    """Ручной «13» в брони; главный сменён на гостя с «03» — код «03» поверх ручного, виден в
+    предпросмотре (до сохранения бронь остаётся с «13»)."""
+    cat = make_category(manager_role_client)
+    c13, c03 = make_code(manager_role_client, title="13"), make_code(manager_role_client, title="03")
+    a, b = make_guest(manager_client), _coded_guest(manager_client, c03)
+    res = create_res(manager_client, cat, "2041-04-02", "2041-04-05", [(a["id"], "main", None, None)],
+                     vip_code_id=c13["id"])
+    assert res["vip_code"]["code"] == c13["code"]                 # ручной выбор при создании
+    occ = [_main(b["id"], "2041-04-02", "2041-04-05")]
+    pre = manager_client.put(f"{API}/reservations/{res['id']}?preview=1", json={
+        **{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "escort_mode", "vip_code_id")},
+        "occupants": occ, "version": res["version"]})
+    assert pre.status_code == 200, pre.text
+    assert pre.json()["result"]["vip_code"]["code"] == c03["code"]
+    assert manager_client.get(f"{API}/reservations/{res['id']}").json()["vip_code"]["code"] == c13["code"]
+    r = _put(manager_client, res, occupants=occ)
+    assert r.status_code == 200 and r.json()["result"]["vip_code"]["code"] == c03["code"]
+
+
+def test_manual_code_in_same_save_wins(manager_role_client, manager_client):
+    cat = make_category(manager_role_client)
+    x, y, z = (make_code(manager_role_client) for _ in range(3))
+    a, b = _coded_guest(manager_client, x), _coded_guest(manager_client, y)
+    res = create_res(manager_client, cat, "2041-05-02", "2041-05-05", [(a["id"], "main", None, None)])
+    assert res["vip_code_id"] == x["id"]
+    r = _put(manager_client, res, occupants=[_main(b["id"], "2041-05-02", "2041-05-05")], vip_code_id=z["id"])
+    assert r.status_code == 200 and r.json()["result"]["vip_code_id"] == z["id"]
+    # главный тот же, код не тронут — остаётся ручной
+    res = r.json()["result"]
+    r = _put(manager_client, res, note="правка")
+    assert r.status_code == 200 and r.json()["result"]["vip_code_id"] == z["id"]
+
+
+def test_main_guest_is_first_night_main(manager_role_client, manager_client):
+    """Главный — гость с ролью «главный» на ночь заезда: смена главного в середине проживания
+    кода не копирует."""
+    cat = make_category(manager_role_client)
+    x, y, w = (make_code(manager_role_client) for _ in range(3))
+    a, b, c = (_coded_guest(manager_client, k) for k in (x, y, w))
+    res = create_res(manager_client, cat, "2041-06-02", "2041-06-08", [
+        (a["id"], "main", "2041-06-02", "2041-06-05"), (b["id"], "main", "2041-06-05", "2041-06-08")])
+    assert res["vip_code_id"] == x["id"]
+    occ = [{**o} for o in res["occupants"]]
+    occ[1]["guest_id"] = c["id"]
+    r = _put(manager_client, res, occupants=occ)
+    assert r.status_code == 200 and r.json()["result"]["vip_code_id"] == x["id"]
+
+
+def test_archived_code_survives_resave(manager_role_client, manager_client):
+    cat, code = make_category(manager_role_client), make_code(manager_role_client)
+    g = _coded_guest(manager_client, code)
+    res = create_res(manager_client, cat, "2041-07-02", "2041-07-05", [(g["id"], "main", None, None)])
+    archive_code(manager_role_client, code["id"])
+    r = _put(manager_client, res, note="после архива")
+    assert r.status_code == 200, r.text
+    assert r.json()["result"]["vip_code"] == {"id": code["id"], "code": code["code"], "title": "тест", "archived": True}
+    card = manager_client.get(f"{API}/reservations/{res['id']}/card").json()
+    assert card["vip_code"]["archived"] is True
+
+
+def test_archived_code_not_selectable_new_422(manager_role_client, manager_client):
+    cat, code = make_category(manager_role_client), make_code(manager_role_client)
+    archive_code(manager_role_client, code["id"])
+    g = make_guest(manager_client)
+    r = manager_client.post(f"{API}/reservations", json=res_body(
+        cat, "2041-08-02", "2041-08-05", [(g["id"], "main", None, None)], vip_code_id=code["id"]))
+    assert r.status_code == 422 and "в архиве" in r.json()["detail"]
+    res = create_res(manager_client, cat, "2041-08-02", "2041-08-05", [(g["id"], "main", None, None)])
+    r = _put(manager_client, res, vip_code_id=code["id"])
+    assert r.status_code == 422 and "в архиве" in r.json()["detail"]
+    r = _put(manager_client, res, vip_code_id=10**9)
+    assert r.status_code == 422
+
+
+def test_escort_mode_values_and_422(manager_role_client, manager_client):
+    cat = make_category(manager_role_client)
+    res = create_res(manager_client, cat, "2041-09-02", "2041-09-05")
+    assert res["escort_mode"] == "rules" and "declined_butler" not in res
+    res = create_res(manager_client, cat, "2041-09-02", "2041-09-05", escort_mode="required")
+    assert res["escort_mode"] == "required"
+    r = _put(manager_client, res, escort_mode="declined")
+    assert r.status_code == 200 and r.json()["result"]["escort_mode"] == "declined"
+    assert _put(manager_client, r.json()["result"], escort_mode="bogus").status_code == 422
+
+
+def test_card_escort_reasons(manager_role_client, manager_client):
+    """Карточка и документ брони: код, режим и причины по правилам — объединение по ночам брони;
+    «гость отказался» главнее правил, а подсказка формы показывает, что дают правила."""
+    cat = make_category(manager_role_client, escorted=False)
+    code = make_code(manager_role_client, title="полноценное")
+    g = _coded_guest(manager_client, code, special=True)
+    res = create_res(manager_client, cat, "2041-10-02", "2041-10-05", [(g["id"], "main", None, None)])
+    card = manager_client.get(f"{API}/reservations/{res['id']}/card").json()
+    special = card["escort"]["reasons"][1]
+    assert special.startswith("◆ Особый гость ") and g["last_name"] in special
+    assert card["escort"] == {"required_nights": 3, "declined": False,
+                              "reasons": [f"код {code['code']} — полноценное", special],
+                              "rule_reasons": [f"код {code['code']} — полноценное", special]}
+    assert card["vip_code"]["code"] == code["code"] and card["escort_mode"] == "rules"
+    assert card["occupants"][0]["special"] is True and "level" not in card["occupants"][0]
+    r = _put(manager_client, res, escort_mode="declined")
+    assert r.json()["result"]["escort"] == {"required_nights": 0, "declined": True, "reasons": ["гость отказался"],
+                                            "rule_reasons": [f"код {code['code']} — полноценное", special]}
+    card = manager_client.get(f"{API}/reservations/{res['id']}/card").json()
+    assert card["escort_mode"] == "declined" and card["escort"]["declined"] is True

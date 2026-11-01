@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.core.audit import AuditLog
 from app.modules.stays.domain.allocate import natural_key
 
-from .helpers import API, create_res, kind_id, make_category, make_guest, uniq
+from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, set_guest, uniq
 from .test_board_filters import _flag, _groups, _set_flag
 
 URL = f"{API}/bookings"
@@ -168,15 +168,17 @@ def test_filters_reuse_board_semantics(manager_role_client, manager_client):
     assert {r["unit"] for r in both_flags} == {vil["units"][0]["label"]}
 
 
-def test_status_label_unassigned_vip_filters(manager_role_client, manager_client):
+def test_status_label_unassigned_special_filters(manager_role_client, manager_client):
     cat = make_category(manager_role_client, n_units=1)
-    vip = make_guest(manager_client, "Випов" + uniq(), level="vip")
+    vip = make_guest(manager_client, "Випов" + uniq())
+    set_guest(vip["id"], special=True)
     a = create_res(manager_client, cat, "2038-10-01", "2038-10-03", [(vip["id"], "main", None, None)])
     b = create_res(manager_client, cat, "2038-10-01", "2038-10-03")              # объект один — вторая без объекта
     win = {"first": "2038-10-01", "last": "2038-10-02", "category_ids": cat["id"]}
     rows = {r["number"]: r for r in _get(manager_client, **win)["rows"]}
-    assert rows[a["number"]]["level"] == "vip" and rows[a["number"]]["main_guest"].startswith("Випов")
-    assert _numbers(manager_client, **win, vip=1) == [a["number"]]
+    assert rows[a["number"]]["special"] is True and rows[a["number"]]["main_guest"].startswith("Випов")
+    assert rows[b["number"]]["special"] is False and rows[b["number"]]["vip_code"] == ""
+    assert _numbers(manager_client, **win, special=1) == [a["number"]]
     # объект один: какая из двух броней его получила, решает распределение — вторая без объекта
     loose = _numbers(manager_client, **win, unassigned=1)
     assert len(loose) == 1 and loose[0] in (a["number"], b["number"])
@@ -229,8 +231,9 @@ def test_export_audited(manager_role_client, manager_client, db):
     assert wb.sheetnames == ["Бронирования"]
     rows = list(wb.active.iter_rows(values_only=True))
     assert rows[0][0] == "Номер" and len(rows) == 2
+    assert rows[0][2:4] == ("◆", "VIP-код") and "Уровень" not in rows[0] and rows[0][-1] == "Сопровождение"
     assert rows[1][0].startswith("'") or not rows[1][0].startswith("=")                # формула экранирована
-    assert g["last_name"][:6] in rows[1][1] and rows[1][5] == 3
+    assert g["last_name"][:6] in rows[1][1] and rows[1][6] == 3 and rows[1][-1] == "по правилам"
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_export").order_by(AuditLog.id.desc())).first()
     p = json.loads(row.payload_json)
     assert row.target == "export:bookings" and p["kind"] == "bookings" and p["rows"] == 1
@@ -241,3 +244,28 @@ def test_export_audited(manager_role_client, manager_client, db):
 @pytest.mark.parametrize("bad", [{"mode": "x"}, {"dir": "up"}])
 def test_bad_params_422(manager_client, bad):
     assert manager_client.get(URL, params={"first": "2038-01-01", "last": "2038-01-02", **bad}).status_code == 422
+
+
+def test_bookings_escorted_by_rules(manager_role_client, manager_client):
+    """«С сопровождением» в «Бронях» — по правилам (EscortNeed) хотя бы в одну ночь брони в окне:
+    объект в узле с сопровождением при категории без — бронь в фильтре; «Особый гость» — тоже;
+    «гость отказался» — нет."""
+    d = FundDraft(manager_role_client)
+    node = d.call("POST", "groups", title="Сопр" + uniq(), escorted=True)["id"]
+    d.publish()
+    wine = make_category(manager_role_client, n_units=1, escorted=False, group_id=node)
+    plain = make_category(manager_role_client, n_units=3, escorted=False)
+    sp = make_guest(manager_client)
+    set_guest(sp["id"], special=True)
+    in_node = create_res(manager_client, wine, "2039-01-02", "2039-01-05")
+    special = create_res(manager_client, plain, "2039-01-04", "2039-01-06", [(sp["id"], "main", "2039-01-05", None),
+                                                                             (make_guest(manager_client)["id"], "main",
+                                                                              None, "2039-01-05")])
+    create_res(manager_client, plain, "2039-01-02", "2039-01-05")
+    create_res(manager_client, plain, "2039-01-02", "2039-01-05", [(sp["id"], "main", None, None)],
+               escort_mode="declined")
+    scope = {"category_ids": [wine["id"], plain["id"]], "escorted": 1}
+    assert set(_numbers(manager_client, first="2039-01-01", last="2039-01-10", **scope)) == {
+        in_node["number"], special["number"]}
+    # «Особый» живёт только с 05.01 — в окне 01–04.01 брони нет в фильтре
+    assert _numbers(manager_client, first="2039-01-01", last="2039-01-04", **scope) == [in_node["number"]]

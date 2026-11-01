@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -31,11 +31,12 @@ def board_butlers(first: dt.date, last: dt.date, principal: Principal = Depends(
 
 
 @router.get("/day")
-def day_board(date: dt.date, dims: dict = Depends(fund_filters), escorted_only: bool = False, vip: bool = False,
-              employee_id: Optional[int] = None, q: str = "",
+def day_board(date: dt.date, dims: dict = Depends(fund_filters), escorted_only: bool = False, special: bool = False,
+              vip_code_ids: list[int] = Query(default=[]), employee_id: Optional[int] = None, q: str = "",
               principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
               db: Session = Depends(get_db)):
-    f = boards.DayFilters(**dims, escorted_only=escorted_only, vip=vip, employee_id=employee_id, q=q)
+    f = boards.DayFilters(**dims, escorted_only=escorted_only, special=special, vip_code_ids=tuple(vip_code_ids),
+                          employee_id=employee_id, q=q)
     return boards.day_board(db, date, level_for(db, principal), f, TimesheetDuty(db))
 
 

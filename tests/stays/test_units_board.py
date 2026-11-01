@@ -22,7 +22,7 @@ def test_board_names_level(names_client, demo_small):
     first = bars[demo_small.res[0]["id"]]
     g0 = demo_small.guests[0]
     assert first["main_guest"] == g0["last_name"]          # у гостя нет имени — инициала нет
-    assert first["level"] == "vvip" and first["guests_count"] == 2 and first["number"] == demo_small.res[0]["number"]
+    assert first["special"] is True and first["vip_code"] == "" and first["guests_count"] == 2 and first["number"] == demo_small.res[0]["number"]
     assert "note" not in first and "customer" not in first
 
 
@@ -54,16 +54,17 @@ def test_board_level_occupancy_no_guest_fields(occupancy_client, demo_small):
         assert surname not in body
     bars = r.json()["bars"]
     assert len(bars) == 4
-    leaked = {"number", "note", "main_guest", "level", "label", "customer", "mains", "fields"} & set().union(*bars)
+    leaked = {"number", "note", "main_guest", "special", "vip_code", "label", "customer", "mains", "fields",
+              "escort_mode"} & set().union(*bars)
     assert not leaked, leaked                       # «label» объекта (обозначение) — не данные гостя
     assert r.json()["warnings"] == []
 
 
-def test_board_search_and_vip_filters(manager_client, demo_small):
+def test_board_search_and_special_filters(manager_client, demo_small):
     g = demo_small.guests[3]
     bars = _board(manager_client, demo_small, q=g["last_name"].lower()).json()["bars"]
     assert [b["reservation_id"] for b in bars] == [demo_small.res[2]["id"]]
-    vip = _board(manager_client, demo_small, vip=1).json()["bars"]
+    vip = _board(manager_client, demo_small, special=1).json()["bars"]
     assert {b["reservation_id"] for b in vip} == {demo_small.res[0]["id"], demo_small.res[1]["id"]}
 
 

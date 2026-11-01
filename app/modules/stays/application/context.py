@@ -23,7 +23,7 @@ from ..adapters.orm import (
     VipCode,
 )
 from ..domain.coverage import resolve_day
-from ..domain.escort import escort_need
+from ..domain.escort import EscortNeed, escort_need
 from ..domain.halfday import PM, Piece, pieces, pos, segments
 from ..domain.load import day_loads
 from ..domain.types import DayCover, Line, StayDay, Warning
@@ -92,6 +92,8 @@ class StaysContext:
                 continue
             live.append((r, present))
             specials[rid] = sorted(g for g, sp in present.items() if sp)
+        rules: dict[int, EscortNeed] = {}               # что дают правила без ручной отметки
+        self._memo[("rules", day)] = rules
         if not live:
             return []                                  # фонд дня не нужен (его может и не быть)
         snap = self.fund.on(day)
@@ -107,13 +109,36 @@ class StaysContext:
             # свои «Особые» — первыми, затем остальные из группы
             names = list(dict.fromkeys(specials[r.id] + (by_group.get(r.group_id, []) if r.group_id is not None else [])))
             code = self.vip_codes.get(r.vip_code_id) if r.vip_code_id is not None else None
-            need = escort_need(r.escort_mode, category=(cat.title, cat.escorted),
-                               nodes=[(snap.groups[g].title, snap.groups[g].escorted) for g in path],
-                               code=(code.code, code.title, bool(code.escorted)) if code else None,
-                               specials=[self.guest_name(g) for g in names])
+            facts = {"category": (cat.title, cat.escorted),
+                     "nodes": [(snap.groups[g].title, snap.groups[g].escorted) for g in path],
+                     "code": (code.code, code.title, bool(code.escorted)) if code else None,
+                     "specials": [self.guest_name(g) for g in names]}
+            need = escort_need(r.escort_mode, **facts)
+            rules[r.id] = need if r.escort_mode == "rules" else escort_need("rules", **facts)
             out.append(StayDay(day, r.id, r.group_id, unit_id, path, cat.weight, need,
                                float(code.factor) if code else None, present))
         return out
+
+    def rules_need(self, day: dt.date, rid: int) -> EscortNeed | None:
+        """Что дают правила брони в ночь day без её ручной отметки (подсказка формы, §6)."""
+        self.stays_on(day)
+        return self._memo[("rules", day)].get(rid)
+
+    def escort_of(self, rid: int, first: dt.date, last: dt.date) -> dict:
+        """Сопровождение брони за ночи [first, last] (§4.1): сколько ночей нужен батлер, отказался
+        ли гость при требовании правил, причины — объединение по ночам; rule_reasons — что дают
+        правила без ручной отметки."""
+        required, declined, reasons, rule_reasons = 0, False, [], []
+        for d in nights(first, last + dt.timedelta(days=1)):
+            s = next((s for s in self.stays_on(d) if s.reservation_id == rid), None)
+            if s is None:
+                continue
+            required += s.need.required
+            declined = declined or s.need.declined
+            reasons += s.need.reasons
+            rule_reasons += self.rules_need(d, rid).reasons
+        return {"required_nights": required, "declined": declined, "reasons": list(dict.fromkeys(reasons)),
+                "rule_reasons": list(dict.fromkeys(rule_reasons))}
 
     def lines_on(self, day: dt.date) -> list[Line]:
         return [ln for ln in self.lines if ln.day == day]
@@ -236,3 +261,13 @@ def butlers_on(db: Session, day: dt.date, res: list[Reservation], parts: dict[in
             if staff.get(e, "") not in out.setdefault(rid, []):
                 out[rid].append(staff.get(e, ""))
     return out
+
+
+def reservation_escort(db: Session, r: Reservation, ctx: StaysContext | None = None) -> dict:
+    """Сопровождение брони по её ночам (карточка, форма): из контекста покрытия — переданного
+    (уже загруженного на её даты) или своего. Отменённая и «не заехал» — без ночей."""
+    last = r.check_out - dt.timedelta(days=1)
+    if r.status not in allocation.OCCUPYING or last < r.check_in:
+        return {"required_nights": 0, "declined": False, "reasons": [], "rule_reasons": []}
+    ctx = ctx or load_context(db, r.check_in, last, None)
+    return ctx.escort_of(r.id, r.check_in, last)

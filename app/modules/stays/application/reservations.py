@@ -21,12 +21,15 @@ from ..adapters.orm import (
     Occupant,
     Reservation,
     StayGroup,
+    VipCode,
 )
 from ..domain.halfday import AM, PIECE_BASE, pieces, pos, segments, validate_dates
 from . import allocation
+from .context import reservation_escort
 from .fund import FundError, changes
 from .fund_versions import category_exists, fund_day, fund_for_stays, fund_on, unit_exists, version_cuts
 from .guests import reservation_search_text, searchable_codes, short_name, validate_fields
+from .vip_codes import check_selectable
 
 STATUS_TITLES = {"tentative": "предварительная", "confirmed": "подтверждена", "in_house": "заселён",
                  "checked_out": "выехал", "cancelled": "отменена", "no_show": "не заехал"}
@@ -39,7 +42,7 @@ TRANSITIONS = {
     "no_show": {"confirmed"},
 }
 SCALARS = ("number", "check_in", "check_out", "early", "late", "category_id", "paid_category_id", "label_id",
-           "customer", "note", "declined_butler", "group_id", "external_id", "source")
+           "customer", "note", "escort_mode", "vip_code_id", "group_id", "external_id", "source")
 COMPANION_KINDS = {"security", "driver", "nanny", "pet", "other"}
 LOGISTICS_KINDS = {"flight", "transfer", "car"}
 
@@ -178,6 +181,30 @@ def reservation_snapshot(db: Session, r: Reservation) -> dict:
             "moves": [[_d(d), c] for d, c in moves], "units": units, "occupants": occ}
 
 
+def _main_on_arrival(occupants, check_in: dt.date) -> int | None:
+    """Главный гость брони — с ролью «главный» на ночь заезда (§3.1)."""
+    return next((o["guest_id"] for o in occupants
+                 if o["role"] == "main" and o["date_from"] <= check_in < o["date_to"]), None)
+
+
+def _vip_code(db: Session, r: Reservation, doc: dict, rid: int | None) -> int | None:
+    """Код брони (§3.1): ручной выбор в этом сохранении побеждает; иначе при создании и смене
+    главного — код из профиля главного гостя, поверх прежнего; иначе прежний. Архивный код
+    остаётся, где уже стоит, а выбрать или скопировать его заново нельзя."""
+    prev = r.vip_code_id if rid is not None else None
+    main = _main_on_arrival(doc["occupants"], doc["check_in"])
+    if doc.get("vip_code_id") != prev:
+        code = doc.get("vip_code_id")
+    elif rid is None or main != _main_on_arrival(
+            [{"guest_id": o.guest_id, "role": o.role, "date_from": o.date_from, "date_to": o.date_to}
+             for o in db.scalars(select(Occupant).where(Occupant.reservation_id == rid))], r.check_in):
+        code = db.get(Guest, main).vip_code_id if main is not None else None
+    else:
+        code = prev
+    check_selectable(db, code, prev)
+    return code
+
+
 def save_reservation(db: Session, doc: dict, rid: int | None,
                      expected_version: int | None) -> tuple[Reservation, dict]:
     """Создать или заменить документ брони. Возвращает бронь и снимок «до» (пустой для новой)."""
@@ -210,6 +237,7 @@ def save_reservation(db: Session, doc: dict, rid: int | None,
     _check_occupants(doc["check_in"], doc["check_out"], doc["occupants"])
     _check_group(db, doc, rid)
     fields = validate_fields(db, "reservation", doc.get("fields") or {})
+    doc = {**doc, "vip_code_id": _vip_code(db, r, doc, rid)}
 
     for k in SCALARS:
         if k in doc:
@@ -339,8 +367,16 @@ def set_status(db: Session, rid: int, status: str, expected_version: int,
     return r, before
 
 
-def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationState | None = None) -> dict:
-    """Документ брони для формы правки (уровень «полный», только stays.edit)."""
+def vip_code_of(db: Session, code_id: int | None) -> dict | None:
+    """Код брони для формы и карточки; архивный — с пометкой (остаётся, где стоит)."""
+    c = db.get(VipCode, code_id) if code_id is not None else None
+    return {"id": c.id, "code": c.code, "title": c.title, "archived": bool(c.archived)} if c else None
+
+
+def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationState | None = None,
+                     with_escort: bool = True) -> dict:
+    """Документ брони для формы правки (уровень «полный», только stays.edit). with_escort —
+    сопровождение по ночам (контекст покрытия на даты брони); операциям поверх документа не нужно."""
     moves = _moves_of(db, r.id)
     segs = segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves)
     # сегмент формы: закреплён, если закреплена любая часть, — объект закрепления по тому же
@@ -372,13 +408,17 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
         "occupants": [{"id": o.id, "guest_id": o.guest_id, "date_from": _d(o.date_from),
                        "date_to": _d(o.date_to), "role": o.role,
                        "name": short_name(names[o.guest_id]) if o.guest_id in names else "",
-                       "level": names[o.guest_id].level if o.guest_id in names else "regular"} for o in occ],
+                       "special": bool(names[o.guest_id].special) if o.guest_id in names else False,
+                       "vip_code_id": names[o.guest_id].vip_code_id if o.guest_id in names else None}
+                      for o in occ],
         "companions": [{"kind": c.kind, "description": c.description} for c in
                        db.scalars(select(Companion).where(Companion.reservation_id == r.id).order_by(Companion.id))],
         "logistics": [{"kind": lg.kind, "date": _d(lg.date), "time": lg.time, "description": lg.description}
                       for lg in db.scalars(select(Logistics).where(Logistics.reservation_id == r.id)
                                            .order_by(Logistics.date, Logistics.id))],
         "warnings": allocation.warnings_for(state or allocation.current_state(db), r.id),
+        "vip_code": vip_code_of(db, r.vip_code_id),
+        **({"escort": reservation_escort(db, r)} if with_escort else {}),
     }
 
 
@@ -388,7 +428,7 @@ def diff_of(before: dict, db: Session, r: Reservation) -> dict:
 
 def doc_of(db: Session, r: Reservation, **changes) -> dict:
     """Документ брони как его прислала бы форма — для операций поверх save_reservation."""
-    d = reservation_dict(db, r)
+    d = reservation_dict(db, r, with_escort=False)
     day = dt.date.fromisoformat
     return {**{k: d[k] for k in SCALARS}, "check_in": day(d["check_in"]), "check_out": day(d["check_out"]),
             "fields": d["fields"], "pins": None,

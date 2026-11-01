@@ -108,3 +108,29 @@ def create_res(client, cat: dict, ci: str, co: str, guests=(), **kw) -> dict:
 
 def units_of(res: dict) -> list:
     return [s["unit_id"] for s in res["segments"]]
+
+
+def make_code(setup_client, escorted: bool = True, factor: float = 1, title: str = "тест") -> dict:
+    """VIP-код справочника через API (stays.setup): восьмизначный код на «7» — не пересекается с
+    демо-кодами (03, 13, 14) и кодами тестов справочника (на «9»)."""
+    r = setup_client.post(f"{API}/vip-codes", json={"code": f"7{uuid.uuid4().int % 10**7:07d}", "title": title,
+                                                    "escorted": escorted, "factor": factor})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def set_guest(guest_id: int, **cols) -> None:
+    """Поля профиля гостя напрямую в БД (special, vip_code_id): API профиля их ещё не принимает."""
+    from app.core.db import SessionLocal
+    from app.modules.stays.adapters.orm import Guest
+
+    with SessionLocal() as s:
+        g = s.get(Guest, guest_id)
+        for k, v in cols.items():
+            setattr(g, k, v)
+        s.commit()
+
+
+def archive_code(setup_client, code_id: int, archived: bool = True) -> None:
+    r = setup_client.put(f"{API}/vip-codes/{code_id}/archive", json={"archived": archived})
+    assert r.status_code == 200, r.text

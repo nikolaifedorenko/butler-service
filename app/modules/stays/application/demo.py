@@ -218,6 +218,9 @@ def seed_stays_demo(db: Session) -> None:
                   preferences_json='{"allergy": "орехи"}' if i % 9 == 0 else "{}")
         g.search_text = guest_search_text(g, set())
         guests.append(g)
+    # VIP-коды профилей (§3.1): форма брони подставляет код главного гостя; брони демо его не копируют
+    by_code = dict(db.execute(select(VipCode.code, VipCode.id)).all())
+    guests[0].vip_code_id, guests[1].vip_code_id = by_code.get("13"), by_code.get("03")
     db.add_all(guests)
     db.flush()
     for a, b, kind in ((0, 10, "spouse"), (0, 11, "parent"), (0, 12, "assistant"), (1, 13, "spouse"),

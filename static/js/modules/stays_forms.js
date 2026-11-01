@@ -148,6 +148,11 @@ async function openReservationForm(id, opts = {}) {
       : cats;
     return list.map(c => opt(c.id, `${c.code} · ${c.title}`, cur)).join('');
   };
+  /* VIP-коды: действующие; архивный — только уже стоящий в брони, с пометкой (§3) */
+  const codeOptions = opt('', '—', r?.vip_code_id) + (fund.vip_codes || [])
+    .filter(c => !c.archived || c.id === r?.vip_code_id)
+    .map(c => opt(c.id, `${c.code}${c.title ? ' — ' + c.title : ''}${c.archived ? ' (в архиве)' : ''}`, r?.vip_code_id)).join('');
+  const escortHint = e => (e ? `по правилам: ${e.rule_reasons?.length ? 'нужен — ' + e.rule_reasons.join(', ') : 'не нужен'}` : '');
   openModal({
     title: r ? `Бронь ${r.number || '#' + r.id}` : 'Новая бронь', wide: true,
     body: `
@@ -158,7 +163,11 @@ async function openReservationForm(id, opts = {}) {
         ${sfRow('Выезд', sfInput('rf-check-out', r?.check_out, 'date'))}
       </div>
       ${sfCheck('rf-early', 'Ранний заезд', r?.early)} ${sfCheck('rf-late', 'Поздний выезд', r?.late)}
-      ${sfCheck('rf-declined', 'Гость отказался от батлера', r?.declined_butler)}
+      <div class="grid-2">
+        ${sfRow('VIP-код', `<select id="rf-vip-code">${codeOptions}</select>`)}
+        ${sfRow('Сопровождение', `<select id="rf-escort">${Object.entries(STAYS_ESCORT_MODE).map(([k, t]) => opt(k, t, r?.escort_mode || 'rules')).join('')}</select>`)}
+      </div>
+      <div class="muted" id="rf-escort-hint">${esc(escortHint(r?.escort))}</div>
       <div class="grid-2">
         ${sfRow('Метка', `<select id="rf-label">${opt('', '—', r?.label_id)}${fund.labels.map(l => opt(l.id, l.title, r?.label_id)).join('')}</select>`)}
         ${sfRow('Заказчик', sfInput('rf-customer', r?.customer))}
@@ -182,7 +191,7 @@ async function openReservationForm(id, opts = {}) {
     onMount(m) {
       const val = sel => $(sel, m).value;
       if (opts.mine) {
-        ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-declined',
+        ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-vip-code', '#rf-escort',
           '#rf-label', '#rf-customer', '#rf-paid', '#rf-move-add', '#rf-new-add', '#rf-new-last']
           .forEach(sel => { const el = $(sel, m); if (el) el.disabled = true; });
         if (r) {
@@ -198,14 +207,24 @@ async function openReservationForm(id, opts = {}) {
           <input type="date" data-occ-from="${i}" value="${esc(o.date_from || '')}"> –
           <input type="date" data-occ-to="${i}" value="${esc(o.date_to || '')}">
           <button class="btn btn-sm btn-ghost" data-occ-del="${i}">×</button></div>`).join('') || '<div class="muted">Гостей пока нет</div>';
-        $$('[data-occ-role]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occRole].role = s.value; }; });
+        $$('[data-occ-role]', m).forEach(s => {
+          s.onchange = () => { const o = form.occupants[s.dataset.occRole]; o.role = s.value; if (o.role === 'main') takeCode(o); };
+        });
         $$('[data-occ-from]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occFrom].date_from = s.value; }; });
         $$('[data-occ-to]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occTo].date_to = s.value; }; });
         $$('[data-occ-del]', m).forEach(b => { b.onclick = () => { form.occupants.splice(Number(b.dataset.occDel), 1); drawOcc(); }; });
       };
-      const addGuest = (gid, name) => {
-        form.occupants.push({ guest_id: gid, name, role: form.occupants.some(o => o.role === 'main') ? 'guest' : 'main',
-          date_from: val('#rf-check-in'), date_to: val('#rf-check-out') });
+      /* главный гость выбран — VIP-код брони из его профиля (§3.1); можно поменять вручную */
+      const takeCode = o => {
+        if (opts.mine || o.vip_code_id === undefined) return;
+        const sel = $('#rf-vip-code', m), v = String(o.vip_code_id ?? '');
+        if ([...sel.options].some(x => x.value === v)) sel.value = v;
+      };
+      const addGuest = (gid, name, vipCode) => {
+        const o = { guest_id: gid, name, vip_code_id: vipCode, role: form.occupants.some(x => x.role === 'main') ? 'guest' : 'main',
+          date_from: val('#rf-check-in'), date_to: val('#rf-check-out') };
+        form.occupants.push(o);
+        if (o.role === 'main') takeCode(o);
         drawOcc();
       };
       const drawMoves = () => {
@@ -286,10 +305,12 @@ async function openReservationForm(id, opts = {}) {
         timer = setTimeout(async () => {
           const q = e.target.value.trim();
           const found = q.length < 2 ? [] : await api('/api/stays/guests?q=' + encodeURIComponent(q), { silent: true });
-          $('#rf-guest-res', m).innerHTML = found.map(g => `<button class="btn btn-sm btn-ghost" data-pick-guest="${g.id}" data-name="${esc(g.short)}">
-            ${g.level !== 'regular' ? esc(STAYS_LEVEL_MARK[g.level]) : ''}${esc(g.last_name)} ${esc(g.first_name)} ${esc(g.middle_name)}</button>`).join('')
+          $('#rf-guest-res', m).innerHTML = found.map(g => `<button class="btn btn-sm btn-ghost" data-pick-guest="${g.id}" data-name="${esc(g.short)}" data-code="${g.vip_code_id ?? ''}">
+            ${g.special ? STAYS_SPECIAL_MARK : ''}${esc(g.last_name)} ${esc(g.first_name)} ${esc(g.middle_name)}</button>`).join('')
             || (q.length >= 2 ? '<span class="muted">не найдено</span>' : '');
-          $$('[data-pick-guest]', m).forEach(b => { b.onclick = () => { addGuest(Number(b.dataset.pickGuest), b.dataset.name); $('#rf-guest-res', m).innerHTML = ''; }; });
+          $$('[data-pick-guest]', m).forEach(b => {
+            b.onclick = () => { addGuest(Number(b.dataset.pickGuest), b.dataset.name, b.dataset.code ? Number(b.dataset.code) : null); $('#rf-guest-res', m).innerHTML = ''; };
+          });
         }, 300);
       };
       $('#rf-new-add', m).onclick = async () => {
@@ -297,13 +318,14 @@ async function openReservationForm(id, opts = {}) {
         if (!last) { toast('Укажите фамилию гостя', 'err'); return; }
         try {
           const g = await api('/api/stays/guests', { method: 'POST', body: { last_name: last, level: val('#rf-new-level') } });
-          addGuest(g.id, g.last_name); $('#rf-new-last', m).value = '';
+          addGuest(g.id, g.last_name, null); $('#rf-new-last', m).value = '';
         } catch (e) { toast(e.message, 'err'); }
       };
       const body = () => ({
         number: val('#rf-number'), category_id: Number(val('#rf-category')),
         check_in: val('#rf-check-in'), check_out: val('#rf-check-out'),
-        early: $('#rf-early', m).checked, late: $('#rf-late', m).checked, declined_butler: $('#rf-declined', m).checked,
+        early: $('#rf-early', m).checked, late: $('#rf-late', m).checked, escort_mode: val('#rf-escort'),
+        vip_code_id: val('#rf-vip-code') ? Number(val('#rf-vip-code')) : null,
         label_id: opts.mine ? (r?.label_id ?? null) : (val('#rf-label') ? Number(val('#rf-label')) : null),
         customer: val('#rf-customer'), paid_category_id: Number(val('#rf-paid')), note: val('#rf-note'),
         group_id: r?.group_id ?? null, fields: { ...(r?.fields || {}), ...staysFieldValues(m, 'data-rf-field') },
@@ -314,6 +336,15 @@ async function openReservationForm(id, opts = {}) {
       });
       const flow = previewThenSave({ url: r ? `/api/stays/reservations/${r.id}` : '/api/stays/reservations',
         method: r ? 'PUT' : 'POST', body, out: () => $('#rf-preview-out', m) });
+      /* предпросмотр: подсказка правил на даты формы и смена кода («код 13 → 03» при смене главного) */
+      const preview = flow.preview;
+      flow.preview = async () => {
+        const res = await preview();
+        const now = res.result?.vip_code?.code || '—', was = r?.vip_code?.code || '—';
+        $('#rf-escort-hint', m).textContent = escortHint(res.result?.escort);
+        if (now !== was) $('#rf-preview-out', m).insertAdjacentHTML('afterbegin', `<div data-code-change>VIP-код: ${esc(was)} → <b>${esc(now)}</b></div>`);
+        return res;
+      };
       staysBindFoot(m, flow, opts.onSaved, 'Бронь сохранена');
       /* связанных гостей батлера догружаем после привязки кнопок — иначе ранний клик «Сохранить» терялся */
       if (opts.mine) (async () => {

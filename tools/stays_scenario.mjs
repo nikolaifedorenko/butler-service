@@ -670,6 +670,58 @@ async function formFundOnCheckIn() {
   click($('[data-close]'));
 }
 
+/* Бронь (правила сопровождения §3, §6): VIP-код подставляется из профиля главного гостя (демо: у Орлова —
+   «13»), «Сопровождение» сохраняется, архивный код текущей брони виден в списке с пометкой «в архиве» */
+async function escortBookingForm() {
+  console.log('\n7б · Форма брони: VIP-код и сопровождение');
+  const c13 = (await apiJson('GET', '/api/stays/fund')).body.vip_codes.find(c => c.code === '13');
+  const code = 'EF' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1', code + '-2']);
+  const d1 = addDays(serverToday(), 40), d2 = addDays(serverToday(), 43);
+  window.navigate('stays');
+  window.eval('openReservationForm()');
+  check('форма брони: поля «VIP-код» и «Сопровождение»', await waitFor(() => !!$('#rf-vip-code') && !!$('#rf-escort')));
+  check('«Сопровождение»: по правилам / требуется / не требуется (гость отказался)',
+    [...$('#rf-escort').options].map(o => o.textContent).join(' / ') === 'по правилам / требуется / не требуется (гость отказался)');
+  input($('#rf-number'), 'EF' + uniq);
+  change($('#rf-check-in'), d1);
+  await waitFor(() => [...$('#rf-category').options].some(o => o.value === String(cat.id)));
+  change($('#rf-category'), String(cat.id));
+  change($('#rf-check-out'), d2);
+  input($('#rf-guest-q'), 'Орлов');
+  const pick = `[data-pick-guest][data-code="${c13?.id}"]`;
+  check('подбор гостя: гость с кодом найден', await waitFor(() => !!$(pick)));
+  click($(pick));
+  check('VIP-код подставлен из профиля главного гостя', await waitFor(() => $('#rf-vip-code').value === String(c13?.id)),
+    $('#rf-vip-code').value);
+  change($('#rf-escort'), 'required');
+  click($('[data-save]'));
+  const url = `/api/stays/bookings?first=${d1}&last=${d1}&category_ids=${cat.id}`;
+  const row = (await pollApi(url, b => b?.rows?.length > 0)).rows?.[0];
+  check('сохранено: код «13» и «требуется»', row?.vip_code === '13' && row?.escort_mode === 'required', JSON.stringify(row));
+  await waitFor(() => !$('#rf-vip-code'));
+  window.eval(`openReservationForm(${row?.id})`);
+  check('правка: режим и код на месте, подсказка правил — «нужен — код 13»', await waitFor(() =>
+    $('#rf-escort')?.value === 'required' && $('#rf-vip-code')?.value === String(c13?.id)
+    && /по правилам: нужен — .*код 13/.test(text('#rf-escort-hint'))), text('#rf-escort-hint'));
+  click($('[data-close]'));
+  // архивный код: остаётся у брони, где стоит, и виден с пометкой; другой брони не предлагается
+  const arch = (await apiJson('POST', '/api/stays/vip-codes', { code: '6' + String(Date.now()).slice(-7),
+    title: 'Архивный', escorted: false, factor: 1 })).body;
+  const kept = (await apiJson('POST', '/api/stays/reservations', { number: 'EA' + uniq, check_in: d1, check_out: d2,
+    category_id: cat.id, vip_code_id: arch.id })).body.result;
+  await apiJson('PUT', `/api/stays/vip-codes/${arch.id}/archive`, { archived: true });
+  await window.eval('staysFund(true)');
+  window.eval(`openReservationForm(${kept?.id})`);
+  check('архивный код текущей брони — в списке с пометкой «в архиве»', await waitFor(() =>
+    $('#rf-vip-code')?.value === String(arch.id) && /в архиве/.test($('#rf-vip-code').selectedOptions[0]?.textContent || '')));
+  click($('[data-close]'));
+  window.eval(`openReservationForm(${row?.id})`);
+  check('другой брони архивный код не предлагается', await waitFor(() => !!$('#rf-vip-code'))
+    && ![...$('#rf-vip-code').options].some(o => o.value === String(arch.id)));
+  click($('[data-close]'));
+}
+
 const DEMO_SURNAMES = ['Лебедев', 'Фомина', 'Зайцев', 'Гусев', 'Кузьмин', 'Белова'];
 
 async function roleSmoke() {
@@ -1387,6 +1439,7 @@ async function main() {
     await savedFilters();
     await flagMidMonth();
     await formFundOnCheckIn();
+    await escortBookingForm();
     await bookingsTab();
     await guestsTab();
     await familyEditor();

@@ -144,7 +144,7 @@ function dayOooHtml(r) {
 
 function dayRowHtml(r, names) {
   if (r.kind === 'ooo') return dayOooHtml(r);
-  const guests = names ? r.guests.map(g => `${g.level !== 'regular' ? esc(STAYS_LEVEL_MARK[g.level]) : ''}${esc(g.name)}`).join(', ')
+  const guests = names ? r.guests.map(g => `${staysGuestMark(g.special)}${esc(g.name)}${g.role === 'main' ? staysCodeTag(r.vip_code) : ''}`).join(', ')
     + r.guests.filter(g => g.relatives?.length).map(g => staysRelativesHtml(g.relatives.map(x => ({ ...x, title: `${g.name}: ${x.title}` })))).join('')
     : `${r.guests_count} гост.`;
   const det = r.details ? [...r.details.logistics.map(l => `${l.time} ${l.description}`), ...r.details.companions.map(c => c.description),
@@ -161,7 +161,7 @@ async function renderDayBoard(body) {
   const f = staysState.filters;
   const q = staysFundParams(new URLSearchParams({ date: boardState.day }));
   if (f.escorted) q.set('escorted_only', '1');
-  if (f.vip) q.set('vip', '1');
+  if (f.vip) q.set('special', '1');
   if (f.q.trim()) q.set('q', f.q.trim());
   const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/day?' + q, { silent: true });
@@ -318,13 +318,12 @@ async function renderMine() {
     $('#mine-body', host).innerHTML = `<p class="muted">${esc(e.message)}</p>`;
     return;
   }
-  const level = l => (l !== 'regular' ? esc(STAYS_LEVEL_MARK[l]) : '');
   $('#mine-body', host).className = '';
   $('#mine-body', host).innerHTML = data.reservations.map(r => `
     <div class="panel mine-card">
       <h3 class="panel-title">${esc(r.units.join(' → ') || 'без объекта')} · ${esc(dateRu(r.check_in))}–${esc(dateRu(r.check_out))}</h3>
       <div class="muted">веду: ${esc(r.days.map(d => dateRu(d).slice(0, 5)).join(', '))}</div>
-      ${r.guests.map(g => `<div class="mine-guest"><b>${level(g.level)}${esc(g.name)}</b> <span class="muted">${esc(STAYS_ROLE[g.role])}${g.phone ? ' · ' + esc(g.phone) : ''}</span>
+      ${r.guests.map(g => `<div class="mine-guest"><b>${staysGuestMark(g.special)}${esc(g.name)}</b> <span class="muted">${esc(STAYS_ROLE[g.role])}${g.phone ? ' · ' + esc(g.phone) : ''}</span>
         ${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => `<div class="muted">${esc(k)}: ${esc(v)}</div>`).join('')}
         ${g.special_dates.map(s => `<div class="muted">🎉 ${esc(dateRu(s.date))} — ${esc(s.what)}</div>`).join('')}
         <button class="btn btn-sm btn-ghost" data-mine-guest="${g.guest_id}">Сведения о госте</button></div>`).join('')}

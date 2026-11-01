@@ -97,7 +97,8 @@ def list_guests(q: str = "", principal: Principal = Depends(require_perm("stays.
                 db: Session = Depends(get_db)):
     """Подбор гостя по ФИО, телефону и полям с поиском: без контактов и дат рождения."""
     return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
-             "middle_name": g.middle_name, "level": g.level, "short": guests.short_name(g)}
+             "middle_name": g.middle_name, "level": g.level, "special": bool(g.special),
+             "vip_code_id": g.vip_code_id, "short": guests.short_name(g)}
             for g in guests.search_guests(db, q)]
 
 
