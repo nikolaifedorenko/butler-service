@@ -208,6 +208,38 @@ def _vip_code(db: Session, r: Reservation, doc: dict, rid: int | None) -> int | 
     return code
 
 
+def main_reservations(db: Session, guest_id: int, today: dt.date) -> list[Reservation]:
+    """Текущие и будущие брони (check_out > сегодня), где гость — главный на ночь заезда (§3.1)."""
+    cand = list(db.scalars(select(Reservation).join(Occupant, Occupant.reservation_id == Reservation.id).where(
+        Occupant.guest_id == guest_id, Occupant.role == "main", Reservation.check_out > today)
+        .order_by(Reservation.id).distinct()))
+    if not cand:
+        return []
+    occ: dict[int, list[dict]] = {}
+    for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_([r.id for r in cand]))):
+        occ.setdefault(o.reservation_id, []).append({"guest_id": o.guest_id, "role": o.role,
+                                                     "date_from": o.date_from, "date_to": o.date_to})
+    return [r for r in cand if _main_on_arrival(occ.get(r.id, []), r.check_in) == guest_id]
+
+
+def guest_profile_extra(db: Session, g: Guest) -> dict:
+    """К карточке гостя: его VIP-код (с названием) и число броней, куда смена кода дойдёт."""
+    return {"vip_code": vip_code_of(db, g.vip_code_id), "main_current": len(main_reservations(db, g.id, local_date()))}
+
+
+def set_main_code(db: Session, rs: list[Reservation], code_id: int | None) -> list[tuple[Reservation, int | None]]:
+    """Код брони — из профиля главного гостя (смена кода в профиле, §3.1) → [(бронь, прежний код)]
+    только для тех, у кого он сменился; версия растёт — открытая форма получит 409."""
+    done = []
+    for r in rs:
+        if r.vip_code_id != code_id:
+            done.append((r, r.vip_code_id))
+            r.vip_code_id = code_id
+            r.version += 1
+    db.flush()
+    return done
+
+
 def save_reservation(db: Session, doc: dict, rid: int | None,
                      expected_version: int | None) -> tuple[Reservation, dict]:
     """Создать или заменить документ брони. Возвращает бронь и снимок «до» (пустой для новой)."""

@@ -90,14 +90,12 @@ class Demo:
 
 @pytest.fixture()
 def demo_small(manager_role_client, manager_client):
-    from .helpers import create_res, make_category, make_guest, set_guest, uniq
+    from .helpers import create_res, make_category, make_guest, uniq
 
     cat = make_category(manager_role_client, n_units=5)
     u = uniq()
-    gs = [make_guest(manager_client, f"Фамилия{u}{i}", level=("vvip" if i == 0 else "vip" if i == 1 else "regular"))
+    gs = [make_guest(manager_client, f"Фамилия{u}{i}", special=i < 2)
           for i in range(6)]
-    for g in gs[:2]:
-        set_guest(g["id"], special=True)          # прежние VIP/VVIP — «Особые» (как миграция 0017)
     gid = manager_client.post("/api/stays/groups", json={"title": "Семья"}).json()["id"]
     res = [
         create_res(manager_client, cat, "2029-02-01", "2029-02-06", [(gs[0]["id"], "main", None, None),

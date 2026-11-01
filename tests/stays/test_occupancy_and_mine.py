@@ -166,12 +166,12 @@ def test_butler_cannot_edit_foreign_reservation(butler_client, own_reservation):
 def test_butler_edits_own_guest_preferences_only(butler_client, own_reservation):
     g = own_reservation["mine_guest"]
     card = butler_client.get(f"{API}/guests/{g['id']}").json()
-    body = {k: card[k] for k in ("last_name", "first_name", "middle_name", "email", "level", "note", "fields",
+    body = {k: card[k] for k in ("last_name", "first_name", "middle_name", "email", "special", "vip_code_id", "note", "fields",
                                  "special_dates", "birth_date")}
     body["phone"] = card["phone"]
     r = butler_client.put(f"{API}/guests/{g['id']}", json={**body, "preferences": {"allergy": "мёд"}})
     assert r.status_code == 200, r.text
-    r = butler_client.put(f"{API}/guests/{g['id']}", json={**body, "level": "vvip"})
+    r = butler_client.put(f"{API}/guests/{g['id']}", json={**body, "special": True})
     assert r.status_code == 403
     other = own_reservation["other_guest"]
     assert butler_client.get(f"{API}/guests/{other['id']}").status_code == 403

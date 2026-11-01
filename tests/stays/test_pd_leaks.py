@@ -14,7 +14,7 @@ from .helpers import API, create_res, make_category, make_code, make_guest, set_
 
 def test_occupancy_level_never_sees_guests(app_stack, occupancy_client, manager_role_client, manager_client):
     cat = make_category(manager_role_client, n_units=2)
-    g = make_guest(manager_client, "Утечкин", level="vvip")
+    g = make_guest(manager_client, "Утечкин", special=True)
     res = create_res(manager_client, cat, "2038-03-02", "2038-03-05", [(g["id"], "main", None, None)],
                      note="УтечкаЗаметка", customer="УтечкаЗаказчик",
                      logistics=[{"kind": "flight", "date": "2038-03-02", "time": "07:00", "description": "УтечкаРейс"}])

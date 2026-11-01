@@ -16,8 +16,8 @@ def _setup(sup, mgr, DAY=DAY):
     """В день DAY: заезд в виллу (VIP), выезд, проживающий без батлера, номер без сопровождения."""
     villa = make_category(sup, n_units=3)
     room = make_category(sup, n_units=1, kind="room", escorted=False, weight=1)
-    vip = make_guest(mgr, "ТаблоВип", level="vip")
-    set_guest(vip["id"], special=True)
+    vip = make_guest(mgr, "ТаблоВип", special=True)
+    set_guest(vip["id"], level="vip")        # табло дня ещё считает итог vip по прежнему уровню (Task 6)
     out_g, stay_g, room_g = make_guest(mgr, "ТаблоВыезд"), make_guest(mgr, "ТаблоЖивёт"), make_guest(mgr, "ТаблоНомер")
     arr = create_res(mgr, villa, _iso(DAY), _iso(DAY + dt.timedelta(days=3)), [(vip["id"], "main", None, None)],
                      early=True, logistics=[{"kind": "transfer", "date": _iso(DAY), "time": "07:40", "description": "SVO"}])

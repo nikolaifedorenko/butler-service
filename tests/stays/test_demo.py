@@ -19,7 +19,7 @@ def test_demo_fund_and_warnings(db):
     assert len(cats) == 11
     assert sum(1 for u in fund.units.values() if u.category_id in cats) == 440
     assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo")) >= 60
-    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.level == "vvip")) == 2
+    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.special.is_(True))) == 2
     assert db.scalar(select(func.count(GuestLink.id))) >= 5
     res = list(db.scalars(select(Reservation).where(Reservation.source == "demo")))
     assert len(res) >= 300

@@ -86,8 +86,9 @@ def make_category(setup_client, n_units: int = 2, kind: str = "villa", escorted:
     return cat
 
 
-def make_guest(client, last: str | None = None, level: str = "regular") -> dict:
-    r = client.post(f"{API}/guests", json={"last_name": last or "Гость" + uniq(), "level": level})
+def make_guest(client, last: str | None = None, special: bool = False, vip_code_id: int | None = None) -> dict:
+    r = client.post(f"{API}/guests", json={"last_name": last or "Гость" + uniq(), "special": special,
+                                           "vip_code_id": vip_code_id})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -120,7 +121,7 @@ def make_code(setup_client, escorted: bool = True, factor: float = 1, title: str
 
 
 def set_guest(guest_id: int, **cols) -> None:
-    """Поля профиля гостя напрямую в БД (special, vip_code_id): API профиля их ещё не принимает."""
+    """Поля профиля гостя напрямую в БД — когда нужен обход API (прежний level для табло, архивный код)."""
     from app.core.db import SessionLocal
     from app.modules.stays.adapters.orm import Guest
 

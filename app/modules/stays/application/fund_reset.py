@@ -76,6 +76,7 @@ from .fund_xlsx import (
     export_fund,
 )
 from .locking import lock_module
+from .vip_codes import code_texts
 
 CONFIRM_WORD = "ЗАМЕНИТЬ"
 IDS_IGNORED = "ID в файле будут проигнорированы"
@@ -296,6 +297,7 @@ def backup_bytes(db: Session) -> bytes:
         name = _guest_name(guests[gid]) if gid in guests else f"#{gid}"
         occ.setdefault(rid, []).append(f"{name} (главный)" if role == "main" else name)
     yn = {True: "да", False: ""}
+    vip = code_texts(db)
     _sheet(wb, SHEET_RESERVATIONS,
            ["ID", "номер", "статус", "заезд", "выезд", "РЗ", "ПВ", "категория (код)", "объекты", "гости",
             "метка", "заказчик", "оплата за (код)", "примечание", "без батлера", "источник", "внешний ID",
@@ -306,9 +308,9 @@ def backup_bytes(db: Session) -> bytes:
              r.note, yn[bool(r.declined_butler)], r.source, r.external_id or "", r.fields_json]
             for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id))))
     _sheet(wb, SHEET_GUESTS,
-           ["ID", "фамилия", "имя", "отчество", "телефон", "email", "дата рождения", "уровень",
+           ["ID", "фамилия", "имя", "отчество", "телефон", "email", "дата рождения", "особый", "код",
             "предпочтения", "особые даты", "поля", "примечание", "источник", "внешний ID"],
-           ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, g.level,
+           ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, yn[bool(g.special)], vip.get(g.vip_code_id, ("", False))[0],
              g.preferences_json, g.special_dates_json, g.fields_json, g.note, g.source, g.external_id or ""]
             for g in guests.values()))
     _raw_sheets(wb, db)

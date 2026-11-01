@@ -32,6 +32,11 @@ def code_dict(c: VipCode) -> dict:
             "factor": float(c.factor), "sort_order": c.sort_order, "archived": bool(c.archived)}
 
 
+def code_texts(db: Session) -> dict[int, tuple[str, bool]]:
+    """id → (код, в архиве) для списков и подбора: одним запросом, с архивными."""
+    return {i: (code, bool(arch)) for i, code, arch in db.execute(select(VipCode.id, VipCode.code, VipCode.archived))}
+
+
 def all_codes(db: Session) -> list[VipCode]:
     return list(db.scalars(select(VipCode).order_by(VipCode.sort_order, VipCode.code)))
 

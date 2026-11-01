@@ -1,6 +1,6 @@
 """Вкладка «Гости» (спека addendum §3, только полный уровень — проверка в API): справочник
-гостей — ФИО, уровень, телефон, последний заезд, число проживаний; поиск по ФИО, телефону и номеру брони, фильтры
-«уровень», «был в периоде», «день рождения в ближайшие N дней», сортировка на сервере, по 200.
+гостей — ФИО, «◆ Особый гость», VIP-код, телефон, последний заезд, число проживаний; поиск по ФИО, телефону и номеру брони, фильтры
+«особые», «код», «был в периоде», «день рождения в ближайшие N дней», сортировка на сервере, по 200.
 Два запроса: гости и записи «проживающий» с номером и статусом брони; остальное — в памяти."""
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from app.core.time import local_date
 
 from ..adapters.orm import Guest, Occupant, Reservation
 from .family import full_name
-from .guests import LEVELS, GuestError, format_phone, search_query
-from .views import LEVEL_RANK
+from .guests import GuestError, format_phone, search_query
+from .vip_codes import code_texts
 
-SORTS = ("name", "level", "last_stay", "stays")
+SORTS = ("name", "special", "last_stay", "stays")
 MAX_LIMIT = 200
 MAX_BIRTHDAY_DAYS = 366
 NOT_STAYED = ("cancelled", "no_show")      # такие брони — не проживание: ни в счётчике, ни в периоде
@@ -27,7 +27,8 @@ NOT_STAYED = ("cancelled", "no_show")      # такие брони — не пр
 @dataclass(frozen=True)
 class GuestQuery:
     q: str = ""
-    level: str = ""                        # пусто — все уровни
+    special: bool = False                  # только «◆ Особый гость»
+    vip_code_id: int | None = None         # только с этим кодом
     stayed_from: dt.date | None = None
     stayed_to: dt.date | None = None
     birthday_days: int | None = None
@@ -37,8 +38,6 @@ class GuestQuery:
     limit: int = MAX_LIMIT
 
     def __post_init__(self) -> None:
-        if self.level and self.level not in LEVELS:
-            raise GuestError("Уровень гостя: обычный, VIP или VVIP")
         if self.stayed_from and self.stayed_to and self.stayed_to < self.stayed_from:
             raise GuestError("Конец периода раньше начала")
         if self.birthday_days is not None and not 0 <= self.birthday_days <= MAX_BIRTHDAY_DAYS:
@@ -90,11 +89,12 @@ def _stays(db: Session) -> dict[int, _Stays]:
     return out
 
 
-def _sort_key(sort: str, stays: dict[int, _Stays]):
+def _sort_key(sort: str, stays: dict[int, _Stays], codes: dict[int, tuple[str, bool]]):
     empty = _Stays()
     return {
         "name": lambda g: (g.last_name.lower(), g.first_name.lower(), g.middle_name.lower()),
-        "level": lambda g: LEVEL_RANK.get(g.level, 0),
+        # «Особые» первыми (по возрастанию), затем по коду; без кода — в конце группы
+        "special": lambda g: (not g.special, g.vip_code_id is None, codes.get(g.vip_code_id, ("", False))[0]),
         "last_stay": lambda g: stays.get(g.id, empty).last or dt.date.min,
         "stays": lambda g: len(stays.get(g.id, empty).rids),
     }[sort]
@@ -103,8 +103,10 @@ def _sort_key(sort: str, stays: dict[int, _Stays]):
 def find_guests(db: Session, q: GuestQuery, today: dt.date | None = None) -> list[dict]:
     """Все подходящие гости в порядке сортировки (без среза страницы)."""
     stmt = select(Guest)
-    if q.level:
-        stmt = stmt.where(Guest.level == q.level)
+    if q.special:
+        stmt = stmt.where(Guest.special.is_(True))
+    if q.vip_code_id is not None:
+        stmt = stmt.where(Guest.vip_code_id == q.vip_code_id)
     guests = list(db.scalars(stmt))
     stays = _stays(db)
     empty = _Stays()
@@ -119,12 +121,15 @@ def find_guests(db: Session, q: GuestQuery, today: dt.date | None = None) -> lis
         today = today or local_date()
         guests = [g for g in guests if g.birth_date and days_to_birthday(g.birth_date, today) <= q.birthday_days]
     # вторичные ключи — имя, затем id — всегда по возрастанию (устойчивая сортировка)
-    guests.sort(key=lambda g: (*_sort_key("name", stays)(g), g.id))
-    guests.sort(key=_sort_key(q.sort, stays), reverse=q.dir == "desc")
+    codes = code_texts(db)
+    guests.sort(key=lambda g: (*_sort_key("name", stays, codes)(g), g.id))
+    guests.sort(key=_sort_key(q.sort, stays, codes), reverse=q.dir == "desc")
     rows = []
     for g in guests:
         s = stays.get(g.id, empty)
-        rows.append({"id": g.id, "name": full_name(g), "level": g.level, "gender": g.gender,
+        rows.append({"id": g.id, "name": full_name(g), "special": bool(g.special),
+                     "vip_code": codes.get(g.vip_code_id, ("", False))[0],
+                     "vip_code_archived": codes.get(g.vip_code_id, ("", False))[1], "gender": g.gender,
                      "phone": format_phone(g.phone), "last_stay": s.last.isoformat() if s.last else None,
                      "stays": len(s.rids)})
     return rows

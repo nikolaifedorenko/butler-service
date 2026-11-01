@@ -12,7 +12,6 @@ registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
 const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони'],
   ['blocks', 'Блоки'], ['ooo', 'OOO'], ['guests', 'Гости']];
-const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
 /* «Особый гость» — ◆ у имени; VIP-код брони — рядом с главным гостем (правила сопровождения §6) */
 const STAYS_SPECIAL_MARK = '◆ ';
 const STAYS_ESCORT_MODE = { rules: 'по правилам', required: 'требуется', declined: 'не требуется (гость отказался)' };

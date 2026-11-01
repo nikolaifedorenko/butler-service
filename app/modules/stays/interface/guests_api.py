@@ -14,9 +14,10 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
+from app.core.time import local_date
 
 from ..adapters.orm import Guest
-from ..application import allocation, family, guests, guests_list, history, mine
+from ..application import allocation, family, guests, guests_list, history, mine, reservations, vip_codes
 from ..application.fund import FundConflict, FundError
 from ..application.visibility import at_least, level_for
 from ._ops import PREVIEW, run
@@ -41,11 +42,18 @@ class GuestIn(BaseModel):
     email: str = Field("", max_length=120)
     birth_date: Optional[dt.date] = None
     gender: Literal["m", "f", ""] = ""
-    level: Literal["regular", "vip", "vvip"] = "regular"
+    special: bool = False
+    vip_code_id: Optional[int] = None
     preferences: dict[str, str] = {}
     special_dates: list[SpecialDate] = []
     fields: dict = {}
     note: str = Field("", max_length=4000)
+
+
+class GuestUpdateIn(GuestIn):
+    """Правка профиля: сменился код — update_reservations переносит его в текущие и будущие
+    брони, где гость главный (§3.1); по умолчанию — да."""
+    update_reservations: bool = True
 
 
 class NewGuestIn(BaseModel):
@@ -89,17 +97,20 @@ class MergeIn(BaseModel):
 
 
 def _card(db: Session, g: Guest) -> dict:
-    return {**guests.guest_dict(g), "links": guests.links_of(db, g.id)}
+    return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, g.id)}
 
 
 @router.get("/guests")
 def list_guests(q: str = "", principal: Principal = Depends(require_perm("stays.view")),
                 db: Session = Depends(get_db)):
     """Подбор гостя по ФИО, телефону и полям с поиском: без контактов и дат рождения."""
+    found = guests.search_guests(db, q)
+    codes = vip_codes.code_texts(db) if any(g.vip_code_id for g in found) else {}
     return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
-             "middle_name": g.middle_name, "level": g.level, "special": bool(g.special),
-             "vip_code_id": g.vip_code_id, "short": guests.short_name(g)}
-            for g in guests.search_guests(db, q)]
+             "middle_name": g.middle_name, "special": bool(g.special),
+             "vip_code_id": g.vip_code_id, "vip_code": codes.get(g.vip_code_id, ("", False))[0],
+             "short": guests.short_name(g)}
+            for g in found]
 
 
 def _require_full(db: Session, principal: Principal) -> None:
@@ -110,16 +121,17 @@ def _require_full(db: Session, principal: Principal) -> None:
 
 
 @router.get("/guests/list")
-def guests_tab(q: str = "", level: Literal["", "regular", "vip", "vvip"] = "",
+def guests_tab(q: str = "", special: bool = False, vip_code_id: Optional[int] = None,
                stayed_from: Optional[dt.date] = None, stayed_to: Optional[dt.date] = None,
                birthday_days: Optional[int] = Query(None, ge=0, le=guests_list.MAX_BIRTHDAY_DAYS),
-               sort: Literal["name", "level", "last_stay", "stays"] = "name", dir: Literal["asc", "desc"] = "asc",
+               sort: Literal["name", "special", "last_stay", "stays"] = "name", dir: Literal["asc", "desc"] = "asc",
                offset: int = Query(0, ge=0), limit: int = Query(guests_list.MAX_LIMIT, ge=1, le=guests_list.MAX_LIMIT),
                principal: Principal = Depends(require_perm("stays.guests")), db: Session = Depends(get_db)):
     """Вкладка «Гости»: только полный уровень (stays.guests), остальным — 403."""
     _require_full(db, principal)
     try:
-        query = guests_list.GuestQuery(q, level, stayed_from, stayed_to, birthday_days, sort, dir, offset, limit)
+        query = guests_list.GuestQuery(q, special, vip_code_id, stayed_from, stayed_to, birthday_days, sort, dir,
+                                        offset, limit)
     except FundError as e:
         raise _err(e) from e
     return guests_list.list_guests(db, query)
@@ -201,11 +213,13 @@ def set_guest_prefs(gid: int, payload: PrefsIn, preview_flag: bool = PREVIEW,
     return run(db, op, preview_flag, None, principal)
 
 
+def _guest_data(data: dict) -> dict:
+    return {**data, "special_dates": [{"date": d["date"].isoformat(), "what": d["what"]} for d in data["special_dates"]]}
+
+
 def _save(db: Session, principal: Principal, payload: GuestIn, gid: Optional[int]) -> dict:
-    data = payload.model_dump()
-    data["special_dates"] = [{"date": d["date"].isoformat(), "what": d["what"]} for d in data["special_dates"]]
     try:
-        g, before = guests.save_guest(db, data, gid)
+        g, before = guests.save_guest(db, _guest_data(payload.model_dump()), gid)
     except FundError as e:
         raise _err(e) from e
     audit(db, principal, "stays_guest", f"guest:{g.id}", {"diff": guests.guest_changes(before, g)})
@@ -220,15 +234,43 @@ def create_guest(payload: GuestIn, principal: Principal = Depends(require_perm("
 
 
 @router.put("/guests/{gid}")
-def update_guest(gid: int, payload: GuestIn, principal: Principal = Depends(require_perm("stays.edit", "stays.edit_mine")),
+def update_guest(gid: int, payload: GuestUpdateIn, preview_flag: bool = PREVIEW,
+                 principal: Principal = Depends(require_perm("stays.edit", "stays.edit_mine")),
                  db: Session = Depends(get_db)):
+    """Правка профиля. Код сменился и update_reservations — той же операцией код переходит в текущие и
+    будущие брони, где гость главный; ?preview=1 показывает, что изменится (окно — от сегодня до самого
+    позднего выезда этих броней). Ответ: {guest, updated_reservations, diff?}."""
+    data = payload.model_dump(exclude={"update_reservations"})
     g = db.get(Guest, gid)
-    if g is not None and _own_guest(db, principal, gid, "stays.edit"):
-        try:
-            mine.check_guest_change(guests.guest_dict(g), payload.model_dump())
-        except mine.MineForbidden as e:
-            raise HTTPException(status_code=403, detail=str(e)) from e
-    return _save(db, principal, payload, gid)
+    window = None
+    if g is not None:
+        if _own_guest(db, principal, gid, "stays.edit"):
+            try:
+                mine.check_guest_change(guests.guest_dict(g), data)
+            except mine.MineForbidden as e:
+                raise HTTPException(status_code=403, detail=str(e)) from e
+        if payload.update_reservations and payload.vip_code_id != g.vip_code_id:
+            today = local_date()
+            ahead = reservations.main_reservations(db, gid, today)
+            if ahead:
+                window = (today, max(r.check_out for r in ahead) - dt.timedelta(days=1))
+
+    def op() -> dict:
+        saved, before = guests.save_guest(db, _guest_data(data), gid)
+        audit(db, principal, "stays_guest", f"guest:{saved.id}", {"diff": guests.guest_changes(before, saved)})
+        done = 0
+        if payload.update_reservations and saved.vip_code_id != before.get("vip_code_id"):
+            # под замком модуля: состав броней перечитан после записи профиля
+            affected = reservations.main_reservations(db, gid, local_date())
+            for r, was in reservations.set_main_code(db, affected, saved.vip_code_id):
+                audit(db, principal, "stays_reservation", f"reservation:{r.id}",
+                      {"diff": {"vip_code_id": [was, r.vip_code_id]}})
+                done += 1
+        return {"guest": _card(db, saved), "updated_reservations": done}
+
+    out = run(db, op, preview_flag, window, principal)
+    return {"preview": out["preview"], **out["result"], **({"diff": out["diff"]} if window else {}),
+            **({"overbook_refused": out["overbook_refused"]} if "overbook_refused" in out else {})}
 
 
 @router.post("/guests/{gid}/links")

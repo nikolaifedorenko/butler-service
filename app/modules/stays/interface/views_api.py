@@ -14,7 +14,7 @@ from app.core.permissions import require_perm
 
 from ..adapters.duty_timesheet import TimesheetDuty
 from ..adapters.orm import Guest
-from ..application import guests, history, views
+from ..application import guests, history, reservations, views
 from ..application.visibility import level_for
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -71,4 +71,4 @@ def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.gues
     g = db.get(Guest, gid)
     if g is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
-    return {**guests.guest_dict(g), "links": guests.links_of(db, gid), "stays": history.guest_stays(db, gid)}
+    return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, gid), "stays": history.guest_stays(db, gid)}

@@ -64,9 +64,7 @@
   "STAYS_FILTERS_KEY": "readonly",
   "STAYS_GENDER": "readonly",
   "STAYS_GUEST_COLS": "readonly",
-  "STAYS_GUEST_LEVELS": "readonly",
   "STAYS_GUEST_PAGE": "readonly",
-  "STAYS_LEVEL_MARK": "readonly",
   "STAYS_LINK": "readonly",
   "STAYS_MERGE_KIND": "readonly",
   "STAYS_MERGE_PROFILE": "readonly",
@@ -631,9 +629,7 @@
   "STAYS_FILTERS_KEY": "modules/stays_filters.js",
   "STAYS_GENDER": "modules/stays_forms.js",
   "STAYS_GUEST_COLS": "modules/stays_guests.js",
-  "STAYS_GUEST_LEVELS": "modules/stays_guests.js",
   "STAYS_GUEST_PAGE": "modules/stays_guests.js",
-  "STAYS_LEVEL_MARK": "modules/stays.js",
   "STAYS_LINK": "modules/stays_forms.js",
   "STAYS_MERGE_KIND": "modules/stays_guests.js",
   "STAYS_MERGE_PROFILE": "modules/stays_guests.js",
@@ -1296,7 +1292,6 @@
   "modules/settings_system.js": [],
   "modules/stays.js": [
    "STAYS_ESCORT_MODE",
-   "STAYS_LEVEL_MARK",
    "STAYS_SPECIAL_MARK",
    "loadStays",
    "openReservationCard",
@@ -1383,8 +1378,7 @@
    "sfCheck",
    "sfInput",
    "sfRow",
-   "sfSelect",
-   "staysForm"
+   "sfSelect"
   ],
   "modules/tabel.js": [
    "loadTabel",

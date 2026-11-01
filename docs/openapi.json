@@ -1814,14 +1814,110 @@
             "title": "Last Name",
             "type": "string"
           },
-          "level": {
-            "default": "regular",
-            "enum": [
-              "regular",
-              "vip",
-              "vvip"
+          "middle_name": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Middle Name",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Note",
+            "type": "string"
+          },
+          "phone": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Phone",
+            "type": "string"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Preferences",
+            "type": "object"
+          },
+          "special": {
+            "default": false,
+            "title": "Special",
+            "type": "boolean"
+          },
+          "special_dates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SpecialDate"
+            },
+            "title": "Special Dates",
+            "type": "array"
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Level",
+            "title": "Vip Code Id"
+          }
+        },
+        "required": [
+          "last_name"
+        ],
+        "title": "GuestIn",
+        "type": "object"
+      },
+      "GuestUpdateIn": {
+        "description": "Правка профиля: сменился код — update_reservations переносит его в текущие и будущие\nброни, где гость главный (§3.1); по умолчанию — да.",
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "email": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Email",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Fields",
+            "type": "object"
+          },
+          "first_name": {
+            "default": "",
+            "maxLength": 80,
+            "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "default": "",
+            "enum": [
+              "m",
+              "f",
+              ""
+            ],
+            "title": "Gender",
+            "type": "string"
+          },
+          "last_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Last Name",
             "type": "string"
           },
           "middle_name": {
@@ -1850,6 +1946,11 @@
             "title": "Preferences",
             "type": "object"
           },
+          "special": {
+            "default": false,
+            "title": "Special",
+            "type": "boolean"
+          },
           "special_dates": {
             "default": [],
             "items": {
@@ -1857,12 +1958,28 @@
             },
             "title": "Special Dates",
             "type": "array"
+          },
+          "update_reservations": {
+            "default": true,
+            "title": "Update Reservations",
+            "type": "boolean"
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
           }
         },
         "required": [
           "last_name"
         ],
-        "title": "GuestIn",
+        "title": "GuestUpdateIn",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -15114,18 +15231,28 @@
           },
           {
             "in": "query",
-            "name": "level",
+            "name": "special",
             "required": false,
             "schema": {
-              "default": "",
-              "enum": [
-                "",
-                "regular",
-                "vip",
-                "vvip"
+              "default": false,
+              "title": "Special",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "title": "Level",
-              "type": "string"
+              "title": "Vip Code Id"
             }
           },
           {
@@ -15188,7 +15315,7 @@
               "default": "name",
               "enum": [
                 "name",
-                "level",
+                "special",
                 "last_stay",
                 "stays"
               ],
@@ -15354,6 +15481,7 @@
         ]
       },
       "put": {
+        "description": "Правка профиля. Код сменился и update_reservations — той же операцией код переходит в текущие и\nбудущие брони, где гость главный; ?preview=1 показывает, что изменится (окно — от сегодня до самого\nпозднего выезда этих броней). Ответ: {guest, updated_reservations, diff?}.",
         "operationId": "update_guest_api_stays_guests__gid__put",
         "parameters": [
           {
@@ -15364,13 +15492,25 @@
               "title": "Gid",
               "type": "integer"
             }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GuestIn"
+                "$ref": "#/components/schemas/GuestUpdateIn"
               }
             }
           },

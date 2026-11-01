@@ -65,12 +65,12 @@ SURNAMES = ["Орлов", "Гусев", "Лебедев", "Фомина", "За�
             "Афанасьев", "Карпова", "Ершов", "Никитина", "Соболев", "Третьякова", "Субботин", "Шарова",
             "Ларионов", "Кононова", "Блинов"]
 FIRST = ["Андрей", "Мария", "Пётр", "Елена", "Дмитрий", "Ольга", "Игорь", "Анна", "Сергей", "Наталья"]
-# семья из трёх поколений (§4): ключ, фамилия, имя, пол, уровень
-FAMILY = (("ivan", "Петров", "Иван", "m", "vip"), ("maria", "Петрова", "Мария", "f", "vip"),
-          ("petr", "Петров", "Пётр", "m", "regular"), ("olga", "Петрова", "Ольга", "f", "regular"),
-          ("nikolay", "Петров", "Николай", "m", "regular"), ("anna", "Смирнова", "Анна", "f", "regular"),
-          ("viktor", "Козлов", "Виктор", "m", "regular"), ("galina", "Козлова", "Галина", "f", "regular"),
-          ("elena", "Петрова", "Елена", "f", "regular"))
+# семья из трёх поколений (§4): ключ, фамилия, имя, пол, «Особый гость»
+FAMILY = (("ivan", "Петров", "Иван", "m", False), ("maria", "Петрова", "Мария", "f", False),
+          ("petr", "Петров", "Пётр", "m", False), ("olga", "Петрова", "Ольга", "f", False),
+          ("nikolay", "Петров", "Николай", "m", False), ("anna", "Смирнова", "Анна", "f", False),
+          ("viktor", "Козлов", "Виктор", "m", False), ("galina", "Козлова", "Галина", "f", False),
+          ("elena", "Петрова", "Елена", "f", False))
 # первичные связи: parent — первый родитель второго; остальное родство вычисляется
 FAMILY_LINKS = (("ivan", "maria", "spouse"), ("nikolay", "olga", "spouse"), ("viktor", "galina", "spouse"),
                 ("olga", "ivan", "parent"), ("nikolay", "ivan", "parent"), ("olga", "elena", "parent"),
@@ -212,8 +212,8 @@ def seed_stays_demo(db: Session) -> None:
 
     guests = []
     for i, last in enumerate(SURNAMES):
-        level = "vvip" if i in (0, 1) else "vip" if i in range(2, 10) else "regular"
-        g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], gender="mf"[i % 2], level=level, source="demo",
+        g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], gender="mf"[i % 2], special=i in (0, 1),
+                  source="demo",
                   phone=f"+7916{1000000 + i * 7919:07d}",
                   preferences_json='{"allergy": "орехи"}' if i % 9 == 0 else "{}")
         g.search_text = guest_search_text(g, set())
@@ -227,8 +227,8 @@ def seed_stays_demo(db: Session) -> None:
                        (2, 14, "security"), (3, 15, "parent"), (4, 16, "spouse")):
         db.add(GuestLink(guest_a_id=guests[a].id, guest_b_id=guests[b].id, kind=kind))
     family = {key: Guest(last_name=last, first_name=first, middle_name="", phone="", email="", gender=gender,
-                         level=level, source="demo")
-              for key, last, first, gender, level in FAMILY}
+                         special=special, source="demo")
+              for key, last, first, gender, special in FAMILY}
     for g in family.values():
         g.search_text = guest_search_text(g, set())
     db.add_all(family.values())
