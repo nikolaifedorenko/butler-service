@@ -27,6 +27,12 @@ class OooInvalid(FundError):
     """Ошибка ввода → 422."""
 
 
+class OooNotFound(OooInvalid):
+    """Записи нет → 404."""
+
+    status = 404
+
+
 class OooConflict(FundConflict):
     """Пересечение OOO или устаревшая версия → 409."""
 
@@ -79,7 +85,7 @@ def save_ooo(db: Session, data: dict, oid: int | None, author_id: int | None = N
     else:
         o = db.get(Ooo, oid)
         if o is None:
-            raise OooInvalid("OOO не найден")
+            raise OooNotFound("OOO не найден")
         if data.get("version") != o.version:
             raise OooConflict("OOO изменили — обновите")
         validate(db, data, oid)
@@ -95,7 +101,7 @@ def save_ooo(db: Session, data: dict, oid: int | None, author_id: int | None = N
 def delete_ooo(db: Session, oid: int, version: int) -> dict:
     o = db.get(Ooo, oid)
     if o is None:
-        raise OooInvalid("OOO не найден")
+        raise OooNotFound("OOO не найден")
     if version != o.version:
         raise OooConflict("OOO изменили — обновите")
     before = ooo_dict(o)

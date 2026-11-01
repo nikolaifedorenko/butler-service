@@ -19,6 +19,7 @@ from .views import ViewError
 SORTS = ("title", "start", "end", "nights", "placed", "short", "created_at")
 MAX_LIMIT = 200
 MAX_NIGHTS = 366
+MAX_QUANTITY = 500                       # остаток на категорию и ночь
 TOP = 3                                  # категорий в строке списка: «VEG до 5, IMP 2»
 
 Grid = dict[int, dict[dt.date, int]]
@@ -26,6 +27,12 @@ Grid = dict[int, dict[dt.date, int]]
 
 class BlockInvalid(FundError):
     """Ошибка ввода → 422."""
+
+
+class BlockNotFound(BlockInvalid):
+    """Записи нет → 404."""
+
+    status = 404
 
 
 class BlockConflict(FundConflict):
@@ -59,7 +66,9 @@ def block_dict(db: Session, b: Block, grid: Grid | None = None) -> dict:
             "grid": grid_json(grid if grid is not None else grid_of(db, b.id))}
 
 
-def _check_dates(start: dt.date, end: dt.date) -> None:
+def _check_dates(title: str, start: dt.date, end: dt.date) -> None:
+    if not title.strip():
+        raise BlockInvalid("Укажите название блока")
     if end <= start:
         raise BlockInvalid("Блок — не короче одной ночи: конец позже начала")
     if (end - start).days > MAX_NIGHTS:
@@ -73,8 +82,8 @@ def _check_grid(db: Session, start: dt.date, end: dt.date, grid: Grid) -> None:
         return
     for by in grid.values():
         for n, q in by.items():
-            if q < 0:
-                raise BlockInvalid("Остаток не может быть отрицательным")
+            if not 0 <= q <= MAX_QUANTITY:
+                raise BlockInvalid(f"Остаток — от 0 до {MAX_QUANTITY}")
             if not start <= n < end:
                 raise BlockInvalid(f"Ночь {n.strftime('%d.%m.%Y')} вне блока {start.strftime('%d.%m')}–"
                                    f"{end.strftime('%d.%m')}")
@@ -95,7 +104,7 @@ def _write(db: Session, b: Block, grid: Grid) -> None:
 def _get(db: Session, bid: int, version: int | None) -> Block:
     b = db.get(Block, bid)
     if b is None:
-        raise BlockInvalid("Блок не найден")
+        raise BlockNotFound("Блок не найден")
     if version != b.version:
         raise BlockConflict("Блок изменили — обновите")
     return b
@@ -105,7 +114,7 @@ def save_block(db: Session, data: dict, bid: int | None, author_id: int | None =
     """Создать блок (bid None) или изменить: сетка целиком. grid не передан при правке — прежняя
     сетка, из которой при сужении дат уходят ночи вне нового интервала (третье значение — они)."""
     start, end = data["start"], data["end"]
-    _check_dates(start, end)
+    _check_dates(data["title"], start, end)
     if bid is None:
         b, before, old = Block(title=data["title"], start=start, end=end, author_id=author_id), {}, {}
         db.add(b)
@@ -140,15 +149,15 @@ def set_nights(db: Session, bid: int, version: int, category_id: int, first: dt.
     b = _get(db, bid, version)
     if last < first:
         raise BlockInvalid("Последняя ночь раньше первой")
-    if quantity < 0:
-        raise BlockInvalid("Остаток не может быть отрицательным")
+    if quantity < 0 or quantity > MAX_QUANTITY:
+        raise BlockInvalid(f"Остаток — от 0 до {MAX_QUANTITY}")
+    if not (b.start <= first and last < b.end):          # до построения диапазона ночей
+        raise BlockInvalid(f"Ночи вне блока {b.start.strftime('%d.%m')}–{b.end.strftime('%d.%m')}")
     grid = grid_of(db, bid)
     before = block_dict(db, b, grid)
     new = {n: quantity for n in _nights_of(first, last + dt.timedelta(days=1))}
     if quantity:
         _check_grid(db, b.start, b.end, {category_id: new})
-    elif not (b.start <= first and last < b.end):
-        raise BlockInvalid(f"Ночи вне блока {b.start.strftime('%d.%m')}–{b.end.strftime('%d.%m')}")
     by = grid.setdefault(category_id, {})
     for n, q in new.items():
         if q:

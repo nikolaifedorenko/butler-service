@@ -22,6 +22,8 @@ PREVIEW = Query(False, alias="preview", description="Только показат
 def err(e: FundError) -> HTTPException:
     if isinstance(e, CoverageForbidden):
         return HTTPException(status_code=403, detail=str(e))
+    if getattr(e, "status", None) == 404:
+        return HTTPException(status_code=404, detail=str(e))
     conflict = isinstance(e, (ReservationConflict, FundConflict))
     return HTTPException(status_code=409 if conflict else 422, detail=str(e))
 

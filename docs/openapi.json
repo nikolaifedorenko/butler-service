@@ -289,13 +289,14 @@
             "type": "string"
           },
           "title": {
-            "default": "",
             "maxLength": 120,
+            "minLength": 1,
             "title": "Title",
             "type": "string"
           }
         },
         "required": [
+          "title",
           "start",
           "end"
         ],
@@ -335,8 +336,8 @@
             "type": "string"
           },
           "title": {
-            "default": "",
             "maxLength": 120,
+            "minLength": 1,
             "title": "Title",
             "type": "string"
           },
@@ -346,6 +347,7 @@
           }
         },
         "required": [
+          "title",
           "start",
           "end",
           "version"
@@ -2387,6 +2389,7 @@
             "type": "string"
           },
           "quantity": {
+            "maximum": 500.0,
             "minimum": 0.0,
             "title": "Quantity",
             "type": "integer"

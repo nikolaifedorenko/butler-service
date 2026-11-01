@@ -13,6 +13,7 @@ from app.modules.stays.application import preview
 
 from .helpers import API, create_res, make_category
 from .test_allocation_versions import _version
+from .test_overbooking import no_overbook_client  # noqa: F401  (фикстура)
 from .test_preview import dump
 
 
@@ -277,3 +278,35 @@ def test_long_block_preview_window(manager_role_client, manager_client, big_fund
         assert card.status_code == 200 and len(card.json()["grid"]) == 6
     finally:
         manager_client.delete(f"{API}/blocks/{bid}", params={"version": 1})
+
+
+def test_nights_range_checked_before_building(manager_role_client, manager_client):
+    """PATCH с огромным диапазоном — 422 сразу, без построения миллионов ночей под замком."""
+    cat = make_category(manager_role_client, n_units=1)
+    blk = _block(manager_client, "Узкий", "2049-01-10", "2049-01-12", _grid(cat, "2049-01-10", 2, 1)).json()["result"]
+    url = f"{API}/blocks/{blk['id']}/nights"
+    for first, last in (("2000-01-01", "2200-12-31"), ("2049-01-09", "2049-01-10"), ("0001-01-01", "9999-12-31")):
+        r = manager_client.patch(url, json={"version": 1, "category_id": cat["id"], "first": first, "last": last,
+                                            "quantity": 1})
+        assert r.status_code == 422, (first, r.text)
+    assert manager_client.patch(url, json={"version": 1, "category_id": cat["id"], "first": "2049-01-10",
+                                           "last": "2049-01-10", "quantity": 501}).status_code == 422
+    assert _block(manager_client, "  ", "2049-02-10", "2049-02-12").status_code == 422
+    assert _block(manager_client, "", "2049-02-10", "2049-02-12").status_code == 422
+    assert _block(manager_client, "Огромный", "2049-02-10", "2049-02-12", _grid(cat, "2049-02-10", 1, 501)) \
+        .status_code == 422
+    assert _block(manager_client, "Рано", "0001-01-01", "0001-02-01").status_code == 422
+
+
+def test_long_block_overbook_beyond_window_needs_perm(manager_role_client, manager_client, no_overbook_client):
+    """Овербукинг, появляющийся только после 124-го дня блока (за окном предпросмотра), всё равно
+    проверяется по полному состоянию: без stays.overbook — 409; предпросмотр — 200 с отказом."""
+    cat = make_category(manager_role_client, n_units=1)
+    create_res(manager_client, cat, "2050-06-01", "2050-06-04")                    # день ~151 от начала блока
+    body = {"title": "Длинный", "start": "2050-01-01", "end": "2050-07-20", "grid": _grid(cat, "2050-01-01", 200, 1)}
+    pv = no_overbook_client.post(f"{API}/blocks", params={"preview": 1}, json=body)
+    assert pv.status_code == 200 and pv.json()["overbook_refused"], pv.text
+    r = no_overbook_client.post(f"{API}/blocks", json=body)
+    assert r.status_code == 409 and r.json()["detail"]["overbook"] is True
+    assert manager_client.get(f"{API}/blocks", params={"q": "Длинный"}).json()["total"] == 0
+    assert manager_client.post(f"{API}/blocks", json=body).status_code == 200      # с правом — сохраняется

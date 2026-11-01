@@ -10,6 +10,7 @@ from app.core.audit import AuditLog
 
 from .helpers import API, create_res, make_category, units_of
 from .test_allocation_versions import _version
+from .test_overbooking import no_overbook_client  # noqa: F401  (фикстура)
 from .test_preview import dump
 
 
@@ -164,3 +165,17 @@ def test_visible_to_all_levels_with_titles(manager_role_client, manager_client, 
     # писать — только stays.edit
     for c in (mgmt_client, occupancy_client):
         assert _ooo(c, cat["units"][0]["id"], "2043-02-10", "2043-02-12").status_code == 403
+
+
+def test_ooo_new_overbook_needs_perm(manager_role_client, manager_client, no_overbook_client):
+    cat = make_category(manager_role_client, n_units=1)
+    create_res(manager_client, cat, "2051-03-10", "2051-03-14")
+    body = {"unit_id": cat["units"][0]["id"], "start": "2051-03-11", "end": "2051-03-12", "start_half": "AM",
+            "end_half": "PM", "reason": "Ремонт"}
+    pv = no_overbook_client.post(f"{API}/ooo", params={"preview": 1}, json=body)
+    assert pv.status_code == 200 and pv.json()["overbook_refused"]
+    r = no_overbook_client.post(f"{API}/ooo", json=body)
+    assert r.status_code == 409 and r.json()["detail"]["overbook"] is True
+    assert manager_client.get(f"{API}/ooo", params={"category_ids": cat["id"]}).json()["total"] == 0
+    assert manager_client.post(f"{API}/ooo", json=body).status_code == 200
+    assert manager_client.put(f"{API}/ooo/999999", json={**body, "version": 1}).status_code == 404

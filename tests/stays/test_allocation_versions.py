@@ -11,7 +11,7 @@ from app.modules.stays.adapters.orm import Assignment
 from .helpers import API, create_res, make_category, units_of
 
 
-def _version(setup_client, valid_from: str, *edits) -> None:
+def _version(setup_client, valid_from: str, *edits) -> dict:
     """Опубликовать версию фонда с даты: edits — (метод, путь, тело) правок черновика."""
     r = setup_client.post(f"{API}/fund/draft", json={"valid_from": valid_from})
     assert r.status_code == 200, r.text
@@ -25,6 +25,7 @@ def _version(setup_client, valid_from: str, *edits) -> None:
         rev = resp.json()["rev"]
     resp = setup_client.post(f"{API}/fund/draft/publish", json={"rev": rev})
     assert resp.status_code == 200, resp.text
+    return resp.json()
 
 
 def _rename(cat: dict, i: int) -> tuple:
@@ -139,8 +140,9 @@ def test_hold_on_absent_unit_warns(manager_role_client, manager_client, today):
     h = manager_client.post(f"{API}/ooo", json={"unit_id": gone["id"], "start": "2035-08-08",
                                                   "end": "2035-08-14", "start_half": "AM", "end_half": "PM", "reason": "Ремонт"})
     assert h.status_code == 200, h.text
-    _version(manager_role_client, "2035-08-10", ("DELETE", f"units/{gone['id']}", {}))
+    pub = _version(manager_role_client, "2035-08-10", ("DELETE", f"units/{gone['id']}", {}))
     text = f"объекта {gone['label']} нет в фонде 10.08–14.08"
+    assert any(w["kind"] == "hold_absent" and text in w["text"] for w in pub["diff"]["warnings_added"])
     board = manager_client.get(f"{API}/board/units", params={"first": "2035-08-01", "last": "2035-08-20",
                                                              "category_ids": cat["id"]}).json()
     assert [w["kind"] for w in board["warnings"] if text in w["text"]] == ["hold_absent"]

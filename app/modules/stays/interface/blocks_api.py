@@ -7,7 +7,7 @@ import datetime as dt
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -26,11 +26,19 @@ router = APIRouter(prefix="/api/stays", tags=["stays"])
 EDIT = require_perm("stays.edit")
 
 
+def _sane(v: dt.date) -> dt.date:
+    if not dt.date(2000, 1, 1) <= v <= dt.date(2200, 12, 31):
+        raise ValueError("дата вне допустимого диапазона 2000–2200")
+    return v
+
+
 class BlockIn(BaseModel):
-    title: str = Field("", max_length=120)
+    title: str = Field(min_length=1, max_length=120)
     start: dt.date
     end: dt.date
     grid: dict[int, dict[dt.date, int]] = {}         # категория → ночь → остаток (целиком)
+
+    _dates = field_validator("start", "end")(_sane)
 
 
 class BlockPut(BlockIn):
@@ -43,7 +51,8 @@ class NightsIn(BaseModel):
     category_id: int
     first: dt.date                                   # первая и последняя ночи включительно
     last: dt.date
-    quantity: int = Field(ge=0)                      # 0 — убрать ночи
+    quantity: int = Field(ge=0, le=blocks.MAX_QUANTITY)      # 0 — убрать ночи
+    _dates = field_validator("first", "last")(_sane)
 
 
 def _query(first: Optional[dt.date] = None, last: Optional[dt.date] = None,

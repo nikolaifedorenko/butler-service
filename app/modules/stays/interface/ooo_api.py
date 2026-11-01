@@ -7,7 +7,7 @@ import datetime as dt
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -33,6 +33,13 @@ class OooIn(BaseModel):
     start_half: Literal["AM", "PM"] = "PM"          # «с» — с вечера дня выезда; «с утра» — AM
     end_half: Literal["AM", "PM"] = "AM"            # «по» — до утра дня заезда; «до вечера» — PM
     reason: str = Field("", max_length=120)
+
+    @field_validator("start", "end")
+    @classmethod
+    def _sane(cls, v: dt.date) -> dt.date:
+        if not dt.date(2000, 1, 1) <= v <= dt.date(2200, 12, 31):
+            raise ValueError("дата вне допустимого диапазона 2000–2200")
+        return v
 
 
 class OooPut(OooIn):
