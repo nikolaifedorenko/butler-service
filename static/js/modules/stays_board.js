@@ -198,7 +198,7 @@ async function renderDayBoard(body) {
   if (names) {
     $$('[data-db-row]', body).forEach(el => { el.onclick = () => openReservationCard(Number(el.dataset.dbRow), rerender); });
     $$('[data-db-ooo]', body).forEach(el => {
-      el.onclick = () => { if (can('stays.edit')) openHoldForm(list.find(x => x.kind === 'ooo' && x.id === Number(el.dataset.dbOoo)), rerender); };
+      el.onclick = () => { if (can('stays.edit')) openOooForm(list.find(x => x.kind === 'ooo' && x.id === Number(el.dataset.dbOoo)), rerender); };
     });
   }
 }

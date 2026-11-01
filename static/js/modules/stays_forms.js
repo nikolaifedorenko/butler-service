@@ -94,6 +94,36 @@ function staysBindFoot(m, flow, onSaved, okText) {
   };
 }
 
+/* Подвал форм OOO и блоков: «Сохранить» недоступно, пока предпросмотр говорит «не сохранится»
+   (новый овербукинг без права stays.overbook) или сервер ответил 409 с этим же текстом; любая
+   правка полей снимает запрет — предпросмотр устарел. done(результат) — что делать после записи
+   (по умолчанию закрыть окно и обновить вид). */
+function staysBindGatedFoot(m, flow, { onSaved, okText = 'Готово', out, done }) {
+  const save = $('[data-save]', m);
+  const gate = text => { save.disabled = !!text; save.title = text || ''; };
+  $('[data-close]', m).onclick = closeModal;
+  $('#rf-preview', m).onclick = async () => {
+    try { gate((await flow.preview())?.overbook_refused); } catch (e) { toast(e.message, 'err'); }
+  };
+  save.onclick = async () => {
+    try {
+      const r = await flow.save();
+      toast(okText);
+      if (done) done(r); else { closeModal(); if (onSaved) onSaved(); }
+    } catch (e) {
+      if (e.status === 409 && e.payload?.overbook) {
+        renderPreview(e.payload.diff || {}, out(), e.message);
+        gate(e.message);
+      }
+      toast(e.message, 'err');
+    }
+  };
+  const reset = () => gate('');
+  m.addEventListener('input', reset);
+  m.addEventListener('change', reset);
+  return { reset };
+}
+
 /* ─────────────── Бронь ─────────────── */
 async function openReservationForm(id, opts = {}) {
   /* opts.mine — батлер дополняет свою бронь: даты, объект, категория, метка, заказчик и главный
@@ -405,54 +435,6 @@ async function openCoverageForm(card, onSaved) {
         save: () => (kind.value === 'manual' ? manual : template).save(),
       };
       staysBindFoot(m, flow, onSaved, 'Батлеры назначены');
-    },
-  });
-}
-
-/* ─────────────── OOO (часть 2 §3.1, §7): создание, правка, удаление — с предпросмотром ─────────────── */
-async function openHoldForm(hold, onSaved) {
-  const fund = await staysFund();
-  const isNew = !hold.id;
-  const first = hold.start || staysToday();
-  /* «с утра» (start_half = AM) и «до вечера» (end_half = PM) — сутки целиком; новое OOO — целые сутки */
-  const wholeStart = isNew || hold.start_half === 'AM';
-  const wholeEnd = isNew || hold.end_half === 'PM';
-  openModal({
-    title: isNew ? 'OOO — не в продаже' : `OOO · ${dateRu(hold.start)}–${dateRu(hold.end)}`,
-    subtitle: 'Объект не в продаже: по умолчанию с вечера «с» до утра «по»; галочки — сутки целиком. Брони на эти дни перераспределятся. Блоки по категориям — на вкладке «Блоки»',
-    body: `<div class="grid-2">
-        ${sfRow('Объект', sfSelect('hf-unit', fund.units.filter(u => u.active).map(u => [u.id, u.label]), hold.unit_id))}
-        <div></div>
-        ${sfRow('С', sfInput('hf-start', first, 'date'))}
-        ${sfRow('По', sfInput('hf-end', hold.end || first, 'date'))}
-        ${sfCheck('hf-start-am', 'С утра', wholeStart)}
-        ${sfCheck('hf-end-pm', 'До вечера', wholeEnd)}
-      </div>
-      ${sfRow('Причина', sfInput('hf-title', hold.title))}
-      <div class="muted" data-hf-hint>без имён гостей — видно всем</div>
-      <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: `${isNew ? '' : '<button class="btn btn-danger" id="hf-delete">Удалить…</button>'}${staysFormFoot()}`,
-    onMount(m) {
-      const out = () => $('#rf-preview-out', m);
-      const body = () => ({ unit_id: Number($('#hf-unit', m).value),
-        start: $('#hf-start', m).value, end: $('#hf-end', m).value,
-        start_half: $('#hf-start-am', m).checked ? 'AM' : 'PM', end_half: $('#hf-end-pm', m).checked ? 'PM' : 'AM',
-        reason: $('#hf-title', m).value, ...(isNew ? {} : { version: hold.version }) });
-      const edit = previewThenSave({ url: isNew ? '/api/stays/ooo' : `/api/stays/ooo/${hold.id}`,
-        method: isNew ? 'POST' : 'PUT', body, out });
-      const del = `/api/stays/ooo/${hold.id}?version=${hold.version}`;
-      const remove = {
-        async preview() { renderPreview((await api(`${del}&preview=1`, { method: 'DELETE' })).diff, out()); },
-        save: () => api(del, { method: 'DELETE' }),
-      };
-      let mode = edit;
-      const delBtn = $('#hf-delete', m);
-      if (delBtn) delBtn.onclick = async () => {
-        mode = remove;
-        $('[data-save]', m).textContent = 'Удалить';
-        try { await remove.preview(); } catch (e) { toast(e.message, 'err'); }
-      };
-      staysBindFoot(m, { preview: () => mode.preview(), save: () => mode.save() }, onSaved, 'Готово');
     },
   });
 }

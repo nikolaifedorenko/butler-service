@@ -11,7 +11,7 @@
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
 const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони'],
-  ['guests', 'Гости']];
+  ['blocks', 'Блоки'], ['ooo', 'OOO'], ['guests', 'Гости']];
 const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
 /* месяц видов — общий state.year / state.month (как Табель и График, §6); фильтры — одна
    панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
@@ -142,7 +142,7 @@ function staysTabAllowed([id]) {
 /* вкладки из других файлов раздела — по имени при вызове: файлы грузятся по алфавиту */
 function staysTabRender(tab) {
   return { units: renderUnitsBoard, butlers: renderButlersBoard, day: renderDayBoard,
-    occupancy: renderOccupancyGrid, bookings: renderBookings, guests: renderGuestsTab }[tab] || renderUnitsBoard;
+    occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab, guests: renderGuestsTab }[tab] || renderUnitsBoard;
 }
 
 async function loadMyStays() {
@@ -276,10 +276,10 @@ async function renderUnitsBoard(body) {
     if (!can('stays.edit')) return;
     /* блок / OOO: клик по объекту — новый, по полосе блока — правка или удаление */
     const hold = e.target.closest('[data-hold]');
-    if (hold) { openHoldForm(data.holds.find(h => h.id === Number(hold.dataset.hold)), rerender); return; }
+    if (hold) { openOooForm(data.holds.find(h => h.id === Number(hold.dataset.hold)), rerender); return; }
     const unit = e.target.closest('.sb-unit');
     const row = unit && unit.closest('[data-unit-row]');
-    if (row) openHoldForm({ unit_id: Number(row.dataset.unitRow) }, rerender);
+    if (row) openOooForm({ unit_id: Number(row.dataset.unitRow) }, rerender);
   };
   staysFocusDay(body);
 }
@@ -348,22 +348,6 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, blocksBy, names) {
   const today = staysToday();
   return `<div class="sb-row sb-head"><div class="sb-unit">Объект</div><div class="sb-track sb-days">${days.map(d => staysDayHead(d, today)).join('')}</div></div>
     ${out.join('') || '<div class="empty">Объектов по фильтру нет</div>'}`;
-}
-
-/* ─────────────── Карточка блока: ЗАГЛУШКА (только чтение) ───────────────
-   Редактируемую карточку с сеткой «категория × ночь» даёт вкладка «Блоки» (stays_blocks.js, задача 7):
-   она определяет openBlockCard(id, onChanged) и заменяет эту функцию — эту удалить. */
-async function openBlockCard(id, onChanged) {
-  const [card, fund] = await Promise.all([api('/api/stays/blocks/' + id), staysFund()]);
-  const code = cid => (fund.categories.find(c => c.id === cid)?.code) || '#' + cid;
-  openModal({
-    title: `Блок · ${card.title}`, subtitle: `${dateRu(card.start)}–${dateRu(card.end)} · ночей: ${card.nights}`,
-    body: `<p>Разложено по объектам: <b>${card.placed}</b>${card.missing ? ` · <span class="danger">нехватка: <b>${card.missing}</b></span>` : ''}</p>
-      ${card.top.length ? `<p class="muted">Наибольший остаток за ночь: ${esc(card.top.map(t => t.code + ' ' + t.max).join(', '))}</p>` : ''}
-      ${card.short.map(x => `<div class="sp-warn" data-block-short>⚠ ${esc(code(x.category_id))}: не хватает ${x.missing} с ${esc(dateRu(x.first))} по ${esc(dateRu(x.last))}</div>`).join('')}`,
-    footer: '<button class="btn btn-ghost" data-close>Закрыть</button>',
-    onMount(m) { $('[data-close]', m).onclick = closeModal; },
-  });
 }
 
 /* ─────────────── Карточка брони ─────────────── */

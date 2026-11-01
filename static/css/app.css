@@ -1225,6 +1225,28 @@ tr.v4-click:hover td { background: #faf6ef; }
 .bk-table th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); user-select: none; }
 .bk-row { cursor: pointer; }
 .bk-row:hover, .bk-row:focus { background: #f7efe7; outline: none; }
+/* карточка блока: сетка «категория × ночь» — прокрутка внутри карточки, страница не ширится */
+.bg-wrap { overflow: auto; max-width: 100%; max-height: 52vh; margin: 10px 0 6px; border: 1px solid var(--line-soft); border-radius: var(--r-sm); }
+.bg-table { border-collapse: separate; border-spacing: 0; font-size: 12px; user-select: none; }
+.bg-table th, .bg-table td { border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); padding: 3px 6px; text-align: center; min-width: 34px; white-space: nowrap; }
+.bg-table thead th { background: #f8f5f0; position: sticky; top: 0; z-index: 1; font-weight: 600; }
+.bg-table thead tr:nth-child(2) th { top: 24px; }
+.bg-table .bg-month { text-align: left; text-transform: capitalize; }
+.bg-table .bg-day small { display: block; font-weight: 400; color: var(--muted); font-size: 10px; }
+.bg-table .bg-day.we { color: var(--danger); }
+.bg-table .bg-cat { position: sticky; left: 0; z-index: 2; background: #f8f5f0; text-align: left; min-width: 70px; }
+.bg-table thead .bg-cat { z-index: 3; }
+.bg-cell { cursor: cell; background: #fffdfa; }
+.bg-cell.dirty { background: #fff6dd; }
+.bg-cell.short { background: #fbe9e7; color: #a1001d; font-weight: 700; }
+.bg-cell.short small { display: block; font-size: 10px; }
+.bg-cell.sel { outline: 2px solid #c9a55a; outline-offset: -2px; background: #faf0dc; }
+.bg-sum td { color: var(--muted); font-weight: 600; }
+.bg-tools { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 10px 0; }
+.bg-tool { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bg-tool input[type=number] { width: 70px; }
+.bg-tool select, .bg-tool input[type=date], .bg-tool input[type=number] { width: auto; padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
+.bg-summary { margin: 4px 0; font-size: 13px; }
 .sb-history > div { padding: 6px 0; border-bottom: 1px solid #efe9df; font-size: 13px; }
 .sp-out:empty { display: none; }
 .sp-out { margin-top: 12px; padding: 10px 12px; background: #f8f5f0; border-radius: var(--r-sm); }
