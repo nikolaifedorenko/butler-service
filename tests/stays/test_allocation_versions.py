@@ -136,12 +136,11 @@ def test_hold_on_absent_unit_warns(manager_role_client, manager_client, today):
     today("2035-08-01")
     cat = make_category(manager_role_client, n_units=2)
     gone = cat["units"][1]
-    _version(manager_role_client, "2035-08-10", ("DELETE", f"units/{gone['id']}", {}))
-    h = manager_client.post(f"{API}/holds", json={"unit_id": gone["id"], "start": "2035-08-08",
-                                                  "end": "2035-08-14", "kind": "ooo", "title": "Ремонт"})
+    h = manager_client.post(f"{API}/ooo", json={"unit_id": gone["id"], "start": "2035-08-08",
+                                                  "end": "2035-08-14", "start_half": "AM", "end_half": "PM", "reason": "Ремонт"})
     assert h.status_code == 200, h.text
+    _version(manager_role_client, "2035-08-10", ("DELETE", f"units/{gone['id']}", {}))
     text = f"объекта {gone['label']} нет в фонде 10.08–14.08"
-    assert any(w["kind"] == "hold_absent" and text in w["text"] for w in h.json()["diff"]["warnings_added"])
     board = manager_client.get(f"{API}/board/units", params={"first": "2035-08-01", "last": "2035-08-20",
                                                              "category_ids": cat["id"]}).json()
     assert [w["kind"] for w in board["warnings"] if text in w["text"]] == ["hold_absent"]
@@ -251,8 +250,8 @@ def test_in_house_moved_by_ooo_from_first_night(manager_role_client, manager_cli
     st = manager_client.post(f"{API}/reservations/{a['id']}/status", json={"status": "in_house", "version": a["version"]})
     assert st.status_code == 200, st.text
     today("2034-05-05")
-    r = manager_client.post(f"{API}/holds", json={"unit_id": u1, "start": "2034-05-07", "end": "2034-05-08",
-                                                  "kind": "ooo", "title": "Ремонт"})
+    r = manager_client.post(f"{API}/ooo", json={"unit_id": u1, "start": "2034-05-07", "end": "2034-05-08",
+                                                  "start_half": "AM", "end_half": "PM", "reason": "Ремонт"})
     assert r.status_code == 200, r.text
     moved = r.json()["diff"]["moved"]
     assert [(m["from_unit"], m["to_unit"], m["since"]) for m in moved] == [(u1, u2, "2034-05-06")]

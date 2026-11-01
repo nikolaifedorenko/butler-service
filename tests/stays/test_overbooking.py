@@ -166,10 +166,11 @@ def test_past_ooo_edit_does_not_move_past_pieces(manager_role_client, manager_cl
     st = manager_client.post(f"{API}/reservations/{a['id']}/status", json={"status": "in_house", "version": a["version"]})
     assert st.status_code == 200
     today("2034-06-05")
-    hold = manager_client.post(f"{API}/holds", json={"unit_id": u1, "start": "2034-06-07", "end": "2034-06-08",
-                                                     "kind": "ooo", "title": "Ремонт"}).json()["result"]
-    r = manager_client.put(f"{API}/holds/{hold['id']}", json={"unit_id": u1, "start": "2034-06-02",
-                                                              "end": "2034-06-08", "kind": "ooo", "title": "Ремонт"})
+    hold = manager_client.post(f"{API}/ooo", json={"unit_id": u1, "start": "2034-06-07", "end": "2034-06-08",
+                                                     "start_half": "AM", "end_half": "PM", "reason": "Ремонт"}).json()["result"]
+    r = manager_client.put(f"{API}/ooo/{hold['id']}", json={"unit_id": u1, "start": "2034-06-02",
+                                                              "end": "2034-06-08", "start_half": "AM", "end_half": "PM", "reason": "Ремонт",
+                                                              "version": hold["version"]})
     assert r.status_code == 200, r.text
     bars, warns = _bars(manager_client, cat, a["id"], "2034-06-01", "2034-06-12")
     assert bars == [(u1, "2034-06-01", "2034-06-05"), (u2, "2034-06-05", "2034-06-10")]
@@ -186,8 +187,8 @@ def test_in_house_pin_moves_with_guest(manager_role_client, manager_client, toda
     st = manager_client.post(f"{API}/reservations/{a['id']}/status", json={"status": "in_house", "version": a["version"]})
     assert st.status_code == 200
     today("2034-07-05")
-    r = manager_client.post(f"{API}/holds", json={"unit_id": u1, "start": "2034-07-07", "end": "2034-07-08",
-                                                  "kind": "ooo", "title": "Ремонт"})
+    r = manager_client.post(f"{API}/ooo", json={"unit_id": u1, "start": "2034-07-07", "end": "2034-07-08",
+                                                  "start_half": "AM", "end_half": "PM", "reason": "Ремонт"})
     assert r.status_code == 200
     assert [w["text"] for w in r.json()["diff"]["warnings_added"] if w["kind"] == "pin_conflict"] == [
         f"Бронь 7: закреплённый объект {cat['units'][0]['label']} занят «Ремонт» — бронь перенесена вместе с "
@@ -211,8 +212,8 @@ def test_preview_equals_save_with_blocks_and_ooo(manager_role_client, manager_cl
     if name == "create":
         method, url, body = "POST", f"{API}/reservations", res_body(cat, "2036-06-12", "2036-06-16")
     else:
-        method, url, body = "POST", f"{API}/holds", {"unit_id": u1, "start": "2036-06-12", "end": "2036-06-12",
-                                                     "kind": "ooo", "title": "Ремонт"}
+        method, url, body = "POST", f"{API}/ooo", {"unit_id": u1, "start": "2036-06-12", "end": "2036-06-12",
+                                                     "start_half": "AM", "end_half": "PM", "reason": "Ремонт"}
     before = dump(db)
     pv = manager_client.request(method, url, params={"preview": 1}, json=body)
     assert pv.status_code == 200, pv.text
@@ -275,8 +276,8 @@ def test_pinned_booking_without_unit_keeps_pin(manager_role_client, manager_clie
     cat = make_category(manager_role_client, n_units=1)
     u1 = cat["units"][0]["id"]
     a = create_res(manager_client, cat, "2036-08-10", "2036-08-14", number="9", pins={"0": u1})
-    r = manager_client.post(f"{API}/holds", json={"unit_id": u1, "start": "2036-08-11", "end": "2036-08-11",
-                                                  "kind": "ooo", "title": "Ремонт"})
+    r = manager_client.post(f"{API}/ooo", json={"unit_id": u1, "start": "2036-08-11", "end": "2036-08-11",
+                                                  "start_half": "AM", "end_half": "PM", "reason": "Ремонт"})
     assert r.status_code == 200, r.text
     got = manager_client.get(f"{API}/reservations/{a['id']}").json()
     assert got["segments"][0]["pinned"] is True and got["segments"][0]["unit_id"] == u1
@@ -284,7 +285,7 @@ def test_pinned_booking_without_unit_keeps_pin(manager_role_client, manager_clie
            f"бронь без объекта, закрепление сохранено" in got["warnings"]
     card = manager_client.get(f"{API}/reservations/{a['id']}/card").json()
     assert card["segments"][0]["unit_id"] is None                       # фактически — без объекта
-    gone = manager_client.delete(f"{API}/holds/{r.json()['result']['id']}")
+    gone = manager_client.delete(f"{API}/ooo/{r.json()['result']['id']}", params={"version": 1})
     assert gone.status_code == 200, gone.text
     back = manager_client.get(f"{API}/reservations/{a['id']}").json()
     assert back["segments"][0]["pinned"] is True and back["segments"][0]["unit_id"] == u1

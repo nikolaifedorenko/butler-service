@@ -87,7 +87,7 @@ def unit_spans(timeline: FundTimeline, lo: int, hi: int) -> list[UnitSpan]:
     return done + list(open_.values())
 
 
-def _absent(spans: list[UnitSpan], unit_id: int, a: int, z: int) -> list[tuple[int, int]]:
+def absent_parts(spans: list[UnitSpan], unit_id: int, a: int, z: int) -> list[tuple[int, int]]:
     """Отрезки [a, z], где объекта нет в фонде (не покрыты его интервалами)."""
     out, p = [], a
     for s in sorted((s for s in spans if s.unit_id == unit_id), key=lambda s: s.start_pos):
@@ -101,7 +101,7 @@ def _absent(spans: list[UnitSpan], unit_id: int, a: int, z: int) -> list[tuple[i
     return out
 
 
-def _day(p: int) -> str:
+def day_label(p: int) -> str:
     return dt.date.fromordinal(p // 2).strftime("%d.%m")
 
 
@@ -143,7 +143,7 @@ def _night_start(p: int) -> int:
 
 
 def _days(a: int, z: int) -> str:
-    return f"{_day(a)}–{_day(z)}" if a // 2 != z // 2 else _day(a)
+    return f"{day_label(a)}–{day_label(z)}" if a // 2 != z // 2 else day_label(a)
 
 
 @dataclass(frozen=True)
@@ -212,11 +212,11 @@ def compute(db: Session) -> AllocationState:
             continue
         ooo.append(OooRef(h.unit_id, hs, he, title))
         # OOO на дни, когда объекта нет в фонде (спецификация версий §14); прошлое — не тревога
-        for a, z in _absent(spans, h.unit_id, max(hs, morning), he):
+        for a, z in absent_parts(spans, h.unit_id, max(hs, morning), he):
             u = timeline.unit(h.unit_id, dt.date.fromordinal(a // 2))
             label = u.label if u is not None else f"#{h.unit_id}"
             warnings.append(AllocWarning("hold_absent", ("h", h.id), 0,
-                                         f"{title}: объекта {label} нет в фонде {_day(a)}–{_day(z)}"))
+                                         f"{title}: объекта {label} нет в фонде {day_label(a)}–{day_label(z)}"))
             members[("h", h.id)] = []
 
     moves = _moves(db, [r.id for r in res])
@@ -417,7 +417,7 @@ def _place_warnings(it: AllocItem, inf: _Info, got, timeline: FundTimeline, unit
             warnings.append(AllocWarning(
                 "ooo_move", it.key, p.index,
                 f"Бронь {inf.number} (заселена): объект {label(ref, p) or ref} — OOO «{o.title}» с "
-                f"{_day(max(o.start_pos, p.start_pos))} — {where} с {p.start.strftime('%d.%m')} до выезда"))
+                f"{day_label(max(o.start_pos, p.start_pos))} — {where} с {p.start.strftime('%d.%m')} до выезда"))
 
 
 def run_allocation(db: Session) -> AllocationState:

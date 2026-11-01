@@ -169,18 +169,18 @@ def test_hold_triggers_reallocation(manager_role_client, manager_client):
     cat = make_category(manager_role_client, n_units=2)
     res = create_res(manager_client, cat, "2027-08-10", "2027-08-14")
     assert units_of(res) == [cat["units"][0]["id"]]
-    h = manager_client.post(f"{API}/holds", json={"unit_id": cat["units"][0]["id"], "start": "2027-08-09",
-                                                  "end": "2027-08-20", "kind": "ooo", "title": "Ремонт"})
+    h = manager_client.post(f"{API}/ooo", json={"unit_id": cat["units"][0]["id"], "start": "2027-08-09",
+                                                  "end": "2027-08-20", "start_half": "AM", "end_half": "PM", "reason": "Ремонт"})
     assert h.status_code == 200, h.text
     assert units_of(manager_client.get(f"{API}/reservations/{res['id']}").json()) == [cat["units"][1]["id"]]
-    assert manager_client.delete(f"{API}/holds/{h.json()['result']['id']}").status_code == 200
+    assert manager_client.delete(f"{API}/ooo/{h.json()['result']['id']}", params={"version": 1}).status_code == 200
 
 
 def test_hold_bad_dates_refused(manager_role_client, manager_client):
     cat = make_category(manager_role_client, n_units=1)
-    r = manager_client.post(f"{API}/holds", json={"unit_id": cat["units"][0]["id"], "start": "2027-08-09",
-                                                  "end": "2027-08-01", "kind": "ooo", "title": ""})
-    assert r.status_code == 422 and r.json()["detail"] == "Конец блока раньше начала"
+    r = manager_client.post(f"{API}/ooo", json={"unit_id": cat["units"][0]["id"], "start": "2027-08-09",
+                                                  "end": "2027-08-01", "start_half": "AM", "end_half": "PM", "reason": ""})
+    assert r.status_code == 422 and r.json()["detail"] == "Конец OOO раньше начала"
 
 
 def test_reservation_audit_has_diff(manager_role_client, manager_client, db):

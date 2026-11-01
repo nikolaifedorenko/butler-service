@@ -52,8 +52,8 @@ def _op(name, c, cat, a, b):
         gid = c.post(f"{API}/groups", json={"title": "g"}).json()["id"]
         return "PUT", f"{API}/reservations/{a['id']}", _put_body(a, group_id=gid)
     if name == "add_ooo":
-        return "POST", f"{API}/holds", {"unit_id": cat["units"][0]["id"], "start": "2028-03-11",
-                                        "end": "2028-03-12", "kind": "ooo", "title": "Ремонт"}
+        return "POST", f"{API}/ooo", {"unit_id": cat["units"][0]["id"], "start": "2028-03-11",
+                                        "end": "2028-03-12", "start_half": "AM", "end_half": "PM", "reason": "Ремонт"}
     if name == "create":
         return "POST", f"{API}/reservations", res_body(cat, "2028-03-12", "2028-03-16")
     raise AssertionError(name)

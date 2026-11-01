@@ -64,7 +64,7 @@ def test_occupancy_rows(manager_role_client, manager_client, db):
     create_res(manager_client, cat, "2038-02-08", d, [(gs[0], "main", None, None)], pins={0: u1})
     create_res(manager_client, cat, d, "2038-02-12", [(gs[1], "main", None, None), (gs[2], "guest", None, None)],
                pins={0: u1})
-    r = manager_client.post(f"{API}/holds", json={"unit_id": u2, "start": d, "end": d, "kind": "ooo"})
+    r = manager_client.post(f"{API}/ooo", json={"unit_id": u2, "start": d, "end": d, "start_half": "AM", "end_half": "PM"})
     assert r.status_code == 200, r.text
     day = dt.date.fromisoformat(d)       # блок держит один объект категории в ночь d
     blk = Block(title="", start=day, end=day)
@@ -83,8 +83,8 @@ def test_occupancy_rows(manager_role_client, manager_client, db):
     solo_g = _group(manager_role_client)
     solo = make_category(manager_role_client, n_units=1, group_id=solo_g)
     create_res(manager_client, solo, d, "2038-02-11", pins={0: solo["units"][0]["id"]})
-    assert manager_client.post(f"{API}/holds", json={"unit_id": solo["units"][0]["id"], "start": d, "end": d,
-                                                     "kind": "ooo"}).status_code == 200
+    assert manager_client.post(f"{API}/ooo", json={"unit_id": solo["units"][0]["id"], "start": d, "end": d,
+                                                     "start_half": "AM", "end_half": "PM"}).status_code == 200
     body = _occ(manager_client, d, d, group_ids=solo_g)
     cell = body["nodes"][0]["days"][0]
     assert (cell["total"], cell["living"], cell["ooo"], cell["free"], cell["pct"]) == (1, 0, 1, 0, None)

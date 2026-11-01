@@ -87,6 +87,7 @@ class AllocWarning:
     text: str
     category_id: int | None = None     # у block_short — категория нехватки
     last: int | None = None            # у block_short — ordinal последней ночи
+    missing: int | None = None         # у block_short — сколько объектов не хватает за ночь
 
 
 def natural_key(s: str) -> tuple:
@@ -364,7 +365,7 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
             warnings.append(AllocWarning(
                 "block_short", ("b", block_id), first,
                 f"Блок {titles[block_id]}: не хватает {per_night[n]} {category_codes.get(cat, '?')} на "
-                f"{_nights(first, n)}", category_id=cat, last=n))
+                f"{_nights(first, n)}", category_id=cat, last=n, missing=per_night[n]))
             start = i + 1
 
     # 4. закрепления броней — если объект свободен на весь остаток сегмента

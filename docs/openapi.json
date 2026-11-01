@@ -262,6 +262,97 @@
         "title": "BaseIn",
         "type": "object"
       },
+      "BlockIn": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "grid": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "propertyNames": {
+                "format": "date"
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Grid",
+            "type": "object"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "BlockIn",
+        "type": "object"
+      },
+      "BlockPut": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "grid": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "propertyNames": {
+                    "format": "date"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grid"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "version"
+        ],
+        "title": "BlockPut",
+        "type": "object"
+      },
       "Body_add_item_photo_api_night_items__item_id__photo_post": {
         "properties": {
           "file": {
@@ -1812,43 +1903,6 @@
         "title": "HandoverIn",
         "type": "object"
       },
-      "HoldIn": {
-        "properties": {
-          "end": {
-            "format": "date",
-            "title": "End",
-            "type": "string"
-          },
-          "kind": {
-            "const": "ooo",
-            "default": "ooo",
-            "title": "Kind",
-            "type": "string"
-          },
-          "start": {
-            "format": "date",
-            "title": "Start",
-            "type": "string"
-          },
-          "title": {
-            "default": "",
-            "maxLength": 120,
-            "title": "Title",
-            "type": "string"
-          },
-          "unit_id": {
-            "title": "Unit Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "unit_id",
-          "start",
-          "end"
-        ],
-        "title": "HoldIn",
-        "type": "object"
-      },
       "ImpersonateIn": {
         "properties": {
           "employee_id": {
@@ -2316,6 +2370,42 @@
         "title": "NewGuestIn",
         "type": "object"
       },
+      "NightsIn": {
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "format": "date",
+            "title": "Last",
+            "type": "string"
+          },
+          "quantity": {
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "category_id",
+          "first",
+          "last",
+          "quantity"
+        ],
+        "title": "NightsIn",
+        "type": "object"
+      },
       "NoteIn": {
         "properties": {
           "note": {
@@ -2372,6 +2462,109 @@
           "date_to"
         ],
         "title": "OccupantIn",
+        "type": "object"
+      },
+      "OooIn": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "end_half": {
+            "default": "AM",
+            "enum": [
+              "AM",
+              "PM"
+            ],
+            "title": "End Half",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Reason",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "start_half": {
+            "default": "PM",
+            "enum": [
+              "AM",
+              "PM"
+            ],
+            "title": "Start Half",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unit_id",
+          "start",
+          "end"
+        ],
+        "title": "OooIn",
+        "type": "object"
+      },
+      "OooPut": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "end_half": {
+            "default": "AM",
+            "enum": [
+              "AM",
+              "PM"
+            ],
+            "title": "End Half",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Reason",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "start_half": {
+            "default": "PM",
+            "enum": [
+              "AM",
+              "PM"
+            ],
+            "title": "Start Half",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unit_id",
+          "start",
+          "end",
+          "version"
+        ],
+        "title": "OooPut",
         "type": "object"
       },
       "OverrideIn": {
@@ -10978,6 +11171,423 @@
         ]
       }
     },
+    "/api/stays/blocks": {
+      "get": {
+        "operationId": "blocks_list_api_stays_blocks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "first",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "First"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Category Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "short_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Short Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "start",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dir",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Dir",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Blocks List",
+        "tags": [
+          "stays"
+        ]
+      },
+      "post": {
+        "operationId": "create_block_api_stays_blocks_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Block",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/blocks/{bid}": {
+      "delete": {
+        "operationId": "remove_block_api_stays_blocks__bid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "title": "Bid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Block",
+        "tags": [
+          "stays"
+        ]
+      },
+      "get": {
+        "operationId": "block_get_api_stays_blocks__bid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "title": "Bid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Block Get",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_block_api_stays_blocks__bid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "title": "Bid",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Block",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/blocks/{bid}/nights": {
+      "patch": {
+        "operationId": "block_nights_api_stays_blocks__bid__nights_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "title": "Bid",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NightsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Block Nights",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/board/butlers": {
       "get": {
         "operationId": "board_butlers_api_stays_board_butlers_get",
@@ -14750,171 +15360,6 @@
         ]
       }
     },
-    "/api/stays/holds": {
-      "post": {
-        "operationId": "create_hold_api_stays_holds_post",
-        "parameters": [
-          {
-            "description": "Только показать, что изменится, без сохранения",
-            "in": "query",
-            "name": "preview",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Только показать, что изменится, без сохранения",
-              "title": "Preview",
-              "type": "boolean"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HoldIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Hold",
-        "tags": [
-          "stays"
-        ]
-      }
-    },
-    "/api/stays/holds/{hid}": {
-      "delete": {
-        "operationId": "remove_hold_api_stays_holds__hid__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "hid",
-            "required": true,
-            "schema": {
-              "title": "Hid",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Только показать, что изменится, без сохранения",
-            "in": "query",
-            "name": "preview",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Только показать, что изменится, без сохранения",
-              "title": "Preview",
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Remove Hold",
-        "tags": [
-          "stays"
-        ]
-      },
-      "put": {
-        "operationId": "update_hold_api_stays_holds__hid__put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "hid",
-            "required": true,
-            "schema": {
-              "title": "Hid",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Только показать, что изменится, без сохранения",
-            "in": "query",
-            "name": "preview",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Только показать, что изменится, без сохранения",
-              "title": "Preview",
-              "type": "boolean"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HoldIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Hold",
-        "tags": [
-          "stays"
-        ]
-      }
-    },
     "/api/stays/labels": {
       "post": {
         "operationId": "create_label_api_stays_labels_post",
@@ -15186,6 +15631,368 @@
           }
         },
         "summary": "Occupancy",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/ooo": {
+      "get": {
+        "operationId": "ooo_list_api_stays_ooo_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "first",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "First"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "start",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dir",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Dir",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Group Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Category Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flag_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Flag Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Kind Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "floor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Floor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ooo List",
+        "tags": [
+          "stays"
+        ]
+      },
+      "post": {
+        "operationId": "create_ooo_api_stays_ooo_post",
+        "parameters": [
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OooIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Ooo",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/ooo/{oid}": {
+      "delete": {
+        "operationId": "remove_ooo_api_stays_ooo__oid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oid",
+            "required": true,
+            "schema": {
+              "title": "Oid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Ooo",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_ooo_api_stays_ooo__oid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oid",
+            "required": true,
+            "schema": {
+              "title": "Oid",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OooPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Ooo",
         "tags": [
           "stays"
         ]

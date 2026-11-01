@@ -70,8 +70,8 @@ def test_new_group_member_adopts_group_moves(manager_role_client, manager_client
 
 def test_hold_title_hidden_for_occupancy(manager_role_client, manager_client, occupancy_client):
     cat = make_category(manager_role_client, n_units=1)
-    manager_client.post(f"{API}/holds", json={"unit_id": cat["units"][0]["id"], "start": "2033-05-01",
-                                              "end": "2033-05-03", "kind": "ooo", "title": "Под Иванова"})
+    manager_client.post(f"{API}/ooo", json={"unit_id": cat["units"][0]["id"], "start": "2033-05-01",
+                                              "end": "2033-05-03", "start_half": "AM", "end_half": "PM", "reason": "Под Иванова"})
     q = {"first": "2033-05-01", "last": "2033-05-05", "category_ids": cat["id"]}
     assert "Под Иванова" not in occupancy_client.get(f"{API}/board/units", params=q).text
     assert "Под Иванова" in manager_client.get(f"{API}/board/units", params=q).text

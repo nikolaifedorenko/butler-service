@@ -315,7 +315,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                                        "late": r.late and p1.end_pos == segs[-1].end_pos}, level))
 
     holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
-              "start_half": h.start_half, "end_half": h.end_half,
+              "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
               # причина OOO — свободный текст (в нём бывает фамилия): только с уровня names
               "title": h.reason if names else "",
               **dict(zip(("start_pos", "end_pos"), ooo_span(h.start, h.start_half, h.end, h.end_half), strict=True))}

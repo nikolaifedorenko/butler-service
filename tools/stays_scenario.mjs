@@ -727,6 +727,7 @@ async function moreForms() {
   /* блок / OOO: клик по объекту → форма с предпросмотром */
   click($(`[data-unit-row="${u2.id}"] .sb-unit`));
   check('форма OOO открылась', await waitFor(() => !!$('#hf-start')));
+  check('OOO: галочки «с утра» и «до вечера»', !!$('#hf-start-am') && !!$('#hf-end-pm'));
   change($('#hf-start'), day(14)); change($('#hf-end'), day(15)); input($('#hf-title'), 'Ремонт');
   click($('#rf-preview'));
   check('предпросмотр блока', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))));

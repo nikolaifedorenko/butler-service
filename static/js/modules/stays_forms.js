@@ -409,35 +409,44 @@ async function openCoverageForm(card, onSaved) {
   });
 }
 
-/* ─────────────── Блок / OOO (§3.1, §4.6): создание, правка, удаление — с предпросмотром ─────────────── */
+/* ─────────────── OOO (часть 2 §3.1, §7): создание, правка, удаление — с предпросмотром ─────────────── */
 async function openHoldForm(hold, onSaved) {
   const fund = await staysFund();
   const isNew = !hold.id;
   const first = hold.start || staysToday();
+  /* «с утра» (start_half = AM) и «до вечера» (end_half = PM) — сутки целиком; новое OOO — целые сутки */
+  const wholeStart = isNew || hold.start_half === 'AM';
+  const wholeEnd = isNew || hold.end_half === 'PM';
   openModal({
     title: isNew ? 'OOO — не в продаже' : `OOO · ${dateRu(hold.start)}–${dateRu(hold.end)}`,
-    subtitle: 'Объект не в продаже целыми сутками с–по; брони на эти дни перераспределятся. Блоки по категориям — в следующей версии',
+    subtitle: 'Объект не в продаже: по умолчанию с вечера «с» до утра «по»; галочки — сутки целиком. Брони на эти дни перераспределятся. Блоки по категориям — на вкладке «Блоки»',
     body: `<div class="grid-2">
         ${sfRow('Объект', sfSelect('hf-unit', fund.units.filter(u => u.active).map(u => [u.id, u.label]), hold.unit_id))}
+        <div></div>
         ${sfRow('С', sfInput('hf-start', first, 'date'))}
         ${sfRow('По', sfInput('hf-end', hold.end || first, 'date'))}
+        ${sfCheck('hf-start-am', 'С утра', wholeStart)}
+        ${sfCheck('hf-end-pm', 'До вечера', wholeEnd)}
       </div>
       ${sfRow('Причина', sfInput('hf-title', hold.title))}
       <div id="rf-preview-out" class="sp-out"></div>`,
     footer: `${isNew ? '' : '<button class="btn btn-danger" id="hf-delete">Удалить…</button>'}${staysFormFoot()}`,
     onMount(m) {
       const out = () => $('#rf-preview-out', m);
-      const body = () => ({ unit_id: Number($('#hf-unit', m).value), kind: 'ooo',
-        start: $('#hf-start', m).value, end: $('#hf-end', m).value, title: $('#hf-title', m).value });
-      const edit = previewThenSave({ url: isNew ? '/api/stays/holds' : `/api/stays/holds/${hold.id}`,
+      const body = () => ({ unit_id: Number($('#hf-unit', m).value),
+        start: $('#hf-start', m).value, end: $('#hf-end', m).value,
+        start_half: $('#hf-start-am', m).checked ? 'AM' : 'PM', end_half: $('#hf-end-pm', m).checked ? 'PM' : 'AM',
+        reason: $('#hf-title', m).value, ...(isNew ? {} : { version: hold.version }) });
+      const edit = previewThenSave({ url: isNew ? '/api/stays/ooo' : `/api/stays/ooo/${hold.id}`,
         method: isNew ? 'POST' : 'PUT', body, out });
+      const del = `/api/stays/ooo/${hold.id}?version=${hold.version}`;
       const remove = {
-        async preview() { renderPreview((await api(`/api/stays/holds/${hold.id}?preview=1`, { method: 'DELETE' })).diff, out()); },
-        save: () => api(`/api/stays/holds/${hold.id}`, { method: 'DELETE' }),
+        async preview() { renderPreview((await api(`${del}&preview=1`, { method: 'DELETE' })).diff, out()); },
+        save: () => api(del, { method: 'DELETE' }),
       };
       let mode = edit;
-      const del = $('#hf-delete', m);
-      if (del) del.onclick = async () => {
+      const delBtn = $('#hf-delete', m);
+      if (delBtn) delBtn.onclick = async () => {
         mode = remove;
         $('[data-save]', m).textContent = 'Удалить';
         try { await remove.preview(); } catch (e) { toast(e.message, 'err'); }

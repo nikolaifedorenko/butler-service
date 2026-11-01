@@ -1,5 +1,5 @@
 """API броней (§3.3, §4.7, §9): документ брони, статусы с no-show, группы совместного
-проживания, блоки и OOO. Каждая операция пересчитывает распределение по объектам и
+проживания. Каждая операция пересчитывает распределение по объектам и
 пишет журнал «было → стало»; устаревшая версия брони — 409."""
 from __future__ import annotations
 
@@ -15,9 +15,8 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 
-from ..adapters.orm import Ooo, Reservation, StayGroup
+from ..adapters.orm import Reservation, StayGroup
 from ..application import allocation, coverage, mine, reservations
-from ..application.preview import change_window
 from ._ops import PREVIEW, run
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -79,14 +78,6 @@ class StatusIn(BaseModel):
 
 
 class GroupIn(BaseModel):
-    title: str = Field("", max_length=120)
-
-
-class HoldIn(BaseModel):
-    unit_id: int
-    start: dt.date
-    end: dt.date
-    kind: Literal["ooo"] = "ooo"
     title: str = Field("", max_length=120)
 
 
@@ -242,40 +233,3 @@ def create_group(payload: GroupIn, principal: Principal = Depends(EDIT), db: Ses
     audit(db, principal, "stays_reservation", f"group:{g.id}", {"title": payload.title})
     db.commit()
     return {"id": g.id, "title": g.title}
-
-
-def _hold_op(db: Session, principal: Principal, payload: Optional[HoldIn], hid: Optional[int]):
-    def op():
-        if payload is None:
-            before = reservations.delete_hold(db, hid)
-            after = {k: None for k in before}
-        else:
-            h, before = reservations.save_hold(db, payload.model_dump(), hid, principal.user.id)
-            after = reservations.hold_dict(h)
-        audit(db, principal, "stays_ooo", f"ooo:{after['id'] or hid}",
-              {"diff": reservations.changes(before, after)})
-        return after
-    return op
-
-
-@router.post("/holds")
-def create_hold(payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
-                db: Session = Depends(get_db)):
-    return run(db, _hold_op(db, principal, payload, None), preview_flag, change_window((payload.start, payload.end)),
-               principal)
-
-
-@router.put("/holds/{hid}")
-def update_hold(hid: int, payload: HoldIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
-                db: Session = Depends(get_db)):
-    h = db.get(Ooo, hid)
-    window = change_window((payload.start, payload.end), *([(h.start, h.end)] if h else []))
-    return run(db, _hold_op(db, principal, payload, hid), preview_flag, window, principal)
-
-
-@router.delete("/holds/{hid}")
-def remove_hold(hid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
-                db: Session = Depends(get_db)):
-    h = db.get(Ooo, hid)
-    return run(db, _hold_op(db, principal, None, hid), preview_flag, change_window((h.start, h.end)) if h else None,
-               principal)
