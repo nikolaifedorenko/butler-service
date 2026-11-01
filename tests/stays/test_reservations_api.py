@@ -444,6 +444,26 @@ def test_archived_profile_code_copied(manager_role_client, manager_client):
     assert r.json()["result"]["vip_code"] == {"id": code["id"], "code": code["code"], "title": "тест", "archived": True}
 
 
+def test_archived_profile_code_sent_explicitly(manager_role_client, manager_client):
+    """Форма присылает подставленный архивный код профиля главного явно — это не новый выбор: 200
+    и при создании, и при смене главного; чужой архивный код вручную — 422."""
+    cat, code, other_code = make_category(manager_role_client), make_code(manager_role_client), make_code(manager_role_client)
+    g = _coded_guest(manager_client, code)
+    archive_code(manager_role_client, code["id"])
+    archive_code(manager_role_client, other_code["id"])
+    r = manager_client.post(f"{API}/reservations", json=res_body(
+        cat, "2041-08-22", "2041-08-25", [(g["id"], "main", None, None)], vip_code_id=code["id"]))
+    assert r.status_code == 200, r.text
+    assert r.json()["result"]["vip_code"]["id"] == code["id"] and r.json()["result"]["vip_code"]["archived"] is True
+    other = create_res(manager_client, cat, "2041-08-22", "2041-08-25", [(make_guest(manager_client)["id"], "main",
+                                                                          None, None)])
+    r = _put(manager_client, other, occupants=[_main(g["id"], "2041-08-22", "2041-08-25")], vip_code_id=code["id"])
+    assert r.status_code == 200, r.text
+    assert r.json()["result"]["vip_code"]["archived"] is True
+    r = _put(manager_client, r.json()["result"], vip_code_id=other_code["id"])
+    assert r.status_code == 422 and "в архиве" in r.json()["detail"]
+
+
 def test_escort_mode_values_and_422(manager_role_client, manager_client):
     cat = make_category(manager_role_client)
     res = create_res(manager_client, cat, "2041-09-02", "2041-09-05")

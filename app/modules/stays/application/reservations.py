@@ -190,12 +190,15 @@ def _main_on_arrival(occupants, check_in: dt.date) -> int | None:
 def _vip_code(db: Session, r: Reservation, doc: dict, rid: int | None) -> int | None:
     """Код брони (§3.1): ручной выбор в этом сохранении побеждает; иначе при создании и смене
     главного — код из профиля главного гостя, поверх прежнего; иначе прежний. Архивный код
-    выбрать вручную нельзя (422), а копия из профиля его принимает — он уже стоит у гостя."""
+    выбрать вручную нельзя (422), а код профиля главного его принимает — он уже стоит у гостя
+    (форма присылает его явно, подставив при выборе главного)."""
     prev = r.vip_code_id if rid is not None else None
     main = _main_on_arrival(doc["occupants"], doc["check_in"])
     if doc.get("vip_code_id") != prev:
         code = doc.get("vip_code_id")
-        check_selectable(db, code, prev)
+        own = db.get(Guest, main).vip_code_id if main is not None else None
+        if code != own:
+            check_selectable(db, code, prev)
     elif rid is None or main != _main_on_arrival(
             [{"guest_id": o.guest_id, "role": o.role, "date_from": o.date_from, "date_to": o.date_to}
              for o in db.scalars(select(Occupant).where(Occupant.reservation_id == rid))], r.check_in):

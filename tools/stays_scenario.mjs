@@ -738,7 +738,16 @@ async function escortBookingForm() {
   check('главный с архивным кодом профиля — код подставлен с пометкой «в архиве»', await waitFor(() =>
     $('#rf-vip-code').value === String(c03?.id) && /в архиве/.test($('#rf-vip-code').selectedOptions[0]?.textContent || '')),
   $('#rf-vip-code').value);
-  click($('[data-close]'));
+  input($('#rf-number'), 'EG' + uniq);
+  change($('#rf-check-in'), d1);
+  await waitFor(() => [...$('#rf-category').options].some(o => o.value === String(cat.id)));
+  change($('#rf-category'), String(cat.id));
+  change($('#rf-check-out'), d2);
+  click($('[data-save]'));
+  const g03 = (await pollApi(`/api/stays/bookings?first=${d1}&last=${d1}&category_ids=${cat.id}&q=EG${uniq}`,
+    b => b?.rows?.length > 0)).rows?.[0];
+  check('сохранено: архивный код профиля главного («03») стоит в брони', g03?.vip_code === '03', JSON.stringify(g03));
+  await waitFor(() => !$('#rf-vip-code'));
   await apiJson('PUT', `/api/stays/vip-codes/${c03?.id}/archive`, { archived: false });
   await window.eval('staysFund(true)');
 }
