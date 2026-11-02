@@ -1,5 +1,6 @@
 """API профилей гостей (§3.2, §8): список с фамилиями — stays.view, карточка целиком —
-stays.guests, запись — stays.edit. Изменения — в журнале аудита с разницей полей.
+stays.guests, запись — stays.edit. Батлер (часть 4 §3) — только свои гости: чтение — stays.mine,
+профиль, пожелания и связи — stays.mine_guest_edit. Изменения — в журнале аудита с разницей полей.
 Вкладка «Гости» (addendum §3): справочник с фильтрами, история проживаний, объединение дублей."""
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from ..adapters.orm import Guest
 from ..application import allocation, family, guests, guests_list, history, mine, reservations, vip_codes
 from ..application.fund import FundConflict, FundError
 from ..application.visibility import at_least, level_for
-from ._mine import own_guest
+from ._mine import own_guest, own_link
 from ._ops import PREVIEW, run
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -176,24 +177,27 @@ def guest_stays(gid: int, principal: Principal = Depends(require_perm("stays.gue
 
 
 @router.get("/guests/{gid}/prefs")
-def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
+def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
                 db: Session = Depends(get_db)):
-    """Пожелания гостя к объекту (часть 2 §5): только полный уровень (stays.guests)."""
-    _require_full(db, principal)
+    """Пожелания гостя к объекту (часть 2 §5): полный уровень (stays.guests) или свой гость батлера."""
     if db.get(Guest, gid) is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
+    if not own_guest(db, principal, gid, "stays.guests"):
+        _require_full(db, principal)
     return guests.prefs_of(db, gid)
 
 
 @router.put("/guests/{gid}/prefs")
 def set_guest_prefs(gid: int, payload: PrefsIn, preview_flag: bool = PREVIEW,
-                    principal: Principal = Depends(require_perm("stays.guests")),
-                    _edit: Principal = Depends(require_perm("stays.edit")), db: Session = Depends(get_db)):
+                    principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
+                    db: Session = Depends(get_db)):
     """Заменить пожелания гостя целиком. Распределение пересчитывается тут же (брони гостя могут
-    переехать): ?preview=1 показывает, кто переедет; новый овербукинг без права stays.overbook — 409."""
-    _require_full(db, principal)
+    переехать): ?preview=1 показывает, кто переедет; новый овербукинг без права stays.overbook — 409.
+    stays.edit — с полным уровнем; батлер — своему гостю, тем же предпросмотром."""
     if db.get(Guest, gid) is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
+    if not own_guest(db, principal, gid, "stays.edit"):
+        _require_full(db, principal)
 
     def op() -> list[dict]:
         before = guests.prefs_of(db, gid)               # под замком модуля (run_operation)
@@ -266,15 +270,19 @@ def update_guest(gid: int, payload: GuestUpdateIn, preview_flag: bool = PREVIEW,
 
 
 @router.post("/guests/{gid}/links")
-def create_link(gid: int, payload: LinkIn, principal: Principal = Depends(require_perm("stays.edit")),
+def create_link(gid: int, payload: LinkIn,
+                principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                 db: Session = Depends(get_db)):
     """Связь, при необходимости — с новым гостем и вторым родителем: всё одной записью под
-    замком модуля; отказ любой проверки — 422, не создаётся ничего."""
+    замком модуля; отказ любой проверки — 422, не создаётся ничего. Батлер — только своему гостю;
+    заведённый им новый человек становится его «своим» (часть 4 §3)."""
+    butler = own_guest(db, principal, gid, "stays.edit")
     try:
         rows, other = guests.add_links(
             db, gid, payload.kind, other_id=payload.guest_id,
             new_guest=payload.new_guest.model_dump() if payload.new_guest else None, former=payload.former,
-            other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id)
+            other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id,
+            created_by=principal.employee.id if butler else None)
     except FundError as e:
         db.rollback()          # новый гость и первая связь уже в flush — откат целиком
         raise _err(e) from e
@@ -301,10 +309,12 @@ def guest_family(gid: int, principal: Principal = Depends(require_perm("stays.vi
 
 
 @router.patch("/guest-links/{link_id}")
-def set_link_former(link_id: int, payload: FormerIn, principal: Principal = Depends(require_perm("stays.edit")),
+def set_link_former(link_id: int, payload: FormerIn,
+                    principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                     db: Session = Depends(get_db)):
     """«Бывшие» на линии супругов в редакторе дерева: снять — только если у обоих нет
-    другого действующего супруга (422)."""
+    другого действующего супруга (422). Батлер — если хотя бы одна сторона своя."""
+    own_link(db, principal, link_id)
     try:
         row, before = guests.set_former(db, link_id, payload.former)
     except FundError as e:
@@ -316,8 +326,10 @@ def set_link_former(link_id: int, payload: FormerIn, principal: Principal = Depe
 
 
 @router.delete("/guest-links/{link_id}")
-def remove_link(link_id: int, principal: Principal = Depends(require_perm("stays.edit")),
+def remove_link(link_id: int, principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                 db: Session = Depends(get_db)):
+    """Батлер — если хотя бы одна сторона связи своя."""
+    own_link(db, principal, link_id)
     try:
         row = guests.delete_link(db, link_id)
     except FundError as e:

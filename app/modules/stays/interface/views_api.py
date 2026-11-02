@@ -59,9 +59,12 @@ def reservation_card(rid: int, principal: Principal = Depends(require_perm("stay
     if mine_ids is not None and rid in mine_ids:
         level = "full"                              # своя бронь — полная карточка (часть 4 §6)
     try:
-        return views.reservation_card(db, rid, level, TimesheetDuty(db))
+        card = views.reservation_card(db, rid, level, TimesheetDuty(db))
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    if mine_ids is not None:
+        card["mine"] = rid in mine_ids              # батлеру — «Изменить» и «Карточка» своей брони
+    return card
 
 
 @router.get("/reservations/{rid}/history")

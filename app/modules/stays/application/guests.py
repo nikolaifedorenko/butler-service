@@ -236,12 +236,13 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
 
 
 def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = None, new_guest: dict | None = None,
-              former: bool = False, other_is_parent: bool = False,
-              also_parent_id: int | None = None) -> tuple[list[GuestLink], int]:
+              former: bool = False, other_is_parent: bool = False, also_parent_id: int | None = None,
+              created_by: int | None = None) -> tuple[list[GuestLink], int]:
     """Связь из редактора дерева (§4) одной записью под одним замком → (связи, id второй стороны).
     Вторая сторона — существующий гость other_id или новый new_guest (фамилия, имя, пол);
     other_is_parent — она родитель guest_id (иначе guest_id — её родитель при kind=parent);
-    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»). Любой отказ —
+    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»); created_by — батлер,
+    который заводит нового человека: тот становится его «своим» (часть 4 §3). Любой отказ —
     исключение после частичных flush: вызывающий откатывает, не остаётся ни гостя, ни связи."""
     lock_module(db)
     if (other_id is None) == (new_guest is None):
@@ -255,8 +256,9 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
     if db.get(Guest, guest_id) is None:
         raise GuestError("Гость не найден")
     if new_guest is not None:
-        other_id = save_guest(db, {"middle_name": "", "phone": "", "email": "", "note": "",
-                                   **new_guest}, None)[0].id
+        g = save_guest(db, {"middle_name": "", "phone": "", "email": "", "note": "", **new_guest}, None)[0]
+        g.created_by_employee_id = created_by
+        other_id = g.id
     a, b = (other_id, guest_id) if other_is_parent else (guest_id, other_id)
     rows = [_add_link_locked(db, a, b, kind, former)]
     if also_parent_id is not None:

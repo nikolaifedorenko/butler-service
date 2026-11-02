@@ -834,7 +834,8 @@ async function butlerBoard() {
   if (mineBar) {
     click(mineBar);
     check('своя бронь: карточка открылась', await waitFor(() => !!$('#modal .sb-history') || !!$('#modal [data-close]')));
-    check('в карточке нет кнопок назначения и правки', !$('#rc-assign') && !$('#rc-edit') && !$('#rc-status') && !$('#rc-group'));
+    check('в карточке нет кнопок назначения, статуса и группы', !$('#rc-assign') && !$('#rc-status') && !$('#rc-group'));
+    check('своя бронь: «Изменить» (stays.mine_res_edit)', !!$('#rc-edit'));
     click($('#modal [data-close]'));
   }
   for (const tab of ['ooo', 'blocks']) {
@@ -855,6 +856,76 @@ async function butlerBoard() {
   const put = await apiJson('PUT', '/api/stays/coverage/day', { day: first, reservation_id: own.reservation_id, employee_id: 1 });
   check('назначение — 403', put.status === 403, String(put.status));
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
+/* Батлер правит своего гостя (часть 4 §3): из карточки своей брони — карточка гостя, «+ ребёнок» с новым
+   человеком (становится «своим» — его профиль открывается), пожелание к объекту через предпросмотр */
+async function butlerEdits() {
+  console.log('\nБатлер · семья и пожелания своего гостя');
+  const own = ((await apiJson('GET', '/api/stays/mine')).body.reservations || [])[0];
+  if (!own) { check('у батлера есть своя бронь (демо)', false); return; }
+  const gid = own.guests.find(g => g.role === 'main')?.guest_id ?? own.guests[0]?.guest_id;
+  window.navigate('stays');
+  await waitFor(() => $$('#view-stays [data-stab]').length > 0);
+  window.eval(`openReservationCard(${own.reservation_id})`);
+  check('своя бронь: кнопка «Карточка» гостя', await waitFor(() => !!$(`#modal [data-guest-card="${gid}"]`)));
+  click($(`#modal [data-guest-card="${gid}"]`));
+  check('карточка своего гостя открылась', await waitFor(() => !!$('#gc-family .ft-centre')), text('#modal'));
+  check('батлер: «Изменить профиль», редактор дерева и «Предпочитает»', !!$('#gc-edit')
+    && !!$('#gc-family [data-ft-add="child"]') && !!$('#gc-prefs [data-pref-add]'));
+
+  const last = 'Батлеров' + uniq;
+  click($('#gc-family [data-ft-add="child"]'));
+  check('панель «Добавить ребёнка»', await waitFor(() => !!$('#gc-family [data-ft-last]')));
+  $('#gc-family [data-ft-last]').value = last;
+  $('#gc-family [data-ft-first]').value = 'Сын';
+  change($('#gc-family [data-ft-gender]'), 'm');
+  click($('#gc-family [data-ft-create]'));
+  check('новый ребёнок в дереве', await waitFor(() => text('#gc-family .ft-tree').includes(last)), text('#gc-family'));
+  const child = (await apiJson('GET', `/api/stays/guests/${gid}/family`)).body.people.find(p => p.name.includes(last));
+  check('ребёнок записан на сервере', !!child);
+  if (!child) return;
+  click($('#modal [data-close]'));
+  await sleep(200);
+  window.eval(`openGuestCard(${child.id})`);
+  check('профиль нового человека открывается батлеру (свой)', await waitFor(() => text('#modal').includes(last) && !!$('#gc-edit')),
+    text('#modal'));
+  click($('#modal [data-close]'));
+  await sleep(200);
+
+  /* пожелание «объект» своему гостю — другой объект той же категории: сначала предпросмотр */
+  const res = (await apiJson('GET', `/api/stays/reservations/${own.reservation_id}`)).body;
+  window.eval(`openGuestCard(${gid})`);
+  await waitFor(() => !!$('#gc-prefs [data-pref-kind]'));
+  const fund = window.eval('staysState.fund');
+  const now = new Set(res.segments.map(sg => sg.unit_id));
+  const target = fund.units.find(u => u.category_id === res.category_id && !now.has(u.id)) || fund.units.find(u => !now.has(u.id));
+  check('есть объект для пожелания', !!target);
+  if (!target) return;
+  const was = (await apiJson('GET', `/api/stays/guests/${gid}/prefs`)).body.length;
+  change($('#gc-prefs [data-pref-kind]'), 'unit');
+  change($('#gc-prefs [data-pref-ref]'), String(target.id));
+  click($('#gc-prefs [data-pref-add]'));
+  const row = () => [...$$('#gc-prefs [data-pref-row]')].some(r => r.textContent.includes(target.label));
+  await waitFor(() => !!$('#gc-prefs [data-pref-apply]') || row());
+  if ($('#gc-prefs [data-pref-apply]')) {
+    check('предпросмотр «что изменится» показан', text('#gc-pref-out').length > 0, text('#gc-prefs'));
+    check('предпросмотр ничего не сохранил', (await apiJson('GET', `/api/stays/guests/${gid}/prefs`)).body.length === was);
+    if ($('#gc-prefs [data-pref-apply]').disabled) {
+      check('овербукинг без права — «Применить» заперта', /овербук|без объекта/i.test(text('#gc-prefs')), text('#gc-prefs'));
+      click($('#gc-prefs [data-pref-cancel]'));
+    } else {
+      click($('#gc-prefs [data-pref-apply]'));
+      check('пожелание применено после предпросмотра', await waitFor(row), text('#gc-prefs'));
+    }
+  } else {
+    check('пожелание без переездов сохранено сразу', row(), text('#gc-prefs'));
+  }
+  const saved = (await apiJson('GET', `/api/stays/guests/${gid}/prefs`)).body;
+  check('пожелания на сервере совпадают с карточкой', saved.length === $$('#gc-prefs [data-pref-row]').length, JSON.stringify(saved));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#modal').innerHTML));
+  click($('#modal [data-close]'));
+  await sleep(200);
 }
 
 async function moreForms() {
@@ -1704,7 +1775,10 @@ async function main() {
     await blocksAndOooTabs();
   } else {
     await roleSmoke();
-    if (LOGIN === 'ivanov') await butlerBoard();
+    if (LOGIN === 'ivanov') {
+      await butlerBoard();
+      await butlerEdits();
+    }
   }
 
   console.log(`\n=== ошибки консоли ===`);

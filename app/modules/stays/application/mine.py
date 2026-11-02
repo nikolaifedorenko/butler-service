@@ -28,7 +28,7 @@ from ..adapters.orm import (
     Occupant,
     Reservation,
 )
-from . import allocation
+from . import allocation, family
 from .context import load_context
 from .fund import FundError
 from .guests import format_phone, short_name
@@ -102,8 +102,9 @@ def _iso(v):
 
 def check_reservation_change(db: Session, before: dict, doc: dict) -> None:
     """Сравнить документ батлера с текущим: запертые поля, переезды, закрепления, главный гость;
-    новые проживающие — только связанные «кто кому» с гостями этой брони (иначе так можно
-    было бы открыть себе профиль любого гостя)."""
+    новый проживающий — родственник кого-то из прежних проживающих по семейному дереву (в том
+    числе вычисленный, domain/kinship) или его прямая связь любого вида (§3) — иначе так можно
+    было бы открыть себе профиль любого гостя."""
     def locked(d: dict, k: str):
         # пустая «оплата за» — категория брони
         return _iso(d.get(k) or d.get("category_id")) if k == "paid_category_id" else _iso(d.get(k))
@@ -121,14 +122,22 @@ def check_reservation_change(db: Session, before: dict, doc: dict) -> None:
         raise MineForbidden(MINE_TEXT)
     had = {o["guest_id"] for o in before["occupants"]}
     new = {o["guest_id"] for o in doc["occupants"]} - had
-    if new:
-        linked = set()
-        for a, b in db.execute(select(GuestLink.guest_a_id, GuestLink.guest_b_id).where(
-                (GuestLink.guest_a_id.in_(had) & GuestLink.guest_b_id.in_(new))
-                | (GuestLink.guest_b_id.in_(had) & GuestLink.guest_a_id.in_(new)))):
-            linked |= {a, b}
-        if not new <= linked:
-            raise MineForbidden("Батлер добавляет только гостей, связанных с проживающими брони")
+    if not new:
+        return
+    linked = set()
+    for a, b in db.execute(select(GuestLink.guest_a_id, GuestLink.guest_b_id).where(
+            (GuestLink.guest_a_id.in_(had) & GuestLink.guest_b_id.in_(new))
+            | (GuestLink.guest_b_id.in_(had) & GuestLink.guest_a_id.in_(new)))):
+        linked |= {a, b}
+    rest = new - linked
+    if rest and not rest <= family.relatives_among(db, had, rest):
+        raise MineForbidden("Батлер добавляет только родственников и связанных с проживающими брони")
+
+
+def check_link_change(db: Session, employee_id: int, link: GuestLink) -> None:
+    """Удалить связь или отметить «бывших» батлер может, если хотя бы одна её сторона — свой гость."""
+    if not any(owns_guest(db, employee_id, g) for g in (link.guest_a_id, link.guest_b_id)):
+        raise MineForbidden("Это связь чужих гостей: вы не ведёте ни одного из них")
 
 
 def check_guest_change(before: dict, data: dict) -> None:

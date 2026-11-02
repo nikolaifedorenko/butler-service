@@ -355,12 +355,23 @@ async function openReservationForm(id, opts = {}) {
       staysBindFoot(m, flow, opts.onSaved, 'Бронь сохранена');
       /* связанных гостей батлера догружаем после привязки кнопок — иначе ранний клик «Сохранить» терялся */
       if (opts.mine) (async () => {
-        /* батлер: вместо поиска по всем гостям — гости, связанные «кто кому» с проживающими брони */
+        /* батлер: вместо поиска по всем гостям — прямые связи проживающих брони и их родня по семейному
+           дереву, в том числе вычисленная (бабушка жены, внук) — то же правило, что проверяет сервер */
         ['#rf-guest-q', '#rf-new-last', '#rf-new-special', '#rf-new-add'].forEach(sel => { $(sel, m).closest('.sb-toolbar').style.display = 'none'; });
         const have = new Set(form.occupants.map(o => o.guest_id));
-        const cards = await Promise.all([...have].map(gid => api(`/api/stays/guests/${gid}`, { silent: true }).catch(() => null)));
+        const [cards, fams] = await Promise.all([
+          Promise.all([...have].map(gid => api(`/api/stays/guests/${gid}`, { silent: true }).catch(() => null))),
+          Promise.all([...have].map(gid => api(`/api/stays/guests/${gid}/family`, { silent: true }).catch(() => null)))]);
         const linked = new Map();
         cards.filter(Boolean).forEach(c => c.links.forEach(l => { if (!have.has(l.guest_id)) linked.set(l.guest_id, l); }));
+        fams.filter(Boolean).forEach(f => {
+          const names = new Map(f.people.map(p => [p.id, p.name]));
+          f.kin.forEach(k => {
+            if (!have.has(k.person_id) && !linked.has(k.person_id)) {
+              linked.set(k.person_id, { guest_id: k.person_id, name: names.get(k.person_id) || '#' + k.person_id, label: k.title });
+            }
+          });
+        });
         $('#rf-linked-box', m).innerHTML = linked.size ? `<div class="sb-line"><select id="rf-linked">${[...linked.values()].map(l =>
           `<option value="${l.guest_id}">${esc(l.name)} · ${esc(l.label)}</option>`).join('')}</select>
           <button class="btn btn-sm" id="rf-linked-add">+ Добавить связанного гостя</button></div>` : '';
@@ -508,7 +519,10 @@ async function openGroupForm(card, onSaved) {
 async function openGuestCard(gid, onChanged) {
   const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund(), api(`/api/stays/guests/${gid}/prefs`)]);
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
-  const edit = can('stays.edit');
+  /* правка: stays.edit — любой гость; батлер (stays.mine_guest_edit) — свой: карточку он открывает только
+     у своих, анкетные поля в форме заперты (сервер проверяет и принадлежность, и поля) */
+  const full = can('stays.edit');
+  const edit = full || can('stays.mine_guest_edit');
   const role = { main: 'главный', guest: 'проживает' };
   const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
   openModal({
@@ -538,7 +552,7 @@ async function openGuestCard(gid, onChanged) {
       renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
       renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit, onChanged);
       const ed = $('#gc-edit', m);
-      if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); });
+      if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); }, { mine: !full });
       $$('[data-link-del]', m).forEach(b => {
         b.onclick = async () => {
           try { await api(`/api/stays/guest-links/${b.dataset.linkDel}`, { method: 'DELETE' }); reopen(); } catch (e) { toast(e.message, 'err'); }
