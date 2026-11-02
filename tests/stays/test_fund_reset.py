@@ -130,7 +130,8 @@ def test_reset_tables_cover_whole_stays_schema():
     keep = {m.__tablename__ for m in fr.KEEP}
     assert not wipe & keep
     assert wipe | keep == stays, stays ^ (wipe | keep)
-    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts", "stays_category_kinds"}
+    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts", "stays_category_kinds",
+                    "stays_vip_codes"}
 
 
 def test_reset_requires_stays_reset_perm(manager_role_client, admin_client, db):
@@ -304,6 +305,37 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
     assert body["backup"] in log.payload_json and "real-fund.xlsx" in log.payload_json
 
 
+def test_reset_keeps_vip_codes(admin_client, db):
+    """Справочник VIP-кодов — настройка модуля: переживает «заменить всё» (как виды категорий),
+    хотя гости и брони, ссылавшиеся на коды, удалены; в сырую копию он не входит."""
+    from app.modules.stays.adapters.orm import Guest, VipCode
+
+    code = VipCode(code="9777", title="Остаётся", escorted=True, factor=1.5)
+    db.add(code)
+    db.flush()
+    code_id = code.id
+    db.scalar(select(Guest).limit(1)).vip_code_id = code_id
+    db.commit()
+    codes = _rows(db, VipCode)
+    assert VipCode not in fr.WIPE and VipCode in fr.KEEP
+    assert "stays_vip_codes" not in fr.raw_sheet_names()
+    try:
+        data = _no_ids(_export(admin_client))
+        r = _reset(admin_client, data, _preview(admin_client, data).json()["fingerprint"])
+        assert r.status_code == 200, r.text
+        db.expire_all()
+        assert _rows(db, VipCode) == codes
+        assert db.scalar(select(func.count()).select_from(Guest)) == 0
+    finally:                                   # _restore вернёт гостей, а код снимаем после них
+        db.rollback()
+        db.close()
+        from app.core.db import SessionLocal
+        with SessionLocal() as s:
+            s.execute(update(Guest).where(Guest.vip_code_id == code_id).values(vip_code_id=None))
+            s.execute(VipCode.__table__.delete().where(VipCode.code == "9777"))
+            s.commit()
+
+
 def _other_tables(db) -> dict[str, int]:
     return {t: db.scalar(select(func.count()).select_from(Base.metadata.tables[t]))
             for t in Base.metadata.tables if not t.startswith("stays_") and t != "audit_log"}
@@ -453,3 +485,21 @@ def test_backup_download_rejects_path_traversal(admin_client, tmp_path):
     # «..» клиент схлопывает ещё до запроса — проверяем сам разбор имени
     for name in ("..", "../secret.xlsx", "/etc/passwd", "stays-20261028-120000.xlsx/..", "stays-20261028-120001.xlsx"):
         assert fr.backup_path(name) is None
+
+
+def test_backup_sheets_header_width_equals_row_width(db, monkeypatch):
+    """Листы «Брони» и «Гости» копии: столбцов в шапке ровно столько, сколько значений в строке."""
+    seen: dict = {}
+    real = fr._sheet
+
+    def spy(wb, title, head, rows):
+        rows = [list(r) for r in rows]
+        seen[title] = (head, rows)
+        real(wb, title, head, rows)
+    monkeypatch.setattr(fr, "_sheet", spy)
+    fr.backup_bytes(db)
+    for name in ("Брони", "Гости"):
+        head, rows = seen[name]
+        assert len(set(head)) == len(head), (name, head)
+        assert rows, name
+        assert {len(r) for r in rows} == {len(head)}, (name, len(head), {len(r) for r in rows})

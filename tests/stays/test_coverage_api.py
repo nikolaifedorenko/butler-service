@@ -3,10 +3,23 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
+from decimal import Decimal
 
 from sqlalchemy import func, select
 
 from app.core.audit import AuditLog
+from app.modules.stays.adapters.orm import CoverageLine, Guest, Occupant, Reservation, VipCode
+from app.modules.stays.application.context import StaysContext
+from app.modules.stays.application.fund_versions import (
+    CategoryInfo,
+    FundSnapshot,
+    FundTimeline,
+    GroupInfo,
+    UnitInfo,
+)
+from app.modules.stays.domain.escort import EscortNeed
+from app.modules.stays.domain.types import Line
 
 from .helpers import API, create_res, make_category, make_guest
 
@@ -172,11 +185,17 @@ def test_preview_equals_save_coverage_ops(manager_role_client, manager_client, b
 
 
 def test_candidates_known_guest_first(manager_role_client, manager_client, butlers):
+    from app.core.db import SessionLocal
     a, b = butlers["a"], butlers["b"]
-    late = butlers["days"][7:]                      # брони других тестов живут в первую неделю окна
-    day = next((d for d in late if butlers["on"](a, d) and butlers["on"](b, d)), None)
+    # дни, где у a и b нет строк покрытия других тестов (test_butlers_board, test_stage4_review,
+    # test_day_board ведут a в днях 8–12 окна): иначе a или b вне лимита и выпадают из кандидатов —
+    # а какие дни на смене, зависит от Графика на сегодняшнюю дату
+    with SessionLocal() as s:
+        busy = set(s.scalars(select(CoverageLine.day).where(CoverageLine.employee_id.in_([a, b]))))
+    free = [d for d in butlers["days"] if d not in busy]
+    day = next((d for d in free if butlers["on"](a, d) and butlers["on"](b, d)), None)
     if day is None:
-        day = next(d for d in late if butlers["on"](a, d) or butlers["on"](b, d))
+        day = next(d for d in free if butlers["on"](a, d) or butlers["on"](b, d))
     cat = make_category(manager_role_client)
     g = make_guest(manager_client)
     past = create_res(manager_client, cat, "2026-01-05", "2026-01-07", [(g["id"], "main", None, None)])
@@ -191,3 +210,116 @@ def test_candidates_known_guest_first(manager_role_client, manager_client, butle
         on_shift, key=lambda e: e != b)
     if b in on_shift:
         assert next(c for c in got if c["employee_id"] == b)["knows_guest"] is True
+
+
+# --- Правила сопровождения в контексте покрытия (§4.1, §4.2): контекст собирается в памяти ---
+
+N1 = dt.date(2031, 3, 1)
+NIGHTS = 3
+VILLA = CategoryInfo(1, "V", "Вилла", 1, 2.0, False, 1)
+WINE = GroupInfo(5, None, "Винные виллы", 1, (5,), escorted=True)
+GARDEN = GroupInfo(6, None, "Сад", 2, (6,))
+UNITS = {101: UnitInfo(101, "А", 1, 6, "", frozenset()), 102: UnitInfo(102, "Б", 1, 6, "", frozenset()),
+         103: UnitInfo(103, "В", 1, 5, "", frozenset())}
+
+
+def _snap(wine=WINE, valid=N1, vid=1):
+    return FundSnapshot(vid, valid, {1: VILLA}, {wine.id: wine, GARDEN.id: GARDEN}, UNITS)
+
+
+def _guest(gid, last, special=False):
+    return Guest(id=gid, last_name=last, first_name="", special=special)
+
+
+def _book(rid, unit, occupants, group=None, mode="rules"):
+    """occupants: [(guest_id, первая ночь, ночь выезда)] — None — вся бронь."""
+    co = N1 + dt.timedelta(days=NIGHTS)
+    r = Reservation(id=rid, check_in=N1, check_out=co, early=False, late=False, category_id=1, group_id=group,
+                    escort_mode=mode, vip_code_id=None)
+    return r, unit, [Occupant(reservation_id=rid, guest_id=g, date_from=f or N1, date_to=t or co) for g, f, t in occupants]
+
+
+def _ctx(books, guests, fund=None, lines=()):
+    from app.modules.stays.domain.halfday import pieces, segments
+    res, segs, asg, occ = {}, {}, {}, {}
+    for r, unit, os in books:
+        res[r.id], occ[r.id] = r, os
+        segs[r.id] = pieces(segments(r.check_in, r.check_out, False, False, r.category_id, []), [])
+        asg.update({(r.id, p.index): unit for p in segs[r.id]})
+    return StaysContext(first=N1, last=N1 + dt.timedelta(days=NIGHTS - 1), special_factor=2.0, limit=8.0,
+                        codes=frozenset(), fund=fund or FundTimeline([(N1, _snap())]), res=res, segs=segs, asg=asg,
+                        occ=occ, guests={g.id: g for g in guests}, vip_codes={}, lines=list(lines), escorts=[],
+                        staff={}, duty={})
+
+
+def _need(ctx, day):
+    return {s.reservation_id: s.need for s in ctx.stays_on(day)}
+
+
+def _group_with_special(special_to=None):
+    """Группа 7: в вилле А «Особый» Петров (и обычный гость), в вилле Б — обычный; узел «Сад» без правил."""
+    return _ctx([_book(1, 101, [(50, None, special_to), (51, None, None)], group=7),
+                 _book(2, 102, [(60, None, None)], group=7)],
+                [_guest(50, "Петров", special=True), _guest(51, "Сидоров"), _guest(60, "Орлов")])
+
+
+def test_special_in_group_needs_other_villas():
+    ctx = _group_with_special()
+    need = _need(ctx, N1)
+    assert need[2] == EscortNeed(True, ("◆ Особый гость Петров",)) and need[1].required
+    assert {(w.kind, w.reservation_id) for w in ctx.warnings(N1)} == {("hole", 1), ("hole", 2)}
+
+
+def test_special_in_group_only_on_his_nights():
+    ctx = _group_with_special(special_to=N1 + dt.timedelta(days=1))
+    assert _need(ctx, N1)[2].required
+    assert _need(ctx, N1 + dt.timedelta(days=1)) == {1: EscortNeed(False, ()), 2: EscortNeed(False, ())}
+    assert ctx.warnings(N1 + dt.timedelta(days=1)) == []
+
+
+def test_special_weight_only_own_villa():
+    """«Особый» умножает вес только своей виллы (2 × 2 = 4); вилла Б группы — вес категории (2)."""
+    lines = [Line(1, N1, 900, 1, None, frozenset(), "manual", False),
+             Line(2, N1, 901, 2, None, frozenset(), "manual", False)]
+    ctx = _group_with_special()
+    ctx.lines = lines
+    assert ctx.loads(N1) == {900: 4.0, 901: 2.0}
+
+
+def test_unallocated_ignores_node_rule_then_applies():
+    """Бронь без объекта — без правила узла; объект в «Винных виллах» — нужно по узлу."""
+    guests = [_guest(50, "Петров")]
+    assert _need(_ctx([_book(1, None, [(50, None, None)])], guests), N1)[1] == EscortNeed(False, ())
+    assert _need(_ctx([_book(1, 103, [(50, None, None)])], guests), N1)[1] == EscortNeed(True, ("узел Винные виллы",))
+
+
+def test_node_from_date_version_of_day():
+    """Отметка узла — из версии фонда дня: до версии нет, с вечера valid_from — есть."""
+    later = N1 + dt.timedelta(days=1)
+    fund = FundTimeline([(N1, _snap(GroupInfo(5, None, "Винные виллы", 1, (5,)))), (later, _snap(valid=later, vid=2))])
+    ctx = _ctx([_book(1, 103, [(50, None, None)])], [_guest(50, "Петров")], fund=fund)
+    assert not _need(ctx, N1)[1].required and _need(ctx, later)[1].reasons == ("узел Винные виллы",)
+
+
+def test_archived_code_still_acts(manager_role_client, manager_client, db):
+    """Архивный код с сопровождением действует в брони, где уже стоит: причина и коэффициент."""
+    from app.modules.stays.application.context import load_context
+    day = dt.date(2052, 4, 10)
+    cat = make_category(manager_role_client, escorted=False)
+    res = create_res(manager_client, cat, day.isoformat(), (day + dt.timedelta(days=1)).isoformat(),
+                     [(make_guest(manager_client)["id"], "main", None, None)])
+    code = VipCode(code=f"8{uuid.uuid4().int % 10**7:07d}", title="полноценное", escorted=True,
+                   factor=Decimal("3"), archived=True)
+    db.add(code)
+    db.flush()
+    row = db.get(Reservation, res["id"])
+    row.vip_code_id = code.id
+    db.commit()
+    try:
+        (s,) = [s for s in load_context(db, day, day, None).stays_on(day) if s.reservation_id == res["id"]]
+        assert s.need == EscortNeed(True, (f"код {code.code} — полноценное",)) and s.code_factor == 3.0
+    finally:
+        row.vip_code_id = None
+        db.flush()
+        db.delete(code)
+        db.commit()

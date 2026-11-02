@@ -170,7 +170,7 @@ async function resetFilters() {
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
    /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
-async function fundCategory(code, labels, validFrom) {
+async function fundCategory(code, labels, validFrom, escorted = true) {
   const today = serverToday();
   const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: validFrom || today });
   if (d.status !== 200) throw new Error(`черновик фонда (create): ${d.status} ${JSON.stringify(d.body)}`);
@@ -183,7 +183,7 @@ async function fundCategory(code, labels, validFrom) {
   };
   const kinds = (await apiJson('GET', '/api/stays/fund/snapshot?date=' + today)).body.kinds;
   const villa = kinds.find(k => k.title === 'вилла');
-  const cat = await step('categories', { code, title: code, kind_id: villa.id, escorted: true, weight: 4 });
+  const cat = await step('categories', { code, title: code, kind_id: villa.id, escorted, weight: 4 });
   const units = [];
   for (const label of labels) units.push({ id: (await step('units', { label, category_id: cat.id })).id, label });
   await step('publish', {});
@@ -670,6 +670,88 @@ async function formFundOnCheckIn() {
   click($('[data-close]'));
 }
 
+/* Бронь (правила сопровождения §3, §6): VIP-код подставляется из профиля главного гостя (демо: у Орлова —
+   «13»), «Сопровождение» сохраняется, архивный код текущей брони виден в списке с пометкой «в архиве» */
+async function escortBookingForm() {
+  console.log('\n7б · Форма брони: VIP-код и сопровождение');
+  const c13 = (await apiJson('GET', '/api/stays/fund')).body.vip_codes.find(c => c.code === '13');
+  const code = 'EF' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1', code + '-2']);
+  const d1 = addDays(serverToday(), 40), d2 = addDays(serverToday(), 43);
+  window.navigate('stays');
+  window.eval('openReservationForm()');
+  check('форма брони: поля «VIP-код» и «Сопровождение»', await waitFor(() => !!$('#rf-vip-code') && !!$('#rf-escort')));
+  check('«Сопровождение»: по правилам / требуется / не требуется (гость отказался)',
+    [...$('#rf-escort').options].map(o => o.textContent).join(' / ') === 'по правилам / требуется / не требуется (гость отказался)');
+  input($('#rf-number'), 'EF' + uniq);
+  change($('#rf-check-in'), d1);
+  await waitFor(() => [...$('#rf-category').options].some(o => o.value === String(cat.id)));
+  change($('#rf-category'), String(cat.id));
+  change($('#rf-check-out'), d2);
+  input($('#rf-guest-q'), 'Орлов');
+  const pick = `[data-pick-guest][data-code="${c13?.id}"]`;
+  check('подбор гостя: гость с кодом найден', await waitFor(() => !!$(pick)));
+  click($(pick));
+  check('VIP-код подставлен из профиля главного гостя', await waitFor(() => $('#rf-vip-code').value === String(c13?.id)),
+    $('#rf-vip-code').value);
+  change($('#rf-escort'), 'required');
+  click($('[data-save]'));
+  const url = `/api/stays/bookings?first=${d1}&last=${d1}&category_ids=${cat.id}`;
+  const row = (await pollApi(url, b => b?.rows?.length > 0)).rows?.[0];
+  check('сохранено: код «13» и «требуется»', row?.vip_code === '13' && row?.escort_mode === 'required', JSON.stringify(row));
+  await waitFor(() => !$('#rf-vip-code'));
+  window.eval(`openReservationForm(${row?.id})`);
+  check('правка: режим и код на месте, подсказка правил — «нужен — код 13»', await waitFor(() =>
+    $('#rf-escort')?.value === 'required' && $('#rf-vip-code')?.value === String(c13?.id)
+    && /по правилам: нужен — .*код 13/.test(text('#rf-escort-hint'))), text('#rf-escort-hint'));
+  click($('[data-close]'));
+  // архивный код: остаётся у брони, где стоит, и виден с пометкой; другой брони не предлагается
+  const arch = (await apiJson('POST', '/api/stays/vip-codes', { code: '6' + String(Date.now()).slice(-7),
+    title: 'Архивный', escorted: false, factor: 1 })).body;
+  const kept = (await apiJson('POST', '/api/stays/reservations', { number: 'EA' + uniq, check_in: d1, check_out: d2,
+    category_id: cat.id, vip_code_id: arch.id })).body.result;
+  await apiJson('PUT', `/api/stays/vip-codes/${arch.id}/archive`, { archived: true });
+  await window.eval('staysFund(true)');
+  window.eval(`openReservationForm(${kept?.id})`);
+  check('архивный код текущей брони — в списке с пометкой «в архиве»', await waitFor(() =>
+    $('#rf-vip-code')?.value === String(arch.id) && /в архиве/.test($('#rf-vip-code').selectedOptions[0]?.textContent || '')));
+  click($('[data-close]'));
+  window.eval(`openReservationForm(${row?.id})`);
+  check('другой брони архивный код не предлагается', await waitFor(() => !!$('#rf-vip-code'))
+    && ![...$('#rf-vip-code').options].some(o => o.value === String(arch.id)));
+  click($('[data-close]'));
+  // главный заменён на гостя с архивным кодом профиля (демо: у Гусева — «03») — код подставлен с пометкой
+  const c03 = (await apiJson('GET', '/api/stays/fund')).body.vip_codes.find(c => c.code === '03');
+  await apiJson('PUT', `/api/stays/vip-codes/${c03?.id}/archive`, { archived: true });
+  await window.eval('staysFund(true)');
+  window.eval('openReservationForm()');
+  await waitFor(() => !!$('#rf-guest-q'));
+  input($('#rf-guest-q'), 'Орлов');
+  await waitFor(() => !!$(pick));
+  click($(pick));
+  await waitFor(() => $('#rf-vip-code').value === String(c13?.id));
+  click($('[data-occ-del="0"]'));
+  input($('#rf-guest-q'), 'Гусев');
+  const pick03 = `[data-pick-guest][data-code="${c03?.id}"]`;
+  await waitFor(() => !!$(pick03));
+  click($(pick03));
+  check('главный с архивным кодом профиля — код подставлен с пометкой «в архиве»', await waitFor(() =>
+    $('#rf-vip-code').value === String(c03?.id) && /в архиве/.test($('#rf-vip-code').selectedOptions[0]?.textContent || '')),
+  $('#rf-vip-code').value);
+  input($('#rf-number'), 'EG' + uniq);
+  change($('#rf-check-in'), d1);
+  await waitFor(() => [...$('#rf-category').options].some(o => o.value === String(cat.id)));
+  change($('#rf-category'), String(cat.id));
+  change($('#rf-check-out'), d2);
+  click($('[data-save]'));
+  const g03 = (await pollApi(`/api/stays/bookings?first=${d1}&last=${d1}&category_ids=${cat.id}&q=EG${uniq}`,
+    b => b?.rows?.length > 0)).rows?.[0];
+  check('сохранено: архивный код профиля главного («03») стоит в брони', g03?.vip_code === '03', JSON.stringify(g03));
+  await waitFor(() => !$('#rf-vip-code'));
+  await apiJson('PUT', `/api/stays/vip-codes/${c03?.id}/archive`, { archived: false });
+  await window.eval('staysFund(true)');
+}
+
 const DEMO_SURNAMES = ['Лебедев', 'Фомина', 'Зайцев', 'Гусев', 'Кузьмин', 'Белова'];
 
 async function roleSmoke() {
@@ -701,6 +783,12 @@ async function roleSmoke() {
         await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
         check(`вкладка «${tab}»: кнопка создания только с stays.edit`, !!$(newBtn) === me.permissions.includes('stays.edit'));
       }
+    }
+    if (!names) {
+      click($('#view-stays [data-stab="units"]'));
+      await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
+      check('занятость: нет ◆ и VIP-кода', !/◆/.test($('#view-stays').textContent) && !$('#view-stays [data-vip-code]')
+        && !$('#sf-special') && !$('[data-sf-dd="vipcode"]'));
     }
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
     if (names && !me.permissions.includes('stays.edit')) await familyReadOnly();
@@ -957,6 +1045,176 @@ async function guestsTab() {
   check('бронь и предпочтения перешли оставленному', card.stays.some(x => x.number === `GS${uniq}`)
     && card.preferences.food === 'без лактозы', JSON.stringify(card.stays));
   check('дубль удалён', (await apiJson('GET', `/api/stays/guests/${drop.id}`)).status === 404);
+  window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
+/* 7в · Настройки → Сопровождение, ◆ и код на экранах, табло с причинами, фильтры (правила сопровождения §5, §6) */
+async function escortScreens() {
+  console.log('\n7в · Сопровождение: справочник кодов, табло, ◆ и фильтры');
+  const today = serverToday();
+  const code = '5' + String(Date.now()).slice(-6), title = 'Тест ' + uniq;
+  window.navigate('settings');
+  await waitFor(() => !!$('#st-nav'));
+  await go('stays_escort');
+  check('экран: таблица кодов, коэффициент «Особого гостя», подсказка',
+    !!$('#se-codes-table') && !!$('#se-special') && /подберите лимит нагрузки заново/.test(text('#st-body')));
+  check('надбавок VIP/VVIP на экране нет', !$('#se-vip') && !$('#se-vvip') && !/VVIP/.test(text('#st-body')));
+  check('сводка правил на дату', !!$('[data-rules-cats]') && !!$('[data-rules-groups]') && !!$('#se-to-fund'));
+  click($('#se-code-add'));
+  check('форма кода открылась', await waitFor(() => !!$('#vc-code')));
+  input($('#vc-code'), code); input($('#vc-title'), title);
+  $('#vc-escorted').checked = true; input($('#vc-factor'), '2');
+  click($('[data-save]'));
+  const created = (await pollApi('/api/stays/fund', b => b.vip_codes.some(c => c.code === code))).vip_codes.find(c => c.code === code);
+  check('код заведён с сопровождением и коэффициентом', created?.escorted === true && created.factor === 2 && created.title === title,
+    JSON.stringify(created));
+  check('код в таблице', await waitFor(() => !!$(`[data-code-row="${created.id}"]`)));
+
+  /* бронь в категории БЕЗ сопровождения: нужен батлер только по коду */
+  const { cat } = await fundCategory('EC' + uniq, ['EC' + uniq + '-1', 'EC' + uniq + '-2'], undefined, false);
+  const d1 = addDays(today, 20), d2 = addDays(today, 23);
+  const sp = (await apiJson('POST', '/api/stays/guests', { last_name: 'Особый' + uniq, special: true, vip_code_id: created.id })).body;
+  const plain = (await apiJson('POST', '/api/stays/guests', { last_name: 'Обычный' + uniq })).body;
+  const book = (g, n) => apiJson('POST', '/api/stays/reservations', { number: n + uniq, check_in: d1, check_out: d2, category_id: cat.id,
+    occupants: [{ guest_id: g.id, role: 'main', date_from: d1, date_to: d2 }] }).then(r => r.body.result);
+  const rs = await book(sp, 'S'), rp = await book(plain, 'P');
+  check('бронь копирует код профиля', rs.vip_code_id === created.id && rp.vip_code_id == null);
+
+  window.navigate('stays');
+  window.eval(`boardState.day = '${d1}'`);
+  await openMonth(d1, 'day');
+  await resetFilters();
+  const row = id => `#view-stays [data-db-row="${id}"]`;
+  check('табло: обе брони', await waitFor(() => !!$(row(rs.id)) && !!$(row(rp.id))));
+  check('табло: «не назначено» с причиной «код … — …»', /не назначено/.test(text(row(rs.id))) && text(`${row(rs.id)} [data-db-reasons]`).includes(`код ${code} — ${title}`),
+    text(row(rs.id)));
+  check('табло: бронь без правил — «не требуется»', /не требуется/.test(text(row(rp.id))), text(row(rp.id)));
+  check('табло: ◆ у особого гостя и код рядом', !!$(`${row(rs.id)} .sb-star`) && text(`${row(rs.id)} [data-vip-code]`) === code);
+  check('табло: без ◆ у обычного гостя', !$(`${row(rp.id)} .sb-star`));
+  check('итоги: «Особых гостей», без VIP/VVIP', !!$('[data-db-special]') && !/VVIP/.test(text('.db-sum')), text('.db-sum'));
+
+  /* фильтр «◆ Особый гость» и «VIP-код» */
+  await setCheck('#sf-special', true);
+  check('фильтр «◆ Особый гость»: обычный гость скрыт', await waitFor(() => !!$(row(rs.id)) && !$(row(rp.id))));
+  await resetFilters();
+  await setCheck(`[data-sf-vipcode="${created.id}"]`, true);
+  check('фильтр «VIP-код»: только бронь с кодом', await waitFor(() => !!$(row(rs.id)) && !$(row(rp.id))));
+  await resetFilters();
+
+  /* шахматка объектов и «Брони»: ◆ и код */
+  await openMonth(d1, 'units');
+  check('полоса: ◆ и код', await waitFor(() => /◆/.test(text(`#view-stays [data-bar="${rs.id}"]`)) && text(`#view-stays [data-bar="${rs.id}"]`).includes(code)),
+    text(`#view-stays [data-bar="${rs.id}"]`));
+  check('полоса обычного гостя без ◆', !/◆/.test(text(`#view-stays [data-bar="${rp.id}"]`)));
+  await setCheck('#sf-special', true);
+  check('шахматка: фильтр «◆ Особый гость»', await waitFor(() => !!$(`#view-stays [data-bar="${rs.id}"]`) && !$(`#view-stays [data-bar="${rp.id}"]`)));
+  await resetFilters();
+  window.eval(`staysBook.custom = true; staysBook.first = '${d1}'; staysBook.last = '${d2}'`);
+  click($('#view-stays [data-stab="bookings"]'));
+  check('«Брони»: ◆ и код', await waitFor(() => /◆/.test(text(`[data-bk-row="${rs.id}"]`)) && text(`[data-bk-row="${rs.id}"]`).includes(code)),
+    text(`[data-bk-row="${rs.id}"]`));
+  await setCheck('#sf-special', true);
+  check('«Брони»: фильтр «◆ Особый гость»', await waitFor(() => !!$(`[data-bk-row="${rs.id}"]`) && !$(`[data-bk-row="${rp.id}"]`)));
+  await resetFilters();
+
+  /* сохранённый набор со старым полем vip: true переезжает в special */
+  const legacy = window.eval(`JSON.stringify(staysCleanFilters({ vip: true }))`);
+  check('набор со старым vip: true читается как special', JSON.parse(legacy).special === true && !('vip' in JSON.parse(legacy)));
+
+  /* удаление использованного — 409 с текстом сервера; архив */
+  window.navigate('settings');
+  await waitFor(() => !!$('#st-nav'));
+  await go('stays_escort');
+  click($(`[data-code-del="${created.id}"]`));
+  check('подтверждение удаления', await waitFor(() => !!$('[data-yes]')));
+  click($('[data-yes]'));
+  check('удаление использованного кода — сообщение 409', await waitFor(() => /Код используется/.test(text('#toast-host'))), text('#toast-host'));
+  check('код остался', (await apiJson('GET', '/api/stays/fund')).body.vip_codes.some(c => c.id === created.id));
+  click($(`[data-code-arch="${created.id}"]`));
+  check('архив: в API', (await pollApi('/api/stays/fund', b => b.vip_codes.find(c => c.id === created.id)?.archived)).vip_codes
+    .find(c => c.id === created.id).archived === true);
+  check('архив: пометка в таблице', await waitFor(() => /в архиве/.test(text(`[data-code-row="${created.id}"]`))));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
+
+  /* дата до первой версии фонда: снимок 404 — «правила недоступны» только в блоке правил, остальной экран жив */
+  const host = $('#st-body');
+  host.dataset.escortDate = '1990-01-01';
+  window.eval('renderStaysEscort(document.querySelector("#st-body"))');
+  check('сопровождение: дата до фонда — сообщение в блоке правил',
+    await waitFor(() => /правила на эту дату недоступны/.test(text('#st-body'))), text('#st-body').slice(0, 200));
+  check('сопровождение: таблица кодов и список батлеров на месте', !!$('#se-codes-table') && !!$('[data-escort]')
+    && !$('[data-rules-cats]'));
+  const dateInput = $('#se-date');
+  check('сопровождение: дата в поле сохранена', dateInput?.value === '1990-01-01');
+  dateInput.value = serverToday();
+  dateInput.dispatchEvent(new window.Event('change'));
+  check('сопровождение: на нормальной дате правила вернулись', await waitFor(() => !!$('[data-rules-cats]')));
+}
+
+/* 9б · профиль гостя: «◆ Особый гость» и VIP-код; смена кода — галочка «обновить в бронях: N» и предпросмотр;
+   вкладка «Гости» — фильтр «◆ Особые» и колонка кода (правила сопровождения §6) */
+async function guestProfileCode() {
+  console.log('\n9б · Профиль гостя: особый гость и VIP-код');
+  const today = serverToday();
+  const codes = (await apiJson('GET', '/api/stays/fund')).body.vip_codes;
+  const c13 = codes.find(c => c.code === '13'), c03 = codes.find(c => c.code === '03');
+  const code = 'PC' + uniq;
+  const { cat } = await fundCategory(code, [code + '-1', code + '-2']);
+  const mk = body => apiJson('POST', '/api/stays/guests', body).then(r => r.body);
+  const g = await mk({ last_name: `Профиль${uniq}А`, first_name: 'Антон', vip_code_id: c13.id });
+  const plain = await mk({ last_name: `Профиль${uniq}Б`, first_name: 'Борис' });
+  const book = n => apiJson('POST', '/api/stays/reservations', { number: `PC${n}${uniq}`, check_in: addDays(today, 60 + n * 5),
+    check_out: addDays(today, 62 + n * 5), category_id: cat.id, occupants: [{ guest_id: g.id, role: 'main',
+      date_from: addDays(today, 60 + n * 5), date_to: addDays(today, 62 + n * 5) }] }).then(r => r.body.result);
+  const r1 = await book(0), r2 = await book(1);
+  check('бронь копирует код профиля главного', r1.vip_code_id === c13.id && r2.vip_code_id === c13.id);
+
+  window.navigate('stays');
+  window.eval(`openGuestForm(${g.id})`);
+  check('форма гостя: «◆ Особый гость» и «VIP-код»', await waitFor(() => !!$('#gf-special') && !!$('#gf-code')));
+  check('нет прежнего выбора уровня', !$('#gf-level'));
+  check('код профиля выбран, галочки обновления нет', $('#gf-code').value === String(c13.id) && $('#gf-upd-row').hidden);
+  $('#gf-special').checked = true;
+  change($('#gf-code'), String(c03.id));
+  check('смена кода: галочка «обновить в бронях: 2»', await waitFor(() => !$('#gf-upd-row').hidden
+    && text('#gf-upd-row').includes('обновить в бронях: 2') && $('#gf-upd').checked), text('#gf-upd-row'));
+  click($('#rf-preview'));
+  check('предпросмотр кода в бронях', await waitFor(() => /Что изменится/.test(text('#rf-preview-out'))
+    && text('#rf-preview-out').includes('обновится в бронях: 2')), text('#rf-preview-out'));
+  const still = (await apiJson('GET', `/api/stays/guests/${g.id}`)).body;
+  check('предпросмотр ничего не сохранил', still.vip_code_id === c13.id && !still.special);
+  click($('[data-save]'));
+  const saved = await pollApi(`/api/stays/guests/${g.id}`, b => b.vip_code_id === c03.id);
+  check('профиль: особый и новый код', saved.special === true && saved.vip_code_id === c03.id && saved.main_current === 2);
+  const after = await Promise.all([r1, r2].map(r => apiJson('GET', `/api/stays/reservations/${r.id}`).then(x => x.body)));
+  check('код обновился в обеих будущих бронях', after.every(r => r.vip_code_id === c03.id), JSON.stringify(after.map(r => r.vip_code_id)));
+
+  /* без галочки брони не трогаем */
+  window.eval(`openGuestForm(${g.id})`);
+  await waitFor(() => !!$('#gf-code'));
+  change($('#gf-code'), String(c13.id));
+  await waitFor(() => !$('#gf-upd-row').hidden);
+  $('#gf-upd').checked = false;
+  click($('[data-save]'));
+  await pollApi(`/api/stays/guests/${g.id}`, b => b.vip_code_id === c13.id);
+  const kept = (await apiJson('GET', `/api/stays/reservations/${r1.id}`)).body;
+  check('галочка снята — бронь сохранила прежний код', kept.vip_code_id === c03.id);
+
+  /* вкладка «Гости»: фильтр «◆ Особые» и колонка кода */
+  window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
+  window.navigate('stays');
+  await waitFor(() => $$('#view-stays [data-stab]').length > 0);
+  click($('#view-stays [data-stab="guests"]'));
+  await waitFor(() => !!$('#gl-total'));
+  input($('#gl-q'), `профиль${uniq}`.toLowerCase());
+  check('в списке оба гостя', await waitFor(() => $$('[data-gl-row]').length === 2));
+  check('колонка «VIP-код» с кодом гостя', text(`[data-gl-row="${g.id}"] [data-gl-code]`) === '13', text(`[data-gl-row="${g.id}"]`));
+  check('◆ у особого гостя', text(`[data-gl-row="${g.id}"]`).includes('◆') && !text(`[data-gl-row="${plain.id}"]`).includes('◆'));
+  const old = $('#gl-total');
+  $('#gl-special').checked = true; change($('#gl-special'));
+  check('фильтр «◆ Особые»', await waitFor(() => $('#gl-total') !== old && $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(g.id)),
+    text('#gl-total'));
   window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
 }
@@ -1387,8 +1645,11 @@ async function main() {
     await savedFilters();
     await flagMidMonth();
     await formFundOnCheckIn();
+    await escortBookingForm();
+    await escortScreens();
     await bookingsTab();
     await guestsTab();
+    await guestProfileCode();
     await familyEditor();
     await guestPrefs();
     await oooAndBlocksDisplay();

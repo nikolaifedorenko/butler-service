@@ -1,5 +1,5 @@
 """Демо-данные «Шахматки» (§11): весь фонд (37 вилл, имение, 2 медицинских апартамента,
-400 номеров в двух корпусах), вымышленные гости с VIP/VVIP и связями, брони от «вчера» на
+400 номеров в двух корпусах), вымышленные гости (есть «особые» и с VIP-кодами), связи, брони от «вчера» на
 месяц вперёд (совместная, переезд, смена главного гостя, отказ от батлера, не заехал),
 назначения батлеров с примерами перегруза, «вне смены» и «нужна подмена».
 
@@ -37,8 +37,9 @@ from ..adapters.orm import (
     Ooo,
     Reservation,
     StayGroup,
+    VipCode,
 )
-from . import allocation, fund_drafts, fund_versions
+from . import allocation, fund_drafts, fund_versions, vip_codes
 from .fund import seed_escorts_from_positions
 from .fund_versions import INITIAL_DATE
 from .guests import guest_search_text
@@ -64,12 +65,12 @@ SURNAMES = ["Орлов", "Гусев", "Лебедев", "Фомина", "За�
             "Афанасьев", "Карпова", "Ершов", "Никитина", "Соболев", "Третьякова", "Субботин", "Шарова",
             "Ларионов", "Кононова", "Блинов"]
 FIRST = ["Андрей", "Мария", "Пётр", "Елена", "Дмитрий", "Ольга", "Игорь", "Анна", "Сергей", "Наталья"]
-# семья из трёх поколений (§4): ключ, фамилия, имя, пол, уровень
-FAMILY = (("ivan", "Петров", "Иван", "m", "vip"), ("maria", "Петрова", "Мария", "f", "vip"),
-          ("petr", "Петров", "Пётр", "m", "regular"), ("olga", "Петрова", "Ольга", "f", "regular"),
-          ("nikolay", "Петров", "Николай", "m", "regular"), ("anna", "Смирнова", "Анна", "f", "regular"),
-          ("viktor", "Козлов", "Виктор", "m", "regular"), ("galina", "Козлова", "Галина", "f", "regular"),
-          ("elena", "Петрова", "Елена", "f", "regular"))
+# семья из трёх поколений (§4): ключ, фамилия, имя, пол, «Особый гость»
+FAMILY = (("ivan", "Петров", "Иван", "m", False), ("maria", "Петрова", "Мария", "f", False),
+          ("petr", "Петров", "Пётр", "m", False), ("olga", "Петрова", "Ольга", "f", False),
+          ("nikolay", "Петров", "Николай", "m", False), ("anna", "Смирнова", "Анна", "f", False),
+          ("viktor", "Козлов", "Виктор", "m", False), ("galina", "Козлова", "Галина", "f", False),
+          ("elena", "Петрова", "Елена", "f", False))
 # первичные связи: parent — первый родитель второго; остальное родство вычисляется
 FAMILY_LINKS = (("ivan", "maria", "spouse"), ("nikolay", "olga", "spouse"), ("viktor", "galina", "spouse"),
                 ("olga", "ivan", "parent"), ("nikolay", "ivan", "parent"), ("olga", "elena", "parent"),
@@ -184,7 +185,22 @@ def seed_connect_split(db: Session) -> None:
     fund_drafts.publish(db, None, draft.rev)
 
 
+# VIP-коды демо: код, название, сопровождается, коэффициент
+VIP_CODES = (("03", "Простое сопровождение", True, 1), ("13", "Сложный гость", True, 1.5),
+             ("14", "Без сопровождения", False, 1))
+
+
+def _seed_vip_codes(db: Session) -> None:
+    """Три кода демо; уже заведённые (в том числе вручную) не трогаются."""
+    have = set(db.scalars(select(VipCode.code)))
+    for i, (code, title, escorted, factor) in enumerate(VIP_CODES):
+        if code not in have:
+            vip_codes.save_code(db, {"code": code, "title": title, "escorted": escorted, "factor": factor,
+                                     "sort_order": i * 10}, None)
+
+
 def seed_stays_demo(db: Session) -> None:
+    _seed_vip_codes(db)
     if db.scalar(select(CategoryState.category_id).where(CategoryState.code == "VEG")) is not None:
         return
     rnd = random.Random(23)
@@ -196,20 +212,24 @@ def seed_stays_demo(db: Session) -> None:
 
     guests = []
     for i, last in enumerate(SURNAMES):
-        level = "vvip" if i in (0, 1) else "vip" if i in range(2, 10) else "regular"
-        g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], gender="mf"[i % 2], level=level, source="demo",
+        g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], gender="mf"[i % 2], special=i in (0, 1),
+                  source="demo",
                   phone=f"+7916{1000000 + i * 7919:07d}",
                   preferences_json='{"allergy": "орехи"}' if i % 9 == 0 else "{}")
         g.search_text = guest_search_text(g, set())
         guests.append(g)
+    # VIP-коды профилей (§3.1): форма брони подставляет код главного гостя; брони демо его не копируют
+    by_code = dict(db.execute(select(VipCode.code, VipCode.id)).all())
+    guests[0].vip_code_id, guests[1].vip_code_id = by_code.get("13"), by_code.get("03")
+    vip_ids = {"03": by_code["03"], "13": by_code["13"]}
     db.add_all(guests)
     db.flush()
     for a, b, kind in ((0, 10, "spouse"), (0, 11, "parent"), (0, 12, "assistant"), (1, 13, "spouse"),
                        (2, 14, "security"), (3, 15, "parent"), (4, 16, "spouse")):
         db.add(GuestLink(guest_a_id=guests[a].id, guest_b_id=guests[b].id, kind=kind))
     family = {key: Guest(last_name=last, first_name=first, middle_name="", phone="", email="", gender=gender,
-                         level=level, source="demo")
-              for key, last, first, gender, level in FAMILY}
+                         special=special, source="demo")
+              for key, last, first, gender, special in FAMILY}
     for g in family.values():
         g.search_text = guest_search_text(g, set())
     db.add_all(family.values())
@@ -249,7 +269,10 @@ def seed_stays_demo(db: Session) -> None:
                 co = d + dt.timedelta(days=rnd.randint(3, 7))
                 if co < today + dt.timedelta(days=1):
                     co = today + dt.timedelta(days=1)
-                r = book(code, d, co, u, declined_butler=(len(made) % 23 == 0))
+                no = len(made) % 23 == 0       # гость отказался; покрытие читает escort_mode
+                # каждая 17-я бронь несёт VIP-код (чередуются 03 и 13); она же может быть отказом
+                vc = vip_ids[("03", "13")[len(made) // 17 % 2]] if len(made) % 17 == 5 else None
+                r = book(code, d, co, u, vip_code_id=vc, escort_mode="declined" if no else "rules")
                 live(r, guest(), *([guest()] if rnd.random() < 0.4 else []))
                 if rnd.random() < 0.3:
                     db.add(Logistics(reservation_id=r.id, kind="transfer", date=d, time="14:30",
@@ -342,7 +365,7 @@ def _demo_coverage(db: Session, today: dt.date, made: list[Reservation], units: 
     escorted = set(db.scalars(select(CategoryState.category_id).where(CategoryState.escorted.is_(True))))
     pairs = [(b["Сидоров"], b["Морозова"]), (b["Петров"], b["Орлов"])]
     for n, r in enumerate(m for m in made if m.category_id in escorted and m.status != "no_show"
-                          and not m.declined_butler and m.group_id is None):
+                          and m.escort_mode != "declined" and m.group_id is None):
         if n % 6 == 5:
             continue                                        # дыры: брони без батлера
         a, c = pairs[n % 2]

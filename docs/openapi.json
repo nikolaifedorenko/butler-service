@@ -1248,6 +1248,11 @@
       },
       "DraftGroupIn": {
         "properties": {
+          "escorted": {
+            "default": false,
+            "title": "Escorted",
+            "type": "boolean"
+          },
           "parent_id": {
             "anyOf": [
               {
@@ -1809,14 +1814,110 @@
             "title": "Last Name",
             "type": "string"
           },
-          "level": {
-            "default": "regular",
-            "enum": [
-              "regular",
-              "vip",
-              "vvip"
+          "middle_name": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Middle Name",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Note",
+            "type": "string"
+          },
+          "phone": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Phone",
+            "type": "string"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Preferences",
+            "type": "object"
+          },
+          "special": {
+            "default": false,
+            "title": "Special",
+            "type": "boolean"
+          },
+          "special_dates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SpecialDate"
+            },
+            "title": "Special Dates",
+            "type": "array"
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Level",
+            "title": "Vip Code Id"
+          }
+        },
+        "required": [
+          "last_name"
+        ],
+        "title": "GuestIn",
+        "type": "object"
+      },
+      "GuestUpdateIn": {
+        "description": "Правка профиля: сменился код — update_reservations переносит его в текущие и будущие\nброни, где гость главный (§3.1); по умолчанию — да.",
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "email": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Email",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Fields",
+            "type": "object"
+          },
+          "first_name": {
+            "default": "",
+            "maxLength": 80,
+            "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "default": "",
+            "enum": [
+              "m",
+              "f",
+              ""
+            ],
+            "title": "Gender",
+            "type": "string"
+          },
+          "last_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Last Name",
             "type": "string"
           },
           "middle_name": {
@@ -1845,6 +1946,11 @@
             "title": "Preferences",
             "type": "object"
           },
+          "special": {
+            "default": false,
+            "title": "Special",
+            "type": "boolean"
+          },
           "special_dates": {
             "default": [],
             "items": {
@@ -1852,12 +1958,28 @@
             },
             "title": "Special Dates",
             "type": "array"
+          },
+          "update_reservations": {
+            "default": true,
+            "title": "Update Reservations",
+            "type": "boolean"
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
           }
         },
         "required": [
           "last_name"
         ],
-        "title": "GuestIn",
+        "title": "GuestUpdateIn",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3004,15 +3126,20 @@
             "title": "Customer",
             "type": "string"
           },
-          "declined_butler": {
-            "default": false,
-            "title": "Declined Butler",
-            "type": "boolean"
-          },
           "early": {
             "default": false,
             "title": "Early",
             "type": "boolean"
+          },
+          "escort_mode": {
+            "default": "rules",
+            "enum": [
+              "rules",
+              "required",
+              "declined"
+            ],
+            "title": "Escort Mode",
+            "type": "string"
           },
           "fields": {
             "additionalProperties": true,
@@ -3134,6 +3261,17 @@
               }
             ],
             "title": "Version"
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
           }
         },
         "required": [
@@ -3582,6 +3720,58 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VipCodeArchiveIn": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "archived"
+        ],
+        "title": "VipCodeArchiveIn",
+        "type": "object"
+      },
+      "VipCodeIn": {
+        "properties": {
+          "code": {
+            "maxLength": 8,
+            "title": "Code",
+            "type": "string"
+          },
+          "escorted": {
+            "default": false,
+            "title": "Escorted",
+            "type": "boolean"
+          },
+          "factor": {
+            "default": 1.0,
+            "maximum": 99.0,
+            "minimum": 0.1,
+            "title": "Factor",
+            "type": "number"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "VipCodeIn",
+        "type": "object"
+      },
       "VipIn": {
         "properties": {
           "employee_id": {
@@ -3870,20 +4060,21 @@
             "title": "Replacement Codes",
             "type": "string"
           },
-          "vip_bonus": {
-            "maximum": 999.0,
-            "title": "Vip Bonus",
-            "type": "number"
-          },
-          "vvip_bonus": {
-            "maximum": 999.0,
-            "title": "Vvip Bonus",
-            "type": "number"
+          "special_factor": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Factor"
           }
         },
         "required": [
-          "vip_bonus",
-          "vvip_bonus",
           "daily_limit"
         ],
         "title": "SettingsIn",
@@ -11727,12 +11918,25 @@
           },
           {
             "in": "query",
-            "name": "vip",
+            "name": "special",
             "required": false,
             "schema": {
               "default": false,
-              "title": "Vip",
+              "title": "Special",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Vip Code Ids",
+              "type": "array"
             }
           },
           {
@@ -11908,12 +12112,25 @@
           },
           {
             "in": "query",
-            "name": "vip",
+            "name": "special",
             "required": false,
             "schema": {
               "default": false,
-              "title": "Vip",
+              "title": "Special",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Vip Code Ids",
+              "type": "array"
             }
           },
           {
@@ -12182,12 +12399,25 @@
           },
           {
             "in": "query",
-            "name": "vip",
+            "name": "special",
             "required": false,
             "schema": {
               "default": false,
-              "title": "Vip",
+              "title": "Special",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Vip Code Ids",
+              "type": "array"
             }
           },
           {
@@ -12816,12 +13046,25 @@
           },
           {
             "in": "query",
-            "name": "vip",
+            "name": "special",
             "required": false,
             "schema": {
               "default": false,
-              "title": "Vip",
+              "title": "Special",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Vip Code Ids",
+              "type": "array"
             }
           },
           {
@@ -14964,18 +15207,28 @@
           },
           {
             "in": "query",
-            "name": "level",
+            "name": "special",
             "required": false,
             "schema": {
-              "default": "",
-              "enum": [
-                "",
-                "regular",
-                "vip",
-                "vvip"
+              "default": false,
+              "title": "Special",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "title": "Level",
-              "type": "string"
+              "title": "Vip Code Id"
             }
           },
           {
@@ -15038,7 +15291,7 @@
               "default": "name",
               "enum": [
                 "name",
-                "level",
+                "special",
                 "last_stay",
                 "stays"
               ],
@@ -15204,6 +15457,7 @@
         ]
       },
       "put": {
+        "description": "Правка профиля. Код сменился и update_reservations — той же операцией код переходит в текущие и\nбудущие брони, где гость главный; ?preview=1 показывает, что изменится (окно — от сегодня до самого\nпозднего выезда этих броней). Ответ: {guest, updated_reservations, diff?}.",
         "operationId": "update_guest_api_stays_guests__gid__put",
         "parameters": [
           {
@@ -15214,13 +15468,25 @@
               "title": "Gid",
               "type": "integer"
             }
+          },
+          {
+            "description": "Только показать, что изменится, без сохранения",
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Только показать, что изменится, без сохранения",
+              "title": "Preview",
+              "type": "boolean"
+            }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GuestIn"
+                "$ref": "#/components/schemas/GuestUpdateIn"
               }
             }
           },
@@ -16534,6 +16800,183 @@
           }
         },
         "summary": "Put Settings",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/vip-codes": {
+      "post": {
+        "operationId": "create_vip_code_api_stays_vip_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VipCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Vip Code",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/vip-codes/{cid}": {
+      "delete": {
+        "operationId": "remove_vip_code_api_stays_vip_codes__cid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Vip Code",
+        "tags": [
+          "stays"
+        ]
+      },
+      "put": {
+        "operationId": "update_vip_code_api_stays_vip_codes__cid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VipCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Vip Code",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/vip-codes/{cid}/archive": {
+      "put": {
+        "operationId": "archive_vip_code_api_stays_vip_codes__cid__archive_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "title": "Cid",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VipCodeArchiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Vip Code",
         "tags": [
           "stays"
         ]

@@ -24,14 +24,16 @@ router = APIRouter(prefix="/api/stays", tags=["stays"])
 
 
 def _query(first: dt.date, last: dt.date, mode: Literal["stay", "check_in", "check_out", "created"] = "stay",
-           dims: dict = Depends(fund_filters), escorted: bool = False, vip: bool = False,
-           employee_id: Optional[int] = None, q: str = "", statuses: list[str] = Query(default=[]),
+           dims: dict = Depends(fund_filters), escorted: bool = False, special: bool = False,
+           vip_code_ids: list[int] = Query(default=[]), employee_id: Optional[int] = None, q: str = "",
+           statuses: list[str] = Query(default=[]),
            label_ids: list[int] = Query(default=[]), unassigned: bool = False, with_warnings: bool = False,
            sort: str = "check_in", dir: Literal["asc", "desc"] = "asc", offset: int = Query(0, ge=0),
            limit: int = Query(bookings.MAX_LIMIT, ge=1, le=bookings.MAX_LIMIT)) -> bookings.BookingQuery:
     try:
         return bookings.BookingQuery(
-            first, last, mode, views.BoardFilters(**dims, escorted_only=escorted, vip=vip, employee_id=employee_id, q=q),
+            first, last, mode, views.BoardFilters(**dims, escorted_only=escorted, special=special,
+                                                vip_code_ids=tuple(vip_code_ids), employee_id=employee_id, q=q),
             tuple(statuses), tuple(label_ids), unassigned, with_warnings, sort, dir, offset, limit)
     except views.ViewError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -63,7 +65,8 @@ def bookings_export(query: bookings.BookingQuery = Depends(_query),
         "sort": query.sort, "dir": query.dir, "rows": len(rows), "statuses": list(query.statuses),
         "label_ids": list(query.label_ids), "unassigned": query.unassigned, "with_warnings": query.with_warnings,
         "group_ids": list(f.group_ids), "category_ids": list(f.category_ids), "flag_ids": list(f.flag_ids),
-        "kind_ids": list(f.kind_ids), "floor": f.floor, "escorted": f.escorted_only, "vip": f.vip,
+        "kind_ids": list(f.kind_ids), "floor": f.floor, "escorted": f.escorted_only, "special": f.special,
+        "vip_code_ids": list(f.vip_code_ids),
         "employee_id": f.employee_id, "q": f.q})
     db.commit()
     name = f"bookings_{query.first.isoformat()}_{query.last.isoformat()}.xlsx"

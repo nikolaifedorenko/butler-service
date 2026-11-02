@@ -69,7 +69,7 @@ def _copy_states(db: Session, src: int, dst: int) -> None:
     """Полная копия снимка версии src в версию dst (порядок учитывает составные FK)."""
     for model, cols in (
         (CategoryState, ("category_id", "code", "title", "kind_id", "weight", "escorted", "sort_order")),
-        (GroupState, ("group_id", "parent_id", "title", "sort_order")),
+        (GroupState, ("group_id", "parent_id", "title", "sort_order", "escorted")),
         (UnitState, ("unit_id", "label", "category_id", "group_id", "floor")),
         (UnitStateFlag, ("unit_id", "flag_id")),
     ):
@@ -305,6 +305,7 @@ def save_group(db: Session, rev: int, data: dict, group_id: int | None) -> int:
         db.add(row)
     row.title, row.parent_id = title, parent_id
     row.sort_order = _sort_order(data, row.sort_order)
+    row.escorted = bool(data.get("escorted", row.escorted if row.escorted is not None else False))
     bump(draft)
     db.flush()
     return group_id
@@ -470,7 +471,7 @@ def _plain(s: FundSnapshot):
                 "escorted": c.escorted, "sort_order": c.sort_order}
 
     def grp(g):
-        return {"parent_id": g.parent_id, "title": g.title, "sort_order": g.sort_order}
+        return {"parent_id": g.parent_id, "title": g.title, "sort_order": g.sort_order, "escorted": g.escorted}
 
     def unit(u):
         return {"label": u.label, "category_id": u.category_id, "group_id": u.group_id, "floor": u.floor}
@@ -496,7 +497,7 @@ def diff(db: Session, base_id: int, other_id: int) -> FundDiff:
 # сущность → (модель, ключ, поля в версии); порядок — порядок составных FK
 _STATE = {
     "category": (CategoryState, "category_id", ("code", "title", "kind_id", "weight", "escorted", "sort_order")),
-    "group": (GroupState, "group_id", ("parent_id", "title", "sort_order")),
+    "group": (GroupState, "group_id", ("parent_id", "title", "sort_order", "escorted")),
     "unit": (UnitState, "unit_id", ("label", "category_id", "group_id", "floor")),
 }
 _NAME = {"category": "code", "group": "title", "unit": "label"}
@@ -813,7 +814,7 @@ def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags:
                  units: list[dict]) -> None:
     """Заполняет исходную версию (INITIAL_DATE) напрямую, минуя черновик. Только для демо-сида
     и начальной загрузки. Ключи — как в телах API: категория — code/title/kind_id/escorted/weight/
-    sort_order; узел — path (названия от корня; недостающие предки заводятся сами) и sort_order;
+    sort_order; узел — path (названия от корня; недостающие предки заводятся сами), sort_order и escorted;
     флаг — title/color/sort_order; объект — label, category (код), path, floor, flags (названия).
     FundConflict, если в исходной версии уже есть объекты."""
     lock_module(db)
@@ -831,18 +832,18 @@ def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags:
                              weight=Decimal(str(c.get("weight", 1))), sort_order=c.get("sort_order", i * 10)))
     nodes: dict[tuple[str, ...], int] = {}
 
-    def node(path: tuple[str, ...], sort_order: int | None = None) -> int:
+    def node(path: tuple[str, ...], sort_order: int | None = None, escorted: bool = False) -> int:
         if path not in nodes:
             if "/" in path[-1]:
                 raise FundError("в названии узла нельзя использовать «/»")
             parent = node(path[:-1]) if len(path) > 1 else None
             nodes[path] = gid = _add(db, FundGroup())
             db.add(GroupState(version_id=vid, group_id=gid, parent_id=parent, title=path[-1],
-                              sort_order=100 if sort_order is None else sort_order))
+                              sort_order=100 if sort_order is None else sort_order, escorted=escorted))
         return nodes[path]
 
     for i, g in enumerate(groups):
-        node(tuple(g["path"]), g.get("sort_order", i * 10))
+        node(tuple(g["path"]), g.get("sort_order", i * 10), bool(g.get("escorted", False)))
     flag_ids: dict[str, int] = {t: fid for fid, t in db.execute(select(UnitFlag.id, UnitFlag.title))}
     for f in flags:
         if f["title"] not in flag_ids:
@@ -1080,7 +1081,7 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dic
         gid = g.id if g.id is not None else _add(db, FundGroup())
         path_id[g.path] = gid
         want.rows["group"][gid] = {"parent_id": path_id[g.path[:-1]] if len(g.path) > 1 else None,
-                                   "title": g.path[-1], "sort_order": g.sort_order}
+                                   "title": g.path[-1], "sort_order": g.sort_order, "escorted": g.escorted}
     lineage: list[UnitLineage] = []
     for u in parsed.units:
         uid = u.id if u.id is not None else _add(db, Unit())

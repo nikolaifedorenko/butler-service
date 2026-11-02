@@ -22,7 +22,7 @@ def dump(db) -> dict:
 
 def _put_body(res, **changes):
     return {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late",
-                                   "group_id", "note", "declined_butler")},
+                                   "group_id", "note", "escort_mode", "vip_code_id")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **changes}
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, aliased
 from ..adapters.orm import Guest, GuestLink
 from ..domain.kinship import FamilyGraph, Person, children_of, kin_of
 from .guests import format_phone
+from .vip_codes import code_texts
 from .visibility import Level, at_least
 
 FAMILY_KINDS = ("parent", "spouse")
@@ -92,10 +93,12 @@ def family(db: Session, gid: int, level: Level) -> dict:
     people = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(ids)))}
     graph = graph_of(links)
     full = at_least(level, "full")
+    codes = code_texts(db) if any(g.vip_code_id for g in people.values()) else {}
 
     def person(g: Guest) -> dict:
         out = {"id": g.id, "name": full_name(g) if full else f"{g.last_name} {g.first_name}".strip(),
-               "gender": g.gender, "level": g.level}
+               "gender": g.gender, "special": bool(g.special),
+               "vip_code": codes.get(g.vip_code_id, ("", False))[0]}
         if full:
             out |= {"phone": format_phone(g.phone), "birth_date": g.birth_date.isoformat() if g.birth_date else None}
         return out

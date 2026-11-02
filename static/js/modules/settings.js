@@ -225,7 +225,7 @@ async function loadSettings() {
     settingsUI.data = null;
   }
 
-  const fromHash = (location.hash.match(/^#\/settings\/([a-z-]+)/) || [])[1];
+  const fromHash = (location.hash.match(/^#\/settings\/([a-z_-]+)/) || [])[1];
   const screen = settingsScreenAllowed(fromHash) ? fromHash
     : (settingsScreenAllowed(settingsUI.screen) ? settingsUI.screen : 'overview');
   settingsUI.screen = screen;

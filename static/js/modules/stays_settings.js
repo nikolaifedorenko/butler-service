@@ -49,27 +49,51 @@ function staysBindDeletes(host, attr, url, what, rerender) {
 }
 
 /* ─────────────── Сопровождение ─────────────── */
+const staysFactorText = n => String(Number(n)).replace('.', ',');
+
 async function renderStaysEscort(host) {
-  const fund = await api('/api/stays/fund', { silent: true });
+  const date = host.dataset.escortDate || staysToday();
+  const [fund, snap] = await Promise.all([api('/api/stays/fund', { silent: true }),
+    api('/api/stays/fund/snapshot?date=' + date, { silent: true }).catch(() => null)]);   // дата до первой версии фонда — 404
+  const rerender = () => { host.dataset.escortDate = $('#se-date', host)?.value || date; renderStaysEscort(host); };
   const on = Object.fromEntries(fund.escorts.map(e => [e.employee_id, e.active]));
   const s = fund.settings;
+  const codes = fund.vip_codes || [];
+  const escCats = snap ? snap.categories.filter(c => c.escorted) : [];
+  const escGroups = snap ? snap.groups.filter(g => g.escorted) : [];
   host.innerHTML = `
-    ${settingsHead('Сопровождение', 'Кто ведёт гостей, надбавки за VIP/VVIP и дневной лимит нагрузки батлера.')}
+    ${settingsHead('Сопровождение', 'Кто ведёт гостей, VIP-коды, коэффициент «Особого гостя» и дневной лимит нагрузки батлера.')}
     ${settingsPanel('Сопровождают гостей', `
       <div class="check-list" style="max-height:360px">${(fund.staff || []).map(p => `
         <label class="chk"><input type="checkbox" data-escort="${p.id}"${on[p.id] ? ' checked' : ''}>
           ${esc(p.name)} <span class="muted">${esc(p.position)}</span></label>`).join('') || '<div class="empty">Нет сотрудников</div>'}</div>`,
       '<button class="btn btn-sm" id="se-seed" style="float:right">Заполнить по должности «батлер»</button>')}
+    ${settingsPanel('VIP-коды', `
+      <div class="table-wrap"><table class="data" id="se-codes-table">
+        <thead><tr><th>Код</th><th>Что значит</th><th>Сопровождение</th><th>Коэффициент</th><th>Порядок</th><th></th></tr></thead>
+        <tbody>${codes.map(c => `<tr data-code-row="${c.id}"${c.archived ? ' class="muted"' : ''}>
+          <td><b>${esc(c.code)}</b>${c.archived ? ' <span class="badge muted">в архиве</span>' : ''}</td><td>${esc(c.title)}</td>
+          <td>${c.escorted ? 'да' : '—'}</td><td>×${esc(staysFactorText(c.factor))}</td><td>${esc(String(c.sort_order))}</td>
+          <td class="num"><button class="btn btn-sm btn-ghost" data-code-edit="${c.id}">Изменить</button>
+            <button class="btn btn-sm btn-ghost" data-code-arch="${c.id}">${c.archived ? 'Вернуть' : 'В архив'}</button>
+            ${staysDeleteButton('data-code-del', c.id)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Кодов пока нет</td></tr>'}</tbody></table></div>`,
+      '<button class="btn btn-sm btn-primary" id="se-code-add" style="float:right">+ Код</button>')}
     ${settingsPanel('Нагрузка', `
       <div class="grid-2">
-        ${sfRow('Надбавка VIP', sfInput('se-vip', s.vip_bonus, 'number'))}
-        ${sfRow('Надбавка VVIP', sfInput('se-vvip', s.vvip_bonus, 'number'))}
+        ${sfRow('Коэффициент «Особого гостя»', sfInput('se-special', s.special_factor, 'number'))}
         ${sfRow('Дневной лимит', sfInput('se-limit', s.daily_limit, 'number'))}
         ${sfRow('Коды Табеля «нужна подмена»', sfInput('se-codes', s.replacement_codes))}
       </div>
-      <p class="hint">Вес объекта делится поровну между батлерами объекта; надбавка гостя — тому, кто его ведёт.
-      Перегруз — предупреждение, сохранять не мешает.</p>
-      <button class="btn btn-primary" id="se-save">Сохранить</button>`)}`;
+      <p class="hint">Вес места = категория × коэффициент кода × (Особый гость ? коэффициент : 1); делится поровну между батлерами места.
+      После смены коэффициентов подберите лимит нагрузки заново. Перегруз — предупреждение, сохранять не мешает.</p>
+      <button class="btn btn-primary" id="se-save">Сохранить</button>`)}
+    ${settingsPanel('Правила на дату', `
+      <label class="field"><span>Дата</span><input type="date" id="se-date" value="${esc(date)}"></label>
+      ${snap ? `
+      <div data-rules-cats><b>Категории с сопровождением:</b> ${escCats.map(c => esc(c.code)).join(', ') || '<span class="muted">нет</span>'}</div>
+      <div data-rules-groups><b>Узлы с сопровождением:</b> ${escGroups.map(g => esc(g.title)).join(', ') || '<span class="muted">нет</span>'}</div>`
+      : '<div data-rules-missing class="muted">правила на эту дату недоступны</div>'}
+      <p class="hint">Правятся в «Фонде» (черновиком с даты). <a href="#" id="se-to-fund">Открыть «Фонд»</a></p>`)}`;
   $$('[data-escort]', host).forEach(cb => {
     cb.onchange = async () => {
       try { await api(`/api/stays/escorts/${cb.dataset.escort}`, { method: 'PUT', body: { active: cb.checked } }); }
@@ -86,11 +110,34 @@ async function renderStaysEscort(host) {
   $('#se-save', host).onclick = async () => {
     try {
       await api('/api/stays/settings', { method: 'PUT', body: {
-        vip_bonus: Number($('#se-vip', host).value), vvip_bonus: Number($('#se-vvip', host).value),
+        special_factor: Number($('#se-special', host).value),
         daily_limit: Number($('#se-limit', host).value), replacement_codes: $('#se-codes', host).value } });
       toast('Настройки сохранены');
     } catch (e) { toast(e.message, 'err'); }
   };
+  $('#se-date', host).onchange = rerender;
+  $('#se-to-fund', host).onclick = e => { e.preventDefault(); settingsOpen('stays_fund'); };
+  const form = c => staysForm(c ? `Код «${c.code}»` : 'Новый код', [
+    sfRow('Код (цифры, ведущий ноль значим)', sfInput('vc-code', c?.code)), sfRow('Что значит', sfInput('vc-title', c?.title)),
+    sfCheck('vc-escorted', 'С сопровождением', c?.escorted),
+    sfRow('Коэффициент нагрузки', sfInput('vc-factor', c?.factor ?? 1, 'number')),
+    sfRow('Порядок', sfInput('vc-sort', c?.sort_order ?? 100, 'number')),
+  ], async m => {
+    const body = { code: $('#vc-code', m).value, title: $('#vc-title', m).value, escorted: $('#vc-escorted', m).checked,
+      factor: Number($('#vc-factor', m).value), sort_order: Number($('#vc-sort', m).value) };   // PUT — объект целиком
+    await api(c ? `/api/stays/vip-codes/${c.id}` : '/api/stays/vip-codes', { method: c ? 'PUT' : 'POST', body });
+    staysState.fund = null; toast('Код сохранён'); rerender();
+  });
+  $('#se-code-add', host).onclick = () => form(null);
+  $$('[data-code-edit]', host).forEach(b => { b.onclick = () => form(codes.find(c => c.id === Number(b.dataset.codeEdit))); });
+  $$('[data-code-arch]', host).forEach(b => {
+    b.onclick = async () => {
+      const c = codes.find(x => x.id === Number(b.dataset.codeArch));
+      try { await api(`/api/stays/vip-codes/${c.id}/archive`, { method: 'PUT', body: { archived: !c.archived } }); staysState.fund = null; rerender(); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+  });
+  staysBindDeletes(host, 'data-code-del', '/api/stays/vip-codes', 'код', () => { staysState.fund = null; rerender(); });
 }
 
 /* ─────────────── Настраиваемые поля ─────────────── */

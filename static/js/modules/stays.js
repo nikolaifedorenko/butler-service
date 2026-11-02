@@ -12,7 +12,11 @@ registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
 const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони'],
   ['blocks', 'Блоки'], ['ooo', 'OOO'], ['guests', 'Гости']];
-const STAYS_LEVEL_MARK = { vip: '★VIP ', vvip: '★VVIP ' };
+/* «Особый гость» — ◆ у имени; VIP-код брони — рядом с главным гостем (правила сопровождения §6) */
+const STAYS_SPECIAL_MARK = '◆ ';
+const STAYS_ESCORT_MODE = { rules: 'по правилам', required: 'требуется', declined: 'не требуется (гость отказался)' };
+function staysGuestMark(special) { return special ? `<span class="sb-star">${STAYS_SPECIAL_MARK}</span>` : ''; }
+function staysCodeTag(code) { return code ? ` <span class="badge muted" data-vip-code>${esc(code)}</span>` : ''; }
 /* месяц видов — общий state.year / state.month (как Табель и График, §6); фильтры — одна
    панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
 const staysState = {
@@ -21,7 +25,7 @@ const staysState = {
   ocOpen: {}, ocMode: 'pct', focusDay: null,
 };
 function staysEmptyFilters() {
-  return { group_ids: [], category_ids: [], flag_ids: [], kind_ids: [], escorted: false, vip: false, q: '' };
+  return { group_ids: [], category_ids: [], flag_ids: [], kind_ids: [], escorted: false, special: false, vip_code_ids: [], q: '' };
 }
 
 /* PoC §5.1: ordinal как в Python date.toordinal() — клиент и сервер считают позиции одинаково */
@@ -90,6 +94,14 @@ function staysFundParams(p) {
   f.kind_ids.forEach(v => p.append('kind_ids', v));
   return p;
 }
+/* фильтры по гостям: «◆ Особый гость», VIP-код (или), поиск */
+function staysPeopleParams(p, f) {
+  if (f.special) p.set('special', '1');
+  f.vip_code_ids.forEach(v => p.append('vip_code_ids', v));
+  if (f.q.trim()) p.set('q', f.q.trim());
+}
+/* вес места/нагрузка: один знак, запятая («5,5») */
+function staysWeight(n) { return Number(n).toFixed(1).replace('.', ','); }
 /* панель фильтров вида: изменение — новые фильтры и перерисовка вида */
 function staysPanelInto(body, fund, rerender, opts) {
   const slot = $('[data-sf-slot]', body);
@@ -170,8 +182,7 @@ function staysBoardParams() {
   const { first, last } = staysMonthRange();
   const p = staysFundParams(new URLSearchParams({ first, last }));
   if (f.escorted) p.set('escorted', '1');
-  if (f.vip) p.set('vip', '1');
-  if (f.q.trim()) p.set('q', f.q.trim());
+  staysPeopleParams(p, f);
   return p;
 }
 
@@ -199,7 +210,7 @@ function staysBarHtml(b, base, span, names) {
   if (right <= 0 || left >= 100) return '';
   const color = names && b.label ? b.label.color : '#3b6fd8';
   const textHtml = names
-    ? `${b.level !== 'regular' ? `<span class="sb-star">${esc(STAYS_LEVEL_MARK[b.level] || '')}</span>` : ''}${esc(b.main_guest || b.number || 'бронь')}`
+    ? `${staysGuestMark(b.special)}${esc(b.main_guest || b.number || 'бронь')}${b.vip_code ? ` · ${esc(b.vip_code)}` : ''}`
     : `занято · ${b.guests_count} гост.`;
   const tip = names ? `${b.number} · ${dateRu(b.start)}–${dateRu(b.end)}` : `${dateRu(b.start)}–${dateRu(b.end)}`;
   return `<div class="sb-bar${b.status === 'tentative' ? ' tentative' : ''}" data-bar="${b.reservation_id}"
@@ -350,6 +361,14 @@ function staysUnitsGridHtml(data, fund, byUnit, holdsBy, blocksBy, names) {
     ${out.join('') || '<div class="empty">Объектов по фильтру нет</div>'}`;
 }
 
+/* «сопровождение: отказался», «требуется — отмечено вручную», «нужен — узел Винные виллы, …» (§2, §4.1) */
+function staysEscortTitle(card) {
+  const e = card.escort || {};
+  if (card.escort_mode === 'declined') return 'отказался';
+  if (!e.required_nights) return 'не нужно';
+  return `нужно${e.reasons?.length ? ' — ' + e.reasons.join(', ') : ''}`;
+}
+
 /* ─────────────── Карточка брони ─────────────── */
 async function openReservationCard(rid, onChanged) {
   const [card, history] = await Promise.all([
@@ -365,12 +384,14 @@ async function openReservationCard(rid, onChanged) {
         <div><h4>Объекты</h4>${card.segments.map(s => `<div>${esc(dateRu(s.start))}–${esc(dateRu(s.end))}: <b>${esc(s.unit || 'без объекта')}</b>
           ${can('stays.edit') ? `<button class="btn btn-sm btn-ghost" data-move-seg="${s.index}">Перенести</button>` : ''}</div>`).join('')}
           ${card.pref ? `<div class="muted" data-pref-status="${card.pref.met ? 'met' : card.pref.partial ? 'partial' : card.pref.met === null ? 'none' : 'unmet'}">${esc(card.pref.title)}</div>` : ''}</div>
-        <div><h4>Гости</h4>${card.occupants.map(o => `<div>${o.level !== 'regular' ? esc(STAYS_LEVEL_MARK[o.level]) : ''}${esc(o.guest)}
+        <div><h4>Гости</h4>${card.occupants.map(o => `<div>${staysGuestMark(o.special)}${esc(o.guest)}${o.role === 'main' ? staysCodeTag(card.vip_code?.code) : ''}
           <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>${staysRelativesHtml(o.relatives)}
           <button class="btn btn-sm btn-ghost" data-family="${o.guest_id}">Семья</button>
           ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}
           <div class="ft" data-family-box="${o.guest_id}" hidden></div></div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
       </div>
+      <p data-card-escort>Сопровождение: <b>${esc(staysEscortTitle(card))}</b>${card.vip_code
+        ? ` · VIP-код ${esc(card.vip_code.code)}${card.vip_code.title ? ' — ' + esc(card.vip_code.title) : ''}${card.vip_code.archived ? ' (в архиве)' : ''}` : ''}</p>
       ${card.companions?.length ? `<h4>Сопровождающие</h4>${card.companions.map(c => `<div>${esc(STAYS_COMPANION[c.kind] || c.kind)} — ${esc(c.description)}</div>`).join('')}` : ''}
       ${card.logistics ? `<h4>Логистика</h4>${card.logistics.map(l => `<div>${esc(l.date ? dateRu(l.date) : '')} ${esc(l.time)} ${esc(l.description)}</div>`).join('') || '<span class="muted">нет</span>'}
         ${card.note ? `<h4>Примечание</h4><p>${esc(card.note)}</p>` : ''}` : ''}

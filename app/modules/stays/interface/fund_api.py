@@ -15,7 +15,8 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import has_perm, require_perm
 
-from ..application import fund, guests
+from ..adapters.orm import VipCode
+from ..application import fund, guests, vip_codes
 from ..application.fund import FundConflict, FundError
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -74,6 +75,20 @@ class EscortIn(BaseModel):
     active: bool
 
 
+class VipCodeIn(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    code: str = Field(max_length=8)           # цифры 1–8: остальное проверяет vip_codes.normalize_code
+    title: str = Field("", max_length=80)
+    escorted: bool = False
+    factor: float = Field(1.0, ge=0.1, le=99)
+    sort_order: int = SORT
+
+
+class VipCodeArchiveIn(BaseModel):
+    archived: bool
+
+
 class SeedIn(BaseModel):
     position: str = Field("батлер", min_length=2, max_length=60)
 
@@ -82,15 +97,16 @@ class SettingsIn(BaseModel):
     # колонки Numeric(5,2): больше 999.99 PostgreSQL не примет; NaN сломал бы сравнения с лимитом
     model_config = ConfigDict(allow_inf_nan=False)
 
-    vip_bonus: float = Field(le=999)
-    vvip_bonus: float = Field(le=999)
+    special_factor: Optional[float] = Field(None, ge=0.1, le=99)
     daily_limit: float = Field(le=999)
     replacement_codes: str = Field("", max_length=120)
 
 
 @router.get("/fund")
 def get_fund(principal: Principal = Depends(READ), db: Session = Depends(get_db)):
-    return fund.list_fund(db, with_staff=has_perm(db, principal, "stays.setup"))
+    out = fund.list_fund(db, with_staff=has_perm(db, principal, "stays.setup"))
+    out["vip_codes"] = [vip_codes.code_dict(c) for c in vip_codes.all_codes(db)]     # и архивные
+    return out
 
 
 def _save(db, principal, kind: str, saver, fields, payload: BaseModel, rid: Optional[int]):
@@ -168,10 +184,57 @@ def seed_escorts(payload: SeedIn, principal: Principal = Depends(SETUP), db: Ses
 @router.put("/settings")
 def put_settings(payload: SettingsIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     try:
-        row, before = fund.save_settings(db, payload.vip_bonus, payload.vvip_bonus,
-                                         payload.daily_limit, payload.replacement_codes)
+        row, before = fund.save_settings(db, payload.special_factor, payload.daily_limit,
+                                         payload.replacement_codes)
     except FundError as e:
         raise _err(e) from e
     after = fund.as_dict(row, fund.SETTINGS_FIELDS)
     _write(db, principal, "settings", before, after)
     return after
+
+
+# ── справочник VIP-кодов ───────────────────────────────────────────────────
+
+
+def _code_done(db: Session, principal: Principal, code_id: int, before: dict, after: dict) -> None:
+    audit(db, principal, "stays_vip_code", f"vip_code:{code_id}", {"diff": fund.changes(before, after)})
+    db.commit()
+
+
+def _code_run(db: Session, principal: Principal, code_id: Optional[int], action, *args) -> dict:
+    """Действие над справочником кодов под аудитом: before/after — словарь кода (пустой у нового
+    и удалённого)."""
+    row = db.get(VipCode, code_id) if code_id is not None else None
+    before = vip_codes.code_dict(row) if row else {}
+    try:
+        result = action(db, *args)
+    except FundError as e:
+        db.rollback()
+        raise _err(e) from e
+    rid = code_id if code_id is not None else result
+    after_row = db.get(VipCode, rid)
+    after = vip_codes.code_dict(after_row) if after_row else {k: None for k in before}
+    _code_done(db, principal, rid, before, after)
+    return {"id": rid} if after_row is None else after
+
+
+@router.post("/vip-codes")
+def create_vip_code(payload: VipCodeIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    return _code_run(db, principal, None, vip_codes.save_code, payload.model_dump(), None)
+
+
+@router.put("/vip-codes/{cid}")
+def update_vip_code(cid: int, payload: VipCodeIn, principal: Principal = Depends(SETUP),
+                    db: Session = Depends(get_db)):
+    return _code_run(db, principal, cid, vip_codes.save_code, payload.model_dump(exclude_unset=True), cid)
+
+
+@router.put("/vip-codes/{cid}/archive")
+def archive_vip_code(cid: int, payload: VipCodeArchiveIn, principal: Principal = Depends(SETUP),
+                     db: Session = Depends(get_db)):
+    return _code_run(db, principal, cid, vip_codes.archive_code, cid, payload.archived)
+
+
+@router.delete("/vip-codes/{cid}")
+def remove_vip_code(cid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
+    return _code_run(db, principal, cid, vip_codes.delete_code, cid)

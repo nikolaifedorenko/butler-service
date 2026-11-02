@@ -29,8 +29,8 @@ from . import allocation
 from .fund import FundConflict, FundError, as_dict, changes
 from .fund_versions import fund_for
 from .locking import lock_module
+from .vip_codes import check_selectable, code_texts
 
-LEVELS = ("regular", "vip", "vvip")
 GENDERS = ("m", "f", "")
 # вид связи → (подпись B в профиле A, подпись A в профиле B); parent — A родитель B, семейные
 # (parent, spouse) подписываются по полу (domain/kinship.py), остальное родство вычисляется
@@ -47,7 +47,7 @@ LINK_KINDS = {
 }
 PHONE_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 PROFILE_FIELDS = ("id", "last_name", "first_name", "middle_name", "phone", "email", "birth_date",
-                  "gender", "level", "note", "external_id", "source")
+                  "gender", "special", "vip_code_id", "note", "external_id", "source")
 
 
 class GuestError(FundError):
@@ -161,8 +161,8 @@ def guest_dict(g: Guest) -> dict:
 
 def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
     lock_module(db)        # слияние удаляет гостей: правка профиля не должна идти параллельно с ним
-    if data.get("level", "regular") not in LEVELS:
-        raise GuestError("Уровень гостя: обычный, VIP или VVIP")
+    if not isinstance(data.get("special", False), bool):
+        raise GuestError("«Особый гость» — да или нет")
     if data.get("gender", "") not in GENDERS:
         raise GuestError("Пол гостя: мужской, женский или не указан")
     if gid is None:
@@ -174,8 +174,10 @@ def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
         if g is None:
             raise GuestError("Гость не найден")
         before = guest_dict(g)
-    for k in ("last_name", "first_name", "middle_name", "email", "gender", "level", "note", "external_id",
-              "source"):
+    if "vip_code_id" in data:
+        check_selectable(db, data["vip_code_id"], g.vip_code_id)       # архивный, уже стоящий, оставить можно
+    for k in ("last_name", "first_name", "middle_name", "email", "gender", "special", "vip_code_id", "note",
+              "external_id", "source"):
         if k in data:
             setattr(g, k, data[k])
     if "phone" in data:
@@ -203,6 +205,7 @@ def links_of(db: Session, guest_id: int) -> list[dict]:
                       .order_by(GuestLink.id)).all()
     other_ids = {r.guest_b_id if r.guest_a_id == guest_id else r.guest_a_id for r in rows}
     names = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(other_ids)))} if other_ids else {}
+    texts = code_texts(db) if any(g.vip_code_id for g in names.values()) else {}
     out = []
     for r in rows:
         mine_is_a = r.guest_a_id == guest_id
@@ -210,7 +213,8 @@ def links_of(db: Session, guest_id: int) -> list[dict]:
         g = names.get(other)
         label = _link_label(r, mine_is_a, g.gender if g else "")
         out.append({"id": r.id, "guest_id": other, "kind": r.kind, "former": r.former, "label": label,
-                    "name": short_name(g) if g else "", "level": g.level if g else "regular"})
+                    "name": short_name(g) if g else "", "special": bool(g and g.special),
+                    "vip_code": texts.get(g.vip_code_id, ("", False))[0] if g else ""})
     return out
 
 
@@ -251,7 +255,7 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
     if db.get(Guest, guest_id) is None:
         raise GuestError("Гость не найден")
     if new_guest is not None:
-        other_id = save_guest(db, {"middle_name": "", "phone": "", "email": "", "level": "regular", "note": "",
+        other_id = save_guest(db, {"middle_name": "", "phone": "", "email": "", "note": "",
                                    **new_guest}, None)[0].id
     a, b = (other_id, guest_id) if other_is_parent else (guest_id, other_id)
     rows = [_add_link_locked(db, a, b, kind, former)]
@@ -500,14 +504,18 @@ def _fill_missing(mine: dict, theirs: dict) -> list[str]:
 
 
 def _merge_profile(keep: Guest, drop: Guest) -> dict:
-    """Значения оставляемого побеждают; недостающее берётся у дубля. Уровень VIP/VVIP дубля
-    переходит, только если у оставляемого — обычный; примечания — оба, через перевод строки."""
+    """Значения оставляемого побеждают; недостающее берётся у дубля. «Особый гость» — если он
+    у любого из двоих; VIP-код дубля переходит, только если у оставляемого его нет; примечания —
+    оба, через перевод строки."""
     profile = [k for k in MERGE_PROFILE if not getattr(keep, k) and getattr(drop, k)]
     for k in profile:
         setattr(keep, k, getattr(drop, k))
-    if keep.level == "regular" and drop.level != "regular":
-        keep.level = drop.level
-        profile.append("level")
+    if drop.special and not keep.special:
+        keep.special = True
+        profile.append("special")
+    if keep.vip_code_id is None and drop.vip_code_id is not None:
+        keep.vip_code_id = drop.vip_code_id
+        profile.append("vip_code_id")
     note = (drop.note or "").strip()
     if note and note not in (keep.note or ""):
         keep.note = f"{keep.note.rstrip()}\n{note}" if (keep.note or "").strip() else note
@@ -529,7 +537,7 @@ def _not_carried(dropped: dict, kept: dict) -> dict:
     пишется в журнал: персональных данных в аудите — не больше необходимого."""
     out: dict = {}
     for k, v in dropped.items():
-        if k in ("id", "phone_display") or v in (None, "", [], {}) or (k == "level" and v == "regular"):
+        if k in ("id", "phone_display") or v in (None, "", [], {}) or v is False:
             continue
         if isinstance(v, dict):
             lost = {kk: vv for kk, vv in v.items() if vv not in (None, "") and kept[k].get(kk) != vv}

@@ -65,7 +65,7 @@ function renderPreview(diff, el, refused) {
   (diff.warnings_added || []).forEach(w => items.push(`<li class="sp-warn">⚠ ${esc(w.text)}</li>`));
   (diff.warnings_removed || []).forEach(w => items.push(`<li class="sp-ok">✓ снято: ${esc(w.text)}</li>`));
   (diff.coverage_changes || []).forEach(c => items.push(`<li>${esc(dateRu(c.day))} · ${esc(c.employee || '')}: ${c.gained?.length ? `+${esc(c.gained.join(', '))}` : ''} ${c.lost?.length ? `−${esc(c.lost.join(', '))}` : ''}</li>`));
-  (diff.load_changes || []).forEach(c => items.push(`<li class="${c.after > c.limit ? 'sp-warn' : ''}">${esc(dateRu(c.day))} · ${esc(c.employee || '')}: нагрузка ${esc(String(c.before))} → ${esc(String(c.after))} из ${esc(String(c.limit))}</li>`));
+  (diff.load_changes || []).forEach(c => items.push(`<li class="${c.after > c.limit ? 'sp-warn' : ''}">${esc(dateRu(c.day))} · ${esc(c.employee || '')}: нагрузка ${staysWeight(c.before)} → ${staysWeight(c.after)} из ${staysWeight(c.limit)}</li>`));
   el.innerHTML = `<div class="sp-head">Что изменится</div>${items.length ? `<ul>${items.join('')}</ul>`
     : '<div class="muted">Размещение и предупреждения не меняются</div>'}`;
 }
@@ -75,7 +75,7 @@ function previewThenSave({ url, method, body, out }) {
   return {
     async preview() {
       const r = await api(`${url}${url.includes('?') ? '&' : '?'}preview=1`, { method, body: body() });
-      renderPreview(r.diff, out(), r.overbook_refused);
+      renderPreview(r.diff || {}, out(), r.overbook_refused);
       return r;
     },
     async save() { return api(url, { method, body: body() }); },
@@ -88,7 +88,8 @@ function staysFormFoot() {
 }
 function staysBindFoot(m, flow, onSaved, okText) {
   $('[data-close]', m).onclick = closeModal;
-  $('#rf-preview', m).onclick = async () => { try { await flow.preview(); } catch (e) { toast(e.message, 'err'); } };
+  const check = $('#rf-preview', m);        // у форм без предпросмотра (новый гость) кнопки «Проверить» нет
+  if (check) check.onclick = async () => { try { await flow.preview(); } catch (e) { toast(e.message, 'err'); } };
   $('[data-save]', m).onclick = async () => {
     try { await flow.save(); closeModal(); toast(okText); if (onSaved) onSaved(); } catch (e) { toast(e.message, 'err'); }
   };
@@ -148,6 +149,11 @@ async function openReservationForm(id, opts = {}) {
       : cats;
     return list.map(c => opt(c.id, `${c.code} · ${c.title}`, cur)).join('');
   };
+  /* VIP-коды: действующие; архивный — только уже стоящий в брони, с пометкой (§3) */
+  const codeOptions = opt('', '—', r?.vip_code_id) + (fund.vip_codes || [])
+    .filter(c => !c.archived || c.id === r?.vip_code_id)
+    .map(c => opt(c.id, `${c.code}${c.title ? ' — ' + c.title : ''}${c.archived ? ' (в архиве)' : ''}`, r?.vip_code_id)).join('');
+  const escortHint = e => (e ? `по правилам: ${e.rule_reasons?.length ? 'нужен — ' + e.rule_reasons.join(', ') : 'не нужен'}` : '');
   openModal({
     title: r ? `Бронь ${r.number || '#' + r.id}` : 'Новая бронь', wide: true,
     body: `
@@ -158,7 +164,11 @@ async function openReservationForm(id, opts = {}) {
         ${sfRow('Выезд', sfInput('rf-check-out', r?.check_out, 'date'))}
       </div>
       ${sfCheck('rf-early', 'Ранний заезд', r?.early)} ${sfCheck('rf-late', 'Поздний выезд', r?.late)}
-      ${sfCheck('rf-declined', 'Гость отказался от батлера', r?.declined_butler)}
+      <div class="grid-2">
+        ${sfRow('VIP-код', `<select id="rf-vip-code">${codeOptions}</select>`)}
+        ${sfRow('Сопровождение', `<select id="rf-escort">${Object.entries(STAYS_ESCORT_MODE).map(([k, t]) => opt(k, t, r?.escort_mode || 'rules')).join('')}</select>`)}
+      </div>
+      <div class="muted" id="rf-escort-hint">${esc(escortHint(r?.escort))}</div>
       <div class="grid-2">
         ${sfRow('Метка', `<select id="rf-label">${opt('', '—', r?.label_id)}${fund.labels.map(l => opt(l.id, l.title, r?.label_id)).join('')}</select>`)}
         ${sfRow('Заказчик', sfInput('rf-customer', r?.customer))}
@@ -169,7 +179,7 @@ async function openReservationForm(id, opts = {}) {
       <div class="sb-toolbar"><input type="search" id="rf-guest-q" placeholder="Найти гостя: фамилия или телефон"></div>
       <div id="rf-guest-res"></div>
       <div class="sb-toolbar"><input id="rf-new-last" placeholder="Новый гость: фамилия">
-        <select id="rf-new-level">${opt('regular', 'обычный')}${opt('vip', 'VIP')}${opt('vvip', 'VVIP')}</select>
+        <label class="chk"><input type="checkbox" id="rf-new-special"> ${STAYS_SPECIAL_MARK}Особый гость</label>
         <button class="btn btn-sm" id="rf-new-add">+ Новый гость</button></div>
       <h4>Переезды</h4><div id="rf-moves"></div><button class="btn btn-sm btn-ghost" id="rf-move-add">+ Переезд</button>
       <h4>Объекты</h4><div id="rf-pins"></div>
@@ -182,7 +192,7 @@ async function openReservationForm(id, opts = {}) {
     onMount(m) {
       const val = sel => $(sel, m).value;
       if (opts.mine) {
-        ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-declined',
+        ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-vip-code', '#rf-escort',
           '#rf-label', '#rf-customer', '#rf-paid', '#rf-move-add', '#rf-new-add', '#rf-new-last']
           .forEach(sel => { const el = $(sel, m); if (el) el.disabled = true; });
         if (r) {
@@ -198,14 +208,29 @@ async function openReservationForm(id, opts = {}) {
           <input type="date" data-occ-from="${i}" value="${esc(o.date_from || '')}"> –
           <input type="date" data-occ-to="${i}" value="${esc(o.date_to || '')}">
           <button class="btn btn-sm btn-ghost" data-occ-del="${i}">×</button></div>`).join('') || '<div class="muted">Гостей пока нет</div>';
-        $$('[data-occ-role]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occRole].role = s.value; }; });
+        $$('[data-occ-role]', m).forEach(s => {
+          s.onchange = () => { const o = form.occupants[s.dataset.occRole]; o.role = s.value; if (o.role === 'main') takeCode(o); };
+        });
         $$('[data-occ-from]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occFrom].date_from = s.value; }; });
         $$('[data-occ-to]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occTo].date_to = s.value; }; });
         $$('[data-occ-del]', m).forEach(b => { b.onclick = () => { form.occupants.splice(Number(b.dataset.occDel), 1); drawOcc(); }; });
       };
-      const addGuest = (gid, name) => {
-        form.occupants.push({ guest_id: gid, name, role: form.occupants.some(o => o.role === 'main') ? 'guest' : 'main',
-          date_from: val('#rf-check-in'), date_to: val('#rf-check-out') });
+      /* главный гость выбран — VIP-код брони из его профиля (§3.1); можно поменять вручную */
+      const takeCode = o => {
+        if (opts.mine || o.vip_code_id === undefined) return;
+        const sel = $('#rf-vip-code', m), v = String(o.vip_code_id ?? '');
+        /* архивный код профиля в списке не предлагается, но копия из профиля его принимает (§3.1) */
+        const c = (fund.vip_codes || []).find(x => String(x.id) === v);
+        if (c && ![...sel.options].some(x => x.value === v)) {
+          sel.insertAdjacentHTML('beforeend', opt(c.id, `${c.code}${c.title ? ' — ' + c.title : ''} (в архиве)`));
+        }
+        if ([...sel.options].some(x => x.value === v)) sel.value = v;
+      };
+      const addGuest = (gid, name, vipCode) => {
+        const o = { guest_id: gid, name, vip_code_id: vipCode, role: form.occupants.some(x => x.role === 'main') ? 'guest' : 'main',
+          date_from: val('#rf-check-in'), date_to: val('#rf-check-out') };
+        form.occupants.push(o);
+        if (o.role === 'main') takeCode(o);
         drawOcc();
       };
       const drawMoves = () => {
@@ -265,6 +290,7 @@ async function openReservationForm(id, opts = {}) {
         if (!snapCats[d]) {
           try { snapCats[d] = (await api('/api/stays/fund/snapshot?date=' + d, { silent: true })).categories; } catch (e) { return; }
         }
+        if (!$('#rf-check-in', m)) return;                // форму закрыли, пока шёл запрос
         if (val('#rf-check-in') !== d) return;            // дату успели сменить — этот ответ устарел
         const catSel = $('#rf-category', m), paidSel = $('#rf-paid', m);
         const [c, p] = [catSel.value, paidSel.value];
@@ -286,24 +312,27 @@ async function openReservationForm(id, opts = {}) {
         timer = setTimeout(async () => {
           const q = e.target.value.trim();
           const found = q.length < 2 ? [] : await api('/api/stays/guests?q=' + encodeURIComponent(q), { silent: true });
-          $('#rf-guest-res', m).innerHTML = found.map(g => `<button class="btn btn-sm btn-ghost" data-pick-guest="${g.id}" data-name="${esc(g.short)}">
-            ${g.level !== 'regular' ? esc(STAYS_LEVEL_MARK[g.level]) : ''}${esc(g.last_name)} ${esc(g.first_name)} ${esc(g.middle_name)}</button>`).join('')
+          $('#rf-guest-res', m).innerHTML = found.map(g => `<button class="btn btn-sm btn-ghost" data-pick-guest="${g.id}" data-name="${esc(g.short)}" data-code="${g.vip_code_id ?? ''}">
+            ${g.special ? STAYS_SPECIAL_MARK : ''}${esc(g.last_name)} ${esc(g.first_name)} ${esc(g.middle_name)}</button>`).join('')
             || (q.length >= 2 ? '<span class="muted">не найдено</span>' : '');
-          $$('[data-pick-guest]', m).forEach(b => { b.onclick = () => { addGuest(Number(b.dataset.pickGuest), b.dataset.name); $('#rf-guest-res', m).innerHTML = ''; }; });
+          $$('[data-pick-guest]', m).forEach(b => {
+            b.onclick = () => { addGuest(Number(b.dataset.pickGuest), b.dataset.name, b.dataset.code ? Number(b.dataset.code) : null); $('#rf-guest-res', m).innerHTML = ''; };
+          });
         }, 300);
       };
       $('#rf-new-add', m).onclick = async () => {
         const last = val('#rf-new-last').trim();
         if (!last) { toast('Укажите фамилию гостя', 'err'); return; }
         try {
-          const g = await api('/api/stays/guests', { method: 'POST', body: { last_name: last, level: val('#rf-new-level') } });
-          addGuest(g.id, g.last_name); $('#rf-new-last', m).value = '';
+          const g = await api('/api/stays/guests', { method: 'POST', body: { last_name: last, special: $('#rf-new-special', m).checked } });
+          addGuest(g.id, g.last_name, null); $('#rf-new-last', m).value = '';
         } catch (e) { toast(e.message, 'err'); }
       };
       const body = () => ({
         number: val('#rf-number'), category_id: Number(val('#rf-category')),
         check_in: val('#rf-check-in'), check_out: val('#rf-check-out'),
-        early: $('#rf-early', m).checked, late: $('#rf-late', m).checked, declined_butler: $('#rf-declined', m).checked,
+        early: $('#rf-early', m).checked, late: $('#rf-late', m).checked, escort_mode: val('#rf-escort'),
+        vip_code_id: val('#rf-vip-code') ? Number(val('#rf-vip-code')) : null,
         label_id: opts.mine ? (r?.label_id ?? null) : (val('#rf-label') ? Number(val('#rf-label')) : null),
         customer: val('#rf-customer'), paid_category_id: Number(val('#rf-paid')), note: val('#rf-note'),
         group_id: r?.group_id ?? null, fields: { ...(r?.fields || {}), ...staysFieldValues(m, 'data-rf-field') },
@@ -314,11 +343,20 @@ async function openReservationForm(id, opts = {}) {
       });
       const flow = previewThenSave({ url: r ? `/api/stays/reservations/${r.id}` : '/api/stays/reservations',
         method: r ? 'PUT' : 'POST', body, out: () => $('#rf-preview-out', m) });
+      /* предпросмотр: подсказка правил на даты формы и смена кода («код 13 → 03» при смене главного) */
+      const preview = flow.preview;
+      flow.preview = async () => {
+        const res = await preview();
+        const now = res.result?.vip_code?.code || '—', was = r?.vip_code?.code || '—';
+        $('#rf-escort-hint', m).textContent = escortHint(res.result?.escort);
+        if (now !== was) $('#rf-preview-out', m).insertAdjacentHTML('afterbegin', `<div data-code-change>VIP-код: ${esc(was)} → <b>${esc(now)}</b></div>`);
+        return res;
+      };
       staysBindFoot(m, flow, opts.onSaved, 'Бронь сохранена');
       /* связанных гостей батлера догружаем после привязки кнопок — иначе ранний клик «Сохранить» терялся */
       if (opts.mine) (async () => {
         /* батлер: вместо поиска по всем гостям — гости, связанные «кто кому» с проживающими брони */
-        ['#rf-guest-q', '#rf-new-last', '#rf-new-level', '#rf-new-add'].forEach(sel => { $(sel, m).closest('.sb-toolbar').style.display = 'none'; });
+        ['#rf-guest-q', '#rf-new-last', '#rf-new-special', '#rf-new-add'].forEach(sel => { $(sel, m).closest('.sb-toolbar').style.display = 'none'; });
         const have = new Set(form.occupants.map(o => o.guest_id));
         const cards = await Promise.all([...have].map(gid => api(`/api/stays/guests/${gid}`, { silent: true }).catch(() => null)));
         const linked = new Map();
@@ -417,7 +455,7 @@ async function openCoverageForm(card, onSaved) {
           if (sc.group_id) q.set('group_id', sc.group_id); else q.set('reservation_id', sc.reservation_id);
           const got = await api('/api/stays/coverage/candidates?' + q);
           $('#cf-cand-out', m).innerHTML = got.map(c => `<button class="btn btn-sm btn-ghost" data-pick-emp="${c.employee_id}">
-            ${esc(c.name)}${c.knows_guest ? ' · знает гостя' : ''} · ${esc(String(c.load_after))}</button>`).join('') || '<span class="muted">свободных на смене нет</span>';
+            ${esc(c.name)}${c.knows_guest ? ' · знает гостя' : ''} · ${staysWeight(c.load_after)}</button>`).join('') || '<span class="muted">свободных на смене нет</span>';
           $$('[data-pick-emp]', m).forEach(b => { b.onclick = () => { $('#cf-b1', m).value = b.dataset.pickEmp; }; });
         } catch (e) { toast(e.message, 'err'); }
       };
@@ -474,8 +512,8 @@ async function openGuestCard(gid, onChanged) {
   const role = { main: 'главный', guest: 'проживает' };
   const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
   openModal({
-    title: `${STAYS_LEVEL_MARK[g.level] || ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
-    subtitle: [g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
+    title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
+    subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}${g.vip_code.archived ? ' (в архиве)' : ''}` : '', g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
     body: `<div class="grid-2">
         <div><h4>Предпочтения</h4>${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('') || '<span class="muted">нет</span>'}
           <h4>Предпочитает</h4><div id="gc-prefs"></div>
@@ -624,41 +662,70 @@ async function openGuestForm(id, onSaved, opts = {}) {
   const [g, fund] = await Promise.all([id ? api(`/api/stays/guests/${id}`) : null, staysFund()]);
   const gFields = fund.fields.filter(f => f.target === 'guest');
   const dates = (g?.special_dates || []).map(d => ({ ...d }));
-  const level = { regular: 'обычный', vip: 'VIP', vvip: 'VVIP' };
   /* батлер (opts.mine): анкетные поля только для чтения — менять можно предпочтения и заметки */
   const lock = html => (opts.mine ? html.replace(/<(input|select)/, '<$1 disabled') : html);
-  staysForm(g ? `Гость ${g.last_name}` : 'Новый гость', [
+  /* «◆ Особый гость» и VIP-код — право stays.edit; архивный код виден, пока он стоит у гостя */
+  const codes = (fund.vip_codes || []).filter(c => !c.archived || c.id === g?.vip_code_id);
+  const codeOptions = [['', '—'], ...codes.map(c => [c.id, `${c.code}${c.title ? ' — ' + c.title : ''}${c.archived ? ' (в архиве)' : ''}`])];
+  const rows = [
     sfRow('Фамилия', lock(sfInput('gf-last', g?.last_name))), sfRow('Имя', lock(sfInput('gf-first', g?.first_name))),
     sfRow('Отчество', lock(sfInput('gf-middle', g?.middle_name))), sfRow('Телефон', lock(sfInput('gf-phone', g?.phone_display))),
     sfRow('Email', lock(sfInput('gf-email', g?.email))), sfRow('Дата рождения', lock(sfInput('gf-birth', g?.birth_date, 'date'))),
     sfRow('Пол', lock(sfSelect('gf-gender', Object.entries(STAYS_GENDER), g?.gender || ''))),
-    sfRow('Уровень', lock(sfSelect('gf-level', Object.entries(level), g?.level || 'regular'))),
+    lock(sfCheck('gf-special', `${STAYS_SPECIAL_MARK}Особый гость`, g?.special)),
+    sfRow('VIP-код', lock(sfSelect('gf-code', codeOptions, g?.vip_code_id ?? ''))),
+    `<div id="gf-upd-row" hidden>${sfCheck('gf-upd', `обновить в бронях: ${g?.main_current ?? 0}`, true)}
+      <div class="muted">текущие и будущие брони, где гость главный</div></div>`,
     sfRow('Аллергии', sfInput('gf-allergy', g?.preferences?.allergy)), sfRow('Питание', sfInput('gf-food', g?.preferences?.food)),
     sfRow('Привычки', sfInput('gf-habits', g?.preferences?.habits)),
     sfRow('Примечание', `<textarea id="gf-note" rows="2">${esc(g?.note || '')}</textarea>`),
     `<h4>Особые даты</h4><div id="gf-dates"></div><button class="btn btn-sm btn-ghost" id="gf-sd-add" type="button">+ Дата</button>`,
     gFields.length ? `<h4>Дополнительно</h4>${staysFieldInputs(gFields, g?.fields, 'data-gf-field')}` : '',
-  ], async m => {
-    const v = sel => $(sel, m).value;
-    const body = { last_name: v('#gf-last'), first_name: v('#gf-first'), middle_name: v('#gf-middle'),
-      phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, gender: v('#gf-gender'), level: v('#gf-level'),
-      preferences: { ...(g?.preferences || {}), allergy: v('#gf-allergy'), food: v('#gf-food'), habits: v('#gf-habits') },
-      special_dates: dates.filter(d => d.date && d.what),
-      fields: { ...(g?.fields || {}), ...staysFieldValues(m, 'data-gf-field') }, note: v('#gf-note') };
-    const saved = await api(g ? `/api/stays/guests/${g.id}` : '/api/stays/guests', { method: g ? 'PUT' : 'POST', body });
-    toast('Гость сохранён');
-    if (onSaved) onSaved(saved);
-  }, m => {
-    const draw = () => {
-      $('#gf-dates', m).innerHTML = dates.map((d, i) => `<div class="sb-line">
-        <input type="date" data-sd-date="${i}" value="${esc(d.date || '')}">
-        <input data-sd-what="${i}" value="${esc(d.what || '')}" placeholder="день рождения, годовщина…">
-        <button class="btn btn-sm btn-ghost" type="button" data-sd-del="${i}">×</button></div>`).join('');
-      $$('[data-sd-date]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdDate].date = x.value; }; });
-      $$('[data-sd-what]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdWhat].what = x.value; }; });
-      $$('[data-sd-del]', m).forEach(b => { b.onclick = () => { dates.splice(Number(b.dataset.sdDel), 1); draw(); }; });
-    };
-    draw();
-    $('#gf-sd-add', m).onclick = () => { dates.push({ date: '', what: '' }); draw(); };
+    '<div id="rf-preview-out" class="sp-out"></div>',
+  ];
+  /* существующему гостю (не батлеру) — «Проверить»: смена кода идёт в брони той же операцией (§3.1) */
+  const canPreview = !!g && !opts.mine;
+  openModal({
+    title: g ? `Гость ${g.last_name}` : 'Новый гость', body: rows.join(''),
+    footer: canPreview ? staysFormFoot()
+      : '<button class="btn btn-ghost" data-close>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>',
+    onMount(m) {
+      const v = sel => $(sel, m).value;
+      const codeId = () => (v('#gf-code') ? Number(v('#gf-code')) : null);
+      const body = () => ({ last_name: v('#gf-last'), first_name: v('#gf-first'), middle_name: v('#gf-middle'),
+        phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, gender: v('#gf-gender'),
+        special: $('#gf-special', m).checked, vip_code_id: codeId(),
+        ...(g ? { update_reservations: $('#gf-upd', m).checked } : {}),
+        preferences: { ...(g?.preferences || {}), allergy: v('#gf-allergy'), food: v('#gf-food'), habits: v('#gf-habits') },
+        special_dates: dates.filter(d => d.date && d.what),
+        fields: { ...(g?.fields || {}), ...staysFieldValues(m, 'data-gf-field') }, note: v('#gf-note') });
+      /* галочка «обновить в бронях: N» — только когда код сменился и есть куда обновлять */
+      const syncUpd = () => { $('#gf-upd-row', m).hidden = !(g && g.main_current > 0 && codeId() !== (g.vip_code_id ?? null)); };
+      $('#gf-code', m).onchange = syncUpd;
+      syncUpd();
+      const flow = previewThenSave({ url: g ? `/api/stays/guests/${g.id}` : '/api/stays/guests', method: g ? 'PUT' : 'POST',
+        body, out: () => $('#rf-preview-out', m) });
+      const preview = flow.preview;
+      flow.preview = async () => {
+        const res = await preview();
+        if (res.updated_reservations) {
+          $('#rf-preview-out', m).insertAdjacentHTML('afterbegin',
+            `<div data-code-update>VIP-код обновится в бронях: ${res.updated_reservations}</div>`);
+        }
+        return res;
+      };
+      staysBindFoot(m, flow, onSaved, 'Гость сохранён');
+      const draw = () => {
+        $('#gf-dates', m).innerHTML = dates.map((d, i) => `<div class="sb-line">
+          <input type="date" data-sd-date="${i}" value="${esc(d.date || '')}">
+          <input data-sd-what="${i}" value="${esc(d.what || '')}" placeholder="день рождения, годовщина…">
+          <button class="btn btn-sm btn-ghost" type="button" data-sd-del="${i}">×</button></div>`).join('');
+        $$('[data-sd-date]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdDate].date = x.value; }; });
+        $$('[data-sd-what]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdWhat].what = x.value; }; });
+        $$('[data-sd-del]', m).forEach(b => { b.onclick = () => { dates.splice(Number(b.dataset.sdDel), 1); draw(); }; });
+      };
+      draw();
+      $('#gf-sd-add', m).onclick = () => { dates.push({ date: '', what: '' }); draw(); };
+    },
   });
 }

@@ -54,8 +54,9 @@ class DayFilters:
     flag_ids: tuple[int, ...] = ()
     kind_ids: tuple[int, ...] = ()
     floor: str | None = None
-    escorted_only: bool = False
-    vip: bool = False
+    escorted_only: bool = False             # по статусу сопровождения брони в ночь строки
+    special: bool = False                   # «◆ Особый гость» среди гостей строки
+    vip_code_ids: tuple[int, ...] = ()      # VIP-код брони — «или»
     employee_id: int | None = None
     q: str = ""
 
@@ -63,11 +64,12 @@ class DayFilters:
 def _status(ctx: StaysContext, s: StayDay | None, night: dt.date, known, day: dt.date) -> dict:
     """Статус сопровождения брони в ночь night (§6.3): кто — кого / не назначено / подмена."""
     if s is None:
-        return {"cover_status": "not_required"}
-    if not s.escorted:
-        return {"cover_status": "not_required"}
-    if s.declined:
-        return {"cover_status": "declined"}
+        return {"cover_status": "not_required", "escort_reasons": []}
+    reasons = {"escort_reasons": list(s.need.reasons)}        # почему нужен / не нужен (§4.1)
+    if s.need.declined:
+        return {"cover_status": "declined", **reasons}
+    if not s.need.required:
+        return {"cover_status": "not_required", **reasons}
     cover = ctx.cover(night)
     pairs: dict[int, list[str]] = {}
     for (rid, g), emps in cover.by_guest.items():
@@ -78,8 +80,8 @@ def _status(ctx: StaysContext, s: StayDay | None, night: dt.date, known, day: dt
     replacement = [w for w in ctx.warnings(night) if w.kind == "need_replacement" and w.reservation_id == s.reservation_id]
     if s.reservation_id in cover.uncovered or replacement:
         return {"cover_status": "replacement" if replacement else "uncovered", "covered": covered,
-                "candidates": _candidates(ctx, s, night, known) if night == day else []}
-    return {"cover_status": "covered", "covered": covered}
+                "candidates": _candidates(ctx, s, night, known) if night == day else [], **reasons}
+    return {"cover_status": "covered", "covered": covered, **reasons}
 
 
 def _candidates(ctx: StaysContext, s: StayDay, day: dt.date, known) -> list[dict]:
@@ -131,7 +133,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
     def guests_of(r: Reservation, night: dt.date) -> list[dict]:
         occ = sorted((o for o in ctx.occ.get(r.id, ()) if o.date_from <= night < o.date_to and o.guest_id in ctx.guests),
                      key=lambda o: (o.role != "main", o.id))
-        return [{"guest_id": o.guest_id, "name": ctx.guest_name(o.guest_id), "level": ctx.guests[o.guest_id].level,
+        return [{"guest_id": o.guest_id, "name": ctx.guest_name(o.guest_id), "special": bool(ctx.guests[o.guest_id].special),
                  "role": o.role, **({"relatives": relatives.get(o.guest_id, [])} if names else {})} for o in occ]
 
     def row(r: Reservation, kind: str) -> dict | None:
@@ -150,7 +152,9 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
         st = _status(ctx, s, night, known, day)
         if f.escorted_only and st["cover_status"] == "not_required":
             return None
-        if f.vip and not any(g["level"] != "regular" for g in guests):
+        if f.special and not any(g["special"] for g in guests):
+            return None
+        if f.vip_code_ids and r.vip_code_id not in f.vip_code_ids:
             return None
         if f.employee_id and not any(c["employee_id"] == f.employee_id for c in st.get("covered", [])):
             return None
@@ -158,7 +162,8 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
                 needle in (ctx.guests[g["guest_id"]].search_text or "") for g in guests) \
                 and needle not in base["unit"].lower():
             return None
-        out = {**base, **st, "number": r.number, "guests": guests}
+        code = ctx.vip_codes.get(r.vip_code_id) if r.vip_code_id is not None else None
+        out = {**base, **st, "number": r.number, "vip_code": code.code if code else "", "guests": guests}
         if full:
             prefs = [json.loads(ctx.guests[g["guest_id"]].preferences_json or "{}") for g in guests]
             out["details"] = {"logistics": logistics.get(r.id, []), "companions": companions.get(r.id, []),
@@ -180,11 +185,10 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
               "no_show": len(no_show), "overbooked": len(overbooked)}
     if names:
         statuses = [x["cover_status"] for x in in_house]
-        guests = [g["level"] for x in in_house for g in x["guests"]]
+        special = sum(1 for x in in_house for g in x["guests"] if g["special"])   # «Особый гость» в доме
         totals |= {"covered": statuses.count("covered"), "uncovered": statuses.count("uncovered"),
                    "need_replacement": statuses.count("replacement"), "declined": statuses.count("declined"),
-                   "not_required": statuses.count("not_required"), "vip": guests.count("vip"),
-                   "vvip": guests.count("vvip")}
+                   "not_required": statuses.count("not_required"), "special": special}
     # «Требуют внимания» — всем уровням (решение владельца: OOO видны всем): овербукинг (бронь без
     # объекта, часть 2 §4.2) и OOO дня; на уровне «занятость» строки броней — без данных гостей,
     # непокрытые и подмены — только с уровня «имена»

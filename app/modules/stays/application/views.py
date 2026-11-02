@@ -23,13 +23,14 @@ from ..adapters.orm import (
     Occupant,
     Ooo,
     Reservation,
+    VipCode,
 )
 from ..domain.allocate import natural_key
 from ..domain.halfday import PIECE_BASE, PM, Piece, ooo_span, pieces, pos, segments
 from ..domain.prefs import scorer
 from ..ports.duty import DutyPort
 from . import allocation, family
-from .context import butlers_on, load_context, nights
+from .context import StaysContext, butlers_on, load_context, nights, reservation_escort
 from .fund_versions import (
     CategoryInfo,
     FundSnapshot,
@@ -41,11 +42,10 @@ from .fund_versions import (
     version_cuts,
 )
 from .guests import search_query, short_name
-from .reservations import STATUS_TITLES
+from .reservations import STATUS_TITLES, vip_code_of
 from .visibility import Level, at_least, serialize_bar
 
 MAX_DAYS = 62
-LEVEL_RANK = {"regular": 0, "vip": 1, "vvip": 2}
 
 
 class ViewError(ValueError):
@@ -61,15 +61,18 @@ class BoardFilters:
     flag_ids: tuple[int, ...] = ()
     kind_ids: tuple[int, ...] = ()          # виды категорий (справочник)
     floor: str | None = None
-    escorted_only: bool = False
-    vip: bool = False
+    escorted_only: bool = False             # шахматка и «Загрузка» — по объекту, «Брони» — по правилам брони
+    special: bool = False                   # «◆ Особый гость» среди проживающих брони
+    vip_code_ids: tuple[int, ...] = ()      # VIP-код брони — «или»
     employee_id: int | None = None          # «кто ведёт» — с задачи 14
     q: str = ""
 
     def for_level(self, level: Level) -> BoardFilters:
-        """Поиск и VIP опираются на данные гостей: уровню occupancy они не применяются (находка
-        C1 аудита) — иначе по ответу можно было бы подобрать фамилию или уровень гостя."""
-        return self if level != "occupancy" else replace(self, q="", vip=False, employee_id=None)
+        """Поиск, «Особый гость» и VIP-код опираются на данные гостей: уровню occupancy они не
+        применяются (находка C1 аудита) — иначе по ответу можно было бы подобрать фамилию или
+        признак гостя."""
+        return self if level != "occupancy" else replace(self, q="", special=False, vip_code_ids=(),
+                                                         employee_id=None)
 
 
 def fund_match(snap: FundSnapshot, unit_id: int | None, category_id: int | None, f) -> bool:
@@ -102,10 +105,6 @@ def _d(v: dt.date | None) -> str | None:
     return v.isoformat() if v else None
 
 
-def _top_level(levels) -> str:
-    return max(levels, key=lambda lv: LEVEL_RANK[lv], default="regular")
-
-
 @dataclass
 class BoardRow:
     """Строка шахматки — постоянный объект. Свойства — на первый день периода, когда он в
@@ -129,9 +128,10 @@ class BoardRow:
 
 
 def _passing(snap: FundSnapshot, f: BoardFilters) -> set[int]:
-    """Объекты снимка, прошедшие фильтры фонда (и «с сопровождением» — по категории)."""
-    return {uid for uid, u in snap.units.items() if fund_match(snap, uid, None, f)
-            and (not f.escorted_only or getattr(snap.categories.get(u.category_id), "escorted", False))}
+    """Объекты снимка, прошедшие фильтры фонда (и «с сопровождением» — по категории или узлу
+    на пути объекта, правила 1–2)."""
+    return {uid for uid in snap.units if fund_match(snap, uid, None, f)
+            and (not f.escorted_only or snap.unit_escorted(uid))}
 
 
 def _runs(marks: list[str | None], days: list[dt.date]) -> list[list]:
@@ -277,6 +277,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         gids = {o.guest_id for os in occ.values() for o in os}
         guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
         labels = {lb.id: lb for lb in db.scalars(select(Label))}
+    code_ids = {r.vip_code_id for r in res if r.vip_code_id is not None} if names else set()
+    codes = dict(db.execute(select(VipCode.id, VipCode.code).where(VipCode.id.in_(code_ids))).all()) if code_ids else {}
     match = _search(f.q, res, occ, guests, units, asg) if f.q.strip() else None
     today = local_date()
     on_duty: dict[int, list[str]] = {}
@@ -289,8 +291,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         if match is not None and r.id not in match:
             continue
         rocc = occ[r.id]
-        top = _top_level(guests[o.guest_id].level for o in rocc if o.guest_id in guests)
-        if f.vip and top == "regular":
+        special = any(guests[o.guest_id].special for o in rocc if o.guest_id in guests)
+        if (f.special and not special) or (f.vip_code_ids and r.vip_code_id not in f.vip_code_ids):
             continue
         segs = st.segs[r.id]
         mains = [o for o in rocc if o.role == "main"]
@@ -302,9 +304,9 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                 "main_guest": short_name(guests[main_now.guest_id]) if main_now and main_now.guest_id in guests else "",
                 "mains": [{"guest": short_name(guests[o.guest_id]), "from": _d(o.date_from), "to": _d(o.date_to)}
                           for o in mains if o.guest_id in guests],
-                "level": top, "butlers_today": on_duty.get(r.id, []),
+                "special": special, "vip_code": codes.get(r.vip_code_id, ""), "butlers_today": on_duty.get(r.id, []),
                 "customer": r.customer, "paid_category_id": r.paid_category_id or r.category_id,
-                "note": r.note, "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}")}
+                "note": r.note, "escort_mode": r.escort_mode, "fields": json.loads(r.fields_json or "{}")}
         # полоса — соседние части сегмента с одним объектом; seg_index полосы — индекс её первой
         # части (seg_index // PIECE_BASE — сегмент; 0 — начало брони)
         for run in _glued(st.parts[r.id], lambda p, rid=r.id: asg.get((rid, p.index))):
@@ -388,9 +390,8 @@ def _search(q: str, res, occ, guests, units, asg) -> set[int]:
     return hits
 
 
-def card_coverage(db: Session, r: Reservation, duty: DutyPort | None) -> list[dict]:
+def card_coverage(ctx: StaysContext, r: Reservation) -> list[dict]:
     """Покрытие брони по ночам: кто кого ведёт и предупреждения дня против Графика (§4.4)."""
-    ctx = load_context(db, r.check_in, r.check_out - dt.timedelta(days=1), duty)
     out = []
     for d in nights(r.check_in, r.check_out):
         cover = ctx.cover(d)
@@ -471,6 +472,8 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     paid_code = paid.code if paid else "?"
     lb = db.get(Label, r.label_id) if r.label_id else None
     relatives = _relatives_in_house(db, r, guests) if at_least(level, "names") else {}
+    ctx = (load_context(db, r.check_in, r.check_out - dt.timedelta(days=1), duty)
+           if r.status in allocation.OCCUPYING else None)
     card = {
         "id": r.id, "number": r.number, "status": r.status, "status_title": STATUS_TITLES[r.status],
         "check_in": _d(r.check_in), "check_out": _d(r.check_out), "early": r.early, "late": r.late,
@@ -483,16 +486,18 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
                       "unit": u.label if (u := fund.unit(asg.get(s.index), fund_day(s.start_pos))) else None}
                      for s in segs],
         "occupants": [{"guest_id": o.guest_id, "guest": short_name(guests[o.guest_id]),
-                       "level": guests[o.guest_id].level, "date_from": _d(o.date_from),
+                       "special": bool(guests[o.guest_id].special), "date_from": _d(o.date_from),
                        "date_to": _d(o.date_to), "role": o.role,
                        "relatives": relatives.get(o.guest_id, [])} for o in occ if o.guest_id in guests],
-        "coverage": card_coverage(db, r, duty) if r.status in allocation.OCCUPYING else [
+        # код и сопровождение — признаки гостя: карточка доступна с уровня «с фамилиями» (§7)
+        "vip_code": vip_code_of(db, r.vip_code_id), "escort_mode": r.escort_mode,
+        "escort": reservation_escort(db, r, ctx),
+        "coverage": card_coverage(ctx, r) if ctx is not None else [
             {"day": d.isoformat(), "butlers": [], "warnings": []} for d in nights(r.check_in, r.check_out)],
     }
     card["pref"] = _pref_status(db, r, fund)
     if at_least(level, "full"):
-        card |= {"customer": r.customer, "note": r.note,
-                 "declined_butler": r.declined_butler, "fields": json.loads(r.fields_json or "{}"),
+        card |= {"customer": r.customer, "note": r.note, "fields": json.loads(r.fields_json or "{}"),
                  "companions": [{"kind": c.kind, "description": c.description} for c in
                                 db.scalars(select(Companion).where(Companion.reservation_id == rid))],
                  "logistics": [{"kind": lg.kind, "date": _d(lg.date), "time": lg.time, "description": lg.description}
@@ -555,7 +560,7 @@ def _unplaced_demand(state: allocation.AllocationState, st: _Stays, first: dt.da
 def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) -> dict:
     """Сводная загрузка (§6.1): узлы дерева × дни и «Итого по выбранному» (объекты всех узлов —
     без двойного счёта, если выбраны узел и его потомок). Всё — по фонду дня; данных гостей
-    нет, только числа: поиск и VIP не применяются."""
+    нет, только числа: поиск, «Особый гость» и VIP-код не применяются."""
     days = check_window(first, last)
     one = dt.timedelta(days=1)
     f = f.for_level("occupancy")

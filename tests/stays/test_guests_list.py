@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.core.audit import AuditLog
 from app.core.time import local_date
 
-from .helpers import API, create_res, make_category
+from .helpers import API, create_res, make_category, make_code
 from .helpers import uniq as _uniq
 
 
@@ -59,10 +59,11 @@ def test_guests_list_search_filters_sort(manager_role_client, manager_client):
     u = uniq()
     cat = make_category(manager_role_client, n_units=3)
     typed, shown, _ = _phone()
-    a = _guest(manager_client, f"Альфа{u}", first_name="Анна", level="vip", phone=typed,
+    code = make_code(manager_role_client)
+    a = _guest(manager_client, f"Альфа{u}", first_name="Анна", special=True, vip_code_id=code["id"], phone=typed,
                birth_date=_birth_in(5))
     b = _guest(manager_client, f"Бета{u}", first_name="Борис", birth_date=_birth_in(40))
-    c = _guest(manager_client, f"Гамма{u}", first_name="Вера", level="vvip")
+    c = _guest(manager_client, f"Гамма{u}", first_name="Вера", special=True)
     r1 = create_res(manager_client, cat, "2041-03-01", "2041-03-04", [(a["id"], "main", None, None)])
     create_res(manager_client, cat, "2041-05-10", "2041-05-12", [(a["id"], "main", None, None)])
     create_res(manager_client, cat, "2041-04-01", "2041-04-03", [(b["id"], "main", None, None)])
@@ -74,15 +75,17 @@ def test_guests_list_search_filters_sort(manager_role_client, manager_client):
     body = _list(manager_client, q=u)
     assert body["total"] == 3
     rows = {row["id"]: row for row in body["rows"]}
-    assert rows[a["id"]] == {"id": a["id"], "name": f"Альфа{u} Анна", "level": "vip", "gender": "",
-                             "phone": shown, "last_stay": "2041-05-10", "stays": 2}
+    assert rows[a["id"]] == {"id": a["id"], "name": f"Альфа{u} Анна", "special": True,
+                             "vip_code": code["code"], "vip_code_archived": False, "gender": "", "phone": shown, "last_stay": "2041-05-10", "stays": 2}
     assert (rows[c["id"]]["stays"], rows[c["id"]]["last_stay"]) == (0, None)      # отменённая — не проживание
     # поиск по фамилии, по телефону (8 → 7), по номеру брони
     assert _ids(manager_client, q=f"бета{u}") == [b["id"]]
     assert _ids(manager_client, q=typed) == [a["id"]]
     assert _ids(manager_client, q=r1["number"].lower()) == [a["id"]]
-    # фильтры: уровень, «был в периоде», «день рождения в ближайшие 30 дней»
-    assert _ids(manager_client, q=u, level="vvip") == [c["id"]]
+    # фильтры: «Особые», код, «был в периоде», «день рождения в ближайшие 30 дней»
+    assert sorted(_ids(manager_client, q=u, special=True)) == sorted([a["id"], c["id"]])
+    assert _ids(manager_client, q=u, vip_code_id=code["id"]) == [a["id"]]
+    assert _ids(manager_client, q=u, special=True, vip_code_id=code["id"]) == [a["id"]]
     assert _ids(manager_client, q=u, stayed_from="2041-04-02", stayed_to="2041-04-30") == [b["id"]]
     assert _ids(manager_client, q=u, stayed_from="2041-03-04", stayed_to="2041-03-31") == []   # день выезда — не ночь
     assert _ids(manager_client, q=u, stayed_from="2041-05-11") == [a["id"]]
@@ -92,7 +95,9 @@ def test_guests_list_search_filters_sort(manager_role_client, manager_client):
     assert _ids(manager_client, q=u, sort="name", dir="desc") == [c["id"], b["id"], a["id"]]
     assert _ids(manager_client, q=u, sort="stays", dir="desc") == [a["id"], b["id"], c["id"]]
     assert _ids(manager_client, q=u, sort="last_stay") == [c["id"], b["id"], a["id"]]
-    assert _ids(manager_client, q=u, sort="level", dir="desc") == [c["id"], a["id"], b["id"]]
+    assert _ids(manager_client, q=u, sort="special") == [a["id"], c["id"], b["id"]]       # «Особые» первыми, затем код
+    assert _ids(manager_client, q=u, sort="special", dir="desc") == [b["id"], c["id"], a["id"]]
+    assert manager_client.get(LIST, params={"sort": "level"}).status_code == 422
     # страница: total — все, rows — срез; больше 200 за раз нельзя
     page = _list(manager_client, q=u, offset=1, limit=1)
     assert page["total"] == 3 and [x["id"] for x in page["rows"]] == [b["id"]]
@@ -129,6 +134,7 @@ def test_merge_guests_moves_everything(manager_role_client, manager_client, db):
     from app.modules.stays.adapters.orm import CoverageGuest, CoverageLine, Guest, Occupant
 
     u = uniq()
+    vip = make_code(manager_role_client)
     code = "m" + u.lower()
     assert manager_role_client.post(f"{API}/fields", json={"target": "guest", "code": code, "title": "Клуб",
                                                             "kind": "text", "searchable": True}).status_code == 200
@@ -137,7 +143,7 @@ def test_merge_guests_moves_everything(manager_role_client, manager_client, db):
                   preferences={"food": "без глютена"}, special_dates=[{"date": "2020-05-01", "what": "годовщина"}])
     typed, _, digits = _phone()
     drop = _guest(manager_client, f"Дубль{u}", first_name="Ваня", middle_name="Петрович", phone=typed,
-                  gender="m", level="vip", note="любит тишину",
+                  gender="m", special=True, vip_code_id=vip["id"], note="любит тишину",
                   preferences={"food": "веган", "allergy": "орехи"}, fields={code: f"золото{u}"},
                   special_dates=[{"date": "2020-05-01", "what": "годовщина"}, {"date": "2020-09-09", "what": "др жены"}])
     friend = _guest(manager_client, f"Друг{u}")
@@ -159,15 +165,15 @@ def test_merge_guests_moves_everything(manager_role_client, manager_client, db):
                                "result": "moved"}]
     assert moves["preferences"] == ["allergy"] and moves["fields"] == [code] and moves["coverage"] == 1
     assert moves["special_dates"] == [{"date": "2020-09-09", "what": "др жены"}]
-    assert set(moves["profile"]) == {"middle_name", "phone", "gender", "level", "note"}
+    assert set(moves["profile"]) == {"middle_name", "phone", "gender", "special", "vip_code_id", "note"}
 
     db.expire_all()
     assert db.get(Guest, drop["id"]) is None
     assert [o.guest_id for o in db.scalars(select(Occupant).where(Occupant.reservation_id == res["id"]))] == [keep["id"]]
     assert db.scalar(select(CoverageGuest.guest_id).where(CoverageGuest.coverage_id == line.id)) == keep["id"]
     card = manager_client.get(f"{API}/guests/{keep['id']}").json()
-    assert (card["first_name"], card["middle_name"], card["phone"], card["gender"], card["level"]) == \
-        ("Иван", "Петрович", "+" + digits, "m", "vip")
+    assert (card["first_name"], card["middle_name"], card["phone"], card["gender"], card["special"],
+            card["vip_code_id"]) == ("Иван", "Петрович", "+" + digits, "m", True, vip["id"])
     assert card["preferences"] == {"food": "без глютена", "allergy": "орехи"}         # своё побеждает
     assert card["fields"] == {code: f"золото{u}"}
     assert len(card["special_dates"]) == 2 and card["note"] == "ключи у охраны\nлюбит тишину"
@@ -315,3 +321,60 @@ def test_merge_spouse_current_beats_former(manager_client, db):
     assert r.status_code == 409 and r.json()["detail"] == "Объединение нарушит семейное дерево: У гостя уже есть супруг(а)"
     db.expire_all()
     assert db.get(Guest, d2["id"]) is not None
+
+
+def test_guests_filter_special_and_code(manager_role_client, manager_client):
+    u = uniq()
+    c1, c2 = make_code(manager_role_client), make_code(manager_role_client)
+    a = _guest(manager_client, f"Особый{u}", special=True, vip_code_id=c1["id"])
+    b = _guest(manager_client, f"Кодовый{u}", vip_code_id=c2["id"])
+    c = _guest(manager_client, f"Обычный{u}")
+    assert set(_ids(manager_client, q=u)) == {a["id"], b["id"], c["id"]}
+    assert _ids(manager_client, q=u, special=True) == [a["id"]]
+    assert _ids(manager_client, q=u, vip_code_id=c2["id"]) == [b["id"]]
+    assert _ids(manager_client, q=u, special=True, vip_code_id=c2["id"]) == []
+    row = next(x for x in _list(manager_client, q=u, vip_code_id=c2["id"])["rows"])
+    assert (row["special"], row["vip_code"]) == (False, c2["code"])
+    assert manager_client.get(LIST, params={"level": "vip"}).status_code == 200      # неизвестный параметр игнорируется
+    assert set(_ids(manager_client, q=u, level="vip")) == {a["id"], b["id"], c["id"]}
+
+
+def test_guests_sort_special(manager_role_client, manager_client):
+    u = uniq()
+    lo, hi = make_code(manager_role_client), make_code(manager_role_client)
+    lo, hi = sorted((lo, hi), key=lambda x: x["code"])
+    plain = _guest(manager_client, f"Аа{u}")
+    s_hi = _guest(manager_client, f"Бб{u}", special=True, vip_code_id=hi["id"])
+    s_lo = _guest(manager_client, f"Вв{u}", special=True, vip_code_id=lo["id"])
+    s_none = _guest(manager_client, f"Гг{u}", special=True)
+    coded = _guest(manager_client, f"Дд{u}", vip_code_id=lo["id"])
+    # «Особые» первыми, внутри — по коду (без кода — после кодов), затем остальные так же
+    assert _ids(manager_client, q=u, sort="special") == [s_lo["id"], s_hi["id"], s_none["id"], coded["id"], plain["id"]]
+    assert _ids(manager_client, q=u, sort="special", dir="desc") == \
+        [plain["id"], coded["id"], s_none["id"], s_hi["id"], s_lo["id"]]
+
+
+def test_merge_special_and_code(manager_role_client, manager_client, db):
+    c1, c2 = make_code(manager_role_client), make_code(manager_role_client)
+    # у оставляемого нет ни ◆, ни кода — переходят от дубля
+    keep, drop = _guest(manager_client, "СлитьА" + uniq()), _guest(manager_client, "СлитьБ" + uniq(),
+                                                                  special=True, vip_code_id=c1["id"])
+    r = manager_client.post(MERGE, json={"keep_id": keep["id"], "drop_id": drop["id"]})
+    assert r.status_code == 200, r.text
+    assert {"special", "vip_code_id"} <= set(r.json()["moves"]["profile"])
+    card = manager_client.get(f"{API}/guests/{keep['id']}").json()
+    assert (card["special"], card["vip_code_id"]) == (True, c1["id"])
+    # свой код побеждает, ◆ — если он хотя бы у одного
+    keep2 = _guest(manager_client, "СлитьВ" + uniq(), special=True, vip_code_id=c2["id"])
+    drop2 = _guest(manager_client, "СлитьГ" + uniq(), vip_code_id=c1["id"])
+    r = manager_client.post(MERGE, json={"keep_id": keep2["id"], "drop_id": drop2["id"]})
+    assert r.status_code == 200, r.text
+    assert "vip_code_id" not in r.json()["moves"]["profile"] and "special" not in r.json()["moves"]["profile"]
+    card = manager_client.get(f"{API}/guests/{keep2['id']}").json()
+    assert (card["special"], card["vip_code_id"]) == (True, c2["id"])
+    # у оставляемого ◆ нет, у дубля есть, а коды разные — ◆ переходит, код остаётся
+    keep3 = _guest(manager_client, "СлитьД" + uniq(), vip_code_id=c2["id"])
+    drop3 = _guest(manager_client, "СлитьЕ" + uniq(), special=True, vip_code_id=c1["id"])
+    assert manager_client.post(MERGE, json={"keep_id": keep3["id"], "drop_id": drop3["id"]}).status_code == 200
+    card = manager_client.get(f"{API}/guests/{keep3['id']}").json()
+    assert (card["special"], card["vip_code_id"]) == (True, c2["id"])

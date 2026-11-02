@@ -80,6 +80,21 @@ class CategoryKind(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class VipCode(Base):
+    """Справочник VIP-кодов гостя (текст до 8 цифр, «03» ≠ «3»): правило сопровождения и
+    коэффициент нагрузки. Не версионируется; использованный код архивируется."""
+
+    __tablename__ = "stays_vip_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(8), unique=True)
+    title: Mapped[str] = mapped_column(String(80), default="")
+    escorted: Mapped[bool] = mapped_column(Boolean, default=False)
+    factor: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("1"))
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class FundVersion(Base):
     """Версия фонда «с даты»: полный снимок категорий, узлов и объектов. Действует с вечера
     valid_from (§3.3). rev — счётчик правок черновика (оптимистичная блокировка)."""
@@ -131,6 +146,7 @@ class GroupState(Base):
     parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_fund_groups.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(120))
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    escorted: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class UnitState(Base):
@@ -242,7 +258,7 @@ class Label(Base):
 
 
 class Guest(Base):
-    """Профиль гостя. Уровень VIP/VVIP — свойство человека, переходит на все его брони."""
+    """Профиль гостя. «Особый гость» и VIP-код — свойства человека; код копируется в его брони."""
 
     __tablename__ = "stays_guests"
 
@@ -254,7 +270,9 @@ class Guest(Base):
     email: Mapped[str] = mapped_column(String(120), default="")
     birth_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
     gender: Mapped[str] = mapped_column(String(1), default="")         # m | f | '' (не указан)
-    level: Mapped[str] = mapped_column(String(8), default="regular")  # regular | vip | vvip
+    vip_code_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("stays_vip_codes.id", name="fk_stays_guests_vip_code"), nullable=True)
+    special: Mapped[bool] = mapped_column(Boolean, default=False)     # «Особый гость»
     preferences_json: Mapped[str] = mapped_column(Text, default="{}")
     special_dates_json: Mapped[str] = mapped_column(Text, default="[]")
     fields_json: Mapped[str] = mapped_column(Text, default="{}")
@@ -326,7 +344,9 @@ class Reservation(Base):
     label_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_labels.id"), nullable=True)
     customer: Mapped[str] = mapped_column(String(160), default="")
     note: Mapped[str] = mapped_column(Text, default="")
-    declined_butler: Mapped[bool] = mapped_column(Boolean, default=False)
+    vip_code_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("stays_vip_codes.id", name="fk_stays_reservations_vip_code"), nullable=True)
+    escort_mode: Mapped[str] = mapped_column(String(8), default="rules")   # rules | required | declined
     fields_json: Mapped[str] = mapped_column(Text, default="{}")
     external_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="")
@@ -481,8 +501,7 @@ class StaysSettings(Base):
     __tablename__ = "stays_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    vip_bonus: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("1"))
-    vvip_bonus: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("2"))
+    special_factor: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("2"))
     daily_limit: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("8"))
     # коды дня Табеля, при которых назначенному батлеру нужна подмена (отпуск, больничный…)
     replacement_codes: Mapped[str] = mapped_column(String(120), default="ОТ,ДО,Б,ОВ,К")

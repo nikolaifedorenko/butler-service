@@ -16,7 +16,7 @@ def test_stays_tables_created(db):
 def test_stays_settings_row_seeded(db):
     from app.modules.stays.adapters.orm import StaysSettings
     s = db.get(StaysSettings, 1)
-    assert (float(s.vip_bonus), float(s.vvip_bonus), float(s.daily_limit)) == (1.0, 2.0, 8.0)
+    assert float(s.daily_limit) == 8.0
     assert s.replacement_codes == "ОТ,ДО,Б,ОВ,К"
 
 
@@ -30,3 +30,30 @@ def test_stays_roles_as_data(db):
     occ = role_permissions(db, "occupancy")
     assert "stays.occupancy" in occ and "stays.view" not in occ
     assert db.scalars(select(AccessGrant).where(AccessGrant.role == "occupancy")).first()
+
+
+def test_escort_rules_columns_and_defaults(db):
+    """Ревизия 0017: справочник VIP-кодов и новые поля модели; значения по умолчанию из модели."""
+    from decimal import Decimal
+
+    from app.modules.stays.adapters.orm import Guest, Reservation, StaysSettings
+    insp = inspect(db.get_bind())
+    assert {"stays_vip_codes"} <= set(insp.get_table_names())
+    cols = lambda t: {c["name"] for c in insp.get_columns(t)}  # noqa: E731
+    assert {"id", "code", "title", "escorted", "factor", "sort_order", "archived"} == cols("stays_vip_codes")
+    assert {"vip_code_id", "special"} <= cols("stays_guests")
+    assert {"vip_code_id", "escort_mode"} <= cols("stays_reservations")
+    assert "special_factor" in cols("stays_settings")
+    assert "escorted" in cols("stays_group_states")
+    assert Guest.__table__.c.special.default.arg is False
+    assert Reservation.__table__.c.escort_mode.default.arg == "rules"
+    assert StaysSettings.__table__.c.special_factor.default.arg == Decimal("2")
+
+
+def test_old_columns_gone(db):
+    """Ревизия 0018: уровни VIP/VVIP, отказ от батлера и надбавки сняты."""
+    insp = inspect(db.get_bind())
+    cols = lambda t: {c["name"] for c in insp.get_columns(t)}  # noqa: E731
+    assert "level" not in cols("stays_guests")
+    assert "declined_butler" not in cols("stays_reservations")
+    assert not {"vip_bonus", "vvip_bonus"} & cols("stays_settings")

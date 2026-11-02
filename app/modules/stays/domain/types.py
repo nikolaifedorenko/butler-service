@@ -5,6 +5,8 @@ import datetime as dt
 from dataclasses import dataclass, field
 from typing import Mapping
 
+from .escort import EscortNeed
+
 
 @dataclass(frozen=True)
 class DutyDay:
@@ -25,10 +27,10 @@ class StayDay:
     group_id: int | None
     unit_id: int | None
     group_path: tuple[int, ...]                # узел объекта в дереве фонда дня, от корня
-    weight: float
-    escorted: bool
-    declined: bool
-    guests: Mapping[int, str]                  # guest_id → уровень (regular | vip | vvip)
+    weight: float                              # вес категории объекта (версия дня)
+    need: EscortNeed                           # нужен ли батлер и почему (§4.1)
+    code_factor: float | None                  # коэффициент VIP-кода брони; None — кода нет
+    guests: Mapping[int, bool]                 # guest_id → «Особый гость»
 
 
 @dataclass(frozen=True)

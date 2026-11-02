@@ -13,14 +13,14 @@ def _doc(c, rid):
 
 def _body(res, **ch):
     return {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late", "group_id",
-                                   "note", "declined_butler", "label_id", "customer", "paid_category_id", "fields")},
+                                   "note", "escort_mode", "vip_code_id", "label_id", "customer", "paid_category_id", "fields")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **ch}
 
 
 def test_butler_cannot_add_stranger_to_own_booking(butler_client, manager_client, own_reservation):
     """C1: посторонний гость через «свою» бронь — 403, его профиль по-прежнему закрыт."""
-    stranger = make_guest(manager_client, "Посторонний", level="vvip")
+    stranger = make_guest(manager_client, "Посторонний", special=True)
     assert butler_client.get(f"{API}/guests/{stranger['id']}").status_code == 403
     rid = own_reservation["mine"]["id"]
     doc = _doc(butler_client, rid)

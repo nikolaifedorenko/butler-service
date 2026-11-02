@@ -39,8 +39,7 @@ function staysBookParams() {
   if (staysBook.unassigned) p.set('unassigned', '1');
   if (staysBook.with_warnings) p.set('with_warnings', '1');
   if (f.escorted) p.set('escorted', '1');
-  if (f.vip) p.set('vip', '1');
-  if (f.q.trim()) p.set('q', f.q.trim());
+  staysPeopleParams(p, f);
   return p;
 }
 
@@ -79,7 +78,7 @@ function staysBookRowHtml(r) {
   const lb = r.label ? `<span class="sb-star" style="color:${esc(staysColor(r.label.color))}" title="${esc(r.label.title)}">●</span> ` : '';
   return `<tr class="bk-row" data-bk-row="${r.id}" tabindex="0">
     <td>${lb}${esc(r.number || '#' + r.id)}</td>
-    <td>${r.level !== 'regular' ? `<span class="sb-star">${esc(STAYS_LEVEL_MARK[r.level] || '')}</span>` : ''}${esc(r.main_guest)}</td>
+    <td>${staysGuestMark(r.special)}${esc(r.main_guest)}${staysCodeTag(r.vip_code)}</td>
     <td>${esc(dateRu(r.check_in))}${r.early ? ' <span class="muted" title="Ранний заезд">РЗ</span>' : ''}</td>
     <td>${esc(dateRu(r.check_out))}${r.late ? ' <span class="muted" title="Поздний выезд">ПВ</span>' : ''}</td>
     <td>${r.nights}</td><td>${esc(r.category)}${r.upgrade ? ` <span class="badge muted" title="${esc(r.upgrade)}">${esc(r.upgrade)}</span>` : ''}</td><td>${esc(r.unit || '—')}</td>

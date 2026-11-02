@@ -9,12 +9,12 @@ from fastapi.routing import APIRoute
 from tests.test_authz_matrix import _flat
 
 from .conftest import assert_no_pd
-from .helpers import API, create_res, make_category, make_guest
+from .helpers import API, create_res, make_category, make_code, make_guest, set_guest, uniq
 
 
 def test_occupancy_level_never_sees_guests(app_stack, occupancy_client, manager_role_client, manager_client):
     cat = make_category(manager_role_client, n_units=2)
-    g = make_guest(manager_client, "Утечкин", level="vvip")
+    g = make_guest(manager_client, "Утечкин", special=True)
     res = create_res(manager_client, cat, "2038-03-02", "2038-03-05", [(g["id"], "main", None, None)],
                      note="УтечкаЗаметка", customer="УтечкаЗаказчик",
                      logistics=[{"kind": "flight", "date": "2038-03-02", "time": "07:00", "description": "УтечкаРейс"}])
@@ -36,3 +36,22 @@ def test_occupancy_level_never_sees_guests(app_stack, occupancy_client, manager_
             assert_no_pd(resp.json(), words, path)
             checked += 1
     assert checked >= 4          # шахматка, табло, загрузка, фонд как минимум
+
+
+def test_occupancy_level_no_code_no_special(occupancy_client, manager_role_client, manager_client):
+    """VIP-код и ◆ — признак человека: уровню «загрузка без гостей» их нет ни на шахматке, ни на
+    табло дня (§7)."""
+    cat = make_category(manager_role_client, n_units=1)
+    title = "Кодовый" + uniq()
+    code = make_code(manager_role_client, title=title)
+    g = make_guest(manager_client)
+    set_guest(g["id"], special=True, vip_code_id=code["id"])
+    create_res(manager_client, cat, "2038-04-02", "2038-04-05", [(g["id"], "main", None, None)], escort_mode="required")
+    board = occupancy_client.get(f"{API}/board/units", params={"first": "2038-04-01", "last": "2038-04-06",
+                                                               "category_ids": cat["id"]}).json()
+    day = occupancy_client.get(f"{API}/day", params={"date": "2038-04-02", "category_ids": cat["id"]}).json()
+    assert board["bars"] and day["arrivals"]
+    for body in (board, day):
+        assert_no_pd(body, {code["code"], title, "◆", "Особый"})
+    keys = set().union(*board["bars"], *day["arrivals"])
+    assert not keys & {"special", "vip_code", "vip_code_id", "escort_mode", "escort_reasons", "guests"}

@@ -64,6 +64,7 @@ class ParsedGroup:
     id: int | None
     path: tuple[str, ...]
     sort_order: int
+    escorted: bool = False
 
 
 @dataclass
@@ -139,11 +140,11 @@ def export_fund(snapshot: FundSnapshot, flags: list[UnitFlag]) -> bytes:
 
     ws = wb.create_sheet(SHEET_TREE)
     tree_ws = ws
-    _setup_sheet(ws, [ID_HEADER, "название", "родитель", "порядок"], [16, 28, 50, 10])
+    _setup_sheet(ws, [ID_HEADER, "название", "родитель", "сопровождение (да/нет)", "порядок"], [16, 28, 50, 22, 10])
     groups = sorted(snapshot.groups.values(), key=lambda g: ([snapshot.groups[i].sort_order for i in g.path], g.id))
     for r, g in enumerate(groups, start=2):
         parent = PATH_SEP.join(snapshot.path_titles(g.parent_id)) if g.parent_id in snapshot.groups else ""
-        _put_row(ws, r, [g.id, g.title, parent, g.sort_order])
+        _put_row(ws, r, [g.id, g.title, parent, _yn(g.escorted), g.sort_order])
 
     ws = wb.create_sheet(SHEET_FLAGS)
     _setup_sheet(ws, [ID_HEADER, "название", "цвет"], [16, 28, 12])
@@ -347,8 +348,12 @@ def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund |
 
     # Узел — «Название» + «Родитель» (полный путь родителя; пусто — корень). Строки в любом порядке:
     # родитель может стоять ниже ребёнка, поэтому наличие родителя проверяется по всему листу.
+    # Колонка «Сопровождение» необязательна: в файле прежней выгрузки её нет, порядок тогда четвёртый.
+    has_esc = len(tree_raw[0]) > 3 and _text(tree_raw[0][3]).lower().startswith("сопровождение")
+    order_col = 4 if has_esc else 3
     groups: list[ParsedGroup] = []
     for n, v in tree_raw[1]:
+        v = v + (None,) * (order_col + 1 - len(v))
         title, parent = _text(v[1]), _text(v[2])
         pp = _path(parent) if parent else ()
         if not title:
@@ -361,7 +366,8 @@ def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund |
             ctx.err(SHEET_TREE, n, "родитель содержит пустое звено")
             continue
         groups.append(ParsedGroup(n, _int(v[0], ctx, SHEET_TREE, n, "ID"), (*pp, title),
-                                  _int(v[3], ctx, SHEET_TREE, n, "порядок", default=100) or 0))
+                                  _int(v[order_col], ctx, SHEET_TREE, n, "порядок", default=100) or 0,
+                                  _bool(v[3], ctx, SHEET_TREE, n, "сопровождение") if has_esc else False))
     _dup_ids(groups, SHEET_TREE, ctx)
     _dup_keys(groups, lambda g: g.path, SHEET_TREE, "путь", ctx)
     paths = {g.path for g in groups}

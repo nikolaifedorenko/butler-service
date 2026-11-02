@@ -21,7 +21,7 @@ from .fund import FundError
 from .guests import format_phone, short_name
 
 LOCKED = ("number", "check_in", "check_out", "early", "late", "category_id", "label_id", "customer",
-          "paid_category_id", "declined_butler", "group_id")
+          "paid_category_id", "escort_mode", "vip_code_id", "group_id")
 GUEST_FREE = ("preferences", "special_dates", "fields", "note")
 MINE_TEXT = "Батлер может менять только состав, логистику и сведения о гостях"
 
@@ -144,7 +144,7 @@ def my_guests(db: Session, employee_id: int) -> dict:
             g = ctx.guests.get(o.guest_id)
             if g is None:
                 continue
-            guests.append({"guest_id": g.id, "name": short_name(g), "level": g.level, "role": o.role,
+            guests.append({"guest_id": g.id, "name": short_name(g), "special": bool(g.special), "role": o.role,
                            "date_from": _iso(o.date_from), "date_to": _iso(o.date_to),
                            "phone": format_phone(g.phone), "preferences": json.loads(g.preferences_json or "{}"),
                            "special_dates": json.loads(g.special_dates_json or "[]")})

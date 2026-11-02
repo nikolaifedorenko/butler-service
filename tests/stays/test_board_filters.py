@@ -4,7 +4,7 @@
 бюджет SQL месяца; прежние параметры — 422; поиск и VIP для уровня occupancy не применяются."""
 from __future__ import annotations
 
-from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, uniq
+from .helpers import API, FundDraft, create_res, kind_id, make_category, make_code, make_guest, set_guest, uniq
 
 MONTH = {"first": "2036-11-01", "last": "2036-11-30"}
 
@@ -205,17 +205,90 @@ def test_removed_params_422(manager_client):
             assert r.status_code == 422, (path, old, r.text)
 
 
-def test_occupancy_level_ignores_vip_and_search(manager_role_client, manager_client, occupancy_client):
-    """C1: поиск и VIP опираются на данные гостей — уровню occupancy они не применяются ни на
-    шахматке, ни на табло дня (иначе по числу полос подбиралась бы фамилия или VIP)."""
-    cat = make_category(manager_role_client, n_units=2)
-    g = make_guest(manager_client, "Скрытный" + uniq(), level="vip")
+def test_occupancy_level_ignores_special_codes_and_search(manager_role_client, manager_client, occupancy_client):
+    """C1: поиск, «Особый гость» и VIP-код опираются на данные гостей — уровню occupancy они не
+    применяются ни на шахматке, ни на табло дня (иначе по числу полос подбиралась бы фамилия)."""
+    cat, code = make_category(manager_role_client, n_units=2), make_code(manager_role_client)
+    g = make_guest(manager_client, "Скрытный" + uniq())
+    set_guest(g["id"], special=True, vip_code_id=code["id"])
     day = "2036-12-10"
     create_res(manager_client, cat, day, "2036-12-12", [(g["id"], "main", None, None)])
     create_res(manager_client, cat, day, "2036-12-12")
     win = {"first": day, "last": "2036-12-12", "category_ids": cat["id"]}
-    for params in ({"vip": 1}, {"q": g["last_name"]}, {"q": "нет-такого"}):
+    for params in ({"special": 1}, {"vip_code_ids": code["id"]}, {"q": g["last_name"]}, {"q": "нет-такого"}):
         assert len(occupancy_client.get(f"{API}/board/units", params={**win, **params}).json()["bars"]) == 2
         arr = occupancy_client.get(f"{API}/day", params={"date": day, "category_ids": cat["id"], **params}).json()
         assert len(arr["arrivals"]) == 2, params
-    assert len(manager_client.get(f"{API}/board/units", params={**win, "vip": 1}).json()["bars"]) == 1
+    assert len(manager_client.get(f"{API}/board/units", params={**win, "special": 1}).json()["bars"]) == 1
+
+
+def test_filter_special_and_codes(manager_role_client, manager_client):
+    """«◆ Особый гость» и «VIP-код» — на шахматке, табло дня и в «Бронях»; полоса несёт ◆ и код."""
+    cat = make_category(manager_role_client, n_units=3)
+    x, y = make_code(manager_role_client), make_code(manager_role_client)
+    sp, cx, cy = (make_guest(manager_client) for _ in range(3))
+    set_guest(sp["id"], special=True)
+    set_guest(cx["id"], vip_code_id=x["id"])
+    set_guest(cy["id"], vip_code_id=y["id"])
+    day, co = "2036-12-20", "2036-12-22"
+    r_sp, r_x, r_y = (create_res(manager_client, cat, day, co, [(g["id"], "main", None, None)]) for g in (sp, cx, cy))
+    win = {"first": day, "last": "2036-12-21", "category_ids": cat["id"]}
+
+    def bars(**p):
+        r = manager_client.get(f"{API}/board/units", params={**win, **p})
+        assert r.status_code == 200, r.text
+        return {b["reservation_id"]: b for b in r.json()["bars"]}
+
+    every = bars()
+    assert every[r_sp["id"]]["special"] is True and every[r_sp["id"]]["vip_code"] == ""
+    assert every[r_x["id"]]["special"] is False and every[r_x["id"]]["vip_code"] == x["code"]
+    assert "level" not in every[r_x["id"]]
+    assert set(bars(special=1)) == {r_sp["id"]}
+    assert set(bars(vip_code_ids=[x["id"]])) == {r_x["id"]}
+    assert set(bars(vip_code_ids=[x["id"], y["id"]])) == {r_x["id"], r_y["id"]}
+    assert bars(special=1, vip_code_ids=[x["id"]]) == {}
+
+    def arrivals(**p):
+        r = manager_client.get(f"{API}/day", params={"date": day, "category_ids": cat["id"], **p})
+        assert r.status_code == 200, r.text
+        return {a["reservation_id"]: a for a in r.json()["arrivals"]}
+
+    assert set(arrivals(special=1)) == {r_sp["id"]}
+    assert set(arrivals(vip_code_ids=[y["id"]])) == {r_y["id"]}
+    got = arrivals()
+    assert got[r_sp["id"]]["guests"][0]["special"] is True and got[r_x["id"]]["vip_code"] == x["code"]
+
+    def numbers(**p):
+        r = manager_client.get(f"{API}/bookings", params={**win, **p})
+        assert r.status_code == 200, r.text
+        return {row["number"]: row for row in r.json()["rows"]}
+
+    assert set(numbers(special=1)) == {r_sp["number"]}
+    assert set(numbers(vip_code_ids=[x["id"]])) == {r_x["number"]}
+    rows = numbers()
+    assert rows[r_sp["number"]]["special"] is True and rows[r_x["number"]]["vip_code"] == x["code"]
+
+
+def test_vip_param_422(manager_client):
+    base = {"first": "2036-11-01", "last": "2036-11-02"}
+    for path, extra in (("/board/units", base), ("/occupancy", base), ("/bookings", base),
+                        ("/bookings/export", base), ("/day", {"date": "2036-11-01"})):
+        r = manager_client.get(f"{API}{path}", params={**extra, "vip": "1"})
+        assert r.status_code == 422, (path, r.text)
+
+
+def test_units_escorted_filter_by_node(manager_role_client, manager_client):
+    """«С сопровождением» на шахматке и в «Загрузке» — по правилам объекта: категория без
+    сопровождения в узле с сопровождением — в фильтре."""
+    d = FundDraft(manager_role_client)
+    node = d.call("POST", "groups", title="Винные" + uniq(), escorted=True)["id"]
+    d.publish()
+    wine = make_category(manager_role_client, n_units=1, escorted=False, group_id=node)
+    plain = make_category(manager_role_client, n_units=1, escorted=False)
+    win = {"first": "2036-12-01", "last": "2036-12-02", "category_ids": [wine["id"], plain["id"]]}
+    r = manager_client.get(f"{API}/board/units", params={**win, "escorted": 1})
+    assert r.status_code == 200, r.text
+    assert [u["unit_id"] for u in r.json()["units"]] == [wine["units"][0]["id"]]
+    def total(**p):
+        return manager_client.get(f"{API}/occupancy", params={**win, **p}).json()["total"]["days"][0]["total"]
+    assert (total(), total(escorted=1)) == (2, 1)

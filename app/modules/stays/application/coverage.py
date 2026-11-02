@@ -20,6 +20,7 @@ from app.modules.timesheet.application.roster import roster
 from ..adapters.orm import CoverageGuest, CoverageLine, Escort, Occupant, Reservation, StayGroup
 from ..domain.candidates import rank_candidates
 from ..domain.coverage import fill_template, resolve_day
+from ..domain.escort import place_weight
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import load_context, nights
@@ -263,10 +264,11 @@ def rank_in_ctx(ctx, day: dt.date, stays: list, guest_ids: set[int], known) -> l
     for (rid, _g), emps in ctx.cover(day).by_guest.items():
         for e in emps:
             places.setdefault(e, set()).update({("unit", by_res[rid].unit_id), ("path", by_res[rid].group_path)})
-    bonus = sum((ctx.vvip_bonus if s.guests.get(g) == "vvip" else ctx.vip_bonus if s.guests.get(g) == "vip" else 0)
-                for s in stays for g in s.guests if g in guest_ids)
+    # вес назначения — вес места с коэффициентами кодов и «Особого» среди выбранных гостей (§4.2)
+    weight = place_weight(stays[0].weight, [s.code_factor for s in stays if s.code_factor is not None],
+                          any(s.guests[g] for s in stays for g in s.guests if g in guest_ids), ctx.special_factor)
     got = rank_candidates(day, guest_ids, stays[0].unit_id, stays[0].group_path, ctx.escorts, ctx.duty,
-                          ctx.loads(day), stays[0].weight + bonus, ctx.limit, known, places, ctx.codes)
+                          ctx.loads(day), weight, ctx.limit, known, places, ctx.codes)
     return [{"employee_id": c.employee_id, "name": ctx.name(c.employee_id), "knows_guest": c.knows_guest,
              "same_place": c.same_place, "load_after": round(c.load_after, 2), "note": c.note} for c in got]
 

@@ -14,14 +14,14 @@ from app.core.permissions import require_perm
 
 from ..adapters.duty_timesheet import TimesheetDuty
 from ..adapters.orm import Guest
-from ..application import guests, history, views
+from ..application import guests, history, reservations, views
 from ..application.visibility import level_for
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 SEE = require_perm("stays.view", "stays.occupancy")
 
 
-REMOVED_PARAMS = ("building", "category_id", "kind", "kinds")
+REMOVED_PARAMS = ("building", "category_id", "kind", "kinds", "vip")
 
 
 def fund_filters(request: Request, group_ids: list[int] = Query(default=[]),
@@ -32,17 +32,18 @@ def fund_filters(request: Request, group_ids: list[int] = Query(default=[]),
     old = [p for p in REMOVED_PARAMS if p in request.query_params]
     if old:
         raise HTTPException(status_code=422, detail=f"Параметр {', '.join(old)} больше не поддерживается: "
-                                                    "group_ids, category_ids, flag_ids, kind_ids")
+                                                    "group_ids, category_ids, flag_ids, kind_ids, special, vip_code_ids")
     return {"group_ids": tuple(group_ids), "category_ids": tuple(category_ids), "flag_ids": tuple(flag_ids),
             "kind_ids": tuple(kind_ids), "floor": floor or None}
 
 
 @router.get("/board/units")
 def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters), escorted: bool = False,
-                vip: bool = False, employee_id: Optional[int] = None, q: str = "",
-                principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
+                special: bool = False, vip_code_ids: list[int] = Query(default=[]), employee_id: Optional[int] = None,
+                q: str = "", principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
     level = level_for(db, principal)
-    f = views.BoardFilters(**dims, escorted_only=escorted, vip=vip, employee_id=employee_id, q=q)
+    f = views.BoardFilters(**dims, escorted_only=escorted, special=special, vip_code_ids=tuple(vip_code_ids),
+                           employee_id=employee_id, q=q)
     try:
         return views.units_board(db, first, last, f, level)
     except views.ViewError as e:
@@ -70,4 +71,4 @@ def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.gues
     g = db.get(Guest, gid)
     if g is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
-    return {**guests.guest_dict(g), "links": guests.links_of(db, gid), "stays": history.guest_stays(db, gid)}
+    return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, gid), "stays": history.guest_stays(db, gid)}

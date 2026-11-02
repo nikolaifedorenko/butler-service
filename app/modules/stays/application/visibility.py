@@ -3,8 +3,10 @@
 
 * occupancy — занятость: объекты, даты, статусы, РЗ/ПВ, число гостей; ни фамилий, ни
   уровня, ни номера брони, ни метки;
-* names — для работы службы: + номер брони, метка, короткое имя главного гостя, VIP-уровень;
-* full — + заказчик, «оплата за», примечания, отказ от батлера, настраиваемые поля, логистика.
+* names — для работы службы: + номер брони, метка, короткое имя главного гостя, ◆ «Особый гость»
+  и VIP-код брони;
+* full — + заказчик, «оплата за», примечания, настраиваемые поля, логистика; на полосе — и режим
+  сопровождения (в карточке брони и строках «Броней» он виден с уровня names, как статус табло).
 """
 from __future__ import annotations
 
@@ -19,8 +21,8 @@ Level = Literal["occupancy", "names", "full"]
 LEVEL_ORDER = {"occupancy": 0, "names": 1, "full": 2}
 OCCUPANCY_BAR = ("reservation_id", "seg_index", "unit_id", "category_id", "status", "start", "end",
                  "start_pos", "end_pos", "early", "late", "guests_count", "overbooked")
-NAMES_BAR = (*OCCUPANCY_BAR, "number", "label", "main_guest", "mains", "level", "butlers_today")
-FULL_BAR = (*NAMES_BAR, "customer", "paid_category_id", "note", "declined_butler", "fields")
+NAMES_BAR = (*OCCUPANCY_BAR, "number", "label", "main_guest", "mains", "special", "vip_code", "butlers_today")
+FULL_BAR = (*NAMES_BAR, "customer", "paid_category_id", "note", "escort_mode", "fields")
 BAR_FIELDS = {"occupancy": OCCUPANCY_BAR, "names": NAMES_BAR, "full": FULL_BAR}
 
 

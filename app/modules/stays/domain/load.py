@@ -1,26 +1,28 @@
-"""Нагрузка батлеров на день (§4.3): вес объекта делится поровну между теми, кто ведёт
-гостей в нём; надбавка VIP/VVIP — батлеру этого гостя, при нескольких — поровну."""
+"""Нагрузка батлеров на день (§4.2): место — объект (бронь без объекта — своё место); вес места
+с коэффициентами кода и «Особого гостя» делится поровну между теми, кто ведёт гостей в нём.
+Отдельных надбавок батлеру гостя нет."""
 from __future__ import annotations
 
 from typing import Sequence
 
+from .escort import place_weight
 from .types import DayCover, StayDay
 
 
-def day_loads(stays: Sequence[StayDay], cover: DayCover, vip_bonus: float, vvip_bonus: float) -> dict[int, float]:
-    loads: dict[int, float] = {}
-    places: dict[object, tuple[float, set[int]]] = {}
+def day_loads(stays: Sequence[StayDay], cover: DayCover, special_factor: float) -> dict[int, float]:
+    places: dict[object, tuple[float, list[float], list[bool], set[int]]] = {}
     for s in stays:
-        # одна вилла группы — один вес; без объекта — вес брони
+        # одна вилла группы — один вес; без объекта — своё место
         key = ("u", s.unit_id) if s.unit_id is not None else ("r", s.reservation_id)
-        weight, who = places.setdefault(key, (s.weight, set()))
-        for g, level in s.guests.items():
-            emps = cover.by_guest.get((s.reservation_id, g), ())
-            who.update(emps)
-            bonus = vvip_bonus if level == "vvip" else vip_bonus if level == "vip" else 0.0
-            for e in emps:
-                loads[e] = loads.get(e, 0.0) + bonus / len(emps)
-    for weight, who in places.values():
+        _weight, factors, special, who = places.setdefault(key, (s.weight, [], [], set()))
+        if s.code_factor is not None:
+            factors.append(s.code_factor)
+        special.append(any(s.guests.values()))
+        for g in s.guests:
+            who.update(cover.by_guest.get((s.reservation_id, g), ()))
+    loads: dict[int, float] = {}
+    for weight, factors, special, who in places.values():
+        w = place_weight(weight, factors, any(special), special_factor)
         for e in who:
-            loads[e] = loads.get(e, 0.0) + weight / len(who)
+            loads[e] = loads.get(e, 0.0) + w / len(who)
     return loads

@@ -41,7 +41,7 @@ def _rows(db, rid: int) -> dict[int, tuple]:
 
 def _put(c, res, **changes):
     body = {**{k: res[k] for k in ("number", "check_in", "check_out", "category_id", "early", "late",
-                                   "group_id", "note", "declined_butler")},
+                                   "group_id", "note", "escort_mode", "vip_code_id")},
             "moves": res["moves"], "occupants": res["occupants"], "companions": res["companions"],
             "logistics": res["logistics"], "version": res["version"], **changes}
     return c.put(f"{API}/reservations/{res['id']}", json=body)

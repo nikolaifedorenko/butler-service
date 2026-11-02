@@ -60,7 +60,8 @@ class ReservationIn(BaseModel):
     label_id: Optional[int] = None
     customer: str = Field("", max_length=160)
     note: str = Field("", max_length=4000)
-    declined_butler: bool = False
+    escort_mode: Literal["rules", "required", "declined"] = "rules"      # ручная отметка главнее правил
+    vip_code_id: Optional[int] = None            # пусто при создании — из профиля главного гостя
     fields: dict = {}
     group_id: Optional[int] = None
     moves: list[MoveIn] = []
@@ -147,7 +148,7 @@ def update_reservation(rid: int, payload: ReservationIn, preview_flag: bool = PR
     r0 = db.get(Reservation, rid)
     if r0 is not None and _mine_mode(db, principal, rid):
         try:
-            mine.check_reservation_change(db, reservations.reservation_dict(db, r0), doc)
+            mine.check_reservation_change(db, reservations.reservation_dict(db, r0, with_escort=False), doc)
         except mine.MineForbidden as e:
             raise HTTPException(status_code=403, detail=str(e)) from e
     window = _window(r0, doc)

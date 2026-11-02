@@ -143,11 +143,11 @@ function staysFundTree(snapshot, selectedId, editable = false) {
   const kids = {};
   snapshot.groups.forEach(g => { (kids[g.parent_id ?? 'root'] ||= []).push(g); });
   const count = id => snapshot.units.filter(u => u.path.includes(id)).length;
-  const node = (id, title, n, depth) => `<button class="fund-node${(id ?? null) === (selectedId ?? null) ? ' active' : ''}"
-    data-fund-node="${id ?? ''}"${editable && id != null ? ' draggable="true"' : ''} style="padding-left:${8 + depth * 14}px">${esc(title)} <small class="muted">${n}</small></button>`;
+  const node = (id, title, n, depth, escorted = false) => `<button class="fund-node${(id ?? null) === (selectedId ?? null) ? ' active' : ''}"
+    data-fund-node="${id ?? ''}"${editable && id != null ? ' draggable="true"' : ''} style="padding-left:${8 + depth * 14}px">${esc(title)} <small class="muted">${n}</small>${escorted ? ' <span class="badge ok" title="с сопровождением">с сопровождением</span>' : ''}</button>`;
   const gap = (pid, before, depth) => (editable
     ? `<div class="fund-gap" data-fund-gap="${pid === 'root' ? '' : pid}" data-fund-before="${before ?? ''}" style="margin-left:${8 + depth * 14}px"></div>` : '');
-  const walk = (pid, depth) => (kids[pid] || []).map(g => gap(pid, g.id, depth) + node(g.id, g.title, count(g.id), depth)
+  const walk = (pid, depth) => (kids[pid] || []).map(g => gap(pid, g.id, depth) + node(g.id, g.title, count(g.id), depth, g.escorted)
     + walk(g.id, depth + 1)).join('') + ((kids[pid] || []).length ? gap(pid, null, depth) : '');
   return `<div class="fund-tree">${node(null, 'Весь фонд', snapshot.units.length, 0)}${walk('root', 0)}</div>`;
 }
@@ -322,7 +322,7 @@ function fundCatsTab(data, editing) {
       <tbody>${snap.categories.map(c => `<tr data-fund-cat="${c.id}">
         <td><b>${esc(c.code)}</b> ${fundId(c.id)} ${fundMark(marks[c.id], since, true)}</td>
         <td>${esc(c.title)}</td><td>${esc(fundKindTitle(snap, c.kind_id))}</td>
-        <td>${c.escorted ? '<span class="badge ok">с батлером</span>' : '<span class="muted">нет</span>'}</td>
+        <td>${c.escorted ? '<span class="badge ok">с сопровождением</span>' : '<span class="muted">нет</span>'}</td>
         <td class="num">${esc(String(c.weight))}</td><td class="num">${snap.units.filter(u => u.category_id === c.id).length}</td>
         <td class="num">${editing ? `<button class="btn btn-sm btn-ghost" data-fund-cat-edit="${c.id}">Изменить</button>
           <button class="btn btn-sm btn-ghost" data-fund-cat-retire="${c.id}">Вывести</button>` : ''}</td></tr>`).join('')
@@ -637,9 +637,11 @@ function openFundGroupForm(group, snapshot, onSaved) {
   fundForm(group ? `Узел «${group.title}»` : 'Новый узел', `
     ${sfRow('Название', sfInput('fg-title', group?.title))}
     ${sfRow('Родитель', sfSelect('fg-parent', fundGroupOptions(snapshot, group?.id ?? null).map(([v, t]) => [v, v === '' ? '— корень дерева' : t]), parent ?? ''))}
-    ${sfRow('Порядок', sfInput('fg-sort', group?.sort_order ?? 100, 'number'))}`,
+    ${sfRow('Порядок', sfInput('fg-sort', group?.sort_order ?? 100, 'number'))}
+    ${sfCheck('fg-escorted', 'С сопровождением батлером (и вся ветка узла)', group?.escorted)}`,
   async m => {
-    const body = { title: $('#fg-title', m).value, parent_id: fundNum($('#fg-parent', m).value), sort_order: Number($('#fg-sort', m).value) };
+    const body = { title: $('#fg-title', m).value, parent_id: fundNum($('#fg-parent', m).value), sort_order: Number($('#fg-sort', m).value),
+      escorted: $('#fg-escorted', m).checked };
     await fundWrite(group ? 'PUT' : 'POST', group ? `/api/stays/fund/draft/groups/${group.id}` : '/api/stays/fund/draft/groups', body);
     toast('Узел сохранён');
   }, onSaved);

@@ -29,7 +29,7 @@ function staysResetUserState() {
 
 /* ─────────────── Сохранённые наборы ─────────────── */
 /* Наборы — у каждого пользователя свои (ключ с id), и в них только устройство фонда:
-   поиск (фамилия, № брони, телефон) и VIP не сохраняются — персональные данные гостей не
+   поиск (фамилия, № брони, телефон), «Особый гость» и VIP-код не сохраняются — персональные данные гостей не
    остаются в браузере после выхода. Хранилища может не быть (приватный режим, запрет
    сайта) — тогда наборов просто нет; без пользователя — тоже. */
 function staysFiltersKey() {
@@ -62,7 +62,8 @@ function staysSaveFilter(name, filters) {
   if (!n) return false;
   const fund = staysCleanFilters(filters);
   delete fund.q;
-  delete fund.vip;
+  delete fund.special;
+  delete fund.vip_code_ids;
   const { by, dir, grouped } = staysState.sort;
   return staysWriteFilters([...staysSavedFilters().filter(x => x.name !== n),
     { name: n, filters: fund, sort: { by, dir, grouped } }]);
@@ -75,7 +76,8 @@ function staysCleanFilters(f) {
   const ids = v => (Array.isArray(v) ? v.map(Number).filter(Number.isInteger) : []);
   return { ...staysEmptyFilters(), group_ids: ids(f?.group_ids), category_ids: ids(f?.category_ids),
     flag_ids: ids(f?.flag_ids), kind_ids: ids(f?.kind_ids),
-    escorted: !!f?.escorted, vip: !!f?.vip, q: typeof f?.q === 'string' ? f.q : '' };
+    escorted: !!f?.escorted, special: !!(f?.special ?? f?.vip),   // vip — прежнее имя поля сохранённого набора
+    vip_code_ids: ids(f?.vip_code_ids), q: typeof f?.q === 'string' ? f.q : '' };
 }
 
 /* ─────────────── Панель ─────────────── */
@@ -117,7 +119,9 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
     ${list('flag', 'Флаги', (fund.flags || []).filter(x => !x.archived).map(x => ({ value: x.id, label: x.title })), f.flag_ids)}
     ${list('kind', 'Вид', staysKindChoices(fund).map(k => ({ value: k.id, label: k.title })), f.kind_ids)}
     <label class="chk"><input type="checkbox" id="sf-esc"${f.escorted ? ' checked' : ''}> с сопровождением</label>
-    ${people ? `<label class="chk"><input type="checkbox" id="sf-vip"${f.vip ? ' checked' : ''}> VIP/VVIP</label>
+    ${people ? `<label class="chk"><input type="checkbox" id="sf-special"${f.special ? ' checked' : ''}> ◆ Особый гость</label>
+      ${list('vipcode', 'VIP-код', (fund.vip_codes || []).filter(c => !c.archived || f.vip_code_ids.includes(c.id))
+        .map(c => ({ value: c.id, label: c.code + (c.archived ? ' (в архиве)' : '') })), f.vip_code_ids)}
       <input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" value="${esc(staysSearchDraft?.value ?? f.q)}">` : ''}
     <select id="sf-saved" title="Сохранённые наборы фильтров"><option value="">Наборы…</option>${saved.map(s =>
       `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')}</select>
@@ -138,7 +142,10 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
     });
   $('#sf-esc', el).onchange = e => emit({ escorted: e.target.checked });
   if (people) {
-    $('#sf-vip', el).onchange = e => emit({ vip: e.target.checked });
+    $('#sf-special', el).onchange = e => emit({ special: e.target.checked });
+    $$('[data-sf-vipcode]', el).forEach(cb => {
+      cb.onchange = () => emit({ vip_code_ids: $$('[data-sf-vipcode]', el).filter(x => x.checked).map(x => Number(x.getAttribute('data-sf-vipcode'))) });
+    });
     let timer = null;
     $('#sf-q', el).oninput = e => {
       staysSearchDraft = { value: e.target.value, caret: e.target.selectionStart };
@@ -149,12 +156,12 @@ function staysFilterPanel(fund, filters, onChange, { people = true } = {}) {
   $('#sf-saved', el).onchange = e => {
     const s = staysSavedFilters().find(x => x.name === e.target.value);
     if (!s) return;
-    /* набор — устройство фонда и сортировка; поиск и VIP остаются как были */
+    /* набор — устройство фонда и сортировка; поиск, «Особый гость» и VIP-код остаются как были */
     const sort = s.sort || {};
     if (STAYS_SORTS.some(([v]) => v === sort.by)) staysState.sort.by = sort.by;
     if (sort.dir === 'asc' || sort.dir === 'desc') staysState.sort.dir = sort.dir;
     if (typeof sort.grouped === 'boolean') staysState.sort.grouped = sort.grouped;
-    onChange({ ...staysCleanFilters(s.filters), q: f.q, vip: f.vip });
+    onChange({ ...staysCleanFilters(s.filters), q: f.q, special: f.special, vip_code_ids: f.vip_code_ids });
   };
   const del = $('#sf-del', el);
   if (del) del.onclick = () => {

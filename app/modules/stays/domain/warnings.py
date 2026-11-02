@@ -15,7 +15,7 @@ def day_warnings(day: dt.date, stays: Sequence[StayDay], lines: Sequence[Line], 
     by_res = {s.reservation_id: s for s in stays}
     for rid, guests in cover.uncovered.items():
         s = by_res[rid]
-        if s.escorted and not s.declined:
+        if s.need.required:
             out.append(Warning("hole", day, None, rid, s.unit_id, ",".join(map(str, guests))))
     for rid, g, _emps in cover.double:
         out.append(Warning("double_cover", day, None, rid, by_res[rid].unit_id, str(g)))

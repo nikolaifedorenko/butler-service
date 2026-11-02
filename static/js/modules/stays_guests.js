@@ -11,19 +11,18 @@
 'use strict';
 
 /* колонки: ключ сортировки сервера (null — без сортировки) — заголовок */
-const STAYS_GUEST_COLS = [['name', 'Гость'], ['level', 'Уровень'], [null, 'Телефон'], ['last_stay', 'Последний заезд'],
+const STAYS_GUEST_COLS = [['name', 'Гость'], ['special', 'VIP-код'], [null, 'Телефон'], ['last_stay', 'Последний заезд'],
   ['stays', 'Проживаний']];
-const STAYS_GUEST_LEVELS = [['', 'все уровни'], ['regular', 'обычный'], ['vip', 'VIP'], ['vvip', 'VVIP']];
 const STAYS_GUEST_PAGE = 200;
 const STAYS_BIRTHDAY_DAYS = 30;
 const STAYS_MERGE_RESULT = { moved: 'перенесётся', duplicate: 'уже есть — дубль удалится', removed: 'связь между ними — удалится',
   current: 'бывший брак станет действующим' };
 const STAYS_MERGE_KIND = { parent: 'родитель — ребёнок' };
 const STAYS_MERGE_PROFILE = { first_name: 'имя', middle_name: 'отчество', phone: 'телефон', email: 'email',
-  birth_date: 'дата рождения', gender: 'пол', external_id: 'внешний id', source: 'источник', level: 'уровень', note: 'примечание' };
+  birth_date: 'дата рождения', gender: 'пол', external_id: 'внешний id', source: 'источник', special: '◆ Особый гость', vip_code_id: 'VIP-код', note: 'примечание' };
 
 function staysGuestsEmpty() {
-  return { q: '', level: '', stayed_from: '', stayed_to: '', birthday: false, sort: 'name', dir: 'asc', picked: [] };
+  return { q: '', special: false, stayed_from: '', stayed_to: '', birthday: false, sort: 'name', dir: 'asc', picked: [] };
 }
 const staysGuests = staysGuestsEmpty();
 
@@ -31,7 +30,7 @@ function staysGuestsParams(offset) {
   const s = staysGuests;
   const p = new URLSearchParams({ sort: s.sort, dir: s.dir, offset, limit: STAYS_GUEST_PAGE });
   if (s.q.trim()) p.set('q', s.q.trim());
-  if (s.level) p.set('level', s.level);
+  if (s.special) p.set('special', 'true');
   if (s.stayed_from) p.set('stayed_from', s.stayed_from);
   if (s.stayed_to) p.set('stayed_to', s.stayed_to);
   if (s.birthday) p.set('birthday_days', STAYS_BIRTHDAY_DAYS);
@@ -43,8 +42,7 @@ function staysGuestsToolbar() {
   const edit = can('stays.edit');
   return `<div class="sb-toolbar">
     <input type="search" id="gl-q" value="${esc(s.q)}" placeholder="Фамилия, телефон, номер брони">
-    <select id="gl-level" title="Уровень гостя">${STAYS_GUEST_LEVELS.map(([v, t]) =>
-    `<option value="${v}"${v === s.level ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
+    <label class="chk"><input type="checkbox" id="gl-special"${s.special ? ' checked' : ''}> ${STAYS_SPECIAL_MARK}Особые</label>
     <label class="muted">был с <input type="date" id="gl-from" value="${esc(s.stayed_from)}"></label>
     <label class="muted">по <input type="date" id="gl-to" value="${esc(s.stayed_to)}"${s.stayed_from ? ` min="${esc(s.stayed_from)}"` : ''}></label>
     <label class="chk"><input type="checkbox" id="gl-birthday"${s.birthday ? ' checked' : ''}>
@@ -55,10 +53,10 @@ function staysGuestsToolbar() {
 }
 
 function staysGuestRowHtml(r, edit) {
-  const mark = r.level !== 'regular' ? `<span class="sb-star">${esc(STAYS_LEVEL_MARK[r.level] || '')}</span>` : '';
+  const code = r.vip_code ? `${esc(r.vip_code)}${r.vip_code_archived ? ' <span class="muted">в архиве</span>' : ''}` : '<span class="muted">—</span>';
   return `<tr class="bk-row" data-gl-row="${r.id}" tabindex="0">
     ${edit ? `<td><input type="checkbox" data-gl-pick="${r.id}"${staysGuests.picked.includes(r.id) ? ' checked' : ''} title="Для объединения"></td>` : ''}
-    <td>${mark}${esc(r.name)}</td><td>${esc({ regular: 'обычный', vip: 'VIP', vvip: 'VVIP' }[r.level] || r.level)}</td>
+    <td>${staysGuestMark(r.special)}${esc(r.name)}</td><td data-gl-code>${code}</td>
     <td>${esc(r.phone || '—')}</td>
     <td>${r.last_stay ? esc(dateRu(r.last_stay)) : '<span class="muted">—</span>'}</td><td>${r.stays}</td></tr>`;
 }
@@ -142,7 +140,7 @@ function renderGuestsTab(body) {
     clearTimeout(timer);
     timer = setTimeout(() => { s.q = e.target.value; reload(); }, 300);
   };
-  $('#gl-level', body).onchange = e => { s.level = e.target.value; reload(); };
+  $('#gl-special', body).onchange = e => { s.special = e.target.checked; reload(); };
   const from = $('#gl-from', body);
   const to = $('#gl-to', body);
   from.onchange = () => {

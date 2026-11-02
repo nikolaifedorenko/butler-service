@@ -58,6 +58,7 @@ from ..adapters.orm import (
     UnitLineage,
     UnitState,
     UnitStateFlag,
+    VipCode,
 )
 from . import allocation, fund_drafts
 from .fund import FundConflict, FundError, get_settings
@@ -75,6 +76,7 @@ from .fund_xlsx import (
     export_fund,
 )
 from .locking import lock_module
+from .vip_codes import code_texts
 
 CONFIRM_WORD = "ЗАМЕНИТЬ"
 IDS_IGNORED = "ID в файле будут проигнорированы"
@@ -90,7 +92,7 @@ BACKUP_NAME = re.compile(r"stays-\d{8}-\d{6}\.xlsx")
 WIPE = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
         StayGroup, GuestLink, GuestPref, Guest, BlockNight, Block, Ooo, UnitLineage, UnitStateFlag, UnitState, GroupState,
         CategoryState, FundVersion, UnitFlag, Unit, Category, FundGroup)
-KEEP = (StaysSettings, Label, CustomField, Escort, CategoryKind)
+KEEP = (StaysSettings, Label, CustomField, Escort, CategoryKind, VipCode)
 
 # что будет удалено (предпросмотр) — тот же словарь служит отпечатком для 409 при повторе
 COUNTED = {"units": Unit, "categories": Category, "groups": FundGroup, "flags": UnitFlag,
@@ -180,7 +182,7 @@ def plan_load(parsed: ParsedFund, kinds: list[CategoryKind]) -> tuple[dict, list
             err(SHEET_TREE, g.row_no, "название узла длиннее 120 символов")
         if len(g.path) > 1 and g.path[:-1] not in paths:
             err(SHEET_TREE, g.row_no, f"нет родителя «{PATH_SEP.join(g.path[:-1])}»")
-        groups.append({"path": list(g.path), "sort_order": g.sort_order})
+        groups.append({"path": list(g.path), "sort_order": g.sort_order, "escorted": g.escorted})
 
     flags: list[dict] = []
     titles: dict[str, int] = {}
@@ -295,19 +297,20 @@ def backup_bytes(db: Session) -> bytes:
         name = _guest_name(guests[gid]) if gid in guests else f"#{gid}"
         occ.setdefault(rid, []).append(f"{name} (главный)" if role == "main" else name)
     yn = {True: "да", False: ""}
+    vip = code_texts(db)
     _sheet(wb, SHEET_RESERVATIONS,
            ["ID", "номер", "статус", "заезд", "выезд", "РЗ", "ПВ", "категория (код)", "объекты", "гости",
-            "метка", "заказчик", "оплата за (код)", "примечание", "без батлера", "источник", "внешний ID",
+            "метка", "заказчик", "оплата за (код)", "примечание", "код", "сопровождение", "источник", "внешний ID",
             "поля"],
            ([r.id, r.number, r.status, r.check_in, r.check_out, yn[bool(r.early)], yn[bool(r.late)],
              code.get(r.category_id, f"#{r.category_id}"), ", ".join(units.get(r.id, [])),
              "; ".join(occ.get(r.id, [])), labels.get(r.label_id, ""), r.customer, code.get(r.paid_category_id or r.category_id, ""),
-             r.note, yn[bool(r.declined_butler)], r.source, r.external_id or "", r.fields_json]
+             r.note, vip.get(r.vip_code_id, ("", False))[0], r.escort_mode, r.source, r.external_id or "", r.fields_json]
             for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id))))
     _sheet(wb, SHEET_GUESTS,
-           ["ID", "фамилия", "имя", "отчество", "телефон", "email", "дата рождения", "уровень",
+           ["ID", "фамилия", "имя", "отчество", "телефон", "email", "дата рождения", "особый", "код",
             "предпочтения", "особые даты", "поля", "примечание", "источник", "внешний ID"],
-           ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, g.level,
+           ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, yn[bool(g.special)], vip.get(g.vip_code_id, ("", False))[0],
              g.preferences_json, g.special_dates_json, g.fields_json, g.note, g.source, g.external_id or ""]
             for g in guests.values()))
     _raw_sheets(wb, db)

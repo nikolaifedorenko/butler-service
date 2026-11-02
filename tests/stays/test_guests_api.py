@@ -1,13 +1,17 @@
 """Шахматка, задача 7: профили гостей, связи «кто кому», поиск, видимость полей."""
 from __future__ import annotations
 
+import datetime as dt
 import json
 import uuid
 
 from sqlalchemy import select
 
 from app.core.audit import AuditLog
+from app.core.time import local_date
 from app.modules.stays.application.guests import format_phone, normalize_phone
+
+from .helpers import archive_code, create_res, make_category, make_code
 
 API = "/api/stays"
 
@@ -40,9 +44,10 @@ def test_phone_normalized_on_save(manager_client):
     assert g["phone"] == "+79161234567"
 
 
-def test_level_validated(manager_client):
-    r = manager_client.post(f"{API}/guests", json={"last_name": "Икс", "level": "gold"})
-    assert r.status_code == 422
+def test_special_must_be_bool_and_code_exists(manager_client):
+    assert manager_client.post(f"{API}/guests", json={"last_name": "Икс", "special": "gold"}).status_code == 422
+    r = manager_client.post(f"{API}/guests", json={"last_name": "Икс", "vip_code_id": 99999999})
+    assert r.status_code == 422 and r.json()["detail"] == "Кода нет в справочнике"
 
 
 def test_link_labels_both_sides(manager_client):
@@ -141,11 +146,11 @@ def test_preferences_and_special_dates_roundtrip(manager_client):
 def test_guest_update_audited_with_diff(manager_client, db):
     g = _guest(manager_client)
     r = manager_client.put(f"{API}/guests/{g['id']}", json={"last_name": "Орлов", "first_name": "Андрей",
-                                                            "level": "vip"})
-    assert r.status_code == 200 and r.json()["level"] == "vip"
+                                                            "special": True})
+    assert r.status_code == 200 and r.json()["guest"]["special"] is True
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_guest", AuditLog.target == f"guest:{g['id']}")
                      .order_by(AuditLog.id.desc())).first()
-    assert json.loads(row.payload_json)["diff"]["level"] == ["regular", "vip"]
+    assert json.loads(row.payload_json)["diff"]["special"] == [False, True]
 
 
 # ── B1: пол гостя, первичные семейные связи (addendum §3, §4) ─────────────────
@@ -274,7 +279,7 @@ def test_family_endpoint_visibility(manager_client, names_client, occupancy_clie
     names = names_client.get(url)
     assert names.status_code == 200
     people = names.json()["people"]
-    assert people and all(set(p) == {"id", "name", "gender", "level"} for p in people)
+    assert people and all(set(p) == {"id", "name", "gender", "special", "vip_code"} for p in people)
     full = {p["id"]: p for p in manager_client.get(url).json()["people"]}
     assert full[g["maria"]["id"]]["phone"] == "+7 916 000-00-77"
     assert full[g["maria"]["id"]]["birth_date"] == "1990-05-01"
@@ -474,3 +479,162 @@ def test_link_target_validation(manager_client):
         assert r.status_code == 422, extra
     r = manager_client.post(url, json={"guest_id": b["id"], "kind": "spouse", "other_is_parent": True})
     assert r.status_code == 422
+
+
+# ── Task 5: «Особый гость» и VIP-код профиля; смена кода обновляет брони ─────────────────────────
+
+def _iso(days: int) -> str:
+    return (local_date() + dt.timedelta(days=days)).isoformat()
+
+
+def _put(c, g, preview=False, **kw):
+    body = {"last_name": g["last_name"], "first_name": g["first_name"], **kw}
+    return c.put(f"{API}/guests/{g['id']}", params={"preview": 1} if preview else {}, json=body)
+
+
+def _code_of(c, res) -> int | None:
+    return c.get(f"{API}/reservations/{res['id']}").json()["vip_code_id"]
+
+
+def _stays(manager_role_client, manager_client):
+    """Гость, главный в прошлой, текущей и будущей бронях (категория своя на тест)."""
+    cat = make_category(manager_role_client, n_units=3)
+    g = _guest(manager_client, "Профиль" + _uniq())
+    occ = [(g["id"], "main", None, None)]
+    past = create_res(manager_client, cat, _iso(-30), _iso(-27), occ)
+    now = create_res(manager_client, cat, _iso(-1), _iso(2), occ)
+    future = create_res(manager_client, cat, _iso(40), _iso(43), occ)
+    return cat, g, past, now, future
+
+
+def test_profile_code_updates_current_and_future_only(manager_role_client, manager_client):
+    _, g, past, now, future = _stays(manager_role_client, manager_client)
+    code = make_code(manager_role_client)
+    r = _put(manager_client, g, special=True, vip_code_id=code["id"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["updated_reservations"] == 2 and body["preview"] is False
+    assert body["guest"]["special"] is True and body["guest"]["vip_code_id"] == code["id"]
+    assert body["guest"]["vip_code"]["code"] == code["code"] and body["guest"]["main_current"] == 2
+    assert _code_of(manager_client, now) == code["id"] and _code_of(manager_client, future) == code["id"]
+    assert _code_of(manager_client, past) is None                       # прошлая бронь не меняется
+    # версия брони выросла — открытая форма со старой версией получит 409
+    assert manager_client.get(f"{API}/reservations/{now['id']}").json()["version"] == now["version"] + 1
+    # в журнале брони — «было → стало»
+    card = manager_client.get(f"{API}/reservations/{future['id']}/history").json()
+    assert any(h["diff"].get("vip_code_id") == [None, code["id"]] for h in card)
+    # снятие кода — тоже смена: брони возвращаются к «без кода»
+    again = _put(manager_client, g, special=True).json()
+    assert again["updated_reservations"] == 2 and _code_of(manager_client, now) is None
+    # тот же код повторно — ничего не меняется
+    assert _put(manager_client, g, special=True).json()["updated_reservations"] == 0
+
+
+def test_profile_code_update_off_leaves_reservations(manager_role_client, manager_client):
+    _, g, _past, now, future = _stays(manager_role_client, manager_client)
+    code = make_code(manager_role_client)
+    r = _put(manager_client, g, vip_code_id=code["id"], update_reservations=False)
+    assert r.status_code == 200 and r.json()["updated_reservations"] == 0
+    assert r.json()["guest"]["vip_code_id"] == code["id"] and "diff" not in r.json()
+    assert _code_of(manager_client, now) is None and _code_of(manager_client, future) is None
+
+
+def test_profile_code_update_preview_equals_save(manager_role_client, manager_client):
+    _, g, past, now, future = _stays(manager_role_client, manager_client)
+    code = make_code(manager_role_client)
+    pv = _put(manager_client, g, preview=True, vip_code_id=code["id"])
+    assert pv.status_code == 200, pv.text
+    assert pv.json()["preview"] is True and pv.json()["updated_reservations"] == 2 and "diff" in pv.json()
+    assert manager_client.get(f"{API}/guests/{g['id']}").json()["vip_code_id"] is None      # предпросмотр откатился
+    assert _code_of(manager_client, now) is None and _code_of(manager_client, future) is None
+    sv = _put(manager_client, g, vip_code_id=code["id"])
+    assert sv.json()["updated_reservations"] == pv.json()["updated_reservations"]
+    assert sv.json()["diff"] == pv.json()["diff"]
+    assert _code_of(manager_client, now) == code["id"] and _code_of(manager_client, past) is None
+
+
+def test_profile_code_update_only_where_main(manager_role_client, manager_client):
+    cat = make_category(manager_role_client, n_units=3)
+    g, other = _guest(manager_client, "Главный" + _uniq()), _guest(manager_client, "Другой" + _uniq())
+    code = make_code(manager_role_client)
+    as_guest = create_res(manager_client, cat, _iso(10), _iso(13), [(other["id"], "main", None, None),
+                                                                   (g["id"], "guest", None, None)])
+    # главный сменился со второй ночи: на ночь заезда главный — other, не g
+    swapped = create_res(manager_client, cat, _iso(20), _iso(23), [(other["id"], "main", _iso(20), _iso(21)),
+                                                                  (g["id"], "main", _iso(21), _iso(23))])
+    mine = create_res(manager_client, cat, _iso(30), _iso(32), [(g["id"], "main", None, None)])
+    assert _guest_card(manager_client, g)["main_current"] == 1
+    r = _put(manager_client, g, vip_code_id=code["id"])
+    assert r.json()["updated_reservations"] == 1
+    assert _code_of(manager_client, mine) == code["id"]
+    assert _code_of(manager_client, as_guest) is None and _code_of(manager_client, swapped) is None
+
+
+def _guest_card(c, g):
+    return c.get(f"{API}/guests/{g['id']}").json()
+
+
+def test_main_current_count(manager_role_client, manager_client, mgmt_client):
+    _, g, _past, now, future = _stays(manager_role_client, manager_client)
+    assert _guest_card(manager_client, g)["main_current"] == 2
+    full = mgmt_client.get(f"{API}/guests/{g['id']}/card").json()
+    assert full["main_current"] == 2 and full["vip_code"] is None
+    status = manager_client.post(f"{API}/reservations/{future['id']}/status",
+                                 json={"status": "cancelled", "version": future["version"]})
+    assert status.status_code == 200
+    assert _guest_card(manager_client, g)["main_current"] == 2          # отменённая будущая — тоже бронь гостя
+    fresh = _guest(manager_client, "Безброней" + _uniq())
+    assert _guest_card(manager_client, fresh)["main_current"] == 0
+    assert _put(manager_client, fresh, special=True).json()["updated_reservations"] == 0
+
+
+def test_special_and_code_need_edit_perm(manager_client, mgmt_client, names_client, occupancy_client):
+    g = _guest(manager_client)
+    for c in (mgmt_client, names_client, occupancy_client):
+        assert c.put(f"{API}/guests/{g['id']}", json={"last_name": "Орлов", "special": True}).status_code == 403
+        assert c.post(f"{API}/guests", json={"last_name": "Икс", "special": True}).status_code == 403
+        assert c.post(f"{API}/guests", json={"last_name": "Икс", "vip_code_id": 1}).status_code == 403
+    assert _guest_card(manager_client, g)["special"] is False
+
+
+def test_butler_cannot_change_special_or_code(butler_client, manager_client, manager_role_client, own_reservation):
+    from app.modules.stays.application import guests, mine
+    assert not {"special", "vip_code_id", "update_reservations"} & set(mine.GUEST_FREE)
+    g = own_reservation["mine_guest"]
+    code = make_code(manager_role_client)
+    card = butler_client.get(f"{API}/guests/{g['id']}").json()
+    before = guests.guest_dict(_orm_guest(g["id"]))
+    for field, value in (("special", True), ("vip_code_id", code["id"])):
+        try:
+            mine.check_guest_change(before, {**before, field: value})
+        except mine.MineForbidden:
+            pass
+        else:
+            raise AssertionError(f"{field} прошёл проверку батлера")
+        body = {k: card[k] for k in ("last_name", "first_name", "middle_name", "email", "note", "fields",
+                                     "special_dates", "birth_date", "special", "vip_code_id")}
+        body["phone"] = card["phone"]
+        assert butler_client.put(f"{API}/guests/{g['id']}", json={**body, field: value}).status_code == 403
+        assert butler_client.put(f"{API}/guests/{g['id']}", params={"preview": 1},
+                                 json={**body, field: value}).status_code == 403
+    ok = butler_client.put(f"{API}/guests/{g['id']}", json={**body, "update_reservations": False, "note": "заметка"})
+    assert ok.status_code == 200, ok.text
+    assert _guest_card(manager_client, g)["special"] is False and _guest_card(manager_client, g)["vip_code_id"] is None
+
+
+def _orm_guest(gid):
+    from app.core.db import SessionLocal
+    from app.modules.stays.adapters.orm import Guest
+    with SessionLocal() as s:
+        return s.get(Guest, gid)
+
+
+def test_profile_archived_code_kept_not_selected(manager_role_client, manager_client):
+    code = make_code(manager_role_client)
+    g = _guest(manager_client, "Архивный" + _uniq(), vip_code_id=code["id"])
+    archive_code(manager_role_client, code["id"])
+    assert _put(manager_client, g, vip_code_id=code["id"], note="правка").status_code == 200      # стоит — можно оставить
+    other = _guest(manager_client, "Новичок" + _uniq())
+    r = _put(manager_client, other, vip_code_id=code["id"])
+    assert r.status_code == 422 and "в архиве" in r.json()["detail"]
+    assert manager_client.post(f"{API}/guests", json={"last_name": "Икс", "vip_code_id": code["id"]}).status_code == 422

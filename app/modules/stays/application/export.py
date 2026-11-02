@@ -22,6 +22,7 @@ from .reservations import STATUS_TITLES
 from .views import BoardFilters, check_window, units_board
 
 HEAD = Font(bold=True)
+ESCORT_TITLES = {"rules": "по правилам", "required": "требуется", "declined": "отказался"}
 BUSY = PatternFill("solid", fgColor="DCE6F5")
 
 
@@ -69,7 +70,8 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     ws = wb.create_sheet("Брони")
     head = ["Объект", "Категория", "Заезд", "Выезд", "Статус", "Гостей"]
     if kind == "full":
-        head += ["№ брони", "Гости", "Уровень", "Метка", "Заказчик", "Примечание", "Батлеры", "Логистика"]
+        head += ["№ брони", "Гости", "◆", "VIP-код", "Метка", "Заказчик", "Примечание", "Сопровождение", "Батлеры",
+                 "Логистика"]
     _put(ws, 1, head, bold=True)
     labels = {u["unit_id"]: u for u in board["units"]}
     rids = sorted({b["reservation_id"] for b in board["bars"]})
@@ -96,8 +98,9 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
                   STATUS_TITLES[r.status], bars[0]["guests_count"]]
         if kind == "full":
             b0 = bars[0]
-            values += [r.number, ", ".join(occupants.get(rid, [])), b0.get("level", ""),
+            values += [r.number, ", ".join(occupants.get(rid, [])), "◆" if b0.get("special") else "", b0.get("vip_code", ""),
                        (b0.get("label") or {}).get("title", ""), r.customer, r.note,
+                       ESCORT_TITLES.get(r.escort_mode, r.escort_mode),
                        "; ".join(f"{n}: {', '.join(ds)}" for n, ds in butlers.get(rid, {}).items()),
                        "; ".join(logistics.get(rid, []))]
         _put(ws, row, values)
@@ -123,15 +126,19 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     return buf.getvalue()
 
 
-BOOKING_COLUMNS = (("Номер", "number"), ("Главный гость", "main_guest"), ("Уровень", "level"), ("Заезд", "check_in"),
-                   ("Выезд", "check_out"), ("Ночей", "nights"), ("Категория", "category"), ("Объект", "unit"),
-                   ("Статус", "status_title"), ("Метка", "label"), ("Батлеры", "butlers"), ("РЗ", "early"),
-                   ("ПВ", "late"), ("Создана", "created_at"))
+BOOKING_COLUMNS = (("Номер", "number"), ("Главный гость", "main_guest"), ("◆", "special"), ("VIP-код", "vip_code"),
+                   ("Заезд", "check_in"), ("Выезд", "check_out"), ("Ночей", "nights"), ("Категория", "category"),
+                   ("Объект", "unit"), ("Статус", "status_title"), ("Метка", "label"), ("Батлеры", "butlers"),
+                   ("РЗ", "early"), ("ПВ", "late"), ("Создана", "created_at"), ("Сопровождение", "escort_mode"))
 
 
 def _booking_cell(key: str, v):
     if key == "butlers":
         return ", ".join(v)
+    if key == "special":
+        return "◆" if v else ""
+    if key == "escort_mode":
+        return ESCORT_TITLES.get(v, v)
     if key == "label":
         return v["title"] if v else ""
     if key in ("early", "late"):

@@ -12,14 +12,15 @@ from sqlalchemy.orm import Session
 
 from app.modules.employees.application.catalog import Employee
 
-from ..adapters.orm import Assignment, CoverageLine, Guest, Label, Move, Occupant, Reservation
+from ..adapters.orm import Assignment, CoverageLine, Guest, Label, Move, Occupant, Reservation, VipCode
 from ..domain.allocate import natural_key
 from ..domain.halfday import Piece, pieces, segments
 from . import allocation
+from .context import load_context
 from .fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
 from .guests import guest_text, search_query, short_name
 from .reservations import STATUS_TITLES
-from .views import LEVEL_RANK, BoardFilters, ViewError, fund_match
+from .views import BoardFilters, ViewError, fund_match
 from .visibility import LEVEL_ORDER, Level
 
 Mode = Literal["stay", "check_in", "check_out", "created"]
@@ -73,7 +74,7 @@ class _Item:
     butlers: list[str] = field(default_factory=list)
     butler_ids: set[int] = field(default_factory=set)
     main: str = ""
-    top: str = "regular"
+    special: bool = False        # «◆ Особый гость» среди проживающих брони
     upgrade: str = ""            # «апгрейд: оплачена DKG», если оплата за другую категорию
 
 
@@ -103,14 +104,24 @@ def _label_on(fund: FundTimeline, unit_id: int, day: dt.date) -> str:
 
 
 def _piece_passes(fund: FundTimeline, p: Piece, unit_id: int | None, day: dt.date, f: BoardFilters) -> bool:
-    snap = fund.on(day)
-    if not fund_match(snap, unit_id, p.category_id, f):
-        return False
-    if f.escorted_only:
-        u = snap.units.get(unit_id) if unit_id is not None else None
-        cat = snap.categories.get(u.category_id if u is not None else p.category_id)
-        return bool(cat is not None and cat.escorted)
-    return True
+    return fund_match(fund.on(day), unit_id, p.category_id, f)
+
+
+def _escorted(db: Session, items: list[_Item], win_a: dt.date, win_b: dt.date) -> list[_Item]:
+    """«С сопровождением» (§5): батлер нужен по правилам брони (EscortNeed) хотя бы в одну её ночь
+    в окне [win_a, win_b] (окно — период запроса, не больше MAX_DAYS) — один контекст покрытия на окно."""
+    one = dt.timedelta(days=1)
+    spans = {it.r.id: (max(it.r.check_in, win_a), min(it.r.check_out - one, win_b)) for it in items
+             if it.r.status in allocation.OCCUPYING}
+    spans = {rid: (a, b) for rid, (a, b) in spans.items() if a <= b}
+    if not spans:
+        return []
+    ctx = load_context(db, min(a for a, _ in spans.values()), max(b for _, b in spans.values()), None)
+    needed = set()
+    for d in ctx.days():
+        needed |= {s.reservation_id for s in ctx.stays_on(d) if s.need.required
+                   and s.reservation_id in spans and spans[s.reservation_id][0] <= d <= spans[s.reservation_id][1]}
+    return [it for it in items if it.r.id in needed]
 
 
 def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) -> list[dict]:
@@ -170,8 +181,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         if r.paid_category_id and r.paid_category_id != r.category_id:
             paid = fund.category(r.paid_category_id, r.check_in) if fund.parts else None
             it.upgrade = f"апгрейд: оплачена {paid.code if paid else '?'}"
-        it.top = max((guests[o.guest_id].level for o in it.occ if o.guest_id in guests),
-                     key=lambda lv: LEVEL_RANK[lv], default="regular")
+        it.special = any(guests[o.guest_id].special for o in it.occ if o.guest_id in guests)
         mains = [o for o in it.occ if o.role == "main"]
         on_day = max(r.check_in, q.first) if q.mode == "stay" else r.check_in
         main = next((o for o in mains if o.date_from <= on_day < o.date_to), mains[0] if mains else None)
@@ -179,9 +189,10 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         items.append(it)
 
     # фильтры фонда: бронь проходит, если хотя бы одна её часть в окне проходит по фонду дня части
-    has_fund_filter = bool(f.group_ids or f.category_ids or f.flag_ids or f.kind_ids or f.floor or f.escorted_only)
+    has_fund_filter = bool(f.group_ids or f.category_ids or f.flag_ids or f.kind_ids or f.floor)
+    # окно ночей: в режиме «проживание» — период запроса, в остальных — вся бронь
+    win_a, win_b = (q.first, q.last) if q.mode == "stay" else (dt.date.min, dt.date.max)
     if has_fund_filter or q.unassigned:
-        win_a, win_b = (q.first, q.last) if q.mode == "stay" else (dt.date.min, dt.date.max)
         kept = []
         for it in items:
             in_win = [p for p in it.pieces if p.end >= win_a and p.start <= win_b] or it.pieces[:1]
@@ -198,8 +209,10 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
             kept.append(it)
         items = kept
 
-    if f.vip:
-        items = [it for it in items if it.top != "regular"]
+    if f.special:
+        items = [it for it in items if it.special]
+    if f.vip_code_ids:
+        items = [it for it in items if it.r.vip_code_id in f.vip_code_ids]
     if f.q.strip():
         needle = search_query(f.q)
         unit_text = {it.r.id: " ".join(lbl for _, lbl in it.units).lower() for it in items}
@@ -213,8 +226,13 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
     _attach_butlers(db, items)
     if f.employee_id:
         items = [it for it in items if f.employee_id in it.butler_ids]
-
-    return [_row(it) for it in _sorted(items, q)]
+    if f.escorted_only:      # самый дорогой фильтр (контекст покрытия) — последним, по уже суженному списку
+        esc_a = q.first
+        esc_b = q.last if q.mode != "created" else q.first + dt.timedelta(days=MAX_DAYS - 1)
+        items = _escorted(db, items, esc_a, esc_b)
+    code_ids = {it.r.vip_code_id for it in items if it.r.vip_code_id is not None}
+    codes = dict(db.execute(select(VipCode.id, VipCode.code).where(VipCode.id.in_(code_ids))).all()) if code_ids else {}
+    return [_row(it, codes) for it in _sorted(items, q)]
 
 
 def _attach_butlers(db: Session, items: list[_Item]) -> None:
@@ -265,9 +283,10 @@ def _sorted(items: list[_Item], q: BookingQuery) -> list[_Item]:
     return sorted(items, key=_sort_key(q.sort), reverse=q.dir == "desc")
 
 
-def _row(it: _Item) -> dict:
+def _row(it: _Item, codes: dict[int, str]) -> dict:
     r = it.r
-    return {"id": r.id, "number": r.number, "main_guest": it.main, "level": it.top,
+    return {"id": r.id, "number": r.number, "main_guest": it.main, "special": it.special,
+            "vip_code": codes.get(r.vip_code_id, ""), "escort_mode": r.escort_mode,
             "check_in": r.check_in.isoformat(), "check_out": r.check_out.isoformat(),
             "nights": (r.check_out - r.check_in).days,
             "category": " → ".join(it.categories), "unit": " → ".join(lbl for _, lbl in it.units),
