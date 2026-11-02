@@ -147,19 +147,27 @@ def update_reservation(rid: int, payload: ReservationIn, preview_flag: bool = PR
 
     doc = _doc(payload)
     r0 = db.get(Reservation, rid)
+    butler: int | None = None             # батлер правит свою бронь (часть 4 §4)
+    had: set[int] = set()
     if r0 is not None and _mine_mode(db, principal, rid):
+        butler = principal.employee.id
+        current = reservations.reservation_dict(db, r0, with_escort=False)
+        had = {o["guest_id"] for o in current["occupants"]}
         try:
-            mine.check_reservation_change(db, reservations.reservation_dict(db, r0, with_escort=False), doc)
+            mine.check_reservation_change(db, current, doc)
         except mine.MineForbidden as e:
             raise HTTPException(status_code=403, detail=str(e)) from e
     window = _window(r0, doc)
     old_group = r0.group_id if r0 else None
 
     def op():
+        owned_before = mine.owned_among(db, butler, had) if butler is not None else set()
         r, before = reservations.save_reservation(db, doc, rid, payload.version)
         audit(db, principal, "stays_reservation", f"reservation:{r.id}",
               {"diff": reservations.diff_of(before, db, r)})
         _cleanup(db, principal, r, old_group)
+        if butler is not None:
+            mine.check_no_gained_guests(db, butler, had, owned_before)       # решение 9 — 403
         return _result(db, r)
     return run(db, op, preview_flag, window, principal)
 

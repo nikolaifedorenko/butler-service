@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     text,
 )
 from sqlalchemy import false as sa_false
@@ -284,8 +285,22 @@ class Guest(Base):
         ForeignKey("employees.id", name="fk_stays_guests_created_by"), nullable=True, index=True)
     # нижний регистр Python: SQLite lower() кириллицу не понижает
     search_text: Mapped[str] = mapped_column(String(1000), default="")   # поиск подстрокой: индекс не помогает
+    # только ФИО: поиск ниже полного уровня — телефон, почта и поля по нему не ищутся (решение 8)
+    name_text: Mapped[str] = mapped_column(String(400), default="", server_default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+
+
+def guest_name_text(g: Guest) -> str:
+    """Текст поиска по ФИО (нижний регистр Python: SQLite lower() кириллицу не понижает)."""
+    return " ".join(p for p in (g.last_name, g.first_name, g.middle_name) if p).lower()[:400]
+
+
+@event.listens_for(Guest, "before_insert")
+@event.listens_for(Guest, "before_update")
+def _sync_name_text(_mapper, _conn, g: Guest) -> None:
+    # при любой записи профиля через ORM — создание, правка, слияние, демо, импорт
+    g.name_text = guest_name_text(g)
 
 
 class GuestLink(Base):

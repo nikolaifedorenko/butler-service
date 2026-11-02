@@ -150,11 +150,11 @@ def relatives_among(db: Session, present: set[int], candidates: set[int]) -> set
     брони): в дереве его карточки (до GENERATIONS поколений, через браки — как видит батлер) или
     вычисленный родственник по domain/kinship (в любую сторону: «бабушка жены», «внук»). Через
     бывшего супруга — только он сам, не его родня.
-    Один запрос — все семейные связи; обход в памяти."""
+    Читаются только связи семей present и candidates (связный граф, family_links): родство вне
+    их семей ответа не меняет; обход — в памяти."""
     if not present or not candidates:
         return set()
-    rows = db.execute(select(GuestLink.guest_a_id, GuestLink.guest_b_id, GuestLink.kind, GuestLink.former)
-                      .where(GuestLink.kind.in_(FAMILY_KINDS)).order_by(GuestLink.id)).all()
+    rows = [(ln.guest_a_id, ln.guest_b_id, ln.kind, ln.former) for ln in family_links(db, present | candidates)]
     graph = graph_of(rows)
     children = children_of(graph.parents)
     by_person: dict[int, list[tuple[int, tuple[int, int, str, bool]]]] = {}

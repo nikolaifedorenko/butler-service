@@ -70,7 +70,11 @@ def reservation_card(rid: int, principal: Principal = Depends(require_perm("stay
 @router.get("/reservations/{rid}/history")
 def reservation_history(rid: int, principal: Principal = Depends(require_perm("stays.view")),
                         db: Session = Depends(get_db)):
-    return history.reservation_history(db, rid, level_for(db, principal))
+    level = level_for(db, principal)
+    mine_ids = my_reservations(db, principal)
+    if mine_ids is not None and rid in mine_ids:
+        level = "full"                              # своя бронь — история целиком, как карточка (часть 4 §6)
+    return history.reservation_history(db, rid, level)
 
 
 @router.get("/guests/{gid}/card")

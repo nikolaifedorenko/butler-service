@@ -105,12 +105,14 @@ def _card(db: Session, g: Guest) -> dict:
 @router.get("/guests")
 def list_guests(q: str = "", mine_only: bool = Query(False, alias="mine"),
                 principal: Principal = Depends(require_perm("stays.view")), db: Session = Depends(get_db)):
-    """Подбор гостя по ФИО, телефону и полям с поиском: без контактов и дат рождения.
+    """Подбор гостя: без контактов и дат рождения. Полный уровень — по ФИО, телефону, почте и
+    полям с поиском; ниже — только по ФИО (решение 8: иначе по ответу подбирается чужой телефон).
     mine=1 — только свои гости батлера (редактор связей, часть 4 §3)."""
+    full = level_for(db, principal) == "full"
     if mine_only:
-        found = [] if principal.employee is None else mine.search_my_guests(db, principal.employee.id, q)
+        found = [] if principal.employee is None else mine.search_my_guests(db, principal.employee.id, q, full)
     else:
-        found = guests.search_guests(db, q)
+        found = guests.search_guests(db, q, full=full)
     codes = vip_codes.code_texts(db) if any(g.vip_code_id for g in found) else {}
     return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
              "middle_name": g.middle_name, "special": bool(g.special),

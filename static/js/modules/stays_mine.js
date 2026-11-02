@@ -136,7 +136,8 @@ async function renderMineMonth(body, fresh) {
 function mineGuestRowHtml(g) {
   return `<div class="mine-grow" data-mine-grow="${g.guest_id}" tabindex="0">
     <b>${staysGuestMark(g.special)}${esc(g.name)}</b>${staysCodeTag(g.vip_code)}
-    <span class="muted">${g.last_stay ? 'последний заезд ' + esc(dateRu(g.last_stay)) : 'не жил'} · проживаний ${g.stays}</span></div>`;
+    <span class="muted">${g.last_stay ? 'последний заезд ' + esc(dateRu(g.last_stay)) : 'не жил'} · проживаний ${g.stays}${
+      g.next_stay ? ' · следующий заезд ' + esc(dateRu(g.next_stay)) : ''}</span></div>`;
 }
 
 async function renderMineGuests(body) {

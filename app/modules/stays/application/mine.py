@@ -35,7 +35,15 @@ from . import allocation, family
 from .context import load_context
 from .family import full_name
 from .fund import FundError
-from .guests import format_phone, guest_dict, links_of, search_guests, search_query, short_name
+from .guests import (
+    format_phone,
+    guest_dict,
+    guest_search_column,
+    links_of,
+    search_guests,
+    short_name,
+    text_search,
+)
 from .guests_list import days_to_birthday
 from .history import guest_led_history
 from .reservations import guest_profile_extra
@@ -72,13 +80,14 @@ def my_reservation_ids(db: Session, employee_id: int) -> set[int]:
 
 
 def _guest_ids_query(employee_id: int):
-    """Гости явных списков батлера; проживающие ночи, которую батлер ведёт строкой «вся бронь /
-    группа», если в ту ночь их явно не ведёт другая строка (по брони или её группе); профили,
-    которые батлер завёл сам."""
+    """Гости явных списков батлера (строка на живую бронь или ночь группы — как у «вся бронь»);
+    проживающие ночи, которую батлер ведёт строкой «вся бронь / группа», если в ту ночь их явно
+    не ведёт другая строка (по брони или её группе); профили, которые батлер завёл сам."""
+    eq, eln, _er = _my_line_res(employee_id)
+    explicit = (eq.with_only_columns(CoverageGuest.guest_id)
+                .join(CoverageGuest, CoverageGuest.coverage_id == eln.id))
     q, ln, r = _my_line_res(employee_id)
     o, x = aliased(Occupant), aliased(CoverageLine)
-    explicit = (select(CoverageGuest.guest_id).join(CoverageLine, CoverageLine.id == CoverageGuest.coverage_id)
-                .where(CoverageLine.employee_id == employee_id))
     whole = (q.with_only_columns(o.guest_id)
              .join(o, and_(o.reservation_id == r.id, o.date_from <= ln.day, ln.day < o.date_to))
              .where(~exists().where(CoverageGuest.coverage_id == ln.id),
@@ -94,9 +103,10 @@ def my_guest_ids(db: Session, employee_id: int) -> set[int]:
     return set(db.scalars(_guest_ids_query(employee_id)))
 
 
-def search_my_guests(db: Session, employee_id: int, q: str) -> list[Guest]:
-    """Подбор гостя среди своих (редактор связей батлера): связать можно только своих (§3)."""
-    return search_guests(db, q, within=_guest_ids_query(employee_id))
+def search_my_guests(db: Session, employee_id: int, q: str, full: bool) -> list[Guest]:
+    """Подбор гостя среди своих (редактор связей батлера): связать можно только своих (§3);
+    ниже полного уровня — только по ФИО (решение 8)."""
+    return search_guests(db, q, within=_guest_ids_query(employee_id), full=full)
 
 
 def owns_reservation(db: Session, employee_id: int, reservation_id: int) -> bool:
@@ -107,6 +117,24 @@ def owns_reservation(db: Session, employee_id: int, reservation_id: int) -> bool
 def owns_guest(db: Session, employee_id: int, guest_id: int) -> bool:
     return db.scalar(select(Guest.id).where(Guest.id == guest_id,
                                             Guest.id.in_(_guest_ids_query(employee_id)))) is not None
+
+
+def owned_among(db: Session, employee_id: int, ids: set[int]) -> set[int]:
+    """Кто из ids — свой гость батлера (тот же запрос, что owns_guest)."""
+    if not ids:
+        return set()
+    return set(db.scalars(select(Guest.id).where(Guest.id.in_(ids), Guest.id.in_(_guest_ids_query(employee_id)))))
+
+
+def check_no_gained_guests(db: Session, employee_id: int, had: set[int], owned_before: set[int]) -> None:
+    """После правки брони батлером (внутри операции — предпросмотр совпадает с сохранением): ни
+    один прежний проживающий, который не был своим, не стал своим (решение 9). Иначе, сдвинув даты
+    чужого гостя на ночь своей строки «вся бронь / группа» или добавив ему вторую запись, батлер
+    открыл бы себе его профиль. Новые родственники (правило состава) своими стать могут."""
+    db.flush()
+    if owned_among(db, employee_id, had) - owned_before:
+        raise MineForbidden("Так чужой гость стал бы вашим: менять даты и записи гостей, которых "
+                            "вы не ведёте, нельзя")
 
 
 def _iso(v):
@@ -217,7 +245,7 @@ def mine_today(db: Session, employee_id: int) -> dict:
             if o.guest_id in gids and o.guest_id in ctx.guests and o.date_from <= yesterday < o.date_to \
                     and o.date_to == today and o.guest_id not in led.get(rid, {}):
                 led.setdefault(rid, {})[o.guest_id] = (o, True)
-        if r.check_out == today:
+        if r.check_out == today and not ctx.occ.get(rid):
             led.setdefault(rid, {})            # бронь без состава («гость брони») — тоже выезд
     logistics: dict[int, list] = {}
     if led:
@@ -296,29 +324,36 @@ def mine_month(db: Session, employee_id: int, first: dt.date, last: dt.date, dut
             "absences": absences}
 
 
-def mine_guests(db: Session, employee_id: int, q: str = "", offset: int = 0, limit: int = GUESTS_PAGE) -> dict:
-    """«Все мои гости»: свои за всё время, поиск по ФИО (как подбор гостя), по GUESTS_PAGE;
-    последний заезд и число проживаний (без отменённых и «не заехал») — одним запросом на страницу."""
+def mine_guests(db: Session, employee_id: int, q: str = "", offset: int = 0, limit: int = GUESTS_PAGE,
+                full: bool = False) -> dict:
+    """«Все мои гости»: свои за всё время, поиск как подбор гостя (ниже полного уровня — по ФИО),
+    по GUESTS_PAGE. Последний заезд и число проживаний — только начавшиеся (заезд не позже
+    сегодня), следующий заезд — ближайший будущий; без отменённых и «не заехал»; одним запросом."""
     stmt = select(Guest).where(Guest.id.in_(_guest_ids_query(employee_id)))
-    needle = search_query(q) if q.strip() else ""
-    if needle:
-        stmt = stmt.where(Guest.search_text.contains(needle, autoescape=True))
+    ts = text_search(q, full)
+    if ts is not None:
+        stmt = stmt.where(guest_search_column(full).contains(ts.needle, autoescape=True))
     total = db.scalar(stmt.with_only_columns(func.count(Guest.id)).order_by(None)) or 0
     page = list(db.scalars(stmt.order_by(Guest.last_name, Guest.first_name, Guest.id).offset(offset).limit(limit)))
-    stays: dict[int, tuple[set[int], dt.date | None]] = {}
+    today = local_date()
+    past: dict[int, set[int]] = {}
+    last: dict[int, dt.date] = {}
+    nxt: dict[int, dt.date] = {}
     if page:
         for gid, rid, a in db.execute(
                 select(Occupant.guest_id, Occupant.reservation_id, Occupant.date_from)
                 .join(Reservation, Reservation.id == Occupant.reservation_id)
                 .where(Occupant.guest_id.in_([g.id for g in page]), Reservation.status.in_(allocation.OCCUPYING))):
-            rids, last = stays.get(gid, (set(), None))
-            rids.add(rid)
-            stays[gid] = (rids, a if last is None or a > last else last)
+            if a <= today:
+                past.setdefault(gid, set()).add(rid)
+                last[gid] = max(last.get(gid, a), a)
+            else:
+                nxt[gid] = min(nxt.get(gid, a), a)
     codes = code_texts(db) if any(g.vip_code_id for g in page) else {}
     rows = [{"guest_id": g.id, "name": full_name(g), "special": bool(g.special),
              "vip_code": codes.get(g.vip_code_id, ("", False))[0],
-             "last_stay": _iso(stays[g.id][1]) if g.id in stays else None,
-             "stays": len(stays[g.id][0]) if g.id in stays else 0} for g in page]
+             "last_stay": _iso(last.get(g.id)), "next_stay": _iso(nxt.get(g.id)),
+             "stays": len(past.get(g.id, ()))} for g in page]
     return {"rows": rows, "total": total}
 
 

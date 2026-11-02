@@ -14,13 +14,14 @@ from ..adapters.duty_timesheet import TimesheetDuty
 from ..application import preview
 from ..application.coverage import CoverageForbidden
 from ..application.fund import FundConflict, FundError
+from ..application.mine import MineForbidden
 from ..application.reservations import ReservationConflict
 
 PREVIEW = Query(False, alias="preview", description="Только показать, что изменится, без сохранения")
 
 
 def err(e: FundError) -> HTTPException:
-    if isinstance(e, CoverageForbidden):
+    if isinstance(e, (CoverageForbidden, MineForbidden)):
         return HTTPException(status_code=403, detail=str(e))
     if getattr(e, "status", None) == 404:
         return HTTPException(status_code=404, detail=str(e))

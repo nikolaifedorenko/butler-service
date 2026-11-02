@@ -41,7 +41,7 @@ from .fund_versions import (
     fund_for_stays,
     version_cuts,
 )
-from .guests import search_query, short_name
+from .guests import TextSearch, short_name, text_search
 from .reservations import STATUS_TITLES, vip_code_of
 from .visibility import Level, at_least, serialize_bar
 
@@ -280,7 +280,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         labels = {lb.id: lb for lb in db.scalars(select(Label))}
     code_ids = {r.vip_code_id for r in res if r.vip_code_id is not None} if names else set()
     codes = dict(db.execute(select(VipCode.id, VipCode.code).where(VipCode.id.in_(code_ids))).all()) if code_ids else {}
-    match = _search(f.q, res, occ, guests, units, asg) if f.q.strip() else None
+    ts = text_search(f.q, level == "full")         # ниже полного — только ФИО и номер (решение 8)
+    match = _search(ts, res, occ, guests, units, asg) if ts is not None else None
     today = local_date()
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
@@ -384,12 +385,10 @@ def _block_bars(db: Session, state: allocation.AllocationState, unit_ids: set[in
             for b, c, k, u, a, z in runs]
 
 
-def _search(q: str, res, occ, guests, units, asg) -> set[int]:
-    needle = search_query(q)
-    hits = {r.id for r in res if needle in (r.search_text or "")}
-    hits |= {rid for rid, os in occ.items() if any(needle in (guests[o.guest_id].search_text or "")
-                                                   for o in os if o.guest_id in guests)}
-    unit_hit = {u.id for u in units if needle in u.label.lower()}
+def _search(ts: TextSearch, res, occ, guests, units, asg) -> set[int]:
+    hits = {r.id for r in res if ts.reservation(r)}
+    hits |= {rid for rid, os in occ.items() if any(ts.guest(guests[o.guest_id]) for o in os if o.guest_id in guests)}
+    unit_hit = {u.id for u in units if ts.text(u.label)}
     hits |= {rid for (rid, _), uid in asg.items() if uid in unit_hit}
     return hits
 

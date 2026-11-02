@@ -79,8 +79,9 @@ def mine_month(first: dt.date, last: dt.date, principal: Principal = Depends(req
 def mine_guests(q: str = "", offset: int = Query(0, ge=0),
                 limit: int = Query(mine_app.GUESTS_PAGE, ge=1, le=mine_app.GUESTS_PAGE),
                 principal: Principal = Depends(require_perm("stays.mine")), db: Session = Depends(get_db)):
-    """«Все мои гости»: свои гости за всё время, поиск по ФИО, по 50."""
-    return mine_app.mine_guests(db, _me(principal), q, offset, limit)
+    """«Все мои гости»: свои гости за всё время, поиск по ФИО (с полным уровнем — как подбор гостя),
+    по 50."""
+    return mine_app.mine_guests(db, _me(principal), q, offset, limit, full=level_for(db, principal) == "full")
 
 
 @router.get("/mine/guests/{gid}")
