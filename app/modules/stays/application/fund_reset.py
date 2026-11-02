@@ -309,7 +309,7 @@ def backup_bytes(db: Session) -> bytes:
             for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id))))
     _sheet(wb, SHEET_GUESTS,
            ["ID", "фамилия", "имя", "отчество", "телефон", "email", "дата рождения", "особый", "код",
-            "предпочтения", "особые даты", "поля", "примечание", "код", "сопровождение", "источник", "внешний ID"],
+            "предпочтения", "особые даты", "поля", "примечание", "источник", "внешний ID"],
            ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, yn[bool(g.special)], vip.get(g.vip_code_id, ("", False))[0],
              g.preferences_json, g.special_dates_json, g.fields_json, g.note, g.source, g.external_id or ""]
             for g in guests.values()))

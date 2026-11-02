@@ -485,3 +485,21 @@ def test_backup_download_rejects_path_traversal(admin_client, tmp_path):
     # «..» клиент схлопывает ещё до запроса — проверяем сам разбор имени
     for name in ("..", "../secret.xlsx", "/etc/passwd", "stays-20261028-120000.xlsx/..", "stays-20261028-120001.xlsx"):
         assert fr.backup_path(name) is None
+
+
+def test_backup_sheets_header_width_equals_row_width(db, monkeypatch):
+    """Листы «Брони» и «Гости» копии: столбцов в шапке ровно столько, сколько значений в строке."""
+    seen: dict = {}
+    real = fr._sheet
+
+    def spy(wb, title, head, rows):
+        rows = [list(r) for r in rows]
+        seen[title] = (head, rows)
+        real(wb, title, head, rows)
+    monkeypatch.setattr(fr, "_sheet", spy)
+    fr.backup_bytes(db)
+    for name in ("Брони", "Гости"):
+        head, rows = seen[name]
+        assert len(set(head)) == len(head), (name, head)
+        assert rows, name
+        assert {len(r) for r in rows} == {len(head)}, (name, len(head), {len(r) for r in rows})
