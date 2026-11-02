@@ -31,7 +31,7 @@ from ..adapters.orm import (
 from . import allocation, family
 from .context import load_context
 from .fund import FundError
-from .guests import format_phone, short_name
+from .guests import format_phone, search_guests, short_name
 
 LOCKED = ("number", "check_in", "check_out", "early", "late", "category_id", "label_id", "customer",
           "paid_category_id", "escort_mode", "vip_code_id", "group_id")
@@ -84,6 +84,11 @@ def _guest_ids_query(employee_id: int):
 
 def my_guest_ids(db: Session, employee_id: int) -> set[int]:
     return set(db.scalars(_guest_ids_query(employee_id)))
+
+
+def search_my_guests(db: Session, employee_id: int, q: str) -> list[Guest]:
+    """Подбор гостя среди своих (редактор связей батлера): связать можно только своих (§3)."""
+    return search_guests(db, q, within=_guest_ids_query(employee_id))
 
 
 def owns_reservation(db: Session, employee_id: int, reservation_id: int) -> bool:

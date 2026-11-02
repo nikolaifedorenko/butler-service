@@ -565,7 +565,8 @@ async function openGuestCard(gid, onChanged) {
       q.oninput = () => {
         clearTimeout(timer);
         timer = setTimeout(async () => {
-          const found = q.value.trim().length < 2 ? [] : (await api('/api/stays/guests?q=' + encodeURIComponent(q.value.trim()), { silent: true }))
+          /* батлер связывает только со своими гостями — поиск среди своих */
+          const found = q.value.trim().length < 2 ? [] : (await api(`/api/stays/guests?q=${encodeURIComponent(q.value.trim())}${full ? '' : '&mine=1'}`, { silent: true }))
             .filter(x => x.id !== gid);
           $('#gc-link-res', m).innerHTML = found.map(x => `<button class="btn btn-sm btn-ghost" data-link-pick="${x.id}">${esc(x.short)}</button>`).join('');
           $$('[data-link-pick]', m).forEach(b => {

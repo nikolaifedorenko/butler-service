@@ -885,6 +885,13 @@ async function butlerEdits() {
   const child = (await apiJson('GET', `/api/stays/guests/${gid}/family`)).body.people.find(p => p.name.includes(last));
   check('ребёнок записан на сервере', !!child);
   if (!child) return;
+  const pick = (await apiJson('GET', `/api/stays/guests?q=${encodeURIComponent(last)}&mine=1`)).body;
+  check('поиск для связи у батлера — свои гости (новый ребёнок среди них)', pick.some(x => x.id === child.id));
+  for (const sur of DEMO_SURNAMES.slice(0, 3)) {
+    const ids = (await apiJson('GET', `/api/stays/guests?q=${encodeURIComponent(sur)}&mine=1`)).body.map(x => x.id);
+    const open = await Promise.all(ids.map(id => apiJson('GET', `/api/stays/guests/${id}`).then(r => r.status)));
+    check(`поиск «${sur}» среди своих — только свои`, open.every(st => st === 200), JSON.stringify(open));
+  }
   click($('#modal [data-close]'));
   await sleep(200);
   window.eval(`openGuestCard(${child.id})`);

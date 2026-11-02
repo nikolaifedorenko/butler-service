@@ -15114,7 +15114,7 @@
     },
     "/api/stays/guests": {
       "get": {
-        "description": "Подбор гостя по ФИО, телефону и полям с поиском: без контактов и дат рождения.",
+        "description": "Подбор гостя по ФИО, телефону и полям с поиском: без контактов и дат рождения.\nmine=1 — только свои гости батлера (редактор связей, часть 4 §3).",
         "operationId": "list_guests_api_stays_guests_get",
         "parameters": [
           {
@@ -15125,6 +15125,16 @@
               "default": "",
               "title": "Q",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mine",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Mine",
+              "type": "boolean"
             }
           }
         ],

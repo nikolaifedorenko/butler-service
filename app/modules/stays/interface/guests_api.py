@@ -103,10 +103,14 @@ def _card(db: Session, g: Guest) -> dict:
 
 
 @router.get("/guests")
-def list_guests(q: str = "", principal: Principal = Depends(require_perm("stays.view")),
-                db: Session = Depends(get_db)):
-    """Подбор гостя по ФИО, телефону и полям с поиском: без контактов и дат рождения."""
-    found = guests.search_guests(db, q)
+def list_guests(q: str = "", mine_only: bool = Query(False, alias="mine"),
+                principal: Principal = Depends(require_perm("stays.view")), db: Session = Depends(get_db)):
+    """Подбор гостя по ФИО, телефону и полям с поиском: без контактов и дат рождения.
+    mine=1 — только свои гости батлера (редактор связей, часть 4 §3)."""
+    if mine_only:
+        found = [] if principal.employee is None else mine.search_my_guests(db, principal.employee.id, q)
+    else:
+        found = guests.search_guests(db, q)
     codes = vip_codes.code_texts(db) if any(g.vip_code_id for g in found) else {}
     return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
              "middle_name": g.middle_name, "special": bool(g.special),
@@ -277,12 +281,18 @@ def create_link(gid: int, payload: LinkIn,
     замком модуля; отказ любой проверки — 422, не создаётся ничего. Батлер — только своему гостю;
     заведённый им новый человек становится его «своим» (часть 4 §3)."""
     butler = own_guest(db, principal, gid, "stays.edit")
+    if butler:
+        # существующая вторая сторона и второй родитель — тоже свои: иначе связью «прямая связь»
+        # батлер открыл бы себе чужой профиль (через состав брони); новый человек — свободно
+        for other_id in (payload.guest_id, payload.also_parent_id):
+            if other_id is not None and not mine.owns_guest(db, principal.employee.id, other_id):
+                raise HTTPException(status_code=403, detail="Связать можно только со своим гостем или новым человеком")
     try:
         rows, other = guests.add_links(
             db, gid, payload.kind, other_id=payload.guest_id,
             new_guest=payload.new_guest.model_dump() if payload.new_guest else None, former=payload.former,
             other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id,
-            created_by=principal.employee.id if butler else None)
+            created_by=principal.employee.id if butler else None)    # заведённый батлером — его «свой»
     except FundError as e:
         db.rollback()          # новый гость и первая связь уже в flush — откат целиком
         raise _err(e) from e

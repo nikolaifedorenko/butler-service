@@ -5,7 +5,8 @@
    дети снизу, братья и сёстры по бокам — из GET /api/stays/guests/{id}/family; клик по человеку —
    он в центре (граф запрашивается заново: сервер отдаёт его вокруг центра). Редактор
    (editable — право stays.edit или, батлеру у своего гостя, stays.mine_guest_edit; сервер проверяет
-   принадлежность — у чужого гостя в центре ответ 403 придёт тостом): «+ родитель / + супруг(а) /
+   принадлежность — у чужого гостя в центре ответ 403 придёт тостом; поиск второй стороны и «и ребёнок
+   супруги» у батлера — только среди своих гостей): «+ родитель / + супруг(а) /
    + ребёнок» — поиск гостя или новый (фамилия, имя, пол) → один POST /guests/{id}/links (новый
    гость и обе связи «и ребёнок супруги» — одной записью на сервере: отказ не оставит ни гостя,
    ни половины связей); крестик на
@@ -64,7 +65,7 @@ function staysFamilyHtml(fam, c, editable, home) {
       <span class="muted">— ${esc(k.title)}</span></div>`).join('') || '<span class="muted">родственников нет</span>'}</div>`;
 }
 
-function staysFamilyPanelHtml(kind, spouse, blocked) {
+function staysFamilyPanelHtml(kind, spouse, blocked, own = true) {
   return `<div class="ft-add">
     <b>${esc(STAYS_FAMILY_ADD_TITLE[kind])}</b>
     <div class="sb-line"><input type="search" data-ft-q placeholder="Найти гостя: фамилия"></div>
@@ -74,7 +75,7 @@ function staysFamilyPanelHtml(kind, spouse, blocked) {
       <select data-ft-gender title="Пол">${Object.entries(STAYS_GENDER).map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select>
       <button type="button" class="btn btn-sm btn-primary" data-ft-create${blocked ? ' disabled' : ''}>Создать и связать</button></div>
     ${blocked ? `<div class="muted" data-ft-blocked>${esc(blocked)}</div>` : ''}
-    ${spouse ? `<label class="chk"><input type="checkbox" data-ft-both checked> и ребёнок: ${esc(spouse.name)}</label>` : ''}
+    ${spouse ? `<label class="chk"${own ? '' : ' hidden'}><input type="checkbox" data-ft-both${own ? ' checked' : ''}> и ребёнок: ${esc(spouse.name)}</label>` : ''}
     <div><button type="button" class="btn btn-sm btn-ghost" data-ft-cancel>Отмена</button></div></div>`;
 }
 
@@ -97,7 +98,15 @@ async function renderFamilyTree(host, guestId, { editable = false, onChange = nu
     /* заранее видно, что сервер откажет: новый гость не создаётся (поиск — сервер ответит тостом) */
     const blocked = (kind === 'parent' && around.parents.length >= 2 && 'У гостя уже два родителя — сначала удалите связь')
       || (kind === 'spouse' && current && 'У гостя уже есть супруг(а) — отметьте прежний брак «бывшие»') || '';
-    panel.innerHTML = staysFamilyPanelHtml(kind, spouse, blocked);
+    /* батлер: второй родитель — только свой гость (сервер иначе 403); пока не проверили — галочки нет */
+    const full = can('stays.edit');
+    panel.innerHTML = staysFamilyPanelHtml(kind, spouse, blocked, full);
+    if (spouse && !full) {
+      api(`/api/stays/guests/${spouse.id}`, { silent: true }).then(() => {
+        const box = $('[data-ft-both]', panel);
+        if (box) { box.checked = true; box.closest('label').hidden = false; }
+      }).catch(() => {});
+    }
     const both = () => (spouse && $('[data-ft-both]', panel).checked ? spouse.id : null);
     const done = async target => {
       try {
@@ -115,7 +124,8 @@ async function renderFamilyTree(host, guestId, { editable = false, onChange = nu
         const needle = q.value.trim();
         let found = [];
         try {
-          found = needle.length < 2 ? [] : (await api('/api/stays/guests?q=' + encodeURIComponent(needle), { silent: true }))
+          /* батлер связывает только со своими гостями (или новым человеком) — поиск среди своих */
+          found = needle.length < 2 ? [] : (await api(`/api/stays/guests?q=${encodeURIComponent(needle)}${can('stays.edit') ? '' : '&mine=1'}`, { silent: true }))
             .filter(x => x.id !== centre);
         } catch (e) { toast(e.message, 'err'); }
         $('[data-ft-found]', panel).innerHTML = found.map(x => `<button type="button" class="btn btn-sm btn-ghost" data-ft-pick="${x.id}">${esc(x.short)}</button>`).join('')

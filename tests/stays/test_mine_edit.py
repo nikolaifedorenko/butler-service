@@ -237,3 +237,63 @@ def test_no_guest_edit_perm_read_only(stay, butlers, butler_client, manager_clie
     assert butler_client.patch(f"{API}/guest-links/{link}", json={"former": True}).status_code == 403
     assert butler_client.delete(f"{API}/guest-links/{link}").status_code == 403
     assert _prefs(butler_client, gid, []).status_code == 403
+
+
+# ── доработка 1: вторая сторона связи от батлера — своя или новый человек ──
+
+def test_mine_link_to_foreign_existing_403(stay, butlers, butler_client, manager_client, db):
+    """Связь своего гостя с чужим существующим — 403, ничего не создано: иначе через состав брони
+    батлер открыл бы себе чужой профиль."""
+    r = _own(stay, butlers)
+    own = r["guests"][0]
+    foreign = _foreign(stay, butlers)["guests"][0]
+    resp = _link(butler_client, own, foreign, "assistant")
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Связать можно только со своим гостем или новым человеком"
+    assert manager_client.get(f"{API}/guests/{own}").json()["links"] == []
+    assert _add_occupant(butler_client, r["id"], foreign).status_code == 403
+    assert butler_client.get(f"{API}/guests/{foreign}").status_code == 403
+
+
+def test_mine_new_child_with_foreign_second_parent_403(stay, butlers, butler_client, manager_client, db):
+    own = _own(stay, butlers)["guests"][0]
+    foreign = _foreign(stay, butlers)["guests"][0]
+    resp = _new(butler_client, own, last="Полусиротов", also_parent_id=foreign)
+    assert resp.status_code == 403
+    assert _named(db, "Полусиротов") == 0
+    assert manager_client.get(f"{API}/guests/{own}").json()["links"] == []
+    assert manager_client.get(f"{API}/guests/{foreign}").json()["links"] == []
+
+
+def test_mine_link_own_to_own_existing_200(stay, butlers, butler_client):
+    r = _own(stay, butlers, n=2)
+    a, b = r["guests"]
+    assert _link(butler_client, a, b, "spouse").status_code == 200
+    spouse = _new(butler_client, a, last="Общедетов", also_parent_id=b)
+    assert spouse.status_code == 200, spouse.text
+    assert len(spouse.json()["ids"]) == 2
+
+
+def test_mine_guest_search_only_own(stay, butlers, butler_client, manager_client):
+    own = _own(stay, butlers)["guests"][0]
+    foreign = _foreign(stay, butlers)["guests"][0]
+    last = "Искомов" + str(own)
+    for gid in (own, foreign):
+        manager_client.put(f"{API}/guests/{gid}", json={**_guest_body(manager_client.get(f"{API}/guests/{gid}").json()),
+                                                         "last_name": last})
+    every = {g["id"] for g in butler_client.get(f"{API}/guests", params={"q": last}).json()}
+    mine_only = {g["id"] for g in butler_client.get(f"{API}/guests", params={"q": last, "mine": 1}).json()}
+    assert {own, foreign} <= every and mine_only == {own}
+
+
+# ── доработка 3: через бывшего супруга — только он сам ──
+
+def test_mine_former_spouse_relatives_not_kin(stay, butlers, butler_client, manager_client):
+    r = _own(stay, butlers)
+    husband = r["guests"][0]
+    ex, ex_mother = (make_guest(manager_client)["id"] for _ in range(2))
+    assert _link(manager_client, husband, ex, "spouse", former=True).status_code == 200
+    assert _link(manager_client, ex_mother, ex, "parent").status_code == 200
+    resp = _add_occupant(butler_client, r["id"], ex_mother)
+    assert resp.status_code == 403, resp.text
+    assert _add_occupant(butler_client, r["id"], ex).status_code == 200

@@ -341,12 +341,15 @@ def search_query(q: str) -> str:
     return q
 
 
-def search_guests(db: Session, q: str, limit: int = 30) -> list[Guest]:
+def search_guests(db: Session, q: str, limit: int = 30, within=None) -> list[Guest]:
+    """within — подзапрос id гостей, среди которых искать (свои гости батлера), или None — все."""
     needle = search_query(q)
     if not needle:
         return []
-    return list(db.scalars(select(Guest).where(Guest.search_text.contains(needle, autoescape=True))
-                           .order_by(Guest.last_name, Guest.first_name, Guest.id).limit(limit)))
+    stmt = select(Guest).where(Guest.search_text.contains(needle, autoescape=True))
+    if within is not None:
+        stmt = stmt.where(Guest.id.in_(within))
+    return list(db.scalars(stmt.order_by(Guest.last_name, Guest.first_name, Guest.id).limit(limit)))
 
 
 # ── Объединение дублей (addendum §3) ──────────────────────────────────────
