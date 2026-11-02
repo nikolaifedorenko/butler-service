@@ -286,3 +286,26 @@ def test_reservation_edit_needs_mine_res_edit(stay, butlers, butler_client, ivan
     assert butler_client.put(f"{API}/reservations/{r['id']}", json=_body(doc, note="нет")).status_code == 403
     card = butler_client.get(f"{API}/guests/{gid}").json()
     assert butler_client.put(f"{API}/guests/{gid}", json=_guest_body(card, note="можно")).status_code == 200
+
+
+def test_guest_card_own_only(stay, butlers, butler_client, db):
+    """Карточка гостя (/guests/{gid}/card, её открывает интерфейс): свой — 200 с историей проживаний,
+    без записи в журнал; чужой — 403, в том числе гость своей брони, которого явно ведёт другой батлер."""
+    from sqlalchemy import func
+
+    from app.core.audit import AuditLog
+
+    r = stay(70, 72, n_guests=2)
+    main, second = r["guests"]
+    _line(butlers["a"], r["first"], r["id"])
+    _line(butlers["b"], r["first"], r["id"], guests=(second,))
+    foreign = stay(70, 72)
+    _line(butlers["b"], foreign["first"], foreign["id"])
+    audits = db.scalar(select(func.count()).select_from(AuditLog))
+    card = butler_client.get(f"{API}/guests/{main}/card")
+    assert card.status_code == 200, card.text
+    assert [s["reservation_id"] for s in card.json()["stays"]] == [r["id"]]
+    assert db.scalar(select(func.count()).select_from(AuditLog)) == audits
+    for gid in (second, foreign["guests"][0]):
+        for url in (f"/guests/{gid}", f"/guests/{gid}/card"):
+            assert butler_client.get(API + url).status_code == 403, url

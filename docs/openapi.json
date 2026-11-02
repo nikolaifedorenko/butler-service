@@ -15520,6 +15520,7 @@
     },
     "/api/stays/guests/{gid}/card": {
       "get": {
+        "description": "Карточка гостя целиком (с историей проживаний): stays.guests — любого, stays.mine — своего.",
         "operationId": "guest_card_api_stays_guests__gid__card_get",
         "parameters": [
           {

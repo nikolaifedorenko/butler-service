@@ -20,6 +20,7 @@ from ..adapters.orm import Guest
 from ..application import allocation, family, guests, guests_list, history, mine, reservations, vip_codes
 from ..application.fund import FundConflict, FundError
 from ..application.visibility import at_least, level_for
+from ._mine import own_guest
 from ._ops import PREVIEW, run
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -154,23 +155,13 @@ def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
             **({"overbook_refused": done["overbook_refused"]} if "overbook_refused" in done else {})}
 
 
-def _own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> bool:
-    """Без full_perm батлер видит и правит только своих гостей (часть 4 §3–§4: stays.mine — чтение,
-    stays.mine_guest_edit — правка)."""
-    if full_perm in principal.gate_permissions:
-        return False
-    if principal.employee is None or not mine.owns_guest(db, principal.employee.id, gid):
-        raise HTTPException(status_code=403, detail="Это не ваш гость: вы не ведёте его брони")
-    return True
-
-
 @router.get("/guests/{gid}")
 def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
               db: Session = Depends(get_db)):
     g = db.get(Guest, gid)
     if g is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
-    _own_guest(db, principal, gid, "stays.guests")
+    own_guest(db, principal, gid, "stays.guests")
     return _card(db, g)
 
 
@@ -245,7 +236,7 @@ def update_guest(gid: int, payload: GuestUpdateIn, preview_flag: bool = PREVIEW,
     g = db.get(Guest, gid)
     window = None
     if g is not None:
-        if _own_guest(db, principal, gid, "stays.edit"):
+        if own_guest(db, principal, gid, "stays.edit"):
             try:
                 mine.check_guest_change(guests.guest_dict(g), data)
             except mine.MineForbidden as e:

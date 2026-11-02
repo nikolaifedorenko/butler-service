@@ -16,6 +16,7 @@ from ..adapters.duty_timesheet import TimesheetDuty
 from ..adapters.orm import Guest
 from ..application import guests, history, reservations, views
 from ..application.visibility import level_for
+from ._mine import own_guest
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 SEE = require_perm("stays.view", "stays.occupancy")
@@ -66,9 +67,11 @@ def reservation_history(rid: int, principal: Principal = Depends(require_perm("s
 
 
 @router.get("/guests/{gid}/card")
-def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
+def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
                db: Session = Depends(get_db)):
+    """Карточка гостя целиком (с историей проживаний): stays.guests — любого, stays.mine — своего."""
     g = db.get(Guest, gid)
     if g is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
+    own_guest(db, principal, gid, "stays.guests")
     return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, gid), "stays": history.guest_stays(db, gid)}
