@@ -1136,6 +1136,20 @@ async function escortScreens() {
     .find(c => c.id === created.id).archived === true);
   check('архив: пометка в таблице', await waitFor(() => /в архиве/.test(text(`[data-code-row="${created.id}"]`))));
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
+
+  /* дата до первой версии фонда: снимок 404 — «правила недоступны» только в блоке правил, остальной экран жив */
+  const host = $('#st-body');
+  host.dataset.escortDate = '1990-01-01';
+  window.eval('renderStaysEscort(document.querySelector("#st-body"))');
+  check('сопровождение: дата до фонда — сообщение в блоке правил',
+    await waitFor(() => /правила на эту дату недоступны/.test(text('#st-body'))), text('#st-body').slice(0, 200));
+  check('сопровождение: таблица кодов и список батлеров на месте', !!$('#se-codes-table') && !!$('[data-escort]')
+    && !$('[data-rules-cats]'));
+  const dateInput = $('#se-date');
+  check('сопровождение: дата в поле сохранена', dateInput?.value === '1990-01-01');
+  dateInput.value = serverToday();
+  dateInput.dispatchEvent(new window.Event('change'));
+  check('сопровождение: на нормальной дате правила вернулись', await waitFor(() => !!$('[data-rules-cats]')));
 }
 
 /* 9б · профиль гостя: «◆ Особый гость» и VIP-код; смена кода — галочка «обновить в бронях: N» и предпросмотр;

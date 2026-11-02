@@ -290,7 +290,7 @@ async function fundFlow() {
   $('#fg-escorted').checked = true;
   click($('[data-save]'));
   check('галочка сохранена в черновик', await poll(async () => (await draftGroups()).find(g => g.id === first.id)?.escorted === true));
-  check('в дереве узел отмечен', await waitFor(() => ($(`#st-body [data-fund-node="${first.id}"]`)?.textContent || '').includes('с батлером')));
+  check('в дереве узел отмечен', await waitFor(() => ($(`#st-body [data-fund-node="${first.id}"]`)?.textContent || '').includes('с сопровождением')));
   check('в разнице черновика — «сопровождение»', await waitFor(() => /сопровождение: false → true/.test(text('#fund-draft-bar'))),
     text('#fund-draft-bar'));
 

@@ -215,7 +215,8 @@ def test_bookings_query_budget(manager_client, big_fund, sql_counter):
     with sql_counter() as c:
         r = manager_client.get(URL, params=win)
     assert r.status_code == 200 and r.json()["total"] >= 300
-    assert c["total"] <= 12, list(c["by_statement"].items())
+    # 12 + 1 запрос кодов VIP (у брони big_fund есть код; без кодов запроса нет) — Ruling 3
+    assert c["total"] <= 13, list(c["by_statement"].items())
 
 
 def test_export_audited(manager_role_client, manager_client, db):
@@ -269,3 +270,23 @@ def test_bookings_escorted_by_rules(manager_role_client, manager_client):
         in_node["number"], special["number"]}
     # «Особый» живёт только с 05.01 — в окне 01–04.01 брони нет в фильтре
     assert _numbers(manager_client, first="2039-01-01", last="2039-01-04", **scope) == [in_node["number"]]
+
+
+def test_bookings_escorted_modes_and_bounded_window(manager_role_client, manager_client):
+    """«С сопровождением» в режиме «заезд»: бронь, чья часть выходит за период, проходит по ночам
+    внутри периода; окно ограничено периодом — ночи за его пределами и далёкие брони не считаются."""
+    d = FundDraft(manager_role_client)
+    node = d.call("POST", "groups", title="Сопр" + uniq(), escorted=True)["id"]
+    d.publish()
+    wine = make_category(manager_role_client, n_units=2, escorted=False, group_id=node)
+    plain = make_category(manager_role_client, n_units=2, escorted=False)
+    long_in = create_res(manager_client, wine, "2041-03-09", "2041-03-20")        # выезд далеко за периодом
+    short = create_res(manager_client, wine, "2041-03-09", "2041-03-12")
+    create_res(manager_client, plain, "2041-03-09", "2041-03-12")
+    scope = {"category_ids": [wine["id"], plain["id"]], "escorted": 1, "mode": "check_in"}
+    got = _numbers(manager_client, first="2041-03-08", last="2041-03-10", **scope)
+    assert set(got) == {long_in["number"], short["number"]}
+    # брони с заездом вне периода в выборку не попадают
+    assert _numbers(manager_client, first="2030-01-01", last="2030-01-03", **scope) == []
+    # created-режим: окно ограничено MAX_DAYS от начала, а не date.max — запрос отрабатывает
+    assert _numbers(manager_client, first="2000-01-01", last="2000-01-02", **{**scope, "mode": "created"}) == []

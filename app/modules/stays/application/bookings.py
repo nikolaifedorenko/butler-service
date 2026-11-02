@@ -109,7 +109,7 @@ def _piece_passes(fund: FundTimeline, p: Piece, unit_id: int | None, day: dt.dat
 
 def _escorted(db: Session, items: list[_Item], win_a: dt.date, win_b: dt.date) -> list[_Item]:
     """«С сопровождением» (§5): батлер нужен по правилам брони (EscortNeed) хотя бы в одну её ночь
-    в окне [win_a, win_b] — один контекст покрытия на окно, пересечённое со сроками броней."""
+    в окне [win_a, win_b] (окно — период запроса, не больше MAX_DAYS) — один контекст покрытия на окно."""
     one = dt.timedelta(days=1)
     spans = {it.r.id: (max(it.r.check_in, win_a), min(it.r.check_out - one, win_b)) for it in items
              if it.r.status in allocation.OCCUPYING}
@@ -213,8 +213,6 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         items = [it for it in items if it.special]
     if f.vip_code_ids:
         items = [it for it in items if it.r.vip_code_id in f.vip_code_ids]
-    if f.escorted_only:
-        items = _escorted(db, items, win_a, win_b)
     if f.q.strip():
         needle = search_query(f.q)
         unit_text = {it.r.id: " ".join(lbl for _, lbl in it.units).lower() for it in items}
@@ -228,6 +226,10 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
     _attach_butlers(db, items)
     if f.employee_id:
         items = [it for it in items if f.employee_id in it.butler_ids]
+    if f.escorted_only:      # самый дорогой фильтр (контекст покрытия) — последним, по уже суженному списку
+        esc_a = q.first
+        esc_b = q.last if q.mode != "created" else q.first + dt.timedelta(days=MAX_DAYS - 1)
+        items = _escorted(db, items, esc_a, esc_b)
     code_ids = {it.r.vip_code_id for it in items if it.r.vip_code_id is not None}
     codes = dict(db.execute(select(VipCode.id, VipCode.code).where(VipCode.id.in_(code_ids))).all()) if code_ids else {}
     return [_row(it, codes) for it in _sorted(items, q)]

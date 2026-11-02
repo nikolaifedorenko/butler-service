@@ -5,7 +5,7 @@ import datetime as dt
 
 from app.modules.stays.adapters.orm import Block, BlockNight
 
-from .helpers import API, FundDraft, create_res, kind_id, make_category, make_code, make_guest, uniq
+from .helpers import API, FundDraft, create_res, kind_id, make_category, make_code, make_guest, set_guest, uniq
 
 
 def _doc(c, rid):
@@ -221,6 +221,21 @@ def test_butler_cannot_change_code_or_mode(butler_client, own_reservation, manag
         assert r.status_code == 403, (change, r.text)
     r = butler_client.put(f"{API}/reservations/{rid}", json=_body(_doc(butler_client, rid), note="можно"))
     assert r.status_code == 200, r.text
+
+
+def test_butler_cannot_swap_main_guest_to_move_code(butler_client, own_reservation, manager_role_client, manager_client):
+    """Главный гость заперт для батлера (403), поэтому правило «код главного копируется в бронь»
+    не может сменить код брони его правкой (§7): код и главный остаются прежними."""
+    rid = own_reservation["mine"]["id"]
+    code = make_code(manager_role_client)
+    newcomer = make_guest(manager_client)
+    set_guest(newcomer["id"], vip_code_id=code["id"])
+    doc = _doc(butler_client, rid)
+    occ = [{**o, "guest_id": newcomer["id"]} if o["role"] == "main" else o for o in doc["occupants"]]
+    r = butler_client.put(f"{API}/reservations/{rid}", json=_body(doc, occupants=occ))
+    assert r.status_code == 403, r.text
+    after = _doc(butler_client, rid)
+    assert after["vip_code_id"] == doc["vip_code_id"] and after["occupants"] == doc["occupants"]
 
 
 def test_butler_cannot_change_paid_category(butler_client, own_reservation, manager_role_client):

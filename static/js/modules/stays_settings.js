@@ -54,12 +54,13 @@ const staysFactorText = n => String(Number(n)).replace('.', ',');
 async function renderStaysEscort(host) {
   const date = host.dataset.escortDate || staysToday();
   const [fund, snap] = await Promise.all([api('/api/stays/fund', { silent: true }),
-    api('/api/stays/fund/snapshot?date=' + date, { silent: true })]);
+    api('/api/stays/fund/snapshot?date=' + date, { silent: true }).catch(() => null)]);   // дата до первой версии фонда — 404
   const rerender = () => { host.dataset.escortDate = $('#se-date', host)?.value || date; renderStaysEscort(host); };
   const on = Object.fromEntries(fund.escorts.map(e => [e.employee_id, e.active]));
   const s = fund.settings;
   const codes = fund.vip_codes || [];
-  const escCats = snap.categories.filter(c => c.escorted), escGroups = snap.groups.filter(g => g.escorted);
+  const escCats = snap ? snap.categories.filter(c => c.escorted) : [];
+  const escGroups = snap ? snap.groups.filter(g => g.escorted) : [];
   host.innerHTML = `
     ${settingsHead('Сопровождение', 'Кто ведёт гостей, VIP-коды, коэффициент «Особого гостя» и дневной лимит нагрузки батлера.')}
     ${settingsPanel('Сопровождают гостей', `
@@ -88,8 +89,10 @@ async function renderStaysEscort(host) {
       <button class="btn btn-primary" id="se-save">Сохранить</button>`)}
     ${settingsPanel('Правила на дату', `
       <label class="field"><span>Дата</span><input type="date" id="se-date" value="${esc(date)}"></label>
+      ${snap ? `
       <div data-rules-cats><b>Категории с сопровождением:</b> ${escCats.map(c => esc(c.code)).join(', ') || '<span class="muted">нет</span>'}</div>
-      <div data-rules-groups><b>Узлы с сопровождением:</b> ${escGroups.map(g => esc(g.title)).join(', ') || '<span class="muted">нет</span>'}</div>
+      <div data-rules-groups><b>Узлы с сопровождением:</b> ${escGroups.map(g => esc(g.title)).join(', ') || '<span class="muted">нет</span>'}</div>`
+      : '<div data-rules-missing class="muted">правила на эту дату недоступны</div>'}
       <p class="hint">Правятся в «Фонде» (черновиком с даты). <a href="#" id="se-to-fund">Открыть «Фонд»</a></p>`)}`;
   $$('[data-escort]', host).forEach(cb => {
     cb.onchange = async () => {
