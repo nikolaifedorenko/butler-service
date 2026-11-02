@@ -15932,26 +15932,6 @@
         ]
       }
     },
-    "/api/stays/mine": {
-      "get": {
-        "description": "«Мои гости» (§6.6): брони, где батлер ведёт гостей сегодня и неделю вперёд, и вчерашние.",
-        "operationId": "mine_api_stays_mine_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Mine",
-        "tags": [
-          "stays"
-        ]
-      }
-    },
     "/api/stays/mine/guests": {
       "get": {
         "description": "«Все мои гости»: свои гости за всё время, поиск по ФИО, по 50.",

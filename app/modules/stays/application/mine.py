@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session, aliased
 from app.core.time import local_date
 
 from ..adapters.orm import (
-    Companion,
     CoverageGuest,
     CoverageLine,
     Guest,
@@ -164,49 +163,6 @@ def check_guest_change(before: dict, data: dict) -> None:
             v = normalize_phone(v)
         if _iso(v) != _iso(old) and not (v in ("", None) and old in ("", None)):
             raise MineForbidden(MINE_TEXT)
-
-
-def my_guests(db: Session, employee_id: int) -> dict:
-    """Экран «Мои гости» до задач 4–5: свои брони, которые живут со вчера до +7 дней, и дни, когда
-    батлер ведёт их гостей."""
-    today = local_date()
-    first, last = today - dt.timedelta(days=1), today + dt.timedelta(days=7)
-    q, line, booking = _my_line_res(employee_id)
-    owned: dict[int, set[dt.date]] = {}
-    for rid, day in db.execute(q.with_only_columns(booking.id, line.day)
-                               .where(booking.check_out >= first, booking.check_in <= last)):
-        owned.setdefault(rid, set()).add(day)
-    if not owned:
-        return {"reservations": []}
-    ctx = load_context(db, first, last, None)
-    res = {r.id: r for r in db.scalars(select(Reservation).where(Reservation.id.in_(list(owned))))}
-    logistics: dict[int, list] = {}
-    for lg in db.scalars(select(Logistics).where(Logistics.reservation_id.in_(list(owned)))
-                         .order_by(Logistics.date, Logistics.time)):
-        logistics.setdefault(lg.reservation_id, []).append({"kind": lg.kind, "date": _iso(lg.date), "time": lg.time,
-                                                            "description": lg.description})
-    companions: dict[int, list] = {}
-    for c in db.scalars(select(Companion).where(Companion.reservation_id.in_(list(owned)))):
-        companions.setdefault(c.reservation_id, []).append({"kind": c.kind, "description": c.description})
-    occ = list(db.scalars(select(Occupant).where(Occupant.reservation_id.in_(list(owned)))))
-    out = []
-    for rid, days in sorted(owned.items(), key=lambda x: min(x[1])):
-        r = res[rid]
-        units = [ctx.unit_label(ctx.unit_of(rid, d)[0], d) for d in sorted(days) if rid in ctx.res]
-        guests = []
-        for o in sorted((o for o in occ if o.reservation_id == rid), key=lambda o: (o.role != "main", o.id)):
-            g = ctx.guests.get(o.guest_id)
-            if g is None:
-                continue
-            guests.append({"guest_id": g.id, "name": short_name(g), "special": bool(g.special), "role": o.role,
-                           "date_from": _iso(o.date_from), "date_to": _iso(o.date_to),
-                           "phone": format_phone(g.phone), "preferences": json.loads(g.preferences_json or "{}"),
-                           "special_dates": json.loads(g.special_dates_json or "[]")})
-        out.append({"reservation_id": rid, "number": r.number, "status": r.status, "check_in": _iso(r.check_in),
-                    "check_out": _iso(r.check_out), "units": list(dict.fromkeys(units)),
-                    "days": sorted(d.isoformat() for d in days), "guests": guests, "note": r.note,
-                    "logistics": logistics.get(rid, []), "companions": companions.get(rid, [])})
-    return {"reservations": out}
 
 
 # ── Экран «Мои гости» (часть 4 §5): сегодня, мой месяц, все мои гости ─────────────────────

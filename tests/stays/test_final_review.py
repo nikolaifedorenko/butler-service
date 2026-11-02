@@ -57,7 +57,7 @@ def test_explicit_line_owns_only_its_guests(butler_client, manager_role_client, 
 
 
 def test_mine_group_member_without_night_no_500(butler_client, manager_role_client, manager_client, butlers):
-    """I1: в группе бронь, чей гость приезжает позже, — «Мои гости» не падают."""
+    """I1: в группе бронь, чей гость приезжает позже, — «Мой месяц» не падает и не показывает её."""
     d = butlers["days"][0]
     cat = make_category(manager_role_client)
     gid = manager_client.post(f"{API}/groups", json={"title": "Г"}).json()["id"]
@@ -66,19 +66,9 @@ def test_mine_group_member_without_night_no_500(butler_client, manager_role_clie
     b = create_res(manager_client, cat, (d + dt.timedelta(days=2)).isoformat(), (d + dt.timedelta(days=3)).isoformat(),
                    [(make_guest(manager_client)["id"], "main", None, None)], group_id=gid)
     manager_client.put(f"{API}/coverage/day", json={"day": d.isoformat(), "group_id": gid, "employee_id": butlers["a"]})
-    r = butler_client.get(f"{API}/mine")
+    r = butler_client.get(f"{API}/mine/month", params={"first": d.isoformat(), "last": (d + dt.timedelta(days=3)).isoformat()})
     assert r.status_code == 200
-    rids = {x["reservation_id"] for x in r.json()["reservations"]}
+    rids = {bar["reservation_id"] for row in r.json()["rows"] for bar in row["bars"]}
     assert a["id"] in rids and b["id"] not in rids
 
 
-def test_mine_shows_guest_departed_yesterday(butler_client, own_reservation, monkeypatch):
-    """I2: выезд был вчера (последняя ночь — позавчера) — бронь ещё видна, чтобы дописать."""
-    from app.modules.stays.application import mine as mine_mod
-    res = own_reservation["mine"]
-    check_out = dt.date.fromisoformat(res["check_out"])
-    # покрытие стоит на первую ночь; сделаем её последней: выезд — на следующий день
-    monkeypatch.setattr(mine_mod, "local_date", lambda: own_reservation["day"] + dt.timedelta(days=2))
-    assert check_out == own_reservation["day"] + dt.timedelta(days=2)
-    rids = {x["reservation_id"] for x in butler_client.get(f"{API}/mine").json()["reservations"]}
-    assert res["id"] in rids

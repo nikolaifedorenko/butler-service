@@ -312,29 +312,3 @@ function staysOpenNodeDay(node, day) {
   staysState.tab = 'units';
   loadStays();
 }
-
-/* ─────────────── «Мои гости» (§6.6): батлер с телефона ─────────────── */
-async function renderMine() {
-  const host = $('#view-mystays');
-  host.innerHTML = '<div class="page-head"><div><h2>Мои гости</h2><div class="sub">Сегодня и неделя вперёд, вчерашние — чтобы дописать</div></div></div><div id="mine-body" class="empty">Загрузка…</div>';
-  let data;
-  try { data = await api('/api/stays/mine', { silent: true }); } catch (e) {
-    $('#mine-body', host).innerHTML = `<p class="muted">${esc(e.message)}</p>`;
-    return;
-  }
-  $('#mine-body', host).className = '';
-  $('#mine-body', host).innerHTML = data.reservations.map(r => `
-    <div class="panel mine-card">
-      <h3 class="panel-title">${esc(r.units.join(' → ') || 'без объекта')} · ${esc(dateRu(r.check_in))}–${esc(dateRu(r.check_out))}</h3>
-      <div class="muted">веду: ${esc(r.days.map(d => dateRu(d).slice(0, 5)).join(', '))}</div>
-      ${r.guests.map(g => `<div class="mine-guest"><b>${staysGuestMark(g.special)}${esc(g.name)}</b> <span class="muted">${esc(STAYS_ROLE[g.role])}${g.phone ? ' · ' + esc(g.phone) : ''}</span>
-        ${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => `<div class="muted">${esc(k)}: ${esc(v)}</div>`).join('')}
-        ${g.special_dates.map(s => `<div class="muted">🎉 ${esc(dateRu(s.date))} — ${esc(s.what)}</div>`).join('')}
-        <button class="btn btn-sm btn-ghost" data-mine-guest="${g.guest_id}">Сведения о госте</button></div>`).join('')}
-      ${r.logistics.map(l => `<div>🚗 ${esc(l.date ? dateRu(l.date).slice(0, 5) : '')} ${esc(l.time)} ${esc(l.description)}</div>`).join('')}
-      ${r.note ? `<p>${esc(r.note)}</p>` : ''}
-      <button class="btn btn-sm" data-mine-res="${r.reservation_id}">Дополнить бронь</button>
-    </div>`).join('') || '<div class="empty">На сегодня и ближайшую неделю гостей нет</div>';
-  $$('[data-mine-res]', host).forEach(b => { b.onclick = () => openReservationForm(Number(b.dataset.mineRes), { mine: true, onSaved: renderMine }); });
-  $$('[data-mine-guest]', host).forEach(b => { b.onclick = () => openGuestForm(Number(b.dataset.mineGuest), renderMine, { mine: true }); });
-}

@@ -1309,6 +1309,25 @@ tr.fund-retired td .badge { text-decoration: none; }
 /* §6.1: от 50 % — синий, от 80 % — жёлтый, 100 % и больше — красный */
 .oc-cell.heat1 { background: #dce8fb; } .oc-cell.heat2 { background: #fff2c6; } .oc-cell.heat3 { background: #ffd3c4; }
 .mine-card .mine-guest { padding: 6px 0; border-top: 1px solid #efe9df; }
+/* «Мои гости» (часть 4 §5): вкладки, мини-шахматка месяца и полоса нагрузки; сетка прокручивается внутри себя */
+.mine-tabs { margin-bottom: 12px; }
+.mine-grow { padding: 8px 6px; border-bottom: 1px solid #edf0f4; cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.mine-grow:hover, .mine-grow:focus { background: #f7efe7; outline: none; }
+#view-mystays { max-width: 100%; }
+.mm-grid { max-width: 100%; }
+.mm-bar { background: #3b6fd8; }
+.mm-bar.tentative { background: #8fadea; opacity: .75; border: 1px dashed #1f4bb0; }   /* предварительная: бледная, пунктиром */
+.mm-bar.mm-none { background: #c0392b; }
+.mm-bar.mm-none.tentative { background: #e29a92; border-color: #8a1f14; }
+.mm-none-row .sb-unit { color: #b3261e; }
+.mm-lc { text-align: center; font-size: 11px; min-height: 30px; }
+.mm-lc.lv-one, .mm-key.lv-one { background: #dce8fb; }
+.mm-lc.lv-many, .mm-key.lv-many { background: #fff2c6; }
+.mm-lc.lv-over, .mm-key.lv-over { background: #ffd3c4; }
+.mm-abs { color: #8a5a10; font-weight: 700; margin-left: 2px; }
+.mm-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; border: 1px solid var(--line); }
+.mm-legend { margin-bottom: 8px; font-size: 12px; }
+@media (max-width: 480px) { .mm-grid { max-height: 60vh; } .mm-grid .sb-row { grid-template-columns: 96px 1fr; } }
 /* семейное дерево гостя (addendum §4): ряды переносятся — на ширине телефона без вылезания вбок */
 .ft { min-width: 0; max-width: 100%; }
 .ft-tree { overflow-x: auto; padding: 8px; margin-bottom: 8px; border: 1px solid var(--line-soft); border-radius: var(--r-sm); }

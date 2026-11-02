@@ -17,7 +17,6 @@ from ..adapters.orm import Guest
 from ..application import boards, views
 from ..application import mine as mine_app
 from ..application.fund import FundError
-from ..application.mine import my_guests
 from ..application.visibility import level_for
 from .views_api import fund_filters
 
@@ -51,12 +50,6 @@ def occupancy(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters),
         return views.occupancy_grid(db, first, last, views.BoardFilters(**dims, escorted_only=escorted))
     except views.ViewError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-
-
-@router.get("/mine")
-def mine(principal: Principal = Depends(require_perm("stays.mine")), db: Session = Depends(get_db)):
-    """«Мои гости» (§6.6): брони, где батлер ведёт гостей сегодня и неделю вперёд, и вчерашние."""
-    return my_guests(db, _me(principal))
 
 
 def _me(principal: Principal) -> int:

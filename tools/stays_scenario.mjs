@@ -796,16 +796,12 @@ async function roleSmoke() {
   if (menu.includes('mystays')) {
     window.navigate('mystays');
     check('«Мои гости» отрисованы', await waitFor(() => !!$('#mine-body') && !text('#mine-body').includes('Загрузка…')));
-    const res = $('[data-mine-res]');
-    if (res) {
-      click(res);
-      check('батлер: форма брони — даты заперты', await waitFor(() => $('#rf-check-in')?.disabled === true));
-      check('батлер: общий поиск гостей скрыт', $('#rf-guest-q').closest('.sb-toolbar').style.display === 'none');
-      check('батлер: сопровождающих добавить можно', !!$('#rf-comp-add'));
-      input($('#rf-note'), 'дописал батлер ' + uniq);
-      click($('[data-save]'));
-      check('батлер сохранил примечание', await waitFor(() => text('#view-mystays').includes('дописал батлер ' + uniq)));
+    for (const tab of ['month', 'guests', 'today']) {
+      click($(`#view-mystays [data-mtab="${tab}"]`));
+      check(`«Мои гости»: вкладка «${tab}» отрисована`, await waitFor(() => $(`#view-mystays [data-mtab="${tab}"]`)?.classList.contains('btn-primary')
+        && !!$('#mine-body') && !text('#mine-body').includes('Загрузка…')));
     }
+    check('«Мои гости»: нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-mystays').innerHTML));
   }
 }
 
@@ -813,7 +809,7 @@ async function roleSmoke() {
    подбор кандидатов виден без кнопок назначения */
 async function butlerBoard() {
   console.log('\nБатлер · шахматка и табло только для чтения');
-  const mine = (await apiJson('GET', '/api/stays/mine')).body;
+  const mine = (await apiJson('GET', '/api/stays/mine/today')).body;
   const own = (mine.reservations || [])[0];
   check('у батлера есть своя бронь (демо)', !!own);
   if (!own) return;
@@ -862,7 +858,7 @@ async function butlerBoard() {
    человеком (становится «своим» — его профиль открывается), пожелание к объекту через предпросмотр */
 async function butlerEdits() {
   console.log('\nБатлер · семья и пожелания своего гостя');
-  const own = ((await apiJson('GET', '/api/stays/mine')).body.reservations || [])[0];
+  const own = ((await apiJson('GET', '/api/stays/mine/today')).body.reservations || [])[0];
   if (!own) { check('у батлера есть своя бронь (демо)', false); return; }
   const gid = own.guests.find(g => g.role === 'main')?.guest_id ?? own.guests[0]?.guest_id;
   window.navigate('stays');
@@ -934,6 +930,126 @@ async function butlerEdits() {
   click($('#modal [data-close]'));
   await sleep(200);
 }
+
+/* Экран «Мои гости» у батлера (часть 4 §5): три вкладки на данных, которые заводит администратор —
+   бронь без объекта (овербукинг), предварительная бронь и гость, которого ведут двое */
+async function butlerMine() {
+  console.log('\nБатлер · «Мои гости»: сегодня, мой месяц, все мои гости');
+  const today = serverToday();
+  const tomorrow = addDays(today, 1);
+  check('вход админом для подготовки данных', await relogin('admin'));
+  const fund = (await apiJson('GET', '/api/stays/fund')).body;
+  const ivanov = fund.escorts.find(e => e.name.startsWith('Иванов'));
+  const colleague = fund.escorts.find(e => !e.name.startsWith('Иванов'));
+  check('Иванов и коллега в «Сопровождают гостей»', !!ivanov && !!colleague);
+  const one = await fundCategory('MN' + uniq, ['MN' + uniq + '-1']);
+  const two = await fundCategory('TN' + uniq, ['TN' + uniq + '-1']);
+  const guest = async (last, extra = {}) => (await apiJson('POST', '/api/stays/guests', { last_name: last + uniq, ...extra })).body;
+  const book = async (number, cat, ci, co, g, extra = {}) => (await apiJson('POST', '/api/stays/reservations', { number: number + uniq,
+    check_in: ci, check_out: co, category_id: cat.id, occupants: [{ guest_id: g.id, role: 'main', date_from: ci, date_to: co }], ...extra })).body.result;
+  const cover = (day, rid, emp) => apiJson('PUT', '/api/stays/coverage/day', { day, reservation_id: rid, employee_id: emp });
+  const gTaken = await guest('Занятой');
+  const gOver = await guest('Овербукнутый', { special: true, birth_date: '1980-01-01' });
+  const gTent = await guest('Предварительный');
+  const gForeign = await guest('Чужой');
+  await book('MA', one.cat, today, addDays(today, 4), gTaken);                               // занимает единственный объект
+  const over = await book('MB', one.cat, today, addDays(today, 4), gOver);                    // бронь без объекта
+  const tent = await book('MT', two.cat, today, addDays(today, 3), gTent, { status: 'tentative',
+    logistics: [{ kind: 'transfer', date: today, time: '07:40', description: 'встреча ' + uniq },
+      { kind: 'transfer', date: tomorrow, time: '10:00', description: 'проводы ' + uniq }] });
+  const foreign = await book('MF', two.cat, addDays(today, 5), addDays(today, 6), gForeign);
+  check('овербукинг: бронь без объекта', over?.segments?.[0]?.unit_id == null, JSON.stringify(over?.segments));
+  check('предварительная бронь создана', tent?.status === 'tentative', String(tent?.status));
+  await cover(today, over.id, ivanov.employee_id);
+  await cover(tomorrow, over.id, colleague.employee_id);          // вторую ночь гостя ведёт коллега
+  await cover(today, tent.id, ivanov.employee_id);
+  await cover(today, foreign.id, colleague.employee_id);
+  check('вход батлером обратно', await relogin(LOGIN));
+
+  const todayApi = (await apiJson('GET', '/api/stays/mine/today')).body;
+  check('API: «без объекта» и предварительная — в «Сегодня»', [over.id, tent.id].every(id => todayApi.reservations.some(r => r.reservation_id === id)));
+
+  /* «Сегодня» */
+  window.eval(`mineState.tab = 'today'`);
+  window.navigate('mystays');
+  check('«Сегодня»: карточки', await waitFor(() => !!$(`[data-mine-card="${over.id}"]`)));
+  const card = text(`[data-mine-card="${over.id}"]`);
+  check('«Сегодня»: ◆, объект «без объекта», заезд–выезд', /◆/.test(card) && /без объекта/.test(card) && card.includes(dateRu(today)), card);
+  const tcard = text(`[data-mine-card="${tent.id}"]`);
+  check('«Сегодня»: предварительная и логистика сегодня/завтра', /предварительная/.test(tcard) && /сегодня/.test(tcard) && tcard.includes('встреча ' + uniq)
+    && /завтра/.test(tcard) && tcard.includes('проводы ' + uniq), tcard);
+  check('«Сегодня»: кнопки «Изменить» по правам', !!$(`[data-mine-res="${over.id}"]`) === (me_can('stays.mine_res_edit')));
+  check('«Сегодня»: чужой брони нет', !$(`[data-mine-card="${foreign.id}"]`));
+  click($(`[data-mine-res="${over.id}"]`));
+  check('«Сегодня» → «Изменить»: форма брони, даты заперты', await waitFor(() => $('#rf-check-in')?.disabled === true));
+  input($('#rf-note'), 'дописал батлер ' + uniq);
+  click($('[data-save]'));
+  const saved = await pollApi(`/api/stays/reservations/${over.id}`, r => r.note === 'дописал батлер ' + uniq);
+  check('«Сегодня»: примечание сохранено', saved.note === 'дописал батлер ' + uniq);
+  check('после сохранения экран остался открытым', await waitFor(() => !!$(`[data-mine-card="${over.id}"]`) && !$('#rf-check-in')));
+
+  /* «Мой месяц» */
+  click($('[data-mtab="month"]'));
+  check('«Мой месяц»: сетка', await waitFor(() => !!$('#view-mystays .mm-grid [data-mine-load]')));
+  check('«Мой месяц»: полоса нагрузки — цвет по уровню', !!$(`[data-mine-load] [data-day="${today}"][data-load-level]`));
+  check('«Мой месяц»: строка «без объекта» с красной полосой', !!$(`[data-mine-row="none"] .mm-bar.mm-none[data-bar="${over.id}"]`)
+    && /без объекта/.test(text('[data-mine-row="none"]')));
+  check('«Мой месяц»: предварительная — бледная пунктирная полоса', !!$(`.mm-bar.tentative[data-bar="${tent.id}"]`));
+  check('«Мой месяц»: чужой брони нет', !$(`.mm-bar[data-bar="${foreign.id}"]`));
+  const bar = $(`.mm-bar[data-bar="${tent.id}"]`);
+  const want = (Number(today.slice(8)) - 0.5) * 100 / monthDays();
+  check('полоса по половинкам суток: заезд с середины дня', Math.abs(parseFloat(bar.style.left) - want) < 0.01, `${bar.style.left} ≠ ${want}`);
+  click(bar);
+  check('«Мой месяц»: клик по полосе — карточка брони', await waitFor(() => /Бронь /.test(text('#modal'))), text('#modal'));
+  click($('#modal [data-close]'));
+  /* ◀ ▶ меняют и месяц экрана, и общий месяц приложения */
+  const was = window.eval('[state.year, state.month]');
+  const label = text('#sm-label');
+  click($('#sm-next'));
+  check('◀ ▶: месяц сменился и в приложении', await waitFor(() => text('#sm-label') !== label
+    && window.eval('state.year * 12 + state.month') === was[0] * 12 + was[1] + 1));
+  check('◀ ▶: в следующем месяце сетка отрисована', await waitFor(() => !!$('.mm-grid [data-mine-load]')));
+  click($('#sm-prev'));
+  check('◀: вернулись', await waitFor(() => text('#sm-label') === label && !!$(`[data-mine-row="none"]`)));
+
+  /* 375 px: страница не шире окна, сетка месяца прокручивается внутри себя */
+  window.eval('window.innerWidth = 375');
+  const css = fs.readFileSync(path.join(ROOT, 'static/css/app.css'), 'utf8');
+  check('375 px: сетка месяца прокручивается внутри себя (.sb-grid overflow:auto)', /\.sb-grid\s*\{[^}]*overflow:\s*auto/.test(css));
+  check('375 px: scrollWidth страницы не больше окна', window.document.documentElement.scrollWidth <= 375);
+  check('375 px: широкая сетка только внутри .mm-grid', $$('#view-mystays .sb-track').every(t => t.closest('.mm-grid')));
+  check('«Мой месяц»: нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-mystays').innerHTML));
+
+  /* «Все мои гости» */
+  click($('[data-mtab="guests"]'));
+  check('«Все мои гости»: список', await waitFor(() => !!$('#mg-q') && !!$('[data-mine-grow]')));
+  input($('#mg-q'), 'Овербукнутый' + uniq);
+  check('поиск находит своего', await waitFor(() => $$('[data-mine-grow]').length === 1 && /Овербукнутый/.test(text('#mg-result'))), text('#mg-result'));
+  input($('#mg-q'), 'Чужой' + uniq);
+  check('поиск не находит чужого', await waitFor(() => !$('[data-mine-grow]') && /нет/.test(text('#mg-result'))), text('#mg-result'));
+  input($('#mg-q'), 'Овербукнутый' + uniq);
+  await waitFor(() => $$('[data-mine-grow]').length === 1);
+  click($('[data-mine-grow]'));
+  check('карточка гостя с историей', await waitFor(() => !!$('#mg-history [data-mine-hist]')), text('#modal'));
+  const hist = text('#mg-history');
+  const ddmm = iso => dateRu(iso).slice(0, 5);
+  check('история: «вёл я» с датами как есть', hist.includes(`вёл я ${ddmm(today)}–${ddmm(tomorrow)}`), hist);
+  check('история: имя другого батлера', hist.includes(`вёл(а) ${colleague.name.split(' ')[0]}`), hist);
+  check('карточка гостя: «Изменить профиль» по правам', !!$('#mg-edit') === me_can('stays.mine_guest_edit'));
+  click($('#mg-edit'));
+  check('профиль открывается на правку', await waitFor(() => !!$('#gf-note') || !!$('[data-save]')), text('#modal'));
+  const note = $('#gf-note') || $('#modal textarea');
+  input(note, 'заметка батлера ' + uniq);
+  click($('[data-save]'));
+  const gsaved = await pollApi(`/api/stays/guests/${gOver.id}`, g => g.note === 'заметка батлера ' + uniq);
+  check('правка профиля из карточки сохранена', gsaved.note === 'заметка батлера ' + uniq);
+  check('карточка переоткрылась с новой заметкой', await waitFor(() => text('#modal [data-mine-note]').includes('заметка батлера ' + uniq)), text('#modal'));
+  click($('#modal [data-close]'));
+  check('«Все мои гости»: нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-mystays').innerHTML));
+}
+const dateRu = iso => iso.split('-').reverse().join('.');
+const me_can = perm => window.eval(`can(${JSON.stringify(perm)})`);
+const monthDays = () => new Date(Date.UTC(...window.eval('[state.year, state.month]'), 0)).getUTCDate();
 
 async function moreForms() {
   console.log('\n5 · Блоки, совместное проживание, гость, поля');
@@ -1785,6 +1901,7 @@ async function main() {
     if (LOGIN === 'ivanov') {
       await butlerBoard();
       await butlerEdits();
+      await butlerMine();
     }
   }
 
