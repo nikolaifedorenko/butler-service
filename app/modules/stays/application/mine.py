@@ -243,7 +243,7 @@ def mine_today(db: Session, employee_id: int) -> dict:
         out.append({"reservation_id": rid, "number": r.number, "status": r.status,
                     "unit": ctx.unit_label(ctx.unit_of(rid, night)[0], night),
                     "check_in": _iso(r.check_in), "check_out": _iso(r.check_out), "guests": guests,
-                    "departing": departing,
+                    "departing": departing, "note": r.note,
                     "logistics": logistics.get(rid, [])})
     out.sort(key=lambda x: (natural_key(x["unit"]), x["reservation_id"]))
     return {"date": today.isoformat(), "reservations": out}

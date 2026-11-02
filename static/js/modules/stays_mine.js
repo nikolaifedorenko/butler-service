@@ -52,6 +52,7 @@ function mineTodayCardHtml(r, today) {
   return `<div class="panel mine-card" data-mine-card="${r.reservation_id}">
     <h3 class="panel-title">${esc(r.unit || 'без объекта')}${r.departing ? ' <span class="badge warn">выезд сегодня</span>' : ''}${r.status === 'tentative' ? ' <span class="badge muted">предварительная</span>' : ''}</h3>
     <div class="muted">${esc(r.number || '')} · заезд ${esc(dateRu(r.check_in))} — выезд ${esc(dateRu(r.check_out))}</div>
+    ${r.note ? '<p class="muted" data-mine-note>' + esc(r.note) + '</p>' : ''}
     ${guests}
     ${r.logistics.map(l => `<div data-mine-logistics>🚗 <b>${esc(mineLogisticsDay(l.date, today))}</b> ${esc(l.time)} ${esc(l.description)}</div>`).join('')}
     <div class="sb-line"><button class="btn btn-sm btn-ghost" data-mine-open="${r.reservation_id}">Бронь…</button>
@@ -192,7 +193,7 @@ function mineLedHtml(l) {
 }
 
 async function openMineGuest(gid, onChanged) {
-  const [g, fund] = await Promise.all([api(`/api/stays/mine/guests/${gid}`), staysFund()]);
+  const [g, fund] = await Promise.all([api(`/api/stays/mine/guests/${gid}`), staysFund().catch(() => ({ fields: [] }))]);
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   const prefs = Object.entries(g.preferences).filter(([, v]) => v);
   const canEdit = mineCanGuestEdit();

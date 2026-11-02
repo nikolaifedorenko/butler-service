@@ -986,7 +986,8 @@ async function butlerMine() {
   click($('[data-save]'));
   const saved = await pollApi(`/api/stays/reservations/${over.id}`, r => r.note === 'дописал батлер ' + uniq);
   check('«Сегодня»: примечание сохранено', saved.note === 'дописал батлер ' + uniq);
-  check('после сохранения экран остался открытым', await waitFor(() => !!$(`[data-mine-card="${over.id}"]`) && !$('#rf-check-in')));
+  check('после сохранения экран открыт, примечание на карточке', await waitFor(() => !$('#rf-check-in')
+    && text(`[data-mine-card="${over.id}"]`).includes('дописал батлер ' + uniq)), text(`[data-mine-card="${over.id}"]`));
 
   /* «Мой месяц» */
   click($('[data-mtab="month"]'));

@@ -53,7 +53,7 @@ def test_today_lists_only_today_led(manager_role_client, manager_client, butlers
     day = D("2041-03-10")
     cat = make_category(manager_role_client, n_units=3)
     g1, g2, g3, g4 = (make_guest(manager_client) for _ in range(4))
-    a = _res(manager_client, cat, "2041-03-09", "2041-03-12", [g1, g2], logistics=[
+    a = _res(manager_client, cat, "2041-03-09", "2041-03-12", [g1, g2], note="подать завтрак в номер", logistics=[
         {"kind": "flight", "date": "2041-03-10", "time": "07:40", "description": "сегодня"},
         {"kind": "transfer", "date": "2041-03-11", "time": "10:00", "description": "завтра"},
         {"kind": "flight", "date": "2041-03-12", "time": "12:00", "description": "послезавтра"}])
@@ -75,6 +75,7 @@ def test_today_lists_only_today_led(manager_role_client, manager_client, butlers
     assert row["guests"][0]["role"] == "main" and row["check_in"] == "2041-03-09" and row["check_out"] == "2041-03-12"
     assert row["unit"] in {u["label"] for u in cat["units"]}
     assert [lg["description"] for lg in row["logistics"]] == ["сегодня", "завтра"]
+    assert row["note"] == "подать завтрак в номер"
     assert set(row["guests"][0]) >= {"guest_id", "name", "special", "vip_code", "role", "phone", "preferences",
                                      "special_dates_soon"}
 
