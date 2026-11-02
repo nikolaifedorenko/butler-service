@@ -244,11 +244,25 @@ def _led(ctx, employee_id: int, day: dt.date) -> dict[int, list[int]]:
 
 
 def mine_today(db: Session, employee_id: int) -> dict:
-    """«Сегодня»: брони, где батлер ведёт кого-то в эту ночь, — объект по фонду дня, гости,
-    которых ведёт он, логистика на сегодня и завтра (и без даты)."""
+    """«Сегодня»: брони, где батлер ведёт кого-то в эту ночь, и гости, которых он вёл прошлой ночью
+    и которые выезжают сегодня (departing — виден трансфер выезда). Объект — по фонду ночи, гости —
+    те, кого ведёт он, логистика на сегодня и завтра (и без даты)."""
     today = local_date()
-    ctx = load_context(db, today, today, None)
-    led = _led(ctx, employee_id, today)
+    yesterday = today - dt.timedelta(days=1)
+    ctx = load_context(db, yesterday, today, None)
+    # бронь → {гость: (запись «проживающий», выезжает сегодня)}
+    led: dict[int, dict[int, tuple[Occupant, bool]]] = {}
+    for rid, gids in _led(ctx, employee_id, today).items():
+        occ = {o.guest_id: o for o in ctx.occ.get(rid, ()) if o.date_from <= today < o.date_to}
+        led[rid] = {g: (occ[g], False) for g in gids if g in occ and g in ctx.guests}
+    for rid, gids in _led(ctx, employee_id, yesterday).items():
+        r = ctx.res[rid]
+        for o in ctx.occ.get(rid, ()):
+            if o.guest_id in gids and o.guest_id in ctx.guests and o.date_from <= yesterday < o.date_to \
+                    and o.date_to == today and o.guest_id not in led.get(rid, {}):
+                led.setdefault(rid, {})[o.guest_id] = (o, True)
+        if r.check_out == today:
+            led.setdefault(rid, {})            # бронь без состава («гость брони») — тоже выезд
     logistics: dict[int, list] = {}
     if led:
         for lg in db.scalars(select(Logistics).where(
@@ -258,23 +272,24 @@ def mine_today(db: Session, employee_id: int) -> dict:
             logistics.setdefault(lg.reservation_id, []).append({"kind": lg.kind, "date": _iso(lg.date), "time": lg.time,
                                                                 "description": lg.description})
     out = []
-    for rid, gids in led.items():
+    for rid, by_guest in led.items():
         r = ctx.res[rid]
-        occ = {o.guest_id: o for o in ctx.occ.get(rid, ()) if o.date_from <= today < o.date_to}
         guests = []
-        for gid in sorted((g for g in gids if g in ctx.guests and g in occ),
-                          key=lambda g: (occ[g].role != "main", occ[g].id)):
+        for gid, (o, departing) in sorted(by_guest.items(), key=lambda x: (x[1][0].role != "main", x[1][0].id)):
             g = ctx.guests[gid]
             code = ctx.vip_codes.get(g.vip_code_id) if g.vip_code_id is not None else None
             guests.append({"guest_id": gid, "name": short_name(g), "special": bool(g.special),
-                           "vip_code": code.code if code else "", "role": occ[gid].role,
+                           "vip_code": code.code if code else "", "role": o.role,
                            "phone": format_phone(g.phone), "preferences": json.loads(g.preferences_json or "{}"),
-                           "special_dates_soon": _soon(g, today)})
+                           "special_dates_soon": _soon(g, today), "departing": departing})
+        departing = all(x["departing"] for x in guests) if guests else r.check_out == today
+        night = yesterday if departing else today      # объект — ночи, в которую батлер ведёт гостей
         out.append({"reservation_id": rid, "number": r.number, "status": r.status,
-                    "unit": ctx.unit_label(ctx.unit_of(rid, today)[0], today),
+                    "unit": ctx.unit_label(ctx.unit_of(rid, night)[0], night),
                     "check_in": _iso(r.check_in), "check_out": _iso(r.check_out), "guests": guests,
+                    "departing": departing,
                     "logistics": logistics.get(rid, [])})
-    out.sort(key=lambda x: (x["unit"], x["reservation_id"]))
+    out.sort(key=lambda x: (natural_key(x["unit"]), x["reservation_id"]))
     return {"date": today.isoformat(), "reservations": out}
 
 

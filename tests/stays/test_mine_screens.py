@@ -123,6 +123,75 @@ def test_today_special_dates_7_days(manager_role_client, manager_client, butlers
                                            {"date": "2041-07-06", "what": "Годовщина свадьбы"}]
 
 
+def test_today_departing_led_last_night(manager_role_client, manager_client, butlers, butler_client, on_day):
+    """Гость, которого батлер вёл прошлой ночью и который выезжает сегодня, — в «Сегодня» с
+    departing (виден трансфер выезда); выехавший вчера — нет (Ruling 6)."""
+    me = butlers["a"]
+    cat = make_category(manager_role_client, n_units=3)
+    g1, g2, g3, g4 = (make_guest(manager_client) for _ in range(4))
+    a = _res(manager_client, cat, "2041-08-07", "2041-08-10", [g1], logistics=[
+        {"kind": "transfer", "date": "2041-08-10", "time": "11:00", "description": "выезд"}])
+    b = _res(manager_client, cat, "2041-08-06", "2041-08-09", [g2])
+    c = create_res(manager_client, cat, "2041-08-09", "2041-08-12", [
+        (g3["id"], "main", None, None), (g4["id"], "guest", "2041-08-09", "2041-08-10")])
+    _line(me, D("2041-08-09"), a["id"])
+    _line(me, D("2041-08-08"), b["id"])
+    _line(me, D("2041-08-09"), c["id"])
+    _line(me, D("2041-08-10"), c["id"])
+    on_day(D("2041-08-10"))
+    rows = {x["reservation_id"]: x for x in butler_client.get(f"{API}/mine/today").json()["reservations"]}
+    assert b["id"] not in rows
+    ra = rows[a["id"]]
+    assert ra["departing"] is True and [(g["guest_id"], g["departing"]) for g in ra["guests"]] == [(g1["id"], True)]
+    assert [lg["description"] for lg in ra["logistics"]] == ["выезд"]
+    assert ra["unit"] in {u["label"] for u in cat["units"]}            # объект прошлой ночи
+    rc = rows[c["id"]]
+    assert rc["departing"] is False
+    assert [(g["guest_id"], g["departing"]) for g in rc["guests"]] == [(g3["id"], False), (g4["id"], True)]
+
+
+def test_today_sorted_by_unit_naturally(manager_role_client, manager_client, butlers, butler_client, on_day):
+    """Порядок «Сегодня» — по объекту естественно: «-2» раньше «-10» (как в «Моём месяце»)."""
+    cat = make_category(manager_role_client, n_units=11)
+    labels = {u["label"] for u in cat["units"]}
+    for _ in range(11):
+        r = _res(manager_client, cat, "2041-08-20", "2041-08-22", [make_guest(manager_client)])
+        _line(butlers["a"], D("2041-08-20"), r["id"])
+    on_day(D("2041-08-20"))
+    units = [x["unit"] for x in butler_client.get(f"{API}/mine/today").json()["reservations"] if x["unit"] in labels]
+    assert units == [f"{cat['code']}-{i}" for i in range(1, 12)]
+
+
+def test_staff_guest_stays_explicit_line_beats_whole(manager_role_client, manager_client, butlers):
+    """Карточка гостя у службы: в ночь, когда гостя явно ведёт B, строка «вся бронь» A его не
+    ведёт; в остальные ночи A — по-прежнему батлер гостя."""
+    from app.core.db import SessionLocal
+    from app.modules.employees.application.catalog import Employee
+    from app.modules.stays.adapters.orm import CoverageLine
+
+    a_id, b_id = butlers["a"], butlers["b"]
+    cat = make_category(manager_role_client, n_units=1)
+    g1, g2 = make_guest(manager_client), make_guest(manager_client)
+    r = _res(manager_client, cat, "2043-05-20", "2043-05-22", [g1, g2])
+    _line(a_id, D("2043-05-20"), r["id"])
+    _line(b_id, D("2043-05-20"), r["id"], guests=(g2["id"],))
+    _line(a_id, D("2043-05-21"), r["id"])
+    with SessionLocal() as s:
+        a_name, b_name = s.get(Employee, a_id).full_name, s.get(Employee, b_id).full_name
+
+    def butlers_of(g):
+        stays = manager_client.get(f"{API}/guests/{g['id']}/card").json()["stays"]
+        return next(x for x in stays if x["reservation_id"] == r["id"])["butlers"]
+    assert butlers_of(g1) == [a_name]
+    assert sorted(butlers_of(g2)) == sorted([a_name, b_name])        # A — за ночь 21-го
+    # без ночи 21-го у A гость g2 — только B
+    with SessionLocal() as s:
+        s.execute(delete(CoverageLine).where(CoverageLine.reservation_id == r["id"], CoverageLine.day == D("2043-05-21")))
+        s.commit()
+    assert butlers_of(g2) == [b_name]
+    assert butlers_of(g1) == [a_name]
+
+
 # ── «Мой месяц» ──────────────────────────────────────────────────────────────
 
 def _month(client, first: str, last: str):
