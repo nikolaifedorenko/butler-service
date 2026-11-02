@@ -809,6 +809,54 @@ async function roleSmoke() {
   }
 }
 
+/* Батлер на шахматке и табло (часть 4 §6): уровень «с фамилиями», только чтение, своя бронь в рамке,
+   подбор кандидатов виден без кнопок назначения */
+async function butlerBoard() {
+  console.log('\nБатлер · шахматка и табло только для чтения');
+  const mine = (await apiJson('GET', '/api/stays/mine')).body;
+  const own = (mine.reservations || [])[0];
+  check('у батлера есть своя бронь (демо)', !!own);
+  if (!own) return;
+  const first = (own.check_in || own.first || serverToday()).slice(0, 10);
+  const probe = (await apiJson('GET', `/api/stays/board/units?first=${first}&last=${first}`)).body;
+  const bar = (probe.bars || []).find(b => b.mine);
+  check('сервер помечает свою полосу', !!bar, JSON.stringify(own));
+  window.navigate('stays');
+  await openMonth(first.slice(0, 8) + '01');
+  check('шахматка открылась', await waitFor(() => !!$('#view-stays [data-unit-row]')));
+  check('своя полоса с рамкой', !!$('#view-stays .sb-bar.sb-mine'));
+  check('рамка только у своих', $$('#view-stays .sb-bar.sb-mine').length === new Set($$('#view-stays .sb-bar.sb-mine').map(e => e.dataset.bar)).size);
+  check('нет кнопки «+ Бронь»', !$('#sb-new'));
+  const row = $('#view-stays [data-unit-row] .sb-unit');
+  if (row) click(row);
+  check('клик по объекту не открывает форму OOO', !(await waitFor(() => !!$('#hf-unit'), 600)));
+  const mineBar = $('#view-stays .sb-bar.sb-mine');
+  if (mineBar) {
+    click(mineBar);
+    check('своя бронь: карточка открылась', await waitFor(() => !!$('#modal .sb-history') || !!$('#modal [data-close]')));
+    check('в карточке нет кнопок назначения и правки', !$('#rc-assign') && !$('#rc-edit') && !$('#rc-status') && !$('#rc-group'));
+    click($('#modal [data-close]'));
+  }
+  for (const tab of ['ooo', 'blocks']) {
+    click($(`#view-stays [data-stab="${tab}"]`));
+    await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
+    check(`вкладка «${tab}»: без кнопки создания`, !$('#oo-new') && !$('#bl-new'));
+  }
+  click($('#view-stays [data-stab="day"]'));
+  check('табло дня открылось', await waitFor(() => !!$('#db-date')));
+  change($('#db-date'), first);
+  await waitFor(() => $('#db-date')?.value === first && !!$('[data-dtab="in_house"]'));
+  click($('[data-dtab="in_house"]'));
+  await waitFor(() => !text('#stays-body').includes('Загрузка…'));
+  check('табло: проживающие видны', text('#stays-body').length > 0 && !text('#stays-body').includes('Загрузка…'));
+  check('табло: нет кнопок назначения и подмены', !$('[data-replace-res]') && !$('#bb-assign') && !$('[data-pick]'));
+  const cand = await apiJson('GET', `/api/stays/coverage/candidates?day=${first}&reservation_id=${own.reservation_id}`);
+  check('подбор кандидатов читается', cand.status === 200, String(cand.status));
+  const put = await apiJson('PUT', '/api/stays/coverage/day', { day: first, reservation_id: own.reservation_id, employee_id: 1 });
+  check('назначение — 403', put.status === 403, String(put.status));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
 async function moreForms() {
   console.log('\n5 · Блоки, совместное проживание, гость, поля');
   /* все даты шага — в одном месяце (следующем): day(9) — 1-е число */
@@ -1656,6 +1704,7 @@ async function main() {
     await blocksAndOooTabs();
   } else {
     await roleSmoke();
+    if (LOGIN === 'ivanov') await butlerBoard();
   }
 
   console.log(`\n=== ошибки консоли ===`);

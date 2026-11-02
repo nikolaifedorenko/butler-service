@@ -1208,6 +1208,7 @@ tr.v4-click:hover td { background: #faf6ef; }
 .sb-bar { position: absolute; top: 5px; bottom: 5px; border-radius: 4px; color: #fff; font-size: 12px; padding: 3px 6px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; box-sizing: border-box; }
 .sb-bar.tentative { opacity: .6; border: 1px dashed #fff; }
+.sb-bar.sb-mine { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #e8a317; z-index: 1; }   /* рамка своей брони у батлера */
 .sb-star { color: #ffe08a; font-weight: 700; }
 .sb-hold { position: absolute; top: 3px; bottom: 3px; background: repeating-linear-gradient(45deg, #ddd, #ddd 6px, #eee 6px, #eee 12px);
   color: #666; font-size: 11px; padding: 4px 6px; border-radius: 4px; overflow: hidden; }

@@ -23,6 +23,7 @@ from ._ops import PREVIEW, err, run
 
 router = APIRouter(prefix="/api/stays/coverage", tags=["stays"])
 ASSIGN = require_perm("stays.assign")
+READ_BOARD = require_perm("stays.assign", "stays.view")      # подбор кандидатов и замены — чтение
 MAX_DAYS = 62
 
 
@@ -139,7 +140,7 @@ def _ids(raw: str) -> list[int]:
 
 @router.get("/candidates")
 def get_candidates(day: dt.date, reservation_id: Optional[int] = None, group_id: Optional[int] = None,
-                   guest_ids: str = "", principal: Principal = Depends(ASSIGN), db: Session = Depends(get_db)):
+                   guest_ids: str = "", principal: Principal = Depends(READ_BOARD), db: Session = Depends(get_db)):
     try:
         return coverage.candidates(db, day, Scope(reservation_id, group_id, frozenset(_ids(guest_ids))),
                                    TimesheetDuty(db))
@@ -148,7 +149,7 @@ def get_candidates(day: dt.date, reservation_id: Optional[int] = None, group_id:
 
 
 @router.get("/replacements")
-def get_replacements(first: dt.date, last: dt.date, principal: Principal = Depends(ASSIGN),
+def get_replacements(first: dt.date, last: dt.date, principal: Principal = Depends(READ_BOARD),
                      db: Session = Depends(get_db)):
     _span(first, last)
     return coverage.replacement_list(db, first, last, TimesheetDuty(db))

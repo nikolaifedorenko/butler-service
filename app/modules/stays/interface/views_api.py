@@ -16,7 +16,7 @@ from ..adapters.duty_timesheet import TimesheetDuty
 from ..adapters.orm import Guest
 from ..application import guests, history, reservations, views
 from ..application.visibility import level_for
-from ._mine import own_guest
+from ._mine import my_reservations, own_guest
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 SEE = require_perm("stays.view", "stays.occupancy")
@@ -46,7 +46,7 @@ def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters
     f = views.BoardFilters(**dims, escorted_only=escorted, special=special, vip_code_ids=tuple(vip_code_ids),
                            employee_id=employee_id, q=q)
     try:
-        return views.units_board(db, first, last, f, level)
+        return views.units_board(db, first, last, f, level, my_reservations(db, principal))
     except views.ViewError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
@@ -54,8 +54,12 @@ def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters
 @router.get("/reservations/{rid}/card")
 def reservation_card(rid: int, principal: Principal = Depends(require_perm("stays.view")),
                      db: Session = Depends(get_db)):
+    level = level_for(db, principal)
+    mine_ids = my_reservations(db, principal)
+    if mine_ids is not None and rid in mine_ids:
+        level = "full"                              # своя бронь — полная карточка (часть 4 §6)
     try:
-        return views.reservation_card(db, rid, level_for(db, principal), TimesheetDuty(db))
+        return views.reservation_card(db, rid, level, TimesheetDuty(db))
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

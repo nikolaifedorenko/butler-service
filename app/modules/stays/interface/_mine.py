@@ -18,3 +18,11 @@ def own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> bo
     if principal.employee is None or not mine.owns_guest(db, principal.employee.id, gid):
         raise HTTPException(status_code=403, detail="Это не ваш гость: вы не ведёте его брони")
     return True
+
+
+def my_reservations(db: Session, principal: Principal) -> set[int] | None:
+    """Брони батлера для выделения на шахматке: одно множество на запрос. None — у принципала нет
+    stays.mine или к учётной записи не привязан сотрудник (признака «своя» в ответе нет)."""
+    if "stays.mine" not in principal.gate_permissions or principal.employee is None:
+        return None
+    return mine.my_reservation_ids(db, principal.employee.id)

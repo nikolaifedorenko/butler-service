@@ -213,8 +213,8 @@ function staysBarHtml(b, base, span, names) {
     ? `${staysGuestMark(b.special)}${esc(b.main_guest || b.number || 'бронь')}${b.vip_code ? ` · ${esc(b.vip_code)}` : ''}`
     : `занято · ${b.guests_count} гост.`;
   const tip = names ? `${b.number} · ${dateRu(b.start)}–${dateRu(b.end)}` : `${dateRu(b.start)}–${dateRu(b.end)}`;
-  return `<div class="sb-bar${b.status === 'tentative' ? ' tentative' : ''}" data-bar="${b.reservation_id}"
-    style="left:${left}%;width:${right - left}%;background:${esc(color)}" title="${esc(tip)}">${textHtml}</div>`;
+  return `<div class="sb-bar${b.status === 'tentative' ? ' tentative' : ''}${b.mine ? ' sb-mine' : ''}" data-bar="${b.reservation_id}"
+    style="left:${left}%;width:${right - left}%;background:${esc(color)}" title="${esc(b.mine ? 'Ваша бронь · ' + tip : tip)}">${textHtml}</div>`;
 }
 
 /* Цвет блока — по его номеру из небольшой палитры (в БД цвета нет); полосы блока пунктиром и не
