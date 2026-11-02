@@ -39,8 +39,7 @@ function staysBookParams() {
   if (staysBook.unassigned) p.set('unassigned', '1');
   if (staysBook.with_warnings) p.set('with_warnings', '1');
   if (f.escorted) p.set('escorted', '1');
-  if (f.vip) p.set('special', '1');
-  if (f.q.trim()) p.set('q', f.q.trim());
+  staysPeopleParams(p, f);
   return p;
 }
 

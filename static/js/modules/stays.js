@@ -25,7 +25,7 @@ const staysState = {
   ocOpen: {}, ocMode: 'pct', focusDay: null,
 };
 function staysEmptyFilters() {
-  return { group_ids: [], category_ids: [], flag_ids: [], kind_ids: [], escorted: false, vip: false, q: '' };
+  return { group_ids: [], category_ids: [], flag_ids: [], kind_ids: [], escorted: false, special: false, vip_code_ids: [], q: '' };
 }
 
 /* PoC §5.1: ordinal как в Python date.toordinal() — клиент и сервер считают позиции одинаково */
@@ -94,6 +94,14 @@ function staysFundParams(p) {
   f.kind_ids.forEach(v => p.append('kind_ids', v));
   return p;
 }
+/* фильтры по гостям: «◆ Особый гость», VIP-код (или), поиск */
+function staysPeopleParams(p, f) {
+  if (f.special) p.set('special', '1');
+  f.vip_code_ids.forEach(v => p.append('vip_code_ids', v));
+  if (f.q.trim()) p.set('q', f.q.trim());
+}
+/* вес места/нагрузка: один знак, запятая («5,5») */
+function staysWeight(n) { return Number(n).toFixed(1).replace('.', ','); }
 /* панель фильтров вида: изменение — новые фильтры и перерисовка вида */
 function staysPanelInto(body, fund, rerender, opts) {
   const slot = $('[data-sf-slot]', body);
@@ -174,8 +182,7 @@ function staysBoardParams() {
   const { first, last } = staysMonthRange();
   const p = staysFundParams(new URLSearchParams({ first, last }));
   if (f.escorted) p.set('escorted', '1');
-  if (f.vip) p.set('special', '1');
-  if (f.q.trim()) p.set('q', f.q.trim());
+  staysPeopleParams(p, f);
   return p;
 }
 

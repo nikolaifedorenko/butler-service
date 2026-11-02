@@ -229,7 +229,7 @@ def create_vip_code(payload: VipCodeIn, principal: Principal = Depends(SETUP), d
 @router.put("/vip-codes/{cid}")
 def update_vip_code(cid: int, payload: VipCodeIn, principal: Principal = Depends(SETUP),
                     db: Session = Depends(get_db)):
-    return _code_run(db, principal, cid, vip_codes.save_code, payload.model_dump(), cid)
+    return _code_run(db, principal, cid, vip_codes.save_code, payload.model_dump(exclude_unset=True), cid)
 
 
 @router.put("/vip-codes/{cid}/archive")

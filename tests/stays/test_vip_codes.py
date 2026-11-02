@@ -283,3 +283,26 @@ def test_demo_has_codes_03_13_14(tmp_path):
     assert set(got) == {"03", "13", "14"}
     assert got["03"][1] and got["13"][1] and not got["14"][1]
     assert not any(v[3] for v in got.values())
+
+
+def test_partial_put_keeps_stored_values(manager_role_client):
+    """PUT только с названием не сбрасывает «сопровождение», коэффициент и порядок."""
+    c = manager_role_client
+    a = _new(c, escorted=True, factor=2.5, sort_order=7)
+    r = c.put(f"{API}/vip-codes/{a['id']}", json={"code": a["code"], "title": "Новое"})
+    assert r.status_code == 200, r.text
+    got = _listed(c)[a["id"]]
+    assert (got["title"], got["escorted"], got["factor"], got["sort_order"]) == ("Новое", True, 2.5, 7)
+
+
+def test_special_factor_quantized(manager_role_client):
+    c = manager_role_client
+    cur = c.get(f"{API}/fund").json()["settings"]
+    try:
+        r = c.put(f"{API}/settings", json={"daily_limit": cur["daily_limit"], "replacement_codes": cur["replacement_codes"],
+                                           "special_factor": 1.555})
+        assert r.status_code == 200, r.text
+        assert c.get(f"{API}/fund").json()["settings"]["special_factor"] in (1.56, 1.55, "1.56", "1.55")
+    finally:
+        c.put(f"{API}/settings", json={"daily_limit": cur["daily_limit"], "replacement_codes": cur["replacement_codes"],
+                                       "special_factor": cur["special_factor"]})

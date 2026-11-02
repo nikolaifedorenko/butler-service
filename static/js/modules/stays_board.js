@@ -22,7 +22,7 @@ async function renderButlersBoard(body) {
   body.innerHTML = `
     <div class="sb-toolbar">
       ${staysMonthNav()}
-      <span class="muted">лимит нагрузки — ${esc(String(data.limit))}</span>
+      <span class="muted">лимит нагрузки — ${staysWeight(data.limit)}</span>
     </div>
     <div class="sb-grid bb-grid" style="--days:${data.days.length}">
       <div class="bb-row sb-head"><div class="sb-unit">Батлер</div>${data.days.map(d => staysDayHead(d, today)).join('')}</div>
@@ -30,7 +30,7 @@ async function renderButlersBoard(body) {
         ${r.cells.map(c => `<div class="bb-cell duty-${c.duty}${c.warnings.length ? ' warn' : ''}" data-bb-emp="${r.employee_id}"
           data-day="${esc(c.day)}" data-warn="${esc(c.warnings.join(' '))}" title="${esc(STAYS_DUTY[c.duty] + (c.code ? ' · ' + c.code : ''))}">
           <div>${esc(c.units.map(u => u.label).join(', ') || (c.duty === 'shift' ? '—' : STAYS_DUTY[c.duty]))}</div>
-          ${c.load ? `<small>${esc(String(c.load))}/${esc(String(data.limit))}</small>` : ''}
+          ${c.load ? `<small>${staysWeight(c.load)}/${staysWeight(data.limit)}</small>` : ''}
           ${c.warnings.length ? `<small class="bb-w">${esc(c.warnings.map(w => STAYS_WARN[w] || w).join(', '))}</small>` : ''}
         </div>`).join('')}</div>`).join('') || '<div class="empty">Список «Сопровождают гостей» пуст — Настройки → Сопровождение</div>'}
     </div>`;
@@ -48,7 +48,7 @@ async function openButlerDay(row, cell, onChanged) {
   const offShift = cell.warnings.includes('off_shift') && assign;
   const kinds = offShift ? (await api('/api/shift-types', { silent: true })).filter(t => t.kind === 'work' && t.active) : [];
   openModal({
-    title: `${row.name} · ${dateRu(cell.day)}`, subtitle: `${STAYS_DUTY[cell.duty]}${cell.code ? ' · ' + cell.code : ''} · нагрузка ${cell.load}`,
+    title: `${row.name} · ${dateRu(cell.day)}`, subtitle: `${STAYS_DUTY[cell.duty]}${cell.code ? ' · ' + cell.code : ''} · нагрузка ${staysWeight(cell.load)}`,
     body: `${cell.units.map(u => `<div class="sb-line"><b>${esc(u.label)}</b>
         <button class="btn btn-sm btn-ghost" data-open-res="${u.reservation_id}">Бронь…</button>
         ${assign && cell.warnings.includes('need_replacement') ? `<button class="btn btn-sm" data-replace-res="${u.reservation_id}">Заменить</button>` : ''}</div>`).join('') || '<p class="muted">Гостей не ведёт</p>'}
@@ -100,7 +100,7 @@ async function openReplace(rid, day, onChanged) {
   openModal({
     title: `Замена на ${dateRu(day)}`,
     body: got.map(c => `<div class="sb-line"><b>${esc(c.name)}</b>
-      <span class="muted">${c.knows_guest ? 'знает гостя · ' : ''}нагрузка ${esc(String(c.load_after))}${c.note ? ' · ' + esc(c.note) : ''}</span>
+      <span class="muted">${c.knows_guest ? 'знает гостя · ' : ''}нагрузка ${staysWeight(c.load_after)}${c.note ? ' · ' + esc(c.note) : ''}</span>
       <button class="btn btn-sm btn-primary" data-pick="${c.employee_id}">Назначить</button></div>`).join('')
       || '<p class="muted">Свободных на смене в пределах лимита нет</p>',
     footer: '<button class="btn btn-ghost" data-close>Закрыть</button>',
@@ -127,9 +127,14 @@ function dayStatusHtml(r) {
     case 'covered': return `<span class="badge ok">${esc(r.covered.map(c => c.name + (c.guests.length ? ' — ' + c.guests.join(', ') : '')).join('; '))}</span>`;
     case 'uncovered': return `<span class="badge danger">⚠ не назначено</span>${r.candidates?.length ? ` <span class="muted">кандидаты: ${esc(r.candidates.map(c => c.name).join(', '))}</span>` : ''}`;
     case 'replacement': return `<span class="badge warn">↔ нужна подмена</span>${r.candidates?.length ? ` <span class="muted">кандидаты: ${esc(r.candidates.map(c => c.name).join(', '))}</span>` : ''}`;
-    case 'declined': return '<span class="badge muted">гость отказался</span>';
+    case 'declined': return '<span class="badge muted">сопровождение: отказался</span>';
     default: return '<span class="badge muted">не требуется</span>';
   }
+}
+
+/* почему сопровождение нужно / не нужно (§4.1): категория, узел, код, ◆, вручную */
+function dayReasonsHtml(r) {
+  return r.escort_reasons?.length ? `<div class="muted" data-db-reasons>${esc(r.escort_reasons.join(' · '))}</div>` : '';
 }
 
 /* OOO в «Требуют внимания»: начинается и/или заканчивается в этот день */
@@ -151,7 +156,7 @@ function dayRowHtml(r, names) {
     ...r.details.allergies.map(a => 'аллергия: ' + a)].filter(Boolean).join(' · ') : '';
   return `<div class="db-row" data-db-row="${r.reservation_id}">
     <div class="db-time">${esc(r.time)}</div><div class="db-unit"><b>${esc(r.unit)}</b>${r.overbooked ? ' <span class="badge danger">овербукинг</span>' : ''}</div>
-    <div class="db-guests">${guests}</div><div class="db-status">${names ? dayStatusHtml(r) : esc(STAYS_STATUS[r.status] || r.status)}</div>
+    <div class="db-guests">${guests}</div><div class="db-status">${names ? dayStatusHtml(r) + dayReasonsHtml(r) : esc(STAYS_STATUS[r.status] || r.status)}</div>
     <div class="db-det muted">${esc(det)}</div></div>`;
 }
 
@@ -161,8 +166,7 @@ async function renderDayBoard(body) {
   const f = staysState.filters;
   const q = staysFundParams(new URLSearchParams({ date: boardState.day }));
   if (f.escorted) q.set('escorted_only', '1');
-  if (f.vip) q.set('special', '1');
-  if (f.q.trim()) q.set('q', f.q.trim());
+  staysPeopleParams(q, f);
   const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/day?' + q, { silent: true });
   if (!fresh()) return;
@@ -179,7 +183,7 @@ async function renderDayBoard(body) {
       <div>▲ Заезды <b>${t.arrivals}</b></div><div>▼ Выезды <b>${t.departures}</b></div><div>🏠 Проживают <b>${t.in_house}</b></div>
       ${names ? `<div>🤵 Ведёт батлер <b>${t.covered}</b></div><div class="danger">⚠ Нужно, не назначено <b>${t.uncovered}</b></div>
         <div class="warn">↔ Нужна подмена <b>${t.need_replacement}</b></div><div>— Не требуется <b>${t.not_required}</b></div>
-        <div>★ VIP ${t.vip} · VVIP ${t.vvip}</div>` : ''}
+        <div data-db-special>◆ Особых гостей <b>${t.special}</b></div>` : ''}
       <div>Не заехали <b>${t.no_show}</b></div>
       ${t.overbooked ? `<div class="danger">Овербукинг <b>${t.overbooked}</b></div>` : ''}
     </div>

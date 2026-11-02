@@ -170,7 +170,7 @@ async function resetFilters() {
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
    /units заменён версиями фонда; экран фонда в Настройках — Task 3.1) */
-async function fundCategory(code, labels, validFrom) {
+async function fundCategory(code, labels, validFrom, escorted = true) {
   const today = serverToday();
   const d = await apiJson('POST', '/api/stays/fund/draft', { valid_from: validFrom || today });
   if (d.status !== 200) throw new Error(`черновик фонда (create): ${d.status} ${JSON.stringify(d.body)}`);
@@ -183,7 +183,7 @@ async function fundCategory(code, labels, validFrom) {
   };
   const kinds = (await apiJson('GET', '/api/stays/fund/snapshot?date=' + today)).body.kinds;
   const villa = kinds.find(k => k.title === 'вилла');
-  const cat = await step('categories', { code, title: code, kind_id: villa.id, escorted: true, weight: 4 });
+  const cat = await step('categories', { code, title: code, kind_id: villa.id, escorted, weight: 4 });
   const units = [];
   for (const label of labels) units.push({ id: (await step('units', { label, category_id: cat.id })).id, label });
   await step('publish', {});
@@ -784,6 +784,12 @@ async function roleSmoke() {
         check(`вкладка «${tab}»: кнопка создания только с stays.edit`, !!$(newBtn) === me.permissions.includes('stays.edit'));
       }
     }
+    if (!names) {
+      click($('#view-stays [data-stab="units"]'));
+      await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
+      check('занятость: нет ◆ и VIP-кода', !/◆/.test($('#view-stays').textContent) && !$('#view-stays [data-vip-code]')
+        && !$('#sf-special') && !$('[data-sf-dd="vipcode"]'));
+    }
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
     if (names && !me.permissions.includes('stays.edit')) await familyReadOnly();
   }
@@ -1041,6 +1047,95 @@ async function guestsTab() {
   check('дубль удалён', (await apiJson('GET', `/api/stays/guests/${drop.id}`)).status === 404);
   window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+}
+
+/* 7в · Настройки → Сопровождение, ◆ и код на экранах, табло с причинами, фильтры (правила сопровождения §5, §6) */
+async function escortScreens() {
+  console.log('\n7в · Сопровождение: справочник кодов, табло, ◆ и фильтры');
+  const today = serverToday();
+  const code = '5' + String(Date.now()).slice(-6), title = 'Тест ' + uniq;
+  window.navigate('settings');
+  await waitFor(() => !!$('#st-nav'));
+  await go('stays_escort');
+  check('экран: таблица кодов, коэффициент «Особого гостя», подсказка',
+    !!$('#se-codes-table') && !!$('#se-special') && /подберите лимит нагрузки заново/.test(text('#st-body')));
+  check('надбавок VIP/VVIP на экране нет', !$('#se-vip') && !$('#se-vvip') && !/VVIP/.test(text('#st-body')));
+  check('сводка правил на дату', !!$('[data-rules-cats]') && !!$('[data-rules-groups]') && !!$('#se-to-fund'));
+  click($('#se-code-add'));
+  check('форма кода открылась', await waitFor(() => !!$('#vc-code')));
+  input($('#vc-code'), code); input($('#vc-title'), title);
+  $('#vc-escorted').checked = true; input($('#vc-factor'), '2');
+  click($('[data-save]'));
+  const created = (await pollApi('/api/stays/fund', b => b.vip_codes.some(c => c.code === code))).vip_codes.find(c => c.code === code);
+  check('код заведён с сопровождением и коэффициентом', created?.escorted === true && created.factor === 2 && created.title === title,
+    JSON.stringify(created));
+  check('код в таблице', await waitFor(() => !!$(`[data-code-row="${created.id}"]`)));
+
+  /* бронь в категории БЕЗ сопровождения: нужен батлер только по коду */
+  const { cat } = await fundCategory('EC' + uniq, ['EC' + uniq + '-1', 'EC' + uniq + '-2'], undefined, false);
+  const d1 = addDays(today, 20), d2 = addDays(today, 23);
+  const sp = (await apiJson('POST', '/api/stays/guests', { last_name: 'Особый' + uniq, special: true, vip_code_id: created.id })).body;
+  const plain = (await apiJson('POST', '/api/stays/guests', { last_name: 'Обычный' + uniq })).body;
+  const book = (g, n) => apiJson('POST', '/api/stays/reservations', { number: n + uniq, check_in: d1, check_out: d2, category_id: cat.id,
+    occupants: [{ guest_id: g.id, role: 'main', date_from: d1, date_to: d2 }] }).then(r => r.body.result);
+  const rs = await book(sp, 'S'), rp = await book(plain, 'P');
+  check('бронь копирует код профиля', rs.vip_code_id === created.id && rp.vip_code_id == null);
+
+  window.navigate('stays');
+  window.eval(`boardState.day = '${d1}'`);
+  await openMonth(d1, 'day');
+  await resetFilters();
+  const row = id => `#view-stays [data-db-row="${id}"]`;
+  check('табло: обе брони', await waitFor(() => !!$(row(rs.id)) && !!$(row(rp.id))));
+  check('табло: «не назначено» с причиной «код … — …»', /не назначено/.test(text(row(rs.id))) && text(`${row(rs.id)} [data-db-reasons]`).includes(`код ${code} — ${title}`),
+    text(row(rs.id)));
+  check('табло: бронь без правил — «не требуется»', /не требуется/.test(text(row(rp.id))), text(row(rp.id)));
+  check('табло: ◆ у особого гостя и код рядом', !!$(`${row(rs.id)} .sb-star`) && text(`${row(rs.id)} [data-vip-code]`) === code);
+  check('табло: без ◆ у обычного гостя', !$(`${row(rp.id)} .sb-star`));
+  check('итоги: «Особых гостей», без VIP/VVIP', !!$('[data-db-special]') && !/VVIP/.test(text('.db-sum')), text('.db-sum'));
+
+  /* фильтр «◆ Особый гость» и «VIP-код» */
+  await setCheck('#sf-special', true);
+  check('фильтр «◆ Особый гость»: обычный гость скрыт', await waitFor(() => !!$(row(rs.id)) && !$(row(rp.id))));
+  await resetFilters();
+  await setCheck(`[data-sf-vipcode="${created.id}"]`, true);
+  check('фильтр «VIP-код»: только бронь с кодом', await waitFor(() => !!$(row(rs.id)) && !$(row(rp.id))));
+  await resetFilters();
+
+  /* шахматка объектов и «Брони»: ◆ и код */
+  await openMonth(d1, 'units');
+  check('полоса: ◆ и код', await waitFor(() => /◆/.test(text(`#view-stays [data-bar="${rs.id}"]`)) && text(`#view-stays [data-bar="${rs.id}"]`).includes(code)),
+    text(`#view-stays [data-bar="${rs.id}"]`));
+  check('полоса обычного гостя без ◆', !/◆/.test(text(`#view-stays [data-bar="${rp.id}"]`)));
+  await setCheck('#sf-special', true);
+  check('шахматка: фильтр «◆ Особый гость»', await waitFor(() => !!$(`#view-stays [data-bar="${rs.id}"]`) && !$(`#view-stays [data-bar="${rp.id}"]`)));
+  await resetFilters();
+  window.eval(`staysBook.custom = true; staysBook.first = '${d1}'; staysBook.last = '${d2}'`);
+  click($('#view-stays [data-stab="bookings"]'));
+  check('«Брони»: ◆ и код', await waitFor(() => /◆/.test(text(`[data-bk-row="${rs.id}"]`)) && text(`[data-bk-row="${rs.id}"]`).includes(code)),
+    text(`[data-bk-row="${rs.id}"]`));
+  await setCheck('#sf-special', true);
+  check('«Брони»: фильтр «◆ Особый гость»', await waitFor(() => !!$(`[data-bk-row="${rs.id}"]`) && !$(`[data-bk-row="${rp.id}"]`)));
+  await resetFilters();
+
+  /* сохранённый набор со старым полем vip: true переезжает в special */
+  const legacy = window.eval(`JSON.stringify(staysCleanFilters({ vip: true }))`);
+  check('набор со старым vip: true читается как special', JSON.parse(legacy).special === true && !('vip' in JSON.parse(legacy)));
+
+  /* удаление использованного — 409 с текстом сервера; архив */
+  window.navigate('settings');
+  await waitFor(() => !!$('#st-nav'));
+  await go('stays_escort');
+  click($(`[data-code-del="${created.id}"]`));
+  check('подтверждение удаления', await waitFor(() => !!$('[data-yes]')));
+  click($('[data-yes]'));
+  check('удаление использованного кода — сообщение 409', await waitFor(() => /Код используется/.test(text('#toast-host'))), text('#toast-host'));
+  check('код остался', (await apiJson('GET', '/api/stays/fund')).body.vip_codes.some(c => c.id === created.id));
+  click($(`[data-code-arch="${created.id}"]`));
+  check('архив: в API', (await pollApi('/api/stays/fund', b => b.vip_codes.find(c => c.id === created.id)?.archived)).vip_codes
+    .find(c => c.id === created.id).archived === true);
+  check('архив: пометка в таблице', await waitFor(() => /в архиве/.test(text(`[data-code-row="${created.id}"]`))));
+  check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
 }
 
 /* 9б · профиль гостя: «◆ Особый гость» и VIP-код; смена кода — галочка «обновить в бронях: N» и предпросмотр;
@@ -1537,6 +1632,7 @@ async function main() {
     await flagMidMonth();
     await formFundOnCheckIn();
     await escortBookingForm();
+    await escortScreens();
     await bookingsTab();
     await guestsTab();
     await guestProfileCode();

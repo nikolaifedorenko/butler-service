@@ -173,7 +173,7 @@ def save_settings(db: Session, vip_bonus: float | None, vvip_bonus: float | None
     if vvip_bonus is not None:
         row.vvip_bonus = Decimal(str(vvip_bonus))
     if special_factor is not None:
-        row.special_factor = Decimal(str(special_factor))
+        row.special_factor = Decimal(str(special_factor)).quantize(Decimal('0.01'))
     row.replacement_codes = ",".join(c.strip() for c in replacement_codes.split(",") if c.strip())
     db.flush()
     return row, before

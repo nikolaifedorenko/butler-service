@@ -32,12 +32,13 @@ def _row(rows, rid):
     return next(r for r in rows if r["reservation_id"] == rid)
 
 
-def test_day_board_totals_and_tabs(manager_role_client, manager_client):
+def test_day_board_totals_special(manager_role_client, manager_client):
     s = _setup(manager_role_client, manager_client)
     b = manager_client.get(f"{API}/day", params={"date": _iso(DAY)}).json()
     t = b["totals"]
     assert (t["arrivals"], t["departures"], t["in_house"]) == (2, 1, 3)
-    assert (t["uncovered"], t["not_required"], t["vip"], t["no_show"]) == (2, 1, 1, 0)
+    assert (t["uncovered"], t["not_required"], t["special"], t["no_show"]) == (2, 1, 1, 0)
+    assert "vip" not in t and "vvip" not in t           # итоги по «Особым гостям», а не по уровню
     arr = _row(b["arrivals"], s["arr"]["id"])
     assert arr["time"] == "РЗ" and arr["cover_status"] == "uncovered" and arr["guests"][0]["special"] is True
     assert arr["details"]["logistics"][0]["time"] == "07:40"

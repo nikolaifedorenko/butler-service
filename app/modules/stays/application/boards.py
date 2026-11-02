@@ -185,12 +185,10 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
               "no_show": len(no_show), "overbooked": len(overbooked)}
     if names:
         statuses = [x["cover_status"] for x in in_house]
-        # итоги VIP/VVIP — по прежнему уровню гостя, пока экран табло их показывает (заменит «Особый»)
-        guests = [ctx.guests[g["guest_id"]].level for x in in_house for g in x["guests"]]
+        special = sum(1 for x in in_house for g in x["guests"] if g["special"])   # «Особый гость» в доме
         totals |= {"covered": statuses.count("covered"), "uncovered": statuses.count("uncovered"),
                    "need_replacement": statuses.count("replacement"), "declined": statuses.count("declined"),
-                   "not_required": statuses.count("not_required"), "vip": guests.count("vip"),
-                   "vvip": guests.count("vvip")}
+                   "not_required": statuses.count("not_required"), "special": special}
     # «Требуют внимания» — всем уровням (решение владельца: OOO видны всем): овербукинг (бронь без
     # объекта, часть 2 §4.2) и OOO дня; на уровне «занятость» строки броней — без данных гостей,
     # непокрытые и подмены — только с уровня «имена»

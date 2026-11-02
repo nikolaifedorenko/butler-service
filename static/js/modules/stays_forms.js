@@ -65,7 +65,7 @@ function renderPreview(diff, el, refused) {
   (diff.warnings_added || []).forEach(w => items.push(`<li class="sp-warn">⚠ ${esc(w.text)}</li>`));
   (diff.warnings_removed || []).forEach(w => items.push(`<li class="sp-ok">✓ снято: ${esc(w.text)}</li>`));
   (diff.coverage_changes || []).forEach(c => items.push(`<li>${esc(dateRu(c.day))} · ${esc(c.employee || '')}: ${c.gained?.length ? `+${esc(c.gained.join(', '))}` : ''} ${c.lost?.length ? `−${esc(c.lost.join(', '))}` : ''}</li>`));
-  (diff.load_changes || []).forEach(c => items.push(`<li class="${c.after > c.limit ? 'sp-warn' : ''}">${esc(dateRu(c.day))} · ${esc(c.employee || '')}: нагрузка ${esc(String(c.before))} → ${esc(String(c.after))} из ${esc(String(c.limit))}</li>`));
+  (diff.load_changes || []).forEach(c => items.push(`<li class="${c.after > c.limit ? 'sp-warn' : ''}">${esc(dateRu(c.day))} · ${esc(c.employee || '')}: нагрузка ${staysWeight(c.before)} → ${staysWeight(c.after)} из ${staysWeight(c.limit)}</li>`));
   el.innerHTML = `<div class="sp-head">Что изменится</div>${items.length ? `<ul>${items.join('')}</ul>`
     : '<div class="muted">Размещение и предупреждения не меняются</div>'}`;
 }
@@ -454,7 +454,7 @@ async function openCoverageForm(card, onSaved) {
           if (sc.group_id) q.set('group_id', sc.group_id); else q.set('reservation_id', sc.reservation_id);
           const got = await api('/api/stays/coverage/candidates?' + q);
           $('#cf-cand-out', m).innerHTML = got.map(c => `<button class="btn btn-sm btn-ghost" data-pick-emp="${c.employee_id}">
-            ${esc(c.name)}${c.knows_guest ? ' · знает гостя' : ''} · ${esc(String(c.load_after))}</button>`).join('') || '<span class="muted">свободных на смене нет</span>';
+            ${esc(c.name)}${c.knows_guest ? ' · знает гостя' : ''} · ${staysWeight(c.load_after)}</button>`).join('') || '<span class="muted">свободных на смене нет</span>';
           $$('[data-pick-emp]', m).forEach(b => { b.onclick = () => { $('#cf-b1', m).value = b.dataset.pickEmp; }; });
         } catch (e) { toast(e.message, 'err'); }
       };
