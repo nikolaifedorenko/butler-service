@@ -41,7 +41,7 @@ from .fund_versions import (
     fund_for_stays,
     version_cuts,
 )
-from .guests import search_query, short_name
+from .guests import TextSearch, short_name, text_search
 from .reservations import STATUS_TITLES, vip_code_of
 from .visibility import Level, at_least, serialize_bar
 
@@ -259,7 +259,8 @@ def _load(row: BoardRow, occupied: dict[tuple[int, dt.date], int]) -> float:
     return round(sum((row.id, d) in occupied for d in row.in_fund) / len(row.in_fund), 3)
 
 
-def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level) -> dict:
+def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level,
+                mine_ids: set[int] | None = None) -> dict:
     days = check_window(first, last)
     f = f.for_level(level)
     fund = fund_for(db, first, last)
@@ -279,7 +280,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         labels = {lb.id: lb for lb in db.scalars(select(Label))}
     code_ids = {r.vip_code_id for r in res if r.vip_code_id is not None} if names else set()
     codes = dict(db.execute(select(VipCode.id, VipCode.code).where(VipCode.id.in_(code_ids))).all()) if code_ids else {}
-    match = _search(f.q, res, occ, guests, units, asg) if f.q.strip() else None
+    ts = text_search(f.q, level == "full")         # ниже полного — только ФИО и номер (решение 8)
+    match = _search(ts, res, occ, guests, units, asg) if ts is not None else None
     today = local_date()
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
@@ -315,11 +317,14 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
             if uid not in unit_ids and not (uid is None and p0.category_id in visible_cats):
                 continue
             over = uid is None and _is_overbooked(state, r.id, p0.start_pos, p1.end_pos)
-            bars.append(serialize_bar({**base, "seg_index": p0.index, "unit_id": uid, "category_id": p0.category_id,
-                                       "overbooked": over,
-                                       "start": _d(p0.start), "end": _d(p1.end), "start_pos": p0.start_pos,
-                                       "end_pos": p1.end_pos, "early": r.early and p0.index == 0,
-                                       "late": r.late and p1.end_pos == segs[-1].end_pos}, level))
+            bar = serialize_bar({**base, "seg_index": p0.index, "unit_id": uid, "category_id": p0.category_id,
+                                 "overbooked": over,
+                                 "start": _d(p0.start), "end": _d(p1.end), "start_pos": p0.start_pos,
+                                 "end_pos": p1.end_pos, "early": r.early and p0.index == 0,
+                                 "late": r.late and p1.end_pos == segs[-1].end_pos}, level)
+            if mine_ids is not None:
+                bar["mine"] = r.id in mine_ids          # батлеру — рамка своих броней (часть 4 §6)
+            bars.append(bar)
 
     holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
               "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
@@ -380,12 +385,10 @@ def _block_bars(db: Session, state: allocation.AllocationState, unit_ids: set[in
             for b, c, k, u, a, z in runs]
 
 
-def _search(q: str, res, occ, guests, units, asg) -> set[int]:
-    needle = search_query(q)
-    hits = {r.id for r in res if needle in (r.search_text or "")}
-    hits |= {rid for rid, os in occ.items() if any(needle in (guests[o.guest_id].search_text or "")
-                                                   for o in os if o.guest_id in guests)}
-    unit_hit = {u.id for u in units if needle in u.label.lower()}
+def _search(ts: TextSearch, res, occ, guests, units, asg) -> set[int]:
+    hits = {r.id for r in res if ts.reservation(r)}
+    hits |= {rid for rid, os in occ.items() if any(ts.guest(guests[o.guest_id]) for o in os if o.guest_id in guests)}
+    unit_hit = {u.id for u in units if ts.text(u.label)}
     hits |= {rid for (rid, _), uid in asg.items() if uid in unit_hit}
     return hits
 

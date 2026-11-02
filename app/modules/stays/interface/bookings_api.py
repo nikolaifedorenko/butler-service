@@ -39,26 +39,23 @@ def _query(first: dt.date, last: dt.date, mode: Literal["stay", "check_in", "che
         raise HTTPException(status_code=422, detail=str(e)) from e
 
 
-def _access(db: Session, principal: Principal) -> tuple[str, bool]:
+def _access(db: Session, principal: Principal) -> str:
     level = level_for(db, principal)
     if level is None or level == "occupancy":
         raise HTTPException(status_code=403, detail="Список броней доступен с правом «Шахматки с фамилиями»")
-    # права уже вычислил гейт require_perm этого запроса — повторно не запрашиваем
-    return level, "stays.guests" in principal.gate_permissions
+    return level
 
 
 @router.get("/bookings")
 def bookings_list(query: bookings.BookingQuery = Depends(_query),
                   principal: Principal = Depends(require_perm("stays.view")), db: Session = Depends(get_db)):
-    level, can_guests = _access(db, principal)
-    return bookings.list_bookings(db, query, level, can_guests)
+    return bookings.list_bookings(db, query, _access(db, principal))
 
 
 @router.get("/bookings/export")
 def bookings_export(query: bookings.BookingQuery = Depends(_query),
                     principal: Principal = Depends(require_perm("stays.export")), db: Session = Depends(get_db)):
-    level, can_guests = _access(db, principal)
-    rows = bookings.find_bookings(db, query, level, can_guests)
+    rows = bookings.find_bookings(db, query, _access(db, principal))
     f = query.filters
     audit(db, principal, "stays_export", "export:bookings", {
         "kind": "bookings", "first": query.first.isoformat(), "last": query.last.isoformat(), "mode": query.mode,

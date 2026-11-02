@@ -55,3 +55,25 @@ def test_occupancy_level_no_code_no_special(occupancy_client, manager_role_clien
         assert_no_pd(body, {code["code"], title, "◆", "Особый"})
     keys = set().union(*board["bars"], *day["arrivals"])
     assert not keys & {"special", "vip_code", "vip_code_id", "escort_mode", "escort_reasons", "guests"}
+
+
+def test_butler_foreign_booking_no_pd_on_any_get(app_stack, own_reservation, butler_client):
+    """Батлер: ни один GET модуля не отдаёт заказчика, примечание, телефон чужой брони (часть 4 §6)."""
+    from .helpers import set_guest
+
+    other = own_reservation["other"]
+    set_guest(own_reservation["other_guest"]["id"], phone="79165550188")
+    d = own_reservation["day"].isoformat()
+    words = {"9165550188", "916 555-01-88", "916) 555-01-88"}
+    fill = {"rid": str(other["id"]), "gid": str(own_reservation["other_guest"]["id"]), "line_id": "1"}
+    query = {"first": d, "last": d, "date": d, "day": d, "reservation_id": str(other["id"])}
+    checked = 0
+    for r in _flat(app_stack["app"].routes):
+        if not (isinstance(r, APIRoute) and r.path.startswith(API) and "GET" in r.methods) or "export" in r.path:
+            continue
+        path = re.sub(r"\{(\w+)\}", lambda m: fill.get(m.group(1), "1"), r.path)
+        resp = butler_client.get(path, params=query)
+        if resp.status_code == 200 and resp.headers["content-type"].startswith("application/json"):
+            assert_no_pd(resp.json(), words, path)
+            checked += 1
+    assert checked >= 4

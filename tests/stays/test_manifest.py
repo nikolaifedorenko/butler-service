@@ -7,8 +7,8 @@ from app.core.permissions import role_permissions
 def test_stays_permissions_defaults(db):
     sup, emp, man = (role_permissions(db, r) for r in ("supervisor", "employee", "manager"))
     assert {"stays.view", "stays.edit", "stays.assign", "stays.guests"} <= sup
-    assert {"stays.edit_mine", "stays.mine"} <= emp
-    assert not {"stays.view", "stays.setup", "stays.occupancy"} & emp
+    assert {"stays.view", "stays.mine", "stays.mine_guest_edit", "stays.mine_res_edit"} <= emp
+    assert not {"stays.edit", "stays.guests", "stays.setup", "stays.occupancy"} & emp
     assert {"stays.setup", "stays.export"} <= man
     assert not {"stays.setup", "stays.export"} & sup
     assert "stays.occupancy" not in man          # только своей ролью «Загрузка без гостей»
@@ -17,7 +17,7 @@ def test_stays_permissions_defaults(db):
 def test_stays_menu_for_employee(employee_client):
     me = employee_client.get("/api/auth/me").json()
     ids = {m["id"] for m in me["menu"]}
-    assert "mystays" in ids and "stays" not in ids
+    assert {"mystays", "stays"} <= ids          # шахматка с фамилиями — всем ролям (часть 4 §3)
 
 
 

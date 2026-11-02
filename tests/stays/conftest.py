@@ -224,7 +224,7 @@ def assert_no_pd(obj, words: set[str], path: str = "") -> None:
 
 @pytest.fixture()
 def butler_client(app_stack):
-    """Батлер Иванов (роль «сотрудник»): stays.mine и stays.edit_mine."""
+    """Батлер Иванов (роль «сотрудник»): stays.view, stays.mine, stays.mine_guest_edit и stays.mine_res_edit."""
     from tests.conftest import _login
     return _login(app_stack["app"], "ivanov")
 

@@ -74,8 +74,9 @@ def test_board_occupancy_ignores_search(occupancy_client, demo_small):
     assert len(bars) == 4
 
 
-def test_board_forbidden_without_view(employee_client):
-    assert employee_client.get(f"{API}/board/units", params=WIN).status_code == 403
+def test_board_visible_to_employee(employee_client):
+    """stays.view — всем ролям по умолчанию (часть 4 §3): батлер видит шахматку."""
+    assert employee_client.get(f"{API}/board/units", params=WIN).status_code == 200
 
 
 def test_board_window_limit(manager_client):

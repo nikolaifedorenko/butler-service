@@ -157,13 +157,12 @@ def test_visible_to_all_levels_with_titles(manager_role_client, manager_client, 
                                            employee_client):
     cat = make_category(manager_role_client, n_units=1)
     o = _ooo(manager_client, cat["units"][0]["id"], "2043-01-10", "2043-01-12", "Замена окон").json()["result"]
-    for c in (manager_client, mgmt_client, occupancy_client):
+    for c in (manager_client, mgmt_client, occupancy_client, employee_client):
         r = c.get(f"{API}/ooo", params={"category_ids": cat["id"]})
         assert r.status_code == 200, r.text
         assert [(x["id"], x["reason"]) for x in r.json()["rows"]] == [(o["id"], "Замена окон")]
-    assert employee_client.get(f"{API}/ooo").status_code == 403
     # писать — только stays.edit
-    for c in (mgmt_client, occupancy_client):
+    for c in (mgmt_client, occupancy_client, employee_client):
         assert _ooo(c, cat["units"][0]["id"], "2043-02-10", "2043-02-12").status_code == 403
 
 

@@ -16,6 +16,7 @@ from ..adapters.duty_timesheet import TimesheetDuty
 from ..adapters.orm import Guest
 from ..application import guests, history, reservations, views
 from ..application.visibility import level_for
+from ._mine import my_reservations, own_guest
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 SEE = require_perm("stays.view", "stays.occupancy")
@@ -45,7 +46,7 @@ def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters
     f = views.BoardFilters(**dims, escorted_only=escorted, special=special, vip_code_ids=tuple(vip_code_ids),
                            employee_id=employee_id, q=q)
     try:
-        return views.units_board(db, first, last, f, level)
+        return views.units_board(db, first, last, f, level, my_reservations(db, principal))
     except views.ViewError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
@@ -53,22 +54,35 @@ def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters
 @router.get("/reservations/{rid}/card")
 def reservation_card(rid: int, principal: Principal = Depends(require_perm("stays.view")),
                      db: Session = Depends(get_db)):
+    level = level_for(db, principal)
+    mine_ids = my_reservations(db, principal)
+    if mine_ids is not None and rid in mine_ids:
+        level = "full"                              # своя бронь — полная карточка (часть 4 §6)
     try:
-        return views.reservation_card(db, rid, level_for(db, principal), TimesheetDuty(db))
+        card = views.reservation_card(db, rid, level, TimesheetDuty(db))
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    if mine_ids is not None:
+        card["mine"] = rid in mine_ids              # батлеру — «Изменить» и «Карточка» своей брони
+    return card
 
 
 @router.get("/reservations/{rid}/history")
 def reservation_history(rid: int, principal: Principal = Depends(require_perm("stays.view")),
                         db: Session = Depends(get_db)):
-    return history.reservation_history(db, rid, level_for(db, principal))
+    level = level_for(db, principal)
+    mine_ids = my_reservations(db, principal)
+    if mine_ids is not None and rid in mine_ids:
+        level = "full"                              # своя бронь — история целиком, как карточка (часть 4 §6)
+    return history.reservation_history(db, rid, level)
 
 
 @router.get("/guests/{gid}/card")
-def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
+def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
                db: Session = Depends(get_db)):
+    """Карточка гостя целиком (с историей проживаний): stays.guests — любого, stays.mine — своего."""
     g = db.get(Guest, gid)
     if g is None:
         raise HTTPException(status_code=404, detail="Гость не найден")
+    own_guest(db, principal, gid, "stays.guests")
     return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, gid), "stays": history.guest_stays(db, gid)}

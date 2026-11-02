@@ -57,25 +57,33 @@ def family_graph(db: Session, seeds: set[int]) -> FamilyGraph:
     return graph_of(family_links(db, seeds))
 
 
-def _family_people(db: Session, gid: int) -> dict[int, int]:
+def _tree_people(gid: int, touching, former_ends: bool = False) -> dict[int, int]:
     """Люди графа карточки: человек → поколение относительно гостя (вверх +, вниз −), в
-    пределах GENERATIONS и MAX_HOPS шагов, не больше MAX_PEOPLE."""
+    пределах GENERATIONS и MAX_HOPS шагов, не больше MAX_PEOPLE. touching(люди) — семейные
+    связи (a, b, kind, former) любого из них (parent — a родитель b). former_ends — бывший
+    супруг в графе, но обход дальше через него не идёт (бывший не даёт свойственников, kinship)."""
     gen = {gid: 0}
     frontier = {gid}
     for _ in range(MAX_HOPS):
         if not frontier or len(gen) >= MAX_PEOPLE:
             break
         nxt = set()
-        for ln in _links_touching(db, frontier):
-            for me, other, delta in ((ln.guest_a_id, ln.guest_b_id, -1), (ln.guest_b_id, ln.guest_a_id, 1)):
+        for a, b, kind, former in touching(frontier):
+            for me, other, delta in ((a, b, -1), (b, a, 1)):
                 if me not in frontier or other in gen:
                     continue
-                g = gen[me] + (delta if ln.kind == "parent" else 0)
+                g = gen[me] + (delta if kind == "parent" else 0)
                 if abs(g) <= GENERATIONS and len(gen) < MAX_PEOPLE:
                     gen[other] = g
-                    nxt.add(other)
+                    if not (former_ends and former):
+                        nxt.add(other)
         frontier = nxt
     return gen
+
+
+def _family_people(db: Session, gid: int) -> dict[int, int]:
+    return _tree_people(gid, lambda ids: ((ln.guest_a_id, ln.guest_b_id, ln.kind, ln.former)
+                                          for ln in _links_touching(db, ids)))
 
 
 def full_name(g: Guest) -> str:
@@ -135,3 +143,36 @@ def kin_among(db: Session, present: set[int], seeds: set[int] | None = None) -> 
         if rel:
             out[gid] = rel
     return out
+
+
+def relatives_among(db: Session, present: set[int], candidates: set[int]) -> set[int]:
+    """Кто из candidates — родня кого-то из present по семейному дереву (часть 4 §3, состав
+    брони): в дереве его карточки (до GENERATIONS поколений, через браки — как видит батлер) или
+    вычисленный родственник по domain/kinship (в любую сторону: «бабушка жены», «внук»). Через
+    бывшего супруга — только он сам, не его родня.
+    Читаются только связи семей present и candidates (связный граф, family_links): родство вне
+    их семей ответа не меняет; обход — в памяти."""
+    if not present or not candidates:
+        return set()
+    rows = [(ln.guest_a_id, ln.guest_b_id, ln.kind, ln.former) for ln in family_links(db, present | candidates)]
+    graph = graph_of(rows)
+    children = children_of(graph.parents)
+    by_person: dict[int, list[tuple[int, tuple[int, int, str, bool]]]] = {}
+    for n, (a, b, kind, former) in enumerate(rows):
+        for x in (a, b):
+            by_person.setdefault(x, []).append((n, (a, b, kind, bool(former))))
+
+    def touching(ids: set[int]) -> list[tuple[int, int, str, bool]]:
+        # по порядку связей, как в базе (_links_touching): граф карточки тот же
+        return [ln for _, ln in sorted({e for x in ids for e in by_person.get(x, ())})]
+
+    def kin(pid: int) -> set[int]:
+        return {k.person_id for k in kin_of(pid, {}, graph.parents, graph.spouses, children)}
+
+    found: set[int] = set()
+    for p in present:
+        found |= (set(_tree_people(p, touching, former_ends=True)) | kin(p)) & candidates
+    for c in candidates - found:
+        if kin(c) & present:
+            found.add(c)
+    return found

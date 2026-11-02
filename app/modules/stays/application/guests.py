@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+from dataclasses import dataclass
 
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
@@ -122,14 +123,6 @@ def guest_search_text(g: Guest, searchable: set[str]) -> str:
     return " ".join(p for p in parts if p).lower()[:1000]
 
 
-def guest_text(g: Guest, can_phone: bool) -> str:
-    """Текст поиска по гостю. Телефон — персональные данные полного уровня: без права цифры
-    телефона из текста убираются, иначе по ответу можно было бы подобрать номер."""
-    text = g.search_text or ""
-    digits = re.sub(r"\D", "", g.phone or "")
-    return text if can_phone or not digits else text.replace(digits, "", 1)
-
-
 def reservation_search_text(r: Reservation, searchable: set[str]) -> str:
     fields = json.loads(r.fields_json or "{}")
     parts = [r.number, r.customer, *(str(v) for k, v in fields.items() if k in searchable)]
@@ -236,12 +229,13 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
 
 
 def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = None, new_guest: dict | None = None,
-              former: bool = False, other_is_parent: bool = False,
-              also_parent_id: int | None = None) -> tuple[list[GuestLink], int]:
+              former: bool = False, other_is_parent: bool = False, also_parent_id: int | None = None,
+              created_by: int | None = None) -> tuple[list[GuestLink], int]:
     """Связь из редактора дерева (§4) одной записью под одним замком → (связи, id второй стороны).
     Вторая сторона — существующий гость other_id или новый new_guest (фамилия, имя, пол);
     other_is_parent — она родитель guest_id (иначе guest_id — её родитель при kind=parent);
-    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»). Любой отказ —
+    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»); created_by — батлер,
+    который заводит нового человека: тот становится его «своим» (часть 4 §3). Любой отказ —
     исключение после частичных flush: вызывающий откатывает, не остаётся ни гостя, ни связи."""
     lock_module(db)
     if (other_id is None) == (new_guest is None):
@@ -255,8 +249,9 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
     if db.get(Guest, guest_id) is None:
         raise GuestError("Гость не найден")
     if new_guest is not None:
-        other_id = save_guest(db, {"middle_name": "", "phone": "", "email": "", "note": "",
-                                   **new_guest}, None)[0].id
+        g = save_guest(db, {"middle_name": "", "phone": "", "email": "", "note": "", **new_guest}, None)[0]
+        g.created_by_employee_id = created_by
+        other_id = g.id
     a, b = (other_id, guest_id) if other_is_parent else (guest_id, other_id)
     rows = [_add_link_locked(db, a, b, kind, former)]
     if also_parent_id is not None:
@@ -339,12 +334,47 @@ def search_query(q: str) -> str:
     return q
 
 
-def search_guests(db: Session, q: str, limit: int = 30) -> list[Guest]:
-    needle = search_query(q)
-    if not needle:
+@dataclass(frozen=True)
+class TextSearch:
+    """Текстовый поиск с учётом уровня видимости (решение 8). Полный уровень — по search_text:
+    ФИО, цифры телефона, почта, поля с флагом «искать»; у брони — номер, заказчик, поля. Ниже —
+    только ФИО гостя и номер брони: иначе по найденному можно было бы подобрать телефон или почту
+    чужого гостя."""
+    needle: str
+    full: bool
+
+    def guest(self, g: Guest) -> bool:
+        return self.needle in ((g.search_text if self.full else g.name_text) or "")
+
+    def reservation(self, r: Reservation) -> bool:
+        return self.needle in ((r.search_text if self.full else (r.number or "").lower()) or "")
+
+    def text(self, s: str) -> bool:
+        """Не персональные данные (обозначение объекта) — на любом уровне."""
+        return self.needle in s.lower()
+
+
+def text_search(q: str, full: bool) -> TextSearch | None:
+    """None — пустой запрос. Ниже полного уровня цифры не превращаются в номер телефона."""
+    needle = search_query(q) if full else q.strip().lower()
+    return TextSearch(needle, full) if needle else None
+
+
+def guest_search_column(full: bool):
+    """Колонка поиска гостя в SQL: полный уровень — search_text, ниже — только ФИО."""
+    return Guest.search_text if full else Guest.name_text
+
+
+def search_guests(db: Session, q: str, limit: int = 30, within=None, full: bool = True) -> list[Guest]:
+    """within — подзапрос id гостей, среди которых искать (свои гости батлера), или None — все;
+    full=False — только по ФИО (ниже полного уровня, решение 8)."""
+    ts = text_search(q, full)
+    if ts is None:
         return []
-    return list(db.scalars(select(Guest).where(Guest.search_text.contains(needle, autoescape=True))
-                           .order_by(Guest.last_name, Guest.first_name, Guest.id).limit(limit)))
+    stmt = select(Guest).where(guest_search_column(full).contains(ts.needle, autoescape=True))
+    if within is not None:
+        stmt = stmt.where(Guest.id.in_(within))
+    return list(db.scalars(stmt.order_by(Guest.last_name, Guest.first_name, Guest.id).limit(limit)))
 
 
 # ── Объединение дублей (addendum §3) ──────────────────────────────────────
@@ -642,6 +672,10 @@ def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
     links = _apply_links(db, plan, keep_id)
     prefs = _merge_prefs(db, keep_id, drop_id)
     merged = _merge_profile(keep, drop)
+    if keep.created_by_employee_id != drop.created_by_employee_id:
+        # автор профиля делает гостя «своим» батлеру (часть 4 §3): у слитого профиля — история
+        # обоих, автор остаётся, только если он у обоих один (решение 10)
+        keep.created_by_employee_id = None
     db.delete(drop)
     db.flush()
     keep.search_text = guest_search_text(keep, searchable_codes(db, "guest"))

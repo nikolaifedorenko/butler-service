@@ -16,7 +16,7 @@ from ..ports.duty import DutyPort
 from .context import NO_GUESTS, StaysContext, load_context
 from .coverage import _known, rank_in_ctx
 from .family import kin_among
-from .guests import search_query
+from .guests import text_search
 from .views import fund_match
 from .visibility import Level
 
@@ -124,7 +124,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
             companions.setdefault(c.reservation_id, []).append({"kind": c.kind, "description": c.description})
     all_guests = {g for s in stays_now.values() for g in s.guests if g != NO_GUESTS}
     known = _known(db, all_guests, day) if names and all_guests else {}
-    needle = search_query(f.q) if names and f.q.strip() else ""
+    ts = text_search(f.q, full) if names else None     # ниже полного — только ФИО и номер (решение 8)
     # родственники среди проживающих в эту и прошлую ночь (§4: «мать — Петрова М.»)
     present = all_guests | {g for s in stays_prev.values() for g in s.guests if g != NO_GUESTS}
     relatives = {gid: [{"guest_id": o, "title": t, "name": ctx.guest_name(o)} for o, t in rel]
@@ -158,9 +158,8 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
             return None
         if f.employee_id and not any(c["employee_id"] == f.employee_id for c in st.get("covered", [])):
             return None
-        if needle and needle not in (r.search_text or "") and not any(
-                needle in (ctx.guests[g["guest_id"]].search_text or "") for g in guests) \
-                and needle not in base["unit"].lower():
+        if ts is not None and not ts.reservation(r) and not any(ts.guest(ctx.guests[g["guest_id"]]) for g in guests) \
+                and not ts.text(base["unit"]):
             return None
         code = ctx.vip_codes.get(r.vip_code_id) if r.vip_code_id is not None else None
         out = {**base, **st, "number": r.number, "vip_code": code.code if code else "", "guests": guests}

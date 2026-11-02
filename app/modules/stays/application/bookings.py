@@ -18,7 +18,7 @@ from ..domain.halfday import Piece, pieces, segments
 from . import allocation
 from .context import load_context
 from .fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
-from .guests import guest_text, search_query, short_name
+from .guests import short_name, text_search
 from .reservations import STATUS_TITLES
 from .views import BoardFilters, ViewError, fund_match
 from .visibility import LEVEL_ORDER, Level
@@ -124,7 +124,7 @@ def _escorted(db: Session, items: list[_Item], win_a: dt.date, win_b: dt.date) -
     return [it for it in items if it.r.id in needed]
 
 
-def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) -> list[dict]:
+def find_bookings(db: Session, q: BookingQuery, level: Level) -> list[dict]:
     """Все брони, подходящие под запрос, в порядке сортировки (без среза страницы)."""
     if LEVEL_ORDER[level] < LEVEL_ORDER["names"]:
         raise PermissionError("Список броней без фамилий не показывается")
@@ -213,11 +213,10 @@ def find_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) 
         items = [it for it in items if it.special]
     if f.vip_code_ids:
         items = [it for it in items if it.r.vip_code_id in f.vip_code_ids]
-    if f.q.strip():
-        needle = search_query(f.q)
-        unit_text = {it.r.id: " ".join(lbl for _, lbl in it.units).lower() for it in items}
-        items = [it for it in items if needle in (it.r.search_text or "") or needle in unit_text[it.r.id]
-                 or any(needle in guest_text(guests[o.guest_id], can_guests) for o in it.occ if o.guest_id in guests)]
+    ts = text_search(f.q, level == "full")       # ниже полного — только ФИО и номер брони (решение 8)
+    if ts is not None:
+        items = [it for it in items if ts.reservation(it.r) or ts.text(" ".join(lbl for _, lbl in it.units))
+                 or any(ts.guest(guests[o.guest_id]) for o in it.occ if o.guest_id in guests)]
     if q.with_warnings:
         state = allocation.current_state(db)
         flagged = {rid for w in state.warnings for rid in state.members[w.key]}
@@ -296,6 +295,6 @@ def _row(it: _Item, codes: dict[int, str]) -> dict:
             "created_at": r.created_at.isoformat(timespec="minutes")}
 
 
-def list_bookings(db: Session, q: BookingQuery, level: Level, can_guests: bool) -> dict:
-    rows = find_bookings(db, q, level, can_guests)
+def list_bookings(db: Session, q: BookingQuery, level: Level) -> dict:
+    rows = find_bookings(db, q, level)
     return {"total": len(rows), "rows": rows[q.offset:q.offset + q.limit]}

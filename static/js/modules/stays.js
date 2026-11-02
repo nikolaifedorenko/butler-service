@@ -213,8 +213,8 @@ function staysBarHtml(b, base, span, names) {
     ? `${staysGuestMark(b.special)}${esc(b.main_guest || b.number || 'бронь')}${b.vip_code ? ` · ${esc(b.vip_code)}` : ''}`
     : `занято · ${b.guests_count} гост.`;
   const tip = names ? `${b.number} · ${dateRu(b.start)}–${dateRu(b.end)}` : `${dateRu(b.start)}–${dateRu(b.end)}`;
-  return `<div class="sb-bar${b.status === 'tentative' ? ' tentative' : ''}" data-bar="${b.reservation_id}"
-    style="left:${left}%;width:${right - left}%;background:${esc(color)}" title="${esc(tip)}">${textHtml}</div>`;
+  return `<div class="sb-bar${b.status === 'tentative' ? ' tentative' : ''}${b.mine ? ' sb-mine' : ''}" data-bar="${b.reservation_id}"
+    style="left:${left}%;width:${right - left}%;background:${esc(color)}" title="${esc(b.mine ? 'Ваша бронь · ' + tip : tip)}">${textHtml}</div>`;
 }
 
 /* Цвет блока — по его номеру из небольшой палитры (в БД цвета нет); полосы блока пунктиром и не
@@ -374,6 +374,10 @@ async function openReservationCard(rid, onChanged) {
   const [card, history] = await Promise.all([
     api(`/api/stays/reservations/${rid}/card`), api(`/api/stays/reservations/${rid}/history`)]);
   const role = { main: 'главный', guest: 'проживает' };
+  /* батлер в своей брони (card.mine): карточки гостей (stays.mine) и «Изменить» (stays.mine_res_edit) —
+     как в «Моих гостях»; назначения, статус и совместное проживание — только stays.edit / stays.assign */
+  const guestCard = can('stays.guests') || (card.mine && can('stays.mine'));
+  const mineEdit = !can('stays.edit') && card.mine && can('stays.mine_res_edit');
   const diffText = diff => Object.entries(diff || {}).map(([k, [a, b]]) =>
     `${esc(k)}: ${esc(JSON.stringify(a))} → ${esc(JSON.stringify(b))}`).join('<br>');
   openModal({
@@ -387,7 +391,7 @@ async function openReservationCard(rid, onChanged) {
         <div><h4>Гости</h4>${card.occupants.map(o => `<div>${staysGuestMark(o.special)}${esc(o.guest)}${o.role === 'main' ? staysCodeTag(card.vip_code?.code) : ''}
           <span class="muted">${esc(role[o.role])} · ${esc(dateRu(o.date_from))}–${esc(dateRu(o.date_to))}</span>${staysRelativesHtml(o.relatives)}
           <button class="btn btn-sm btn-ghost" data-family="${o.guest_id}">Семья</button>
-          ${can('stays.guests') ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}
+          ${guestCard ? `<button class="btn btn-sm btn-ghost" data-guest-card="${o.guest_id}">Карточка</button>` : ''}
           <div class="ft" data-family-box="${o.guest_id}" hidden></div></div>`).join('') || '<span class="muted">состав не указан</span>'}</div>
       </div>
       <p data-card-escort>Сопровождение: <b>${esc(staysEscortTitle(card))}</b>${card.vip_code
@@ -401,16 +405,18 @@ async function openReservationCard(rid, onChanged) {
     footer: `<button class="btn btn-ghost" data-close>Закрыть</button>
       ${can('stays.assign') && card.status !== 'cancelled' && card.status !== 'no_show' ? '<button class="btn" id="rc-assign">Назначить батлеров</button>' : ''}
       ${can('stays.edit') ? `<button class="btn" id="rc-group">Совместное проживание…</button>
-        <button class="btn" id="rc-status">Статус…</button><button class="btn btn-primary" id="rc-edit">Изменить</button>` : ''}`,
+        <button class="btn" id="rc-status">Статус…</button><button class="btn btn-primary" id="rc-edit">Изменить</button>` : ''}
+      ${mineEdit ? '<button class="btn btn-primary" id="rc-edit">Изменить</button>' : ''}`,
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       const edit = $('#rc-edit', m);
-      if (edit) edit.onclick = () => openReservationForm(rid, { onSaved: onChanged });
+      if (edit) edit.onclick = () => openReservationForm(rid, { mine: mineEdit, onSaved: onChanged });
       const assign = $('#rc-assign', m);
       if (assign) assign.onclick = () => openCoverageForm(card, onChanged);
       const st = $('#rc-status', m);
       if (st) st.onclick = () => openStatusForm(card, onChanged);
-      $$('[data-guest-card]', m).forEach(b => { b.onclick = () => openGuestCard(Number(b.dataset.guestCard), onChanged); });
+      /* гость своей брони, которого явно ведёт другой батлер, — чужой: сервер ответит 403 */
+      $$('[data-guest-card]', m).forEach(b => { b.onclick = () => openGuestCard(Number(b.dataset.guestCard), onChanged).catch(e => toast(e.message, 'err')); });
       /* семейное дерево гостя — только просмотр: правится в карточке гостя (§4, с уровня «с фамилиями») */
       $$('[data-family]', m).forEach(b => {
         b.onclick = () => {
