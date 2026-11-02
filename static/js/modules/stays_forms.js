@@ -290,6 +290,7 @@ async function openReservationForm(id, opts = {}) {
         if (!snapCats[d]) {
           try { snapCats[d] = (await api('/api/stays/fund/snapshot?date=' + d, { silent: true })).categories; } catch (e) { return; }
         }
+        if (!$('#rf-check-in', m)) return;                // форму закрыли, пока шёл запрос
         if (val('#rf-check-in') !== d) return;            // дату успели сменить — этот ответ устарел
         const catSel = $('#rf-category', m), paidSel = $('#rf-paid', m);
         const [c, p] = [catSel.value, paidSel.value];
