@@ -97,9 +97,6 @@ class SettingsIn(BaseModel):
     # колонки Numeric(5,2): больше 999.99 PostgreSQL не примет; NaN сломал бы сравнения с лимитом
     model_config = ConfigDict(allow_inf_nan=False)
 
-    # надбавки VIP/VVIP уйдут вместе с уровнем гостя; пока не заданы — остаются прежними
-    vip_bonus: Optional[float] = Field(None, le=999)
-    vvip_bonus: Optional[float] = Field(None, le=999)
     special_factor: Optional[float] = Field(None, ge=0.1, le=99)
     daily_limit: float = Field(le=999)
     replacement_codes: str = Field("", max_length=120)
@@ -187,8 +184,8 @@ def seed_escorts(payload: SeedIn, principal: Principal = Depends(SETUP), db: Ses
 @router.put("/settings")
 def put_settings(payload: SettingsIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     try:
-        row, before = fund.save_settings(db, payload.vip_bonus, payload.vvip_bonus, payload.daily_limit,
-                                         payload.replacement_codes, payload.special_factor)
+        row, before = fund.save_settings(db, payload.special_factor, payload.daily_limit,
+                                         payload.replacement_codes)
     except FundError as e:
         raise _err(e) from e
     after = fund.as_dict(row, fund.SETTINGS_FIELDS)

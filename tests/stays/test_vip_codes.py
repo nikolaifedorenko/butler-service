@@ -173,11 +173,11 @@ def test_codes_audited(manager_role_client, db):
 @pytest.fixture()
 def _settings(db):
     row = db.get(StaysSettings, 1)
-    saved = (row.vip_bonus, row.vvip_bonus, row.special_factor, row.daily_limit, row.replacement_codes)
+    saved = (row.special_factor, row.daily_limit, row.replacement_codes)
     yield
     db.rollback()
     row = db.get(StaysSettings, 1)
-    row.vip_bonus, row.vvip_bonus, row.special_factor, row.daily_limit, row.replacement_codes = saved
+    row.special_factor, row.daily_limit, row.replacement_codes = saved
     db.commit()
 
 
@@ -189,17 +189,18 @@ def test_special_factor_default_and_save(manager_role_client, db, _settings):
     r = c.put(f"{API}/settings", json={**base, "special_factor": 2.5})
     assert r.status_code == 200 and r.json()["special_factor"] == 2.5
     assert c.get(f"{API}/fund").json()["settings"]["special_factor"] == 2.5
-    # надбавки и коэффициент не заданы — остаются прежними
+    # коэффициент не задан — остаётся прежним
     r = c.put(f"{API}/settings", json={**base, "daily_limit": 9})
     assert r.status_code == 200
     body = r.json()
-    assert (body["special_factor"], body["vip_bonus"], body["vvip_bonus"], body["daily_limit"]) == (2.5, 1.0, 2.0, 9.0)
+    assert (body["special_factor"], body["daily_limit"]) == (2.5, 9.0)
     for bad in (0.09, 0, 99.01, -1):
         assert c.put(f"{API}/settings", json={**base, "special_factor": bad}).status_code == 422
     assert c.put(f"{API}/settings", json={**base, "special_factor": 0.1}).status_code == 200
     assert c.put(f"{API}/settings", json={**base, "special_factor": 99}).status_code == 200
-    # прежний вызов с надбавками работает
-    assert c.put(f"{API}/settings", json={**base, "vip_bonus": 3, "vvip_bonus": 4}).json()["vip_bonus"] == 3.0
+    # надбавок VIP/VVIP больше нет: лишние поля игнорируются и в ответ не попадают
+    body = c.put(f"{API}/settings", json={**base, "vip_bonus": 3, "vvip_bonus": 4}).json()
+    assert "vip_bonus" not in body and "vvip_bonus" not in body
 
 
 def test_migration_copies_declined_and_level(iso_engine):  # noqa: F811
@@ -258,6 +259,55 @@ def test_migration_copies_declined_and_level(iso_engine):  # noqa: F811
     with engine.connect() as c:
         assert dict(c.execute(text("SELECT id, escort_mode FROM stays_reservations WHERE id >= 9401")).all()) == {
             9401: "rules", 9402: "declined"}
+
+
+def test_migration_0018_up_down(iso_engine):  # noqa: F811
+    """0018 снимает level, declined_butler, vip_bonus, vvip_bonus; откат возвращает их и восстанавливает
+    по special и escort_mode; повторный подъём снова снимает."""
+    from alembic import command
+    from sqlalchemy import inspect, text
+
+    from app.bootstrap.schema_version import config
+
+    engine = iso_engine
+    names = lambda t: {c["name"] for c in inspect(engine).get_columns(t)}  # noqa: E731
+    command.upgrade(config(), "head")
+    assert "level" not in names("stays_guests") and "declined_butler" not in names("stays_reservations")
+    assert not {"vip_bonus", "vvip_bonus"} & names("stays_settings")
+    with engine.begin() as c:
+        v = c.execute(text("SELECT id FROM stays_fund_versions WHERE valid_from = '2000-01-01'")).scalar_one()
+        c.execute(text("INSERT INTO stays_categories (id) VALUES (9411)"))
+        c.execute(text("INSERT INTO stays_category_kinds (id, title, sort_order, expanded, archived) "
+                       "VALUES (9411, 'k', 1, 0, 0)"))
+        c.execute(text("INSERT INTO stays_category_states (version_id, category_id, code, title, kind_id, "
+                       "weight, escorted, sort_order) VALUES (:v, 9411, 'MIG18', 'M', 9411, 1, 0, 1)"), {"v": v})
+        for gid, special in ((9411, 0), (9412, 1)):
+            c.execute(text("INSERT INTO stays_guests (id, last_name, first_name, middle_name, phone, email, "
+                           "gender, special, preferences_json, special_dates_json, fields_json, note, source, "
+                           "search_text, created_at, updated_at) VALUES (:i, 'Г', '', '', '', '', '', :s, "
+                           "'{}', '[]', '{}', '', '', '', '2026-01-01', '2026-01-01')"), {"i": gid, "s": special})
+        for rid, mode in ((9411, "rules"), (9412, "declined")):
+            c.execute(text("INSERT INTO stays_reservations (id, number, status, check_in, check_out, early, "
+                           "late, category_id, customer, note, escort_mode, fields_json, source, version, "
+                           "search_text, created_at, updated_at) VALUES (:i, '', 'confirmed', '2037-01-01', "
+                           "'2037-01-02', 0, 0, 9411, '', '', :m, '{}', '', 1, '', '2026-01-01', '2026-01-01')"),
+                      {"i": rid, "m": mode})
+    try:
+        command.downgrade(config(), "0017")
+        assert "level" in names("stays_guests") and "declined_butler" in names("stays_reservations")
+        assert {"vip_bonus", "vvip_bonus"} <= names("stays_settings")
+        with engine.connect() as c:
+            assert dict(c.execute(text("SELECT id, level FROM stays_guests WHERE id >= 9411")).all()) == {
+                9411: "regular", 9412: "vip"}
+            assert dict(c.execute(text("SELECT id, declined_butler FROM stays_reservations WHERE id >= 9411"))
+                        .all()) == {9411: 0, 9412: 1}
+            row = c.execute(text("SELECT vip_bonus, vvip_bonus FROM stays_settings")).one()
+            assert (float(row[0]), float(row[1])) == (1.0, 2.0)
+        assert not [x for x in inspect(engine).get_columns("stays_guests") if x["name"] == "level"][0]["default"]
+    finally:
+        command.upgrade(config(), "head")
+    assert "level" not in names("stays_guests") and "declined_butler" not in names("stays_reservations")
+    assert not {"vip_bonus", "vvip_bonus"} & names("stays_settings")
 
 
 def test_demo_has_codes_03_13_14(tmp_path):

@@ -24,7 +24,7 @@ def test_demo_fund_and_warnings(db):
     res = list(db.scalars(select(Reservation).where(Reservation.source == "demo")))
     assert len(res) >= 300
     assert {r.status for r in res} >= {"confirmed", "in_house", "no_show"}
-    assert any(r.group_id for r in res) and any(r.declined_butler for r in res)
+    assert any(r.group_id for r in res) and any(r.escort_mode == "declined" for r in res)
     today = local_date()
     ctx = load_context(db, today, today + dt.timedelta(days=29), TimesheetDuty(db))
     kinds = {w.kind for d in ctx.days() for w in ctx.warnings(d)}
@@ -113,3 +113,15 @@ def test_demo_three_generation_family(db):
     kin = {k["person_id"]: k["title"] for k in family(db, anna.id, "names")["kin"]}
     assert kin[petr.id] == "правнук"
     assert all(g.gender in ("m", "f") for g in by.values())
+
+
+def test_demo_has_special_and_codes(db):
+    from app.modules.stays.adapters.orm import Guest, Reservation, VipCode
+
+    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.special.is_(True))) >= 2
+    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.vip_code_id.is_not(None))) >= 2
+    coded = {c for (c,) in db.execute(select(VipCode.code).join(Reservation, Reservation.vip_code_id == VipCode.id)
+                                      .where(Reservation.source == "demo")).all()}
+    assert coded == {"03", "13"}
+    assert db.scalar(select(func.count(Reservation.id)).where(Reservation.source == "demo",
+                                                                Reservation.escort_mode == "declined")) > 0

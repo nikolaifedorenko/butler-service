@@ -1,5 +1,5 @@
 """Демо-данные «Шахматки» (§11): весь фонд (37 вилл, имение, 2 медицинских апартамента,
-400 номеров в двух корпусах), вымышленные гости с VIP/VVIP и связями, брони от «вчера» на
+400 номеров в двух корпусах), вымышленные гости (есть «особые» и с VIP-кодами), связи, брони от «вчера» на
 месяц вперёд (совместная, переезд, смена главного гостя, отказ от батлера, не заехал),
 назначения батлеров с примерами перегруза, «вне смены» и «нужна подмена».
 
@@ -221,6 +221,7 @@ def seed_stays_demo(db: Session) -> None:
     # VIP-коды профилей (§3.1): форма брони подставляет код главного гостя; брони демо его не копируют
     by_code = dict(db.execute(select(VipCode.code, VipCode.id)).all())
     guests[0].vip_code_id, guests[1].vip_code_id = by_code.get("13"), by_code.get("03")
+    vip_ids = {"03": by_code["03"], "13": by_code["13"]}
     db.add_all(guests)
     db.flush()
     for a, b, kind in ((0, 10, "spouse"), (0, 11, "parent"), (0, 12, "assistant"), (1, 13, "spouse"),
@@ -269,7 +270,9 @@ def seed_stays_demo(db: Session) -> None:
                 if co < today + dt.timedelta(days=1):
                     co = today + dt.timedelta(days=1)
                 no = len(made) % 23 == 0       # гость отказался; покрытие читает escort_mode
-                r = book(code, d, co, u, declined_butler=no, escort_mode="declined" if no else "rules")
+                # каждая 17-я бронь несёт VIP-код (чередуются 03 и 13); она же может быть отказом
+                vc = vip_ids[("03", "13")[len(made) // 17 % 2]] if len(made) % 17 == 5 else None
+                r = book(code, d, co, u, vip_code_id=vc, escort_mode="declined" if no else "rules")
                 live(r, guest(), *([guest()] if rnd.random() < 0.4 else []))
                 if rnd.random() < 0.3:
                     db.add(Logistics(reservation_id=r.id, kind="transfer", date=d, time="14:30",
@@ -362,7 +365,7 @@ def _demo_coverage(db: Session, today: dt.date, made: list[Reservation], units: 
     escorted = set(db.scalars(select(CategoryState.category_id).where(CategoryState.escorted.is_(True))))
     pairs = [(b["Сидоров"], b["Морозова"]), (b["Петров"], b["Орлов"])]
     for n, r in enumerate(m for m in made if m.category_id in escorted and m.status != "no_show"
-                          and not m.declined_butler and m.group_id is None):
+                          and m.escort_mode != "declined" and m.group_id is None):
         if n % 6 == 5:
             continue                                        # дыры: брони без батлера
         a, c = pairs[n % 2]

@@ -258,7 +258,7 @@ class Label(Base):
 
 
 class Guest(Base):
-    """Профиль гостя. Уровень VIP/VVIP — свойство человека, переходит на все его брони."""
+    """Профиль гостя. «Особый гость» и VIP-код — свойства человека; код копируется в его брони."""
 
     __tablename__ = "stays_guests"
 
@@ -270,7 +270,6 @@ class Guest(Base):
     email: Mapped[str] = mapped_column(String(120), default="")
     birth_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
     gender: Mapped[str] = mapped_column(String(1), default="")         # m | f | '' (не указан)
-    level: Mapped[str] = mapped_column(String(8), default="regular")  # regular | vip | vvip
     vip_code_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("stays_vip_codes.id", name="fk_stays_guests_vip_code"), nullable=True)
     special: Mapped[bool] = mapped_column(Boolean, default=False)     # «Особый гость»
@@ -345,7 +344,6 @@ class Reservation(Base):
     label_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_labels.id"), nullable=True)
     customer: Mapped[str] = mapped_column(String(160), default="")
     note: Mapped[str] = mapped_column(Text, default="")
-    declined_butler: Mapped[bool] = mapped_column(Boolean, default=False)
     vip_code_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("stays_vip_codes.id", name="fk_stays_reservations_vip_code"), nullable=True)
     escort_mode: Mapped[str] = mapped_column(String(8), default="rules")   # rules | required | declined
@@ -503,8 +501,6 @@ class StaysSettings(Base):
     __tablename__ = "stays_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    vip_bonus: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("1"))
-    vvip_bonus: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("2"))
     special_factor: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("2"))
     daily_limit: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("8"))
     # коды дня Табеля, при которых назначенному батлеру нужна подмена (отпуск, больничный…)

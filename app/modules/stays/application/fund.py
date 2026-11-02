@@ -47,7 +47,7 @@ def changes(before: dict, after: dict) -> dict:
 
 LABEL_FIELDS = ("id", "title", "color")
 FIELD_FIELDS = ("id", "target", "code", "title", "kind", "searchable", "sort_order")
-SETTINGS_FIELDS = ("vip_bonus", "vvip_bonus", "special_factor", "daily_limit", "replacement_codes")
+SETTINGS_FIELDS = ("special_factor", "daily_limit", "replacement_codes")
 
 
 def field_dict(f: CustomField) -> dict:
@@ -156,22 +156,16 @@ def get_settings(db: Session) -> StaysSettings:
     return row
 
 
-def save_settings(db: Session, vip_bonus: float | None, vvip_bonus: float | None, daily_limit: float,
-                  replacement_codes: str, special_factor: float | None = None) -> tuple[StaysSettings, dict]:
-    """vip_bonus, vvip_bonus и special_factor не заданы (None) — остаются прежними."""
+def save_settings(db: Session, special_factor: float | None, daily_limit: float,
+                  replacement_codes: str) -> tuple[StaysSettings, dict]:
+    """special_factor не задан (None) — остаётся прежним."""
     if daily_limit <= 0:
         raise FundError("Лимит нагрузки должен быть больше нуля")
-    if vip_bonus is not None and vip_bonus < 0 or vvip_bonus is not None and vvip_bonus < 0:
-        raise FundError("Надбавка не может быть отрицательной")
     if special_factor is not None and not 0.1 <= special_factor <= 99:
         raise FundError("Коэффициент особого гостя — число от 0,1 до 99")
     row = get_settings(db)
     before = as_dict(row, SETTINGS_FIELDS)
     row.daily_limit = Decimal(str(daily_limit))
-    if vip_bonus is not None:
-        row.vip_bonus = Decimal(str(vip_bonus))
-    if vvip_bonus is not None:
-        row.vvip_bonus = Decimal(str(vvip_bonus))
     if special_factor is not None:
         row.special_factor = Decimal(str(special_factor)).quantize(Decimal('0.01'))
     row.replacement_codes = ",".join(c.strip() for c in replacement_codes.split(",") if c.strip())

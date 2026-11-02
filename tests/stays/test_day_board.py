@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from .helpers import API, create_res, make_category, make_guest, set_guest, units_of
+from .helpers import API, create_res, make_category, make_guest, units_of
 
 DAY = dt.date(2036, 1, 10)
 
@@ -17,7 +17,6 @@ def _setup(sup, mgr, DAY=DAY):
     villa = make_category(sup, n_units=3)
     room = make_category(sup, n_units=1, kind="room", escorted=False, weight=1)
     vip = make_guest(mgr, "ТаблоВип", special=True)
-    set_guest(vip["id"], level="vip")        # табло дня ещё считает итог vip по прежнему уровню (Task 6)
     out_g, stay_g, room_g = make_guest(mgr, "ТаблоВыезд"), make_guest(mgr, "ТаблоЖивёт"), make_guest(mgr, "ТаблоНомер")
     arr = create_res(mgr, villa, _iso(DAY), _iso(DAY + dt.timedelta(days=3)), [(vip["id"], "main", None, None)],
                      early=True, logistics=[{"kind": "transfer", "date": _iso(DAY), "time": "07:40", "description": "SVO"}])

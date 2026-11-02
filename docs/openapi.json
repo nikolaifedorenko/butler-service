@@ -4072,30 +4072,6 @@
               }
             ],
             "title": "Special Factor"
-          },
-          "vip_bonus": {
-            "anyOf": [
-              {
-                "maximum": 999.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vip Bonus"
-          },
-          "vvip_bonus": {
-            "anyOf": [
-              {
-                "maximum": 999.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vvip Bonus"
           }
         },
         "required": [

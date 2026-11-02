@@ -45,9 +45,9 @@ def test_escort_toggle(manager_role_client, db):
 
 
 def test_settings_validation(manager_role_client):
-    base = {"vip_bonus": 1, "vvip_bonus": 2, "daily_limit": 8, "replacement_codes": "ОТ,Б"}
+    base = {"daily_limit": 8, "replacement_codes": "ОТ,Б"}
     assert manager_role_client.put(f"{API}/settings", json={**base, "daily_limit": 0}).status_code == 422
-    assert manager_role_client.put(f"{API}/settings", json={**base, "vip_bonus": -1}).status_code == 422
+    assert manager_role_client.put(f"{API}/settings", json={**base, "special_factor": -1}).status_code == 422
     r = manager_role_client.put(f"{API}/settings", json={**base, "replacement_codes": " ОТ , Б ,,"})
     assert r.status_code == 200 and r.json()["replacement_codes"] == "ОТ,Б"
     manager_role_client.put(f"{API}/settings", json={**base, "replacement_codes": "ОТ,ДО,Б,ОВ,К"})
@@ -76,9 +76,9 @@ def test_fund_staff_only_for_setup(manager_role_client, manager_client):
 
 
 def test_settings_bounds_and_nan(manager_role_client):
-    base = {"vip_bonus": 1, "vvip_bonus": 2, "daily_limit": 8, "replacement_codes": "ОТ"}
-    for bad in ({"daily_limit": 1000}, {"vip_bonus": 1000}, {"daily_limit": "NaN"},
-                {"vvip_bonus": "Infinity"}):
+    base = {"daily_limit": 8, "replacement_codes": "ОТ"}
+    for bad in ({"daily_limit": 1000}, {"special_factor": 1000}, {"daily_limit": "NaN"},
+                {"special_factor": "Infinity"}):
         assert manager_role_client.put(f"{API}/settings", json={**base, **bad}).status_code == 422, bad
 
 

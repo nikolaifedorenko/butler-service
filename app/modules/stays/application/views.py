@@ -46,7 +46,6 @@ from .reservations import STATUS_TITLES, vip_code_of
 from .visibility import Level, at_least, serialize_bar
 
 MAX_DAYS = 62
-LEVEL_RANK = {"regular": 0, "vip": 1, "vvip": 2}
 
 
 class ViewError(ValueError):
