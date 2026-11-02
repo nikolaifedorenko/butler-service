@@ -279,6 +279,9 @@ class Guest(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     external_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="")
+    # батлер, заведший профиль через семейное дерево: гость — его «свой» (часть 4 §3–§4)
+    created_by_employee_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("employees.id", name="fk_stays_guests_created_by"), nullable=True, index=True)
     # нижний регистр Python: SQLite lower() кириллицу не понижает
     search_text: Mapped[str] = mapped_column(String(1000), default="")   # поиск подстрокой: индекс не помогает
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)

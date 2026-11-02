@@ -217,13 +217,12 @@ def test_visible_to_all_levels_with_titles(manager_role_client, manager_client, 
                                            employee_client):
     cat = make_category(manager_role_client, n_units=2)
     blk = _block(manager_client, "Делегация", "2047-01-10", "2047-01-12", _grid(cat, "2047-01-10", 2, 1)).json()["result"]
-    for c in (manager_client, mgmt_client, occupancy_client):
+    for c in (manager_client, mgmt_client, occupancy_client, employee_client):
         r = c.get(f"{API}/blocks", params={"category_ids": cat["id"]})
         assert r.status_code == 200, r.text
         assert [(x["id"], x["title"]) for x in r.json()["rows"]] == [(blk["id"], "Делегация")]
         assert c.get(f"{API}/blocks/{blk['id']}").json()["title"] == "Делегация"
-    assert employee_client.get(f"{API}/blocks").status_code == 403
-    for c in (mgmt_client, occupancy_client):
+    for c in (mgmt_client, occupancy_client, employee_client):
         assert _block(c, "Чужой", "2047-02-10", "2047-02-12").status_code == 403
 
 

@@ -191,10 +191,10 @@ def test_butler_sees_yesterday_departed_guest(butler_client, own_reservation, mo
     from app.modules.stays.application import mine as mine_mod
     monkeypatch.setattr(mine_mod, "local_date", lambda: own_reservation["day"] + dt.timedelta(days=4))
     rids = {x["reservation_id"] for x in butler_client.get(f"{API}/mine").json()["reservations"]}
-    assert own_reservation["mine"]["id"] not in rids        # выезд позавчера — уже не «свой»
+    assert own_reservation["mine"]["id"] not in rids        # выезд позавчера — не на экране (окно до задачи 4)
     monkeypatch.setattr(mine_mod, "local_date", lambda: own_reservation["day"] + dt.timedelta(days=1))
     rids = {x["reservation_id"] for x in butler_client.get(f"{API}/mine").json()["reservations"]}
-    assert own_reservation["mine"]["id"] in rids            # вёл вчера — ещё можно дописать
+    assert own_reservation["mine"]["id"] in rids            # вёл вчера — ещё на экране
 
 
 def test_role_matrix(manager_client, mgmt_client, occupancy_client, butler_client, own_reservation):
@@ -204,7 +204,10 @@ def test_role_matrix(manager_client, mgmt_client, occupancy_client, butler_clien
     for url in ("/guests?q=а", "/board/butlers?first=2030-01-01&last=2030-01-02", "/mine",
                 f"/reservations/{rid}/card", "/coverage/replacements?first=2030-01-01&last=2030-01-02"):
         assert occupancy_client.get(API + url).status_code == 403, url
-    assert butler_client.get(f"{API}/board/units", params={"first": "2030-01-01", "last": "2030-01-02"}).status_code == 403
+    # stays.view — всем ролям (часть 4 §3): батлер видит шахматку, но не пишет
+    assert butler_client.get(f"{API}/board/units", params={"first": "2030-01-01", "last": "2030-01-02"}).status_code == 200
+    assert butler_client.post(f"{API}/reservations", json={"check_in": "2030-01-01", "check_out": "2030-01-02",
+                                                           "category_id": 1}).status_code == 403
 
 
 def test_demo_butler_has_tonight(butler_client):

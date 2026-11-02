@@ -155,7 +155,8 @@ def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
 
 
 def _own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> bool:
-    """Без full_perm батлер видит и правит только гостей своих броней (§7, stays.edit_mine)."""
+    """Без full_perm батлер видит и правит только своих гостей (часть 4 §3–§4: stays.mine — чтение,
+    stays.mine_guest_edit — правка)."""
     if full_perm in principal.gate_permissions:
         return False
     if principal.employee is None or not mine.owns_guest(db, principal.employee.id, gid):
@@ -164,7 +165,7 @@ def _own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> b
 
 
 @router.get("/guests/{gid}")
-def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.edit_mine")),
+def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
               db: Session = Depends(get_db)):
     g = db.get(Guest, gid)
     if g is None:
@@ -235,7 +236,7 @@ def create_guest(payload: GuestIn, principal: Principal = Depends(require_perm("
 
 @router.put("/guests/{gid}")
 def update_guest(gid: int, payload: GuestUpdateIn, preview_flag: bool = PREVIEW,
-                 principal: Principal = Depends(require_perm("stays.edit", "stays.edit_mine")),
+                 principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                  db: Session = Depends(get_db)):
     """Правка профиля. Код сменился и update_reservations — той же операцией код переходит в текущие и
     будущие брони, где гость главный; ?preview=1 показывает, что изменится (окно — от сегодня до самого

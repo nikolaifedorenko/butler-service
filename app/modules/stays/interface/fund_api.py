@@ -21,8 +21,8 @@ from ..application.fund import FundConflict, FundError
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 
-# батлеру (stays.edit_mine) — ради определений настраиваемых полей: данных гостей здесь нет
-READ = require_perm("stays.view", "stays.occupancy", "stays.setup", "stays.edit_mine")
+# батлеру (stays.mine) — ради определений настраиваемых полей: данных гостей здесь нет
+READ = require_perm("stays.view", "stays.occupancy", "stays.setup", "stays.mine")
 SETUP = require_perm("stays.setup")
 
 

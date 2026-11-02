@@ -1,20 +1,33 @@
-"""«Мои гости» и правка своих броней батлером (§1 «Допущения», §6.6, §7 stays.edit_mine).
+"""«Мои гости» и правка своих броней и гостей батлером (часть 4 §2–§4: stays.mine,
+stays.mine_guest_edit, stays.mine_res_edit).
 
-«Свои» — брони, где батлер ведёт гостей сегодня и 7 дней вперёд, и где вёл вчера (дописать
-после выезда). Батлер меняет только состав (проживающих, кроме главного), логистику,
-сопровождающих, примечание и настраиваемые поля; в профиле своих гостей — предпочтения,
-особые даты, поля и примечание. Принадлежность проверяется на каждом запросе."""
+«Своя» бронь — та, где у батлера есть строка покрытия (на бронь или на её группу) за всё время:
+в прошлом, сейчас, в будущем, в том числе на подмене; предварительные — тоже. «Свой» гость — тот,
+кого батлер ведёт хоть одну ночь (явный список гостей сильнее строки «вся бронь / группа», как в
+domain/coverage.resolve_day), или кого он сам завёл через семейное дерево. Батлер меняет только
+состав (проживающих, кроме главного), логистику, сопровождающих, примечание и настраиваемые
+поля; в профиле своих гостей — предпочтения, особые даты, поля и примечание. Принадлежность
+проверяется на каждом запросе."""
 from __future__ import annotations
 
 import datetime as dt
 import json
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, exists, or_, select, union
+from sqlalchemy.orm import Session, aliased
 
 from app.core.time import local_date
 
-from ..adapters.orm import Companion, CoverageLine, GuestLink, Logistics, Occupant, Reservation
+from ..adapters.orm import (
+    Companion,
+    CoverageGuest,
+    CoverageLine,
+    Guest,
+    GuestLink,
+    Logistics,
+    Occupant,
+    Reservation,
+)
 from . import allocation
 from .context import load_context
 from .fund import FundError
@@ -30,45 +43,57 @@ class MineForbidden(FundError):
     """Чужая бронь или поле, которое батлеру менять нельзя → 403."""
 
 
-def window(today: dt.date) -> tuple[dt.date, dt.date]:
-    return today - dt.timedelta(days=1), today + dt.timedelta(days=7)
+def _targets(line, res):
+    """Строка покрытия относится к брони: прямо или через группу, где у брони в этот день ночь."""
+    return or_(res.id == line.reservation_id,
+               and_(line.group_id.is_not(None), res.group_id == line.group_id,
+                    res.check_in <= line.day, line.day < res.check_out))
 
 
-def _my_lines(db: Session, employee_id: int, today: dt.date) -> list[tuple[CoverageLine, Reservation]]:
-    """Строки батлера по броням, которые живут в окне или выехали не раньше вчера —
-    вместе с броней (для группы — каждый член, у которого в день строки есть ночь)."""
-    first, last = window(today)
-    live = (Reservation.status.in_(allocation.OCCUPYING), Reservation.check_out >= first,
-            Reservation.check_in <= last)
-    out = [(ln, r) for ln, r in db.execute(select(CoverageLine, Reservation).join(
-        Reservation, Reservation.id == CoverageLine.reservation_id).where(CoverageLine.employee_id == employee_id, *live))]
-    out += [(ln, r) for ln, r in db.execute(select(CoverageLine, Reservation).join(
-        Reservation, Reservation.group_id == CoverageLine.group_id).where(CoverageLine.employee_id == employee_id, *live))
-        if r.check_in <= ln.day < r.check_out]
-    return out
+def _my_line_res(employee_id: int):
+    """(строка батлера, бронь, к которой она относится) — за всё время."""
+    ln, r = aliased(CoverageLine), aliased(Reservation)
+    q = (select(ln, r).join(r, _targets(ln, r))
+         .where(ln.employee_id == employee_id, r.status.in_(allocation.OCCUPYING)))
+    return q, ln, r
 
 
-def owned_reservations(db: Session, employee_id: int, today: dt.date | None = None) -> dict[int, set[dt.date]]:
-    """Бронь → дни, когда батлер ведёт её гостей. «Своя» — ведёт в окне [вчера; +7] или вёл
-    раньше, а выезд был не раньше вчера (дописать после выезда, §1 «Допущения»)."""
-    today = today or local_date()
-    first, last = window(today)
-    out: dict[int, set[dt.date]] = {}
-    for ln, r in _my_lines(db, employee_id, today):
-        if first <= ln.day <= last or r.check_out >= first:
-            out.setdefault(r.id, set()).add(ln.day)
-    return out
+def my_reservation_ids(db: Session, employee_id: int) -> set[int]:
+    q, _ln, r = _my_line_res(employee_id)
+    return set(db.scalars(q.with_only_columns(r.id).distinct()))
+
+
+def _guest_ids_query(employee_id: int):
+    """Гости явных списков батлера; проживающие ночи, которую батлер ведёт строкой «вся бронь /
+    группа», если в ту ночь их явно не ведёт другая строка (по брони или её группе); профили,
+    которые батлер завёл сам."""
+    q, ln, r = _my_line_res(employee_id)
+    o, x = aliased(Occupant), aliased(CoverageLine)
+    explicit = (select(CoverageGuest.guest_id).join(CoverageLine, CoverageLine.id == CoverageGuest.coverage_id)
+                .where(CoverageLine.employee_id == employee_id))
+    whole = (q.with_only_columns(o.guest_id)
+             .join(o, and_(o.reservation_id == r.id, o.date_from <= ln.day, ln.day < o.date_to))
+             .where(~exists().where(CoverageGuest.coverage_id == ln.id),
+                    ~select(x.id).join(CoverageGuest, CoverageGuest.coverage_id == x.id).where(
+                        x.day == ln.day, CoverageGuest.guest_id == o.guest_id,
+                        or_(x.reservation_id == r.id, and_(x.group_id.is_not(None), x.group_id == r.group_id)))
+                    .exists()))
+    created = select(Guest.id).where(Guest.created_by_employee_id == employee_id)
+    return union(explicit, whole, created)
+
+
+def my_guest_ids(db: Session, employee_id: int) -> set[int]:
+    return set(db.scalars(_guest_ids_query(employee_id)))
+
+
+def owns_reservation(db: Session, employee_id: int, reservation_id: int) -> bool:
+    q, _ln, r = _my_line_res(employee_id)
+    return db.scalar(select(exists(q.where(r.id == reservation_id)))) or False
 
 
 def owns_guest(db: Session, employee_id: int, guest_id: int) -> bool:
-    """Свой гость — тот, кого батлер фактически ведёт хоть одну ночь своих броней: строка
-    «по гостям» другого батлера сильнее его строки «вся бронь» (§4.2)."""
-    days = sorted({d for ds in owned_reservations(db, employee_id).values() for d in ds})
-    if not days:
-        return False
-    ctx = load_context(db, days[0], days[-1], None)
-    return any(employee_id in emps and g == guest_id
-               for d in days for (_rid, g), emps in ctx.cover(d).by_guest.items())
+    return db.scalar(select(Guest.id).where(Guest.id == guest_id,
+                                            Guest.id.in_(_guest_ids_query(employee_id)))) is not None
 
 
 def _iso(v):
@@ -119,11 +144,17 @@ def check_guest_change(before: dict, data: dict) -> None:
 
 
 def my_guests(db: Session, employee_id: int) -> dict:
+    """Экран «Мои гости» до задач 4–5: свои брони, которые живут со вчера до +7 дней, и дни, когда
+    батлер ведёт их гостей."""
     today = local_date()
-    owned = owned_reservations(db, employee_id, today)
+    first, last = today - dt.timedelta(days=1), today + dt.timedelta(days=7)
+    q, line, booking = _my_line_res(employee_id)
+    owned: dict[int, set[dt.date]] = {}
+    for rid, day in db.execute(q.with_only_columns(booking.id, line.day)
+                               .where(booking.check_out >= first, booking.check_in <= last)):
+        owned.setdefault(rid, set()).add(day)
     if not owned:
         return {"reservations": []}
-    first, last = window(today)
     ctx = load_context(db, first, last, None)
     res = {r.id: r for r in db.scalars(select(Reservation).where(Reservation.id.in_(list(owned))))}
     logistics: dict[int, list] = {}

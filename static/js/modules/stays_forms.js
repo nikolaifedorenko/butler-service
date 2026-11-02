@@ -128,7 +128,7 @@ function staysBindGatedFoot(m, flow, { onSaved, okText = 'Готово', out, do
 /* ─────────────── Бронь ─────────────── */
 async function openReservationForm(id, opts = {}) {
   /* opts.mine — батлер дополняет свою бронь: даты, объект, категория, метка, заказчик и главный
-     гость заперты (сервер всё равно проверяет, §7 stays.edit_mine) */
+     гость заперты (сервер всё равно проверяет, stays.mine_res_edit) */
   const fund = await staysFund();
   const rFields = fund.fields.filter(f => f.target === 'reservation');
   const r = id ? await api(`/api/stays/reservations/${id}`) : null;
