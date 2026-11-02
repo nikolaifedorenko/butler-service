@@ -15952,6 +15952,184 @@
         ]
       }
     },
+    "/api/stays/mine/guests": {
+      "get": {
+        "description": "«Все мои гости»: свои гости за всё время, поиск по ФИО, по 50.",
+        "operationId": "mine_guests_api_stays_mine_guests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mine Guests",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/mine/guests/{gid}": {
+      "get": {
+        "description": "Карточка своего гостя: профиль целиком и история проживаний с тем, кто его вёл. Чужой — 403.",
+        "operationId": "mine_guest_card_api_stays_mine_guests__gid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "title": "Gid",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mine Guest Card",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/mine/month": {
+      "get": {
+        "description": "«Мой месяц»: свои брони полосами, нагрузка по дням и отсутствия по Графику (не больше 62 дней).",
+        "operationId": "mine_month_api_stays_mine_month_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "first",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "First",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Last",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mine Month",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/mine/today": {
+      "get": {
+        "description": "«Мои гости» — «Сегодня» (часть 4 §5): брони, где батлер ведёт гостей в эту ночь.",
+        "operationId": "mine_today_api_stays_mine_today_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mine Today",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/occupancy": {
       "get": {
         "operationId": "occupancy_api_stays_occupancy_get",

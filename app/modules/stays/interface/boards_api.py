@@ -13,7 +13,10 @@ from app.core.db import get_db
 from app.core.permissions import require_perm
 
 from ..adapters.duty_timesheet import TimesheetDuty
+from ..adapters.orm import Guest
 from ..application import boards, views
+from ..application import mine as mine_app
+from ..application.fund import FundError
 from ..application.mine import my_guests
 from ..application.visibility import level_for
 from .views_api import fund_filters
@@ -53,6 +56,48 @@ def occupancy(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters),
 @router.get("/mine")
 def mine(principal: Principal = Depends(require_perm("stays.mine")), db: Session = Depends(get_db)):
     """«Мои гости» (§6.6): брони, где батлер ведёт гостей сегодня и неделю вперёд, и вчерашние."""
+    return my_guests(db, _me(principal))
+
+
+def _me(principal: Principal) -> int:
     if principal.employee is None:
         raise HTTPException(status_code=404, detail="К учётной записи не привязан сотрудник")
-    return my_guests(db, principal.employee.id)
+    return principal.employee.id
+
+
+@router.get("/mine/today")
+def mine_today(principal: Principal = Depends(require_perm("stays.mine")), db: Session = Depends(get_db)):
+    """«Мои гости» — «Сегодня» (часть 4 §5): брони, где батлер ведёт гостей в эту ночь."""
+    return mine_app.mine_today(db, _me(principal))
+
+
+@router.get("/mine/month")
+def mine_month(first: dt.date, last: dt.date, principal: Principal = Depends(require_perm("stays.mine")),
+               db: Session = Depends(get_db)):
+    """«Мой месяц»: свои брони полосами, нагрузка по дням и отсутствия по Графику (не больше 62 дней)."""
+    me = _me(principal)
+    try:
+        return mine_app.mine_month(db, me, first, last, TimesheetDuty(db))
+    except FundError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@router.get("/mine/guests")
+def mine_guests(q: str = "", offset: int = Query(0, ge=0),
+                limit: int = Query(mine_app.GUESTS_PAGE, ge=1, le=mine_app.GUESTS_PAGE),
+                principal: Principal = Depends(require_perm("stays.mine")), db: Session = Depends(get_db)):
+    """«Все мои гости»: свои гости за всё время, поиск по ФИО, по 50."""
+    return mine_app.mine_guests(db, _me(principal), q, offset, limit)
+
+
+@router.get("/mine/guests/{gid}")
+def mine_guest_card(gid: int, principal: Principal = Depends(require_perm("stays.mine")),
+                    db: Session = Depends(get_db)):
+    """Карточка своего гостя: профиль целиком и история проживаний с тем, кто его вёл. Чужой — 403."""
+    me = _me(principal)
+    g = db.get(Guest, gid)
+    if g is None:
+        raise HTTPException(status_code=404, detail="Гость не найден")
+    if not mine_app.owns_guest(db, me, gid):
+        raise HTTPException(status_code=403, detail="Это не ваш гость: вы не ведёте его брони")
+    return mine_app.mine_guest_card(db, me, g)
