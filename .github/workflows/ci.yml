@@ -88,6 +88,9 @@ jobs:
       - name: В живых документах нет битых ссылок
         run: python tools/doc_links.py
 
+      - name: У живых документов есть статус-заголовки
+        run: python tools/doc_status.py
+
       - name: Лок-файл зависимостей не разошёлся
         if: matrix.python-version == '3.11'
         run: python tools/freeze_requirements.py --check
