@@ -8,6 +8,18 @@ PR — https://github.com/nikolaifedorenko/butler-service/pull/<номер>.
 
 ## 03.11.2026
 
+### Документация: спецификации и реестры решений малых модулей, предложения в архив — PR #133
+* **Полный комплект `spec.md` + `decisions.md` на каждый модуль** (решение владельца):
+  `docs/specs/{night,notify,cars,docs,access,audit,employees,settings}/` — тонкие
+  нормативные спеки действующего поведения (по коду HEAD a3304a9) и реестры действующих
+  решений с родными ссылками (Н1–Н7, R#, ADR, P# platform, S# stays).
+* Реализованные предложения перенесены без правок в `docs/archive/proposals/`:
+  PROPOSAL-NIGHT-REPORT-V2 и PROPOSAL-SETTINGS-IA-2026-10-19; `docs/archive/README.md`
+  дополнен; из `tools/doc_links.py` убрано устаревшее исключение «PROPOSAL-».
+* Код и поведение не менялись.
+
+Проверено: `python3 tools/doc_links.py`, переносы — git rename 100 %.
+
 ### Документация: спецификация timesheet (v7.2) и реестры решений timesheet/platform — PR #132
 * **`docs/specs/timesheet/spec.md`** — спецификация расчётного ядра перенесена с прежнего пути
   `overtime_spec_v7_1_final.md` (корень docs/); редакция v7.2: нормативный текст v7.1 БЕЗ изменений,

@@ -18,3 +18,9 @@
   из `docs/superpowers/specs/`.
 * `plans-stays/` — планы реализации частей «Шахматки» (выполнены). Перенесены 03.11.2026 из
   `docs/superpowers/plans/`.
+* `proposals/` — реализованные предложения: `PROPOSAL-NIGHT-REPORT-V2.md` (ночной отчёт v2 —
+  спецификация [`docs/specs/night/spec.md`](../specs/night/spec.md)) и
+  `PROPOSAL-SETTINGS-IA-2026-10-19.md` (информационная архитектура Настроек — реализована,
+  SPEC.md §8). Перенесены 03.11.2026 из корня `docs/`.
+* `overtime_spec_v7_1_final.md` — копия спецификации расчётного ядра v7.1 без правок
+  (действующая редакция — [`docs/specs/timesheet/spec.md`](../specs/timesheet/spec.md)).
