@@ -92,7 +92,7 @@ pip install -r requirements.txt        # всё, включая PDF (reportlab)
 против актуального Графика при каждом открытии. Права — раздел «Шахматка» в
 «Правах доступа»; уровень «Загрузка без гостей» не получает с сервера ни одного поля
 гостя. Спецификация —
-[`docs/superpowers/specs/2026-10-23-stays-chessboard-design.md`](docs/superpowers/specs/2026-10-23-stays-chessboard-design.md).
+[`docs/archive/specs-stays/2026-10-23-stays-chessboard-design.md`](docs/archive/specs-stays/2026-10-23-stays-chessboard-design.md).
 
 ## Как работать с приложением
 

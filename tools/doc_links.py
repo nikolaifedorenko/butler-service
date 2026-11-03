@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HISTORICAL = ("docs/archive/", "docs/audit/", "docs/PROPOSAL-", "docs/superpowers/plans/",
+HISTORICAL = ("docs/archive/", "docs/audit/", "docs/PROPOSAL-",
               "docs/adr/0006-", "docs/adr/0010-")
 PATH_RE = re.compile(r"(?<![\w/.-])((?:app|docs|static|tools|tests|deploy|templates|assets)/[\w./\-*{}<>]+)")
 LINK_RE = re.compile(r"\]\(([^)\s#]+)(?:#[^)]*)?\)")
