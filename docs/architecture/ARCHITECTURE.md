@@ -2,9 +2,13 @@
 
 **Статус:** живая справка
 **Репозиторий:** https://github.com/nikolaifedorenko/butler-service
-**Редакция:** 11.10.2026 — после переписывания расчётного движка по спецификации v7.1
-(предыдущий разбор от 28.09.2026 описывал legacy-движок и движок v4, оба удалены;
-история — в [`CHANGELOG.md`](../../CHANGELOG.md))
+**Редакция:** 03.11.2026 — «Шахматка» (stays) после внедрения частей 1–4 (версии фонда,
+OOO/блоки, сопровождение и VIP-коды, «Мои гости»); Alembic-миграции `0001`–`0020`;
+система документации `docs/specs/` (нормативы и реестры решений 10 модулей, карта
+`docs/README.md`) и CI-гейты `doc_links`/`doc_status`; цифры — на 03.11.2026
+(предыдущая редакция 11.10.2026 — расчётный движок по спецификации v7.1; разбор
+от 28.09.2026 описывал legacy-движок и движок v4, оба удалены; история — в
+[`CHANGELOG.md`](../../CHANGELOG.md))
 **Фокус:** слои и модули, модель данных, ключевые потоки, риски, онбординг
 **Как получен материал:** статический анализ импортов (архитектурные тесты), подсчёт
 SQL-запросов (`SQLAlchemy before_cursor_execute`, `tests/test_query_budget.py`),
@@ -14,10 +18,13 @@ SQL-запросов (`SQLAlchemy before_cursor_execute`, `tests/test_query_budg
 
 ## 1. Резюме
 
-Система учёта рабочего времени для службы батлеров: Табель и График «ФИО × дни»,
-отметки с телефона (PWA), банк часов, управленческий табель (УТ) с кодами ДЯ/ДН/ДЯ2/ДН2,
-закрытие/пересчёт периодов, доска «кто сейчас на работе», история сессий, заявления
-DOCX/PDF + два независимых поддомена (ночные отчёты, электрокары).
+Система для службы батлеров, две предметные области. **Учёт рабочего времени**:
+Табель и График «ФИО × дни», отметки с телефона (PWA), банк часов, управленческий
+табель (УТ) с кодами ДЯ/ДН/ДЯ2/ДН2, закрытие/пересчёт периодов, доска «кто сейчас
+на работе», история сессий, заявления DOCX/PDF; независимые поддомены — ночные
+отчёты и электрокары. **«Шахматка» (stays)**: фонд объекта (виллы, корпуса, номера)
+с версиями «с даты», гости и брони, распределение батлеров и покрытие, OOO/блоки,
+сопровождение и VIP-коды, «Мои гости» с телефона.
 
 Приложение — **модульный монолит** (ADR-0010, фазы C1–C7 исполнены 20.10.2026):
 `app/core/` (инфраструктура: config, db-сессия, время, ошибки, безопасность,
@@ -32,8 +39,9 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 импорты — только чужие `application`/`ports` (R3), модели — через
 `application/catalog.py` владельца.
 
-Главная ценность и главная защита проекта — **расчётный движок v7.1**
-(`app/modules/timesheet/`, ~11 400 строк в модуле): чистая архитектура из пяти слоёв, детерминированные
+Главная ценность и главная защита проекта — **расчётный движок**
+(`app/modules/timesheet/`, ~11 700 строк; норматив — `docs/specs/timesheet/spec.md`,
+редакция v7.2): чистая архитектура из пяти слоёв, детерминированные
 чистые функции «данные → данные», поведение из справочников CFG-* (ни одной ветки
 по строковым кодам), трассируемость каждого действия (`Reason`/`Cut`/`Flag` с
 исчерпывающим составом данных), 21 инвариант, проверяемый внутри расчёта, и 55
@@ -52,10 +60,10 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 | Иллюзорная изоляция тестов на одной БД | движковые тесты (317+) вообще не трогают БД (чистый домен + in-memory порты); интеграция — одна сидируемая база |
 | Противоречивая документация (4 копии разделов) | норматив — `docs/specs/timesheet/spec.md` (монолит v7.1); SPEC/README синхронизированы |
 
-Остались осознанные компромиссы: самодельные миграции (Alembic — точка роста),
-линейный по штату бюджет УТ (по спеке: конвейер на сотрудника), SPA без сборки
-(оболочка `app.js` + файлы разделов в `static/js/modules/`). R6 выполнен
-полностью (батч 20.10.2026): кросс-модульных `relationship()` нет.
+Остались осознанные компромиссы: линейный по штату бюджет УТ (по спеке: конвейер
+на сотрудника), SPA без сборки (оболочка `app.js` + файлы разделов в
+`static/js/modules/`). Миграции — Alembic с 21.10.2026 (ADR-0002 пересмотрен).
+R6 выполнен полностью (батч 20.10.2026): кросс-модульных `relationship()` нет.
 
 ---
 
@@ -64,7 +72,7 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 ### 2.1 Предметная область
 
 Учёт рабочего времени посменного персонала объекта (отель/резиденция). Ключевые
-особенности домена (полная модель — спека v7.1, раздел 4):
+особенности домена (полная модель — `docs/specs/timesheet/spec.md`, раздел 4):
 
 * **Сессии первичны, дни — нарезка**: отметки сопрягаются в сессии на всей временной
   оси, обрезаются по горизонту, режутся локальными полуночами; ночные смены и забытые
@@ -86,7 +94,7 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 | **employees** | Каталог персонала, трудоустройство, жизненный цикл, группы графика, имена | `application` (catalog: Employee/Department/…, employment, groups/names-реэкспорт) |
 | **night** | Ночной отчёт v2: зоны, объекты, чек-листы, недостатки, журнал, выгрузки. Обслуживание (досоздание смен, автозакрытие в 08:00) — стартовый прогон + фоновый поток `bootstrap/night_sync` под лидер-замком `try_lock`, НЕ в GET-запросах | `application` (night, night_export, night_notify, catalog) |
 | **cars** | Электрокары: парк, заряд/возврат, места, ночная проверка | `application` (cars, catalog) |
-| **stays** | «Шахматка»: фонд, гости, брони, автораспределение по объектам, покрытие батлерами, предпросмотр изменений (23.10.2026) | `application` (catalog); График читает через публичный `timesheet.application.roster` |
+| **stays** | «Шахматка»: фонд с версиями, гости и уровни ПДн, брони/группы, назначения и покрытие батлерами, OOO/блоки, сопровождение и VIP-коды, «Мои гости», предпросмотр изменений (норматив — `docs/specs/stays/spec.md`) | `application` (catalog); График читает через публичный `timesheet.application.roster` |
 | **docs** | Заявления DOCX/PDF, сетка Графика в Excel, шаблоны | `application` (doc_render, grid_docx, doc_templates) |
 | **notify** | Общая доставка: Telegram + почта, каталог чатов, журнал отправок | `application` (config, dispatch, recipients, chats, catalog), `ports` (TransportError) |
 | **settings** | Единый центр настроек (агрегирует границы timesheet/docs) | `interface` (своей логики нет) |
@@ -97,18 +105,19 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 `Setting` — `core/settings_store`; транспорт рендера — `core/render`;
 `can_manage_user` — `core/auth_guards` (ролевой страж, не право).
 
-### 2.3 Цифры (20.10.2026, батч review-P1 night/cars)
+### 2.3 Цифры (03.11.2026)
 
 | Показатель | Значение |
 |---|---|
-| Модуль timesheet | ~11 500 строк: domain 3 583 · interface 4 219 (8 роутеров + views/formatting/period_params) · application 1 971 · adapters 1 329 · ports 195 · bootstrap |
-| Прочие 8 модулей | employees 1 776 · night 2 639 · cars 1 098 · docs 1 200 · notify 1 595 · settings 186 · access 445 · audit 102 строк |
-| `app/core/` + composition root | 1 996 (19 файлов) + bootstrap/main 1 795 строк |
-| API | 18 роутеров по модулям, **156 путей OpenAPI** (`docs/openapi.json` сверяется в CI) |
-| Фронтенд `static/js` | ~8 900 строк, 11 файлов: core.js, app.js + 9 разделов в `modules/` |
+| Модуль timesheet | ~11 700 строк: domain 3 588 · interface 4 164 · application 1 955 · adapters 1 446 · ports 227 · bootstrap 224 |
+| Модуль stays | ~12 300 строк: фонд с версиями, гости, брони, назначения, доски, «Мои гости» |
+| Прочие 8 модулей | employees 1 788 · night 2 895 · cars 1 191 · docs 1 149 · notify 1 797 · settings 218 · access 632 · audit 118 строк |
+| `app/core/` + composition root | 2 373 (21 файл) + bootstrap/main 3 558 строк |
+| API | **226 путей OpenAPI** (`docs/openapi.json` сверяется в CI) |
+| Фронтенд `static/js` | ~13 700 строк, 41 файл: core.js, app.js + 39 разделов в `modules/` (12 из них — «Шахматка») |
 | Тесты | `pytest tests/`: движок (EX-01…55, юниты, валидация, property, архитектура) + интеграция + AST-законы всех модулей |
 | Покрытие `timesheet/domain` | ≥ 95 % (DoD спеки) |
-| Таблиц БД | **45** (реестр `bootstrap/registry.py`, `/api/selfcheck` сверяет схему с `Base.metadata`) |
+| Таблиц БД | **78** (реестр `bootstrap/registry.py`, `/api/selfcheck` сверяет схему с `Base.metadata`) |
 | Приёмочных примеров спеки | 55 (EX-01…EX-55) — каждый в автотестах |
 
 ---
@@ -254,6 +263,10 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
   ретро-исправление — новая версия; идентификаторы версий сохраняются с результатом.
 * **Корректировки банка** (`bank_adjustments`) — с `reason_code`; `OPENING_SEED` —
   конвенция адаптера (ядро маркер не интерпретирует, RUL-REASON-CODE-FREE).
+* **«Шахматка» (stays)** — версии фонда «с даты» (`stays_fund_versions`: черновик →
+  публикация, снимок состава), брони с жильцами и логистикой, назначения батлеров
+  по кускам (`stays_assignments`), OOO и блоки по ночам объектов, сопровождение
+  и VIP-коды; детали — норматив `docs/specs/stays/spec.md`.
 
 ## 5. Ключевые потоки
 
@@ -343,7 +356,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
 
 ## 8. Онбординг-маршрут
 
-1. `README.md` → «Структура» и «Правила расчёта — модель v7/v7.1» (10 пунктов).
+1. `README.md` → «Структура»; `docs/GUIDE.md` → «Правила расчёта — модель v7» (10 пунктов).
 2. `docs/archive/EXECUTION-SPEC-v2.md` §2–§3 — целевая структура и правила слоёв R1–R6;
    `docs/adr/0010-modular-monolith-core-modules.md` — почему модульный монолит.
 3. `docs/specs/timesheet/spec.md`: разделы 2 (законы), 4 (модель), 6.3 (стадии
@@ -357,10 +370,12 @@ POST /api/punches: сериализация по сотруднику (lock) →
    (AST-законы всех модулей) — что можно импортировать и откуда.
 8. `docs/archive/changes/CHANGES-2026-10-20-stage-c*.md` — как и почему прошла модульная
    перестройка (C1–C7), включая задокументированные долги.
+9. «Шахматка»: `docs/specs/stays/spec.md` (норматив, уровни ПДн, бюджет SQL) →
+   `app/modules/stays/` (слои те же, что у timesheet).
 
 ## 9. Структура репозитория
 
-Модульный монолит (ADR-0010): `core/` — инфраструктура, `modules/` — 9 бизнес-
+Модульный монолит (ADR-0010): `core/` — инфраструктура, `modules/` — 10 бизнес-
 гексагонов, `bootstrap/` + `main.py` — composition root (единственное место,
 которое знает всё). Границы закреплены `.importlinter` (14 контрактов) и
 AST-тестами; между модулями — только чужие `application`/`ports` (R3),
@@ -385,7 +400,7 @@ butler-service/
 │   │                         #   (роутер /api/photos), settings_store (key-value Setting),
 │   │                         #   render (встроенный PDF на reportlab), format, roles, observability
 │   └── modules/              # каждый: manifest.py + domain / application / ports / adapters / interface
-│       ├── timesheet/        # ДВИЖОК v7.1 + Табель/График/отметки/доска/УТ/двойные:
+│       ├── timesheet/        # ДВИЖОК (спека ред. v7.2) + Табель/График/отметки/доска/УТ:
 │       │   ├── domain/       #   чистое ядро (спека 8.1): types, codes_registry, settings,
 │       │   │                 #   validation, time, sessions, presence, day_card, placement,
 │       │   │                 #   opening, bank, schedule, flags, board, checks, reports, pipeline/settle
@@ -402,6 +417,8 @@ butler-service/
 │       │                     #   трудоустройство, жизненный цикл, группы графика, имена (domain)
 │       ├── night/            # ночной отчёт v2: зоны/объекты/чек-листы, журнал, выгрузки DOCX/PDF
 │       ├── cars/             # электрокары: парк, заряд/возврат, места, ночная проверка
+│       ├── stays/            # «Шахматка»: фонд с версиями, гости, брони, назначения,
+│       │                     #   доски, «Мои гости»; норматив — docs/specs/stays/spec.md
 │       ├── docs/             # заявления DOCX/PDF, сетка Графика (grid_docx), шаблоны документов
 │       ├── notify/           # доставка Telegram/почта: config, dispatch, recipients, chats;
 │       │                     #   ports.TransportError; transports — единственные выходы в сеть
@@ -413,17 +430,19 @@ butler-service/
 │   ├── js/core.js app.js     # ядро (api/модалки/утилиты) + оболочка/меню/роутинг
 │   ├── js/modules/           # разделы 1:1 (глобальные функции сохранены — ADR-0008):
 │   │                         #   timesheet_layers (График-сетка), timesheet_common, marks,
-│   │                         #   fact, tabel, mgmt, access, audit, engine_settings (CFG-*),
-│   │                         #   me, employees, night, cars, docs, dicts, settings
+│   │                         #   fact, tabel, mgmt, punches_journal, access, audit,
+│   │                         #   engine_settings (CFG-*), me, employees, night, cars, docs,
+│   │                         #   dicts, settings (+8 экранов settings_*), stays (+11 stays_*)
 │   └── css/ fonts/ icons/ sw.js manifest.webmanifest
 ├── tests/
 │   ├── engine/               # движок: EX-01…EX-55 (test_ex_*), юниты каталога 8.1,
 │   │                         #   валидация 3 уровней, property-инварианты (hypothesis),
 │   │                         #   AST-законы движка, application (4 режима 7.2, R35–R40)
-│   ├── test_modules_architecture.py  # структура/R1/R3/R6 всех 9 модулей + core
+│   ├── test_modules_architecture.py  # структура/R1/R3/R6 всех 10 модулей + core
 │   └── test_api.py test_features.py test_engine_api.py …   # интеграция приложения
 ├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки/сценарии
-├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, EXECUTION-SPEC-v2, ADR, CHANGES
+├── docs/                     # README.md (карта), specs/ (нормативы и реестры 10 модулей),
+│                             #   SPEC, GUIDE, INSTALL, AUTH, TEMPLATES, architecture/, adr/, archive/
 └── requirements*.txt
 ```
 

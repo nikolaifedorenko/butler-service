@@ -3,9 +3,10 @@
 **Статус:** живая справка — обзор приложения; нормы по модулям — в [`docs/specs/`](specs/), карта — [`docs/README.md`](README.md)
 
 > Нормативный документ расчётного ядра — [`docs/specs/timesheet/spec.md`](specs/timesheet/spec.md)
-> (спецификация v7.1; прежнее ТЗ ред. 3 ею заменено).
+> (редакция v7.2; прежнее ТЗ ред. 3 ею заменено). Норматив «Шахматки» —
+> [`docs/specs/stays/spec.md`](specs/stays/spec.md); остальные модули — в [`docs/specs/`](README.md).
 > Этот документ описывает приложение вокруг ядра: слои, модель данных, вкладки, API,
-> документы, выгрузки, тесты. При расхождении по расчётам приоритет у спецификации v7.1.
+> документы, выгрузки, тесты. При расхождении по расчётам приоритет у спецификации timesheet.
 
 ## 1. Термины и обозначения
 
@@ -34,9 +35,9 @@ interface (static/js/modules, modules/timesheet/interface) → application → d
 ```
 
 Пути — по модульной структуре (ADR-0010, фазы C1–C7): приложение = `app/core/`
-(инфраструктура) + `app/bootstrap/` и `app/main.py` (composition root) + 9 модулей
-`app/modules/*` (timesheet, employees, night, cars, docs, notify, settings, access,
-audit), каждый — пять слоёв `domain/application/ports/adapters/interface`.
+(инфраструктура) + `app/bootstrap/` и `app/main.py` (composition root) + 10 модулей
+`app/modules/*` (timesheet, stays, employees, night, cars, docs, notify, settings,
+access, audit), каждый — пять слоёв `domain/application/ports/adapters/interface`.
 Ниже расчётный контур описан на примере модуля **timesheet**.
 
 * `domain` — чистые функции и справочники: нет времени, I/O, текстов для человека;
@@ -60,7 +61,7 @@ audit), каждый — пять слоёв `domain/application/ports/adapters/
 
 ## 3. Модель данных (таблицы)
 
-### Движок v7.1
+### Движок (модуль timesheet)
 | Таблица | Содержание |
 |---|---|
 | `tabel_days` | Табель: `employee_id, date, code, plan_minutes, note, source (manual/cycle)` — ровно одна строка на день трудоустройства (RUL-TIMESHEET-COVERS-PERIOD) |
@@ -85,6 +86,20 @@ access_grants` (права), `departments`, `subdivisions`, `shift_types` (+`shi
 
 Удалены вместе со старым движком: `timesheet_rows` (расчётные строки legacy),
 `schedule_entries` (ячейки старого графика); `deferred_carry.reason_code` не мапится.
+
+### Модуль «Шахматка» (stays)
+
+31 таблица `stays_*` (миграции `0008`, `0010`–`0020`):
+
+| Группа | Таблицы |
+|---|---|
+| Фонд | `stays_units` (узлы и объекты), `stays_unit_lineage` (дерево), `stays_unit_flags`, `stays_unit_states`/`stays_unit_state_flags`, `stays_categories`/`stays_category_kinds`/`stays_category_states`, `stays_fund_groups`, `stays_fund_versions` (версии фонда «с даты»: черновик → публикация) |
+| Гости | `stays_guests` (+`name_text` — поиск по ФИО), `stays_companions`, `stays_guest_links` (родственные связи), `stays_guest_prefs` (пожелания), `stays_labels` (метки), `stays_fields` (настраиваемые поля) |
+| Брони и распределение | `stays_reservations`, `stays_groups`/`stays_group_states`, `stays_occupants` (заселённые), `stays_assignments` (назначения батлеров, в т.ч. pieces), `stays_moves` (переезды), `stays_logistics`, `stays_escorts` (сопровождение), `stays_vip_codes`, `stays_coverage`/`stays_coverage_guests` (покрытие батлерами) |
+| Служебные | `stays_blocks`/`stays_block_nights` (блоки), `stays_ooo` (out-of-order), `stays_settings` (key-value модуля, в т.ч. `stays.overbook`) |
+
+Норматив — [`specs/stays/spec.md`](specs/stays/spec.md), реестр решений —
+[`specs/stays/decisions.md`](specs/stays/decisions.md) (S1–S63).
 
 ## 4. Движок расчёта (app/modules/timesheet)
 
@@ -135,13 +150,17 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 | Мои отметки | `GET /api/punches/status`, `POST /api/punches`, `GET /api/punches`, `DELETE /api/punches/{id}`, `PUT /api/punches/{id}/note` | — (лёгкие данные: График + отметки + банк последнего закрытого периода) | — |
 
 Прочие роутеры: `auth`, `employees` (карточки, корректировки банка с правилами посева,
-периоды работы, переводы), `access`, `audit`, `settings` (+ `base` — цикл объекта),
+периоды работы, переводы), `stays` (префиксы `/api/stays` и `/api/stays/coverage`:
+фонд и версии, гости, брони, назначения, доски, OOO/блоки, «Мои гости»),
+`access`, `audit`, `settings` (+ `base` — цикл объекта),
 `engine-settings` (версии CFG-* + модификаторы), `shift-types` (словарь; `GET /api/shift-types/tabel-codes` — коды Табеля для редактора смены), `docs`
 (заявления), `doublepay`, `night`, `cars`, `photos`, `departments`, `subdivisions`.
 
 Права: роль → группы доступа → индивидуальные гранты (запрет сильнее разрешения);
 вкладки учёта — `schedule.view/edit`, `tabel.view/edit`, `mgmt.view/close/recalculate`,
-`presence.view`, `settings.view/edit`, `employees.view/edit`, `audit.view`, `access.manage`.
+`presence.view`, `settings.view/edit`, `employees.view/edit`, `audit.view`, `access.manage`;
+«Шахматка» — `stays.view/guests/occupancy/mine/edit/assign/setup/reset/export/overbook`
+и `stays.mine_guest_edit`/`stays.mine_res_edit` (уровни ПДн — [`specs/stays/spec.md`](specs/stays/spec.md)).
 
 ## 6. Циклы и заполнение Табеля
 
@@ -282,5 +301,6 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
   + дневная) одним значением непредставим — окно не пересекает полночь (CHK-WINDOW-BOUNDS).
 * Деньги не считаются; информационный план строки — зарплатный атрибут для внешнего
   расчёта.
-* Рост: Alembic-миграции для боевой БД, батч-порты УТ на группу сотрудников,
-  телеграм-бот отметок, дашборды по объектам.
+* Рост: батч-порты УТ на группу сотрудников, телеграм-бот отметок, дашборды по
+  объектам. (Alembic-миграции реализованы 21.10.2026 — ADR-0002 пересмотрен,
+  ревизии `app/bootstrap/alembic/versions/`.)
