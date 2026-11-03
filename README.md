@@ -7,7 +7,7 @@
 **Excel/PDF**.
 
 Расчёт ведётся детерминированным движком по спецификации
-[`docs/overtime_spec_v7_1_final.md`](docs/overtime_spec_v7_1_final.md)
+[`docs/specs/timesheet/spec.md`](docs/specs/timesheet/spec.md)
 (единственный нормативный документ): чистые функции
 «данные → данные», пять слоёв (`domain / application / ports / adapters / interface`),
 поведение из справочников CFG-*, трассируемость каждого действия, 55 приёмочных
@@ -17,7 +17,7 @@
 
 ## Документация
 
-* [`docs/overtime_spec_v7_1_final.md`](docs/overtime_spec_v7_1_final.md) — **спецификация
+* [`docs/specs/timesheet/spec.md`](docs/specs/timesheet/spec.md) — **спецификация
   движка v7.1** (норматив): предметная модель, справочники CFG-*, правила RUL-*,
   инварианты INV-*, примеры EX-*, вкладки веб-приложения (раздел 16).
 * [`docs/SPEC.md`](docs/SPEC.md) — спецификация приложения: модель данных, API, вкладки,
