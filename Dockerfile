@@ -1,5 +1,5 @@
 # Простой контейнер TimeTrack: приложение + SQLite в томе (или PostgreSQL — POSTGRES_* / DATABASE_URL)
-FROM python:3.11-slim
+FROM python:3.15-slim
 WORKDIR /srv/timetrack
 COPY requirements.txt requirements-postgres.txt requirements.lock.txt ./
 # версии — ровно те, что проверены CI (lock как constraints: dev-пакеты в образ не попадают)
