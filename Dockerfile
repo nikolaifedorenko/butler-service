@@ -19,9 +19,9 @@ RUN pip install --no-cache-dir -r requirements-postgres.txt
 # его не импортирует), а его вложенные jaraco.context и wheel — HIGH-уязвимости (Trivy,
 # 25.10.2026): убираем, а не обновляем — меньше поверхность и не гонимся за версиями
 RUN pip uninstall -y setuptools \
-    && rm -rf /usr/local/lib/python3.15/site-packages/setuptools* \
-              /usr/local/lib/python3.15/site-packages/pkg_resources \
-              /usr/local/lib/python3.15/site-packages/_distutils_hack
+    && rm -rf /usr/local/lib/python3.15/site-packages/pkg_resources \
+              /usr/local/lib/python3.15/site-packages/_distutils_hack \
+    && find / -xdev \( -iname 'setuptools' -o -iname 'setuptools-*' \) -not -path '/proc/*' -print -exec rm -rf {} +
 COPY app ./app
 COPY static ./static
 COPY assets ./assets
