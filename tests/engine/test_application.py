@@ -295,7 +295,7 @@ def test_ex_55_control_2_incomplete_timesheet():
 def test_ex_55_control_3_dismissal_midmonth():
     rows = [day(10, "Я 12")] + _rows_full_month("В", first=11, last=20)
     db, ports = _ex55_stand(Employment(dt.date(2026, 10, 10), dt.date(2026, 10, 20)), rows)
-    view = close_period(EMP, OCT, dt.datetime(2026, 10, 21, 0, 0, tzinfo=TZ).astimezone(dt.timezone.utc), ports)
+    view = close_period(EMP, OCT, dt.datetime(2026, 10, 21, 0, 0, tzinfo=TZ).astimezone(dt.UTC), ports)
     assert len(view.settle.cards) == 11
 
 
@@ -338,9 +338,9 @@ def test_punch_selection_window_with_step_reserve():
     load_inputs(EMP, OCT, ports)
     between = [c for c in db.punch_calls if c[0] == "between"][0]
     st = _st()
-    expected_from = dt.datetime(2026, 10, 1, 0, 0, tzinfo=TZ).astimezone(dt.timezone.utc) \
+    expected_from = dt.datetime(2026, 10, 1, 0, 0, tzinfo=TZ).astimezone(dt.UTC) \
         - dt.timedelta(minutes=st.step_minutes)
-    expected_to = dt.datetime(2026, 11, 1, 0, 0, tzinfo=TZ).astimezone(dt.timezone.utc) \
+    expected_to = dt.datetime(2026, 11, 1, 0, 0, tzinfo=TZ).astimezone(dt.UTC) \
         + dt.timedelta(minutes=st.step_minutes)
     assert between[1] == expected_from
     assert between[2] == expected_to
@@ -361,7 +361,7 @@ def test_ex_38_control_mark_beyond_period_included_in_selection():
 def test_mark_exactly_at_from_utc_in_selection_not_opening():
     """Граница [from, to): отметка ровно в from_utc — в выборке (v7/R7)."""
     prd = Period(dt.date(2026, 10, 2), dt.date(2026, 10, 3))
-    from_utc = dt.datetime(2026, 10, 1, 23, 0, tzinfo=TZ).astimezone(dt.timezone.utc)
+    from_utc = dt.datetime(2026, 10, 1, 23, 0, tzinfo=TZ).astimezone(dt.UTC)
     mark = Mark(EMP, from_utc, "in")
     db, ports = _stand(rows=[day(2, "В"), day(3, "В")], marks=[mark, OUT(3, 23)])
     inp = load_inputs(EMP, prd, ports)
@@ -554,7 +554,7 @@ def test_schedule_generation_from_timesheet_windows():
     entries = db.generated[(EMP, d(1), d(2))]
     assert entries[0].source == "generated"
     assert entries[0].shift.start_utc == dt.datetime(2026, 10, 1, 8, 0,
-                                                     tzinfo=TZ).astimezone(dt.timezone.utc)
+                                                     tzinfo=TZ).astimezone(dt.UTC)
 
 
 def test_schedule_manual_day_requires_accepts_ut_anchor():

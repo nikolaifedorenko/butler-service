@@ -13,7 +13,7 @@ def plain(value: Any) -> Any:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {f.name: plain(getattr(value, f.name)) for f in dataclasses.fields(value)}
     if isinstance(value, dt.datetime):
-        return value.astimezone(dt.timezone.utc).isoformat()
+        return value.astimezone(dt.UTC).isoformat()
     if isinstance(value, dt.date):
         return value.isoformat()
     if isinstance(value, (dict, MappingProxyType)) or hasattr(value, "items"):

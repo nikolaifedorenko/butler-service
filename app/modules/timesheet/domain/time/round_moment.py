@@ -16,4 +16,4 @@ def round_moment(t: dt.datetime, st: Settings) -> dt.datetime:
     whole, rest = divmod(int((local - midnight).total_seconds()), step_seconds)
     grids = whole + 1 if rest * 2 >= step_seconds else whole
     rounded = midnight + dt.timedelta(minutes=grids * st.step_minutes)
-    return rounded.astimezone(dt.timezone.utc)
+    return rounded.astimezone(dt.UTC)

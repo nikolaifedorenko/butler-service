@@ -29,13 +29,13 @@ def utc_to_local(value: dt.datetime | None) -> dt.datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=dt.timezone.utc)
+        value = value.replace(tzinfo=dt.UTC)
     return value.astimezone(TZ).replace(tzinfo=None)
 
 
 def utcnow() -> dt.datetime:
     """Наивный UTC — для меток хранения (ts аудита, created_at и т.п.)."""
-    return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    return dt.datetime.now(dt.UTC).replace(tzinfo=None)
 
 
 def month_name(month: int) -> str:

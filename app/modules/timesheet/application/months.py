@@ -42,7 +42,7 @@ def settings_for_now(now: dt.datetime, ports):
     """
     from ..domain.time.today_of import today_of
 
-    utc_day = now.astimezone(dt.timezone.utc).date()
+    utc_day = now.astimezone(dt.UTC).date()
     utc_period = month_period(utc_day.year, utc_day.month)
     st = ports.settings.load(utc_period)
     today = today_of(now, st)

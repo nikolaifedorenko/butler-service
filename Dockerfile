@@ -1,10 +1,17 @@
 # Простой контейнер TimeTrack: приложение + SQLite в томе (или PostgreSQL — POSTGRES_* / DATABASE_URL)
-FROM python:3.11-slim
+FROM python:3.15-slim
 # Системные пакеты базового образа: патчи безопасности Debian выходят раньше, чем пересобирается
 # сам образ (Trivy 08.11.2026: два HIGH в zlib1g, исправление deb13u1 уже в репозитории).
 # Обновляем только zlib1g — остальной состав образа не двигаем
 RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
     && rm -rf /var/lib/apt/lists/*
+# pip из базового образа несёт вложенные msgpack/urllib3 со старыми версиями (Trivy 08.11.2026:
+# CVE-2026-114613, CVE-2026-97687, CVE-2026-97689) — свежий pip приносит исправленные
+RUN pip install --no-cache-dir --upgrade pip \
+    && rm -f /usr/local/lib/python3.15/site-packages/pip/_vendor/bom.cdx.json
+# (SBOM-файл самого pip перечисляет вложенный pkg_resources как «setuptools 70.3.0» — Trivy
+#  принимает это за установленный пакет и ловит CVE-2025-47273 (ложное срабатывание, 08.11.2026);
+#  файл справочный, pip его не читает)
 WORKDIR /srv/timetrack
 COPY requirements.txt requirements-postgres.txt requirements.lock.txt ./
 # версии — ровно те, что проверены CI (lock как constraints: dev-пакеты в образ не попадают)

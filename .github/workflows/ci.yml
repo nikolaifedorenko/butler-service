@@ -19,37 +19,21 @@ concurrency:
 
 jobs:
   backend:
-    name: "Python ${{ matrix.python-version }}: ruff + pytest"
+    name: "Python 3.15: ruff + pytest"
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # 3.13 — с 25.10.2026: run.sh пробует его первым, а CI его не проверял
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.15"
           cache: pip
 
       - name: Зависимости
-        # На 3.11 ставим ТОЧНО из лок-файла (воспроизводимость), на 3.10/3.12 —
-        # из свободных требований: так ловим и регрессии, и несовместимость с новыми
-        # версиями библиотек. Без пинов установка уже ломалась: свежий starlette
-        # требует httpx2, а pip без лока выдавал ResolutionImpossible.
+        # ставим ТОЧНО из лок-файла (воспроизводимость)
         run: |
           python -m pip install --upgrade pip
-          if [ "${{ matrix.python-version }}" = "3.11" ]; then
-            pip install -r requirements.lock.txt
-          else
-            # не тянем playwright: он нужен только tools/screens.py, а для тестов
-            # достаточно pytest/httpx/httpx2/freezegun/pypdf. Совместная установка
-            # requirements-dev.txt целиком на «свежем» резолвере давала
-            # ResolutionImpossible, из-за чего матрица 3.10/3.12 не стартовала.
-            pip install -r requirements.txt pytest httpx httpx2 freezegun pypdf
-          fi
+          pip install -r requirements.lock.txt
           pip install ruff hypothesis pytest-cov import-linter
 
       - name: Линтер (ruff)
@@ -58,22 +42,15 @@ jobs:
       - name: Контракты импортов (import-linter, .importlinter)
         run: lint-imports
 
-      - name: Тесты
-        if: matrix.python-version != '3.11'
-        run: python -m pytest tests/ -q
-
       - name: Тесты + порог покрытия (приложение ≥ 90 %, ядро расчёта ≥ 95 %)
         # с 25.10.2026 порог блокирующий: DoD спецификации — ядро ≥ 95 % (сейчас 98 %),
-        # приложение — не ниже 90 % (сейчас 91 %); на одной версии Python, чтобы не
-        # удлинять всю матрицу
-        if: matrix.python-version == '3.11'
+        # приложение — не ниже 90 % (сейчас 91 %)
         run: |
           python -m pytest tests/ -q --cov=app --cov-report=
           python -m coverage report --skip-covered --skip-empty --fail-under=90 | tail -3
           python -m coverage report --include='app/modules/timesheet/domain/*' --fail-under=95 | tail -1
 
       - name: Типы ядра расчёта (mypy, [tool.mypy] в pyproject.toml)
-        if: matrix.python-version == '3.11'
         run: python -m mypy
 
       - name: Версии статики согласованы (index.html ↔ sw.js)
@@ -89,15 +66,12 @@ jobs:
         run: python tools/doc_links.py
 
       - name: Лок-файл зависимостей не разошёлся
-        if: matrix.python-version == '3.11'
         run: python tools/freeze_requirements.py --check
 
       - name: Контракт OpenAPI не разошёлся с кодом (docs/openapi.json)
-        if: matrix.python-version == '3.11'
         run: python tools/export_openapi.py --check
 
       - name: Аудит зависимостей (pip-audit, известные CVE)
-        if: matrix.python-version == '3.11'
         # блокирующий с 22.10.2026: новая CVE в зависимостях проекта остановит merge.
         # Проверяем lock-файл (то, что ставится в Docker-образ), а не окружение раннера:
         # в нём старый setuptools из образа Python, к продукту не относящийся
@@ -122,7 +96,7 @@ jobs:
   postgres:
     # прод работает на PostgreSQL: raw-SQL миграций и типы колонок (boolean = integer,
     # INTEGER для id чатов Telegram) ломались только там — аудит 21.10.2026, DB-02/DB-06
-    name: "Python 3.11 + PostgreSQL 16: pytest"
+    name: "Python 3.15 + PostgreSQL 16: pytest"
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -139,7 +113,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.15"
           cache: pip
 
       - name: Зависимости
@@ -164,7 +138,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.15"
           cache: pip
 
       - name: Синтаксис всех скриптов интерфейса
@@ -286,7 +260,7 @@ jobs:
 
       - name: Уязвимости образа (Trivy, HIGH/CRITICAL с исправлением)
         # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и
-        # системные пакеты базового python:3.11-slim. Блокирующий для уязвимостей,
+        # системные пакеты базового python:3.15-slim. Блокирующий для уязвимостей,
         # у которых уже есть исправленная версия; остальные — в отчёте
         uses: aquasecurity/trivy-action@v0.36.0
         with:

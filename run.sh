@@ -20,14 +20,14 @@ fail() { printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
 # ── 1. Python ─────────────────────────────────────────────────────────────
 PYBIN=""
-for c in python3.13 python3.12 python3.11 python3.10 python3 python; do
+for c in python3.15 python3 python; do
   if command -v "$c" >/dev/null 2>&1; then
-    if "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then
+    if "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3,15) else 1)' 2>/dev/null; then
       PYBIN="$c"; break
     fi
   fi
 done
-[ -n "$PYBIN" ] || fail "Не найден Python 3.10+ . Установите: https://www.python.org/downloads/  (или: brew install python@3.12)"
+[ -n "$PYBIN" ] || fail "Не найден Python 3.15+ . Установите: https://www.python.org/downloads/  (или: brew install python@3.15)"
 say "Python: $($PYBIN -V 2>&1) ($(command -v "$PYBIN"))"
 
 # ── 2. Виртуальное окружение ──────────────────────────────────────────────

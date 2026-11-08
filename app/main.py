@@ -311,7 +311,7 @@ def health():
     payload = {"ok": db_state == "ok", "app": settings.app_name,
                "version": settings.app_version, "db": db_state, "tz": settings.app_tz,
                "server_time_local": now_local().isoformat(timespec="seconds"),
-               "server_time_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+               "server_time_utc": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")}
     return JSONResponse(payload, status_code=200 if payload["ok"] else 503)
 
 

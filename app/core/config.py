@@ -79,13 +79,13 @@ class Settings(BaseSettings):
     notify_secret_key: str = ""
 
     @model_validator(mode="after")
-    def _resolve_database_url(self) -> "Settings":
+    def _resolve_database_url(self) -> Settings:
         if not self.database_url:
             self.database_url = postgres_url(self) if self.postgres_host else f"sqlite:///{self.sqlite_path}"
         return self
 
 
-def postgres_url(s: "Settings") -> str:
+def postgres_url(s: Settings) -> str:
     """postgresql+psycopg2://… из POSTGRES_*. Строку собирает сам SQLAlchemy (URL.create):
     экранирование всегда то, которое разбирает установленная версия — ручной quote() имя
     базы на одних версиях раскодировался, на других нет (CI, Python 3.10)."""

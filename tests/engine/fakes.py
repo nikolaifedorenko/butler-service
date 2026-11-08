@@ -20,8 +20,8 @@ from app.modules.timesheet.domain.types.entities import (
     ShiftEntry,
 )
 
-UTC = dt.timezone.utc
-TZ = dt.timezone.utc        # фолбэк; тесты задают tz настроек явно (Europe/Moscow)
+UTC = dt.UTC
+TZ = dt.UTC        # фолбэк; тесты задают tz настроек явно (Europe/Moscow)
 
 
 def _clone(obj):

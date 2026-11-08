@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
-from typing import Callable, TypeVar
+from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,7 +23,6 @@ from .context import load_context
 from .fund_versions import fund_day, fund_for
 from .locking import lock_module
 
-T = TypeVar("T")
 # (вид, день, батлер, бронь, текст)
 WarningKey = tuple[str, str | None, int | None, int | None, str]
 
@@ -198,8 +197,8 @@ def _coverage_changes(before: Snapshot, after: Snapshot) -> list[dict]:
             for (d, e), v in sorted(acc.items(), key=lambda x: (x[0][0], x[0][1]))]
 
 
-def run_operation(db: Session, op: Callable[[], T], window: Window | None = None,
-                  duty: DutyPort | None = None, *, may_overbook: bool) -> tuple[T, dict]:
+def run_operation[T](db: Session, op: Callable[[], T], window: Window | None = None,
+                     duty: DutyPort | None = None, *, may_overbook: bool) -> tuple[T, dict]:
     """Выполнить op и снять разницу. op пишет и журнал аудита, и возвращает уже
     сериализованный результат: после отката ORM-объекты просрочены. Фиксирует или
     откатывает транзакцию обработчик (commit — только в обработчиках).
