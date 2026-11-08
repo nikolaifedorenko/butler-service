@@ -24,6 +24,9 @@ RUN pip uninstall -y setuptools \
     && find / -xdev \( -iname 'setuptools' -o -iname 'setuptools-*' \) -not -path '/proc/*' -print -exec rm -rf {} + \
     && (grep -rlE --include=METADATA --include=PKG-INFO '^Name: setuptools$' /usr /opt 2>/dev/null \
         | tee /dev/stderr | xargs -r -n1 dirname | xargs -r rm -rf; true)
+# ДИАГНОСТИКА (временно): откуда Trivy берёт setuptools 70.3.0 — в образе нет ни пакета, ни метаданных
+RUN echo '--- 70.3.0'; grep -rIl '70\.3\.0' /usr /opt /srv /root /var /etc 2>/dev/null | head -20; \
+    echo '--- sbom'; find / -xdev \( -iname '*sbom*' -o -iname '*.spdx*' -o -iname '*.cdx*' -o -iname '*bom.json' \) -not -path '/proc/*' 2>/dev/null | head -20; true
 COPY app ./app
 COPY static ./static
 COPY assets ./assets
