@@ -21,7 +21,9 @@ RUN pip install --no-cache-dir -r requirements-postgres.txt
 RUN pip uninstall -y setuptools \
     && rm -rf /usr/local/lib/python3.15/site-packages/pkg_resources \
               /usr/local/lib/python3.15/site-packages/_distutils_hack \
-    && find / -xdev \( -iname 'setuptools' -o -iname 'setuptools-*' \) -not -path '/proc/*' -print -exec rm -rf {} +
+    && find / -xdev \( -iname 'setuptools' -o -iname 'setuptools-*' \) -not -path '/proc/*' -print -exec rm -rf {} + \
+    && (grep -rlE --include=METADATA --include=PKG-INFO '^Name: setuptools$' /usr /opt 2>/dev/null \
+        | tee /dev/stderr | xargs -r -n1 dirname | xargs -r rm -rf; true)
 COPY app ./app
 COPY static ./static
 COPY assets ./assets
