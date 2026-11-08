@@ -5,6 +5,9 @@ FROM python:3.15-slim
 # Обновляем только zlib1g — остальной состав образа не двигаем
 RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
     && rm -rf /var/lib/apt/lists/*
+# pip из базового образа несёт вложенные msgpack/urllib3 со старыми версиями (Trivy 08.11.2026:
+# CVE-2026-114613, CVE-2026-97687, CVE-2026-97689) — свежий pip приносит исправленные
+RUN pip install --no-cache-dir --upgrade pip
 WORKDIR /srv/timetrack
 COPY requirements.txt requirements-postgres.txt requirements.lock.txt ./
 # версии — ровно те, что проверены CI (lock как constraints: dev-пакеты в образ не попадают)
@@ -15,7 +18,10 @@ RUN pip install --no-cache-dir -r requirements-postgres.txt
 # setuptools из базового образа не нужен приложению (все пакеты — колёса, ни одна зависимость
 # его не импортирует), а его вложенные jaraco.context и wheel — HIGH-уязвимости (Trivy,
 # 25.10.2026): убираем, а не обновляем — меньше поверхность и не гонимся за версиями
-RUN pip uninstall -y setuptools
+RUN pip uninstall -y setuptools \
+    && rm -rf /usr/local/lib/python3.15/site-packages/setuptools* \
+              /usr/local/lib/python3.15/site-packages/pkg_resources \
+              /usr/local/lib/python3.15/site-packages/_distutils_hack
 COPY app ./app
 COPY static ./static
 COPY assets ./assets
