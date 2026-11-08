@@ -50,7 +50,7 @@ def preset_shifts(employee_id: str, day: dt.date, shift_type) -> list[Shift]:
     для «добавить смену в График» из шахматки."""
     def at(d: dt.date, hhmm: str) -> dt.datetime:
         hh, mm = (int(x) for x in hhmm.split(":"))
-        return dt.datetime.combine(d, dt.time(hh, mm), TZ).astimezone(dt.timezone.utc)
+        return dt.datetime.combine(d, dt.time(hh, mm), TZ).astimezone(dt.UTC)
     end_day = day + dt.timedelta(days=1) if shift_type.overnight else day
     return [Shift(employee_id, at(day, shift_type.start_time), at(end_day, shift_type.end_time))]
 
@@ -89,8 +89,8 @@ def generated_entry(row: Day, st: Settings) -> ShiftEntry | None:
     if window is None:
         return None
     midnight = dt.datetime.combine(row.day, dt.time(0), st.tz)
-    start = (midnight + dt.timedelta(minutes=window.start_minute)).astimezone(dt.timezone.utc)
-    end = (midnight + dt.timedelta(minutes=window.end_minute)).astimezone(dt.timezone.utc)
+    start = (midnight + dt.timedelta(minutes=window.start_minute)).astimezone(dt.UTC)
+    end = (midnight + dt.timedelta(minutes=window.end_minute)).astimezone(dt.UTC)
     return ShiftEntry(Shift(row.employee_id, start, end), "generated")
 
 

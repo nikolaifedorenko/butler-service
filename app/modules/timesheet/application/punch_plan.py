@@ -19,11 +19,11 @@ from ..adapters.orm import ScheduleAbsence, ScheduleShift
 
 
 def to_local(value: dt.datetime) -> dt.datetime:
-    return value.replace(tzinfo=dt.timezone.utc).astimezone(TZ).replace(tzinfo=None)
+    return value.replace(tzinfo=dt.UTC).astimezone(TZ).replace(tzinfo=None)
 
 
 def day_bounds_utc(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
-    lo = dt.datetime.combine(day, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    lo = dt.datetime.combine(day, dt.time(0), TZ).astimezone(dt.UTC)
     return lo, lo + dt.timedelta(days=1)
 
 
@@ -79,11 +79,11 @@ def subintervals(db: Session, emp_id: int, day: dt.date) -> tuple:
 
 
 def _start(row: ScheduleShift) -> dt.datetime:
-    return row.start_utc.replace(tzinfo=dt.timezone.utc)
+    return row.start_utc.replace(tzinfo=dt.UTC)
 
 
 def _end(row: ScheduleShift) -> dt.datetime:
-    return row.end_utc.replace(tzinfo=dt.timezone.utc)
+    return row.end_utc.replace(tzinfo=dt.UTC)
 
 
 def _absence(row: ScheduleAbsence):

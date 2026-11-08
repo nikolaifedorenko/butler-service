@@ -136,7 +136,7 @@ def _punch_permissions(db: Session, emp_id: int,
     * код Табеля сегодняшнего дня — режим из карточки кода (punch_in/punch_out):
       отпуск «ОТ» отмечается заявлением, а не отметками. Отсутствующий ключ
       в старой версии справочников — разрешение (RUL-ALL-MARKS-COUNTED)."""
-    now_utc = now.replace(tzinfo=TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
+    now_utc = now.replace(tzinfo=TZ).astimezone(dt.UTC).replace(tzinfo=None)
     in_ok, out_ok, hint = True, True, None
     row = db.scalar(select(ScheduleAbsence).where(
         ScheduleAbsence.employee_id == emp_id, ScheduleAbsence.start_utc <= now_utc,

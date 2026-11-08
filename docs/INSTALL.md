@@ -3,7 +3,7 @@
 ## 1. Локальная машина (любая ОС)
 
 ### Требования
-* Python **3.10+** (проверка: `python3 --version`);
+* Python **3.15+** (проверка: `python3 --version`);
 * ~200 МБ места; интернет для установки зависимостей (однократно).
 
 ### Шаги (Linux / macOS)
@@ -79,7 +79,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 | Ошибка в терминале | Что делать |
 |---|---|
 | `ModuleNotFoundError: No module named 'docx'` (или `fastapi`, `uvicorn`, `openpyxl`) | зависимости не установлены/установлены частично: `./run.sh` (доустановит сам) или `./run.sh --reinstall` |
-| `Failed building wheel for reportlab` / `pillow` | на самой новой версии Python готовых сборок может ещё не быть: поставьте Xcode Command Line Tools (`xcode-select --install`) или используйте Python 3.11–3.13 |
+| `Failed building wheel for reportlab` / `pillow` | на самой новой версии Python готовых сборок может ещё не быть: поставьте Xcode Command Line Tools (`xcode-select --install`) или используйте Docker (образ python:3.15-slim) |
 | `Address already in use` | порт занят: `PORT=8010 ./run.sh` или остановите прошлый процесс |
 | `Permission denied` при запуске `./run.sh` | `chmod +x run.sh setup_macos.sh` |
 | Белый экран в браузере | откройте консоль (F12) и `server.log`; чаще всего — кэш, лечится `Cmd+Shift+R` |

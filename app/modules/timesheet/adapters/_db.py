@@ -12,7 +12,7 @@ TZ = ZoneInfo(TZ_NAME)
 
 
 def local_naive_to_utc(value: dt.datetime) -> dt.datetime:
-    return value.replace(tzinfo=TZ).astimezone(dt.timezone.utc)
+    return value.replace(tzinfo=TZ).astimezone(dt.UTC)
 
 
 def utc_to_local_naive(value: dt.datetime) -> dt.datetime:
@@ -20,11 +20,11 @@ def utc_to_local_naive(value: dt.datetime) -> dt.datetime:
 
 
 def utc_naive_to_aware(value: dt.datetime) -> dt.datetime:
-    return value.replace(tzinfo=dt.timezone.utc)
+    return value.replace(tzinfo=dt.UTC)
 
 
 def local_midnight_utc(day: dt.date, tz=None) -> dt.datetime:
-    return dt.datetime.combine(day, dt.time(0), tz or TZ).astimezone(dt.timezone.utc)
+    return dt.datetime.combine(day, dt.time(0), tz or TZ).astimezone(dt.UTC)
 
 
 def eid(value: int | str) -> str:

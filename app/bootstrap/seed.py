@@ -316,7 +316,7 @@ def seed_if_empty(db: Session) -> bool:
 
     def _utc_naive(local: dt.datetime) -> dt.datetime:
         from ..core.time import TZ
-        return local.replace(tzinfo=TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
+        return local.replace(tzinfo=TZ).astimezone(dt.UTC).replace(tzinfo=None)
 
     db.add(ScheduleAbsence(employee_id=ivanov.id,
                            start_utc=_utc_naive(dt.datetime.combine(away_day, dt.time(14, 0))),

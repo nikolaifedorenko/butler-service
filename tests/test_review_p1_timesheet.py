@@ -311,7 +311,7 @@ def test_ts4_board_loads_settings_of_local_today_month(monkeypatch):
     ports2 = dataclasses.replace(ports, settings=RecSettings(),
                                  employment=RecEmployment())
     # 2026-10-31 22:30 UTC = 2026-11-01 01:30 МСК: граница месяцев
-    now = dt.datetime(2026, 10, 31, 22, 30, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 10, 31, 22, 30, tzinfo=dt.UTC)
     pb.presence_board(now, ports2)
 
     # двухшаговое уточнение: месяц UTC-дня (узнать tz) → месяц локального «сегодня»

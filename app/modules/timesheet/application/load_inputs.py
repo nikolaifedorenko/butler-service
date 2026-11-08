@@ -49,7 +49,7 @@ def punch_window(period: Period, st: Settings) -> tuple[dt.datetime, dt.datetime
     step = dt.timedelta(minutes=st.step_minutes)
     lo = dt.datetime.combine(period.start, dt.time(0), st.tz) - step
     hi = dt.datetime.combine(period.end + dt.timedelta(days=1), dt.time(0), st.tz) + step
-    return lo.astimezone(dt.timezone.utc), hi.astimezone(dt.timezone.utc)
+    return lo.astimezone(dt.UTC), hi.astimezone(dt.UTC)
 
 
 def _previous_step(effective: Period, employment: Employment, st: Settings,

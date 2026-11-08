@@ -57,9 +57,9 @@ def sessions(employee_id: int, first: dt.date, last: dt.date,
         if own is None or own != employee_id:
             raise HTTPException(status_code=403,
                                 detail="Доступна только своя история сессий")
-    from_utc = dt.datetime.combine(first, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    from_utc = dt.datetime.combine(first, dt.time(0), TZ).astimezone(dt.UTC)
     to_utc = dt.datetime.combine(last + dt.timedelta(days=1), dt.time(0),
-                                 TZ).astimezone(dt.timezone.utc)
+                                 TZ).astimezone(dt.UTC)
     ports = engine_ports(db, principal, now_utc())
     # DomainError → 422 — централизованный хэндлер main.py (§5.3)
     views = view_sessions(str(employee_id), from_utc, to_utc, ports)
@@ -94,16 +94,16 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
         emps = [e for e in emps if e.id == own]
     ports = engine_ports(db, principal, now_utc())
     # порт отметок ждёт UTC (from_utc/to_utc): границы месяца — локальная полночь объекта в UTC
-    lo = dt.datetime.combine(period.start, dt.time(0), TZ).astimezone(dt.timezone.utc)
-    hi = dt.datetime.combine(period.end + dt.timedelta(days=1), dt.time(0), TZ).astimezone(dt.timezone.utc)
+    lo = dt.datetime.combine(period.start, dt.time(0), TZ).astimezone(dt.UTC)
+    hi = dt.datetime.combine(period.end + dt.timedelta(days=1), dt.time(0), TZ).astimezone(dt.UTC)
     lookups = color_lookups(db)
     emp_ids = [e.id for e in emps]
     tabel_rows: dict[tuple[int, dt.date], TabelDay] = {
         (r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
             TabelDay.employee_id.in_(emp_ids), TabelDay.date >= period.start,
             TabelDay.date <= period.end))} if emp_ids else {}
-    lo_utc = lo.astimezone(dt.timezone.utc).replace(tzinfo=None)
-    hi_utc = hi.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    lo_utc = lo.astimezone(dt.UTC).replace(tzinfo=None)
+    hi_utc = hi.astimezone(dt.UTC).replace(tzinfo=None)
     absence_rows = list(db.scalars(select(ScheduleAbsence).where(
         ScheduleAbsence.employee_id.in_(emp_ids), ScheduleAbsence.start_utc < hi_utc,
         ScheduleAbsence.end_utc > lo_utc))) if emp_ids else []
@@ -119,8 +119,8 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
         ScheduleShift.end_utc > lo_utc).order_by(ScheduleShift.start_utc))) if emp_ids else []
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for r in shift_rows:
-        s_local = r.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-        e_local = r.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+        s_local = r.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+        e_local = r.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
         d0 = s_local.date()
         while d0 <= min(e_local.date(), period.end):
             if period.start <= d0:
@@ -174,16 +174,16 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
                        if r.date == d]
             shift_hm = None
             if sh_rows:
-                s0 = sh_rows[0].start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-                e0 = sh_rows[0].end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+                s0 = sh_rows[0].start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+                e0 = sh_rows[0].end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
                 shift_hm = (s0.strftime("%H:%M"), e0.strftime("%H:%M"))
             day_abs = []
             whole_off_color = None
             d_lo = dt.datetime.combine(d, dt.time(0), TZ)
             d_hi = d_lo + dt.timedelta(days=1)
             for a in emp_abs:
-                a_lo = a.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-                a_hi = a.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+                a_lo = a.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+                a_hi = a.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
                 if a_lo < d_hi and a_hi > d_lo:
                     day_abs.append([max(a_lo, d_lo).strftime("%H:%M"),
                                     min(a_hi, d_hi).strftime("%H:%M")])
@@ -318,9 +318,9 @@ def day_grid(date: dt.date,
         own = principal.employee.id if principal.employee else None
         emps = [e for e in emps if own is not None and e.id == own]
     tz = st.tz
-    day_lo = dt.datetime.combine(date, dt.time(0), tz).astimezone(dt.timezone.utc)
+    day_lo = dt.datetime.combine(date, dt.time(0), tz).astimezone(dt.UTC)
     day_hi = dt.datetime.combine(date + dt.timedelta(days=1), dt.time(0),
-                                 tz).astimezone(dt.timezone.utc)
+                                 tz).astimezone(dt.UTC)
     rows = []
     for emp in emps:
         eid = str(emp.id)

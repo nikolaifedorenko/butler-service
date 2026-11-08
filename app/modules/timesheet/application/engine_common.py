@@ -100,7 +100,7 @@ def day_code_colors(db: Session) -> dict[str, str]:
 
 def now_utc() -> dt.datetime:
     """Системное время в composition root (7.1, v7.1/F-15): передаётся в use case'ы."""
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 def engine_ports(db: Session, principal=None, now: dt.datetime | None = None):

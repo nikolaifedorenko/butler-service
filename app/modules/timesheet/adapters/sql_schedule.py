@@ -146,9 +146,9 @@ class SqlScheduleStore:
             if s.start_utc >= s.end_utc:
                 raise ConfigError([("CHK-SHIFT-ORDER", {"day": day.isoformat()})])
             self.db.add(ScheduleShift(employee_id=emp, date=day,
-                                      start_utc=s.start_utc.astimezone(dt.timezone.utc)
+                                      start_utc=s.start_utc.astimezone(dt.UTC)
                                       .replace(tzinfo=None),
-                                      end_utc=s.end_utc.astimezone(dt.timezone.utc)
+                                      end_utc=s.end_utc.astimezone(dt.UTC)
                                       .replace(tzinfo=None),
                                       source="manual"))
         self.db.flush()
@@ -169,9 +169,9 @@ class SqlScheduleStore:
             s = entry.shift
             self.db.add(ScheduleShift(employee_id=emp,
                                       date=s.start_utc.astimezone(self.tz).date(),
-                                      start_utc=s.start_utc.astimezone(dt.timezone.utc)
+                                      start_utc=s.start_utc.astimezone(dt.UTC)
                                       .replace(tzinfo=None),
-                                      end_utc=s.end_utc.astimezone(dt.timezone.utc)
+                                      end_utc=s.end_utc.astimezone(dt.UTC)
                                       .replace(tzinfo=None),
                                       source="generated"))
         self.db.flush()
@@ -190,8 +190,8 @@ class SqlScheduleStore:
                                 {"day": day.isoformat(), "start": start_hhmm, "end": end_hhmm})])
         lock_employee(self.db, emp_pk(employee_id))
         row = ScheduleAbsence(employee_id=emp_pk(employee_id),
-                              start_utc=start_local.astimezone(dt.timezone.utc).replace(tzinfo=None),
-                              end_utc=end_local.astimezone(dt.timezone.utc).replace(tzinfo=None))
+                              start_utc=start_local.astimezone(dt.UTC).replace(tzinfo=None),
+                              end_utc=end_local.astimezone(dt.UTC).replace(tzinfo=None))
         self.db.add(row)
         self.db.flush()
         return row.id

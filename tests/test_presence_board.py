@@ -103,7 +103,7 @@ def test_board_card_shift_today_hm_in_object_tz():
     from app.modules.timesheet.domain.types.entities import Mark, Shift
     from app.modules.timesheet.interface.views import board_dict
 
-    utc = dt.timezone.utc
+    utc = dt.UTC
     day = dt.date.today()
     # смена 08:00–20:00 MSC = 05:00–17:00 UTC; отметка IN 09:00 MSC = 06:00 UTC
     s_start = dt.datetime.combine(day, dt.time(5, 0), tzinfo=utc)

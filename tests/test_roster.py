@@ -15,7 +15,7 @@ D0 = dt.date(2033, 3, 1)
 
 
 def _utc(day: dt.date, hh: int, mm: int = 0) -> dt.datetime:
-    return dt.datetime.combine(day, dt.time(hh, mm), TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return dt.datetime.combine(day, dt.time(hh, mm), TZ).astimezone(dt.UTC).replace(tzinfo=None)
 
 
 def _staff(db, n=3):

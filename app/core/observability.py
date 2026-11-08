@@ -150,7 +150,7 @@ def _observe(request: Request, status: int, started: float, request_id: str) -> 
             pass
     if settings.log_json and request.url.path not in _QUIET_LOG_PATHS:
         _access_log.info(json.dumps({
-            "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds"),
+            "ts": dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds"),
             "method": request.method, "path": request.url.path, "status": status,
             "duration_ms": duration_ms, "route": label, "request_id": request_id,
             "ip": client_ip(request) if request.client else "-",

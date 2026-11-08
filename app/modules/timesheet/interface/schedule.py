@@ -87,7 +87,7 @@ def _to_utc(day: dt.date, hhmm: str, next_day: bool = False) -> dt.datetime:
     hh, mm = (int(x) for x in hhmm.split(":"))
     local = dt.datetime.combine(day + (dt.timedelta(days=1) if next_day else dt.timedelta()),
                                 dt.time(hh, mm), TZ)
-    return local.astimezone(dt.timezone.utc)
+    return local.astimezone(dt.UTC)
 
 
 def _settings(db: Session, period: Period) -> Settings:
@@ -96,8 +96,8 @@ def _settings(db: Session, period: Period) -> Settings:
 
 
 def _shift_brief(row: ScheduleShift) -> dict:
-    start, end = utc_to_local(row.start_utc.replace(tzinfo=dt.timezone.utc)), \
-        utc_to_local(row.end_utc.replace(tzinfo=dt.timezone.utc))
+    start, end = utc_to_local(row.start_utc.replace(tzinfo=dt.UTC)), \
+        utc_to_local(row.end_utc.replace(tzinfo=dt.UTC))
     return {"source": row.source, "anchor": row.date.isoformat(),
             "start": start.isoformat(), "end": end.isoformat(),
             "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
@@ -106,8 +106,8 @@ def _shift_brief(row: ScheduleShift) -> dict:
 
 def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType],
                    whole_shift: bool = False) -> dict:
-    start = utc_to_local(row.start_utc.replace(tzinfo=dt.timezone.utc))
-    end = utc_to_local(row.end_utc.replace(tzinfo=dt.timezone.utc))
+    start = utc_to_local(row.start_utc.replace(tzinfo=dt.UTC))
+    end = utc_to_local(row.end_utc.replace(tzinfo=dt.UTC))
     return {"id": row.id, "start": start.isoformat(), "end": end.isoformat(),
             "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
             "note": row.note or "",
@@ -161,7 +161,7 @@ def _visible_segments(shift_rows: list, absence_rows: list) -> list[list[str]]:
                 if a.end_utc < se:
                     nxt.append((a.end_utc, se))
             segs = nxt
-        hm = lambda v: utc_to_local(v.replace(tzinfo=dt.timezone.utc)).strftime("%H:%M")  # noqa: E731
+        hm = lambda v: utc_to_local(v.replace(tzinfo=dt.UTC)).strftime("%H:%M")  # noqa: E731
         out.extend([[hm(ss), hm(se)] for ss, se in segs])
     return out
 
@@ -251,9 +251,9 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
 
     employees, per_emp_periods = _visible_employees(db, first, last)
     emp_ids = [e.id for e in employees]
-    lo_utc = dt.datetime.combine(first, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    lo_utc = dt.datetime.combine(first, dt.time(0), TZ).astimezone(dt.UTC)
     hi_utc = dt.datetime.combine(last + dt.timedelta(days=1), dt.time(0),
-                                 TZ).astimezone(dt.timezone.utc)
+                                 TZ).astimezone(dt.UTC)
 
     shift_rows = db.scalars(select(ScheduleShift).where(
         ScheduleShift.employee_id.in_(emp_ids), ScheduleShift.start_utc < hi_utc,
@@ -279,8 +279,8 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
     work_types, code_colors = color_lookups(db)
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for row in shift_rows:
-        start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-        end_local = row.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+        start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+        end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
         day = start_local.date()
         while day <= min(end_local.date(), last):
             if first <= day <= last:
@@ -288,8 +288,8 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
             day += dt.timedelta(days=1)
     absences_by_emp_day: dict[tuple[int, str], list] = {}
     for row in absence_rows:
-        start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-        end_local = row.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+        start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+        end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
         day = start_local.date()
         while day <= min(end_local.date(), last):
             if first <= day <= last:
@@ -633,8 +633,8 @@ def _absence_covers_day(st, tabel_rows: dict, employee_id: int,
                         row: ScheduleAbsence) -> bool:
     """whole_shift для строки сетки: окно берём у дня-якоря отсутствия (у смены
     через полночь якорь — день начала)."""
-    start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-    end_local = row.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+    start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+    end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
     day = start_local.date()
     return _covers_window(st, tabel_rows.get((employee_id, day)), day, start_local, end_local)
 
@@ -841,8 +841,8 @@ def _interval_info(db: Session, emp: Optional[Employee], row: ScheduleAbsence) -
     kind = db.get(ShiftType, row.kind_id)
     if kind is None:
         return None
-    start_local = row.start_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
-    end_local = row.end_utc.replace(tzinfo=dt.timezone.utc).astimezone(TZ)
+    start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+    end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
     day = start_local.date()
     day_settings = st_day(db, day)
     whole_shift = _covers_whole_day(db, day_settings, row.employee_id, day,
@@ -890,7 +890,7 @@ def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = 
         "department": emp.department.name if emp.department else "",
     }
     # 1) согласованные отсутствия дня («отпросился») — записи Графика с типом-заявлением
-    day_lo = dt.datetime.combine(date, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    day_lo = dt.datetime.combine(date, dt.time(0), TZ).astimezone(dt.UTC)
     day_hi = day_lo + dt.timedelta(days=1)
     day_rows = list(db.scalars(select(ScheduleAbsence).where(
         ScheduleAbsence.employee_id == employee_id, ScheduleAbsence.start_utc < day_hi,
@@ -1002,9 +1002,9 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
     emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
     emps = [e for e in emps if e is not None and e.deleted_at is None] or \
         _visible_employees(db, first, last)[0]
-    lo_utc = dt.datetime.combine(first, dt.time(0), TZ).astimezone(dt.timezone.utc)
+    lo_utc = dt.datetime.combine(first, dt.time(0), TZ).astimezone(dt.UTC)
     hi_utc = dt.datetime.combine(last + dt.timedelta(days=1), dt.time(0),
-                                 TZ).astimezone(dt.timezone.utc)
+                                 TZ).astimezone(dt.UTC)
     cleared, absences_cleared, skipped = 0, 0, 0
     locks = timesheet_edit.lock_states([str(e.id) for e in emps], first, ports)
     for emp in emps:

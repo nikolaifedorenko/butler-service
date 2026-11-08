@@ -103,7 +103,7 @@ def test_round_moment_step_15():
 def test_round_moment_result_utc_aware():
     r = round_moment(at(1, 8, 30), ST)
     assert r.tzinfo is not None
-    assert r == r.astimezone(dt.timezone.utc)
+    assert r == r.astimezone(dt.UTC)
 
 
 def test_calc_now_same_rule():

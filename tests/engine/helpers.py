@@ -35,7 +35,7 @@ from app.modules.timesheet.domain.types.entities import (
 )
 
 TZ = ZoneInfo("Europe/Moscow")
-UTC = dt.timezone.utc
+UTC = dt.UTC
 Y = 2026
 EMP = "e1"
 H = 60

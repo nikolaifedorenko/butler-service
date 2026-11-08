@@ -36,7 +36,7 @@ def _utc_bound(d: dt.date) -> dt.datetime:
     вовсе: границы были асимметричны и ломались при любом APP_TZ ≠ +3
     (ревью 20.10.2026, P1-misc-1).
     """
-    return dt.datetime.combine(d, dt.time(0), TZ).astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return dt.datetime.combine(d, dt.time(0), TZ).astimezone(dt.UTC).replace(tzinfo=None)
 
 
 def _query(q, action, actor, date_from, date_to):
