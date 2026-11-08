@@ -183,17 +183,26 @@ def sql_counter():
 
 
 @pytest.fixture()
-def freeze():
+def freeze(monkeypatch):
     """Фиксация времени. Время указывается в UTC; APP_TZ=Europe/Moscow (+3).
 
     Пример: freeze("2026-09-27 23:00:00") → в объекте 02:00 28.09.
+
+    Срок жизни сессии на время заморозки — 20 лет. Обработчики запросов идут в рабочих
+    потоках, а freezegun в них (стек с threading) отдаёт настоящее время: токен, выданный
+    на замороженную дату, через 48 часов реального времени считался бы просроченным, и тест
+    начинал падать с 401 в день, зависящий от календаря (ноябрь 2026: month_boundary).
     """
     from freezegun import freeze_time
 
+    from app.core.config import settings
+
     @contextmanager
     def _freeze(utc_iso: str):
-        with freeze_time(utc_iso) as f:
-            yield f
+        with monkeypatch.context() as m:
+            m.setattr(settings, "session_ttl_hours", 24 * 365 * 20)
+            with freeze_time(utc_iso) as f:
+                yield f
 
     return _freeze
 
