@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade 
     && rm -rf /var/lib/apt/lists/*
 # pip из базового образа несёт вложенные msgpack/urllib3 со старыми версиями (Trivy 08.11.2026:
 # CVE-2026-114613, CVE-2026-97687, CVE-2026-97689) — свежий pip приносит исправленные
-RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir --upgrade pip \
+    && rm -f /usr/local/lib/python3.15/site-packages/pip/_vendor/bom.cdx.json
+# (SBOM-файл самого pip перечисляет вложенный pkg_resources как «setuptools 70.3.0» — Trivy
+#  принимает это за установленный пакет и ловит CVE-2025-47273 (ложное срабатывание, 08.11.2026);
+#  файл справочный, pip его не читает)
 WORKDIR /srv/timetrack
 COPY requirements.txt requirements-postgres.txt requirements.lock.txt ./
 # версии — ровно те, что проверены CI (lock как constraints: dev-пакеты в образ не попадают)
@@ -18,15 +22,7 @@ RUN pip install --no-cache-dir -r requirements-postgres.txt
 # setuptools из базового образа не нужен приложению (все пакеты — колёса, ни одна зависимость
 # его не импортирует), а его вложенные jaraco.context и wheel — HIGH-уязвимости (Trivy,
 # 25.10.2026): убираем, а не обновляем — меньше поверхность и не гонимся за версиями
-RUN pip uninstall -y setuptools \
-    && rm -rf /usr/local/lib/python3.15/site-packages/pkg_resources \
-              /usr/local/lib/python3.15/site-packages/_distutils_hack \
-    && find / -xdev \( -iname 'setuptools' -o -iname 'setuptools-*' \) -not -path '/proc/*' -print -exec rm -rf {} + \
-    && (grep -rlE --include=METADATA --include=PKG-INFO '^Name: setuptools$' /usr /opt 2>/dev/null \
-        | tee /dev/stderr | xargs -r -n1 dirname | xargs -r rm -rf; true)
-# ДИАГНОСТИКА (временно): откуда Trivy берёт setuptools 70.3.0 — в образе нет ни пакета, ни метаданных
-RUN echo '--- 70.3.0'; grep -rIl '70\.3\.0' /usr /opt /srv /root /var /etc 2>/dev/null | head -20; \
-    echo '--- sbom'; find / -xdev \( -iname '*sbom*' -o -iname '*.spdx*' -o -iname '*.cdx*' -o -iname '*bom.json' \) -not -path '/proc/*' 2>/dev/null | head -20; true
+RUN pip uninstall -y setuptools
 COPY app ./app
 COPY static ./static
 COPY assets ./assets
