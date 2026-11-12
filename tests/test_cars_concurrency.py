@@ -34,7 +34,7 @@ def _free_cars_and_users(db, n_cars):
     from app.core.auth import Principal
     from app.core.identity import User
     from app.modules.cars.application.catalog import Car
-    from app.modules.employees.adapters.orm import Employee
+    from app.modules.people.adapters.orm import Employee
 
     cars = db.scalars(select(Car).where(Car.status == "free", Car.assigned_to.is_(None))
                       .order_by(Car.id)).all()[:n_cars]

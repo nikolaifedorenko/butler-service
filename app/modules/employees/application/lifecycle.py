@@ -24,12 +24,17 @@ from app.core.errors import Conflict, NotFound, Validation
 from app.core.roles import ROLE_EMPLOYEE
 from app.core.time import local_date
 from app.modules.cars.application.catalog import Car
+from app.modules.people.application import (
+    GROUP_META,
+    Employee,
+    PositionHistory,
+    close_period,
+    normalize_group,
+    open_period,
+    periods_of,
+)
 from app.modules.timesheet.application.base_schedule import dump_pattern, validate_pattern_label
 from app.modules.timesheet.application.catalog import BlockAssignment
-
-from ..adapters.orm import Employee, PositionHistory
-from ..domain.groups import GROUP_META, normalize_group
-from .employment import close_period, open_period, periods_of
 
 
 @dataclass

@@ -419,7 +419,7 @@ def _scope_text(entry) -> str:
 
 def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
     """Прикладные сверки D18/D19: то, что домен не знает (словарь смен, сотрудники, блоки)."""
-    from app.modules.employees.application import Employee, normalize_group
+    from app.modules.people.application import Employee, normalize_group
 
     from ..application.base_schedule import load_base_config
 
@@ -644,7 +644,7 @@ def resolve_rules(employee_id: int, date: dt.date, name: Optional[str] = None,
     Приоритет 1–7 считается ДОМЕНОМ (`resolve_modifier_trace`) — тем же кодом, что и
     расчёт; здесь добавляются только объяснение источника и цепочка уровней.
     """
-    from app.modules.employees.application import Employee, normalize_group
+    from app.modules.people.application import Employee, normalize_group
 
     from ..adapters.orm import TabelDay
     from ..application.months import period_containing

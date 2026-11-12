@@ -49,7 +49,7 @@ DAY = dt.date(2029, 4, 9)
 
 @pytest.fixture
 def emp_id(db):
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
     from app.modules.timesheet.adapters.orm import Punch, ScheduleAbsence, TabelDay
 
     emp = next(e for e in db.scalars(select(Employee)) if "Иванов" in e.display_name)

@@ -19,7 +19,7 @@ def _utc(day: dt.date, hh: int, mm: int = 0) -> dt.datetime:
 
 
 def _staff(db, n=3):
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     return [e.id for e in db.scalars(select(Employee).where(Employee.active.is_(True)).order_by(Employee.id).limit(n))]
 
 

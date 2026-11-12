@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from app.core.time import TZ
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import Punch, ScheduleAbsence, TabelDay
 from app.modules.timesheet.adapters.sql_schedule import SqlScheduleStore
 from app.modules.timesheet.domain.settings.defaults import default_settings

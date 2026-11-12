@@ -33,8 +33,8 @@ def wire() -> None:
     manifest.register(found)
     permissions.load_catalog(p for m in found for p in m.permissions)
     from app.core import media
-    from app.modules.employees.adapters.orm import Employee
     from app.modules.night.application.night import photo_delete_blocker
+    from app.modules.people.adapters.orm import Employee
     from app.modules.timesheet.application import schedule_helpers
     media.set_rules_provider(schedule_helpers.load_rules)
     media.set_delete_guard(photo_delete_blocker)

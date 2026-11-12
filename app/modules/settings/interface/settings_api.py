@@ -17,7 +17,7 @@ from app.core.permissions import require_perm
 from app.core.settings_store import Setting
 from app.core.time import local_date
 from app.modules.docs.application.doc_templates import load_doc_templates, save_doc_templates
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 from app.modules.timesheet.application.base_schedule import DEFAULT_BASE, load_base_config, save_base_config
 from app.modules.timesheet.application.catalog import (
     EngineSettingsVersion,

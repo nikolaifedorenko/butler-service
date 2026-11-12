@@ -6,7 +6,6 @@ from app.core.manifest import MANAGER_UP, SUPERVISOR_UP, MenuItem, ModuleManifes
 MODULE = ModuleManifest(
     name="employees", title="Сотрудники", order=20,
     routers=("app.modules.employees.interface.employees:router",),
-    models=("app.modules.employees.adapters.orm",),
     permissions=(
         Perm("employees.view", "Сотрудники",
              "Просмотр сотрудников", SUPERVISOR_UP),

@@ -2,7 +2,7 @@
 """Контракты .importlinter, которые зависят от списка модулей (шаг 5.4 аудита, ADR-0012).
 
 Модули — пакеты app/modules/*/ с manifest.py. Всё ниже маркера в .importlinter генерируется:
-изоляция эталона notify (не импортирует другие модули вовсе) и R3 — приватные
+изоляция notify и people (не импортируют другие модули вовсе) и R3 — приватные
 domain/adapters/interface каждого модуля. Новый модуль попадает в контракты без ручной правки.
 
 Использование:
@@ -17,7 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / ".importlinter"
 MARKER = "; ── ниже — генерирует tools/gen_importlinter.py из app/modules/*/manifest.py, руками не править ──\n"
-ISOLATED = ("notify",)          # эталон C3: модуль не знает ни composition root, ни другие модули
+# модули, которые не знают ни composition root, ни другие модули: notify — эталон C3,
+# people — общий справочник (ADR-0013, раздел 5)
+ISOLATED = {"notify": "Эталон (C3): notify", "people": "Справочник: people"}
 
 
 def modules() -> list[str]:
@@ -32,7 +34,7 @@ def generated(mods: list[str]) -> str:
     out = []
     for m in ISOLATED:
         out.append(f"[importlinter:contract:{m}-isolation]\n"
-                   f"name = Эталон (C3): {m} не знает про composition root и другие модули\n"
+                   f"name = {ISOLATED[m]} не знает про composition root и другие модули\n"
                    f"type = forbidden\nsource_modules =\n{_list([f'app.modules.{m}'])}"
                    f"forbidden_modules =\n{_list(['app.bootstrap', 'app.main'])}"
                    f"{_list(f'app.modules.{o}' for o in mods if o != m)}"

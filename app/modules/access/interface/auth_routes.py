@@ -26,7 +26,7 @@ from app.core.security import (
     verify_password,
 )
 from app.core.time import local_date, utcnow
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 

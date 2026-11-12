@@ -10,7 +10,7 @@ from typing import Literal
 from sqlalchemy import Date, cast, literal, null, or_, select, union_all
 from sqlalchemy.orm import Session
 
-from app.modules.employees.application.catalog import Employee
+from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Assignment, CoverageLine, Guest, Label, Move, Occupant, Reservation, VipCode
 from ..domain.allocate import natural_key

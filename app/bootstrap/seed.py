@@ -23,7 +23,7 @@ from app.core.config import settings
 from app.core.identity import User
 from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 from app.core.settings_store import Setting
-from app.modules.employees.application.catalog import (
+from app.modules.people.application.catalog import (
     Department,
     Employee,
     EmploymentPeriod,
@@ -209,7 +209,7 @@ def seed_if_empty(db: Session) -> bool:
         employees.append((emp, pattern, offset))
     db.flush()
 
-    from app.modules.employees.application.catalog import EmergencyContact
+    from app.modules.people.application.catalog import EmergencyContact
     demo_contacts = {
         "Иванов": [("Иванова Мария Ивановна", "+7 916 100-20-33", "мать"),
                    ("Иванов Сергей Иванович", "+7 916 100-20-40", "брат")],
@@ -567,7 +567,7 @@ def seed_statement_kinds() -> None:
     заполнен — не вмешиваемся (удалённые пользователем виды не воскрешаем)."""
     from sqlalchemy import func, select
 
-    from app.modules.employees.application.catalog import StatementKind
+    from app.modules.docs.application.catalog import StatementKind
 
     from ..core.db import SessionLocal
     from ..modules.docs.application.doc_render import DOC_TYPES

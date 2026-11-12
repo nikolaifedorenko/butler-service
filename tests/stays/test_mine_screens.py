@@ -37,7 +37,7 @@ def _res(client, cat, ci: str, co: str, guests: list[dict], **kw) -> dict:
 
 def _short(employee_id: int) -> str:
     from app.core.db import SessionLocal
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
 
     with SessionLocal() as s:
         e = s.get(Employee, employee_id)
@@ -167,7 +167,7 @@ def test_staff_guest_stays_explicit_line_beats_whole(manager_role_client, manage
     """Карточка гостя у службы: в ночь, когда гостя явно ведёт B, строка «вся бронь» A его не
     ведёт; в остальные ночи A — по-прежнему батлер гостя."""
     from app.core.db import SessionLocal
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.stays.adapters.orm import CoverageLine
 
     a_id, b_id = butlers["a"], butlers["b"]
@@ -373,7 +373,7 @@ def history_of():
     """Батлер (новый, неактивный сотрудник) с n своими броннями в прошлом (2001–2005) и одной
     сегодня; общий гость — во всех. Без API: так быстрее. Удаляется после теста."""
     from app.core.db import SessionLocal
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.stays.adapters.orm import CategoryState, CoverageLine, Guest, Occupant, Reservation
 
     made: list[tuple[int, list[int], list[int]]] = []

@@ -15,7 +15,7 @@ def _employee(client, username: str = "ivanov") -> dict:
 
 
 def test_start_bank_field_is_gone(admin_client, manager_client, db):
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
 
     e = _employee(admin_client)
     before = db.scalar(select(Employee.balance_hours).where(Employee.id == e["id"]))

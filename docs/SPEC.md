@@ -32,9 +32,9 @@ interface (static/js/modules, modules/timesheet/interface) → application → d
 ```
 
 Пути — по модульной структуре (ADR-0010, фазы C1–C7): приложение = `app/core/`
-(инфраструктура) + `app/bootstrap/` и `app/main.py` (composition root) + 9 модулей
-`app/modules/*` (timesheet, employees, night, cars, docs, notify, settings, access,
-audit), каждый — пять слоёв `domain/application/ports/adapters/interface`.
+(инфраструктура) + `app/bootstrap/` и `app/main.py` (composition root) + 11 модулей
+`app/modules/*` (people, timesheet, employees, night, cars, docs, notify, settings, access,
+audit, stays), каждый — пять слоёв `domain/application/ports/adapters/interface`.
 Ниже расчётный контур описан на примере модуля **timesheet**.
 
 * `domain` — чистые функции и справочники: нет времени, I/O, текстов для человека;

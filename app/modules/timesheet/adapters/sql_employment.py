@@ -12,7 +12,7 @@ from typing import Sequence
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.modules.employees.application import Employee, EmploymentPeriod, ensure_periods
+from app.modules.people.application import Employee, EmploymentPeriod, ensure_periods
 
 from ..domain.types.entities import Employment, Period
 from ._db import emp_pk

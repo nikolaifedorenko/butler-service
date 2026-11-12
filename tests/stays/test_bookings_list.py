@@ -191,7 +191,7 @@ def test_move_and_butlers_columns(manager_role_client, manager_client, db):
     """Переезд — «A → B» в колонках категории и объекта; батлер — по строке покрытия на ночи брони."""
     import datetime as dt
 
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.stays.adapters.orm import CoverageLine
     a, b = make_category(manager_role_client, n_units=1), make_category(manager_role_client, n_units=1)
     r = create_res(manager_client, a, "2038-12-01", "2038-12-06", number="M" + uniq(),

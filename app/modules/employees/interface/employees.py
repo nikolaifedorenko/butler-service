@@ -23,6 +23,19 @@ from app.core.roles import ROLE_EMPLOYEE
 from app.core.security import MIN_PASSWORD_LEN, hash_password
 from app.core.time import local_date, utcnow
 from app.modules.cars.application.catalog import Car
+from app.modules.people.application import (
+    Department,
+    EmergencyContact,
+    Employee,
+    PositionHistory,
+    Subdivision,
+    normalize_group,
+    open_period,
+    periods_of,
+    slugify_username,
+    suggest_genitive,
+)
+from app.modules.people.application import group_choices as group_choices_list
 from app.modules.timesheet.application.base_schedule import validate_pattern_label
 from app.modules.timesheet.application.catalog import BankAdjustment, BlockAssignment, ShiftType
 from app.modules.timesheet.application.engine_common import (
@@ -33,10 +46,7 @@ from app.modules.timesheet.application.engine_common import (
 )
 from app.modules.timesheet.application.shiftrev import REV_FIELDS, add_revision, archive_shift, freeze_before_update
 
-from ..adapters.orm import Department, EmergencyContact, Employee, PositionHistory, Subdivision
-from ..application import group_choices as group_choices_list
-from ..application import lifecycle, normalize_group, slugify_username, suggest_genitive
-from ..application.employment import open_period, periods_of
+from ..application import lifecycle
 from ..application.lifecycle import (
     normalize_block_history,
 )

@@ -21,7 +21,7 @@ def test_fund_readable_by_supervisor_and_butler(manager_client, employee_client)
 
 
 def test_escorts_seed_from_position(manager_role_client, db):
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.stays.adapters.orm import Escort
 
     r = manager_role_client.post(f"{API}/escorts/seed", json={})
@@ -34,7 +34,7 @@ def test_escorts_seed_from_position(manager_role_client, db):
 
 
 def test_escort_toggle(manager_role_client, db):
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
 
     emp = db.scalars(select(Employee)).first()
     r = manager_role_client.put(f"{API}/escorts/{emp.id}", json={"active": False})

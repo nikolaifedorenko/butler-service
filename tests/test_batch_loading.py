@@ -15,7 +15,7 @@ D = dt.date
 
 
 def test_lock_states_match_period_state(db):
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
     from app.modules.timesheet.adapters.orm import PeriodClosing
     from app.modules.timesheet.application import timesheet_edit
     from app.modules.timesheet.application.engine_common import engine_ports
@@ -45,7 +45,7 @@ def test_lock_states_match_period_state(db):
 
 def test_prefetch_gives_same_marks_and_employment(db):
     from app.core.time import TZ
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
     from app.modules.timesheet.application.engine_common import engine_ports
     from app.modules.timesheet.domain.types.entities import Period
 

@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
-from app.modules.employees.application import Employee, EmploymentPeriod, employed_on, group_index, normalize_group
+from app.modules.people.application import Employee, EmploymentPeriod, employed_on, group_index, normalize_group
 
 from ..adapters.factory import build_ports
 from ..adapters.orm import PeriodClosing

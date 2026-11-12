@@ -22,9 +22,10 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 from app.core.render import docx_to_pdf
-from app.modules.employees.application import Employee, StatementKind
+from app.modules.people.application import Employee
 from app.modules.timesheet.application.catalog import ShiftType
 
+from ..adapters.orm import StatementKind
 from ..application.doc_render import (
     CODE_RE,
     PLACEHOLDER_HELP,

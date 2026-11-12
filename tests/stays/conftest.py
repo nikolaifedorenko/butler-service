@@ -177,7 +177,7 @@ def butlers(app_stack, manager_role_client):
 
     from app.core.db import SessionLocal
     from app.core.time import local_date
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.application.engine_common import engine_ports
     from app.modules.timesheet.application.roster import roster
 

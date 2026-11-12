@@ -130,7 +130,7 @@ def test_guests_tab_occupancy_403(occupancy_client, mgmt_client, manager_client)
 
 
 def test_merge_guests_moves_everything(manager_role_client, manager_client, db):
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.stays.adapters.orm import CoverageGuest, CoverageLine, Guest, Occupant
 
     u = uniq()

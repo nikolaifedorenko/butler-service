@@ -28,7 +28,7 @@ from app.core.format import safe_sheet_cell
 from app.core.permissions import principal_permissions, require_perm
 from app.core.time import TZ, now_local, utc_to_local
 from app.modules.docs.application.doc_render import hours_text
-from app.modules.employees.application import (
+from app.modules.people.application import (
     Employee,
     EmploymentPeriod,
     employed_on,
@@ -175,7 +175,7 @@ DOC_PARTIAL_SHIFT = "time_off_request"
 
 
 def _statement_kind_exists(db: Session, code: str) -> bool:
-    from app.modules.employees.application import StatementKind
+    from app.modules.docs.application.catalog import StatementKind
 
     return db.scalar(select(StatementKind.id).where(StatementKind.code == code)) is not None
 

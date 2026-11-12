@@ -53,7 +53,7 @@ def _fill(admin, eid: int) -> None:
 @pytest.fixture
 def staff(admin_client, db, monkeypatch):
     """Штат периода: Аккуратов и Порядков с Табелем, Пропусков — без Табеля."""
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
     from app.modules.timesheet.interface import mgmt_api
 
     ids = {"ok1": _hire(admin_client, "Аккуратов Тест Закрытия", True),

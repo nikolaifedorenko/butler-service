@@ -154,7 +154,7 @@ def test_cars_assigned_index_skipped_when_two_cars_assigned(db):
     from app.bootstrap.schema_version import config
     from app.core.db import engine
     from app.modules.cars.application.catalog import Car
-    from app.modules.employees.adapters.orm import Employee
+    from app.modules.people.adapters.orm import Employee
 
     def has_index():
         return "ux_cars_assigned_to" in {i["name"] for i in inspect(engine).get_indexes("cars")}
