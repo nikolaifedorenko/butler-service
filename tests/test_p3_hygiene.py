@@ -58,7 +58,7 @@ def frozen_month(db):
     """У Иванова закрыты два прошлых месяца: позапрошлый «заморожен» (правки — 409),
     прошлый — последний закрытый (правки разрешены). Дни: [последний замороженного,
     1-е и 2-е прошлого]; снимок Табеля этих дней — до теста."""
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.adapters.orm import PeriodClosing, TabelDay
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
@@ -196,7 +196,7 @@ def test_concurrent_publish_waits_and_gets_409(app_stack, admin_client, cleanup_
 def test_removed_day_code_checked_against_version_on_its_date(admin_client, db, cleanup_versions):
     """Код, который есть только в будущей версии и уже стоит в Табеле: версия ещё позже
     без него — 422. Раньше сверка шла с версией «на сегодня», где кода нет, и проходила."""
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.adapters.orm import TabelDay
 
     got = admin_client.get("/api/engine-settings").json()

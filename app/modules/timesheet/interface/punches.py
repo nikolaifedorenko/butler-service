@@ -26,7 +26,7 @@ from app.core.auth import Principal, current_principal
 from app.core.db import get_db, lock_employee
 from app.core.permissions import has_perm, principal_permissions, require_perm
 from app.core.time import TZ, local_date, now_local
-from app.modules.employees.application import Employee, employed_on, ensure_periods, periods_of
+from app.modules.people.application import Employee, employed_on, ensure_periods, periods_of
 
 from ..adapters.orm import Punch, ScheduleAbsence, TabelDay
 from ..application import timesheet_edit

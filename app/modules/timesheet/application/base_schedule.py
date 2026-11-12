@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.settings_store import Setting
-from app.modules.employees.application import GROUP_META, Employee, normalize_group
+from app.modules.people.application import GROUP_META, Employee, normalize_group
 
 from ..adapters.orm import BlockAssignment
 from .schedule_patterns import parse_custom_cycle

@@ -32,7 +32,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 from app.core.time import WD_SHORT, utcnow
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 
 from ..adapters.orm import DoublePayDay, VipDoublePay
 from ..application.doublepay import REASON_TITLES, SCOPE_ALL, SCOPE_TITLES, SCOPES
@@ -89,7 +89,7 @@ def _vip_dict(v: VipDoublePay) -> dict:
     # повторные обращения в списке бесплатны).
     from sqlalchemy.orm import object_session
 
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
 
     sess = object_session(v)
     emp = sess.get(Employee, v.employee_id) if sess is not None else None

@@ -18,7 +18,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import delete, select
 
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import DeferredCarry
 from app.modules.timesheet.application.close_period import close_period
 from app.modules.timesheet.domain.types.entities import DeferredBlock

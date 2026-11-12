@@ -6,4 +6,5 @@ from app.core.manifest import ModuleManifest
 MODULE = ModuleManifest(
     name="docs", title="Заявления и бланки", order=80,
     routers=("app.modules.docs.interface.docs_api:router",),
+    models=("app.modules.docs.adapters.orm",),
 )

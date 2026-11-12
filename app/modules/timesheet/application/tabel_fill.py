@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import lock_employee
 from app.core.time import utcnow
-from app.modules.employees.application import Employee, periods_of
+from app.modules.people.application import Employee, periods_of
 
 from ..adapters.orm import TabelDay
 from ..adapters.sql_settings import SqlSettingsAdapter
@@ -94,7 +94,7 @@ def fill_timesheet_from_cycles(db: Session, employees: list[Employee], first: dt
         TabelDay.date <= last))} if employees else {}
     written, skipped, warnings = 0, 0, []
 
-    from app.modules.employees.application import employed_on
+    from app.modules.people.application import employed_on
     # по возрастанию id — один порядок блокировок у всех массовых записей (без взаимных)
     for emp in sorted(employees, key=lambda e: e.id):
         lock_employee(db, emp.id)        # Табель — вход закрытия периода (TOCTOU)

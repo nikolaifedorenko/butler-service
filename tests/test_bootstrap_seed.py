@@ -16,7 +16,7 @@ from app.main import init_db
 from app.core.db import SessionLocal
 from app.core.identity import User
 from app.core.security import verify_password
-from app.modules.employees.adapters.orm import Employee
+from app.modules.people.adapters.orm import Employee
 from app.modules.timesheet.adapters.orm import ShiftType
 init_db()
 with SessionLocal() as db:

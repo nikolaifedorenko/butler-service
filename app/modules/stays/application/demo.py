@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
-from app.modules.employees.application.catalog import Employee
+from app.modules.people.application.catalog import Employee
 from app.modules.timesheet.application.catalog import TabelDay
 from app.modules.timesheet.application.engine_common import engine_ports
 from app.modules.timesheet.application.roster import roster

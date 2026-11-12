@@ -1,15 +1,8 @@
-"""ORM-модели модуля employees: каталог персонала (адаптер хранения).
+"""ORM-модели модуля people: справочник людей (адаптер хранения).
 
-Выделены из app/models/directory.py (фаза C2) и timesheet/adapters/orm.py
-(фаза C4, EXECUTION-SPEC-v2 §7 фаза 6): Employee, Department, Subdivision,
-StatementKind, EmergencyContact, PositionHistory, EmploymentPeriod. Классы
-перенесены без изменений. Связь с core: Employee.user → User (core.identity) — module→core допустим
-(R6, батч 20.10.2026: кросс-модульных relationship больше нет — закреплённый
-кар читается запросом Car.assigned_to на стороне потребителей). Публичная
-поверхность для других модулей — application/catalog.py (R3).
-
-Блоки графика, банк часов и двойные оплаты (BlockAssignment, BankAdjustment,
-DoublePayDay, VipDoublePay) остались в timesheet — это домен Табеля/Графика.
+Employee, Department, Subdivision, EmergencyContact, PositionHistory, EmploymentPeriod.
+Связь с core: Employee.user → User (core.identity). Публичная поверхность для других
+модулей — application/catalog.py (R3).
 """
 from __future__ import annotations
 
@@ -22,9 +15,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
-    Integer,
     String,
-    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,30 +44,6 @@ class Subdivision(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(160), unique=True)
-
-
-class StatementKind(Base):
-    """Вид заявления — расширяемый словарь (заменяет хардкод DOC_TYPES).
-
-    code  — ключ привязки (ShiftType.doc_type) и имя файла фирменного бланка
-            templates/<code>.docx;
-    name  — человекочитаемое название для списков;
-    text  — текст-заполнитель с плейсхолдерами {field}: используется,
-            если фирменный бланк .docx не загружен;
-    builtin — вид из комплекта системы (при первом запуске seeding-уется
-            текстами из настроек/дефолтов)."""
-
-    __tablename__ = "statement_kinds"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(40), unique=True)
-    name: Mapped[str] = mapped_column(String(160))
-    text: Mapped[str] = mapped_column(Text, default="")
-    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
-    active: Mapped[bool] = mapped_column(Boolean, default=True)   # показывать ли в списках выбора
-    sort_order: Mapped[int] = mapped_column(Integer, default=100)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class Employee(Base):

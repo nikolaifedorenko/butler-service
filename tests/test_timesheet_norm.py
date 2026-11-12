@@ -109,7 +109,7 @@ class TestTimesheetCodeNorm(unittest.TestCase):
         db = SessionLocal()
         try:
             # сотрудник на суточных сменах (демо-сид: «Смена 2», цикл 1/3)
-            from app.modules.employees.application.catalog import Employee
+            from app.modules.people.application.catalog import Employee
             emp = db.scalar(select(Employee).where(Employee.full_name.like("Петров%")))
             self.assertIsNotNone(emp)
             rows = {r.date: r for r in db.scalars(select(TabelDay).where(
@@ -172,7 +172,7 @@ class TestTimesheetCodeNorm(unittest.TestCase):
         """Пока код стоит в Табеле, справочник не трогается: иначе расчёт остановится."""
         db = SessionLocal()
         try:
-            from app.modules.employees.application.catalog import Employee
+            from app.modules.people.application.catalog import Employee
             emp = db.scalars(select(Employee).where(Employee.deleted_at.is_(None))).first()
             day = dt.date(2001, 6, 1)
             db.add(TabelDay(employee_id=emp.id, date=day, code="С", plan_minutes=960,
@@ -304,7 +304,7 @@ class TestTimeoffHours(unittest.TestCase):
         assert r.status_code == 200, r.text
 
     def test_06_hours_from_employee_window(self):
-        from app.modules.employees.application.catalog import Employee
+        from app.modules.people.application.catalog import Employee
         db = SessionLocal()
         try:
             emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
@@ -334,7 +334,7 @@ class TestTimeoffHours(unittest.TestCase):
 
     def test_07_day_off_statement_carries_hours(self):
         """Заявление «выходной за часы» печатается с часами, а не с нулём."""
-        from app.modules.employees.application.catalog import Employee
+        from app.modules.people.application.catalog import Employee
         db = SessionLocal()
         try:
             emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))

@@ -60,7 +60,7 @@ def test_template_pair_by_schedule(manager_role_client, manager_client, butlers)
 
 
 def test_template_requires_escort(manager_role_client, manager_client, butlers, db):
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     _, _, res = _res(manager_role_client, manager_client, butlers)
     stranger = db.scalar(select(Employee.id).where(Employee.full_name.like("Соколова%")))
     r = _template(manager_client, res, "single", [stranger])

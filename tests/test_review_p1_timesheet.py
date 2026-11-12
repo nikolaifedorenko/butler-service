@@ -48,7 +48,7 @@ import pytest
 from sqlalchemy import delete, event, select
 
 from app.core.db import engine as db_engine
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import (
     EngineSettingsVersion,
     PeriodClosing,

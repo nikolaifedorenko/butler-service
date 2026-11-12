@@ -21,7 +21,7 @@ NOTE = "проба backfill"
 @pytest.fixture()
 def night_in(db):
     """Иванов «пришёл» накануне в 23:50 (три дня назад); корректировка — в 00:30."""
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.adapters.orm import Punch
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))

@@ -14,7 +14,7 @@ DAYS = [dt.date(2029, 5, d) for d in (7, 8, 9)]
 
 
 def test_bulk_writes_note_to_every_cell(admin_client, db):
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
     from app.modules.timesheet.adapters.orm import TabelDay
 
     emp = next(e for e in db.scalars(select(Employee)) if "Иванов" in e.display_name)

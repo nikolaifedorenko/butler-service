@@ -20,7 +20,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
 from app.core.time import local_date
-from app.modules.employees.application import suggest_genitive
+from app.modules.people.application import suggest_genitive
 
 # templates/ в корне проекта — том в compose. После переноса модуля (C4d, 20.10.2026) путь
 # съехал в app/modules/docs/templates, мимо тома: бланки пропадали при пересборке образа.

@@ -9,7 +9,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.employees.application.catalog import Employee
+from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Ooo
 from ..domain.halfday import ooo_span, overlaps

@@ -23,7 +23,7 @@ def _month_start(d: dt.date, back: int) -> dt.date:
 @pytest.fixture()
 def closed_two_months(db):
     """У сотрудника закрыты два прошлых месяца: позапрошлый — «заморожен», прошлый — последний."""
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.adapters.orm import PeriodClosing, Punch
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
@@ -83,7 +83,7 @@ def test_cancel_in_last_closed_period_warns_about_recalculation(manager_client, 
 
 
 def test_cancel_in_open_period_has_no_warning(manager_client, db):
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.adapters.orm import Punch
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
@@ -98,7 +98,7 @@ def test_cancel_in_open_period_has_no_warning(manager_client, db):
 def test_month_journal_is_not_truncated(manager_client, db):
     """Журнал за месяц отдаёт все отметки: раньше выдача обрезалась на 2000 строках, и при
     ~35 сотрудниках начало месяца пропадало молча (аудит 22.10.2026)."""
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.adapters.orm import Punch
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))

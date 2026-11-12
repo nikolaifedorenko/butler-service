@@ -21,7 +21,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import delete, select
 
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import PeriodClosing
 from app.modules.timesheet.adapters.sql_bank import SqlBankAdapter
 from app.modules.timesheet.adapters.sql_closings import SqlSettlementStore

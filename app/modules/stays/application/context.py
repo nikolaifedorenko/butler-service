@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.employees.application.catalog import Employee
+from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import (
     Assignment,

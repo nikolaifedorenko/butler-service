@@ -72,7 +72,7 @@ def test_month_grid_does_not_scale_with_headcount(admin_client, db, sql_counter,
     допустим небольшой рост (пакетные запросы те же), но не пропорциональный штату.
     """
     budget = GRID_BUDGETS[path]
-    from app.modules.employees.application.catalog import Employee, EmploymentPeriod
+    from app.modules.people.application.catalog import Employee, EmploymentPeriod
 
     with sql_counter() as before:
         r1 = admin_client.get(path, params=_month(admin_client))

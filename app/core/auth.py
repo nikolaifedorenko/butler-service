@@ -20,7 +20,7 @@ from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 from .security import SESSION_TOKEN, read_token
 
 if TYPE_CHECKING:
-    from app.modules.employees.application.catalog import Employee
+    from app.modules.people.application.catalog import Employee
 
 
 @dataclass

@@ -31,7 +31,7 @@ forbidden_modules =
 ignore_imports =
     ; TYPE_CHECKING-аннотация Principal.employee: в runtime Employee загружается
     ; внедрённым bootstrap'ом колбэком (set_employee_loader), импорта моделей нет.
-    app.core.auth -> app.modules.employees.application.catalog
+    app.core.auth -> app.modules.people.application.catalog
 
 [importlinter:contract:timesheet-isolation]
 name = Модуль timesheet (движок v7.1) не знает про composition root
@@ -79,6 +79,27 @@ forbidden_modules =
     app.modules.docs
     app.modules.employees
     app.modules.night
+    app.modules.people
+    app.modules.settings
+    app.modules.stays
+    app.modules.timesheet
+allow_indirect_imports = True
+
+[importlinter:contract:people-isolation]
+name = Справочник: people не знает про composition root и другие модули
+type = forbidden
+source_modules =
+    app.modules.people
+forbidden_modules =
+    app.bootstrap
+    app.main
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.night
+    app.modules.notify
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -94,6 +115,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -113,6 +135,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -132,6 +155,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -151,6 +175,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -170,6 +195,7 @@ source_modules =
     app.modules.docs
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -189,6 +215,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -208,6 +235,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.night
+    app.modules.people
     app.modules.settings
     app.modules.stays
     app.modules.timesheet
@@ -215,6 +243,26 @@ forbidden_modules =
     app.modules.notify.domain
     app.modules.notify.adapters
     app.modules.notify.interface
+allow_indirect_imports = True
+
+[importlinter:contract:people-private]
+name = R3: domain/adapters/interface people приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.night
+    app.modules.notify
+    app.modules.settings
+    app.modules.stays
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.people.domain
+    app.modules.people.adapters
+    app.modules.people.interface
 allow_indirect_imports = True
 
 [importlinter:contract:settings-private]
@@ -228,6 +276,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.stays
     app.modules.timesheet
 forbidden_modules =
@@ -247,6 +296,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.timesheet
 forbidden_modules =
@@ -266,6 +316,7 @@ source_modules =
     app.modules.employees
     app.modules.night
     app.modules.notify
+    app.modules.people
     app.modules.settings
     app.modules.stays
 forbidden_modules =

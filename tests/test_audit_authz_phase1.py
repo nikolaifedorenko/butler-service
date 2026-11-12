@@ -46,7 +46,7 @@ def test_impersonation_audit_names_who_logged_in(admin_client, db):
 
 def test_impersonation_ends_when_target_deactivated(admin_client, db):
     """AUTHZ-10: сотрудника уволили во время сессии «как сотрудник» — сессия кончилась."""
-    from app.modules.employees.adapters.orm import Employee
+    from app.modules.people.adapters.orm import Employee
 
     emp_id = _emp_id(db, "orlov")
     assert admin_client.post("/api/auth/impersonate", json={"employee_id": emp_id}).status_code == 200

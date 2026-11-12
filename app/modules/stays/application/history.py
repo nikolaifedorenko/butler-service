@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core import manifest
 from app.core.audit import AuditLog
-from app.modules.employees.application.catalog import Employee
+from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Guest, Occupant, Reservation
 from . import allocation

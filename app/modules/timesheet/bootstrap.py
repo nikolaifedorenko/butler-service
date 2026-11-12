@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings_store import Setting
 from app.core.time import local_date
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 
 from .adapters.orm import EngineSettingsVersion, TabelDay
 from .adapters.settings_codec import to_payload

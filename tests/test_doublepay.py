@@ -20,7 +20,7 @@ D = dt.date
 @pytest.fixture()
 def calendar_rows(db):
     """День каждого списка и ВИП-период сотрудника, выходящий за границы периода."""
-    from app.modules.employees.application import Employee
+    from app.modules.people.application import Employee
     from app.modules.timesheet.adapters.orm import DoublePayDay, VipDoublePay
 
     emp = db.query(Employee).filter(Employee.deleted_at.is_(None)).first()

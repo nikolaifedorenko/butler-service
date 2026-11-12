@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.core.permissions import has_perm
 from app.core.time import now_local
-from app.modules.employees.application import Employee
+from app.modules.people.application import Employee
 
 from ..adapters.orm import Car, CarHistory, CarLocation
 
