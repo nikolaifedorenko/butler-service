@@ -13,20 +13,20 @@ close_period; «Пересчитать» → recalculate (только посл�
 from __future__ import annotations
 
 import datetime as dt
-import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.format import safe_sheet_cell
 from app.core.permissions import principal_permissions, require_perm
+from app.modules.exchange.application.tables import XLSX_MEDIA_TYPE, attachment, write_xlsx
 
+from ..application import exports
 from ..application.close_period import check_close, close_period
 from ..application.engine_common import emp_brief, engine_ports, now_utc, period_employees
 from ..application.errors import ApplicationError
@@ -213,40 +213,8 @@ def recalc(payload: PeriodAction, principal: Principal = Depends(require_perm("m
 def export_xlsx(year: int, month: int, half: Optional[int] = None,
                 principal: Principal = Depends(require_perm("mgmt.view")),
                 db: Session = Depends(get_db)):
-    """УТ в Excel: «ФИО × дни», ячейка «ДЯ2 3 ДН 1», итоги по кодам и банк (интерфейс-слой)."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font
-
+    """УТ в Excel — форма application.exports.mgmt_sheet."""
     data = get_mgmt(year, month, half, None, False, principal, db)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = f"УТ {month:02d}.{year}"
-    days = data["days"]
-    tariffs = data["tariffs"]
-    ws.append(["ФИО", "Табельный №"] + [d_[8:] for d_ in days] + tariffs
-              + ["Недостача", "Банк на закрытие", "Статус"])
-    for c in ws[1]:
-        c.font = Font(bold=True)
-    for r in data["rows"]:
-        if r.get("error"):
-            ws.append([safe_sheet_cell(r["employee"]["full_name"]),
-                       safe_sheet_cell(r["employee"]["tab_number"]), safe_sheet_cell(r["error"])])
-            continue
-        cells = [" ".join(f"{t} {h / 60:g}" for t, h in r["ut"].get(d_, {}).items())
-                 for d_ in days]
-        status = "закрыт" if r["state"]["closed"] else "просмотр"
-        ws.append([safe_sheet_cell(r["employee"]["full_name"]),
-                   safe_sheet_cell(r["employee"]["tab_number"]), *cells,
-                   *[r["totals"].get(t, 0) / 60 for t in tariffs],
-                   r["debt"]["residual_h"], r["bank"]["closed_h"], status])
-    for row in ws.iter_rows(min_row=2):
-        for c in row:
-            c.alignment = Alignment(wrap_text=True, vertical="top")
-    ws.column_dimensions["A"].width = 34
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
     name = f"upr_tabel_{year}_{month:02d}{'_h' + str(half) if half else ''}.xlsx"
-    return StreamingResponse(
-        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+    return Response(content=write_xlsx([exports.mgmt_sheet(data, year, month)]), media_type=XLSX_MEDIA_TYPE,
+                    headers=attachment(name))

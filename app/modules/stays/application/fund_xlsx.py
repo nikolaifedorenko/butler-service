@@ -3,16 +3,19 @@
 бросает исключение на плохом входе: всё уходит в список FileError (лист, строка, сообщение)."""
 from __future__ import annotations
 
-import io
-import zipfile
 from dataclasses import dataclass, field
 
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, PatternFill, Protection
-from openpyxl.utils import get_column_letter, quote_sheetname
-from openpyxl.worksheet.datavalidation import DataValidation
-
-from app.core.format import safe_sheet_cell
+from app.modules.exchange.application.tables import (
+    Cell,
+    Column,
+    Fill,
+    ListValidation,
+    Protect,
+    Sheet,
+    XlsxError,
+    open_xlsx,
+    write_xlsx,
+)
 
 from ..adapters.orm import UnitFlag
 from .fund_versions import FundSnapshot
@@ -30,8 +33,8 @@ MAX_UNPACKED_BYTES = 100 * 1024 * 1024     # распакованное соде
 MAX_ROWS = 20000                           # строк на лист
 MAX_FLAG_COLUMNS = 200
 
-HEAD = Font(bold=True)
-GREY = PatternFill("solid", fgColor="D9D9D9")
+GREY = Fill("D9D9D9")
+EDITABLE = Protect(allow_format_columns=True, allow_format_cells=True)   # заперт только столбец ID
 _TRUE = {"да", "1", "true", "yes"}
 _FALSE = {"нет", "0", "false", "no"}
 _UNIT_FIXED = ["номер", "категория (код)", "узел", "этаж", "из чего (ID через запятую)"]
@@ -102,83 +105,63 @@ def _yn(v: bool) -> str:
     return "да" if v else "нет"
 
 
-def _setup_sheet(ws, headers: list[str], widths: list[int]) -> None:
-    for i, (h, w) in enumerate(zip(headers, widths, strict=True), start=1):
-        c = ws.cell(row=1, column=i, value=safe_sheet_cell(h))
-        c.font = HEAD
-        c.protection = Protection(locked=(i == 1))
-        letter = get_column_letter(i)
-        ws.column_dimensions[letter].width = w
-        ws.column_dimensions[letter].protection = Protection(locked=(i == 1))
-    ws.freeze_panes = "A2"
-    ws.protection.sheet = True          # заперт только столбец ID
-    ws.protection.formatColumns = False
-    ws.protection.formatCells = False
+def _sheet(title: str, headers: list[str], widths: list[int], rows: list[list],
+           validations: tuple[ListValidation, ...] = ()) -> Sheet:
+    """Лист файла фонда: первая колонка (ID) серая и заперта, остальные можно править."""
+    assert len(headers) == len(widths)
+    return Sheet(
+        title,
+        header=[Cell(h, bold=True, locked=(i == 1)) for i, h in enumerate(headers, start=1)],
+        rows=[[Cell(v, fill=GREY, locked=True) if i == 1 else Cell(v, locked=False)
+               for i, v in enumerate(values, start=1)] for values in rows],
+        columns={i: Column(w, locked=(i == 1)) for i, w in enumerate(widths, start=1)},
+        freeze="A2", protect=EDITABLE, validations=validations)
 
 
-def _put_row(ws, row: int, values: list) -> None:
-    for i, v in enumerate(values, start=1):
-        c = ws.cell(row=row, column=i, value=safe_sheet_cell(v))
-        if i == 1:
-            c.fill = GREY
-            c.protection = Protection(locked=True)
-        else:
-            c.protection = Protection(locked=False)
-
-
-def export_fund(snapshot: FundSnapshot, flags: list[UnitFlag]) -> bytes:
+def fund_sheets(snapshot: FundSnapshot, flags: list[UnitFlag]) -> list[Sheet]:
     used = {f for u in snapshot.units.values() for f in u.flags}
     cols = sorted((f for f in flags if not f.archived or f.id in used), key=lambda f: (f.sort_order, f.id))
-    wb = Workbook()
-
-    ws = wb.active
-    ws.title = SHEET_CATEGORIES
-    _setup_sheet(ws, [ID_HEADER, "код", "название", "вид", "вес", "сопровождение (да/нет)", "порядок"],
-                 [16, 14, 28, 14, 8, 22, 10])
-    for r, c in enumerate(sorted(snapshot.categories.values(), key=lambda c: (c.sort_order, c.id)), start=2):
-        _put_row(ws, r, [c.id, c.code, c.title, c.kind_title, c.weight, _yn(c.escorted), c.sort_order])
-
-    ws = wb.create_sheet(SHEET_TREE)
-    tree_ws = ws
-    _setup_sheet(ws, [ID_HEADER, "название", "родитель", "сопровождение (да/нет)", "порядок"], [16, 28, 50, 22, 10])
     groups = sorted(snapshot.groups.values(), key=lambda g: ([snapshot.groups[i].sort_order for i in g.path], g.id))
-    for r, g in enumerate(groups, start=2):
+    # Скрытый «Списки»: все пути в порядке дерева; на них ссылаются списки «Родитель» и «Узел».
+    # Ссылка на диапазон, а не перечисление в формуле — лимит Excel в 255 знаков её не касается.
+    source = f"$A$2:$A${max(len(groups) + 1, 2)}"
+
+    def path_list(column: str) -> tuple[ListValidation, ...]:
+        return (ListValidation(f"{column}2:{column}{MAX_ROWS + 1}", SHEET_LISTS, source),)
+
+    categories = _sheet(
+        SHEET_CATEGORIES, [ID_HEADER, "код", "название", "вид", "вес", "сопровождение (да/нет)", "порядок"],
+        [16, 14, 28, 14, 8, 22, 10],
+        [[c.id, c.code, c.title, c.kind_title, c.weight, _yn(c.escorted), c.sort_order]
+         for c in sorted(snapshot.categories.values(), key=lambda c: (c.sort_order, c.id))])
+
+    tree_rows = []
+    for g in groups:
         parent = PATH_SEP.join(snapshot.path_titles(g.parent_id)) if g.parent_id in snapshot.groups else ""
-        _put_row(ws, r, [g.id, g.title, parent, _yn(g.escorted), g.sort_order])
+        tree_rows.append([g.id, g.title, parent, _yn(g.escorted), g.sort_order])
+    tree = _sheet(SHEET_TREE, [ID_HEADER, "название", "родитель", "сопровождение (да/нет)", "порядок"],
+                  [16, 28, 50, 22, 10], tree_rows, path_list("C"))
 
-    ws = wb.create_sheet(SHEET_FLAGS)
-    _setup_sheet(ws, [ID_HEADER, "название", "цвет"], [16, 28, 12])
-    for r, f in enumerate(cols, start=2):
-        _put_row(ws, r, [f.id, f.title, f.color])
+    flag_sheet = _sheet(SHEET_FLAGS, [ID_HEADER, "название", "цвет"], [16, 28, 12],
+                        [[f.id, f.title, f.color] for f in cols])
 
-    ws = wb.create_sheet(SHEET_UNITS)
-    _setup_sheet(ws, [ID_HEADER, *_UNIT_FIXED, *[f.title for f in cols]],
-                 [16, 12, 18, 40, 8, 22, *[14] * len(cols)])
-    for r, u in enumerate(sorted(snapshot.units.values(), key=lambda u: (u.label, u.id)), start=2):
+    unit_rows = []
+    for u in sorted(snapshot.units.values(), key=lambda u: (u.label, u.id)):
         cat = snapshot.categories.get(u.category_id)
         path = PATH_SEP.join(snapshot.path_titles(u.group_id)) if u.group_id in snapshot.groups else ""
         # «Из чего» — история, а не состояние фонда: выгрузка оставляет колонку пустой (§9.1).
-        _put_row(ws, r, [u.id, u.label, cat.code if cat else "", path, u.floor, "",
-                         *[_yn(f.id in u.flags) for f in cols]])
+        unit_rows.append([u.id, u.label, cat.code if cat else "", path, u.floor, "",
+                          *[_yn(f.id in u.flags) for f in cols]])
+    units = _sheet(SHEET_UNITS, [ID_HEADER, *_UNIT_FIXED, *[f.title for f in cols]],
+                   [16, 12, 18, 40, 8, 22, *[14] * len(cols)], unit_rows, path_list("D"))
 
-    # Скрытый «Списки»: все пути в порядке дерева; на них ссылаются списки «Родитель» и «Узел».
-    # Ссылка на диапазон, а не перечисление в формуле — лимит Excel в 255 знаков её не касается.
-    lists = wb.create_sheet(SHEET_LISTS)
-    lists.cell(row=1, column=1, value=safe_sheet_cell("путь")).font = HEAD
-    for r, g in enumerate(groups, start=2):
-        lists.cell(row=r, column=1, value=safe_sheet_cell(PATH_SEP.join(snapshot.path_titles(g.id))))
-    lists.column_dimensions["A"].width = 60
-    lists.protection.sheet = True
-    lists.sheet_state = "hidden"
-    source = f"{quote_sheetname(SHEET_LISTS)}!$A$2:$A${max(len(groups) + 1, 2)}"
-    for sheet, col in ((tree_ws, "C"), (ws, "D")):
-        dv = DataValidation(type="list", formula1=source, allow_blank=True, showErrorMessage=False)
-        dv.add(f"{col}2:{col}{MAX_ROWS + 1}")
-        sheet.add_data_validation(dv)
+    lists = Sheet(SHEET_LISTS, header=["путь"], rows=[[PATH_SEP.join(snapshot.path_titles(g.id))] for g in groups],
+                  columns={1: Column(60)}, protect=Protect(), hidden=True)
+    return [categories, tree, flag_sheet, units, lists]
 
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+
+def export_fund(snapshot: FundSnapshot, flags: list[UnitFlag]) -> bytes:
+    return write_xlsx(fund_sheets(snapshot, flags))
 
 
 # ---------------------------------------------------------------- разбор
@@ -233,11 +216,10 @@ def _path(s: str) -> tuple[str, ...]:
 
 def _read_sheet(wb, name: str, width: int, ctx: _Ctx) -> tuple[list[str], list[tuple[int, tuple]]] | None:
     """(заголовок, [(номер строки, значения)]) без пустых строк; None — листа нет/слишком велик."""
-    if name not in wb.sheetnames:
+    if name not in wb.sheets:
         ctx.err(name, 0, f"в файле нет листа «{name}»")
         return None
-    ws = wb[name]
-    rows = ws.iter_rows(min_row=1, max_col=width + MAX_FLAG_COLUMNS + 1, values_only=True)
+    rows = wb.rows(name, max_col=width + MAX_FLAG_COLUMNS + 1)
     header: list[str] | None = None
     out: list[tuple[int, tuple]] = []
     for n, vals in enumerate(rows, start=1):
@@ -280,42 +262,33 @@ def _dup_keys(items: list, key, sheet: str, what: str, ctx: _Ctx) -> None:
             seen[k] = it.row_no
 
 
-def _check_zip(data: bytes, ctx: _Ctx) -> bool:
-    if len(data) > MAX_FILE_BYTES:
-        ctx.err("", 0, f"файл больше {MAX_FILE_BYTES // 1024 // 1024} МБ")
-        return False
-    try:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            if sum(i.file_size for i in z.infolist()) > MAX_UNPACKED_BYTES:
-                ctx.err("", 0, "файл слишком велик после распаковки")
-                return False
-    except (zipfile.BadZipFile, OSError):
-        ctx.err("", 0, "не файл Excel (.xlsx)")
-        return False
-    return True
+_FILE_ERRORS = {
+    "too_large": f"файл больше {MAX_FILE_BYTES // 1024 // 1024} МБ",
+    "unpacked_too_large": "файл слишком велик после распаковки",
+    "not_xlsx": "не файл Excel (.xlsx)",
+    "unreadable": "не удалось прочитать файл Excel (.xlsx)",
+}
 
 
 def parse_fund(data: bytes, known_unit_ids: set[int] | None = None) -> tuple[ParsedFund | None, list[FileError]]:
     """Разбор файла фонда. known_unit_ids — id объектов текущего фонда: если передан, «Из чего»
     с неизвестным id — ошибка; иначе проверяется только формат."""
     ctx = _Ctx()
-    if not _check_zip(data, ctx):
-        return None, ctx.errors
     try:
-        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-    except Exception:  # noqa: BLE001 — любой мусор вместо xlsx это ошибка файла, а не сбой
-        return None, [FileError("", 0, "не удалось прочитать файл Excel (.xlsx)")]
+        wb = open_xlsx(data, max_bytes=MAX_FILE_BYTES, max_unpacked_bytes=MAX_UNPACKED_BYTES)
+    except XlsxError as e:
+        return None, [FileError("", 0, _FILE_ERRORS[e.kind])]
     try:
         return _parse(wb, known_unit_ids, ctx)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — неожиданная структура файла это ошибка файла, а не сбой
         return None, [*ctx.errors, FileError("", 0, "файл повреждён или имеет неожиданную структуру")]
     finally:
         wb.close()
 
 
 def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund | None, list[FileError]]:
-    if SHEET_TREE in wb.sheetnames:       # прежний формат: «ID | путь узла | порядок» без «Родителя»
-        head = next(wb[SHEET_TREE].iter_rows(min_row=1, max_row=1, max_col=4, values_only=True), ())
+    if SHEET_TREE in wb.sheets:           # прежний формат: «ID | путь узла | порядок» без «Родителя»
+        head = next(wb.rows(SHEET_TREE, max_row=1, max_col=4), ())
         if len(head) < 3 or not _text(head[2]).lower().startswith("родитель"):
             ctx.err(SHEET_TREE, 1, "старый формат файла: нет колонки «Родитель» — выгрузите фонд заново")
             return None, ctx.errors

@@ -10,22 +10,19 @@
 from __future__ import annotations
 
 import datetime as dt
-import io
 import json
 import os
 import re
 from decimal import Decimal
 from pathlib import Path
 
-from openpyxl import load_workbook
-from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
-from app.core.format import safe_sheet_cell
 from app.core.media import BASE_DIR
 from app.core.time import local_date, now_local
+from app.modules.exchange.application.tables import Sheet, write_xlsx
 
 from ..adapters.orm import (
     Assignment,
@@ -65,7 +62,6 @@ from .fund import FundConflict, FundError, get_settings
 from .fund_drafts import _COLOR, _WEIGHT_MAX, FundFileError, _file_weight, unknown_kind_message
 from .fund_versions import INITIAL_DATE, fund_on
 from .fund_xlsx import (
-    HEAD,
     PATH_SEP,
     SHEET_CATEGORIES,
     SHEET_FLAGS,
@@ -73,7 +69,7 @@ from .fund_xlsx import (
     SHEET_UNITS,
     FileError,
     ParsedFund,
-    export_fund,
+    fund_sheets,
 )
 from .locking import lock_module
 from .vip_codes import code_texts
@@ -259,16 +255,8 @@ def _latest(db: Session, col, key, value) -> dict:
     return out
 
 
-def _sheet(wb, title: str, head: list[str], rows) -> None:
-    ws = wb.create_sheet(title)
-    for i, h in enumerate(head, start=1):
-        ws.cell(row=1, column=i, value=h).font = HEAD
-    for r, values in enumerate(rows, start=2):
-        for i, v in enumerate(values, start=1):
-            if isinstance(v, str):          # управляющие символы в заметках гостя openpyxl не пишет
-                v = ILLEGAL_CHARACTERS_RE.sub("", v)
-            ws.cell(row=r, column=i, value=safe_sheet_cell(v))
-    ws.freeze_panes = "A2"
+def _sheet(title: str, head: list[str], rows) -> Sheet:
+    return Sheet(title, header=head, rows=list(rows), freeze="A2")
 
 
 def _guest_name(g: Guest) -> str:
@@ -279,7 +267,7 @@ def backup_bytes(db: Session) -> bytes:
     """Копия данных модуля: фонд на сегодня листами файла фонда (их же принимает загрузка),
     брони и гости — листами «Брони», «Гости»; затем по листу на каждую таблицу WIPE со всеми
     строками (_raw_sheets) — полная копия того, что удаляется (§9.3)."""
-    wb = load_workbook(io.BytesIO(export_fund(fund_on(db, local_date()), list(db.scalars(select(UnitFlag))))))
+    sheets = fund_sheets(fund_on(db, local_date()), list(db.scalars(select(UnitFlag))))
     code = _latest(db, CategoryState.version_id, CategoryState.category_id, CategoryState.code)
     label = _latest(db, UnitState.version_id, UnitState.unit_id, UnitState.label)
     labels = dict(db.execute(select(Label.id, Label.title)).all())
@@ -298,7 +286,7 @@ def backup_bytes(db: Session) -> bytes:
         occ.setdefault(rid, []).append(f"{name} (главный)" if role == "main" else name)
     yn = {True: "да", False: ""}
     vip = code_texts(db)
-    _sheet(wb, SHEET_RESERVATIONS,
+    sheets.append(_sheet(SHEET_RESERVATIONS,
            ["ID", "номер", "статус", "заезд", "выезд", "РЗ", "ПВ", "категория (код)", "объекты", "гости",
             "метка", "заказчик", "оплата за (код)", "примечание", "код", "сопровождение", "источник", "внешний ID",
             "поля"],
@@ -306,17 +294,15 @@ def backup_bytes(db: Session) -> bytes:
              code.get(r.category_id, f"#{r.category_id}"), ", ".join(units.get(r.id, [])),
              "; ".join(occ.get(r.id, [])), labels.get(r.label_id, ""), r.customer, code.get(r.paid_category_id or r.category_id, ""),
              r.note, vip.get(r.vip_code_id, ("", False))[0], r.escort_mode, r.source, r.external_id or "", r.fields_json]
-            for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id))))
-    _sheet(wb, SHEET_GUESTS,
+            for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id)))))
+    sheets.append(_sheet(SHEET_GUESTS,
            ["ID", "фамилия", "имя", "отчество", "телефон", "email", "дата рождения", "особый", "код",
             "предпочтения", "особые даты", "поля", "примечание", "источник", "внешний ID"],
            ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, yn[bool(g.special)], vip.get(g.vip_code_id, ("", False))[0],
              g.preferences_json, g.special_dates_json, g.fields_json, g.note, g.source, g.external_id or ""]
-            for g in guests.values()))
-    _raw_sheets(wb, db)
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+            for g in guests.values())))
+    sheets += _raw_sheets(db)
+    return write_xlsx(sheets)
 
 
 def _raw(v):
@@ -341,17 +327,19 @@ def raw_sheet_names() -> dict[str, str]:
     return out
 
 
-def _raw_sheets(wb, db: Session) -> None:
+def _raw_sheets(db: Session) -> list[Sheet]:
     """По листу на каждую удаляемую таблицу (WIPE): заголовок — колонки, строка — запись БД.
     Человекочитаемые листы выше — для просмотра; эти — полная копия всего, что удаляется
     (будущие версии и черновик фонда, блоки и OOO, покрытие, переезды, логистика…)."""
     names = raw_sheet_names()
+    out = []
     for m in WIPE:
         t = m.__table__
         cols = [c.name for c in t.columns]
         order = list(t.primary_key.columns)
-        _sheet(wb, names[t.name], cols,
-               ([_raw(v) for v in row] for row in db.execute(select(*t.columns).order_by(*order))))
+        out.append(_sheet(names[t.name], cols,
+                          ([_raw(v) for v in row] for row in db.execute(select(*t.columns).order_by(*order)))))
+    return out
 
 
 class BackupError(FundConflict):
