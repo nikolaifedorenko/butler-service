@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from app.core.format import hours_text
 from app.core.time import local_date
 from app.modules.exchange.application import documents
 from app.modules.exchange.application.documents import Document, text
@@ -143,11 +144,6 @@ def period_text(d1: dt.date, d2: dt.date) -> str:
 
 def period_text_words(d1: dt.date, d2: dt.date) -> str:
     return date_ru_words(d1) if d1 == d2 else f"с {date_ru_words(d1)} по {date_ru_words(d2)}"
-
-
-def hours_text(value: float) -> str:
-    v = round(float(value or 0), 2)
-    return str(int(v)) if abs(v - int(v)) < 1e-9 else f"{v:g}".replace(".", ",")
 
 
 def build_values(employee, date_from: dt.date, date_to: dt.date, extra: Optional[dict] = None) -> dict:

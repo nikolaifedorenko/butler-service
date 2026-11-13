@@ -4,8 +4,9 @@ from __future__ import annotations
 from app.core.manifest import EVERYONE, SUPERVISOR_UP, MenuItem, ModuleManifest, NotifyDomain, Perm, Screen
 
 MODULE = ModuleManifest(
-    name="night", title="Ночной отчёт", order=60,
+    name="night", title="Ночной отчёт", order=60, layer=3,
     routers=("app.modules.night.interface.night_api:router",),
+    overview_checks=("app.modules.night.application.checks:overview_checks",),
     models=("app.modules.night.adapters.orm",),
     permissions=(
         Perm("night.view", "Ночной отчёт",

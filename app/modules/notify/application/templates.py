@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.manifest import notify_domains
+
 from ..adapters.orm import NotifyTemplate
 from ..domain.templates import render_template  # noqa: F401 — публичная граница
 
@@ -23,8 +25,6 @@ class _ByDomain(Mapping):
         self._pick = pick
 
     def _data(self) -> dict:
-        from app.core.manifest import notify_domains
-
         return {k: self._pick(v) for k, v in notify_domains().items()}
 
     def __getitem__(self, key):

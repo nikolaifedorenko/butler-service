@@ -18,7 +18,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.core.media import BASE_DIR
+from app.core.media import BASE_DIR, Photo
 from app.core.time import WD_SHORT
 from app.modules.exchange.application.documents import (
     Document,
@@ -31,6 +31,7 @@ from app.modules.exchange.application.documents import (
     text,
     write_docx,
 )
+from app.modules.notify.application.dispatch import dispatch_dict, journal_of
 
 from .night import report_dict
 
@@ -207,8 +208,6 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
 
 def _photo_payload(db: Session, photos: dict[int, list[dict]]) -> dict[int, list[dict]]:
     """Добавляем в ответ фото абсолютный путь для вставки в .docx."""
-    from app.core.media import Photo
-
     ids = [p["id"] for items in photos.values() for p in items]
     by_id = {p.id: p for p in db.query(Photo).filter(Photo.id.in_(ids)).all()} if ids else {}
     for items in photos.values():
@@ -221,8 +220,6 @@ def _photo_payload(db: Session, photos: dict[int, list[dict]]) -> dict[int, list
 def render_night_report_docx(db: Session, report_id: int, *, company: str = "",
                              photos_map: Optional[dict[int, list[dict]]] = None) -> bytes:
     """DOCX ночного отчёта (зоны и объекты + кары + недостатки + отправки + перехваты)."""
-    from app.modules.notify.application.dispatch import dispatch_dict, journal_of
-
     from ..adapters.orm import NightReport
     from .night import defects_of, duty_of
 

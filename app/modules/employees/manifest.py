@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.core.manifest import MANAGER_UP, SUPERVISOR_UP, MenuItem, ModuleManifest, Perm
 
 MODULE = ModuleManifest(
-    name="employees", title="Сотрудники", order=20,
+    name="employees", title="Сотрудники", order=20, layer=4,
     routers=("app.modules.employees.interface.employees:router",),
     permissions=(
         Perm("employees.view", "Сотрудники",

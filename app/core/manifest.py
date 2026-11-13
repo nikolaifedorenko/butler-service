@@ -68,6 +68,10 @@ class ModuleManifest:
     name: str
     title: str
     order: int                                  # порядок подключения роутеров и строк каталога прав
+    # слой зависимостей (ADR-0013, раздел 5): модуль импортирует только модули слоёв ниже;
+    # 1 — справочники и сервисы, 2 — базовые предметные, 3–4 — предметные над ними, 5 — настройки.
+    # Контракт import-linter по слоям генерирует tools/gen_importlinter.py
+    layer: int = 0
     routers: tuple[str, ...] = ()               # «пакет.модуль:атрибут»
     models: tuple[str, ...] = ()                # модули с ORM-моделями
     permissions: tuple[Perm, ...] = ()
@@ -75,6 +79,9 @@ class ModuleManifest:
     notify_domains: dict[str, NotifyDomain] = field(default_factory=dict)
     menu: tuple[MenuItem, ...] = ()
     settings_screens: tuple[Screen, ...] = ()
+    # сверки для экрана «Настройки → Обзор»: «пакет.модуль:функция», функция(db) -> список
+    # замечаний {"code", "level", "screen", "text"}
+    overview_checks: tuple[str, ...] = ()
 
 
 _REGISTERED: list[ModuleManifest] = []
@@ -87,6 +94,19 @@ def register(manifests: list[ModuleManifest]) -> None:
 
 def registered() -> list[ModuleManifest]:
     return list(_REGISTERED)
+
+
+_OVERVIEW_CHECKS: list = []
+
+
+def set_overview_checks(checks: list) -> None:
+    """Функции сверок из манифестов, в порядке модулей (вызывает bootstrap)."""
+    _OVERVIEW_CHECKS[:] = checks
+
+
+def overview_checks(db) -> list[dict]:
+    """Замечания всех модулей для экрана «Настройки → Обзор»."""
+    return [item for check in _OVERVIEW_CHECKS for item in check(db)]
 
 
 def audit_titles() -> dict[str, str]:

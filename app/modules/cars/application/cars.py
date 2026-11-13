@@ -16,20 +16,18 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
+from app.core.media import UploadRef, photos_of, save_photo_ref
 from app.core.permissions import has_perm
 from app.core.time import now_local
 from app.modules.people.application import Employee
 
 from ..adapters.orm import Car, CarHistory, CarLocation
-
-if TYPE_CHECKING:
-    from app.core.media import UploadRef
 
 STATUS_TITLES = {
     "free": "свободен",
@@ -362,7 +360,6 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
     for ref in photo_refs:
         # потоковая загрузка (P1 20.10.2026): файл уже на диске во временном каталоге,
         # save_photo_ref переносит его в хранилище без чтения в память
-        from app.core.media import save_photo_ref
         save_photo_ref(db, kind="car_return", ref_id=rec.id, ref=ref,
                        user_id=principal.user.id, user_name=principal.actor_label)
     return car_dict(car)
@@ -496,8 +493,6 @@ def night_cars_state(db: Session, report) -> dict:
     В обход попадают ВСЕ активные кары; батлер отмечает только те, что смог взять
     (т.е. свободные на момент проверки). Отметка фиксирует фактическое время — если
     кар возьмут после проверки, супервайзер увидит это (taken_after_check)."""
-    from app.core.media import photos_of
-
     from ..adapters.orm import CarNightCheck
 
     checked = {c.car_id: c for c in db.scalars(
@@ -601,7 +596,6 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
                          "location_from": place_before if ch.moved else ""})
     db.flush()          # нужен id отметки — фото привязываются к ней (kind="car_check")
     for ref in (photo_refs or []):
-        from app.core.media import save_photo_ref
         save_photo_ref(db, kind="car_check", ref_id=ch.id, ref=ref,
                        user_id=principal.user.id, user_name=principal.actor_label)
     return {"id": ch.id, "found": ch.found,

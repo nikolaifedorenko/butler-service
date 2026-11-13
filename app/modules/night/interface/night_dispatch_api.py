@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
+from app.modules.notify.application.recipients import group_by_service
 
 from ..application.night import (
     defects_of,
@@ -62,8 +63,6 @@ def preview_defects(report_id: int, payload: DispatchIn,
                     principal: Principal = Depends(require_perm("night.view")),
                     db: Session = Depends(get_db)):
     """Предпросмотр сообщений: что именно уйдёт каждой службе (без отправки)."""
-    from app.modules.notify.application.recipients import group_by_service
-
     from ..application.night_notify import DOMAIN, preview_message
 
     rep = _get_report(db, report_id)

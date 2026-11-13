@@ -1,14 +1,13 @@
 """Текущая сессия пользователя (подписанная cookie): Principal и его разрешение.
 
-Ядро (R5): не импортирует модели каталога — Employee ищется по строковому имени
-сущности через реестр SQLAlchemy (`db.get("Employee", …)`), аннотация — под
-TYPE_CHECKING. Права — в core/permissions.py, страж иерархии ролей — в
+Ядро (R5) не импортирует модели модулей: сотрудника загружает функция, которую подключает
+bootstrap (set_employee_loader). Права — в core/permissions.py, страж иерархии ролей — в
 core/auth_guards.py, журнал — в core/audit.py (фаза C1, 20.10.2026).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -19,14 +18,11 @@ from .identity import User
 from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 from .security import SESSION_TOKEN, read_token
 
-if TYPE_CHECKING:
-    from app.modules.people.application.catalog import Employee
-
 
 @dataclass
 class Principal:
     user: User
-    employee: Optional[Employee]
+    employee: Optional[Any]       # people.Employee — ядро не знает модели модулей
     impersonated: bool = False
 
     @property

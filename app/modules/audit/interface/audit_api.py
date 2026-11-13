@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import AuditLog
 from app.core.auth import Principal
 from app.core.db import get_db
+from app.core.manifest import audit_titles
 from app.core.permissions import require_perm
 from app.core.time import TZ, utc_to_local
 from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment, write_csv
@@ -20,8 +21,6 @@ router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 def _titles() -> dict[str, str]:
     """Названия действий журнала — из манифестов модулей (ADR-0012)."""
-    from app.core.manifest import audit_titles
-
     return audit_titles()
 
 

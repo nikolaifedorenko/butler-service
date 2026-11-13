@@ -20,6 +20,7 @@ from app.core.permissions import (
     require_perm,
     role_permissions,
 )
+from app.modules.people.application import Employee
 
 router = APIRouter(prefix="/api/access", tags=["access"])
 EFFECTS = ("allow", "deny")
@@ -38,7 +39,6 @@ def catalog(principal: Principal = Depends(require_perm("access.manage")), db: S
     users = list(db.scalars(select(User).order_by(User.username)))
     # R6 (батч 20.10.2026): User.employee (core→модуль) удалён — сотрудники
     # пользователей одним батч-запросом через границу employees.application.
-    from app.modules.people.application import Employee
 
     emp_ids = {u.employee_id for u in users if u.employee_id}
     emps = {e.id: e for e in db.scalars(select(Employee).where(Employee.id.in_(emp_ids)))} \

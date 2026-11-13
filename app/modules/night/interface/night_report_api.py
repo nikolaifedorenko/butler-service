@@ -20,6 +20,9 @@ from app.core.media import (
 from app.core.permissions import require_perm
 from app.core.settings_store import Setting
 from app.core.time import now_local
+from app.modules.cars.application.cars import CarOpError, check_car_night, finish_cars_step, night_cars_state
+from app.modules.cars.application.catalog import Car
+from app.modules.exchange.application.documents import docx_to_pdf
 
 from ..adapters.orm import (
     NightAreaSection,
@@ -53,8 +56,6 @@ def _cars_section(rep: NightReport) -> NightAreaSection:
 def report_cars(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                 db: Session = Depends(get_db)):
     """Состояние обхода электрокаров за смену (список каров + отметки)."""
-    from app.modules.cars.application.cars import night_cars_state
-
     rep = _get_report(db, report_id)
     return night_cars_state(db, rep)
 
@@ -89,9 +90,6 @@ def report_car_check(report_id: int, car_id: int,
     «Не ОК» и «кар не найден» идут в замечания супервайзеру; отсутствие тента —
     просто факт, в замечания не входит."""
     from sqlalchemy.exc import IntegrityError
-
-    from app.modules.cars.application.cars import CarOpError, check_car_night
-    from app.modules.cars.application.catalog import Car
 
     rep = _get_report(db, report_id)
     _guard_open(rep)
@@ -142,8 +140,6 @@ def report_cars_finish(report_id: int, payload: InterceptionAck,
                        principal: Principal = Depends(require_perm("night.view")),
                        db: Session = Depends(get_db)):
     """Завершить шаг «Проверка электрокаров». Незакрытые кары — только после подтверждения."""
-    from app.modules.cars.application.cars import CarOpError, finish_cars_step, night_cars_state
-
     rep = _get_report(db, report_id)
     _guard_open(rep)
     state = night_cars_state(db, rep)
@@ -239,8 +235,6 @@ def export_docx(report_id: int, principal: Principal = Depends(require_perm("nig
 @router.get("/reports/{report_id}/export.pdf")
 def export_pdf(report_id: int, principal: Principal = Depends(require_perm("night.view")),
                db: Session = Depends(get_db)):
-    from app.modules.exchange.application.documents import docx_to_pdf
-
     from ..application.night_export import render_night_report_docx
 
     rep = _get_report(db, report_id)

@@ -177,8 +177,7 @@ class TestPdfHint(unittest.TestCase):
     def test_501_hint_mentions_install(self):
         from unittest import mock
 
-        # эндпоинт импортирует docx_to_pdf в момент запроса — подмена сработает
-        with mock.patch("app.modules.exchange.application.documents.docx_to_pdf",
+        with mock.patch("app.modules.timesheet.interface.schedule.docx_to_pdf",
                         return_value=(None, "reportlab не установлен")):
             r = client.get("/api/schedule/pdf", params={"year": YEAR, "month": MONTH})
         self.assertEqual(r.status_code, 501, r.text)

@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.core.manifest import SUPERVISOR_UP, ModuleManifest, Perm, Screen
 
 MODULE = ModuleManifest(
-    name="audit", title="Журнал аудита", order=50,
+    name="audit", title="Журнал аудита", order=50, layer=2,
     routers=("app.modules.audit.interface.audit_api:router",),
     permissions=(
         Perm("audit.view", "Журнал аудита",

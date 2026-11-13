@@ -47,8 +47,6 @@ def tabel_values(principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода
     (18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
-    from app.core.time import local_date
-
     from ..application.catalog import SqlSettingsAdapter
     from ..application.engine_common import day_code_rows
     from ..application.months import month_period
