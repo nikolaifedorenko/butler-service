@@ -9,14 +9,15 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core import manifest
 from app.core.audit import audit
 from app.core.auth import Principal, current_principal
-from app.core.auth_guards import can_manage_user
+from app.core.auth_guards import assignable_roles, can_manage_user, roles_catalog
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.identity import LoginAttempt, User
 from app.core.net import client_ip
-from app.core.permissions import require_perm
+from app.core.permissions import principal_permissions, require_perm
 from app.core.security import (
     MIN_PASSWORD_LEN,
     SESSION_TOKEN,
@@ -27,6 +28,7 @@ from app.core.security import (
 )
 from app.core.time import local_date, utcnow
 from app.modules.people.application import Employee
+from app.modules.timesheet.application.punch_plan import plan_for_date, to_local
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -184,9 +186,6 @@ def logout(response: Response, principal: Principal = Depends(current_principal)
 def me(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)):
     """Текущий пользователь + его план на сегодня (для личного кабинета)."""
     emp = principal.employee
-    from app.core import manifest
-    from app.core.auth_guards import assignable_roles, roles_catalog
-    from app.core.permissions import principal_permissions
 
     perms = set(principal_permissions(db, principal))
     data = {"user": principal.to_dict(), "today": None,
@@ -197,7 +196,6 @@ def me(principal: Principal = Depends(current_principal), db: Session = Depends(
             # меню и экраны Настроек из манифестов модулей, уже по правам (шаг 5.4)
             **manifest.ui_for(perms)}
     if emp:
-        from app.modules.timesheet.application.punch_plan import plan_for_date, to_local
         today = local_date()
         shift, p_start, p_end, _plan_date, subs = plan_for_date(db, emp.id, today)
         data["today"] = {

@@ -15,6 +15,8 @@ from types import SimpleNamespace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.identity import User
+from app.core.security import hash_password
 from app.core.time import local_date
 from app.modules.people.application.catalog import Employee
 from app.modules.timesheet.application.catalog import TabelDay
@@ -339,9 +341,6 @@ def _demo_ooo_blocks(db: Session, today: dt.date, units: dict, cats: dict) -> No
 
 def _demo_users(db: Session) -> None:
     """Демо-входы для ролей модуля: «Руководство: только просмотр» и «Загрузка без гостей»."""
-    from app.core.identity import User
-    from app.core.security import hash_password
-
     for login, role in (("rukovod", "mgmt_view"), ("sluzhba", "occupancy")):
         if db.scalar(select(User.id).where(User.username == login)) is None:
             db.add(User(username=login, password_hash=hash_password("demo1234"), role=role))

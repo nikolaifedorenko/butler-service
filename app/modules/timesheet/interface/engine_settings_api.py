@@ -10,13 +10,15 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
+from app.core import manifest
+from app.core.audit import AuditLog, audit
 from app.core.auth import Principal
 from app.core.config import settings as app_settings
 from app.core.db import get_db
 from app.core.format import normalize_hex_color
 from app.core.permissions import require_perm
-from app.core.time import local_date
+from app.core.time import local_date, utc_to_local
+from app.modules.people.application import Employee, normalize_group
 
 from ..adapters.orm import DayModifier, EngineSettingsVersion
 from ..adapters.settings_codec import from_payload, to_payload
@@ -419,8 +421,6 @@ def _scope_text(entry) -> str:
 
 def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
     """Прикладные сверки D18/D19: то, что домен не знает (словарь смен, сотрудники, блоки)."""
-    from app.modules.people.application import Employee, normalize_group
-
     from ..application.base_schedule import load_base_config
 
     out: list[dict] = []
@@ -428,7 +428,6 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
 
     # Значение рабочего дня — атрибут сотрудника (18.10.2026): без него цикл
     # не заполнит рабочие дни, поэтому подсвечиваем таких сотрудников заранее.
-    from app.core.time import local_date
 
     from ..application.base_schedule import BlockIndex, pattern_for_date
     emps = list(db.scalars(select(Employee).where(Employee.deleted_at.is_(None))))
@@ -466,45 +465,8 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
                         "text": (f"Код «{code}» несёт часы, но у него нет ни одного окна "
                                  f"(значения Табеля) — строку с таким кодом не сохранить")})
 
-    # Справочники группы «Объект» (19.10.2026): ночной обход переехал в «Настройки»,
-    # поэтому «Обзор» покрывает и его — пустой шаблон зоны и службы без канала доставки.
-    # Места стоянки у каров НЕ проверяем: новый кар без места — норма (решение 18.10).
-    out += _night_checks(db)
-    return out
-
-
-def _night_checks(db: Session) -> list[dict]:
-    """Сверки справочника ночного обхода для экрана «Обзор»."""
-    from app.modules.night.application.catalog import NightArea, NightZone, ZoneChecklistItem
-    from app.modules.notify.application.catalog import ResponsibilityService
-
-    out: list[dict] = []
-    zones = {z.id: z.name for z in db.scalars(
-        select(NightZone).where(NightZone.active.is_(True)))}
-    if zones:
-        areas_by_zone = dict(db.execute(
-            select(NightArea.zone_id, func.count(NightArea.id))
-            .where(NightArea.active.is_(True), NightArea.zone_id.is_not(None))
-            .group_by(NightArea.zone_id)).all())
-        with_items = set(db.scalars(select(ZoneChecklistItem.zone_id)
-                                    .where(ZoneChecklistItem.active.is_(True)).distinct()))
-        for zid, zname in sorted(zones.items(), key=lambda kv: kv[1]):
-            if areas_by_zone.get(zid) and zid not in with_items:
-                out.append({"code": "APP-NIGHT-ZONE-NO-TEMPLATE", "level": "warn", "screen": "night",
-                            "text": (f"Зона «{zname}»: в шаблоне чек-листа нет активных пунктов — "
-                                     f"объекты зоны ({areas_by_zone[zid]}) проверяются только по "
-                                     f"индивидуальным пунктам. Задайте шаблон в «Настройки → Ночной обход»")})
-    for s in db.scalars(select(ResponsibilityService)
-                        .where(ResponsibilityService.active.is_(True))
-                        .order_by(ResponsibilityService.sort_order, ResponsibilityService.id)):
-        chats = json.loads(s.chat_ids or "[]")
-        tg_ready = bool(s.use_telegram and chats)
-        mail_ready = bool(s.use_email and "@" in (s.email_to or ""))
-        if not (tg_ready or mail_ready):
-            out.append({"code": "APP-SVC-NO-CHANNEL", "level": "warn", "screen": "night",
-                        "text": (f"Ответственная служба «{s.name}»: канал доставки не настроен — "
-                                 f"недостатки по её пунктам никуда не отправляются "
-                                 f"(«Настройки → Ночной обход → Службы»)")})
+    # сверки остальных модулей — из их манифестов (ночной обход, ответственные службы)
+    out += manifest.overview_checks(db)
     return out
 
 
@@ -517,9 +479,6 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
     те же CHK-*, что останавливают расчёт, но показанные ДО сохранения;
     (2) прикладные сверки (группы ↔ блоки, коды ↔ словарь смен, коды ↔ окна).
     """
-    from app.core.audit import AuditLog
-    from app.core.time import utc_to_local
-
     from ..application.months import period_containing
     from .formatting import config_violation_text
 
@@ -644,8 +603,6 @@ def resolve_rules(employee_id: int, date: dt.date, name: Optional[str] = None,
     Приоритет 1–7 считается ДОМЕНОМ (`resolve_modifier_trace`) — тем же кодом, что и
     расчёт; здесь добавляются только объяснение источника и цепочка уровней.
     """
-    from app.modules.people.application import Employee, normalize_group
-
     from ..adapters.orm import TabelDay
     from ..application.months import period_containing
     from ..domain.settings.resolve_modifier import resolve_modifier_trace

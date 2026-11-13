@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.core.manifest import EVERYONE, MANAGER_UP, SUPERVISOR_UP, MenuItem, ModuleManifest, Perm
 
 MODULE = ModuleManifest(
-    name="timesheet", title="Учёт времени: График, Табель, Факт, УТ, отметки", order=10,
+    name="timesheet", title="Учёт времени: График, Табель, Факт, УТ, отметки", order=10, layer=2,
     routers=("app.modules.timesheet.interface.schedule:router", "app.modules.timesheet.interface.punches:router", "app.modules.timesheet.interface.tabel_api:router", "app.modules.timesheet.interface.mgmt_api:router", "app.modules.timesheet.interface.presence_api:router", "app.modules.timesheet.interface.fact_api:router", "app.modules.timesheet.interface.engine_settings_api:router", "app.modules.timesheet.interface.doublepay:router", "app.modules.timesheet.interface.shift_types_api:router", "app.modules.timesheet.interface.bank_api:router"),
     models=("app.modules.timesheet.adapters.orm",),
     permissions=(

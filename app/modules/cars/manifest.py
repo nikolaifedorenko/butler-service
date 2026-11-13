@@ -13,7 +13,7 @@ from app.core.manifest import (
 )
 
 MODULE = ModuleManifest(
-    name="cars", title="Электрокары", order=70,
+    name="cars", title="Электрокары", order=70, layer=2,
     routers=("app.modules.cars.interface.cars_api:router",),
     models=("app.modules.cars.adapters.orm",),
     permissions=(

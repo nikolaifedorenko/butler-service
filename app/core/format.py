@@ -1,8 +1,5 @@
-"""Форматно-защитные хелперы вывода (ядро, R5).
-
-Вынесено из app/deps.py в фазе C1 (20.10.2026): защита от CSV/Excel-инъекций
-и нормализация цветов для атрибута style. Чистые функции без состояния.
-"""
+"""Форматы вывода (ядро, R5): защита от CSV/Excel-инъекций, нормализация цветов для
+атрибута style, часы для текста документов. Чистые функции без состояния."""
 from __future__ import annotations
 
 import re
@@ -34,3 +31,9 @@ def normalize_hex_color(value: str | None, default: str) -> str:
     if not _HEX_COLOR_RE.fullmatch(v):
         raise ValueError("Цвет должен быть в формате #RRGGBB (например, #8a94a6)")
     return v.lower()
+
+
+def hours_text(value: float) -> str:
+    """Часы для текста документа: целое без дробной части, иначе с запятой («2», «2,5»)."""
+    v = round(float(value or 0), 2)
+    return str(int(v)) if abs(v - int(v)) < 1e-9 else f"{v:g}".replace(".", ",")

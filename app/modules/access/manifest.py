@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.core.manifest import ADMIN_ONLY, ModuleManifest, Perm, Screen
 
 MODULE = ModuleManifest(
-    name="access", title="Вход и права доступа", order=40,
+    name="access", title="Вход и права доступа", order=40, layer=4,
     routers=("app.modules.access.interface.auth_routes:router", "app.modules.access.interface.access_api:router"),
     permissions=(
         Perm("access.manage", "Права доступа",

@@ -30,10 +30,6 @@ forbidden_modules =
     app.modules
     app.bootstrap
     app.main
-ignore_imports =
-    ; TYPE_CHECKING-аннотация Principal.employee: в runtime Employee загружается
-    ; внедрённым bootstrap'ом колбэком (set_employee_loader), импорта моделей нет.
-    app.core.auth -> app.modules.people.application.catalog
 
 [importlinter:contract:timesheet-isolation]
 name = Модуль timesheet (движок v7.1) не знает про composition root
@@ -129,6 +125,16 @@ forbidden_modules =
     app.modules.stays
     app.modules.timesheet
 allow_indirect_imports = True
+
+[importlinter:contract:module-layers]
+name = Слои модулей: импорт только вниз, соседи по слою независимы (ADR-0013, раздел 5)
+type = layers
+layers =
+    app.modules.settings
+    app.modules.access | app.modules.docs | app.modules.employees | app.modules.stays
+    app.modules.night
+    app.modules.audit | app.modules.cars | app.modules.notify | app.modules.timesheet
+    app.modules.exchange | app.modules.people
 
 [importlinter:contract:file-formats-only-in-exchange]
 name = Библиотеки файловых форматов импортирует только exchange (ADR-0013, раздел 5)

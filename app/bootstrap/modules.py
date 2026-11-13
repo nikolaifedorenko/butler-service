@@ -28,6 +28,10 @@ def _attr(spec: str):
     return getattr(importlib.import_module(path), name)
 
 
+def overview_checks(manifests: list[ModuleManifest]) -> list:
+    return [_attr(spec) for m in manifests for spec in m.overview_checks]
+
+
 def import_models(manifests: list[ModuleManifest]) -> None:
     for m in manifests:
         for path in m.models:

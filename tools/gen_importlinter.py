@@ -2,7 +2,7 @@
 """Контракты .importlinter, которые зависят от списка модулей (шаг 5.4 аудита, ADR-0012).
 
 Модули — пакеты app/modules/*/ с manifest.py. Всё ниже маркера в .importlinter генерируется:
-изоляция exchange, notify и people (не импортируют предметные модули) и R3 — приватные
+слои модулей (импорт только вниз), изоляция exchange, notify и people и R3 — приватные
 domain/adapters/interface каждого модуля. Новый модуль попадает в контракты без ручной правки.
 
 Использование:
@@ -11,6 +11,7 @@ domain/adapters/interface каждого модуля. Новый модуль �
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -29,6 +30,18 @@ def modules() -> list[str]:
     return sorted(p.parent.name for p in (ROOT / "app" / "modules").glob("*/manifest.py"))
 
 
+def layers() -> dict[int, list[str]]:
+    """Слой → модули: поле layer в manifest.py каждого модуля (ADR-0013, раздел 5)."""
+    out: dict[int, list[str]] = {}
+    for m in modules():
+        text = (ROOT / "app" / "modules" / m / "manifest.py").read_text(encoding="utf-8")
+        found = re.search(r"\blayer=(\d+)", text)
+        if not found:
+            raise SystemExit(f"✗ В манифесте модуля {m} не задан слой: layer=N")
+        out.setdefault(int(found.group(1)), []).append(m)
+    return out
+
+
 def _list(names) -> str:
     return "".join(f"    {n}\n" for n in names)
 
@@ -42,6 +55,11 @@ def generated(mods: list[str]) -> str:
                    f"forbidden_modules =\n{_list(['app.bootstrap', 'app.main'])}"
                    f"{_list(f'app.modules.{o}' for o in mods if o != m and o not in SERVICES)}"
                    "allow_indirect_imports = True\n")
+    by_layer = layers()
+    out.append("[importlinter:contract:module-layers]\n"
+               "name = Слои модулей: импорт только вниз, соседи по слою независимы (ADR-0013, раздел 5)\n"
+               "type = layers\nlayers =\n"
+               + _list(" | ".join(f"app.modules.{m}" for m in by_layer[n]) for n in sorted(by_layer, reverse=True)))
     out.append("[importlinter:contract:file-formats-only-in-exchange]\n"
                "name = Библиотеки файловых форматов импортирует только exchange (ADR-0013, раздел 5)\n"
                "type = forbidden\nsource_modules =\n"

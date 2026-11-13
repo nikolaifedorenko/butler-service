@@ -89,8 +89,6 @@ def _vip_dict(v: VipDoublePay) -> dict:
     # повторные обращения в списке бесплатны).
     from sqlalchemy.orm import object_session
 
-    from app.modules.people.application import Employee
-
     sess = object_session(v)
     emp = sess.get(Employee, v.employee_id) if sess is not None else None
     days = (v.end_date - v.start_date).days + 1

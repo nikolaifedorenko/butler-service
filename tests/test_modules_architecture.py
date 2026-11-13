@@ -364,3 +364,52 @@ def test_stays_reads_fund_only_via_timeline():
         src = path.read_text(encoding="utf-8")
         offenders += [(rel, pat) for pat in FUND_DIRECT if re.search(pat, src)]
     assert offenders == [], f"фонд мимо FundTimeline: {offenders}"
+
+
+# ── слои и циклы между модулями (ADR-0013, раздел 5) ───────────────────────────
+def _module_imports() -> dict[str, set[str]]:
+    """Модуль → модули, которые он импортирует (любые импорты, в том числе внутри функций)."""
+    graph: dict[str, set[str]] = {m: set() for m in MODULES}
+    for mod in MODULES:
+        for path in (ROOT / "app" / "modules" / mod).rglob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                names = ([node.module] if isinstance(node, ast.ImportFrom) and node.module and not node.level
+                         else [a.name for a in node.names] if isinstance(node, ast.Import) else [])
+                for name in names:
+                    parts = name.split(".")
+                    if parts[:2] == ["app", "modules"] and len(parts) > 2 and parts[2] != mod:
+                        graph[mod].add(parts[2])
+    return graph
+
+
+def test_no_import_cycles_between_modules():
+    graph = _module_imports()
+    state: dict[str, int] = {}          # 1 — в обходе, 2 — пройден
+
+    def visit(mod: str, trail: list[str]) -> list[str] | None:
+        state[mod] = 1
+        for dep in sorted(graph[mod]):
+            if state.get(dep) == 1:
+                return [*trail[trail.index(dep):], dep] if dep in trail else [mod, dep]
+            if dep not in state:
+                found = visit(dep, [*trail, dep])
+                if found:
+                    return found
+        state[mod] = 2
+        return None
+
+    for mod in MODULES:
+        if mod not in state:
+            cycle = visit(mod, [mod])
+            assert cycle is None, "цикл импортов между модулями: " + " → ".join(cycle)
+
+
+def test_modules_import_only_lower_layers():
+    """Слой модуля — поле layer манифеста: импортировать можно только модули слоёв ниже."""
+    from app.bootstrap import modules as registry
+
+    layer = {m.name: m.layer for m in registry.discover() if m.name in MODULES}
+    assert all(layer[m] >= 1 for m in MODULES), {m: layer[m] for m in MODULES if layer[m] < 1}
+    bad = [(mod, dep) for mod, deps in _module_imports().items() for dep in sorted(deps)
+           if layer[dep] >= layer[mod]]
+    assert bad == [], "импорт не вниз по слоям: " + ", ".join(f"{a} → {b}" for a, b in bad)

@@ -24,9 +24,10 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db, lock_employee
+from app.core.format import hours_text
 from app.core.permissions import principal_permissions, require_perm
-from app.core.time import TZ, now_local, utc_to_local
-from app.modules.docs.application.doc_render import hours_text
+from app.core.time import TZ, month_name, now_local, utc_to_local
+from app.modules.exchange.application.documents import docx_to_pdf, pdf_unavailable_detail, write_docx
 from app.modules.exchange.application.tables import XLSX_MEDIA_TYPE, attachment, write_xlsx
 from app.modules.people.application import (
     Employee,
@@ -60,6 +61,7 @@ from ..application.engine_common import (
 from ..application.errors import ApplicationError
 from ..application.months import month_period
 from ..application.schedule_view import rebuild_generated_for_days
+from ..application.statement_kinds import statement_kind_exists
 from ..domain.settings.types import Settings
 from ..domain.types.entities import Period, Shift
 from ..domain.types.errors import DomainError
@@ -174,12 +176,6 @@ DOC_WHOLE_SHIFT = "day_off_hours"
 DOC_PARTIAL_SHIFT = "time_off_request"
 
 
-def _statement_kind_exists(db: Session, code: str) -> bool:
-    from app.modules.docs.application.catalog import StatementKind
-
-    return db.scalar(select(StatementKind.id).where(StatementKind.code == code)) is not None
-
-
 def doc_type_of_absence(db: Session, kind: ShiftType, whole_shift: bool) -> str:
     """Какое заявление печатать по отсутствию.
 
@@ -191,7 +187,7 @@ def doc_type_of_absence(db: Session, kind: ShiftType, whole_shift: bool) -> str:
     """
     own = (kind.doc_type or "").strip()
     wanted = DOC_WHOLE_SHIFT if whole_shift else DOC_PARTIAL_SHIFT
-    return wanted if _statement_kind_exists(db, wanted) else own
+    return wanted if statement_kind_exists(db, wanted) else own
 
 
 def _position_rank(position: Optional[str]) -> int:
@@ -358,7 +354,6 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
             "totals": {"planned_hours": round(planned_total, 2), "work_days": work_days},
         })
 
-    from app.core.time import month_name
     payload = {
         "year": year, "month": month, "month_name": month_name(month),
         "days": [{"date": d.isoformat(), "day": d.day,
@@ -911,7 +906,7 @@ def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = 
         else:
             # смешанные точки ввода (вся смена + интервал): перечень интервалов
             # печатается заявлением «об отсутствии на рабочем месте»
-            doc_type = (DOC_PARTIAL_SHIFT if _statement_kind_exists(db, DOC_PARTIAL_SHIFT)
+            doc_type = (DOC_PARTIAL_SHIFT if statement_kind_exists(db, DOC_PARTIAL_SHIFT)
                         else first["doc_type"])
         intervals_text = " и ".join(
             f"с {iv['from_time']} до {iv['until_time']} ({hours_text(iv['hours'] or 0)} ч)"
@@ -951,7 +946,7 @@ def absence_period(employee_id: int, date: dt.date, absence_id: Optional[int] = 
     # (вид может отсутствовать — словарь смен только про График).
     code_row = day_code_rows(db, date).get(anchor.code) or {}
     code_doc = (code_row.get("doc_type") or "").strip()
-    doc_type = code_doc if code_doc and _statement_kind_exists(db, code_doc) else ""
+    doc_type = code_doc if code_doc and statement_kind_exists(db, code_doc) else ""
     if not doc_type:
         raise HTTPException(status_code=404,
                             detail=f"Для кода «{anchor.code}» не настроен тип заявления")
@@ -1054,8 +1049,6 @@ def export_pdf(year: int, month: int, principal: Principal = Depends(require_per
     """График на месяц в PDF: та же таблица, что в «Печать»/Excel. Собирается через
     DOCX → PDF встроенным рендером; если собрать не удалось — 501 с подсказкой."""
     from fastapi.responses import Response
-
-    from app.modules.exchange.application.documents import docx_to_pdf, pdf_unavailable_detail, write_docx
 
     data = get_grid(year, month, principal, db)
     pdf, how = docx_to_pdf(write_docx(exports.schedule_document(data)), f"grafik_{year}-{month:02d}.pdf")

@@ -9,6 +9,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.identity import User
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Ooo
@@ -182,7 +183,6 @@ def list_ooo(db: Session, q: OooQuery) -> dict:
 def _authors(db: Session, ids: set[int]) -> dict[int, str]:
     if not ids:
         return {}
-    from app.core.identity import User
     return {uid: short or full or name for uid, name, short, full in db.execute(
         select(User.id, User.username, Employee.short_name, Employee.full_name)
         .outerjoin(Employee, Employee.id == User.employee_id).where(User.id.in_(ids)))}

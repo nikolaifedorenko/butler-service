@@ -26,6 +26,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 from app.core.time import now_local
+from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment, raw, write_csv
 
 from ..adapters.transports.email import send_mail, split_addresses
 from ..adapters.transports.telegram import TelegramBot
@@ -209,8 +210,6 @@ def export_dispatches_csv(domain: str = "", limit: int = 2000,
     снимком, поэтому выгрузка закрытой смены не меняется со временем.
     """
     from fastapi.responses import Response
-
-    from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment, raw, write_csv
 
     from ..application.dispatch import dispatch_dict, journal_of
 

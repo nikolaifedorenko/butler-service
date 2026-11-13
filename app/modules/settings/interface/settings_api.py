@@ -18,13 +18,19 @@ from app.core.settings_store import Setting
 from app.core.time import local_date
 from app.modules.docs.application.doc_templates import load_doc_templates, save_doc_templates
 from app.modules.people.application import Employee
-from app.modules.timesheet.application.base_schedule import DEFAULT_BASE, load_base_config, save_base_config
+from app.modules.timesheet.application.base_schedule import (
+    DEFAULT_BASE,
+    load_base_config,
+    save_base_config,
+    working_flag,
+)
 from app.modules.timesheet.application.catalog import (
     EngineSettingsVersion,
     PeriodClosing,
     Punch,
     ScheduleShift,
     TabelDay,
+    base_version,
 )
 from app.modules.timesheet.application.schedule_helpers import DEFAULT_RULES, load_rules, rule_options
 
@@ -49,8 +55,6 @@ DEFAULT_HINTS = {
 
 def defaults_of(db: Session, on: dt.date) -> dict:
     """Глобальные значения модификаторов и лимиты из версии, действующей на дату `on`."""
-    from app.modules.timesheet.application.catalog import base_version
-
     ver = base_version(db, on)
     payload = json.loads(ver.payload_json) if ver else {}
     gd = payload.get("global_defaults") or {}
@@ -125,8 +129,6 @@ def update_base(payload: BaseIn, principal: Principal = Depends(require_perm("se
                 db: Session = Depends(get_db)):
     """Базовый цикл объекта: какие дни рабочие у Смены 1 / Смены 2 / Администрации — на все месяцы."""
     import datetime as _dt
-
-    from app.modules.timesheet.application.base_schedule import working_flag
 
     try:
         _dt.date.fromisoformat(payload.anchor)

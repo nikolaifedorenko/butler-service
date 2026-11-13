@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
+from app.core.format import hours_text
 from app.core.permissions import require_perm
 from app.modules.exchange.application.documents import docx_to_pdf
 from app.modules.people.application import Employee
@@ -32,7 +33,6 @@ from ..application.doc_render import (
     build_sample_docx,
     build_values,
     delete_template,
-    hours_text,
     pdf_available,
     pdf_status,
     render_docx,

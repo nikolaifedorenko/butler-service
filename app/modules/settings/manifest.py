@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.core.manifest import MANAGER_UP, SUPERVISOR_UP, MenuItem, ModuleManifest, Perm, Screen
 
 MODULE = ModuleManifest(
-    name="settings", title="Настройки", order=30,
+    name="settings", title="Настройки", order=30, layer=5,
     routers=("app.modules.settings.interface.settings_api:router",),
     permissions=(
         Perm("settings.view", "Настройки",

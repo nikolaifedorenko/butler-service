@@ -32,10 +32,13 @@ def wire() -> None:
     found = modules.discover()
     manifest.register(found)
     permissions.load_catalog(p for m in found for p in m.permissions)
+    manifest.set_overview_checks(modules.overview_checks(found))
     from app.core import media
+    from app.modules.docs.application.catalog import statement_kind_exists
     from app.modules.night.application.night import photo_delete_blocker
     from app.modules.people.adapters.orm import Employee
-    from app.modules.timesheet.application import schedule_helpers
+    from app.modules.timesheet.application import schedule_helpers, statement_kinds
     media.set_rules_provider(schedule_helpers.load_rules)
     media.set_delete_guard(photo_delete_blocker)
     core_auth.set_employee_loader(lambda db, pk: db.get(Employee, pk))
+    statement_kinds.set_lookup(statement_kind_exists)
