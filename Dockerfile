@@ -1,28 +1,23 @@
 # Простой контейнер TimeTrack: приложение + SQLite в томе (или PostgreSQL — POSTGRES_* / DATABASE_URL)
+FROM ghcr.io/astral-sh/uv:0.13.8 AS uv
+
 FROM python:3.15-slim
 # Системные пакеты базового образа: патчи безопасности Debian выходят раньше, чем пересобирается
 # сам образ (Trivy 08.11.2026: два HIGH в zlib1g, исправление deb13u1 уже в репозитории).
 # Обновляем только zlib1g — остальной состав образа не двигаем
 RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
     && rm -rf /var/lib/apt/lists/*
-# pip из базового образа несёт вложенные msgpack/urllib3 со старыми версиями (Trivy 08.11.2026:
-# CVE-2026-114613, CVE-2026-97687, CVE-2026-97689) — свежий pip приносит исправленные
-RUN pip install --no-cache-dir --upgrade pip \
-    && rm -f /usr/local/lib/python3.15/site-packages/pip/_vendor/bom.cdx.json
-# (SBOM-файл самого pip перечисляет вложенный pkg_resources как «setuptools 70.3.0» — Trivy
-#  принимает это за установленный пакет и ловит CVE-2025-47273 (ложное срабатывание, 08.11.2026);
-#  файл справочный, pip его не читает)
 WORKDIR /srv/timetrack
-COPY requirements.txt requirements-postgres.txt requirements.lock.txt ./
-# версии — ровно те, что проверены CI (lock как constraints: dev-пакеты в образ не попадают)
-RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock.txt
-# Драйвер PostgreSQL — обязателен: прод-профилю (docker-compose.prod.yml) он нужен, и сбой
-# установки должен ронять сборку, а не всплывать при первом запуске (раньше `|| echo` его глотал)
-RUN pip install --no-cache-dir -r requirements-postgres.txt
-# setuptools из базового образа не нужен приложению (все пакеты — колёса, ни одна зависимость
-# его не импортирует), а его вложенные jaraco.context и wheel — HIGH-уязвимости (Trivy,
-# 25.10.2026): убираем, а не обновляем — меньше поверхность и не гонимся за версиями
-RUN pip uninstall -y setuptools
+COPY pyproject.toml uv.lock ./
+# Зависимости — ровно из uv.lock (версии и хеши пакетов), без dev-группы; ставятся в Python
+# образа. Сам uv в образ не попадает: подключается к шагу сборки из своего образа.
+RUN --mount=from=uv,source=/uv,target=/bin/uv \
+    UV_PROJECT_ENVIRONMENT=/usr/local UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 \
+    uv sync --frozen --no-dev
+# pip и setuptools из базового образа приложению не нужны, а их вложенные пакеты (msgpack,
+# urllib3, jaraco.context, wheel) — постоянный источник HIGH-уязвимостей в отчёте Trivy:
+# убираем, а не обновляем — меньше поверхность
+RUN pip uninstall -y setuptools pip
 COPY app ./app
 COPY static ./static
 COPY assets ./assets

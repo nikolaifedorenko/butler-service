@@ -22,7 +22,7 @@
 fastapi, uvicorn, starlette, pydantic, pydantic-settings, SQLAlchemy, alembic,
 python-dotenv, openpyxl, python-docx, python-multipart — MIT; httpx — BSD-3-Clause;
 prometheus-client — Apache-2.0; reportlab — BSD-3-Clause; pillow — MIT-CMU (HPND).
-Точный состав и версии фиксирует `requirements.lock.txt`.
+Точный состав и версии фиксирует `uv.lock`.
 
 ## Зависимости JavaScript (dev, `package.json`)
 

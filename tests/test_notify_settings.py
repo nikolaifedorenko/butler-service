@@ -16,7 +16,7 @@
     возврат к тексту по умолчанию;
   * закрепление чата за службой делает её готовой к отправке в чат;
   * отсутствие httpx (старое venv) — 502 с инструкцией, не 500; зависимость
-    транспорта объявлена в requirements.txt, а не только в dev-наборе.
+    транспорта объявлена в основных зависимостях, а не только в dev-группе.
 
 Сеть в тестах подменяется: sender/mailer транспорта — заглушки.
 """
@@ -341,14 +341,14 @@ def test_otsutstvie_httpx_daet_ponyatnuyu_oshibku_ne_500(admin_client, monkeypat
     """Старое venv без httpx: 502 с инструкцией, а не «Internal Server Error».
 
     Регрессия боевого случая: экран «Чаты и Почта» падал в 500 на машинах, где
-    venv создан до переноса httpx в обязательные зависимости (requirements.txt).
+    окружение собрано без httpx.
     Транспорт обязан превращать отсутствие пакета в TransportError.
     """
     monkeypatch.setitem(sys.modules, "httpx", None)   # имитация неустановленного пакета
     r = admin_client.post("/api/notify/telegram/check", json={"token": TOKEN, "api": ""})
     assert r.status_code == 502, r.text
     detail = r.json()["detail"]
-    assert "httpx" in detail and "requirements.txt" in detail
+    assert "httpx" in detail and "uv sync" in detail
     assert admin_client.put("/api/notify/config",
                             json={"notify_telegram_token": TOKEN}).status_code == 200
     r = admin_client.post("/api/notify/telegram/chats")
@@ -357,17 +357,14 @@ def test_otsutstvie_httpx_daet_ponyatnuyu_oshibku_ne_500(admin_client, monkeypat
 
 
 def test_httpx_obyavlen_v_obyazatelnyh_zavisimostyah():
-    """Транспорт Telegram выходит в сеть из процесса: httpx — в requirements.txt.
+    """Транспорт Telegram выходит в сеть из процесса: httpx — в основных зависимостях.
 
-    Dev-набор (requirements-dev.txt) ставится не на каждую машину заказчика,
-    поэтому обязательная для транспорта зависимость обязана быть в основном списке.
+    Dev-группа в образ не ставится, поэтому обязательная для транспорта зависимость обязана
+    быть в [project].dependencies файла pyproject.toml.
     """
     import re
+    import tomllib
 
-    text = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
-    names = set()
-    for line in text.splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line and not line.startswith("-"):
-            names.add(re.split(r"[<>=!~;\[]", line, maxsplit=1)[0].strip().lower())
+    project = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
+    names = {re.split(r"[<>=!~;\[]", d, maxsplit=1)[0].strip().lower() for d in project["project"]["dependencies"]}
     assert "httpx" in names

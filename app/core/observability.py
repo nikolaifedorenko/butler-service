@@ -111,7 +111,7 @@ async def security_headers(request: Request, call_next):
 
 # ── наблюдаемость: request-id, JSON-лог запросов, метрики Prometheus ──────────
 # Метрики — опциональная зависимость: без prometheus_client приложение работает,
-# METRICS_ENABLED просто не включить (в requirements.txt пакет есть).
+# METRICS_ENABLED просто не включить (пакет входит в зависимости проекта).
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 

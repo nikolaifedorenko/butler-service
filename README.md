@@ -50,7 +50,7 @@
 
 ```bash
 cd butler-service
-pip install -r requirements.txt        # всё, включая PDF (reportlab)
+uv sync --no-dev              # зависимости ровно из uv.lock, включая PDF (reportlab)
 ./run.sh                      # или: python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 `./run.sh` сам создаёт `.venv`, **доустанавливает недостающие пакеты** и проверяет, что
@@ -115,7 +115,8 @@ pip install -r requirements.txt        # всё, включая PDF (reportlab)
 jsdom 30+ тянет undici 7, который на Node 20 падает на `markAsUncloneable`.
 
 ```bash
-pip install -r requirements-dev.txt
+uv sync                       # с dev-группой: pytest, ruff, mypy, import-linter
+source .venv/bin/activate
 python -m pytest tests/ -q                    # весь набор
 python -m pytest tests/engine -q --cov=app.modules.timesheet.domain --cov-report=term   # покрытие домена ≥ 95 %
 python -m ruff check .                        # линтер Python

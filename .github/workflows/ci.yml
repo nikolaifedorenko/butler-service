@@ -27,14 +27,16 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.15"
-          cache: pip
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
 
       - name: Зависимости
-        # ставим ТОЧНО из лок-файла (воспроизводимость)
+        # ставим ТОЧНО из uv.lock: версии и хеши пакетов (воспроизводимость)
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.lock.txt
-          pip install ruff hypothesis pytest-cov import-linter
+          uv sync --frozen
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Линтер (ruff)
         run: python -m ruff check .
@@ -65,19 +67,19 @@ jobs:
       - name: В живых документах нет битых ссылок
         run: python tools/doc_links.py
 
-      - name: Лок-файл зависимостей не разошёлся
-        run: python tools/freeze_requirements.py --check
+      - name: Лок-файл зависимостей не разошёлся с pyproject.toml
+        run: uv lock --check
 
       - name: Контракт OpenAPI не разошёлся с кодом (docs/openapi.json)
         run: python tools/export_openapi.py --check
 
       - name: Аудит зависимостей (pip-audit, известные CVE)
         # блокирующий с 22.10.2026: новая CVE в зависимостях проекта остановит merge.
-        # Проверяем lock-файл (то, что ставится в Docker-образ), а не окружение раннера:
-        # в нём старый setuptools из образа Python, к продукту не относящийся
+        # Проверяем lock-файл (то, что ставится в Docker-образ и в окружение разработки),
+        # а не окружение раннера
         run: |
-          pip install pip-audit
-          pip-audit -r requirements.lock.txt --desc
+          uv export --frozen --no-hashes -o "$RUNNER_TEMP/requirements.txt" > /dev/null
+          uvx pip-audit -r "$RUNNER_TEMP/requirements.txt" --desc
 
       - name: Самодиагностика схемы (/api/selfcheck)
         run: |
@@ -114,12 +116,15 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.15"
-          cache: pip
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
 
       - name: Зависимости
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.lock.txt -r requirements-postgres.txt
+          uv sync --frozen
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Тесты на PostgreSQL
         run: python -m pytest tests/ -q
@@ -139,7 +144,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.15"
-          cache: pip
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
 
       - name: Синтаксис всех скриптов интерфейса
         # find, а не `static/js/*.js`: разделы переехали в static/js/modules/
@@ -153,8 +161,8 @@ jobs:
 
       - name: Зависимости (python + jsdom + eslint)
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          uv sync --frozen --no-dev
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           npm install --no-audit --no-fund
 
       - name: Аудит npm-зависимостей (известные CVE)

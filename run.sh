@@ -5,7 +5,7 @@
 #    ./run.sh --reinstall — принудительно переустановить зависимости
 #    PORT=9000 ./run.sh   — другой порт
 #
-#  Скрипт сам создаёт .venv, доустанавливает недостающие пакеты и проверяет,
+#  Скрипт сам создаёт .venv (через uv), ставит пакеты из uv.lock и проверяет,
 #  что приложение действительно запускается. Ошибки пишет по-русски.
 # ───────────────────────────────────────────────────────────────────────────
 set -u
@@ -18,43 +18,13 @@ REINSTALL=0
 say()  { printf '%s\n' "$*"; }
 fail() { printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
-# ── 1. Python ─────────────────────────────────────────────────────────────
-PYBIN=""
-for c in python3.15 python3 python; do
-  if command -v "$c" >/dev/null 2>&1; then
-    if "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3,15) else 1)' 2>/dev/null; then
-      PYBIN="$c"; break
-    fi
-  fi
-done
-[ -n "$PYBIN" ] || fail "Не найден Python 3.15+ . Установите: https://www.python.org/downloads/  (или: brew install python@3.15)"
-say "Python: $($PYBIN -V 2>&1) ($(command -v "$PYBIN"))"
-
-# ── 2. Виртуальное окружение ──────────────────────────────────────────────
-if [ ! -x .venv/bin/python ] || [ $REINSTALL -eq 1 ]; then
-  say "Создаю виртуальное окружение .venv ..."
-  [ $REINSTALL -eq 1 ] && rm -rf .venv
-  "$PYBIN" -m venv .venv || fail "Не удалось создать .venv. Попробуйте: $PYBIN -m venv --clear .venv"
-fi
+# ── 1. uv: ставит нужный Python и зависимости ровно из uv.lock ────────────
+command -v uv >/dev/null 2>&1 || fail "Не найден uv. Установите: https://docs.astral.sh/uv/getting-started/installation/  (или: brew install uv)"
+[ $REINSTALL -eq 1 ] && rm -rf .venv
+say "Проверяю зависимости (uv sync) — первый раз это может занять минуту ..."
+uv sync --frozen --no-dev || fail "Зависимости не установились. Проверьте интернет и повторите: uv sync --frozen --no-dev"
 PY=.venv/bin/python
-"$PY" -m pip install -q --upgrade pip >/dev/null 2>&1 || true
-
-# ── 3. Обязательные зависимости ───────────────────────────────────────────
-install_core() { "$PY" -m pip install -q -r requirements.txt; }
-# httpx в проверке: транспорт Telegram из requirements.txt; старое venv, созданное
-# до переноса httpx в обязательные зависимости, должно дозаказаться само.
-if ! "$PY" -c 'import fastapi, uvicorn, sqlalchemy, docx, openpyxl, httpx' 2>/dev/null || [ $REINSTALL -eq 1 ]; then
-  say "Устанавливаю зависимости (requirements.txt) — первый раз это может занять минуту ..."
-  if ! install_core; then
-    say "Обычная установка не удалась, пробую по одному пакету ..."
-    ok=1
-    while read -r pkg; do
-      case "$pkg" in ''|'#'*) continue;; esac
-      "$PY" -m pip install -q "$pkg" || { say "  ! не установился: $pkg"; ok=0; }
-    done < requirements.txt
-    [ $ok -eq 1 ] || fail "Часть пакетов не установилась. Проверьте интернет и повторите: ./.venv/bin/pip install -r requirements.txt"
-  fi
-fi
+say "Python: $($PY -V 2>&1)"
 
 # ── 4.5 SECRET_KEY: создаём .env с надёжным ключом, если его ещё нет ─────────
 # Приложение откажется стартовать со слабым ключом (см. app/main.py), поэтому

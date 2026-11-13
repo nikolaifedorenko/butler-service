@@ -423,7 +423,7 @@ butler-service/
 │   └── test_api.py test_features.py test_engine_api.py …   # интеграция приложения
 ├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки/сценарии
 ├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, EXECUTION-SPEC-v2, ADR, CHANGES
-└── requirements*.txt
+└── pyproject.toml, uv.lock
 ```
 
 API: http://127.0.0.1:8000/api/docs (Swagger).

@@ -182,7 +182,7 @@ class TestPdfHint(unittest.TestCase):
             r = client.get("/api/schedule/pdf", params={"year": YEAR, "month": MONTH})
         self.assertEqual(r.status_code, 501, r.text)
         detail = r.json()["detail"]
-        self.assertIn("requirements.txt", detail)
+        self.assertIn("uv sync", detail)
         self.assertIn("Печать", detail)
 
 

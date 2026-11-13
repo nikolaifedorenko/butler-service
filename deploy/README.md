@@ -151,8 +151,8 @@ sudo mkdir -p /opt/timetrack && sudo chown timetrack:timetrack /opt/timetrack
 
 ### 7.2. Окружение и зависимости
 ```bash
-sudo -u timetrack python3 -m venv /opt/timetrack/.venv
-sudo -u timetrack /opt/timetrack/.venv/bin/pip install -r /opt/timetrack/requirements.txt
+# uv: https://docs.astral.sh/uv/getting-started/installation/ — ставит зависимости из uv.lock
+sudo -u timetrack sh -c 'cd /opt/timetrack && uv sync --frozen --no-dev'
 sudo -u timetrack cp /opt/timetrack/.env.example /opt/timetrack/.env
 sudo -u timetrack nano /opt/timetrack/.env     # SECRET_KEY=<(openssl rand -hex 32>), APP_TZ
 ```
@@ -164,7 +164,6 @@ sudo -u postgres psql <<'SQL'
 CREATE USER timetrack WITH PASSWORD 'STRONG_PASSWORD';
 CREATE DATABASE timetrack OWNER timetrack;
 SQL
-sudo -u timetrack /opt/timetrack/.venv/bin/pip install psycopg2-binary
 # в .env (пароль экранирует приложение — любые символы):
 #   POSTGRES_HOST=127.0.0.1
 #   POSTGRES_USER=timetrack
@@ -239,7 +238,7 @@ ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SE
 ### 7.7. Эксплуатация
 * **Бэкапы:** SQLite — копия файла `timetrack.db` (лучше через `sqlite3 db ".backup …"`);
   PostgreSQL — `pg_dump timetrack > dump.sql` по cron. Храните также `.env` (SECRET_KEY).
-* **Обновление:** заменить файлы → `pip install -r requirements.txt` →
+* **Обновление:** заменить файлы → `uv sync --frozen --no-dev` →
   `systemctl restart timetrack`. Таблицы добавляются автоматически; при изменении схемы
   колонок (редко) может понадобиться пересоздание БД из бэкапа — см. «Ограничения» в SPEC.md.
 * **Логи:** `journalctl -u timetrack`; аудит действий пользователей — в разделе «Настройки»
@@ -255,7 +254,7 @@ ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SE
 * БД: SQLite по умолчанию (WAL + `busy_timeout`); для боевого режима
   `POSTGRES_HOST`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` в `.env` — адрес
   собирает приложение, пароль экранируется (либо готовый `DATABASE_URL`, он старше).
-  Драйвер в образе обязателен (`requirements-postgres.txt`): его сбой роняет сборку.
+  Драйвер PostgreSQL входит в обязательные зависимости (`pyproject.toml`).
 * Часовой пояс объекта: `APP_TZ` (по умолчанию `Europe/Moscow`) — должен совпадать
   с `Settings.tz` движка; DST намеренно не поддерживается (локальные сутки = 1440 мин,
   решение владельца R24).
