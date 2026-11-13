@@ -63,7 +63,7 @@ def _register_fonts() -> tuple[bool, str]:
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
     except ImportError:
-        _font_error = ("Не установлен PDF-движок (reportlab). Выполните: pip install -r requirements.txt. "
+        _font_error = ("Не установлен PDF-движок (reportlab). Выполните: uv sync. "
                        "DOCX и обычная печать работают всегда.")
         return False, _font_error
 

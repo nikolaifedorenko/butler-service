@@ -75,6 +75,10 @@ class TestCodePunchFlags(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # «сегодня» — на момент запуска класса, а не импорта файла: между сбором тестов и их
+        # запуском проходит до 20 минут, и прогон через полночь ставил отпуск на вчера
+        global TODAY
+        TODAY = local_date()
         cls.emp = _create_employee("codepunch_emp", "Отпускников Пётр Петрович",
                                    TODAY - dt.timedelta(days=90))
         cls.emp_client = _login("codepunch_emp")

@@ -11,12 +11,9 @@
 # 1. Распакуйте/склонируйте проект и зайдите в папку
 cd butler-service
 
-# 2. Виртуальное окружение (рекомендуется)
-python3 -m venv .venv
+# 2–3. Окружение и зависимости — ровно из uv.lock (uv: https://docs.astral.sh/uv/)
+uv sync --no-dev
 source .venv/bin/activate
-
-# 3. Зависимости (ядро; PDF-движок — по желанию, см. ниже)
-pip install -r requirements.txt
 
 # 4. Конфигурация
 cp .env.example .env
@@ -41,9 +38,8 @@ cp .env.example .env
 ### Шаги (Windows)
 ```powershell
 cd butler-service
-python -m venv .venv
+uv sync --no-dev
 .\.venv\Scripts\activate
-pip install -r requirements.txt
 copy .env.example .env        # затем отредактируйте .env в блокноте
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -57,7 +53,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ### Полезное
 * **Сброс демо-данных:** остановите сервер и удалите `timetrack.db`, затем запустите снова.
 * **Тесты:** `python3 -m pytest tests/ -q` (движок, API, сценарии).
-* **PDF** собирает встроенный рендер (reportlab из `requirements.txt`, шрифты DejaVu уже лежат
+* **PDF** собирает встроенный рендер (reportlab входит в зависимости, шрифты DejaVu уже лежат
   в `assets/fonts/`) — ничего доустанавливать не нужно. Он передаёт текст, таблицы, фоны ячеек
   и картинки; точный вид фирменного бланка (подложка, сложная вёрстка) даёт кнопка «DOCX» —
   документ открывается в Word/Pages/LibreOffice и печатается напрямую. Если PDF собрать не

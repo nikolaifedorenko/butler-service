@@ -16,6 +16,7 @@ venv/
 timetrack.db*
 # замки фоновых/стартовых задач (app/core/startup_lock.py) — рядом с файлом БД
 *.lock
+!uv.lock
 data/
 templates/
 

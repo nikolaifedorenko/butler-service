@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import pathlib
 import re
+import tomllib
 
 import pytest
 from sqlalchemy.engine import make_url
@@ -67,8 +68,10 @@ def test_prod_compose_builds_url_in_app():
 def test_dockerfile_sqlite_in_volume_and_postgres_driver_required():
     dockerfile = (ROOT / "Dockerfile").read_text()
     code = "\n".join(line.split("#", 1)[0] for line in dockerfile.splitlines())
-    assert "|| echo" not in code, "сбой установки драйвера PostgreSQL снова глотается"
-    assert "requirements-postgres.txt" in code
+    assert "|| echo" not in code, "сбой установки зависимостей снова глотается"
+    assert "uv sync --frozen --no-dev" in code, "образ ставит зависимости не из uv.lock"
+    deps = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+    assert any(d.startswith("psycopg2-binary") for d in deps), "драйвер PostgreSQL — обязательная зависимость"
     m = re.search(r"SQLITE_PATH=(\S+)", code)
     volume = re.search(r'VOLUME \["([^"]+)"', code).group(1)
     assert m and m.group(1).startswith(volume + "/"), "SQLite по умолчанию должен лежать в томе"

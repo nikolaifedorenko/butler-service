@@ -26,7 +26,7 @@ Sender = Callable[[str, Optional[dict], Optional[dict], float], dict]
 
 
 def http_sender(url: str, payload: Optional[dict], files: Optional[dict], timeout: float) -> dict:
-    """Отправитель по умолчанию: httpx (обязательная зависимость из requirements.txt).
+    """Отправитель по умолчанию: httpx (обязательная зависимость проекта).
 
     Отправитель отвечает ТОЛЬКО за доставку запроса и разбор JSON: проверку
     ``ok``/``error_code`` делает TelegramBot.call(), иначе подмена отправителя
@@ -36,14 +36,12 @@ def http_sender(url: str, payload: Optional[dict], files: Optional[dict], timeou
     try:
         import httpx
     except ImportError as e:
-        # httpx — обязательная зависимость (requirements.txt), но старое venv,
-        # созданное до её переноса из dev-набора, может пакета не иметь: тогда
-        # здесь был бы ModuleNotFoundError и «Internal Server Error» в интерфейсе.
+        # httpx — обязательная зависимость, но неполное окружение может пакета не иметь:
+        # тогда здесь был бы ModuleNotFoundError и «Internal Server Error» в интерфейсе.
         # Отдаём понятную инструкцию вместо 500.
         raise TransportError(
             "Не установлена зависимость httpx (транспорт Telegram). "
-            "Обновите зависимости: ./run.sh --reinstall "
-            "или pip install -r requirements.txt") from e
+            "Обновите зависимости: uv sync") from e
 
     try:
         if files:

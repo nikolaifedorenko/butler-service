@@ -7,35 +7,17 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "── 1/4 Проверка Python ─────────────────────────────"
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 не найден."
-  echo "Установите:  xcode-select --install   (или:  brew install python@3.12)"
+echo "── 1/4 Проверка uv ─────────────────────────────────"
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv не найден."
+  echo "Установите:  brew install uv   (или: https://docs.astral.sh/uv/getting-started/installation/)"
   exit 1
 fi
-OK=$(python3 -c 'import sys; print(1 if sys.version_info[:2] >= (3, 10) else 0)')
-if [ "$OK" != "1" ]; then
-  echo "Нужен Python 3.10+, у вас: $(python3 --version)."
-  echo "Установите свежий:  brew install python@3.12"
-  exit 1
-fi
-echo "OK: $(python3 --version)"
+echo "OK: $(uv --version)"
 
 echo "── 2/4 Виртуальное окружение и зависимости ─────────"
-if [ ! -d .venv ]; then
-  python3 -m venv .venv
-  echo "создано .venv"
-fi
-./.venv/bin/python -m pip install --upgrade --quiet pip
-if ! ./.venv/bin/python -m pip install --quiet -r requirements.txt; then
-  echo "Не удалось установить зависимости целиком — ставлю по одному пакету ..."
-  while read -r pkg; do
-    case "$pkg" in ''|'#'*) continue;; esac
-    ./.venv/bin/python -m pip install --quiet "$pkg" || echo "  ! не установился: $pkg"
-  done < requirements.txt
-fi
-./.venv/bin/python -c 'import fastapi, uvicorn, sqlalchemy, docx, openpyxl' 2>/dev/null \
-  || { echo "ОШИБКА: базовые пакеты не установлены. Проверьте интернет и повторите."; exit 1; }
+uv sync --frozen --no-dev \
+  || { echo "ОШИБКА: зависимости не установлены. Проверьте интернет и повторите."; exit 1; }
 echo "зависимости установлены"
 
 echo "── 3/4 Конфигурация .env ───────────────────────────"

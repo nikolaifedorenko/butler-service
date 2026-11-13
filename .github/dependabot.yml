@@ -1,13 +1,12 @@
 version: 2
 updates:
-  # Python-зависимости: PR обновляют requirements*.txt; после мержа не забыть
-  # python tools/freeze_requirements.py (CI-шаг «Лок-файл… не разошёлся» напомнит)
-  - package-ecosystem: "pip"
+  # Python-зависимости: PR обновляют uv.lock (и границы в pyproject.toml, если иначе нельзя)
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    # границы «>=» в requirements*.txt не поднимать без нужды: обновляется lock
+    # границы «>=» в pyproject.toml не поднимать без нужды: обновляется lock
     versioning-strategy: increase-if-necessary
     groups:
       # httpx2 требует httpcore2 ровно своей версии: по отдельности PR не ставятся
