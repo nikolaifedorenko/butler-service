@@ -110,7 +110,7 @@ def _check_writable_dirs() -> None:
     import os
 
     from .core.media import UPLOAD_ROOT
-    from .modules.docs.application.doc_render import TEMPLATES_DIR
+    from .modules.exchange.application.documents import TEMPLATES_DIR
 
     bad = [str(d) for d in (UPLOAD_ROOT.parent, TEMPLATES_DIR) if d.exists() and not os.access(d, os.W_OK)]
     if bad:

@@ -42,12 +42,12 @@ def generated(mods: list[str]) -> str:
                    f"forbidden_modules =\n{_list(['app.bootstrap', 'app.main'])}"
                    f"{_list(f'app.modules.{o}' for o in mods if o != m and o not in SERVICES)}"
                    "allow_indirect_imports = True\n")
-    out.append("[importlinter:contract:xlsx-only-in-exchange]\n"
-               "name = Файлы XLSX читает и пишет только exchange (ADR-0013, раздел 5)\n"
+    out.append("[importlinter:contract:file-formats-only-in-exchange]\n"
+               "name = Библиотеки файловых форматов импортирует только exchange (ADR-0013, раздел 5)\n"
                "type = forbidden\nsource_modules =\n"
                f"{_list(['app.core', 'app.bootstrap', 'app.main'])}"
                f"{_list(f'app.modules.{o}' for o in mods if o != 'exchange')}"
-               f"forbidden_modules =\n{_list(['openpyxl'])}"
+               f"forbidden_modules =\n{_list(['openpyxl', 'docx', 'reportlab', 'PIL'])}"
                "allow_indirect_imports = True\n")
     for m in mods:
         out.append(f"[importlinter:contract:{m}-private]\n"

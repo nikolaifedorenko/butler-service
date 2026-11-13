@@ -1055,10 +1055,10 @@ def export_pdf(year: int, month: int, principal: Principal = Depends(require_per
     DOCX → PDF встроенным рендером; если собрать не удалось — 501 с подсказкой."""
     from fastapi.responses import Response
 
-    from app.core.render import docx_to_pdf
-    from app.modules.docs.application.grid_docx import pdf_unavailable_detail, schedule_docx
+    from app.modules.exchange.application.documents import docx_to_pdf, pdf_unavailable_detail, write_docx
+
     data = get_grid(year, month, principal, db)
-    pdf, how = docx_to_pdf(schedule_docx(data), f"grafik_{year}-{month:02d}.pdf")
+    pdf, how = docx_to_pdf(write_docx(exports.schedule_document(data)), f"grafik_{year}-{month:02d}.pdf")
     if pdf is None:
         raise HTTPException(status_code=501, detail=pdf_unavailable_detail(how))
     audit(db, principal, "schedule_pdf", f"{year}-{month:02d}", {"rows": len(data["rows"])})

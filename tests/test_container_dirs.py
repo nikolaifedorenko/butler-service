@@ -12,7 +12,7 @@ import pytest
 
 
 def test_templates_dir_is_project_templates_volume():
-    from app.modules.docs.application.doc_render import TEMPLATES_DIR
+    from app.modules.exchange.application.documents import TEMPLATES_DIR
 
     assert Path(__file__).resolve().parents[1] / "templates" == TEMPLATES_DIR
 
