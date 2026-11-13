@@ -17,8 +17,9 @@ import os
 from pathlib import Path
 from typing import Optional
 
-BASE_DIR = Path(__file__).resolve().parents[3]
-FONTS_DIR = BASE_DIR / "assets" / "fonts"
+from app.core.media import BASE_DIR
+
+FONTS_DIR = BASE_DIR / "assets" / "fonts"      # корень проекта: в образе — /srv/timetrack/assets/fonts
 
 # имена шрифтов, которыми рисуем PDF (кириллица обязательна)
 F_REGULAR = "DocFont"

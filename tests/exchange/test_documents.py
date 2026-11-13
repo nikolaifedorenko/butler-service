@@ -154,3 +154,17 @@ def test_pdf_from_document():
         [[TCell((text("Пункт"),)), TCell((text("ОК"),))]], widths_mm=(60, 20))])))
     assert pdf and how == "native"
     assert "Ночной отчёт" in PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+
+
+def test_pdf_uses_fonts_shipped_with_project(monkeypatch):
+    """Шрифты с кириллицей лежат в assets/fonts корня проекта (в образе — рядом с app/): PDF
+    не зависит от шрифтов системы. До 13.11.2026 каталог искали внутри app/, и в контейнере без
+    системных шрифтов PDF не собирался."""
+    from app.modules.exchange.adapters import pdf_reportlab
+
+    monkeypatch.delenv("PDF_FONT", raising=False)
+    for name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"):
+        own = pdf_reportlab.FONTS_DIR / name
+        assert own.is_file(), own
+        assert next(p for p in pdf_reportlab._candidates(name) if p.exists()) == own
+    assert documents.pdf_mode() == "native"
