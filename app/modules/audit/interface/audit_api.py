@@ -1,22 +1,20 @@
 """Журнал аудита: кто, когда и что менял — с фильтрами и постраничной выдачей."""
 from __future__ import annotations
 
-import csv
 import datetime as dt
-import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLog
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.format import safe_sheet_cell
 from app.core.permissions import require_perm
 from app.core.time import TZ, utc_to_local
+from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment, write_csv
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -80,13 +78,7 @@ def export_csv(q: str = "", action: str = "", actor: str = "", date_from: Option
                date_to: Optional[dt.date] = None, principal: Principal = Depends(require_perm("audit.view")),
                db: Session = Depends(get_db)):
     rows = db.scalars(_query(q, action, actor, date_from, date_to).order_by(AuditLog.ts.desc()).limit(20000))
-    buf = io.StringIO()
-    w = csv.writer(buf, delimiter=";")
-    w.writerow(["Время", "Кто", "Действие", "Объект", "Данные"])
-    for r in rows:
-        i = _item(r)
-        w.writerow([i["ts"], safe_sheet_cell(i["actor"]), i["action_title"],
-                    safe_sheet_cell(i["target"]), safe_sheet_cell(i["payload"])])
-    data = io.BytesIO(("\ufeff" + buf.getvalue()).encode("utf-8"))
-    return StreamingResponse(data, media_type="text/csv; charset=utf-8",
-                             headers={"Content-Disposition": 'attachment; filename="audit.csv"'})
+    items = (_item(r) for r in rows)
+    data = write_csv(["Время", "Кто", "Действие", "Объект", "Данные"],
+                     ([i["ts"], i["actor"], i["action_title"], i["target"], i["payload"]] for i in items))
+    return Response(content=data, media_type=CSV_MEDIA_TYPE, headers=attachment("audit.csv"))

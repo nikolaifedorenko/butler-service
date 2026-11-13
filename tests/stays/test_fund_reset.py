@@ -492,10 +492,10 @@ def test_backup_sheets_header_width_equals_row_width(db, monkeypatch):
     seen: dict = {}
     real = fr._sheet
 
-    def spy(wb, title, head, rows):
+    def spy(title, head, rows):
         rows = [list(r) for r in rows]
         seen[title] = (head, rows)
-        real(wb, title, head, rows)
+        return real(title, head, rows)
     monkeypatch.setattr(fr, "_sheet", spy)
     fr.backup_bytes(db)
     for name in ("Брони", "Гости"):

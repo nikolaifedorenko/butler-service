@@ -2,7 +2,7 @@
 """Контракты .importlinter, которые зависят от списка модулей (шаг 5.4 аудита, ADR-0012).
 
 Модули — пакеты app/modules/*/ с manifest.py. Всё ниже маркера в .importlinter генерируется:
-изоляция notify и people (не импортируют другие модули вовсе) и R3 — приватные
+изоляция exchange, notify и people (не импортируют предметные модули) и R3 — приватные
 domain/adapters/interface каждого модуля. Новый модуль попадает в контракты без ручной правки.
 
 Использование:
@@ -19,7 +19,10 @@ CONFIG = ROOT / ".importlinter"
 MARKER = "; ── ниже — генерирует tools/gen_importlinter.py из app/modules/*/manifest.py, руками не править ──\n"
 # модули, которые не знают ни composition root, ни другие модули: notify — эталон C3,
 # people — общий справочник (ADR-0013, раздел 5)
-ISOLATED = {"notify": "Эталон (C3): notify", "people": "Справочник: people"}
+ISOLATED = {"exchange": "Сервис: exchange", "notify": "Эталон (C3): notify", "people": "Справочник: people"}
+# сквозные сервисы без предметной логики: их может импортировать любой модуль, в том числе
+# изолированный (ADR-0013, раздел 5)
+SERVICES = ("exchange",)
 
 
 def modules() -> list[str]:
@@ -37,8 +40,15 @@ def generated(mods: list[str]) -> str:
                    f"name = {ISOLATED[m]} не знает про composition root и другие модули\n"
                    f"type = forbidden\nsource_modules =\n{_list([f'app.modules.{m}'])}"
                    f"forbidden_modules =\n{_list(['app.bootstrap', 'app.main'])}"
-                   f"{_list(f'app.modules.{o}' for o in mods if o != m)}"
+                   f"{_list(f'app.modules.{o}' for o in mods if o != m and o not in SERVICES)}"
                    "allow_indirect_imports = True\n")
+    out.append("[importlinter:contract:xlsx-only-in-exchange]\n"
+               "name = Файлы XLSX читает и пишет только exchange (ADR-0013, раздел 5)\n"
+               "type = forbidden\nsource_modules =\n"
+               f"{_list(['app.core', 'app.bootstrap', 'app.main'])}"
+               f"{_list(f'app.modules.{o}' for o in mods if o != 'exchange')}"
+               f"forbidden_modules =\n{_list(['openpyxl'])}"
+               "allow_indirect_imports = True\n")
     for m in mods:
         out.append(f"[importlinter:contract:{m}-private]\n"
                    f"name = R3: domain/adapters/interface {m} приватны\n"

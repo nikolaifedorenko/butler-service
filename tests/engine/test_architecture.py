@@ -24,10 +24,12 @@ DIRTY_CALLS = {"now", "today"}          # datetime.now() / date.today()
 # полностью чистыми: закон для них не ослаблен.
 # catalog.py — публичная данных-поверхность модуля (граница R3/R4): намеренный
 # re-export из adapters для ДРУГИХ модулей; не легаси, а проектное решение C4.
+# exports.py — формы выгрузки в Excel: описывает листы типами сервиса exchange (ADR-0013,
+# раздел 5); текст и цвет ячейки Графика пока берёт из docs (переедет вместе с формой DOCX).
 TRANSIT_APPLICATION_FILES = {"base_schedule.py", "tabel_fill.py", "schedule_helpers.py",
                              "doublepay.py", "engine_common.py", "punch_plan.py",
-                             "shiftrev.py", "catalog.py"}
-TRANSIT_APP_PREFIXES = ("app.modules.people",)
+                             "shiftrev.py", "catalog.py", "exports.py"}
+TRANSIT_APP_PREFIXES = ("app.modules.people", "app.modules.exchange", "app.modules.docs.application.grid_docx")
 
 
 def _py_files(root: pathlib.Path):

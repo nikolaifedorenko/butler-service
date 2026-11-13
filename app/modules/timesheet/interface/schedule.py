@@ -24,10 +24,10 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db, lock_employee
-from app.core.format import safe_sheet_cell
 from app.core.permissions import principal_permissions, require_perm
 from app.core.time import TZ, now_local, utc_to_local
 from app.modules.docs.application.doc_render import hours_text
+from app.modules.exchange.application.tables import XLSX_MEDIA_TYPE, attachment, write_xlsx
 from app.modules.people.application import (
     Employee,
     EmploymentPeriod,
@@ -47,7 +47,7 @@ from ..adapters.orm import (
     TabelDay,
 )
 from ..adapters.sql_settings import SqlSettingsAdapter
-from ..application import schedule_view
+from ..application import exports, schedule_view
 from ..application.doublepay import SCOPE_TITLES, calendar_map
 from ..application.engine_common import (
     color_lookups,
@@ -1040,49 +1040,12 @@ def reset_month(payload: ClearMonthIn, principal: Principal = Depends(require_pe
 @router.get("/xlsx")
 def export_xlsx(year: int, month: int, principal: Principal = Depends(require_perm("schedule.edit")),
                 db: Session = Depends(get_db)):
-    """График в Excel: тот же вид ячейки, что на экране (16.10.2026) — время смены
-    (отрезки по строкам), плашка «Выходной за часы», цвет из словаря «Смены и
-    отсутствия»; итоговой колонки «Часов» нет (решение владельца)."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.utils import get_column_letter
+    """График в Excel — форма application.exports.schedule_sheet."""
+    from fastapi.responses import Response
 
-    from app.modules.docs.application.grid_docx import cell_plan_text, tint_hex
     data = get_grid(year, month, principal, db)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = f"График {month:02d}.{year}"
-    days = [d["date"] for d in data["days"]]
-    ws.append(["Сотрудник"] + [d[8:] for d in days])
-    for c in ws[1]:
-        c.font = Font(bold=True)
-    for row in data["rows"]:
-        cells = []
-        for iso in days:
-            cell = row["cells"].get(iso) or {}
-            cells.append(safe_sheet_cell(cell_plan_text(cell)))
-        ws.append([safe_sheet_cell(row["employee"]["full_name"]), *cells])
-    center = Alignment(wrap_text=True, vertical="center", horizontal="center")
-    for ri, row in enumerate(data["rows"], start=2):
-        for ci, iso in enumerate(days, start=2):
-            cell = row["cells"].get(iso) or {}
-            wsc = ws.cell(row=ri, column=ci)
-            wsc.alignment = center
-            tint = tint_hex(cell.get("color"))
-            if tint:
-                wsc.fill = PatternFill("solid", start_color=tint, end_color=tint)
-        ws.cell(row=ri, column=1).alignment = Alignment(vertical="center")
-    ws.column_dimensions["A"].width = 32
-    for ci in range(2, len(days) + 2):
-        ws.column_dimensions[get_column_letter(ci)].width = 13.5
-    import io
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(
-        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="schedule_{year}_{month:02d}.xlsx"'})
+    return Response(content=write_xlsx([exports.schedule_sheet(data, year, month)]), media_type=XLSX_MEDIA_TYPE,
+                    headers=attachment(f"schedule_{year}_{month:02d}.xlsx"))
 
 
 @router.get("/pdf")
