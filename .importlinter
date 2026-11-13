@@ -49,6 +49,7 @@ allow_indirect_imports = True
 name = Роутеры timesheet.interface не импортируют друг друга
 type = independence
 modules =
+    app.modules.timesheet.interface.bank_api
     app.modules.timesheet.interface.doublepay
     app.modules.timesheet.interface.engine_settings_api
     app.modules.timesheet.interface.fact_api
@@ -56,6 +57,7 @@ modules =
     app.modules.timesheet.interface.presence_api
     app.modules.timesheet.interface.punches
     app.modules.timesheet.interface.schedule
+    app.modules.timesheet.interface.shift_types_api
     app.modules.timesheet.interface.tabel_api
 
 [importlinter:contract:access-interface-independence]
