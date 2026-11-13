@@ -18,7 +18,7 @@
 [importlinter]
 root_packages =
     app
-; внешние пакеты в графе — для контракта «XLSX только в exchange»
+; внешние пакеты в графе — для контракта «библиотеки файловых форматов только в exchange»
 include_external_packages = True
 
 [importlinter:contract:core-independence]
@@ -128,8 +128,8 @@ forbidden_modules =
     app.modules.timesheet
 allow_indirect_imports = True
 
-[importlinter:contract:xlsx-only-in-exchange]
-name = Файлы XLSX читает и пишет только exchange (ADR-0013, раздел 5)
+[importlinter:contract:file-formats-only-in-exchange]
+name = Библиотеки файловых форматов импортирует только exchange (ADR-0013, раздел 5)
 type = forbidden
 source_modules =
     app.core
@@ -148,6 +148,9 @@ source_modules =
     app.modules.timesheet
 forbidden_modules =
     openpyxl
+    docx
+    reportlab
+    PIL
 allow_indirect_imports = True
 
 [importlinter:contract:access-private]

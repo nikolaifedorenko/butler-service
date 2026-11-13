@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[3]
 FONTS_DIR = BASE_DIR / "assets" / "fonts"
 
 # имена шрифтов, которыми рисуем PDF (кириллица обязательна)

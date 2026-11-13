@@ -1,4 +1,4 @@
-"""Выгрузка ночного отчёта: DOCX и PDF.
+"""Выгрузка ночного отчёта: описание документа для DOCX и PDF.
 
 Формат — «сплошной поток»: сначала все области с пунктами по зонам обхода
 (пункт, результат, комментарий/фото, ответственная служба), затем блок
@@ -9,19 +9,28 @@
 Службы и отправки берутся из снимка отчёта (night_check_items.service_name,
 notify_dispatches), поэтому выгрузка закрытой смены не меняется со временем.
 
-PDF собирается из того же .docx встроенным рендером (app/core/render.py).
-Картинки вставляются уменьшенной копией (до 1600 px, с поворотом по EXIF) по ширине
-колонки; недоступные файлы (удалены по сроку хранения) помечаются текстом.
+Файл собирает модуль exchange: картинки вставляются уменьшенной копией по ширине колонки;
+недоступные файлы (удалены по сроку хранения) помечаются текстом.
 """
 from __future__ import annotations
 
-import io
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.core.media import BASE_DIR
 from app.core.time import WD_SHORT
+from app.modules.exchange.application.documents import (
+    Document,
+    Font,
+    Paragraph,
+    Picture,
+    Run,
+    Table,
+    TCell,
+    text,
+    write_docx,
+)
 
 from .night import report_dict
 
@@ -30,44 +39,43 @@ def _fmt_ts(iso: Optional[str]) -> str:
     return iso.replace("T", " ")[:16] if iso else "—"
 
 
-def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: str = "",
-               defects: Optional[dict] = None, dispatches: Optional[list[dict]] = None,
-               duty: str = "") -> bytes:
-    """Собрать .docx ночного отчёта (python-docx).
+def _cell(value: str, *pictures: Picture) -> TCell:
+    return TCell((Paragraph((Run(value),)), *pictures))
+
+
+def _head(*titles: str) -> list[TCell]:
+    return [TCell((text(t, bold=True),)) for t in titles]
+
+
+def _photo(ph: dict, width_mm: float) -> Picture:
+    """Фото из хранилища медиа; в таблице обхода каров колонка уже, чем у пунктов чек-листа."""
+    rel = ph.get("path") or ""
+    return Picture(str(BASE_DIR / rel) if rel else "", width_mm, f"[фото {ph['filename']} недоступно]")
+
+
+def night_document(report_id_data: dict, photos: dict[int, list[dict]], *, company: str = "",
+                   defects: Optional[dict] = None, dispatches: Optional[list[dict]] = None,
+                   duty: str = "") -> Document:
+    """Документ ночного отчёта.
 
     defects — результат night.defects_of() (позиции «Не ОК», «Не проверено» и
     «Исправлено после отправки»), dispatches — строки общего журнала отправок.
     """
-    from docx import Document
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.shared import Cm, Pt
-
     data = report_id_data
-    doc = Document()
-    style = doc.styles["Normal"]
-    style.font.name = "Times New Roman"
-    style.font.size = Pt(10.5)
-
-    title = doc.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title.add_run("НОЧНОЙ ОТЧЁТ")
-    run.bold = True
-    run.font.size = Pt(14)
+    blocks: list = [text("НОЧНОЙ ОТЧЁТ", bold=True, size=14, align="center")]
     wd = WD_SHORT[data["date_obj"].weekday()]
-    sub = doc.add_paragraph()
-    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    sub.add_run(f"{data['date_obj'].strftime('%d.%m.%Y')} ({wd}) · {data['shift_label']}"
-                + (f" · {company}" if company else ""))
+    blocks.append(text(f"{data['date_obj'].strftime('%d.%m.%Y')} ({wd}) · {data['shift_label']}"
+                       + (f" · {company}" if company else ""), align="center"))
     status_line = ("Закрыт вручную" if data["close_reason"] == "manual"
                    else "Закрыт автоматически в 08:00" if data["close_reason"] == "auto"
                    else "Открыт · переоткрыт вручную — автозакрытие отключено"
                    if data.get("reopened_at")
                    else f"Открыт · закроется {_fmt_ts(data['deadline'])}")
-    p = doc.add_paragraph()
-    p.add_run("Итог: ").bold = True
-    p.add_run(f"{data['result_title'] if data['status'] == 'closed' else 'не подведён (смена идёт)'}"
-              f" · {status_line} · областей закрыто {data['progress']['done']} из {data['progress']['total']}"
-              f" · проверка электрокаров: {'выполнена' if data['cars_step_done'] else 'не завершена'}")
+    blocks.append(Paragraph((
+        Run("Итог: ", bold=True),
+        Run(f"{data['result_title'] if data['status'] == 'closed' else 'не подведён (смена идёт)'}"
+            f" · {status_line} · областей закрыто {data['progress']['done']} из {data['progress']['total']}"
+            f" · проверка электрокаров: {'выполнена' if data['cars_step_done'] else 'не завершена'}"))))
 
     # ── области, сгруппированные по зонам обхода (v2: зона → объекты → пункты) ──
     cur_zone = None
@@ -77,58 +85,34 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
         zone_name = area.get("zone_name") or area.get("category") or "Без зоны"
         if zone_name != cur_zone:
             cur_zone = zone_name
-            zh = doc.add_paragraph()
-            zr = zh.add_run(zone_name)
-            zr.bold = True
-            zr.font.size = Pt(12)
-        head = doc.add_paragraph()
-        r = head.add_run(area["name"])
-        r.bold = True
-        r.font.size = Pt(11)
+            blocks.append(text(zone_name, bold=True, size=12))
+        blocks.append(text(area["name"], bold=True, size=11))
         who = (f"Взял: {area['taken_by_name'] or '—'} с {_fmt_ts(area['taken_at'])}"
                if area["status"] != "free" else "Не проверялась")
         if area["closed_at"]:
             who += f" · закрыта {_fmt_ts(area['closed_at'])}"
-        doc.add_paragraph(who).runs[0].font.size = Pt(9)
+        blocks.append(text(who, size=9))
 
-        table = doc.add_table(rows=1, cols=4)
-        table.style = "Table Grid"
-        hdr = table.rows[0].cells
-        for i, text in enumerate(("Пункт проверки", "Результат", "Служба", "Комментарий / фото")):
-            hdr[i].paragraphs[0].add_run(text).bold = True
+        rows = [_head("Пункт проверки", "Результат", "Служба", "Комментарий / фото")]
         for item in area["items"]:
-            row = table.add_row().cells
-            row[0].text = item["text"]
-            row[1].text = item["answer_title"]
-            row[2].text = item.get("service_name") or "—"
-            cell = row[3]
             lines = []
             if item["comment"]:
                 lines.append(item["comment"])
             if item["answered_by_name"]:
                 lines.append(f"— {item['answered_by_name']}, {_fmt_ts(item['answered_at'])}")
-            cell.text = "\n".join(lines)
-            for ph in photos.get(item["id"], []):
-                if not _image_cell(cell, ph):
-                    cell.add_paragraph(f"[фото {ph['filename']} недоступно]")
-        _autosize(table, (Cm(6.2), Cm(2.2), Cm(2.9), Cm(5.2)))
+            rows.append([_cell(item["text"]), _cell(item["answer_title"]), _cell(item.get("service_name") or "—"),
+                         _cell("\n".join(lines), *[_photo(ph, 60) for ph in photos.get(item["id"], [])])])
+        blocks.append(Table(rows, (62, 22, 29, 52)))
 
     # ── электрокары ──
     cars = data.get("car_checks") or []
-    head = doc.add_paragraph()
-    r = head.add_run("Проверка электрокаров")
-    r.bold = True
-    r.font.size = Pt(12)
+    blocks.append(text("Проверка электрокаров", bold=True, size=12))
     if not cars:
-        doc.add_paragraph("Обход каров в эту смену не выполнялся." if not data["cars_step_done"]
-                          else "Каров в списке нет.")
+        blocks.append(text("Обход каров в эту смену не выполнялся." if not data["cars_step_done"]
+                           else "Каров в списке нет."))
     else:
-        table = doc.add_table(rows=1, cols=6)
-        table.style = "Table Grid"
-        for i, text in enumerate(("Время", "Кар", "Кто", "Найден", "Место / заряд", "Состояние, комментарий")):
-            table.rows[0].cells[i].paragraphs[0].add_run(text).bold = True
+        rows = [_head("Время", "Кар", "Кто", "Найден", "Место / заряд", "Состояние, комментарий")]
         for c in cars:
-            row = table.add_row().cells
             charge = {"full": "полный", "half": "половина", "empty": "разряжен"}.get(c["charge"], "—")
             state_bits = []
             if c.get("moved"):
@@ -141,159 +125,84 @@ def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: 
                 state_bits.append("мусор")
             if not c["clean"]:
                 state_bits.append("не убран")
-            row[0].text = _fmt_ts(c["checked_at"])
-            row[1].text = c["car_number"]
-            row[2].text = c["checker_name"] or "—"
-            row[3].text = "да" if c["found"] else "НЕТ"
             # место: при перепарковке показываем переход «где нашёл → куда переставил»
             found_loc = c.get("found_location") or ""
             if c.get("moved") and c["location"]:
                 place = f"{found_loc or '—'} → {c['location']}"
             else:
                 place = c["location"] or found_loc or "—"
-            row[4].text = f"{place} · {charge}"
             tail = "; ".join(state_bits) + (f"\n{c['comment']}" if c["comment"] else "")
-            cell = row[5]
-            cell.text = tail
-            for ph in c.get("photos", []):
-                if not _image_cell(cell, ph, width_cm=4.4):
-                    cell.add_paragraph(f"[фото {ph['filename']} недоступно]")
-        _autosize(table, (Cm(2.6), Cm(2.0), Cm(3.0), Cm(1.6), Cm(3.6), Cm(4.7)))
+            rows.append([_cell(_fmt_ts(c["checked_at"])), _cell(c["car_number"]), _cell(c["checker_name"] or "—"),
+                         _cell("да" if c["found"] else "НЕТ"), _cell(f"{place} · {charge}"),
+                         _cell(tail, *[_photo(ph, 44) for ph in c.get("photos", [])])])
+        blocks.append(Table(rows, (26, 20, 30, 16, 36, 47)))
 
     # ── недостатки смены: что направлено службам (этап 5/6) ──
-    rows = (defects or {}).get("items") or []
+    items = (defects or {}).get("items") or []
     counts = (defects or {}).get("counts") or {}
-    head = doc.add_paragraph()
-    head.add_run("Недостатки смены").bold = True
-    if not rows:
-        doc.add_paragraph("Замечаний нет: все пункты проверены, результат «ОК».")
+    blocks.append(text("Недостатки смены", bold=True))
+    if not items:
+        blocks.append(text("Замечаний нет: все пункты проверены, результат «ОК»."))
     else:
-        doc.add_paragraph(
-            f"Всего позиций {counts.get('total', len(rows))}: «Не ОК» {counts.get('bad', 0)}, "
+        blocks.append(text(
+            f"Всего позиций {counts.get('total', len(items))}: «Не ОК» {counts.get('bad', 0)}, "
             f"«Не проверено» {counts.get('unchecked', 0)}, исправлено после отправки "
             f"{counts.get('fixed_after_dispatch', 0)}"
-            + (f" · ночные батлеры смены: {duty}" if duty else "")).runs[0].font.size = Pt(9)
-        table = doc.add_table(rows=1, cols=5)
-        table.style = "Table Grid"
-        for i, text in enumerate(("Служба", "Зона / объект", "Пункт", "Комментарий", "Статус")):
-            table.rows[0].cells[i].paragraphs[0].add_run(text).bold = True
-        for d in sorted(rows, key=lambda x: (x.get("service_name") or "яяя", x.get("area") or "")):
-            row = table.add_row().cells
-            row[0].text = d.get("service_name") or "Без службы"
-            row[1].text = f"{d.get('zone') or '—'} · {d.get('area') or '—'}"
-            row[2].text = f"{d.get('kind_title', '')}: {d.get('text', '')}"
+            + (f" · ночные батлеры смены: {duty}" if duty else ""), size=9))
+        rows = [_head("Служба", "Зона / объект", "Пункт", "Комментарий", "Статус")]
+        for d in sorted(items, key=lambda x: (x.get("service_name") or "яяя", x.get("area") or "")):
             media = len(d.get("media") or [])
-            row[3].text = (d.get("comment") or "—") + (f"\nвложений: {media}" if media else "")
             status = ("исправлено после отправки" if d.get("fixed_after_dispatch")
                       else f"отправлено {_fmt_ts(d.get('dispatched_at'))}" if d.get("dispatched")
                       else "не отправлено")
-            row[4].text = status
-        _autosize(table, (Cm(3.0), Cm(3.6), Cm(4.6), Cm(3.3), Cm(2.6)))
-        doc.add_paragraph(
-            "Позиции «Не проверено» включаются в отчёт; исправленное после отправки повторно "
-            "не направляется и не отзывается.").runs[0].font.size = Pt(9)
+            rows.append([_cell(d.get("service_name") or "Без службы"),
+                         _cell(f"{d.get('zone') or '—'} · {d.get('area') or '—'}"),
+                         _cell(f"{d.get('kind_title', '')}: {d.get('text', '')}"),
+                         _cell((d.get("comment") or "—") + (f"\nвложений: {media}" if media else "")),
+                         _cell(status)])
+        blocks.append(Table(rows, (30, 36, 46, 33, 26)))
+        blocks.append(text("Позиции «Не проверено» включаются в отчёт; исправленное после отправки повторно "
+                           "не направляется и не отзывается.", size=9))
 
     # ── журнал отправок службам ──
     sends = dispatches or []
-    head = doc.add_paragraph()
-    head.add_run("Отправки службам").bold = True
+    blocks.append(text("Отправки службам", bold=True))
     if not sends:
-        doc.add_paragraph("В эту смену ничего не отправлялось.")
+        blocks.append(text("В эту смену ничего не отправлялось."))
     else:
-        table = doc.add_table(rows=1, cols=6)
-        table.style = "Table Grid"
-        for i, text in enumerate(("Время", "Кто отправил", "Служба", "Канал", "Получатель",
-                                  "Позиций / вложений / статус")):
-            table.rows[0].cells[i].paragraphs[0].add_run(text).bold = True
+        rows = [_head("Время", "Кто отправил", "Служба", "Канал", "Получатель", "Позиций / вложений / статус")]
         for d in sends:
-            row = table.add_row().cells
-            row[0].text = _fmt_ts(d.get("ts"))
-            row[1].text = d.get("actor_name") or "—"
-            row[2].text = d.get("recipient_name") or "—"
-            row[3].text = d.get("channel_title") or d.get("channel") or "—"
-            row[4].text = d.get("target") or "—"
             tail = f"{d.get('items_count', 0)} / {d.get('media_count', 0)} / " \
                    f"{'ОШИБКА' if d.get('status') == 'failed' else d.get('status_title', '')}"
             if d.get("attempts", 1) > 1:
                 tail += f" (попыток: {d['attempts']})"
             if d.get("error"):
                 tail += f"\n{d['error'][:200]}"
-            row[5].text = tail
-        _autosize(table, (Cm(2.4), Cm(2.8), Cm(2.8), Cm(2.2), Cm(3.0), Cm(3.9)))
+            rows.append([_cell(_fmt_ts(d.get("ts"))), _cell(d.get("actor_name") or "—"),
+                         _cell(d.get("recipient_name") or "—"),
+                         _cell(d.get("channel_title") or d.get("channel") or "—"), _cell(d.get("target") or "—"),
+                         _cell(tail)])
+        blocks.append(Table(rows, (24, 28, 28, 22, 30, 39)))
 
     # ── перехваты ──
     icepts = data.get("interceptions") or []
     if icepts:
-        head = doc.add_paragraph()
-        head.add_run("Перехваты областей").bold = True
-        table = doc.add_table(rows=1, cols=3)
-        table.style = "Table Grid"
-        for i, text in enumerate(("Время", "Область", "От кого → кому")):
-            table.rows[0].cells[i].paragraphs[0].add_run(text).bold = True
+        blocks.append(text("Перехваты областей", bold=True))
+        rows = [_head("Время", "Область", "От кого → кому")]
         for x in icepts:
-            row = table.add_row().cells
-            row[0].text = _fmt_ts(x["ts"])
-            row[1].text = x["area_name"]
-            row[2].text = f"{x['from_user_name'] or '—'} → {x['to_user_name'] or '—'}"
-        _autosize(table, (Cm(3.2), Cm(6.0), Cm(7.3)))
+            rows.append([_cell(_fmt_ts(x["ts"])), _cell(x["area_name"]),
+                         _cell(f"{x['from_user_name'] or '—'} → {x['to_user_name'] or '—'}")])
+        blocks.append(Table(rows, (32, 60, 73)))
 
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+    return Document(blocks, font=Font("Times New Roman", 10.5))
 
 
-def _image_cell(cell, ph: dict, *, width_cm: float = 6.0) -> bool:
-    """Вставить фото (уменьшенную копию) в ячейку таблицы; False — файла нет или это не картинка.
-
-    `width_cm` — ширина картинки: в таблице обхода каров колонка «Состояние,
-    комментарий» уже, чем у пунктов чек-листа."""
-    from docx.shared import Cm
-
-    rel = ph.get("path") or ""
-    if not rel:
-        return False
-    target = BASE_DIR / rel
-    if not target.is_file():
-        return False
-    try:
-        picture = _print_copy(target)
-    except Exception:
-        picture = str(target)         # Pillow не прочитал — как раньше, оригиналом; видео отсеет add_picture
-    para = cell.add_paragraph()
-    try:
-        para.add_run().add_picture(picture, width=Cm(width_cm))
-    except Exception:
-        return False
-    return True
-
-
-PRINT_MAX_PX = 1600   # 6 см в ячейке — это ~700 px при 300 dpi; больше печать не покажет
-
-
-def _print_copy(path) -> io.BytesIO:
-    """Уменьшенная копия фото для документа (аудит 22.10.2026): оригиналы с телефона (до 12 МБ)
-    делали DOCX и PDF отчёта на сотни мегабайт в памяти. Поворот по EXIF применяется сразу —
-    иначе Word и PDF показали бы снимок с телефона лёжа."""
-    from PIL import Image, ImageOps
-
-    with Image.open(path) as im:
-        im = ImageOps.exif_transpose(im)
-        im.thumbnail((PRINT_MAX_PX, PRINT_MAX_PX))
-        buf = io.BytesIO()
-        im.convert("RGB").save(buf, "JPEG", quality=85)
-    buf.seek(0)
-    return buf
-
-
-def _autosize(table, widths) -> None:
-    """Фиксированные ширины колонок (иначе Word растягивает таблицу как попало)."""
-    from docx.shared import Cm  # noqa: F401
-
-    table.autofit = False
-    for row in table.rows:
-        for idx, w in enumerate(widths):
-            if idx < len(row.cells):
-                row.cells[idx].width = w
+def build_docx(report_id_data: dict, photos: dict[int, list[dict]], *, company: str = "",
+               defects: Optional[dict] = None, dispatches: Optional[list[dict]] = None,
+               duty: str = "") -> bytes:
+    """Собрать .docx ночного отчёта."""
+    return write_docx(night_document(report_id_data, photos, company=company, defects=defects,
+                                     dispatches=dispatches, duty=duty))
 
 
 def _photo_payload(db: Session, photos: dict[int, list[dict]]) -> dict[int, list[dict]]:

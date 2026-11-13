@@ -1,33 +1,20 @@
-"""Корпоративные шаблоны кадровых документов (.docx с плейсхолдерами {field}).
+"""Заявления сотрудников: виды, значения плейсхолдеров {field}, образец бланка.
 
-Шаблон загружается один раз (Настройки → «Шаблоны документов компании») и хранится
-в папке templates/ рядом с проектом. При рендере сохраняются шрифты, стили,
-колонтитулы и подложка шаблона: текст подставляется в существующие run'ы параграфов
-(включая таблицы и колонтитулы), поэтому форматирование документа не меняется.
-Плейсхолдеры, разбитые Word на несколько run («{full_» + «name}»), склеиваются.
+Бланк загружается один раз (Настройки → «Шаблоны документов компании») и хранится модулем
+exchange; при заполнении сохраняются шрифты, стили, колонтитулы и подложка бланка.
 """
 from __future__ import annotations
 
 import datetime as dt
-import io
 import re
-import zipfile
 from pathlib import Path
 from typing import Optional
 
-from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
-
 from app.core.time import local_date
+from app.modules.exchange.application import documents
+from app.modules.exchange.application.documents import Document, text
 from app.modules.people.application import suggest_genitive
 
-# templates/ в корне проекта — том в compose. После переноса модуля (C4d, 20.10.2026) путь
-# съехал в app/modules/docs/templates, мимо тома: бланки пропадали при пересборке образа.
-TEMPLATES_DIR = Path(__file__).resolve().parents[4] / "templates"
-TEMPLATES_DIR.mkdir(exist_ok=True)
-
-PH_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 # допустимый код вида заявления (он же — имя файла бланка templates/<code>.docx)
 CODE_RE = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
 
@@ -129,26 +116,7 @@ def date_ru(d: dt.date) -> str:
 
 # ─────────────────────────── хранение шаблонов ───────────────────────────
 def template_path(doc_type: str) -> Optional[Path]:
-    p = TEMPLATES_DIR / f"{doc_type}.docx"
-    return p if p.exists() else None
-
-
-_MAX_UNCOMPRESSED = 50 * 1024 * 1024   # распакованный docx не больше 50 МБ
-_MAX_ZIP_ENTRIES = 2000
-
-
-def _check_zip_size(data: bytes) -> None:
-    """Защита от zip-бомбы: лимит 5 МБ относится к СЖАТОМУ файлу, а распаковка
-    docx (document.xml + части) может раздуть память в разы."""
-    try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            infos = zf.infolist()
-            if len(infos) > _MAX_ZIP_ENTRIES:
-                raise ValueError(f"Слишком много файлов в шаблоне (>{_MAX_ZIP_ENTRIES})")
-            if sum(i.file_size for i in infos) > _MAX_UNCOMPRESSED:
-                raise ValueError("Шаблон слишком велик при распаковке (> 50 МБ)")
-    except zipfile.BadZipFile:
-        raise ValueError("Файл не является корректным .docx")
+    return documents.template_path(doc_type)
 
 
 def save_template(doc_type: str, data: bytes) -> dict:
@@ -156,91 +124,17 @@ def save_template(doc_type: str, data: bytes) -> dict:
     # имя файла бланка строится из кода, посторонние символы недопустимы
     if not CODE_RE.match(doc_type or ""):
         raise ValueError(f"Некорректный код вида заявления: {doc_type!r}")
-    _check_zip_size(data)
-    try:
-        Document(io.BytesIO(data))          # валидация: это действительно docx
-    except Exception as exc:
-        raise ValueError(f"Файл не является корректным .docx: {exc}")
-    path = TEMPLATES_DIR / f"{doc_type}.docx"
-    path.write_bytes(data)
+    path = documents.save_template(doc_type, data)
     return {"type": doc_type, "filename": path.name, "size": path.stat().st_size,
             "placeholders": sorted(scan_placeholders(path))}
 
 
 def delete_template(doc_type: str) -> bool:
-    p = template_path(doc_type)
-    if p:
-        p.unlink()
-        return True
-    return False
+    return documents.delete_template(doc_type)
 
 
 def scan_placeholders(path: Path) -> set[str]:
-    doc = Document(str(path))
-    found: set[str] = set()
-    for text in _iter_texts(doc):
-        found.update(PH_RE.findall(text))
-    return found
-
-
-def _iter_texts(doc):
-    def walk_paragraphs(paras):
-        for p in paras:
-            yield "".join(r.text for r in p.runs) or p.text
-
-    yield from walk_paragraphs(doc.paragraphs)
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                yield from walk_paragraphs(cell.paragraphs)
-    for section in doc.sections:
-        for hf in (section.header, section.footer):
-            yield from walk_paragraphs(hf.paragraphs)
-
-
-# ─────────────────────────── подстановка значений ───────────────────────────
-def _set_run_text_multiline(run, text: str) -> None:
-    lines = text.split("\n")
-    run.text = lines[0]
-    for extra in lines[1:]:
-        br = run._r.makeelement(qn("w:br"), {})
-        run._r.append(br)
-        t = run._r.makeelement(qn("w:t"), {})
-        t.set(qn("xml:space"), "preserve")
-        t.text = extra
-        run._r.append(t)
-
-
-def _fill_paragraph(p, values: dict) -> None:
-    runs = p.runs
-    if not runs:
-        if PH_RE.search(p.text or ""):
-            values_only = PH_RE.sub(lambda m: str(values.get(m.group(1), m.group(0))), p.text)
-            p.text = values_only
-        return
-    full = "".join(r.text for r in runs)
-    if not PH_RE.search(full):
-        return
-    new = PH_RE.sub(lambda m: str(values.get(m.group(1), m.group(0))), full)
-    if new == full:
-        return
-    _set_run_text_multiline(runs[0], new)      # форматирование первого run сохраняется
-    for r in runs[1:]:
-        r.text = ""
-
-
-def fill_docx(doc, values: dict) -> None:
-    for p in doc.paragraphs:
-        _fill_paragraph(p, values)
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for p in cell.paragraphs:
-                    _fill_paragraph(p, values)
-    for section in doc.sections:
-        for hf in (section.header, section.footer):
-            for p in hf.paragraphs:
-                _fill_paragraph(p, values)
+    return documents.template_placeholders(path)
 
 
 def period_text(d1: dt.date, d2: dt.date) -> str:
@@ -310,17 +204,7 @@ def build_values(employee, date_from: dt.date, date_to: dt.date, extra: Optional
 
 
 def render_docx(doc_type: str, values: dict, fallback_text: str) -> bytes:
-    path = template_path(doc_type)
-    if path is not None:
-        doc = Document(str(path))
-    else:
-        doc = Document()
-        for line in fallback_text.split("\n"):
-            doc.add_paragraph(line)
-    fill_docx(doc, values)
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+    return documents.fill_template(doc_type, values, fallback_text)
 
 
 # ─────────────────────────── образец шаблона ───────────────────────────
@@ -348,47 +232,28 @@ def build_sample_docx(doc_type: str, body_text: str = "") -> bytes:
     Для встроенных видов — эталонная шапка и типовая формулировка (богатый набор
     плейсхолдеров). Для пользовательских видов — их собственный текст из карточки
     вида: сразу видно, как документ выглядит без фирменного бланка."""
-    doc = Document()
     custom = doc_type not in SAMPLE_BODIES and (body_text or "").strip()
     if custom:
-        for line in body_text.split("\n"):
-            doc.add_paragraph(line)
-        buf = io.BytesIO()
-        doc.save(buf)
-        return buf.getvalue()
-    for line in ("{director}", "{company}",
-                 "от {position} {full_name_genitive}",
-                 "{subdivision} · {department}",
-                 "табельный номер {tab_number}, гражданство: {nationality}"):
-        p = doc.add_paragraph(line)
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    title = doc.add_paragraph("ЗАЯВЛЕНИЕ")
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    for run in title.runs:
-        run.bold = True
-    doc.add_paragraph(SAMPLE_BODIES.get(doc_type, SAMPLE_BODIES["vacation_paid"]))
-    doc.add_paragraph("")
-    p = doc.add_paragraph("{today}\t\t____________________ / {short_name} /")
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+        return documents.write_docx(Document([text(line) for line in body_text.split("\n")]))
+    head = ("{director}", "{company}", "от {position} {full_name_genitive}",
+            "{subdivision} · {department}", "табельный номер {tab_number}, гражданство: {nationality}")
+    return documents.write_docx(Document([
+        *[text(line, align="right") for line in head],
+        text("ЗАЯВЛЕНИЕ", bold=True, align="center"),
+        text(SAMPLE_BODIES.get(doc_type, SAMPLE_BODIES["vacation_paid"])),
+        text(""),
+        text("{today}\t\t____________________ / {short_name} /"),
+    ]))
 
 
 # ─────────────────────────── PDF ───────────────────────────
-# Реализация — app/core/render.py: встроенный рендер reportlab (работает везде, кириллица —
-# шрифты DejaVu из assets/fonts). Точный вид фирменного бланка даёт DOCX.
 def pdf_available() -> bool:
-    from app.core.render import pdf_mode
-    return pdf_mode() != "none"
+    return documents.pdf_mode() != "none"
 
 
 def pdf_status() -> dict:
-    from app.core.render import native_error
-    from app.core.render import pdf_mode as _mode
-    mode = _mode()
+    mode = documents.pdf_mode()
     return {"mode": mode,
             "title": {"native": "встроенный рендер (шрифты DejaVu)",
                       "none": "недоступно"}.get(mode, mode),
-            "error": "" if mode != "none" else (native_error() or "не установлен reportlab")}
-
-
+            "error": "" if mode != "none" else (documents.pdf_error() or "не установлен reportlab")}

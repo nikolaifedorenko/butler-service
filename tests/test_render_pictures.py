@@ -24,7 +24,7 @@ def test_pictures_from_paragraph_and_table_cell_reach_pdf():
     from docx.shared import Cm
     from pypdf import PdfReader
 
-    from app.core.render import docx_to_pdf, pdf_mode
+    from app.modules.exchange.application.documents import docx_to_pdf, pdf_mode
 
     if pdf_mode() == "none":
         pytest.skip("нет шрифта с кириллицей для встроенного рендера")
@@ -49,7 +49,7 @@ def test_broken_picture_does_not_break_document():
     from docx import Document
     from docx.shared import Cm
 
-    from app.core.render import docx_to_pdf, pdf_mode
+    from app.modules.exchange.application.documents import docx_to_pdf, pdf_mode
 
     if pdf_mode() == "none":
         pytest.skip("нет шрифта с кириллицей для встроенного рендера")
@@ -78,7 +78,7 @@ def test_unbuildable_document_gives_none_not_exception(monkeypatch):
     from docx import Document
     from reportlab.platypus import BaseDocTemplate
 
-    from app.core.render import docx_to_pdf, pdf_mode
+    from app.modules.exchange.application.documents import docx_to_pdf, pdf_mode
 
     if pdf_mode() == "none":
         pytest.skip("нет шрифта с кириллицей для встроенного рендера")

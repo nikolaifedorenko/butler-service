@@ -21,7 +21,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
-from app.core.render import docx_to_pdf
+from app.modules.exchange.application.documents import docx_to_pdf
 from app.modules.people.application import Employee
 from app.modules.timesheet.application.catalog import ShiftType
 
