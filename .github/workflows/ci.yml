@@ -19,8 +19,20 @@ concurrency:
 
 jobs:
   backend:
-    name: "Python 3.15: ruff + pytest"
+    name: "Python 3.15 + PostgreSQL 18: ruff + pytest"
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # сервер PostgreSQL для тестов и сценариев; базы создаются сами (tests/conftest.py,
+      # tools/scenario_db.py)
+      TEST_DATABASE_SERVER: postgresql+psycopg2://postgres:ci@localhost:5432
     steps:
       - uses: actions/checkout@v7
 
@@ -47,6 +59,7 @@ jobs:
       - name: Тесты + порог покрытия (приложение ≥ 90 %, ядро расчёта ≥ 95 %)
         # с 25.10.2026 порог блокирующий: DoD спецификации — ядро ≥ 95 % (сейчас 98 %),
         # приложение — не ниже 90 % (сейчас 91 %)
+        # тесты идут параллельно, у каждого потока своя база (pyproject.toml: -n auto)
         run: |
           python -m pytest tests/ -q --cov=app --cov-report=
           python -m coverage report --skip-covered --skip-empty --fail-under=90 | tail -3
@@ -83,7 +96,7 @@ jobs:
 
       - name: Самодиагностика схемы (/api/selfcheck)
         run: |
-          DATABASE_URL="sqlite:///./ci_selfcheck.db" SECRET_KEY="ci-only-not-a-secret" DEMO_SEED=1 \
+          DATABASE_URL="$(python tools/scenario_db.py selfcheck)" SECRET_KEY="ci-only-not-a-secret" DEMO_SEED=1 \
           python -c "
           from fastapi.testclient import TestClient
           from app.main import app, init_db, schema_report
@@ -95,43 +108,21 @@ jobs:
           print('selfcheck ok:', data['tables_found'], 'таблиц из', data['tables_expected'])
           "
 
-  postgres:
-    # прод работает на PostgreSQL: raw-SQL миграций и типы колонок (boolean = integer,
-    # INTEGER для id чатов Telegram) ломались только там — аудит 21.10.2026, DB-02/DB-06
-    name: "Python 3.15 + PostgreSQL 16: pytest"
+  frontend:
+    name: "JavaScript: синтаксис + смоук интерфейса"
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_PASSWORD: ci
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql+psycopg2://postgres:ci@localhost:5432/postgres
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.15"
-
-      - uses: astral-sh/setup-uv@v10.3.3
-        with:
-          enable-cache: true
-
-      - name: Зависимости
-        run: |
-          uv sync --frozen
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-
-      - name: Тесты на PostgreSQL
-        run: python -m pytest tests/ -q
-
-  frontend:
-    name: "JavaScript: синтаксис + смоук интерфейса"
-    runs-on: ubuntu-latest
+      # сервер PostgreSQL для тестов и сценариев; базы создаются сами (tests/conftest.py,
+      # tools/scenario_db.py)
+      TEST_DATABASE_SERVER: postgresql+psycopg2://postgres:ci@localhost:5432
     steps:
       - uses: actions/checkout@v7
 
@@ -264,7 +255,10 @@ jobs:
         run: docker build -t butler-service:ci .
 
       - name: Приложение импортируется в образе (без setuptools, с драйвером PostgreSQL)
-        run: docker run --rm butler-service:ci python -c "import app.main, psycopg2, cryptography; print('ok')"
+        # адрес базы — заглушка: настройки требуют PostgreSQL, но импорт к базе не подключается
+        run: >
+          docker run --rm -e DATABASE_URL=postgresql+psycopg2://image:check@127.0.0.1:1/none
+          butler-service:ci python -c "import app.main, psycopg2, cryptography; print('ok')"
 
       - name: Уязвимости образа (Trivy, HIGH/CRITICAL с исправлением)
         # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и

@@ -39,6 +39,7 @@ dev = [
     "import-linter>=2.0",          # контракты импортов (.importlinter)
     "mypy>=1.11",                  # типы ядра расчёта ([tool.mypy])
     "ruff>=0.17",
+    "pytest-xdist>=3.6",
 ]
 
 [tool.uv]
@@ -94,4 +95,7 @@ source = ["app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# параллельно, у каждого потока своя база PostgreSQL (tests/conftest.py); тесты одного файла —
+# в одном потоке по порядку. Один поток: -n 0
+addopts = "-n auto --dist loadfile"
 filterwarnings = ["ignore::DeprecationWarning:starlette.*"]

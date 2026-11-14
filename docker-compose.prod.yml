@@ -54,7 +54,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
       POSTGRES_DB: ${POSTGRES_DB:-timetrack}
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      # образ PostgreSQL 18+ ждёт том на /var/lib/postgresql (данные — в подкаталоге версии);
+      # с прежним путём …/data контейнер базы не стартует
+      - pg_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timetrack} -d ${POSTGRES_DB:-timetrack}"]
       interval: 10s

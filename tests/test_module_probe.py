@@ -100,13 +100,13 @@ print(json.dumps({
 """
 
 
-def test_probe_module_plugs_in_from_manifest_alone(tmp_path):
+def test_probe_module_plugs_in_from_manifest_alone(tmp_path, fresh_database):
     pkg = tmp_path / "modules" / "probe"
     pkg.mkdir(parents=True)
     for name, body in PROBE.items():
         (pkg / name).write_text(textwrap.dedent(body), encoding="utf-8")
     env = {**os.environ, "PYTHONPATH": str(ROOT), "SECRET_KEY": "probe-test-secret",
-           "DATABASE_URL": f"sqlite:///{tmp_path / 'probe.db'}", "DEMO_SEED": "1",
+           "DATABASE_URL": fresh_database, "DEMO_SEED": "1",
            "CSRF_ENABLED": "0", "APP_TZ": "Europe/Moscow"}
     res = subprocess.run([sys.executable, "-c", RUN, str(pkg.parent)], cwd=ROOT, env=env,
                          capture_output=True, text=True, timeout=180)

@@ -1,4 +1,4 @@
-# Простой контейнер TimeTrack: приложение + SQLite в томе (или PostgreSQL — POSTGRES_* / DATABASE_URL)
+# Образ приложения. База — PostgreSQL: адрес задают POSTGRES_* или DATABASE_URL (app/core/config.py)
 FROM ghcr.io/astral-sh/uv:0.13.8 AS uv
 
 FROM python:3.15-slim
@@ -22,10 +22,7 @@ COPY app ./app
 COPY static ./static
 COPY assets ./assets
 ENV PYTHONUNBUFFERED=1
-# SQLite по умолчанию — в томе data/: раньше файл ложился в рабочую папку и пропадал при
-# пересоздании контейнера. Заданный DATABASE_URL или POSTGRES_HOST главнее (app/core/config.py)
-ENV SQLITE_PATH=/srv/timetrack/data/timetrack.db
-# не от root (OPS-02): данные и бланки — пользователя app; chown до VOLUME, иначе он не сохранится.
+# не от root (OPS-02): загруженные файлы и бланки — пользователя app; chown до VOLUME, иначе он не сохранится.
 # Новые тома получают этого владельца из образа, старые (созданные от root) — deploy/README.md §6
 RUN useradd --create-home --uid 10001 app \
     && mkdir -p data templates && chown app:app data templates

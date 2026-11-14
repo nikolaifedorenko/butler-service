@@ -9,7 +9,6 @@ from sqlalchemy import delete, select
 from app.modules.stays.adapters.orm import Guest, Reservation, StaysSettings, VipCode
 
 from .helpers import API
-from .test_fund_schema import iso_engine  # noqa: F401 — фикстура миграционного теста
 
 PREFIX = "9"      # коды теста — девятка и три знака; демо-коды (03, 13, 14) начинаются иначе
 
@@ -203,133 +202,15 @@ def test_special_factor_default_and_save(manager_role_client, db, _settings):
     assert "vip_bonus" not in body and "vvip_bonus" not in body
 
 
-def test_migration_copies_declined_and_level(iso_engine):  # noqa: F811
-    """0016 → 0017 на данных: declined_butler → escort_mode, vip/vvip → special; новые колонки на
-    месте, откат их снимает, повторный подъём снова переносит."""
-    from alembic import command
-    from sqlalchemy import inspect, text
+def test_demo_has_codes_03_13_14(fresh_database):
+    """Демо на свежей базе (отдельный процесс: общую базу потока меняют другие тесты):
+    коды 03, 13, 14 и никакого «3»."""
+    from tests.conftest import rows, run_migrate
 
-    from app.bootstrap.schema_version import config
-
-    engine = iso_engine
-    command.downgrade(config(), "0016")
-    try:
-        assert "stays_vip_codes" not in inspect(engine).get_table_names()
-        with engine.begin() as c:
-            v = c.execute(text("SELECT id FROM stays_fund_versions WHERE valid_from = '2000-01-01'")).scalar_one()
-            c.execute(text("INSERT INTO stays_categories (id) VALUES (9401)"))
-            c.execute(text("INSERT INTO stays_category_kinds (id, title, sort_order, expanded, archived) "
-                           "VALUES (9401, 'k', 1, 0, 0)"))
-            c.execute(text("INSERT INTO stays_category_states (version_id, category_id, code, title, kind_id, "
-                           "weight, escorted, sort_order) VALUES (:v, 9401, 'MIG17', 'M', 9401, 1, 0, 1)"), {"v": v})
-            for gid, level in ((9401, "regular"), (9402, "vip"), (9403, "vvip")):
-                c.execute(text("INSERT INTO stays_guests (id, last_name, first_name, middle_name, phone, email, "
-                               "gender, level, preferences_json, special_dates_json, fields_json, note, source, "
-                               "search_text, created_at, updated_at) VALUES (:i, 'Г', '', '', '', '', '', :l, "
-                               "'{}', '[]', '{}', '', '', '', '2026-01-01', '2026-01-01')"), {"i": gid, "l": level})
-            for rid, declined in ((9401, 0), (9402, 1)):
-                c.execute(text("INSERT INTO stays_reservations (id, number, status, check_in, check_out, early, "
-                               "late, category_id, customer, note, declined_butler, fields_json, source, version, "
-                               "search_text, created_at, updated_at) VALUES (:i, '', 'confirmed', '2037-01-01', "
-                               "'2037-01-02', 0, 0, 9401, '', '', :d, '{}', '', 1, '', '2026-01-01', '2026-01-01')"),
-                          {"i": rid, "d": declined})
-        command.upgrade(config(), "head")
-        with engine.connect() as c:
-            assert dict(c.execute(text("SELECT id, special FROM stays_guests WHERE id >= 9401")).all()) == {
-                9401: 0, 9402: 1, 9403: 1}
-            assert dict(c.execute(text("SELECT id, escort_mode FROM stays_reservations WHERE id >= 9401")).all()) == {
-                9401: "rules", 9402: "declined"}
-            assert c.execute(text("SELECT vip_code_id FROM stays_reservations WHERE id = 9401")).scalar_one() is None
-            assert float(c.execute(text("SELECT special_factor FROM stays_settings")).scalar_one()) == 2.0
-            c.execute(text("SELECT escorted FROM stays_group_states LIMIT 1")).all()
-        insp = inspect(engine)
-        for table, col in (("stays_guests", "special"), ("stays_reservations", "escort_mode"),
-                           ("stays_settings", "special_factor"), ("stays_group_states", "escorted")):
-            assert insp.get_columns(table) and not [x for x in insp.get_columns(table)
-                                                    if x["name"] == col][0]["default"]      # server_default снят
-        command.downgrade(config(), "0016")
-        insp = inspect(engine)
-        assert "stays_vip_codes" not in insp.get_table_names()
-        assert not {"vip_code_id", "special"} & {x["name"] for x in insp.get_columns("stays_guests")}
-        assert not {"vip_code_id", "escort_mode"} & {x["name"] for x in insp.get_columns("stays_reservations")}
-        assert "special_factor" not in {x["name"] for x in insp.get_columns("stays_settings")}
-        assert "escorted" not in {x["name"] for x in insp.get_columns("stays_group_states")}
-    finally:
-        command.upgrade(config(), "head")
-    with engine.connect() as c:
-        assert dict(c.execute(text("SELECT id, escort_mode FROM stays_reservations WHERE id >= 9401")).all()) == {
-            9401: "rules", 9402: "declined"}
-
-
-def test_migration_0018_up_down(iso_engine):  # noqa: F811
-    """0018 снимает level, declined_butler, vip_bonus, vvip_bonus; откат возвращает их и восстанавливает
-    по special и escort_mode; повторный подъём снова снимает."""
-    from alembic import command
-    from sqlalchemy import inspect, text
-
-    from app.bootstrap.schema_version import config
-
-    engine = iso_engine
-    names = lambda t: {c["name"] for c in inspect(engine).get_columns(t)}  # noqa: E731
-    command.upgrade(config(), "head")
-    assert "level" not in names("stays_guests") and "declined_butler" not in names("stays_reservations")
-    assert not {"vip_bonus", "vvip_bonus"} & names("stays_settings")
-    with engine.begin() as c:
-        v = c.execute(text("SELECT id FROM stays_fund_versions WHERE valid_from = '2000-01-01'")).scalar_one()
-        c.execute(text("INSERT INTO stays_categories (id) VALUES (9411)"))
-        c.execute(text("INSERT INTO stays_category_kinds (id, title, sort_order, expanded, archived) "
-                       "VALUES (9411, 'k', 1, 0, 0)"))
-        c.execute(text("INSERT INTO stays_category_states (version_id, category_id, code, title, kind_id, "
-                       "weight, escorted, sort_order) VALUES (:v, 9411, 'MIG18', 'M', 9411, 1, 0, 1)"), {"v": v})
-        for gid, special in ((9411, 0), (9412, 1)):
-            c.execute(text("INSERT INTO stays_guests (id, last_name, first_name, middle_name, phone, email, "
-                           "gender, special, preferences_json, special_dates_json, fields_json, note, source, "
-                           "search_text, created_at, updated_at) VALUES (:i, 'Г', '', '', '', '', '', :s, "
-                           "'{}', '[]', '{}', '', '', '', '2026-01-01', '2026-01-01')"), {"i": gid, "s": special})
-        for rid, mode in ((9411, "rules"), (9412, "declined")):
-            c.execute(text("INSERT INTO stays_reservations (id, number, status, check_in, check_out, early, "
-                           "late, category_id, customer, note, escort_mode, fields_json, source, version, "
-                           "search_text, created_at, updated_at) VALUES (:i, '', 'confirmed', '2037-01-01', "
-                           "'2037-01-02', 0, 0, 9411, '', '', :m, '{}', '', 1, '', '2026-01-01', '2026-01-01')"),
-                      {"i": rid, "m": mode})
-    try:
-        command.downgrade(config(), "0017")
-        assert "level" in names("stays_guests") and "declined_butler" in names("stays_reservations")
-        assert {"vip_bonus", "vvip_bonus"} <= names("stays_settings")
-        with engine.connect() as c:
-            assert dict(c.execute(text("SELECT id, level FROM stays_guests WHERE id >= 9411")).all()) == {
-                9411: "regular", 9412: "vip"}
-            assert dict(c.execute(text("SELECT id, declined_butler FROM stays_reservations WHERE id >= 9411"))
-                        .all()) == {9411: 0, 9412: 1}
-            row = c.execute(text("SELECT vip_bonus, vvip_bonus FROM stays_settings")).one()
-            assert (float(row[0]), float(row[1])) == (1.0, 2.0)
-        assert not [x for x in inspect(engine).get_columns("stays_guests") if x["name"] == "level"][0]["default"]
-    finally:
-        command.upgrade(config(), "head")
-    assert "level" not in names("stays_guests") and "declined_butler" not in names("stays_reservations")
-    assert not {"vip_bonus", "vvip_bonus"} & names("stays_settings")
-
-
-def test_demo_has_codes_03_13_14(tmp_path):
-    """Демо на свежей базе (отдельный процесс: откаты миграций в других тестах пересоздают таблицы
-    общей тестовой базы, и коды демо в ней пропадают): коды 03, 13, 14 и никакого «3»."""
-    import os
-    import sqlite3
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    db = tmp_path / "demo.db"
-    env = {**os.environ, "DATABASE_URL": f"sqlite:///{db}", "DEMO_SEED": "1", "NIGHT_SYNC_ENABLED": "0"}
-    r = subprocess.run([sys.executable, "-m", "app.bootstrap.migrate"], env=env,
-                       cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=300)
+    r = run_migrate(fresh_database, DEMO_SEED="1")
     assert r.returncode == 0, r.stderr[-2000:]
-    con = sqlite3.connect(db)
-    try:
-        got = {c: (t, bool(e), f, bool(a)) for c, t, e, f, a in con.execute(
-            "SELECT code, title, escorted, factor, archived FROM stays_vip_codes")}
-    finally:
-        con.close()
+    got = {c: (t, bool(e), f, bool(a)) for c, t, e, f, a in rows(
+        fresh_database, "SELECT code, title, escorted, factor, archived FROM stays_vip_codes")}
     assert set(got) == {"03", "13", "14"}
     assert got["03"][1] and got["13"][1] and not got["14"][1]
     assert not any(v[3] for v in got.values())

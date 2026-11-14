@@ -250,9 +250,15 @@ async function main() {
     `${text('#modal h3')} · строк ${$$('#modal tr[data-emp]').length}, в подзаголовке ${bad} из ${total}`);
   click($('#modal [data-cancel]'));
   check('модалка списка закрылась', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
-  click($('#ut-body tr[data-emp]'));
-  check('карточка сотрудника УТ открылась',
-    await waitFor(() => !$('#modal-backdrop').classList.contains('hidden') && $('#modal [data-cancel]'), 15000));
+  /* после закрытия списка УТ перерисовывается: строка, по которой кликнули, может быть уже
+     заменена новой. Клик повторяется, пока карточка не откроется */
+  let utClick = 0;
+  check('карточка сотрудника УТ открылась', await waitFor(() => {
+    if (!$('#modal-backdrop').classList.contains('hidden') && $('#modal [data-cancel]')) return true;
+    const utRow = $('#ut-body tr[data-emp]');
+    if (utRow && Date.now() - utClick > 3000) { utClick = Date.now(); click(utRow); }
+    return false;
+  }, 30000));
   check('в карточке нет закрытия и пересчёта по одному',
     !$('#modal [data-close]') && !$('#modal [data-recalc]'));
   click($('#modal [data-cancel]'));

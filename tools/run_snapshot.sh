@@ -7,13 +7,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 PORT="${1:-8231}"
 OUT="${2:-$ROOT/ui-snapshot.html}"
-DB="/tmp/ui_snapshot.db"
-rm -f "$DB" "$DB-wal" "$DB-shm"
+DB_URL="$(python3 "$HERE/scenario_db.py" "ui_snapshot")" || exit 1
 
 cd "$ROOT" || exit 1
 # Ключ ≥16 символов (см. app/main.py); CSRF отключён: снапшот-харнес ходит в API
 # напрямую из node, без браузерной пары «cookie + заголовок» (как tests/conftest.py).
-export DEMO_SEED=1 DATABASE_URL="sqlite:///$DB" SECRET_KEY="snapshot-secret-key-0123456789abcdef" CSRF_ENABLED=0 APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
+export DEMO_SEED=1 DATABASE_URL="$DB_URL" SECRET_KEY="snapshot-secret-key-0123456789abcdef" CSRF_ENABLED=0 APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >/tmp/ui_snapshot_server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT

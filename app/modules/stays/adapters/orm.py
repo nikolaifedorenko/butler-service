@@ -105,9 +105,9 @@ class FundVersion(Base):
         CheckConstraint("status IN ('draft', 'published')", name="ck_stays_fund_status"),
         # дата уникальна среди опубликованных (черновик на ту же дату заменяет версию); черновик один
         Index("uq_stays_fund_published_from", "valid_from", unique=True,
-              sqlite_where=text("status = 'published'"), postgresql_where=text("status = 'published'")),
+              postgresql_where=text("status = 'published'")),
         Index("uq_stays_fund_one_draft", "status", unique=True,
-              sqlite_where=text("status = 'draft'"), postgresql_where=text("status = 'draft'")),
+              postgresql_where=text("status = 'draft'")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Сценарий шага «Проверка электрокаров»: поднять сервер на свежей демо-БД, пройти
+# Сценарий шага «Проверка электрокаров»: поднять сервер на свежей демо-базе PostgreSQL, пройти
 # путь батлера в jsdom, погасить сервер.
 # Проверяет, что окно ночной отметки кара совпадает с окном возврата кара
 # (чекбоксы состояния, место списком, фото) и что отметка с фото сохраняется.
@@ -9,8 +9,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 PORT="${1:-8143}"
 LOGIN="${2:-gromova}"
-DB="/tmp/night_cars_scenario.db"
-rm -f "$DB" "$DB-wal" "$DB-shm" /tmp/night_cars_scenario_server.log
+DB_URL="$(python3 "$HERE/scenario_db.py" "night_cars_scenario")" || exit 1
+rm -f /tmp/night_cars_scenario_server.log
 
 cd "$ROOT" || exit 1
 
@@ -33,7 +33,7 @@ export APP_TZ
 # Ключ ≥16 символов (см. app/main.py); CSRF отключён, как в других сценариях:
 # запросы идут из node без браузерной пары «cookie + заголовок». Сам механизм CSRF
 # покрыт tests/test_csrf.py и смоуком интерфейса (run_ui_check.sh).
-export DEMO_SEED=1 DATABASE_URL="sqlite:///$DB" SECRET_KEY="scenario-secret-key-0123456789abcdef" CSRF_ENABLED=0 PYTHONPATH="$ROOT"
+export DEMO_SEED=1 DATABASE_URL="$DB_URL" SECRET_KEY="scenario-secret-key-0123456789abcdef" CSRF_ENABLED=0 PYTHONPATH="$ROOT"
 echo "часовой пояс сценария: $APP_TZ (локальное время ≈ 23:00 — смена идёт)"
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >/tmp/night_cars_scenario_server.log 2>&1 &
 SRV=$!

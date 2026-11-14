@@ -19,8 +19,8 @@
 
 Несколько воркеров uvicorn (docker-compose.prod.yml): поток есть в каждом, но
 раунд синхронизации выполняет только один процесс — под неблокирующим замком
-`core.startup_lock.try_lock("night-sync")` (PostgreSQL — сеансовый advisory-lock,
-SQLite — flock на файле рядом с БД); остальные воркеры раунд пропускают. Это же
+`core.startup_lock.try_lock("night-sync")` (сеансовый advisory-lock PostgreSQL);
+остальные воркеры раунд пропускают. Это же
 убирает гонку создания отчёта (IntegrityError по night_reports.date unique).
 
 Вручную переоткрытые отчёты sync_reports не закрывает (reopened_at) — см.

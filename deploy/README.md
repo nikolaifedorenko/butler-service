@@ -1,8 +1,8 @@
 # Прод-развёртывание (docker-compose.prod.yml)
 
-Референс-стек: **nginx (TLS) → приложение (uvicorn, N воркеров) → PostgreSQL 16**,
-плюс ежедневные бэкапы. Локальная разработка — по-прежнему `./run.sh` (SQLite),
-знакомство — `docker-compose.yml` (один контейнер).
+Референс-стек: **nginx (TLS) → приложение (uvicorn, N воркеров) → PostgreSQL 18**,
+плюс ежедневные бэкапы. Локальный запуск и база для тестов — `docker-compose.yml`
+(docs/INSTALL.md).
 
 ## 1. Подготовка
 
@@ -118,10 +118,8 @@ curl -k https://localhost/api/health   # version должен совпасть �
 `docker compose -f docker-compose.prod.yml logs migrate`. Перед обновлением сделайте бэкап.
 
 **Откат схемы (downgrade) не поддерживается** — откатывайтесь восстановлением бэкапа
-(§4, `deploy/restore_check.sh`). Часть ревизий отката теряла бы данные, поэтому они
-отказываются работать: 0007 — если есть свои роли, 0002 — если id чата Telegram не
-влезает в INTEGER. На SQLite откат идёт без общей транзакции: ревизии выше упавшей к этому
-моменту уже откачены — верните схему `python -m app.bootstrap.migrate`.
+(§4, `deploy/restore_check.sh`). Откат начальной
+ревизии удалил бы все таблицы.
 
 ## 6. Приложение в контейнере — не от root
 
@@ -170,7 +168,7 @@ SQL
 #   POSTGRES_PASSWORD=STRONG_PASSWORD
 #   POSTGRES_DB=timetrack
 ```
-Таблицы создаются автоматически при старте (`create_all`). Для SQLite ничего делать не нужно.
+Схему создаёт и обновляет сам старт приложения (ревизии Alembic).
 
 ### 7.4. systemd-сервис
 ```ini
@@ -229,15 +227,13 @@ sudo certbot --nginx -d time.example.ru        # выпустит сертифи
 
 ### 7.6. Docker (альтернатива)
 ```bash
-DEMO_SEED=1 docker compose up -d --build   # демо: SQLite в томе tt_data, порт 8000, пароль demo1234
-ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SECURE=1 docker compose up -d --build
+docker compose up -d --build   # локальный профиль с демо-данными: порт 8000, пароль demo1234
 ```
 Приложение в контейнере работает не от root (пользователь `app`). Тома, созданные до
 22.10.2026, нужно один раз передать этому пользователю — команда в `deploy/README.md` §6.
 
 ### 7.7. Эксплуатация
-* **Бэкапы:** SQLite — копия файла `timetrack.db` (лучше через `sqlite3 db ".backup …"`);
-  PostgreSQL — `pg_dump timetrack > dump.sql` по cron. Храните также `.env` (SECRET_KEY).
+* **Бэкапы:** `pg_dump timetrack > dump.sql` по cron. Храните также `.env` (SECRET_KEY).
 * **Обновление:** заменить файлы → `uv sync --frozen --no-dev` →
   `systemctl restart timetrack`. Таблицы добавляются автоматически; при изменении схемы
   колонок (редко) может понадобиться пересоздание БД из бэкапа — см. «Ограничения» в SPEC.md.
@@ -248,10 +244,9 @@ ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SE
 ## 8. Заметки по эксплуатации
 
 * **Референс-прод-стек**: `docker-compose.prod.yml` — nginx (TLS, gzip, лимиты) +
-  PostgreSQL 16 + приложение в несколько воркеров + ежедневные бэкапы. Пошагово —
-  разделы 1–6 выше. Для знакомства достаточно одиночного
-  `docker-compose.yml` (SQLite), для разработки — `./run.sh`.
-* БД: SQLite по умолчанию (WAL + `busy_timeout`); для боевого режима
+  PostgreSQL 18 + приложение в несколько воркеров + ежедневные бэкапы. Пошагово —
+  разделы 1–6 выше. Для знакомства и разработки — `docker-compose.yml`.
+* БД — только PostgreSQL:
   `POSTGRES_HOST`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` в `.env` — адрес
   собирает приложение, пароль экранируется (либо готовый `DATABASE_URL`, он старше).
   Драйвер PostgreSQL входит в обязательные зависимости (`pyproject.toml`).
@@ -272,7 +267,7 @@ ADMIN_PASSWORD=<пароль admin> SECRET_KEY=$(openssl rand -hex 32) COOKIE_SE
   повторное закрытие исключает уникальный ключ `(employee_id, period_start)`;
   отметки при нескольких воркерах защищены строковым замком БД (`FOR UPDATE`).
 * Бэкапы: в прод-профиле — автоматические (`./backups`, pg_dumpall ежесуточно,
-  восстановление — см. `deploy/README.md`); на SQLite регулярно копируйте файл БД.
+  восстановление — см. `deploy/README.md`).
   В базе — персональные данные: храните копии зашифрованными.
 * Зарплатный модуль намеренно не ведётся; информационный план строки Табеля —
   зарплатный атрибут, денежный расчёт добавляется отдельным слоем поверх данных УТ.

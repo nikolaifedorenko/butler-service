@@ -32,6 +32,10 @@ def route_patterns() -> list[tuple[str, str, str]]:
     интерфейса, где плейсхолдер может стоять в любом месте сегмента
     (например, `/api/night/reports/${id}/export.${fmt}`).
     """
+    import os
+
+    # маршруты читаются из кода, к базе скрипт не подключается; Settings требует адрес PostgreSQL
+    os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://contract:check@127.0.0.1:1/none")
     from app.main import app
 
     out = []

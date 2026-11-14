@@ -1,32 +1,55 @@
-# Запуск: docker compose up -d --build
-# Данные (SQLite) лежат в томе tt_data; для PostgreSQL задайте POSTGRES_HOST/USER/PASSWORD/DB
-# (или DATABASE_URL) и добавьте сервис db — референс в docker-compose.prod.yml.
+# Локальный запуск и база для тестов. Только для своей машины: пароли здесь учебные,
+# порты слушают 127.0.0.1. Боевой профиль — docker-compose.prod.yml.
+#
+#   docker compose up -d --build     приложение с демо-данными: http://127.0.0.1:8000
+#                                     (вход admin / demo1234)
+#   docker compose up -d db           только PostgreSQL — для тестов и сценариев интерфейса
+#   docker compose down -v            остановить и удалить данные
 services:
-  timetrack:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: dev
+    ports:
+      # адрес тестов по умолчанию: postgresql+psycopg2://postgres:dev@127.0.0.1:54329
+      - "127.0.0.1:${DB_PORT:-54329}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
     build: .
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${PORT:-8000}:8000"
     environment:
-      DATABASE_URL: sqlite:///./data/timetrack.db
-      # Обязательно задайте в .env:  SECRET_KEY=$(openssl rand -hex 32)
-      # Пустой ключ не позволит приложению запуститься (см. app/main.py).
-      SECRET_KEY: ${SECRET_KEY:-}
-      ALLOW_INSECURE_DEV_SECRET: ${ALLOW_INSECURE_DEV_SECRET:-0}
+      POSTGRES_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: postgres
+      # учебный ключ — только для локального запуска; в бою ключ задаётся в .env (prod-профиль)
+      SECRET_KEY: ${SECRET_KEY:-local-demo-only-secret-key-0123456789}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       TZ: ${APP_TZ:-Europe/Moscow}
-      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      # демо-сотрудники с паролем demo1234; 0 — пустая база с администратором ADMIN_PASSWORD
+      DEMO_SEED: ${DEMO_SEED:-1}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # демо-вход «как сотрудник» включён по умолчанию (решение владельца); 0 — выключить
       ALLOW_IMPERSONATION: ${ALLOW_IMPERSONATION:-1}
-      # пустая база: пароль администратора admin; DEMO_SEED=1 — демо-данные (пароль demo1234)
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      DEMO_SEED: ${DEMO_SEED:-0}
-      # за своим reverse-proxy (docker-compose.prod.yml) — 1, иначе 0
-      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-0}
       CSP_REPORT_ONLY: ${CSP_REPORT_ONLY:-0}
     volumes:
-      - tt_data:/srv/timetrack/data
-      - tt_templates:/srv/timetrack/templates   # фирменные бланки заявлений переживают пересборку
+      - app_data:/srv/timetrack/data            # загруженные фото и видео
+      - app_templates:/srv/timetrack/templates  # фирменные бланки заявлений
+
 volumes:
-  tt_data:
-  tt_templates:
+  pg_data:
+  app_data:
+  app_templates:

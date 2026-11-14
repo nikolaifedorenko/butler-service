@@ -1,18 +1,12 @@
 """Общая настройка тестового прогона.
 
-Зачем этот файл появился
-------------------------
-Раньше каждый тестовый модуль сам выставлял ``DATABASE_URL`` через
-``os.environ.setdefault`` и «заводил» собственный файл БД (tt_test_dicts.db,
-tt_doublepay.db, tt_features.db …). На деле настройки читаются один раз
-(``functools.lru_cache`` в ``app/config.py``), поэтому все модули работали против
-базы, которую определил ПЕРВЫМ импортированный модуль, — файлы-«двойники» не
-использовались вовсе. Отсюда и ``tests/test_genitive.py`` (прежнее имя ``test_zz_genitive.py`` — костыль порядка
-импортов, устарел с появлением этого файла) и плавающие результаты при запуске
-отдельного файла.
+База — PostgreSQL (ADR-0013, раздел 3). Сервер поднимает `docker compose up -d db`; адрес
+без имени базы задаёт TEST_DATABASE_SERVER (по умолчанию — локальный из docker-compose.yml).
+У каждого потока pytest-xdist своя база `butler_test_<поток>`: она пересоздаётся в начале
+прогона и заполняется демо-данными при первом init_db(). Тесты одного файла идут в одном
+потоке по порядку (`--dist loadfile` в pyproject.toml).
 
-Теперь путь к тестовой БД и SECRET_KEY задаются здесь — до импорта ``app.*`` —
-и одинаковы для всего прогона: порядок импорта модулей перестаёт влиять на данные.
+Окружение задаётся здесь — до импорта ``app.*``: настройки читаются один раз.
 
 Фикстуры
 --------
@@ -20,6 +14,8 @@ tt_doublepay.db, tt_features.db …). На деле настройки чита�
     TestClient с выполненным входом (демо-пароль ``demo1234``).
 ``db``
     Сессия SQLAlchemy для прямых проверок состояния.
+``fresh_database``
+    Адрес новой пустой базы — для тестов, которые запускают приложение отдельным процессом.
 ``sql_counter``
     Подсчёт SQL-запросов — для тестов-стражей от регрессий N+1.
 ``freeze``
@@ -28,16 +24,47 @@ tt_doublepay.db, tt_features.db …). На деле настройки чита�
 from __future__ import annotations
 
 import os
-import pathlib
-import tempfile
+import uuid
 from contextlib import contextmanager
 
 import pytest
+from sqlalchemy import create_engine, text
 
 # ── окружение задаётся ДО импорта app.* ────────────────────────────────────────
-TEST_DB = pathlib.Path(tempfile.gettempdir()) / "tt_test.db"
-# DATABASE_URL можно задать извне: CI-джоб postgres гоняет тот же набор на PostgreSQL 16
-os.environ.setdefault("DATABASE_URL", f"sqlite:///{TEST_DB}")
+TEST_SERVER = os.environ.get("TEST_DATABASE_SERVER", "postgresql+psycopg2://postgres:dev@127.0.0.1:54329")
+WORKER = os.environ.get("PYTEST_XDIST_WORKER", "main")
+
+
+def _admin():
+    """Соединение с сервером вне транзакции: CREATE и DROP DATABASE в транзакции нельзя."""
+    return create_engine(f"{TEST_SERVER}/postgres", isolation_level="AUTOCOMMIT")
+
+
+def create_database(name: str) -> str:
+    """Пересоздать пустую базу и вернуть её адрес."""
+    admin = _admin()
+    try:
+        with admin.connect() as con:
+            con.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+            con.execute(text(f'CREATE DATABASE "{name}"'))
+    except Exception as exc:
+        raise RuntimeError(
+            f"Тестам нужен PostgreSQL по адресу {TEST_SERVER}: запустите `docker compose up -d db` "
+            f"или задайте TEST_DATABASE_SERVER ({type(exc).__name__})") from exc
+    finally:
+        admin.dispose()
+    return f"{TEST_SERVER}/{name}"
+
+
+def drop_database(name: str) -> None:
+    admin = _admin()
+    with admin.connect() as con:
+        con.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    admin.dispose()
+
+
+# свежая база на каждый прогон: сид создаётся при первом init_db()
+os.environ["DATABASE_URL"] = create_database(f"butler_test_{WORKER}")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 # тесты опираются на демо-сотрудников и пароль demo1234 (см. app/bootstrap/seed.py)
 os.environ.setdefault("DEMO_SEED", "1")
@@ -56,25 +83,36 @@ os.environ.setdefault("NOTIFY_SECRET_KEY", "qX4m2HcV8sRw0yE1nK6tPzL9bJ3uA7dF5gTi
 DEMO_PASSWORD = "demo1234"
 
 
-def _drop_db() -> None:
-    url = os.environ["DATABASE_URL"]
-    if url.startswith("postgresql"):
-        from sqlalchemy import create_engine, text
+def run_migrate(url: str, **env: str):
+    """Шаг деплоя `python -m app.bootstrap.migrate` отдельным процессом на базе url."""
+    import subprocess
+    import sys
+    from pathlib import Path
 
-        eng = create_engine(url)
-        with eng.begin() as con:
-            con.execute(text("DROP SCHEMA public CASCADE"))
-            con.execute(text("CREATE SCHEMA public"))
+    full = {**os.environ, "DATABASE_URL": url, "DEMO_SEED": "0", "NIGHT_SYNC_ENABLED": "0", **env}
+    return subprocess.run([sys.executable, "-m", "app.bootstrap.migrate"], env=full,
+                          cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=300)
+
+
+def rows(url: str, sql: str) -> list:
+    """Строки запроса к базе url."""
+    eng = create_engine(url)
+    try:
+        with eng.connect() as con:
+            return [tuple(r) for r in con.execute(text(sql))]
+    finally:
         eng.dispose()
-        return
-    for suffix in ("", "-wal", "-shm"):
-        p = pathlib.Path(str(TEST_DB) + suffix)
-        if p.exists():
-            p.unlink()
 
 
-# свежая база на каждый прогон: сид создаётся при первом init_db()
-_drop_db()
+@pytest.fixture()
+def fresh_database():
+    """Адрес новой пустой базы; после теста база удаляется."""
+    name = f"butler_tmp_{uuid.uuid4().hex[:12]}"
+    try:
+        yield create_database(name)
+    finally:
+        drop_database(name)
+
 
 @pytest.fixture(scope="session")
 def app_stack():

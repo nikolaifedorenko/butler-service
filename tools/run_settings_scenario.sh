@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Сценарий раздела «Настройки»: поднять сервер на свежей демо-БД, пройти
+# Сценарий раздела «Настройки»: поднять сервер на свежей демо-базе PostgreSQL, пройти
 # пользовательские пути нового интерфейса в jsdom, погасить сервер.
 # Использование: tools/run_settings_scenario.sh [порт] [логин]
 set -u
@@ -7,14 +7,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 PORT="${1:-8142}"
 LOGIN="${2:-admin}"
-DB="/tmp/settings_scenario.db"
-rm -f "$DB" "$DB-wal" "$DB-shm" /tmp/settings_scenario_server.log
+DB_URL="$(python3 "$HERE/scenario_db.py" "settings_scenario")" || exit 1
+rm -f /tmp/settings_scenario_server.log
 
 cd "$ROOT" || exit 1
 # Ключ ≥16 символов (см. app/main.py); CSRF отключён, как в tests/conftest.py:
 # сценарий дёргает API напрямую из node, без браузерной пары «cookie + заголовок».
 # Сам механизм CSRF покрыт tests/test_csrf.py и смоуком интерфейса (run_ui_check.sh).
-export DEMO_SEED=1 DATABASE_URL="sqlite:///$DB" SECRET_KEY="scenario-secret-key-0123456789abcdef" CSRF_ENABLED=0 APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
+export DEMO_SEED=1 DATABASE_URL="$DB_URL" SECRET_KEY="scenario-secret-key-0123456789abcdef" CSRF_ENABLED=0 APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >/tmp/settings_scenario_server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
