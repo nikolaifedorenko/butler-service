@@ -10,11 +10,11 @@ import datetime as dt
 import json
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from .db import Base
-from .time import utcnow
+from .time import Moment, now
 
 if TYPE_CHECKING:
     from .auth import Principal
@@ -27,7 +27,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    ts: Mapped[dt.datetime] = mapped_column(Moment, default=now, index=True)
     actor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     actor_name: Mapped[str] = mapped_column(String(120), default="")
     action: Mapped[str] = mapped_column(String(64))
@@ -45,5 +45,5 @@ def audit(db: Session, principal: Optional[Principal], action: str, target: str 
         # «как сотрудник»: в журнал — кто вошёл на самом деле (actor_id — его же), AUTHZ-01
         actor_name=principal.actor_label if principal else "system",
         action=action, target=target, payload_json=json.dumps(payload or {}, ensure_ascii=False, default=str),
-        ts=utcnow(),
+        ts=now(),
     ))

@@ -118,13 +118,13 @@ def test_login_rate_limit_is_shared_between_workers(app_stack):
     from fastapi.testclient import TestClient
 
     from app.core.identity import LoginAttempt
-    from app.core.time import utcnow
+    from app.core.time import now
     from app.modules.access.interface import auth_routes
 
     _clear_login_attempts(app_stack)
     try:
         c = TestClient(app_stack["app"])      # адрес клиента TestClient — «testclient»
-        old = utcnow() - dt.timedelta(seconds=auth_routes._LOGIN_WINDOW_SECONDS + 60)
+        old = now() - dt.timedelta(seconds=auth_routes._LOGIN_WINDOW_SECONDS + 60)
         with app_stack["SessionLocal"]() as s:
             s.add_all([LoginAttempt(key=auth_routes._attempt_key("testclient", "admin"), ts=old)
                        for _ in range(auth_routes._LOGIN_MAX_ATTEMPTS)])

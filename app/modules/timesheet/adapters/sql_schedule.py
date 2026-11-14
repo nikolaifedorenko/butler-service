@@ -4,7 +4,7 @@
 00:00 period.end+1) в tz объекта, включая начинающиеся до периода; батч-методы —
 пересекающие сутки. Валидация уровня 3 при чтении (5.3): CHK-SHIFT-ORDER,
 CHK-ABSENCE-ORDER, CHK-ABSENCE-LENGTH → ConfigError до входа в домен.
-Моменты хранятся naive UTC; наружу — UTC-aware."""
+Моменты — с поясом: в базе UTC."""
 from __future__ import annotations
 
 import datetime as dt
@@ -16,7 +16,7 @@ from app.core.db import lock_employee
 
 from ..domain.types.entities import Absence, Period, Shift, ShiftEntry
 from ..domain.types.errors import ConfigError
-from ._db import emp_pk, local_midnight_utc, utc_naive_to_aware
+from ._db import emp_pk, local_midnight_utc
 from .orm import ScheduleAbsence, ScheduleShift
 
 DAY = dt.timedelta(days=1)
@@ -40,14 +40,14 @@ def _validate_absence(row: ScheduleAbsence) -> None:
 
 def _shift(row: ScheduleShift) -> Shift:
     _validate_shift(row)
-    return Shift(str(row.employee_id), utc_naive_to_aware(row.start_utc),
-                 utc_naive_to_aware(row.end_utc))
+    return Shift(str(row.employee_id), row.start_utc,
+                 row.end_utc)
 
 
 def _absence(row: ScheduleAbsence) -> Absence:
     _validate_absence(row)
-    return Absence(str(row.employee_id), utc_naive_to_aware(row.start_utc),
-                   utc_naive_to_aware(row.end_utc))
+    return Absence(str(row.employee_id), row.start_utc,
+                   row.end_utc)
 
 
 class SqlShiftAdapter:
@@ -55,8 +55,8 @@ class SqlShiftAdapter:
         self.db, self.tz = db, tz
 
     def _window(self, start: dt.date, end_exclusive: dt.date):
-        return (local_midnight_utc(start, self.tz).replace(tzinfo=None),
-                local_midnight_utc(end_exclusive, self.tz).replace(tzinfo=None))
+        return (local_midnight_utc(start, self.tz),
+                local_midnight_utc(end_exclusive, self.tz))
 
     def shifts(self, employee_id: str, period: Period) -> list[Shift]:
         lo, hi = self._window(period.start, period.end + DAY)
@@ -90,8 +90,8 @@ class SqlAbsenceAdapter:
         self.db, self.tz = db, tz
 
     def _window(self, start: dt.date, end_exclusive: dt.date):
-        return (local_midnight_utc(start, self.tz).replace(tzinfo=None),
-                local_midnight_utc(end_exclusive, self.tz).replace(tzinfo=None))
+        return (local_midnight_utc(start, self.tz),
+                local_midnight_utc(end_exclusive, self.tz))
 
     def absences(self, employee_id: str, period: Period) -> list[Absence]:
         lo, hi = self._window(period.start, period.end + DAY)
@@ -126,8 +126,8 @@ class SqlScheduleStore:
         self.db, self.tz = db, tz
 
     def load_entries(self, employee_id: str | None, period: Period) -> list[ShiftEntry]:
-        lo = local_midnight_utc(period.start, self.tz).replace(tzinfo=None)
-        hi = local_midnight_utc(period.end + DAY, self.tz).replace(tzinfo=None)
+        lo = local_midnight_utc(period.start, self.tz)
+        hi = local_midnight_utc(period.end + DAY, self.tz)
         q = select(ScheduleShift).where(ScheduleShift.start_utc < hi, ScheduleShift.end_utc > lo)
         if employee_id is not None:
             q = q.where(ScheduleShift.employee_id == emp_pk(employee_id))
@@ -146,10 +146,8 @@ class SqlScheduleStore:
             if s.start_utc >= s.end_utc:
                 raise ConfigError([("CHK-SHIFT-ORDER", {"day": day.isoformat()})])
             self.db.add(ScheduleShift(employee_id=emp, date=day,
-                                      start_utc=s.start_utc.astimezone(dt.UTC)
-                                      .replace(tzinfo=None),
-                                      end_utc=s.end_utc.astimezone(dt.UTC)
-                                      .replace(tzinfo=None),
+                                      start_utc=s.start_utc.astimezone(dt.UTC),
+                                      end_utc=s.end_utc.astimezone(dt.UTC),
                                       source="manual"))
         self.db.flush()
 
@@ -169,10 +167,8 @@ class SqlScheduleStore:
             s = entry.shift
             self.db.add(ScheduleShift(employee_id=emp,
                                       date=s.start_utc.astimezone(self.tz).date(),
-                                      start_utc=s.start_utc.astimezone(dt.UTC)
-                                      .replace(tzinfo=None),
-                                      end_utc=s.end_utc.astimezone(dt.UTC)
-                                      .replace(tzinfo=None),
+                                      start_utc=s.start_utc.astimezone(dt.UTC),
+                                      end_utc=s.end_utc.astimezone(dt.UTC),
                                       source="generated"))
         self.db.flush()
 
@@ -190,8 +186,8 @@ class SqlScheduleStore:
                                 {"day": day.isoformat(), "start": start_hhmm, "end": end_hhmm})])
         lock_employee(self.db, emp_pk(employee_id))
         row = ScheduleAbsence(employee_id=emp_pk(employee_id),
-                              start_utc=start_local.astimezone(dt.UTC).replace(tzinfo=None),
-                              end_utc=end_local.astimezone(dt.UTC).replace(tzinfo=None))
+                              start_utc=start_local.astimezone(dt.UTC),
+                              end_utc=end_local.astimezone(dt.UTC))
         self.db.add(row)
         self.db.flush()
         return row.id

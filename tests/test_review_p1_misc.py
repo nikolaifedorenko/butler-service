@@ -52,10 +52,10 @@ def test_misc1_audit_filter_boundaries_are_local(admin_client, db):
     ровно B и C. Старый код включал D (date_to без конверсии: «< 02.01 00:00 UTC»
     = 02.01 03:00 МСК) — и ломался бы целиком на другом APP_TZ."""
     rows = {
-        "A": dt.datetime(2026, 12, 31, 20, 59),   # UTC = 31.12 23:59 МСК
-        "B": dt.datetime(2026, 12, 31, 21, 0),    # UTC = 01.01 00:00 МСК
-        "C": dt.datetime(2027, 1, 1, 20, 59),     # UTC = 01.01 23:59 МСК
-        "D": dt.datetime(2027, 1, 1, 21, 0),      # UTC = 02.01 00:00 МСК
+        "A": dt.datetime(2026, 12, 31, 20, 59, tzinfo=dt.UTC),   # UTC = 31.12 23:59 МСК
+        "B": dt.datetime(2026, 12, 31, 21, 0, tzinfo=dt.UTC),    # UTC = 01.01 00:00 МСК
+        "C": dt.datetime(2027, 1, 1, 20, 59, tzinfo=dt.UTC),     # UTC = 01.01 23:59 МСК
+        "D": dt.datetime(2027, 1, 1, 21, 0, tzinfo=dt.UTC),      # UTC = 02.01 00:00 МСК
     }
     for tag, ts in rows.items():
         db.add(AuditLog(ts=ts, actor_id=None, actor_name="p1-misc-guard",

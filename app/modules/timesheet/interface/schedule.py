@@ -26,7 +26,7 @@ from app.core.auth import Principal
 from app.core.db import get_db, lock_employee
 from app.core.format import hours_text
 from app.core.permissions import principal_permissions, require_perm
-from app.core.time import TZ, month_name, now_local, utc_to_local
+from app.core.time import TZ, local_date, local_iso, month_name, to_local
 from app.modules.exchange.application.documents import docx_to_pdf, pdf_unavailable_detail, write_docx
 from app.modules.exchange.application.tables import XLSX_MEDIA_TYPE, attachment, write_xlsx
 from app.modules.people.application import (
@@ -98,19 +98,17 @@ def _settings(db: Session, period: Period) -> Settings:
 
 
 def _shift_brief(row: ScheduleShift) -> dict:
-    start, end = utc_to_local(row.start_utc.replace(tzinfo=dt.UTC)), \
-        utc_to_local(row.end_utc.replace(tzinfo=dt.UTC))
+    start, end = to_local(row.start_utc), to_local(row.end_utc)
     return {"source": row.source, "anchor": row.date.isoformat(),
-            "start": start.isoformat(), "end": end.isoformat(),
+            "start": local_iso(start, "auto"), "end": local_iso(end, "auto"),
             "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
             "note": row.note or "", "id": row.id}
 
 
 def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType],
                    whole_shift: bool = False) -> dict:
-    start = utc_to_local(row.start_utc.replace(tzinfo=dt.UTC))
-    end = utc_to_local(row.end_utc.replace(tzinfo=dt.UTC))
-    return {"id": row.id, "start": start.isoformat(), "end": end.isoformat(),
+    start, end = to_local(row.start_utc), to_local(row.end_utc)
+    return {"id": row.id, "start": local_iso(start, "auto"), "end": local_iso(end, "auto"),
             "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
             "note": row.note or "",
             # покрывает всё рабочее окно дня — «выходной за часы» (EX-29): сетка
@@ -163,7 +161,7 @@ def _visible_segments(shift_rows: list, absence_rows: list) -> list[list[str]]:
                 if a.end_utc < se:
                     nxt.append((a.end_utc, se))
             segs = nxt
-        hm = lambda v: utc_to_local(v.replace(tzinfo=dt.UTC)).strftime("%H:%M")  # noqa: E731
+        hm = lambda v: to_local(v).strftime("%H:%M")  # noqa: E731
         out.extend([[hm(ss), hm(se)] for ss, se in segs])
     return out
 
@@ -275,8 +273,8 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
     work_types, code_colors = color_lookups(db)
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for row in shift_rows:
-        start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
-        end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+        start_local = row.start_utc.astimezone(TZ)
+        end_local = row.end_utc.astimezone(TZ)
         day = start_local.date()
         while day <= min(end_local.date(), last):
             if first <= day <= last:
@@ -284,15 +282,15 @@ def get_grid(year: int, month: int, principal: Principal = Depends(require_perm(
             day += dt.timedelta(days=1)
     absences_by_emp_day: dict[tuple[int, str], list] = {}
     for row in absence_rows:
-        start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
-        end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+        start_local = row.start_utc.astimezone(TZ)
+        end_local = row.end_utc.astimezone(TZ)
         day = start_local.date()
         while day <= min(end_local.date(), last):
             if first <= day <= last:
                 absences_by_emp_day.setdefault((row.employee_id, day.isoformat()), []).append(row)
             day += dt.timedelta(days=1)
 
-    today = now_local().date()
+    today = local_date()
     dbl_cal = calendar_map(db, first, last)
     perms = principal_permissions(db, principal)
     rows = []
@@ -628,8 +626,8 @@ def _absence_covers_day(st, tabel_rows: dict, employee_id: int,
                         row: ScheduleAbsence) -> bool:
     """whole_shift для строки сетки: окно берём у дня-якоря отсутствия (у смены
     через полночь якорь — день начала)."""
-    start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
-    end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+    start_local = row.start_utc.astimezone(TZ)
+    end_local = row.end_utc.astimezone(TZ)
     day = start_local.date()
     return _covers_window(st, tabel_rows.get((employee_id, day)), day, start_local, end_local)
 
@@ -836,8 +834,8 @@ def _interval_info(db: Session, emp: Optional[Employee], row: ScheduleAbsence) -
     kind = db.get(ShiftType, row.kind_id)
     if kind is None:
         return None
-    start_local = row.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
-    end_local = row.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+    start_local = row.start_utc.astimezone(TZ)
+    end_local = row.end_utc.astimezone(TZ)
     day = start_local.date()
     day_settings = st_day(db, day)
     whole_shift = _covers_whole_day(db, day_settings, row.employee_id, day,

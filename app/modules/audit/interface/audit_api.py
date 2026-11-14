@@ -14,7 +14,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.manifest import audit_titles
 from app.core.permissions import require_perm
-from app.core.time import TZ, utc_to_local
+from app.core.time import local_iso, local_midnight
 from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment, write_csv
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -25,15 +25,8 @@ def _titles() -> dict[str, str]:
 
 
 def _utc_bound(d: dt.date) -> dt.datetime:
-    """Локальная полночь даты `d` → наивный UTC.
-
-    `AuditLog.ts` хранится в UTC (core/audit пишет utcnow()), а фильтр задаёт
-    пользователь ЛОКАЛЬНЫМИ датами объекта. Раньше date_from сдвигался на
-    захардкоженные 3 часа (московский офсет), а date_to не конвертировался
-    вовсе: границы были асимметричны и ломались при любом APP_TZ ≠ +3
-    (ревью 20.10.2026, P1-misc-1).
-    """
-    return dt.datetime.combine(d, dt.time(0), TZ).astimezone(dt.UTC).replace(tzinfo=None)
+    """Начало суток объекта как момент: фильтр журнала задаётся местными датами."""
+    return local_midnight(d)
 
 
 def _query(q, action, actor, date_from, date_to):
@@ -54,7 +47,7 @@ def _query(q, action, actor, date_from, date_to):
 
 
 def _item(r: AuditLog) -> dict:
-    return {"id": r.id, "ts": utc_to_local(r.ts).isoformat(timespec="seconds"), "actor": r.actor_name,
+    return {"id": r.id, "ts": local_iso(r.ts), "actor": r.actor_name,
             "action": r.action, "action_title": _titles().get(r.action, r.action),
             "target": r.target, "payload": r.payload_json}
 

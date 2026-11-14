@@ -1,4 +1,4 @@
-"""PunchPort поверх таблицы punches (Punch.ts — локальное naive-время объекта).
+"""PunchPort поверх таблицы punches (Punch.ts — момент).
 
 Обязанности адаптера (7.4): UTC-aware моменты; kind из источника; стабильный порядок
 (ts, id); все отметки одного сотрудника; отметок позже now нет; допустимое чередование —
@@ -14,12 +14,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..domain.types.entities import Mark
-from ._db import emp_pk, local_naive_to_utc, utc_to_local_naive
+from ._db import emp_pk
 from .orm import Punch
 
 
 def _mark(p: Punch) -> Mark:
-    return Mark(str(p.employee_id), local_naive_to_utc(p.ts), "in" if p.kind == "IN" else "out")
+    return Mark(str(p.employee_id), p.ts, "in" if p.kind == "IN" else "out")
 
 
 def sanitize(marks: Sequence[Mark], opening: Mark | None) -> list[Mark]:
@@ -54,7 +54,7 @@ class SqlPunchAdapter:
         отсюда; фильтры те же, что в _rows и last_mark_before."""
         pks = [emp_pk(e) for e in employee_ids]
         hi = min(to_utc, self.now + dt.timedelta(microseconds=1))
-        lo_n, hi_n, now_n = (utc_to_local_naive(x) for x in (from_utc, hi, self.now))
+        lo_n, hi_n, now_n = from_utc, hi, self.now
         rows: dict[int, list[Punch]] = {pk: [] for pk in pks}
         for p in self.db.scalars(select(Punch).where(
                 Punch.employee_id.in_(pks), Punch.ts >= lo_n, Punch.ts < hi_n, Punch.ts <= now_n)
@@ -74,10 +74,10 @@ class SqlPunchAdapter:
         if self._window == (lo, hi) and emp_pk(employee_id) in self._pre_rows:
             return list(self._pre_rows[emp_pk(employee_id)])
         q = select(Punch).where(Punch.employee_id == emp_pk(employee_id),
-                                Punch.ts < utc_to_local_naive(hi),
-                                Punch.ts <= utc_to_local_naive(self.now))
+                                Punch.ts < hi,
+                                Punch.ts <= self.now)
         if lo is not None:
-            q = q.where(Punch.ts >= utc_to_local_naive(lo))
+            q = q.where(Punch.ts >= lo)
         return list(self.db.scalars(q.order_by(Punch.ts, Punch.id)))
 
     def marks_between(self, employee_id: str, from_utc: dt.datetime,
@@ -94,8 +94,8 @@ class SqlPunchAdapter:
             return _mark(p) if p else None
         p = self.db.scalar(select(Punch).where(
             Punch.employee_id == emp_pk(employee_id),
-            Punch.ts < utc_to_local_naive(at_utc),
-            Punch.ts <= utc_to_local_naive(self.now))
+            Punch.ts < at_utc,
+            Punch.ts <= self.now)
             .order_by(Punch.ts.desc(), Punch.id.desc()).limit(1))
         return _mark(p) if p else None
 
@@ -103,8 +103,8 @@ class SqlPunchAdapter:
         """Первая отметка с at ≥ at_utc (2.6) — закрывает сессию за правой границей (16.4)."""
         p = self.db.scalar(select(Punch).where(
             Punch.employee_id == emp_pk(employee_id),
-            Punch.ts >= utc_to_local_naive(at_utc),
-            Punch.ts <= utc_to_local_naive(self.now))
+            Punch.ts >= at_utc,
+            Punch.ts <= self.now)
             .order_by(Punch.ts, Punch.id).limit(1))
         return _mark(p) if p else None
 
@@ -117,7 +117,7 @@ class SqlPunchAdapter:
         оставался «на работе» с более раннего «пришёл» (дефект 15.10.2026: расхождение
         доски с личным экраном, который смотрит по ts).
         """
-        hi = utc_to_local_naive(min(at_utc, self.now))
+        hi = min(at_utc, self.now)
         ranked = select(
             Punch.id,
             func.row_number().over(

@@ -25,7 +25,7 @@ from app.core.audit import audit
 from app.core.auth import Principal, current_principal
 from app.core.db import get_db, lock_employee
 from app.core.permissions import has_perm, principal_permissions, require_perm
-from app.core.time import TZ, local_date, now_local
+from app.core.time import from_local, local_date, local_iso, local_midnight, local_now, to_local
 from app.modules.people.application import Employee, employed_on, ensure_periods, periods_of
 
 from ..adapters.orm import Punch, ScheduleAbsence, TabelDay
@@ -33,9 +33,6 @@ from ..application import timesheet_edit
 from ..application.engine_common import day_code_rows, engine_ports, last_closed_bank
 from ..application.punch_plan import (
     plan_for_date as _plan_for_date,
-)
-from ..application.punch_plan import (
-    to_local as _to_local,
 )
 
 # Grace-период опоздания. Окно поиска открытой сессии больше не нужно:
@@ -136,17 +133,16 @@ def _punch_permissions(db: Session, emp_id: int,
     * код Табеля сегодняшнего дня — режим из карточки кода (punch_in/punch_out):
       отпуск «ОТ» отмечается заявлением, а не отметками. Отсутствующий ключ
       в старой версии справочников — разрешение (RUL-ALL-MARKS-COUNTED)."""
-    now_utc = now.replace(tzinfo=TZ).astimezone(dt.UTC).replace(tzinfo=None)
     in_ok, out_ok, hint = True, True, None
     row = db.scalar(select(ScheduleAbsence).where(
-        ScheduleAbsence.employee_id == emp_id, ScheduleAbsence.start_utc <= now_utc,
-        ScheduleAbsence.end_utc > now_utc, ScheduleAbsence.kind_id.is_not(None)).limit(1))
+        ScheduleAbsence.employee_id == emp_id, ScheduleAbsence.start_utc <= now,
+        ScheduleAbsence.end_utc > now, ScheduleAbsence.kind_id.is_not(None)).limit(1))
     if row is not None and row.kind is not None:
         in_ok = bool(row.kind.punch_in_allowed)
         out_ok = bool(row.kind.punch_out_allowed)
         if not (in_ok and out_ok):
             hint = f"сейчас статус: {row.kind.name}"
-    day = now.date()
+    day = to_local(now).date()
     trow = db.scalar(select(TabelDay).where(TabelDay.employee_id == emp_id,
                                             TabelDay.date == day))
     if trow is not None:
@@ -162,12 +158,12 @@ def _punch_permissions(db: Session, emp_id: int,
 def _today_punched_hours(db: Session, emp_id: int, day: dt.date) -> float:
     """Часы «сегодня» по отметкам (спаренные IN/OUT внутри дня) — справочно для экрана;
     точный расчёт — в Управленческом табеле (16.1 п.2)."""
-    lo = dt.datetime(day.year, day.month, day.day)
+    lo = local_midnight(day)
     rows = db.scalars(select(Punch).where(Punch.employee_id == emp_id, Punch.ts >= lo,
-                                          Punch.ts < lo + dt.timedelta(days=1))
+                                          Punch.ts < local_midnight(day + dt.timedelta(days=1)))
                       .order_by(Punch.ts, Punch.id)).all()
     total, open_since = 0.0, None
-    now = now_local()
+    now = local_now()
     for p in rows:
         if p.kind == "IN":
             open_since = p.ts
@@ -184,34 +180,34 @@ def _status_payload(db: Session, emp: Employee) -> dict:
     today = local_date()
     shift, p_start, p_end, plan_date, subs = _plan_for_date(db, emp.id, today)
     open_in = _open_session(db, emp.id)
-    now = now_local()
+    now = local_now()
     last_punch = db.scalar(select(Punch).where(Punch.employee_id == emp.id)
                            .order_by(Punch.ts.desc()).limit(1))
     elapsed = round((now - open_in.ts).total_seconds() / 3600.0, 1) if open_in else None
     first_expected = subs[0][0] if subs else None
     is_late = bool(first_expected and not open_in
-                   and now > _to_local(first_expected) + dt.timedelta(minutes=rules["grace_minutes"]))
+                   and now > first_expected + dt.timedelta(minutes=rules["grace_minutes"]))
     in_ok, out_ok, hint = _punch_permissions(db, emp.id, now)
     bank_hours, bank_period = last_closed_bank(db, emp.id)
 
     return {
-        "now": now.isoformat(timespec="seconds"),
+        "now": local_iso(now),
         "today": today.isoformat(),
         "plan_date": plan_date.isoformat(),
         "punch_in_allowed": in_ok,
         "punch_out_allowed": out_ok,
         "punch_status_hint": hint,
         "shift": shift,
-        "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
-        "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
-        "expected": [[_to_local(a).strftime("%H:%M"), _to_local(b).strftime("%H:%M")]
+        "planned_start": local_iso(p_start, "minutes"),
+        "planned_end": local_iso(p_end, "minutes"),
+        "expected": [[to_local(a).strftime("%H:%M"), to_local(b).strftime("%H:%M")]
                      for a, b in subs],
         "on_shift": open_in is not None,
-        "session_start": open_in.ts.isoformat(timespec="minutes") if open_in else None,
+        "session_start": local_iso(open_in.ts, "minutes") if open_in else None,
         "elapsed_hours": elapsed,
         "is_late": is_late,
         "last_punch": None if not last_punch else {
-            "kind": last_punch.kind, "ts": last_punch.ts.isoformat(timespec="minutes"),
+            "kind": last_punch.kind, "ts": local_iso(last_punch.ts, "minutes"),
             "source": last_punch.source},
         "today_hours": _today_punched_hours(db, emp.id, today),
         "balance_hours": bank_hours if bank_hours is not None else 0.0,
@@ -256,7 +252,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
     # строка FOR UPDATE, SQLite — блокировка записи); она же сериализует отметку с
     # закрытием периода (TOCTOU).
     lock_employee(db, emp.id)
-    now = now_local()
+    now = local_now()
     backfill = False
     ts = now
 
@@ -272,6 +268,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
             raise HTTPException(status_code=422, detail="Некорректный формат времени (ожидается ISO, например 2026-09-20T08:00)")
         if ts.tzinfo is not None:
             raise HTTPException(status_code=422, detail="Время должно быть локальным, без часового пояса")
+        ts = from_local(ts)
         if ts > now:
             raise HTTPException(status_code=422, detail="Отметка не может быть в будущем")
         if now - ts > dt.timedelta(days=62):
@@ -311,7 +308,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
     if not backfill:
         if kind == "IN" and open_in:
             raise HTTPException(status_code=409,
-                                detail=f"Вы уже на смене с {open_in.ts:%H:%M} — повторная отметка прихода не нужна")
+                                detail=f"Вы уже на смене с {to_local(open_in.ts):%H:%M} — повторная отметка прихода не нужна")
         # «auto» сам выбирает направление, поэтому двойной тап превратился бы в IN+OUT за секунду;
         # явные in/out от дублей уже защищены проверками выше
         last = db.scalar(select(Punch).where(Punch.employee_id == emp.id)
@@ -319,7 +316,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
         if last and abs(now - last.ts) < DUPLICATE_WINDOW:
             what = "приход" if last.kind == "IN" else "уход"
             raise HTTPException(status_code=409,
-                                detail=f"Отметка уже принята: {what} в {last.ts:%H:%M}. "
+                                detail=f"Отметка уже принята: {what} в {to_local(last.ts):%H:%M}. "
                                        "Следующую можно поставить через минуту")
     if backfill:
         # Корректировка задним числом: направление — по сессии, открытой на момент ts, как
@@ -331,7 +328,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
             kind = "OUT" if open_at else "IN"
         elif kind == "IN" and open_at:
             raise HTTPException(status_code=409, detail=(
-                f"На {ts:%d.%m %H:%M} сотрудник уже на смене с {open_at.ts:%d.%m %H:%M} — "
+                f"На {ts:%d.%m %H:%M} сотрудник уже на смене с {to_local(open_at.ts):%d.%m %H:%M} — "
                 "второй «Пришёл» не нужен; если смена прерывалась, сначала отметьте уход"))
 
     # Ворот отметок нет (RUL-ALL-MARKS-COUNTED): все реальные отметки участвуют в расчёте.
@@ -348,7 +345,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
               created_by=principal.user.id, note=note[:255])
     db.add(p)
     audit(db, principal, "punch_" + kind.lower() + ("_backfill" if backfill else ""),
-          f"employee:{emp.id}", {"ts": ts.isoformat(timespec="minutes"), "source": source})
+          f"employee:{emp.id}", {"ts": local_iso(ts, "minutes"), "source": source})
     db.commit()
 
     warnings = []
@@ -366,7 +363,7 @@ def _punch_locked(payload: PunchIn, principal: Principal, db: Session, emp: Empl
                else f"Отмечен уход {day_prefix}в {ts:%H:%M}")
     return {"ok": True, "message": message, "backfill": backfill,
             "plan_date": plan_date.isoformat(),
-            "punch": {"id": p.id, "kind": p.kind, "ts": p.ts.isoformat(timespec="minutes"),
+            "punch": {"id": p.id, "kind": p.kind, "ts": local_iso(p.ts, "minutes"),
                       "source": p.source},
             "warnings": warnings, "status": status}
 
@@ -389,12 +386,11 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
         stmt = stmt.where(Punch.employee_id == employee_id)
 
     if date:
-        lo = dt.datetime(date.year, date.month, date.day)
-        stmt = stmt.where(Punch.ts >= lo, Punch.ts < lo + dt.timedelta(days=1))
+        stmt = stmt.where(Punch.ts >= local_midnight(date),
+                          Punch.ts < local_midnight(date + dt.timedelta(days=1)))
     elif year and month:
-        lo = dt.datetime(year, month, 1)
         hi = dt.date(year + 1, 1, 1) if month == 12 else dt.date(year, month + 1, 1)
-        stmt = stmt.where(Punch.ts >= lo, Punch.ts < dt.datetime(hi.year, hi.month, hi.day))
+        stmt = stmt.where(Punch.ts >= local_midnight(dt.date(year, month, 1)), Punch.ts < local_midnight(hi))
     else:
         limit = 500   # без фильтра по дате — только последние отметки
 
@@ -408,7 +404,7 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
         "id": p.id, "employee_id": p.employee_id,
         "employee": emps[p.employee_id].display_name if p.employee_id in emps else "",
         "position": emps[p.employee_id].position if p.employee_id in emps else "",
-        "ts": p.ts.isoformat(timespec="minutes"), "kind": p.kind,
+        "ts": local_iso(p.ts, "minutes"), "kind": p.kind,
         "source": p.source, "note": p.note,
         "created_by": p.created_by,
     } for p in punches]
@@ -422,10 +418,10 @@ def delete_punch(punch_id: int, principal: Principal = Depends(require_perm("pun
         raise HTTPException(status_code=404, detail="Отметка не найдена")
     ts, emp_id = p.ts, p.employee_id
     lock_employee(db, emp_id)            # отметка — вход закрытия периода (TOCTOU)
-    needs_recalculate = timesheet_edit.ensure_unlocked(str(emp_id), ts.date(),
+    needs_recalculate = timesheet_edit.ensure_unlocked(str(emp_id), to_local(ts).date(),
                                                        engine_ports(db, principal))
     audit(db, principal, "punch_delete", f"punch:{punch_id}",
-          {"employee_id": emp_id, "ts": ts.isoformat(timespec="minutes"), "kind": p.kind})
+          {"employee_id": emp_id, "ts": local_iso(ts, "minutes"), "kind": p.kind})
     db.delete(p)
     # открытый период движок считает при чтении; закрытый результат отмену ещё учитывает —
     # раньше это было молчаливое {"ok": true} (рецензия аудита 22.10.2026, P1)

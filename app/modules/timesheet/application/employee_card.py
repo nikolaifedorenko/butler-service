@@ -7,7 +7,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.time import local_date
+from app.core.time import local_date, utc_iso
 
 from .base_schedule import load_base_config, parse_pattern, pattern_for_date, validate_pattern_label
 from .catalog import BankAdjustment, BlockAssignment
@@ -18,7 +18,7 @@ def adjustment_dict(a: BankAdjustment) -> dict:
     return {"id": a.id, "hours": a.hours, "date": a.effective_date.isoformat(),
             "note": a.note or "", "author": a.author_name or "",
             "reason_code": a.reason_code or "",
-            "created_at": a.created_at.isoformat(timespec="minutes") if a.created_at else ""}
+            "created_at": utc_iso(a.created_at, "minutes") or ""}
 
 
 def bank_as_of(db: Session, emp) -> float:

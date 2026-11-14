@@ -20,6 +20,7 @@ import time
 import pytest
 from sqlalchemy import delete, select
 
+from app.core.time import from_local, local_midnight
 from app.modules.timesheet.application.close_period import close_period
 from app.modules.timesheet.application.recalculate import recalculate
 from tests.engine.helpers import EMP, at
@@ -55,7 +56,7 @@ def emp_id(db):
     emp = next(e for e in db.scalars(select(Employee)) if "Иванов" in e.display_name)
     yield emp.id
     db.rollback()
-    lo = dt.datetime.combine(DAY, dt.time(0))
+    lo = local_midnight(DAY)
     db.execute(delete(TabelDay).where(TabelDay.employee_id == emp.id, TabelDay.date == DAY))
     db.execute(delete(ScheduleAbsence).where(ScheduleAbsence.employee_id == emp.id,
                                              ScheduleAbsence.start_utc >= lo - dt.timedelta(days=1),
@@ -81,7 +82,7 @@ def _punch_lock(s, emp):
     from app.core.db import lock_employee
     from app.modules.timesheet.adapters.orm import Punch
     lock_employee(s, emp)
-    s.add(Punch(employee_id=emp, ts=dt.datetime.combine(DAY, dt.time(9)), kind="IN", source="manual"))
+    s.add(Punch(employee_id=emp, ts=from_local(dt.datetime.combine(DAY, dt.time(9))), kind="IN", source="manual"))
 
 
 @pytest.mark.parametrize("write", [_tabel, _absence, _punch_lock], ids=["tabel", "absence", "punch"])

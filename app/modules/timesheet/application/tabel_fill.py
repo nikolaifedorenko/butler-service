@@ -32,7 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import lock_employee
-from app.core.time import utcnow
+from app.core.time import now
 from app.modules.people.application import Employee, employed_on, periods_of
 
 from ..adapters.orm import TabelDay
@@ -113,7 +113,7 @@ def fill_timesheet_from_cycles(db: Session, employees: list[Employee], first: dt
                     db.add(row)
                     existing[(emp.id, day)] = row
                 row.code, row.plan_minutes, row.source = code, minutes, "cycle"
-                row.updated_by, row.updated_at = actor_id, utcnow()
+                row.updated_by, row.updated_at = actor_id, now()
                 written += 1
             elif code is not None:
                 skipped += 1

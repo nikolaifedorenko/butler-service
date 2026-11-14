@@ -17,7 +17,6 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     Date,
-    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -30,7 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.core.identity import User  # noqa: F401 — связь Employee.user
-from app.core.time import utcnow  # noqa: F401 — default created_at/updated_at
+from app.core.time import Moment, now  # noqa: F401 — default created_at/updated_at
 
 # ────
 # ── Блоки графика, банк часов, двойные оплаты (таймшит-часть бывш. directory.py;
@@ -75,7 +74,7 @@ class BankAdjustment(Base):
     note: Mapped[str] = mapped_column(String(255), default="")        # «почему»
     author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     author_name: Mapped[str] = mapped_column(String(120), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 
@@ -94,7 +93,7 @@ class DoublePayDay(Base):
     scope: Mapped[str] = mapped_column(String(16), default="all")   # shift | week5 | all
     note: Mapped[str] = mapped_column(String(255), default="")      # «Новогодние праздники», «письмо C&B»
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 class VipDoublePay(Base):
@@ -111,7 +110,7 @@ class VipDoublePay(Base):
     note: Mapped[str] = mapped_column(String(255), default="")      # «ВИП-гость: фамилия»
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_by_name: Mapped[str] = mapped_column(String(120), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 
@@ -131,7 +130,7 @@ class Punch(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, index=True)   # локальное время объекта (APP_TZ), naive
+    ts: Mapped[dt.datetime] = mapped_column(Moment, index=True)
     kind: Mapped[str] = mapped_column(String(4))                    # IN | OUT
     source: Mapped[str] = mapped_column(String(16), default="web")  # web | telegram | manual | import
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -206,14 +205,14 @@ class ShiftRevision(Base):
     counts_as_worked: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default_off: Mapped[bool] = mapped_column(Boolean, default=False)
     doc_type: Mapped[str] = mapped_column(String(40), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
     shift_type: Mapped[ShiftType] = relationship()
 
 
 class ScheduleShift(Base):
     """Смена Графика (движок v7.1, 16.3): порождённая из Табеля по окнам CFG-WINDOWS
-    (source="generated") либо ручная (source="manual"). Моменты — naive UTC.
+    (source="generated") либо ручная (source="manual"). Моменты — с поясом (UTC в базе).
     Смена может пересекать полночь; физически не режется — «разрез» логический,
     через ScheduleAbsence (v7/R17). Якорь правки — день начала (date)."""
 
@@ -227,13 +226,13 @@ class ScheduleShift(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
     date: Mapped[dt.date] = mapped_column(Date, index=True)        # день-якорь (день начала)
-    start_utc: Mapped[dt.datetime] = mapped_column(DateTime)       # naive UTC
-    end_utc: Mapped[dt.datetime] = mapped_column(DateTime)         # naive UTC
+    start_utc: Mapped[dt.datetime] = mapped_column(Moment)
+    end_utc: Mapped[dt.datetime] = mapped_column(Moment)
     source: Mapped[str] = mapped_column(String(10), default="generated")  # generated | manual
     shift_type_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(255), default="")
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
 
@@ -250,15 +249,15 @@ class ScheduleAbsence(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
-    start_utc: Mapped[dt.datetime] = mapped_column(DateTime)       # naive UTC
-    end_utc: Mapped[dt.datetime] = mapped_column(DateTime)         # naive UTC
+    start_utc: Mapped[dt.datetime] = mapped_column(Moment)
+    end_utc: Mapped[dt.datetime] = mapped_column(Moment)
     kind_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(255), default="")
     # выбранный сотрудником/менеджером шаблон заявления (18.10.2026): переопределяет
     # привязку вида и точку ввода; пусто — правило по точке ввода (вся смена/интервал)
     doc_type: Mapped[str] = mapped_column(String(40), default="")
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
     kind: Mapped[Optional[ShiftType]] = relationship(lazy="joined")
 # ────
@@ -266,9 +265,6 @@ class ScheduleAbsence(Base):
 # ────
 
 
-# ═══════════════════════ НОЧНОЙ ОТЧЁТ + ЭЛЕКТРОКАРЫ ═══════════════════════
-# Времена событий (created_at/taken_at/…) хранятся в ЛОКАЛЬНОМ времени объекта
-# (Europe/Moscow, naive) — как Punch.ts. Для этого нужен now_local(), а не utcnow().
 
 
 # ═══════════════════════ ДВИЖОК v4: Табель, настройки, закрытия, права ═══════════════════════
@@ -288,7 +284,7 @@ class TabelDay(Base):
     note: Mapped[str] = mapped_column(String(255), default="")
     source: Mapped[str] = mapped_column(String(16), default="manual")   # manual | schedule
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
 class EngineSettingsVersion(Base):
@@ -302,7 +298,7 @@ class EngineSettingsVersion(Base):
     payload_json: Mapped[str] = mapped_column(Text)
     note: Mapped[str] = mapped_column(String(255), default="")
     created_by_name: Mapped[str] = mapped_column(String(120), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 class DayModifier(Base):
@@ -320,7 +316,7 @@ class DayModifier(Base):
     period_start: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True, index=True)
     note: Mapped[str] = mapped_column(String(255), default="")
     created_by_name: Mapped[str] = mapped_column(String(120), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 class PeriodClosing(Base):
@@ -343,7 +339,7 @@ class PeriodClosing(Base):
     flags_json: Mapped[str] = mapped_column(Text, default="{}")   # снимок FlagsResult (7.2)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     closed_by_name: Mapped[str] = mapped_column(String(120), default="")
-    closed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    closed_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 class DeferredCarry(Base):

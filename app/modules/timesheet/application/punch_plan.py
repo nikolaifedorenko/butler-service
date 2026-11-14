@@ -13,13 +13,9 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.time import TZ, now_local
+from app.core.time import TZ, local_iso, local_now, to_local
 
 from ..adapters.orm import ScheduleAbsence, ScheduleShift
-
-
-def to_local(value: dt.datetime) -> dt.datetime:
-    return value.replace(tzinfo=dt.UTC).astimezone(TZ).replace(tzinfo=None)
 
 
 def day_bounds_utc(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
@@ -38,24 +34,25 @@ def plan_for_date(db: Session, emp_id: int, today: dt.date,
     rows = db.scalars(select(ScheduleShift).where(
         ScheduleShift.employee_id == emp_id, ScheduleShift.start_utc < hi,
         ScheduleShift.end_utc > lo).order_by(ScheduleShift.start_utc)).all()
-    now = at_ts or now_local()
+    now = at_ts or local_now()
     today_rows, y_rows = [], []
     for row in rows:
         start, end = to_local(row.start_utc), to_local(row.end_utc)
-        item = {"id": row.id, "source": row.source, "start": start, "end": end,
+        # в ответ API идёт словарь (время — местное, строкой); моменты — рядом, для сравнений
+        item = {"id": row.id, "source": row.source, "start": local_iso(start), "end": local_iso(end),
                 "start_hm": start.strftime("%H:%M"), "end_hm": end.strftime("%H:%M"),
                 "date": row.date.isoformat()}
-        (y_rows if row.date == yesterday else today_rows).append(item)
-    active_yesterday = [r for r in y_rows if r["end"] >= now]
+        (y_rows if row.date == yesterday else today_rows).append((item, start, end))
+    active_yesterday = [r for r in y_rows if r[2] >= now]
     if active_yesterday and not today_rows:
-        row = active_yesterday[-1]
-        return row, row["start"], row["end"], yesterday, subintervals(db, emp_id, yesterday)
+        item, start, end = active_yesterday[-1]
+        return item, start, end, yesterday, subintervals(db, emp_id, yesterday)
     if today_rows:
-        row = today_rows[0]
-        return row, row["start"], row["end"], today, subintervals(db, emp_id, today)
+        item, start, end = today_rows[0]
+        return item, start, end, today, subintervals(db, emp_id, today)
     if active_yesterday:
-        row = active_yesterday[-1]
-        return row, row["start"], row["end"], yesterday, subintervals(db, emp_id, yesterday)
+        item, start, end = active_yesterday[-1]
+        return item, start, end, yesterday, subintervals(db, emp_id, yesterday)
     return None, None, None, today, ()
 
 
@@ -79,11 +76,11 @@ def subintervals(db: Session, emp_id: int, day: dt.date) -> tuple:
 
 
 def _start(row: ScheduleShift) -> dt.datetime:
-    return row.start_utc.replace(tzinfo=dt.UTC)
+    return row.start_utc
 
 
 def _end(row: ScheduleShift) -> dt.datetime:
-    return row.end_utc.replace(tzinfo=dt.UTC)
+    return row.end_utc
 
 
 def _absence(row: ScheduleAbsence):
