@@ -12,7 +12,6 @@ from app.modules.stays.adapters.orm import CoverageGuest, CoverageLine, Reservat
 from app.modules.stays.application import mine
 
 from .helpers import API, create_res, make_category, make_guest
-from .test_fund_schema import iso_engine  # noqa: F401 — фикстура миграционного теста
 from .test_occupancy_and_mine import _body, _doc
 
 
@@ -154,47 +153,6 @@ def test_created_by_butler_own(manager_client, butlers, butler_client, db):
     assert g["id"] in mine.my_guest_ids(db, butlers["a"]) and mine.owns_guest(db, butlers["a"], g["id"])
     assert g["id"] not in mine.my_guest_ids(db, butlers["b"])
     assert butler_client.get(f"{API}/guests/{g['id']}").status_code == 200
-
-
-def test_grants_split_migration(iso_engine):  # noqa: F811
-    """0019: каждый грант stays.edit_mine (allow и deny, роль/группа/пользователь) → два гранта с тем
-    же адресатом и действием; откат собирает пару обратно; колонка автора профиля — туда и обратно."""
-    from alembic import command
-    from sqlalchemy import inspect, text
-
-    from app.bootstrap.schema_version import config
-
-    engine = iso_engine
-    q = text("SELECT group_id, user_id, role, permission, effect FROM access_grants "
-             "WHERE permission LIKE 'stays.%mine%' ORDER BY permission, effect, role")
-    command.downgrade(config(), "0018")
-    try:
-        assert "created_by_employee_id" not in {c["name"] for c in inspect(engine).get_columns("stays_guests")}
-        with engine.begin() as c:
-            c.execute(text("INSERT INTO access_groups (id, name, description, created_at) "
-                           "VALUES (9191, 'Мигр19', '', '2026-01-01')"))
-            c.execute(text("INSERT INTO access_grants (group_id, user_id, role, permission, effect) VALUES "
-                           "(NULL, NULL, 'employee', 'stays.edit_mine', 'deny'), "
-                           "(9191, NULL, '', 'stays.edit_mine', 'allow'), "
-                           "(NULL, NULL, 'employee', 'stays.mine', 'allow')"))
-        command.upgrade(config(), "head")
-        with engine.connect() as c:
-            assert c.execute(q).all() == [
-                (None, None, "employee", "stays.mine", "allow"),
-                (9191, None, "", "stays.mine_guest_edit", "allow"),
-                (None, None, "employee", "stays.mine_guest_edit", "deny"),
-                (9191, None, "", "stays.mine_res_edit", "allow"),
-                (None, None, "employee", "stays.mine_res_edit", "deny")]
-        assert "created_by_employee_id" in {c["name"] for c in inspect(engine).get_columns("stays_guests")}
-        command.downgrade(config(), "0018")
-        with engine.connect() as c:
-            assert c.execute(q).all() == [
-                (9191, None, "", "stays.edit_mine", "allow"),
-                (None, None, "employee", "stays.edit_mine", "deny"),
-                (None, None, "employee", "stays.mine", "allow")]
-        assert "created_by_employee_id" not in {c["name"] for c in inspect(engine).get_columns("stays_guests")}
-    finally:
-        command.upgrade(config(), "head")
 
 
 def test_view_default_everyone(db, employee_client):

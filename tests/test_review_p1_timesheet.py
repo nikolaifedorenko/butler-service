@@ -415,8 +415,7 @@ def test_ts6_deserialize_typed_error_under_python_o():
         [sys.executable, "-O", "-c", script], cwd=BASE,
         input=_corrupt_result_json("НЕСУЩЕСТВУЮЩИЙ"),
         capture_output=True, text=True, timeout=120,
-        env={**os.environ, "DATABASE_URL": "sqlite:///:memory:",
-             "SECRET_KEY": "test-secret-key"})
+        env={**os.environ, "SECRET_KEY": "test-secret-key"})
     assert proc.returncode == 0, proc.stderr
 
 

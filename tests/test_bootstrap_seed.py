@@ -28,22 +28,22 @@ with SessionLocal() as db:
 """
 
 
-def _run(tmp_path, **env):
+def _run(url, **env):
     full = {k: v for k, v in os.environ.items() if k not in ("DEMO_SEED", "ADMIN_PASSWORD")}
-    full.update(DATABASE_URL=f"sqlite:///{tmp_path / 'prod.db'}", SECRET_KEY="test-secret-key-0123456789",
+    full.update(DATABASE_URL=url, SECRET_KEY="test-secret-key-0123456789",
                 NIGHT_SYNC_ENABLED="0", **env)
     return subprocess.run([sys.executable, "-c", PROBE], cwd=ROOT, env=full,
                           capture_output=True, text=True, timeout=120)
 
 
-def test_empty_base_without_admin_password_refuses_to_start(tmp_path):
-    r = _run(tmp_path)
+def test_empty_base_without_admin_password_refuses_to_start(fresh_database):
+    r = _run(fresh_database)
     assert r.returncode != 0
     assert "ADMIN_PASSWORD" in r.stderr
 
 
-def test_empty_base_gets_only_admin_from_env(tmp_path):
-    r = _run(tmp_path, ADMIN_PASSWORD="Admin-Pass-2026")
+def test_empty_base_gets_only_admin_from_env(fresh_database):
+    r = _run(fresh_database, ADMIN_PASSWORD="Admin-Pass-2026")
     assert r.returncode == 0, r.stderr[-2000:]
     # только admin, ни одного сотрудника, словарь смен на месте, demo1234 не подходит
     assert r.stdout.strip().splitlines()[-1] == "['admin'] 0 True False True"

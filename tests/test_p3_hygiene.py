@@ -18,7 +18,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select
 
 from app.core.time import local_date
 
@@ -132,15 +132,6 @@ def test_session_requires_session_token_type(app_stack, db):
         c = TestClient(app_stack["app"])
         c.cookies.set(settings.cookie_name, token)
         assert c.get("/api/auth/me").status_code == expected
-
-
-def test_sqlite_enforces_foreign_keys(app_stack):
-    from app.core.db import engine
-
-    if engine.dialect.name != "sqlite":
-        pytest.skip("PostgreSQL проверяет внешние ключи всегда")
-    with engine.connect() as con:
-        assert con.execute(text("PRAGMA foreign_keys")).scalar() == 1
 
 
 # ── публикация настроек ───────────────────────────────────────────────────────────────

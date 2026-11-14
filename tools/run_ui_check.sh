@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Смоук интерфейса: поднять сервер на свежей демо-БД, прогнать все разделы в jsdom,
+# Смоук интерфейса: поднять сервер на свежей демо-базе PostgreSQL, прогнать все разделы в jsdom,
 # погасить сервер. Использование: tools/run_ui_check.sh [порт] [логин] [разделы]
 # Нужен jsdom: cd tools && npm install jsdom   (в CI ставится автоматически)
 set -u
@@ -8,14 +8,14 @@ ROOT="$(cd "$HERE/.." && pwd)"
 PORT="${1:-8141}"
 LOGIN="${2:-gromova}"
 VIEWS="${3:-grafik,schedule,marks,fact,timesheet,mgmt,employees,me,night,cars,stays,mystays,access,audit,settings}"
-DB="/tmp/ui_harness.db"
-rm -f "$DB" "$DB-wal" "$DB-shm" /tmp/ui_server.log
+DB_URL="$(python3 "$HERE/scenario_db.py" "ui_harness")" || exit 1
+rm -f /tmp/ui_server.log
 
 cd "$ROOT" || exit 1
 # Ключ ≥16 символов: приложение отказывается стартовать со слабым SECRET_KEY (app/main.py).
 # CSRF здесь НЕ отключаем: смоук идёт через jsdom и настоящий api() из core.js —
 # заодно проверяется вся цепочка double-submit (cookie + заголовок X-CSRF-Token).
-export DEMO_SEED=1 DATABASE_URL="sqlite:///$DB" SECRET_KEY="harness-secret-key-0123456789abcdef" APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
+export DEMO_SEED=1 DATABASE_URL="$DB_URL" SECRET_KEY="harness-secret-key-0123456789abcdef" APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >/tmp/ui_server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT

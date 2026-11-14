@@ -9,19 +9,16 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "Батлер Сервис — учёт рабочего времени"
-    # Адрес БД, по старшинству (25.10.2026):
+    # Адрес PostgreSQL, по старшинству:
     #   1. DATABASE_URL — как задан;
     #   2. POSTGRES_HOST (+ POSTGRES_USER/PASSWORD/DB/PORT) — адрес собирается здесь, с
-    #      экранированием: раньше compose подставлял пароль в URL как есть, и «@ : / # %»
-    #      в пароле ломали подключение (рецензия аудита 22.10.2026);
-    #   3. SQLite-файл SQLITE_PATH (в образе — внутри тома data/, см. Dockerfile).
+    #      экранированием: «@ : / # %» в пароле не ломают подключение.
     database_url: str = ""
     postgres_host: str = ""
     postgres_port: int = 5432
     postgres_user: str = "timetrack"
     postgres_password: str = ""
     postgres_db: str = "timetrack"
-    sqlite_path: str = "./timetrack.db"
     secret_key: str = "change-me-in-production"
     app_tz: str = "Europe/Moscow"
     # срок жизни сессии: 48 ч (было 14 суток) — короткое окно для украденной cookie;
@@ -81,7 +78,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _resolve_database_url(self) -> Settings:
         if not self.database_url:
-            self.database_url = postgres_url(self) if self.postgres_host else f"sqlite:///{self.sqlite_path}"
+            if not self.postgres_host:
+                raise ValueError("База данных не задана: укажите POSTGRES_HOST (и POSTGRES_USER, "
+                                 "POSTGRES_PASSWORD, POSTGRES_DB) или DATABASE_URL")
+            self.database_url = postgres_url(self)
+        if not self.database_url.startswith("postgresql"):
+            raise ValueError("Поддерживается только PostgreSQL: DATABASE_URL должен начинаться "
+                             "с postgresql+psycopg2://")
         return self
 
 

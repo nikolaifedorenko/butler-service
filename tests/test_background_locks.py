@@ -1,9 +1,7 @@
-"""Межпроцессные замки и фоновый поток (аудит, шаг 6.3, ARCH-03).
+"""Межпроцессные замки и фоновый поток.
 
-«Другой воркер» держит замок так же, как настоящий соседний процесс: на PostgreSQL —
-advisory-lock в отдельном соединении, на SQLite — flock через отдельный дескриптор файла.
-Поэтому один и тот же тест проверяет обе ветки `core/startup_lock.py`: на SQLite в обычном
-прогоне и на PostgreSQL в CI-джобе postgres.
+«Другой воркер» держит замок так же, как настоящий соседний процесс: advisory-lock
+PostgreSQL в отдельном соединении.
 """
 from __future__ import annotations
 
@@ -22,26 +20,15 @@ def neighbour_holds(name: str | None = None):
 
     from app.core import startup_lock as sl
 
-    if sl.engine.url.get_backend_name() == "postgresql":
-        key = sl._LOCK_KEY if name is None else sl._advisory_key(name)
-        with sl.engine.connect() as con:
-            con.execute(text("SELECT pg_advisory_lock(:k)"), {"k": key})
-            con.commit()
-            try:
-                yield
-            finally:
-                con.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
-                con.commit()
-        return
-    import fcntl
-
-    path = sl._lock_path() if name is None else sl._lock_path_for(name)
-    with path.open("a+") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
+    key = sl._LOCK_KEY if name is None else sl._advisory_key(name)
+    with sl.engine.connect() as con:
+        con.execute(text("SELECT pg_advisory_lock(:k)"), {"k": key})
+        con.commit()
         try:
             yield
         finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+            con.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
+            con.commit()
 
 
 @pytest.fixture()
@@ -92,14 +79,10 @@ def test_try_lock_skips_round_while_neighbour_holds(sl):
             assert again is False
 
 
-def test_lock_file_for_non_file_database_is_stable_per_url(sl, monkeypatch, tmp_path):
-    from sqlalchemy.engine import make_url
-
-    monkeypatch.setattr(sl, "engine", types.SimpleNamespace(url=make_url("postgresql://u@db-1/tt")))
-    a, b = sl._lock_path_for("startup"), sl._lock_path_for("night-sync")
-    assert a.name.startswith("butler-startup-") and a != b and a == sl._lock_path_for("startup")
-    monkeypatch.setattr(sl, "engine", types.SimpleNamespace(url=make_url("postgresql://u@db-2/tt")))
-    assert sl._lock_path_for("startup") != a          # разные базы — разные замки
+def test_lock_keys_are_stable_and_differ_by_name(sl):
+    a, b = sl._advisory_key("night-sync"), sl._advisory_key("notify-outbox")
+    assert a != b and a == sl._advisory_key("night-sync")
+    assert -2**63 <= a < 2**63          # ключ advisory-lock — знаковый int64
 
 
 # ── фоновый поток bootstrap/night_sync.py ──────────────────────────────────────

@@ -14,7 +14,6 @@ from app.modules.stays.adapters.orm import CategoryKind, CategoryState
 
 from .helpers import API, FundDraft, kind_id, make_category, uniq
 from .test_fund_import import _draft, _edit, _export, _row, _upload
-from .test_fund_schema import iso_engine  # noqa: F401 — фикстура миграционного теста
 from .test_fund_versions_api import _clean  # noqa: F401 — autouse: снять версии и сущности теста
 
 PREFIX = "тест-вид-"
@@ -218,44 +217,6 @@ def test_xlsx_roundtrip_with_kinds(manager_role_client, db):
     assert r.status_code == 200, r.text
     assert r.json()["diff"] == {"units": [], "categories": [], "groups": [], "flags": []}
     c.delete(f"{API}/fund/versions/{_draft(db).id}")
-
-
-def test_kinds_migration_roundtrip(iso_engine):  # noqa: F811
-    """0011 → 0012 на данных: четыре прежних вида в справочнике, строки — их id; откат
-    возвращает строку kind."""
-    from alembic import command
-    from sqlalchemy import inspect, text
-
-    from app.bootstrap.schema_version import config
-
-    engine = iso_engine
-    command.downgrade(config(), "0011")
-    try:
-        with engine.begin() as c:
-            v = c.execute(text("SELECT id FROM stays_fund_versions WHERE valid_from = '2000-01-01'")).scalar_one()
-            for cid, code, kind in ((9301, "MV", "villa"), (9302, "MR", "room"), (9303, "MA", "apartment")):
-                c.execute(text("INSERT INTO stays_categories (id) VALUES (:i)"), {"i": cid})
-                c.execute(text("INSERT INTO stays_category_states (version_id, category_id, code, title, kind, "
-                               "weight, escorted, sort_order) VALUES (:v, :i, :c, :c, :k, 1, 0, 1)"),
-                          {"v": v, "i": cid, "c": code, "k": kind})
-        command.upgrade(config(), "head")
-        assert "kind" not in {col["name"] for col in inspect(engine).get_columns("stays_category_states")}
-        with engine.connect() as c:
-            kinds = {t: (bool(e), bool(a)) for t, e, a in c.execute(text(
-                "SELECT title, expanded, archived FROM stays_category_kinds"))}
-            assert kinds == {"вилла": (True, False), "имение": (True, False), "апартаменты": (True, False),
-                             "номер": (False, False)}
-            got = dict(c.execute(text(
-                "SELECT s.code, k.title FROM stays_category_states s JOIN stays_category_kinds k "
-                "ON k.id = s.kind_id WHERE s.category_id >= 9300")).all())
-            assert got == {"MV": "вилла", "MR": "номер", "MA": "апартаменты"}
-        command.downgrade(config(), "0011")
-        assert "stays_category_kinds" not in inspect(engine).get_table_names()
-        with engine.connect() as c:
-            got = dict(c.execute(text("SELECT code, kind FROM stays_category_states WHERE category_id >= 9300")).all())
-            assert got == {"MV": "villa", "MR": "room", "MA": "apartment"}
-    finally:
-        command.upgrade(config(), "head")
 
 
 def test_reset_plan_kind_by_title(db):

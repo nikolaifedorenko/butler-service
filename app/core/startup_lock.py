@@ -1,47 +1,24 @@
-"""Замок инициализации схемы БД (P0-2 ревью 20.10.2026).
+"""Замки PostgreSQL для инициализации схемы и фоновых задач.
 
-Зачем
------
-`app.main.init_db()` при КАЖДОМ старте гоняет ~15 шагов DDL/данных, а прод-профиль
-запускает несколько воркеров uvicorn (`docker-compose.prod.yml`, UVICORN_WORKERS=2).
-Без сериализации два воркера одновременно:
+Прод-профиль запускает несколько воркеров uvicorn и может запускать несколько контейнеров
+приложения. Без сериализации два процесса одновременно выполняют миграции и стартовые шаги
+(«duplicate column», IntegrityError по уникальным полям) — поэтому:
 
-* делают `ALTER TABLE … ADD COLUMN` → «duplicate column name» → воркер падает;
-* вызывают `sync_reports(db, force=True)` → IntegrityError по `night_reports.date`
-  (unique) — оба создают отчёт за одну и ту же ночь.
+* ``startup_lock()`` — блокирующий замок инициализации: второй процесс ждёт первого и затем
+  повторяет те же идемпотентные шаги;
+* ``try_lock(name)`` — неблокирующий именованный замок фоновых задач: раунд работы выполняет
+  один процесс, остальные сразу получают False и пропускают раунд.
 
-Как устроено
-------------
-Механизм выбирается по типу БД, потому что «лидер-воркер» и файловый лок решают
-разные задачи:
-
-* **PostgreSQL** — сеансовый advisory-lock (`pg_try_advisory_lock`): держится на
-  соединении, работает и между воркерами, и между контейнерами (горизонтальное
-  масштабирование), не оставляет файлов;
-* **SQLite и прочие** — `flock` на файле рядом с файлом БД: процессы разные, а файл
-  один (для SQLite это единственный общий ресурс). В Windows `fcntl` нет — там лок
-  не ставится: это локальный сценарий с одним воркером, гонки нет (пишем в лог).
-
-Замок НЕ «лидер-выборы»: второй воркер просто ждёт первого и затем прогоняет те же
-идемпотентные шаги — дёшево (секунды) и без отдельной команды миграций в compose.
-Отдельный шаг `python -m app.bootstrap.migrate` до uvicorn и таблица версий шагов
-(мост к Alembic, ADR-0002) — осознанно вне этой правки.
-
-Рядом живёт `try_lock(name)` — НЕблокирующий именованный замок для фоновых задач
-(ревью 20.10.2026, P1): каждый воркер может запускать свою фоновую задачу, но
-работу в конкретном раунде выполняет только один процесс — остальные сразу
-получают False и пропускают раунд (например, фоновая синхронизация ночных
-отчётов `bootstrap/night_sync.py`, которая раньше висела в GET-запросах).
+Оба — сеансовые advisory-lock (``pg_try_advisory_lock``): держатся на соединении, работают
+между воркерами и контейнерами, файлов не оставляют.
 """
 from __future__ import annotations
 
 import contextlib
 import hashlib
 import logging
-import tempfile
 import time
 from collections.abc import Iterator
-from pathlib import Path
 
 from .db import engine
 
@@ -70,8 +47,7 @@ def startup_lock(timeout: float = _TIMEOUT_S) -> Iterator[None]:
         finally:
             _depth -= 1
         return
-    impl = _pg_lock if engine.url.get_backend_name() == "postgresql" else _file_lock
-    with impl(timeout):
+    with _pg_lock(timeout):
         _depth = 1
         try:
             yield
@@ -104,63 +80,10 @@ def _pg_lock(timeout: float) -> Iterator[None]:
             con.commit()
 
 
-@contextlib.contextmanager
-def _file_lock(timeout: float) -> Iterator[None]:
-    """`flock` на файле рядом с БД (SQLite: общий ресурс всех воркеров — файл базы)."""
-    try:
-        import fcntl
-    except ImportError:                       # pragma: no cover — Windows
-        log.warning("init_db: файловый замок недоступен (нет fcntl) — старт без сериализации; "
-                    "для нескольких воркеров используйте PostgreSQL")
-        yield
-        return
-
-    path = _lock_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fh = path.open("a+")                      # не truncate: файл общий
-    try:
-        deadline = time.monotonic() + timeout
-        waited = False
-        while True:
-            try:
-                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic() > deadline:
-                    raise RuntimeError(
-                        f"Не дождался замка инициализации схемы {path} за {timeout:.0f} с"
-                        ) from None
-                if not waited:
-                    log.info("init_db: жду замок инициализации схемы %s (другой воркер)…", path)
-                    waited = True
-                time.sleep(_POLL_S)
-        try:
-            yield
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
-    finally:
-        fh.close()
-
-
-def _lock_path() -> Path:
-    """Файл замка инициализации: см. `_lock_path_for`."""
-    return _lock_path_for("startup")
-
-
-def _lock_path_for(name: str) -> Path:
-    """Файл замка: рядом с файлом БД, а для не-файловых URL — в tempdir по хешу URL."""
-    url = engine.url
-    database = url.database or ""
-    if url.get_backend_name() == "sqlite" and database and database != ":memory:":
-        return Path(f"{database}.{name}.lock")
-    digest = hashlib.sha256(str(url).encode()).hexdigest()[:16]
-    return Path(tempfile.gettempdir()) / f"butler-{name}-{digest}.lock"
-
-
 # ─────────────────── неблокирующий замок фоновых задач ───────────────────
 
 def _advisory_key(name: str) -> int:
-    """Стабильный int64-ключ advisory-lock по имени замка (для PostgreSQL)."""
+    """Стабильный int64-ключ advisory-lock по имени замка."""
     digest = hashlib.sha256(name.encode()).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 
@@ -169,48 +92,18 @@ def _advisory_key(name: str) -> int:
 def try_lock(name: str) -> Iterator[bool]:
     """Неблокирующий межпроцессный замок: True — взяли, False — держит сосед.
 
-    Для фоновых задач в нескольких воркерах (uvicorn) / контейнерах: раунд работы
-    выполняет тот, кто успел взять замок, остальные пропускают раунд без ожидания.
-    Механизм тот же, что у `startup_lock()`: PostgreSQL — сеансовый
-    `pg_try_advisory_lock` (ключ — хеш имени), SQLite и прочие — `flock` на файле
-    `<БД>.<name>.lock` рядом с базой. Без `fcntl` (Windows, один воркер) замок
-    считается взятым — как и в `startup_lock()`.
+    Для фоновых задач в нескольких воркерах и контейнерах: раунд работы выполняет тот, кто
+    успел взять замок, остальные пропускают раунд без ожидания. Ключ — хеш имени.
     """
-    if engine.url.get_backend_name() == "postgresql":
-        from sqlalchemy import text
+    from sqlalchemy import text
 
-        key = _advisory_key(name)
-        with engine.connect() as con:
-            got = bool(con.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": key}).scalar())
-            con.commit()        # advisory-lock сеансовый — транзакцию открытой не держим
-            try:
-                yield got
-            finally:
-                if got:
-                    con.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
-                    con.commit()
-        return
-
-    try:
-        import fcntl
-    except ImportError:                       # pragma: no cover — Windows
-        log.warning("try_lock(%s): файловый замок недоступен (нет fcntl) — считаем, что взят",
-                    name)
-        yield True
-        return
-
-    path = _lock_path_for(name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fh = path.open("a+")                      # не truncate: файл общий
-    try:
+    key = _advisory_key(name)
+    with engine.connect() as con:
+        got = bool(con.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": key}).scalar())
+        con.commit()        # advisory-lock сеансовый — транзакцию открытой не держим
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            yield False                       # замок у соседа — пропускаем раунд
-            return
-        try:
-            yield True
+            yield got
         finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
-    finally:
-        fh.close()
+            if got:
+                con.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
+                con.commit()
