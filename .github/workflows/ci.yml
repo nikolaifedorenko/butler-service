@@ -255,7 +255,10 @@ jobs:
         run: docker build -t butler-service:ci .
 
       - name: Приложение импортируется в образе (без setuptools, с драйвером PostgreSQL)
-        run: docker run --rm butler-service:ci python -c "import app.main, psycopg2, cryptography; print('ok')"
+        # адрес базы — заглушка: настройки требуют PostgreSQL, но импорт к базе не подключается
+        run: >
+          docker run --rm -e DATABASE_URL=postgresql+psycopg2://image:check@127.0.0.1:1/none
+          butler-service:ci python -c "import app.main, psycopg2, cryptography; print('ok')"
 
       - name: Уязвимости образа (Trivy, HIGH/CRITICAL с исправлением)
         # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и
