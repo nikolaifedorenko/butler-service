@@ -10,7 +10,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.core.time import local_date
+from app.core.time import from_local, local_date
 
 
 def _month_start(d: dt.date, back: int) -> dt.date:
@@ -36,7 +36,7 @@ def closed_two_months(db):
     assert not db.scalar(select(PeriodClosing.id).where(PeriodClosing.employee_id == emp.id,
                                                         PeriodClosing.period_start >= m0)), \
         "текущий месяц закрыт — прошлый уже не «последний закрытый», тест не о том"
-    old = Punch(employee_id=emp.id, ts=dt.datetime.combine(m1 - dt.timedelta(days=1), dt.time(8)),
+    old = Punch(employee_id=emp.id, ts=from_local(dt.datetime.combine(m1 - dt.timedelta(days=1), dt.time(8))),
                 kind="IN", source="manual")
     db.add_all([*rows, old])
     db.commit()
@@ -73,7 +73,7 @@ def test_cancel_in_last_closed_period_warns_about_recalculation(manager_client, 
     from app.modules.timesheet.adapters.orm import Punch
 
     emp, _frozen_day, last_closed_day, _old_id = closed_two_months
-    p = Punch(employee_id=emp.id, ts=dt.datetime.combine(last_closed_day, dt.time(21)),
+    p = Punch(employee_id=emp.id, ts=from_local(dt.datetime.combine(last_closed_day, dt.time(21))),
               kind="OUT", source="manual", note="проба периода")
     db.add(p)
     db.commit()
@@ -87,7 +87,7 @@ def test_cancel_in_open_period_has_no_warning(manager_client, db):
     from app.modules.timesheet.adapters.orm import Punch
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
-    p = Punch(employee_id=emp.id, ts=dt.datetime.combine(local_date(), dt.time(0, 1)),
+    p = Punch(employee_id=emp.id, ts=from_local(dt.datetime.combine(local_date(), dt.time(0, 1))),
               kind="IN", source="manual", note="проба периода")
     db.add(p)
     db.commit()
@@ -102,7 +102,7 @@ def test_month_journal_is_not_truncated(manager_client, db):
     from app.modules.timesheet.adapters.orm import Punch
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
-    base = dt.datetime(2031, 1, 1, 6, 0)
+    base = from_local(dt.datetime(2031, 1, 1, 6, 0))
     rows = [Punch(employee_id=emp.id, ts=base + dt.timedelta(minutes=20 * i),
                   kind="IN" if i % 2 == 0 else "OUT", source="manual", note="проба журнала")
             for i in range(2050)]

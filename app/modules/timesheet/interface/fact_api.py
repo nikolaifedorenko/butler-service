@@ -102,11 +102,9 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
         (r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
             TabelDay.employee_id.in_(emp_ids), TabelDay.date >= period.start,
             TabelDay.date <= period.end))} if emp_ids else {}
-    lo_utc = lo.astimezone(dt.UTC).replace(tzinfo=None)
-    hi_utc = hi.astimezone(dt.UTC).replace(tzinfo=None)
     absence_rows = list(db.scalars(select(ScheduleAbsence).where(
-        ScheduleAbsence.employee_id.in_(emp_ids), ScheduleAbsence.start_utc < hi_utc,
-        ScheduleAbsence.end_utc > lo_utc))) if emp_ids else []
+        ScheduleAbsence.employee_id.in_(emp_ids), ScheduleAbsence.start_utc < hi,
+        ScheduleAbsence.end_utc > lo))) if emp_ids else []
     absences_by_emp: dict[int, list] = {}
     for a in absence_rows:
         absences_by_emp.setdefault(a.employee_id, []).append(a)
@@ -115,12 +113,12 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
         if absence_rows else {}
     # цвета полос — как в сетке Графика: по сменам месяца (якорь и соседи)
     shift_rows = list(db.scalars(select(ScheduleShift).where(
-        ScheduleShift.employee_id.in_(emp_ids), ScheduleShift.start_utc < hi_utc,
-        ScheduleShift.end_utc > lo_utc).order_by(ScheduleShift.start_utc))) if emp_ids else []
+        ScheduleShift.employee_id.in_(emp_ids), ScheduleShift.start_utc < hi,
+        ScheduleShift.end_utc > lo).order_by(ScheduleShift.start_utc))) if emp_ids else []
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for r in shift_rows:
-        s_local = r.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
-        e_local = r.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+        s_local = r.start_utc.astimezone(TZ)
+        e_local = r.end_utc.astimezone(TZ)
         d0 = s_local.date()
         while d0 <= min(e_local.date(), period.end):
             if period.start <= d0:
@@ -174,16 +172,16 @@ def fact_month(year: int, month: int, principal: Principal = Depends(require_per
                        if r.date == d]
             shift_hm = None
             if sh_rows:
-                s0 = sh_rows[0].start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
-                e0 = sh_rows[0].end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+                s0 = sh_rows[0].start_utc.astimezone(TZ)
+                e0 = sh_rows[0].end_utc.astimezone(TZ)
                 shift_hm = (s0.strftime("%H:%M"), e0.strftime("%H:%M"))
             day_abs = []
             whole_off_color = None
             d_lo = dt.datetime.combine(d, dt.time(0), TZ)
             d_hi = d_lo + dt.timedelta(days=1)
             for a in emp_abs:
-                a_lo = a.start_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
-                a_hi = a.end_utc.replace(tzinfo=dt.UTC).astimezone(TZ)
+                a_lo = a.start_utc.astimezone(TZ)
+                a_hi = a.end_utc.astimezone(TZ)
                 if a_lo < d_hi and a_hi > d_lo:
                     day_abs.append([max(a_lo, d_lo).strftime("%H:%M"),
                                     min(a_hi, d_hi).strftime("%H:%M")])

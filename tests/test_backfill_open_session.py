@@ -13,7 +13,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import delete, select
 
-from app.core.time import local_date
+from app.core.time import from_local, local_date
 
 NOTE = "проба backfill"
 
@@ -26,7 +26,7 @@ def night_in(db):
 
     emp = db.scalar(select(Employee).where(Employee.full_name.like("Иванов%")))
     day = local_date() - dt.timedelta(days=3)
-    p = Punch(employee_id=emp.id, ts=dt.datetime.combine(day, dt.time(23, 50)), kind="IN",
+    p = Punch(employee_id=emp.id, ts=from_local(dt.datetime.combine(day, dt.time(23, 50))), kind="IN",
               source="manual", note=NOTE)
     db.add(p)
     db.commit()
@@ -42,7 +42,7 @@ def test_auto_backfill_closes_session_opened_yesterday(manager_client, night_in,
     r = manager_client.post("/api/punches", json={
         "employee_id": emp.id, "kind": "auto", "ts": ts.isoformat(timespec="minutes"), "note": NOTE})
     assert r.status_code == 200, r.text
-    added = db.scalar(select(Punch).where(Punch.employee_id == emp.id, Punch.ts == ts))
+    added = db.scalar(select(Punch).where(Punch.employee_id == emp.id, Punch.ts == from_local(ts)))
     assert added is not None and added.kind == "OUT"
 
 

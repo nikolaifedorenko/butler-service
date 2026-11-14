@@ -17,7 +17,7 @@ from app.core.config import settings as app_settings
 from app.core.db import get_db
 from app.core.format import normalize_hex_color
 from app.core.permissions import require_perm
-from app.core.time import local_date, utc_to_local
+from app.core.time import local_date, local_iso, local_midnight, utc_iso
 from app.modules.people.application import Employee, normalize_group
 
 from ..adapters.orm import DayModifier, EngineSettingsVersion
@@ -54,7 +54,7 @@ def get_settings(on: Optional[dt.date] = None, principal: Principal = Depends(re
                        "payload": payload},
             "latest_id": db.scalar(select(func.max(EngineSettingsVersion.id))),
             "versions": [{"id": v.id, "valid_from": v.valid_from.isoformat(), "note": v.note,
-                          "created_by": v.created_by_name, "created_at": v.created_at.isoformat()} for v in versions],
+                          "created_by": v.created_by_name, "created_at": utc_iso(v.created_at)} for v in versions],
             "modifier_names": [{"name": n, "title": MODIFIER_TITLES[n]} for n in MODIFIER_NAMES]}
 
 
@@ -517,13 +517,12 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
                                  f"{_mod_value_text(m.name, m.value)}, {who}"})
     upcoming.sort(key=lambda x: x["date"])
 
-    since = dt.datetime.combine(day - dt.timedelta(days=30), dt.time(0))
+    since = local_midnight(day - dt.timedelta(days=30))
     recent = []
     for r in db.scalars(select(AuditLog).where(AuditLog.action.in_(SETTINGS_ACTIONS),
                                                AuditLog.ts >= since)
                         .order_by(AuditLog.ts.desc(), AuditLog.id.desc()).limit(12)):
-        ts = utc_to_local(r.ts)
-        recent.append({"ts": ts.isoformat(timespec="seconds") if ts else "", "actor": r.actor_name,
+        recent.append({"ts": local_iso(r.ts) or "", "actor": r.actor_name,
                        "action": r.action, "target": r.target})
 
     granularity = payload.get("period_granularity", "month")
@@ -541,8 +540,7 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
                         "valid_from": ver.valid_from.isoformat() if ver else None,
                         "note": ver.note if ver else "",
                         "created_by": ver.created_by_name if ver else "",
-                        "created_at": utc_to_local(ver.created_at).isoformat(timespec="seconds")
-                        if ver and ver.created_at else ""},
+                        "created_at": (local_iso(ver.created_at) or "") if ver else ""},
             "stats": {"tz": payload.get("tz", ""), "step_minutes": payload.get("step_minutes"),
                       "period_granularity": payload.get("period_granularity", "month"),
                       "late_limit_minutes": payload.get("late_limit_minutes"),

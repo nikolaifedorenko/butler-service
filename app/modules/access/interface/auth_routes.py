@@ -26,9 +26,9 @@ from app.core.security import (
     needs_rehash,
     verify_password,
 )
-from app.core.time import local_date, utcnow
+from app.core.time import local_date, local_iso, now, to_local
 from app.modules.people.application import Employee
-from app.modules.timesheet.application.punch_plan import plan_for_date, to_local
+from app.modules.timesheet.application.punch_plan import plan_for_date
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -44,7 +44,7 @@ _LOGIN_MAX_PER_IP = 50          # на адрес целиком: перебор
 
 
 def _window_start() -> dt.datetime:
-    return utcnow() - dt.timedelta(seconds=_LOGIN_WINDOW_SECONDS)
+    return now() - dt.timedelta(seconds=_LOGIN_WINDOW_SECONDS)
 
 
 def _attempt_key(ip: str, username: str) -> str:
@@ -201,8 +201,8 @@ def me(principal: Principal = Depends(current_principal), db: Session = Depends(
         data["today"] = {
             "date": today.isoformat(),
             "shift": shift,      # отрезок Графика (generated/manual) либо None
-            "planned_start": p_start.isoformat(timespec="minutes") if p_start else None,
-            "planned_end": p_end.isoformat(timespec="minutes") if p_end else None,
+            "planned_start": local_iso(p_start, "minutes"),
+            "planned_end": local_iso(p_end, "minutes"),
             "expected": [[to_local(a).strftime("%H:%M"), to_local(b).strftime("%H:%M")]
                          for a, b in subs],
         }

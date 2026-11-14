@@ -134,8 +134,8 @@ def test_board_route_shift_today_hm_end_to_end(app_stack, manager_client):
     db = app_stack["SessionLocal"]()
     try:
         db.add(ScheduleShift(employee_id=eid, date=day,
-                             start_utc=dt.datetime.combine(day, dt.time(5)),
-                             end_utc=dt.datetime.combine(day, dt.time(17)),
+                             start_utc=dt.datetime.combine(day, dt.time(5), dt.UTC),
+                             end_utc=dt.datetime.combine(day, dt.time(17), dt.UTC),
                              source="manual"))
         db.commit()
     finally:

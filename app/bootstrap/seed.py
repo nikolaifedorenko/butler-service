@@ -38,7 +38,7 @@ from app.modules.timesheet.application.catalog import (
 )
 
 from ..core.security import MIN_PASSWORD_LEN, hash_password
-from ..core.time import local_date, now_local
+from ..core.time import from_local, local_date, local_midnight, local_now
 from ..modules.timesheet.application.base_schedule import save_base_config
 from ..modules.timesheet.application.schedule_helpers import DEFAULT_RULES, RULE_DESCRIPTIONS
 
@@ -314,13 +314,9 @@ def seed_if_empty(db: Session) -> bool:
             break
         away_day -= dt.timedelta(days=1)
 
-    def _utc_naive(local: dt.datetime) -> dt.datetime:
-        from ..core.time import TZ
-        return local.replace(tzinfo=TZ).astimezone(dt.UTC).replace(tzinfo=None)
-
     db.add(ScheduleAbsence(employee_id=ivanov.id,
-                           start_utc=_utc_naive(dt.datetime.combine(away_day, dt.time(14, 0))),
-                           end_utc=_utc_naive(dt.datetime.combine(away_day, dt.time(16, 0))),
+                           start_utc=from_local(dt.datetime.combine(away_day, dt.time(14, 0))),
+                           end_utc=from_local(dt.datetime.combine(away_day, dt.time(16, 0))),
                            kind_id=shifts["TIMEOFF_HOURS"].id,
                            note="Отпросился с 14:00 до 16:00 (заявление)"))
     db.flush()
@@ -340,7 +336,7 @@ def seed_if_empty(db: Session) -> bool:
     )
     base_cfg = load_base_config(db)
     block_index = BlockIndex.load(db, [e.id for e, _, _ in employees])
-    now = now_local()
+    now = local_now()
     absence_rows = {(r.employee_id, r.date): r for r in db.scalars(select(TabelDay).where(
         TabelDay.source == "manual"))}
 
@@ -374,7 +370,7 @@ def seed_if_empty(db: Session) -> bool:
                 policy = defaults.day_code_policy.get(row.code)
                 works = works and policy is not None and policy.carries_hours
             if works:
-                midnight = dt.datetime(d.year, d.month, d.day)
+                midnight = local_midnight(d)
                 start = midnight + dt.timedelta(minutes=window.start_minute)
                 end = midnight + dt.timedelta(minutes=window.end_minute)
                 if start <= now < end:                      # смена идёт прямо сейчас

@@ -29,4 +29,4 @@ def test_preset_shifts(db):
     kind = ShiftType(name="ночь", kind="work", start_time="20:00", end_time="08:00", overnight=True)
     (s,) = preset_shifts("7", D0, kind)
     assert s.employee_id == "7"
-    assert s.start_utc.replace(tzinfo=None) == _utc(D0, 20) and s.end_utc.replace(tzinfo=None) == _utc(D0 + dt.timedelta(days=1), 8)
+    assert s.start_utc == _utc(D0, 20) and s.end_utc == _utc(D0 + dt.timedelta(days=1), 8)

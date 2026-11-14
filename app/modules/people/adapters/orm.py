@@ -12,7 +12,6 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     Date,
-    DateTime,
     Float,
     ForeignKey,
     String,
@@ -21,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.core.identity import User  # noqa: F401 — связь Employee.user
-from app.core.time import utcnow  # noqa: F401 — default created_at
+from app.core.time import Moment, now  # noqa: F401 — default created_at
 
 
 class Department(Base):
@@ -123,6 +122,6 @@ class EmploymentPeriod(Base):
     end_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)  # None — работает сейчас
     note: Mapped[str] = mapped_column(String(255), default="")
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
     employee: Mapped[Employee] = relationship()

@@ -12,7 +12,7 @@ from typing import Iterable, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.time import utcnow
+from app.core.time import now
 
 from ..adapters.orm import Employee, EmploymentPeriod
 
@@ -84,7 +84,7 @@ def open_period(db: Session, emp: Employee, since: dt.date, note: str = "",
         cur.end_date = since - dt.timedelta(days=1)   # закрыли старый, открываем новый
         db.flush()
     period = EmploymentPeriod(employee_id=emp.id, start_date=since, end_date=None,
-                              note=note, created_by=user_id, created_at=utcnow())
+                              note=note, created_by=user_id, created_at=now())
     db.add(period)
     db.flush()
     return period

@@ -49,7 +49,7 @@ def test_window_until_midnight_is_next_day_0000(db, emp):
 
 def test_punch_note_fits_column(manager_client, db, emp):
     limit = Punch.__table__.c.note.type.length
-    p = Punch(employee_id=emp.id, ts=dt.datetime(2029, 3, 6, 9, 0), kind="IN", source="manual")
+    p = Punch(employee_id=emp.id, ts=dt.datetime(2029, 3, 6, 9, 0, tzinfo=TZ), kind="IN", source="manual")
     db.add(p)
     db.commit()
     try:

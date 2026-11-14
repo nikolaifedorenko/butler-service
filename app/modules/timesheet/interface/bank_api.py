@@ -11,7 +11,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db, lock_employee
 from app.core.permissions import require_perm
-from app.core.time import local_date, utcnow
+from app.core.time import local_date, now
 from app.modules.people.application import (
     Employee,
 )
@@ -67,7 +67,7 @@ def bank_adjust(employee_id: int, payload: BankAdjustIn,
     adj = BankAdjustment(employee_id=emp.id, hours=hours, effective_date=eff,
                          note=payload.note.strip(), reason_code=(payload.reason_code or "manual"),
                          author_id=principal.user.id,
-                         author_name=_author_name(principal), created_at=utcnow())
+                         author_name=_author_name(principal), created_at=now())
     db.add(adj)
     audit(db, principal, "bank_adjust", f"employee:{emp.id}",
           {"hours": hours, "date": eff.isoformat(), "note": adj.note})

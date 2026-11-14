@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.time import utcnow
+from app.core.time import Moment, now
 
 
 class StatementKind(Base):
@@ -30,5 +30,5 @@ class StatementKind(Base):
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)   # показывать ли в списках выбора
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)

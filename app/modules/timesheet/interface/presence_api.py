@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
-from app.core.time import utc_to_local
+from app.core.time import local_iso
 from app.modules.people.application import Employee
 
 from ..application.engine_common import emp_brief, engine_ports, now_utc
@@ -46,5 +46,5 @@ def board(principal: Principal = Depends(require_perm("presence.view")),
         card["employee"] = emps.get(card["employee_id"], {})
     for item in payload["yet_to_come"]:
         item["employee"] = emps.get(item["employee_id"], {})
-    return {"now": utc_to_local(now).isoformat(timespec="minutes"),
+    return {"now": local_iso(now, "minutes"),
             "today": today.isoformat(), **payload}

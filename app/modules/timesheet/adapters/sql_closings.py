@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.db import lock_employee
-from app.core.time import utcnow
+from app.core.time import now, utc_iso
 
 from ..domain.types.entities import ClosingInputs, DeferredBlock, Period, PeriodState
 from ..domain.types.results import FlagsResult, SettleResult
@@ -100,7 +100,7 @@ class SqlSettlementStore:
         row.flags_json = json.dumps(flags_to_dict(flags), ensure_ascii=False)
         row.closing_bank_minutes = result.bank_closed_minutes
         row.revision = (row.revision or 0) + 1
-        row.closed_by_name, row.closed_at = self.actor, utcnow()
+        row.closed_by_name, row.closed_at = self.actor, now()
         try:
             self.db.flush()   # уникальный ключ (сотрудник, период) исключает конкурентное закрытие
         except IntegrityError as exc:
@@ -121,7 +121,7 @@ class SqlSettlementStore:
         if row is None:
             return None
         return {"revision": row.revision, "closed_by": row.closed_by_name,
-                "closed_at": row.closed_at.isoformat() if row.closed_at else None,
+                "closed_at": utc_iso(row.closed_at),
                 "versions": (row.settings_versions or "").split(",") if row.settings_versions else []}
 
 

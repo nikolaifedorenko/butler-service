@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import lock_employee
-from app.core.time import utcnow
+from app.core.time import now
 
 from ._db import emp_pk
 from .orm import TabelDay
@@ -36,5 +36,5 @@ class SqlTimesheetStore:
         row.code = code
         row.plan_minutes = int(plan_minutes or 0)
         row.source = "manual"
-        row.updated_at = utcnow()
+        row.updated_at = now()
         self.db.flush()

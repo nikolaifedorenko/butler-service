@@ -34,7 +34,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
-from app.core.time import local_date  # noqa: E402
+from app.core.time import local_date, local_midnight  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.modules.timesheet.application.catalog import (  # noqa: E402
     EngineSettingsVersion,
@@ -243,9 +243,8 @@ class TestDailyShiftExample(unittest.TestCase):
         db = SessionLocal()
         try:
             db.query(Punch).filter(Punch.employee_id == emp,
-                                   Punch.ts >= dt.datetime.combine(m, dt.time()),
-                                   Punch.ts < dt.datetime.combine(m + dt.timedelta(days=2),
-                                                                  dt.time())).delete()
+                                   Punch.ts >= local_midnight(m),
+                                   Punch.ts < local_midnight(m + dt.timedelta(days=2))).delete()
             db.commit()
         finally:
             db.close()

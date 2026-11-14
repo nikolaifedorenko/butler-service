@@ -23,7 +23,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=80), nullable=False),
     sa.Column('description', sa.String(length=255), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
@@ -49,14 +49,14 @@ def upgrade() -> None:
     sa.Column('payload_json', sa.Text(), nullable=False),
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('created_by_name', sa.String(length=120), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_engine_settings_versions_valid_from'), 'engine_settings_versions', ['valid_from'], unique=False)
     op.create_table('login_attempts',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('key', sa.String(length=80), nullable=False),
-    sa.Column('ts', sa.DateTime(), nullable=False),
+    sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_login_attempts_key'), 'login_attempts', ['key'], unique=False)
@@ -163,8 +163,8 @@ def upgrade() -> None:
     sa.Column('builtin', sa.Boolean(), nullable=False),
     sa.Column('active', sa.Boolean(), nullable=False),
     sa.Column('sort_order', sa.Integer(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('code')
     )
@@ -303,7 +303,7 @@ def upgrade() -> None:
     sa.Column('counts_as_worked', sa.Boolean(), nullable=False),
     sa.Column('is_default_off', sa.Boolean(), nullable=False),
     sa.Column('doc_type', sa.String(length=40), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['shift_type_id'], ['shift_types.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -410,7 +410,7 @@ def upgrade() -> None:
     sa.Column('period_start', sa.Date(), nullable=True),
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('created_by_name', sa.String(length=120), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -453,7 +453,7 @@ def upgrade() -> None:
     sa.Column('flags_json', sa.Text(), nullable=False),
     sa.Column('revision', sa.Integer(), nullable=False),
     sa.Column('closed_by_name', sa.String(length=120), nullable=False),
-    sa.Column('closed_at', sa.DateTime(), nullable=False),
+    sa.Column('closed_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('employee_id', 'period_start', name='uq_closing_emp_period')
@@ -574,7 +574,7 @@ def upgrade() -> None:
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('employee_id', sa.Integer(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('token_version', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -606,7 +606,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_access_group_members_user_id'), 'access_group_members', ['user_id'], unique=False)
     op.create_table('audit_log',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('ts', sa.DateTime(), nullable=False),
+    sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
     sa.Column('actor_id', sa.Integer(), nullable=True),
     sa.Column('actor_name', sa.String(length=120), nullable=False),
     sa.Column('action', sa.String(length=64), nullable=False),
@@ -625,7 +625,7 @@ def upgrade() -> None:
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('author_id', sa.Integer(), nullable=True),
     sa.Column('author_name', sa.String(length=120), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['author_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -665,7 +665,7 @@ def upgrade() -> None:
     sa.Column('scope', sa.String(length=16), nullable=False),
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('created_by', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -677,7 +677,7 @@ def upgrade() -> None:
     sa.Column('end_date', sa.Date(), nullable=True),
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('created_by', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -759,7 +759,7 @@ def upgrade() -> None:
     op.create_table('punches',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('employee_id', sa.Integer(), nullable=False),
-    sa.Column('ts', sa.DateTime(), nullable=False),
+    sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
     sa.Column('kind', sa.String(length=4), nullable=False),
     sa.Column('source', sa.String(length=16), nullable=False),
     sa.Column('created_by', sa.Integer(), nullable=True),
@@ -774,13 +774,13 @@ def upgrade() -> None:
     op.create_table('schedule_absences',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('employee_id', sa.Integer(), nullable=False),
-    sa.Column('start_utc', sa.DateTime(), nullable=False),
-    sa.Column('end_utc', sa.DateTime(), nullable=False),
+    sa.Column('start_utc', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('end_utc', sa.DateTime(timezone=True), nullable=False),
     sa.Column('kind_id', sa.Integer(), nullable=True),
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('doc_type', sa.String(length=40), nullable=False),
     sa.Column('created_by', sa.Integer(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.ForeignKeyConstraint(['kind_id'], ['shift_types.id'], ),
@@ -793,13 +793,13 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('employee_id', sa.Integer(), nullable=False),
     sa.Column('date', sa.Date(), nullable=False),
-    sa.Column('start_utc', sa.DateTime(), nullable=False),
-    sa.Column('end_utc', sa.DateTime(), nullable=False),
+    sa.Column('start_utc', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('end_utc', sa.DateTime(timezone=True), nullable=False),
     sa.Column('source', sa.String(length=10), nullable=False),
     sa.Column('shift_type_id', sa.Integer(), nullable=True),
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('updated_by', sa.Integer(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.ForeignKeyConstraint(['shift_type_id'], ['shift_types.id'], ),
     sa.ForeignKeyConstraint(['updated_by'], ['users.id'], ),
@@ -908,7 +908,7 @@ def upgrade() -> None:
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('source', sa.String(length=16), nullable=False),
     sa.Column('updated_by', sa.Integer(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.ForeignKeyConstraint(['updated_by'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id'),
@@ -924,7 +924,7 @@ def upgrade() -> None:
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('created_by', sa.Integer(), nullable=True),
     sa.Column('created_by_name', sa.String(length=120), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.PrimaryKeyConstraint('id')

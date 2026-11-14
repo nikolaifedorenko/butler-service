@@ -31,7 +31,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
-from app.core.time import WD_SHORT, utcnow
+from app.core.time import WD_SHORT, now
 from app.modules.people.application import Employee
 
 from ..adapters.orm import DoublePayDay, VipDoublePay
@@ -167,7 +167,7 @@ def add_days(payload: DaysIn, principal: Principal = Depends(require_perm("setti
         row = existing.get(d)
         if row is None:
             db.add(DoublePayDay(date=d, scope=payload.scope, note=note,
-                                created_by=principal.user.id, created_at=utcnow()))
+                                created_by=principal.user.id, created_at=now()))
             added += 1
         else:
             row.scope = payload.scope
@@ -223,7 +223,7 @@ def add_vip(payload: VipIn, principal: Principal = Depends(require_perm("setting
     vip = VipDoublePay(employee_id=emp.id, start_date=start, end_date=end,
                        note=(payload.note or "").strip()[:255],
                        created_by=principal.user.id, created_by_name=_author_name(principal),
-                       created_at=utcnow())
+                       created_at=now())
     db.add(vip)
     audit(db, principal, "vip_doublepay_add", f"employee:{emp.id}",
           {"start": start.isoformat(), "end": end.isoformat(), "note": vip.note,
