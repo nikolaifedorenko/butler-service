@@ -10,6 +10,7 @@ from typing import Literal
 from sqlalchemy import Date, cast, literal, null, or_, select, union_all
 from sqlalchemy.orm import Session
 
+from app.core.time import local_iso, local_midnight
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Assignment, CoverageLine, Guest, Label, Move, Occupant, Reservation, VipCode
@@ -89,8 +90,8 @@ def _candidates(db: Session, q: BookingQuery):
         stmt = stmt.where(Reservation.check_out >= first, Reservation.check_out <= last)
     else:
         one = dt.timedelta(days=1)
-        stmt = stmt.where(Reservation.created_at >= dt.datetime.combine(first, dt.time()),
-                          Reservation.created_at < dt.datetime.combine(last + one, dt.time()))
+        stmt = stmt.where(Reservation.created_at >= local_midnight(first),
+                          Reservation.created_at < local_midnight(last + one))
     if q.statuses:
         stmt = stmt.where(Reservation.status.in_(q.statuses))
     if q.label_ids:
@@ -292,7 +293,7 @@ def _row(it: _Item, codes: dict[int, str]) -> dict:
             "status": r.status, "status_title": STATUS_TITLES[r.status],
             "label": {"title": it.label.title, "color": it.label.color} if it.label else None,
             "upgrade": it.upgrade, "butlers": it.butlers, "early": r.early, "late": r.late,
-            "created_at": r.created_at.isoformat(timespec="minutes")}
+            "created_at": local_iso(r.created_at, "minutes")}
 
 
 def list_bookings(db: Session, q: BookingQuery, level: Level) -> dict:

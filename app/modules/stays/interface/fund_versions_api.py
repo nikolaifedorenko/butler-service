@@ -21,6 +21,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.identity import User
 from app.core.permissions import require_perm
+from app.core.time import local_iso
 
 from ..adapters.orm import FundVersion, UnitFlag, UnitLineage
 from ..application import fund_drafts as fd
@@ -192,7 +193,7 @@ def list_versions(principal: Principal = Depends(READ), db: Session = Depends(ge
                       .outerjoin(User, User.id == FundVersion.author_id)
                       .order_by(FundVersion.valid_from, FundVersion.id)).all()
     return [{"id": v.id, "valid_from": v.valid_from.isoformat(), "status": v.status, "author": name,
-             "note": v.note, "published_at": v.published_at.isoformat() if v.published_at else None}
+             "note": v.note, "published_at": local_iso(v.published_at, "auto")}
             for v, name in rows]
 
 

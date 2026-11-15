@@ -21,7 +21,7 @@ from sqlalchemy import delete, func, insert, literal, select, update
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
-from app.core.time import local_date, now_local
+from app.core.time import local_date, local_now
 
 from ..adapters.orm import (
     Category,
@@ -767,7 +767,7 @@ def publish(db: Session, principal, rev: int | None = None, propagate: bool = Tr
     else:
         draft.status = "published"
         version = draft
-    version.published_at = now_local()
+    version.published_at = local_now()
     version.rev = 1
     out.version = version
     db.flush()

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core import manifest
 from app.core.audit import AuditLog
+from app.core.time import utc_iso
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Guest, Occupant, Reservation
@@ -42,7 +43,7 @@ def reservation_history(db: Session, rid: int, level: Level) -> list[dict]:
             d = {k: v for k, v in d.items() if k in NAMES_DIFF}
         if "occupants" in d:
             d = {**d, "occupants": [_named_occupants(side, names) for side in d["occupants"]]}
-        out.append({"ts": a.ts.isoformat(), "actor": a.actor_name, "action": a.action,
+        out.append({"ts": utc_iso(a.ts), "actor": a.actor_name, "action": a.action,
                     "title": titles.get(a.action, a.action), "diff": d})
     return out
 

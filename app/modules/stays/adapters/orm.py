@@ -11,7 +11,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
-    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -27,7 +26,7 @@ from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.time import now_local
+from app.core.time import Moment, now
 
 # ── 3.1 Фонд ───────────────────────────────────────────────────────────────
 
@@ -117,8 +116,8 @@ class FundVersion(Base):
     rev: Mapped[int] = mapped_column(Integer, default=1)
     author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     note: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    published_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    published_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
 
 
 class CategoryState(Base):
@@ -214,7 +213,7 @@ class Ooo(Base):
     end_half: Mapped[str] = mapped_column(String(2), default="PM")
     reason: Mapped[str] = mapped_column(String(120), default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
     author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
@@ -229,7 +228,7 @@ class Block(Base):
     start: Mapped[dt.date] = mapped_column(Date)
     end: Mapped[dt.date] = mapped_column(Date)
     version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
     author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
@@ -287,8 +286,8 @@ class Guest(Base):
     search_text: Mapped[str] = mapped_column(String(1000), default="")   # поиск подстрокой: индекс не помогает
     # только ФИО: поиск ниже полного уровня — телефон, почта и поля по нему не ищутся (решение 8)
     name_text: Mapped[str] = mapped_column(String(400), default="", server_default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
 def guest_name_text(g: Guest) -> str:
@@ -372,8 +371,8 @@ class Reservation(Base):
                                                     index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     search_text: Mapped[str] = mapped_column(String(1000), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
 class Move(Base):

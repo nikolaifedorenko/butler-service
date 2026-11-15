@@ -31,6 +31,7 @@ def _numbers(c, **params) -> list[str]:
 def test_modes_stay_checkin_checkout_created(manager_role_client, manager_client, db):
     from datetime import datetime
 
+    from app.core.time import from_local
     from app.modules.stays.adapters.orm import Reservation
     cat = make_category(manager_role_client, n_units=4)
     a = create_res(manager_client, cat, "2038-03-01", "2038-03-05", number="A" + uniq())     # внутри окна
@@ -39,7 +40,7 @@ def test_modes_stay_checkin_checkout_created(manager_role_client, manager_client
     d = create_res(manager_client, cat, "2038-02-20", "2038-03-20", number="D" + uniq())     # накрывает окно
     for r, day in ((a, datetime(2038, 1, 5, 10)), (b, datetime(2038, 3, 4, 9)), (c, datetime(2038, 3, 4, 23, 59)),
                    (d, datetime(2038, 3, 5, 0, 0))):
-        db.get(Reservation, r["id"]).created_at = day
+        db.get(Reservation, r["id"]).created_at = from_local(day)
     db.commit()
     win = {"first": "2038-03-02", "last": "2038-03-04", "category_ids": cat["id"]}
     n = lambda *rs: sorted(r["number"] for r in rs)             # noqa: E731
@@ -56,6 +57,7 @@ def test_modes_stay_checkin_checkout_created(manager_role_client, manager_client
 def test_sort_each_column_both_directions(manager_role_client, manager_client, db):
     from datetime import datetime
 
+    from app.core.time import from_local
     from app.modules.stays.adapters.orm import Reservation
     cat = make_category(manager_role_client, n_units=3)
     other = make_category(manager_role_client, n_units=1)
@@ -65,7 +67,7 @@ def test_sort_each_column_both_directions(manager_role_client, manager_client, d
     made = {}
     for i, (num, ci, co, ct, gi) in enumerate(specs):
         r = create_res(manager_client, ct, ci, co, [(gs[gi]["id"], "main", None, None)], number=num)
-        db.get(Reservation, r["id"]).created_at = datetime(2039, 4, 10 + i, 12)
+        db.get(Reservation, r["id"]).created_at = from_local(datetime(2039, 4, 10 + i, 12))
         made[num] = r
     db.commit()
     assert manager_client.post(f"{API}/reservations/{made['N9']['id']}/status",

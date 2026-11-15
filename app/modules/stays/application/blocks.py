@@ -10,6 +10,8 @@ from typing import Literal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.time import local_iso
+
 from ..adapters.orm import Block, BlockNight
 from . import allocation
 from .fund import FundConflict, FundError
@@ -269,7 +271,7 @@ def list_blocks(db: Session, q: BlockQuery) -> dict:
         row = _row(b, grid, shortage(state, b.id), codes)
         if q.short_only and not row["short"]:
             continue
-        row["created_at"] = b.created_at.isoformat(timespec="minutes")
+        row["created_at"] = local_iso(b.created_at, "minutes")
         rows.append(row)
     rows.sort(key=lambda r: (r["start"], r["title"].lower(), r["id"]))
     rows.sort(key=lambda r: r["title"].lower() if q.sort == "title" else r[q.sort], reverse=q.dir == "desc")

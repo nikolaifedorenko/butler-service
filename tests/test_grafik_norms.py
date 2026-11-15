@@ -60,6 +60,7 @@ FIRST = TODAY.replace(day=1)
 # месяц с уже прошедшей первой неделей — для тестов с отметками задним числом
 # («Отметка не может быть в будущем»): в первые дни месяца — предыдущий месяц
 PAST_FIRST = FIRST if TODAY.day > 7 else (FIRST - dt.timedelta(days=1)).replace(day=1)
+DATES_AT_RUN_TIME = ("TODAY", "FIRST", "PAST_FIRST")
 
 
 def _login(c: TestClient, username: str) -> None:

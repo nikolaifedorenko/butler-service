@@ -80,13 +80,13 @@ def test_moment_column_rejects_naive_and_returns_utc(db):
         db.commit()
 
 
-def test_schema_stores_moments_with_time_zone(db):
-    """Переведённые колонки — timestamptz; остальные ждут второй части шага 3в."""
+def test_schema_stores_every_moment_with_time_zone(db):
+    """В базе нет времени без пояса: все колонки даты-времени — timestamptz."""
     from sqlalchemy import text
 
     types = dict(db.execute(text(
         "SELECT table_name || '.' || column_name, data_type FROM information_schema.columns "
         "WHERE table_schema = 'public' AND data_type LIKE 'timestamp%'")).all())
-    for column in ("punches.ts", "schedule_shifts.start_utc", "schedule_absences.end_utc", "audit_log.ts",
-                   "users.created_at", "login_attempts.ts", "period_closings.closed_at", "statement_kinds.created_at"):
-        assert types[column] == "timestamp with time zone", (column, types.get(column))
+    assert len(types) >= 60
+    naive = sorted(c for c, kind in types.items() if kind != "timestamp with time zone")
+    assert naive == []

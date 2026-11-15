@@ -104,6 +104,32 @@ def rows(url: str, sql: str) -> list:
         eng.dispose()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _dates_at_run_time(request):
+    """Даты-константы файла тестов — на момент запуска, а не импорта.
+
+    Между сбором тестов и их запуском проходят минуты: прогон через полночь оставлял бы в
+    константах вчерашнюю дату (так упал CI 13.11.2026). Файл перечисляет такие константы в
+    ``DATES_AT_RUN_TIME``; здесь их присваивания выполняются заново в порядке файла.
+    Значения, уже попавшие в параметры тестов при сборе, этим не обновляются."""
+    import ast
+    import inspect
+
+    module = request.module
+    names = getattr(module, "DATES_AT_RUN_TIME", ())
+    if not names:
+        return
+    tree = ast.parse(inspect.getsource(module))
+    seen = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets = {n.id for t in node.targets for n in ast.walk(t) if isinstance(n, ast.Name)}
+            if targets & set(names):
+                exec(compile(ast.Module([node], []), module.__file__, "exec"), module.__dict__)  # noqa: S102
+                seen |= targets
+    assert set(names) <= seen, f"{module.__name__}: нет присваивания для {set(names) - seen}"
+
+
 @pytest.fixture()
 def fresh_database():
     """Адрес новой пустой базы; после теста база удаляется."""
@@ -325,7 +351,7 @@ def open_shift(db, freeze):
                               .where(CarNightCheck.report_id == rep.id)):
             db.delete(row)
         db.commit()
-        start = dt.datetime.now() - dt.timedelta(seconds=1)
+        start = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1)
         try:
             yield rep
         finally:

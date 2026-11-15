@@ -20,11 +20,11 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.core.time import now_local
+from app.core.time import Moment, now
 
 
 class ResponsibilityService(Base):
@@ -58,8 +58,8 @@ class ResponsibilityService(Base):
     email_copy: Mapped[str] = mapped_column(String(400), default="")
     chat_ids: Mapped[str] = mapped_column(Text, default="[]")     # JSON-список chat_id
     note: Mapped[str] = mapped_column(String(300), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
 class NotifyChat(Base):
@@ -82,8 +82,8 @@ class NotifyChat(Base):
     title: Mapped[str] = mapped_column(String(255), default="")
     username: Mapped[str] = mapped_column(String(120), default="")            # @username, если есть
     kind: Mapped[str] = mapped_column(String(24), default="group")            # group | supergroup | channel | private
-    first_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    first_seen: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    last_seen: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 class NotifyTemplate(Base):
@@ -102,7 +102,7 @@ class NotifyTemplate(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     domain: Mapped[str] = mapped_column(String(32), unique=True, index=True)   # night | cars | …
     text: Mapped[str] = mapped_column(Text, default="")
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
 class NotifyDispatch(Base):
@@ -128,7 +128,7 @@ class NotifyDispatch(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     domain: Mapped[str] = mapped_column(String(32), index=True)      # night | cars | …
     ref_id: Mapped[int] = mapped_column(Integer, index=True)         # id записи раздела
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, index=True)
+    ts: Mapped[dt.datetime] = mapped_column(Moment, default=now, index=True)
     actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     actor_name: Mapped[str] = mapped_column(String(120), default="")
     recipient_id: Mapped[Optional[int]] = mapped_column(
@@ -143,7 +143,7 @@ class NotifyDispatch(Base):
     media_json: Mapped[str] = mapped_column(Text, default="[]")      # id вложений (для повтора)
     media_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="sent")  # queued | sending | sent | failed
-    sending_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    sending_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
     error: Mapped[str] = mapped_column(Text, default="")
     external_id: Mapped[str] = mapped_column(String(120), default="")
     attempts: Mapped[int] = mapped_column(Integer, default=1)

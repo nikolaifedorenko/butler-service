@@ -29,7 +29,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.errors import Conflict, Validation
 from app.core.startup_lock import try_lock
-from app.core.time import now_local
+from app.core.time import local_now
 from app.modules.notify.application.config import load_config
 from app.modules.notify.application.dispatch import (
     QUEUED,
@@ -72,7 +72,7 @@ def defects_payload(db: Session, rep: NightReport) -> dict:
 def preview_message(db: Session, rep: NightReport, group: dict,
                     author: str = "") -> str:
     """Текст сообщения службе — тот же рендер, что при отправке (предпросмотр)."""
-    ctx = message_context(_report_brief(rep) | {"sent_time": f"{now_local():%H:%M}"},
+    ctx = message_context(_report_brief(rep) | {"sent_time": f"{local_now():%H:%M}"},
                           group, duty_of(rep), author or "—")
     return render_template(template_of(db, DOMAIN), ctx)
 
@@ -146,7 +146,7 @@ def _queue_defects(db: Session, rep: NightReport, principal: Principal, *, mode:
                          "(возможно, всё уже отправлено или исправлено после отправки)")
 
     author = principal.actor_label
-    ts = now_local()
+    ts = local_now()
     plan: list[tuple[list[int], list]] = []
     skipped: list[dict] = []
 

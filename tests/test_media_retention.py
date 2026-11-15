@@ -10,11 +10,11 @@ def test_photo_older_than_its_own_limit_is_removed(db, monkeypatch):
     """Фото 30 дней, видео 180: фото возрастом 60 дней удаляется (было — жило 180)."""
     from app.core import media
     from app.core.media import cleanup_photos, save_photo
-    from app.core.time import now_local
+    from app.core.time import now
 
     ph = save_photo(db, kind="night_item", ref_id=1, filename="old.png", blob=PNG,
                     user_id=None, user_name="")
-    ph.created_at = now_local() - dt.timedelta(days=60)
+    ph.created_at = now() - dt.timedelta(days=60)
     db.commit()
     monkeypatch.setattr(media, "_RULES_PROVIDER",
                         lambda db: {"photo_retention_days": 30, "video_retention_days": 180})

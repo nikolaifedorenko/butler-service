@@ -1,8 +1,6 @@
 """Ход смены: отчёт дня и архив, взять и закрыть область, ответы на пункты, фото."""
 from __future__ import annotations
 
-import datetime as dt
-
 from fastapi import Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -16,7 +14,7 @@ from app.core.media import (
     save_photo_ref,
 )
 from app.core.permissions import has_perm, require_perm
-from app.core.time import now_local
+from app.core.time import local_now, to_local
 
 from ..adapters.orm import (
     NightAreaSection,
@@ -25,10 +23,10 @@ from ..adapters.orm import (
     NightReport,
 )
 from ..application.night import (
-    SHIFT_START,
     current_shift_date,
     report_dict,
     section_dict,
+    shift_start,
 )
 from .night_common import (
     AnswerIn,
@@ -58,7 +56,7 @@ def today_report(principal: Principal = Depends(require_perm("night.view")), db:
     if rep is None:
         # до 20:00 смена действительно ещё не началась; после — отчёт вот-вот
         # создаст фоновый раунд (или стартовый прогон, если сервер только поднялся)
-        if now_local() < dt.datetime.combine(shift_d, SHIFT_START):
+        if local_now() < shift_start(shift_d):
             note = (f"Ночная смена {shift_d.strftime('%d.%m.%Y')} ещё не началась — "
                     f"отчёт появится в 20:00. Прошлые смены — в «Архиве».")
         else:
@@ -106,7 +104,7 @@ def take_section(section_id: int, payload: InterceptionAck,
             raise HTTPException(status_code=409, detail={
                 "interception": True,
                 "message": f"Эту область уже проверяет {sec.taken_by_name} "
-                           f"(с {sec.taken_at:%H:%M}). Продолжить? Отметка перейдёт вам."})
+                           f"(с {to_local(sec.taken_at):%H:%M}). Продолжить? Отметка перейдёт вам."})
         db.add(NightInterception(report_id=rep.id, section_id=sec.id,
                                  from_user_id=sec.taken_by, from_user_name=sec.taken_by_name,
                                  to_user_id=me, to_user_name=_principal_name(principal)))
@@ -116,7 +114,7 @@ def take_section(section_id: int, payload: InterceptionAck,
         # только тот, кто закрыл (или супервайзер и выше)
         if principal.user.id != sec.closed_by and not has_perm(db, principal, "night.reopen_any"):
             raise HTTPException(status_code=409,
-                                detail=f"Область закрыта в {sec.closed_at:%H:%M} — переоткрыть может "
+                                detail=f"Область закрыта в {to_local(sec.closed_at):%H:%M} — переоткрыть может "
                                        f"тот, кто её закрыл, или супервайзер")
         sec.status = "taken"
         sec.closed_at = None
@@ -124,7 +122,7 @@ def take_section(section_id: int, payload: InterceptionAck,
     sec.status = "taken"
     sec.taken_by = me
     sec.taken_by_name = _principal_name(principal)
-    sec.taken_at = now_local()
+    sec.taken_at = local_now()
     audit(db, principal, "night_section_take", f"section:{sec.id}",
           {"area": sec.name, "intercepted": bool(warning and "перехват" in warning)})
     db.commit()
@@ -149,7 +147,7 @@ def close_section(section_id: int, payload: CloseSectionIn | None = None,
             "message": f"Не отмечено пунктов: {len(unanswered)}. "
                        f"Они останутся как «не отмечено». Закрыть всё равно?"})
     sec.status = "done"
-    sec.closed_at = now_local()
+    sec.closed_at = local_now()
     sec.closed_by = principal.user.id
     audit(db, principal, "night_section_close", f"section:{sec.id}",
           {"area": sec.name, "unanswered": len(unanswered)})
@@ -187,12 +185,12 @@ def answer_item(item_id: int, payload: AnswerIn, principal: Principal = Depends(
     ni.comment = payload.comment[:2000]
     ni.answered_by = principal.user.id
     ni.answered_by_name = _principal_name(principal)
-    ni.answered_at = now_local()
+    ni.answered_at = local_now()
     if sec.status == "free":       # отметка без «взять в работу» тоже закрепляет область
         sec.status = "taken"
         sec.taken_by = principal.user.id
         sec.taken_by_name = _principal_name(principal)
-        sec.taken_at = now_local()
+        sec.taken_at = local_now()
     audit(db, principal, "night_item_answer", f"item:{item_id}",
           {"answer": ni.answer, "section_id": sec.id})
     db.commit()

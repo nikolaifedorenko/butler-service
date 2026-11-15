@@ -7,7 +7,6 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     Date,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -18,11 +17,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
-from app.core.time import now_local
+from app.core.time import Moment, now
 
-# ═══════════════════════ НОЧНОЙ ОТЧЁТ + ЭЛЕКТРОКАРЫ ═══════════════════════
-# Времена событий (created_at/taken_at/…) хранятся в ЛОКАЛЬНОМ времени объекта
-# (Europe/Moscow, naive) — как Punch.ts. Для этого нужен now_local(), а не utcnow().
+# ═══════════════════════ НОЧНОЙ ОТЧЁТ ═══════════════════════
+# Времена событий (created_at, taken_at, …) — моменты с поясом (core.time.Moment).
 
 
 class NightZone(Base):
@@ -44,8 +42,8 @@ class NightZone(Base):
     name: Mapped[str] = mapped_column(String(160), unique=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
     areas: Mapped[list[NightArea]] = relationship(back_populates="zone")
 
@@ -70,8 +68,8 @@ class NightArea(Base):
     category: Mapped[str] = mapped_column(String(80), default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
     zone: Mapped[Optional[NightZone]] = relationship(back_populates="areas")
 
@@ -100,8 +98,8 @@ class ZoneChecklistItem(Base):
         ForeignKey("responsibility_services.id"), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
     zone: Mapped[NightZone] = relationship()
 
@@ -123,8 +121,8 @@ class ChecklistItem(Base):
         ForeignKey("responsibility_services.id"), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
     area: Mapped[NightArea] = relationship()
 
@@ -151,8 +149,8 @@ class ChecklistOverride(Base):
     # своя служба у этого объекта (None = как в шаблоне зоны)
     service_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("responsibility_services.id"), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
     area: Mapped[NightArea] = relationship()
     zone_item: Mapped[ZoneChecklistItem] = relationship()
@@ -171,16 +169,16 @@ class NightReport(Base):
     date: Mapped[dt.date] = mapped_column(Date, unique=True, index=True)
     shift_label: Mapped[str] = mapped_column(String(80), default="Ночная смена 20:00–08:00")
     status: Mapped[str] = mapped_column(String(16), default="open")   # open | closed
-    closed_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
     close_reason: Mapped[str] = mapped_column(String(16), default="")  # auto | manual
     # момент ручного переоткрытия (ревью 20.10.2026, P1): пока он проставлен,
     # фоновая синхронизация НЕ закрывает отчёт автоматически — переоткрытую смену
     # закрывает вручную тот, кто её переоткрыл. Раньше ближайший sync_reports
     # (вызывался из каждого GET) закрывал отчёт снова, и переоткрытие «жило» < 2 минут.
-    reopened_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    reopened_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
     result: Mapped[str] = mapped_column(String(16), default="")        # full | partial ('' пока открыт)
     cars_step_done: Mapped[bool] = mapped_column(Boolean, default=False)  # шаг «Проверка электрокаров» завершён
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
     areas: Mapped[list[NightAreaSection]] = relationship(
         back_populates="report", cascade="all, delete-orphan", order_by="NightAreaSection.sort_order")
@@ -212,9 +210,9 @@ class NightAreaSection(Base):
     # кто ведёт проверку области сейчас
     taken_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     taken_by_name: Mapped[str] = mapped_column(String(120), default="")
-    taken_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    taken_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="free")   # free | taken | done
-    closed_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
     closed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     report: Mapped[NightReport] = relationship(back_populates="areas")
@@ -244,13 +242,13 @@ class NightCheckItem(Base):
     comment: Mapped[str] = mapped_column(Text, default="")
     answered_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     answered_by_name: Mapped[str] = mapped_column(String(120), default="")
-    answered_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    answered_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
     # отправка недостатка службе (этап 5): отправленное помечается и повторно не шлётся.
     # Если пункт исправили ПОСЛЕ отправки, ничего не отправляем и не отзываем —
     # в интерфейсе это видно как «исправлено после отправки».
     dispatch_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("notify_dispatches.id"), nullable=True)
-    dispatched_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    dispatched_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
 
     section: Mapped[NightAreaSection] = relationship(back_populates="items")
 
@@ -267,6 +265,6 @@ class NightInterception(Base):
     from_user_name: Mapped[str] = mapped_column(String(120), default="")
     to_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     to_user_name: Mapped[str] = mapped_column(String(120), default="")
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    ts: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 

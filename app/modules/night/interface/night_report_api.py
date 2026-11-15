@@ -19,7 +19,7 @@ from app.core.media import (
 )
 from app.core.permissions import require_perm
 from app.core.settings_store import Setting
-from app.core.time import now_local
+from app.core.time import local_now
 from app.modules.cars.application.cars import CarOpError, check_car_night, finish_cars_step, night_cars_state
 from app.modules.cars.application.catalog import Car
 from app.modules.exchange.application.documents import docx_to_pdf
@@ -126,7 +126,7 @@ def report_car_check(report_id: int, car_id: int,
         sec.status = "taken"
         sec.taken_by = principal.user.id
         sec.taken_by_name = _principal_name(principal)
-        sec.taken_at = now_local()
+        sec.taken_at = local_now()
     try:
         db.commit()
     except IntegrityError:
@@ -154,7 +154,7 @@ def report_cars_finish(report_id: int, payload: InterceptionAck,
     sec = _cars_section(rep)
     if sec.status != "done":
         sec.status = "done"
-        sec.closed_at = now_local()
+        sec.closed_at = local_now()
         sec.closed_by = principal.user.id
     audit(db, principal, "night_cars_finish", f"report:{rep.id}",
           {"checked": state["checked"], "unchecked": state["unchecked"]})
@@ -204,7 +204,7 @@ def reopen_report(report_id: int, principal: Principal = Depends(require_perm("n
     rep.result = ""
     rep.closed_at = None
     rep.close_reason = ""
-    rep.reopened_at = now_local()
+    rep.reopened_at = local_now()
     audit(db, principal, "night_report_reopen", f"report:{rep.id}", {})
     db.commit()
     return {"ok": True, "report": _report_payload(db, rep)}

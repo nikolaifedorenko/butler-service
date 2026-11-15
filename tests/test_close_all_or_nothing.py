@@ -30,6 +30,7 @@ PREV = (TODAY.replace(day=1) - dt.timedelta(days=1)).replace(day=1)
 DAYS = [dt.date(PREV.year, PREV.month, d).isoformat()
         for d in range(1, calendar.monthrange(PREV.year, PREV.month)[1] + 1)]
 BODY = {"year": PREV.year, "month": PREV.month}
+DATES_AT_RUN_TIME = ("TODAY", "PREV", "DAYS", "BODY")
 
 
 def _hire(admin, name: str, tabel: bool) -> int:

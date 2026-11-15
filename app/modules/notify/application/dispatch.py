@@ -25,7 +25,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.media import ALLOWED_EXT, ALLOWED_VIDEO_EXT, BASE_DIR, Photo
-from app.core.time import now_local
+from app.core.time import local_iso, local_now
 
 from ..adapters.orm import NotifyDispatch
 from ..adapters.transports.email import send_mail
@@ -128,7 +128,7 @@ def dispatch_dict(d: NotifyDispatch) -> dict:
         items = []
     return {
         "id": d.id, "domain": d.domain, "ref_id": d.ref_id,
-        "ts": d.ts.isoformat(timespec="seconds") if d.ts else None,
+        "ts": local_iso(d.ts, "seconds"),
         "actor_name": d.actor_name or "",
         "recipient_id": d.recipient_id, "recipient_name": d.recipient_name or "",
         "channel": d.channel, "channel_title": CHANNEL_TITLES.get(d.channel, d.channel),
@@ -177,7 +177,7 @@ def queue_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int
 
     for channel, target, subj, cc in targets:
         row = NotifyDispatch(
-            domain=domain, ref_id=ref_id, ts=now_local(),
+            domain=domain, ref_id=ref_id, ts=local_now(),
             actor_user_id=actor_id, actor_name=actor_name,
             recipient_id=group.get("service_id"), recipient_name=group.get("service_name") or "",
             channel=channel, target=target, subject=subj, message=message,
@@ -196,7 +196,7 @@ def claim(db: Session, row_id: int, from_status: str) -> bool:
     Второй отправитель (двойной повтор, фоновая доотправка, другой воркер) получит False."""
     taken = db.execute(update(NotifyDispatch)
                        .where(NotifyDispatch.id == row_id, NotifyDispatch.status == from_status)
-                       .values(status=SENDING, sending_at=now_local())
+                       .values(status=SENDING, sending_at=local_now())
                        .execution_options(synchronize_session=False)).rowcount
     db.commit()
     return taken == 1
@@ -264,7 +264,7 @@ def fail_stale_sending(db: Session) -> int:
     повторить вручную после проверки."""
     n = db.execute(update(NotifyDispatch)
                    .where(NotifyDispatch.status == SENDING,
-                          NotifyDispatch.sending_at < now_local() - STALE_SENDING)
+                          NotifyDispatch.sending_at < local_now() - STALE_SENDING)
                    .values(status="failed", error=UNKNOWN_DELIVERY,
                            attempts=NotifyDispatch.attempts + 1)
                    .execution_options(synchronize_session=False)).rowcount
