@@ -112,6 +112,7 @@
         "type": "object"
       },
       "AreaBulkIn": {
+        "description": "Однотипные объекты подряд: «Вилла », 4001, 12 штук → «Вилла 4001» … «Вилла 4012».",
         "properties": {
           "category": {
             "default": "",
@@ -148,6 +149,43 @@
           "count"
         ],
         "title": "AreaBulkIn",
+        "type": "object"
+      },
+      "AreaChecklistOut": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/ChecklistAreaOut"
+          },
+          "effective": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveItemOut"
+            },
+            "title": "Effective",
+            "type": "array"
+          },
+          "own_items": {
+            "items": {
+              "$ref": "#/components/schemas/OwnItemOut"
+            },
+            "title": "Own Items",
+            "type": "array"
+          },
+          "zone_items": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateItemOut"
+            },
+            "title": "Zone Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "area",
+          "zone_items",
+          "own_items",
+          "effective"
+        ],
+        "title": "AreaChecklistOut",
         "type": "object"
       },
       "AreaIn": {
@@ -187,6 +225,111 @@
           "name"
         ],
         "title": "AreaIn",
+        "type": "object"
+      },
+      "AreaOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "effective_total": {
+            "title": "Effective Total",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OwnItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
+          },
+          "zone_name": {
+            "title": "Zone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "zone_id",
+          "zone_name",
+          "sort_order",
+          "active",
+          "items",
+          "items_total",
+          "effective_total"
+        ],
+        "title": "AreaOut",
+        "type": "object"
+      },
+      "AreasCreatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created"
+        ],
+        "title": "AreasCreatedOut",
+        "type": "object"
+      },
+      "AreasOut": {
+        "additionalProperties": false,
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/AreaOut"
+            },
+            "title": "Areas",
+            "type": "array"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "areas",
+          "can_edit"
+        ],
+        "title": "AreasOut",
         "type": "object"
       },
       "AssignIn": {
@@ -921,6 +1064,47 @@
         "title": "ChangePasswordIn",
         "type": "object"
       },
+      "ChecklistAreaOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
+          },
+          "zone_name": {
+            "title": "Zone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "zone_id",
+          "zone_name",
+          "active"
+        ],
+        "title": "ChecklistAreaOut",
+        "type": "object"
+      },
       "ClearMonthIn": {
         "properties": {
           "employee_ids": {
@@ -1138,6 +1322,20 @@
           "name"
         ],
         "title": "ContactIn",
+        "type": "object"
+      },
+      "CreatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "CreatedOut",
         "type": "object"
       },
       "DatedAction": {
@@ -1555,6 +1753,62 @@
           "rev"
         ],
         "title": "DraftUnitIn",
+        "type": "object"
+      },
+      "EffectiveItemOut": {
+        "additionalProperties": false,
+        "description": "Пункт итогового чек-листа объекта; id — пункта шаблона зоны или своего, по src.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "overridden": {
+            "title": "Overridden",
+            "type": "boolean"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "service_own": {
+            "title": "Service Own",
+            "type": "boolean"
+          },
+          "src": {
+            "enum": [
+              "zone",
+              "area"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "src",
+          "text",
+          "overridden",
+          "service_id",
+          "service_name",
+          "service_own"
+        ],
+        "title": "EffectiveItemOut",
         "type": "object"
       },
       "EmailTestIn": {
@@ -2337,7 +2591,27 @@
         "title": "InterceptionAck",
         "type": "object"
       },
+      "ItemAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "added_to_open_sections": {
+            "title": "Added To Open Sections",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "added_to_open_sections"
+        ],
+        "title": "ItemAddedOut",
+        "type": "object"
+      },
       "ItemIn": {
+        "description": "Пункт чек-листа — шаблона зоны или свой пункт объекта.",
         "properties": {
           "active": {
             "default": true,
@@ -3154,7 +3428,7 @@
         "type": "object"
       },
       "OverrideIn": {
-        "description": "Индивидуальная правка пункта шаблона зоны у конкретного объекта.",
+        "description": "Особенность объекта для пункта шаблона зоны.",
         "properties": {
           "disabled": {
             "default": false,
@@ -3179,6 +3453,80 @@
           }
         },
         "title": "OverrideIn",
+        "type": "object"
+      },
+      "OverrideSetOut": {
+        "additionalProperties": false,
+        "properties": {
+          "effective": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveItemOut"
+            },
+            "title": "Effective",
+            "type": "array"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sections_refreshed": {
+            "title": "Sections Refreshed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sections_refreshed",
+          "effective"
+        ],
+        "title": "OverrideSetOut",
+        "type": "object"
+      },
+      "OwnItemOut": {
+        "additionalProperties": false,
+        "description": "Свой пункт объекта.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "sort_order",
+          "active",
+          "service_id",
+          "service_name"
+        ],
+        "title": "OwnItemOut",
         "type": "object"
       },
       "ParkOut": {
@@ -3577,6 +3925,25 @@
         "title": "RehireIn",
         "type": "object"
       },
+      "RemovedFromOpenOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "removed_from_open": {
+            "title": "Removed From Open",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "removed_from_open"
+        ],
+        "title": "RemovedFromOpenOut",
+        "type": "object"
+      },
       "RenderIn": {
         "properties": {
           "date_from": {
@@ -3916,6 +4283,44 @@
         "title": "RuleIn",
         "type": "object"
       },
+      "SectionsRefreshedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sections_refreshed": {
+            "title": "Sections Refreshed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sections_refreshed"
+        ],
+        "title": "SectionsRefreshedOut",
+        "type": "object"
+      },
+      "SectionsRemovedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sections_removed": {
+            "title": "Sections Removed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sections_removed"
+        ],
+        "title": "SectionsRemovedOut",
+        "type": "object"
+      },
       "SeedIn": {
         "properties": {
           "position": {
@@ -3929,8 +4334,50 @@
         "title": "SeedIn",
         "type": "object"
       },
+      "ServiceCreatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "service": {
+            "$ref": "#/components/schemas/ServiceOut"
+          }
+        },
+        "required": [
+          "id",
+          "service"
+        ],
+        "title": "ServiceCreatedOut",
+        "type": "object"
+      },
+      "ServiceDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items_total"
+        ],
+        "title": "ServiceDeletedOut",
+        "type": "object"
+      },
       "ServiceIn": {
-        "description": "Ответственная служба: каналы доставки и получатели (этап 3).\n\nchat_ids — закрепление чатов из ОБЩЕГО каталога Telegram (получается в\n«Настройки → Чаты и Почта»), поэтому здесь только их числовые id.",
+        "description": "Ответственная служба: каналы доставки и получатели.\n\nchat_ids — чаты из общего каталога Telegram («Настройки → Чаты и Почта»), здесь только id.",
         "properties": {
           "active": {
             "default": true,
@@ -3984,6 +4431,145 @@
           "name"
         ],
         "title": "ServiceIn",
+        "type": "object"
+      },
+      "ServiceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "chat_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "email_copy": {
+            "title": "Email Copy",
+            "type": "string"
+          },
+          "email_to": {
+            "title": "Email To",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "ready_email": {
+            "title": "Ready Email",
+            "type": "boolean"
+          },
+          "ready_telegram": {
+            "title": "Ready Telegram",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "use_email": {
+            "title": "Use Email",
+            "type": "boolean"
+          },
+          "use_telegram": {
+            "title": "Use Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sort_order",
+          "active",
+          "use_telegram",
+          "use_email",
+          "email_to",
+          "email_copy",
+          "chat_ids",
+          "note",
+          "items_total",
+          "ready_telegram",
+          "ready_email",
+          "ready",
+          "created_at"
+        ],
+        "title": "ServiceOut",
+        "type": "object"
+      },
+      "ServiceUpdatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "open_items_updated": {
+            "title": "Open Items Updated",
+            "type": "integer"
+          },
+          "service": {
+            "$ref": "#/components/schemas/ServiceOut"
+          }
+        },
+        "required": [
+          "service",
+          "open_items_updated"
+        ],
+        "title": "ServiceUpdatedOut",
+        "type": "object"
+      },
+      "ServicesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceOut"
+            },
+            "title": "Services",
+            "type": "array"
+          }
+        },
+        "required": [
+          "services",
+          "can_edit"
+        ],
+        "title": "ServicesOut",
         "type": "object"
       },
       "ShiftIntervalIn": {
@@ -4212,6 +4798,102 @@
         "title": "TelegramTestIn",
         "type": "object"
       },
+      "TemplateItemOut": {
+        "additionalProperties": false,
+        "description": "Пункт шаблона зоны, как он действует у объекта.",
+        "properties": {
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "effective_service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Service Id"
+          },
+          "effective_service_name": {
+            "title": "Effective Service Name",
+            "type": "string"
+          },
+          "effective_text": {
+            "title": "Effective Text",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "in_checklist": {
+            "title": "In Checklist",
+            "type": "boolean"
+          },
+          "override_service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Service Id"
+          },
+          "override_service_name": {
+            "title": "Override Service Name",
+            "type": "string"
+          },
+          "override_text": {
+            "title": "Override Text",
+            "type": "string"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "sort_order",
+          "override_text",
+          "disabled",
+          "effective_text",
+          "in_checklist",
+          "service_id",
+          "service_name",
+          "override_service_id",
+          "override_service_name",
+          "effective_service_id",
+          "effective_service_name"
+        ],
+        "title": "TemplateItemOut",
+        "type": "object"
+      },
       "TransferIn": {
         "properties": {
           "category_id": {
@@ -4350,6 +5032,49 @@
         "title": "VipIn",
         "type": "object"
       },
+      "ZoneAreaOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "active"
+        ],
+        "title": "ZoneAreaOut",
+        "type": "object"
+      },
+      "ZoneDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "areas_left": {
+            "title": "Areas Left",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "areas_left"
+        ],
+        "title": "ZoneDeletedOut",
+        "type": "object"
+      },
       "ZoneIn": {
         "properties": {
           "active": {
@@ -4373,12 +5098,44 @@
         "title": "ZoneIn",
         "type": "object"
       },
-      "ZoneItemIn": {
+      "ZoneItemAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sections_refreshed": {
+            "title": "Sections Refreshed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sections_refreshed"
+        ],
+        "title": "ZoneItemAddedOut",
+        "type": "object"
+      },
+      "ZoneItemOut": {
+        "additionalProperties": false,
         "properties": {
           "active": {
-            "default": true,
             "title": "Active",
             "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "overrides": {
+            "title": "Overrides",
+            "type": "integer"
           },
           "service_id": {
             "anyOf": [
@@ -4391,8 +5148,11 @@
             ],
             "title": "Service Id"
           },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
           "sort_order": {
-            "default": 100,
             "title": "Sort Order",
             "type": "integer"
           },
@@ -4402,9 +5162,135 @@
           }
         },
         "required": [
-          "text"
+          "id",
+          "text",
+          "sort_order",
+          "active",
+          "overrides",
+          "service_id",
+          "service_name"
         ],
-        "title": "ZoneItemIn",
+        "title": "ZoneItemOut",
+        "type": "object"
+      },
+      "ZoneItemsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneAreaOut"
+            },
+            "title": "Areas",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "zone": {
+            "$ref": "#/components/schemas/ZoneOut"
+          }
+        },
+        "required": [
+          "zone",
+          "items",
+          "areas"
+        ],
+        "title": "ZoneItemsOut",
+        "type": "object"
+      },
+      "ZoneOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "areas_total": {
+            "title": "Areas Total",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sort_order",
+          "active",
+          "areas_total",
+          "items_total",
+          "created_at"
+        ],
+        "title": "ZoneOut",
+        "type": "object"
+      },
+      "ZoneUpdatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "zone": {
+            "$ref": "#/components/schemas/ZoneOut"
+          }
+        },
+        "required": [
+          "zone"
+        ],
+        "title": "ZoneUpdatedOut",
+        "type": "object"
+      },
+      "ZonesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneOut"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "zones",
+          "can_edit"
+        ],
+        "title": "ZonesOut",
         "type": "object"
       },
       "app__modules__access__interface__access_api__GroupIn": {
@@ -8427,13 +9313,15 @@
     },
     "/api/night/areas": {
       "get": {
-        "description": "Справочник областей с пунктами (виден всем ролям, включая батлеров).",
+        "description": "Объекты обхода с их пунктами.",
         "operationId": "list_areas_api_night_areas_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AreasOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8460,7 +9348,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8484,7 +9374,7 @@
     },
     "/api/night/areas/bulk": {
       "post": {
-        "description": "Массовое создание однотипных областей («Вилла VEG », 4001, 12 шт → 4001…4012).",
+        "description": "Создать однотипные объекты подряд («Вилла », 4001, 12 штук).",
         "operationId": "create_areas_bulk_api_night_areas_bulk_post",
         "requestBody": {
           "content": {
@@ -8500,7 +9390,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AreasCreatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8524,7 +9416,7 @@
     },
     "/api/night/areas/{area_id}": {
       "delete": {
-        "description": "Удаление мягкое: активные отчёты пересоздаются со свежим снимком, история остаётся.",
+        "description": "Отключить объект: история закрытых смен остаётся.",
         "operationId": "delete_area_api_night_areas__area_id__delete",
         "parameters": [
           {
@@ -8541,7 +9433,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SectionsRemovedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8589,7 +9483,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SectionsRefreshedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8613,7 +9509,7 @@
     },
     "/api/night/areas/{area_id}/checklist": {
       "get": {
-        "description": "Чек-лист объекта для настроек: шаблон зоны с правками + свои пункты + итог.",
+        "description": "Чек-лист объекта: шаблон зоны с особенностями, свои пункты и итог.",
         "operationId": "area_checklist_api_night_areas__area_id__checklist_get",
         "parameters": [
           {
@@ -8630,7 +9526,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AreaChecklistOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8680,7 +9578,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ItemAddedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8704,7 +9604,7 @@
     },
     "/api/night/areas/{area_id}/overrides/{zone_item_id}": {
       "delete": {
-        "description": "Сброс правки: пункт у объекта снова как в шаблоне зоны.",
+        "description": "Убрать особенность: пункт у объекта снова как в шаблоне зоны.",
         "operationId": "reset_override_api_night_areas__area_id__overrides__zone_item_id__delete",
         "parameters": [
           {
@@ -8730,7 +9630,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SectionsRefreshedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8752,7 +9654,7 @@
         ]
       },
       "put": {
-        "description": "Индивидуальная правка пункта шаблона зоны у объекта (своя формулировка / отключить).\n\nПустая формулировка и снятое отключение означают «как в шаблоне зоны» — запись\nправки удаляется. Применяется к ещё НЕ начатым объектам в открытых сменах.",
+        "description": "Особенность объекта для пункта шаблона: своя формулировка, своя служба или отключение.",
         "operationId": "set_override_api_night_areas__area_id__overrides__zone_item_id__put",
         "parameters": [
           {
@@ -8788,7 +9690,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OverrideSetOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8812,7 +9716,7 @@
     },
     "/api/night/items/{item_id}": {
       "delete": {
-        "description": "Мягкое удаление: в незакрытых областях пункт исчезает, в закрытых остаётся навечно.",
+        "description": "Выключить пункт: в закрытых объектах он остаётся.",
         "operationId": "delete_item_api_night_items__item_id__delete",
         "parameters": [
           {
@@ -8829,7 +9733,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedFromOpenOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8877,7 +9783,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -9756,13 +10664,15 @@
     },
     "/api/night/services": {
       "get": {
-        "description": "Справочник служб: каналы, получатели и сколько пунктов за каждой закреплено.",
+        "description": "Службы: каналы, получатели и сколько пунктов за каждой закреплено.",
         "operationId": "list_services_api_night_services_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9789,7 +10699,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceCreatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9813,7 +10725,7 @@
     },
     "/api/night/services/{service_id}": {
       "delete": {
-        "description": "Отключение службы (не удаление): пункты и история закрытых смен остаются как были.\n\nСлужба перестаёт предлагаться в справочнике и не участвует в новых отправках;\nзакреплённые за ней пункты видны в ответе (items_total) — их стоит переназначить.",
+        "description": "Отключить службу: пункты и история закрытых смен остаются.",
         "operationId": "delete_service_api_night_services__service_id__delete",
         "parameters": [
           {
@@ -9830,7 +10742,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9852,7 +10766,6 @@
         ]
       },
       "put": {
-        "description": "Правка службы: новое название уходит в незакрытые смены, в закрытых остаётся старое.",
         "operationId": "update_service_api_night_services__service_id__put",
         "parameters": [
           {
@@ -9879,7 +10792,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUpdatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9923,7 +10838,7 @@
     },
     "/api/night/zone-items/{item_id}": {
       "delete": {
-        "description": "Мягкое удаление пункта шаблона: в незакрытых сменах исчезает, в закрытых остаётся.",
+        "description": "Выключить пункт шаблона: в закрытых объектах он остаётся.",
         "operationId": "delete_zone_item_api_night_zone_items__item_id__delete",
         "parameters": [
           {
@@ -9940,7 +10855,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedFromOpenOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9962,7 +10879,6 @@
         ]
       },
       "put": {
-        "description": "Правка пункта шаблона зоны: текст уезжает во все незакрытые снимки объектов зоны.",
         "operationId": "update_zone_item_api_night_zone_items__item_id__put",
         "parameters": [
           {
@@ -9979,7 +10895,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ZoneItemIn"
+                "$ref": "#/components/schemas/ItemIn"
               }
             }
           },
@@ -9989,7 +10905,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedFromOpenOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10013,13 +10931,15 @@
     },
     "/api/night/zones": {
       "get": {
-        "description": "Справочник зон обхода: сколько в зоне объектов и пунктов шаблона.\n\nВидно всем ролям (зоны нужны батлерам для обхода). Счётчики — агрегатами,\nчтобы список не масштабировался запросами на зону.",
+        "description": "Зоны обхода: сколько в зоне объектов и пунктов шаблона.",
         "operationId": "list_zones_api_night_zones_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ZonesOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10046,7 +10966,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10070,7 +10992,7 @@
     },
     "/api/night/zones/{zone_id}": {
       "delete": {
-        "description": "Отключение зоны (мягкое): объекты и история смен сохраняются.\n\nОбъекты зоны остаются на месте (у каждого свой признак active) — зона просто\nперестаёт предлагаться в справочниках. В уже созданных отчётах название зоны\nхранится снимком (night_area_sections.zone_name).",
+        "description": "Отключить зону: объекты и история смен сохраняются.",
         "operationId": "delete_zone_api_night_zones__zone_id__delete",
         "parameters": [
           {
@@ -10087,7 +11009,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10135,7 +11059,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneUpdatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10159,7 +11085,7 @@
     },
     "/api/night/zones/{zone_id}/items": {
       "get": {
-        "description": "Шаблон чек-листа зоны + объекты зоны (для экрана настроек).",
+        "description": "Шаблон чек-листа зоны и её объекты.",
         "operationId": "zone_items_api_night_zones__zone_id__items_get",
         "parameters": [
           {
@@ -10176,7 +11102,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneItemsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10198,7 +11126,7 @@
         ]
       },
       "post": {
-        "description": "Пункт шаблона зоны: попадает в чек-листы ВСЕХ объектов зоны.\n\nВ открытых сменах пункт добавляется только к ещё НЕ начатым объектам\n(status=\"free\") — как у пунктов отдельного объекта: начатые не перекраиваем.",
+        "description": "Пункт шаблона зоны: попадает в чек-листы всех её объектов.",
         "operationId": "add_zone_item_api_night_zones__zone_id__items_post",
         "parameters": [
           {
@@ -10215,7 +11143,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ZoneItemIn"
+                "$ref": "#/components/schemas/ItemIn"
               }
             }
           },
@@ -10225,7 +11153,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneItemAddedOut"
+                }
               }
             },
             "description": "Successful Response"
