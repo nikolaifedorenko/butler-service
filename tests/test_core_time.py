@@ -56,7 +56,7 @@ def test_utc_iso_is_utc_without_offset():
 def test_moment_column_rejects_naive_and_returns_utc(db):
     from app.core.audit import AuditLog
 
-    row = AuditLog(actor_name="t", action="core_time_probe", target="x", payload_json="{}",
+    row = AuditLog(actor_name="t", action="core_time_probe", target="x", payload={},
                    ts=dt.datetime(2026, 11, 13, 0, 30, tzinfo=t.TZ))
     db.add(row)
     db.commit()

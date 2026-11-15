@@ -3,8 +3,8 @@
 Валидация уровня 1 — при загрузке (5.3): ConfigError сообщает все нарушения разом."""
 from __future__ import annotations
 
+import copy
 import datetime as dt
-import json
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -94,7 +94,7 @@ class SqlSettingsAdapter:
         if period in self._cache:
             return self._cache[period]
         version = base_version(self.db, period.start)
-        payload = json.loads(version.payload_json) if version else {}
+        payload = copy.deepcopy(version.payload) if version else {}
         payload["versions"] = [f"v{version.id}"] if version else ["defaults"]
         payload.setdefault("modifiers", [])
         granularity = payload.get("period_granularity", "month")

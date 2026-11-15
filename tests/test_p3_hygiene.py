@@ -172,7 +172,7 @@ def test_concurrent_publish_waits_and_gets_409(app_stack, admin_client, cleanup_
 
     with SessionLocal() as first:
         _lock_and_check_base_version(first, base)              # первая взяла замок
-        first.add(EngineSettingsVersion(valid_from=dt.date(2031, 1, 1), payload_json="{}", note=NOTE,
+        first.add(EngineSettingsVersion(valid_from=dt.date(2031, 1, 1), payload={}, note=NOTE,
                                         created_by_name="тест"))
         first.flush()
         t = threading.Thread(target=second)

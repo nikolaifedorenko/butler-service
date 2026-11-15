@@ -2,7 +2,6 @@
 особенности объектов, ответственные службы (право правки — night.edit)."""
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 from fastapi import Depends, HTTPException
@@ -199,11 +198,9 @@ def add_item(area_id: int, payload: ItemIn, principal: Principal = Depends(requi
         db.add(NightCheckItem(section_id=sec.id, item_id=item.id, text=item.text,
                               sort_order=item.sort_order, service_id=item.service_id,
                               service_name=svc_names.get(item.service_id or 0, "")))
-        snap = json.loads(sec.snapshot_json or "[]")
-        snap.append({"id": item.id, "src": "area", "text": item.text, "overridden": False,
-                     "service_id": item.service_id,
-                     "service_name": svc_names.get(item.service_id or 0, "")})
-        sec.snapshot_json = json.dumps(snap, ensure_ascii=False)
+        sec.snapshot = [*sec.snapshot, {"id": item.id, "src": "area", "text": item.text, "overridden": False,
+                                        "service_id": item.service_id,
+                                        "service_name": svc_names.get(item.service_id or 0, "")}]
         added += 1
     audit(db, principal, "night_item_create", f"item:{item.id}", {"area": area.name, "added_to": added})
     db.commit()
@@ -235,9 +232,7 @@ def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(re
         ni.service_name = svc_names.get(item.service_id or 0, "")
         if not item.active and not ni.answer:
             # выключенный пункт без ответа убираем из незакрытой области
-            snap = json.loads(ni.section.snapshot_json or "[]") if ni.section else []
-            ni.section.snapshot_json = json.dumps(
-                [x for x in snap if x.get("id") != item.id], ensure_ascii=False)
+            ni.section.snapshot = [x for x in ni.section.snapshot if x.get("id") != item.id]
             db.delete(ni)
     audit(db, principal, "night_item_update", f"item:{item.id}",
           {"text": old_text, **payload.model_dump()})
@@ -465,10 +460,8 @@ def _remove_zone_item_from_open(db: Session, item: ZoneChecklistItem) -> int:
                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
                          .where(NightCheckItem.zone_item_id == item.id, NightReport.status == "open",
                                 NightAreaSection.status != "done", NightCheckItem.answer == "")):
-        snap = json.loads(ni.section.snapshot_json or "[]")
-        ni.section.snapshot_json = json.dumps(
-            [x for x in snap if not (x.get("src") == "zone" and x.get("id") == item.id)],
-            ensure_ascii=False)
+        ni.section.snapshot = [x for x in ni.section.snapshot
+                               if not (x.get("src") == "zone" and x.get("id") == item.id)]
         db.delete(ni)
         removed += 1
     return removed
@@ -670,7 +663,7 @@ def create_service(payload: ServiceIn, principal: Principal = Depends(require_pe
         name=name, sort_order=payload.sort_order, active=payload.active,
         use_telegram=payload.use_telegram, use_email=payload.use_email,
         email_to=payload.email_to.strip()[:200], email_copy=payload.email_copy.strip()[:400],
-        chat_ids=json.dumps(payload.chat_ids), note=payload.note.strip()[:300])
+        chat_ids=list(payload.chat_ids), note=payload.note.strip()[:300])
     db.add(svc)
     db.flush()
     audit(db, principal, "night_service_create", f"service:{svc.id}", payload.model_dump())
@@ -700,7 +693,7 @@ def update_service(service_id: int, payload: ServiceIn,
     svc.use_email = payload.use_email
     svc.email_to = payload.email_to.strip()[:200]
     svc.email_copy = payload.email_copy.strip()[:400]
-    svc.chat_ids = json.dumps(payload.chat_ids)
+    svc.chat_ids = list(payload.chat_ids)
     svc.note = payload.note.strip()[:300]
     db.flush()
     # снимок в незакрытых сменах обновляем (как у текста пункта шаблона зоны)

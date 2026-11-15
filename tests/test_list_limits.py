@@ -18,7 +18,7 @@ def test_car_history_negative_limit_is_clamped(manager_client, db):
 
     car_id = db.scalar(select(Car.id).order_by(Car.id).limit(1))
     db.add_all([CarHistory(car_id=car_id, ts=dt.datetime(2029, 1, 1, 9, m, tzinfo=dt.UTC), action="status",
-                           actor_name="тест limit", details_json="{}") for m in (1, 2)])
+                           actor_name="тест limit", details={}) for m in (1, 2)])
     db.commit()
     try:
         assert db.scalar(select(func.count()).where(CarHistory.car_id == car_id)) > 1

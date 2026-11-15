@@ -2,8 +2,6 @@
 сохранение, журнал «было → стало», список с фильтрами и сортировкой, видимость всем уровням."""
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import select
 
 from app.core.audit import AuditLog
@@ -102,7 +100,7 @@ def test_past_edits_allowed_and_audited(manager_role_client, manager_client, db,
     assert manager_client.delete(f"{API}/ooo/{o['id']}", params={"version": 2}).status_code == 200
     rows = db.scalars(select(AuditLog).where(AuditLog.action == "stays_ooo", AuditLog.target == f"ooo:{o['id']}")
                       .order_by(AuditLog.id)).all()
-    diffs = [json.loads(x.payload_json)["diff"] for x in rows]
+    diffs = [x.payload["diff"] for x in rows]
     assert len(diffs) == 3
     assert diffs[0]["start"] == [None, "2040-06-01"]
     assert diffs[1] == {"start": ["2040-06-01", "2040-06-02"], "end": ["2040-06-05", "2040-06-08"],

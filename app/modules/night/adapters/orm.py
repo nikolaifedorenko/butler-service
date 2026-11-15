@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db import Base
+from app.core.db import Base, Json
 from app.core.time import Moment, now
 
 # ═══════════════════════ НОЧНОЙ ОТЧЁТ ═══════════════════════
@@ -187,7 +187,7 @@ class NightReport(Base):
 class NightAreaSection(Base):
     """Область внутри ночного отчёта — снимок справочника на момент создания отчёта.
 
-    snapshot_json — [{"id": <item_id|zone_item_id>, "src": "zone"|"area", "text": "...",
+    snapshot — [{"id": <item_id|zone_item_id>, "src": "zone"|"area", "text": "...",
     "overridden": bool}]: эффективный чек-лист объекта (шаблон зоны + свои пункты −
     отключённые у объекта, со своими формулировками) фиксируется при создании отчёта,
     поэтому правки справочников позже его не ломают.
@@ -205,7 +205,7 @@ class NightAreaSection(Base):
     # зона снимком (id + название): переименование/отключение зоны не меняет прошлые смены
     zone_id: Mapped[Optional[int]] = mapped_column(ForeignKey("night_zones.id"), nullable=True)
     zone_name: Mapped[str] = mapped_column(String(160), default="")
-    snapshot_json: Mapped[str] = mapped_column(Text, default="[]")
+    snapshot: Mapped[list] = mapped_column(Json, default=list)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     # кто ведёт проверку области сейчас
     taken_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)

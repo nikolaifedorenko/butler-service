@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -113,7 +114,7 @@ def test_sekrety_maskiruyutsya_i_ne_popadayut_v_audit(admin_client, db):
     rows = list(db.scalars(select(AuditLog).where(AuditLog.action == "notify_config_update")
                            .order_by(AuditLog.id.desc()).limit(3)))
     assert rows, "изменение настроек доставки не попало в аудит"
-    blob = " ".join(r.payload_json or "" for r in rows)
+    blob = " ".join(json.dumps(r.payload, ensure_ascii=False) for r in rows)
     assert TOKEN not in blob and "p@ssw0rd-secret" not in blob
     assert "notify_telegram_token" in blob
 

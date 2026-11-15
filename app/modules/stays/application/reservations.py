@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -177,7 +176,7 @@ def reservation_snapshot(db: Session, r: Reservation) -> dict:
            db.scalars(select(Occupant).where(Occupant.reservation_id == r.id).order_by(Occupant.id))]
     return {**{k: _d(getattr(r, k)) for k in SCALARS}, "status": r.status,
             "paid_category_id": r.paid_category_id or r.category_id,
-            "fields": json.loads(r.fields_json or "{}"),
+            "fields": r.fields,
             "moves": [[_d(d), c] for d, c in moves], "units": units, "occupants": occ}
 
 
@@ -277,7 +276,7 @@ def save_reservation(db: Session, doc: dict, rid: int | None,
     for k in SCALARS:
         if k in doc:
             setattr(r, k, doc[k])
-    r.fields_json = json.dumps(fields, ensure_ascii=False)
+    r.fields = fields
     r.search_text = reservation_search_text(r, searchable_codes(db, "reservation"))
     r.version += 1
     if rid is None:
@@ -434,7 +433,7 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
     names = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_({o.guest_id for o in occ})))} if occ else {}
     return {
         "id": r.id, "version": r.version, "status": r.status, "status_title": STATUS_TITLES[r.status],
-        **{k: _d(getattr(r, k)) for k in SCALARS}, "fields": json.loads(r.fields_json or "{}"),
+        **{k: _d(getattr(r, k)) for k in SCALARS}, "fields": r.fields,
         "paid_category_id": r.paid_category_id or r.category_id,
         "moves": [{"move_date": _d(d), "category_id": c} for d, c in moves],
         "segments": [{"index": s.index, "category_id": s.category_id, "start": _d(s.start), "end": _d(s.end),

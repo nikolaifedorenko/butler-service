@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -56,7 +55,7 @@ DEFAULT_HINTS = {
 def defaults_of(db: Session, on: dt.date) -> dict:
     """Глобальные значения модификаторов и лимиты из версии, действующей на дату `on`."""
     ver = base_version(db, on)
-    payload = json.loads(ver.payload_json) if ver else {}
+    payload = ver.payload if ver else {}
     gd = payload.get("global_defaults") or {}
     return {
         "version": {"id": ver.id if ver else None,

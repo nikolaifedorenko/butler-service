@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -34,7 +33,7 @@ def reservation_history(db: Session, rid: int, level: Level) -> list[dict]:
     titles = manifest.audit_titles()
     rows = list(db.scalars(select(AuditLog).where(AuditLog.target == f"reservation:{rid}")
                            .order_by(AuditLog.id.desc())))
-    diffs = [json.loads(a.payload_json or "{}").get("diff", {}) for a in rows]
+    diffs = [a.payload.get("diff", {}) for a in rows]
     gids = {o[0] for d in diffs for side in d.get("occupants", ()) for o in side or ()}
     names = {g.id: short_name(g) for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
     out = []

@@ -15,8 +15,8 @@
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
@@ -122,10 +122,7 @@ def deliver(*, cfg: NotifyConfig, channel: str, target: str, message: str,
 
 def dispatch_dict(d: NotifyDispatch) -> dict:
     """Строка общего журнала для интерфейса."""
-    try:
-        items = json.loads(d.items_json or "[]")
-    except ValueError:
-        items = []
+    items = d.items
     return {
         "id": d.id, "domain": d.domain, "ref_id": d.ref_id,
         "ts": local_iso(d.ts, "seconds"),
@@ -160,10 +157,9 @@ def queue_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int
     владельца). Сбой одного канала не отменяет другой — статус пишется по каждой
     доставке отдельно.
     """
-    snapshot = json.dumps([{"id": d["id"], "area": d.get("area"), "text": d.get("text"),
-                            "comment": d.get("comment"), "kind": d.get("kind")}
-                           for d in group.get("defects", []) if d.get("sendable")],
-                          ensure_ascii=False)
+    snapshot = [{"id": d["id"], "area": d.get("area"), "text": d.get("text"),
+                 "comment": d.get("comment"), "kind": d.get("kind")}
+                for d in group.get("defects", []) if d.get("sendable")]
     media_ids = [p["id"] for d in group.get("defects", []) if d.get("sendable")
                  for p in (d.get("media") or [])]
     rows: list[NotifyDispatch] = []
@@ -181,9 +177,7 @@ def queue_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int
             actor_user_id=actor_id, actor_name=actor_name,
             recipient_id=group.get("service_id"), recipient_name=group.get("service_name") or "",
             channel=channel, target=target, subject=subj, message=message,
-            # снимок копии — повтор отправляет тем же составом (P1 20.10.2026)
-            cc_json=json.dumps(list(cc)),
-            items_json=snapshot, media_json=json.dumps(media_ids),
+            cc=list(cc), items=copy.deepcopy(snapshot), media=list(media_ids),
             media_count=len(media_ids), status=QUEUED, attempts=0)
         db.add(row)
         rows.append(row)
@@ -209,19 +203,8 @@ def deliver_row(db: Session, row: NotifyDispatch, *, cfg: Optional[NotifyConfig]
     from .config import load_config
 
     conf = cfg or load_config(db)
-    try:
-        media_ids = json.loads(row.media_json or "[]")
-    except ValueError:
-        media_ids = []
-    attachments = attachments_of(db, media_ids)
-    # Копия письма — из снимка строки журнала (cc_json, P1 20.10.2026): раньше
-    # повторная отправка теряла адресатов копии.
-    # У строк, сохранённых до миграции, cc_json пуст — повторят отправку без
-    # копии, как и прежде (снимка нет — восстановить его неоткуда).
-    try:
-        cc = tuple(json.loads(row.cc_json or "[]"))
-    except ValueError:
-        cc = ()
+    attachments = attachments_of(db, row.media)
+    cc = tuple(row.cc)
     try:
         row.external_id = deliver(cfg=conf, channel=row.channel, target=row.target,
                                   message=row.message, subject=row.subject,

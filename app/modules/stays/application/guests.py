@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import re
 from dataclasses import dataclass
 
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.core.db import plain_json
 from app.core.time import local_date
 
 from ..adapters.orm import (
@@ -102,12 +102,21 @@ def validate_fields(db: Session, target: str, values: dict) -> dict:
                 dt.date.fromisoformat(str(v))
             except ValueError:
                 raise GuestError(f"Поле «{f.title}»: нужна дата") from None
-        if f.kind == "choice" and v not in json.loads(f.choices_json or "[]"):
+        if f.kind == "choice" and v not in f.choices:
             raise GuestError(f"Поле «{f.title}»: значения нет в списке")
         if f.kind == "text":
             v = str(v)[:500]
         out[code] = v
     return out
+
+
+PREFERENCE_ORDER = ("allergy", "food", "habits")
+
+
+def ordered_preferences(preferences: dict) -> dict:
+    """Предпочтения в порядке показа: сначала поля формы, затем остальные по алфавиту."""
+    rank = {key: i for i, key in enumerate(PREFERENCE_ORDER)}
+    return dict(sorted(preferences.items(), key=lambda kv: (rank.get(kv[0], len(rank)), kv[0])))
 
 
 def searchable_codes(db: Session, target: str) -> set[str]:
@@ -116,7 +125,7 @@ def searchable_codes(db: Session, target: str) -> set[str]:
 
 
 def guest_search_text(g: Guest, searchable: set[str]) -> str:
-    fields = json.loads(g.fields_json or "{}")
+    fields = g.fields
     parts = [g.last_name, g.first_name, g.middle_name, re.sub(r"\D", "", g.phone), g.email,
              *(str(v) for k, v in fields.items() if k in searchable)]
     # нижний регистр Python: SQLite lower() кириллицу не понижает
@@ -124,7 +133,7 @@ def guest_search_text(g: Guest, searchable: set[str]) -> str:
 
 
 def reservation_search_text(r: Reservation, searchable: set[str]) -> str:
-    fields = json.loads(r.fields_json or "{}")
+    fields = r.fields
     parts = [r.number, r.customer, *(str(v) for k, v in fields.items() if k in searchable)]
     return " ".join(p for p in parts if p).lower()[:1000]
 
@@ -147,9 +156,9 @@ def guest_dict(g: Guest) -> dict:
     return {**as_dict(g, PROFILE_FIELDS),
             "birth_date": g.birth_date.isoformat() if g.birth_date else None,
             "phone_display": format_phone(g.phone),
-            "preferences": json.loads(g.preferences_json or "{}"),
-            "special_dates": json.loads(g.special_dates_json or "[]"),
-            "fields": json.loads(g.fields_json or "{}")}
+            "preferences": ordered_preferences(g.preferences),
+            "special_dates": g.special_dates,
+            "fields": g.fields}
 
 
 def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
@@ -178,11 +187,11 @@ def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
     if "birth_date" in data:
         g.birth_date = data["birth_date"]
     if "preferences" in data:
-        g.preferences_json = json.dumps(data["preferences"] or {}, ensure_ascii=False)
+        g.preferences = dict(data["preferences"] or {})
     if "special_dates" in data:
-        g.special_dates_json = json.dumps(data["special_dates"] or [], ensure_ascii=False, default=str)
+        g.special_dates = plain_json(data["special_dates"] or [])
     if "fields" in data:
-        g.fields_json = json.dumps(validate_fields(db, "guest", data["fields"]), ensure_ascii=False)
+        g.fields = validate_fields(db, "guest", data["fields"])
     g.search_text = guest_search_text(g, searchable_codes(db, "guest"))
     db.flush()
     return g, before
@@ -550,15 +559,15 @@ def _merge_profile(keep: Guest, drop: Guest) -> dict:
     if note and note not in (keep.note or ""):
         keep.note = f"{keep.note.rstrip()}\n{note}" if (keep.note or "").strip() else note
         profile.append("note")
-    prefs = json.loads(keep.preferences_json or "{}")
-    pref_added = _fill_missing(prefs, json.loads(drop.preferences_json or "{}"))
-    keep.preferences_json = json.dumps(prefs, ensure_ascii=False)
-    fields = json.loads(keep.fields_json or "{}")
-    fields_added = _fill_missing(fields, json.loads(drop.fields_json or "{}"))
-    keep.fields_json = json.dumps(fields, ensure_ascii=False)
-    dates = json.loads(keep.special_dates_json or "[]")
-    dates_added = [d for d in json.loads(drop.special_dates_json or "[]") if d not in dates]
-    keep.special_dates_json = json.dumps(dates + dates_added, ensure_ascii=False)
+    prefs = dict(keep.preferences)
+    pref_added = _fill_missing(prefs, drop.preferences)
+    keep.preferences = prefs
+    fields = dict(keep.fields)
+    fields_added = _fill_missing(fields, drop.fields)
+    keep.fields = fields
+    dates = list(keep.special_dates)
+    dates_added = [d for d in drop.special_dates if d not in dates]
+    keep.special_dates = dates + dates_added
     return {"profile": profile, "preferences": pref_added, "fields": fields_added, "special_dates": dates_added}
 
 

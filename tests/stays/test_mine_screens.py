@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 import pytest
 from sqlalchemy import delete, select
@@ -111,9 +110,9 @@ def test_today_special_dates_7_days(manager_role_client, manager_client, butlers
     day = D("2041-07-01")
     cat = make_category(manager_role_client, n_units=1)
     g = make_guest(manager_client, special=True)
-    set_guest(g["id"], birth_date=dt.date(1980, 7, 4), special_dates_json=json.dumps([
+    set_guest(g["id"], birth_date=dt.date(1980, 7, 4), special_dates=[
         {"date": "2010-07-06", "what": "Годовщина свадьбы"}, {"date": "2015-07-20", "what": "Далеко"},
-        {"date": "2016-06-30", "what": "Вчера"}, {"date": "", "what": "Без даты"}], ensure_ascii=False))
+        {"date": "2016-06-30", "what": "Вчера"}, {"date": "", "what": "Без даты"}])
     r = _res(manager_client, cat, "2041-07-01", "2041-07-03", [g])
     _line(butlers["a"], day, r["id"])
     on_day(day)

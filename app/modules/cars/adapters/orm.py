@@ -15,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db import Base
+from app.core.db import Base, Json
 from app.core.time import Moment, now
 
 
@@ -94,7 +94,7 @@ class CarHistory(Base):
     person: Mapped[str] = mapped_column(String(120), default="")   # кому отдали / кто вернул
     with_key: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     location: Mapped[str] = mapped_column(String(160), default="")
-    details_json: Mapped[str] = mapped_column(Text, default="{}")
+    details: Mapped[dict] = mapped_column(Json, default=dict)
 
     car: Mapped[Car] = relationship()
 

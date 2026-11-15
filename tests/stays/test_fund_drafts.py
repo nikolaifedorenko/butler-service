@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -230,7 +231,7 @@ def test_publish_writes_audit(db, world):
     v = fd.publish(db, None).version
     db.flush()
     row = db.scalar(select(AuditLog).where(AuditLog.action == "stays_fund_version").order_by(AuditLog.id.desc()))
-    assert row.target == f"fund_version:{v.id}" and "4103" in row.payload_json
+    assert row.target == f"fund_version:{v.id}" and "4103" in json.dumps(row.payload, ensure_ascii=False)
 
 
 def test_diff_kinds(db, world):

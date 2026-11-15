@@ -19,8 +19,8 @@
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
-import json
 from typing import Optional
 
 from sqlalchemy import select
@@ -85,12 +85,7 @@ def service_dict(svc: ResponsibilityService, *, items_total: int = 0) -> dict:
     в пустоту. Чаты закрепляются из общего каталога Telegram («Настройки → Чаты и
     Почта»), поэтому здесь только их id.
     """
-    try:
-        chats = json.loads(svc.chat_ids or "[]")
-        if not isinstance(chats, list):
-            chats = []
-    except ValueError:
-        chats = []
+    chats = list(svc.chat_ids)
     return {
         "id": svc.id, "name": svc.name, "sort_order": svc.sort_order,
         "active": bool(svc.active),
@@ -178,7 +173,7 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
         section = NightAreaSection(
             report_id=report.id, area_id=area.id, name=area.name, category=area.category,
             zone_id=area.zone_id, zone_name=zones.get(area.zone_id, area.category or ""),
-            snapshot_json=json.dumps(snap, ensure_ascii=False), sort_order=order)
+            snapshot=snap, sort_order=order)
         db.add(section)
         db.flush()
         for i, s in enumerate(snap):
@@ -192,7 +187,7 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
 
     if cars_step:
         db.add(NightAreaSection(report_id=report.id, area_id=None, name=CAR_AREA_NAME,
-                                category="cars", snapshot_json="[]", sort_order=order))
+                                category="cars", snapshot=[], sort_order=order))
     db.commit()
     return report
 
@@ -325,7 +320,7 @@ def refresh_free_section(db: Session, area: NightArea) -> int:
                           .where(NightAreaSection.area_id == area.id,
                                  NightReport.status == "open",
                                  NightAreaSection.status == "free")):
-        sec.snapshot_json = json.dumps(snap, ensure_ascii=False)
+        sec.snapshot = copy.deepcopy(snap)
         for ni in list(sec.items):
             db.delete(ni)
         db.flush()

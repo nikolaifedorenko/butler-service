@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 from dataclasses import dataclass, field, replace
 
 from sqlalchemy import func, select
@@ -214,7 +213,8 @@ class _Stays:
 def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int]) -> _Stays:
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(allocation.OCCUPYING),
                                                     Reservation.check_in <= last,
-                                                    Reservation.check_out >= first)))
+                                                    Reservation.check_out >= first)
+                         .order_by(Reservation.id)))
     rids = [r.id for r in res]
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
@@ -308,7 +308,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                           for o in mains if o.guest_id in guests],
                 "special": special, "vip_code": codes.get(r.vip_code_id, ""), "butlers_today": on_duty.get(r.id, []),
                 "customer": r.customer, "paid_category_id": r.paid_category_id or r.category_id,
-                "note": r.note, "escort_mode": r.escort_mode, "fields": json.loads(r.fields_json or "{}")}
+                "note": r.note, "escort_mode": r.escort_mode, "fields": r.fields}
         # полоса — соседние части сегмента с одним объектом; seg_index полосы — индекс её первой
         # части (seg_index // PIECE_BASE — сегмент; 0 — начало брони)
         for run in _glued(st.parts[r.id], lambda p, rid=r.id: asg.get((rid, p.index))):
@@ -500,7 +500,7 @@ def reservation_card(db: Session, rid: int, level: Level, duty: DutyPort | None 
     }
     card["pref"] = _pref_status(db, r, fund)
     if at_least(level, "full"):
-        card |= {"customer": r.customer, "note": r.note, "fields": json.loads(r.fields_json or "{}"),
+        card |= {"customer": r.customer, "note": r.note, "fields": r.fields,
                  "companions": [{"kind": c.kind, "description": c.description} for c in
                                 db.scalars(select(Companion).where(Companion.reservation_id == rid))],
                  "logistics": [{"kind": lg.kind, "date": _d(lg.date), "time": lg.time, "description": lg.description}

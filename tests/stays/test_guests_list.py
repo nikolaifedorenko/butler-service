@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import uuid
 
 from sqlalchemy import select
@@ -183,7 +182,7 @@ def test_merge_guests_moves_everything(manager_role_client, manager_client, db):
     assert _ids(manager_client, q=f"золото{u}") == [keep["id"]]
     a = db.scalars(select(AuditLog).where(AuditLog.action == "stays_guest_merge",
                                           AuditLog.target == f"guest:{keep['id']}")).one()
-    payload = json.loads(a.payload_json)
+    payload = a.payload
     assert payload["drop_id"] == drop["id"]
     # в журнал — только то, что не перешло (значения keep победили), без перенесённых ПД
     assert payload["not_carried"] == {"last_name": f"Дубль{u}", "first_name": "Ваня", "preferences": {"food": "веган"}}

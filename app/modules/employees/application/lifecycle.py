@@ -33,7 +33,7 @@ from app.modules.people.application import (
     open_period,
     periods_of,
 )
-from app.modules.timesheet.application.base_schedule import dump_pattern, validate_pattern_label
+from app.modules.timesheet.application.base_schedule import clean_pattern, validate_pattern_label
 from app.modules.timesheet.application.catalog import BlockAssignment
 
 
@@ -109,21 +109,21 @@ def normalize_block_history(db: Session, emp: Employee) -> None:
 
 
 def touch_block(db: Session, emp: Employee, new_group: str, since: dt.date,
-                pattern_json: str = "") -> None:
+                pattern: Optional[dict] = None) -> None:
     """
     Перевод между блоками с произвольной датой: история с даты перевода перезаписывается.
     Все периоды, начинающиеся не позже `since`, заменяются новым открытым периодом;
     период, накрывающий `since`, обрезается по `since-1` (или склеивается, если группа та же).
-    `pattern_json` — индивидуальный шаблон блока (выходные пятидневки, цикл 3/3 и т.п.).
+    `pattern` — индивидуальный шаблон блока (выходные пятидневки, цикл 3/3 и т.п.).
     """
     new_group = normalize_group(new_group)
     if (normalize_group(emp.schedule_group) or "") == (new_group or ""):
-        if pattern_json:
+        if pattern:
             cur = db.scalar(select(BlockAssignment).where(
                 BlockAssignment.employee_id == emp.id, BlockAssignment.end_date.is_(None)
             ).order_by(BlockAssignment.start_date.desc()))
             if cur is not None:
-                cur.pattern_json = pattern_json
+                cur.pattern = dict(pattern)
                 db.flush()
         return
     doomed = db.scalars(select(BlockAssignment).where(
@@ -136,8 +136,8 @@ def touch_block(db: Session, emp: Employee, new_group: str, since: dt.date,
         BlockAssignment.end_date.is_(None)))
     if straddling is not None:
         if normalize_group(straddling.group) == new_group:
-            if pattern_json:
-                straddling.pattern_json = pattern_json
+            if pattern:
+                straddling.pattern = dict(pattern)
                 db.flush()
             return                      # он и так уже в этой группе с более ранней даты
         straddling.end_date = since - dt.timedelta(days=1)
@@ -147,24 +147,24 @@ def touch_block(db: Session, emp: Employee, new_group: str, since: dt.date,
     if prev is not None and normalize_group(prev.group) == new_group \
             and prev.end_date == since - dt.timedelta(days=1):
         prev.end_date = None            # склеиваем с предыдущим периодом той же группы
-        if pattern_json:
-            prev.pattern_json = pattern_json
+        if pattern:
+            prev.pattern = dict(pattern)
         db.flush()
         return
     if prev is not None and prev.end_date is None:
         prev.end_date = since - dt.timedelta(days=1)
     db.add(BlockAssignment(employee_id=emp.id, group=new_group, start_date=since, end_date=None,
-                           pattern_json=pattern_json))
+                           pattern=dict(pattern or {})))
     db.flush()
     normalize_block_history(db, emp)
 
 
-def build_pattern_json(data: BlockChange) -> str:
+def build_pattern(data: BlockChange) -> dict:
     """Собрать и проверить индивидуальный шаблон блока из данных перевода."""
     group = normalize_group(data.group.strip())
     kind = (data.kind or GROUP_META.get(group, {}).get("kind") or "base").strip()
     if kind == "base":
-        return ""
+        return {}
     pattern: dict = {"kind": kind}
     if data.value.strip():
         pattern["value"] = data.value.strip()
@@ -182,7 +182,7 @@ def build_pattern_json(data: BlockChange) -> str:
         raise Validation(str(exc))
     if not pattern.get("label"):
         pattern["label"] = label
-    return dump_pattern(pattern)
+    return clean_pattern(pattern)
 
 
 # ─────────────────────────────── use-case'ы ───────────────────────────────
@@ -214,17 +214,17 @@ def block_change(db: Session, principal: Principal, employee_id: int,
         raise Validation("Укажите блок графика")
     since = parse_date(date) or local_date()
     group = normalize_group(data.group.strip())
-    pattern_json = build_pattern_json(data)
-    touch_block(db, emp, group, since, pattern_json=pattern_json)
+    pattern = build_pattern(data)
+    touch_block(db, emp, group, since, pattern=pattern)
     emp.schedule_group = group
     # цикл сотрудника для «Продолжить график»: из индивидуального шаблона
-    if data.kind == "cycle" or (pattern_json and '"kind": "cycle"' in pattern_json):
+    if data.kind == "cycle" or pattern.get("kind") == "cycle":
         emp.schedule_pattern = data.cycle.strip() or "3/3"
         emp.schedule_anchor = parse_date(data.anchor) or since
     elif group == "Пятидневка":
         emp.schedule_pattern = emp.schedule_pattern or "5/2"
     audit(db, principal, "block_change", f"employee:{emp.id}",
-          {"group": emp.schedule_group, "since": since.isoformat(), "pattern": pattern_json})
+          {"group": emp.schedule_group, "since": since.isoformat(), "pattern": pattern})
     db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
     return emp
 
@@ -287,7 +287,7 @@ def rehire(db: Session, principal: Principal, employee_id: int, date: Optional[s
         emp.position = position.strip()
     if block is not None:
         group = normalize_group(block.group.strip())
-        touch_block(db, emp, group, since, pattern_json=build_pattern_json(block))
+        touch_block(db, emp, group, since, pattern=build_pattern(block))
         emp.schedule_group = group
     elif not db.scalar(select(BlockAssignment).where(
             BlockAssignment.employee_id == emp.id, BlockAssignment.end_date.is_(None))):

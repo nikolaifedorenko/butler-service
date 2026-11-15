@@ -254,7 +254,7 @@ def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_
         db.add(PositionHistory(employee_id=emp.id, position=emp.position, start_date=hired, end_date=None))
     if emp.schedule_group:
         db.add(BlockAssignment(employee_id=emp.id, group=emp.schedule_group, start_date=hired,
-                               end_date=None, pattern_json=""))
+                               end_date=None, pattern={}))
     open_period(db, emp, hired, note="приём на работу", user_id=principal.user.id)
 
     username = (payload.username or slugify_username(emp.full_name)).strip().lower()

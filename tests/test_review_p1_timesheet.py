@@ -334,7 +334,7 @@ def test_ts4_board_http_month_boundary_smoke(app_stack, db, freeze):
     # берёт категории/веса/дефолты из payload, частичный не проходит валидацию
     payload = {**to_payload(default_settings()), "tz": "Asia/Yekaterinburg"}
     ver = EngineSettingsVersion(valid_from=dt.date(2026, 11, 1),
-                                payload_json=json.dumps(payload, ensure_ascii=False),
+                                payload=payload,
                                 note="P1-ts-4 guard")
     db.add(ver)
     db.commit()
@@ -365,7 +365,7 @@ def test_ts5_from_payload_raises_config_error():
 
 def test_ts5_bad_tz_in_stored_settings_is_409(manager_client, db):
     ver = EngineSettingsVersion(valid_from=dt.date(2027, 1, 1),
-                                payload_json=json.dumps({"tz": "Mars/Olympus"}),
+                                payload={"tz": "Mars/Olympus"},
                                 note="P1-ts-5 guard")
     db.add(ver)
     db.commit()
@@ -425,8 +425,8 @@ def test_ts6_http_corrupt_saved_result_shown_in_row_error(manager_client, db):
     emp = _ivanov(db)
     start, end = dt.date(2027, 2, 1), dt.date(2027, 2, 28)
     row = PeriodClosing(employee_id=emp.id, period_start=start, period_end=end,
-                        revision=1, result_json=_corrupt_result_json("НЕСУЩЕСТВУЮЩИЙ"),
-                        flags_json=json.dumps({"flags": []}))
+                        revision=1, result=json.loads(_corrupt_result_json("НЕСУЩЕСТВУЮЩИЙ")),
+                        flags={"flags": []})
     db.add(row)
     db.commit()
     try:

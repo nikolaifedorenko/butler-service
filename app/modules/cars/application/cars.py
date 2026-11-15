@@ -15,13 +15,13 @@
 """
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
+from app.core.db import plain_json
 from app.core.media import UploadRef, photos_of, save_photo_ref
 from app.core.permissions import has_perm
 from app.core.time import local_iso, local_now
@@ -127,12 +127,7 @@ def history_dict(h: CarHistory, photos: dict[int, list[dict]]) -> dict:
     Список фото конкретной записи функция достаёт сама; передавать сюда уже
     раскрытый список нельзя (см. регрессию в tests/test_cars.py).
     """
-    try:
-        details = json.loads(h.details_json or "{}")
-        if not isinstance(details, dict):
-            details = {"value": details}
-    except Exception:
-        details = {}
+    details = h.details
     return {
         "id": h.id,
         "ts": local_iso(h.ts, "seconds"),
@@ -188,7 +183,7 @@ def add_history(db: Session, car: Car, action: str, principal, *, person: str = 
         actor_user_id=principal.user.id if principal else None,
         actor_name=(principal.actor_label if principal else "system"),
         person=person, with_key=with_key, location=location,
-        details_json=json.dumps(details or {}, ensure_ascii=False, default=str))
+        details=plain_json(details or {}))
     db.add(rec)
     try:
         db.flush()

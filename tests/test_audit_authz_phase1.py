@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import select
 
 
@@ -91,7 +93,7 @@ def test_put_employee_without_role_keeps_role(admin_client, db):
     assert r.json()["role"] == "supervisor"
     row = db.scalars(select(AuditLog).where(AuditLog.action == "employee_update")
                      .order_by(AuditLog.id.desc()).limit(1)).first()
-    assert '"role": ["employee", "supervisor"]' in row.payload_json
+    assert '"role": ["employee", "supervisor"]' in json.dumps(row.payload, ensure_ascii=False)
     admin_client.put(f"/api/employees/{emp_id}", json=_body(e, role="employee"))
 
 

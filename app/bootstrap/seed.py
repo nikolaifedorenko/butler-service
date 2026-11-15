@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import random
 
 from sqlalchemy import func, select
@@ -188,21 +187,18 @@ def seed_if_empty(db: Session) -> bool:
                                    start_date=hired_d + dt.timedelta(days=90), end_date=None))
         else:
             db.add(PositionHistory(employee_id=emp.id, position=position, start_date=hired_d, end_date=None))
-        pattern_json = ""
+        block_pattern: dict = {}
         if group == "Пятидневка":
-            pattern_json = json.dumps({"kind": "week5", "off_weekdays": [5, 6],
-                                       "value": "Я 9",
-                                       "label": "5/2, выходные сб и вс"}, ensure_ascii=False)
+            block_pattern = {"kind": "week5", "off_weekdays": [5, 6], "value": "Я 9",
+                             "label": "5/2, выходные сб и вс"}
         elif group == "Смена 2":
-            pattern_json = json.dumps({"kind": "cycle", "cycle": pattern or "1/3",
-                                       "value": "Я 12", "anchor": acc_start.isoformat(),
-                                       "label": f"{pattern or '1/3'} сутки"}, ensure_ascii=False)
+            block_pattern = {"kind": "cycle", "cycle": pattern or "1/3", "value": "Я 12",
+                             "anchor": acc_start.isoformat(), "label": f"{pattern or '1/3'} сутки"}
         elif group == "Другие смены":
-            pattern_json = json.dumps({"kind": "cycle", "cycle": pattern or "3/3",
-                                       "value": "Я 12", "anchor": acc_start.isoformat(),
-                                       "label": f"{pattern or '3/3'} сутки"}, ensure_ascii=False)
+            block_pattern = {"kind": "cycle", "cycle": pattern or "3/3", "value": "Я 12",
+                             "anchor": acc_start.isoformat(), "label": f"{pattern or '3/3'} сутки"}
         db.add(BlockAssignment(employee_id=emp.id, group=group, start_date=acc_start,
-                               end_date=None, pattern_json=pattern_json))
+                               end_date=None, pattern=block_pattern))
         # период работы: учёт v7.1 начинается с acc_start — первый период цепочки (R35/R37)
         db.add(EmploymentPeriod(employee_id=emp.id, start_date=acc_start, end_date=None,
                                 note="учёт переработок v7.1"))
@@ -229,11 +225,8 @@ def seed_if_empty(db: Session) -> bool:
         ba.end_date = transfer - dt.timedelta(days=1)
     db.add(BlockAssignment(employee_id=morozova.id, group="Смена 2", start_date=transfer,
                            end_date=None,
-                           pattern_json=json.dumps({"kind": "cycle", "cycle": "1/3",
-                                                      "value": "Я 12",
-                                                    "shift_code": "SUTKI",
-                                                    "anchor": transfer.isoformat(),
-                                                    "label": "1/3 сутки"}, ensure_ascii=False)))
+                           pattern={"kind": "cycle", "cycle": "1/3", "value": "Я 12", "shift_code": "SUTKI",
+                                    "anchor": transfer.isoformat(), "label": "1/3 сутки"}))
     morozova.schedule_group = "Смена 2"
     db.flush()
 
@@ -472,7 +465,6 @@ def _seed_night_dirs(db: Session) -> None:
     отключённый пункт и своя служба («Вилла 4001» / «Вилла 4002»). У пунктов шаблона
     зоны заданы ответственные службы — по ним этап 5 собирает недостатки к отправке.
     """
-    import json
 
     from sqlalchemy import select
 
@@ -489,7 +481,7 @@ def _seed_night_dirs(db: Session) -> None:
     for name, order, tg, mail, email_to, email_copy, note in NIGHT_SERVICES_DEMO:
         svc = ResponsibilityService(name=name, sort_order=order, use_telegram=tg,
                                     use_email=mail, email_to=email_to,
-                                    email_copy=email_copy, chat_ids=json.dumps([]), note=note)
+                                    email_copy=email_copy, chat_ids=[], note=note)
         db.add(svc)
         db.flush()
         services[name] = svc.id

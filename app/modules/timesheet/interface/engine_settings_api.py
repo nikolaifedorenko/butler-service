@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -47,7 +46,7 @@ def get_settings(on: Optional[dt.date] = None, principal: Principal = Depends(re
                  db: Session = Depends(get_db)):
     day = on or local_date()
     ver = base_version(db, day)
-    payload = json.loads(ver.payload_json) if ver else to_payload(default_settings())
+    payload = ver.payload if ver else to_payload(default_settings())
     versions = db.scalars(select(EngineSettingsVersion).order_by(EngineSettingsVersion.valid_from.desc(),
                                                                  EngineSettingsVersion.id.desc()).limit(50))
     return {"active": {"id": ver.id if ver else None, "valid_from": ver.valid_from.isoformat() if ver else None,
@@ -154,7 +153,7 @@ def put_settings(data: SettingsIn, principal: Principal = Depends(require_perm("
     _guard_removed_day_codes(data.payload, db, data.valid_from)
     _guard_deferred_tariffs(st, applies_from(data.valid_from, st.period_granularity), db)
     _lock_and_check_base_version(db, data.base_version_id)
-    v = EngineSettingsVersion(valid_from=data.valid_from, payload_json=json.dumps(data.payload, ensure_ascii=False),
+    v = EngineSettingsVersion(valid_from=data.valid_from, payload=data.payload,
                               note=data.note[:255], created_by_name=principal.name)
     db.add(v)
     db.flush()
@@ -203,7 +202,7 @@ def _guard_removed_day_codes(payload: dict, db: Session, valid_from: dt.date) ->
     if prev is None:
         return
     try:
-        old_codes = set((json.loads(prev.payload_json).get("day_code_policy") or {}).keys())
+        old_codes = set((prev.payload.get("day_code_policy") or {}).keys())
     except (ValueError, TypeError, AttributeError):
         return
     removed = old_codes - new_codes
@@ -302,7 +301,7 @@ def _granularity(db: Session, on: dt.date) -> str:
     if ver is None:
         return "month"
     try:
-        return json.loads(ver.payload_json).get("period_granularity", "month")
+        return ver.payload.get("period_granularity", "month")
     except (ValueError, TypeError):
         return "month"
 
@@ -484,7 +483,7 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
 
     day = on or local_date()
     ver = base_version(db, day)
-    payload = json.loads(ver.payload_json) if ver else to_payload(default_settings())
+    payload = ver.payload if ver else to_payload(default_settings())
     checks: list[dict] = []
     try:
         validate_settings(from_payload({**payload, "modifiers": []}))

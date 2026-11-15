@@ -6,7 +6,6 @@ deferred_carry (7.3). PeriodState — closed/previous_closed/next_closed/opening
 from __future__ import annotations
 
 import datetime as dt
-import json
 from typing import Sequence
 
 from sqlalchemy import delete, or_, select
@@ -79,7 +78,7 @@ class SqlSettlementStore:
         row = self._row(employee_id, period)
         if row is None:
             return None
-        blocks = tuple(_block(d) for d in json.loads(row.deferred_in_json or "[]"))
+        blocks = tuple(_block(d) for d in row.deferred_in)
         return ClosingInputs(row.bank_open_minutes, blocks, row.previous_step_minutes)
 
     def save_result(self, employee_id: str, period: Period, result: SettleResult,
@@ -94,10 +93,10 @@ class SqlSettlementStore:
         row.step_minutes = step_minutes
         row.previous_step_minutes = inputs_snapshot.previous_step_minutes
         row.bank_open_minutes = inputs_snapshot.bank_open
-        row.deferred_in_json = json.dumps([_block_dict(b) for b in inputs_snapshot.deferred_in])
+        row.deferred_in = [_block_dict(b) for b in inputs_snapshot.deferred_in]
         row.settings_versions = ",".join(settings_versions)
-        row.result_json = json.dumps(result_to_dict(result), ensure_ascii=False)
-        row.flags_json = json.dumps(flags_to_dict(flags), ensure_ascii=False)
+        row.result = result_to_dict(result)
+        row.flags = flags_to_dict(flags)
         row.closing_bank_minutes = result.bank_closed_minutes
         row.revision = (row.revision or 0) + 1
         row.closed_by_name, row.closed_at = self.actor, now()
@@ -113,8 +112,8 @@ class SqlSettlementStore:
         row = self._row(employee_id, period)
         if row is None:
             return None
-        flags = flags_from_dict(json.loads(row.flags_json)) if row.flags_json else FlagsResult(())
-        return result_from_dict(json.loads(row.result_json)), flags
+        flags = flags_from_dict(row.flags) if row.flags else FlagsResult(())
+        return result_from_dict(row.result), flags
 
     def saved_meta(self, employee_id: str, period: Period) -> dict | None:
         row = self._row(employee_id, period)

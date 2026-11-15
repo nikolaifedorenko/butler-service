@@ -3,7 +3,6 @@
 пишутся через fund_drafts. Ничего не коммитит — commit в роутере."""
 from __future__ import annotations
 
-import json
 from decimal import Decimal
 from typing import Any
 
@@ -51,7 +50,7 @@ SETTINGS_FIELDS = ("special_factor", "daily_limit", "replacement_codes")
 
 
 def field_dict(f: CustomField) -> dict:
-    return {**as_dict(f, FIELD_FIELDS), "choices": json.loads(f.choices_json or "[]")}
+    return {**as_dict(f, FIELD_FIELDS), "choices": f.choices}
 
 
 def _apply(row, data: dict, fields: tuple[str, ...]) -> None:
@@ -110,8 +109,8 @@ def save_field(db: Session, data: dict, fid: int | None) -> tuple[CustomField, d
     row, before = _update(db, CustomField, fid, {**data, "code": code}, FIELD_FIELDS,
                           "Поле не найдено")
     if fid is not None:
-        before = {**before, "choices": json.loads(row.choices_json or "[]")}
-    row.choices_json = json.dumps(choices, ensure_ascii=False)
+        before = {**before, "choices": row.choices}
+    row.choices = choices
     return row, before
 
 

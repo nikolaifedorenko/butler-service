@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import uuid
 from decimal import Decimal
 
@@ -150,7 +151,7 @@ def test_cleanup_on_early_checkout(manager_role_client, manager_client, butlers,
     assert len(days) == 2
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_coverage_cleanup",
                                             AuditLog.target == f"reservation:{res['id']}")).first()
-    assert row is not None and '"days"' in row.payload_json
+    assert row is not None and '"days"' in json.dumps(row.payload, ensure_ascii=False)
 
 
 def test_no_show_removes_coverage(manager_role_client, manager_client, butlers, today):

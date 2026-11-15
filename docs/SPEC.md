@@ -65,9 +65,9 @@ access, audit, stays), каждый — пять слоёв `domain/application/
 | `schedule_shifts` | График: `date` (якорь), `start_utc/end_utc` (naive UTC), `source (generated/manual)`, `shift_type_id?`, `note`; смена может пересекать полночь; физически не режется |
 | `schedule_absences` | Согласованные отсутствия: `start_utc/end_utc` (≤ 24 ч, может через полночь), `kind_id` (вид из словаря — заявление/режим отметок), `note` |
 | `punches` | Сырые отметки: `ts` (локальное naive), `kind IN/OUT`, `source`, `note`, `created_by` |
-| `engine_settings_versions` | Версии справочников CFG-*: `valid_from`, `payload_json` (кодек `settings_codec`), ретро-исправление — новая версия |
+| `engine_settings_versions` | Версии справочников CFG-*: `valid_from`, `payload` (тип `json`: хранит порядок ключей; кодек `settings_codec`), ретро-исправление — новая версия |
 | `day_modifiers` | Записи CFG-MODIFIERS (уровни 1–6): `name, value, employee_id?, group?, date?, period_start?` |
-| `period_closings` | Закрытия периодов: `result_json` (SettleResult), `flags_json` (снимок FlagsResult), `bank_open/deferred_in_json/previous_step` (ClosingInputs), `closing_bank_minutes`, `settings_versions`, `revision`, автор/время |
+| `period_closings` | Закрытия периодов: `result` (SettleResult), `flags` (снимок FlagsResult), `bank_open/deferred_in/previous_step` (ClosingInputs), `closing_bank_minutes`, `settings_versions`, `revision`, автор/время |
 | `deferred_carry` | Отложенные блоки во вход периода-получателя: `period_start, source_day, tariff, minutes` (без reason_code — v7/R1) |
 | `bank_adjustments` | Ручные корректировки: `hours, effective_date, reason_code` (`OPENING_SEED` — посев), `note`, автор |
 | `employment_periods` | Периоды работы: `start_date`, `end_date` (последний рабочий день включительно, NULL — работает) |
@@ -249,7 +249,7 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
   связка `shift_types.tzh_code` и подпись `display_code` удалены, чекбокс
   `deduct_from_bank` удалён (банк гасит недостачу дня механически). Табель заполняется
   из циклов **значением рабочего дня сотрудника** (ключ CFG-WINDOWS в паттерне блока,
-  `BlockAssignment.pattern_json → value`; выбирается в карточке при приёме и переводе,
+  `BlockAssignment.pattern → value`; выбирается в карточке при приёме и переводе,
   fallback — значение блока в настройках объекта). График по умолчанию копирует смены
   Табеля с цветом кода; ручная смена Графика часы Табеля не меняет (RUL-TIMESHEET-WINS).
   Список кодов Табеля компактный (название + «Изменить» + «✕»): флаги расчёта и режим

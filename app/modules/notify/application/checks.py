@@ -1,8 +1,6 @@
 """Сверки ответственных служб для экрана «Настройки → Обзор»."""
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,7 +13,7 @@ def overview_checks(db: Session) -> list[dict]:
     for s in db.scalars(select(ResponsibilityService)
                         .where(ResponsibilityService.active.is_(True))
                         .order_by(ResponsibilityService.sort_order, ResponsibilityService.id)):
-        chats = json.loads(s.chat_ids or "[]")
+        chats = s.chat_ids
         tg_ready = bool(s.use_telegram and chats)
         mail_ready = bool(s.use_email and "@" in (s.email_to or ""))
         if not (tg_ready or mail_ready):

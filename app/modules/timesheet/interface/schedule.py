@@ -382,11 +382,7 @@ def _block_ranges(blocks, emp: Employee, first: dt.date, last: dt.date) -> list[
         per_group.setdefault(g, []).append(
             {"start": b.start_date.isoformat(),
              "end": b.end_date.isoformat() if b.end_date else None})
-        import json as _json
-        try:
-            lbl = (_json.loads(b.pattern_json or "{}").get("label") or "") if b.pattern_json else ""
-        except ValueError:
-            lbl = ""
+        lbl = b.pattern.get("label") or ""
         if lbl:
             labels[g] = lbl
     return [{"group": g, "ranges": rs, "pattern_label": labels.get(g, "")}
