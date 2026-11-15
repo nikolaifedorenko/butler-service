@@ -1,732 +1,188 @@
-"""Справочники ночного обхода: области и их пункты, зоны и чек-листы зон, индивидуальные
-особенности объектов, ответственные службы (право правки — night.edit)."""
+"""Справочники ночного обхода: объекты и их пункты, зоны и шаблоны чек-листов, особенности
+объектов, ответственные службы. Смотреть — night.view, править — night.edit.
+Правила — в ``application/dictionaries.py``."""
 from __future__ import annotations
 
-from typing import Optional
-
-from fastapi import Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.media import (
-    delete_photo_files,
-)
-from app.core.permissions import has_perm, require_perm
-from app.modules.notify.application.catalog import ResponsibilityService
+from app.core.permissions import require_perm
+from app.core.schemas import Ok
 
-from ..adapters.orm import (
-    ChecklistItem,
-    ChecklistOverride,
-    NightArea,
-    NightAreaSection,
-    NightCheckItem,
-    NightReport,
-    NightZone,
-    ZoneChecklistItem,
-)
-from ..application.night import (
-    effective_items,
-    refresh_free_section,
-    service_dict,
-    services_map,
-    zone_dict,
-)
-from .night_common import (
-    AreaIn,
-    ItemIn,
-    OverrideIn,
-    ServiceIn,
-    ZoneIn,
-    ZoneItemIn,
-    router,
+from ..application import dictionaries as dicts
+from ..application.dictionaries import AreaBulkIn, AreaIn, ItemIn, OverrideIn, ServiceIn, ZoneIn
+from .night_common import router
+from .schemas import (
+    AreaChecklistOut,
+    AreasCreatedOut,
+    AreasOut,
+    CreatedOut,
+    ItemAddedOut,
+    OverrideSetOut,
+    RemovedFromOpenOut,
+    SectionsRefreshedOut,
+    SectionsRemovedOut,
+    ServiceCreatedOut,
+    ServiceDeletedOut,
+    ServicesOut,
+    ServiceUpdatedOut,
+    ZoneDeletedOut,
+    ZoneItemAddedOut,
+    ZoneItemsOut,
+    ZoneOut,
+    ZonesOut,
+    ZoneUpdatedOut,
 )
 
-# ─────────────────────────── справочник областей ───────────────────────────
+VIEW = require_perm("night.view")
+EDIT = require_perm("night.edit")
 
-@router.get("/areas")
-def list_areas(principal: Principal = Depends(require_perm("night.view")), db: Session = Depends(get_db)):
-    """Справочник областей с пунктами (виден всем ролям, включая батлеров)."""
-    zones = {z.id: z.name for z in db.scalars(select(NightZone))}
-    svc_names = services_map(db)
-    out = []
-    for area in db.scalars(select(NightArea).order_by(NightArea.sort_order, NightArea.id)):
-        items = [{"id": it.id, "text": it.text, "sort_order": it.sort_order, "active": it.active,
-                  "service_id": it.service_id,
-                  "service_name": svc_names.get(it.service_id or 0, "")}
-                 for it in db.scalars(select(ChecklistItem)
-                                      .where(ChecklistItem.area_id == area.id)
-                                      .order_by(ChecklistItem.sort_order, ChecklistItem.id))]
-        zone_items = len(list(db.scalars(select(ZoneChecklistItem.id)
-                                         .where(ZoneChecklistItem.zone_id == area.zone_id,
-                                                ZoneChecklistItem.active.is_(True))))) \
-            if area.zone_id else 0
-        out.append({"id": area.id, "name": area.name, "category": area.category,
-                    "zone_id": area.zone_id,
-                    "zone_name": zones.get(area.zone_id, area.category or ""),
-                    "sort_order": area.sort_order, "active": area.active,
-                    "items": items, "items_total": len([i for i in items if i["active"]]),
-                    # чек-лист объекта = шаблон зоны + свои пункты (v2)
-                    "effective_total": zone_items + len([i for i in items if i["active"]])})
-    return {"areas": out, "can_edit": has_perm(db, principal, "night.edit")}
+# ─────────────────────────── объекты и свои пункты ───────────────────────────
 
 
-class AreaBulkIn(BaseModel):
-    prefix: str
-    start: int
-    count: int
-    category: str = ""
-    zone_id: Optional[int] = None
+@router.get("/areas", response_model=AreasOut)
+def list_areas(principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Объекты обхода с их пунктами."""
+    return {"areas": dicts.list_areas(db), "can_edit": dicts.can_edit(db, principal)}
 
 
-@router.post("/areas/bulk")
-def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(require_perm("night.edit")),
-                      db: Session = Depends(get_db)):
-    """Массовое создание однотипных областей («Вилла VEG », 4001, 12 шт → 4001…4012)."""
-    if payload.count < 1 or payload.count > 200:
-        raise HTTPException(status_code=400, detail="Количество должно быть от 1 до 200")
-    _check_zone(db, payload.zone_id)
-    created = []
-    for n in range(payload.start, payload.start + payload.count):
-        name = f"{payload.prefix}{n}".strip()
-        if db.scalar(select(NightArea).where(NightArea.name == name)):
-            continue
-        area = NightArea(name=name, category=payload.category, zone_id=payload.zone_id,
-                         sort_order=n % 1000 + 100)
-        db.add(area)
-        db.flush()
-        created.append(area.id)
-    audit(db, principal, "night_areas_bulk", f"created:{len(created)}", payload.model_dump())
-    db.commit()
-    return {"created": len(created)}
+@router.post("/areas/bulk", response_model=AreasCreatedOut)
+def create_areas_bulk(payload: AreaBulkIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Создать однотипные объекты подряд («Вилла », 4001, 12 штук)."""
+    return {"created": dicts.create_areas_bulk(db, principal, payload)}
 
 
-@router.post("/areas")
-def create_area(payload: AreaIn, principal: Principal = Depends(require_perm("night.edit")),
+@router.post("/areas", response_model=CreatedOut)
+def create_area(payload: AreaIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    return {"id": dicts.create_area(db, principal, payload)}
+
+
+@router.put("/areas/{area_id}", response_model=SectionsRefreshedOut)
+def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Введите название области")
-    if db.scalar(select(NightArea).where(NightArea.name == name)):
-        raise HTTPException(status_code=409, detail="Такая область уже есть")
-    _check_zone(db, payload.zone_id)
-    area = NightArea(name=name, category=payload.category.strip(), zone_id=payload.zone_id,
-                     sort_order=payload.sort_order, active=payload.active)
-    db.add(area)
-    db.flush()
-    audit(db, principal, "night_area_create", f"area:{area.id}", {"name": name})
-    db.commit()
-    return {"id": area.id}
+    return {"sections_refreshed": dicts.update_area(db, principal, area_id, payload)}
 
 
-@router.put("/areas/{area_id}")
-def update_area(area_id: int, payload: AreaIn, principal: Principal = Depends(require_perm("night.edit")),
-                db: Session = Depends(get_db)):
-    area = db.get(NightArea, area_id)
-    if area is None:
-        raise HTTPException(status_code=404, detail="Область не найдена")
-    name = payload.name.strip()
-    # уникальность имени при переименовании (P1-misc-3): раньше проверялась только
-    # при создании — дубль имени падал в IntegrityError (500)
-    if name and name != area.name and db.scalar(
-            select(NightArea).where(NightArea.name == name, NightArea.id != area_id)):
-        raise HTTPException(status_code=409, detail="Такая область уже есть")
-    _check_zone(db, payload.zone_id)
-    old = {"name": area.name, "category": area.category, "active": area.active,
-           "zone_id": area.zone_id}
-    area.name = name or area.name
-    area.category = payload.category.strip()
-    zone_changed = payload.zone_id != area.zone_id
-    area.zone_id = payload.zone_id
-    area.sort_order = payload.sort_order
-    area.active = payload.active
-    db.flush()
-    # смена зоны меняет чек-лист объекта: пересобираем снимок в ещё не начатых сменах
-    touched = refresh_free_section(db, area) if zone_changed else 0
-    audit(db, principal, "night_area_update", f"area:{area.id}",
-          {"old": old, "new": payload.model_dump(), "sections_refreshed": touched})
-    db.commit()
-    return {"ok": True, "sections_refreshed": touched}
+@router.delete("/areas/{area_id}", response_model=SectionsRemovedOut)
+def delete_area(area_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Отключить объект: история закрытых смен остаётся."""
+    return {"sections_removed": dicts.delete_area(db, principal, area_id)}
 
 
-@router.delete("/areas/{area_id}")
-def delete_area(area_id: int, principal: Principal = Depends(require_perm("night.edit")),
-                db: Session = Depends(get_db)):
-    """Удаление мягкое: активные отчёты пересоздаются со свежим снимком, история остаётся."""
-    area = db.get(NightArea, area_id)
-    if area is None:
-        raise HTTPException(status_code=404, detail="Область не найдена")
-    touched = 0
-    for rep in db.scalars(select(NightReport).where(NightReport.status == "open")):
-        sec = db.scalar(select(NightAreaSection).where(NightAreaSection.report_id == rep.id,
-                                                       NightAreaSection.area_id == area_id))
-        if sec is not None:
-            # пункты уходят каскадом — их фото вместе с файлами, иначе сироты (DEAD-01)
-            delete_photo_files(db, "night_item", [i.id for i in sec.items])
-            db.delete(sec)
-            touched += 1
-    area.active = False
-    audit(db, principal, "night_area_delete", f"area:{area.id}", {"sections_removed": touched})
-    db.commit()
-    return {"ok": True, "sections_removed": touched}
+@router.post("/areas/{area_id}/items", response_model=ItemAddedOut)
+def add_item(area_id: int, payload: ItemIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    return dicts.add_item(db, principal, area_id, payload)
 
 
-@router.post("/areas/{area_id}/items")
-def add_item(area_id: int, payload: ItemIn, principal: Principal = Depends(require_perm("night.edit")),
-             db: Session = Depends(get_db)):
-    area = db.get(NightArea, area_id)
-    if area is None:
-        raise HTTPException(status_code=404, detail="Область не найдена")
-    text = payload.text.strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Введите текст пункта")
-    _check_service(db, payload.service_id)
-    item = ChecklistItem(area_id=area.id, text=text[:300], sort_order=payload.sort_order,
-                         active=payload.active, service_id=payload.service_id)
-    db.add(item)
-    db.flush()
-    # добавленный пункт попадает только в ещё НЕ начатые открытые области
-    svc_names = services_map(db)
-    added = 0
-    for sec in db.scalars(select(NightAreaSection)
-                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
-                          .where(NightReport.status == "open", NightAreaSection.area_id == area_id,
-                                 NightAreaSection.status == "free")):
-        db.add(NightCheckItem(section_id=sec.id, item_id=item.id, text=item.text,
-                              sort_order=item.sort_order, service_id=item.service_id,
-                              service_name=svc_names.get(item.service_id or 0, "")))
-        sec.snapshot = [*sec.snapshot, {"id": item.id, "src": "area", "text": item.text, "overridden": False,
-                                        "service_id": item.service_id,
-                                        "service_name": svc_names.get(item.service_id or 0, "")}]
-        added += 1
-    audit(db, principal, "night_item_create", f"item:{item.id}", {"area": area.name, "added_to": added})
-    db.commit()
-    return {"id": item.id, "added_to_open_sections": added}
+@router.put("/items/{item_id}", response_model=Ok)
+def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    dicts.update_item(db, principal, item_id, payload)
+    return Ok()
 
 
-@router.put("/items/{item_id}")
-def update_item(item_id: int, payload: ItemIn, principal: Principal = Depends(require_perm("night.edit")),
-                db: Session = Depends(get_db)):
-    item = db.get(ChecklistItem, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Пункт не найден")
-    old_text = item.text
-    _check_service(db, payload.service_id)
-    item.text = payload.text.strip()[:300] or item.text
-    item.sort_order = payload.sort_order
-    item.active = payload.active
-    item.service_id = payload.service_id
-    svc_names = services_map(db)
-    # обновляем текст/порядок/службу в ещё открытых (незавершённых) снимках
-    for ni in db.scalars(select(NightCheckItem)
-                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
-                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
-                         .where(NightCheckItem.item_id == item.id, NightReport.status == "open",
-                                NightAreaSection.status != "done")):
-        ni.text = item.text
-        ni.sort_order = item.sort_order
-        ni.service_id = item.service_id
-        ni.service_name = svc_names.get(item.service_id or 0, "")
-        if not item.active and not ni.answer:
-            # выключенный пункт без ответа убираем из незакрытой области
-            ni.section.snapshot = [x for x in ni.section.snapshot if x.get("id") != item.id]
-            db.delete(ni)
-    audit(db, principal, "night_item_update", f"item:{item.id}",
-          {"text": old_text, **payload.model_dump()})
-    db.commit()
-    return {"ok": True}
+@router.delete("/items/{item_id}", response_model=RemovedFromOpenOut)
+def delete_item(item_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Выключить пункт: в закрытых объектах он остаётся."""
+    return {"removed_from_open": dicts.delete_item(db, principal, item_id)}
 
 
-@router.delete("/items/{item_id}")
-def delete_item(item_id: int, principal: Principal = Depends(require_perm("night.edit")),
-                db: Session = Depends(get_db)):
-    """Мягкое удаление: в незакрытых областях пункт исчезает, в закрытых остаётся навечно."""
-    item = db.get(ChecklistItem, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Пункт не найден")
-    item.active = False
-    removed = 0
-    for ni in db.scalars(select(NightCheckItem)
-                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
-                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
-                         .where(NightCheckItem.item_id == item.id, NightReport.status == "open",
-                                NightAreaSection.status != "done", NightCheckItem.answer == "")):
-        db.delete(ni)
-        removed += 1
-    audit(db, principal, "night_item_delete", f"item:{item_id}", {"removed_from_open": removed})
-    db.commit()
-    return {"ok": True, "removed_from_open": removed}
+# ─────────────────────────── зоны и шаблон чек-листа ───────────────────────────
 
 
-def _check_service(db: Session, service_id: Optional[int]) -> None:
-    """Ответственная служба обязана существовать, иначе пункт останется без получателя."""
-    if not service_id:
-        return
-    if db.get(ResponsibilityService, service_id) is None:
-        raise HTTPException(status_code=400, detail="Ответственная служба не найдена")
+@router.get("/zones", response_model=ZonesOut)
+def list_zones(principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Зоны обхода: сколько в зоне объектов и пунктов шаблона."""
+    return {"zones": dicts.list_zones(db), "can_edit": dicts.can_edit(db, principal)}
 
 
-def _check_zone(db: Session, zone_id: Optional[int]) -> None:
-    """Зона обхода обязана существовать (ревью 20.10.2026, P1-misc-3): zone_id —
-    внешний ключ области; битый id на PostgreSQL давал IntegrityError (500), а на
-    SQLite (FK не включены) молча писал область-сироту."""
-    if not zone_id:
-        return
-    if db.get(NightZone, zone_id) is None:
-        raise HTTPException(status_code=400, detail="Зона обхода не найдена")
+@router.post("/zones", response_model=ZoneOut)
+def create_zone(payload: ZoneIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    return dicts.create_zone(db, principal, payload)
 
 
-def _service_name_taken(db: Session, name: str, exclude_id: Optional[int] = None) -> bool:
-    """Занято ли название службы (сравнение без учёта регистра).
-
-    Сравниваем в Python, а не через SQL LOWER(): в SQLite lower() не работает с
-    кириллицей, поэтому «Хозяйственная служба» и «ХОЗЯЙСТВЕННАЯ СЛУЖБА» там
-    считались бы разными. Служб единицы — загрузка названий ничего не стоит.
-    """
-    want = name.strip().casefold()
-    q = select(ResponsibilityService.id, ResponsibilityService.name)
-    if exclude_id is not None:
-        q = q.where(ResponsibilityService.id != exclude_id)
-    return any(n.strip().casefold() == want for _, n in db.execute(q).all())
+@router.put("/zones/{zone_id}", response_model=ZoneUpdatedOut)
+def update_zone(zone_id: int, payload: ZoneIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    return {"zone": dicts.update_zone(db, principal, zone_id, payload)}
 
 
-def _check_channels(payload: ServiceIn) -> None:
-    """Каналы доставки: хотя бы один, и у каждого заполнен получатель."""
-    if not payload.use_telegram and not payload.use_email:
-        raise HTTPException(status_code=400,
-                            detail="Выберите хотя бы один канал: чат Telegram и/или письмо")
-    if payload.use_email and "@" not in (payload.email_to or ""):
-        raise HTTPException(status_code=400,
-                            detail="Укажите почтовый ящик службы (канал «письмо» включён)")
+@router.delete("/zones/{zone_id}", response_model=ZoneDeletedOut)
+def delete_zone(zone_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Отключить зону: объекты и история смен сохраняются."""
+    return {"areas_left": dicts.delete_zone(db, principal, zone_id)}
 
 
-# ─────────────────────────── зоны обхода (v2) ───────────────────────────
-# Первый уровень навигации: зона → объекты → чек-лист. Чек-лист задаётся НА ЗОНУ
-# (ZoneChecklistItem), поэтому у десятков однотипных объектов он одинаковый;
-# индивидуальные особенности объекта — ChecklistOverride (своя формулировка /
-# отключить пункт), свой пункт одного объекта — ChecklistItem(area_id=…).
-
-@router.get("/zones")
-def list_zones(principal: Principal = Depends(require_perm("night.view")),
-               db: Session = Depends(get_db)):
-    """Справочник зон обхода: сколько в зоне объектов и пунктов шаблона.
-
-    Видно всем ролям (зоны нужны батлерам для обхода). Счётчики — агрегатами,
-    чтобы список не масштабировался запросами на зону.
-    """
-    areas_cnt = dict(db.execute(
-        select(NightArea.zone_id, func.count(NightArea.id))
-        .where(NightArea.active.is_(True), NightArea.zone_id.is_not(None))
-        .group_by(NightArea.zone_id)).all())
-    items_cnt = dict(db.execute(
-        select(ZoneChecklistItem.zone_id, func.count(ZoneChecklistItem.id))
-        .where(ZoneChecklistItem.active.is_(True))
-        .group_by(ZoneChecklistItem.zone_id)).all())
-    zones = [zone_dict(z, areas_total=areas_cnt.get(z.id, 0), items_total=items_cnt.get(z.id, 0))
-             for z in db.scalars(select(NightZone).order_by(NightZone.sort_order, NightZone.id))]
-    # can_edit — ключ night.edit из каталога прав (19.10.2026): раньше здесь была
-    # роль is_manager; базово право есть у admin/manager/supervisor, поведение то же,
-    # но теперь его можно выдать/снять грантом («Права доступа»)
-    return {"zones": zones, "can_edit": has_perm(db, principal, "night.edit")}
+@router.get("/zones/{zone_id}/items", response_model=ZoneItemsOut)
+def zone_items(zone_id: int, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Шаблон чек-листа зоны и её объекты."""
+    return dicts.zone_items(db, zone_id)
 
 
-@router.post("/zones")
-def create_zone(payload: ZoneIn, principal: Principal = Depends(require_perm("night.edit")),
-                db: Session = Depends(get_db)):
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Введите название зоны")
-    if db.scalar(select(NightZone).where(NightZone.name == name)):
-        raise HTTPException(status_code=409, detail="Такая зона уже есть")
-    zone = NightZone(name=name[:160], sort_order=payload.sort_order, active=payload.active)
-    db.add(zone)
-    db.flush()
-    audit(db, principal, "night_zone_create", f"zone:{zone.id}", payload.model_dump())
-    db.commit()
-    return zone_dict(zone)
-
-
-@router.put("/zones/{zone_id}")
-def update_zone(zone_id: int, payload: ZoneIn, principal: Principal = Depends(require_perm("night.edit")),
-                db: Session = Depends(get_db)):
-    zone = db.get(NightZone, zone_id)
-    if zone is None:
-        raise HTTPException(status_code=404, detail="Зона не найдена")
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Введите название зоны")
-    dup = db.scalar(select(NightZone).where(NightZone.name == name, NightZone.id != zone_id))
-    if dup is not None:
-        raise HTTPException(status_code=409, detail="Такая зона уже есть")
-    old = {"name": zone.name, "sort_order": zone.sort_order, "active": zone.active}
-    zone.name = name[:160]
-    zone.sort_order = payload.sort_order
-    zone.active = payload.active
-    # название зоны в открытых отчётах — снимок: обновляем только ещё не закрытые смены,
-    # чтобы переименование зоны не переписывало историю
-    for sec in db.scalars(select(NightAreaSection)
-                          .join(NightReport, NightReport.id == NightAreaSection.report_id)
-                          .where(NightAreaSection.zone_id == zone.id, NightReport.status == "open")):
-        sec.zone_name = zone.name
-    audit(db, principal, "night_zone_update", f"zone:{zone.id}", {"old": old, "new": payload.model_dump()})
-    db.commit()
-    return {"ok": True, "zone": zone_dict(zone)}
-
-
-@router.delete("/zones/{zone_id}")
-def delete_zone(zone_id: int, principal: Principal = Depends(require_perm("night.edit")),
-                db: Session = Depends(get_db)):
-    """Отключение зоны (мягкое): объекты и история смен сохраняются.
-
-    Объекты зоны остаются на месте (у каждого свой признак active) — зона просто
-    перестаёт предлагаться в справочниках. В уже созданных отчётах название зоны
-    хранится снимком (night_area_sections.zone_name).
-    """
-    zone = db.get(NightZone, zone_id)
-    if zone is None:
-        raise HTTPException(status_code=404, detail="Зона не найдена")
-    zone.active = False
-    areas = len(list(db.scalars(select(NightArea.id).where(NightArea.zone_id == zone.id,
-                                                           NightArea.active.is_(True)))))
-    audit(db, principal, "night_zone_delete", f"zone:{zone_id}", {"areas_left": areas})
-    db.commit()
-    return {"ok": True, "areas_left": areas}
-
-
-@router.get("/zones/{zone_id}/items")
-def zone_items(zone_id: int, principal: Principal = Depends(require_perm("night.view")),
-               db: Session = Depends(get_db)):
-    """Шаблон чек-листа зоны + объекты зоны (для экрана настроек)."""
-    zone = db.get(NightZone, zone_id)
-    if zone is None:
-        raise HTTPException(status_code=404, detail="Зона не найдена")
-    areas = [{"id": a.id, "name": a.name, "active": bool(a.active)}
-             for a in db.scalars(select(NightArea).where(NightArea.zone_id == zone_id)
-                                 .order_by(NightArea.sort_order, NightArea.id))]
-    area_ids = [a["id"] for a in areas]
-    ovs = dict(db.execute(select(ChecklistOverride.zone_item_id, func.count(ChecklistOverride.id))
-                          .where(ChecklistOverride.area_id.in_(area_ids))
-                          .group_by(ChecklistOverride.zone_item_id)).all()) if area_ids else {}
-    svc_names = services_map(db)
-    items = []
-    for i in db.scalars(select(ZoneChecklistItem).where(ZoneChecklistItem.zone_id == zone_id)
-                        .order_by(ZoneChecklistItem.sort_order, ZoneChecklistItem.id)):
-        items.append({"id": i.id, "text": i.text, "sort_order": i.sort_order,
-                      "active": bool(i.active), "overrides": ovs.get(i.id, 0),
-                      "service_id": i.service_id,
-                      "service_name": svc_names.get(i.service_id or 0, "")})
-    return {"zone": zone_dict(zone, areas_total=len(areas),
-                              items_total=len([i for i in items if i["active"]])),
-            "items": items, "areas": areas}
-
-
-@router.post("/zones/{zone_id}/items")
-def add_zone_item(zone_id: int, payload: ZoneItemIn,
-                  principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
-    """Пункт шаблона зоны: попадает в чек-листы ВСЕХ объектов зоны.
-
-    В открытых сменах пункт добавляется только к ещё НЕ начатым объектам
-    (status="free") — как у пунктов отдельного объекта: начатые не перекраиваем.
-    """
-    zone = db.get(NightZone, zone_id)
-    if zone is None:
-        raise HTTPException(status_code=404, detail="Зона не найдена")
-    text = payload.text.strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Введите текст пункта")
-    _check_service(db, payload.service_id)
-    item = ZoneChecklistItem(zone_id=zone.id, text=text[:300], sort_order=payload.sort_order,
-                             active=payload.active, service_id=payload.service_id)
-    db.add(item)
-    db.flush()
-    refreshed = 0
-    for area in db.scalars(select(NightArea).where(NightArea.zone_id == zone.id,
-                                                   NightArea.active.is_(True))):
-        refreshed += refresh_free_section(db, area)
-    audit(db, principal, "night_zone_item_create", f"zone:{zone.id}",
-          {**payload.model_dump(), "sections_refreshed": refreshed})
-    db.commit()
-    return {"ok": True, "id": item.id, "sections_refreshed": refreshed}
-
-
-def _remove_zone_item_from_open(db: Session, item: ZoneChecklistItem) -> int:
-    """Убрать пункт шаблона из незакрытых областей (отмеченные не трогаем)."""
-    removed = 0
-    for ni in db.scalars(select(NightCheckItem)
-                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
-                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
-                         .where(NightCheckItem.zone_item_id == item.id, NightReport.status == "open",
-                                NightAreaSection.status != "done", NightCheckItem.answer == "")):
-        ni.section.snapshot = [x for x in ni.section.snapshot
-                               if not (x.get("src") == "zone" and x.get("id") == item.id)]
-        db.delete(ni)
-        removed += 1
-    return removed
-
-
-@router.put("/zone-items/{item_id}")
-def update_zone_item(item_id: int, payload: ZoneItemIn,
-                     principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
-    """Правка пункта шаблона зоны: текст уезжает во все незакрытые снимки объектов зоны."""
-    item = db.get(ZoneChecklistItem, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Пункт не найден")
-    _check_service(db, payload.service_id)
-    old_text = item.text
-    item.text = payload.text.strip()[:300] or item.text
-    item.sort_order = payload.sort_order
-    item.active = payload.active
-    item.service_id = payload.service_id
-    svc_names = services_map(db)
-    # у объекта может быть своя формулировка или своя служба (ChecklistOverride) —
-    # их в незакрытых сменах не переопределяем; правки ищем по объекту (area_id)
-    ovs = {o.area_id: o for o in db.scalars(select(ChecklistOverride).where(
-        ChecklistOverride.zone_item_id == item.id))}
-    for ni in db.scalars(select(NightCheckItem)
-                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
-                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
-                         .where(NightCheckItem.zone_item_id == item.id, NightReport.status == "open",
-                                NightAreaSection.status != "done")):
-        ov = ovs.get(ni.section.area_id)
-        if ov is None or not ov.text:
-            ni.text = item.text
-        ni.sort_order = item.sort_order
-        if ov is None or not ov.service_id:
-            ni.service_id = item.service_id
-            ni.service_name = svc_names.get(item.service_id or 0, "")
-    removed = _remove_zone_item_from_open(db, item) if not item.active else 0
-    audit(db, principal, "night_zone_item_update", f"zone_item:{item.id}",
-          {"old_text": old_text, **payload.model_dump(), "removed_from_open": removed})
-    db.commit()
-    return {"ok": True, "removed_from_open": removed}
-
-
-@router.delete("/zone-items/{item_id}")
-def delete_zone_item(item_id: int, principal: Principal = Depends(require_perm("night.edit")),
-                     db: Session = Depends(get_db)):
-    """Мягкое удаление пункта шаблона: в незакрытых сменах исчезает, в закрытых остаётся."""
-    item = db.get(ZoneChecklistItem, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Пункт не найден")
-    item.active = False
-    removed = _remove_zone_item_from_open(db, item)
-    audit(db, principal, "night_zone_item_delete", f"zone_item:{item_id}",
-          {"removed_from_open": removed})
-    db.commit()
-    return {"ok": True, "removed_from_open": removed}
-
-
-@router.get("/areas/{area_id}/checklist")
-def area_checklist(area_id: int, principal: Principal = Depends(require_perm("night.view")),
-                   db: Session = Depends(get_db)):
-    """Чек-лист объекта для настроек: шаблон зоны с правками + свои пункты + итог."""
-    area = db.get(NightArea, area_id)
-    if area is None:
-        raise HTTPException(status_code=404, detail="Область не найдена")
-    zone = db.get(NightZone, area.zone_id) if area.zone_id else None
-    ovs = {o.zone_item_id: o for o in db.scalars(select(ChecklistOverride)
-                                                 .where(ChecklistOverride.area_id == area.id))}
-    svc_names = services_map(db)
-    zone_items = []
-    if zone is not None:
-        for i in db.scalars(select(ZoneChecklistItem)
-                            .where(ZoneChecklistItem.zone_id == zone.id,
-                                   ZoneChecklistItem.active.is_(True))
-                            .order_by(ZoneChecklistItem.sort_order, ZoneChecklistItem.id)):
-            ov = ovs.get(i.id)
-            sid = ov.service_id if (ov and ov.service_id) else i.service_id
-            zone_items.append({
-                "id": i.id, "text": i.text, "sort_order": i.sort_order,
-                "override_text": ov.text if ov else "", "disabled": bool(ov.disabled) if ov else False,
-                "effective_text": (ov.text if ov and ov.text else i.text),
-                "in_checklist": not (ov.disabled if ov else False),
-                "service_id": i.service_id,
-                "service_name": svc_names.get(i.service_id or 0, ""),
-                "override_service_id": ov.service_id if ov else None,
-                "override_service_name": svc_names.get(ov.service_id or 0, "") if ov else "",
-                "effective_service_id": sid,
-                "effective_service_name": svc_names.get(sid or 0, "")})
-    own = [{"id": i.id, "text": i.text, "sort_order": i.sort_order, "active": bool(i.active),
-            "service_id": i.service_id, "service_name": svc_names.get(i.service_id or 0, "")}
-           for i in db.scalars(select(ChecklistItem)
-                               .where(ChecklistItem.area_id == area.id, ChecklistItem.active.is_(True))
-                               .order_by(ChecklistItem.sort_order, ChecklistItem.id))]
-    return {"area": {"id": area.id, "name": area.name, "zone_id": area.zone_id,
-                     "zone_name": zone.name if zone else (area.category or ""),
-                     "active": bool(area.active)},
-            "zone_items": zone_items, "own_items": own,
-            "effective": effective_items(db, area)}
-
-
-@router.put("/areas/{area_id}/overrides/{zone_item_id}")
-def set_override(area_id: int, zone_item_id: int, payload: OverrideIn,
-                 principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
-    """Индивидуальная правка пункта шаблона зоны у объекта (своя формулировка / отключить).
-
-    Пустая формулировка и снятое отключение означают «как в шаблоне зоны» — запись
-    правки удаляется. Применяется к ещё НЕ начатым объектам в открытых сменах.
-    """
-    area = db.get(NightArea, area_id)
-    if area is None:
-        raise HTTPException(status_code=404, detail="Область не найдена")
-    item = db.get(ZoneChecklistItem, zone_item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Пункт шаблона зоны не найден")
-    if item.zone_id != area.zone_id:
-        raise HTTPException(status_code=400,
-                            detail="Пункт не из шаблона зоны этого объекта")
-    _check_service(db, payload.service_id)
-    text = payload.text.strip()[:300]
-    ov = db.scalar(select(ChecklistOverride).where(ChecklistOverride.area_id == area.id,
-                                                  ChecklistOverride.zone_item_id == item.id))
-    # правка удаляется, только если объект снова во всём как шаблон зоны:
-    # нет своей формулировки, пункт не отключён и служба не переопределена
-    if not text and not payload.disabled and not payload.service_id:
-        if ov is not None:
-            db.delete(ov)
-    elif ov is None:
-        db.add(ChecklistOverride(area_id=area.id, zone_item_id=item.id, text=text,
-                                 disabled=bool(payload.disabled), service_id=payload.service_id))
-    else:
-        ov.text = text
-        ov.disabled = bool(payload.disabled)
-        ov.service_id = payload.service_id
-    db.flush()
-    touched = refresh_free_section(db, area)
-    audit(db, principal, "night_override_set", f"area:{area.id}",
-          {"zone_item_id": item.id, "text": text, "disabled": bool(payload.disabled),
-           "service_id": payload.service_id, "sections_refreshed": touched})
-    db.commit()
-    return {"ok": True, "sections_refreshed": touched, "effective": effective_items(db, area)}
-
-
-@router.delete("/areas/{area_id}/overrides/{zone_item_id}")
-def reset_override(area_id: int, zone_item_id: int,
-                   principal: Principal = Depends(require_perm("night.edit")), db: Session = Depends(get_db)):
-    """Сброс правки: пункт у объекта снова как в шаблоне зоны."""
-    area = db.get(NightArea, area_id)
-    if area is None:
-        raise HTTPException(status_code=404, detail="Область не найдена")
-    ov = db.scalar(select(ChecklistOverride).where(ChecklistOverride.area_id == area.id,
-                                                  ChecklistOverride.zone_item_id == zone_item_id))
-    if ov is not None:
-        db.delete(ov)
-        # сессия без autoflush: фиксируем удаление ДО пересчёта чек-листа,
-        # иначе снимок пересоберётся по ещё не удалённой правке
-        db.flush()
-    touched = refresh_free_section(db, area) if ov is not None else 0
-    audit(db, principal, "night_override_reset", f"area:{area.id}",
-          {"zone_item_id": zone_item_id, "sections_refreshed": touched})
-    db.commit()
-    return {"ok": True, "sections_refreshed": touched}
-
-
-# ─────────────────────── ответственные службы (этап 3) ───────────────────────
-# Служба — получатель недостатков ночного обхода: закрепляется за пунктом шаблона
-# зоны, у отдельного объекта переопределяется индивидуальной правкой. В отчёт
-# попадает снимком (service_name), поэтому переименование не меняет закрытые смены.
-# Здесь — только получатели и каналы; транспорт и учётные данные общие
-# («Настройки → Чаты и Почта», этап 4).
-
-@router.get("/services")
-def list_services(principal: Principal = Depends(require_perm("night.view")),
+@router.post("/zones/{zone_id}/items", response_model=ZoneItemAddedOut)
+def add_zone_item(zone_id: int, payload: ItemIn, principal: Principal = Depends(EDIT),
                   db: Session = Depends(get_db)):
-    """Справочник служб: каналы, получатели и сколько пунктов за каждой закреплено."""
-    zone_counts = dict(db.execute(
-        select(ZoneChecklistItem.service_id, func.count(ZoneChecklistItem.id))
-        .where(ZoneChecklistItem.active.is_(True), ZoneChecklistItem.service_id.is_not(None))
-        .group_by(ZoneChecklistItem.service_id)).all())
-    own_counts = dict(db.execute(
-        select(ChecklistItem.service_id, func.count(ChecklistItem.id))
-        .where(ChecklistItem.active.is_(True), ChecklistItem.service_id.is_not(None))
-        .group_by(ChecklistItem.service_id)).all())
-    rows = [service_dict(s, items_total=zone_counts.get(s.id, 0) + own_counts.get(s.id, 0))
-            for s in db.scalars(select(ResponsibilityService)
-                                .order_by(ResponsibilityService.sort_order,
-                                          ResponsibilityService.id))]
-    return {"services": rows, "can_edit": has_perm(db, principal, "night.edit")}
+    """Пункт шаблона зоны: попадает в чек-листы всех её объектов."""
+    return dicts.add_zone_item(db, principal, zone_id, payload)
 
 
-@router.post("/services")
-def create_service(payload: ServiceIn, principal: Principal = Depends(require_perm("night.edit")),
+@router.put("/zone-items/{item_id}", response_model=RemovedFromOpenOut)
+def update_zone_item(item_id: int, payload: ItemIn, principal: Principal = Depends(EDIT),
+                     db: Session = Depends(get_db)):
+    return {"removed_from_open": dicts.update_zone_item(db, principal, item_id, payload)}
+
+
+@router.delete("/zone-items/{item_id}", response_model=RemovedFromOpenOut)
+def delete_zone_item(item_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Выключить пункт шаблона: в закрытых объектах он остаётся."""
+    return {"removed_from_open": dicts.delete_zone_item(db, principal, item_id)}
+
+
+# ─────────────────────────── чек-лист объекта и его особенности ───────────────────────────
+
+
+@router.get("/areas/{area_id}/checklist", response_model=AreaChecklistOut)
+def area_checklist(area_id: int, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Чек-лист объекта: шаблон зоны с особенностями, свои пункты и итог."""
+    return dicts.area_checklist(db, area_id)
+
+
+@router.put("/areas/{area_id}/overrides/{zone_item_id}", response_model=OverrideSetOut)
+def set_override(area_id: int, zone_item_id: int, payload: OverrideIn,
+                 principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Особенность объекта для пункта шаблона: своя формулировка, своя служба или отключение."""
+    return dicts.set_override(db, principal, area_id, zone_item_id, payload)
+
+
+@router.delete("/areas/{area_id}/overrides/{zone_item_id}", response_model=SectionsRefreshedOut)
+def reset_override(area_id: int, zone_item_id: int, principal: Principal = Depends(EDIT),
                    db: Session = Depends(get_db)):
-    name = payload.name.strip()[:160]
-    if not name:
-        raise HTTPException(status_code=400, detail="Введите название службы")
-    if _service_name_taken(db, name):
-        raise HTTPException(status_code=409, detail="Служба с таким названием уже есть")
-    _check_channels(payload)
-    svc = ResponsibilityService(
-        name=name, sort_order=payload.sort_order, active=payload.active,
-        use_telegram=payload.use_telegram, use_email=payload.use_email,
-        email_to=payload.email_to.strip()[:200], email_copy=payload.email_copy.strip()[:400],
-        chat_ids=list(payload.chat_ids), note=payload.note.strip()[:300])
-    db.add(svc)
-    db.flush()
-    audit(db, principal, "night_service_create", f"service:{svc.id}", payload.model_dump())
-    db.commit()
-    return {"ok": True, "id": svc.id, "service": service_dict(svc)}
+    """Убрать особенность: пункт у объекта снова как в шаблоне зоны."""
+    return {"sections_refreshed": dicts.reset_override(db, principal, area_id, zone_item_id)}
 
 
-@router.put("/services/{service_id}")
-def update_service(service_id: int, payload: ServiceIn,
-                   principal: Principal = Depends(require_perm("night.edit")),
+# ─────────────────────────── ответственные службы ───────────────────────────
+
+
+@router.get("/services", response_model=ServicesOut)
+def list_services(principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Службы: каналы, получатели и сколько пунктов за каждой закреплено."""
+    return {"services": dicts.list_services(db), "can_edit": dicts.can_edit(db, principal)}
+
+
+@router.post("/services", response_model=ServiceCreatedOut)
+def create_service(payload: ServiceIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    service = dicts.create_service(db, principal, payload)
+    return {"id": service["id"], "service": service}
+
+
+@router.put("/services/{service_id}", response_model=ServiceUpdatedOut)
+def update_service(service_id: int, payload: ServiceIn, principal: Principal = Depends(EDIT),
                    db: Session = Depends(get_db)):
-    """Правка службы: новое название уходит в незакрытые смены, в закрытых остаётся старое."""
-    svc = db.get(ResponsibilityService, service_id)
-    if svc is None:
-        raise HTTPException(status_code=404, detail="Служба не найдена")
-    name = payload.name.strip()[:160]
-    if not name:
-        raise HTTPException(status_code=400, detail="Введите название службы")
-    if _service_name_taken(db, name, exclude_id=svc.id):
-        raise HTTPException(status_code=409, detail="Служба с таким названием уже есть")
-    _check_channels(payload)
-    old = service_dict(svc)
-    svc.name = name
-    svc.sort_order = payload.sort_order
-    svc.active = payload.active
-    svc.use_telegram = payload.use_telegram
-    svc.use_email = payload.use_email
-    svc.email_to = payload.email_to.strip()[:200]
-    svc.email_copy = payload.email_copy.strip()[:400]
-    svc.chat_ids = list(payload.chat_ids)
-    svc.note = payload.note.strip()[:300]
-    db.flush()
-    # снимок в незакрытых сменах обновляем (как у текста пункта шаблона зоны)
-    updated = 0
-    for ni in db.scalars(select(NightCheckItem)
-                         .join(NightAreaSection, NightAreaSection.id == NightCheckItem.section_id)
-                         .join(NightReport, NightReport.id == NightAreaSection.report_id)
-                         .where(NightCheckItem.service_id == svc.id, NightReport.status == "open",
-                                NightAreaSection.status != "done")):
-        ni.service_name = svc.name
-        updated += 1
-    audit(db, principal, "night_service_update", f"service:{svc.id}",
-          {"old": old, "new": service_dict(svc), "open_items_updated": updated})
-    db.commit()
-    return {"ok": True, "service": service_dict(svc), "open_items_updated": updated}
+    return dicts.update_service(db, principal, service_id, payload)
 
 
-@router.delete("/services/{service_id}")
-def delete_service(service_id: int, principal: Principal = Depends(require_perm("night.edit")),
-                   db: Session = Depends(get_db)):
-    """Отключение службы (не удаление): пункты и история закрытых смен остаются как были.
-
-    Служба перестаёт предлагаться в справочнике и не участвует в новых отправках;
-    закреплённые за ней пункты видны в ответе (items_total) — их стоит переназначить.
-    """
-    svc = db.get(ResponsibilityService, service_id)
-    if svc is None:
-        raise HTTPException(status_code=404, detail="Служба не найдена")
-    svc.active = False
-    items_total = db.scalar(select(func.count(ZoneChecklistItem.id))
-                            .where(ZoneChecklistItem.service_id == svc.id,
-                                   ZoneChecklistItem.active.is_(True))) or 0
-    audit(db, principal, "night_service_delete", f"service:{service_id}",
-          {"name": svc.name, "items_total": items_total})
-    db.commit()
-    return {"ok": True, "items_total": items_total}
+@router.delete("/services/{service_id}", response_model=ServiceDeletedOut)
+def delete_service(service_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Отключить службу: пункты и история закрытых смен остаются."""
+    return {"items_total": dicts.delete_service(db, principal, service_id)}

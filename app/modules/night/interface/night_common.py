@@ -2,8 +2,6 @@
 Маршруты — в файлах по задачам (шаг 6.5 аудита), подключает их night_api.py."""
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -22,41 +20,6 @@ router = APIRouter(prefix="/api/night", tags=["night"])
 
 # ─────────────────────────── входные модели ───────────────────────────
 
-class AreaIn(BaseModel):
-    name: str
-    category: str = ""
-    zone_id: Optional[int] = None     # зона обхода (v2): чек-лист зоны действует для объекта
-    sort_order: int = 100
-    active: bool = True
-
-
-class ZoneIn(BaseModel):
-    name: str
-    sort_order: int = 100
-    active: bool = True
-
-
-class ZoneItemIn(BaseModel):
-    text: str
-    sort_order: int = 100
-    active: bool = True
-    service_id: Optional[int] = None   # ответственная служба: кто получает недостаток
-
-
-class OverrideIn(BaseModel):
-    """Индивидуальная правка пункта шаблона зоны у конкретного объекта."""
-    text: str = ""                       # своя формулировка ('' = как в шаблоне зоны)
-    disabled: bool = False               # пункт у этого объекта не проверяется
-    service_id: Optional[int] = None     # своя служба (None = как в шаблоне зоны)
-
-
-class ItemIn(BaseModel):
-    text: str
-    sort_order: int = 100
-    active: bool = True
-    service_id: Optional[int] = None   # ответственная служба своего пункта объекта
-
-
 class DispatchIn(BaseModel):
     """Ручная отправка недостатков службам (этап 5).
 
@@ -67,23 +30,6 @@ class DispatchIn(BaseModel):
     mode: str = "all"
     item_ids: list[int] = []
     service_ids: list[int] = []
-
-
-class ServiceIn(BaseModel):
-    """Ответственная служба: каналы доставки и получатели (этап 3).
-
-    chat_ids — закрепление чатов из ОБЩЕГО каталога Telegram (получается в
-    «Настройки → Чаты и Почта»), поэтому здесь только их числовые id.
-    """
-    name: str
-    sort_order: int = 100
-    active: bool = True
-    use_telegram: bool = False
-    use_email: bool = False
-    email_to: str = ""
-    email_copy: str = ""
-    chat_ids: list[int] = []
-    note: str = ""
 
 
 class AnswerIn(BaseModel):
