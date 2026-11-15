@@ -1,7 +1,7 @@
 """Ночная смена 20:00–08:00: граница полуночи, создание и автозакрытие отчёта.
 
 Регрессия, которую закрывают эти тесты: ``ensure_report()`` сравнивал время с
-«сегодняшней» датой (``now_local().time() < SHIFT_START``), из-за чего смена,
+«сегодняшней» датой (время объекта раньше ``SHIFT_START``), из-за чего смена,
 идущая СЕЙЧАС (например 02:00 ночи), оставалась без отчёта, если сервер стартовал
 после 20:00 — раздел «Ночной отчёт» был пуст до самого автозакрытия.
 Теперь сравнение идёт с моментом старта смены (20:00 даты смены).
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from app.core.time import now_local
+from app.core.time import TZ, local_now
 from app.modules.night.application.night import (
     SHIFT_END,
     SHIFT_START,
@@ -46,16 +46,16 @@ def test_shift_boundaries_are_consistent():
     """12:00 ночи принадлежит смене, начавшейся накануне в 20:00."""
     assert dt.time(20, 0) == SHIFT_START
     assert dt.time(8, 0) == SHIFT_END
-    assert close_deadline(SHIFT_DATE) == dt.datetime(2026, 5, 11, 8, 0)
+    assert close_deadline(SHIFT_DATE) == dt.datetime(2026, 5, 11, 8, 0, tzinfo=TZ)
 
 
 def test_during_shift_now_is_after_shift_start(freeze):
     with freeze(UTC_DURING_SHIFT):
-        now = now_local()
+        now = local_now()
         assert now.date() == SHIFT_DATE + dt.timedelta(days=1)
         assert current_shift_date() == SHIFT_DATE
         # ключевая проверка: «сейчас» уже позже старта смены 10.05 в 20:00
-        assert now >= dt.datetime.combine(SHIFT_DATE, SHIFT_START)
+        assert now >= dt.datetime.combine(SHIFT_DATE, SHIFT_START, TZ)
 
 
 def test_ensure_report_creates_otchet_dlya_idushchei_smeny(freeze, db):
@@ -83,7 +83,7 @@ def test_ensure_report_ne_sozdaet_budushchuyu_smenu(freeze, db):
     created: set[dt.date] = set()
     try:
         with freeze(UTC_BEFORE_SHIFT):
-            assert now_local() < dt.datetime.combine(SHIFT_DATE, SHIFT_START)
+            assert local_now() < dt.datetime.combine(SHIFT_DATE, SHIFT_START, TZ)
             rep = ensure_report(db, SHIFT_DATE)
             assert rep is None, "отчёт создан раньше начала смены"
     finally:
@@ -129,7 +129,7 @@ def test_finalize_report_polnyi_itog_pri_zakrytyh_oblastyah(freeze, db):
             created.add(SHIFT_DATE)
             for sec in rep.areas:
                 sec.status = "done"
-                sec.closed_at = now_local()
+                sec.closed_at = local_now()
             rep.cars_step_done = True
             db.commit()
             result = finalize_report(rep)

@@ -25,7 +25,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
-from app.core.time import now_local
+from app.core.time import local_now
 from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment, raw, write_csv
 
 from ..adapters.transports.email import send_mail, split_addresses
@@ -165,7 +165,7 @@ def telegram_test(payload: TelegramTestIn, principal: Principal = Depends(EDIT),
     """Тестовое сообщение в выбранный чат — проверка, что бот добавлен и пишет."""
     cfg = load_config(db)
     text = payload.text.strip() or (
-        f"Тестовое сообщение butler-service · {now_local():%d.%m.%Y %H:%M}\n"
+        f"Тестовое сообщение butler-service · {local_now():%d.%m.%Y %H:%M}\n"
         "Если вы видите это сообщение, бот настроен и добавлен в чат.")
     try:
         message_id = TelegramBot(cfg.telegram_token, cfg.telegram_api, cfg.timeout) \
@@ -187,7 +187,7 @@ def email_test(payload: EmailTestIn, principal: Principal = Depends(EDIT),
         raise HTTPException(status_code=400, detail="Укажите корректный адрес получателя")
     subject = payload.subject.strip() or "Тестовое письмо butler-service"
     body = (f"Это тестовое письмо системы учёта butler-service.\n"
-            f"Отправлено: {now_local():%d.%m.%Y %H:%M}.\n"
+            f"Отправлено: {local_now():%d.%m.%Y %H:%M}.\n"
             f"Отправитель: {cfg.email_from}\nСервер: {cfg.smtp_host}:{cfg.smtp_port} "
             f"({cfg.smtp_security}).\n\nЕсли письмо пришло, доставка почты настроена.")
     try:

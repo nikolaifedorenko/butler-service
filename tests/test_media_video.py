@@ -177,7 +177,7 @@ def test_srok_hraneniya_svoy_u_foto_i_video(admin_client, employee_client, db):
     video = save_photo(db, kind="night_item", ref_id=1, filename="a.mp4", blob=MP4,
                        user_id=None, user_name="тест")
     assert photo.media_type == "photo" and video.media_type == "video"
-    old = dt.datetime.now() - dt.timedelta(days=100)     # «состариваем» оба файла
+    old = dt.datetime.now(dt.UTC) - dt.timedelta(days=100)     # «состариваем» оба файла
     photo.created_at = old
     video.created_at = old
     db.commit()

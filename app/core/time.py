@@ -80,13 +80,6 @@ class Moment(TypeDecorator):
         return None if value is None else value.astimezone(dt.UTC)
 
 
-# ── прежние функции времени без пояса: остаются до перевода ночного отчёта, электрокаров,
-#    уведомлений и шахматки (вторая часть шага 3в) ──
-def now_local() -> dt.datetime:
-    """Текущее время объекта без пояса. Устарело: local_now()."""
-    return dt.datetime.now(TZ).replace(tzinfo=None)
-
-
 def month_name(month: int) -> str:
     names = ["январь", "февраль", "март", "апрель", "май", "июнь",
              "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"]

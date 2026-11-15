@@ -20,7 +20,7 @@ from .core.config import settings
 from .core.db import SessionLocal, engine
 from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
 from .core.startup_lock import startup_lock
-from .core.time import now_local
+from .core.time import local_iso, local_now
 from .modules.timesheet.application.errors import ApplicationError
 from .modules.timesheet.domain.types.errors import ConfigError, DomainError
 from .modules.timesheet.interface.formatting import error_text
@@ -301,7 +301,7 @@ def health():
         db_state = f"error: {type(exc).__name__}"
     payload = {"ok": db_state == "ok", "app": settings.app_name,
                "version": settings.app_version, "db": db_state, "tz": settings.app_tz,
-               "server_time_local": now_local().isoformat(timespec="seconds"),
+               "server_time_local": local_iso(local_now()),
                "server_time_utc": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")}
     return JSONResponse(payload, status_code=200 if payload["ok"] else 503)
 

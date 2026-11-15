@@ -34,13 +34,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
-from app.core.time import local_date, now_local  # noqa: E402
+from app.core.time import local_date, local_iso, local_now  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.modules.timesheet.application.catalog import EngineSettingsVersion  # noqa: E402
 
 init_db()
 client = TestClient(app)          # администратор
 TODAY = local_date()
+DATES_AT_RUN_TIME = ("TODAY",)
 
 
 def _login_into(c: TestClient, username: str) -> TestClient:
@@ -75,10 +76,6 @@ class TestCodePunchFlags(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # «сегодня» — на момент запуска класса, а не импорта файла: между сбором тестов и их
-        # запуском проходит до 20 минут, и прогон через полночь ставил отпуск на вчера
-        global TODAY
-        TODAY = local_date()
         cls.emp = _create_employee("codepunch_emp", "Отпускников Пётр Петрович",
                                    TODAY - dt.timedelta(days=90))
         cls.emp_client = _login("codepunch_emp")
@@ -120,7 +117,7 @@ class TestCodePunchFlags(unittest.TestCase):
 
     def test_04_backfill_still_allowed(self):
         """Корректировка задним числом — инструмент менеджера: ограничению не подлежит."""
-        ts = (now_local() - dt.timedelta(hours=1)).isoformat(timespec="minutes")
+        ts = local_iso(local_now() - dt.timedelta(hours=1), "minutes")
         r = client.post("/api/punches", json={
             "kind": "IN", "employee_id": self.emp["id"], "ts": ts,
             "note": "корректировка"})

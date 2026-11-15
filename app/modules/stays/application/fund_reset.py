@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import audit
 from app.core.media import BASE_DIR
-from app.core.time import local_date, now_local
+from app.core.time import local_date, local_iso, local_now
 from app.modules.exchange.application.tables import Sheet, write_xlsx
 
 from ..adapters.orm import (
@@ -108,7 +108,7 @@ def reset_state(db: Session) -> dict:
                for m in WIPE if "id" in m.__table__.c and m.__table__.c.id.primary_key}
     last = db.execute(select(func.max(FundVersion.created_at), func.max(FundVersion.published_at))).one()
     return {"counts": reset_counts(db), "max_ids": max_ids,
-            "versions_at": [x.isoformat() if x else None for x in last]}
+            "versions_at": [local_iso(x, "auto") for x in last]}
 
 
 def fingerprint(state: dict) -> str:
@@ -350,7 +350,7 @@ def backup_module(db: Session) -> Path:
     """Пишет копию в BACKUP_DIR: сначала во временный файл, fsync, затем переименование —
     файл с именем по шаблону всегда полный. Имя уже занято (две замены в одну секунду) — 409."""
     data = backup_bytes(db)
-    final = BACKUP_DIR / f"stays-{now_local():%Y%m%d-%H%M%S}.xlsx"
+    final = BACKUP_DIR / f"stays-{local_now():%Y%m%d-%H%M%S}.xlsx"
     tmp = final.with_name(final.name + ".part")
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -432,7 +432,7 @@ def initial_load(db: Session, parsed: ParsedFund, principal, expected_state: dic
     maxima = {m: db.scalar(select(func.max(m.id))) for m in _FILE_IDS}
     wipe(db)
     held = _hold_ids(db, maxima)
-    now = now_local()
+    now = local_now()
     db.add(FundVersion(valid_from=INITIAL_DATE, status="published", rev=1, note="Начальная загрузка",
                        author_id=principal.user.id if principal else None, created_at=now, published_at=now))
     db.flush()

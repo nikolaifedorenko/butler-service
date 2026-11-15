@@ -65,11 +65,11 @@ def test_queued_after_crash_is_delivered_once_by_background(db, rows, calls):
 
 
 def test_stuck_sending_is_not_resent_but_marked_unknown(db, rows, calls):
-    from app.core.time import now_local
+    from app.core.time import now
     from app.modules.notify.application.dispatch import UNKNOWN_DELIVERY, fail_stale_sending, run_outbox
 
-    old = rows("sending", sending_at=now_local() - dt.timedelta(hours=1))   # упал посреди доставки
-    fresh = rows("sending", sending_at=now_local())                         # доставка идёт сейчас
+    old = rows("sending", sending_at=now() - dt.timedelta(hours=1))   # упал посреди доставки
+    fresh = rows("sending", sending_at=now())                         # доставка идёт сейчас
     assert fail_stale_sending(db) >= 1
     run_outbox(db, ids=None, cfg=object())
     assert calls == []                                    # дубля службе нет

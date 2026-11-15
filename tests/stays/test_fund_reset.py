@@ -403,8 +403,8 @@ def test_reset_twice_same_size_second_conflicts(admin_client, db, monkeypatch):
     import itertools
 
     tick = itertools.count()
-    start = fr.now_local()
-    monkeypatch.setattr(fr, "now_local", lambda: start + dt.timedelta(minutes=next(tick)))
+    start = fr.local_now()
+    monkeypatch.setattr(fr, "local_now", lambda: start + dt.timedelta(minutes=next(tick)))
     c = admin_client
     data = _export(c)
     assert _reset(c, data, _preview(c, data).json()["fingerprint"]).status_code == 200

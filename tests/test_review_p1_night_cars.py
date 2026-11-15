@@ -34,7 +34,7 @@ import zipfile
 
 from sqlalchemy import select
 
-from app.core.time import now_local
+from app.core.time import now
 from app.modules.night.application.night import (
     ensure_report,
     finalize_report,
@@ -95,7 +95,7 @@ def _smena_rt(db, freeze, shift_d: dt.date):
     """Отчёт смены, созданный под заморозкой, но с РЕАЛЬНЫМ временем в теле теста.
 
     Нужен там, где важна реальная разница времён: повторная отметка кара
-    (checked_at пишется now_local() — под непрерывным freeze время стояло бы на
+    (checked_at пишется текущим моментом — под непрерывным freeze время стояло бы на
     месте) и run_sync_once (закрывает отчёт по РЕАЛЬНО прошедшему дедлайну).
     Уборка: ночные отметки каров + сам отчёт (каскад)."""
     from app.modules.cars.application.catalog import CarNightCheck
@@ -373,7 +373,7 @@ def test_povtornaya_otmetka_kara_obnovlyaet_checked_at(manager_client, db, freez
 
         # кар взяли ПОСЛЕ первой отметки — флаг «взяли после проверки» горит
         car_orm = db.get(Car, car["id"])
-        car_orm.last_taken_at = now_local() + dt.timedelta(seconds=1)
+        car_orm.last_taken_at = now() + dt.timedelta(seconds=1)
         db.commit()
         check_mid = next(e for e in _obhod(manager_client, rep.id)["list"]
                          if e["car"]["id"] == car["id"])["check"]

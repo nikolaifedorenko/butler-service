@@ -15,6 +15,7 @@ from tests.period_ops import period_action
 TODAY = local_date()
 PREV_END = TODAY.replace(day=1) - dt.timedelta(days=1)
 PREV = PREV_END.replace(day=1)
+DATES_AT_RUN_TIME = ("TODAY", "PREV_END", "PREV")
 
 
 @pytest.fixture(scope="module")

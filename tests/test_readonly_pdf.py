@@ -28,6 +28,7 @@ emp_client = TestClient(app)      # батлер (роль employee)
 
 TODAY = local_date()
 YEAR, MONTH = TODAY.year, TODAY.month
+DATES_AT_RUN_TIME = ("TODAY", "YEAR", "MONTH")
 MANAGER_ONLY_KEYS = ("note", "id")
 
 

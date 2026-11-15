@@ -15,7 +15,7 @@
   * обслуживание (досоздание смен и автозакрытие) работает при старте сервера и
     фоновым потоком (bootstrap/night_sync.py), а НЕ в GET-запросах раздела.
 
-Время смены хранится в локальном времени объекта (naive), как Punch.ts.
+Моменты хранятся с поясом; границы смены (20:00, 08:00) — по времени объекта.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.media import photos_of
-from app.core.time import now_local
+from app.core.time import TZ, local_iso, local_now, to_local
 from app.modules.cars.application.catalog import Car, CarNightCheck
 from app.modules.notify.application.catalog import ResponsibilityService
 
@@ -53,22 +53,23 @@ CAR_AREA_NAME = "Проверка электрокаров"   # специаль
 BACKFILL_DAYS = 31
 
 
-def shift_date_at(ts: dt.datetime) -> dt.date:
-    """Дате начала смены принадлежит интервал [20:00 Д, 08:00 Д+1)."""
-    return (ts - dt.timedelta(hours=12)).date()
+def shift_date_at(moment: dt.datetime) -> dt.date:
+    """Дате начала смены принадлежит интервал [20:00 Д, 08:00 Д+1) по времени объекта."""
+    return (to_local(moment) - dt.timedelta(hours=12)).date()
 
 
 def current_shift_date(now: Optional[dt.datetime] = None) -> dt.date:
-    if now is None:
-        now = now_local()
-    elif now.tzinfo is not None:      # наивное время объекта (Europe/Moscow), как в БД
-        now = now.replace(tzinfo=None)
-    return shift_date_at(now)
+    return shift_date_at(now or local_now())
+
+
+def shift_start(shift_d: dt.date) -> dt.datetime:
+    """Момент начала смены D — 20:00 по времени объекта."""
+    return dt.datetime.combine(shift_d, SHIFT_START, TZ)
 
 
 def close_deadline(shift_d: dt.date) -> dt.datetime:
-    """Момент автозакрытия отчёта за смену D — 08:00 следующих суток."""
-    return dt.datetime.combine(shift_d + dt.timedelta(days=1), SHIFT_END)
+    """Момент автозакрытия отчёта за смену D — 08:00 следующих суток по времени объекта."""
+    return dt.datetime.combine(shift_d + dt.timedelta(days=1), SHIFT_END, TZ)
 
 
 def services_map(db: Session) -> dict[int, str]:
@@ -99,7 +100,7 @@ def service_dict(svc: ResponsibilityService, *, items_total: int = 0) -> dict:
         "ready_telegram": bool(svc.use_telegram and chats),
         "ready_email": bool(svc.use_email and (svc.email_to or "").strip()),
         "ready": bool((svc.use_telegram and chats) or (svc.use_email and (svc.email_to or "").strip())),
-        "created_at": svc.created_at.isoformat(timespec="seconds") if svc.created_at else None,
+        "created_at": local_iso(svc.created_at, "seconds"),
     }
 
 
@@ -160,7 +161,7 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
     # смены (20:00 даты shift_d), а не с «сегодняшней» датой: иначе смена, идущая
     # сейчас (например 02:00 ночи), осталась бы без отчёта при старте сервера
     # после 20:00 — ночная бригада видела бы пустой раздел до самого закрытия.
-    if now_local() < dt.datetime.combine(shift_d, SHIFT_START):
+    if local_now() < shift_start(shift_d):
         return None
 
     report = NightReport(date=shift_d)
@@ -233,7 +234,7 @@ def sync_reports(db: Session, *, force: bool = False) -> dict:
             if r is not None:
                 created.append(d.isoformat())
         d += dt.timedelta(days=1)
-    now = now_local()
+    now = local_now()
     for rep in db.scalars(select(NightReport).where(NightReport.status == "open")):
         if rep.reopened_at is not None:
             continue            # переоткрыт вручную — автозакрытие выключено
@@ -253,7 +254,7 @@ def finalize_report(rep: NightReport, *, reason: str = "auto") -> str:
     автозакрытие по дедлайну 08:00 раньше не проставляло close_reason, и выгрузка
     подписывала закрытый отчёт «Открыт · закроется 08:00» (ревью 20.10.2026, P1)."""
     rep.status = "closed"
-    rep.closed_at = now_local()
+    rep.closed_at = local_now()
     rep.close_reason = reason
     unfinished = [s for s in rep.areas if s.status != "done"]
     if unfinished or not rep.cars_step_done:
@@ -277,7 +278,7 @@ def item_dict(it: NightCheckItem) -> dict:
         "answer": it.answer, "answer_title": ANSWER_TITLES.get(it.answer, it.answer),
         "comment": it.comment or "",
         "answered_by_name": it.answered_by_name or "",
-        "answered_at": it.answered_at.isoformat(timespec="seconds") if it.answered_at else None,
+        "answered_at": local_iso(it.answered_at, "seconds"),
     }
 
 
@@ -298,8 +299,8 @@ def section_dict(sec: NightAreaSection, *, with_items: bool = True) -> dict:
         "is_cars": sec.area_id is None and sec.category == "cars",
         "status": sec.status, "status_title": SECTION_TITLES.get(sec.status, sec.status),
         "taken_by": sec.taken_by, "taken_by_name": sec.taken_by_name or "",
-        "taken_at": sec.taken_at.isoformat(timespec="seconds") if sec.taken_at else None,
-        "closed_at": sec.closed_at.isoformat(timespec="seconds") if sec.closed_at else None,
+        "taken_at": local_iso(sec.taken_at, "seconds"),
+        "closed_at": local_iso(sec.closed_at, "seconds"),
         "items_total": len(items), "items_answered": answered,
         "items_bad": sum(1 for i in items if i.answer == "bad"),
         "items_unanswered": len(items) - answered,
@@ -373,7 +374,7 @@ def zone_dict(zone: NightZone, *, areas_total: int = 0, items_total: int = 0) ->
     return {"id": zone.id, "name": zone.name, "sort_order": zone.sort_order,
             "active": bool(zone.active), "areas_total": areas_total,
             "items_total": items_total,
-            "created_at": zone.created_at.isoformat(timespec="seconds") if zone.created_at else None}
+            "created_at": local_iso(zone.created_at, "seconds")}
 
 
 def duty_of(rep: NightReport) -> str:
@@ -438,10 +439,10 @@ def defects_of(db: Session, rep: NightReport) -> dict:
             "service_id": ni.service_id,
             "service_name": ni.service_name or "",
             "answered_by_name": ni.answered_by_name or "",
-            "answered_at": ni.answered_at.isoformat(timespec="seconds") if ni.answered_at else None,
+            "answered_at": local_iso(ni.answered_at, "seconds"),
             "media": media.get(ni.id, []),
             "dispatched": dispatched,
-            "dispatched_at": ni.dispatched_at.isoformat(timespec="seconds") if ni.dispatched_at else None,
+            "dispatched_at": local_iso(ni.dispatched_at, "seconds"),
             "dispatch_id": ni.dispatch_id,
             "fixed_after_dispatch": fixed_after,
             # отправляем только то, что ещё не уходило и не исправлено после отправки
@@ -476,7 +477,7 @@ def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
         out.append({
             "id": c.id, "car_id": c.car_id, "car_number": c.car_number,
             "checker_name": c.checker_name or "",
-            "checked_at": c.checked_at.isoformat(timespec="seconds") if c.checked_at else None,
+            "checked_at": local_iso(c.checked_at, "seconds"),
             "found": bool(c.found), "location": c.location or "",
             "found_location": c.found_location or "", "moved": bool(c.moved),
             "canopy": bool(c.canopy), "charge": c.charge or "", "on_charge": bool(c.on_charge),
@@ -491,7 +492,7 @@ def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
         sec = sections_by_id.get(x.section_id)
         interceptions.append({
             "id": x.id,
-            "ts": x.ts.isoformat(timespec="seconds") if x.ts else None,
+            "ts": local_iso(x.ts, "seconds"),
             "area_name": sec.name if sec else f"область #{x.section_id}",
             "from_user_name": x.from_user_name or "", "to_user_name": x.to_user_name or "",
         })
@@ -505,11 +506,11 @@ def report_dict(rep: NightReport, *, with_items: bool = True, db=None) -> dict:
         "id": rep.id, "date": rep.date.isoformat(), "shift_label": rep.shift_label,
         "status": rep.status, "result": rep.result,
         "result_title": {"full": "полный", "partial": "неполный"}.get(rep.result, "—"),
-        "closed_at": rep.closed_at.isoformat(timespec="seconds") if rep.closed_at else None,
+        "closed_at": local_iso(rep.closed_at, "seconds"),
         "close_reason": rep.close_reason,
         # переоткрыт вручную → автозакрытие выключено (интерфейс и DOCX это показывают)
-        "reopened_at": rep.reopened_at.isoformat(timespec="seconds") if rep.reopened_at else None,
-        "deadline": close_deadline(rep.date).isoformat(timespec="seconds"),
+        "reopened_at": local_iso(rep.reopened_at, "seconds"),
+        "deadline": local_iso(close_deadline(rep.date)),
         "readonly": rep.status == "closed",
         "cars_step_done": rep.cars_step_done,
         "progress": prog,

@@ -11,7 +11,7 @@
   * замечания по возврату → кар автоматически «на обслуживании»; снять с обслуживания
     может только менеджер/администратор;
   * история — журнал: не редактируется и не удаляется, добавляются новые записи;
-  * время — Europe/Moscow (naive, как Punch.ts).
+  * время — моменты с поясом; в ответах API — местное время объекта.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.core.media import UploadRef, photos_of, save_photo_ref
 from app.core.permissions import has_perm
-from app.core.time import now_local
+from app.core.time import local_iso, local_now
 from app.modules.people.application import Employee
 
 from ..adapters.orm import Car, CarHistory, CarLocation
@@ -135,7 +135,7 @@ def history_dict(h: CarHistory, photos: dict[int, list[dict]]) -> dict:
         details = {}
     return {
         "id": h.id,
-        "ts": h.ts.isoformat(timespec="seconds") if h.ts else None,
+        "ts": local_iso(h.ts, "seconds"),
         "action": h.action,
         "action_title": ACTION_TITLES.get(h.action, h.action),
         "actor_name": h.actor_name or "",
@@ -171,8 +171,8 @@ def car_dict(car: Car, *, extra: Optional[dict] = None) -> dict:
         "assigned_to": car.assigned_to,
         "assigned_name": _assigned_name(car),
         "note": car.note or "",
-        "last_checked_at": car.last_checked_at.isoformat(timespec="seconds") if car.last_checked_at else None,
-        "last_taken_at": car.last_taken_at.isoformat(timespec="seconds") if car.last_taken_at else None,
+        "last_checked_at": local_iso(car.last_checked_at, "seconds"),
+        "last_taken_at": local_iso(car.last_taken_at, "seconds"),
         "active": bool(car.active),
     }
     if extra:
@@ -184,7 +184,7 @@ def add_history(db: Session, car: Car, action: str, principal, *, person: str = 
                 with_key: Optional[bool] = None, location: str = "",
                 details: Optional[dict] = None) -> CarHistory:
     rec = CarHistory(
-        car_id=car.id, ts=now_local(), action=action,
+        car_id=car.id, ts=local_now(), action=action,
         actor_user_id=principal.user.id if principal else None,
         actor_name=(principal.actor_label if principal else "system"),
         person=person, with_key=with_key, location=location,
@@ -239,7 +239,7 @@ def take_car(db: Session, car: Car, principal, *, ack_assigned: bool = False) ->
     car.holder_user_id = holder_uid
     car.holder_name = principal.name
     car.has_key = True          # ключ по умолчанию считается у взявшего
-    car.last_taken_at = now_local()
+    car.last_taken_at = local_now()
     add_history(db, car, "take", principal, person=principal.name, with_key=True,
                 location=car.location,
                 details={"from_status": "charging" if was_charging else "free",
@@ -273,7 +273,7 @@ def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int]
     car.holder_name = label
     car.status = "busy"
     car.has_key = with_key
-    car.last_taken_at = now_local()
+    car.last_taken_at = local_now()
     add_history(db, car, "handover", principal, person=label, with_key=with_key,
                 location=car.location, details={"from": prev_name, "comment": comment})
     return car_dict(car)
@@ -297,7 +297,7 @@ def give_car(db: Session, car: Car, principal, *, employee_id: Optional[int], na
     car.holder_name = label
     car.status = "busy"
     car.has_key = with_key
-    car.last_taken_at = now_local()
+    car.last_taken_at = local_now()
     add_history(db, car, "give", principal, person=label, with_key=with_key,
                 location=car.location, details={"from": prev_holder})
     return car_dict(car)
@@ -510,7 +510,7 @@ def night_cars_state(db: Session, report) -> dict:
                 "on_charge": bool(ch.on_charge), "condition": ch.condition or "ok",
                 "trash": bool(ch.trash), "clean": bool(ch.clean), "comment": ch.comment or "",
                 "checker_name": ch.checker_name or "",
-                "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None,
+                "checked_at": local_iso(ch.checked_at, "seconds"),
                 "taken_after_check": bool(car.last_taken_at and ch.checked_at
                                           and car.last_taken_at > ch.checked_at),
                 "photos": pmap.get(ch.id, []),
@@ -559,7 +559,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     # время отметки обновляется при КАЖДОМ сохранении (перезапись — last write wins):
     # иначе повторная отметка оставалась с checked_at первой, а вместе с ней старели
     # car.last_checked_at и флаг «кар взяли после проверки» (ревью 20.10.2026, P1)
-    ch.checked_at = now_local()
+    ch.checked_at = local_now()
     ch.car_number = car.number
     ch.checker_user_id = principal.user.id
     ch.checker_name = principal.actor_label
@@ -599,7 +599,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
         save_photo_ref(db, kind="car_check", ref_id=ch.id, ref=ref,
                        user_id=principal.user.id, user_name=principal.actor_label)
     return {"id": ch.id, "found": ch.found,
-            "checked_at": ch.checked_at.isoformat(timespec="seconds") if ch.checked_at else None}
+            "checked_at": local_iso(ch.checked_at, "seconds")}
 
 
 def finish_cars_step(db: Session, report, principal) -> dict:

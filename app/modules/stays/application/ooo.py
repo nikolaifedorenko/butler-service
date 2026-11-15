@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.identity import User
+from app.core.time import local_iso
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Ooo
@@ -167,7 +168,7 @@ def list_ooo(db: Session, q: OooQuery) -> dict:
             group = " / ".join(fund.on(days[0]).path_titles(u.group_id))
         row = {**ooo_dict(o), "unit": u.label if u is not None else f"№{o.unit_id}",
                "category_id": u.category_id if u is not None else None, "category": cat.code if cat else "",
-               "group": group, "author": authors.get(o.author_id, ""), "created_at": o.created_at.isoformat(timespec="minutes")}
+               "group": group, "author": authors.get(o.author_id, ""), "created_at": local_iso(o.created_at, "minutes")}
         if f.q.strip() and f.q.strip().lower() not in f"{row['reason']} {row['unit']}".lower():
             continue
         items.append(row)

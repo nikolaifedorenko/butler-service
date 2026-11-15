@@ -29,6 +29,7 @@ sup = TestClient(app)             # супервайзер
 emp_client = TestClient(app)      # сотрудник
 
 TODAY = local_date()
+DATES_AT_RUN_TIME = ("TODAY",)
 
 
 def _login(c: TestClient, username: str) -> None:

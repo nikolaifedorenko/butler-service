@@ -28,13 +28,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, select
+from sqlalchemy import ForeignKey, Index, Integer, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .audit import audit
 from .db import Base
 from .errors import Forbidden, Gone, NotFound, PayloadTooLarge
-from .time import now_local
+from .time import Moment, local_iso, local_now, now
 
 # app/core/media.py → корень проекта на ДВА уровня выше app (был app/photos.py —
 # на один). data/uploads живёт в корне проекта — путь критичен для уже загруженных файлов.
@@ -67,7 +67,7 @@ class Photo(Base):
     media_type: Mapped[str] = mapped_column(String(8), default="photo")   # photo | video
     uploaded_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     uploaded_by_name: Mapped[str] = mapped_column(String(120), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 ALLOWED_EXT = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
                "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp"}
@@ -257,7 +257,7 @@ def _sniff_and_limit(db: Session, head: bytes, filename: str, size: int,
 
 def _upload_dir() -> tuple[Path, Path]:
     """(абсолютный каталог, относительный от BASE_DIR) загрузок текущего месяца."""
-    rel_dir = Path("data") / "uploads" / f"{now_local():%Y}" / f"{now_local():%m}"
+    rel_dir = Path("data") / "uploads" / f"{local_now():%Y}" / f"{local_now():%m}"
     target_dir = BASE_DIR / rel_dir
     target_dir.mkdir(parents=True, exist_ok=True)
     return target_dir, rel_dir
@@ -325,7 +325,7 @@ def photos_of(db: Session, kind: str, ref_ids: list[int]) -> dict[int, list[dict
             "url": photo_url(p) if exists else "",
             "missing": not exists,
             "uploaded_by_name": p.uploaded_by_name or "",
-            "created_at": p.created_at.isoformat(timespec="seconds") if p.created_at else None,
+            "created_at": local_iso(p.created_at, "seconds"),
         })
     return out
 
@@ -389,13 +389,13 @@ def cleanup_photos(db: Session, days: Optional[int] = None) -> int:
         return 0                                # всё хранится бессрочно
     # кандидаты — старше САМОГО КОРОТКОГО срока; каждый файл ниже сверяется со своим
     # (было max(): при фото 30 / видео 180 дней фото жили 180, аудит BUG-01)
-    oldest = now_local() - dt.timedelta(days=min(positive))
+    oldest = local_now() - dt.timedelta(days=min(positive))
     removed = 0
     for p in db.scalars(select(Photo).where(Photo.created_at < oldest)):
         keep = limits.get(p.media_type or "photo", 0)
         if keep <= 0:
             continue                            # этот тип храним всегда
-        if p.created_at and p.created_at >= now_local() - dt.timedelta(days=keep):
+        if p.created_at and p.created_at >= local_now() - dt.timedelta(days=keep):
             continue                            # ещё не дорос до своего срока
         if p.path and (BASE_DIR / p.path).is_file():
             unlink_photo(p)

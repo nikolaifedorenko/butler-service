@@ -6,7 +6,6 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -17,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
-from app.core.time import now_local
+from app.core.time import Moment, now
 
 
 class CarLocation(Base):
@@ -30,7 +29,7 @@ class CarLocation(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
 
 
 class Car(Base):
@@ -70,11 +69,11 @@ class Car(Base):
     holder_name: Mapped[str] = mapped_column(String(120), default="")  # если держатель внешний — имя текстом
     assigned_to: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(255), default="")
-    last_checked_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
-    last_taken_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
+    last_checked_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
+    last_taken_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local, onupdate=now_local)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
 
@@ -88,7 +87,7 @@ class CarHistory(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     car_id: Mapped[int] = mapped_column(ForeignKey("cars.id"), index=True)
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    ts: Mapped[dt.datetime] = mapped_column(Moment, default=now)
     action: Mapped[str] = mapped_column(String(24))
     actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     actor_name: Mapped[str] = mapped_column(String(120), default="")
@@ -120,7 +119,7 @@ class CarNightCheck(Base):
     car_number: Mapped[str] = mapped_column(String(40), default="")
     checker_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     checker_name: Mapped[str] = mapped_column(String(120), default="")
-    checked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now_local)
+    checked_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
     found: Mapped[bool] = mapped_column(Boolean, default=True)
     found_location: Mapped[str] = mapped_column(String(160), default="")  # где нашёл
     location: Mapped[str] = mapped_column(String(160), default="")        # где оставил

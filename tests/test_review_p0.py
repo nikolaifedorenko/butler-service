@@ -33,6 +33,7 @@ from app.modules.timesheet.interface.period_params import PERIOD_DETAIL
 BASE = pathlib.Path(__file__).resolve().parent.parent
 TODAY = local_date()
 MONTH_FIRST = TODAY.replace(day=1)
+DATES_AT_RUN_TIME = ("TODAY", "MONTH_FIRST")
 
 # сколько DELETE FROM schedule_shifts допустимо на одну массовку: одна перегенерация
 # на затронутый месяц (P0-3). Раньше было по одной на каждую ячейку.

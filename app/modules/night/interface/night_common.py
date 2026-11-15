@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.media import photos_of
+from app.core.time import to_local
 
 from ..adapters.orm import NightAreaSection, NightReport
 from ..application.night import report_dict
@@ -135,7 +136,7 @@ def _guard_section_open(sec) -> None:
     """Закрытая область — только для чтения: правки — после переоткрытия («Переоткрыть» или
     «взять в работу» закрывшим/супервайзером) (рецензия аудита 22.10.2026, P1)."""
     if sec.status == "done":
-        when = f" в {sec.closed_at:%H:%M}" if sec.closed_at else ""
+        when = f" в {to_local(sec.closed_at):%H:%M}" if sec.closed_at else ""
         raise HTTPException(status_code=409, detail=(
             f"Область «{sec.name}» закрыта{when} — чтобы изменить отметки, переоткройте её"))
 

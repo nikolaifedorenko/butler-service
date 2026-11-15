@@ -16,7 +16,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.time import now_local
+from app.core.time import local_iso, local_now
 
 from ..adapters.orm import NotifyChat
 from ..adapters.transports.telegram import TelegramBot
@@ -60,8 +60,8 @@ def chat_dict(c: NotifyChat, *, used_by: Optional[list[str]] = None) -> dict:
     return {
         "id": c.id, "chat_id": c.chat_id, "title": c.title or f"чат {c.chat_id}",
         "username": c.username or "", "kind": c.kind or "group",
-        "first_seen": c.first_seen.isoformat(timespec="seconds") if c.first_seen else None,
-        "last_seen": c.last_seen.isoformat(timespec="seconds") if c.last_seen else None,
+        "first_seen": local_iso(c.first_seen, "seconds"),
+        "last_seen": local_iso(c.last_seen, "seconds"),
         "used_by": used_by or [],
     }
 
@@ -95,7 +95,7 @@ def refresh_chats(db: Session, cfg: NotifyConfig, *, bot: Optional[TelegramBot] 
     updates = client.get_updates()
     found = chats_from_updates(updates)
     known = {c.chat_id: c for c in db.scalars(select(NotifyChat))}
-    ts = now_local()
+    ts = local_now()
     added = 0
     for row in found:
         existing = known.get(row["chat_id"])
