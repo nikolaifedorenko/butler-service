@@ -18,7 +18,7 @@ from .core import observability
 from .core.auth import Principal, optional_principal
 from .core.config import settings
 from .core.db import SessionLocal, engine
-from .core.errors import Conflict, Forbidden, Gone, NotFound, PayloadTooLarge, Validation
+from .core.errors import ServiceError
 from .core.startup_lock import startup_lock
 from .core.time import local_iso, local_now
 from .modules.timesheet.application.errors import ApplicationError
@@ -147,38 +147,12 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 registry.wire()   # реестр моделей + провайдеры core — до первого запроса (и для тестов без init_db)
 
 
-# ── маппинг доменных ошибок сервисного слоя в HTTP ──────────────────────────
-# Прикладной слой модулей не знает про FastAPI и бросает ошибки app/core/errors.py;
-# тело ответа прежнее — {"detail": текст}, контракты API и тесты не меняются.
-@app.exception_handler(NotFound)
-async def _not_found_handler(request: Request, exc: NotFound):
-    return JSONResponse({"detail": str(exc)}, status_code=404)
-
-
-@app.exception_handler(Forbidden)
-async def _forbidden_handler(request: Request, exc: Forbidden):
-    return JSONResponse({"detail": str(exc)}, status_code=403)
-
-
-@app.exception_handler(Validation)
-async def _validation_handler(request: Request, exc: Validation):
-    return JSONResponse({"detail": str(exc)}, status_code=422)
-
-
-@app.exception_handler(Conflict)
-async def _conflict_handler(request: Request, exc: Conflict):
-    return JSONResponse({"detail": str(exc)}, status_code=409)
-
-
-@app.exception_handler(Gone)
-async def _gone_handler(request: Request, exc: Gone):
-    return JSONResponse({"detail": str(exc)}, status_code=410)
-
-
-@app.exception_handler(PayloadTooLarge)
-async def _payload_too_large_handler(request: Request, exc: PayloadTooLarge):
-    """Файл больше настроенного лимита (фото/видео) → 413."""
-    return JSONResponse({"detail": str(exc)}, status_code=413)
+# ── ошибки прикладного слоя → HTTP ──────────────────────────────────────────
+# Прикладной слой не знает про FastAPI и бросает наследников ServiceError (core/errors.py):
+# статус задаёт класс ошибки, тело — {"detail": текст или словарь}.
+@app.exception_handler(ServiceError)
+async def _service_error_handler(request: Request, exc: ServiceError):
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 
 # ── маппинг типизированных ошибок расчётного движка (EXECUTION-SPEC-v2 §5.3) ──

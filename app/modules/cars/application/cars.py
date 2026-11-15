@@ -21,9 +21,12 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
-from app.core.db import plain_json
+from app.core.audit import audit
+from app.core.auth import Principal
+from app.core.db import plain_json, transactional
+from app.core.errors import Forbidden, NotFound, Rejected
 from app.core.media import UploadRef, photos_of, save_photo_ref
-from app.core.permissions import has_perm
+from app.core.permissions import has_perm, principal_permissions
 from app.core.time import local_iso, local_now
 from app.modules.people.application import Employee
 
@@ -53,20 +56,28 @@ ACTION_TITLES = {
 CHARGE_TITLES = {"full": "полный", "half": "половина", "empty": "разряжен", "": "—"}
 
 
-class CarOpError(ValueError):
-    """Ошибка операции с каром (текст показываем пользователю)."""
+class CarOpError(Rejected):
+    """Операция с каром отклонена правилом → 400."""
 
 
 class CarConflict(CarOpError):
-    """Кар изменил параллельный запрос (CONC-01) — 409, клиенту обновить экран."""
+    """Кар изменил параллельный запрос → 409, клиенту обновить экран."""
+
+    status_code = 409
 
 
 class CarInterceptAssigned(CarOpError):
-    """Кар закреплён за другим сотрудником: мягкое предупреждение, решение за берущим."""
+    """Кар закреплён за другим сотрудником: мягкое предупреждение, решение за берущим → 409."""
+
+    status_code = 409
 
     def __init__(self, assigned_name: str):
         super().__init__(f"Закреплён за {assigned_name}. Всё равно взять?")
         self.assigned_name = assigned_name
+
+    @property
+    def detail(self) -> dict:
+        return {"interception": True, "message": self.message}
 
 
 def _emp_label(e: Optional[Employee]) -> str:
@@ -201,12 +212,14 @@ def add_history(db: Session, car: Car, action: str, principal, *, person: str = 
 
 # ─────────────────────────── операции над каром ───────────────────────────
 
-def take_car(db: Session, car: Car, principal, *, ack_assigned: bool = False) -> dict:
+@transactional
+def take_car(db: Session, principal: Principal, car_id: int, *, ack_assigned: bool = False) -> dict:
     """«Взять кар» (ТЗ): свободный или стоящий на зарядке.
 
     Закрепление рекомендательное: если кар закреплён за другим сотрудником —
     мягкое предупреждение («Всё равно взять?»), при ack_assigned=True берём и
     записываем факт в историю. Жёстких блокировок нет. Один сотрудник — один кар."""
+    car = get_car(db, car_id)
     if car.status == "maintenance":
         raise CarOpError("Кар на обслуживании — взять нельзя (снять с обслуживания может менеджер)")
     if car.status == "disabled":
@@ -239,16 +252,19 @@ def take_car(db: Session, car: Car, principal, *, ack_assigned: bool = False) ->
                 location=car.location,
                 details={"from_status": "charging" if was_charging else "free",
                          "taken_despite_assigned": _emp_label(assigned_emp) if assigned_emp else ""})
+    audit(db, principal, "car_take", f"car:{car.id}", {"ack_assigned": ack_assigned})
     return car_dict(car)
 
 
-def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int], name: str,
+@transactional
+def handover_car(db: Session, principal: Principal, car_id: int, *, employee_id: Optional[int], name: str,
                  with_key: bool = True, comment: str = "") -> dict:
     """Передать кар другому человеку (ТЗ «Отдал»).
 
     Внутренний сотрудник — по id; внешний — по ФИО (справочник внешних не ведём).
     Держателем становится тот, кому отдали; статус остаётся «Занят». Возврат отмечает
     принявший (любой пользователь, если принял внешний)."""
+    car = get_car(db, car_id)
     if car.status not in ("busy", "charging"):
         raise CarOpError("Передать можно занятый кар (или стоящий на зарядке у держателя)")
     # как и возврат: передаёт тот, у кого кар сейчас, либо право cars.override (супервайзер+)
@@ -271,13 +287,16 @@ def handover_car(db: Session, car: Car, principal, *, employee_id: Optional[int]
     car.last_taken_at = local_now()
     add_history(db, car, "handover", principal, person=label, with_key=with_key,
                 location=car.location, details={"from": prev_name, "comment": comment})
+    audit(db, principal, "car_handover", f"car:{car.id}",
+          {"employee_id": employee_id, "name": name, "with_key": with_key, "comment": comment})
     return car_dict(car)
 
 
-def give_car(db: Session, car: Car, principal, *, employee_id: Optional[int], name: str,
+@transactional
+def give_car(db: Session, principal: Principal, car_id: int, *, employee_id: Optional[int], name: str,
              with_key: bool = True) -> dict:
-    """Выдать кар сотруднику (менеджер/супервайзер/админ). Внешним — по ФИО, без учётной записи."""
-    # BUG-02: «выдать» обходило правило «снять с обслуживания — менеджер» и выдавало отключённый
+    """Выдать кар сотруднику (право выдачи). Внешним — по ФИО, без учётной записи."""
+    car = get_car(db, car_id)
     if car.status == "maintenance":
         raise CarOpError("Кар на обслуживании — выдать нельзя (снять с обслуживания может менеджер)")
     if car.status == "disabled":
@@ -295,34 +314,35 @@ def give_car(db: Session, car: Car, principal, *, employee_id: Optional[int], na
     car.last_taken_at = local_now()
     add_history(db, car, "give", principal, person=label, with_key=with_key,
                 location=car.location, details={"from": prev_holder})
+    audit(db, principal, "car_give", f"car:{car.id}", {"employee_id": employee_id, "name": name, "with_key": with_key})
     return car_dict(car)
 
 
-def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int],
+@transactional
+def return_car(db: Session, principal: Principal, car_id: int, *, by_employee_id: Optional[int],
                by_name: str, location: str, charge: str, canopy: bool, condition: str,
                trash: bool, clean: bool, on_charge: bool, key_returned: Optional[bool],
-               was_with_key: Optional[bool], comment: str, photo_refs: list[UploadRef],
-               force: bool = False) -> dict:
+               comment: str, photo_refs: list[UploadRef]) -> dict:
     """Возврат кара на парковку.
 
     Отмечает возврат тот, кто брал (внутренний пользователь), или любой сотрудник —
     если брал внешний. Супервайзер/менеджер/админ могут вернуть любой кар (force).
     Статус после возврата: замечания → «на обслуживании»; иначе на зарядке → «на зарядке»;
     иначе «свободен». Замечания (condition != ok или мусор/не убран) всегда приоритетнее.
+    Указать, что кар вернул кто-то другой, может только сотрудник с правом выдачи.
     """
+    if (by_employee_id or by_name.strip()) and not has_perm(db, principal, "cars.issue"):
+        raise Forbidden("Указать, кто вернул кар, может только сотрудник с правом выдачи каров")
+    car = get_car(db, car_id)
+    was_with_key = car.has_key
     override = has_perm(db, principal, "cars.override")
-    if not override and not force:
+    if not override:
         if car.holder_user_id and car.holder_user_id != principal.user.id:
             raise CarOpError("Возврат отмечает сотрудник, который брал кар "
                              "(или супервайзер/менеджер/администратор)")
         if not car.holder_user_id and car.holder_name:
             # брал внешний — отметить возврат может любой
             pass
-    # 18.10.2026: оставить на зарядке можно кар с ЛЮБЫМ зарядом, включая полный —
-    # прежний запрет («только разряженный/полуразряженный») снят по решению владельца.
-    # было `(by_employee_id or name)`: несуществующая переменная `name` давала NameError
-    # при ЛЮБОМ возврате кара без явного employee_id (обычный случай — сотрудник
-    # возвращает свой кар), то есть операция падала в 500.
     by_uid, by_label = resolve_person(db, employee_id=by_employee_id, name=by_name) \
         if (by_employee_id or by_name) else (None, principal.name)
     was_handover = bool(db.scalar(select(CarHistory).where(
@@ -353,14 +373,22 @@ def return_car(db: Session, car: Car, principal, *, by_employee_id: Optional[int
                                "key_returned": key_returned, "comment": comment,
                                "auto_maintenance": bad})
     for ref in photo_refs:
-        # потоковая загрузка (P1 20.10.2026): файл уже на диске во временном каталоге,
-        # save_photo_ref переносит его в хранилище без чтения в память
-        save_photo_ref(db, kind="car_return", ref_id=rec.id, ref=ref,
-                       user_id=principal.user.id, user_name=principal.actor_label)
+        # файл уже на диске во временном каталоге: в хранилище он переносится без чтения в память
+        try:
+            save_photo_ref(db, kind="car_return", ref_id=rec.id, ref=ref,
+                           user_id=principal.user.id, user_name=principal.actor_label)
+        except ValueError as exc:                # файл — не изображение и не видео
+            raise CarOpError(str(exc)) from exc
+    audit(db, principal, "car_return", f"car:{car.id}",
+          {"condition": condition, "on_charge": on_charge, "comment": comment})
     return car_dict(car)
 
 
-def set_status(db: Session, car: Car, principal, status: str, note: str = "") -> dict:
+@transactional
+def set_status(db: Session, principal: Principal, car_id: int, status: str, note: str = "") -> dict:
+    """Ручная смена статуса: «занят» без держателя нельзя; с занятого — только через возврат;
+    обслуживание заводит и снимает только сотрудник с правом cars.maintenance."""
+    car = get_car(db, car_id)
     if status not in STATUS_TITLES:
         raise CarOpError(f"Неизвестный статус: {status}")
     if status == "busy" and not car.holder_user_id and not car.holder_name:
@@ -382,11 +410,14 @@ def set_status(db: Session, car: Car, principal, status: str, note: str = "") ->
     add_history(db, car, "maintenance_off" if old == "maintenance" and status != "maintenance"
                 else "status", principal, location=car.location,
                 details={"from": old, "to": status, "note": note})
+    audit(db, principal, "car_status", f"car:{car.id}", {"status": status, "note": note})
     return car_dict(car)
 
 
-def assign_employee(db: Session, car: Car, principal, employee_id: Optional[int]) -> dict:
-    """Закрепление (рекомендательное). Вызывается из карточки сотрудника."""
+@transactional
+def assign_employee(db: Session, principal: Principal, car_id: int, employee_id: Optional[int]) -> dict:
+    """Закрепление (рекомендательное); пустой employee_id снимает его."""
+    car = get_car(db, car_id)
     emp = db.get(Employee, employee_id) if employee_id else None
     if employee_id and emp is None:
         raise CarOpError("Сотрудник не найден")
@@ -399,11 +430,14 @@ def assign_employee(db: Session, car: Car, principal, employee_id: Optional[int]
     car.assigned_to = emp.id if emp else None
     add_history(db, car, "assign", principal, person=_emp_label(emp),
                 details={"from": old_name, "to": _emp_label(emp)})
+    audit(db, principal, "car_assign", f"car:{car.id}", {"employee_id": employee_id})
     return car_dict(car)
 
 
-def edit_car(db: Session, car: Car, principal, payload: dict) -> dict:
+@transactional
+def edit_car(db: Session, principal: Principal, car_id: int, payload: dict) -> dict:
     """Правка карточки (номер, место, примечание). Статус — только через операции/set_status."""
+    car = get_car(db, car_id)
     number = (payload.get("number") or car.number).strip()
     if number != car.number:
         exists = db.scalar(select(Car).where(Car.number == number))
@@ -417,10 +451,19 @@ def edit_car(db: Session, car: Car, principal, payload: dict) -> dict:
     if "active" in payload:
         car.active = bool(payload["active"])
     add_history(db, car, "edit", principal, details=payload)
+    audit(db, principal, "car_edit", f"car:{car.id}", payload)
     return car_dict(car)
 
 
-def create_car(db: Session, principal, number: str, location: str = "") -> Car:
+@transactional
+def create_car(db: Session, principal: Principal, number: str, location: str = "") -> dict:
+    car = register_car(db, principal, number, location)
+    audit(db, principal, "car_create", f"car:{car.id}", {"number": number, "location": location})
+    return car_dict(car)
+
+
+def register_car(db: Session, principal: Optional[Principal], number: str, location: str = "") -> Car:
+    """Завести кар в парке с записью в его историю. Часть операции: транзакцию ведёт вызывающий."""
     number = (number or "").strip()
     if not number:
         raise CarOpError("Укажите номер кара (строка — номера бывают разные)")
@@ -437,32 +480,37 @@ def create_car(db: Session, principal, number: str, location: str = "") -> Car:
 
 # ─────────────────────────── места парковки (справочник) ───────────────────────────
 
-def list_locations(db: Session) -> list[dict]:
-    """Справочник мест стоянки: активные + все (для админки)."""
-    out = []
-    for loc in db.scalars(select(CarLocation).order_by(CarLocation.sort_order, CarLocation.id)):
-        out.append({"id": loc.id, "name": loc.name, "sort_order": loc.sort_order,
-                    "active": bool(loc.active), "builtin": bool(loc.builtin)})
-    return out
+def list_locations(db: Session, principal: Principal) -> list[dict]:
+    """Справочник мест стоянки; отключённые места видит только сотрудник с правом выдачи."""
+    show_all = has_perm(db, principal, "cars.issue")
+    return [{"id": loc.id, "name": loc.name, "sort_order": loc.sort_order,
+             "active": bool(loc.active), "builtin": bool(loc.builtin)}
+            for loc in db.scalars(select(CarLocation).order_by(CarLocation.sort_order, CarLocation.id))
+            if loc.active or show_all]
 
 
-def add_location(db: Session, principal, name: str) -> dict:
+@transactional
+def add_location(db: Session, principal: Principal, name: str) -> dict:
     """Добавить место. Если такое уже есть (даже отключённое) — включаем существующее."""
+    requested = {"name": name}
     name = (name or "").strip()[:160]
     if not name:
         raise CarOpError("Введите название места")
-    exists = db.scalar(select(CarLocation).where(CarLocation.name == name))
-    if exists:
-        exists.active = True
-        return {"id": exists.id, "name": exists.name, "restored": True}
-    loc = CarLocation(name=name)
-    db.add(loc)
-    db.flush()
-    return {"id": loc.id, "name": loc.name}
+    loc = db.scalar(select(CarLocation).where(CarLocation.name == name))
+    restored = loc is not None
+    if loc is None:
+        loc = CarLocation(name=name)
+        db.add(loc)
+        db.flush()
+    else:
+        loc.active = True
+    audit(db, principal, "car_location_add", f"location:{loc.id}", requested)
+    return {"id": loc.id, "name": loc.name, "restored": restored}
 
 
-def update_location(db: Session, principal, loc_id: int, *, name: str = "",
-                    active: Optional[bool] = None) -> dict:
+@transactional
+def update_location(db: Session, principal: Principal, loc_id: int, *, name: Optional[str] = None,
+                    active: Optional[bool] = None) -> None:
     """Переименовать/отключить место. Переименование обновляет текст в карточках каров."""
     loc = db.get(CarLocation, loc_id)
     if loc is None:
@@ -477,7 +525,64 @@ def update_location(db: Session, principal, loc_id: int, *, name: str = "",
             car.location = nm
     if active is not None:
         loc.active = bool(active)
-    return {"ok": True}
+    audit(db, principal, "car_location_update", f"location:{loc_id}", {"name": name, "active": active})
+
+
+@transactional
+def delete_location(db: Session, principal: Principal, loc_id: int) -> None:
+    """Удалить место стоянки. Пока место указано у активного кара — нельзя: сначала у кара
+    меняют место. История хранит места текстом, прошлые записи удаление не затрагивает."""
+    loc = db.get(CarLocation, loc_id)
+    if loc is None:
+        raise NotFound("Место не найдено")
+    used = db.scalar(select(Car).where(Car.active.is_(True), Car.location == loc.name))
+    if used is not None:
+        raise CarConflict(f"Место «{loc.name}» указано у активного кара №{used.number} — сначала "
+                          "измените место у кара (или отключите место вместо удаления)")
+    db.delete(loc)
+    audit(db, principal, "car_location_delete", f"location:{loc_id}", {"name": loc.name})
+
+
+# ─────────────────────────── чтение: парк, история, словари ───────────────────────────
+
+def meta(db: Session, principal: Principal) -> dict:
+    """Словари для интерфейса и права пользователя в разделе."""
+    perms = principal_permissions(db, principal)
+    return {
+        "statuses": [{"code": k, "title": v} for k, v in STATUS_TITLES.items()],
+        "actions": [{"code": k, "title": v} for k, v in ACTION_TITLES.items()],
+        "charges": [{"code": k, "title": v} for k, v in CHARGE_TITLES.items() if k],
+        # use — свои операции, issue — выдача, закрепление и статус, manage — парк и места;
+        # can_edit_park — прежнее имя can_manage, его ещё читает интерфейс
+        "can_use": "cars.use" in perms,
+        "can_issue": "cars.issue" in perms,
+        "can_manage": "cars.manage" in perms,
+        "can_edit_park": "cars.manage" in perms,
+    }
+
+
+def park(db: Session, principal: Principal) -> dict:
+    """Парк целиком. Отключённые кары видит только управление парком; me — кары пользователя."""
+    can_manage = "cars.manage" in principal_permissions(db, principal)
+    cars = [car_dict(car) for car in db.scalars(select(Car).order_by(Car.number))
+            if car.active or can_manage]
+    mine = None
+    if principal.employee is not None:
+        free = find_free_car(db, principal.employee.id)
+        mine = {"held": next((c["id"] for c in cars if c["holder_user_id"] == principal.user.id), None),
+                "free_recommended": free.id if free else None,
+                "assigned": next((c["id"] for c in cars if c["assigned_to"] == principal.employee.id), None)}
+    return {"cars": cars, "me": mine, "can_manage": can_manage}
+
+
+def car_history(db: Session, car_id: int, limit: int = 200) -> list[dict]:
+    """История кара, новые записи первыми. Записи только добавляются."""
+    if db.get(Car, car_id) is None:
+        raise NotFound("Кар не найден")
+    rows = list(db.scalars(select(CarHistory).where(CarHistory.car_id == car_id)
+                           .order_by(CarHistory.id.desc()).limit(max(1, min(limit, 500)))))
+    photos = photos_of(db, "car_return", [h.id for h in rows])
+    return [history_dict(h, photos) for h in rows]
 
 
 # ────────────────────── обход электрокаров внутри ночного отчёта ──────────────────────
