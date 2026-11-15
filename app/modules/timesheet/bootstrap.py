@@ -27,7 +27,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import logging
 
 from sqlalchemy import select
@@ -147,10 +146,7 @@ def strip_removed_day_codes(db: Session) -> dict:
     removed: dict[str, list[str]] = {}
     blocked = sorted(used)
     for ver in db.scalars(select(EngineSettingsVersion)):
-        try:
-            payload = json.loads(ver.payload_json)
-        except (ValueError, TypeError):
-            continue
+        payload = ver.payload
         codes = payload.get("day_code_policy") or {}
         windows = payload.get("windows") or {}
         drop = [c for c in REMOVED_DAY_CODES if c in codes and c not in used]
@@ -164,7 +160,7 @@ def strip_removed_day_codes(db: Session) -> dict:
             removed.setdefault(code, [])
         payload["day_code_policy"] = codes
         payload["windows"] = windows
-        ver.payload_json = json.dumps(payload, ensure_ascii=False)
+        ver.payload = payload
     if blocked:
         logging.getLogger("uvicorn.error").warning(
             "Коды Табеля %s исключены из справочника, но используются в Табеле (%s) — "
@@ -184,10 +180,7 @@ def apply_code_app_defaults(db: Session) -> int:
     расчёт закрытых периодов не меняется: домен app-полей не знает (2.4)."""
     patched = 0
     for ver in db.scalars(select(EngineSettingsVersion)):
-        try:
-            payload = json.loads(ver.payload_json)
-        except (ValueError, TypeError):
-            continue
+        payload = ver.payload
         codes = payload.get("day_code_policy") or {}
         changed = False
         for code, row in codes.items():
@@ -198,7 +191,7 @@ def apply_code_app_defaults(db: Session) -> int:
                     row[key] = value
                     changed = True
         if changed:
-            ver.payload_json = json.dumps(payload, ensure_ascii=False)
+            ver.payload = payload
             patched += 1
     db.flush()
     return patched
@@ -206,8 +199,7 @@ def apply_code_app_defaults(db: Session) -> int:
 
 def bootstrap_engine(db: Session, first: dt.date | None = None, last: dt.date | None = None) -> None:
     if not db.scalar(select(EngineSettingsVersion.id)):
-        db.add(EngineSettingsVersion(valid_from=dt.date(2000, 1, 1), payload_json=json.dumps(
-            _initial_payload(db), ensure_ascii=False),
+        db.add(EngineSettingsVersion(valid_from=dt.date(2000, 1, 1), payload=_initial_payload(db),
             note="Стартовое наполнение CFG-* (спецификация v7.1)", created_by_name="system"))
         db.flush()
     strip_removed_day_codes(db)

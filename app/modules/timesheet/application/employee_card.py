@@ -29,7 +29,7 @@ def bank_as_of(db: Session, emp) -> float:
 
 
 def _block_label(b: BlockAssignment) -> str:
-    pat = parse_pattern(b.pattern_json)
+    pat = parse_pattern(b.pattern)
     if not pat:
         return ""
     try:

@@ -54,7 +54,7 @@ def _payload(db) -> dict:
     ver = db.scalars(select(EngineSettingsVersion)
                      .order_by(EngineSettingsVersion.valid_from.desc(),
                                EngineSettingsVersion.id.desc()).limit(1)).one()
-    return json.loads(ver.payload_json)
+    return ver.payload
 
 
 class TestTimesheetCodeNorm(unittest.TestCase):
@@ -147,7 +147,7 @@ class TestTimesheetCodeNorm(unittest.TestCase):
                              ("С 8", {"start_minute": 0, "end_minute": 480})):
                 broken["windows"][key] = win
             db.add(EngineSettingsVersion(valid_from=dt.date(2001, 1, 1),
-                                         payload_json=json.dumps(broken, ensure_ascii=False),
+                                         payload=broken,
                                          note="тест: версия с исключёнными кодами",
                                          created_by_name="test"))
             db.commit()
@@ -183,7 +183,7 @@ class TestTimesheetCodeNorm(unittest.TestCase):
                                               "counts_in_ut": True,
                                               "plan_equals_fact_auto": False}
             db.add(EngineSettingsVersion(valid_from=dt.date(2001, 1, 1),
-                                         payload_json=json.dumps(broken, ensure_ascii=False),
+                                         payload=broken,
                                          note="тест: код используется в Табеле",
                                          created_by_name="test"))
             db.commit()

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -89,11 +88,7 @@ def day_code_colors(db: Session) -> dict[str, str]:
     ver = base_version(db, local_date())
     if ver is None:
         return {}
-    try:
-        payload = json.loads(ver.payload_json)
-    except (ValueError, TypeError):
-        return {}
-    rows = payload.get("day_code_policy") or {}
+    rows = ver.payload.get("day_code_policy") or {}
     return {code: row["color"] for code, row in rows.items()
             if isinstance(row, dict) and row.get("color")}
 
@@ -162,17 +157,13 @@ def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
     Пустой словарь означает «действующей версии ещё нет» (свежая база до bootstrap),
     а не «кодов нет»: вызывающий код в этом случае проверку пропускает.
     """
-    import json
 
     from ..adapters.sql_settings import base_version
 
     ver = base_version(db, day or local_date())
     if ver is None:
         return {}
-    try:
-        raw = json.loads(ver.payload_json).get("day_code_policy") or {}
-    except (TypeError, ValueError, AttributeError):
-        return {}
+    raw = ver.payload.get("day_code_policy") or {}
     out: dict[str, dict] = {}
     for code, row in raw.items():
         if not isinstance(row, dict):

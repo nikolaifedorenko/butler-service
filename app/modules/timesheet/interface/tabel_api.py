@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -63,7 +62,7 @@ def _code_titles(db: Session) -> dict[str, str]:
     """Человеческие подписи кодов CFG-DAY-CODES — данные приложения в payload версии
     (домен Settings их не знает, 8.4: тексты — слой interface/приложение)."""
     version = base_version(db, local_date())
-    payload = json.loads(version.payload_json) if version else {}
+    payload = version.payload if version else {}
     return {code: row.get("title", "") for code, row in payload.get("day_code_policy", {}).items()}
 
 

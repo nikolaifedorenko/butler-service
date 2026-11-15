@@ -7,13 +7,12 @@ audit() — в app/auth.py. Запись журнала — сквозная и�
 from __future__ import annotations
 
 import datetime as dt
-import json
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
-from .db import Base
+from .db import Base, Json, plain_json
 from .time import Moment, now
 
 if TYPE_CHECKING:
@@ -32,7 +31,7 @@ class AuditLog(Base):
     actor_name: Mapped[str] = mapped_column(String(120), default="")
     action: Mapped[str] = mapped_column(String(64))
     target: Mapped[str] = mapped_column(String(200), default="")
-    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    payload: Mapped[dict] = mapped_column(Json, default=dict)
 
     actor: Mapped[Optional[User]] = relationship()  # noqa: F821 — разрешается реестром (User в core.identity)
 
@@ -44,6 +43,6 @@ def audit(db: Session, principal: Optional[Principal], action: str, target: str 
         actor_id=principal.user.id if principal else None,
         # «как сотрудник»: в журнал — кто вошёл на самом деле (actor_id — его же), AUTHZ-01
         actor_name=principal.actor_label if principal else "system",
-        action=action, target=target, payload_json=json.dumps(payload or {}, ensure_ascii=False, default=str),
+        action=action, target=target, payload=plain_json(payload or {}),
         ts=now(),
     ))

@@ -22,12 +22,11 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db import Base
+from app.core.db import Base, Json, OrderedJson
 from app.core.identity import User  # noqa: F401 — связь Employee.user
 from app.core.time import Moment, now  # noqa: F401 — default created_at/updated_at
 
@@ -50,12 +49,12 @@ class BlockAssignment(Base):
     group: Mapped[str] = mapped_column(String(80))
     start_date: Mapped[dt.date] = mapped_column(Date)
     end_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)  # None — текущий блок
-    # индивидуальный шаблон графика внутри блока (JSON):
+    # индивидуальный шаблон графика внутри блока:
     #   {"kind":"week5","off_weekdays":[6,0],"shift_code":"DAY9"}            — пятидневка со своими выходными
     #   {"kind":"cycle","cycle":"3/3","shift_code":"NIGHT12","anchor":"…"}   — другие смены (3/3, 1/3, РРВВ…)
     #   {"kind":"manual"}                                                    — ячейки заполняются вручную
-    # пустая строка — шаблон берётся из общих настроек блока (базовый цикл объекта)
-    pattern_json: Mapped[str] = mapped_column(Text, default="")
+    # пустой словарь — шаблон берётся из общих настроек блока (базовый цикл объекта)
+    pattern: Mapped[dict] = mapped_column(Json, default=dict)
 
 
 
@@ -295,7 +294,7 @@ class EngineSettingsVersion(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     valid_from: Mapped[dt.date] = mapped_column(Date, index=True)
-    payload_json: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict] = mapped_column(OrderedJson)    # порядок кодов и окон — порядок показа
     note: Mapped[str] = mapped_column(String(255), default="")
     created_by_name: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
@@ -332,11 +331,11 @@ class PeriodClosing(Base):
     step_minutes: Mapped[int] = mapped_column(Integer, default=60)
     previous_step_minutes: Mapped[int] = mapped_column(Integer, default=60)
     bank_open_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    deferred_in_json: Mapped[str] = mapped_column(Text, default="[]")
+    deferred_in: Mapped[list] = mapped_column(Json, default=list)
     closing_bank_minutes: Mapped[int] = mapped_column(Integer, default=0)
     settings_versions: Mapped[str] = mapped_column(String(255), default="")
-    result_json: Mapped[str] = mapped_column(Text, default="{}")
-    flags_json: Mapped[str] = mapped_column(Text, default="{}")   # снимок FlagsResult (7.2)
+    result: Mapped[dict] = mapped_column(Json, default=dict)
+    flags: Mapped[dict] = mapped_column(Json, default=dict)        # снимок FlagsResult
     revision: Mapped[int] = mapped_column(Integer, default=1)
     closed_by_name: Mapped[str] = mapped_column(String(120), default="")
     closed_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)

@@ -218,7 +218,8 @@ def compute(db: Session) -> AllocationState:
     today = local_date()
     morning, evening = pos(today, AM), pos(today, PM)
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(OCCUPYING),
-                                                    Reservation.check_out >= today)))
+                                                    Reservation.check_out >= today)
+                         .order_by(Reservation.id)))
     # фонд — с дня до самого раннего заезда: AM этого заезда принадлежит предыдущей версии
     first = min([today, *(r.check_in for r in res)]) - dt.timedelta(days=1)
     # OOO — и прошлые, пока в окне живут брони: наложение на прошлые части видно предупреждением

@@ -217,7 +217,7 @@ def seed_stays_demo(db: Session) -> None:
         g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], gender="mf"[i % 2], special=i in (0, 1),
                   source="demo",
                   phone=f"+7916{1000000 + i * 7919:07d}",
-                  preferences_json='{"allergy": "орехи"}' if i % 9 == 0 else "{}")
+                  preferences={"allergy": "орехи"} if i % 9 == 0 else {})
         g.search_text = guest_search_text(g, set())
         guests.append(g)
     # VIP-коды профилей (§3.1): форма брони подставляет код главного гостя; брони демо его не копируют

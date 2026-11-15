@@ -68,17 +68,12 @@ def chat_dict(c: NotifyChat, *, used_by: Optional[list[str]] = None) -> dict:
 
 def list_chats(db: Session) -> list[dict]:
     """Каталог чатов + какие службы их используют (видно, кому чат уже закреплён)."""
-    import json
 
     from ..adapters.orm import ResponsibilityService
 
     usage: dict[int, list[str]] = {}
     for svc in db.scalars(select(ResponsibilityService)):
-        try:
-            ids = json.loads(svc.chat_ids or "[]")
-        except ValueError:
-            ids = []
-        for cid in ids if isinstance(ids, list) else []:
+        for cid in svc.chat_ids:
             usage.setdefault(int(cid), []).append(svc.name)
     rows = db.scalars(select(NotifyChat).order_by(NotifyChat.title, NotifyChat.chat_id))
     return [chat_dict(c, used_by=usage.get(c.chat_id, [])) for c in rows]

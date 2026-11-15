@@ -25,7 +25,7 @@ from sqlalchemy import (
 from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base
+from app.core.db import Base, Json
 from app.core.time import Moment, now
 
 # ── 3.1 Фонд ───────────────────────────────────────────────────────────────
@@ -273,9 +273,9 @@ class Guest(Base):
     vip_code_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("stays_vip_codes.id", name="fk_stays_guests_vip_code"), nullable=True)
     special: Mapped[bool] = mapped_column(Boolean, default=False)     # «Особый гость»
-    preferences_json: Mapped[str] = mapped_column(Text, default="{}")
-    special_dates_json: Mapped[str] = mapped_column(Text, default="[]")
-    fields_json: Mapped[str] = mapped_column(Text, default="{}")
+    preferences: Mapped[dict] = mapped_column(Json, default=dict)
+    special_dates: Mapped[list] = mapped_column(Json, default=list)
+    fields: Mapped[dict] = mapped_column(Json, default=dict)
     note: Mapped[str] = mapped_column(Text, default="")
     external_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="")
@@ -364,7 +364,7 @@ class Reservation(Base):
     vip_code_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("stays_vip_codes.id", name="fk_stays_reservations_vip_code"), nullable=True)
     escort_mode: Mapped[str] = mapped_column(String(8), default="rules")   # rules | required | declined
-    fields_json: Mapped[str] = mapped_column(Text, default="{}")
+    fields: Mapped[dict] = mapped_column(Json, default=dict)
     external_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="")
     group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_groups.id"), nullable=True,
@@ -497,7 +497,7 @@ class CoverageGuest(Base):
 
 
 class CustomField(Base):
-    """Настраиваемое поле гостя или брони; значения — в fields_json записи."""
+    """Настраиваемое поле гостя или брони; значения — в колонке fields записи."""
 
     __tablename__ = "stays_fields"
     __table_args__ = (UniqueConstraint("target", "code", name="uq_stays_field"),)
@@ -507,7 +507,7 @@ class CustomField(Base):
     code: Mapped[str] = mapped_column(String(32))
     title: Mapped[str] = mapped_column(String(120))
     kind: Mapped[str] = mapped_column(String(8), default="text")    # text | choice | bool | date
-    choices_json: Mapped[str] = mapped_column(Text, default="[]")
+    choices: Mapped[list] = mapped_column(Json, default=list)
     searchable: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
 

@@ -11,8 +11,6 @@
 """
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,17 +20,7 @@ from ..adapters.transports.email import split_addresses
 
 def service_chat_ids(svc: ResponsibilityService) -> list[int]:
     """Закреплённые за службой чаты (id из общего каталога Telegram)."""
-    try:
-        raw = json.loads(svc.chat_ids or "[]")
-    except ValueError:
-        return []
-    out = []
-    for cid in raw if isinstance(raw, list) else []:
-        try:
-            out.append(int(cid))
-        except (TypeError, ValueError):
-            continue
-    return out
+    return [int(cid) for cid in svc.chat_ids]
 
 
 def group_by_service(db: Session, rows: list[dict]) -> list[dict]:

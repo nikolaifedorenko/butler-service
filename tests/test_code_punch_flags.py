@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
-import json
 import os
 import tempfile
 import unittest
@@ -180,14 +179,14 @@ class TestCodePunchFlags(unittest.TestCase):
                              .order_by(EngineSettingsVersion.valid_from.desc(),
                                        EngineSettingsVersion.id.desc())).first()
             assert ver is not None
-            payload = json.loads(ver.payload_json)
+            payload = ver.payload
             row = payload["day_code_policy"]["ОТ"]
             row.pop("punch_in", None)
             row.pop("doc_type", None)
-            ver.payload_json = json.dumps(payload, ensure_ascii=False)
+            ver.payload = payload
             db.flush()
             self.assertGreaterEqual(apply_code_app_defaults(db), 1)
-            row = json.loads(ver.payload_json)["day_code_policy"]["ОТ"]
+            row = ver.payload["day_code_policy"]["ОТ"]
             self.assertFalse(row["punch_in"])
             self.assertEqual(row["doc_type"], "vacation_paid")
             self.assertFalse(row["punch_out"], "существующее значение не перезаписано")

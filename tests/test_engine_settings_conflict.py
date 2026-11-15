@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from sqlalchemy import delete
 
@@ -49,7 +50,7 @@ def test_tz_other_than_app_tz_is_422(admin_client, db):
         r = admin_client.put("/api/engine-settings", json=body | {"payload": payload | {"tz": ""}})
         assert r.status_code == 200, r.text
         saved = db.get(EngineSettingsVersion, r.json()["id"])
-        assert f'"tz": "{settings.app_tz}"' in saved.payload_json
+        assert f'"tz": "{settings.app_tz}"' in json.dumps(saved.payload, ensure_ascii=False)
     finally:
         db.execute(delete(EngineSettingsVersion).where(EngineSettingsVersion.note == NOTE))
         db.commit()

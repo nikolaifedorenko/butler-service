@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import uuid
 
 from sqlalchemy import select
@@ -150,7 +149,7 @@ def test_guest_update_audited_with_diff(manager_client, db):
     assert r.status_code == 200 and r.json()["guest"]["special"] is True
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_guest", AuditLog.target == f"guest:{g['id']}")
                      .order_by(AuditLog.id.desc())).first()
-    assert json.loads(row.payload_json)["diff"]["special"] == [False, True]
+    assert row.payload["diff"]["special"] == [False, True]
 
 
 # ── B1: пол гостя, первичные семейные связи (addendum §3, §4) ─────────────────
@@ -387,7 +386,7 @@ def test_toggle_spouse_former(manager_client, monkeypatch, db):
     assert manager_client.patch(f"{API}/guest-links/999999999", json={"former": True}).status_code == 422
     rows = db.scalars(select(AuditLog).where(AuditLog.action == "stays_guest_link",
                                              AuditLog.target == f"guest:{a['id']}")).all()
-    assert any("former" in json.loads(x.payload_json or "{}") for x in rows)
+    assert any("former" in x.payload for x in rows)
 
 
 def test_toggle_former_requires_edit(names_client, manager_client):
@@ -638,3 +637,11 @@ def test_profile_archived_code_kept_not_selected(manager_role_client, manager_cl
     r = _put(manager_client, other, vip_code_id=code["id"])
     assert r.status_code == 422 and "в архиве" in r.json()["detail"]
     assert manager_client.post(f"{API}/guests", json={"last_name": "Икс", "vip_code_id": code["id"]}).status_code == 422
+
+
+def test_preferences_come_in_display_order():
+    """Порядок ключей база не хранит: поля формы идут первыми, остальные — по алфавиту."""
+    from app.modules.stays.application.guests import ordered_preferences
+
+    got = ordered_preferences({"z": "1", "habits": "2", "ab": "3", "allergy": "4", "food": "5"})
+    assert list(got) == ["allergy", "food", "habits", "ab", "z"]

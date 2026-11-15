@@ -161,9 +161,9 @@ def test_reset_blocked_in_production_409(admin_client, db):
     assert _counts(db) == before and _backups() == []
     # выключить обратно — тоже администратор, с записью в аудит
     assert c.put(f"{API}/fund/in-production", json={"value": False}).json() == {"in_production": False}
-    logs = db.scalars(select(AuditLog.payload_json).where(AuditLog.action == "stays_in_production")
+    logs = db.scalars(select(AuditLog.payload).where(AuditLog.action == "stays_in_production")
                       .order_by(AuditLog.id.desc()).limit(2)).all()
-    assert logs == ['{"from": true, "to": false}', '{"from": false, "to": true}']
+    assert logs == [{"from": True, "to": False}, {"from": False, "to": True}]
     assert _preview(c, data).status_code == 200
 
 
@@ -302,7 +302,7 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
     assert got.status_code == 200 and got.content == (fr.BACKUP_DIR / body["backup"]).read_bytes()
     log = db.scalars(select(AuditLog).where(AuditLog.action == "stays_reset", AuditLog.target == "stays")
                      .order_by(AuditLog.id.desc())).first()
-    assert body["backup"] in log.payload_json and "real-fund.xlsx" in log.payload_json
+    assert body["backup"] in json.dumps(log.payload, ensure_ascii=False) and "real-fund.xlsx" in json.dumps(log.payload, ensure_ascii=False)
 
 
 def test_reset_keeps_vip_codes(admin_client, db):

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -164,7 +163,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
         code = ctx.vip_codes.get(r.vip_code_id) if r.vip_code_id is not None else None
         out = {**base, **st, "number": r.number, "vip_code": code.code if code else "", "guests": guests}
         if full:
-            prefs = [json.loads(ctx.guests[g["guest_id"]].preferences_json or "{}") for g in guests]
+            prefs = [ctx.guests[g["guest_id"]].preferences for g in guests]
             out["details"] = {"logistics": logistics.get(r.id, []), "companions": companions.get(r.id, []),
                               "allergies": [p["allergy"] for p in prefs if p.get("allergy")]}
         return out

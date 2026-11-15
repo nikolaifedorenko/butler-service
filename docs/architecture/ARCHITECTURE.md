@@ -259,8 +259,8 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
 Схемы: [`diagrams/04-flows.svg`](diagrams/04-flows.svg).
 
 ### 5.1 Просмотр УТ (view)
-`GET /api/mgmt` → на сотрудника: `period_state` → закрыт? → чтение `result_json +
-flags_json` (без домена); иначе проверка допуска (previous_closed | opening_bank_set)
+`GET /api/mgmt` → на сотрудника: `period_state` → закрыт? → чтение `result +
+flags` (без домена); иначе проверка допуска (previous_closed | opening_bank_set)
 → `load_inputs` (Табель полным периодом, отметки [from−step, to+step), opening_mark,
 банк/переносы/шаг предыдущего периода) → `settle(view)` → `evaluate_flags` → payload.
 Бюджет: 6–8 запросов + конвейер на сотрудника (16.1 п.5).

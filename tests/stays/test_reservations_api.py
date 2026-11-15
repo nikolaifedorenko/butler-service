@@ -1,8 +1,6 @@
 """Шахматка, задача 8: брони — документ, состав во времени, группы, статусы, no-show, версии."""
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import select
 
 from app.core.audit import AuditLog
@@ -200,7 +198,7 @@ def test_reservation_audit_has_diff(manager_role_client, manager_client, db):
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_reservation",
                                             AuditLog.target == f"reservation:{res['id']}")
                      .order_by(AuditLog.id.desc())).first()
-    assert json.loads(row.payload_json)["diff"]["check_out"] == ["2027-11-05", "2027-11-07"]
+    assert row.payload["diff"]["check_out"] == ["2027-11-05", "2027-11-07"]
 
 
 def test_edit_requires_perm(manager_role_client, manager_client, employee_client, mgmt_client):

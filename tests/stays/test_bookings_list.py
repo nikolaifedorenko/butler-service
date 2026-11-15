@@ -238,7 +238,7 @@ def test_export_audited(manager_role_client, manager_client, db):
     assert rows[1][0].startswith("'") or not rows[1][0].startswith("=")                # формула экранирована
     assert g["last_name"][:6] in rows[1][1] and rows[1][6] == 3 and rows[1][-1] == "по правилам"
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_export").order_by(AuditLog.id.desc())).first()
-    p = json.loads(row.payload_json)
+    p = row.payload
     assert row.target == "export:bookings" and p["kind"] == "bookings" and p["rows"] == 1
     assert p["first"] == "2038-11-01" and p["sort"] == "number" and p["dir"] == "desc" and p["category_ids"] == [cat["id"]]
     assert r["id"]

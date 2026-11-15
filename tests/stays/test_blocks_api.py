@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 from sqlalchemy import select
 
@@ -56,7 +55,7 @@ def test_block_grid_crud(manager_role_client, manager_client, db):
     assert manager_client.get(f"{API}/blocks/{blk['id']}").status_code == 404
     rows = db.scalars(select(AuditLog).where(AuditLog.action == "stays_block", AuditLog.target == f"block:{blk['id']}")
                       .order_by(AuditLog.id)).all()
-    diffs = [json.loads(x.payload_json)["diff"] for x in rows]
+    diffs = [x.payload["diff"] for x in rows]
     assert len(diffs) == 3 and diffs[0]["title"] == [None, "Свадьба"]
     assert diffs[1]["title"] == ["Свадьба", "Свадьба-2"] and diffs[1]["version"] == [1, 2]
     assert diffs[1]["grid"][0][str(b["id"])] == {"2045-03-11": 1}                  # было → стало

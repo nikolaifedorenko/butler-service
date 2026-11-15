@@ -6,7 +6,6 @@ Payload хранит строки справочников как данные; 
 from __future__ import annotations
 
 import datetime as dt
-import json
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..domain.settings.defaults import default_settings
@@ -117,7 +116,3 @@ def to_payload(st: Settings) -> dict:
                             "pays_overtime": st.global_defaults.pays_overtime,
                             "plan_equals_fact": st.global_defaults.plan_equals_fact},
     }
-
-
-def payload_json(st: Settings) -> str:
-    return json.dumps(to_payload(st), ensure_ascii=False)

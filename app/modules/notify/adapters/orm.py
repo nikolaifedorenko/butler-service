@@ -23,7 +23,7 @@ from typing import Optional
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base
+from app.core.db import Base, Json
 from app.core.time import Moment, now
 
 
@@ -56,7 +56,7 @@ class ResponsibilityService(Base):
     use_email: Mapped[bool] = mapped_column(Boolean, default=False)
     email_to: Mapped[str] = mapped_column(String(200), default="")
     email_copy: Mapped[str] = mapped_column(String(400), default="")
-    chat_ids: Mapped[str] = mapped_column(Text, default="[]")     # JSON-список chat_id
+    chat_ids: Mapped[list] = mapped_column(Json, default=list)
     note: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
     updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
@@ -137,10 +137,10 @@ class NotifyDispatch(Base):
     channel: Mapped[str] = mapped_column(String(16), default="")     # telegram | email
     target: Mapped[str] = mapped_column(String(200), default="")     # chat_id или e-mail
     subject: Mapped[str] = mapped_column(String(200), default="")    # тема письма
-    cc_json: Mapped[str] = mapped_column(Text, default="")           # снимок адресатов копии (для повтора, P1 20.10.2026)
+    cc: Mapped[list] = mapped_column(Json, default=list)               # адресаты копии — для повтора
     message: Mapped[str] = mapped_column(Text, default="")           # текст как ушёл
-    items_json: Mapped[str] = mapped_column(Text, default="[]")      # снимок состава отправки
-    media_json: Mapped[str] = mapped_column(Text, default="[]")      # id вложений (для повтора)
+    items: Mapped[list] = mapped_column(Json, default=list)            # состав отправки
+    media: Mapped[list] = mapped_column(Json, default=list)            # id вложений — для повтора
     media_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="sent")  # queued | sending | sent | failed
     sending_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)

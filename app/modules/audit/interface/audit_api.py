@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import AuditLog
@@ -33,7 +34,7 @@ def _query(q, action, actor, date_from, date_to):
     stmt = select(AuditLog)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(AuditLog.target.ilike(like), AuditLog.payload_json.ilike(like),
+        stmt = stmt.where(or_(AuditLog.target.ilike(like), cast(AuditLog.payload, Text).ilike(like),
                               AuditLog.actor_name.ilike(like), AuditLog.action.ilike(like)))
     if action:
         stmt = stmt.where(AuditLog.action == action)
@@ -49,7 +50,7 @@ def _query(q, action, actor, date_from, date_to):
 def _item(r: AuditLog) -> dict:
     return {"id": r.id, "ts": local_iso(r.ts), "actor": r.actor_name,
             "action": r.action, "action_title": _titles().get(r.action, r.action),
-            "target": r.target, "payload": r.payload_json}
+            "target": r.target, "payload": json.dumps(r.payload, ensure_ascii=False)}
 
 
 @router.get("")

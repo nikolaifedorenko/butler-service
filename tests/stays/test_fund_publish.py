@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import pytest
 from sqlalchemy import delete, func, select, text
@@ -296,9 +297,8 @@ def test_publish_new_overbooking_without_perm(manager_role_client, manager_clien
 
 
 def _journal(db, rid: int) -> list[dict]:
-    import json
     db.expire_all()
-    return [json.loads(a.payload_json)["diff"] for a in db.scalars(
+    return [a.payload["diff"] for a in db.scalars(
         select(AuditLog).where(AuditLog.target == f"reservation:{rid}").order_by(AuditLog.id))]
 
 
@@ -313,7 +313,7 @@ def test_transfer_whole_reservation(manager_role_client, manager_client, today, 
     assert _journal(db, r.id)[-1]["category_id"] == [conn["id"], dlx["id"]]
     assert out["result"]["affected"]["unassigned"] == []
     audit = db.scalar(select(AuditLog).where(AuditLog.action == "stays_fund_version").order_by(AuditLog.id.desc()))
-    assert f'"reservation_id": {r1["id"]}' in audit.payload_json   # перевод — и в аудите публикации
+    assert f'"reservation_id": {r1["id"]}' in json.dumps(audit.payload, ensure_ascii=False)   # перевод — и в аудите публикации
 
 
 def test_transfer_live_reservation_adds_move(manager_role_client, manager_client, today, db):

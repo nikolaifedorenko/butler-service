@@ -8,7 +8,7 @@
   вовсе — асимметрия ломала выборку при любом APP_TZ ≠ +3 и на любом поясе
   захватывала чужие сутки по date_to);
 * **P1-misc-2** — `resend()` повторяет отправку письма С КОПИЕЙ: снимок cc
-  хранится в журнале (`notify_dispatches.cc_json`), миграция идемпотентна;
+  хранится в журнале (`notify_dispatches.cc`), миграция идемпотентна;
 * **P1-misc-3** — FK/unique валидируются ДО вставки: битая ссылка/дубль имени —
   типизированные 400/409/422 вместо IntegrityError → 500 (PostgreSQL) или
   молчаливой записи сироты/дубля (SQLite — FK не включены);
@@ -26,7 +26,6 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import io
-import json
 import pathlib
 import tempfile
 
@@ -59,7 +58,7 @@ def test_misc1_audit_filter_boundaries_are_local(admin_client, db):
     }
     for tag, ts in rows.items():
         db.add(AuditLog(ts=ts, actor_id=None, actor_name="p1-misc-guard",
-                        action="p1_misc_audit_guard", target=tag, payload_json="{}"))
+                        action="p1_misc_audit_guard", target=tag, payload={}))
     db.commit()
     try:
         r = admin_client.get("/api/audit", params={
@@ -95,8 +94,8 @@ def test_misc2_resend_uses_saved_cc(db, monkeypatch):
     row = NotifyDispatch(domain="night", ref_id=1, channel="email", target="to@example.com",
                          subject="Тема", message="Текст", status="failed", error="smtp down",
                          attempts=1,   # как в БД после первой (неудачной) отправки
-                         cc_json=json.dumps(["copy1@example.com", "copy2@example.com"]),
-                         media_json="[]")
+                         cc=["copy1@example.com", "copy2@example.com"],
+                         media=[])
     db.add(row)
     try:
         out = deliver_row(db, row, cfg=object())     # cfg-заглушка: deliver перехвачен
@@ -111,7 +110,7 @@ def test_misc2_dispatch_stores_cc_snapshot():
     """dispatch() обязан писать снимок cc в журнал (source-страж: без него
     resend физически негде взять копию)."""
     src = (BASE / "app/modules/notify/application/dispatch.py").read_text(encoding="utf-8")
-    assert "cc_json=json.dumps(list(cc))" in src
+    assert "cc=list(cc)" in src
     assert "cc: tuple = ()" not in src          # прежний хардкод не вернулся
 
 

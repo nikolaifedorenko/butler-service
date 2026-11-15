@@ -1,6 +1,11 @@
 """Подключение к БД: PostgreSQL (ADR-0013, раздел 3)."""
-from sqlalchemy import create_engine, text
+import json
+from typing import Any
+
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.dialects.postgresql import JSON, JSONB
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.types import TypeDecorator
 
 from .config import settings
 
@@ -12,6 +17,45 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 class Base(DeclarativeBase):
     pass
+
+
+class Json(TypeDecorator):
+    """Колонка ``JSONB``: в коде — словарь или список, в базе — разобранный JSON.
+
+    Присвоенное значение записывается всегда, даже если это тот же объект: значение можно
+    изменить на месте и присвоить обратно. Изменение на месте без присваивания не
+    сохраняется. Порядок ключей словаря база не хранит — где порядок важен, нужен список.
+    """
+
+    impl = JSONB
+    cache_ok = True
+
+    def compare_values(self, x: Any, y: Any) -> bool:
+        return False
+
+
+class OrderedJson(Json):
+    """Колонка ``JSON``: документ, который читается и пишется целиком и хранит порядок ключей.
+
+    Только для документов, где порядок ключей — порядок показа; искать по содержимому
+    такой колонки нельзя. Всё остальное — ``Json``.
+    """
+
+    impl = JSON
+    cache_ok = True
+
+
+@event.listens_for(Base, "init", propagate=True)
+def _fill_json_defaults(target: Any, args: tuple, kwargs: dict) -> None:
+    """Новый объект получает пустые значения колонок ``Json`` сразу, а не при записи в базу."""
+    for column in target.__table__.columns:
+        if isinstance(column.type, Json) and column.default is not None and column.key not in kwargs:
+            kwargs[column.key] = column.default.arg(None)
+
+
+def plain_json(value: Any) -> Any:
+    """Значение из одних типов JSON: даты и прочее становятся строками. Возвращает копию."""
+    return json.loads(json.dumps(value, default=str))
 
 
 def lock_employee(db, employee_id: int) -> None:

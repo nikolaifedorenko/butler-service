@@ -5,7 +5,7 @@
   * «Смена 1» / «Смена 2» — БАЗОВЫЙ ЦИКЛ ОБЪЕКТА из общих настроек (цикл + опорная дата
     + смена блока + противофаза). Одинаков для всех сотрудников блока, действует на все месяцы.
   * «Пятидневка» — выходные дни у каждого свои (вс/пн, пт/сб, сб/вс…), поэтому шаблон
-    хранится в истории блоков сотрудника (BlockAssignment.pattern_json), а не в настройках.
+    хранится в истории блоков сотрудника (BlockAssignment.pattern), а не в настройках.
   * «Другие смены» — индивидуальный цикл (3/3, 1/3, сутки через трое, «РРВВРВ») или ручное заполнение.
 
 Ручные ячейки графика — ИСКЛЮЧЕНИЯ (отпуск, больничный, подмена) и перекрывают шаблон.
@@ -75,27 +75,16 @@ def save_base_config(db: Session, cfg: dict) -> None:
          "Настройки блоков: смена и фаза (инверсия) / выходные пятидневки по умолчанию")
 
 
-def parse_pattern(raw: str) -> dict:
-    """Индивидуальный шаблон из BlockAssignment.pattern_json (пусто — нет шаблона)."""
-    if not raw:
+def parse_pattern(pattern: Optional[dict]) -> dict:
+    """Индивидуальный шаблон из BlockAssignment.pattern — копия; пусто или неизвестный вид — нет шаблона."""
+    if not pattern or (pattern.get("kind") or "") not in PATTERN_KINDS:
         return {}
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    kind = data.get("kind") or ""
-    if kind not in PATTERN_KINDS:
-        return {}
-    return data
+    return dict(pattern)
 
 
-def dump_pattern(pattern: Optional[dict]) -> str:
-    if not pattern:
-        return ""
-    clean = {k: v for k, v in pattern.items() if v not in (None, "", [])}
-    return json.dumps(clean, ensure_ascii=False) if clean else ""
+def clean_pattern(pattern: Optional[dict]) -> dict:
+    """Шаблон без пустых значений — в таком виде он хранится."""
+    return {k: v for k, v in (pattern or {}).items() if v not in (None, "", [])}
 
 
 def validate_pattern_label(pattern: dict) -> str:
@@ -191,7 +180,7 @@ def pattern_for_date(db: Session, emp: Employee, date: dt.date,
     cfg = cfg or load_base_config(db)
     a = assignment_for_date(db, emp, date, index=index)
     group = normalize_group(a.group) if a else normalize_group(emp.schedule_group or "")
-    own = parse_pattern(a.pattern_json) if a is not None else {}
+    own = parse_pattern(a.pattern) if a is not None else {}
     gcfg = (cfg.get("groups") or {}).get(group) or {}
     kind = own.get("kind") or GROUP_META.get(group, {}).get("kind") or "base"
 

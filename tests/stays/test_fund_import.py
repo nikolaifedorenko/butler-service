@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import io
-import json
 
 from openpyxl import load_workbook
 from sqlalchemy import func, select
@@ -94,7 +93,7 @@ def test_roundtrip_is_empty_draft(manager_role_client, db):
     log = db.scalars(select(AuditLog).where(AuditLog.action == "stays_fund_import")
                      .order_by(AuditLog.id.desc())).first()
     assert log is not None and log.target == f"fund_draft:{draft.id}"
-    payload = json.loads(log.payload_json)
+    payload = log.payload
     assert payload["filename"] == "fund.xlsx" and payload["units_flags_changed"] == 0
     assert payload["flags"] == body["flags"] == {"created": [], "renamed": [], "recoloured": []}
 
@@ -267,7 +266,7 @@ def _last_import(db) -> dict:
     db.expire_all()
     log = db.scalars(select(AuditLog).where(AuditLog.action == "stays_fund_import")
                      .order_by(AuditLog.id.desc())).first()
-    return json.loads(log.payload_json)
+    return log.payload
 
 
 def test_flag_rename_via_file_with_header_renamed(manager_role_client, db):

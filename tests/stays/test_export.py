@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import io
-import json
 
 from openpyxl import load_workbook
 from sqlalchemy import select
@@ -37,7 +36,7 @@ def test_anon_export_has_no_guest_data(occupancy_client, manager_role_client, ma
     wb = load_workbook(io.BytesIO(r.content))
     assert [ws.title for ws in wb.worksheets] == ["Шахматка", "Брони", "Сводка"]
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_export").order_by(AuditLog.id.desc())).first()
-    assert json.loads(row.payload_json) == {"kind": "anon", **Q}
+    assert row.payload == {"kind": "anon", **Q}
 
 
 def test_full_export_requires_export_and_guests(manager_client, manager_role_client, occupancy_client):

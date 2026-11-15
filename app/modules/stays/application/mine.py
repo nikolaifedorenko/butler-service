@@ -11,7 +11,6 @@ domain/coverage.resolve_day), или кого он сам завёл через 
 from __future__ import annotations
 
 import datetime as dt
-import json
 from itertools import groupby
 
 from sqlalchemy import and_, exists, func, or_, select, union
@@ -40,6 +39,7 @@ from .guests import (
     guest_dict,
     guest_search_column,
     links_of,
+    ordered_preferences,
     search_guests,
     short_name,
     text_search,
@@ -206,7 +206,7 @@ def _soon(g: Guest, today: dt.date) -> list[dict]:
     """Особые даты и день рождения в ближайшие SOON_DAYS дней — ежегодные, датой ближайшего раза."""
     out = []
     marks = [(g.birth_date, "День рождения")] if g.birth_date else []
-    for s in json.loads(g.special_dates_json or "[]"):
+    for s in g.special_dates:
         try:
             marks.append((dt.date.fromisoformat(s.get("date") or ""), s.get("what") or ""))
         except (TypeError, ValueError, AttributeError):
@@ -264,7 +264,7 @@ def mine_today(db: Session, employee_id: int) -> dict:
             code = ctx.vip_codes.get(g.vip_code_id) if g.vip_code_id is not None else None
             guests.append({"guest_id": gid, "name": short_name(g), "special": bool(g.special),
                            "vip_code": code.code if code else "", "role": o.role,
-                           "phone": format_phone(g.phone), "preferences": json.loads(g.preferences_json or "{}"),
+                           "phone": format_phone(g.phone), "preferences": ordered_preferences(g.preferences),
                            "special_dates_soon": _soon(g, today), "departing": departing})
         departing = all(x["departing"] for x in guests) if guests else r.check_out == today
         night = yesterday if departing else today      # объект — ночи, в которую батлер ведёт гостей

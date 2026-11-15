@@ -202,7 +202,7 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
     «Сопровождают гостей» и График (если передан duty) — пакетно."""
     st = get_settings(db)
     res = {r.id: r for r in db.scalars(select(Reservation).where(
-        Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in <= last, Reservation.check_out > first))}
+        Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in <= last, Reservation.check_out > first).order_by(Reservation.id))}
     # фонд — с дня до самого раннего заезда по самый поздний выезд: его границы режут сегменты на
     # части так же, как у распределения, без отдельного запроса границ (бюджет SQL табло дня)
     fund = fund_for(db, min([first, *(r.check_in for r in res.values())]) - dt.timedelta(days=1),

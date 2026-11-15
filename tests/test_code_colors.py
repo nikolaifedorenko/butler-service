@@ -10,7 +10,6 @@ v4CodeColor()/settingsCodeColor() даже для уже лежащих в БД 
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 import pytest
 
@@ -69,7 +68,7 @@ def test_code_color_valid_normalized_to_lowercase(admin_client, app_stack):
     db = SessionLocal()
     try:
         row = db.get(EngineSettingsVersion, vid)
-        saved = json.loads(row.payload_json)
+        saved = row.payload
         assert saved["day_code_policy"][code]["color"] == "#aabb00", \
             "цвет сохраняется канонизованным (нижний регистр)"
     finally:

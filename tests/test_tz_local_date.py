@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
 from freezegun import freeze_time
 
@@ -51,7 +50,7 @@ def test_day_code_colors_follow_object_date(db):
         marker = "#0f0f0f"
         payload["day_code_policy"][code]["color"] = marker
         row = EngineSettingsVersion(valid_from=object_today,
-                                    payload_json=json.dumps(payload),
+                                    payload=payload,
                                     note="tz-boundary-test")
         db.add(row)
         db.commit()

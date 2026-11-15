@@ -1,6 +1,7 @@
 """Правила сопровождения, задача 1: справочник VIP-кодов, коэффициент «Особого гостя», ревизия 0017."""
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 import pytest
@@ -166,7 +167,7 @@ def test_codes_audited(manager_role_client, db):
     row = db.scalars(select(AuditLog).where(AuditLog.action == "stays_vip_code",
                                             AuditLog.target == f"vip_code:{code['id']}")
                          .order_by(AuditLog.id.desc())).first()
-    assert row is not None and code["code"] in row.payload_json
+    assert row is not None and code["code"] in json.dumps(row.payload, ensure_ascii=False)
 
 
 @pytest.fixture()
