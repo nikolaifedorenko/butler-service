@@ -1,10 +1,13 @@
 """Подключение к БД: PostgreSQL (ADR-0013, раздел 3)."""
+import functools
 import json
-from typing import Any
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from typing import Any, Concatenate
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.dialects.postgresql import JSON, JSONB
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
 from .config import settings
@@ -56,6 +59,42 @@ def _fill_json_defaults(target: Any, args: tuple, kwargs: dict) -> None:
 def plain_json(value: Any) -> Any:
     """Значение из одних типов JSON: даты и прочее становятся строками. Возвращает копию."""
     return json.loads(json.dumps(value, default=str))
+
+
+@contextmanager
+def transaction(db: Session) -> Iterator[None]:
+    """Граница операции прикладного слоя: записалось всё или ничего.
+
+    Внешний блок фиксирует транзакцию при выходе и откатывает при ошибке. Блок внутри
+    другого блока — точка сохранения: его ошибка отменяет только его записи, а фиксирует
+    всё внешний. Операции прикладного слоя поэтому свободно вызывают друг друга.
+    """
+    depth = db.info.get("transaction_depth", 0)
+    db.info["transaction_depth"] = depth + 1
+    try:
+        if depth:
+            with db.begin_nested():
+                yield
+        else:
+            try:
+                yield
+                db.commit()
+            except BaseException:
+                db.rollback()
+                raise
+    finally:
+        db.info["transaction_depth"] = depth
+
+
+def transactional[**P, R](operation: Callable[Concatenate[Session, P], R]) -> Callable[Concatenate[Session, P], R]:
+    """Операция прикладного слоя: первый аргумент — сессия, всё тело — одна транзакция."""
+
+    @functools.wraps(operation)
+    def run(db: Session, *args: P.args, **kwargs: P.kwargs) -> R:
+        with transaction(db):
+            return operation(db, *args, **kwargs)
+
+    return run
 
 
 def lock_employee(db, employee_id: int) -> None:

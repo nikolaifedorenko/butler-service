@@ -49,7 +49,6 @@ def _free_cars_and_users(db, n_cars):
 def test_two_takes_of_one_car_second_gets_conflict(app_stack, db):
     from app.modules.cars.application.cars import CarConflict, take_car
     from app.modules.cars.application.catalog import Car, CarHistory
-    from app.modules.cars.interface.cars_api import _err
 
     SessionLocal = app_stack["SessionLocal"]
     (car_id,), (uid1, uid2), Principal, User, Employee = _free_cars_and_users(db, 1)
@@ -64,12 +63,10 @@ def test_two_takes_of_one_car_second_gets_conflict(app_stack, db):
             p2 = Principal(u2, s2.get(Employee, u2.employee_id))
             c1, c2 = s1.get(Car, car_id), s2.get(Car, car_id)
             assert c1.status == c2.status == "free"          # оба прочитали до коммита соседа
-            take_car(s1, c1, p1)
-            s1.commit()
+            take_car(s1, p1, car_id)                         # операция сама фиксирует транзакцию
             with pytest.raises(CarConflict) as exc:
-                take_car(s2, c2, p2)
-            s2.rollback()
-            assert _err(exc.value).status_code == 409
+                take_car(s2, p2, car_id)                     # s2 всё ещё видит кар свободным
+            assert exc.value.status_code == 409
         finally:
             s1.close()
             s2.close()
@@ -107,7 +104,6 @@ def test_second_car_for_same_assignee_is_rejected_by_index(app_stack, db):
     мог закрепить за человеком второй кар между проверкой и записью — ловит индекс."""
     from app.modules.cars.application.cars import CarConflict, add_history
     from app.modules.cars.application.catalog import Car
-    from app.modules.cars.interface.cars_api import _err
 
     SessionLocal = app_stack["SessionLocal"]
     (a, b), (uid, _), _p, User, _e = _free_cars_and_users(db, 2)
@@ -124,7 +120,7 @@ def test_second_car_for_same_assignee_is_rejected_by_index(app_stack, db):
             with pytest.raises(CarConflict) as exc:
                 add_history(s, car, "assign", None)
             s.rollback()
-            assert _err(exc.value).status_code == 409
+            assert exc.value.status_code == 409
             assert "закреплён" in str(exc.value)
     finally:
         with SessionLocal() as s:

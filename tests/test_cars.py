@@ -527,6 +527,46 @@ def test_foto_otmetki_ne_kartinka_otklonyaetsya(manager_client, db, freeze):
         assert entry["checked"] is False
 
 
+def test_otkaz_vozvrata_ne_ostavlyaet_sledov(manager_client, admin_client, db):
+    """Возврат — одна транзакция: файл оказался не изображением, и кар, его история и аудит
+    остались как были, хотя к этому моменту карточка и запись истории уже были изменены."""
+    from sqlalchemy import func, select
+
+    from app.core.audit import AuditLog
+    from app.modules.cars.application.catalog import CarHistory
+
+    def counts() -> tuple[int, int]:
+        db.rollback()
+        return (db.scalar(select(func.count()).select_from(CarHistory).where(CarHistory.car_id == car["id"])),
+                db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "car_return")))
+
+    car = _free_car(admin_client)
+    assert manager_client.post(f"/api/cars/{car['id']}/take", json={"ack_assigned": True}).status_code == 200
+    try:
+        taken, before = _car_by_number(admin_client, car["number"]), counts()
+        r = manager_client.post(f"/api/cars/{car['id']}/return",
+                                data={**RETURN_FORM, "condition": "scratch", "comment": "не должно сохраниться"},
+                                files={"file": ("zametka.txt", b"ne kartinka", "text/plain")})
+        assert r.status_code == 400, r.text
+        assert "изображения" in r.json()["detail"]
+        assert _car_by_number(admin_client, car["number"]) == taken
+        assert counts() == before
+    finally:
+        assert _return_car(manager_client, car["id"]).status_code == 200
+
+
+def test_otvet_dobavleniya_mesta_vsegda_s_restored(admin_client):
+    """Ключ restored есть в ответе всегда: False — место новое, True — включено прежнее."""
+    name = "Проверка restored"
+    first = admin_client.post("/api/cars/locations", json={"name": name})
+    try:
+        assert first.status_code == 200 and first.json() == {"id": first.json()["id"], "name": name, "restored": False}
+        again = admin_client.post("/api/cars/locations", json={"name": name})
+        assert again.json() == {**first.json(), "restored": True}
+    finally:
+        assert admin_client.delete(f"/api/cars/locations/{first.json()['id']}").json() == {"ok": True}
+
+
 # ───────────────────── права и удаление мест (18.10.2026) ─────────────────────
 def test_prava_operacii_razgranicheny(employee_client, manager_client, manager_role_client):
     """Сотрудник не выдаёт и не правит парк; супервайзер не создаёт кары и места."""

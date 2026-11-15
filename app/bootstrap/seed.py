@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.db import transactional
 from app.core.identity import User
 from app.core.roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 from app.core.settings_store import Setting
@@ -114,7 +115,13 @@ def seed_if_empty(db: Session) -> bool:
                 db.add(Setting(key=key, value=value, description=RULE_DESCRIPTIONS.get(key, "")))
         db.commit()
         return False
+    _fill_empty(db)
+    return True
 
+
+@transactional
+def _fill_empty(db: Session) -> None:
+    """Наполнение пустой базы одной транзакцией: справочники и администратор, при DEMO_SEED — демо-данные."""
     rnd = random.Random(20260922)
     today = local_date()
     acc_start = accounting_start(today)
@@ -149,7 +156,7 @@ def seed_if_empty(db: Session) -> bool:
                 "или DEMO_SEED=1 для демо-данных")
         db.add(User(username="admin", password_hash=hash_password(settings.admin_password),
                     role=ROLE_ADMIN))
-        return True
+        return
 
     # администратор: полный доступ, сам в график не встаёт
     db.add(User(username="admin", password_hash=hash_password(DEFAULT_PASSWORD), role=ROLE_ADMIN))
@@ -395,9 +402,6 @@ def seed_if_empty(db: Session) -> bool:
     from ..modules.stays.application.demo import seed_stays_demo
     seed_stays_demo(db)                                   # «Шахматка»: фонд, гости, брони, батлеры
 
-    db.commit()
-    return True
-
 
 # Зоны обхода ночного отчёта (v2, 19.10.2026): зона → объекты → чек-лист.
 # Чек-лист задаётся НА ЗОНУ, поэтому у десятков однотипных объектов он одинаковый;
@@ -524,7 +528,7 @@ def _seed_cars(db: Session, by_name: dict) -> None:
     from app.core.identity import User
     from app.modules.cars.application.catalog import CarLocation
 
-    from ..modules.cars.application.cars import create_car
+    from ..modules.cars.application.cars import register_car
 
     admin = db.scalar(select(User).where(User.username == "admin"))
     principal = None
@@ -535,7 +539,7 @@ def _seed_cars(db: Session, by_name: dict) -> None:
         db.add(CarLocation(name=loc_name, sort_order=i, builtin=True))
     db.flush()
     for number, status, location, holder_key in CARS_DEMO:
-        car = create_car(db, principal, number, location)
+        car = register_car(db, principal, number, location)
         car.status = status
         if status == "charging":
             car.on_charge, car.charge = True, "empty"

@@ -709,6 +709,166 @@
         "title": "CarIn",
         "type": "object"
       },
+      "CarOperationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "car": {
+            "$ref": "#/components/schemas/CarOut"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "car"
+        ],
+        "title": "CarOperationOut",
+        "type": "object"
+      },
+      "CarOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "assigned_name": {
+            "title": "Assigned Name",
+            "type": "string"
+          },
+          "assigned_to": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To"
+          },
+          "canopy": {
+            "title": "Canopy",
+            "type": "boolean"
+          },
+          "charge": {
+            "title": "Charge",
+            "type": "string"
+          },
+          "charge_title": {
+            "title": "Charge Title",
+            "type": "string"
+          },
+          "clean": {
+            "title": "Clean",
+            "type": "boolean"
+          },
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "has_key": {
+            "title": "Has Key",
+            "type": "boolean"
+          },
+          "holder_name": {
+            "title": "Holder Name",
+            "type": "string"
+          },
+          "holder_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder User Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_taken_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Taken At"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "on_charge": {
+            "title": "On Charge",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "trash": {
+            "title": "Trash",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "status_title",
+          "location",
+          "charge",
+          "charge_title",
+          "on_charge",
+          "canopy",
+          "condition",
+          "trash",
+          "clean",
+          "has_key",
+          "holder_user_id",
+          "holder_name",
+          "assigned_to",
+          "assigned_name",
+          "note",
+          "last_checked_at",
+          "last_taken_at",
+          "active"
+        ],
+        "title": "CarOut",
+        "type": "object"
+      },
       "CellIn": {
         "properties": {
           "code": {
@@ -802,6 +962,25 @@
           }
         },
         "title": "CloseSectionIn",
+        "type": "object"
+      },
+      "CodeTitle": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title"
+        ],
+        "title": "CodeTitle",
         "type": "object"
       },
       "CompanionIn": {
@@ -2027,6 +2206,100 @@
         "title": "HandoverIn",
         "type": "object"
       },
+      "HistoryItemOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "action_title": {
+            "title": "Action Title",
+            "type": "string"
+          },
+          "actor_name": {
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "person": {
+            "title": "Person",
+            "type": "string"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoOut"
+            },
+            "title": "Photos",
+            "type": "array"
+          },
+          "ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts"
+          },
+          "with_key": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "With Key"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "action",
+          "action_title",
+          "actor_name",
+          "person",
+          "with_key",
+          "location",
+          "details",
+          "photos"
+        ],
+        "title": "HistoryItemOut",
+        "type": "object"
+      },
+      "HistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemOut"
+            },
+            "title": "History",
+            "type": "array"
+          }
+        },
+        "required": [
+          "history"
+        ],
+        "title": "HistoryOut",
+        "type": "object"
+      },
       "ImpersonateIn": {
         "properties": {
           "employee_id": {
@@ -2233,6 +2506,30 @@
         "title": "LinkIn",
         "type": "object"
       },
+      "LocationAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "restored": {
+            "title": "Restored",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "restored"
+        ],
+        "title": "LocationAddedOut",
+        "type": "object"
+      },
       "LocationEditIn": {
         "properties": {
           "active": {
@@ -2272,6 +2569,57 @@
           "name"
         ],
         "title": "LocationIn",
+        "type": "object"
+      },
+      "LocationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "builtin": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sort_order",
+          "active",
+          "builtin"
+        ],
+        "title": "LocationOut",
+        "type": "object"
+      },
+      "LocationsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/LocationOut"
+            },
+            "title": "Locations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "locations"
+        ],
+        "title": "LocationsOut",
         "type": "object"
       },
       "LoginIn": {
@@ -2381,6 +2729,60 @@
         "title": "MembersIn",
         "type": "object"
       },
+      "MetaOut": {
+        "additionalProperties": false,
+        "description": "Словари раздела и права пользователя.",
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/CodeTitle"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "can_edit_park": {
+            "title": "Can Edit Park",
+            "type": "boolean"
+          },
+          "can_issue": {
+            "title": "Can Issue",
+            "type": "boolean"
+          },
+          "can_manage": {
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "can_use": {
+            "title": "Can Use",
+            "type": "boolean"
+          },
+          "charges": {
+            "items": {
+              "$ref": "#/components/schemas/CodeTitle"
+            },
+            "title": "Charges",
+            "type": "array"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/CodeTitle"
+            },
+            "title": "Statuses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "statuses",
+          "actions",
+          "charges",
+          "can_use",
+          "can_issue",
+          "can_manage",
+          "can_edit_park"
+        ],
+        "title": "MetaOut",
+        "type": "object"
+      },
       "ModifierIn": {
         "properties": {
           "date": {
@@ -2461,6 +2863,52 @@
           "category_id"
         ],
         "title": "MoveIn",
+        "type": "object"
+      },
+      "MyCarsOut": {
+        "additionalProperties": false,
+        "description": "Кары текущего сотрудника: какой держит, какой закреплён, какой свободный предложить.",
+        "properties": {
+          "assigned": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned"
+          },
+          "free_recommended": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Recommended"
+          },
+          "held": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held"
+          }
+        },
+        "required": [
+          "held",
+          "free_recommended",
+          "assigned"
+        ],
+        "title": "MyCarsOut",
         "type": "object"
       },
       "NewGuestIn": {
@@ -2587,6 +3035,19 @@
           "date_to"
         ],
         "title": "OccupantIn",
+        "type": "object"
+      },
+      "Ok": {
+        "additionalProperties": false,
+        "description": "Ответ операции, у которой нет данных для интерфейса.",
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "title": "Ok",
         "type": "object"
       },
       "OooIn": {
@@ -2720,6 +3181,39 @@
         "title": "OverrideIn",
         "type": "object"
       },
+      "ParkOut": {
+        "additionalProperties": false,
+        "properties": {
+          "can_manage": {
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "cars": {
+            "items": {
+              "$ref": "#/components/schemas/CarOut"
+            },
+            "title": "Cars",
+            "type": "array"
+          },
+          "me": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MyCarsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "cars",
+          "me",
+          "can_manage"
+        ],
+        "title": "ParkOut",
+        "type": "object"
+      },
       "PartIn": {
         "properties": {
           "category_id": {
@@ -2791,6 +3285,62 @@
           "month"
         ],
         "title": "PeriodAction",
+        "type": "object"
+      },
+      "PhotoOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "boolean"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "uploaded_by_name": {
+            "title": "Uploaded By Name",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "size",
+          "media_type",
+          "url",
+          "missing",
+          "uploaded_by_name",
+          "created_at"
+        ],
+        "title": "PhotoOut",
         "type": "object"
       },
       "PrefIn": {
@@ -3875,7 +4425,7 @@
         "title": "GroupIn",
         "type": "object"
       },
-      "app__modules__cars__interface__cars_api__StatusIn": {
+      "app__modules__cars__interface__schemas__StatusIn": {
         "properties": {
           "note": {
             "default": "",
@@ -5250,13 +5800,15 @@
     },
     "/api/cars": {
       "get": {
-        "description": "Парк целиком (видно всем ролям). my_car_id — кар текущего пользователя.",
+        "description": "Парк целиком (видно всем ролям).",
         "operationId": "park_api_cars_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ParkOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5283,7 +5835,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5312,7 +5866,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5339,7 +5895,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LocationAddedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5363,7 +5921,6 @@
     },
     "/api/cars/locations/{loc_id}": {
       "delete": {
-        "description": "Удаление места стоянки (18.10.2026): запрещено, пока место указано у активных\nкаров — им нужно сначала сменить место; история хранит места текстом, поэтому\nудалённое место не ломает прошлые записи.",
         "operationId": "location_delete_api_cars_locations__loc_id__delete",
         "parameters": [
           {
@@ -5380,7 +5937,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -5428,7 +5987,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -5452,13 +6013,15 @@
     },
     "/api/cars/meta": {
       "get": {
-        "description": "Справочные словари для интерфейса + права.",
+        "description": "Справочные словари для интерфейса и права пользователя.",
         "operationId": "meta_api_cars_meta_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MetaOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5498,7 +6061,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5522,7 +6087,7 @@
     },
     "/api/cars/{car_id}/assign": {
       "post": {
-        "description": "Закрепление — рекомендательное; право cars.issue (супервайзер и выше).",
+        "description": "Закрепление кара за сотрудником — рекомендательное.",
         "operationId": "car_assign_api_cars__car_id__assign_post",
         "parameters": [
           {
@@ -5549,7 +6114,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOperationOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5573,7 +6140,7 @@
     },
     "/api/cars/{car_id}/give": {
       "post": {
-        "description": "Выдать кар сотруднику (менеджмент; внутренний — по id, внешний — по ФИО).",
+        "description": "Выдать кар сотруднику: внутренний — по id, внешний — по ФИО.",
         "operationId": "car_give_api_cars__car_id__give_post",
         "parameters": [
           {
@@ -5600,7 +6167,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOperationOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5651,7 +6220,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOperationOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5675,7 +6246,7 @@
     },
     "/api/cars/{car_id}/history": {
       "get": {
-        "description": "История кара: только добавление новых записей — правок и удалений нет.",
+        "description": "История кара: записи только добавляются.",
         "operationId": "car_history_api_cars__car_id__history_get",
         "parameters": [
           {
@@ -5702,7 +6273,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5726,7 +6299,7 @@
     },
     "/api/cars/{car_id}/return": {
       "post": {
-        "description": "Возврат кара (multipart): состояние + фото доказательств (оригиналы).",
+        "description": "Возврат кара (multipart): состояние и фото.",
         "operationId": "car_return_api_cars__car_id__return_post",
         "parameters": [
           {
@@ -5752,7 +6325,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOperationOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5776,7 +6351,7 @@
     },
     "/api/cars/{car_id}/status": {
       "post": {
-        "description": "Ручная смена статуса (супервайзер+). Правила — в cars.set_status:\n«занят» без держателя нельзя; с занятого — только через возврат; обслуживание — только менеджер.",
+        "description": "Ручная смена статуса.",
         "operationId": "car_set_status_api_cars__car_id__status_post",
         "parameters": [
           {
@@ -5793,7 +6368,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__cars__interface__cars_api__StatusIn"
+                "$ref": "#/components/schemas/app__modules__cars__interface__schemas__StatusIn"
               }
             }
           },
@@ -5803,7 +6378,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOperationOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -5853,7 +6430,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarOperationOut"
+                }
               }
             },
             "description": "Successful Response"
