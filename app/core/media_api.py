@@ -19,25 +19,37 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
+from pydantic import Field
 from sqlalchemy.orm import Session
 
 from ..core.auth import Principal, current_principal
 from ..core.db import get_db
 from ..core.media import delete_photo as delete_photo_usecase
 from ..core.media import media_limits, resolve_photo_file
+from ..core.schemas import ApiModel, Ok
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
 
 
-@router.get("/limits", operation_id="photo_limits_get")
+class MediaLimitsOut(ApiModel):
+    """Лимиты медиа, которые задаёт объект; 0 — без ограничения."""
+
+    photo_max_mb: float = Field(description="наибольший размер фото, МБ")
+    video_max_mb: float = Field(description="наибольший размер видео, МБ")
+    photo_retention_days: int
+    video_retention_days: int
+
+
+@router.get("/limits", operation_id="photo_limits_get", response_model=MediaLimitsOut)
 def photo_limits(principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Лимиты медиа для интерфейса: размер фото/видео (МБ) и сроки хранения (дни)."""
     return media_limits(db)
 
 
-@router.get("/{photo_id}/file", operation_id="photo_file_get")
-@router.head("/{photo_id}/file", operation_id="photo_file_head", include_in_schema=False)
+@router.get("/{photo_id}/file", operation_id="photo_file_get", response_class=FileResponse)
+@router.head("/{photo_id}/file", operation_id="photo_file_head", include_in_schema=False,
+             response_class=FileResponse)
 def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
                db: Session = Depends(get_db)):
     """Отдача оригинала фото. Только авторизованным; HEAD — для проверки доступности."""
@@ -47,10 +59,9 @@ def photo_file(photo_id: int, principal: Principal = Depends(current_principal),
                         headers={"Cache-Control": "private, max-age=86400"})
 
 
-@router.delete("/{photo_id}")
+@router.delete("/{photo_id}", response_model=Ok)
 def photo_delete(photo_id: int, principal: Principal = Depends(current_principal),
                  db: Session = Depends(get_db)):
     """Удалить фото: своё — любой пользователь, чужое — право media.delete_any."""
     delete_photo_usecase(db, principal, photo_id)
-    db.commit()
-    return {"ok": True}
+    return Ok()

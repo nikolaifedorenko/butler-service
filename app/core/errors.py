@@ -34,6 +34,18 @@ class Rejected(ServiceError):
     status_code = 400
 
 
+class Unauthorized(ServiceError):
+    """Вход не выполнен: неверные учётные данные → 401."""
+
+    status_code = 401
+
+
+class TooManyRequests(ServiceError):
+    """Превышен лимит попыток → 429."""
+
+    status_code = 429
+
+
 class NotFound(ServiceError):
     """Объект не найден → 404."""
 
