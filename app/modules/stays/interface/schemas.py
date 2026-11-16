@@ -222,3 +222,70 @@ class ResetOut(ApiModel):
 
 class InProductionOut(ApiModel):
     in_production: bool
+
+
+# ── справочники шахматки ─────────────────────────────────────────────────────
+
+
+class LabelOut(ApiModel):
+    id: int
+    title: str
+    color: str
+
+
+class CustomFieldOut(ApiModel):
+    id: int
+    target: str
+    code: str
+    title: str
+    kind: str
+    searchable: bool
+    sort_order: int
+    choices: list[str]
+
+
+class EscortRowOut(ApiModel):
+    employee_id: int
+    name: str
+    active: bool
+
+
+class StaysSettingsOut(ApiModel):
+    special_factor: Optional[float]
+    daily_limit: float
+    replacement_codes: str
+
+
+class VipCodeOut(ApiModel):
+    id: int
+    code: str
+    title: str
+    escorted: bool
+    factor: float
+    sort_order: int
+    archived: bool
+
+
+class StaffRowOut(ApiModel):
+    id: int
+    name: str
+    position: str
+
+
+class StaysDirectoriesOut(ApiModel):
+    labels: list[LabelOut]
+    fields: list[CustomFieldOut]
+    escorts: list[EscortRowOut]
+    settings: StaysSettingsOut
+    in_production: bool
+    vip_codes: list[VipCodeOut]
+    staff: Optional[list[StaffRowOut]]          # только тем, у кого stays.setup
+
+
+class EscortChangedOut(ApiModel):
+    employee_id: int
+    active: bool
+
+
+class EscortsSeededOut(ApiModel):
+    added: int
