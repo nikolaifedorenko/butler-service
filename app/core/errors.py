@@ -86,6 +86,12 @@ class ConfirmationRequired(Conflict):
         return {**self.data, "message": self.message}
 
 
+class NotSupported(ServiceError):
+    """Сервер не может выполнить запрос в этой установке (нет средства для сборки PDF) → 501."""
+
+    status_code = 501
+
+
 class UpstreamError(ServiceError):
     """Внешний сервис недоступен или отказал (бот Telegram, почтовый сервер) → 502."""
 

@@ -1,275 +1,121 @@
-"""Виды заявлений (расширяемый словарь statement_kinds) и фирменные бланки .docx.
-
-Вид заявления = код + название + текст-заполнитель с плейсхолдерами {field}.
-Виды создаёт менеджер/админ в «Настройки → Виды заявлений и шаблоны»; к виду
-привязывается смена словаря (ShiftType.doc_type) — из ячейки графика печатается
-документ. Фирменный бланк templates/<code>.docx перекрывает текст-заполнитель:
-оформление бланка сохраняется, плейсхолдеры подставляются в его run'ы.
-"""
+"""API видов заявлений, фирменных бланков и формирования заявления.
+Правила — в ``application/statements.py``."""
 from __future__ import annotations
 
-import datetime as dt
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.format import hours_text
 from app.core.permissions import require_perm
-from app.modules.exchange.application.documents import docx_to_pdf
-from app.modules.people.application import Employee
-from app.modules.timesheet.application.catalog import ShiftType
+from app.core.schemas import ApiModel
+from app.modules.exchange.application.documents import DOCX_MEDIA_TYPE
 
-from ..adapters.orm import StatementKind
-from ..application.doc_render import (
-    CODE_RE,
-    PLACEHOLDER_HELP,
-    build_sample_docx,
-    build_values,
-    delete_template,
-    pdf_available,
-    pdf_status,
-    render_docx,
-    save_template,
-    scan_placeholders,
-    template_path,
-)
-from ..application.doc_templates import load_doc_templates
+from ..application import statements
+from ..application.statements import KindIn, KindUpdate, RenderIn
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
-
-# встроенные виды: каким текстом из настроек печатать, если у вида пустой text
-FALLBACK_TEXT_KEY = {"vacation_paid": "vacation", "vacation_unpaid": "vacation_unpaid",
-                     "day_off_hours": "day_off_hours", "time_off_request": "time_off_request"}
+VIEW = require_perm("settings.view")
+EDIT = require_perm("settings.edit")
 
 
-def _legacy_fallback_text(doc_cfg: dict, code: str) -> str:
-    """Для встроенных видов с пустым текстом — прежний шаблон из настроек."""
-    key = FALLBACK_TEXT_KEY.get(code)
-    if key and key in doc_cfg:
-        return doc_cfg[key]
-    return doc_cfg["vacation"]
+class KindTemplateOut(ApiModel):
+    """Фирменный бланк вида."""
+
+    uploaded: bool
+    filename: Optional[str]
+    size: int
+    placeholders: list[str]
 
 
-def _hours_between(from_time: str, until_time: str) -> float:
-    """Сколько часов между «с 14:00» и «до 16:00» (через полночь — тоже считается)."""
-    try:
-        fh, fm = (int(x) for x in from_time.split(":"))
-        th, tm = (int(x) for x in until_time.split(":"))
-    except ValueError:
-        return 0.0
-    mins = (th * 60 + tm) - (fh * 60 + fm)
-    if mins <= 0:
-        mins += 24 * 60
-    return round(mins / 60.0, 2)
-
-
-def _kind_or_422(db: Session, code: str) -> StatementKind:
-    kind = db.scalar(select(StatementKind).where(StatementKind.code == code))
-    if not kind:
-        raise HTTPException(status_code=422, detail=f"Неизвестный вид заявления: {code}")
-    return kind
-
-
-def _kind_dict(k: StatementKind) -> dict:
-    p = template_path(k.code)
-    return {"id": k.id, "code": k.code, "name": k.name, "text": k.text,
-            "builtin": bool(k.builtin), "active": bool(k.active), "sort_order": k.sort_order,
-            "template": {"uploaded": p is not None,
-                         "filename": p.name if p else None,
-                         "size": p.stat().st_size if p else 0,
-                         "placeholders": sorted(scan_placeholders(p)) if p else []}}
-
-
-# ─────────────────────────── виды заявлений (CRUD) ───────────────────────────
-@router.get("/kinds")
-def list_kinds(principal: Principal = Depends(require_perm("settings.view")), db: Session = Depends(get_db)):
-    kinds = db.scalars(select(StatementKind).order_by(
-        StatementKind.sort_order, StatementKind.name)).all()
-    return {"kinds": [_kind_dict(k) for k in kinds],
-            "placeholders": PLACEHOLDER_HELP,
-            "pdf_available": pdf_available(), "pdf": pdf_status()}
-
-
-class KindIn(BaseModel):
+class KindOut(ApiModel):
+    id: int
     code: str
     name: str
-    text: str = ""
+    text: str
+    builtin: bool
+    active: bool
+    sort_order: int
+    template: KindTemplateOut
 
 
-class KindUpdate(BaseModel):
-    name: str
-    text: str = ""
-    active: bool = True
-    sort_order: int = 100
+class KindsOut(ApiModel):
+    kinds: list[KindOut]
+    placeholders: Any               # справка по плейсхолдерам
+    pdf_available: bool
+    pdf: Any                        # чем сервер собирает PDF
 
 
-@router.post("/kinds")
-def create_kind(payload: KindIn, principal: Principal = Depends(require_perm("settings.edit")),
-                db: Session = Depends(get_db)):
-    code = payload.code.strip().lower()
-    if not CODE_RE.match(code):
-        raise HTTPException(status_code=422,
-                            detail="Код вида: строчная латиница, цифры и «_», 2–40 символов, "
-                                   "начинается с буквы (например mat_aid)")
-    if not payload.name.strip():
-        raise HTTPException(status_code=422, detail="Название вида заявления не может быть пустым")
-    if db.scalar(select(StatementKind).where(StatementKind.code == code)):
-        raise HTTPException(status_code=409, detail=f"Вид заявления с кодом «{code}» уже есть")
-    kind = StatementKind(code=code, name=payload.name.strip(), text=payload.text)
-    db.add(kind)
-    audit(db, principal, "statement_kind_create", code, {"name": kind.name})
-    db.commit()
-    return _kind_dict(kind)
+class KindDeletedOut(ApiModel):
+    ok: bool = True
+    shifts_cleared: int
 
 
-@router.put("/kinds/{kind_id}")
-def update_kind(kind_id: int, payload: KindUpdate,
-                principal: Principal = Depends(require_perm("settings.edit")), db: Session = Depends(get_db)):
-    kind = db.get(StatementKind, kind_id)
-    if not kind:
-        raise HTTPException(status_code=404, detail="Вид заявления не найден")
-    if not payload.name.strip():
-        raise HTTPException(status_code=422, detail="Название вида заявления не может быть пустым")
-    kind.name = payload.name.strip()
-    kind.text = payload.text
-    kind.active = payload.active
-    kind.sort_order = payload.sort_order
-    audit(db, principal, "statement_kind_update", kind.code, {"name": kind.name})
-    db.commit()
-    return _kind_dict(kind)
-
-
-@router.delete("/kinds/{kind_id}")
-def delete_kind(kind_id: int, principal: Principal = Depends(require_perm("settings.edit")),
-                db: Session = Depends(get_db)):
-    """Удалить вид заявления: у привязанных смен словаря doc_type очищается,
-    фирменный бланк (если был загружен) удаляется с диска."""
-    kind = db.get(StatementKind, kind_id)
-    if not kind:
-        raise HTTPException(status_code=404, detail="Вид заявления не найден")
-    refs = db.scalars(select(ShiftType).where(ShiftType.doc_type == kind.code)).all()
-    for st in refs:
-        st.doc_type = ""
-    delete_template(kind.code)
-    db.delete(kind)
-    audit(db, principal, "statement_kind_delete", kind.code,
-          {"name": kind.name, "shifts_cleared": [s.code for s in refs]})
-    db.commit()
-    return {"ok": True, "shifts_cleared": len(refs)}
-
-
-# ─────────────────────────── фирменные бланки .docx ───────────────────────────
-@router.get("/sample")
-def sample_template(type: str, principal: Principal = Depends(require_perm("settings.view")),
-                    db: Session = Depends(get_db)):
-    """Образец .docx с плейсхолдерами — скачать, оформить под фирменный бланк и загрузить."""
-    kind = _kind_or_422(db, type)
-    return Response(content=build_sample_docx(kind.code, kind.text),
-                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": f'attachment; filename="sample_{kind.code}.docx"'})
-
-
-@router.post("/templates")
-def upload_template(type: str, file: UploadFile,
-                    principal: Principal = Depends(require_perm("settings.edit")),
-                    db: Session = Depends(get_db)):
-    _kind_or_422(db, type)
-    # читаем с запасом в 1 байт: так лимит работает ДО того, как файл целиком окажется
-    # в памяти (раньше read() без аргумента буферизовал всё тело любого размера)
-    data = file.file.read(5 * 1024 * 1024 + 1)
-    if len(data) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Файл больше 5 МБ")
-    try:
-        meta = save_template(type, data)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    audit(db, principal, "doc_template_upload", type, {"filename": file.filename})
-    db.commit()
-    return {"ok": True, **meta}
-
-
-@router.delete("/templates")
-def remove_template(type: str, principal: Principal = Depends(require_perm("settings.edit")),
-                    db: Session = Depends(get_db)):
-    _kind_or_422(db, type)
-    removed = delete_template(type)
-    audit(db, principal, "doc_template_delete", type, {})
-    db.commit()
-    return {"ok": True, "removed": removed}
-
-
-# ─────────────────────────── рендер документа ───────────────────────────
-class RenderIn(BaseModel):
+class TemplateUploadedOut(ApiModel):
+    ok: bool = True
     type: str
-    employee_id: int
-    date_from: str
-    date_to: str
-    format: str = "docx"        # docx | pdf
-    from_time: str = ""         # «отпросился с 14:00…»
-    until_time: str = ""        # «…до 16:00»
-    hours: Optional[float] = None
-    intervals: str = ""         # перечень интервалов одной строкой («с 14:00 до 16:00 (2 ч) и …»)
-    reason: str = ""            # вид отсутствия из словаря («Отпуск», «Выходной за часы»…)
-    note: str = ""              # примечание из ячейки графика (приказ, причина)
+    filename: str
+    size: int
+    placeholders: list[str]         # плейсхолдеры, найденные в бланке
 
 
-@router.post("/render")
-def render(payload: RenderIn, principal: Principal = Depends(require_perm("settings.view")),
-           db: Session = Depends(get_db)):
-    kind = _kind_or_422(db, payload.type)
-    emp = db.get(Employee, payload.employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    try:
-        d1 = dt.date.fromisoformat(payload.date_from)
-        d2 = dt.date.fromisoformat(payload.date_to)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Даты должны быть в формате ГГГГ-ММ-ДД")
-    if d2 < d1:
-        raise HTTPException(status_code=422, detail="Дата окончания раньше даты начала")
+class TemplateRemovedOut(ApiModel):
+    ok: bool = True
+    removed: bool
 
-    doc_cfg = load_doc_templates(db)
-    hours_val = payload.hours
-    if hours_val is None and payload.from_time and payload.until_time:
-        hours_val = _hours_between(payload.from_time, payload.until_time)
-    # {intervals}: готовый перечень из absence-period (несколько отлучек одним
-    # заявлением) либо одиночный интервал, собранный из from/until — шаблон
-    # «об отсутствии на рабочем месте» всегда может использовать один плейсхолдер
-    intervals = payload.intervals.strip()
-    if not intervals and payload.from_time and payload.until_time:
-        intervals = (f"с {payload.from_time} до {payload.until_time} "
-                     f"({hours_text(hours_val or 0)} ч)")
-    values = build_values(emp, d1, d2, extra={
-        "company": doc_cfg["company"], "director": doc_cfg["director"],
-        "from_time": payload.from_time, "until_time": payload.until_time,
-        "hours": hours_val or 0, "reason": payload.reason, "note": payload.note,
-        "intervals": intervals})
-    # текст-заполнитель вида; для встроенных видов без текста — прежние шаблоны из настроек
-    fallback = (kind.text or "").strip() or _legacy_fallback_text(doc_cfg, kind.code)
-    docx_bytes = render_docx(kind.code, values, fallback)
 
-    audit(db, principal, "doc_render", kind.code,
-          {"employee": emp.full_name, "period": f"{d1}..{d2}", "format": payload.format,
-           "time": f"{payload.from_time}-{payload.until_time}" if payload.from_time else ""})
-    db.commit()
+def _attachment(content: bytes, name: str, media_type: str) -> Response:
+    return Response(content=content, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
-    if payload.format == "docx":
-        return Response(content=docx_bytes,
-                        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        headers={"Content-Disposition":
-                                 f'attachment; filename="{kind.code}_{d1.isoformat()}_{emp.id}.docx"'})
-    pdf, how = docx_to_pdf(docx_bytes, f"{kind.code}_{emp.id}.pdf")
-    if pdf is None:
-        raise HTTPException(status_code=501,
-                            detail=f"PDF собрать не удалось: {how}. Скачайте DOCX — он откроется "
-                                   "в Word/Pages/LibreOffice, из него можно напечатать напрямую.")
-    return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition":
-                             f'attachment; filename="{kind.code}_{d1.isoformat()}_{emp.id}.pdf"'})
+
+@router.get("/kinds", response_model=KindsOut)
+def list_kinds(principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    return statements.kinds_view(db)
+
+
+@router.post("/kinds", response_model=KindOut)
+def create_kind(payload: KindIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    return statements.create_kind(db, principal, payload)
+
+
+@router.put("/kinds/{kind_id}", response_model=KindOut)
+def update_kind(kind_id: int, payload: KindUpdate, principal: Principal = Depends(EDIT),
+                db: Session = Depends(get_db)):
+    return statements.update_kind(db, principal, kind_id, payload)
+
+
+@router.delete("/kinds/{kind_id}", response_model=KindDeletedOut)
+def delete_kind(kind_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Удалить вид заявления вместе с его бланком."""
+    return {"shifts_cleared": statements.delete_kind(db, principal, kind_id)}
+
+
+@router.get("/sample", response_class=Response)
+def sample_template(type: str, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Образец бланка с плейсхолдерами."""
+    content, name = statements.sample(db, type)
+    return _attachment(content, name, DOCX_MEDIA_TYPE)
+
+
+@router.post("/templates", response_model=TemplateUploadedOut)
+def upload_template(type: str, file: UploadFile, principal: Principal = Depends(EDIT),
+                    db: Session = Depends(get_db)):
+    """Загрузить фирменный бланк вида."""
+    # читаем на байт больше лимита: превышение видно, а файл любого размера в память не попадает
+    data = file.file.read(statements.TEMPLATE_MAX_BYTES + 1)
+    return {"ok": True, **statements.upload_template(db, principal, type, data, file.filename)}
+
+
+@router.delete("/templates", response_model=TemplateRemovedOut)
+def remove_template(type: str, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    return {"removed": statements.remove_template(db, principal, type)}
+
+
+@router.post("/render", response_class=Response)
+def render(payload: RenderIn, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Сформировать заявление сотрудника в DOCX или PDF."""
+    return _attachment(*statements.render(db, principal, payload))
