@@ -284,3 +284,288 @@ def test_backfilled_punch_is_all_or_nothing(app_stack, db, admin, staff, monkeyp
     assert _count(app_stack, Punch, *same) == 0
     with pytest.raises(errors.NotFound):
         punches.delete_punch(db, admin, done["punch"]["id"])
+
+
+# ── банк часов ───────────────────────────────────────────────────────────────
+
+def test_bank_adjustment_is_all_or_nothing(app_stack, db, admin, staff, monkeypatch):
+    from app.modules.timesheet.adapters.orm import BankAdjustment
+    from app.modules.timesheet.application import bank_entries
+
+    emp = staff[0]
+    mine = (BankAdjustment.employee_id == emp, BankAdjustment.note == "проверка операций")
+    payload = bank_entries.BankAdjustIn(hours=1.5, note="проверка операций", date=FAR.isoformat())
+
+    def broken_audit(*args, **kwargs):
+        raise RuntimeError("журнал недоступен")
+
+    monkeypatch.setattr(bank_entries, "audit", broken_audit)
+    with pytest.raises(RuntimeError):
+        bank_entries.adjust(db, admin, emp, payload)
+    monkeypatch.undo()
+    assert _count(app_stack, BankAdjustment, *mine) == 0
+
+    done = bank_entries.adjust(db, admin, emp, payload)
+    assert done["adjustment"]["hours"] == 1.5 and _count(app_stack, BankAdjustment, *mine) == 1
+    bank_entries.delete_adjustment(db, admin, emp, done["adjustment"]["id"])
+    assert _count(app_stack, BankAdjustment, *mine) == 0
+    with pytest.raises(errors.NotFound):
+        bank_entries.delete_adjustment(db, admin, emp, done["adjustment"]["id"])
+
+
+def test_bank_adjustment_refusals(db, admin, staff):
+    from app.modules.timesheet.application import bank_entries
+
+    def refuse(cls, **fields):
+        with pytest.raises(cls) as refusal:
+            bank_entries.adjust(db, admin, fields.pop("employee", staff[0]),
+                                bank_entries.BankAdjustIn(**{"hours": 1, "note": "проверка операций", **fields}))
+        return str(refusal.value)
+
+    assert refuse(errors.Validation, hours=0) == "Часы корректировки не могут быть нулевыми"
+    assert refuse(errors.Validation, note="  ").startswith("Укажите причину")
+    assert refuse(errors.NotFound, employee=10 ** 9) == "Сотрудник не найден"
+    assert refuse(errors.Validation, date="10.11.2026") == "Дата должна быть в формате ГГГГ-ММ-ДД"
+
+
+# ── двойная оплата ───────────────────────────────────────────────────────────
+
+def test_double_pay_days_are_all_or_nothing(app_stack, db, admin, monkeypatch):
+    from app.modules.timesheet.adapters.orm import DoublePayDay
+    from app.modules.timesheet.application import doublepay_edit
+
+    day = (FAR + dt.timedelta(days=60)).isoformat()
+    mine = DoublePayDay.date == dt.date.fromisoformat(day)
+    payload = doublepay_edit.DaysIn(dates=day, note="проверка операций")
+
+    def broken_audit(*args, **kwargs):
+        raise RuntimeError("журнал недоступен")
+
+    monkeypatch.setattr(doublepay_edit, "audit", broken_audit)
+    with pytest.raises(RuntimeError):
+        doublepay_edit.add_days(db, admin, payload)
+    monkeypatch.undo()
+    assert _count(app_stack, DoublePayDay, mine) == 0
+
+    added = doublepay_edit.add_days(db, admin, payload)
+    assert (added["added"], added["updated"]) == (1, 0) and _count(app_stack, DoublePayDay, mine) == 1
+    assert doublepay_edit.add_days(db, admin, payload)["updated"] == 1
+    removed = doublepay_edit.delete_day(db, admin, added["days"][0]["id"])
+    assert removed["date"] == day and _count(app_stack, DoublePayDay, mine) == 0
+
+
+def test_double_pay_refusals(db, admin, staff):
+    from app.modules.timesheet.application import doublepay_edit
+
+    def refuse(cls, call, **fields):
+        with pytest.raises(cls) as refusal:
+            call(db, admin, **fields)
+        return str(refusal.value)
+
+    days = doublepay_edit.add_days
+    assert refuse(errors.Validation, days, payload=doublepay_edit.DaysIn(dates="завтра")).startswith("Не понял даты")
+    assert refuse(errors.Validation, days, payload=doublepay_edit.DaysIn()).startswith("Не указано ни одной даты")
+    assert refuse(errors.Validation, days, payload=doublepay_edit.DaysIn(dates="2027-01-01", scope="x")) \
+        .startswith("scope должен быть")
+    assert refuse(errors.Validation, days, payload=doublepay_edit.DaysIn(start="2027-02-10", end="2027-02-01")) \
+        == "Конец периода раньше начала"
+    vip = doublepay_edit.add_vip
+    assert refuse(errors.NotFound, vip, payload=doublepay_edit.VipIn(
+        employee_id=10 ** 9, start_date="2027-01-01", end_date="2027-01-02")) == "Сотрудник не найден"
+    assert refuse(errors.Validation, vip, payload=doublepay_edit.VipIn(
+        employee_id=staff[0], start_date="2027-01-02", end_date="2027-01-01")) == "Конец периода раньше начала"
+    assert refuse(errors.NotFound, doublepay_edit.delete_vip, vip_id=10 ** 9) == "Период не найден"
+
+
+# ── словарь смен ─────────────────────────────────────────────────────────────
+
+def test_shift_type_update_keeps_history_all_or_nothing(app_stack, db, admin, monkeypatch):
+    from app.modules.timesheet.adapters.orm import ShiftRevision, ShiftType
+    from app.modules.timesheet.application import shift_dictionary as dictionary
+
+    base = {"code": "ПРОВОП", "name": "Проверочная смена", "start_time": "10:00", "end_time": "19:00"}
+    created = dictionary.create_shift_type(db, admin, dictionary.ShiftTypeIn(**base))
+    mine = ShiftType.id == created["id"]
+    revisions = ShiftRevision.shift_type_id == created["id"]
+    try:
+        def broken_audit(*args, **kwargs):
+            raise RuntimeError("журнал недоступен")
+
+        change = dictionary.ShiftTypeIn(**{**base, "start_time": "11:00", "end_time": "20:00"})
+        monkeypatch.setattr(dictionary, "audit", broken_audit)
+        with pytest.raises(RuntimeError):
+            dictionary.update_shift_type(db, admin, created["id"], change)
+        monkeypatch.undo()
+        with app_stack["SessionLocal"]() as other:
+            assert other.scalar(select(ShiftType.start_time).where(mine)) == "10:00"
+        assert _count(app_stack, ShiftRevision, revisions) == 0
+
+        updated = dictionary.update_shift_type(db, admin, created["id"], change)
+        assert updated["start_time"] == "11:00" and updated["revisions"] >= 1
+        with pytest.raises(errors.Conflict):
+            dictionary.create_shift_type(db, admin, dictionary.ShiftTypeIn(**base))
+        assert dictionary.archive_shift_type(db, admin, created["id"])["archived"] is True
+        with pytest.raises(errors.Conflict):
+            dictionary.archive_shift_type(db, admin, created["id"])
+        assert dictionary.restore_shift_type(db, admin, created["id"])["active"] is True
+    finally:
+        db.rollback()
+        from sqlalchemy import delete
+
+        db.execute(delete(ShiftRevision).where(revisions))
+        db.execute(delete(ShiftType).where(mine))
+        db.commit()
+
+
+def test_shift_dictionary_refusals(db, admin):
+    from app.modules.timesheet.application import shift_dictionary as dictionary
+
+    with pytest.raises(errors.NotFound):
+        dictionary.update_shift_type(db, admin, 10 ** 9, dictionary.ShiftTypeIn(code="X", name="X"))
+    with pytest.raises(errors.NotFound):
+        dictionary.archive_shift_type(db, admin, 10 ** 9)
+    with pytest.raises(errors.NotFound):
+        dictionary.restore_shift_type(db, admin, 10 ** 9)
+    with pytest.raises(errors.NotFound):
+        dictionary.revisions(db, 10 ** 9)
+
+
+# ── настройки расчёта ────────────────────────────────────────────────────────
+
+def test_settings_publication_is_all_or_nothing(app_stack, db, admin, monkeypatch):
+    from app.modules.timesheet.adapters.orm import EngineSettingsVersion
+    from app.modules.timesheet.application import engine_settings
+
+    current = engine_settings.current(db)
+    payload = current["active"]["payload"]
+    valid_from = (FAR + dt.timedelta(days=400)).replace(day=1)
+    mine = EngineSettingsVersion.note == "проверка операций"
+    data = engine_settings.SettingsIn(valid_from=valid_from, payload=payload, note="проверка операций")
+
+    def broken_audit(*args, **kwargs):
+        raise RuntimeError("журнал недоступен")
+
+    monkeypatch.setattr(engine_settings, "audit", broken_audit)
+    with pytest.raises(RuntimeError):
+        engine_settings.publish(db, admin, data)
+    monkeypatch.undo()
+    assert _count(app_stack, EngineSettingsVersion, mine) == 0
+
+    stale = data.model_copy(update={"base_version_id": (current["latest_id"] or 0) - 1})
+    with pytest.raises(errors.Conflict) as refusal:
+        engine_settings.publish(db, admin, stale)
+    assert "опубликована версия" in str(refusal.value) and _count(app_stack, EngineSettingsVersion, mine) == 0
+    try:
+        published = engine_settings.publish(db, admin, data.model_copy(update={"base_version_id": current["latest_id"]}))
+        assert published["applies_from"] == valid_from.isoformat() and _count(app_stack, EngineSettingsVersion, mine) == 1
+    finally:
+        db.rollback()
+        from sqlalchemy import delete
+
+        db.execute(delete(EngineSettingsVersion).where(mine))
+        db.commit()
+
+
+def test_settings_document_keeps_display_order(app_stack, db, admin):
+    """Порядок кодов, окон и весов в опубликованной версии тот же, что в присланной."""
+    from app.modules.timesheet.adapters.orm import EngineSettingsVersion
+    from app.modules.timesheet.application import engine_settings
+
+    payload = engine_settings.current(db)["active"]["payload"]
+    payload["day_code_policy"] = dict(reversed(list(payload["day_code_policy"].items())))
+    payload["weights"] = dict(reversed(list(payload["weights"].items())))
+    valid_from = (FAR + dt.timedelta(days=800)).replace(day=1)
+    note = "проверка порядка"
+    try:
+        engine_settings.publish(db, admin, engine_settings.SettingsIn(valid_from=valid_from, payload=payload, note=note))
+        with app_stack["SessionLocal"]() as other:
+            stored = other.scalar(select(EngineSettingsVersion).where(EngineSettingsVersion.note == note)).payload
+        assert list(stored["day_code_policy"]) == list(payload["day_code_policy"])
+        assert list(stored["weights"]) == list(payload["weights"])
+    finally:
+        db.rollback()
+        from sqlalchemy import delete
+
+        db.execute(delete(EngineSettingsVersion).where(EngineSettingsVersion.note == note))
+        db.commit()
+
+
+def test_settings_publication_refuses_bad_input(db, admin):
+    from app.modules.timesheet.application import engine_settings
+
+    payload = engine_settings.current(db)["active"]["payload"]
+
+    def refuse(change, valid_from=(FAR + dt.timedelta(days=500)).replace(day=1)) -> str:
+        import copy
+
+        body = copy.deepcopy(payload)
+        change(body)
+        with pytest.raises(errors.Validation) as refusal:
+            engine_settings.publish(db, admin, engine_settings.SettingsIn(valid_from=valid_from, payload=body))
+        return str(refusal.value)
+
+    assert refuse(lambda p: p.update(step_minutes=7)).startswith("Ошибка настроек")
+    assert refuse(lambda p: p.update(windows={"Я 12": {"start_minute": "утро"}})).startswith("Некорректный формат")
+    assert refuse(lambda p: p.update(tz="Asia/Tokyo")).startswith("Часовой пояс расчёта")
+    assert "Цвет кода Табеля" in refuse(lambda p: next(iter(p["day_code_policy"].values())).update(color="red"))
+    assert refuse(lambda p: p.update(period_granularity="half_month"),
+                  valid_from=(FAR + dt.timedelta(days=500)).replace(day=16)).startswith("Гранулярность")
+
+
+def test_modifier_conflict_carries_the_existing_record(app_stack, db, admin):
+    from app.modules.timesheet.adapters.orm import DayModifier
+    from app.modules.timesheet.application import engine_settings
+
+    day = FAR + dt.timedelta(days=3)
+    rule = engine_settings.ModifierIn(name="double_overtime", value="1", date=day, note="проверка операций")
+    first = engine_settings.add_modifier(db, admin, rule)
+    try:
+        with pytest.raises(engine_settings.ModifierConflict) as refusal:
+            engine_settings.add_modifier(db, admin, rule.model_copy(update={"value": "0"}))
+        detail = refusal.value.detail
+        assert refusal.value.status_code == 409 and detail["conflict_with"]["id"] == first
+        assert detail["message"].startswith("Конфликт правил")
+        with pytest.raises(errors.Validation):
+            engine_settings.add_modifier(db, admin, rule.model_copy(update={"name": "magic"}))
+        with pytest.raises(errors.Validation):
+            engine_settings.add_modifier(db, admin, rule.model_copy(update={"date": None}))
+    finally:
+        engine_settings.delete_modifier(db, admin, first)
+    assert _count(app_stack, DayModifier, DayModifier.id == first) == 0
+    with pytest.raises(errors.NotFound):
+        engine_settings.delete_modifier(db, admin, first)
+
+
+def test_rules_resolve_needs_known_employee_and_modifier(db, staff):
+    from app.modules.timesheet.application import engine_settings
+
+    with pytest.raises(errors.NotFound):
+        engine_settings.resolve_rules(db, 10 ** 9, FAR)
+    with pytest.raises(errors.Validation):
+        engine_settings.resolve_rules(db, staff[0], FAR, "magic")
+
+
+# ── управленческий табель ────────────────────────────────────────────────────
+
+def test_period_refusal_is_journaled_once(app_stack, db, admin):
+    """Закрытие, которое не прошло предпроверку, ничего не закрывает, но остаётся в журнале."""
+    from app.modules.timesheet.application import mgmt_screen
+
+    far = dt.date.today().replace(day=1) + dt.timedelta(days=95)
+    target = f"{far.year}-{far.month:02d}"
+    rows = (AuditLog.action == "period_close", AuditLog.target == target)
+    before = _count(app_stack, AuditLog, *rows)
+    out = mgmt_screen.close(db, admin, mgmt_screen.PeriodAction(year=far.year, month=far.month))
+    assert out["ok"] is False and out["stage"] == "check" and out["done"] == [] and out["errors"]
+    assert _count(app_stack, AuditLog, *rows) == before + 1
+
+
+def test_period_actions_reject_extra_fields_and_bad_period(db, admin):
+    from app.modules.timesheet.application import mgmt_screen
+
+    with pytest.raises(Exception, match="employee_ids"):
+        mgmt_screen.PeriodAction(year=2026, month=11, employee_ids=[1])
+    with pytest.raises(errors.Validation):
+        mgmt_screen.close(db, admin, mgmt_screen.PeriodAction(year=2026, month=13))
+    with pytest.raises(errors.NotFound):
+        mgmt_screen.table(db, admin, 2026, 11, employee_id=10 ** 9)

@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Concatenate
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.dialects.postgresql import JSON, JSONB
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
@@ -37,15 +37,41 @@ class Json(TypeDecorator):
         return False
 
 
-class OrderedJson(Json):
-    """Колонка ``JSON``: документ, который читается и пишется целиком и хранит порядок ключей.
+ORDER_KEY = "_key_order"
 
-    Только для документов, где порядок ключей — порядок показа; искать по содержимому
-    такой колонки нельзя. Всё остальное — ``Json``.
+
+class OrderedJson(Json):
+    """Колонка ``JSONB`` для документа, у которого порядок ключей — порядок показа.
+
+    Порядок записывается явно: под ключом ``_key_order`` лежат списки ключей самого
+    документа и каждого его вложенного словаря. При чтении словари получают прежний порядок,
+    а служебный ключ в значение не попадает. Нужен только документам, которые читаются и
+    пишутся целиком (справочники расчёта); остальное — ``Json``.
     """
 
-    impl = JSON
     cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        stored = {k: v for k, v in value.items() if k != ORDER_KEY}
+        order = {"": list(stored)}
+        order.update({k: list(v) for k, v in stored.items() if isinstance(v, dict) and len(v) > 1})
+        return {**stored, ORDER_KEY: order}
+
+    def process_result_value(self, value: Any, dialect: Any) -> Any:
+        if not isinstance(value, dict) or ORDER_KEY not in value:
+            return value
+        order = value[ORDER_KEY]
+
+        def arranged(data: dict, keys: list[str]) -> dict:
+            known = {k: data[k] for k in keys if k in data}
+            return {**known, **{k: v for k, v in data.items() if k not in known}}
+
+        document = {k: v for k, v in value.items() if k != ORDER_KEY}
+        document = {k: (arranged(v, order[k]) if isinstance(v, dict) and k in order else v)
+                    for k, v in document.items()}
+        return arranged(document, order.get("", []))
 
 
 @event.listens_for(Base, "init", propagate=True)

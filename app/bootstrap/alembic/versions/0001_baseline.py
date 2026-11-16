@@ -47,7 +47,7 @@ def upgrade() -> None:
     op.create_table('engine_settings_versions',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('valid_from', sa.Date(), nullable=False),
-    sa.Column('payload', postgresql.JSON(), nullable=False),
+    sa.Column('payload', postgresql.JSONB(), nullable=False),
     sa.Column('note', sa.String(length=255), nullable=False),
     sa.Column('created_by_name', sa.String(length=120), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
@@ -632,6 +632,13 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_bank_adjustments_employee_id'), 'bank_adjustments', ['employee_id'], unique=False)
+    op.create_table('base_schedule_config',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('cycle', sa.String(length=80), nullable=False),
+    sa.Column('anchor', sa.String(length=40), nullable=False),
+    sa.Column('groups', postgresql.JSONB(), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('cars',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('number', sa.String(length=40), nullable=False),
@@ -1197,6 +1204,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_cars_number'), table_name='cars')
     op.drop_table('cars')
     op.drop_index(op.f('ix_bank_adjustments_employee_id'), table_name='bank_adjustments')
+    op.drop_table('base_schedule_config')
     op.drop_table('bank_adjustments')
     op.drop_index(op.f('ix_audit_log_ts'), table_name='audit_log')
     op.drop_table('audit_log')

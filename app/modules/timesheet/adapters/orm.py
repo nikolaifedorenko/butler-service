@@ -286,6 +286,17 @@ class TabelDay(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(Moment, default=now, onupdate=now)
 
 
+class BaseScheduleConfig(Base):
+    """Базовый цикл смен объекта: единственная строка (id = 1)."""
+
+    __tablename__ = "base_schedule_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cycle: Mapped[str] = mapped_column(String(80), default="2/2")          # 2/2, 3/3, custom:РРВВ…
+    anchor: Mapped[str] = mapped_column(String(40), default="2024-01-01")  # день, когда Смена 1 была рабочей
+    groups: Mapped[dict] = mapped_column(OrderedJson, default=dict)        # блок → смена, фаза, выходные; порядок — порядок показа
+
+
 class EngineSettingsVersion(Base):
     """Версия справочников Т1–Т7, Т9, Т-Группы. Действует с valid_from; ретро-исправление —
     новая версия с тем же valid_from (берётся последняя по id)."""
@@ -294,7 +305,7 @@ class EngineSettingsVersion(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     valid_from: Mapped[dt.date] = mapped_column(Date, index=True)
-    payload: Mapped[dict] = mapped_column(OrderedJson)    # порядок кодов и окон — порядок показа
+    payload: Mapped[dict] = mapped_column(OrderedJson)    # порядок кодов, окон и весов — порядок показа
     note: Mapped[str] = mapped_column(String(255), default="")
     created_by_name: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)

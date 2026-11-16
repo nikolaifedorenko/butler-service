@@ -149,10 +149,9 @@ def cleanup_versions(db):
 def test_concurrent_publish_waits_and_gets_409(app_stack, admin_client, cleanup_versions):
     """Первая публикация держит замок; вторая — от той же базовой версии — ждёт её и
     получает 409, а не проходит рядом (раньше сверка и вставка не были атомарны)."""
-    from fastapi import HTTPException
-
+    from app.core.errors import Conflict
     from app.modules.timesheet.application.catalog import EngineSettingsVersion
-    from app.modules.timesheet.interface.engine_settings_api import _lock_and_check_base_version
+    from app.modules.timesheet.application.engine_settings import lock_and_check_base_version
 
     SessionLocal = app_stack["SessionLocal"]
     base = admin_client.get("/api/engine-settings").json()["latest_id"]
@@ -162,16 +161,16 @@ def test_concurrent_publish_waits_and_gets_409(app_stack, admin_client, cleanup_
     def second():
         with SessionLocal() as s:
             try:
-                _lock_and_check_base_version(s, base)
+                lock_and_check_base_version(s, base)
                 outcome.append("passed")
-            except HTTPException as exc:
+            except Conflict as exc:
                 outcome.append(exc.status_code)
             finally:
                 s.rollback()
                 done.set()
 
     with SessionLocal() as first:
-        _lock_and_check_base_version(first, base)              # первая взяла замок
+        lock_and_check_base_version(first, base)              # первая взяла замок
         first.add(EngineSettingsVersion(valid_from=dt.date(2031, 1, 1), payload={}, note=NOTE,
                                         created_by_name="тест"))
         first.flush()

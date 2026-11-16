@@ -66,7 +66,7 @@ access, audit, stays), каждый — пять слоёв `domain/application/
 | `schedule_shifts` | График: `date` (якорь), `start_utc/end_utc` (naive UTC), `source (generated/manual)`, `shift_type_id?`, `note`; смена может пересекать полночь; физически не режется |
 | `schedule_absences` | Согласованные отсутствия: `start_utc/end_utc` (≤ 24 ч, может через полночь), `kind_id` (вид из словаря — заявление/режим отметок), `note` |
 | `punches` | Сырые отметки: `ts` (локальное naive), `kind IN/OUT`, `source`, `note`, `created_by` |
-| `engine_settings_versions` | Версии справочников CFG-*: `valid_from`, `payload` (тип `json`: хранит порядок ключей; кодек `settings_codec`), ретро-исправление — новая версия |
+| `engine_settings_versions` | Версии справочников CFG-*: `valid_from`, `payload` (`jsonb`, тип `OrderedJson`: порядок кодов, окон и весов хранится явно; кодек `settings_codec`), ретро-исправление — новая версия |
 | `day_modifiers` | Записи CFG-MODIFIERS (уровни 1–6): `name, value, employee_id?, group?, date?, period_start?` |
 | `period_closings` | Закрытия периодов: `result` (SettleResult), `flags` (снимок FlagsResult), `bank_open/deferred_in/previous_step` (ClosingInputs), `closing_bank_minutes`, `settings_versions`, `revision`, автор/время |
 | `deferred_carry` | Отложенные блоки во вход периода-получателя: `period_start, source_day, tariff, minutes` (без reason_code — v7/R1) |
@@ -241,8 +241,8 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
   (адаптер собирает их в CFG-MODIFIERS, дедуплицируя идентичные записи; конфликт
   одного уровня — `ConfigError`). Экран «Календарь правил» показывает их слоями
   по дням, не сливая источники.
-* Правила объекта (`settings`): базовый цикл и опорная дата («Группы и графики»,
-  Смена 2 — всегда противофаза, системное правило); словарь смен («Смены и отсутствия»:
+* Базовый цикл и опорная дата («Группы и графики»; таблица `base_schedule_config`, одна строка,
+  блоки — `JSONB`; Смена 2 — всегда противофаза, системное правило); словарь смен («Смены и отсутствия»:
   добавляемые смены Графика и системное отсутствие «Отпросился (выходной за часы)»,
   архив вместо удаления, ревизии); виды заявлений и бланки, департаменты/службы,
   прочее («Документы и справочники»).

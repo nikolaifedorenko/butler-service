@@ -2,7 +2,7 @@
 Базовый цикл объекта и индивидуальные шаблоны блоков.
 
 Что откуда берётся:
-  * «Смена 1» / «Смена 2» — БАЗОВЫЙ ЦИКЛ ОБЪЕКТА из общих настроек (цикл + опорная дата
+  * «Смена 1» / «Смена 2» — БАЗОВЫЙ ЦИКЛ ОБЪЕКТА из настроек объекта (цикл + опорная дата
     + смена блока + противофаза). Одинаков для всех сотрудников блока, действует на все месяцы.
   * «Пятидневка» — выходные дни у каждого свои (вс/пн, пт/сб, сб/вс…), поэтому шаблон
     хранится в истории блоков сотрудника (BlockAssignment.pattern), а не в настройках.
@@ -13,18 +13,17 @@
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
-import json
 import re
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.settings_store import Setting
 from app.modules.people.application import GROUP_META, Employee, normalize_group
 
-from ..adapters.orm import BlockAssignment
+from ..adapters.orm import BaseScheduleConfig, BlockAssignment
 from .schedule_patterns import parse_custom_cycle
 
 DEFAULT_BASE = {
@@ -43,36 +42,28 @@ PATTERN_KINDS = ("base", "week5", "cycle", "manual")
 
 
 def load_base_config(db: Session) -> dict:
-    raw = {s.key: s.value for s in db.scalars(select(Setting).where(
-        Setting.key.in_(["base_cycle", "base_anchor", "base_groups"])))}
-    cfg = json.loads(json.dumps(DEFAULT_BASE))
-    if raw.get("base_cycle"):
-        cfg["cycle"] = raw["base_cycle"]
-    if raw.get("base_anchor"):
-        cfg["anchor"] = raw["base_anchor"]
-    if raw.get("base_groups"):
-        try:
-            groups = json.loads(raw["base_groups"])
-        except json.JSONDecodeError:
-            groups = {}
-        # старые названия блоков («Администрация») приводим к текущим
-        cfg["groups"] = {normalize_group(k): v for k, v in (groups or {}).items()}
+    """Базовый цикл объекта; пока он не сохранён, действуют значения по умолчанию."""
+    cfg = copy.deepcopy(DEFAULT_BASE)
+    row = db.get(BaseScheduleConfig, 1)
+    if row is None:
+        return cfg
+    if row.cycle:
+        cfg["cycle"] = row.cycle
+    if row.anchor:
+        cfg["anchor"] = row.anchor
+    # старые названия блоков («Администрация») приводим к текущим
+    cfg["groups"] = {normalize_group(k): v for k, v in (row.groups or {}).items()}
     return cfg
 
 
 def save_base_config(db: Session, cfg: dict) -> None:
-    def _set(key: str, value: str, desc: str):
-        row = db.get(Setting, key)
-        if row is None:
-            row = Setting(key=key, description=desc)
-            db.add(row)
-        row.value = value
-
-    groups = {normalize_group(k): v for k, v in (cfg.get("groups") or {}).items()}
-    _set("base_cycle", cfg.get("cycle", "2/2"), "Базовый цикл смен 1/2 (2/2, 3/3, custom:РРВВ…)")
-    _set("base_anchor", cfg.get("anchor", "2024-01-01"), "Опорная дата: день, когда Смена 1 была рабочей")
-    _set("base_groups", json.dumps(groups, ensure_ascii=False),
-         "Настройки блоков: смена и фаза (инверсия) / выходные пятидневки по умолчанию")
+    row = db.get(BaseScheduleConfig, 1)
+    if row is None:
+        row = BaseScheduleConfig(id=1)
+        db.add(row)
+    row.cycle = cfg.get("cycle", "2/2")
+    row.anchor = cfg.get("anchor", "2024-01-01")
+    row.groups = {normalize_group(k): v for k, v in (cfg.get("groups") or {}).items()}
 
 
 def parse_pattern(pattern: Optional[dict]) -> dict:
