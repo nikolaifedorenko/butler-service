@@ -1,12 +1,8 @@
-"""Жизненный цикл сотрудника: перевод, смена блока графика, увольнение, повторный приём.
+"""Жизненный цикл сотрудника: перевод, смена блока графика, увольнение, повторный приём —
+с произвольной даты.
 
-Вынесено из app/api/employees.py по образцу app/cars.py + тонкого cars_api.py
-(ADR-0006): роутер занимается только HTTP (права, DTO, статусы), обработка и
-бизнес-правила — здесь. Сервис не знает про FastAPI: ошибки — исключения
-core.errors (main.py маппит их в статусы, тело ответа {"detail": …} не
-меняется); audit и commit — часть use-case'а. Данные передаются примитивами и
-dataclass'ом BlockChange, а не pydantic-DTO из api-слоя — направление
-зависимостей api → services (контракт import-linter).
+История должностей, блоков графика и периодов работы с даты операции перезаписывается, до
+неё — сохраняется. Каждая операция — одна транзакция вместе с записью аудита.
 """
 from __future__ import annotations
 
@@ -20,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.auth_guards import can_manage_user
+from app.core.db import transactional
 from app.core.errors import Conflict, NotFound, Validation
 from app.core.roles import ROLE_EMPLOYEE
 from app.core.time import local_date
@@ -187,6 +184,7 @@ def build_pattern(data: BlockChange) -> dict:
 
 # ─────────────────────────────── use-case'ы ───────────────────────────────
 
+@transactional
 def position_change(db: Session, principal: Principal, employee_id: int,
                     position: str, date: Optional[str]) -> Employee:
     """Перевод/повышение/понижение с произвольной даты."""
@@ -200,10 +198,11 @@ def position_change(db: Session, principal: Principal, employee_id: int,
     emp.position = position.strip()
     audit(db, principal, "position_change", f"employee:{emp.id}",
           {"position": emp.position, "since": since.isoformat()})
-    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
+    db.flush()
     return emp
 
 
+@transactional
 def block_change(db: Session, principal: Principal, employee_id: int,
                  data: BlockChange, date: Optional[str]) -> Employee:
     """Перевод между блоками графика (Смена 1 ↔ Смена 2) с произвольной даты."""
@@ -225,10 +224,11 @@ def block_change(db: Session, principal: Principal, employee_id: int,
         emp.schedule_pattern = emp.schedule_pattern or "5/2"
     audit(db, principal, "block_change", f"employee:{emp.id}",
           {"group": emp.schedule_group, "since": since.isoformat(), "pattern": pattern})
-    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
+    db.flush()
     return emp
 
 
+@transactional
 def dismiss(db: Session, principal: Principal, employee_id: int,
             date: Optional[str]) -> Employee:
     """Увольнение (деактивация) с произвольной даты; история сохраняется."""
@@ -251,10 +251,11 @@ def dismiss(db: Session, principal: Principal, employee_id: int,
     close_period(db, emp, until=since, note="увольнение")
     audit(db, principal, "employee_dismiss", f"employee:{emp.id}",
           {"since": since.isoformat(), "note": "дата считается последним рабочим днём"})
-    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
+    db.flush()
     return emp
 
 
+@transactional
 def rehire(db: Session, principal: Principal, employee_id: int, date: Optional[str],
            position: str, block: Optional[BlockChange]) -> Employee:
     """Повторный приём уволенного сотрудника с произвольной даты.
@@ -294,5 +295,5 @@ def rehire(db: Session, principal: Principal, employee_id: int, date: Optional[s
         touch_block(db, emp, normalize_group(emp.schedule_group) or "Смена 1", since)
 
     audit(db, principal, "employee_rehire", f"employee:{emp.id}", {"since": since.isoformat()})
-    db.flush()          # commit — у обработчика (ARCH-01): аудит в той же транзакции
+    db.flush()
     return emp

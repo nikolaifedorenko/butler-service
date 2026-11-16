@@ -2163,6 +2163,35 @@
         "title": "ContactIn",
         "type": "object"
       },
+      "ContactOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "phone",
+          "relation"
+        ],
+        "title": "ContactOut",
+        "type": "object"
+      },
       "CountsOut": {
         "additionalProperties": false,
         "description": "Сколько данных в системе.",
@@ -2218,6 +2247,7 @@
         "type": "object"
       },
       "DatedAction": {
+        "description": "Перевод, смена блока графика или увольнение с даты (пусто — с сегодняшней).",
         "properties": {
           "anchor": {
             "anyOf": [
@@ -2733,6 +2763,25 @@
           "transport"
         ],
         "title": "DefectsOut",
+        "type": "object"
+      },
+      "DepartmentDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "unlinked_employees": {
+            "title": "Unlinked Employees",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unlinked_employees"
+        ],
+        "title": "DepartmentDeletedOut",
         "type": "object"
       },
       "DepartmentIn": {
@@ -3383,6 +3432,282 @@
         "title": "EmailTestIn",
         "type": "object"
       },
+      "EmployeeCreatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "assigned_car_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Car Id"
+          },
+          "assigned_car_number": {
+            "title": "Assigned Car Number",
+            "type": "string"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "department_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department Id"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "emergency_name": {
+            "title": "Emergency Name",
+            "type": "string"
+          },
+          "emergency_phone": {
+            "title": "Emergency Phone",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "full_name_genitive": {
+            "title": "Full Name Genitive",
+            "type": "string"
+          },
+          "full_name_genitive_hint": {
+            "title": "Full Name Genitive Hint",
+            "type": "string"
+          },
+          "group_color": {
+            "title": "Group Color",
+            "type": "string"
+          },
+          "hired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hired At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "initial_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Password"
+          },
+          "nationality": {
+            "title": "Nationality",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "schedule_group": {
+            "title": "Schedule Group",
+            "type": "string"
+          },
+          "schedule_pattern": {
+            "title": "Schedule Pattern",
+            "type": "string"
+          },
+          "short_name": {
+            "title": "Short Name",
+            "type": "string"
+          },
+          "subdivision": {
+            "title": "Subdivision",
+            "type": "string"
+          },
+          "tab_number": {
+            "title": "Tab Number",
+            "type": "string"
+          },
+          "telegram": {
+            "title": "Telegram",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "full_name_genitive",
+          "full_name_genitive_hint",
+          "position",
+          "phone",
+          "tab_number",
+          "hired_at",
+          "emergency_name",
+          "emergency_phone",
+          "telegram",
+          "email",
+          "dismissed_at",
+          "contacts",
+          "department_id",
+          "department",
+          "nationality",
+          "subdivision",
+          "schedule_group",
+          "group_color",
+          "schedule_pattern",
+          "active",
+          "deleted",
+          "deleted_at",
+          "assigned_car_id",
+          "assigned_car_number",
+          "username",
+          "role",
+          "initial_password"
+        ],
+        "title": "EmployeeCreatedOut",
+        "type": "object"
+      },
+      "EmployeeHistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bank_adjustments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Bank Adjustments",
+            "type": "array"
+          },
+          "bank_now": {
+            "title": "Bank Now"
+          },
+          "blocks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "current_value": {
+            "title": "Current Value"
+          },
+          "employment": {
+            "items": {
+              "$ref": "#/components/schemas/EmploymentPeriodOut"
+            },
+            "title": "Employment",
+            "type": "array"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/PositionPeriodOut"
+            },
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "positions",
+          "blocks",
+          "current_value",
+          "employment",
+          "bank_adjustments",
+          "bank_now"
+        ],
+        "title": "EmployeeHistoryOut",
+        "type": "object"
+      },
       "EmployeeIn": {
         "properties": {
           "contacts": {
@@ -3522,6 +3847,445 @@
           "full_name"
         ],
         "title": "EmployeeIn",
+        "type": "object"
+      },
+      "EmployeeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "assigned_car_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Car Id"
+          },
+          "assigned_car_number": {
+            "title": "Assigned Car Number",
+            "type": "string"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "department_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department Id"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "emergency_name": {
+            "title": "Emergency Name",
+            "type": "string"
+          },
+          "emergency_phone": {
+            "title": "Emergency Phone",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "full_name_genitive": {
+            "title": "Full Name Genitive",
+            "type": "string"
+          },
+          "full_name_genitive_hint": {
+            "title": "Full Name Genitive Hint",
+            "type": "string"
+          },
+          "group_color": {
+            "title": "Group Color",
+            "type": "string"
+          },
+          "hired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hired At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "nationality": {
+            "title": "Nationality",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "schedule_group": {
+            "title": "Schedule Group",
+            "type": "string"
+          },
+          "schedule_pattern": {
+            "title": "Schedule Pattern",
+            "type": "string"
+          },
+          "short_name": {
+            "title": "Short Name",
+            "type": "string"
+          },
+          "subdivision": {
+            "title": "Subdivision",
+            "type": "string"
+          },
+          "tab_number": {
+            "title": "Tab Number",
+            "type": "string"
+          },
+          "telegram": {
+            "title": "Telegram",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "full_name_genitive",
+          "full_name_genitive_hint",
+          "position",
+          "phone",
+          "tab_number",
+          "hired_at",
+          "emergency_name",
+          "emergency_phone",
+          "telegram",
+          "email",
+          "dismissed_at",
+          "contacts",
+          "department_id",
+          "department",
+          "nationality",
+          "subdivision",
+          "schedule_group",
+          "group_color",
+          "schedule_pattern",
+          "active",
+          "deleted",
+          "deleted_at",
+          "assigned_car_id",
+          "assigned_car_number"
+        ],
+        "title": "EmployeeOut",
+        "type": "object"
+      },
+      "EmployeeUserOut": {
+        "additionalProperties": false,
+        "description": "Сотрудник с учётной записью.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "assigned_car_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Car Id"
+          },
+          "assigned_car_number": {
+            "title": "Assigned Car Number",
+            "type": "string"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "department_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department Id"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "emergency_name": {
+            "title": "Emergency Name",
+            "type": "string"
+          },
+          "emergency_phone": {
+            "title": "Emergency Phone",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "full_name_genitive": {
+            "title": "Full Name Genitive",
+            "type": "string"
+          },
+          "full_name_genitive_hint": {
+            "title": "Full Name Genitive Hint",
+            "type": "string"
+          },
+          "group_color": {
+            "title": "Group Color",
+            "type": "string"
+          },
+          "hired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hired At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "nationality": {
+            "title": "Nationality",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "schedule_group": {
+            "title": "Schedule Group",
+            "type": "string"
+          },
+          "schedule_pattern": {
+            "title": "Schedule Pattern",
+            "type": "string"
+          },
+          "short_name": {
+            "title": "Short Name",
+            "type": "string"
+          },
+          "subdivision": {
+            "title": "Subdivision",
+            "type": "string"
+          },
+          "tab_number": {
+            "title": "Tab Number",
+            "type": "string"
+          },
+          "telegram": {
+            "title": "Telegram",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "full_name_genitive",
+          "full_name_genitive_hint",
+          "position",
+          "phone",
+          "tab_number",
+          "hired_at",
+          "emergency_name",
+          "emergency_phone",
+          "telegram",
+          "email",
+          "dismissed_at",
+          "contacts",
+          "department_id",
+          "department",
+          "nationality",
+          "subdivision",
+          "schedule_group",
+          "group_color",
+          "schedule_pattern",
+          "active",
+          "deleted",
+          "deleted_at",
+          "assigned_car_id",
+          "assigned_car_number",
+          "username",
+          "role"
+        ],
+        "title": "EmployeeUserOut",
+        "type": "object"
+      },
+      "EmploymentPeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "note",
+          "current"
+        ],
+        "title": "EmploymentPeriodOut",
         "type": "object"
       },
       "EngineDefaultsOut": {
@@ -3785,6 +4549,20 @@
           "former"
         ],
         "title": "FormerIn",
+        "type": "object"
+      },
+      "GenitiveOut": {
+        "additionalProperties": false,
+        "properties": {
+          "genitive": {
+            "title": "Genitive",
+            "type": "string"
+          }
+        },
+        "required": [
+          "genitive"
+        ],
+        "title": "GenitiveOut",
         "type": "object"
       },
       "GiveIn": {
@@ -4465,6 +5243,113 @@
         "title": "JoinIn",
         "type": "object"
       },
+      "KindDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "shifts_cleared": {
+            "title": "Shifts Cleared",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shifts_cleared"
+        ],
+        "title": "KindDeletedOut",
+        "type": "object"
+      },
+      "KindOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "builtin": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "template": {
+            "$ref": "#/components/schemas/KindTemplateOut"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "text",
+          "builtin",
+          "active",
+          "sort_order",
+          "template"
+        ],
+        "title": "KindOut",
+        "type": "object"
+      },
+      "KindTemplateOut": {
+        "additionalProperties": false,
+        "description": "Фирменный бланк вида.",
+        "properties": {
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "placeholders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Placeholders",
+            "type": "array"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "uploaded": {
+            "title": "Uploaded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uploaded",
+          "filename",
+          "size",
+          "placeholders"
+        ],
+        "title": "KindTemplateOut",
+        "type": "object"
+      },
       "KindUpdate": {
         "properties": {
           "active": {
@@ -4491,6 +5376,36 @@
           "name"
         ],
         "title": "KindUpdate",
+        "type": "object"
+      },
+      "KindsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindOut"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "pdf": {
+            "title": "Pdf"
+          },
+          "pdf_available": {
+            "title": "Pdf Available",
+            "type": "boolean"
+          },
+          "placeholders": {
+            "title": "Placeholders"
+          }
+        },
+        "required": [
+          "kinds",
+          "placeholders",
+          "pdf_available",
+          "pdf"
+        ],
+        "title": "KindsOut",
         "type": "object"
       },
       "LabelIn": {
@@ -5175,6 +6090,25 @@
           "assigned"
         ],
         "title": "MyCarsOut",
+        "type": "object"
+      },
+      "NamedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "NamedOut",
         "type": "object"
       },
       "NewGuestIn": {
@@ -5916,6 +6850,37 @@
         "title": "PhotoOut",
         "type": "object"
       },
+      "PositionPeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "start",
+          "end"
+        ],
+        "title": "PositionPeriodOut",
+        "type": "object"
+      },
       "PrefIn": {
         "description": "Пожелание к объекту: узел фонда, флаг или объект; priority — больше, важнее.",
         "properties": {
@@ -6227,6 +7192,7 @@
         "type": "object"
       },
       "RehireIn": {
+        "description": "Повторный приём: date — первый рабочий день.",
         "properties": {
           "anchor": {
             "anyOf": [
@@ -6312,6 +7278,7 @@
         "type": "object"
       },
       "RenderIn": {
+        "description": "Данные заявления.",
         "properties": {
           "date_from": {
             "title": "Date From",
@@ -8138,6 +9105,25 @@
         "title": "SplitIn",
         "type": "object"
       },
+      "SubdivisionDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "employees_cleared": {
+            "title": "Employees Cleared",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "employees_cleared"
+        ],
+        "title": "SubdivisionDeletedOut",
+        "type": "object"
+      },
       "SubdivisionIn": {
         "properties": {
           "name": {
@@ -8149,6 +9135,30 @@
           "name"
         ],
         "title": "SubdivisionIn",
+        "type": "object"
+      },
+      "SubdivisionRenamedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "employees_updated": {
+            "title": "Employees Updated",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "employees_updated"
+        ],
+        "title": "SubdivisionRenamedOut",
         "type": "object"
       },
       "SuggestGenitiveIn": {
@@ -8343,6 +9353,25 @@
         "title": "TemplatePreviewOut",
         "type": "object"
       },
+      "TemplateRemovedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "title": "TemplateRemovedOut",
+        "type": "object"
+      },
       "TemplateSavedOut": {
         "additionalProperties": false,
         "properties": {
@@ -8370,6 +9399,43 @@
           "customized"
         ],
         "title": "TemplateSavedOut",
+        "type": "object"
+      },
+      "TemplateUploadedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "placeholders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Placeholders",
+            "type": "array"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "filename",
+          "size",
+          "placeholders"
+        ],
+        "title": "TemplateUploadedOut",
         "type": "object"
       },
       "TemplatesOut": {
@@ -9088,7 +10154,7 @@
         "title": "StatusIn",
         "type": "object"
       },
-      "app__modules__docs__interface__docs_api__KindIn": {
+      "app__modules__docs__application__statements__KindIn": {
         "properties": {
           "code": {
             "title": "Code",
@@ -11192,7 +12258,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NamedOut"
+                  },
+                  "title": "Response List Departments Api Departments Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -11219,7 +12291,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NamedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11243,7 +12317,7 @@
     },
     "/api/departments/{dep_id}": {
       "delete": {
-        "description": "Удалить департамент: у привязанных сотрудников поле очищается (история остаётся).",
+        "description": "Удалить департамент: у его сотрудников поле очищается.",
         "operationId": "delete_department_api_departments__dep_id__delete",
         "parameters": [
           {
@@ -11260,7 +12334,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DepartmentDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11308,7 +12384,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NamedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11337,7 +12415,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/KindsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11354,7 +12434,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__docs__interface__docs_api__KindIn"
+                "$ref": "#/components/schemas/app__modules__docs__application__statements__KindIn"
               }
             }
           },
@@ -11364,7 +12444,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/KindOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11388,7 +12470,7 @@
     },
     "/api/docs/kinds/{kind_id}": {
       "delete": {
-        "description": "Удалить вид заявления: у привязанных смен словаря doc_type очищается,\nфирменный бланк (если был загружен) удаляется с диска.",
+        "description": "Удалить вид заявления вместе с его бланком.",
         "operationId": "delete_kind_api_docs_kinds__kind_id__delete",
         "parameters": [
           {
@@ -11405,7 +12487,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/KindDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11453,7 +12537,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/KindOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11477,6 +12563,7 @@
     },
     "/api/docs/render": {
       "post": {
+        "description": "Сформировать заявление сотрудника в DOCX или PDF.",
         "operationId": "render_api_docs_render_post",
         "requestBody": {
           "content": {
@@ -11490,11 +12577,6 @@
         },
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -11516,7 +12598,7 @@
     },
     "/api/docs/sample": {
       "get": {
-        "description": "Образец .docx с плейсхолдерами — скачать, оформить под фирменный бланк и загрузить.",
+        "description": "Образец бланка с плейсхолдерами.",
         "operationId": "sample_template_api_docs_sample_get",
         "parameters": [
           {
@@ -11531,11 +12613,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -11573,7 +12650,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateRemovedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11595,6 +12674,7 @@
         ]
       },
       "post": {
+        "description": "Загрузить фирменный бланк вида.",
         "operationId": "upload_template_api_docs_templates_post",
         "parameters": [
           {
@@ -11621,7 +12701,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateUploadedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11870,7 +12952,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EmployeeUserOut"
+                  },
+                  "title": "Response List Employees Api Employees Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -11892,6 +12980,7 @@
         ]
       },
       "post": {
+        "description": "Приём: сотрудник, учётная запись, должность, блок графика и период работы.",
         "operationId": "create_employee_api_employees_post",
         "requestBody": {
           "content": {
@@ -11907,7 +12996,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeCreatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11931,7 +13022,7 @@
     },
     "/api/employees/suggest-genitive": {
       "post": {
-        "description": "Подсказка родительного падежа по ФИО («от Иванова Ивана Ивановича»).\nРезультат — лишь предложение: в карточке его можно исправить вручную.",
+        "description": "Подсказка родительного падежа ФИО; в карточке её можно исправить.",
         "operationId": "suggest_genitive_api_api_employees_suggest_genitive_post",
         "requestBody": {
           "content": {
@@ -11947,7 +13038,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GenitiveOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -11997,7 +13090,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeUserOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -12121,7 +13216,7 @@
     },
     "/api/employees/{employee_id}/block-change": {
       "post": {
-        "description": "Перевод между блоками графика (Смена 1 ↔ Смена 2) с произвольной даты.",
+        "description": "Перевод между блоками графика с произвольной даты.",
         "operationId": "block_change_api_employees__employee_id__block_change_post",
         "parameters": [
           {
@@ -12148,7 +13243,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -12172,7 +13269,7 @@
     },
     "/api/employees/{employee_id}/delete": {
       "post": {
-        "description": "«Полное удаление»: сотрудник исчезает из списков и графика, но ВСЯ история\n(табель, отметки, аудит) сохраняется — записи помечаются deleted_at.",
+        "description": "Скрыть сотрудника из списков и графика; табель, отметки и аудит сохраняются.",
         "operationId": "delete_employee_api_employees__employee_id__delete_post",
         "parameters": [
           {
@@ -12189,7 +13286,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeUserOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -12213,7 +13312,7 @@
     },
     "/api/employees/{employee_id}/dismiss": {
       "post": {
-        "description": "Увольнение (деактивация) с произвольной даты; история сохраняется.",
+        "description": "Увольнение с произвольной даты; история сохраняется.",
         "operationId": "dismiss_employee_api_employees__employee_id__dismiss_post",
         "parameters": [
           {
@@ -12240,7 +13339,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeUserOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -12264,7 +13365,7 @@
     },
     "/api/employees/{employee_id}/history": {
       "get": {
-        "description": "История должностей и принадлежность к блокам графика с датами.",
+        "description": "История должностей, блоков графика и периодов работы.",
         "operationId": "employee_history_api_employees__employee_id__history_get",
         "parameters": [
           {
@@ -12281,7 +13382,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeHistoryOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -12305,7 +13408,7 @@
     },
     "/api/employees/{employee_id}/position-change": {
       "post": {
-        "description": "Перевод/повышение/понижение с произвольной даты.",
+        "description": "Перевод на должность с произвольной даты.",
         "operationId": "position_change_api_employees__employee_id__position_change_post",
         "parameters": [
           {
@@ -12332,7 +13435,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -12356,7 +13461,7 @@
     },
     "/api/employees/{employee_id}/rehire": {
       "post": {
-        "description": "Повторный приём уволенного сотрудника с произвольной даты.\n\nВ графике будут видны: смены ДО увольнения, неактивные дни между периодами\nи активные дни после повторного приёма. Вся прошлая история сохраняется.",
+        "description": "Повторный приём уволенного с произвольной даты; прошлая история сохраняется.",
         "operationId": "rehire_employee_api_employees__employee_id__rehire_post",
         "parameters": [
           {
@@ -12383,7 +13488,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeUserOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -12886,13 +13993,20 @@
     },
     "/api/group-choices": {
       "get": {
-        "description": "Блоки графика: Смена 1 / Смена 2 / Пятидневка / Другие смены.\n\nkind — какой шаблон задаётся при переводе сотрудника в блок:\nbase (базовый цикл объекта), week5 (свои выходные), cycle (3/3, 1/3, «РРВВ»), manual.",
+        "description": "Блоки графика и вид шаблона, который задаётся при переводе в блок.",
         "operationId": "group_choices_api_group_choices_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Group Choices Api Group Choices Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -22570,7 +23684,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NamedOut"
+                  },
+                  "title": "Response List Subdivisions Api Subdivisions Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -22597,7 +23717,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NamedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -22638,7 +23760,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SubdivisionDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -22660,7 +23784,7 @@
         ]
       },
       "put": {
-        "description": "Переименовать службу — у сотрудников значение обновляется следом.",
+        "description": "Переименовать службу; у сотрудников значение обновляется следом.",
         "operationId": "rename_subdivision_api_subdivisions__sub_id__put",
         "parameters": [
           {
@@ -22687,7 +23811,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SubdivisionRenamedOut"
+                }
               }
             },
             "description": "Successful Response"

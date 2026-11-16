@@ -1,587 +1,157 @@
-"""Сотрудники: карточка (табельный №, приём, экстренный контакт), история должностей,
-переводы между блоками, деактивация и «полное удаление» без потери истории,
-ограничения супервайзера, словарь смен."""
+"""API раздела «Сотрудники»: карточка, приём, переводы, увольнение, скрытие, справочники
+департаментов и служб. Правила — в ``application/directory.py`` и ``application/lifecycle.py``."""
 from __future__ import annotations
 
-import datetime as dt
-import secrets
-from typing import Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, field_validator
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload, object_session, selectinload
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
-from app.core.auth_guards import can_manage_user
 from app.core.db import get_db
-from app.core.format import normalize_hex_color
-from app.core.identity import User
 from app.core.permissions import require_perm
-from app.core.roles import ROLE_EMPLOYEE
-from app.core.security import MIN_PASSWORD_LEN, hash_password
-from app.core.time import local_date
-from app.modules.cars.application.catalog import Car
-from app.modules.people.application import (
-    Department,
-    EmergencyContact,
-    Employee,
-    PositionHistory,
-    Subdivision,
-    normalize_group,
-    open_period,
-    periods_of,
-    slugify_username,
-    suggest_genitive,
-)
 from app.modules.people.application import group_choices as group_choices_list
-from app.modules.timesheet.application import employee_card
-from app.modules.timesheet.application.catalog import BlockAssignment
+from app.modules.people.application import suggest_genitive
 
-from ..application import lifecycle
-from ..application.lifecycle import (
-    normalize_block_history,
-)
-from ..application.lifecycle import (
-    parse_date as _parse_date,
-)
-from ..application.lifecycle import (
-    touch_block as _touch_block,
-)
-from ..application.lifecycle import (
-    touch_position as _touch_position,
+from ..application import directory, lifecycle
+from ..application.directory import DepartmentIn, EmployeeIn, SubdivisionIn
+from .schemas import (
+    DatedAction,
+    DepartmentDeletedOut,
+    EmployeeCreatedOut,
+    EmployeeHistoryOut,
+    EmployeeOut,
+    EmployeeUserOut,
+    GenitiveOut,
+    NamedOut,
+    RehireIn,
+    SubdivisionDeletedOut,
+    SubdivisionRenamedOut,
+    SuggestGenitiveIn,
 )
 
 router = APIRouter(prefix="/api", tags=["directory"])
-
-# Алфавит без визуально похожих символов (0/O, 1/l/I) — чтобы пароль легко продиктовать.
-_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-
-
-def _check_password(password: Optional[str]) -> None:
-    """Пароль, который задаёт руководитель, — по тому же правилу, что смена своего (AUTHZ-04)."""
-    if password and len(password) < MIN_PASSWORD_LEN:
-        raise HTTPException(status_code=422,
-                            detail=f"Пароль слишком короткий (минимум {MIN_PASSWORD_LEN} символов)")
+VIEW = require_perm("employees.view")
+EDIT = require_perm("employees.edit")
+DICTS = require_perm("settings.edit")
 
 
-def _initial_password() -> str:
-    """Случайный одноразовый пароль для новой учётной записи.
-
-    Раньше здесь был общий дефолт «demo1234»: все сотрудники, созданные без явного
-    пароля, получали один и тот же известный пароль. Теперь пароль уникален для
-    каждого и показывается администратору ровно один раз в ответе создания.
-    """
-    return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(12))
+def _block(payload: DatedAction) -> lifecycle.BlockChange:
+    return lifecycle.BlockChange(group=payload.group, kind=payload.kind, value=payload.value, cycle=payload.cycle,
+                                 anchor=payload.anchor, off_weekdays=payload.off_weekdays, label=payload.label)
 
 
-_CAR_UNSET = object()      # «кар не предзагружен» — отличается от «кара нет» (None)
+@router.get("/employees", response_model=list[EmployeeUserOut])
+def list_employees(include_deleted: bool = False, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    return directory.list_employees(db, include_deleted)
 
 
-def _emp_dict(e: Employee, with_user: bool = False, car=_CAR_UNSET) -> dict:
-    data = {
-        "id": e.id, "full_name": e.full_name, "short_name": e.short_name or e.display_name,
-        "full_name_genitive": e.full_name_genitive or "",
-        "full_name_genitive_hint": e.full_name_genitive or suggest_genitive(e.full_name),
-        "position": e.position, "phone": e.phone,
-        "tab_number": e.tab_number or "",
-        "hired_at": e.hired_at.isoformat() if e.hired_at else None,
-        "emergency_name": e.emergency_name or "", "emergency_phone": e.emergency_phone or "",
-        "telegram": e.telegram or "", "email": e.email or "",
-        "dismissed_at": e.dismissed_at.isoformat() if e.dismissed_at else None,
-        "contacts": [{"id": c.id, "name": c.name, "phone": c.phone, "relation": c.relation}
-                     for c in e.contacts] if hasattr(e, "contacts") else [],
-        "department_id": e.department_id,
-        "department": e.department.name if e.department else None,
-        "nationality": e.nationality or "",
-        "subdivision": e.subdivision or "",
-        "schedule_group": e.schedule_group or "", "group_color": e.group_color or "#8a94a6",
-        "schedule_pattern": e.schedule_pattern or "",
-        "active": e.active,
-        "deleted": e.deleted_at is not None,
-        "deleted_at": e.deleted_at.isoformat() if e.deleted_at else None,
-    }
-    if with_user:
-        data["username"] = e.user.username if e.user else None
-        data["role"] = e.user.role if e.user else None
-    # закреплённый электрокар (для карточки сотрудника): из предзагруженной карты
-    # (список сотрудников — батч cars_by_employee) или одним запросом в сессии.
-    # R6 (батч 20.10.2026): связь Employee.assigned_car удалена (кросс-модульная) —
-    # вместо неё запрос по Car.assigned_to == e.id.
-    if car is _CAR_UNSET:
-        sess = object_session(e)
-        car = sess.scalar(select(Car).where(Car.assigned_to == e.id)) if sess is not None else None
-    data["assigned_car_id"] = car.id if car else None
-    data["assigned_car_number"] = car.number if car else ""
-    return data
-
-
-def cars_by_employee(db: Session, employee_ids: list[int]) -> dict[int, Car]:
-    """Закреплённые кары одним запросом: {employee_id: Car}."""
-    if not employee_ids:
-        return {}
-    return {c.assigned_to: c for c in db.scalars(
-        select(Car).where(Car.assigned_to.in_(employee_ids)))}
-
-
-def _guard_supervisor(db: Session, principal: Principal, new_role: str,
-                      target_user: Optional[User]) -> None:
-    """Иерархия ролей: правило одно на всё приложение — core.auth_guards.can_manage_user;
-    здесь лишь тонкая обёртка, чтобы не переписывать все места вызова."""
-    can_manage_user(db, principal, target_user, new_role)
-
-
-class ContactIn(BaseModel):
-    name: str
-    phone: str = ""
-    relation: str = ""
-
-
-class EmployeeIn(BaseModel):
-    full_name: str
-    short_name: str = ""
-    full_name_genitive: str = ""
-    position: str = ""
-    phone: str = ""
-    tab_number: str = ""
-    hired_at: Optional[str] = None          # YYYY-MM-DD
-    emergency_name: str = ""
-    emergency_phone: str = ""
-    telegram: str = ""
-    email: str = ""
-    contacts: list[ContactIn] = []
-    department_id: Optional[int] = None
-    nationality: str = ""          # гражданство — для документов
-    subdivision: str = ""          # служба/подразделение в официальных документах
-    schedule_group: str = ""
-    group_color: str = "#8a94a6"
-    # «Стартовый банк часов» убран (UI-01, 22.10.2026): движок v7.1 его не читал. Начальный
-    # банк — корректировка с причиной OPENING_SEED; присланное поле balance_hours игнорируется.
-    username: Optional[str] = None
-    password: Optional[str] = None
-    role: Optional[str] = None     # не передана — при правке роль не меняется (AUTHZ-03)
-
-    @field_validator("group_color", mode="before")
-    @classmethod
-    def _valid_group_color(cls, v):
-        return normalize_hex_color(v, "#8a94a6")
-
-
-def _sync_contacts(db: Session, emp: Employee, contacts: list[ContactIn]) -> None:
-    for c in list(emp.contacts):
-        db.delete(c)
-    db.flush()
-    for c in contacts:
-        if c.name.strip():
-            obj = EmergencyContact(employee_id=emp.id, name=c.name.strip(),
-                                   phone=c.phone.strip(), relation=c.relation.strip())
-            db.add(obj)
-            emp.contacts.append(obj)
-
-
-def _coverage_start(emp: Employee) -> dt.date:
-    return emp.hired_at or dt.date(2020, 1, 1)
-
-
-@router.get("/employees")
-def list_employees(include_deleted: bool = False, principal: Principal = Depends(require_perm("employees.view")),
-                   db: Session = Depends(get_db)):
-    stmt = (select(Employee)
-            .options(joinedload(Employee.department), joinedload(Employee.user),
-                     selectinload(Employee.contacts))
-            .order_by(Employee.active.desc(), Employee.schedule_group, Employee.full_name))
-    if not include_deleted:
-        stmt = stmt.where(Employee.deleted_at.is_(None))
-    emps = db.scalars(stmt).all()
-    cars = cars_by_employee(db, [e.id for e in emps])
-    return [_emp_dict(e, with_user=True, car=cars.get(e.id)) for e in emps]
-
-
-@router.get("/group-choices")
-def group_choices(principal: Principal = Depends(require_perm("employees.view"))):
-    """Блоки графика: Смена 1 / Смена 2 / Пятидневка / Другие смены.
-
-    kind — какой шаблон задаётся при переводе сотрудника в блок:
-    base (базовый цикл объекта), week5 (свои выходные), cycle (3/3, 1/3, «РРВВ»), manual."""
+@router.get("/group-choices", response_model=list[dict[str, Any]])
+def group_choices(principal: Principal = Depends(VIEW)):
+    """Блоки графика и вид шаблона, который задаётся при переводе в блок."""
     return group_choices_list()
 
 
-class SuggestGenitiveIn(BaseModel):
-    full_name: str
-
-
-@router.post("/employees/suggest-genitive")
-def suggest_genitive_api(payload: SuggestGenitiveIn, principal: Principal = Depends(require_perm("employees.view"))):
-    """Подсказка родительного падежа по ФИО («от Иванова Ивана Ивановича»).
-    Результат — лишь предложение: в карточке его можно исправить вручную."""
+@router.post("/employees/suggest-genitive", response_model=GenitiveOut)
+def suggest_genitive_api(payload: SuggestGenitiveIn, principal: Principal = Depends(VIEW)):
+    """Подсказка родительного падежа ФИО; в карточке её можно исправить."""
     return {"genitive": suggest_genitive(payload.full_name.strip())}
 
 
-@router.post("/employees")
-def create_employee(payload: EmployeeIn, principal: Principal = Depends(require_perm("employees.edit")),
+@router.post("/employees", response_model=EmployeeCreatedOut)
+def create_employee(payload: EmployeeIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Приём: сотрудник, учётная запись, должность, блок графика и период работы."""
+    return directory.create_employee(db, principal, payload)
+
+
+@router.put("/employees/{employee_id}", response_model=EmployeeUserOut)
+def update_employee(employee_id: int, payload: EmployeeIn, principal: Principal = Depends(EDIT),
                     db: Session = Depends(get_db)):
-    role = payload.role or ROLE_EMPLOYEE
-    _guard_supervisor(db, principal, role, None)
-    _check_password(payload.password)
-    hired = _parse_date(payload.hired_at) or local_date()
-    # FK department_id — валиден ДО вставки (P1-misc-3): битый id на PostgreSQL
-    # давал IntegrityError (500), на SQLite (FK не включены) — сотрудника-сироту.
-    # (update_employee уже проверял департамент; здесь — та же гарантия на создание.)
-    department_id = None
-    if payload.department_id:
-        dep = db.get(Department, payload.department_id)
-        if dep is None:
-            raise HTTPException(status_code=422, detail="Департамент не найден")
-        department_id = dep.id
-    emp = Employee(
-        full_name=payload.full_name.strip(), short_name=payload.short_name.strip(),
-        full_name_genitive=payload.full_name_genitive.strip(),
-        position=payload.position.strip(), phone=payload.phone.strip(),
-        tab_number=payload.tab_number.strip(), hired_at=hired,
-        emergency_name=payload.emergency_name.strip(), emergency_phone=payload.emergency_phone.strip(),
-        telegram=payload.telegram.strip(), email=payload.email.strip(),
-        nationality=payload.nationality.strip(), subdivision=payload.subdivision.strip(),
-        department_id=department_id,
-        schedule_group=normalize_group(payload.schedule_group.strip()),
-        group_color=payload.group_color,
-        schedule_pattern="",
-    )
-    db.add(emp)
-    db.flush()
-
-    if emp.position:
-        db.add(PositionHistory(employee_id=emp.id, position=emp.position, start_date=hired, end_date=None))
-    if emp.schedule_group:
-        db.add(BlockAssignment(employee_id=emp.id, group=emp.schedule_group, start_date=hired,
-                               end_date=None, pattern={}))
-    open_period(db, emp, hired, note="приём на работу", user_id=principal.user.id)
-
-    username = (payload.username or slugify_username(emp.full_name)).strip().lower()
-    if db.scalar(select(User).where(User.username == username)):
-        username = f"{username}{emp.id}"
-    password = payload.password or _initial_password()
-    db.add(User(username=username, password_hash=hash_password(password),
-                role=role, employee_id=emp.id))
-    _sync_contacts(db, emp, payload.contacts)
-    audit(db, principal, "employee_create", f"employee:{emp.id}",
-          {"full_name": emp.full_name, "username": username, "role": role})
-    db.commit()
-    data = _emp_dict(emp, with_user=True)
-    # пароль в ответе — только сгенерированный (его больше нигде не узнать); введённый
-    # администратором он и так знает — не гоняем его по сети и не показываем на экране
-    data["initial_password"] = None if payload.password else password
-    return data
+    return directory.update_employee(db, principal, employee_id, payload)
 
 
-@router.put("/employees/{employee_id}")
-def update_employee(employee_id: int, payload: EmployeeIn,
-                    principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    _guard_supervisor(db, principal, payload.role, emp.user)
-    _check_password(payload.password)
-    changes: dict = {}
-
-    today = local_date()
-    emp.full_name = payload.full_name.strip()
-    emp.short_name = payload.short_name.strip()
-    emp.full_name_genitive = payload.full_name_genitive.strip()
-    emp.phone = payload.phone.strip()
-    emp.tab_number = payload.tab_number.strip()
-    emp.hired_at = _parse_date(payload.hired_at) or emp.hired_at
-    emp.emergency_name = payload.emergency_name.strip()
-    emp.emergency_phone = payload.emergency_phone.strip()
-    emp.telegram = payload.telegram.strip()
-    emp.email = payload.email.strip()
-    emp.nationality = payload.nationality.strip()
-    emp.subdivision = payload.subdivision.strip()
-    if payload.department_id:
-        dep = db.get(Department, payload.department_id)
-        emp.department_id = dep.id if dep else None
-    else:
-        emp.department_id = None
-    emp.group_color = payload.group_color
-
-    # должность и блок меняются с фиксацией даты (история / переводы)
-    _touch_position(db, emp, payload.position.strip(), today)
-    emp.position = payload.position.strip()
-    new_group = normalize_group(payload.schedule_group.strip())
-    _touch_block(db, emp, new_group, today)
-    emp.schedule_group = new_group
-    normalize_block_history(db, emp)
-    if not periods_of(db, emp.id):
-        open_period(db, emp, emp.hired_at or today, note="восстановлено при редактировании",
-                    user_id=principal.user.id)
-
-    if emp.user:
-        if payload.role and payload.role != emp.user.role:
-            changes["role"] = [emp.user.role, payload.role]
-            emp.user.role = payload.role
-        if payload.username and payload.username.strip().lower() != emp.user.username:
-            new_username = payload.username.strip().lower()
-            if db.scalar(select(User).where(User.username == new_username, User.id != emp.user.id)):
-                raise HTTPException(status_code=409, detail="Такой логин уже занят")
-            changes["username"] = [emp.user.username, new_username]
-            emp.user.username = new_username
-        if payload.password:
-            emp.user.password_hash = hash_password(payload.password)
-            changes["password_changed"] = True
-        if "role" in changes or "password_changed" in changes:
-            # прежние сессии (в т.ч. украденная cookie) больше не действуют (AUTHZ-04)
-            emp.user.token_version = int(emp.user.token_version or 0) + 1
-    _sync_contacts(db, emp, payload.contacts)
-    audit(db, principal, "employee_update", f"employee:{emp.id}", {"full_name": emp.full_name, **changes})
-    db.commit()
-    return _emp_dict(emp, with_user=True)
+@router.post("/employees/{employee_id}/position-change", response_model=EmployeeOut)
+def position_change(employee_id: int, payload: DatedAction, principal: Principal = Depends(EDIT),
+                    db: Session = Depends(get_db)):
+    """Перевод на должность с произвольной даты."""
+    return directory.employee_dict(lifecycle.position_change(db, principal, employee_id, payload.position, payload.date))
 
 
-class DatedAction(BaseModel):
-    date: Optional[str] = None
-    position: str = ""
-    group: str = ""
-    # индивидуальный шаблон блока (Пятидневка — свои выходные; Другие смены — свой цикл):
-    kind: str = ""                 # base | week5 | cycle | manual (пусто — по типу блока)
-    value: str = ""                # значение рабочего дня («Я 10,75») — ключ CFG-WINDOWS
-    cycle: str = ""                # "3/3", "1/3", "custom:РРВВРВ"
-    anchor: Optional[str] = None   # опорная дата цикла
-    off_weekdays: list[int] = []   # выходные дни недели (0=пн … 6=вс) для пятидневки
-    label: str = ""
+@router.post("/employees/{employee_id}/block-change", response_model=EmployeeOut)
+def block_change(employee_id: int, payload: DatedAction, principal: Principal = Depends(EDIT),
+                 db: Session = Depends(get_db)):
+    """Перевод между блоками графика с произвольной даты."""
+    return directory.employee_dict(lifecycle.block_change(db, principal, employee_id, _block(payload), payload.date))
 
 
-def _block_of(payload) -> lifecycle.BlockChange:
-    """DTO → данные use-case'а: сервис не зависит от pydantic-моделей api-слоя."""
-    return lifecycle.BlockChange(group=payload.group, kind=payload.kind,
-                                 value=payload.value, cycle=payload.cycle,
-                                 anchor=payload.anchor, off_weekdays=payload.off_weekdays,
-                                 label=payload.label)
-
-
-@router.post("/employees/{employee_id}/position-change")
-def position_change(employee_id: int, payload: DatedAction,
-                    principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
-    """Перевод/повышение/понижение с произвольной даты."""
-    emp = lifecycle.position_change(db, principal, employee_id, payload.position, payload.date)
-    db.commit()
-    return _emp_dict(emp)
-
-
-@router.post("/employees/{employee_id}/block-change")
-def block_change(employee_id: int, payload: DatedAction,
-                 principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
-    """Перевод между блоками графика (Смена 1 ↔ Смена 2) с произвольной даты."""
-    emp = lifecycle.block_change(db, principal, employee_id, _block_of(payload), payload.date)
-    db.commit()
-    return _emp_dict(emp)
-
-
-@router.post("/employees/{employee_id}/dismiss")
-def dismiss_employee(employee_id: int, payload: DatedAction,
-                     principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
-    """Увольнение (деактивация) с произвольной даты; история сохраняется."""
-    emp = lifecycle.dismiss(db, principal, employee_id, payload.date)
-    db.commit()
-    return _emp_dict(emp, with_user=True)
-
-
-class RehireIn(BaseModel):
-    date: Optional[str] = None     # первый рабочий день после повторного приёма
-    position: str = ""
-    group: str = ""
-    kind: str = ""
-    value: str = ""
-    cycle: str = ""
-    anchor: Optional[str] = None
-    off_weekdays: list[int] = []
-    label: str = ""
-
-
-@router.post("/employees/{employee_id}/rehire")
-def rehire_employee(employee_id: int, payload: RehireIn,
-                    principal: Principal = Depends(require_perm("employees.edit")), db: Session = Depends(get_db)):
-    """Повторный приём уволенного сотрудника с произвольной даты.
-
-    В графике будут видны: смены ДО увольнения, неактивные дни между периодами
-    и активные дни после повторного приёма. Вся прошлая история сохраняется."""
-    block = _block_of(payload) if payload.group.strip() else None
-    emp = lifecycle.rehire(db, principal, employee_id, payload.date, payload.position, block)
-    db.commit()
-    return _emp_dict(emp, with_user=True)
-
-
-@router.get("/employees/{employee_id}/history")
-def employee_history(employee_id: int, principal: Principal = Depends(require_perm("employees.view")),
+@router.post("/employees/{employee_id}/dismiss", response_model=EmployeeUserOut)
+def dismiss_employee(employee_id: int, payload: DatedAction, principal: Principal = Depends(EDIT),
                      db: Session = Depends(get_db)):
-    """История должностей и принадлежность к блокам графика с датами."""
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    pos = db.scalars(select(PositionHistory).where(PositionHistory.employee_id == employee_id)
-                     .order_by(PositionHistory.start_date)).all()
-    periods = periods_of(db, emp.id)
-    card = employee_card.history(db, emp)
-    return {
-        "positions": [{"position": p.position, "start": p.start_date.isoformat(),
-                       "end": p.end_date.isoformat() if p.end_date else None} for p in pos],
-        "blocks": [{**b, "group": normalize_group(b["group"])} for b in card["blocks"]],
-        "current_value": card["current_value"],
-        "employment": [{"start": p.start_date.isoformat(),
-                        "end": p.end_date.isoformat() if p.end_date else None,
-                        "note": p.note or "", "current": p.end_date is None} for p in periods],
-        "bank_adjustments": card["bank_adjustments"],
-        "bank_now": card["bank_now"],
-    }
+    """Увольнение с произвольной даты; история сохраняется."""
+    return directory.employee_dict(lifecycle.dismiss(db, principal, employee_id, payload.date), with_user=True)
 
 
-@router.post("/employees/{employee_id}/delete")
-def delete_employee(employee_id: int, principal: Principal = Depends(require_perm("employees.edit")),
+@router.post("/employees/{employee_id}/rehire", response_model=EmployeeUserOut)
+def rehire_employee(employee_id: int, payload: RehireIn, principal: Principal = Depends(EDIT),
                     db: Session = Depends(get_db)):
-    """«Полное удаление»: сотрудник исчезает из списков и графика, но ВСЯ история
-    (табель, отметки, аудит) сохраняется — записи помечаются deleted_at."""
-    emp = db.get(Employee, employee_id)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
-    _guard_supervisor(db, principal, ROLE_EMPLOYEE, emp.user)
-    if emp.deleted_at:
-        raise HTTPException(status_code=409, detail="Сотрудник уже удалён")
-    emp.deleted_at = local_date()
-    emp.active = False
-    if emp.user:
-        emp.user.is_active = False
-        emp.user.token_version = int(emp.user.token_version or 0) + 1   # сессии завершаются
-    audit(db, principal, "employee_delete", f"employee:{emp.id}",
-          {"full_name": emp.full_name, "note": "данные истории сохранены"})
-    db.commit()
-    return _emp_dict(emp, with_user=True)
+    """Повторный приём уволенного с произвольной даты; прошлая история сохраняется."""
+    block = _block(payload) if payload.group.strip() else None
+    return directory.employee_dict(lifecycle.rehire(db, principal, employee_id, payload.date, payload.position, block),
+                                   with_user=True)
 
 
-# ─────────────────────────────── подразделения ───────────────────────────────
-@router.get("/departments")
-def list_departments(principal: Principal = Depends(require_perm("employees.view")), db: Session = Depends(get_db)):
-    deps = db.scalars(select(Department).order_by(Department.name)).all()
-    return [{"id": d.id, "name": d.name} for d in deps]
+@router.get("/employees/{employee_id}/history", response_model=EmployeeHistoryOut)
+def employee_history(employee_id: int, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """История должностей, блоков графика и периодов работы."""
+    return directory.employee_history(db, employee_id)
 
 
-class DepartmentIn(BaseModel):
-    name: str
+@router.post("/employees/{employee_id}/delete", response_model=EmployeeUserOut)
+def delete_employee(employee_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Скрыть сотрудника из списков и графика; табель, отметки и аудит сохраняются."""
+    return directory.delete_employee(db, principal, employee_id)
 
 
-@router.post("/departments")
-def create_department(payload: DepartmentIn, principal: Principal = Depends(require_perm("settings.edit")),
+@router.get("/departments", response_model=list[NamedOut])
+def list_departments(principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    return directory.list_departments(db)
+
+
+@router.post("/departments", response_model=NamedOut)
+def create_department(payload: DepartmentIn, principal: Principal = Depends(DICTS), db: Session = Depends(get_db)):
+    return directory.create_department(db, principal, payload)
+
+
+@router.put("/departments/{dep_id}", response_model=NamedOut)
+def rename_department(dep_id: int, payload: DepartmentIn, principal: Principal = Depends(DICTS),
                       db: Session = Depends(get_db)):
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Название департамента не может быть пустым")
-    if db.scalar(select(Department).where(Department.name == name)):
-        raise HTTPException(status_code=409, detail=f"Департамент «{name}» уже есть")
-    dep = Department(name=name)
-    db.add(dep)
-    audit(db, principal, "department_create", name)
-    db.commit()
-    return {"id": dep.id, "name": dep.name}
+    return directory.rename_department(db, principal, dep_id, payload)
 
 
-@router.put("/departments/{dep_id}")
-def rename_department(dep_id: int, payload: DepartmentIn,
-                      principal: Principal = Depends(require_perm("settings.edit")), db: Session = Depends(get_db)):
-    dep = db.get(Department, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Департамент не найден")
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Название департамента не может быть пустым")
-    other = db.scalar(select(Department).where(Department.name == name, Department.id != dep_id))
-    if other:
-        raise HTTPException(status_code=409, detail=f"Департамент «{name}» уже есть")
-    old = dep.name
-    dep.name = name
-    audit(db, principal, "department_rename", f"department:{dep_id}", {"before": old, "after": name})
-    db.commit()
-    return {"id": dep.id, "name": dep.name}
+@router.delete("/departments/{dep_id}", response_model=DepartmentDeletedOut)
+def delete_department(dep_id: int, principal: Principal = Depends(DICTS), db: Session = Depends(get_db)):
+    """Удалить департамент: у его сотрудников поле очищается."""
+    return directory.delete_department(db, principal, dep_id)
 
 
-@router.delete("/departments/{dep_id}")
-def delete_department(dep_id: int, principal: Principal = Depends(require_perm("settings.edit")),
-                      db: Session = Depends(get_db)):
-    """Удалить департамент: у привязанных сотрудников поле очищается (история остаётся)."""
-    dep = db.get(Department, dep_id)
-    if not dep:
-        raise HTTPException(status_code=404, detail="Департамент не найден")
-    linked = db.scalars(select(Employee).where(Employee.department_id == dep_id)).all()
-    for emp in linked:
-        emp.department_id = None
-    db.delete(dep)
-    audit(db, principal, "department_delete", f"department:{dep_id}",
-          {"name": dep.name, "unlinked_employees": len(linked)})
-    db.commit()
-    return {"ok": True, "unlinked_employees": len(linked)}
+@router.get("/subdivisions", response_model=list[NamedOut])
+def list_subdivisions(principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    return directory.list_subdivisions(db)
 
 
-# ──────────────────────── службы/подразделения (справочник) ────────────────────────
-@router.get("/subdivisions")
-def list_subdivisions(principal: Principal = Depends(require_perm("employees.view")), db: Session = Depends(get_db)):
-    subs = db.scalars(select(Subdivision).order_by(Subdivision.name)).all()
-    return [{"id": s.id, "name": s.name} for s in subs]
+@router.post("/subdivisions", response_model=NamedOut)
+def create_subdivision(payload: SubdivisionIn, principal: Principal = Depends(DICTS), db: Session = Depends(get_db)):
+    return directory.create_subdivision(db, principal, payload)
 
 
-class SubdivisionIn(BaseModel):
-    name: str
-
-
-@router.post("/subdivisions")
-def create_subdivision(payload: SubdivisionIn, principal: Principal = Depends(require_perm("settings.edit")),
+@router.put("/subdivisions/{sub_id}", response_model=SubdivisionRenamedOut)
+def rename_subdivision(sub_id: int, payload: SubdivisionIn, principal: Principal = Depends(DICTS),
                        db: Session = Depends(get_db)):
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Название службы не может быть пустым")
-    if db.scalar(select(Subdivision).where(Subdivision.name == name)):
-        raise HTTPException(status_code=409, detail=f"Служба «{name}» уже есть")
-    sub = Subdivision(name=name)
-    db.add(sub)
-    audit(db, principal, "subdivision_create", name)
-    db.commit()
-    return {"id": sub.id, "name": sub.name}
+    """Переименовать службу; у сотрудников значение обновляется следом."""
+    return directory.rename_subdivision(db, principal, sub_id, payload)
 
 
-@router.put("/subdivisions/{sub_id}")
-def rename_subdivision(sub_id: int, payload: SubdivisionIn,
-                       principal: Principal = Depends(require_perm("settings.edit")), db: Session = Depends(get_db)):
-    """Переименовать службу — у сотрудников значение обновляется следом."""
-    sub = db.get(Subdivision, sub_id)
-    if not sub:
-        raise HTTPException(status_code=404, detail="Служба не найдена")
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Название службы не может быть пустым")
-    other = db.scalar(select(Subdivision).where(Subdivision.name == name, Subdivision.id != sub_id))
-    if other:
-        raise HTTPException(status_code=409, detail=f"Служба «{name}» уже есть")
-    old = sub.name
-    updated = 0
-    for emp in db.scalars(select(Employee).where(Employee.subdivision == old)).all():
-        emp.subdivision = name
-        updated += 1
-    sub.name = name
-    audit(db, principal, "subdivision_rename", f"subdivision:{sub_id}",
-          {"before": old, "after": name, "employees_updated": updated})
-    db.commit()
-    return {"id": sub.id, "name": sub.name, "employees_updated": updated}
-
-
-@router.delete("/subdivisions/{sub_id}")
-def delete_subdivision(sub_id: int, principal: Principal = Depends(require_perm("settings.edit")),
-                       db: Session = Depends(get_db)):
+@router.delete("/subdivisions/{sub_id}", response_model=SubdivisionDeletedOut)
+def delete_subdivision(sub_id: int, principal: Principal = Depends(DICTS), db: Session = Depends(get_db)):
     """Удалить службу: у сотрудников, где она указана, поле очищается."""
-    sub = db.get(Subdivision, sub_id)
-    if not sub:
-        raise HTTPException(status_code=404, detail="Служба не найдена")
-    updated = 0
-    for emp in db.scalars(select(Employee).where(Employee.subdivision == sub.name)).all():
-        emp.subdivision = ""
-        updated += 1
-    db.delete(sub)
-    audit(db, principal, "subdivision_delete", f"subdivision:{sub_id}",
-          {"name": sub.name, "employees_cleared": updated})
-    db.commit()
-    return {"ok": True, "employees_cleared": updated}
+    return directory.delete_subdivision(db, principal, sub_id)
