@@ -83,14 +83,16 @@ class TestReadonlySchedule(unittest.TestCase):
             for cell in row["cells"].values():
                 # тяжёлый конвейер — только УТ: ни факта, ни отклонений в сетке нет (16.1 п.2)
                 self.assertNotIn("fact", cell)
+                # заметки и номера записей без права на полные данные пусты
                 if cell.get("tabel"):
-                    self.assertNotIn("note", cell["tabel"])
+                    self.assertIsNone(cell["tabel"]["note"])
                 for a in cell["absences"]:
-                    self.assertNotIn("id", a)
-                    self.assertNotIn("note", a)
+                    self.assertIsNone(a["id"])
+                    self.assertIsNone(a["note"])
+                    self.assertIsNone(a["kind"])
                 for sh in cell["shifts"]:
-                    self.assertNotIn("note", sh)
-                    self.assertNotIn("id", sh)
+                    self.assertIsNone(sh["note"])
+                    self.assertIsNone(sh["id"])
         # план смен на месте — ради него всё и затевалось (хотя бы у одного сотрудника)
         self.assertTrue(any(c.get("shifts") for row in data["rows"]
                             for c in row["cells"].values()))
@@ -178,7 +180,7 @@ class TestPdfHint(unittest.TestCase):
     def test_501_hint_mentions_install(self):
         from unittest import mock
 
-        with mock.patch("app.modules.timesheet.interface.schedule.docx_to_pdf",
+        with mock.patch("app.modules.timesheet.application.schedule_grid.docx_to_pdf",
                         return_value=(None, "reportlab не установлен")):
             r = client.get("/api/schedule/pdf", params={"year": YEAR, "month": MONTH})
         self.assertEqual(r.status_code, 501, r.text)

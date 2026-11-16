@@ -1,5 +1,8 @@
 """Человекочитаемые тексты флагов, исключений и трассы — только здесь (0.1 п.7, 2.4,
-12.13). Тексты собираются по коду и параметрам Reason/Flag (реестры 6.2, 6.6)."""
+12.13). Тексты собираются по коду и параметрам Reason/Flag (реестры 6.2, 6.6).
+
+Модуль лежит в прикладном слое: операции отдают интерфейсу готовый ответ, в том числе
+текст отказа по каждому дню массовой правки (ADR-0013, раздел 4). Домен текстов не знает."""
 from __future__ import annotations
 
 import datetime as dt
@@ -58,8 +61,8 @@ def fmt_hours_strict(minutes: int, employee_id, day) -> str:
     TimesheetRowCorruptError (409) с указанием сотрудника, дня и значения —
     вкладка честно сообщает о повреждении данных.
     """
-    from ..application.errors import TimesheetRowCorruptError
     from ..domain.day_card.fmt_hours import fmt_hours
+    from .errors import TimesheetRowCorruptError
     try:
         return fmt_hours(minutes)
     except ValueError as exc:
@@ -270,9 +273,7 @@ def config_violation_text(code: str, data: dict | None = None) -> str:
 # ── Тексты типизированных ошибок движка (фаза C2, EXECUTION-SPEC-v2 §5.3) ──
 # Единственное место сборки человеческих текстов доменных/прикладных ошибок.
 # Центральные HTTP-хэндлеры (main.py) и payload-ошибки вкладок (200 + "error")
-# используют одну и ту же функцию — раньше она звалась domain_error_text и
-# жила в сервисном слое (application), что смешивало слои (2.4: тексты — только
-# в interface).
+# используют одну и ту же функцию.
 ERROR_TEXTS = {
     "PERIOD_OUTSIDE_EMPLOYMENT": "Период вне интервала трудоустройства — не рассчитывается",
     "PREVIOUS_PERIOD_NOT_CLOSED": "Сначала закройте предыдущий период (либо задайте начальный "
@@ -307,7 +308,6 @@ ERROR_TEXTS = {
 
 def error_text(exc: Exception) -> str:
     """Человекочитаемый текст доменной/прикладной ошибки движка (2.4, §5.3)."""
-    from ..application.errors import ApplicationError
     from ..domain.types.errors import (
         ConfigError,
         IncompletePeriodError,
@@ -317,6 +317,7 @@ def error_text(exc: Exception) -> str:
         UnknownDayCodeError,
         UnknownTimesheetValueError,
     )
+    from .errors import ApplicationError
     if isinstance(exc, ConfigError):
         texts = [f"{config_violation_text(c, dict(d))} [{c}]" for c, d in exc.violations]
         return "Ошибка настроек: " + "; ".join(texts)

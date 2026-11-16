@@ -128,7 +128,8 @@ def test_schedule_setka_skop_i_readonly(admin_client, employee_client):
     data = r.json()
     assert data["readonly"] is True
     shifts = all_shifts(data)
-    assert shifts and all("id" not in sh for sh in shifts), "без права ячейки срезаются до плана"
+    assert shifts and all(sh["id"] is None and sh["note"] is None for sh in shifts), \
+        "без права ячейки срезаются до плана: номера записей и заметки пусты"
 
     uid = _user_id(_catalog(admin_client), "ivanov")
     try:
@@ -136,7 +137,7 @@ def test_schedule_setka_skop_i_readonly(admin_client, employee_client):
                                    "schedule.edit": "allow"})
         data = employee_client.get("/api/schedule", params=params).json()
         assert data["readonly"] is False
-        assert any("id" in sh for sh in all_shifts(data)), "с правом видны полные данные ячеек"
+        assert any(sh["id"] for sh in all_shifts(data)), "с правом видны полные данные ячеек"
     finally:
         _grant(admin_client, uid, {})
 

@@ -15,8 +15,8 @@ def period_action(kind: str, employee_id: int, year: int, month: int) -> dict:
     from app.modules.timesheet.application.errors import ApplicationError
     from app.modules.timesheet.application.months import month_period
     from app.modules.timesheet.application.recalculate import recalculate
+    from app.modules.timesheet.application.texts import error_text
     from app.modules.timesheet.domain.types.errors import DomainError
-    from app.modules.timesheet.interface.formatting import error_text
 
     action = close_period if kind == "close" else recalculate
     now = now_utc()

@@ -23,6 +23,8 @@ from ..adapters.orm import DayModifier, EngineSettingsVersion
 from ..adapters.settings_codec import from_payload, to_payload
 from ..adapters.sql_settings import SCOPE_GROUPS, SqlSettingsAdapter, base_version
 from ..application.engine_common import period_employees
+from ..application.period_params import ensure_period
+from ..application.texts import error_text
 from ..domain.settings.defaults import default_settings
 from ..domain.settings.types import (
     MOD_COUNTS_IN_UT,
@@ -33,8 +35,6 @@ from ..domain.settings.types import (
 from ..domain.settings.validate import validate_settings
 from ..domain.types.entities import Period
 from ..domain.types.errors import ConfigError
-from .formatting import error_text
-from .period_params import ensure_period
 
 router = APIRouter(prefix="/api/engine-settings", tags=["engine-settings"])
 MODIFIER_TITLES = {"double_overtime": "Двойные переработки", "pays_overtime": "Оплачиваются ли переработки",
@@ -479,7 +479,7 @@ def get_health(on: Optional[dt.date] = None, principal: Principal = Depends(requ
     (2) прикладные сверки (группы ↔ блоки, коды ↔ словарь смен, коды ↔ окна).
     """
     from ..application.months import period_containing
-    from .formatting import config_violation_text
+    from ..application.texts import config_violation_text
 
     day = on or local_date()
     ver = base_version(db, day)

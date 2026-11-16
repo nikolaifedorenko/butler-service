@@ -9,9 +9,9 @@ from __future__ import annotations
 import dataclasses
 
 from app.core.time import local_date
+from app.modules.timesheet.application.fact_screen import categories_out
 from app.modules.timesheet.domain.settings.defaults import default_settings
 from app.modules.timesheet.domain.settings.types import Category
-from app.modules.timesheet.interface.fact_api import categories_out
 
 
 def test_categories_follow_settings_order_and_bounds():

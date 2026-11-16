@@ -19,9 +19,9 @@ from app.core.time import TZ
 from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import Punch, ScheduleAbsence, TabelDay
 from app.modules.timesheet.adapters.sql_schedule import SqlScheduleStore
+from app.modules.timesheet.application.schedule_edit import day_window_hhmm
 from app.modules.timesheet.domain.settings.defaults import default_settings
 from app.modules.timesheet.domain.settings.types import Window
-from app.modules.timesheet.interface.schedule import _day_window_hhmm
 
 DAY = dt.date(2029, 3, 5)
 
@@ -37,7 +37,7 @@ def test_window_until_midnight_is_next_day_0000(db, emp):
     db.add(TabelDay(employee_id=emp.id, date=DAY, code="Я", plan_minutes=240, source="manual"))
     db.flush()
     try:
-        assert _day_window_hhmm(db, st, emp.id, DAY) == ("20:00", "00:00", True)
+        assert day_window_hhmm(db, st, emp.id, DAY) == ("20:00", "00:00", True)
         absence_id = SqlScheduleStore(db, TZ).save_absence(str(emp.id), DAY, "20:00", "00:00", True)
         row = db.get(ScheduleAbsence, absence_id)
         assert row.end_utc - row.start_utc == dt.timedelta(hours=4)

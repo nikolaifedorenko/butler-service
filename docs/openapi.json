@@ -1,6 +1,25 @@
 {
   "components": {
     "schemas": {
+      "AbsenceAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "id"
+        ],
+        "title": "AbsenceAddedOut",
+        "type": "object"
+      },
       "AbsenceIn": {
         "properties": {
           "date": {
@@ -54,6 +73,169 @@
           "until_time"
         ],
         "title": "AbsenceIn",
+        "type": "object"
+      },
+      "AbsenceKindOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "color",
+          "doc_type"
+        ],
+        "title": "AbsenceKindOut",
+        "type": "object"
+      },
+      "AbsencePeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "employee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatementEmployeeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours"
+          },
+          "hours_source": {
+            "title": "Hours Source",
+            "type": "string"
+          },
+          "intervals": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/StatementIntervalOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervals"
+          },
+          "intervals_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervals Text"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "partial": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatementPartialOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shift": {
+            "$ref": "#/components/schemas/StatementKindOut"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "whole_shift": {
+            "title": "Whole Shift",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "employee",
+          "source",
+          "whole_shift",
+          "doc_type",
+          "start",
+          "end",
+          "days",
+          "shift",
+          "note",
+          "hours",
+          "hours_source",
+          "partial",
+          "intervals",
+          "intervals_text",
+          "notes"
+        ],
+        "title": "AbsencePeriodOut",
         "type": "object"
       },
       "AccessCatalogOut": {
@@ -741,6 +923,124 @@
           "version"
         ],
         "title": "BlockPut",
+        "type": "object"
+      },
+      "BoardEmployeeOut": {
+        "additionalProperties": false,
+        "description": "Сотрудник карточки доски; у записи без сотрудника все поля пусты.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "short_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Name"
+          },
+          "tab_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tab Number"
+          },
+          "telegram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "position",
+          "group",
+          "color",
+          "tab_number",
+          "phone",
+          "telegram"
+        ],
+        "title": "BoardEmployeeOut",
         "type": "object"
       },
       "Body_add_item_photo_api_night_items__item_id__photo_post": {
@@ -1494,6 +1794,29 @@
         "title": "CellIn",
         "type": "object"
       },
+      "CellRefusalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "employee_id",
+          "date",
+          "detail"
+        ],
+        "title": "CellRefusalOut",
+        "type": "object"
+      },
       "ChangePasswordIn": {
         "properties": {
           "new_password": {
@@ -1913,6 +2236,40 @@
         "title": "ClearMonthIn",
         "type": "object"
       },
+      "ClearedCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "number"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "date",
+          "code",
+          "hours",
+          "note"
+        ],
+        "title": "ClearedCellOut",
+        "type": "object"
+      },
       "CloseSectionIn": {
         "properties": {
           "force_unanswered": {
@@ -2246,6 +2603,32 @@
         "title": "CreatedOut",
         "type": "object"
       },
+      "DateRangeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "DateRangeOut",
+        "type": "object"
+      },
       "DatedAction": {
         "description": "Перевод, смена блока графика или увольнение с даты (пусто — с сегодняшней).",
         "properties": {
@@ -2402,6 +2785,31 @@
           "day"
         ],
         "title": "DayIn",
+        "type": "object"
+      },
+      "DayRefusalOut": {
+        "additionalProperties": false,
+        "description": "Отказ по одному дню массовой правки.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "date",
+          "error"
+        ],
+        "title": "DayRefusalOut",
         "type": "object"
       },
       "DefectCountsOut": {
@@ -3432,6 +3840,87 @@
         "title": "EmailTestIn",
         "type": "object"
       },
+      "EmployedRangeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "open",
+          "note"
+        ],
+        "title": "EmployedRangeOut",
+        "type": "object"
+      },
+      "EmployeeBriefOut": {
+        "additionalProperties": false,
+        "description": "Сотрудник в строке экрана (``engine_common.emp_brief``).",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "short_name": {
+            "title": "Short Name",
+            "type": "string"
+          },
+          "tab_number": {
+            "title": "Tab Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "position",
+          "group",
+          "color",
+          "tab_number"
+        ],
+        "title": "EmployeeBriefOut",
+        "type": "object"
+      },
       "EmployeeCreatedOut": {
         "additionalProperties": false,
         "properties": {
@@ -4378,6 +4867,683 @@
         "title": "EscortIn",
         "type": "object"
       },
+      "FactBarOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "open": {
+            "title": "Open",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "open"
+        ],
+        "title": "FactBarOut",
+        "type": "object"
+      },
+      "FactDayCardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "codes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Codes",
+            "type": "object"
+          },
+          "debt_minutes": {
+            "title": "Debt Minutes",
+            "type": "integer"
+          },
+          "fact_minutes": {
+            "title": "Fact Minutes",
+            "type": "integer"
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/FlagOut"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "overtime_minutes": {
+            "title": "Overtime Minutes",
+            "type": "integer"
+          },
+          "pays_overtime": {
+            "title": "Pays Overtime",
+            "type": "boolean"
+          },
+          "plan_equals_fact": {
+            "title": "Plan Equals Fact",
+            "type": "boolean"
+          },
+          "plan_minutes": {
+            "title": "Plan Minutes",
+            "type": "integer"
+          },
+          "timesheet_plan_minutes": {
+            "title": "Timesheet Plan Minutes",
+            "type": "integer"
+          },
+          "timesheet_value": {
+            "title": "Timesheet Value",
+            "type": "string"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          },
+          "work_minutes": {
+            "title": "Work Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "timesheet_value",
+          "window",
+          "plan_minutes",
+          "timesheet_plan_minutes",
+          "fact_minutes",
+          "work_minutes",
+          "overtime_minutes",
+          "debt_minutes",
+          "codes",
+          "pays_overtime",
+          "plan_equals_fact",
+          "flags"
+        ],
+        "title": "FactDayCardOut",
+        "type": "object"
+      },
+      "FactDayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "all_employees": {
+            "title": "All Employees",
+            "type": "boolean"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodOut"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FactDayRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "step_minutes": {
+            "title": "Step Minutes",
+            "type": "integer"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "period",
+          "granularity",
+          "step_minutes",
+          "tz",
+          "all_employees",
+          "rows"
+        ],
+        "title": "FactDayOut",
+        "type": "object"
+      },
+      "FactDayRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactDayCardOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "employee": {
+            "$ref": "#/components/schemas/EmployeeBriefOut"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "marks": {
+            "items": {
+              "$ref": "#/components/schemas/FactMarkOut"
+            },
+            "title": "Marks",
+            "type": "array"
+          },
+          "out_of_staff": {
+            "title": "Out Of Staff",
+            "type": "boolean"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/FactSegmentOut"
+            },
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "employee",
+          "error",
+          "out_of_staff",
+          "marks",
+          "segments",
+          "card"
+        ],
+        "title": "FactDayRowOut",
+        "type": "object"
+      },
+      "FactEmployeeOut": {
+        "additionalProperties": false,
+        "description": "Сотрудник истории сессий; у неизвестного номера заполнен только ``id``.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "short_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Name"
+          },
+          "tab_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tab Number"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "position",
+          "group",
+          "color",
+          "tab_number"
+        ],
+        "title": "FactEmployeeOut",
+        "type": "object"
+      },
+      "FactMarkOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "rounded": {
+            "title": "Rounded",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "kind",
+          "rounded"
+        ],
+        "title": "FactMarkOut",
+        "type": "object"
+      },
+      "FactMonthCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "absences": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Absences",
+            "type": "array"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "out_of_staff": {
+            "title": "Out Of Staff",
+            "type": "boolean"
+          },
+          "tabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tabel"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          }
+        },
+        "required": [
+          "tabel",
+          "window",
+          "absences",
+          "out_of_staff",
+          "color"
+        ],
+        "title": "FactMonthCellOut",
+        "type": "object"
+      },
+      "FactMonthDayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "is_today": {
+            "title": "Is Today",
+            "type": "boolean"
+          },
+          "is_weekend": {
+            "title": "Is Weekend",
+            "type": "boolean"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "day",
+          "weekday",
+          "is_weekend",
+          "is_today"
+        ],
+        "title": "FactMonthDayOut",
+        "type": "object"
+      },
+      "FactMonthOut": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/TimeCategoryOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/FactMonthDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FactMonthRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "step_minutes": {
+            "title": "Step Minutes",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "step_minutes",
+          "categories",
+          "days",
+          "rows"
+        ],
+        "title": "FactMonthOut",
+        "type": "object"
+      },
+      "FactMonthRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FactMonthCellOut"
+            },
+            "title": "Days",
+            "type": "object"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/EmployeeBriefOut"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/FactBarOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "employee",
+          "sessions",
+          "days"
+        ],
+        "title": "FactMonthRowOut",
+        "type": "object"
+      },
+      "FactRangeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "first": {
+            "title": "First",
+            "type": "string"
+          },
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "last": {
+            "title": "Last",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "first",
+          "last"
+        ],
+        "title": "FactRangeOut",
+        "type": "object"
+      },
+      "FactSegmentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "crosses_midnight": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crosses Midnight"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "open": {
+            "title": "Open",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "open",
+          "crosses_midnight"
+        ],
+        "title": "FactSegmentOut",
+        "type": "object"
+      },
+      "FactSessionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "closed_after_range": {
+            "title": "Closed After Range",
+            "type": "boolean"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "end_local": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Local"
+          },
+          "end_utc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Utc"
+          },
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes"
+          },
+          "open": {
+            "title": "Open",
+            "type": "boolean"
+          },
+          "start_local": {
+            "title": "Start Local",
+            "type": "string"
+          },
+          "start_utc": {
+            "title": "Start Utc",
+            "type": "string"
+          },
+          "started_before_range": {
+            "title": "Started Before Range",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "employee_id",
+          "start_utc",
+          "end_utc",
+          "open",
+          "started_before_range",
+          "closed_after_range",
+          "start_local",
+          "end_local",
+          "minutes"
+        ],
+        "title": "FactSessionOut",
+        "type": "object"
+      },
+      "FactSessionsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "employee": {
+            "$ref": "#/components/schemas/FactEmployeeOut"
+          },
+          "range": {
+            "$ref": "#/components/schemas/FactRangeOut"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/FactSessionOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "employee",
+          "range",
+          "sessions"
+        ],
+        "title": "FactSessionsOut",
+        "type": "object"
+      },
       "FieldIn": {
         "properties": {
           "choices": {
@@ -4505,6 +5671,41 @@
         "title": "FlagIn",
         "type": "object"
       },
+      "FlagOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "code",
+          "title",
+          "hint",
+          "data"
+        ],
+        "title": "FlagOut",
+        "type": "object"
+      },
       "FlagValueIn": {
         "properties": {
           "flag_id": {
@@ -4606,6 +5807,591 @@
           "grants"
         ],
         "title": "GrantsIn",
+        "type": "object"
+      },
+      "GridAbsenceOut": {
+        "additionalProperties": false,
+        "description": "Согласованное отсутствие в ячейке. Без права на полные данные заполнены только\n``start_hm``, ``end_hm`` и ``whole_shift``.",
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "end_hm": {
+            "title": "End Hm",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AbsenceKindOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "start_hm": {
+            "title": "Start Hm",
+            "type": "string"
+          },
+          "whole_shift": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Whole Shift"
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "start_hm",
+          "end_hm",
+          "note",
+          "whole_shift",
+          "kind"
+        ],
+        "title": "GridAbsenceOut",
+        "type": "object"
+      },
+      "GridBlockOut": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "pattern_label": {
+            "title": "Pattern Label",
+            "type": "string"
+          },
+          "ranges": {
+            "items": {
+              "$ref": "#/components/schemas/DateRangeOut"
+            },
+            "title": "Ranges",
+            "type": "array"
+          }
+        },
+        "required": [
+          "group",
+          "ranges",
+          "pattern_label"
+        ],
+        "title": "GridBlockOut",
+        "type": "object"
+      },
+      "GridCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "absences": {
+            "items": {
+              "$ref": "#/components/schemas/GridAbsenceOut"
+            },
+            "title": "Absences",
+            "type": "array"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "employed": {
+            "title": "Employed",
+            "type": "boolean"
+          },
+          "is_future": {
+            "title": "Is Future",
+            "type": "boolean"
+          },
+          "is_today": {
+            "title": "Is Today",
+            "type": "boolean"
+          },
+          "planned_hours": {
+            "title": "Planned Hours",
+            "type": "number"
+          },
+          "segments": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "shifts": {
+            "items": {
+              "$ref": "#/components/schemas/GridShiftOut"
+            },
+            "title": "Shifts",
+            "type": "array"
+          },
+          "tabel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GridTabelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "tabel",
+          "shifts",
+          "segments",
+          "absences",
+          "color",
+          "planned_hours",
+          "employed",
+          "editable",
+          "is_today",
+          "is_future"
+        ],
+        "title": "GridCellOut",
+        "type": "object"
+      },
+      "GridColorsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "inactive": {
+            "title": "Inactive",
+            "type": "string"
+          },
+          "out_of_block": {
+            "title": "Out Of Block",
+            "type": "string"
+          },
+          "worked_off": {
+            "title": "Worked Off",
+            "type": "string"
+          }
+        },
+        "required": [
+          "out_of_block",
+          "worked_off",
+          "inactive"
+        ],
+        "title": "GridColorsOut",
+        "type": "object"
+      },
+      "GridDayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "double_scope": {
+            "title": "Double Scope",
+            "type": "string"
+          },
+          "double_title": {
+            "title": "Double Title",
+            "type": "string"
+          },
+          "is_today": {
+            "title": "Is Today",
+            "type": "boolean"
+          },
+          "is_weekend": {
+            "title": "Is Weekend",
+            "type": "boolean"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "day",
+          "weekday",
+          "is_weekend",
+          "is_today",
+          "double_scope",
+          "double_title"
+        ],
+        "title": "GridDayOut",
+        "type": "object"
+      },
+      "GridEmployeeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "full_name_genitive": {
+            "title": "Full Name Genitive",
+            "type": "string"
+          },
+          "group_color": {
+            "title": "Group Color",
+            "type": "string"
+          },
+          "hired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hired At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "schedule_group": {
+            "title": "Schedule Group",
+            "type": "string"
+          },
+          "schedule_pattern": {
+            "title": "Schedule Pattern",
+            "type": "string"
+          },
+          "short_name": {
+            "title": "Short Name",
+            "type": "string"
+          },
+          "tab_number": {
+            "title": "Tab Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "full_name_genitive",
+          "position",
+          "tab_number",
+          "schedule_group",
+          "group_color",
+          "schedule_pattern",
+          "active",
+          "hired_at",
+          "dismissed_at"
+        ],
+        "title": "GridEmployeeOut",
+        "type": "object"
+      },
+      "GridOut": {
+        "additionalProperties": false,
+        "properties": {
+          "colors": {
+            "$ref": "#/components/schemas/GridColorsOut"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/GridDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "month_name": {
+            "title": "Month Name",
+            "type": "string"
+          },
+          "readonly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/GridRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "today": {
+            "title": "Today",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "month_name",
+          "days",
+          "rows",
+          "today",
+          "readonly",
+          "colors"
+        ],
+        "title": "GridOut",
+        "type": "object"
+      },
+      "GridRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/GridBlockOut"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "cells": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GridCellOut"
+            },
+            "title": "Cells",
+            "type": "object"
+          },
+          "employed_ranges": {
+            "items": {
+              "$ref": "#/components/schemas/EmployedRangeOut"
+            },
+            "title": "Employed Ranges",
+            "type": "array"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/GridEmployeeOut"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/GridTotalsOut"
+          }
+        },
+        "required": [
+          "employee",
+          "blocks",
+          "employed_ranges",
+          "cells",
+          "totals"
+        ],
+        "title": "GridRowOut",
+        "type": "object"
+      },
+      "GridShiftOut": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor": {
+            "title": "Anchor",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "end_hm": {
+            "title": "End Hm",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "start_hm": {
+            "title": "Start Hm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "anchor",
+          "start",
+          "end",
+          "start_hm",
+          "end_hm",
+          "note",
+          "id"
+        ],
+        "title": "GridShiftOut",
+        "type": "object"
+      },
+      "GridTabelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "number"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "value",
+          "hours",
+          "source",
+          "note"
+        ],
+        "title": "GridTabelOut",
+        "type": "object"
+      },
+      "GridTotalsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "planned_hours": {
+            "title": "Planned Hours",
+            "type": "number"
+          },
+          "work_days": {
+            "title": "Work Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "planned_hours",
+          "work_days"
+        ],
+        "title": "GridTotalsOut",
         "type": "object"
       },
       "GroupCountsOut": {
@@ -5426,6 +7212,30 @@
           "color"
         ],
         "title": "LabelIn",
+        "type": "object"
+      },
+      "LastPunchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ts",
+          "source"
+        ],
+        "title": "LastPunchOut",
         "type": "object"
       },
       "LeaveIn": {
@@ -6561,6 +8371,71 @@
         "title": "OooPut",
         "type": "object"
       },
+      "OpenSessionCardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "employee": {
+            "$ref": "#/components/schemas/BoardEmployeeOut"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "expected_today": {
+            "title": "Expected Today",
+            "type": "boolean"
+          },
+          "hours_open": {
+            "title": "Hours Open",
+            "type": "string"
+          },
+          "minutes_open": {
+            "title": "Minutes Open",
+            "type": "integer"
+          },
+          "open_since": {
+            "title": "Open Since",
+            "type": "string"
+          },
+          "open_since_hm": {
+            "title": "Open Since Hm",
+            "type": "string"
+          },
+          "shift_today": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Shift Today",
+            "type": "array"
+          },
+          "shift_today_hm": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Shift Today Hm",
+            "type": "array"
+          }
+        },
+        "required": [
+          "employee_id",
+          "employee",
+          "open_since",
+          "open_since_hm",
+          "minutes_open",
+          "hours_open",
+          "expected_today",
+          "shift_today",
+          "shift_today_hm"
+        ],
+        "title": "OpenSessionCardOut",
+        "type": "object"
+      },
       "OverrideIn": {
         "description": "Особенность объекта для пункта шаблона зоны.",
         "properties": {
@@ -6769,6 +8644,25 @@
         "title": "PeriodAction",
         "type": "object"
       },
+      "PeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "PeriodOut",
+        "type": "object"
+      },
       "PhotoAddedOut": {
         "additionalProperties": false,
         "properties": {
@@ -6850,6 +8744,51 @@
         "title": "PhotoOut",
         "type": "object"
       },
+      "PlanShiftOut": {
+        "additionalProperties": false,
+        "description": "Смена Графика, по которой сотрудник ожидается (``punch_plan.plan_for_date``).",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "end_hm": {
+            "title": "End Hm",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "start_hm": {
+            "title": "Start Hm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "start",
+          "end",
+          "start_hm",
+          "end_hm",
+          "date"
+        ],
+        "title": "PlanShiftOut",
+        "type": "object"
+      },
       "PositionPeriodOut": {
         "additionalProperties": false,
         "properties": {
@@ -6928,6 +8867,51 @@
           "prefs"
         ],
         "title": "PrefsIn",
+        "type": "object"
+      },
+      "PresenceBoardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at_work_now": {
+            "title": "At Work Now",
+            "type": "integer"
+          },
+          "expected_now": {
+            "title": "Expected Now",
+            "type": "integer"
+          },
+          "now": {
+            "title": "Now",
+            "type": "string"
+          },
+          "open_session_cards": {
+            "items": {
+              "$ref": "#/components/schemas/OpenSessionCardOut"
+            },
+            "title": "Open Session Cards",
+            "type": "array"
+          },
+          "today": {
+            "title": "Today",
+            "type": "string"
+          },
+          "yet_to_come": {
+            "items": {
+              "$ref": "#/components/schemas/YetToComeOut"
+            },
+            "title": "Yet To Come",
+            "type": "array"
+          }
+        },
+        "required": [
+          "now",
+          "today",
+          "at_work_now",
+          "expected_now",
+          "open_session_cards",
+          "yet_to_come"
+        ],
+        "title": "PresenceBoardOut",
         "type": "object"
       },
       "PreviewMessageOut": {
@@ -7099,6 +9083,77 @@
         "title": "PublishIn",
         "type": "object"
       },
+      "PunchDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "ok",
+          "warning"
+        ],
+        "title": "PunchDeletedOut",
+        "type": "object"
+      },
+      "PunchDoneOut": {
+        "additionalProperties": false,
+        "properties": {
+          "backfill": {
+            "title": "Backfill",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "plan_date": {
+            "title": "Plan Date",
+            "type": "string"
+          },
+          "punch": {
+            "$ref": "#/components/schemas/PunchOut"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PunchStatusOut"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "message",
+          "backfill",
+          "plan_date",
+          "punch",
+          "warnings",
+          "status"
+        ],
+        "title": "PunchDoneOut",
+        "type": "object"
+      },
       "PunchIn": {
         "properties": {
           "employee_id": {
@@ -7135,6 +9190,285 @@
           }
         },
         "title": "PunchIn",
+        "type": "object"
+      },
+      "PunchNoteOut": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "note"
+        ],
+        "title": "PunchNoteOut",
+        "type": "object"
+      },
+      "PunchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "ts",
+          "source"
+        ],
+        "title": "PunchOut",
+        "type": "object"
+      },
+      "PunchRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "employee": {
+            "title": "Employee",
+            "type": "string"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "employee_id",
+          "employee",
+          "position",
+          "ts",
+          "kind",
+          "source",
+          "note",
+          "created_by"
+        ],
+        "title": "PunchRowOut",
+        "type": "object"
+      },
+      "PunchStatusOut": {
+        "additionalProperties": false,
+        "properties": {
+          "balance_hours": {
+            "title": "Balance Hours",
+            "type": "number"
+          },
+          "balance_note": {
+            "title": "Balance Note",
+            "type": "string"
+          },
+          "balance_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "elapsed_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Hours"
+          },
+          "expected": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Expected",
+            "type": "array"
+          },
+          "is_late": {
+            "title": "Is Late",
+            "type": "boolean"
+          },
+          "last_punch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastPunchOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "now": {
+            "title": "Now",
+            "type": "string"
+          },
+          "on_shift": {
+            "title": "On Shift",
+            "type": "boolean"
+          },
+          "plan_date": {
+            "title": "Plan Date",
+            "type": "string"
+          },
+          "planned_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned End"
+          },
+          "planned_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start"
+          },
+          "punch_in_allowed": {
+            "title": "Punch In Allowed",
+            "type": "boolean"
+          },
+          "punch_out_allowed": {
+            "title": "Punch Out Allowed",
+            "type": "boolean"
+          },
+          "punch_status_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Punch Status Hint"
+          },
+          "session_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Start"
+          },
+          "shift": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanShiftOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "today": {
+            "title": "Today",
+            "type": "string"
+          },
+          "today_hours": {
+            "title": "Today Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "now",
+          "today",
+          "plan_date",
+          "punch_in_allowed",
+          "punch_out_allowed",
+          "punch_status_hint",
+          "shift",
+          "planned_start",
+          "planned_end",
+          "expected",
+          "on_shift",
+          "session_start",
+          "elapsed_hours",
+          "is_late",
+          "last_punch",
+          "today_hours",
+          "balance_hours",
+          "balance_period",
+          "balance_note"
+        ],
+        "title": "PunchStatusOut",
         "type": "object"
       },
       "RangeAbsenceIn": {
@@ -7189,6 +9523,50 @@
           "last"
         ],
         "title": "RangeAbsenceIn",
+        "type": "object"
+      },
+      "RangeAbsenceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/DayRefusalOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "written": {
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "written",
+          "skipped",
+          "errors",
+          "mode"
+        ],
+        "title": "RangeAbsenceOut",
         "type": "object"
       },
       "RehireIn": {
@@ -7888,6 +10266,35 @@
           "month"
         ],
         "title": "ResetIn",
+        "type": "object"
+      },
+      "ResetMonthOut": {
+        "additionalProperties": false,
+        "properties": {
+          "absences_cleared": {
+            "title": "Absences Cleared",
+            "type": "integer"
+          },
+          "cleared": {
+            "title": "Cleared",
+            "type": "integer"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "skipped_employees": {
+            "title": "Skipped Employees",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "cleared",
+          "absences_cleared",
+          "skipped_employees"
+        ],
+        "title": "ResetMonthOut",
         "type": "object"
       },
       "RoleCreatedOut": {
@@ -9105,6 +11512,223 @@
         "title": "SplitIn",
         "type": "object"
       },
+      "StatementEmployeeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "department": {
+            "title": "Department",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "full_name_genitive": {
+            "title": "Full Name Genitive",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "nationality": {
+            "title": "Nationality",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "short_name": {
+            "title": "Short Name",
+            "type": "string"
+          },
+          "subdivision": {
+            "title": "Subdivision",
+            "type": "string"
+          },
+          "tab_number": {
+            "title": "Tab Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "short_name",
+          "full_name_genitive",
+          "position",
+          "tab_number",
+          "nationality",
+          "subdivision",
+          "department"
+        ],
+        "title": "StatementEmployeeOut",
+        "type": "object"
+      },
+      "StatementIntervalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "from_time": {
+            "title": "From Time",
+            "type": "string"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours"
+          },
+          "hours_source": {
+            "title": "Hours Source",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StatementKindOut"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "until_time": {
+            "title": "Until Time",
+            "type": "string"
+          },
+          "whole_shift": {
+            "title": "Whole Shift",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "from_time",
+          "until_time",
+          "hours",
+          "hours_source",
+          "whole_shift",
+          "kind",
+          "note",
+          "doc_type"
+        ],
+        "title": "StatementIntervalOut",
+        "type": "object"
+      },
+      "StatementKindOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "kind",
+          "color",
+          "doc_type"
+        ],
+        "title": "StatementKindOut",
+        "type": "object"
+      },
+      "StatementPartialOut": {
+        "additionalProperties": false,
+        "properties": {
+          "from_time": {
+            "title": "From Time",
+            "type": "string"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "number"
+          },
+          "hours_source": {
+            "title": "Hours Source",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StatementKindOut"
+          },
+          "until_time": {
+            "title": "Until Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_time",
+          "until_time",
+          "hours",
+          "hours_source",
+          "kind"
+        ],
+        "title": "StatementPartialOut",
+        "type": "object"
+      },
       "SubdivisionDeletedOut": {
         "additionalProperties": false,
         "properties": {
@@ -9172,6 +11796,393 @@
           "full_name"
         ],
         "title": "SuggestGenitiveIn",
+        "type": "object"
+      },
+      "TabelBulkOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "title": "Cells",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/CellRefusalOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "written": {
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "cells",
+          "written",
+          "warnings",
+          "errors"
+        ],
+        "title": "TabelBulkOut",
+        "type": "object"
+      },
+      "TabelCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "number"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "hours",
+          "source",
+          "note",
+          "value"
+        ],
+        "title": "TabelCellOut",
+        "type": "object"
+      },
+      "TabelCellSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "ok",
+          "warning"
+        ],
+        "title": "TabelCellSavedOut",
+        "type": "object"
+      },
+      "TabelCodeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "accepts_ut": {
+            "title": "Accepts Ut",
+            "type": "boolean"
+          },
+          "carries_hours": {
+            "title": "Carries Hours",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "counts_in_ut": {
+            "title": "Counts In Ut",
+            "type": "boolean"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "plan_equals_fact_auto": {
+            "title": "Plan Equals Fact Auto",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "carries_hours",
+          "accepts_ut",
+          "counts_in_ut",
+          "plan_equals_fact_auto",
+          "doc_type"
+        ],
+        "title": "TabelCodeOut",
+        "type": "object"
+      },
+      "TabelFillOut": {
+        "additionalProperties": false,
+        "properties": {
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "written": {
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "written",
+          "skipped",
+          "warnings"
+        ],
+        "title": "TabelFillOut",
+        "type": "object"
+      },
+      "TabelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "codes": {
+            "items": {
+              "$ref": "#/components/schemas/TabelCodeOut"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "colors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Colors",
+            "type": "object"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "half": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Half"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodOut"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TabelRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "windows": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Windows",
+            "type": "object"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "half",
+          "granularity",
+          "period",
+          "days",
+          "colors",
+          "codes",
+          "values",
+          "windows",
+          "can_edit",
+          "rows"
+        ],
+        "title": "TabelOut",
+        "type": "object"
+      },
+      "TabelResetOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/ClearedCellOut"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "cleared": {
+            "title": "Cleared",
+            "type": "integer"
+          },
+          "locked_skipped": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Locked Skipped",
+            "type": "array"
+          },
+          "manual_shifts_dropped": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Manual Shifts Dropped",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "uncovered": {
+            "items": {
+              "$ref": "#/components/schemas/UncoveredDayOut"
+            },
+            "title": "Uncovered",
+            "type": "array"
+          },
+          "uncovered_total": {
+            "title": "Uncovered Total",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "written": {
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "cleared",
+          "cells",
+          "written",
+          "skipped",
+          "warnings",
+          "uncovered",
+          "uncovered_total",
+          "locked_skipped",
+          "manual_shifts_dropped"
+        ],
+        "title": "TabelResetOut",
+        "type": "object"
+      },
+      "TabelRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TabelCellOut"
+            },
+            "title": "Cells",
+            "type": "object"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/EmployeeBriefOut"
+          },
+          "lock": {
+            "title": "Lock",
+            "type": "string"
+          },
+          "missing_days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Days",
+            "type": "array"
+          },
+          "plan_hours": {
+            "title": "Plan Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "employee",
+          "cells",
+          "plan_hours",
+          "missing_days",
+          "lock"
+        ],
+        "title": "TabelRowOut",
         "type": "object"
       },
       "TakeIn": {
@@ -9455,6 +12466,71 @@
         "title": "TemplatesOut",
         "type": "object"
       },
+      "TimeCategoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "crosses_midnight": {
+            "title": "Crosses Midnight",
+            "type": "boolean"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "start",
+          "end",
+          "crosses_midnight"
+        ],
+        "title": "TimeCategoryOut",
+        "type": "object"
+      },
+      "TimeoffHoursOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours"
+          },
+          "hours_source": {
+            "title": "Hours Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "date",
+          "hours",
+          "hours_source"
+        ],
+        "title": "TimeoffHoursOut",
+        "type": "object"
+      },
       "TodayPendingOut": {
         "additionalProperties": false,
         "description": "Отчёта текущей смены ещё нет.",
@@ -9598,6 +12674,30 @@
           "email"
         ],
         "title": "TransportOut",
+        "type": "object"
+      },
+      "UncoveredDayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "employee": {
+            "title": "Employee",
+            "type": "string"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "employee_id",
+          "employee",
+          "date"
+        ],
+        "title": "UncoveredDayOut",
         "type": "object"
       },
       "UpcomingVersionOut": {
@@ -9789,6 +12889,39 @@
           "end_date"
         ],
         "title": "VipIn",
+        "type": "object"
+      },
+      "YetToComeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "already_started": {
+            "title": "Already Started",
+            "type": "boolean"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/BoardEmployeeOut"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "expected_at": {
+            "title": "Expected At",
+            "type": "string"
+          },
+          "expected_at_hm": {
+            "title": "Expected At Hm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "employee",
+          "expected_at",
+          "expected_at_hm",
+          "already_started"
+        ],
+        "title": "YetToComeOut",
         "type": "object"
       },
       "ZoneAreaOut": {
@@ -13841,7 +16974,7 @@
     },
     "/api/fact/day": {
       "get": {
-        "description": "Сетка «Номера» (слой 2 · Факт): один день глазами движка.\n\nСтроки — сотрудники, трудоустроенные в этот день (R35); не-менеджер видит\nтолько себя. Период расчёта — содержащий день (месяц либо половина по\nнастройке period_granularity); закрытый период читается из сохранённых\nрезультатов без пересчёта (RUL-CLOSED-PERIOD-IMMUTABLE).",
+        "description": "Один день глазами движка: отметки, сессии, план и итог по каждому сотруднику.",
         "operationId": "day_grid_api_fact_day_get",
         "parameters": [
           {
@@ -13859,7 +16992,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FactDayOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13883,7 +17018,7 @@
     },
     "/api/fact/month": {
       "get": {
-        "description": "Слой 2, вкладка «Месяц» (16.10.2026): Гант фактических присутствий за месяц.\n\nОсь X — непрерывное время месяца (не колонки дней), поэтому смена через\nполночь — ОДНА полоса: сессии берём сопряжением ОКРУГЛЁННЫХ отметок\n(to_calc_mark + pair_marks, то же ядро, что у «Дня») ЦЕЛИКОМ, без нарезки\nполуночью. На день отдаём стандартное окно Табеля (штриховка), цвет полосы\n(словарь «Смены и отсутствия», общий с Графиком) и согласованные отсутствия.\nЧисла расчёта (план/недостача) Ганту не нужны — settle не запускаем.",
+        "description": "Гант фактических присутствий за месяц.",
         "operationId": "fact_month_api_fact_month_get",
         "parameters": [
           {
@@ -13909,7 +17044,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FactMonthOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13933,6 +17070,7 @@
     },
     "/api/fact/sessions": {
       "get": {
+        "description": "История сессий «пришёл — ушёл» сотрудника за диапазон (не более 92 дней).",
         "operationId": "sessions_api_fact_sessions_get",
         "parameters": [
           {
@@ -13969,7 +17107,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FactSessionsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16722,12 +19862,15 @@
     },
     "/api/presence/board": {
       "get": {
+        "description": "Кто на работе, кто ожидается, открытые сессии и кто ещё должен прийти.",
         "operationId": "board_api_presence_board_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PresenceBoardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16814,7 +19957,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PunchRowOut"
+                  },
+                  "title": "Response List Punches Api Punches Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -16836,7 +19985,7 @@
         ]
       },
       "post": {
-        "description": "Кнопки «Пришёл на работу» / «Ушёл с работы».\n\nПрава: отметка за себя — me.punch; чужая отметка или отметка задним числом — punches.manage.",
+        "description": "Кнопки «Пришёл на работу» и «Ушёл с работы».\n\nПрава: отметка за себя — me.punch; чужая отметка или отметка задним числом — punches.manage.",
         "operationId": "punch_api_punches_post",
         "requestBody": {
           "content": {
@@ -16852,7 +20001,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PunchDoneOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16882,7 +20033,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PunchStatusOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16913,7 +20066,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PunchDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16964,7 +20119,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PunchNoteOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16988,7 +20145,7 @@
     },
     "/api/schedule": {
       "get": {
-        "description": "Сетка Графика: ФИО × дни месяца; ячейка — Табель-код, отрезки смен (generated/\nmanual) и согласованные отсутствия (логический разрез).",
+        "description": "Сетка Графика: ФИО × дни месяца.",
         "operationId": "get_grid_api_schedule_get",
         "parameters": [
           {
@@ -17014,7 +20171,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GridOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17038,7 +20197,7 @@
     },
     "/api/schedule/absence": {
       "post": {
-        "description": "«Пропуск/отлучка» — согласованное отсутствие (логический разрез Графика, v7/R17).\nНа часы и банк не влияет (RUL-ABSENCE-ONLY-FLAGS): недостача возникает из отсутствия\nприсутствия в окне и гасится банком/кодами по периоду.",
+        "description": "«Пропуск/отлучка» — согласованное отсутствие на часть смены или на всю смену.",
         "operationId": "add_absence_api_schedule_absence_post",
         "requestBody": {
           "content": {
@@ -17054,7 +20213,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AbsenceAddedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17078,7 +20239,7 @@
     },
     "/api/schedule/absence-period": {
       "get": {
-        "description": "Непрерывный период одного отсутствия вокруг даты — для печати заявления.\n\nИсточник — Табель (коды отсутствий) либо записи согласованного отсутствия\n(«отпросился»): заявление находит весь период, даже если он пересекает границы\nмесяцев.\n\nОтлучек в одном дне может быть несколько (решение владельца 16.10.2026):\nпо умолчанию заявление ОДНО на все интервалы дня (`intervals`, `intervals_text`\n— перечень «с 14:00 до 16:00 (2 ч) и с 18:00 до 20:00 (2 ч)», `hours` — сумма);\nс `absence_id` — заявление по одному выбранному интервалу.",
+        "description": "Непрерывный период одного отсутствия вокруг даты — для печати заявления.",
         "operationId": "absence_period_api_schedule_absence_period_get",
         "parameters": [
           {
@@ -17121,7 +20282,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AbsencePeriodOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17161,7 +20324,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -17185,7 +20350,7 @@
     },
     "/api/schedule/pdf": {
       "get": {
-        "description": "График на месяц в PDF: та же таблица, что в «Печать»/Excel. Собирается через\nDOCX → PDF встроенным рендером; если собрать не удалось — 501 с подсказкой.",
+        "description": "График на месяц в PDF: та же таблица, что в «Печать» и Excel.",
         "operationId": "export_pdf_api_schedule_pdf_get",
         "parameters": [
           {
@@ -17209,11 +20374,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -17235,7 +20395,7 @@
     },
     "/api/schedule/range-absence": {
       "post": {
-        "description": "«Назначить отсутствие» на период.\n\nДва способа — по виду отсутствия из словаря:\n\n* **есть код Табеля** (ОТ, ДО, Б, ОВ, НН…) — отсутствие на весь день это код\n  первичного документа; График дня перегенерируется (смены в эти дни нет →\n  сотрудник не ожидается, флагов нет);\n* **кода Табеля нет** («Выходной за часы», «Отпросился») — пишется согласованное\n  отсутствие в График, Табель не трогается: явка остаётся, недостачу гасит банк\n  (норматив от 12.10.2026, паттерн EX-29).\n\nПериод может пересекать границы месяцев.",
+        "description": "«Назначить отсутствие» на период: кодом Табеля либо согласованным отсутствием Графика.",
         "operationId": "range_absence_api_schedule_range_absence_post",
         "requestBody": {
           "content": {
@@ -17251,7 +20411,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RangeAbsenceOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17275,7 +20437,7 @@
     },
     "/api/schedule/reset-month": {
       "post": {
-        "description": "«Сбросить месяц» в Графике (решения владельца 16.10.2026): убрать РУЧНЫЕ\nсмены и согласованные ОТСУТСТВИЯ месяца (отлучки-интервалы и «выходные за\nчасы») и перегенерировать График из Табеля — слой 1 возвращается к чистому\nплану из слоя 0.\n\nОтличие от clear-month: Табель НЕ трогается (он сбрасывается из «Слой 0 ·\nТабель»). Отсутствие принадлежит месяцу по перекрытию интервала (как в сетке:\nотлучка через полночь на границе месяцев уходит в сброс своего месяца).\nЗаписи удаляются с аудитом; напечатанные ранее заявления остаются в истории\nжурнала. Закрытые периоды не трогаются (RUL-CLOSED-PERIOD-IMMUTABLE).",
+        "description": "«Сбросить месяц»: убрать ручные смены и согласованные отсутствия, График — из Табеля.",
         "operationId": "reset_month_api_schedule_reset_month_post",
         "requestBody": {
           "content": {
@@ -17291,7 +20453,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ResetMonthOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17315,7 +20479,7 @@
     },
     "/api/schedule/shift": {
       "delete": {
-        "description": "Удаление ручной смены — день возвращается к генерации из Табеля (16.3).",
+        "description": "Удаление ручной смены — день возвращается к генерации из Табеля.",
         "operationId": "delete_manual_shift_api_schedule_shift_delete",
         "parameters": [
           {
@@ -17342,7 +20506,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -17379,7 +20545,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -17403,7 +20571,7 @@
     },
     "/api/schedule/timeoff-hours": {
       "get": {
-        "description": "Часы «выходного за ранее отработанные часы» для сотрудника и дня.\n\nЗначение выводится, а не задаётся константой (норматив от 12.10.2026):\nстандартное окно смен сотрудника из Табеля → мода окон за 90 дней → глобальный\nfallback. `hours_source` показывает, какое правило сработало.",
+        "description": "Часы «выходного за ранее отработанные часы» для сотрудника и дня.",
         "operationId": "timeoff_hours_api_schedule_timeoff_hours_get",
         "parameters": [
           {
@@ -17430,7 +20598,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TimeoffHoursOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17454,7 +20624,7 @@
     },
     "/api/schedule/xlsx": {
       "get": {
-        "description": "График в Excel — форма application.exports.schedule_sheet.",
+        "description": "График в Excel.",
         "operationId": "export_xlsx_api_schedule_xlsx_get",
         "parameters": [
           {
@@ -17478,11 +20648,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -23837,6 +27002,7 @@
     },
     "/api/tabel": {
       "get": {
+        "description": "Табель периода: месяц либо половина месяца.",
         "operationId": "get_tabel_api_tabel_get",
         "parameters": [
           {
@@ -23878,7 +27044,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TabelOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -23922,6 +27090,7 @@
     },
     "/api/tabel/bulk": {
       "post": {
+        "description": "Одно значение во много ячеек: записываются все либо ни одной.",
         "operationId": "bulk_api_tabel_bulk_post",
         "requestBody": {
           "content": {
@@ -23937,7 +27106,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TabelBulkOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -23976,7 +27147,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TabelCellSavedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24000,7 +27173,7 @@
     },
     "/api/tabel/fill-from-cycles": {
       "post": {
-        "description": "Циклы графика заполняют Табель (инструмент ввода, решение владельца); График\nперегенерируется из Табеля (16.3). Закрытые периоды не трогаются (16.5).",
+        "description": "Заполнить Табель из циклов графика; закрытые периоды не трогаются.",
         "operationId": "fill_api_tabel_fill_from_cycles_post",
         "requestBody": {
           "content": {
@@ -24016,7 +27189,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TabelFillOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24040,7 +27215,7 @@
     },
     "/api/tabel/reset": {
       "post": {
-        "description": "«Сбросить» (T3, решение владельца Q5 от 12.10.2026): убрать РУЧНЫЕ коды периода\nи вернуть автозаполнение Табеля из циклов.\n\nТабель — первичный документ: он заполняется из настроек сотрудника (циклов блоков),\nа ручная правка ячейки помечается `source=\"manual\"` и автозаполнением больше не\nперезаписывается. «Сбросить» удаляет именно ручные строки периода и заново запускает\nзаполнение из циклов, после чего График перегенерируется из Табеля (16.3).\n\nГраницы — как у «Заполнить из циклов»:\n* закрытые периоды не трогаются: сотрудник с `lock_state == \"locked\"` пропускается\n  и возвращается в `locked_skipped` (RUL-CLOSED-PERIOD-IMMUTABLE);\n* дни вне трудоустройства не заполняются (RUL-EMPLOYMENT-PERIOD);\n* если после сброса день остался пустым (цикл не даёт значения: нет строки\n  CFG-WINDOWS либо отрезки дня одним значением непредставимы), день возвращается\n  в `uncovered` — ячейку нужно заполнить вручную, иначе расчёт не запустится.\n\nПересчёт часов не запускается (16.1 п.2): итоги периода обновятся при чтении УТ.",
+        "description": "«Сбросить»: убрать ручные коды периода и вернуть автозаполнение из циклов.",
         "operationId": "reset_api_tabel_reset_post",
         "requestBody": {
           "content": {
@@ -24056,7 +27231,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TabelResetOut"
+                }
               }
             },
             "description": "Successful Response"

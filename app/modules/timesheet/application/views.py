@@ -1,6 +1,6 @@
-"""Построение представлений для HTTP/UI-точек (8.4): вкладка «Управленческий табель»
+"""Представления результатов расчёта для экранов (8.4): вкладка «Управленческий табель»
 (16.6), карточки дней с расчётным и информационным планами (v7.1/R39), дни «не в штате»
-(7.1, 16.6). Числа — из домена как есть; тексты — formatting."""
+(7.1, 16.6). Числа — из домена как есть; тексты — texts."""
 from __future__ import annotations
 
 import datetime as dt
@@ -8,10 +8,10 @@ from zoneinfo import ZoneInfo
 
 from app.core.config import settings as app_settings
 
-from ..application.period_view import PeriodView, day_views
 from ..domain.types.results import DayView
-from .formatting import flag_hint, flag_text, hours, reason_text
+from .period_view import PeriodView, day_views
 from .serialize import plain
+from .texts import flag_hint, flag_text, hours, reason_text
 
 
 def flag_dict(flag, tz) -> dict:
