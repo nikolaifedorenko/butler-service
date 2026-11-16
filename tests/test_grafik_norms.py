@@ -41,6 +41,7 @@ if "DATABASE_URL" not in os.environ:
     os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db}"
     os.environ["SECRET_KEY"] = "test-secret-key"
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
@@ -61,6 +62,29 @@ FIRST = TODAY.replace(day=1)
 # («Отметка не может быть в будущем»): в первые дни месяца — предыдущий месяц
 PAST_FIRST = FIRST if TODAY.day > 7 else (FIRST - dt.timedelta(days=1)).replace(day=1)
 DATES_AT_RUN_TIME = ("TODAY", "FIRST", "PAST_FIRST")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _remove_created_employees():
+    """Сотрудники, заведённые тестами модуля, после него уволены и скрыты.
+
+    База у потока тестов общая: новый сотрудник без закрытых прошлых периодов иначе
+    остаётся в «Переработках» и Табеле и ломает тесты других файлов.
+    """
+    from app.modules.people.application.catalog import Employee
+
+    with SessionLocal() as db:
+        before = set(db.scalars(select(Employee.id)))
+    yield
+    with SessionLocal() as db:
+        created = sorted(set(db.scalars(select(Employee.id).where(Employee.deleted_at.is_(None)))) - before)
+    admin = TestClient(app)
+    _login(admin, "admin")
+    for emp_id in created:
+        r = admin.post(f"/api/employees/{emp_id}/dismiss", json={"date": local_date().isoformat()})
+        assert r.status_code == 200, r.text
+        r = admin.post(f"/api/employees/{emp_id}/delete", json={})
+        assert r.status_code == 200, r.text
 
 
 def _login(c: TestClient, username: str) -> None:
