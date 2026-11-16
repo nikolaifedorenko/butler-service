@@ -74,6 +74,12 @@ class ConfirmationRequired(Conflict):
         return {**self.data, "message": self.message}
 
 
+class UpstreamError(ServiceError):
+    """Внешний сервис недоступен или отказал (бот Telegram, почтовый сервер) → 502."""
+
+    status_code = 502
+
+
 class Gone(ServiceError):
     """Объект навсегда недоступен (файл удалён по сроку хранения) → 410."""
 

@@ -44,7 +44,6 @@ LEGACY: dict[str, tuple[int, int, int]] = {
     "core": (1, 0, 3),
     "docs": (6, 13, 8),
     "employees": (13, 19, 19),
-    "notify": (7, 13, 12),
     "settings": (3, 3, 4),
     "stays": (18, 50, 96),
     "timesheet": (30, 89, 51),

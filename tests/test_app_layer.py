@@ -83,7 +83,8 @@ def test_transactional_wraps_operation(app_stack, db, probe):
 
 @pytest.mark.parametrize("cls, status", [
     (errors.ServiceError, 400), (errors.Rejected, 400), (errors.Forbidden, 403), (errors.NotFound, 404),
-    (errors.Conflict, 409), (errors.Gone, 410), (errors.PayloadTooLarge, 413), (errors.Validation, 422)])
+    (errors.Conflict, 409), (errors.Gone, 410), (errors.PayloadTooLarge, 413), (errors.Validation, 422),
+    (errors.UpstreamError, 502)])
 def test_service_error_becomes_http_response(cls, status):
     from app.main import _service_error_handler
 
