@@ -306,9 +306,15 @@ def test_run_sync_once_propuskaet_raund_esli_zamok_u_soseda():
     finally:
         holder.kill()
         holder.wait(timeout=10)
-    # после выхода соседа замок свободен
-    with try_lock(LOCK_NAME) as got:
-        assert got is True
+    # после выхода соседа замок свободен. PostgreSQL снимает его, когда заметит обрыв
+    # соединения убитого процесса, — не мгновенно, поэтому ждём
+    deadline = time.monotonic() + 10
+    while True:
+        with try_lock(LOCK_NAME) as got:
+            if got or time.monotonic() > deadline:
+                break
+        time.sleep(0.1)
+    assert got is True, "замок не освободился за 10 секунд после выхода соседа"
 
 
 def test_try_lock_neblokiruyushchiy_i_osvobozhdaetsya():
