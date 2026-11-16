@@ -109,10 +109,16 @@ def test_valid_period_still_works(admin_client):
 
 def test_ensure_period_shared_by_all_period_endpoints():
     """Все точки ввода периода ходят через один помощник, а не копируют проверку текстом."""
-    from app.modules.timesheet.application import fact_screen, schedule_edit, schedule_grid, tabel_screen
-    from app.modules.timesheet.interface import engine_settings_api, mgmt_api
+    from app.modules.timesheet.application import (
+        engine_settings,
+        fact_screen,
+        mgmt_screen,
+        schedule_edit,
+        schedule_grid,
+        tabel_screen,
+    )
 
-    for mod in (engine_settings_api, mgmt_api, fact_screen, schedule_edit, schedule_grid, tabel_screen):
+    for mod in (engine_settings, mgmt_screen, fact_screen, schedule_edit, schedule_grid, tabel_screen):
         src = pathlib.Path(mod.__file__).read_text(encoding="utf-8")
         assert "ensure_period(" in src, f"{mod.__name__}: нет вызова ensure_period"
         assert "1 <= month <= 12" not in src, f"{mod.__name__}: проверка скопирована текстом"
@@ -144,8 +150,9 @@ def test_doublepay_responses_have_no_recalculated(admin_client):
 
 def test_doublepay_source_and_frontend_have_no_recalculated():
     """Ни роутер, ни интерфейс не упоминают `recalculated` (иначе в тосте — undefined)."""
-    router = (BASE / "app/modules/timesheet/interface/doublepay.py").read_text(encoding="utf-8")
-    assert '"recalculated"' not in router
+    for layer in ("interface/doublepay.py", "application/doublepay_edit.py", "interface/schemas.py"):
+        source = (BASE / "app/modules/timesheet" / layer).read_text(encoding="utf-8")
+        assert '"recalculated"' not in source, layer
     js = (BASE / "static/js/modules/dicts.js").read_text(encoding="utf-8")
     assert "recalculated" not in js
 

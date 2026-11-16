@@ -29,7 +29,8 @@ DIRTY_CALLS = {"now", "today"}          # datetime.now() / date.today()
 # Операции экранов (ADR-0013, раздел 4): прикладной слой отдаёт интерфейсу готовый ответ,
 # поэтому читает таблицы модуля и справочник сотрудников (people).
 SCREEN_OPERATION_FILES = {"schedule_grid.py", "schedule_edit.py", "absence_statement.py", "punches.py",
-                          "presence_screen.py", "fact_screen.py", "tabel_screen.py"}
+                          "presence_screen.py", "fact_screen.py", "tabel_screen.py", "mgmt_screen.py",
+                          "bank_entries.py", "doublepay_edit.py", "shift_dictionary.py", "engine_settings.py"}
 TRANSIT_APPLICATION_FILES = {"base_schedule.py", "tabel_fill.py", "schedule_helpers.py",
                              "doublepay.py", "engine_common.py", "punch_plan.py",
                              "shiftrev.py", "catalog.py", "exports.py"} | SCREEN_OPERATION_FILES

@@ -28,11 +28,11 @@ if "DATABASE_URL" not in os.environ:
     os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db}"
     os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
-from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app.core.db import SessionLocal  # noqa: E402
+from app.core.errors import Validation  # noqa: E402
 from app.core.time import local_date, local_iso, local_now  # noqa: E402
 from app.main import app, init_db  # noqa: E402
 from app.modules.timesheet.application.catalog import EngineSettingsVersion  # noqa: E402
@@ -149,21 +149,21 @@ class TestCodePunchFlags(unittest.TestCase):
 
     def test_07_publish_guard_removal(self):
         """Публикация версии: код из Табеля / от живой смены удалить нельзя."""
-        from app.modules.timesheet.interface.engine_settings_api import _guard_removed_day_codes
+        from app.modules.timesheet.application.engine_settings import guard_removed_day_codes
 
         base = client.get("/api/engine-settings").json()["active"]["payload"]
         db = SessionLocal()
         try:
             # без изъятий — проходит
-            _guard_removed_day_codes(copy.deepcopy(base), db, local_date())
+            guard_removed_day_codes(copy.deepcopy(base), db, local_date())
             # «Я» стоит в Табеле демо-сотрудников
             p = copy.deepcopy(base)
             p["day_code_policy"].pop("Я")
-            with self.assertRaises(HTTPException) as ctx:
-                _guard_removed_day_codes(p, db, local_date())
+            with self.assertRaises(Validation) as ctx:
+                guard_removed_day_codes(p, db, local_date())
             self.assertEqual(ctx.exception.status_code, 422)
-            self.assertIn("«Я»", ctx.exception.detail)
-            self.assertIn("Табел", ctx.exception.detail)
+            self.assertIn("«Я»", ctx.exception.message)
+            self.assertIn("Табел", ctx.exception.message)
             # связка со словарём смен удалена (18.10.2026): второй предохранитель —
             # только история Табеля, видов отсутствий в словаре больше нет
         finally:

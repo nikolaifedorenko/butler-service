@@ -338,6 +338,45 @@
         "title": "AccessUserOut",
         "type": "object"
       },
+      "ActiveSettingsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "payload"
+        ],
+        "title": "ActiveSettingsOut",
+        "type": "object"
+      },
       "AddShiftIn": {
         "properties": {
           "day": {
@@ -787,6 +826,92 @@
           "hours"
         ],
         "title": "BankAdjustIn",
+        "type": "object"
+      },
+      "BankAdjustedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/BankAdjustmentOut"
+          },
+          "bank_now": {
+            "title": "Bank Now",
+            "type": "number"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "adjustment",
+          "bank_now"
+        ],
+        "title": "BankAdjustedOut",
+        "type": "object"
+      },
+      "BankAdjustmentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "hours",
+          "date",
+          "note",
+          "author",
+          "reason_code",
+          "created_at"
+        ],
+        "title": "BankAdjustmentOut",
+        "type": "object"
+      },
+      "BankNowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bank_now": {
+            "title": "Bank Now",
+            "type": "number"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "bank_now"
+        ],
+        "title": "BankNowOut",
         "type": "object"
       },
       "BaseIn": {
@@ -2721,6 +2846,72 @@
         "title": "DayChoice",
         "type": "object"
       },
+      "DayCodeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "accepts_ut": {
+            "title": "Accepts Ut",
+            "type": "boolean"
+          },
+          "carries_hours": {
+            "title": "Carries Hours",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "counts_in_ut": {
+            "title": "Counts In Ut",
+            "type": "boolean"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "punch_in": {
+            "title": "Punch In",
+            "type": "boolean"
+          },
+          "punch_out": {
+            "title": "Punch Out",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "carries_hours",
+          "accepts_ut",
+          "counts_in_ut",
+          "punch_in",
+          "punch_out",
+          "doc_type"
+        ],
+        "title": "DayCodeOut",
+        "type": "object"
+      },
+      "DayCodesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "codes": {
+            "items": {
+              "$ref": "#/components/schemas/DayCodeOut"
+            },
+            "title": "Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "codes"
+        ],
+        "title": "DayCodesOut",
+        "type": "object"
+      },
       "DayIn": {
         "properties": {
           "comment": {
@@ -3513,6 +3704,168 @@
           "doc"
         ],
         "title": "DocSavedOut",
+        "type": "object"
+      },
+      "DoubleCalendarOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DoubleDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "reason_titles": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Reason Titles",
+            "type": "object"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeOut"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "vip": {
+            "items": {
+              "$ref": "#/components/schemas/VipPeriodOut"
+            },
+            "title": "Vip",
+            "type": "array"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "days",
+          "vip",
+          "year",
+          "scopes",
+          "reason_titles"
+        ],
+        "title": "DoubleCalendarOut",
+        "type": "object"
+      },
+      "DoubleDayDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "$ref": "#/components/schemas/DoubleDayOut"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "deleted"
+        ],
+        "title": "DoubleDayDeletedOut",
+        "type": "object"
+      },
+      "DoubleDayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_weekend": {
+            "title": "Is Weekend",
+            "type": "boolean"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "scope_title": {
+            "title": "Scope Title",
+            "type": "string"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "day",
+          "month",
+          "year",
+          "weekday",
+          "is_weekend",
+          "scope",
+          "scope_title",
+          "note"
+        ],
+        "title": "DoubleDayOut",
+        "type": "object"
+      },
+      "DoubleDaysAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DoubleDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "added",
+          "updated",
+          "days"
+        ],
+        "title": "DoubleDaysAddedOut",
         "type": "object"
       },
       "DraftCategoryIn": {
@@ -4786,7 +5139,7 @@
           },
           "modifiers": {
             "items": {
-              "$ref": "#/components/schemas/ModifierOut"
+              "$ref": "#/components/schemas/app__modules__settings__interface__schemas__ModifierOut"
             },
             "title": "Modifiers",
             "type": "array"
@@ -4809,6 +5162,47 @@
           "upcoming_versions"
         ],
         "title": "EngineDefaultsOut",
+        "type": "object"
+      },
+      "EngineSettingsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/ActiveSettingsOut"
+          },
+          "latest_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Id"
+          },
+          "modifier_names": {
+            "items": {
+              "$ref": "#/components/schemas/ModifierNameOut"
+            },
+            "title": "Modifier Names",
+            "type": "array"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "active",
+          "latest_id",
+          "versions",
+          "modifier_names"
+        ],
+        "title": "EngineSettingsOut",
         "type": "object"
       },
       "EngineVersionOut": {
@@ -6748,6 +7142,351 @@
         "title": "HandoverIn",
         "type": "object"
       },
+      "HealthCheckOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "screen": {
+            "title": "Screen",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "level",
+          "screen",
+          "text"
+        ],
+        "title": "HealthCheckOut",
+        "type": "object"
+      },
+      "HealthOut": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/HealthCheckOut"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "on": {
+            "title": "On",
+            "type": "string"
+          },
+          "periods": {
+            "$ref": "#/components/schemas/HealthPeriodsOut"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/HealthRecentOut"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/HealthStatsOut"
+          },
+          "upcoming": {
+            "items": {
+              "$ref": "#/components/schemas/HealthUpcomingOut"
+            },
+            "title": "Upcoming",
+            "type": "array"
+          },
+          "version": {
+            "$ref": "#/components/schemas/HealthVersionOut"
+          }
+        },
+        "required": [
+          "on",
+          "periods",
+          "version",
+          "stats",
+          "checks",
+          "upcoming",
+          "recent"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "HealthPeriodsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/PeriodOut"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "last_closed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodClosedStateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_closed_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Closed Start"
+          }
+        },
+        "required": [
+          "granularity",
+          "current",
+          "last_closed_start",
+          "last_closed"
+        ],
+        "title": "HealthPeriodsOut",
+        "type": "object"
+      },
+      "HealthRecentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "actor",
+          "action",
+          "target"
+        ],
+        "title": "HealthRecentOut",
+        "type": "object"
+      },
+      "HealthStatsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "codes": {
+            "title": "Codes",
+            "type": "integer"
+          },
+          "day_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Limit Minutes"
+          },
+          "global_defaults": {
+            "additionalProperties": true,
+            "title": "Global Defaults",
+            "type": "object"
+          },
+          "groups": {
+            "title": "Groups",
+            "type": "integer"
+          },
+          "late_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Late Limit Minutes"
+          },
+          "period_granularity": {
+            "title": "Period Granularity",
+            "type": "string"
+          },
+          "rules_active": {
+            "title": "Rules Active",
+            "type": "integer"
+          },
+          "rules_upcoming": {
+            "title": "Rules Upcoming",
+            "type": "integer"
+          },
+          "step_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Minutes"
+          },
+          "tz": {
+            "title": "Tz",
+            "type": "string"
+          },
+          "weights": {
+            "title": "Weights",
+            "type": "integer"
+          },
+          "windows": {
+            "title": "Windows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tz",
+          "step_minutes",
+          "period_granularity",
+          "late_limit_minutes",
+          "day_limit_minutes",
+          "codes",
+          "windows",
+          "groups",
+          "weights",
+          "rules_active",
+          "rules_upcoming",
+          "global_defaults"
+        ],
+        "title": "HealthStatsOut",
+        "type": "object"
+      },
+      "HealthUpcomingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "screen": {
+            "title": "Screen",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "date",
+          "screen",
+          "text"
+        ],
+        "title": "HealthUpcomingOut",
+        "type": "object"
+      },
+      "HealthVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "title": "HealthVersionOut",
+        "type": "object"
+      },
       "HistoryItemOut": {
         "additionalProperties": false,
         "properties": {
@@ -7746,6 +8485,704 @@
         "title": "MetaOut",
         "type": "object"
       },
+      "MgmtBankOut": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustments": {
+            "title": "Adjustments",
+            "type": "integer"
+          },
+          "adjustments_h": {
+            "title": "Adjustments H",
+            "type": "string"
+          },
+          "closed": {
+            "title": "Closed",
+            "type": "integer"
+          },
+          "closed_h": {
+            "title": "Closed H",
+            "type": "string"
+          },
+          "credited": {
+            "title": "Credited",
+            "type": "integer"
+          },
+          "credited_h": {
+            "title": "Credited H",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "open_h": {
+            "title": "Open H",
+            "type": "string"
+          },
+          "open_normalized": {
+            "title": "Open Normalized",
+            "type": "integer"
+          },
+          "paid": {
+            "title": "Paid",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open",
+          "open_normalized",
+          "adjustments",
+          "credited",
+          "paid",
+          "closed",
+          "open_h",
+          "closed_h",
+          "adjustments_h",
+          "credited_h"
+        ],
+        "title": "MgmtBankOut",
+        "type": "object"
+      },
+      "MgmtCutOut": {
+        "additionalProperties": false,
+        "properties": {
+          "paid_minutes": {
+            "title": "Paid Minutes",
+            "type": "integer"
+          },
+          "placed_day": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placed Day"
+          },
+          "source_day": {
+            "title": "Source Day",
+            "type": "string"
+          },
+          "taken_minutes": {
+            "title": "Taken Minutes",
+            "type": "integer"
+          },
+          "tariff": {
+            "title": "Tariff",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_day",
+          "placed_day",
+          "tariff",
+          "taken_minutes",
+          "paid_minutes"
+        ],
+        "title": "MgmtCutOut",
+        "type": "object"
+      },
+      "MgmtDayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "codes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Codes",
+            "type": "object"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "debt_minutes": {
+            "title": "Debt Minutes",
+            "type": "integer"
+          },
+          "fact_minutes": {
+            "title": "Fact Minutes",
+            "type": "integer"
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/FlagOut"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "overtime_minutes": {
+            "title": "Overtime Minutes",
+            "type": "integer"
+          },
+          "pays_overtime": {
+            "title": "Pays Overtime",
+            "type": "boolean"
+          },
+          "plan_equals_fact": {
+            "title": "Plan Equals Fact",
+            "type": "boolean"
+          },
+          "plan_hours": {
+            "title": "Plan Hours",
+            "type": "string"
+          },
+          "plan_minutes": {
+            "title": "Plan Minutes",
+            "type": "integer"
+          },
+          "timesheet_plan_hours": {
+            "title": "Timesheet Plan Hours",
+            "type": "string"
+          },
+          "timesheet_plan_minutes": {
+            "title": "Timesheet Plan Minutes",
+            "type": "integer"
+          },
+          "timesheet_value": {
+            "title": "Timesheet Value",
+            "type": "string"
+          },
+          "work_minutes": {
+            "title": "Work Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "timesheet_value",
+          "plan_minutes",
+          "plan_hours",
+          "timesheet_plan_minutes",
+          "timesheet_plan_hours",
+          "fact_minutes",
+          "work_minutes",
+          "overtime_minutes",
+          "debt_minutes",
+          "codes",
+          "pays_overtime",
+          "plan_equals_fact",
+          "flags"
+        ],
+        "title": "MgmtDayOut",
+        "type": "object"
+      },
+      "MgmtDebtOut": {
+        "additionalProperties": false,
+        "properties": {
+          "residual": {
+            "title": "Residual",
+            "type": "integer"
+          },
+          "residual_h": {
+            "title": "Residual H",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "total_h": {
+            "title": "Total H",
+            "type": "string"
+          }
+        },
+        "required": [
+          "total",
+          "residual",
+          "total_h",
+          "residual_h"
+        ],
+        "title": "MgmtDebtOut",
+        "type": "object"
+      },
+      "MgmtDeferredOut": {
+        "additionalProperties": false,
+        "properties": {
+          "hours": {
+            "title": "Hours",
+            "type": "string"
+          },
+          "minutes": {
+            "title": "Minutes",
+            "type": "integer"
+          },
+          "source_day": {
+            "title": "Source Day",
+            "type": "string"
+          },
+          "tariff": {
+            "title": "Tariff",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_day",
+          "tariff",
+          "minutes",
+          "hours"
+        ],
+        "title": "MgmtDeferredOut",
+        "type": "object"
+      },
+      "MgmtOut": {
+        "additionalProperties": false,
+        "properties": {
+          "can_close": {
+            "title": "Can Close",
+            "type": "boolean"
+          },
+          "can_recalculate": {
+            "title": "Can Recalculate",
+            "type": "boolean"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "half": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Half"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "now": {
+            "title": "Now",
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodOut"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MgmtRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "settings_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Settings Versions",
+            "type": "array"
+          },
+          "step_minutes": {
+            "title": "Step Minutes",
+            "type": "integer"
+          },
+          "tariffs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tariffs",
+            "type": "array"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "half",
+          "granularity",
+          "period",
+          "days",
+          "tariffs",
+          "step_minutes",
+          "settings_versions",
+          "now",
+          "can_close",
+          "can_recalculate",
+          "rows"
+        ],
+        "title": "MgmtOut",
+        "type": "object"
+      },
+      "MgmtReasonOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "MgmtReasonOut",
+        "type": "object"
+      },
+      "MgmtRowOut": {
+        "additionalProperties": false,
+        "description": "Строка сотрудника. Если расчёт отказал, заполнены только ``employee`` и ``error``.",
+        "properties": {
+          "bank": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MgmtBankOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "closed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed By"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MgmtCutOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MgmtDayOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "debt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MgmtDebtOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deferred": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MgmtDeferredOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferred"
+          },
+          "effective_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NullablePeriodOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "employee": {
+            "$ref": "#/components/schemas/EmployeeBriefOut"
+          },
+          "employment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NullablePeriodOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "exceptions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MgmtReasonOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exceptions"
+          },
+          "out_of_staff_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Out Of Staff Days"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MgmtStateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MgmtTraceOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace"
+          },
+          "ut": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ut"
+          },
+          "versions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versions"
+          }
+        },
+        "required": [
+          "employee",
+          "error",
+          "revision",
+          "closed_by",
+          "closed_at",
+          "versions",
+          "effective_period",
+          "employment",
+          "out_of_staff_days",
+          "days",
+          "ut",
+          "bank",
+          "debt",
+          "deferred",
+          "exceptions",
+          "cuts",
+          "totals",
+          "trace",
+          "state",
+          "source"
+        ],
+        "title": "MgmtRowOut",
+        "type": "object"
+      },
+      "MgmtStateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "can_close": {
+            "title": "Can Close",
+            "type": "boolean"
+          },
+          "can_recalculate": {
+            "title": "Can Recalculate",
+            "type": "boolean"
+          },
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "next_closed": {
+            "title": "Next Closed",
+            "type": "boolean"
+          },
+          "opening_bank_set": {
+            "title": "Opening Bank Set",
+            "type": "boolean"
+          },
+          "previous_closed": {
+            "title": "Previous Closed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "closed",
+          "previous_closed",
+          "next_closed",
+          "opening_bank_set",
+          "can_close",
+          "can_recalculate"
+        ],
+        "title": "MgmtStateOut",
+        "type": "object"
+      },
+      "MgmtTraceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "code",
+          "text"
+        ],
+        "title": "MgmtTraceOut",
+        "type": "object"
+      },
+      "ModifierAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ModifierAddedOut",
+        "type": "object"
+      },
       "ModifierIn": {
         "properties": {
           "date": {
@@ -7809,13 +9246,9 @@
         "title": "ModifierIn",
         "type": "object"
       },
-      "ModifierOut": {
+      "ModifierNameOut": {
         "additionalProperties": false,
         "properties": {
-          "hint": {
-            "title": "Hint",
-            "type": "string"
-          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -7823,18 +9256,13 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "value": {
-            "title": "Value"
           }
         },
         "required": [
           "name",
-          "title",
-          "hint",
-          "value"
+          "title"
         ],
-        "title": "ModifierOut",
+        "title": "ModifierNameOut",
         "type": "object"
       },
       "MoveIn": {
@@ -8208,6 +9636,39 @@
           "note"
         ],
         "title": "NoteIn",
+        "type": "object"
+      },
+      "NullablePeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "NullablePeriodOut",
         "type": "object"
       },
       "OccupantIn": {
@@ -8644,6 +10105,151 @@
         "title": "PeriodAction",
         "type": "object"
       },
+      "PeriodActionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "done": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodDoneOut"
+            },
+            "title": "Done",
+            "type": "array"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodRefusalOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodOut"
+          },
+          "skipped_closed": {
+            "title": "Skipped Closed",
+            "type": "integer"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "period",
+          "total",
+          "skipped_closed",
+          "stage",
+          "done",
+          "errors"
+        ],
+        "title": "PeriodActionOut",
+        "type": "object"
+      },
+      "PeriodClosedStateOut": {
+        "additionalProperties": false,
+        "description": "Закрыт ли период — по сотрудникам, и доступен ли пересчёт.",
+        "properties": {
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "closed_count": {
+            "title": "Closed Count",
+            "type": "integer"
+          },
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "last_closed_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Closed Start"
+          },
+          "not_closed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Closed",
+            "type": "array"
+          },
+          "recalc_available": {
+            "title": "Recalc Available",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "closed",
+          "last_closed_start",
+          "closed_count",
+          "total",
+          "complete",
+          "not_closed",
+          "recalc_available"
+        ],
+        "title": "PeriodClosedStateOut",
+        "type": "object"
+      },
+      "PeriodDoneOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bank_closed": {
+            "title": "Bank Closed",
+            "type": "number"
+          },
+          "deferred": {
+            "title": "Deferred",
+            "type": "integer"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "employee_id",
+          "bank_closed",
+          "deferred"
+        ],
+        "title": "PeriodDoneOut",
+        "type": "object"
+      },
       "PeriodOut": {
         "additionalProperties": false,
         "properties": {
@@ -8661,6 +10267,30 @@
           "end"
         ],
         "title": "PeriodOut",
+        "type": "object"
+      },
+      "PeriodRefusalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "name",
+          "error"
+        ],
+        "title": "PeriodRefusalOut",
         "type": "object"
       },
       "PhotoAddedOut": {
@@ -10297,6 +11927,196 @@
         "title": "ResetMonthOut",
         "type": "object"
       },
+      "ResolveEmployeeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "full_name",
+          "group"
+        ],
+        "title": "ResolveEmployeeOut",
+        "type": "object"
+      },
+      "ResolvePeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "granularity"
+        ],
+        "title": "ResolvePeriodOut",
+        "type": "object"
+      },
+      "ResolveVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ResolveVersionOut",
+        "type": "object"
+      },
+      "ResolvedRuleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "chain": {
+            "items": {
+              "$ref": "#/components/schemas/RuleChainOut"
+            },
+            "title": "Chain",
+            "type": "array"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RuleSourceOut"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "value",
+          "text",
+          "level",
+          "scope",
+          "source",
+          "chain"
+        ],
+        "title": "ResolvedRuleOut",
+        "type": "object"
+      },
+      "ResolvedRulesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/ResolveEmployeeOut"
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedRuleOut"
+            },
+            "title": "Modifiers",
+            "type": "array"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ResolvePeriodOut"
+          },
+          "plan_minutes": {
+            "title": "Plan Minutes",
+            "type": "integer"
+          },
+          "version": {
+            "$ref": "#/components/schemas/ResolveVersionOut"
+          }
+        },
+        "required": [
+          "employee",
+          "date",
+          "code",
+          "plan_minutes",
+          "period",
+          "version",
+          "modifiers"
+        ],
+        "title": "ResolvedRulesOut",
+        "type": "object"
+      },
       "RoleCreatedOut": {
         "additionalProperties": false,
         "properties": {
@@ -10421,6 +12241,30 @@
         "title": "RoleTitleOut",
         "type": "object"
       },
+      "RuleChainOut": {
+        "additionalProperties": false,
+        "properties": {
+          "form": {
+            "title": "Form",
+            "type": "string"
+          },
+          "hit": {
+            "title": "Hit",
+            "type": "boolean"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "level",
+          "form",
+          "hit"
+        ],
+        "title": "RuleChainOut",
+        "type": "object"
+      },
       "RuleIn": {
         "properties": {
           "key": {
@@ -10471,6 +12315,47 @@
         "title": "RuleItemOut",
         "type": "object"
       },
+      "RuleSourceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "author",
+          "note",
+          "text"
+        ],
+        "title": "RuleSourceOut",
+        "type": "object"
+      },
       "RulesSavedOut": {
         "additionalProperties": false,
         "properties": {
@@ -10489,6 +12374,25 @@
           "rules"
         ],
         "title": "RulesSavedOut",
+        "type": "object"
+      },
+      "ScopeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ScopeOut",
         "type": "object"
       },
       "SectionBriefOut": {
@@ -11313,6 +13217,112 @@
         "title": "SettingsOut",
         "type": "object"
       },
+      "SettingsPublishedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "applies_from": {
+            "title": "Applies From",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodClosedStateOut"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "applies_from",
+          "period"
+        ],
+        "title": "SettingsPublishedOut",
+        "type": "object"
+      },
+      "SettingsVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "title": "SettingsVersionOut",
+        "type": "object"
+      },
+      "ShiftArchivedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/ShiftTypeOut"
+          }
+        },
+        "required": [
+          "ok",
+          "archived",
+          "shift"
+        ],
+        "title": "ShiftArchivedOut",
+        "type": "object"
+      },
       "ShiftIntervalIn": {
         "properties": {
           "end": {
@@ -11339,6 +13349,121 @@
           "end"
         ],
         "title": "ShiftIntervalIn",
+        "type": "object"
+      },
+      "ShiftRestoredOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/ShiftTypeOut"
+          }
+        },
+        "required": [
+          "ok",
+          "shift"
+        ],
+        "title": "ShiftRestoredOut",
+        "type": "object"
+      },
+      "ShiftRevisionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "counts_as_worked": {
+            "title": "Counts As Worked",
+            "type": "boolean"
+          },
+          "doc_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Type"
+          },
+          "end_time": {
+            "title": "End Time",
+            "type": "string"
+          },
+          "is_default_off": {
+            "title": "Is Default Off",
+            "type": "boolean"
+          },
+          "is_working": {
+            "title": "Is Working",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overnight": {
+            "title": "Overnight",
+            "type": "boolean"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid_from",
+          "code",
+          "name",
+          "kind",
+          "start_time",
+          "end_time",
+          "overnight",
+          "color",
+          "is_working",
+          "counts_as_worked",
+          "is_default_off",
+          "doc_type"
+        ],
+        "title": "ShiftRevisionOut",
+        "type": "object"
+      },
+      "ShiftRevisionsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/ShiftTypeOut"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/ShiftRevisionOut"
+            },
+            "title": "Revisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "current",
+          "revisions"
+        ],
+        "title": "ShiftRevisionsOut",
         "type": "object"
       },
       "ShiftTypeIn": {
@@ -11428,6 +13553,122 @@
           "name"
         ],
         "title": "ShiftTypeIn",
+        "type": "object"
+      },
+      "ShiftTypeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "counts_as_worked": {
+            "title": "Counts As Worked",
+            "type": "boolean"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "end_time": {
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_default_off": {
+            "title": "Is Default Off",
+            "type": "boolean"
+          },
+          "is_working": {
+            "title": "Is Working",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overnight": {
+            "title": "Overnight",
+            "type": "boolean"
+          },
+          "planned_hours": {
+            "title": "Planned Hours",
+            "type": "number"
+          },
+          "punch_in_allowed": {
+            "title": "Punch In Allowed",
+            "type": "boolean"
+          },
+          "punch_out_allowed": {
+            "title": "Punch Out Allowed",
+            "type": "boolean"
+          },
+          "revisions": {
+            "title": "Revisions",
+            "type": "integer"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "kind",
+          "start_time",
+          "end_time",
+          "overnight",
+          "color",
+          "sort_order",
+          "is_working",
+          "counts_as_worked",
+          "is_default_off",
+          "planned_hours",
+          "active",
+          "doc_type",
+          "punch_in_allowed",
+          "punch_out_allowed",
+          "archived",
+          "archived_at",
+          "revisions"
+        ],
+        "title": "ShiftTypeOut",
         "type": "object"
       },
       "SkippedGroupOut": {
@@ -12185,6 +14426,62 @@
         "title": "TabelRowOut",
         "type": "object"
       },
+      "TabelValueOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "end_hm": {
+            "title": "End Hm",
+            "type": "string"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "string"
+          },
+          "start_hm": {
+            "title": "Start Hm",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "code",
+          "hours",
+          "title",
+          "start_hm",
+          "end_hm"
+        ],
+        "title": "TabelValueOut",
+        "type": "object"
+      },
+      "TabelValuesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/TabelValueOut"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "TabelValuesOut",
+        "type": "object"
+      },
       "TakeIn": {
         "properties": {
           "ack_assigned": {
@@ -12811,6 +15108,24 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VipAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/VipPeriodOut"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "item"
+        ],
+        "title": "VipAddedOut",
+        "type": "object"
+      },
       "VipCodeArchiveIn": {
         "properties": {
           "archived": {
@@ -12863,6 +15178,24 @@
         "title": "VipCodeIn",
         "type": "object"
       },
+      "VipDeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "$ref": "#/components/schemas/VipPeriodOut"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "deleted"
+        ],
+        "title": "VipDeletedOut",
+        "type": "object"
+      },
       "VipIn": {
         "properties": {
           "employee_id": {
@@ -12889,6 +15222,60 @@
           "end_date"
         ],
         "title": "VipIn",
+        "type": "object"
+      },
+      "VipPeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "employee_full_name": {
+            "title": "Employee Full Name",
+            "type": "string"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "employee_name": {
+            "title": "Employee Name",
+            "type": "string"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "employee_id",
+          "employee_name",
+          "employee_full_name",
+          "start_date",
+          "end_date",
+          "days",
+          "note",
+          "author"
+        ],
+        "title": "VipPeriodOut",
         "type": "object"
       },
       "YetToComeOut": {
@@ -13385,6 +15772,34 @@
         "title": "TemplateOut",
         "type": "object"
       },
+      "app__modules__settings__interface__schemas__ModifierOut": {
+        "additionalProperties": false,
+        "properties": {
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "hint",
+          "value"
+        ],
+        "title": "ModifierOut",
+        "type": "object"
+      },
       "app__modules__stays__interface__coverage_api__DaysIn": {
         "properties": {
           "days": {
@@ -13684,7 +16099,7 @@
         "title": "StatusIn",
         "type": "object"
       },
-      "app__modules__timesheet__interface__doublepay__DaysIn": {
+      "app__modules__timesheet__application__doublepay_edit__DaysIn": {
         "properties": {
           "dates": {
             "default": "",
@@ -13741,7 +16156,7 @@
         "title": "DaysIn",
         "type": "object"
       },
-      "app__modules__timesheet__interface__engine_settings_api__SettingsIn": {
+      "app__modules__timesheet__application__engine_settings__SettingsIn": {
         "properties": {
           "base_version_id": {
             "anyOf": [
@@ -13775,6 +16190,107 @@
           "payload"
         ],
         "title": "SettingsIn",
+        "type": "object"
+      },
+      "app__modules__timesheet__interface__schemas__ModifierOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "employee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Id"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "title",
+          "value",
+          "employee_id",
+          "group",
+          "date",
+          "period_start",
+          "note",
+          "created_by"
+        ],
+        "title": "ModifierOut",
         "type": "object"
       }
     }
@@ -15860,7 +18376,7 @@
     },
     "/api/doublepay": {
       "get": {
-        "description": "Календарь двойных дней (за год или весь) + ВИП-периоды.",
+        "description": "Календарь двойных дней (за год или весь) и ВИП-периоды.",
         "operationId": "get_doublepay_api_doublepay_get",
         "parameters": [
           {
@@ -15884,7 +18400,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DoubleCalendarOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -15908,13 +18426,13 @@
     },
     "/api/doublepay/days": {
       "post": {
-        "description": "Добавить дни двойной оплаты: списком дат или периодом (можно с фильтром\nпо дням недели — например все субботы года для пятидневки).\nСуществующие даты обновляются (scope/примечание).",
+        "description": "Добавить дни двойной оплаты: списком дат или периодом с фильтром по дням недели.",
         "operationId": "add_days_api_doublepay_days_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__timesheet__interface__doublepay__DaysIn"
+                "$ref": "#/components/schemas/app__modules__timesheet__application__doublepay_edit__DaysIn"
               }
             }
           },
@@ -15924,7 +18442,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DoubleDaysAddedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -15964,7 +18484,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DoubleDayDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16004,7 +18526,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VipAddedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16044,7 +18568,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VipDeletedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16276,7 +18802,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BankAdjustedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16325,7 +18853,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BankNowOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16647,6 +19177,7 @@
     },
     "/api/engine-settings": {
       "get": {
+        "description": "Действующая на дату версия справочников и список последних версий.",
         "operationId": "get_settings_api_engine_settings_get",
         "parameters": [
           {
@@ -16671,7 +19202,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EngineSettingsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16693,12 +19226,13 @@
         ]
       },
       "put": {
+        "description": "Опубликовать новую версию справочников.",
         "operationId": "put_settings_api_engine_settings_put",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__timesheet__interface__engine_settings_api__SettingsIn"
+                "$ref": "#/components/schemas/app__modules__timesheet__application__engine_settings__SettingsIn"
               }
             }
           },
@@ -16708,7 +19242,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsPublishedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16732,7 +19268,7 @@
     },
     "/api/engine-settings/health": {
       "get": {
-        "description": "Здоровье конфигурации + паспорт объекта для экрана «Обзор».\n\nДва слоя: (1) доменные проверки уровня 1 на payload действующей версии —\nте же CHK-*, что останавливают расчёт, но показанные ДО сохранения;\n(2) прикладные сверки (группы ↔ блоки, коды ↔ словарь смен, коды ↔ окна).",
+        "description": "Здоровье настроек и паспорт объекта для экрана «Обзор».",
         "operationId": "get_health_api_engine_settings_health_get",
         "parameters": [
           {
@@ -16757,7 +19293,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16806,7 +19344,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/app__modules__timesheet__interface__schemas__ModifierOut"
+                  },
+                  "title": "Response List Modifiers Api Engine Settings Modifiers Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -16843,7 +19387,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ModifierAddedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -16883,7 +19429,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -16907,7 +19455,7 @@
     },
     "/api/engine-settings/rules/resolve": {
       "get": {
-        "description": "«Проверитель»: какое значение правила подействовало для сотрудника в день и почему.\n\nПриоритет 1–7 считается ДОМЕНОМ (`resolve_modifier_trace`) — тем же кодом, что и\nрасчёт; здесь добавляются только объяснение источника и цепочка уровней.",
+        "description": "«Проверитель»: какое значение правила подействовало для сотрудника в день и почему.",
         "operationId": "resolve_rules_api_engine_settings_rules_resolve_get",
         "parameters": [
           {
@@ -16950,7 +19498,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedRulesOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17177,6 +19727,7 @@
     },
     "/api/mgmt": {
       "get": {
+        "description": "Управленческий табель периода: месяц либо половина месяца.",
         "operationId": "get_mgmt_api_mgmt_get",
         "parameters": [
           {
@@ -17244,7 +19795,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MgmtOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17268,6 +19821,7 @@
     },
     "/api/mgmt/close": {
       "post": {
+        "description": "Закрыть период у всего штата: сначала предпроверка каждого, затем запись.",
         "operationId": "close_api_mgmt_close_post",
         "requestBody": {
           "content": {
@@ -17283,7 +19837,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodActionOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17307,6 +19863,7 @@
     },
     "/api/mgmt/recalculate": {
       "post": {
+        "description": "Пересчитать последний закрытый период у всего штата.",
         "operationId": "recalc_api_mgmt_recalculate_post",
         "requestBody": {
           "content": {
@@ -17322,7 +19879,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodActionOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -17346,7 +19905,7 @@
     },
     "/api/mgmt/xlsx": {
       "get": {
-        "description": "УТ в Excel — форма application.exports.mgmt_sheet.",
+        "description": "Управленческий табель в Excel.",
         "operationId": "export_xlsx_api_mgmt_xlsx_get",
         "parameters": [
           {
@@ -17386,11 +19945,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -20835,7 +23389,7 @@
     },
     "/api/shift-types": {
       "get": {
-        "description": "Словарь смен. Архивные (удалённые) скрыты: в прошлом они продолжают считаться,\nно в новых ячейках недоступны. include_archived=true — показать и их.\nЧтение — любому вошедшему (нужно батлерам для легенды графика), правки — менеджерам.",
+        "description": "Словарь смен. Архивные скрыты; include_archived=true — показать и их.\nЧтение — любому вошедшему (легенда графика), правки — менеджерам.",
         "operationId": "list_shift_types_api_shift_types_get",
         "parameters": [
           {
@@ -20853,7 +23407,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShiftTypeOut"
+                  },
+                  "title": "Response List Shift Types Api Shift Types Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -20890,7 +23450,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftTypeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -20914,13 +23476,15 @@
     },
     "/api/shift-types/tabel-codes": {
       "get": {
-        "description": "Словарь кодов Табеля для редактора смены (T1).\n\nПоле «код в табеле» — выбор из существующих кодов CFG-DAY-CODES, а не свободный\nтекст: именно код определяет стандартное окно дня и значение Табеля при\nавтозаполнении из циклов. Чтение — любому вошедшему (как у списка смен):\nсправочник нужен и легенде, и редактору.",
+        "description": "Коды Табеля для редактора смены: поле «код в табеле» — выбор из существующих кодов.",
         "operationId": "shift_tabel_codes_api_shift_types_tabel_codes_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DayCodesOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -20934,7 +23498,7 @@
     },
     "/api/shift-types/{type_id}": {
       "delete": {
-        "description": "«Удаление» смены из словаря = АРХИВАЦИЯ: прошлые графики и табели продолжают\nсчитаться по ней, но в новых ячейках она недоступна.",
+        "description": "«Удаление» смены — архивация: прошлые графики продолжают считаться по ней.",
         "operationId": "delete_shift_type_api_shift_types__type_id__delete",
         "parameters": [
           {
@@ -20951,7 +23515,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftArchivedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -20973,7 +23539,7 @@
         ]
       },
       "put": {
-        "description": "Правка смены НЕ ломает прошлое: старые значения фиксируются ревизией,\nновые действуют с `effective_from` (по умолчанию — с сегодняшнего дня).\nОтработанные смены в прошлых месяцах считаются по прежним часам.",
+        "description": "Правка смены не ломает прошлое: прежние значения остаются ревизией, новые действуют\nс ``effective_from`` (по умолчанию — с сегодняшнего дня).",
         "operationId": "update_shift_type_api_shift_types__type_id__put",
         "parameters": [
           {
@@ -21000,7 +23566,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftTypeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -21041,7 +23609,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftRestoredOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -21082,7 +23652,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftRevisionsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -27070,13 +29642,15 @@
     },
     "/api/tabel-values": {
       "get": {
-        "description": "Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода\n(18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно.",
+        "description": "Значения рабочего дня для карточки сотрудника и диалогов перевода: код, часы и окно.",
         "operationId": "tabel_values_api_tabel_values_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TabelValuesOut"
+                }
               }
             },
             "description": "Successful Response"

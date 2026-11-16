@@ -6,7 +6,7 @@ import datetime as dt
 from sqlalchemy import select, text
 
 from app.core.audit import AuditLog
-from app.core.db import Base, Json, OrderedJson, plain_json
+from app.core.db import ORDER_KEY, Base, Json, OrderedJson, plain_json
 from app.core.time import now
 
 
@@ -79,18 +79,33 @@ def test_plain_json_copies_and_turns_dates_into_strings():
 
 
 def test_settings_document_keeps_key_order(db):
+    """Порядок ключей документа и его разделов хранится явно и возвращается при чтении."""
     from app.modules.timesheet.adapters.orm import EngineSettingsVersion
 
-    payload = {"я": 1, "b": 2, "ааа": 3, "a": 4}
+    payload = {"я": 1, "b": 2, "ааа": 3, "a": {"zz": 1, "ё": 2, "b": {"y": 1, "x": 2}}}
     ver = EngineSettingsVersion(valid_from=dt.date(2099, 1, 1), payload=payload, note="core_json_probe")
     db.add(ver)
     db.commit()
     try:
         db.expire_all()
-        assert list(db.get(EngineSettingsVersion, ver.id).payload) == ["я", "b", "ааа", "a"]
+        loaded = db.get(EngineSettingsVersion, ver.id).payload
+        assert list(loaded) == ["я", "b", "ааа", "a"] and ORDER_KEY not in loaded
+        assert list(loaded["a"]) == ["zz", "ё", "b"]
+        stored = db.execute(text("SELECT payload FROM engine_settings_versions WHERE id = :id"),
+                            {"id": ver.id}).scalar_one()
+        assert stored[ORDER_KEY][""] == ["я", "b", "ааа", "a"] and stored[ORDER_KEY]["a"] == ["zz", "ё", "b"]
+        assert loaded == payload
     finally:
         db.delete(db.get(EngineSettingsVersion, ver.id))
         db.commit()
+
+
+def test_ordered_json_reads_a_document_without_order():
+    """Документ, записанный без явного порядка, читается как есть."""
+    column = OrderedJson()
+    assert column.process_result_value({"b": 1, "a": 2}, None) == {"b": 1, "a": 2}
+    assert column.process_result_value(None, None) is None
+    assert column.process_bind_param([1, 2], None) == [1, 2]
 
 
 def test_reading_settings_does_not_change_stored_version(db):
@@ -106,15 +121,37 @@ def test_reading_settings_does_not_change_stored_version(db):
     assert not db.is_modified(version)
 
 
+def test_base_cycle_is_one_jsonb_row_with_group_order(db):
+    """Базовый цикл — одна строка со словарём блоков в JSONB; порядок блоков сохраняется."""
+    from app.modules.timesheet.adapters.orm import BaseScheduleConfig
+    from app.modules.timesheet.application.base_schedule import load_base_config, save_base_config
+
+    before = load_base_config(db)
+    try:
+        groups = {"Смена 2": {"value": "Я 12"}, "Смена 1": {"value": "Я 12"}, "Пятидневка": {"off_weekdays": [5, 6]}}
+        save_base_config(db, {"cycle": "3/3", "anchor": "2025-02-03", "groups": groups})
+        db.commit()
+        db.expire_all()
+        loaded = load_base_config(db)
+        assert (loaded["cycle"], loaded["anchor"]) == ("3/3", "2025-02-03")
+        assert list(loaded["groups"]) == ["Смена 2", "Смена 1", "Пятидневка"] and loaded["groups"] == groups
+        assert db.scalar(text("SELECT count(*) FROM base_schedule_config")) == 1
+        assert db.scalar(text("SELECT count(*) FROM settings WHERE key LIKE 'base\\_%' ESCAPE '\\'")) == 0
+        assert isinstance(db.get(BaseScheduleConfig, 1).groups, dict)
+    finally:
+        save_base_config(db, before)
+        db.commit()
+
+
 def test_schema_stores_json_as_jsonb(db):
-    """Каждая колонка Json — jsonb; документ настроек табеля — json; JSON в тексте не хранится."""
+    """Каждая колонка Json — jsonb; JSON в тексте и тип json не используются."""
     expected = {}
     for table in Base.metadata.tables.values():
         for column in table.columns:
             if isinstance(column.type, Json):
-                expected[f"{table.name}.{column.name}"] = "json" if isinstance(column.type, OrderedJson) else "jsonb"
-    assert len(expected) == 17
-    assert [c for c, kind in expected.items() if kind == "json"] == ["engine_settings_versions.payload"]
+                expected[f"{table.name}.{column.name}"] = "jsonb"
+    assert len(expected) == 18
+    assert {"engine_settings_versions.payload", "base_schedule_config.groups"} <= set(expected)
     actual = dict(db.execute(text(
         "SELECT table_name || '.' || column_name, data_type FROM information_schema.columns "
         "WHERE table_schema = 'public' AND data_type IN ('json', 'jsonb')")).all())

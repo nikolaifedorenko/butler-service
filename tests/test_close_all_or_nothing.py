@@ -55,7 +55,7 @@ def _fill(admin, eid: int) -> None:
 def staff(admin_client, db, monkeypatch):
     """Штат периода: Аккуратов и Порядков с Табелем, Пропусков — без Табеля."""
     from app.modules.people.application import Employee
-    from app.modules.timesheet.interface import mgmt_api
+    from app.modules.timesheet.application import mgmt_screen
 
     ids = {"ok1": _hire(admin_client, "Аккуратов Тест Закрытия", True),
            "ok2": _hire(admin_client, "Порядков Тест Закрытия", True),
@@ -65,7 +65,7 @@ def staff(admin_client, db, monkeypatch):
         return list(session.scalars(select(Employee).where(Employee.id.in_(ids.values()))
                                     .order_by(Employee.id)))
 
-    monkeypatch.setattr(mgmt_api, "period_employees", period_employees)
+    monkeypatch.setattr(mgmt_screen, "period_employees", period_employees)
     yield ids
     for eid in ids.values():          # удалённые не попадают в штат следующих тестов
         admin_client.post(f"/api/employees/{eid}/delete")
@@ -128,12 +128,12 @@ def test_employee_ids_are_rejected(admin_client):
 
 def test_settings_show_who_is_not_closed(admin_client, staff, monkeypatch, db):
     """Индикатор настроек — по сотрудникам: «закрыт у N из M» и кто не закрыт."""
-    from app.modules.timesheet.interface import engine_settings_api, mgmt_api
+    from app.modules.timesheet.application import engine_settings, mgmt_screen
     from tests.period_ops import period_action
 
-    monkeypatch.setattr(engine_settings_api, "period_employees", mgmt_api.period_employees)
+    monkeypatch.setattr(engine_settings, "period_employees", mgmt_screen.period_employees)
     assert period_action("close", staff["ok1"], PREV.year, PREV.month)["errors"] == []
-    state = engine_settings_api.period_state_of(db, PREV)
+    state = engine_settings.period_state_of(db, PREV)
     assert state["closed"] is True and state["complete"] is False
     assert (state["closed_count"], state["total"]) == (1, 3)
     assert state["not_closed"] == ["Порядков Тест Закрытия", "Пропусков Тест Закрытия"]
@@ -142,5 +142,5 @@ def test_settings_show_who_is_not_closed(admin_client, staff, monkeypatch, db):
     _fill(admin_client, staff["bad"])
     assert admin_client.post("/api/mgmt/close", json=BODY).json()["ok"] is True
     db.expire_all()
-    state = engine_settings_api.period_state_of(db, PREV)
+    state = engine_settings.period_state_of(db, PREV)
     assert state["complete"] is True and state["not_closed"] == [] and state["closed_count"] == 3

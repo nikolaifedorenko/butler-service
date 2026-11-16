@@ -1,4 +1,4 @@
-"""Модели ответов вкладок «График», «Отметки», «Факт» и «Табель».
+"""Модели ответов модуля «Учёт времени».
 
 Каждый ключ ответа присутствует всегда; значение, которого в данном случае нет, — ``None``.
 Модели запросов лежат рядом с операциями прикладного слоя.
@@ -628,3 +628,498 @@ class TabelResetOut(ApiModel):
     uncovered_total: int
     locked_skipped: list[int]
     manual_shifts_dropped: list[str]
+
+
+# ── Управленческий табель ────────────────────────────────────────────────────
+
+
+class MgmtDayOut(ApiModel):
+    day: str
+    timesheet_value: str
+    plan_minutes: int                      # расчётный план — длина окна
+    plan_hours: str
+    timesheet_plan_minutes: int            # информационный план строки Табеля
+    timesheet_plan_hours: str
+    fact_minutes: int
+    work_minutes: int
+    overtime_minutes: int
+    debt_minutes: int
+    codes: dict[str, int]
+    pays_overtime: bool
+    plan_equals_fact: bool
+    flags: list[FlagOut]
+
+
+class MgmtBankOut(ApiModel):
+    open: int
+    open_normalized: int
+    adjustments: int
+    credited: int
+    paid: int
+    closed: int
+    open_h: str
+    closed_h: str
+    adjustments_h: str
+    credited_h: str
+
+
+class MgmtDebtOut(ApiModel):
+    total: int
+    residual: int
+    total_h: str
+    residual_h: str
+
+
+class MgmtDeferredOut(ApiModel):
+    source_day: str
+    tariff: str
+    minutes: int
+    hours: str
+
+
+class MgmtReasonOut(ApiModel):
+    code: str
+    text: str
+
+
+class MgmtCutOut(ApiModel):
+    source_day: str
+    placed_day: Optional[str]
+    tariff: str
+    taken_minutes: int
+    paid_minutes: int
+
+
+class MgmtTraceOut(ApiModel):
+    step: str
+    code: str
+    text: str
+
+
+class MgmtStateOut(ApiModel):
+    closed: bool
+    previous_closed: bool
+    next_closed: bool
+    opening_bank_set: bool
+    can_close: bool
+    can_recalculate: bool
+
+
+class NullablePeriodOut(ApiModel):
+    start: Optional[str]
+    end: Optional[str]
+
+
+class MgmtRowOut(ApiModel):
+    """Строка сотрудника. Если расчёт отказал, заполнены только ``employee`` и ``error``."""
+
+    employee: EmployeeBriefOut
+    error: Optional[str]
+    revision: Optional[int]                # сведения о закрытии — только у закрытого периода
+    closed_by: Optional[str]
+    closed_at: Optional[str]
+    versions: Optional[list[str]]
+    effective_period: Optional[NullablePeriodOut]
+    employment: Optional[NullablePeriodOut]
+    out_of_staff_days: Optional[list[str]]
+    days: Optional[list[MgmtDayOut]]
+    ut: Optional[dict[str, dict[str, int]]]     # дата → код УТ → минуты
+    bank: Optional[MgmtBankOut]
+    debt: Optional[MgmtDebtOut]
+    deferred: Optional[list[MgmtDeferredOut]]
+    exceptions: Optional[list[MgmtReasonOut]]
+    cuts: Optional[list[MgmtCutOut]]
+    totals: Optional[dict[str, int]]
+    trace: Optional[list[MgmtTraceOut]]
+    state: Optional[MgmtStateOut]
+    source: Optional[str]                  # saved — сохранённый результат, view — живой расчёт
+
+
+class MgmtOut(ApiModel):
+    year: int
+    month: int
+    half: Optional[int]
+    granularity: str
+    period: PeriodOut
+    days: list[str]
+    tariffs: list[str]
+    step_minutes: int
+    settings_versions: list[str]
+    now: str
+    can_close: bool
+    can_recalculate: bool
+    rows: list[MgmtRowOut]
+
+
+class PeriodDoneOut(ApiModel):
+    employee_id: int
+    bank_closed: float
+    deferred: int
+
+
+class PeriodRefusalOut(ApiModel):
+    employee_id: int
+    name: str
+    error: str
+
+
+class PeriodActionOut(ApiModel):
+    ok: bool
+    period: PeriodOut
+    total: int
+    skipped_closed: int
+    stage: str                             # check — остановились на предпроверке, save — записывали
+    done: list[PeriodDoneOut]
+    errors: list[PeriodRefusalOut]
+
+
+# ── банк часов ───────────────────────────────────────────────────────────────
+
+
+class BankAdjustmentOut(ApiModel):
+    id: int
+    hours: float
+    date: str
+    note: str
+    author: str
+    reason_code: str
+    created_at: str
+
+
+class BankAdjustedOut(ApiModel):
+    ok: bool
+    adjustment: BankAdjustmentOut
+    bank_now: float
+
+
+class BankNowOut(ApiModel):
+    ok: bool
+    bank_now: float
+
+
+# ── двойная оплата ───────────────────────────────────────────────────────────
+
+
+class DoubleDayOut(ApiModel):
+    id: int
+    date: str
+    day: int
+    month: int
+    year: int
+    weekday: str
+    is_weekend: bool
+    scope: str
+    scope_title: str
+    note: str
+
+
+class VipPeriodOut(ApiModel):
+    id: int
+    employee_id: int
+    employee_name: str
+    employee_full_name: str
+    start_date: str
+    end_date: str
+    days: int
+    note: str
+    author: str
+
+
+class ScopeOut(ApiModel):
+    id: str
+    title: str
+
+
+class DoubleCalendarOut(ApiModel):
+    days: list[DoubleDayOut]
+    vip: list[VipPeriodOut]
+    year: Optional[int]
+    scopes: list[ScopeOut]
+    reason_titles: dict[str, str]
+
+
+class DoubleDaysAddedOut(ApiModel):
+    ok: bool
+    added: int
+    updated: int
+    days: list[DoubleDayOut]
+
+
+class DoubleDayDeletedOut(ApiModel):
+    ok: bool
+    deleted: DoubleDayOut
+
+
+class VipAddedOut(ApiModel):
+    ok: bool
+    item: VipPeriodOut
+
+
+class VipDeletedOut(ApiModel):
+    ok: bool
+    deleted: VipPeriodOut
+
+
+# ── словарь смен ─────────────────────────────────────────────────────────────
+
+
+class TabelValueOut(ApiModel):
+    value: str
+    code: str
+    hours: str
+    title: str
+    start_hm: str
+    end_hm: str
+
+
+class TabelValuesOut(ApiModel):
+    values: list[TabelValueOut]
+
+
+class ShiftTypeOut(ApiModel):
+    id: int
+    code: str
+    name: str
+    kind: str
+    start_time: str
+    end_time: str
+    overnight: bool
+    color: str
+    sort_order: int
+    is_working: bool
+    counts_as_worked: bool
+    is_default_off: bool
+    planned_hours: float
+    active: bool
+    doc_type: str
+    punch_in_allowed: bool
+    punch_out_allowed: bool
+    archived: bool
+    archived_at: Optional[str]
+    revisions: int
+
+
+class DayCodeOut(ApiModel):
+    code: str
+    title: str
+    carries_hours: bool
+    accepts_ut: bool
+    counts_in_ut: bool
+    punch_in: bool
+    punch_out: bool
+    doc_type: str
+
+
+class DayCodesOut(ApiModel):
+    codes: list[DayCodeOut]
+
+
+class ShiftArchivedOut(ApiModel):
+    ok: bool
+    archived: bool
+    shift: ShiftTypeOut
+
+
+class ShiftRestoredOut(ApiModel):
+    ok: bool
+    shift: ShiftTypeOut
+
+
+class ShiftRevisionOut(ApiModel):
+    valid_from: str
+    code: str
+    name: str
+    kind: str
+    start_time: str
+    end_time: str
+    overnight: bool
+    color: str
+    is_working: bool
+    counts_as_worked: bool
+    is_default_off: bool
+    doc_type: Optional[str]
+
+
+class ShiftRevisionsOut(ApiModel):
+    current: ShiftTypeOut
+    revisions: list[ShiftRevisionOut]
+
+
+# ── настройки расчёта ────────────────────────────────────────────────────────
+
+
+class ActiveSettingsOut(ApiModel):
+    id: Optional[int]                      # None — версий ещё нет, показаны справочники по умолчанию
+    valid_from: Optional[str]
+    payload: JsonDict                      # документ справочников целиком
+
+
+class SettingsVersionOut(ApiModel):
+    id: int
+    valid_from: str
+    note: Optional[str]
+    created_by: Optional[str]
+    created_at: Optional[str]
+
+
+class ModifierNameOut(ApiModel):
+    name: str
+    title: str
+
+
+class EngineSettingsOut(ApiModel):
+    active: ActiveSettingsOut
+    latest_id: Optional[int]
+    versions: list[SettingsVersionOut]
+    modifier_names: list[ModifierNameOut]
+
+
+class PeriodClosedStateOut(ApiModel):
+    """Закрыт ли период — по сотрудникам, и доступен ли пересчёт."""
+
+    start: str
+    end: Optional[str]
+    closed: bool
+    last_closed_start: Optional[str]
+    closed_count: int
+    total: int
+    complete: bool
+    not_closed: list[str]
+    recalc_available: bool
+
+
+class SettingsPublishedOut(ApiModel):
+    ok: bool
+    id: int
+    applies_from: str                      # начало первого периода, который посчитается по версии
+    period: PeriodClosedStateOut
+
+
+class ModifierOut(ApiModel):
+    id: int
+    name: str
+    title: str
+    value: str
+    employee_id: Optional[int]
+    group: Optional[str]
+    date: Optional[str]
+    period_start: Optional[str]
+    note: Optional[str]
+    created_by: Optional[str]
+
+
+class ModifierAddedOut(ApiModel):
+    id: int
+
+
+class HealthCheckOut(ApiModel):
+    code: str
+    level: str                             # error | warn
+    screen: str                            # под-экран настроек, где это исправляется
+    text: str
+
+
+class HealthPeriodsOut(ApiModel):
+    granularity: str
+    current: PeriodOut
+    last_closed_start: Optional[str]
+    last_closed: Optional[PeriodClosedStateOut]
+
+
+class HealthVersionOut(ApiModel):
+    id: Optional[int]
+    valid_from: Optional[str]
+    note: Optional[str]
+    created_by: Optional[str]
+    created_at: str
+
+
+class HealthStatsOut(ApiModel):
+    tz: str
+    step_minutes: Optional[int]
+    period_granularity: str
+    late_limit_minutes: Optional[int]
+    day_limit_minutes: Optional[int]
+    codes: int
+    windows: int
+    groups: int
+    weights: int
+    rules_active: int
+    rules_upcoming: int
+    global_defaults: JsonDict
+
+
+class HealthUpcomingOut(ApiModel):
+    kind: str                              # version | rule
+    date: str
+    screen: str
+    text: str
+
+
+class HealthRecentOut(ApiModel):
+    ts: str
+    actor: Optional[str]
+    action: str
+    target: Optional[str]
+
+
+class HealthOut(ApiModel):
+    on: str
+    periods: HealthPeriodsOut
+    version: HealthVersionOut
+    stats: HealthStatsOut
+    checks: list[HealthCheckOut]
+    upcoming: list[HealthUpcomingOut]
+    recent: list[HealthRecentOut]
+
+
+class RuleSourceOut(ApiModel):
+    kind: str                              # rule | calendar | vip | static | global_default | code_column | none
+    id: Optional[int]
+    author: str
+    note: str
+    text: str
+
+
+class RuleChainOut(ApiModel):
+    level: int
+    form: str
+    hit: bool
+
+
+class ResolvedRuleOut(ApiModel):
+    name: str
+    title: str
+    value: Optional[str]
+    text: str
+    level: Optional[int]
+    scope: Optional[str]
+    source: RuleSourceOut
+    chain: list[RuleChainOut]
+
+
+class ResolveEmployeeOut(ApiModel):
+    id: int
+    name: str
+    full_name: str
+    group: str
+
+
+class ResolvePeriodOut(ApiModel):
+    start: str
+    end: str
+    granularity: str
+
+
+class ResolveVersionOut(ApiModel):
+    id: Optional[int]
+
+
+class ResolvedRulesOut(ApiModel):
+    employee: ResolveEmployeeOut
+    date: str
+    code: str
+    plan_minutes: int
+    period: ResolvePeriodOut
+    version: ResolveVersionOut
+    modifiers: list[ResolvedRuleOut]
