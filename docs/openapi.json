@@ -98,6 +98,30 @@
         "title": "AnswerIn",
         "type": "object"
       },
+      "AnswerOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "answer",
+          "comment"
+        ],
+        "title": "AnswerOut",
+        "type": "object"
+      },
       "ArchiveIn": {
         "properties": {
           "archived": {
@@ -784,6 +808,141 @@
         "title": "BulkIn",
         "type": "object"
       },
+      "CarCheckOut": {
+        "additionalProperties": false,
+        "description": "Отметка кара в обходе смены.",
+        "properties": {
+          "canopy": {
+            "title": "Canopy",
+            "type": "boolean"
+          },
+          "car_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Car Id"
+          },
+          "car_number": {
+            "title": "Car Number",
+            "type": "string"
+          },
+          "charge": {
+            "title": "Charge",
+            "type": "string"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "checker_name": {
+            "title": "Checker Name",
+            "type": "string"
+          },
+          "clean": {
+            "title": "Clean",
+            "type": "boolean"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "found": {
+            "title": "Found",
+            "type": "boolean"
+          },
+          "found_location": {
+            "title": "Found Location",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "moved": {
+            "title": "Moved",
+            "type": "boolean"
+          },
+          "on_charge": {
+            "title": "On Charge",
+            "type": "boolean"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoOut"
+            },
+            "title": "Photos",
+            "type": "array"
+          },
+          "taken_after_check": {
+            "title": "Taken After Check",
+            "type": "boolean"
+          },
+          "trash": {
+            "title": "Trash",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "car_id",
+          "car_number",
+          "checker_name",
+          "checked_at",
+          "found",
+          "location",
+          "found_location",
+          "moved",
+          "canopy",
+          "charge",
+          "on_charge",
+          "condition",
+          "trash",
+          "clean",
+          "comment",
+          "taken_after_check",
+          "photos"
+        ],
+        "title": "CarCheckOut",
+        "type": "object"
+      },
+      "CarCheckedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/NightCarCheckSavedOut"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "check"
+        ],
+        "title": "CarCheckedOut",
+        "type": "object"
+      },
       "CarEditIn": {
         "properties": {
           "active": {
@@ -1012,6 +1171,25 @@
         "title": "CarOut",
         "type": "object"
       },
+      "CarsFinishedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cars_step_done": {
+            "title": "Cars Step Done",
+            "type": "boolean"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cars_step_done"
+        ],
+        "title": "CarsFinishedOut",
+        "type": "object"
+      },
       "CellIn": {
         "properties": {
           "code": {
@@ -1062,6 +1240,195 @@
           "new_password"
         ],
         "title": "ChangePasswordIn",
+        "type": "object"
+      },
+      "CheckItemOut": {
+        "additionalProperties": false,
+        "description": "Пункт чек-листа объекта в отчёте смены.",
+        "properties": {
+          "answer": {
+            "enum": [
+              "",
+              "ok",
+              "bad"
+            ],
+            "title": "Answer",
+            "type": "string"
+          },
+          "answer_title": {
+            "title": "Answer Title",
+            "type": "string"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "answered_by_name": {
+            "title": "Answered By Name",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "text",
+          "sort_order",
+          "service_id",
+          "service_name",
+          "answer",
+          "answer_title",
+          "comment",
+          "answered_by_name",
+          "answered_at"
+        ],
+        "title": "CheckItemOut",
+        "type": "object"
+      },
+      "CheckItemPhotosOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "enum": [
+              "",
+              "ok",
+              "bad"
+            ],
+            "title": "Answer",
+            "type": "string"
+          },
+          "answer_title": {
+            "title": "Answer Title",
+            "type": "string"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "answered_by_name": {
+            "title": "Answered By Name",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoOut"
+            },
+            "title": "Photos",
+            "type": "array"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "text",
+          "sort_order",
+          "service_id",
+          "service_name",
+          "answer",
+          "answer_title",
+          "comment",
+          "answered_by_name",
+          "answered_at",
+          "photos"
+        ],
+        "title": "CheckItemPhotosOut",
         "type": "object"
       },
       "ChecklistAreaOut": {
@@ -1495,6 +1862,367 @@
         "title": "DayIn",
         "type": "object"
       },
+      "DefectCountsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bad": {
+            "title": "Bad",
+            "type": "integer"
+          },
+          "dispatched": {
+            "title": "Dispatched",
+            "type": "integer"
+          },
+          "fixed_after_dispatch": {
+            "title": "Fixed After Dispatch",
+            "type": "integer"
+          },
+          "sendable": {
+            "title": "Sendable",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unchecked": {
+            "title": "Unchecked",
+            "type": "integer"
+          },
+          "without_service": {
+            "title": "Without Service",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "bad",
+          "unchecked",
+          "fixed_after_dispatch",
+          "sendable",
+          "dispatched",
+          "without_service"
+        ],
+        "title": "DefectCountsOut",
+        "type": "object"
+      },
+      "DefectGroupOut": {
+        "additionalProperties": false,
+        "description": "Позиции одной службы и готовность отправить их ей.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "chat_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/GroupCountsOut"
+          },
+          "defects": {
+            "items": {
+              "$ref": "#/components/schemas/DefectOut"
+            },
+            "title": "Defects",
+            "type": "array"
+          },
+          "email_copy": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Email Copy",
+            "type": "array"
+          },
+          "email_to": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Email To",
+            "type": "array"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "sendable_count": {
+            "title": "Sendable Count",
+            "type": "integer"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "use_email": {
+            "title": "Use Email",
+            "type": "boolean"
+          },
+          "use_telegram": {
+            "title": "Use Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "service_id",
+          "service_name",
+          "sort_order",
+          "active",
+          "use_telegram",
+          "use_email",
+          "chat_ids",
+          "email_to",
+          "email_copy",
+          "note",
+          "problems",
+          "defects",
+          "sendable_count",
+          "counts",
+          "ready",
+          "channels"
+        ],
+        "title": "DefectGroupOut",
+        "type": "object"
+      },
+      "DefectOut": {
+        "additionalProperties": false,
+        "description": "Позиция к отправке службе: «не ОК», «не проверено» или исправленное после отправки.",
+        "properties": {
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "answered_by_name": {
+            "title": "Answered By Name",
+            "type": "string"
+          },
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "area_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Id"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "dispatch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatch Id"
+          },
+          "dispatched": {
+            "title": "Dispatched",
+            "type": "boolean"
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "fixed_after_dispatch": {
+            "title": "Fixed After Dispatch",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "bad",
+              "unchecked",
+              "fixed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "kind_title": {
+            "title": "Kind Title",
+            "type": "string"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoOut"
+            },
+            "title": "Media",
+            "type": "array"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "integer"
+          },
+          "sendable": {
+            "title": "Sendable",
+            "type": "boolean"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "kind_title",
+          "section_id",
+          "area_id",
+          "area",
+          "zone",
+          "text",
+          "comment",
+          "service_id",
+          "service_name",
+          "answered_by_name",
+          "answered_at",
+          "media",
+          "dispatched",
+          "dispatched_at",
+          "dispatch_id",
+          "fixed_after_dispatch",
+          "sendable"
+        ],
+        "title": "DefectOut",
+        "type": "object"
+      },
+      "DefectsOut": {
+        "additionalProperties": false,
+        "description": "Экран «Недостатки смены».",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/DefectCountsOut"
+          },
+          "dispatches": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchOut"
+            },
+            "title": "Dispatches",
+            "type": "array"
+          },
+          "duty": {
+            "title": "Duty",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/DefectGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DefectOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ReportShortOut"
+          },
+          "template": {
+            "$ref": "#/components/schemas/TemplateOut"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/TransportOut"
+          }
+        },
+        "required": [
+          "report",
+          "duty",
+          "counts",
+          "items",
+          "groups",
+          "dispatches",
+          "template",
+          "transport"
+        ],
+        "title": "DefectsOut",
+        "type": "object"
+      },
       "DepartmentIn": {
         "properties": {
           "name": {
@@ -1509,7 +2237,7 @@
         "type": "object"
       },
       "DispatchIn": {
-        "description": "Ручная отправка недостатков службам (этап 5).\n\nmode=\"all\" — всё, что ещё не отправлено; \"selected\" — только item_ids.\nservice_ids сужает отправку до выбранных служб (кнопка «Отправить службе»).\nАвтоотправки нет: ни закрытие объекта, ни закрытие смены ничего не шлют.",
+        "description": "Отправка недостатков службам — только вручную.\n\nmode=\"all\" — всё, что ещё не отправлено; \"selected\" — только item_ids.\nservice_ids сужает отправку до выбранных служб.",
         "properties": {
           "item_ids": {
             "default": [],
@@ -1534,6 +2262,213 @@
           }
         },
         "title": "DispatchIn",
+        "type": "object"
+      },
+      "DispatchOut": {
+        "additionalProperties": false,
+        "description": "Строка журнала отправок: одно сообщение одному получателю по одному каналу.",
+        "properties": {
+          "actor_name": {
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_title": {
+            "title": "Channel Title",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_count": {
+            "title": "Items Count",
+            "type": "integer"
+          },
+          "media_count": {
+            "title": "Media Count",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "recipient_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Id"
+          },
+          "recipient_name": {
+            "title": "Recipient Name",
+            "type": "string"
+          },
+          "ref_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts"
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "ref_id",
+          "ts",
+          "actor_name",
+          "recipient_id",
+          "recipient_name",
+          "channel",
+          "channel_title",
+          "target",
+          "subject",
+          "message",
+          "items",
+          "items_count",
+          "media_count",
+          "status",
+          "status_title",
+          "error",
+          "external_id",
+          "attempts",
+          "can_retry"
+        ],
+        "title": "DispatchOut",
+        "type": "object"
+      },
+      "DispatchResultOut": {
+        "additionalProperties": false,
+        "properties": {
+          "dispatches": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchOut"
+            },
+            "title": "Dispatches",
+            "type": "array"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "marked": {
+            "title": "Marked",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "integer"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedGroupOut"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sent",
+          "failed",
+          "queued",
+          "marked",
+          "dispatches",
+          "skipped"
+        ],
+        "title": "DispatchResultOut",
+        "type": "object"
+      },
+      "DispatchesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "dispatches": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchOut"
+            },
+            "title": "Dispatches",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dispatches"
+        ],
+        "title": "DispatchesOut",
         "type": "object"
       },
       "DocIn": {
@@ -2199,6 +3134,45 @@
         "title": "GrantsIn",
         "type": "object"
       },
+      "GroupCountsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bad": {
+            "title": "Bad",
+            "type": "integer"
+          },
+          "dispatched": {
+            "title": "Dispatched",
+            "type": "integer"
+          },
+          "fixed_after_dispatch": {
+            "title": "Fixed After Dispatch",
+            "type": "integer"
+          },
+          "sendable": {
+            "title": "Sendable",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unchecked": {
+            "title": "Unchecked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "sendable",
+          "bad",
+          "unchecked",
+          "dispatched",
+          "fixed_after_dispatch"
+        ],
+        "title": "GroupCountsOut",
+        "type": "object"
+      },
       "GuestIn": {
         "properties": {
           "birth_date": {
@@ -2591,6 +3565,48 @@
         "title": "InterceptionAck",
         "type": "object"
       },
+      "InterceptionOut": {
+        "additionalProperties": false,
+        "description": "Перехват объекта: один батлер взял объект, который вёл другой.",
+        "properties": {
+          "area_name": {
+            "title": "Area Name",
+            "type": "string"
+          },
+          "from_user_name": {
+            "title": "From User Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "to_user_name": {
+            "title": "To User Name",
+            "type": "string"
+          },
+          "ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "area_name",
+          "from_user_name",
+          "to_user_name"
+        ],
+        "title": "InterceptionOut",
+        "type": "object"
+      },
       "ItemAddedOut": {
         "additionalProperties": false,
         "properties": {
@@ -2608,6 +3624,24 @@
           "added_to_open_sections"
         ],
         "title": "ItemAddedOut",
+        "type": "object"
+      },
+      "ItemAnsweredOut": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/AnswerOut"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "ItemAnsweredOut",
         "type": "object"
       },
       "ItemIn": {
@@ -2643,6 +3677,24 @@
           "text"
         ],
         "title": "ItemIn",
+        "type": "object"
+      },
+      "ItemPhotoOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "photo": {
+            "$ref": "#/components/schemas/PhotoAddedOut"
+          }
+        },
+        "required": [
+          "photo"
+        ],
+        "title": "ItemPhotoOut",
         "type": "object"
       },
       "JoinIn": {
@@ -3216,6 +4268,214 @@
         "title": "NewGuestIn",
         "type": "object"
       },
+      "NightCarCheckOut": {
+        "additionalProperties": false,
+        "description": "Отметка кара в ночном обходе.",
+        "properties": {
+          "canopy": {
+            "title": "Canopy",
+            "type": "boolean"
+          },
+          "charge": {
+            "title": "Charge",
+            "type": "string"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "checker_name": {
+            "title": "Checker Name",
+            "type": "string"
+          },
+          "clean": {
+            "title": "Clean",
+            "type": "boolean"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "found": {
+            "title": "Found",
+            "type": "boolean"
+          },
+          "found_location": {
+            "title": "Found Location",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "moved": {
+            "title": "Moved",
+            "type": "boolean"
+          },
+          "on_charge": {
+            "title": "On Charge",
+            "type": "boolean"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoOut"
+            },
+            "title": "Photos",
+            "type": "array"
+          },
+          "taken_after_check": {
+            "title": "Taken After Check",
+            "type": "boolean"
+          },
+          "trash": {
+            "title": "Trash",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "found",
+          "location",
+          "found_location",
+          "moved",
+          "canopy",
+          "charge",
+          "on_charge",
+          "condition",
+          "trash",
+          "clean",
+          "comment",
+          "checker_name",
+          "checked_at",
+          "taken_after_check",
+          "photos"
+        ],
+        "title": "NightCarCheckOut",
+        "type": "object"
+      },
+      "NightCarCheckSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "found": {
+            "title": "Found",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "found",
+          "checked_at"
+        ],
+        "title": "NightCarCheckSavedOut",
+        "type": "object"
+      },
+      "NightCarEntryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "car": {
+            "$ref": "#/components/schemas/CarOut"
+          },
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NightCarCheckOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "car",
+          "checked",
+          "check"
+        ],
+        "title": "NightCarEntryOut",
+        "type": "object"
+      },
+      "NightCarsStateOut": {
+        "additionalProperties": false,
+        "description": "Шаг «Проверка электрокаров» за смену.",
+        "properties": {
+          "cars_step_done": {
+            "title": "Cars Step Done",
+            "type": "boolean"
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "list": {
+            "items": {
+              "$ref": "#/components/schemas/NightCarEntryOut"
+            },
+            "title": "List",
+            "type": "array"
+          },
+          "problems": {
+            "title": "Problems",
+            "type": "integer"
+          },
+          "report_id": {
+            "title": "Report Id",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unchecked": {
+            "title": "Unchecked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "report_id",
+          "cars_step_done",
+          "total",
+          "checked",
+          "unchecked",
+          "problems",
+          "list"
+        ],
+        "title": "NightCarsStateOut",
+        "type": "object"
+      },
       "NightsIn": {
         "properties": {
           "category_id": {
@@ -3635,8 +4895,33 @@
         "title": "PeriodAction",
         "type": "object"
       },
+      "PhotoAddedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "media_type"
+        ],
+        "title": "PhotoAddedOut",
+        "type": "object"
+      },
       "PhotoOut": {
         "additionalProperties": false,
+        "description": "Фото или видео, приложенное к записи (``core.media.photos_of``).",
         "properties": {
           "created_at": {
             "anyOf": [
@@ -3738,6 +5023,114 @@
           "prefs"
         ],
         "title": "PrefsIn",
+        "type": "object"
+      },
+      "PreviewMessageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "defects": {
+            "title": "Defects",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_id",
+          "service_name",
+          "channels",
+          "problems",
+          "defects",
+          "message"
+        ],
+        "title": "PreviewMessageOut",
+        "type": "object"
+      },
+      "PreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewMessageOut"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "messages",
+          "domain"
+        ],
+        "title": "PreviewOut",
+        "type": "object"
+      },
+      "ProgressOut": {
+        "additionalProperties": false,
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "free": {
+            "title": "Free",
+            "type": "integer"
+          },
+          "taken": {
+            "title": "Taken",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "done",
+          "taken",
+          "free"
+        ],
+        "title": "ProgressOut",
         "type": "object"
       },
       "PublishIn": {
@@ -4013,6 +5406,320 @@
         "title": "RenderIn",
         "type": "object"
       },
+      "ReportBriefOut": {
+        "additionalProperties": false,
+        "description": "Отчёт в архиве: без пунктов объектов.",
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/SectionBriefOut"
+            },
+            "title": "Areas",
+            "type": "array"
+          },
+          "cars_step_done": {
+            "title": "Cars Step Done",
+            "type": "boolean"
+          },
+          "close_reason": {
+            "title": "Close Reason",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "deadline": {
+            "title": "Deadline",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ProgressOut"
+          },
+          "readonly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "reopened_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reopened At"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "result_title": {
+            "title": "Result Title",
+            "type": "string"
+          },
+          "shift_label": {
+            "title": "Shift Label",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneProgressOut"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "shift_label",
+          "status",
+          "result",
+          "result_title",
+          "closed_at",
+          "close_reason",
+          "reopened_at",
+          "deadline",
+          "readonly",
+          "cars_step_done",
+          "progress",
+          "zones",
+          "areas"
+        ],
+        "title": "ReportBriefOut",
+        "type": "object"
+      },
+      "ReportChangedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ReportOut"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "title": "ReportChangedOut",
+        "type": "object"
+      },
+      "ReportEnvelopeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/ReportOut"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "title": "ReportEnvelopeOut",
+        "type": "object"
+      },
+      "ReportOut": {
+        "additionalProperties": false,
+        "description": "Отчёт смены целиком.",
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/SectionPhotosOut"
+            },
+            "title": "Areas",
+            "type": "array"
+          },
+          "car_checks": {
+            "items": {
+              "$ref": "#/components/schemas/CarCheckOut"
+            },
+            "title": "Car Checks",
+            "type": "array"
+          },
+          "cars_step_done": {
+            "title": "Cars Step Done",
+            "type": "boolean"
+          },
+          "close_reason": {
+            "title": "Close Reason",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "deadline": {
+            "title": "Deadline",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "interceptions": {
+            "items": {
+              "$ref": "#/components/schemas/InterceptionOut"
+            },
+            "title": "Interceptions",
+            "type": "array"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ProgressOut"
+          },
+          "readonly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "reopened_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reopened At"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "result_title": {
+            "title": "Result Title",
+            "type": "string"
+          },
+          "shift_label": {
+            "title": "Shift Label",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneProgressOut"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "shift_label",
+          "status",
+          "result",
+          "result_title",
+          "closed_at",
+          "close_reason",
+          "reopened_at",
+          "deadline",
+          "readonly",
+          "cars_step_done",
+          "progress",
+          "zones",
+          "areas",
+          "car_checks",
+          "interceptions"
+        ],
+        "title": "ReportOut",
+        "type": "object"
+      },
+      "ReportShortOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "readonly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "shift_label": {
+            "title": "Shift Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "shift_label",
+          "status",
+          "readonly"
+        ],
+        "title": "ReportShortOut",
+        "type": "object"
+      },
+      "ReportsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/ReportBriefOut"
+            },
+            "title": "Reports",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reports"
+        ],
+        "title": "ReportsOut",
+        "type": "object"
+      },
       "ReservationIn": {
         "properties": {
           "category_id": {
@@ -4281,6 +5988,478 @@
           "value"
         ],
         "title": "RuleIn",
+        "type": "object"
+      },
+      "SectionBriefOut": {
+        "additionalProperties": false,
+        "description": "Объект обхода в отчёте смены; шаг «Проверка электрокаров» — объект с is_cars.",
+        "properties": {
+          "area_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Id"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_cars": {
+            "title": "Is Cars",
+            "type": "boolean"
+          },
+          "items_answered": {
+            "title": "Items Answered",
+            "type": "integer"
+          },
+          "items_bad": {
+            "title": "Items Bad",
+            "type": "integer"
+          },
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "items_unanswered": {
+            "title": "Items Unanswered",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "free",
+              "taken",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "taken_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken By"
+          },
+          "taken_by_name": {
+            "title": "Taken By Name",
+            "type": "string"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
+          },
+          "zone_name": {
+            "title": "Zone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "area_id",
+          "name",
+          "category",
+          "zone_id",
+          "zone_name",
+          "is_cars",
+          "status",
+          "status_title",
+          "taken_by",
+          "taken_by_name",
+          "taken_at",
+          "closed_at",
+          "items_total",
+          "items_answered",
+          "items_bad",
+          "items_unanswered"
+        ],
+        "title": "SectionBriefOut",
+        "type": "object"
+      },
+      "SectionChangedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "section": {
+            "$ref": "#/components/schemas/SectionOut"
+          }
+        },
+        "required": [
+          "section"
+        ],
+        "title": "SectionChangedOut",
+        "type": "object"
+      },
+      "SectionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "area_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Id"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_cars": {
+            "title": "Is Cars",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_answered": {
+            "title": "Items Answered",
+            "type": "integer"
+          },
+          "items_bad": {
+            "title": "Items Bad",
+            "type": "integer"
+          },
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "items_unanswered": {
+            "title": "Items Unanswered",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "free",
+              "taken",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "taken_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken By"
+          },
+          "taken_by_name": {
+            "title": "Taken By Name",
+            "type": "string"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
+          },
+          "zone_name": {
+            "title": "Zone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "area_id",
+          "name",
+          "category",
+          "zone_id",
+          "zone_name",
+          "is_cars",
+          "status",
+          "status_title",
+          "taken_by",
+          "taken_by_name",
+          "taken_at",
+          "closed_at",
+          "items_total",
+          "items_answered",
+          "items_bad",
+          "items_unanswered",
+          "items"
+        ],
+        "title": "SectionOut",
+        "type": "object"
+      },
+      "SectionPhotosOut": {
+        "additionalProperties": false,
+        "properties": {
+          "area_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Id"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_cars": {
+            "title": "Is Cars",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckItemPhotosOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_answered": {
+            "title": "Items Answered",
+            "type": "integer"
+          },
+          "items_bad": {
+            "title": "Items Bad",
+            "type": "integer"
+          },
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "items_unanswered": {
+            "title": "Items Unanswered",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "free",
+              "taken",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "taken_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken By"
+          },
+          "taken_by_name": {
+            "title": "Taken By Name",
+            "type": "string"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
+          },
+          "zone_name": {
+            "title": "Zone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "area_id",
+          "name",
+          "category",
+          "zone_id",
+          "zone_name",
+          "is_cars",
+          "status",
+          "status_title",
+          "taken_by",
+          "taken_by_name",
+          "taken_at",
+          "closed_at",
+          "items_total",
+          "items_answered",
+          "items_bad",
+          "items_unanswered",
+          "items"
+        ],
+        "title": "SectionPhotosOut",
+        "type": "object"
+      },
+      "SectionTakenOut": {
+        "additionalProperties": false,
+        "properties": {
+          "already": {
+            "title": "Already",
+            "type": "boolean"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "section": {
+            "$ref": "#/components/schemas/SectionOut"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "section",
+          "warning",
+          "already"
+        ],
+        "title": "SectionTakenOut",
         "type": "object"
       },
       "SectionsRefreshedOut": {
@@ -4689,6 +6868,45 @@
         "title": "ShiftTypeIn",
         "type": "object"
       },
+      "SkippedGroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "defects": {
+            "title": "Defects",
+            "type": "integer"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_id",
+          "service_name",
+          "defects",
+          "problems"
+        ],
+        "title": "SkippedGroupOut",
+        "type": "object"
+      },
       "SpecialDate": {
         "properties": {
           "date": {
@@ -4894,6 +7112,73 @@
         "title": "TemplateItemOut",
         "type": "object"
       },
+      "TemplateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "placeholders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Placeholders",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "placeholders"
+        ],
+        "title": "TemplateOut",
+        "type": "object"
+      },
+      "TodayPendingOut": {
+        "additionalProperties": false,
+        "description": "Отчёта текущей смены ещё нет.",
+        "properties": {
+          "available": {
+            "const": false,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "shift_date": {
+            "title": "Shift Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "shift_date",
+          "note"
+        ],
+        "title": "TodayPendingOut",
+        "type": "object"
+      },
+      "TodayReportOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "const": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ReportOut"
+          }
+        },
+        "required": [
+          "available",
+          "report"
+        ],
+        "title": "TodayReportOut",
+        "type": "object"
+      },
       "TransferIn": {
         "properties": {
           "category_id": {
@@ -4910,6 +7195,25 @@
           "category_id"
         ],
         "title": "TransferIn",
+        "type": "object"
+      },
+      "TransportOut": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "boolean"
+          },
+          "telegram": {
+            "title": "Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "telegram",
+          "email"
+        ],
+        "title": "TransportOut",
         "type": "object"
       },
       "ValidationError": {
@@ -5251,6 +7555,72 @@
           "created_at"
         ],
         "title": "ZoneOut",
+        "type": "object"
+      },
+      "ZoneProgressOut": {
+        "additionalProperties": false,
+        "properties": {
+          "areas_total": {
+            "title": "Areas Total",
+            "type": "integer"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "free": {
+            "title": "Free",
+            "type": "integer"
+          },
+          "items_answered": {
+            "title": "Items Answered",
+            "type": "integer"
+          },
+          "items_bad": {
+            "title": "Items Bad",
+            "type": "integer"
+          },
+          "items_total": {
+            "title": "Items Total",
+            "type": "integer"
+          },
+          "items_unanswered": {
+            "title": "Items Unanswered",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "taken": {
+            "title": "Taken",
+            "type": "integer"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
+          }
+        },
+        "required": [
+          "zone_id",
+          "name",
+          "areas_total",
+          "done",
+          "taken",
+          "free",
+          "items_total",
+          "items_answered",
+          "items_bad",
+          "items_unanswered"
+        ],
+        "title": "ZoneProgressOut",
         "type": "object"
       },
       "ZoneUpdatedOut": {
@@ -9809,7 +12179,7 @@
     },
     "/api/night/items/{item_id}/answer": {
       "put": {
-        "description": "Отметить пункт: ОК / Не ОК (+ комментарий). Перезапись — last write wins.",
+        "description": "Отметить пункт: ОК, не ОК или снять отметку.",
         "operationId": "answer_item_api_night_items__item_id__answer_put",
         "parameters": [
           {
@@ -9836,7 +12206,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ItemAnsweredOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9886,7 +12258,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPhotoOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9910,7 +12284,7 @@
     },
     "/api/night/reports": {
       "get": {
-        "description": "Архив ночных отчётов (супервайзер и выше): список с итогами (чистое чтение).",
+        "description": "Архив ночных отчётов с итогами.",
         "operationId": "list_reports_api_night_reports_get",
         "parameters": [
           {
@@ -9928,7 +12302,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReportsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9968,7 +12344,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReportEnvelopeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9992,7 +12370,7 @@
     },
     "/api/night/reports/{report_id}/cars": {
       "get": {
-        "description": "Состояние обхода электрокаров за смену (список каров + отметки).",
+        "description": "Обход электрокаров за смену: кары и отметки.",
         "operationId": "report_cars_api_night_reports__report_id__cars_get",
         "parameters": [
           {
@@ -10009,7 +12387,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/NightCarsStateOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10033,7 +12413,7 @@
     },
     "/api/night/reports/{report_id}/cars/finish": {
       "post": {
-        "description": "Завершить шаг «Проверка электрокаров». Незакрытые кары — только после подтверждения.",
+        "description": "Завершить шаг «Проверка электрокаров»; с непроверенными карами — после подтверждения.",
         "operationId": "report_cars_finish_api_night_reports__report_id__cars_finish_post",
         "parameters": [
           {
@@ -10060,7 +12440,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarsFinishedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10084,7 +12466,7 @@
     },
     "/api/night/reports/{report_id}/cars/{car_id}/check": {
       "post": {
-        "description": "Отметить кар в ходе ночного обхода (перезапись — last write wins).\n\nФорма та же, что у окна возврата кара («Электрокары» → «Вернул»): место из\nсправочника, заряд, чекбоксы состояния, комментарий и фото-доказательство\n(оригинал, до 12 МБ) — плюс чекбокс «Кар найден на месте».\n\nМеста два: `found_location` — где батлер нашёл кар, `location` — куда\nпереставил (`moved=True`): кар мог стоять не там, что в карточке, а найденный\nкар батлер мог перепарковать. Перепарковка — факт, не замечание.\n\nОтметки пишутся в общую базу: состояние карточки кара обновляется.\n«Не ОК» и «кар не найден» идут в замечания супервайзеру; отсутствие тента —\nпросто факт, в замечания не входит.",
+        "description": "Отметить кар в ночном обходе (multipart): состояние, места и фото.",
         "operationId": "report_car_check_api_night_reports__report_id__cars__car_id__check_post",
         "parameters": [
           {
@@ -10119,7 +12501,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CarCheckedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10143,6 +12527,7 @@
     },
     "/api/night/reports/{report_id}/close": {
       "post": {
+        "description": "Закрыть смену вручную; неполную — после подтверждения.",
         "operationId": "close_report_api_night_reports__report_id__close_post",
         "parameters": [
           {
@@ -10176,7 +12561,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReportChangedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10200,7 +12587,7 @@
     },
     "/api/night/reports/{report_id}/defects": {
       "get": {
-        "description": "Недостатки смены: позиции, группы по службам, журнал, шаблон сообщения.",
+        "description": "Недостатки смены: позиции, группы по службам, журнал отправок, шаблон сообщения.",
         "operationId": "report_defects_api_night_reports__report_id__defects_get",
         "parameters": [
           {
@@ -10217,7 +12604,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DefectsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10241,7 +12630,7 @@
     },
     "/api/night/reports/{report_id}/defects/preview": {
       "post": {
-        "description": "Предпросмотр сообщений: что именно уйдёт каждой службе (без отправки).",
+        "description": "Предпросмотр: что именно уйдёт каждой службе.",
         "operationId": "preview_defects_api_night_reports__report_id__defects_preview_post",
         "parameters": [
           {
@@ -10268,7 +12657,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10292,7 +12683,7 @@
     },
     "/api/night/reports/{report_id}/dispatch": {
       "post": {
-        "description": "Отправить недостатки службам: всё скопом или выбранное (только вручную).",
+        "description": "Отправить недостатки службам: всё неотправленное или выбранное.",
         "operationId": "dispatch_report_api_night_reports__report_id__dispatch_post",
         "parameters": [
           {
@@ -10319,7 +12710,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchResultOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10343,7 +12736,7 @@
     },
     "/api/night/reports/{report_id}/dispatches": {
       "get": {
-        "description": "Журнал отправок смены — строки общего журнала раздела «Ночной отчёт».",
+        "description": "Журнал отправок смены.",
         "operationId": "report_dispatches_api_night_reports__report_id__dispatches_get",
         "parameters": [
           {
@@ -10370,7 +12763,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchesOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10408,11 +12803,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -10448,11 +12838,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -10474,7 +12859,7 @@
     },
     "/api/night/reports/{report_id}/reopen": {
       "post": {
-        "description": "Переоткрыть закрытый отчёт для правок.\n\nАвтозакрытие для переоткрытого отчёта выключается (reopened_at): фоновая\nсинхронизация больше его не закрывает — иначе переоткрытие «жило» бы меньше\nдвух минут, а правки падали в 409 «Смена закрыта» (ревью 20.10.2026, P1).\nПовторно закрывает смену сам менеджер («Закрыть смену»).",
+        "description": "Переоткрыть закрытую смену для правок.",
         "operationId": "reopen_report_api_night_reports__report_id__reopen_post",
         "parameters": [
           {
@@ -10491,7 +12876,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReportChangedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10515,7 +12902,7 @@
     },
     "/api/night/sections/{section_id}/close": {
       "post": {
-        "description": "Завершить проверку области.\n\nПо ТЗ закрыть можно и с незаполненными пунктами (останутся «не отмечено») —\nно только после подтверждения; все пункты закрыты — закрываем сразу.",
+        "description": "Завершить проверку объекта; с неотмеченными пунктами — после подтверждения.",
         "operationId": "close_section_api_night_sections__section_id__close_post",
         "parameters": [
           {
@@ -10549,7 +12936,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SectionChangedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10589,7 +12978,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SectionChangedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10613,7 +13004,7 @@
     },
     "/api/night/sections/{section_id}/take": {
       "post": {
-        "description": "Взять область в работу. Если её уже ведёт другой — предупреждаем и пишем перехват.",
+        "description": "Взять объект в работу; объект, который ведёт другой, — после подтверждения.",
         "operationId": "take_section_api_night_sections__section_id__take_post",
         "parameters": [
           {
@@ -10640,7 +13031,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SectionTakenOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -10818,13 +13211,23 @@
     },
     "/api/night/today": {
       "get": {
-        "description": "Актуальный отчёт текущей ночной смены.\n\nGET без побочных записей (ревью 20.10.2026, P1): обслуживание — досоздание\nнаступивших смен и автозакрытие в 08:00 — выполняет фоновая синхронизация\n(bootstrap/night_sync.py, период settings.night_sync_seconds) и стартовый\nпрогон init_db(), а не каждый запрос раздела.",
+        "description": "Отчёт текущей ночной смены либо пояснение, почему его ещё нет.",
         "operationId": "today_report_api_night_today_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TodayReportOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TodayPendingOut"
+                    }
+                  ],
+                  "title": "Response Today Report Api Night Today Get"
+                }
               }
             },
             "description": "Successful Response"

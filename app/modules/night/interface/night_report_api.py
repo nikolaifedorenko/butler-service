@@ -1,66 +1,40 @@
-"""Отчёт целиком: шаг «Проверка электрокаров», ручное закрытие и переоткрытие, выгрузка
-DOCX/PDF."""
+"""Отчёт целиком: шаг «Проверка электрокаров», закрытие и переоткрытие смены, выгрузка
+DOCX и PDF. Правила — в ``application/shift.py``."""
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import Depends, File, Form, HTTPException, UploadFile
+from fastapi import Depends, File, Form, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.media import (
-    UploadRef,
-    max_upload_bytes,
-    photos_of,
-    read_upload_streaming,
-)
+from app.core.media import UploadRef, max_upload_bytes, read_upload_streaming
 from app.core.permissions import require_perm
-from app.core.settings_store import Setting
-from app.core.time import local_now
-from app.modules.cars.application.cars import CarOpError, check_car_night, finish_cars_step, night_cars_state
-from app.modules.cars.application.catalog import Car
-from app.modules.exchange.application.documents import docx_to_pdf
+from app.modules.cars.application.schemas import NightCarsStateOut
+from app.modules.exchange.application.documents import DOCX_MEDIA_TYPE
 
-from ..adapters.orm import (
-    NightAreaSection,
-    NightReport,
-)
-from ..application.night import (
-    finalize_report,
-)
-from .night_common import (
-    CloseSectionIn,
-    InterceptionAck,
-    _get_report,
-    _guard_open,
-    _principal_name,
-    _report_payload,
-    router,
-)
+from ..application import shift
+from .night_common import CloseSectionIn, InterceptionAck, router
+from .schemas import CarCheckedOut, CarsFinishedOut, ReportChangedOut
 
-# ─────────────────────────── отдача файлов фото ───────────────────────────
-
-# ─────────────────────────── шаг «Проверка электрокаров» ───────────────────────────
-
-def _cars_section(rep: NightReport) -> NightAreaSection:
-    for s in rep.areas:
-        if s.area_id is None and s.category == "cars":
-            return s
-    raise HTTPException(status_code=404, detail="Шаг «Проверка электрокаров» не найден в отчёте")
+VIEW = require_perm("night.view")
+CLOSE = require_perm("night.close")
 
 
-@router.get("/reports/{report_id}/cars")
-def report_cars(report_id: int, principal: Principal = Depends(require_perm("night.view")),
-                db: Session = Depends(get_db)):
-    """Состояние обхода электрокаров за смену (список каров + отметки)."""
-    rep = _get_report(db, report_id)
-    return night_cars_state(db, rep)
+def _attachment(content: bytes, media_type: str, name: str) -> Response:
+    return Response(content, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-@router.post("/reports/{report_id}/cars/{car_id}/check")
+@router.get("/reports/{report_id}/cars", response_model=NightCarsStateOut)
+def report_cars(report_id: int, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    """Обход электрокаров за смену: кары и отметки."""
+    return shift.cars_state(db, report_id)
+
+
+@router.post("/reports/{report_id}/cars/{car_id}/check", response_model=CarCheckedOut)
 def report_car_check(report_id: int, car_id: int,
                      found: bool = Form(True),
                      found_location: str = Form(""),
@@ -74,175 +48,55 @@ def report_car_check(report_id: int, car_id: int,
                      clean: bool = Form(True),
                      comment: str = Form(""),
                      file: Optional[UploadFile] = File(None),
-                     principal: Principal = Depends(require_perm("night.view")),
+                     principal: Principal = Depends(VIEW),
                      db: Session = Depends(get_db)):
-    """Отметить кар в ходе ночного обхода (перезапись — last write wins).
-
-    Форма та же, что у окна возврата кара («Электрокары» → «Вернул»): место из
-    справочника, заряд, чекбоксы состояния, комментарий и фото-доказательство
-    (оригинал, до 12 МБ) — плюс чекбокс «Кар найден на месте».
-
-    Места два: `found_location` — где батлер нашёл кар, `location` — куда
-    переставил (`moved=True`): кар мог стоять не там, что в карточке, а найденный
-    кар батлер мог перепарковать. Перепарковка — факт, не замечание.
-
-    Отметки пишутся в общую базу: состояние карточки кара обновляется.
-    «Не ОК» и «кар не найден» идут в замечания супервайзеру; отсутствие тента —
-    просто факт, в замечания не входит."""
-    from sqlalchemy.exc import IntegrityError
-
-    rep = _get_report(db, report_id)
-    _guard_open(rep)
-    car = db.get(Car, car_id)
-    if car is None:
-        raise HTTPException(status_code=404, detail="Кар не найден")
-    sec = _cars_section(rep)
-
+    """Отметить кар в ночном обходе (multipart): состояние, места и фото."""
     refs: list[UploadRef] = []
     try:
         if file is not None:
-            limit = max_upload_bytes(db)
-            # потоковая загрузка: чанки сразу на диск, не в память (P1 20.10.2026)
-            ref = read_upload_streaming(file, limit)
+            ref = read_upload_streaming(file, max_upload_bytes(db))     # сразу на диск, не в память
             if ref.size:
                 refs.append(ref)
             else:
-                ref.discard()      # пустой файл не сохраняем (прежнее поведение: if blob)
-        res = check_car_night(db, rep, car, principal, found=found,
-                              found_location=found_location, moved=moved,
-                              location=location, canopy=canopy,
-                              charge=charge, on_charge=on_charge,
-                              condition=condition, trash=trash,
-                              clean=clean, comment=comment, photo_refs=refs)
-    except CarOpError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except ValueError as e:       # не-картинка в фото
-        raise HTTPException(status_code=400, detail=str(e))
+                ref.discard()
+        check = shift.check_car(db, principal, report_id, car_id, found=found, found_location=found_location,
+                                moved=moved, location=location, canopy=canopy, charge=charge,
+                                on_charge=on_charge, condition=condition, trash=trash, clean=clean,
+                                comment=comment, photo_refs=refs)
     finally:
         for ref in refs:
-            ref.discard()   # не потреблённые при ошибке; потреблённые уже перенесены (missing_ok)
-    # если область-шаг ещё не закреплена за кем-то — закрепляем (как при ответе на пункт)
-    if sec.status == "free":
-        sec.status = "taken"
-        sec.taken_by = principal.user.id
-        sec.taken_by_name = _principal_name(principal)
-        sec.taken_at = local_now()
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="Повторная отметка — обновите список")
-    return {"ok": True, "check": res}
+            ref.discard()       # файл, не перенесённый в хранилище из-за ошибки
+    return {"check": check}
 
 
-@router.post("/reports/{report_id}/cars/finish")
-def report_cars_finish(report_id: int, payload: InterceptionAck,
-                       principal: Principal = Depends(require_perm("night.view")),
+@router.post("/reports/{report_id}/cars/finish", response_model=CarsFinishedOut)
+def report_cars_finish(report_id: int, payload: InterceptionAck, principal: Principal = Depends(VIEW),
                        db: Session = Depends(get_db)):
-    """Завершить шаг «Проверка электрокаров». Незакрытые кары — только после подтверждения."""
-    rep = _get_report(db, report_id)
-    _guard_open(rep)
-    state = night_cars_state(db, rep)
-    if state["unchecked"] > 0 and not payload.ack:
-        raise HTTPException(status_code=409, detail={
-            "interception": False,
-            "message": f"Не проверено каров: {state['unchecked']}. Завершить шаг всё равно?"})
-    try:
-        res = finish_cars_step(db, rep, principal)
-    except CarOpError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    sec = _cars_section(rep)
-    if sec.status != "done":
-        sec.status = "done"
-        sec.closed_at = local_now()
-        sec.closed_by = principal.user.id
-    audit(db, principal, "night_cars_finish", f"report:{rep.id}",
-          {"checked": state["checked"], "unchecked": state["unchecked"]})
-    db.commit()
-    return {"ok": True, **res}
+    """Завершить шаг «Проверка электрокаров»; с непроверенными карами — после подтверждения."""
+    return shift.finish_cars(db, principal, report_id, ack=payload.ack)
 
 
-# ─────────────────────────── закрытие отчёта вручную ───────────────────────────
-
-@router.post("/reports/{report_id}/close")
-def close_report(report_id: int, payload: CloseSectionIn | None = None,
-                 principal: Principal = Depends(require_perm("night.close")),
+@router.post("/reports/{report_id}/close", response_model=ReportChangedOut)
+def close_report(report_id: int, payload: CloseSectionIn | None = None, principal: Principal = Depends(CLOSE),
                  db: Session = Depends(get_db)):
-    rep = _get_report(db, report_id)
-    if rep.status == "closed":
-        raise HTTPException(status_code=409, detail="Отчёт уже закрыт")
-    unfinished = [s for s in rep.areas if s.status != "done"]
-    force = bool(payload and payload.force_unanswered)
-    if (unfinished or not rep.cars_step_done) and not force:
-        parts = []
-        if unfinished:
-            parts.append(f"незакрытых областей: {len(unfinished)}")
-        if not rep.cars_step_done:
-            parts.append("шаг «Проверка электрокаров» не завершён")
-        raise HTTPException(status_code=409, detail={
-            "unanswered": len(unfinished),
-            "message": "Смена будет неполной (" + ", ".join(parts) + "). Закрыть всё равно?"})
-    finalize_report(rep, reason="manual")
-    audit(db, principal, "night_report_close", f"report:{rep.id}", {"result": rep.result})
-    db.commit()
-    return {"ok": True, "report": _report_payload(db, rep)}
+    """Закрыть смену вручную; неполную — после подтверждения."""
+    return {"report": shift.close_report(db, principal, report_id,
+                                         force=bool(payload and payload.force_unanswered))}
 
 
-@router.post("/reports/{report_id}/reopen")
-def reopen_report(report_id: int, principal: Principal = Depends(require_perm("night.close")),
-                  db: Session = Depends(get_db)):
-    """Переоткрыть закрытый отчёт для правок.
-
-    Автозакрытие для переоткрытого отчёта выключается (reopened_at): фоновая
-    синхронизация больше его не закрывает — иначе переоткрытие «жило» бы меньше
-    двух минут, а правки падали в 409 «Смена закрыта» (ревью 20.10.2026, P1).
-    Повторно закрывает смену сам менеджер («Закрыть смену»)."""
-    rep = _get_report(db, report_id)
-    if rep.status != "closed":
-        raise HTTPException(status_code=409, detail="Отчёт не закрыт — переоткрывать нечего")
-    rep.status = "open"
-    rep.result = ""
-    rep.closed_at = None
-    rep.close_reason = ""
-    rep.reopened_at = local_now()
-    audit(db, principal, "night_report_reopen", f"report:{rep.id}", {})
-    db.commit()
-    return {"ok": True, "report": _report_payload(db, rep)}
+@router.post("/reports/{report_id}/reopen", response_model=ReportChangedOut)
+def reopen_report(report_id: int, principal: Principal = Depends(CLOSE), db: Session = Depends(get_db)):
+    """Переоткрыть закрытую смену для правок."""
+    return {"report": shift.reopen_report(db, principal, report_id)}
 
 
-# ─────────────────────────── выгрузка ───────────────────────────
-
-def _company(db: Session) -> str:
-    s = db.get(Setting, "doc_company")
-    return (s.value if s and s.value else "")
-
-
-@router.get("/reports/{report_id}/export.docx")
-def export_docx(report_id: int, principal: Principal = Depends(require_perm("night.view")),
-                db: Session = Depends(get_db)):
-    from ..application.night_export import render_night_report_docx
-
-    rep = _get_report(db, report_id)
-    item_ids = [i.id for s in rep.areas for i in s.items]
-    pmap = photos_of(db, "night_item", item_ids)
-    docx = render_night_report_docx(db, rep.id, company=_company(db), photos_map=pmap)
-    name = f"night-{rep.date.isoformat()}.docx"
-    return Response(docx, media_type=(
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+@router.get("/reports/{report_id}/export.docx", response_class=Response)
+def export_docx(report_id: int, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    docx, name = shift.export_docx(db, report_id)
+    return _attachment(docx, DOCX_MEDIA_TYPE, name)
 
 
-@router.get("/reports/{report_id}/export.pdf")
-def export_pdf(report_id: int, principal: Principal = Depends(require_perm("night.view")),
-               db: Session = Depends(get_db)):
-    from ..application.night_export import render_night_report_docx
-
-    rep = _get_report(db, report_id)
-    item_ids = [i.id for s in rep.areas for i in s.items]
-    pmap = photos_of(db, "night_item", item_ids)
-    docx = render_night_report_docx(db, rep.id, company=_company(db), photos_map=pmap)
-    pdf, err = docx_to_pdf(docx, filename=f"night-{rep.date.isoformat()}.pdf")
-    if pdf is None:
-        raise HTTPException(status_code=422, detail=err or "PDF недоступен на этом сервере")
-    return Response(pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="night-{rep.date.isoformat()}.pdf"'})
+@router.get("/reports/{report_id}/export.pdf", response_class=Response)
+def export_pdf(report_id: int, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
+    pdf, name = shift.export_pdf(db, report_id)
+    return _attachment(pdf, "application/pdf", name)
