@@ -3,10 +3,9 @@
 Use-case'ы экрана «Недостатки смены»: собрать позиции к отправке, показать
 предпросмотр, отправить вручную (всё скопом или выбранное) и отдать общий журнал.
 
-Границы: домен (``app/night.py``) не знает про транспорт, транспорт
-(``app/notify``) — про ночной отчёт; связывает их этот сервис. Ошибки —
-исключения ``core.errors`` (main.py маппит их в статусы), audit и commit —
-часть use-case'а (ADR-0006).
+Границы: ход смены не знает про транспорт, транспорт (модуль ``notify``) — про ночной
+отчёт; связывает их этот модуль. Отправка ведёт транзакции сама: очередь и пометки позиций
+фиксируются до обращения к сети.
 
 Правила отправки (решения владельца от 19.10.2026):
   * только вручную: ни закрытие объекта, ни закрытие смены ничего не отправляют;
@@ -44,6 +43,7 @@ from app.modules.notify.application.templates import PLACEHOLDERS, render_templa
 
 from ..adapters.orm import NightCheckItem, NightReport
 from .night import defects_of, duty_of
+from .shift import get_report
 
 DOMAIN = "night"
 
@@ -53,8 +53,9 @@ def _report_brief(rep: NightReport) -> dict:
             "status": rep.status, "readonly": rep.status == "closed"}
 
 
-def defects_payload(db: Session, rep: NightReport) -> dict:
+def defects_payload(db: Session, report_id: int) -> dict:
     """Данные экрана «Недостатки смены»: позиции, группы по службам, журнал, шаблон."""
+    rep = get_report(db, report_id)
     data = defects_of(db, rep)
     cfg = load_config(db)
     return {
@@ -77,7 +78,35 @@ def preview_message(db: Session, rep: NightReport, group: dict,
     return render_template(template_of(db, DOMAIN), ctx)
 
 
-def dispatch_defects(db: Session, rep: NightReport, principal: Principal, *,
+def _selected(data: dict, mode: str, item_ids: Optional[list[int]], service_ids: Optional[list[int]]) -> list[dict]:
+    """Позиции к отправке: всё неотправленное либо выбранное, при необходимости — только
+    по указанным службам."""
+    rows = [d for d in data["items"] if d["sendable"]]
+    if mode == "selected":
+        wanted = {int(i) for i in (item_ids or [])}
+        rows = [d for d in rows if d["id"] in wanted]
+    if service_ids:
+        allowed = {int(i) for i in service_ids}
+        rows = [d for d in rows if d.get("service_id") in allowed]
+    return rows
+
+
+def preview_messages(db: Session, principal: Principal, report_id: int, *, mode: str = "all",
+                     item_ids: Optional[list[int]] = None, service_ids: Optional[list[int]] = None) -> list[dict]:
+    """Что именно уйдёт каждой службе — без отправки."""
+    rep = get_report(db, report_id)
+    out = []
+    for group in group_by_service(db, _selected(defects_of(db, rep), mode, item_ids, service_ids)):
+        if not [d for d in group["defects"] if d["sendable"]]:
+            continue
+        out.append({"service_id": group["service_id"], "service_name": group["service_name"],
+                    "channels": group["channels"], "problems": group["problems"],
+                    "defects": group["counts"]["sendable"],
+                    "message": preview_message(db, rep, group, principal.name)})
+    return out
+
+
+def dispatch_defects(db: Session, principal: Principal, report_id: int, *,
                      mode: str = "all", item_ids: Optional[list[int]] = None,
                      service_ids: Optional[list[int]] = None,
                      bot=None, mailer=None) -> dict:
@@ -93,6 +122,7 @@ def dispatch_defects(db: Session, rep: NightReport, principal: Principal, *,
     супервайзер получат 409 или «всё уже отправлено»; падение процесса посреди доставки
     не дублирует сообщения (строка остаётся в sending → «статус неизвестен»).
     """
+    rep = get_report(db, report_id)
     with try_lock("night-dispatch") as got:
         if not got:
             raise Conflict("Отправка недостатков уже идёт — дождитесь её и обновите экран")
@@ -117,7 +147,7 @@ def dispatch_defects(db: Session, rep: NightReport, principal: Principal, *,
         else:
             marked += len(ids)
     db.commit()
-    return {"ok": True, "sent": sent, "failed": failed, "queued": queued, "marked": marked,
+    return {"sent": sent, "failed": failed, "queued": queued, "marked": marked,
             "dispatches": dispatches, "skipped": skipped}
 
 
@@ -133,14 +163,7 @@ def _queue_defects(db: Session, rep: NightReport, principal: Principal, *, mode:
     if mode not in ("all", "selected"):
         raise Validation("Режим отправки: all или selected")
 
-    data = defects_of(db, rep)
-    rows = [d for d in data["items"] if d["sendable"]]
-    if mode == "selected":
-        wanted = {int(i) for i in (item_ids or [])}
-        rows = [d for d in rows if d["id"] in wanted]
-    if service_ids:
-        allowed = {int(i) for i in service_ids}
-        rows = [d for d in rows if d.get("service_id") in allowed]
+    rows = _selected(defects_of(db, rep), mode, item_ids, service_ids)
     if not rows:
         raise Validation("Не выбрано ни одного недостатка для отправки "
                          "(возможно, всё уже отправлено или исправлено после отправки)")
@@ -179,6 +202,7 @@ def _queue_defects(db: Session, rep: NightReport, principal: Principal, *, mode:
     return cfg, plan, skipped
 
 
-def report_journal(db: Session, rep: NightReport, limit: int = 50) -> list[dict]:
-    """Журнал отправок смены (обёртка над общим журналом раздела)."""
+def report_journal(db: Session, report_id: int, limit: int = 50) -> list[dict]:
+    """Журнал отправок смены — строки общего журнала доставки."""
+    rep = get_report(db, report_id)
     return [dispatch_dict(d) for d in journal_of(db, DOMAIN, rep.id, limit=limit)]

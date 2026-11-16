@@ -58,6 +58,22 @@ class Conflict(ServiceError):
     status_code = 409
 
 
+class ConfirmationRequired(Conflict):
+    """Операция выполнится только после подтверждения пользователя → 409.
+
+    Тело ответа — словарь: данные для интерфейса и ``message`` с вопросом. Интерфейс
+    показывает вопрос и повторяет запрос с подтверждением.
+    """
+
+    def __init__(self, message: str, **data: Any):
+        super().__init__(message)
+        self.data = data
+
+    @property
+    def detail(self) -> dict:
+        return {**self.data, "message": self.message}
+
+
 class Gone(ServiceError):
     """Объект навсегда недоступен (файл удалён по сроку хранения) → 410."""
 

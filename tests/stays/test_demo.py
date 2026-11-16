@@ -3,16 +3,41 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pytest
 from sqlalchemy import func, select
 
 
-def test_demo_fund_and_warnings(db):
+@pytest.fixture()
+def demo_db(fresh_database):
+    """Сессия свеженаполненной демо-базы.
+
+    Общую базу прогона менять можно — её Табель перезаполняют другие тесты; состав демо
+    проверяется на базе, которую после наполнения никто не трогал.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from tests.conftest import run_migrate
+
+    done = run_migrate(fresh_database, DEMO_SEED="1")
+    assert done.returncode == 0, done.stderr[-2000:]
+    engine = create_engine(fresh_database)
+    try:
+        with Session(engine) as session:
+            yield session
+    finally:
+        engine.dispose()
+
+
+def test_demo_fund_and_warnings(demo_db):
+    """Демо показывает весь фонд, гостей, брони и по примеру каждого предупреждения."""
     from app.core.time import local_date
     from app.modules.stays.adapters.duty_timesheet import TimesheetDuty
     from app.modules.stays.adapters.orm import Guest, GuestLink, Reservation
     from app.modules.stays.application.context import load_context
     from app.modules.stays.application.fund_versions import INITIAL_DATE, fund_on
 
+    db = demo_db
     fund = fund_on(db, INITIAL_DATE)
     codes = ("VEG", "FWV", "VIG", "ESTATE", "MED", "DLX", "PRM", "FAM", "JST", "SUI", "PRS")
     cats = {c.id for c in fund.categories.values() if c.code in codes}

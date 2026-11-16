@@ -5,7 +5,9 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from app.core.schemas import ApiModel
+from app.core.schemas import ApiModel, PhotoOut
+
+from ..application.schemas import CarOut
 
 # ── запросы ──────────────────────────────────────────────────────────────────
 
@@ -95,30 +97,6 @@ class LocationAddedOut(ApiModel):
     restored: bool          # место уже было в справочнике и включено заново
 
 
-class CarOut(ApiModel):
-    id: int
-    number: str
-    status: str
-    status_title: str
-    location: str
-    charge: str
-    charge_title: str
-    on_charge: bool
-    canopy: bool
-    condition: str
-    trash: bool
-    clean: bool
-    has_key: bool
-    holder_user_id: Optional[int]
-    holder_name: str
-    assigned_to: Optional[int]
-    assigned_name: str
-    note: str
-    last_checked_at: Optional[str]      # местное время объекта
-    last_taken_at: Optional[str]
-    active: bool
-
-
 class MyCarsOut(ApiModel):
     """Кары текущего сотрудника: какой держит, какой закреплён, какой свободный предложить."""
 
@@ -136,17 +114,6 @@ class ParkOut(ApiModel):
 class CarOperationOut(ApiModel):
     ok: bool = True
     car: CarOut
-
-
-class PhotoOut(ApiModel):
-    id: int
-    filename: str
-    size: int
-    media_type: str
-    url: str
-    missing: bool
-    uploaded_by_name: str
-    created_at: Optional[str]
 
 
 class HistoryItemOut(ApiModel):
