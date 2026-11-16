@@ -21,9 +21,9 @@ from sqlalchemy import delete, select
 from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import DeferredCarry
 from app.modules.timesheet.application.close_period import close_period
+from app.modules.timesheet.application.texts import error_text
 from app.modules.timesheet.domain.types.entities import DeferredBlock
 from app.modules.timesheet.domain.types.errors import InvalidInputDataError
-from app.modules.timesheet.interface.formatting import error_text
 from tests.engine.helpers import EMP, IN, OUT, at, d, day
 from tests.engine.test_application import NOV, OCT, _rows_full_month, _stand
 

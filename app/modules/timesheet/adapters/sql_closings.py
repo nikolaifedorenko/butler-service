@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 from app.core.db import lock_employee
 from app.core.time import now, utc_iso
 
+from ..application.deserialize import flags_from_dict, result_from_dict
+from ..application.serialize import flags_to_dict, result_to_dict
 from ..domain.types.entities import ClosingInputs, DeferredBlock, Period, PeriodState
 from ..domain.types.results import FlagsResult, SettleResult
-from ..interface.deserialize import flags_from_dict, result_from_dict
-from ..interface.serialize import flags_to_dict, result_to_dict
 from ..ports.unit_of_work import StorageConflictError
 from ._db import emp_pk
 from .orm import DeferredCarry, PeriodClosing

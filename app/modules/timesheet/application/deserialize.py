@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 
-from ..application.errors import StoredResultCorruptError
 from ..domain.codes_registry.reason_codes import ALL_STEPS
 from ..domain.types.entities import DeferredBlock
 from ..domain.types.results import Cut, DayCard, Flag, FlagsResult, Reason, SettleResult
+from .errors import StoredResultCorruptError
 
 
 def _date(value: str) -> dt.date:

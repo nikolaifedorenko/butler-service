@@ -2,8 +2,7 @@
 композиция портов (composition root — `now` снимается здесь и передаётся
 параметром, v7.1/F-15), сотрудники периода, лёгкие сводки для экранов отметок
 (БЕЗ тяжёлого конвейера — 16.1 п.2: settle()/evaluate_flags() запускает только
-вкладка «Управленческий табель»). Тексты ошибок — в interface/formatting.py
-(error_text, фаза C2 §5.3)."""
+вкладка «Управленческий табель»). Тексты ошибок — в application/texts.py (error_text)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -133,6 +132,12 @@ def emp_brief(e: Employee) -> dict:
     return {"id": e.id, "full_name": e.full_name, "short_name": e.display_name,
             "position": e.position or "", "group": normalize_group(e.schedule_group) or "Другие смены",
             "color": e.group_color, "tab_number": e.tab_number or ""}
+
+
+def no_employee(**known) -> dict:
+    """Ключи ``emp_brief`` без значений — для записи, у которой сотрудника в базе нет."""
+    return {**dict.fromkeys(("id", "full_name", "short_name", "position", "group", "color", "tab_number")),
+            **known}
 
 
 def last_closed_bank(db: Session, emp_id: int) -> tuple[float | None, Period | None]:

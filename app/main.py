@@ -22,8 +22,8 @@ from .core.errors import ServiceError
 from .core.startup_lock import startup_lock
 from .core.time import local_iso, local_now
 from .modules.timesheet.application.errors import ApplicationError
+from .modules.timesheet.application.texts import error_text
 from .modules.timesheet.domain.types.errors import ConfigError, DomainError
-from .modules.timesheet.interface.formatting import error_text
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -157,8 +157,8 @@ async def _service_error_handler(request: Request, exc: ServiceError):
 
 # ── маппинг типизированных ошибок расчётного движка (EXECUTION-SPEC-v2 §5.3) ──
 # Домены модулей бросают типизированные исключения (DomainError/ConfigError/
-# ApplicationError); человеческий текст собирается в interface-слое модуля
-# (error_text), роутерам запрещается ловить доменные ошибки «для красивого
+# ApplicationError); человеческий текст собирает прикладной слой модуля
+# (application/texts.py, error_text), роутерам запрещается ловить доменные ошибки «для красивого
 # текста». Статусы:
 #   ConfigError → 409 — повреждённая конфигурация есть СОСТОЯНИЕ системы
 #     (типизированный отказ вкладок, не 500; закреплено

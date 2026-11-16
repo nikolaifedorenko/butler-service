@@ -28,7 +28,7 @@ import time
 import pytest
 
 from app.core.time import local_date
-from app.modules.timesheet.interface.period_params import PERIOD_DETAIL
+from app.modules.timesheet.application.period_params import PERIOD_DETAIL
 
 BASE = pathlib.Path(__file__).resolve().parent.parent
 TODAY = local_date()
@@ -109,9 +109,10 @@ def test_valid_period_still_works(admin_client):
 
 def test_ensure_period_shared_by_all_period_endpoints():
     """Все точки ввода периода ходят через один помощник, а не копируют проверку текстом."""
-    from app.modules.timesheet.interface import engine_settings_api, fact_api, mgmt_api, schedule, tabel_api
+    from app.modules.timesheet.application import fact_screen, schedule_edit, schedule_grid, tabel_screen
+    from app.modules.timesheet.interface import engine_settings_api, mgmt_api
 
-    for mod in (engine_settings_api, fact_api, mgmt_api, schedule, tabel_api):
+    for mod in (engine_settings_api, mgmt_api, fact_screen, schedule_edit, schedule_grid, tabel_screen):
         src = pathlib.Path(mod.__file__).read_text(encoding="utf-8")
         assert "ensure_period(" in src, f"{mod.__name__}: нет вызова ensure_period"
         assert "1 <= month <= 12" not in src, f"{mod.__name__}: проверка скопирована текстом"

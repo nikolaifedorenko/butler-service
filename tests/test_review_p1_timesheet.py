@@ -59,6 +59,7 @@ from app.modules.timesheet.adapters.settings_codec import from_payload, to_paylo
 from app.modules.timesheet.adapters.sql_closings import SqlSettlementStore
 from app.modules.timesheet.adapters.sql_uow import SqlUnitOfWork
 from app.modules.timesheet.application.close_period import close_period
+from app.modules.timesheet.application.deserialize import result_from_dict
 from app.modules.timesheet.application.engine_common import covers_window
 from app.modules.timesheet.application.errors import (
     PeriodAlreadyClosedError,
@@ -71,7 +72,6 @@ from app.modules.timesheet.domain.settings.defaults import default_settings
 from app.modules.timesheet.domain.types.entities import ClosingInputs, Employment, Period
 from app.modules.timesheet.domain.types.errors import ConfigError
 from app.modules.timesheet.domain.types.results import FlagsResult, SettleResult
-from app.modules.timesheet.interface.deserialize import result_from_dict
 from app.modules.timesheet.ports.unit_of_work import StorageConflictError
 from tests.engine.fakes import FakeDb, build_fakes
 from tests.engine.helpers import EMP, at, day
@@ -402,7 +402,7 @@ def test_ts6_deserialize_typed_error_under_python_o():
     Типизированная ошибка обязана бросаться в любом режиме."""
     script = (
         "import json, sys\n"
-        "from app.modules.timesheet.interface.deserialize import result_from_dict\n"
+        "from app.modules.timesheet.application.deserialize import result_from_dict\n"
         "from app.modules.timesheet.application.errors import StoredResultCorruptError\n"
         "assert not __debug__, 'ожидается режим -O'\n"
         "try:\n"

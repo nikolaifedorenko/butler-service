@@ -48,9 +48,10 @@ access, audit, stays), каждый — пять слоёв `domain/application/
 * `adapters` — SQL-реализации: стабильный порядок отметок и первая линия чередования
   (sanitize), валидация уровня 3 при чтении Графика, непрерывность банка
   (opening = closing предыдущего периода цепочки), замена переносов при сохранении.
-* `interface` — HTTP-роутеры `modules/*/interface/` и SPA `static/js/modules/*`;
-  единственное место человекочитаемых текстов (`modules/timesheet/interface/formatting.py`
-  — тексты флагов/трассы и `error_text` ошибок движка — и роутеры).
+* `interface` — HTTP-роутеры `modules/*/interface/` и SPA `static/js/modules/*`.
+  Человекочитаемые тексты флагов, трассы и ошибок движка (`error_text`) собирает
+  `modules/timesheet/application/texts.py`: домен текстов не знает, а прикладной слой
+  отдаёт интерфейсу готовый ответ.
 
 Четыре независимых расчёта (16.1): `settle()`, `evaluate_flags()`, `assemble_board()`,
 история сессий (`pair_marks`). Тяжёлый конвейер запускает только вкладка
@@ -210,7 +211,7 @@ ClosingInputs + версии + состояние), `recalculate` (ClosingInputs
 * Справочники движка CFG-* — версии `engine_settings_versions` (JSON payload). Формы
   и JSON — **два вида одного черновика**: правка копится в черновике, показывается как
   diff и публикуется версией (`PUT /api/engine-settings`); валидация уровня 1 выполняется
-  при сохранении (все нарушения разом, тексты — `interface/formatting.config_violation_text`).
+  при сохранении (все нарушения разом, тексты — `application/texts.config_violation_text`).
 * **Дата версии не ограничена 1-м или 16-м числом.** Версия выбирается по дате **начала
   периода** (`base_version(db, period.start)`), поэтому дата внутри периода означает
   «с начала следующего»: `PUT` возвращает `applies_from` — первый период, который

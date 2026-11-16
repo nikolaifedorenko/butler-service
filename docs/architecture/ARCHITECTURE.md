@@ -100,7 +100,7 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 
 | Показатель | Значение |
 |---|---|
-| Модуль timesheet | ~11 500 строк: domain 3 583 · interface 4 219 (8 роутеров + views/formatting/period_params) · application 1 971 · adapters 1 329 · ports 195 · bootstrap |
+| Модуль timesheet | ~11 500 строк: domain 3 583 · interface (роутеры и модели ответов) · application 1 971 · adapters 1 329 · ports 195 · bootstrap |
 | Прочие 8 модулей | employees 1 776 · night 2 639 · cars 1 098 · docs 1 200 · notify 1 595 · settings 186 · access 445 · audit 102 строк |
 | `app/core/` + composition root | 1 996 (19 файлов) + bootstrap/main 1 795 строк |
 | API | 18 роутеров по модулям, **156 путей OpenAPI** (`docs/openapi.json` сверяется в CI) |
@@ -120,7 +120,7 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 static/js/modules/* (SPA) ─HTTP→ main.py (composition root: роутеры, хэндлеры
                                      ошибок, middleware из core/observability)
                                           │
-                       modules/timesheet/interface (8 роутеров + views/formatting)
+                       modules/timesheet/interface (роутеры и модели ответов)
                                           │  now = now_utc() (composition-параметр, F-15)
                                           ▼
                        modules/timesheet/application ── знает domain + ports
@@ -197,12 +197,18 @@ double_pay/vip с дедупликацией), `sql_closings` (PeriodState с pr
 
 ### 3.4 Interface
 
-`app/modules/timesheet/interface/`: formatting (тексты флагов/трассы и `error_text`
-— единственное место человекочитаемых текстов ошибок движка), serialize/deserialize
-(сохранение и чтение SettleResult/FlagsResult), views (payload вкладок),
-period_params (единая валидация `year`/`month` всех точек ввода — 422 вместо 500)
-+ 8 тонких роутеров (tabel, mgmt, fact, presence, punches, doublepay, schedule,
-engine_settings). `now` снимается в `application/engine_common.now_utc()`
+`app/modules/timesheet/interface/`: тонкие роутеры (tabel, mgmt, fact, presence, punches,
+doublepay, schedule, engine_settings, shift_types, bank) и модели ответов (`schemas.py`).
+Роутеры Графика, отметок, Факта и Табеля вызывают по одной функции прикладного слоя:
+`schedule_grid` (сетка и выгрузки), `schedule_edit` (смены, отсутствия, сброс месяца),
+`absence_statement` (заявления), `punches`, `presence_screen`, `fact_screen`,
+`tabel_screen`. Там же, в `application/`, лежат `texts` (тексты флагов, трассы и
+`error_text` — единственное место человекочитаемых текстов ошибок движка),
+`serialize`/`deserialize` (сохранение и чтение SettleResult/FlagsResult), `views`
+(представления результатов расчёта) и `period_params` (единая проверка `year`/`month`
+всех точек ввода — 422 вместо 500). Массовые правки («отсутствие на период», массовая
+запись Табеля) записываются целиком либо не записываются вовсе — `application/bulk.py`.
+`now` снимается в `application/engine_common.now_utc()`
 (composition-параметр) и передаётся параметром — ClockPort не вводится (F-15).
 Доменные ошибки маппятся в HTTP центральными хэндлерами `main.py`
 (ConfigError → 409, DomainError → 422, ApplicationError → 409; три
@@ -322,7 +328,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
 | GET `/api/night/*` с побочными записями; переоткрытие отчёта закрывалось обратно ≤ 120 с | 🟢 закрыт 20.10.2026 | `sync_reports` убран из роутеров: обслуживание — старт (под `startup_lock`) + фоновый поток `bootstrap/night_sync` (каждые `NIGHT_SYNC_SECONDS`, по умолчанию 60); в нескольких воркерах раунд выполняет один процесс под неблокирующим `core/startup_lock.try_lock("night-sync")`. Переоткрытый отчёт (`night_reports.reopened_at`) автозакрытием больше не закрывается; reopen открытого — 409. Окно досоздания смен — честная константа `BACKFILL_DAYS=31` вместо `min(len(have)+31, 31)`. Стражи: `tests/test_review_p1_night_cars.py` |
 | Автозакрытие смены не проставляло `close_reason` (DOCX подписывал закрытый отчёт «Открыт · закроется 08:00»); повторная отметка кара не обновляла `checked_at` | 🟢 закрыт 20.10.2026 | `finalize_report(rep, reason="auto"|"manual")` — причина закрытия пишется всегда; `check_car_night` обновляет `ch.checked_at` при каждом сохранении (last write wins) — `car.last_checked_at` и флаг «взяли после проверки» свежие. Стражи: `tests/test_review_p1_night_cars.py` |
 | Массовые операции перегенерировали График по-ячеечно | 🟢 закрыт 20.10.2026 | `bulk` / `range-absence` / `copy` пишут Табель с `rebuild=False` и делают ОДНУ перегенерацию на затронутый месяц (`schedule_view.rebuild_generated_for_days`): 12 ячеек — 373 → 265 запросов, перегенераций 13 → 1; на пределе 500×366 экономия ~1,6 млн запросов |
-| `year`/`month` без валидации → 500 на запросе клиента | 🟢 закрыт 20.10.2026 | единый `interface/period_params.ensure_period` во всех 14 точках ввода периода (422 + `{"detail": …}`); параметризованный страж `test_bad_period_is_422_not_500` |
+| `year`/`month` без валидации → 500 на запросе клиента | 🟢 закрыт 20.10.2026 | единый `application/period_params.ensure_period` во всех 14 точках ввода периода (422 + `{"detail": …}`); параметризованный страж `test_bad_period_is_422_not_500` |
 | Конкурентное закрытие периода: оба запроса проходили проверку права, проигравший ловил `IntegrityError` → 500 | 🟢 закрыт 21.10.2026 | `StorageConflictError` (ports/unit_of_work): адаптеры транслируют `IntegrityError` от `uq_closing_emp_period` (flush в `save_result`, commit в UoW); `close_period` переводит в `PeriodAlreadyClosedError` → 409 (mgmt bulk — запись в `errors`, массовая семантика 200 сохранена); UoW откатывает транзакцию целиком («сбой между записями → ничего не сохранено»). Стражи: `tests/test_review_p1_timesheet.py` (P1-ts-1) |
 | Ноты ручных смен ложились на чужие интервалы: повторная выборка `put_manual_shift` без `ORDER BY` | 🟢 закрыт 21.10.2026 | `.order_by(ScheduleShift.id)` — порядок id = порядок вставки = порядок интервалов запроса, zip детерминирован. Стражи: там же (P1-ts-2) |
 | Вкладки падали 500 на повреждённых данных: план не кратный 15 (сырой `ValueError` из `fmt_hours` на дисплейных путях), `assert` в горячем `deserialize` (под `python -O` исчезает), слепой `saved[0]` в `view_period` | 🟢 закрыт 21.10.2026 | строгий вариант (решение владельца): `fmt_hours_strict` → `TimesheetRowCorruptError` (409, домен строг как прежде — CHK-PLAN-FORMAT); `StoredResultCorruptError` вместо assert и вместо `None[0]` (409 / ошибка в payload строки mgmt). Стражи: там же (P1-ts-3/6/7) |
@@ -395,8 +401,8 @@ butler-service/
 │       │   ├── ports/        #   13 Protocol'ов (без ClockPort — now параметром, F-15)
 │       │   ├── adapters/     #   SQL-адаптеры + factory + orm.py (TabelDay, ScheduleShift,
 │       │   │                 #   Punch, PeriodClosing, BlockAssignment, BankAdjustment, …)
-│       │   ├── interface/    #   8 роутеров (tabel, mgmt, fact, presence, punches, doublepay,
-│       │   │                 #   schedule, engine_settings) + formatting/serialize/views/period_params
+│       │   ├── interface/    #   роутеры (tabel, mgmt, fact, presence, punches, doublepay,
+│       │   │                 #   schedule, engine_settings, shift_types, bank) + schemas
 │       │   └── bootstrap.py  #   стартовая версия справочников CFG-*
 │       ├── employees/        # каталог персонала (Employee, Department, EmploymentPeriod…),
 │       │                     #   трудоустройство, жизненный цикл, группы графика, имена (domain)

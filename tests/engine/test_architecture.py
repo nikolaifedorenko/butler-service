@@ -26,9 +26,13 @@ DIRTY_CALLS = {"now", "today"}          # datetime.now() / date.today()
 # re-export из adapters для ДРУГИХ модулей; не легаси, а проектное решение C4.
 # exports.py — формы выгрузки (Excel, документ для PDF): описывает их типами сервиса exchange
 # (ADR-0013, раздел 5).
+# Операции экранов (ADR-0013, раздел 4): прикладной слой отдаёт интерфейсу готовый ответ,
+# поэтому читает таблицы модуля и справочник сотрудников (people).
+SCREEN_OPERATION_FILES = {"schedule_grid.py", "schedule_edit.py", "absence_statement.py", "punches.py",
+                          "presence_screen.py", "fact_screen.py", "tabel_screen.py"}
 TRANSIT_APPLICATION_FILES = {"base_schedule.py", "tabel_fill.py", "schedule_helpers.py",
                              "doublepay.py", "engine_common.py", "punch_plan.py",
-                             "shiftrev.py", "catalog.py", "exports.py"}
+                             "shiftrev.py", "catalog.py", "exports.py"} | SCREEN_OPERATION_FILES
 TRANSIT_APP_PREFIXES = ("app.modules.people", "app.modules.exchange")
 
 
