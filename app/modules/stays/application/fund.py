@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import Validation
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import (
@@ -23,12 +24,14 @@ FIELD_KINDS = {"text", "choice", "bool", "date"}
 FIELD_TARGETS = {"guest", "reservation"}
 
 
-class FundError(Exception):
-    """Ошибка ввода справочника → 422."""
+class FundError(Validation):
+    """Ошибка ввода справочника → 422. Остальные отказы шахматки — её наследники со своим статусом."""
 
 
 class FundConflict(FundError):
     """Состояние не позволяет операцию (занятый код, есть зависимые записи) → 409."""
+
+    status_code = 409
 
 
 def plain(v: Any) -> Any:

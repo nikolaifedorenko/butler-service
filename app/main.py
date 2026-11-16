@@ -152,7 +152,7 @@ registry.wire()   # реестр моделей + провайдеры core — 
 # статус задаёт класс ошибки, тело — {"detail": текст или словарь}.
 @app.exception_handler(ServiceError)
 async def _service_error_handler(request: Request, exc: ServiceError):
-    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return JSONResponse(exc.body, status_code=exc.status_code)
 
 
 # ── маппинг типизированных ошибок расчётного движка (EXECUTION-SPEC-v2 §5.3) ──

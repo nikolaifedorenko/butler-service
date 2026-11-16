@@ -236,6 +236,6 @@ def test_draft_diff_lists_lineage_of_split_units(manager_role_client, db):
         added = {e["id"]: e for e in diff["units"] if e["kind"] == "added"}
         assert set(added) == set(split.json()["ids"])
         assert all(e["from"] == [src["label"]] for e in added.values())
-        assert all("from" not in e for e in diff["units"] if e["kind"] != "added")
+        assert all(e["from"] is None for e in diff["units"] if e["kind"] != "added")
     finally:
         c.delete(f"{API}/fund/versions/{opened.json()['id']}")

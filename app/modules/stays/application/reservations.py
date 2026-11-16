@@ -53,6 +53,8 @@ class ReservationError(FundError):
 class ReservationConflict(ReservationError):
     """Бронь изменилась с момента открытия → 409."""
 
+    status_code = 409
+
     def __init__(self, msg: str = "Бронь изменилась — обновите"):
         super().__init__(msg)
 

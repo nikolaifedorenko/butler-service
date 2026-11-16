@@ -3364,6 +3364,42 @@
         "title": "DefectsOut",
         "type": "object"
       },
+      "DeleteVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "DeleteVersionOut",
+        "type": "object"
+      },
       "DepartmentDeletedOut": {
         "additionalProperties": false,
         "properties": {
@@ -3394,6 +3430,52 @@
           "name"
         ],
         "title": "DepartmentIn",
+        "type": "object"
+      },
+      "DiffEntryOut": {
+        "additionalProperties": false,
+        "description": "Строка разницы фондов: что добавлено, изменено или выведено.",
+        "properties": {
+          "after": {
+            "additionalProperties": true,
+            "title": "After",
+            "type": "object"
+          },
+          "before": {
+            "additionalProperties": true,
+            "title": "Before",
+            "type": "object"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "before",
+          "after"
+        ],
+        "title": "DiffEntryOut",
         "type": "object"
       },
       "DispatchIn": {
@@ -3919,6 +4001,32 @@
         "title": "DraftCategoryIn",
         "type": "object"
       },
+      "DraftEntityOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev"
+          }
+        },
+        "required": [
+          "rev",
+          "id"
+        ],
+        "title": "DraftEntityOut",
+        "type": "object"
+      },
       "DraftGroupIn": {
         "properties": {
           "escorted": {
@@ -3999,6 +4107,113 @@
           "valid_from"
         ],
         "title": "DraftMoveIn",
+        "type": "object"
+      },
+      "DraftMovedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rev",
+          "valid_from"
+        ],
+        "title": "DraftMovedOut",
+        "type": "object"
+      },
+      "DraftOpenedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rev",
+          "id",
+          "valid_from"
+        ],
+        "title": "DraftOpenedOut",
+        "type": "object"
+      },
+      "DraftRevOut": {
+        "additionalProperties": false,
+        "properties": {
+          "rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev"
+          }
+        },
+        "required": [
+          "rev"
+        ],
+        "title": "DraftRevOut",
+        "type": "object"
+      },
+      "DraftSplitOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rev"
+          }
+        },
+        "required": [
+          "rev",
+          "ids"
+        ],
+        "title": "DraftSplitOut",
         "type": "object"
       },
       "DraftUnitIn": {
@@ -6038,6 +6253,42 @@
         "title": "FillIn",
         "type": "object"
       },
+      "FlagChangesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Created",
+            "type": "array"
+          },
+          "recoloured": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recoloured",
+            "type": "array"
+          },
+          "renamed": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Renamed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "created",
+          "renamed",
+          "recoloured"
+        ],
+        "title": "FlagChangesOut",
+        "type": "object"
+      },
       "FlagIn": {
         "properties": {
           "color": {
@@ -6144,6 +6395,297 @@
           "former"
         ],
         "title": "FormerIn",
+        "type": "object"
+      },
+      "FundDiffOut": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEntryOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEntryOut"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEntryOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEntryOut"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories",
+          "groups",
+          "units",
+          "flags"
+        ],
+        "title": "FundDiffOut",
+        "type": "object"
+      },
+      "FundFlagOut": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "color",
+          "sort_order",
+          "archived"
+        ],
+        "title": "FundFlagOut",
+        "type": "object"
+      },
+      "FundImportOut": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/FundDiffOut"
+          },
+          "flags": {
+            "$ref": "#/components/schemas/FlagChangesOut"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "retired": {
+            "items": {
+              "$ref": "#/components/schemas/RetiredOut"
+            },
+            "title": "Retired",
+            "type": "array"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "rev",
+          "diff",
+          "retired",
+          "flags"
+        ],
+        "title": "FundImportOut",
+        "type": "object"
+      },
+      "FundKindOut": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "expanded": {
+            "title": "Expanded",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "sort_order",
+          "expanded",
+          "archived"
+        ],
+        "title": "FundKindOut",
+        "type": "object"
+      },
+      "FundSnapshotOut": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotCategoryOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/FundFlagOut"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/FundKindOut"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotUnitOut"
+            },
+            "title": "Units",
+            "type": "array"
+          },
+          "version": {
+            "$ref": "#/components/schemas/FundVersionOut"
+          }
+        },
+        "required": [
+          "version",
+          "categories",
+          "groups",
+          "units",
+          "flags",
+          "kinds"
+        ],
+        "title": "FundSnapshotOut",
+        "type": "object"
+      },
+      "FundVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "status",
+          "rev"
+        ],
+        "title": "FundVersionOut",
+        "type": "object"
+      },
+      "FundVersionRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "status",
+          "author",
+          "note",
+          "published_at"
+        ],
+        "title": "FundVersionRowOut",
         "type": "object"
       },
       "GenitiveOut": {
@@ -7581,6 +8123,75 @@
         "title": "HistoryOut",
         "type": "object"
       },
+      "IdOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "IdOut",
+        "type": "object"
+      },
+      "ImpactDiffOut": {
+        "additionalProperties": false,
+        "description": "Что изменит операция в бронях: переезды, предупреждения, покрытие батлерами, нагрузка.",
+        "properties": {
+          "coverage_changes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Coverage Changes",
+            "type": "array"
+          },
+          "load_changes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Load Changes",
+            "type": "array"
+          },
+          "moved": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Moved",
+            "type": "array"
+          },
+          "warnings_added": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings Added",
+            "type": "array"
+          },
+          "warnings_removed": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "moved",
+          "warnings_added",
+          "warnings_removed",
+          "coverage_changes",
+          "load_changes"
+        ],
+        "title": "ImpactDiffOut",
+        "type": "object"
+      },
       "ImpersonateIn": {
         "properties": {
           "employee_id": {
@@ -7605,6 +8216,20 @@
           "value"
         ],
         "title": "InProductionIn",
+        "type": "object"
+      },
+      "InProductionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "in_production": {
+            "title": "In Production",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "in_production"
+        ],
+        "title": "InProductionOut",
         "type": "object"
       },
       "InterceptionAck": {
@@ -10686,6 +11311,51 @@
         "title": "PublicConfigOut",
         "type": "object"
       },
+      "PublishAffectedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "category_missing": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Category Missing",
+            "type": "array"
+          },
+          "moved": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Moved",
+            "type": "array"
+          },
+          "pin_invalid": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pin Invalid",
+            "type": "array"
+          },
+          "unassigned": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Unassigned",
+            "type": "array"
+          }
+        },
+        "required": [
+          "moved",
+          "unassigned",
+          "pin_invalid",
+          "category_missing"
+        ],
+        "title": "PublishAffectedOut",
+        "type": "object"
+      },
       "PublishIn": {
         "properties": {
           "propagate": {
@@ -10711,6 +11381,121 @@
           "rev"
         ],
         "title": "PublishIn",
+        "type": "object"
+      },
+      "PublishOut": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/PublishResultOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PublishOut",
+        "type": "object"
+      },
+      "PublishResultOut": {
+        "additionalProperties": false,
+        "properties": {
+          "affected": {
+            "$ref": "#/components/schemas/PublishAffectedOut"
+          },
+          "fund_diff": {
+            "$ref": "#/components/schemas/FundDiffOut"
+          },
+          "kept": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Kept",
+            "type": "array"
+          },
+          "propagated": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Propagated",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "transfers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Transfers",
+            "type": "array"
+          },
+          "version": {
+            "$ref": "#/components/schemas/PublishedVersionOut"
+          }
+        },
+        "required": [
+          "version",
+          "fund_diff",
+          "propagated",
+          "kept",
+          "skipped",
+          "transfers",
+          "affected"
+        ],
+        "title": "PublishResultOut",
+        "type": "object"
+      },
+      "PublishedVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "rev"
+        ],
+        "title": "PublishedVersionOut",
         "type": "object"
       },
       "PunchDeletedOut": {
@@ -11927,6 +12712,79 @@
         "title": "ResetMonthOut",
         "type": "object"
       },
+      "ResetOut": {
+        "additionalProperties": false,
+        "properties": {
+          "backup": {
+            "title": "Backup",
+            "type": "string"
+          },
+          "backup_url": {
+            "title": "Backup Url",
+            "type": "string"
+          },
+          "deleted": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Deleted",
+            "type": "object"
+          },
+          "loaded": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Loaded",
+            "type": "object"
+          }
+        },
+        "required": [
+          "backup",
+          "backup_url",
+          "deleted",
+          "loaded"
+        ],
+        "title": "ResetOut",
+        "type": "object"
+      },
+      "ResetPreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "will_load": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Will Load",
+            "type": "object"
+          }
+        },
+        "required": [
+          "counts",
+          "will_load",
+          "warnings",
+          "fingerprint"
+        ],
+        "title": "ResetPreviewOut",
+        "type": "object"
+      },
       "ResolveEmployeeOut": {
         "additionalProperties": false,
         "properties": {
@@ -12115,6 +12973,37 @@
           "modifiers"
         ],
         "title": "ResolvedRulesOut",
+        "type": "object"
+      },
+      "RetiredOut": {
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "title": "Entity",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "entity",
+          "id",
+          "name"
+        ],
+        "title": "RetiredOut",
         "type": "object"
       },
       "RoleCreatedOut": {
@@ -13708,6 +14597,156 @@
           "problems"
         ],
         "title": "SkippedGroupOut",
+        "type": "object"
+      },
+      "SnapshotCategoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "escorted": {
+            "title": "Escorted",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind_id": {
+            "title": "Kind Id",
+            "type": "integer"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "title",
+          "kind_id",
+          "weight",
+          "escorted",
+          "sort_order"
+        ],
+        "title": "SnapshotCategoryOut",
+        "type": "object"
+      },
+      "SnapshotGroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "escorted": {
+            "title": "Escorted",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "path": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "title",
+          "sort_order",
+          "escorted",
+          "path"
+        ],
+        "title": "SnapshotGroupOut",
+        "type": "object"
+      },
+      "SnapshotUnitOut": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "flags": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "floor": {
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "category_id",
+          "group_id",
+          "floor",
+          "flags",
+          "path"
+        ],
+        "title": "SnapshotUnitOut",
         "type": "object"
       },
       "SpecialDate": {
@@ -15800,6 +16839,91 @@
         "title": "ModifierOut",
         "type": "object"
       },
+      "app__modules__stays__application__fund_forms__KindIn": {
+        "properties": {
+          "expanded": {
+            "default": false,
+            "title": "Expanded",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "KindIn",
+        "type": "object"
+      },
+      "app__modules__stays__application__fund_forms__MergeIn": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "floor": {
+            "default": "",
+            "maxLength": 8,
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Unit Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rev",
+          "unit_ids",
+          "label"
+        ],
+        "title": "MergeIn",
+        "type": "object"
+      },
       "app__modules__stays__interface__coverage_api__DaysIn": {
         "properties": {
           "days": {
@@ -15951,91 +17075,6 @@
           "daily_limit"
         ],
         "title": "SettingsIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__fund_versions_api__KindIn": {
-        "properties": {
-          "expanded": {
-            "default": false,
-            "title": "Expanded",
-            "type": "boolean"
-          },
-          "sort_order": {
-            "default": 100,
-            "maximum": 100000.0,
-            "minimum": -100000.0,
-            "title": "Sort Order",
-            "type": "integer"
-          },
-          "title": {
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "title": "KindIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__fund_versions_api__MergeIn": {
-        "properties": {
-          "category_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category Id"
-          },
-          "floor": {
-            "default": "",
-            "maxLength": 8,
-            "title": "Floor",
-            "type": "string"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "label": {
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Label",
-            "type": "string"
-          },
-          "rev": {
-            "title": "Rev",
-            "type": "integer"
-          },
-          "unit_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "maxItems": 50,
-            "minItems": 2,
-            "title": "Unit Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "rev",
-          "unit_ids",
-          "label"
-        ],
-        "title": "MergeIn",
         "type": "object"
       },
       "app__modules__stays__interface__guests_api__MergeIn": {
@@ -25752,7 +26791,7 @@
     },
     "/api/stays/fund/backups/{name}": {
       "get": {
-        "description": "Копия перед начальной загрузкой: имя строго stays-YYYYMMDD-HHMMSS.xlsx, без путей.\nВ копии персональные данные гостей — скачивание в журнале аудита.",
+        "description": "Копия перед начальной загрузкой; скачивание — в журнале аудита.",
         "operationId": "get_backup_api_stays_fund_backups__name__get",
         "parameters": [
           {
@@ -25806,7 +26845,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftMovedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -25843,7 +26884,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOpenedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -25882,7 +26925,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftEntityOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -25931,7 +26976,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftRevOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -25979,7 +27026,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftEntityOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26008,7 +27057,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FundDiffOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26037,7 +27088,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftRevOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26076,7 +27129,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftEntityOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26125,7 +27180,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftRevOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26173,7 +27230,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftEntityOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26197,7 +27256,7 @@
     },
     "/api/stays/fund/draft/publish": {
       "post": {
-        "description": "Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается\n(§4.3). rev сверяется в fd.publish под замком модуля.",
+        "description": "Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается (§4.3).",
         "operationId": "publish_draft_api_stays_fund_draft_publish_post",
         "parameters": [
           {
@@ -26227,7 +27286,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublishOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26266,7 +27327,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftEntityOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26295,7 +27358,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__MergeIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__MergeIn"
               }
             }
           },
@@ -26305,7 +27368,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftEntityOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26354,7 +27419,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftRevOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26402,7 +27469,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftEntityOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26452,7 +27521,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DraftSplitOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26531,7 +27602,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26571,7 +27644,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26619,7 +27694,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26669,7 +27746,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26693,7 +27772,7 @@
     },
     "/api/stays/fund/import": {
       "post": {
-        "description": "«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже\nесть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда\nне остаётся ничего, даже черновика: всё — одна транзакция. flags — правки справочника флагов\n{created, renamed, recoloured}: он не версионируется, и они остаются и без черновика.",
+        "description": "«Загрузить как черновик с даты» (§9.3). Ошибки файла — 422 {errors: [{sheet, row, message}]},\nи тогда не остаётся ничего, даже черновика.",
         "operationId": "import_fund_api_stays_fund_import_post",
         "requestBody": {
           "content": {
@@ -26709,7 +27788,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FundImportOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26749,7 +27830,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/InProductionOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26778,7 +27861,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__KindIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__KindIn"
               }
             }
           },
@@ -26788,7 +27871,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26828,7 +27913,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26866,7 +27953,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__fund_versions_api__KindIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__KindIn"
               }
             }
           },
@@ -26876,7 +27963,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26926,7 +28015,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26950,7 +28041,7 @@
     },
     "/api/stays/fund/reset": {
       "post": {
-        "description": "«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,\nпредупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и\nfingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки\nфайла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания.",
+        "description": "«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,\nпредупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и\nfingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409.",
         "operationId": "reset_fund_api_stays_fund_reset_post",
         "parameters": [
           {
@@ -26980,7 +28071,17 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ResetPreviewOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ResetOut"
+                    }
+                  ],
+                  "title": "Response Reset Fund Api Stays Fund Reset Post"
+                }
               }
             },
             "description": "Successful Response"
@@ -27044,7 +28145,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FundSnapshotOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -27073,7 +28176,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FundVersionRowOut"
+                  },
+                  "title": "Response List Versions Api Stays Fund Versions Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -27087,7 +28196,7 @@
     },
     "/api/stays/fund/versions/{vid}": {
       "delete": {
-        "description": "Удаление черновика или будущей версии и его предпросмотр (?preview=1) — одна операция, как\nпубликация: удаление опубликованной версии перераспределяет брони, новый овербукинг без права\nstays.overbook — 409 (часть 2 §7).",
+        "description": "Удаление черновика или будущей версии и его предпросмотр (?preview=1).",
         "operationId": "remove_version_api_stays_fund_versions__vid__delete",
         "parameters": [
           {
@@ -27116,7 +28225,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteVersionOut"
+                }
               }
             },
             "description": "Successful Response"
