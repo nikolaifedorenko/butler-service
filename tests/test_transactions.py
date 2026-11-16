@@ -21,6 +21,8 @@ APP = Path(__file__).resolve().parents[1] / "app"
 ALLOWED = {
     # граница операции прикладного слоя
     ("core/db.py", "transaction"),
+    # неудачная попытка входа записывается до отказа: отказ откатил бы и её
+    ("modules/access/application/auth.py", "_record_failure"),
     # advisory-lock держится на отдельном соединении — транзакцию открытой не держим
     ("core/startup_lock.py", "_pg_lock"), ("core/startup_lock.py", "try_lock"),
     # фоновые задачи: сами себе единица работы
@@ -39,12 +41,8 @@ ALLOWED = {
 
 # модуль → (commit, HTTPException, эндпоинты без модели ответа) в его роутерах
 LEGACY: dict[str, tuple[int, int, int]] = {
-    "access": (17, 28, 19),
-    "audit": (0, 0, 2),
-    "core": (1, 0, 3),
     "docs": (6, 13, 8),
     "employees": (13, 19, 19),
-    "settings": (3, 3, 4),
     "stays": (18, 50, 96),
     "timesheet": (30, 89, 51),
 }

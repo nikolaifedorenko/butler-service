@@ -2,18 +2,18 @@
 
 Это НЕ право из каталога PERMISSIONS, а правило анти-эскалации: нельзя создать или изменить
 учётку с ролью выше той, что разрешено назначать. С 22.10.2026 (ADR-0011) уровни ролей —
-данные таблицы roles: rank роли и max_assignable_rank её обладателя. Задокументированное
-исключение ADR-0006 (бросает HTTPException напрямую) сохранено.
+данные таблицы roles: rank роли и max_assignable_rank её обладателя. Отказ — ``Forbidden``,
+неизвестная роль — ``Validation`` (core/errors.py).
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .auth import Principal
+from .errors import Forbidden, Validation
 from .identity import Role, User
 
 
@@ -27,19 +27,17 @@ def can_manage_user(db: Session, principal: Principal, target_user: Optional[Use
     """
     roles = {r.code: r for r in db.scalars(select(Role))}
     if new_role is not None and new_role not in roles:
-        raise HTTPException(status_code=422, detail=f"Неизвестная роль пользователя: {new_role}")
+        raise Validation(f"Неизвестная роль пользователя: {new_role}")
     mine = roles.get(principal.role)
     limit = mine.max_assignable_rank if mine else -1
     if limit < 0:
-        raise HTTPException(status_code=403, detail="Недостаточно прав: управление учётными записями")
+        raise Forbidden("Недостаточно прав: управление учётными записями")
     if target_user is not None:
         target = roles.get(target_user.role)
         if target is not None and target.rank > limit:
-            raise HTTPException(status_code=403,
-                                detail=f"Изменять учётную запись с ролью «{target.title}» вам нельзя")
+            raise Forbidden(f"Изменять учётную запись с ролью «{target.title}» вам нельзя")
     if new_role is not None and roles[new_role].rank > limit:
-        raise HTTPException(status_code=403,
-                            detail=f"Назначать роль «{roles[new_role].title}» вам нельзя")
+        raise Forbidden(f"Назначать роль «{roles[new_role].title}» вам нельзя")
 
 
 def can_manage_role(db: Session, principal: Principal, role: Role) -> None:
@@ -47,7 +45,7 @@ def can_manage_role(db: Session, principal: Principal, role: Role) -> None:
     действующего — то же правило, что для назначения роли учётке (can_manage_user)."""
     mine = db.get(Role, principal.role)
     if role.rank > (mine.max_assignable_rank if mine else -1):
-        raise HTTPException(status_code=403, detail=f"Права роли «{role.title}» вам менять нельзя")
+        raise Forbidden(f"Права роли «{role.title}» вам менять нельзя")
 
 
 def roles_catalog(db: Session) -> list[Role]:

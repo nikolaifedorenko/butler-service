@@ -9,8 +9,9 @@ from __future__ import annotations
 import itertools
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import select
+
+from app.core.errors import ServiceError
 
 ROLES = ("admin", "manager", "supervisor", "employee")
 
@@ -37,7 +38,7 @@ def test_builtin_hierarchy_matches_previous_rules(db):
         try:
             can_manage_user(db, principal, target_user, new)
             allowed = True
-        except HTTPException as exc:
+        except ServiceError as exc:
             assert exc.status_code == 403, exc.detail
             allowed = False
         assert allowed == _old_rule(actor, target, new), (actor, target, new)
@@ -107,6 +108,6 @@ def test_unknown_role_is_422(db):
     from app.core.auth_guards import can_manage_user
     from app.core.identity import User
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(ServiceError) as exc:
         can_manage_user(db, Principal(User(username="x", role="admin"), None), None, "superadmin")
     assert exc.value.status_code == 422

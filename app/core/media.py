@@ -32,7 +32,7 @@ from sqlalchemy import ForeignKey, Index, Integer, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .audit import audit
-from .db import Base
+from .db import Base, transactional
 from .errors import Forbidden, Gone, NotFound, PayloadTooLarge
 from .time import Moment, local_iso, local_now, now
 
@@ -433,6 +433,7 @@ def resolve_photo_file(db: Session, photo_id: int, principal):
     return p, path, mime
 
 
+@transactional
 def delete_photo(db: Session, principal, photo_id: int) -> None:
     """Удалить фото: своё — любой пользователь, чужое — право media.delete_any (супервайзер+)."""
     from .permissions import has_perm

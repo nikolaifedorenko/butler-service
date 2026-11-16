@@ -153,7 +153,7 @@ def test_client_ip_is_a_valid_address_or_connection_peer(app_stack):
 
     from app.core.config import settings
     from app.core.net import client_ip
-    from app.modules.access.interface.auth_routes import _attempt_key
+    from app.modules.access.application.auth import attempt_key as _attempt_key
 
     def ip(xff):
         return client_ip(SimpleNamespace(headers={"x-forwarded-for": xff},

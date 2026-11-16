@@ -56,6 +56,106 @@
         "title": "AbsenceIn",
         "type": "object"
       },
+      "AccessCatalogOut": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "permissions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleOut"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/AccessUserOut"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "required": [
+          "permissions",
+          "roles",
+          "groups",
+          "users"
+        ],
+        "title": "AccessCatalogOut",
+        "type": "object"
+      },
+      "AccessUserOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "effective": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Effective",
+            "type": "array"
+          },
+          "grants": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Grants",
+            "type": "object"
+          },
+          "groups": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "active",
+          "name",
+          "groups",
+          "grants",
+          "effective"
+        ],
+        "title": "AccessUserOut",
+        "type": "object"
+      },
       "AddShiftIn": {
         "properties": {
           "day": {
@@ -373,6 +473,106 @@
         "title": "AssignIn",
         "type": "object"
       },
+      "AuditActionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "title"
+        ],
+        "title": "AuditActionOut",
+        "type": "object"
+      },
+      "AuditItemOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "action_title": {
+            "title": "Action Title",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "payload": {
+            "title": "Payload",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "actor",
+          "action",
+          "action_title",
+          "target",
+          "payload"
+        ],
+        "title": "AuditItemOut",
+        "type": "object"
+      },
+      "AuditPageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/AuditActionOut"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "items",
+          "actions"
+        ],
+        "title": "AuditPageOut",
+        "type": "object"
+      },
       "BankAdjustIn": {
         "properties": {
           "date": {
@@ -408,6 +608,7 @@
         "type": "object"
       },
       "BaseIn": {
+        "description": "Базовый цикл объекта: какие дни рабочие у каждого блока графика.",
         "properties": {
           "anchor": {
             "default": "2024-01-01",
@@ -427,6 +628,26 @@
           }
         },
         "title": "BaseIn",
+        "type": "object"
+      },
+      "BaseSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "additionalProperties": true,
+            "title": "Base",
+            "type": "object"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "base"
+        ],
+        "title": "BaseSavedOut",
         "type": "object"
       },
       "BlockIn": {
@@ -1942,6 +2163,46 @@
         "title": "ContactIn",
         "type": "object"
       },
+      "CountsOut": {
+        "additionalProperties": false,
+        "description": "Сколько данных в системе.",
+        "properties": {
+          "employees": {
+            "title": "Employees",
+            "type": "integer"
+          },
+          "period_closings": {
+            "title": "Period Closings",
+            "type": "integer"
+          },
+          "punches": {
+            "title": "Punches",
+            "type": "integer"
+          },
+          "schedule_shifts": {
+            "title": "Schedule Shifts",
+            "type": "integer"
+          },
+          "tabel_days": {
+            "title": "Tabel Days",
+            "type": "integer"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "employees",
+          "users",
+          "schedule_shifts",
+          "punches",
+          "tabel_days",
+          "period_closings"
+        ],
+        "title": "CountsOut",
+        "type": "object"
+      },
       "CreatedOut": {
         "additionalProperties": false,
         "properties": {
@@ -2741,6 +3002,7 @@
         "type": "object"
       },
       "DocIn": {
+        "description": "Реквизиты организации и тексты заявлений.",
         "properties": {
           "company": {
             "default": "",
@@ -2774,6 +3036,26 @@
           }
         },
         "title": "DocIn",
+        "type": "object"
+      },
+      "DocSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "doc": {
+            "additionalProperties": true,
+            "title": "Doc",
+            "type": "object"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "doc"
+        ],
+        "title": "DocSavedOut",
         "type": "object"
       },
       "DraftCategoryIn": {
@@ -3242,6 +3524,83 @@
         "title": "EmployeeIn",
         "type": "object"
       },
+      "EngineDefaultsOut": {
+        "additionalProperties": false,
+        "description": "Глобальные значения движка расчёта из версии, действующей сегодня.",
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/LimitsOut"
+          },
+          "modifiers": {
+            "items": {
+              "$ref": "#/components/schemas/ModifierOut"
+            },
+            "title": "Modifiers",
+            "type": "array"
+          },
+          "upcoming_versions": {
+            "items": {
+              "$ref": "#/components/schemas/UpcomingVersionOut"
+            },
+            "title": "Upcoming Versions",
+            "type": "array"
+          },
+          "version": {
+            "$ref": "#/components/schemas/EngineVersionOut"
+          }
+        },
+        "required": [
+          "version",
+          "modifiers",
+          "limits",
+          "upcoming_versions"
+        ],
+        "title": "EngineDefaultsOut",
+        "type": "object"
+      },
+      "EngineVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "on": {
+            "title": "On",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "note",
+          "on"
+        ],
+        "title": "EngineVersionOut",
+        "type": "object"
+      },
       "EscortIn": {
         "properties": {
           "active": {
@@ -3508,6 +3867,60 @@
           "fixed_after_dispatch"
         ],
         "title": "GroupCountsOut",
+        "type": "object"
+      },
+      "GroupCreatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "GroupCreatedOut",
+        "type": "object"
+      },
+      "GroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "grants": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Grants",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "members",
+          "grants"
+        ],
+        "title": "GroupOut",
         "type": "object"
       },
       "GuestIn": {
@@ -4113,6 +4526,51 @@
         "title": "LeaveIn",
         "type": "object"
       },
+      "LimitsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "late_limit_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Late Limit Minutes"
+          },
+          "period_granularity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Granularity"
+          },
+          "step_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Minutes"
+          }
+        },
+        "required": [
+          "step_minutes",
+          "late_limit_minutes",
+          "period_granularity"
+        ],
+        "title": "LimitsOut",
+        "type": "object"
+      },
       "LinkIn": {
         "description": "parent — гость из пути родитель guest_id; former — бывшие супруги. Вторая сторона —\nguest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая\nсторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка.",
         "properties": {
@@ -4376,6 +4834,104 @@
         "title": "ManualShiftIn",
         "type": "object"
       },
+      "MeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "assignable_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assignable Roles",
+            "type": "array"
+          },
+          "menu": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Menu",
+            "type": "array"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleTitleOut"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "settings_screens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Settings Screens",
+            "type": "array"
+          },
+          "today": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodayPlanOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user",
+          "today",
+          "permissions",
+          "roles",
+          "assignable_roles",
+          "menu",
+          "settings_screens"
+        ],
+        "title": "MeOut",
+        "type": "object"
+      },
+      "MediaLimitsOut": {
+        "additionalProperties": false,
+        "description": "Лимиты медиа, которые задаёт объект; 0 — без ограничения.",
+        "properties": {
+          "photo_max_mb": {
+            "description": "наибольший размер фото, МБ",
+            "title": "Photo Max Mb",
+            "type": "number"
+          },
+          "photo_retention_days": {
+            "title": "Photo Retention Days",
+            "type": "integer"
+          },
+          "video_max_mb": {
+            "description": "наибольший размер видео, МБ",
+            "title": "Video Max Mb",
+            "type": "number"
+          },
+          "video_retention_days": {
+            "title": "Video Retention Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "photo_max_mb",
+          "video_max_mb",
+          "photo_retention_days",
+          "video_retention_days"
+        ],
+        "title": "MediaLimitsOut",
+        "type": "object"
+      },
       "MembersIn": {
         "properties": {
           "user_ids": {
@@ -4526,6 +5082,34 @@
           "value"
         ],
         "title": "ModifierIn",
+        "type": "object"
+      },
+      "ModifierOut": {
+        "additionalProperties": false,
+        "properties": {
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "hint",
+          "value"
+        ],
+        "title": "ModifierOut",
         "type": "object"
       },
       "MoveIn": {
@@ -6339,6 +6923,25 @@
         "title": "ResetIn",
         "type": "object"
       },
+      "RoleCreatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "RoleCreatedOut",
+        "type": "object"
+      },
       "RoleIn": {
         "properties": {
           "max_assignable_rank": {
@@ -6362,6 +6965,88 @@
         "title": "RoleIn",
         "type": "object"
       },
+      "RoleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "builtin": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "defaults": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Defaults",
+            "type": "array"
+          },
+          "effective": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Effective",
+            "type": "array"
+          },
+          "max_assignable_rank": {
+            "title": "Max Assignable Rank",
+            "type": "integer"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Overrides",
+            "type": "object"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "role",
+          "title",
+          "rank",
+          "max_assignable_rank",
+          "builtin",
+          "users",
+          "defaults",
+          "overrides",
+          "effective"
+        ],
+        "title": "RoleOut",
+        "type": "object"
+      },
+      "RoleTitleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "title"
+        ],
+        "title": "RoleTitleOut",
+        "type": "object"
+      },
       "RuleIn": {
         "properties": {
           "key": {
@@ -6378,6 +7063,58 @@
           "value"
         ],
         "title": "RuleIn",
+        "type": "object"
+      },
+      "RuleItemOut": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "title": "Default"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "default",
+          "description",
+          "type"
+        ],
+        "title": "RuleItemOut",
+        "type": "object"
+      },
+      "RulesSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "rules": {
+            "additionalProperties": true,
+            "title": "Rules",
+            "type": "object"
+          }
+        },
+        "required": [
+          "rules"
+        ],
+        "title": "RulesSavedOut",
         "type": "object"
       },
       "SectionBriefOut": {
@@ -7141,6 +7878,67 @@
         "title": "ServicesOut",
         "type": "object"
       },
+      "SessionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "SessionOut",
+        "type": "object"
+      },
+      "SettingsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "additionalProperties": true,
+            "title": "Base",
+            "type": "object"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/CountsOut"
+          },
+          "doc": {
+            "additionalProperties": true,
+            "title": "Doc",
+            "type": "object"
+          },
+          "engine_defaults": {
+            "$ref": "#/components/schemas/EngineDefaultsOut"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RuleItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "rules": {
+            "additionalProperties": true,
+            "title": "Rules",
+            "type": "object"
+          }
+        },
+        "required": [
+          "rules",
+          "items",
+          "counts",
+          "base",
+          "doc",
+          "engine_defaults"
+        ],
+        "title": "SettingsOut",
+        "type": "object"
+      },
       "ShiftIntervalIn": {
         "properties": {
           "end": {
@@ -7617,6 +8415,69 @@
         "title": "TodayPendingOut",
         "type": "object"
       },
+      "TodayPlanOut": {
+        "additionalProperties": false,
+        "description": "План сотрудника на сегодня.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "expected": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Expected",
+            "type": "array"
+          },
+          "planned_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned End"
+          },
+          "planned_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start"
+          },
+          "shift": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift"
+          }
+        },
+        "required": [
+          "date",
+          "shift",
+          "planned_start",
+          "planned_end",
+          "expected"
+        ],
+        "title": "TodayPlanOut",
+        "type": "object"
+      },
       "TodayReportOut": {
         "additionalProperties": false,
         "properties": {
@@ -7671,6 +8532,77 @@
           "email"
         ],
         "title": "TransportOut",
+        "type": "object"
+      },
+      "UpcomingVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "valid_from",
+          "note"
+        ],
+        "title": "UpcomingVersionOut",
+        "type": "object"
+      },
+      "UserOut": {
+        "additionalProperties": false,
+        "description": "Вошедший пользователь; при входе «как сотрудник» — сотрудник, глазами которого смотрят.",
+        "properties": {
+          "employee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "impersonated": {
+            "title": "Impersonated",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "name",
+          "employee_id",
+          "impersonated"
+        ],
+        "title": "UserOut",
         "type": "object"
       },
       "ValidationError": {
@@ -8120,7 +9052,7 @@
         "title": "ZonesOut",
         "type": "object"
       },
-      "app__modules__access__interface__access_api__GroupIn": {
+      "app__modules__access__application__rights__GroupIn": {
         "properties": {
           "description": {
             "default": "",
@@ -8661,7 +9593,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AccessCatalogOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8680,7 +9614,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__access__interface__access_api__GroupIn"
+                "$ref": "#/components/schemas/app__modules__access__application__rights__GroupIn"
               }
             }
           },
@@ -8690,7 +9624,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GroupCreatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8730,7 +9666,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -8768,7 +9706,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__access__interface__access_api__GroupIn"
+                "$ref": "#/components/schemas/app__modules__access__application__rights__GroupIn"
               }
             }
           },
@@ -8778,7 +9716,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -8828,7 +9768,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -8878,7 +9820,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -8902,7 +9846,7 @@
     },
     "/api/access/roles": {
       "post": {
-        "description": "Своя роль (ADR-0011): права по умолчанию пустые — выдаются в «Правах доступа».",
+        "description": "Своя роль: права ей выдаются отдельно.",
         "operationId": "create_role_api_access_roles_post",
         "requestBody": {
           "content": {
@@ -8918,7 +9862,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RoleCreatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -8958,7 +9904,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -9008,7 +9956,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -9032,6 +9982,7 @@
     },
     "/api/access/roles/{role}": {
       "put": {
+        "description": "Права роли сверх прав по умолчанию.",
         "operationId": "put_role_api_access_roles__role__put",
         "parameters": [
           {
@@ -9058,7 +10009,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -9108,7 +10061,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -9223,7 +10178,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9316,11 +10273,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -9342,7 +10294,7 @@
     },
     "/api/auth/change-password": {
       "post": {
-        "description": "Смена своего пароля: старый пароль для проверки + новый (подтверждение проверяет клиент).",
+        "description": "Сменить свой пароль; остальные сессии пользователя перестают действовать.",
         "operationId": "change_password_api_auth_change_password_post",
         "requestBody": {
           "content": {
@@ -9358,7 +10310,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -9382,7 +10336,7 @@
     },
     "/api/auth/impersonate": {
       "post": {
-        "description": "Демо-режим: менеджер смотрит интерфейс глазами сотрудника (без пароля).",
+        "description": "Смотреть интерфейс глазами сотрудника.",
         "operationId": "impersonate_api_auth_impersonate_post",
         "requestBody": {
           "content": {
@@ -9398,7 +10352,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9427,7 +10383,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9456,7 +10414,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -9480,15 +10440,10 @@
     },
     "/api/auth/login-form": {
       "get": {
-        "description": "Адрес действия формы логина принимает только POST (303-редирект).\n\nGET сюда приходит лишь от восстановленных вкладок и пробных запросов браузера\n(18.10.2026: владелец видел на таком URL JSON «Not found» после перезапуска\nсервера). Возвращаем в приложение, а не JSON 404.",
+        "description": "Адрес формы входа принимает только POST. GET приходит от восстановленных вкладок —\nвозвращаем в приложение, а не показываем «Not found».",
         "operationId": "login_form_get_api_auth_login_form_get",
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
+          "307": {
             "description": "Successful Response"
           }
         },
@@ -9498,7 +10453,7 @@
         ]
       },
       "post": {
-        "description": "Классический form-login с редиректом — ДЛЯ МЕНЕДЖЕРОВ ПАРОЛЕЙ (16.10.2026).\n\nБраузерные менеджеры (Safari/«Пароли» macOS включительно) надёжно распознают\nсвязку «submit формы с паролем → 303-редирект» и показывают «Сохранить пароль?»\nсразу после входа. SPA-вход через preventDefault+fetch они откладывают до\nследующего действия пользователя — владелец видел плашку при открытии\n«Настроек». Ошибки уносим кодом в URL: пароль в адресную строку не попадает.",
+        "description": "Вход обычной формой с переадресацией: так менеджеры паролей браузера сразу предлагают\nсохранить пароль. Ошибка уходит кодом в адрес.",
         "operationId": "login_form_api_auth_login_form_post",
         "requestBody": {
           "content": {
@@ -9510,12 +10465,7 @@
           }
         },
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
+          "307": {
             "description": "Successful Response"
           },
           "422": {
@@ -9537,13 +10487,15 @@
     },
     "/api/auth/logout": {
       "post": {
-        "description": "Выход: cookie удаляется у клиента И отзывается на сервере.\n\nТокен stateless, поэтому одного delete_cookie мало — скопированная/украденная\ncookie продолжала бы работать до истечения срока. Увеличение token_version\nделает недействительными все ранее выданные токены пользователя (на всех\nустройствах) — так же, как при смене пароля.",
+        "description": "Выход: cookie удаляется, а все сессии пользователя отзываются на сервере.",
         "operationId": "logout_api_auth_logout_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -9557,13 +10509,15 @@
     },
     "/api/auth/me": {
       "get": {
-        "description": "Текущий пользователь + его план на сегодня (для личного кабинета).",
+        "description": "Текущий пользователь, его права, меню и план на сегодня.",
         "operationId": "me_api_auth_me_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -14559,7 +15513,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MediaLimitsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -14590,7 +15546,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -14629,11 +15587,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -15459,7 +16412,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -15471,7 +16426,7 @@
         ]
       },
       "put": {
-        "description": "Сохранить правила расчёта (доступно администратору).",
+        "description": "Сохранить правила объекта.",
         "operationId": "update_settings_api_settings_put",
         "requestBody": {
           "content": {
@@ -15491,7 +16446,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RulesSavedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -15515,7 +16472,7 @@
     },
     "/api/settings/base": {
       "put": {
-        "description": "Базовый цикл объекта: какие дни рабочие у Смены 1 / Смены 2 / Администрации — на все месяцы.",
+        "description": "Базовый цикл объекта: какие дни рабочие у каждого блока графика.",
         "operationId": "update_base_api_settings_base_put",
         "requestBody": {
           "content": {
@@ -15531,7 +16488,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BaseSavedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -15555,7 +16514,7 @@
     },
     "/api/settings/doc": {
       "put": {
-        "description": "Шаблоны заявлений и реквизиты организации для печати документов.",
+        "description": "Реквизиты организации и тексты заявлений для печати документов.",
         "operationId": "update_doc_api_settings_doc_put",
         "requestBody": {
           "content": {
@@ -15571,7 +16530,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DocSavedOut"
+                }
               }
             },
             "description": "Successful Response"

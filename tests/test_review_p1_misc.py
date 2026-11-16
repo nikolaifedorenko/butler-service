@@ -73,9 +73,9 @@ def test_misc1_audit_filter_boundaries_are_local(admin_client, db):
 
 
 def test_misc1_no_hardcoded_utc_offset():
-    src = (BASE / "app/modules/audit/interface/audit_api.py").read_text(encoding="utf-8")
+    src = (BASE / "app/modules/audit/application/journal.py").read_text(encoding="utf-8")
     assert "hours=3" not in src and "hours=-3" not in src
-    assert "_utc_bound" in src          # границы переводит общая функция
+    assert "local_midnight" in src      # границы суток переводит общая функция ядра
 
 
 # ── P1-misc-2: resend() повторяет отправку с копией (cc) ──────────────────────
