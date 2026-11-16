@@ -34,7 +34,7 @@ class BlockInvalid(FundError):
 class BlockNotFound(BlockInvalid):
     """Записи нет → 404."""
 
-    status = 404
+    status_code = 404
 
 
 class BlockConflict(FundConflict):

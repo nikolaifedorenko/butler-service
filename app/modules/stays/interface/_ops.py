@@ -12,21 +12,13 @@ from app.core.auth import Principal
 
 from ..adapters.duty_timesheet import TimesheetDuty
 from ..application import preview
-from ..application.coverage import CoverageForbidden
-from ..application.fund import FundConflict, FundError
-from ..application.mine import MineForbidden
-from ..application.reservations import ReservationConflict
+from ..application.fund import FundError
 
 PREVIEW = Query(False, alias="preview", description="Только показать, что изменится, без сохранения")
 
 
 def err(e: FundError) -> HTTPException:
-    if isinstance(e, (CoverageForbidden, MineForbidden)):
-        return HTTPException(status_code=403, detail=str(e))
-    if getattr(e, "status", None) == 404:
-        return HTTPException(status_code=404, detail=str(e))
-    conflict = isinstance(e, (ReservationConflict, FundConflict))
-    return HTTPException(status_code=409 if conflict else 422, detail=str(e))
+    return HTTPException(status_code=e.status_code, detail=str(e))
 
 
 def run(db: Session, op, preview_flag: bool, window: tuple[dt.date, dt.date] | None,

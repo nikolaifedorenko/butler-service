@@ -17,7 +17,8 @@ from app.core.permissions import has_perm, require_perm
 
 from ..adapters.orm import VipCode
 from ..application import fund, guests, vip_codes
-from ..application.fund import FundConflict, FundError
+from ..application.fund import FundError
+from ..application.fund_forms import SORT
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 
@@ -27,26 +28,12 @@ SETUP = require_perm("stays.setup")
 
 
 def _err(e: FundError) -> HTTPException:
-    return HTTPException(status_code=409 if isinstance(e, FundConflict) else 422, detail=str(e))
+    return HTTPException(status_code=e.status_code, detail=str(e))
 
 
 def _write(db: Session, principal: Principal, target: str, before: dict, after: dict) -> None:
     audit(db, principal, "stays_fund", target, {"diff": fund.changes(before, after)})
     db.commit()
-
-
-SORT = Field(100, ge=-100_000, le=100_000)
-
-
-class CategoryIn(BaseModel):
-    model_config = ConfigDict(allow_inf_nan=False)
-
-    code: str = Field(min_length=1, max_length=16)
-    title: str = Field(min_length=1, max_length=120)
-    kind_id: int                       # вид из справочника видов категорий
-    escorted: bool = False
-    weight: float = Field(ge=0, le=100)
-    sort_order: int = SORT
 
 
 class LabelIn(BaseModel):

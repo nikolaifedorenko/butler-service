@@ -878,6 +878,11 @@ class FundFileError(FundError):
         super().__init__("; ".join(f"{e.sheet}:{e.row} {e.message}" for e in errors))
         self.errors = errors
 
+    @property
+    def body(self) -> dict:
+        """Ответ не ``{"detail"}``, а список ошибок с листом и строкой — интерфейс показывает его таблицей."""
+        return {"errors": [{"sheet": e.sheet, "row": e.row, "message": e.message} for e in self.errors]}
+
 
 def kind_titles(kinds: Sequence[CategoryKind]) -> list[str]:
     """Названия видов, которые можно указать в файле (без архивных) — для текста ошибки."""

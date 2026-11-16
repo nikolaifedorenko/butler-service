@@ -27,6 +27,12 @@ class ServiceError(Exception):
         """Тело ответа под ключом ``detail``: текст либо словарь с данными для интерфейса."""
         return self.message
 
+    @property
+    def body(self) -> dict:
+        """Тело ответа целиком. Почти всегда ``{"detail": ...}``; отказ, у которого тело иное
+        (список ошибок файла), переопределяет это свойство."""
+        return {"detail": self.detail}
+
 
 class Rejected(ServiceError):
     """Операция отклонена правилом → 400."""

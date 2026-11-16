@@ -2,569 +2,271 @@
 
 Чтение — тем, кто видит шахматку (READ), запись — правом stays.setup. Каждая запись черновика
 несёт rev (оптимистичная блокировка: 409 при расхождении) и возвращает новый rev. Начальная
-загрузка («заменить всё») и переключатель «в эксплуатации» — правом stays.reset (§9.3)."""
+загрузка («заменить всё») и переключатель «в эксплуатации» — правом stays.reset (§9.3).
+
+Правила — в прикладном слое: ``fund_screen`` (чтение), ``fund_draft_edit`` (черновик, публикация,
+загрузка файла), ``fund_dictionaries`` (флаги и виды), ``fund_admin`` (начальная загрузка).
+Роутер разбирает запрос и проверяет право.
+"""
 from __future__ import annotations
 
 import datetime as dt
-import re
-from dataclasses import asdict
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.identity import User
 from app.core.permissions import require_perm
-from app.core.time import local_iso
 
-from ..adapters.orm import FundVersion, UnitFlag, UnitLineage
-from ..application import fund_drafts as fd
-from ..application import fund_reset as fr
-from ..application import fund_xlsx as fx
-from ..application.fund import FundError
-from ..application.fund_versions import FundSnapshot, fund_on, kind_dict, kinds, snapshot_of
-from ._ops import PREVIEW, run
-from .fund_api import READ, SETUP, SORT, CategoryIn, _err
+from ..application import fund_admin, fund_dictionaries, fund_draft_edit, fund_screen
+from ..application.fund_forms import (
+    ArchiveIn,
+    DraftCategoryIn,
+    DraftGroupIn,
+    DraftIn,
+    DraftMoveIn,
+    DraftUnitIn,
+    FlagIn,
+    FlagValueIn,
+    InProductionIn,
+    KindIn,
+    MergeIn,
+    PublishIn,
+    SplitIn,
+)
+from ._upload import read_upload
+from .fund_api import READ, SETUP
+from .schemas import (
+    DeleteVersionOut,
+    DraftEntityOut,
+    DraftMovedOut,
+    DraftOpenedOut,
+    DraftRevOut,
+    DraftSplitOut,
+    FundDiffOut,
+    FundImportOut,
+    FundSnapshotOut,
+    FundVersionRowOut,
+    IdOut,
+    InProductionOut,
+    PublishOut,
+    ResetOut,
+    ResetPreviewOut,
+)
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 RESET = require_perm("stays.reset")
+PREVIEW = Query(False, alias="preview", description="Только показать, что изменится, без сохранения")
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+# ── чтение ───────────────────────────────────────────────────────────────────
 
 
-# ── тела запросов ──────────────────────────────────────────────────────────
-
-
-class DraftIn(BaseModel):
-    valid_from: dt.date
-    note: str = Field("", max_length=500)
-
-
-class DraftMoveIn(BaseModel):
-    rev: int
-    valid_from: dt.date
-
-
-class TransferIn(BaseModel):
-    reservation_id: int
-    category_id: int
-
-
-class PublishIn(BaseModel):
-    rev: int
-    propagate: bool = True                 # перенести правки в поздние версии (§4.4)
-    transfers: list[TransferIn] = Field([], max_length=500)
-
-
-class DraftCategoryIn(CategoryIn):
-    rev: int
-
-
-class DraftGroupIn(BaseModel):
-    rev: int
-    title: str = Field(min_length=1, max_length=120)
-    parent_id: Optional[int] = None
-    sort_order: int = SORT
-    escorted: bool = False
-
-
-class UnitFields(BaseModel):
-    label: str = Field(min_length=1, max_length=40)
-    category_id: int
-    group_id: Optional[int] = None
-    floor: str = Field("", max_length=8)
-
-
-class DraftUnitIn(UnitFields):
-    rev: int
-    flags: list[int] = []
-
-
-class PartIn(BaseModel):
-    label: str = Field(min_length=1, max_length=40)
-    category_id: Optional[int] = None
-    group_id: Optional[int] = None
-    floor: str = Field("", max_length=8)
-
-
-class SplitIn(BaseModel):
-    rev: int
-    parts: list[PartIn] = Field(min_length=2, max_length=50)
-
-
-class MergeIn(BaseModel):
-    rev: int
-    unit_ids: list[int] = Field(min_length=2, max_length=50)
-    label: str = Field(min_length=1, max_length=40)
-    category_id: Optional[int] = None
-    group_id: Optional[int] = None
-    floor: str = Field("", max_length=8)
-
-
-class FlagValueIn(BaseModel):
-    rev: int
-    flag_id: int
-    unit_ids: list[int] = Field(max_length=500)
-    value: bool
-
-
-class FlagIn(BaseModel):
-    model_config = ConfigDict(allow_inf_nan=False)
-
-    title: str = Field(min_length=1, max_length=80)
-    color: str = "#3b6fd8"
-    sort_order: int = SORT
-
-    @field_validator("color")
-    @classmethod
-    def _hex(cls, v: str) -> str:
-        if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
-            raise ValueError("Цвет в формате #RRGGBB")
-        return v
-
-
-class KindIn(BaseModel):
-    title: str = Field(min_length=1, max_length=40)
-    sort_order: int = SORT
-    expanded: bool = False
-
-
-class ArchiveIn(BaseModel):
-    archived: bool
-
-
-# ── чтение ─────────────────────────────────────────────────────────────────
-
-
-def _version_dict(v: FundVersion) -> dict:
-    return {"id": v.id, "valid_from": v.valid_from.isoformat(), "status": v.status, "rev": v.rev}
-
-
-def _snapshot_dict(db: Session, version: FundVersion, snap: FundSnapshot) -> dict:
-    return {
-        "version": _version_dict(version),
-        "categories": [{"id": c.id, "code": c.code, "title": c.title, "kind_id": c.kind_id, "weight": c.weight,
-                        "escorted": c.escorted, "sort_order": c.sort_order}
-                       for c in sorted(snap.categories.values(), key=lambda c: (c.sort_order, c.id))],
-        "groups": [{"id": g.id, "parent_id": g.parent_id, "title": g.title, "sort_order": g.sort_order,
-                    "escorted": g.escorted, "path": list(g.path)}
-                   for g in sorted(snap.groups.values(), key=lambda g: (g.sort_order, g.id))],
-        "units": [{"id": u.id, "label": u.label, "category_id": u.category_id, "group_id": u.group_id,
-                   "floor": u.floor, "flags": sorted(u.flags),
-                   "path": list(snap.groups[u.group_id].path) if u.group_id in snap.groups else []}
-                  for u in sorted(snap.units.values(), key=lambda u: (u.label, u.id))],
-        "flags": [{"id": f.id, "title": f.title, "color": f.color, "sort_order": f.sort_order,
-                   "archived": f.archived}
-                  for f in db.scalars(select(UnitFlag).order_by(UnitFlag.sort_order, UnitFlag.id))],
-        "kinds": [kind_dict(k) for k in kinds(db)],
-    }
-
-
-def _fund_on(db: Session, date: dt.date) -> FundSnapshot:
-    try:
-        return fund_on(db, date)
-    except LookupError as e:
-        raise HTTPException(422, str(e)) from e      # дата раньше первой версии — ошибка ввода
-
-
-@router.get("/fund/snapshot")
+@router.get("/fund/snapshot", response_model=FundSnapshotOut)
 def get_snapshot(date: Optional[dt.date] = None, version_id: Optional[int] = None,
                  principal: Principal = Depends(READ), db: Session = Depends(get_db)):
-    if (date is None) == (version_id is None):
-        raise HTTPException(422, "Укажите ровно один параметр: date или version_id")
-    if version_id is not None:
-        version = db.get(FundVersion, version_id)
-        if version is None:
-            raise HTTPException(404, "Версии фонда нет")
-        snap = snapshot_of(db, version_id)
-    else:
-        snap = _fund_on(db, date)
-        version = db.get(FundVersion, snap.version_id)
-    return _snapshot_dict(db, version, snap)
+    return fund_screen.snapshot(db, date, version_id)
 
 
-@router.get("/fund/versions")
+@router.get("/fund/versions", response_model=list[FundVersionRowOut])
 def list_versions(principal: Principal = Depends(READ), db: Session = Depends(get_db)):
-    rows = db.execute(select(FundVersion, User.username)
-                      .outerjoin(User, User.id == FundVersion.author_id)
-                      .order_by(FundVersion.valid_from, FundVersion.id)).all()
-    return [{"id": v.id, "valid_from": v.valid_from.isoformat(), "status": v.status, "author": name,
-             "note": v.note, "published_at": local_iso(v.published_at, "auto")}
-            for v, name in rows]
+    return fund_screen.versions(db)
 
 
-@router.get("/fund/draft/diff")
+@router.get("/fund/draft/diff", response_model=FundDiffOut)
 def draft_diff(principal: Principal = Depends(READ), db: Session = Depends(get_db)):
-    draft = fd.current_draft(db)
-    if draft is None:
-        raise HTTPException(409, "Черновика фонда нет")
-    if draft.base_version_id is None:
-        return asdict(fd.FundDiff())
-    out = asdict(fd.diff(db, draft.base_version_id, draft.id))
-    # «новый · из 12134» (§10): у нового объекта — обозначения тех, из кого он получился
-    # (деление, объединение в этом черновике); выведенный предшественник — по базе черновика
-    preds: dict[int, list[int]] = {}
-    for unit_id, pred in db.execute(select(UnitLineage.unit_id, UnitLineage.predecessor_id)
-                                    .where(UnitLineage.version_id == draft.id)):
-        preds.setdefault(unit_id, []).append(pred)
-    if preds:
-        mine, base = snapshot_of(db, draft.id).units, snapshot_of(db, draft.base_version_id).units
-        name = {i: u.label for i, u in {**base, **mine}.items()}
-        for e in out["units"]:
-            if e["kind"] == "added":
-                e["from"] = [name.get(p, f"#{p}") for p in sorted(preds.get(e["id"], []))]
-    return out
+    return fund_screen.draft_diff(db)
 
 
-# ── запись черновика ───────────────────────────────────────────────────────
+# ── запись черновика ─────────────────────────────────────────────────────────
 
 
-def _done(db: Session, principal: Principal, target: str, payload: dict, **extra) -> dict:
-    """Журнал и commit; ответ — новый rev черновика и результат действия."""
-    draft = fd.current_draft(db)
-    audit(db, principal, "stays_fund_version", target, payload)
-    out = {"rev": draft.rev if draft else None, **extra}
-    db.commit()
-    return out
-
-
-def _run(action, *args, **kwargs):
-    try:
-        return action(*args, **kwargs)
-    except FundError as e:
-        raise _err(e) from e
-
-
-@router.post("/fund/draft")
+@router.post("/fund/draft", response_model=DraftOpenedOut)
 def open_draft(payload: DraftIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    d = _run(fd.open_draft, db, payload.valid_from, principal.user.id, payload.note)
-    return _done(db, principal, f"fund_draft:{d.id}", {"open": payload.valid_from.isoformat()},
-                 id=d.id, valid_from=d.valid_from.isoformat())
+    return fund_draft_edit.open_draft(db, principal, payload)
 
 
-@router.patch("/fund/draft")
+@router.patch("/fund/draft", response_model=DraftMovedOut)
 def move_draft(payload: DraftMoveIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    _run(fd.move_draft_date, db, payload.rev, payload.valid_from)
-    return _done(db, principal, "fund_draft", {"move": payload.valid_from.isoformat()},
-                 valid_from=payload.valid_from.isoformat())
+    return fund_draft_edit.move_draft(db, principal, payload)
 
 
-@router.delete("/fund/versions/{vid}")
+@router.delete("/fund/versions/{vid}", response_model=DeleteVersionOut)
 def remove_version(vid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
                    db: Session = Depends(get_db)):
-    """Удаление черновика или будущей версии и его предпросмотр (?preview=1) — одна операция, как
-    публикация: удаление опубликованной версии перераспределяет брони, новый овербукинг без права
-    stays.overbook — 409 (часть 2 §7)."""
-    def op():
-        fd.delete_version(db, vid)
-        audit(db, principal, "stays_fund_version", f"fund_version:{vid}", {"delete": True})
-        return {"ok": True}
-    return run(db, op, preview_flag, None, principal)
+    """Удаление черновика или будущей версии и его предпросмотр (?preview=1)."""
+    return fund_draft_edit.delete_version(db, principal, vid, preview_only=preview_flag)
 
 
-def _data(payload: BaseModel) -> dict:
-    return payload.model_dump(exclude={"rev"}, exclude_unset=True)
-
-
-@router.post("/fund/draft/categories")
+@router.post("/fund/draft/categories", response_model=DraftEntityOut)
 def create_category(payload: DraftCategoryIn, principal: Principal = Depends(SETUP),
                     db: Session = Depends(get_db)):
-    cid = _run(fd.save_category, db, payload.rev, _data(payload), None)
-    return _done(db, principal, f"fund_draft:category:{cid}", {"save": _data(payload)}, id=cid)
+    return fund_draft_edit.save_category(db, principal, payload, None)
 
 
-@router.put("/fund/draft/categories/{cid}")
+@router.put("/fund/draft/categories/{cid}", response_model=DraftEntityOut)
 def update_category(cid: int, payload: DraftCategoryIn, principal: Principal = Depends(SETUP),
                     db: Session = Depends(get_db)):
-    _run(fd.save_category, db, payload.rev, _data(payload), cid)
-    return _done(db, principal, f"fund_draft:category:{cid}", {"save": _data(payload)}, id=cid)
+    return fund_draft_edit.save_category(db, principal, payload, cid)
 
 
-@router.delete("/fund/draft/categories/{cid}")
+@router.delete("/fund/draft/categories/{cid}", response_model=DraftRevOut)
 def remove_category(cid: int, rev: int = Query(), principal: Principal = Depends(SETUP),
                     db: Session = Depends(get_db)):
-    _run(fd.retire_category, db, rev, cid)
-    return _done(db, principal, f"fund_draft:category:{cid}", {"retire": True})
+    return fund_draft_edit.retire_category(db, principal, rev, cid)
 
 
-@router.post("/fund/draft/groups")
+@router.post("/fund/draft/groups", response_model=DraftEntityOut)
 def create_group(payload: DraftGroupIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    gid = _run(fd.save_group, db, payload.rev, _data(payload), None)
-    return _done(db, principal, f"fund_draft:group:{gid}", {"save": _data(payload)}, id=gid)
+    return fund_draft_edit.save_group(db, principal, payload, None)
 
 
-@router.put("/fund/draft/groups/{gid}")
+@router.put("/fund/draft/groups/{gid}", response_model=DraftEntityOut)
 def update_group(gid: int, payload: DraftGroupIn, principal: Principal = Depends(SETUP),
                  db: Session = Depends(get_db)):
-    _run(fd.save_group, db, payload.rev, _data(payload), gid)
-    return _done(db, principal, f"fund_draft:group:{gid}", {"save": _data(payload)}, id=gid)
+    return fund_draft_edit.save_group(db, principal, payload, gid)
 
 
-@router.delete("/fund/draft/groups/{gid}")
+@router.delete("/fund/draft/groups/{gid}", response_model=DraftRevOut)
 def remove_group(gid: int, rev: int = Query(), principal: Principal = Depends(SETUP),
                  db: Session = Depends(get_db)):
-    _run(fd.retire_group, db, rev, gid)
-    return _done(db, principal, f"fund_draft:group:{gid}", {"retire": True})
+    return fund_draft_edit.retire_group(db, principal, rev, gid)
 
 
-@router.post("/fund/draft/units")
+@router.post("/fund/draft/units", response_model=DraftEntityOut)
 def create_unit(payload: DraftUnitIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    uid = _run(fd.save_unit, db, payload.rev, _data(payload), None)
-    return _done(db, principal, f"fund_draft:unit:{uid}", {"save": _data(payload)}, id=uid)
+    return fund_draft_edit.save_unit(db, principal, payload, None)
 
 
-@router.put("/fund/draft/units/{uid}")
+@router.put("/fund/draft/units/{uid}", response_model=DraftEntityOut)
 def update_unit(uid: int, payload: DraftUnitIn, principal: Principal = Depends(SETUP),
                 db: Session = Depends(get_db)):
-    _run(fd.save_unit, db, payload.rev, _data(payload), uid)
-    return _done(db, principal, f"fund_draft:unit:{uid}", {"save": _data(payload)}, id=uid)
+    return fund_draft_edit.save_unit(db, principal, payload, uid)
 
 
-@router.delete("/fund/draft/units/{uid}")
+@router.delete("/fund/draft/units/{uid}", response_model=DraftRevOut)
 def remove_unit(uid: int, rev: int = Query(), principal: Principal = Depends(SETUP),
                 db: Session = Depends(get_db)):
-    _run(fd.retire_unit, db, rev, uid)
-    return _done(db, principal, f"fund_draft:unit:{uid}", {"retire": True})
+    return fund_draft_edit.retire_unit(db, principal, rev, uid)
 
 
-@router.post("/fund/draft/units/merge")
+@router.post("/fund/draft/units/merge", response_model=DraftEntityOut)
 def merge_units(payload: MergeIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    data = payload.model_dump(exclude={"rev", "unit_ids"}, exclude_unset=True)
-    new_id = _run(fd.merge_units, db, payload.rev, payload.unit_ids, data)
-    return _done(db, principal, f"fund_draft:unit:{new_id}",
-                 {"merge": payload.unit_ids, "into": data}, id=new_id)
+    return fund_draft_edit.merge_units(db, principal, payload)
 
 
-@router.post("/fund/draft/units/{uid}/split")
+@router.post("/fund/draft/units/{uid}/split", response_model=DraftSplitOut)
 def split_unit(uid: int, payload: SplitIn, principal: Principal = Depends(SETUP),
                db: Session = Depends(get_db)):
-    parts = [p.model_dump(exclude_unset=True) for p in payload.parts]
-    ids = _run(fd.split_unit, db, payload.rev, uid, parts)
-    return _done(db, principal, f"fund_draft:unit:{uid}", {"split": parts, "into": ids}, ids=ids)
+    return fund_draft_edit.split_unit(db, principal, uid, payload)
 
 
-@router.put("/fund/draft/flags")
+@router.put("/fund/draft/flags", response_model=DraftRevOut)
 def put_draft_flags(payload: FlagValueIn, principal: Principal = Depends(SETUP),
                     db: Session = Depends(get_db)):
-    _run(fd.set_flag, db, payload.rev, payload.flag_id, payload.unit_ids, payload.value)
-    return _done(db, principal, f"fund_draft:flag:{payload.flag_id}",
-                 {"units": payload.unit_ids, "value": payload.value})
+    return fund_draft_edit.set_flags(db, principal, payload)
 
 
-@router.post("/fund/draft/publish")
+@router.post("/fund/draft/publish", response_model=PublishOut)
 def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
                   db: Session = Depends(get_db)):
-    """Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается
-    (§4.3). rev сверяется в fd.publish под замком модуля."""
-    transfers = [fd.Transfer(t.reservation_id, t.category_id) for t in payload.transfers]
-
-    def op():
-        res = fd.publish(db, principal, payload.rev, propagate=payload.propagate, transfers=transfers)
-        v = res.version
-        return {"version": {"id": v.id, "valid_from": v.valid_from.isoformat(), "rev": v.rev},
-                "fund_diff": res.fund_diff, "propagated": res.propagated, "kept": res.kept,
-                "skipped": res.skipped, "transfers": res.transfers}
-    out = run(db, op, preview_flag, None, principal)
-    added = out["diff"]["warnings_added"]
-    # «unassigned» в ответе — брони без объекта: с части 2 это предупреждение overbooked
-    out["result"]["affected"] = {"moved": out["diff"]["moved"],
-                                 **{k: [w for w in added if w["kind"] == kind]
-                                    for k, kind in (("unassigned", "overbooked"), ("pin_invalid", "pin_invalid"),
-                                                    ("category_missing", "category_missing"))}}
-    return out
+    """Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается (§4.3)."""
+    return fund_draft_edit.publish(db, principal, payload, preview_only=preview_flag)
 
 
-# ── файл фонда (§9) ────────────────────────────────────────────────────────
-
-XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+# ── файл фонда (§9) ──────────────────────────────────────────────────────────
 
 
 @router.get("/fund/export", response_class=Response, responses={200: {"content": {XLSX: {}}}})
 def export_fund(date: dt.date, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     """Фонд на дату файлом Excel — он же образец для загрузки (§9.1)."""
-    data = fx.export_fund(_fund_on(db, date), list(db.scalars(select(UnitFlag))))
+    data, filename = fund_screen.export_file(db, date)
     return Response(content=data, media_type=XLSX,
-                    headers={"Content-Disposition": f'attachment; filename="fund-{date.isoformat()}.xlsx"'})
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-def _file_errors(errors: list[fx.FileError]) -> JSONResponse:
-    return JSONResponse(status_code=422, content={"errors": [
-        {"sheet": e.sheet, "row": e.row, "message": e.message} for e in errors]})
-
-
-def _read_upload(file: UploadFile) -> bytes:
-    cap = fx.MAX_FILE_BYTES
-    if file.size is not None and file.size > cap:
-        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
-    data = file.file.read(cap + 1)           # с запасом в байт: лимит до чтения файла целиком
-    if len(data) > cap:
-        raise HTTPException(413, f"Файл больше {cap // 1024 // 1024} МБ")
-    return data
-
-
-@router.post("/fund/import")
+@router.post("/fund/import", response_model=FundImportOut)
 def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
                 principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    """«Загрузить как черновик с даты» (§9.3): открывает черновик на valid_from (409, если он уже
-    есть) и применяет к нему файл. Ошибки файла — 422 {errors: [{sheet, row, message}]}, и тогда
-    не остаётся ничего, даже черновика: всё — одна транзакция. flags — правки справочника флагов
-    {created, renamed, recoloured}: он не версионируется, и они остаются и без черновика."""
-    data = _read_upload(file)
-    try:
-        draft = fd.open_draft(db, valid_from, principal.user.id)
-        parsed, errors = fx.parse_fund(data, known_unit_ids=set(snapshot_of(db, draft.id).units))
-        if parsed is None:
-            db.rollback()
-            return _file_errors(errors)
-        result, flags = fd.apply_file(db, draft.rev, parsed)
-        change = asdict(result)
-    except fd.FundFileError as e:
-        db.rollback()
-        return _file_errors(e.errors)
-    except FundError as e:
-        db.rollback()
-        raise _err(e) from e
-    names = {"unit": "label", "category": "code", "group": "title"}
-    retired = [{"entity": entity, "id": e["id"], "name": e["before"].get(names[entity])}
-               for entity, key in (("unit", "units"), ("group", "groups"), ("category", "categories"))
-               for e in change[key] if e["kind"] == "retired"]
-    counts = {key: {k: sum(e["kind"] == k for e in change[key]) for k in ("added", "changed", "retired")}
-              for key in ("units", "categories", "groups")}
-    audit(db, principal, "stays_fund_import", f"fund_draft:{draft.id}",
-          {"valid_from": valid_from.isoformat(), "filename": file.filename, "counts": counts,
-           "flags": flags, "units_flags_changed": len(change["flags"])})
-    out = {"id": draft.id, "valid_from": draft.valid_from.isoformat(), "rev": draft.rev,
-           "diff": change, "retired": retired, "flags": flags}
-    db.commit()
-    return out
+    """«Загрузить как черновик с даты» (§9.3). Ошибки файла — 422 {errors: [{sheet, row, message}]},
+    и тогда не остаётся ничего, даже черновика."""
+    return fund_draft_edit.import_file(db, principal, valid_from, file.filename, read_upload(file))
 
 
-# ── начальная загрузка (§9.3) ──────────────────────────────────────────────
-
-
-class InProductionIn(BaseModel):
-    value: bool
-
-
-@router.post("/fund/reset")
+@router.post("/fund/reset", response_model=ResetPreviewOut | ResetOut)
 def reset_fund(file: UploadFile = File(...), confirm: str = Form(""), fingerprint: str = Form(""),
                preview_flag: bool = PREVIEW, principal: Principal = Depends(RESET),
                db: Session = Depends(get_db)):
     """«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,
     предупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и
-    fingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409. Ошибки
-    файла — 422 {errors}, и ничего не удалено. Ответ замены — имя копии и адрес её скачивания."""
-    data = _read_upload(file)
-    parsed, errors = fx.parse_fund(data)
-    if parsed is None:
-        return _file_errors(errors)
-    try:
-        if preview_flag:
-            out = fr.preview(db, parsed)
-            db.rollback()
-            return out
-        out = fr.initial_load(db, parsed, principal, fr.parse_fingerprint(fingerprint),
-                              confirm=confirm, filename=file.filename or "")
-    except fd.FundFileError as e:
-        db.rollback()
-        return _file_errors(e.errors)
-    except FundError as e:
-        db.rollback()
-        raise _err(e) from e
-    db.commit()
-    return {**out, "backup_url": f"/api/stays/fund/backups/{out['backup']}"}
+    fingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409."""
+    data = read_upload(file)
+    if preview_flag:
+        return fund_admin.reset_preview(db, data)
+    return fund_admin.reset(db, principal, data, file.filename, confirm, fingerprint)
 
 
 @router.get("/fund/backups/{name}", response_class=FileResponse, responses={200: {"content": {XLSX: {}}}})
 def get_backup(name: str, principal: Principal = Depends(RESET), db: Session = Depends(get_db)):
-    """Копия перед начальной загрузкой: имя строго stays-YYYYMMDD-HHMMSS.xlsx, без путей.
-    В копии персональные данные гостей — скачивание в журнале аудита."""
-    path = fr.backup_path(name)
-    if path is None:
-        raise HTTPException(404, "Копии нет")
-    audit(db, principal, "stays_reset", f"backup:{name}", {"download": True})
-    db.commit()
-    return FileResponse(path, media_type=XLSX, filename=name)
+    """Копия перед начальной загрузкой; скачивание — в журнале аудита."""
+    return FileResponse(fund_admin.backup_file(db, principal, name), media_type=XLSX, filename=name)
 
 
-@router.put("/fund/in-production")
+@router.put("/fund/in-production", response_model=InProductionOut)
 def put_in_production(payload: InProductionIn, principal: Principal = Depends(RESET),
                       db: Session = Depends(get_db)):
     """Переключатель «Шахматка в эксплуатации»: включён — начальной загрузки нет (§9.3)."""
-    value = fr.set_in_production(db, principal, payload.value)
-    db.commit()
-    return {"in_production": value}
+    return fund_admin.set_in_production(db, principal, payload.value)
 
 
-# ── справочник флагов (вне черновика) ──────────────────────────────────────
+# ── справочник флагов (вне черновика) ────────────────────────────────────────
 
 
-def _flag_done(db: Session, principal: Principal, flag_id: int, payload: dict) -> dict:
-    audit(db, principal, "stays_fund", f"flag:{flag_id}", payload)
-    db.commit()
-    return {"id": flag_id}
-
-
-@router.post("/fund/flags")
+@router.post("/fund/flags", response_model=IdOut)
 def create_flag(payload: FlagIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    fid = _run(fd.save_flag, db, payload.model_dump(), None)
-    return _flag_done(db, principal, fid, payload.model_dump())
+    return fund_dictionaries.save_flag(db, principal, payload, None)
 
 
-@router.put("/fund/flags/{fid}")
+@router.put("/fund/flags/{fid}", response_model=IdOut)
 def update_flag(fid: int, payload: FlagIn, principal: Principal = Depends(SETUP),
                 db: Session = Depends(get_db)):
-    _run(fd.save_flag, db, payload.model_dump(), fid)
-    return _flag_done(db, principal, fid, payload.model_dump())
+    return fund_dictionaries.save_flag(db, principal, payload, fid)
 
 
-@router.put("/fund/flags/{fid}/archive")
+@router.put("/fund/flags/{fid}/archive", response_model=IdOut)
 def archive_flag(fid: int, payload: ArchiveIn, principal: Principal = Depends(SETUP),
                  db: Session = Depends(get_db)):
-    _run(fd.archive_flag, db, fid, payload.archived)
-    return _flag_done(db, principal, fid, {"archived": payload.archived})
+    return fund_dictionaries.archive_flag(db, principal, fid, payload.archived)
 
 
-@router.delete("/fund/flags/{fid}")
+@router.delete("/fund/flags/{fid}", response_model=IdOut)
 def remove_flag(fid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    _run(fd.delete_flag, db, fid)
-    return _flag_done(db, principal, fid, {"delete": True})
+    return fund_dictionaries.delete_flag(db, principal, fid)
 
 
-# ── справочник видов категорий (вне черновика) ─────────────────────────────
+# ── справочник видов категорий (вне черновика) ───────────────────────────────
 
 
-def _kind_done(db: Session, principal: Principal, kind_id: int, payload: dict) -> dict:
-    audit(db, principal, "stays_fund", f"kind:{kind_id}", payload)
-    db.commit()
-    return {"id": kind_id}
-
-
-@router.post("/fund/kinds")
+@router.post("/fund/kinds", response_model=IdOut)
 def create_kind(payload: KindIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    kid = _run(fd.save_kind, db, payload.model_dump(), None)
-    return _kind_done(db, principal, kid, payload.model_dump())
+    return fund_dictionaries.save_kind(db, principal, payload, None)
 
 
-@router.put("/fund/kinds/{kid}")
+@router.put("/fund/kinds/{kid}", response_model=IdOut)
 def update_kind(kid: int, payload: KindIn, principal: Principal = Depends(SETUP),
                 db: Session = Depends(get_db)):
-    _run(fd.save_kind, db, payload.model_dump(), kid)
-    return _kind_done(db, principal, kid, payload.model_dump())
+    return fund_dictionaries.save_kind(db, principal, payload, kid)
 
 
-@router.put("/fund/kinds/{kid}/archive")
+@router.put("/fund/kinds/{kid}/archive", response_model=IdOut)
 def archive_kind(kid: int, payload: ArchiveIn, principal: Principal = Depends(SETUP),
                  db: Session = Depends(get_db)):
-    _run(fd.archive_kind, db, kid, payload.archived)
-    return _kind_done(db, principal, kid, {"archived": payload.archived})
+    return fund_dictionaries.archive_kind(db, principal, kid, payload.archived)
 
 
-@router.delete("/fund/kinds/{kid}")
+@router.delete("/fund/kinds/{kid}", response_model=IdOut)
 def remove_kind(kid: int, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
-    _run(fd.delete_kind, db, kid)
-    return _kind_done(db, principal, kid, {"delete": True})
+    return fund_dictionaries.delete_kind(db, principal, kid)

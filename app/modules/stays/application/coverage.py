@@ -30,6 +30,8 @@ from .reservations import ReservationInvalid
 class CoverageForbidden(ReservationInvalid):
     """Нет нужного права → 403."""
 
+    status_code = 403
+
 
 @dataclass(frozen=True)
 class Scope:

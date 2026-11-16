@@ -3,3 +3,8 @@
 # Алфавит начального пароля сотрудника — строка символов без похожих (0/O, 1/l/I), не секрет.
 # В следующем же коммите строка заменена сборкой из стандартных наборов символов.
 eca6053b950ccced8c473c617920798719b58007:app/modules/employees/application/directory.py:generic-api-key:47
+
+# Папка docs/audit по ошибке попала в коммит f6ee697 и убрана следующим коммитом; в ней пример
+# подключения к базе и тестовый пароль из скрипта экспериментов, не секреты.
+f6ee6974b00dad0d7a854f3135ac63a23c86734d:docs/audit/15-db-engine.md:generic-api-key:21
+f6ee6974b00dad0d7a854f3135ac63a23c86734d:docs/audit/scripts/experiments.py:generic-api-key:124
