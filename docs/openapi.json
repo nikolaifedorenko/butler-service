@@ -768,6 +768,55 @@
         "title": "Body_upload_template_api_docs_templates_post",
         "type": "object"
       },
+      "BotCheckedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bot": {
+            "$ref": "#/components/schemas/BotOut"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bot"
+        ],
+        "title": "BotCheckedOut",
+        "type": "object"
+      },
+      "BotOut": {
+        "additionalProperties": false,
+        "properties": {
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "first_name",
+          "id"
+        ],
+        "title": "BotOut",
+        "type": "object"
+      },
       "BulkIn": {
         "properties": {
           "code": {
@@ -1242,6 +1291,145 @@
         "title": "ChangePasswordIn",
         "type": "object"
       },
+      "ChannelsReadyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "boolean"
+          },
+          "telegram": {
+            "title": "Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "telegram",
+          "email"
+        ],
+        "title": "ChannelsReadyOut",
+        "type": "object"
+      },
+      "ChatOut": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "integer"
+          },
+          "first_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "used_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Used By",
+            "type": "array"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "title",
+          "username",
+          "kind",
+          "first_seen",
+          "last_seen",
+          "used_by"
+        ],
+        "title": "ChatOut",
+        "type": "object"
+      },
+      "ChatsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "chats": {
+            "items": {
+              "$ref": "#/components/schemas/ChatOut"
+            },
+            "title": "Chats",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chats"
+        ],
+        "title": "ChatsOut",
+        "type": "object"
+      },
+      "ChatsRefreshedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "chats": {
+            "items": {
+              "$ref": "#/components/schemas/ChatOut"
+            },
+            "title": "Chats",
+            "type": "array"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "seen": {
+            "title": "Seen",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "seen",
+          "total",
+          "chats"
+        ],
+        "title": "ChatsRefreshedOut",
+        "type": "object"
+      },
       "CheckItemOut": {
         "additionalProperties": false,
         "description": "Пункт чек-листа объекта в отчёте смены.",
@@ -1666,6 +1854,69 @@
           }
         },
         "title": "ConfigIn",
+        "type": "object"
+      },
+      "ConfigOut": {
+        "additionalProperties": false,
+        "properties": {
+          "chats": {
+            "items": {
+              "$ref": "#/components/schemas/ChatOut"
+            },
+            "title": "Chats",
+            "type": "array"
+          },
+          "config": {
+            "$ref": "#/components/schemas/PublicConfigOut"
+          },
+          "domains": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "object"
+          },
+          "security_modes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Security Modes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "config",
+          "chats",
+          "domains",
+          "security_modes"
+        ],
+        "title": "ConfigOut",
+        "type": "object"
+      },
+      "ConfigSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "config": {
+            "$ref": "#/components/schemas/PublicConfigOut"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changed",
+          "config"
+        ],
+        "title": "ConfigSavedOut",
         "type": "object"
       },
       "ContactIn": {
@@ -2204,7 +2455,7 @@
             "$ref": "#/components/schemas/ReportShortOut"
           },
           "template": {
-            "$ref": "#/components/schemas/TemplateOut"
+            "$ref": "#/components/schemas/app__modules__night__interface__schemas__TemplateOut"
           },
           "transport": {
             "$ref": "#/components/schemas/TransportOut"
@@ -2402,6 +2653,24 @@
           "can_retry"
         ],
         "title": "DispatchOut",
+        "type": "object"
+      },
+      "DispatchResentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "dispatch": {
+            "$ref": "#/components/schemas/DispatchOut"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dispatch"
+        ],
+        "title": "DispatchResentOut",
         "type": "object"
       },
       "DispatchResultOut": {
@@ -2744,6 +3013,74 @@
           "service_own"
         ],
         "title": "EffectiveItemOut",
+        "type": "object"
+      },
+      "EmailConfigOut": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "password_masked": {
+            "title": "Password Masked",
+            "type": "string"
+          },
+          "password_set": {
+            "title": "Password Set",
+            "type": "boolean"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "reply_to": {
+            "title": "Reply To",
+            "type": "string"
+          },
+          "security": {
+            "title": "Security",
+            "type": "string"
+          },
+          "user": {
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "security",
+          "user",
+          "password_set",
+          "password_masked",
+          "from",
+          "reply_to"
+        ],
+        "title": "EmailConfigOut",
+        "type": "object"
+      },
+      "EmailSentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "title": "EmailSentOut",
         "type": "object"
       },
       "EmailTestIn": {
@@ -4055,6 +4392,25 @@
         "title": "MembersIn",
         "type": "object"
       },
+      "MessageSentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "title": "MessageSentOut",
+        "type": "object"
+      },
       "MetaOut": {
         "additionalProperties": false,
         "description": "Словари раздела и права пользователя.",
@@ -5131,6 +5487,40 @@
           "free"
         ],
         "title": "ProgressOut",
+        "type": "object"
+      },
+      "PublicConfigOut": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/EmailConfigOut"
+          },
+          "ready": {
+            "$ref": "#/components/schemas/ChannelsReadyOut"
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramConfigOut"
+          },
+          "timeout": {
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "unreadable": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unreadable",
+            "type": "array"
+          }
+        },
+        "required": [
+          "telegram",
+          "email",
+          "timeout",
+          "ready",
+          "unreadable"
+        ],
+        "title": "PublicConfigOut",
         "type": "object"
       },
       "PublishIn": {
@@ -6998,6 +7388,30 @@
         "title": "TelegramCheckIn",
         "type": "object"
       },
+      "TelegramConfigOut": {
+        "additionalProperties": false,
+        "properties": {
+          "api": {
+            "title": "Api",
+            "type": "string"
+          },
+          "token_masked": {
+            "title": "Token Masked",
+            "type": "string"
+          },
+          "token_set": {
+            "title": "Token Set",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "token_set",
+          "token_masked",
+          "api"
+        ],
+        "title": "TelegramConfigOut",
+        "type": "object"
+      },
       "TelegramTestIn": {
         "properties": {
           "chat_id": {
@@ -7112,15 +7526,13 @@
         "title": "TemplateItemOut",
         "type": "object"
       },
-      "TemplateOut": {
+      "TemplatePreviewOut": {
         "additionalProperties": false,
         "properties": {
-          "placeholders": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Placeholders",
-            "type": "array"
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
           },
           "text": {
             "title": "Text",
@@ -7128,10 +7540,55 @@
           }
         },
         "required": [
-          "text",
-          "placeholders"
+          "text"
         ],
-        "title": "TemplateOut",
+        "title": "TemplatePreviewOut",
+        "type": "object"
+      },
+      "TemplateSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "customized": {
+            "title": "Customized",
+            "type": "boolean"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "text",
+          "customized"
+        ],
+        "title": "TemplateSavedOut",
+        "type": "object"
+      },
+      "TemplatesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/app__modules__notify__interface__schemas__TemplateOut"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "title": "TemplatesOut",
         "type": "object"
       },
       "TodayPendingOut": {
@@ -7722,7 +8179,29 @@
         "title": "KindIn",
         "type": "object"
       },
-      "app__modules__notify__interface__notify_api__TemplateIn": {
+      "app__modules__night__interface__schemas__TemplateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "placeholders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Placeholders",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "placeholders"
+        ],
+        "title": "TemplateOut",
+        "type": "object"
+      },
+      "app__modules__notify__interface__schemas__TemplateIn": {
         "properties": {
           "text": {
             "default": "",
@@ -7731,6 +8210,48 @@
           }
         },
         "title": "TemplateIn",
+        "type": "object"
+      },
+      "app__modules__notify__interface__schemas__TemplateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "customized": {
+            "title": "Customized",
+            "type": "boolean"
+          },
+          "default": {
+            "title": "Default",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "placeholders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Placeholders",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "title",
+          "text",
+          "default",
+          "customized",
+          "placeholders"
+        ],
+        "title": "TemplateOut",
         "type": "object"
       },
       "app__modules__stays__interface__coverage_api__DaysIn": {
@@ -13588,7 +14109,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChatsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13602,13 +14125,15 @@
     },
     "/api/notify/config": {
       "get": {
-        "description": "Параметры доставки (секреты маскированы) + готовность каналов и каталог чатов.",
+        "description": "Параметры доставки (секреты маскированы), готовность каналов и каталог чатов.",
         "operationId": "get_config_api_notify_config_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13620,7 +14145,7 @@
         ]
       },
       "put": {
-        "description": "Сохранить параметры доставки. В аудит попадают имена ключей, не значения.",
+        "description": "Сохранить параметры доставки.",
         "operationId": "put_config_api_notify_config_put",
         "requestBody": {
           "content": {
@@ -13636,7 +14161,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSavedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13660,7 +14187,7 @@
     },
     "/api/notify/dispatches/export.csv": {
       "get": {
-        "description": "Выгрузка общего журнала отправок в CSV (разборы, отчёт руководству).\n\nЖурнал общий для всех разделов: колонка «Раздел» показывает, откуда отправка\n(night — ночной отчёт, cars — электрокары и т. д.). Состав позиции хранится\nснимком, поэтому выгрузка закрытой смены не меняется со временем.",
+        "description": "Общий журнал отправок в CSV — всех разделов или одного (domain).",
         "operationId": "export_dispatches_csv_api_notify_dispatches_export_csv_get",
         "parameters": [
           {
@@ -13686,11 +14213,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "422": {
@@ -13712,7 +14234,7 @@
     },
     "/api/notify/dispatches/{dispatch_id}/resend": {
       "post": {
-        "description": "Повторить неудачную доставку тем же текстом и составом (журнал не переписывается).",
+        "description": "Повторить неудачную доставку тем же текстом и составом.",
         "operationId": "resend_dispatch_api_notify_dispatches__dispatch_id__resend_post",
         "parameters": [
           {
@@ -13729,7 +14251,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchResentOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13753,7 +14277,7 @@
     },
     "/api/notify/email/test": {
       "post": {
-        "description": "Тестовое письмо: проверяет коннектор Exchange, отправителя и адрес получателя.",
+        "description": "Тестовое письмо.",
         "operationId": "email_test_api_notify_email_test_post",
         "requestBody": {
           "content": {
@@ -13769,7 +14293,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EmailSentOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13793,13 +14319,15 @@
     },
     "/api/notify/telegram/chats": {
       "post": {
-        "description": "Обновить общий каталог чатов (getUpdates).\n\nБот должен быть добавлен в группы служб, и в группе должно появиться хотя бы\nодно сообщение — иначе Telegram не отдаст чат в обновлениях.",
+        "description": "Обновить общий каталог чатов.",
         "operationId": "telegram_chats_api_notify_telegram_chats_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChatsRefreshedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13813,7 +14341,7 @@
     },
     "/api/notify/telegram/check": {
       "post": {
-        "description": "getMe: проверить токен (можно ещё не сохранённый) и увидеть username бота.",
+        "description": "Проверить токен бота (можно ещё не сохранённый) и увидеть имя бота.",
         "operationId": "telegram_check_api_notify_telegram_check_post",
         "requestBody": {
           "content": {
@@ -13829,7 +14357,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BotCheckedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13853,7 +14383,7 @@
     },
     "/api/notify/telegram/test": {
       "post": {
-        "description": "Тестовое сообщение в выбранный чат — проверка, что бот добавлен и пишет.",
+        "description": "Тестовое сообщение в выбранный чат.",
         "operationId": "telegram_test_api_notify_telegram_test_post",
         "requestBody": {
           "content": {
@@ -13869,7 +14399,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MessageSentOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13893,13 +14425,15 @@
     },
     "/api/notify/templates": {
       "get": {
-        "description": "Шаблоны сообщений по разделам (свои у каждого раздела приложения).",
+        "description": "Шаблоны сообщений по разделам.",
         "operationId": "get_templates_api_notify_templates_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TemplatesOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13913,7 +14447,7 @@
     },
     "/api/notify/templates/{domain}": {
       "put": {
-        "description": "Сохранить шаблон раздела. Пустой текст — вернуть вариант по умолчанию.",
+        "description": "Сохранить шаблон раздела; пустой текст возвращает вариант по умолчанию.",
         "operationId": "put_template_api_notify_templates__domain__put",
         "parameters": [
           {
@@ -13930,7 +14464,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__notify__interface__notify_api__TemplateIn"
+                "$ref": "#/components/schemas/app__modules__notify__interface__schemas__TemplateIn"
               }
             }
           },
@@ -13940,7 +14474,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateSavedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -13964,7 +14500,7 @@
     },
     "/api/notify/templates/{domain}/preview": {
       "post": {
-        "description": "Предпросмотр: тот же рендер, что при отправке, но на образцовых данных.",
+        "description": "Предпросмотр шаблона на образцовых данных.",
         "operationId": "preview_template_api_notify_templates__domain__preview_post",
         "parameters": [
           {
@@ -13981,7 +14517,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__notify__interface__notify_api__TemplateIn"
+                "$ref": "#/components/schemas/app__modules__notify__interface__schemas__TemplateIn"
               }
             }
           },
@@ -13991,7 +14527,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TemplatePreviewOut"
+                }
               }
             },
             "description": "Successful Response"

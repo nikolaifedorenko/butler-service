@@ -1,311 +1,121 @@
-"""API общих настроек доставки: /api/notify/* (этап 4).
+"""API экрана «Настройки → Чаты и Почта»: /api/notify/*.
 
-Экран «Настройки → Чаты и Почта»: учётные данные Telegram и MS Exchange, общий
-каталог чатов, шаблоны сообщений по разделам и проверки («Проверить бота»,
-«Тестовое письмо»). Настройки общие для всего приложения — разделы подключаются
-к доставке со своими шаблонами и получателями.
+Параметры доставки, проверки бота и почты, шаблоны сообщений и общий журнал отправок.
+Настройки общие для приложения; разделы подключаются к доставке со своими шаблонами.
 
-Права: чтение и правка параметров — ``settings.edit`` (администратор и менеджер
-объекта: здесь токены и пароли); каталог чатов доступен также держателям
-``night.edit`` — они закрепляют чаты за службами в справочнике ночного обхода
-(``require_perm("settings.edit", "night.edit")`` — достаточно одного из прав).
-
-Секреты наружу не отдаются: в ответах только маска и признак «значение задано»,
-в аудит пишутся имена изменённых ключей, а не их значения.
+Права: ``settings.edit`` — здесь токены и пароли. Каталог чатов доступен и с правом
+``night.edit``: по нему закрепляют чаты за службами ночного обхода.
+Правила — в ``application/settings.py``.
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
-from app.core.time import local_now
-from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment, raw, write_csv
+from app.modules.exchange.application.tables import CSV_MEDIA_TYPE, attachment
 
-from ..adapters.transports.email import send_mail, split_addresses
-from ..adapters.transports.telegram import TelegramBot
-from ..application.chats import list_chats, refresh_chats
-from ..application.config import load_config, public_config, save_config
-from ..application.templates import (
-    DEFAULT_TEMPLATES,
-    DOMAIN_TITLES,
-    PLACEHOLDERS,
-    render_template,
-    save_template,
-    template_of,
-    templates_payload,
+from ..application import settings
+from ..application.chats import list_chats
+from ..application.templates import templates_payload
+from .schemas import (
+    BotCheckedOut,
+    ChatsOut,
+    ChatsRefreshedOut,
+    ConfigIn,
+    ConfigOut,
+    ConfigSavedOut,
+    DispatchResentOut,
+    EmailSentOut,
+    EmailTestIn,
+    MessageSentOut,
+    TelegramCheckIn,
+    TelegramTestIn,
+    TemplateIn,
+    TemplatePreviewOut,
+    TemplateSavedOut,
+    TemplatesOut,
 )
-from ..ports.transports import TransportError
 
 router = APIRouter(prefix="/api/notify", tags=["notify"])
 
 EDIT = require_perm("settings.edit")
 
-# образцы значений для предпросмотра шаблона: видно, как подставятся плейсхолдеры
-SAMPLE_CTX = {
-    "date": "19.10.2026",
-    "shift": "Ночная смена 20:00–08:00",
-    "service": "Техническая служба",
-    "items": "1. Вилла 4003 · Освещение: все лампы горят — мигает лампа у входа\n"
-             "2. Вилла 4007 · Витражи закрыты",
-    "duty": "Иванов И.И., Петрова А.С.",
-    "author": "Громова Е.П.",
-    "time": "02:48",
-    "car": "7",
-}
 
-
-class ConfigIn(BaseModel):
-    """Параметры доставки. Пустая строка у секрета означает «не менять»."""
-
-    notify_telegram_token: Optional[str] = None
-    notify_telegram_api: Optional[str] = None
-    notify_smtp_host: Optional[str] = None
-    notify_smtp_port: Optional[str] = None
-    notify_smtp_security: Optional[str] = None
-    notify_smtp_user: Optional[str] = None
-    notify_smtp_password: Optional[str] = None
-    notify_email_from: Optional[str] = None
-    notify_email_reply_to: Optional[str] = None
-    notify_timeout: Optional[str] = None
-
-
-class TelegramCheckIn(BaseModel):
-    token: str = ""          # не пустой — проверить ещё не сохранённый токен
-
-
-class TelegramTestIn(BaseModel):
-    chat_id: int
-    text: str = ""
-
-
-class EmailTestIn(BaseModel):
-    to: str
-    subject: str = ""
-
-
-class TemplateIn(BaseModel):
-    text: str = ""
-
-
-@router.get("/config")
+@router.get("/config", response_model=ConfigOut)
 def get_config(principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
-    """Параметры доставки (секреты маскированы) + готовность каналов и каталог чатов."""
-    cfg = load_config(db)
-    return {"config": public_config(cfg), "chats": list_chats(db),
-            "domains": dict(DOMAIN_TITLES), "security_modes": ["none", "starttls", "ssl"]}
+    """Параметры доставки (секреты маскированы), готовность каналов и каталог чатов."""
+    return settings.config_view(db)
 
 
-@router.put("/config")
-def put_config(payload: ConfigIn, principal: Principal = Depends(EDIT),
-               db: Session = Depends(get_db)):
-    """Сохранить параметры доставки. В аудит попадают имена ключей, не значения."""
-    values = {k: v for k, v in payload.model_dump().items() if v is not None}
-    try:
-        res = save_config(db, values)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    audit(db, principal, "notify_config_update", "notify", {"changed": res["changed"]})
-    db.commit()
-    cfg = load_config(db)
-    return {"ok": True, "changed": res["changed"], "config": public_config(cfg)}
+@router.put("/config", response_model=ConfigSavedOut)
+def put_config(payload: ConfigIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Сохранить параметры доставки."""
+    return settings.save(db, principal, {k: v for k, v in payload.model_dump().items() if v is not None})
 
 
-@router.post("/telegram/check")
-def telegram_check(payload: TelegramCheckIn, principal: Principal = Depends(EDIT),
-                   db: Session = Depends(get_db)):
-    """getMe: проверить токен (можно ещё не сохранённый) и увидеть username бота."""
-    cfg = load_config(db)
-    token = payload.token.strip() or cfg.telegram_token
-    try:
-        # адрес — только настроенный: из запроса он уводил бы токен на чужой хост (SEC-03)
-        me = TelegramBot(token, cfg.telegram_api, cfg.timeout).get_me()
-    except TransportError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    audit(db, principal, "notify_telegram_check", "notify", {"username": me.get("username", "")})
-    db.commit()
-    return {"ok": True, "bot": {"username": me.get("username", ""),
-                                "first_name": me.get("first_name", ""),
-                                "id": me.get("id")}}
+@router.post("/telegram/check", response_model=BotCheckedOut)
+def telegram_check(payload: TelegramCheckIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Проверить токен бота (можно ещё не сохранённый) и увидеть имя бота."""
+    return {"bot": settings.check_bot(db, principal, payload.token)}
 
 
-@router.post("/telegram/chats")
+@router.post("/telegram/chats", response_model=ChatsRefreshedOut)
 def telegram_chats(principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
-    """Обновить общий каталог чатов (getUpdates).
-
-    Бот должен быть добавлен в группы служб, и в группе должно появиться хотя бы
-    одно сообщение — иначе Telegram не отдаст чат в обновлениях.
-    """
-    cfg = load_config(db)
-    try:
-        res = refresh_chats(db, cfg)
-    except TransportError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    audit(db, principal, "notify_chats_refresh", "notify",
-          {"added": res["added"], "seen": res["seen"]})
-    db.commit()
-    return {"ok": True, **res}
+    """Обновить общий каталог чатов."""
+    return settings.refresh_chat_catalog(db, principal)
 
 
-@router.get("/chats")
-def get_chats(principal: Principal = Depends(require_perm("settings.edit", "night.edit")), db: Session = Depends(get_db)):
+@router.get("/chats", response_model=ChatsOut)
+def get_chats(principal: Principal = Depends(require_perm("settings.edit", "night.edit")),
+              db: Session = Depends(get_db)):
     """Каталог чатов для карточки службы: какие чаты найдены и кем уже используются."""
     return {"chats": list_chats(db)}
 
 
-@router.post("/telegram/test")
-def telegram_test(payload: TelegramTestIn, principal: Principal = Depends(EDIT),
-                  db: Session = Depends(get_db)):
-    """Тестовое сообщение в выбранный чат — проверка, что бот добавлен и пишет."""
-    cfg = load_config(db)
-    text = payload.text.strip() or (
-        f"Тестовое сообщение butler-service · {local_now():%d.%m.%Y %H:%M}\n"
-        "Если вы видите это сообщение, бот настроен и добавлен в чат.")
-    try:
-        message_id = TelegramBot(cfg.telegram_token, cfg.telegram_api, cfg.timeout) \
-            .send_message(payload.chat_id, text)
-    except TransportError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    audit(db, principal, "notify_telegram_test", f"chat:{payload.chat_id}", {"ok": bool(message_id)})
-    db.commit()
-    return {"ok": True, "message_id": message_id}
+@router.post("/telegram/test", response_model=MessageSentOut)
+def telegram_test(payload: TelegramTestIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Тестовое сообщение в выбранный чат."""
+    return {"message_id": settings.send_test_message(db, principal, payload.chat_id, payload.text)}
 
 
-@router.post("/email/test")
-def email_test(payload: EmailTestIn, principal: Principal = Depends(EDIT),
-               db: Session = Depends(get_db)):
-    """Тестовое письмо: проверяет коннектор Exchange, отправителя и адрес получателя."""
-    cfg = load_config(db)
-    to = split_addresses(payload.to)
-    if not to:
-        raise HTTPException(status_code=400, detail="Укажите корректный адрес получателя")
-    subject = payload.subject.strip() or "Тестовое письмо butler-service"
-    body = (f"Это тестовое письмо системы учёта butler-service.\n"
-            f"Отправлено: {local_now():%d.%m.%Y %H:%M}.\n"
-            f"Отправитель: {cfg.email_from}\nСервер: {cfg.smtp_host}:{cfg.smtp_port} "
-            f"({cfg.smtp_security}).\n\nЕсли письмо пришло, доставка почты настроена.")
-    try:
-        message_id = send_mail(cfg, to=to, subject=subject, body=body)
-    except TransportError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    audit(db, principal, "notify_email_test", f"email:{payload.to}", {"message_id": message_id})
-    db.commit()
-    return {"ok": True, "message_id": message_id}
+@router.post("/email/test", response_model=EmailSentOut)
+def email_test(payload: EmailTestIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Тестовое письмо."""
+    return {"message_id": settings.send_test_email(db, principal, payload.to, payload.subject)}
 
 
-@router.get("/dispatches/export.csv")
-def export_dispatches_csv(domain: str = "", limit: int = 2000,
-                          principal: Principal = Depends(require_perm("settings.edit")),
+@router.get("/dispatches/export.csv", response_class=Response)
+def export_dispatches_csv(domain: str = "", limit: int = 2000, principal: Principal = Depends(EDIT),
                           db: Session = Depends(get_db)):
-    """Выгрузка общего журнала отправок в CSV (разборы, отчёт руководству).
-
-    Журнал общий для всех разделов: колонка «Раздел» показывает, откуда отправка
-    (night — ночной отчёт, cars — электрокары и т. д.). Состав позиции хранится
-    снимком, поэтому выгрузка закрытой смены не меняется со временем.
-    """
-    from fastapi.responses import Response
-
-    from ..application.dispatch import dispatch_dict, journal_of
-
-    rows = journal_of(db, domain or "", None, limit=limit) if domain else []
-    if not domain:
-        from sqlalchemy import select as _select
-
-        from ..adapters.orm import NotifyDispatch
-        rows = list(db.scalars(_select(NotifyDispatch)
-                               .order_by(NotifyDispatch.ts.desc(), NotifyDispatch.id.desc())
-                               .limit(max(1, min(limit, 20000)))))
-    lines = []
-    for row in rows:
-        d = dispatch_dict(row)
-        items = "; ".join(f"{i.get('area') or '—'} · {i.get('text') or ''}"
-                          + (f" ({i.get('comment')})" if i.get("comment") else "")
-                          for i in d["items"])
-        # адрес и внешний id — не от пользователя и законно начинаются с «-», «+», «@»
-        # (id чата Telegram, телефон, имя канала): без защиты от формул
-        lines.append([d["ts"] or "", d["domain"], d["actor_name"], d["recipient_name"], d["channel_title"],
-                      raw(d["target"]), d["subject"], d["items_count"], d["media_count"], d["status_title"],
-                      d["error"], d["attempts"], raw(d["external_id"]), items])
-    data = write_csv(["Время", "Раздел", "Кто отправил", "Получатель", "Канал", "Адрес", "Тема",
-                      "Позиций", "Вложений", "Статус", "Ошибок доставки", "Попыток",
-                      "Внешний id", "Состав отправки"], lines)
-    return Response(content=data, media_type=CSV_MEDIA_TYPE, headers=attachment("notify-dispatches.csv"))
+    """Общий журнал отправок в CSV — всех разделов или одного (domain)."""
+    return Response(content=settings.export_csv(db, domain, limit), media_type=CSV_MEDIA_TYPE,
+                    headers=attachment("notify-dispatches.csv"))
 
 
-@router.post("/dispatches/{dispatch_id}/resend")
-def resend_dispatch(dispatch_id: int, principal: Principal = Depends(require_perm("settings.edit")),
-                    db: Session = Depends(get_db)):
-    """Повторить неудачную доставку тем же текстом и составом (журнал не переписывается)."""
-    from ..adapters.orm import NotifyDispatch
-    from ..application.config import load_config
-    from ..application.dispatch import claim, deliver_row, dispatch_dict
-
-    row = db.get(NotifyDispatch, dispatch_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Запись журнала не найдена")
-    # только неудачную, и одним повтором: двойной клик второй раз не отправит (outbox)
-    if row.status != "failed" or not claim(db, row.id, "failed"):
-        raise HTTPException(status_code=409, detail="Эта доставка уже отправлена или отправляется")
-    try:
-        deliver_row(db, row, cfg=load_config(db))
-    except TransportError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    audit(db, principal, "notify_dispatch_resend", f"dispatch:{row.id}",
-          {"domain": row.domain, "channel": row.channel, "attempts": row.attempts,
-           "status": row.status})
-    db.commit()
-    return {"ok": True, "dispatch": dispatch_dict(row)}
+@router.post("/dispatches/{dispatch_id}/resend", response_model=DispatchResentOut)
+def resend_dispatch(dispatch_id: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    """Повторить неудачную доставку тем же текстом и составом."""
+    return {"dispatch": settings.resend(db, principal, dispatch_id)}
 
 
-@router.get("/templates")
+@router.get("/templates", response_model=TemplatesOut)
 def get_templates(principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
-    """Шаблоны сообщений по разделам (свои у каждого раздела приложения)."""
+    """Шаблоны сообщений по разделам."""
     return {"templates": templates_payload(db)}
 
 
-@router.put("/templates/{domain}")
+@router.put("/templates/{domain}", response_model=TemplateSavedOut)
 def put_template(domain: str, payload: TemplateIn, principal: Principal = Depends(EDIT),
                  db: Session = Depends(get_db)):
-    """Сохранить шаблон раздела. Пустой текст — вернуть вариант по умолчанию."""
-    if domain not in DOMAIN_TITLES:
-        raise HTTPException(status_code=404, detail="Неизвестный раздел уведомлений")
-    text = payload.text
-    unknown = _unknown_placeholders(domain, text)
-    if unknown:
-        raise HTTPException(status_code=400,
-                            detail=f"Неизвестные плейсхолдеры: "
-                                   f"{', '.join('{' + u + '}' for u in unknown)}. "
-                                   f"Доступны: {', '.join(PLACEHOLDERS[domain])}")
-    try:
-        save_template(db, domain, text)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    audit(db, principal, "notify_template_update", f"domain:{domain}",
-          {"chars": len(text.strip()), "customized": bool(text.strip())})
-    db.commit()
-    return {"ok": True, "domain": domain, "text": template_of(db, domain),
-            "customized": bool(text.strip() and text.strip() != DEFAULT_TEMPLATES[domain])}
+    """Сохранить шаблон раздела; пустой текст возвращает вариант по умолчанию."""
+    return settings.save_template_text(db, principal, domain, payload.text)
 
 
-@router.post("/templates/{domain}/preview")
+@router.post("/templates/{domain}/preview", response_model=TemplatePreviewOut)
 def preview_template(domain: str, payload: TemplateIn, principal: Principal = Depends(EDIT)):
-    """Предпросмотр: тот же рендер, что при отправке, но на образцовых данных."""
-    if domain not in DOMAIN_TITLES:
-        raise HTTPException(status_code=404, detail="Неизвестный раздел уведомлений")
-    text = payload.text.strip() or DEFAULT_TEMPLATES[domain]
-    return {"ok": True, "text": render_template(text, SAMPLE_CTX)}
-
-
-def _unknown_placeholders(domain: str, text: str) -> list[str]:
-    """Плейсхолдеры, которых нет у раздела: опечатку ловим до отправки, не после."""
-    import re
-
-    known = {p.strip("{}") for p in PLACEHOLDERS.get(domain, [])}
-    found = set(re.findall(r"\{([a-z_]+)\}", text or ""))
-    return sorted(found - known)
+    """Предпросмотр шаблона на образцовых данных."""
+    return {"text": settings.preview_template(domain, payload.text)}
