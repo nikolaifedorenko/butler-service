@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import secrets
+import string
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
@@ -43,8 +44,11 @@ from app.modules.timesheet.application.catalog import BlockAssignment
 
 from .lifecycle import normalize_block_history, parse_date, touch_block, touch_position
 
-# Алфавит без визуально похожих символов (0/O, 1/l/I) — чтобы пароль легко продиктовать.
-_PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# Символы начального пароля: латиница и цифры без визуально похожих (0 и O, 1, l и I) —
+# такой пароль легко продиктовать.
+_LOOKALIKE = set("lo" "IO" "01")
+_INITIAL_CHARS = "".join(c for c in string.ascii_lowercase + string.ascii_uppercase + string.digits
+                         if c not in _LOOKALIKE)
 
 
 def _check_password(password: Optional[str]) -> None:
@@ -55,7 +59,7 @@ def _check_password(password: Optional[str]) -> None:
 
 def _initial_password() -> str:
     """Случайный пароль новой учётной записи: показывается один раз — в ответе на приём."""
-    return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(12))
+    return "".join(secrets.choice(_INITIAL_CHARS) for _ in range(12))
 
 
 _CAR_UNSET = object()      # «кар не предзагружен» — отличается от «кара нет» (None)

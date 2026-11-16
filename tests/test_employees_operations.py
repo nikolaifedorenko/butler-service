@@ -53,6 +53,8 @@ def test_hiring_returns_generated_password_once(app_stack, db, admin):
     try:
         assert created["username"] and created["role"] == "employee"
         assert len(created["initial_password"]) == 12
+        assert set(created["initial_password"]) <= set(directory._INITIAL_CHARS)
+        assert not set(directory._INITIAL_CHARS) & set("lIO01o") and len(directory._INITIAL_CHARS) == 56
         own = directory.create_employee(db, admin, directory.EmployeeIn(full_name=NAME, password="Свой-Пароль-1"))
         try:
             assert own["initial_password"] is None and own["username"] != created["username"]
