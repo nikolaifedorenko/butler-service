@@ -14,14 +14,10 @@ from app.core.errors import Forbidden, NotFound
 
 from ..adapters.orm import Guest
 from . import family as family_graph
-from . import guests, guests_list, history, mine, reservations, vip_codes
+from . import guests, guests_list, history, mine, vip_codes
 from .guest_access import own_guest, require_full
+from .guest_card import card
 from .visibility import at_least, level_for
-
-
-def card(db: Session, g: Guest) -> dict:
-    """Карточка гостя: профиль, его VIP-код, число броней, куда дойдёт смена кода, связи."""
-    return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, g.id)}
 
 
 def _guest(db: Session, gid: int) -> Guest:
@@ -86,7 +82,7 @@ def family(db: Session, principal: Principal, gid: int) -> dict:
     if not at_least(level, "names"):
         raise Forbidden("Семейное дерево — с уровня «с фамилиями»")
     _guest(db, gid)
-    out = family_graph.family(db, gid, level)
+    out = family_graph.family(db, gid, full=at_least(level, "full"))
     for person in out["people"]:            # ниже полного уровня телефона и даты рождения нет — ``None``
         person.setdefault("phone", None)
         person.setdefault("birth_date", None)

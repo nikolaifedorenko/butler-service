@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import Guest, Reservation, VipCode
+from ..adapters.orm import Guest, VipCode
 from .fund import FundConflict, FundError
 from .locking import lock_module
 
@@ -95,12 +95,13 @@ def archive_code(db: Session, code_id: int, archived: bool) -> None:
     db.flush()
 
 
-def delete_code(db: Session, code_id: int) -> None:
-    """Код, стоящий у гостя или в брони, не удаляется — FundConflict (отправьте в архив)."""
+def delete_code(db: Session, code_id: int, *, used_elsewhere: bool = False) -> None:
+    """Код, стоящий у гостя или в брони, не удаляется — FundConflict (отправьте в архив).
+    ``used_elsewhere`` — код стоит там, куда ``guests`` не заглядывает (в брони): это знает
+    вызывающий слой выше."""
     lock_module(db)
     row = _row(db, code_id)
-    used = (db.scalar(select(Guest.id).where(Guest.vip_code_id == code_id).limit(1)) is not None
-            or db.scalar(select(Reservation.id).where(Reservation.vip_code_id == code_id).limit(1)) is not None)
+    used = used_elsewhere or db.scalar(select(Guest.id).where(Guest.vip_code_id == code_id).limit(1)) is not None
     if used:
         raise FundConflict("Код используется — отправьте его в архив")
     db.delete(row)

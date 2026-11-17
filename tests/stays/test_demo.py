@@ -135,7 +135,7 @@ def test_demo_three_generation_family(db):
 
     by = {(g.last_name, g.first_name): g for g in db.scalars(select(Guest).where(Guest.source == "demo"))}
     anna, petr = by[("Смирнова", "Анна")], by[("Петров", "Пётр")]
-    kin = {k["person_id"]: k["title"] for k in family(db, anna.id, "names")["kin"]}
+    kin = {k["person_id"]: k["title"] for k in family(db, anna.id, full=False)["kin"]}
     assert kin[petr.id] == "правнук"
     assert all(g.gender in ("m", "f") for g in by.values())
 

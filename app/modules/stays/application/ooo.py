@@ -18,7 +18,7 @@ from ..domain.halfday import ooo_span, overlaps
 from . import allocation
 from .fund import FundConflict, FundError
 from .fund_versions import fund_for, unit_exists
-from .views import BoardFilters, ViewError, fund_match
+from .view_filters import BoardFilters, ViewError, fund_match
 
 SORTS = ("unit", "category", "start", "end", "reason", "author", "created_at")
 MAX_LIMIT = 200

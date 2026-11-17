@@ -26,11 +26,9 @@ from .fund_forms import (
     DraftUnitIn,
     FlagValueIn,
     MergeIn,
-    PublishIn,
     SplitIn,
 )
 from .fund_versions import snapshot_of
-from .previewed import run_previewed
 
 
 def _done(db: Session, principal: Principal, target: str, payload: dict, **extra) -> dict:
@@ -56,18 +54,6 @@ def move_draft(db: Session, principal: Principal, payload: DraftMoveIn) -> dict:
     fd.move_draft_date(db, payload.rev, payload.valid_from)
     return _done(db, principal, "fund_draft", {"move": payload.valid_from.isoformat()},
                  valid_from=payload.valid_from.isoformat())
-
-
-def delete_version(db: Session, principal: Principal, version_id: int, *, preview_only: bool) -> dict:
-    """Удаление черновика или будущей версии и его предпросмотр — одна операция, как
-    публикация: удаление опубликованной версии перераспределяет брони, новый овербукинг без
-    права ``stays.overbook`` — 409 (часть 2 §7)."""
-    def operation():
-        fd.delete_version(db, version_id)
-        audit(db, principal, "stays_fund_version", f"fund_version:{version_id}", {"delete": True})
-        return {"ok": True}
-    return run_previewed(db, operation, preview_only=preview_only,
-                         may_overbook="stays.overbook" in principal.gate_permissions)
 
 
 @transactional
@@ -126,28 +112,6 @@ def set_flags(db: Session, principal: Principal, payload: FlagValueIn) -> dict:
     fd.set_flag(db, payload.rev, payload.flag_id, payload.unit_ids, payload.value)
     return _done(db, principal, f"fund_draft:flag:{payload.flag_id}",
                  {"units": payload.unit_ids, "value": payload.value})
-
-
-def publish(db: Session, principal: Principal, payload: PublishIn, *, preview_only: bool) -> dict:
-    """Публикация и её предпросмотр — одна операция: предпросмотр откатывается (§4.3). ``rev``
-    сверяется в ``fd.publish`` под замком модуля."""
-    transfers = [fd.Transfer(t.reservation_id, t.category_id) for t in payload.transfers]
-
-    def operation():
-        res = fd.publish(db, principal, payload.rev, propagate=payload.propagate, transfers=transfers)
-        v = res.version
-        return {"version": {"id": v.id, "valid_from": v.valid_from.isoformat(), "rev": v.rev},
-                "fund_diff": res.fund_diff, "propagated": res.propagated, "kept": res.kept,
-                "skipped": res.skipped, "transfers": res.transfers}
-    out = run_previewed(db, operation, preview_only=preview_only,
-                        may_overbook="stays.overbook" in principal.gate_permissions)
-    added = out["diff"]["warnings_added"]
-    # «unassigned» в ответе — брони без объекта: с части 2 это предупреждение overbooked
-    out["result"]["affected"] = {"moved": out["diff"]["moved"],
-                                 **{k: [w for w in added if w["kind"] == kind]
-                                    for k, kind in (("unassigned", "overbooked"), ("pin_invalid", "pin_invalid"),
-                                                    ("category_missing", "category_missing"))}}
-    return out
 
 
 @transactional

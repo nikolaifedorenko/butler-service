@@ -10,7 +10,6 @@ from ..adapters.orm import Guest, GuestLink
 from ..domain.kinship import FamilyGraph, Person, children_of, kin_of
 from .guests import format_phone
 from .vip_codes import code_texts
-from .visibility import Level, at_least
 
 FAMILY_KINDS = ("parent", "spouse")
 GENERATIONS = 3          # граф карточки: до прадедов и правнуков (§4)
@@ -90,17 +89,16 @@ def full_name(g: Guest) -> str:
     return " ".join(p for p in (g.last_name, g.first_name, g.middle_name) if p)
 
 
-def family(db: Session, gid: int, level: Level) -> dict:
+def family(db: Session, gid: int, *, full: bool) -> dict:
     """Граф семьи для карточки гостя: люди, первичные связи (links — с id для редактора: parent —
     a родитель b), вычисленные родственники.
-    Уровень «с фамилиями» — фамилия и имя; полный — ФИО, телефон, дата рождения (§4)."""
+    Без ``full`` (уровень «с фамилиями») — фамилия и имя; с ``full`` — ФИО, телефон, дата рождения (§4)."""
     ids = set(_family_people(db, gid))
     links = list(db.scalars(select(GuestLink).where(
         GuestLink.kind.in_(FAMILY_KINDS), GuestLink.guest_a_id.in_(ids), GuestLink.guest_b_id.in_(ids))
         .order_by(GuestLink.id)))
     people = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(ids)))}
     graph = graph_of(links)
-    full = at_least(level, "full")
     codes = code_texts(db) if any(g.vip_code_id for g in people.values()) else {}
 
     def person(g: Guest) -> dict:

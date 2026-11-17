@@ -41,10 +41,10 @@ from ..adapters.orm import (
     StayGroup,
     VipCode,
 )
-from . import allocation, fund_drafts, fund_versions, vip_codes
-from .fund import seed_escorts_from_positions
+from . import allocation, fund_drafts, fund_publish, fund_versions, vip_codes
 from .fund_versions import INITIAL_DATE
 from .guests import guest_search_text
+from .stays_catalog import seed_escorts_from_positions
 
 CATEGORIES = [  # код, название, вид, сопровождение, вес, объектов
     ("VEG", "Вилла Garden", "villa", True, 4, 13), ("FWV", "Вилла у воды", "villa", True, 4, 12),
@@ -184,7 +184,7 @@ def seed_connect_split(db: Session) -> None:
     draft = fund_drafts.open_draft(db, local_date() + dt.timedelta(days=14), None, "Деление коннекта 12134")
     fund_drafts.split_unit(db, draft.rev, connect, [{"label": "1213", "category_id": dlx_id},
                                                      {"label": "1214", "category_id": dlx_id}])
-    fund_drafts.publish(db, None, draft.rev)
+    fund_publish.publish(db, None, draft.rev)
 
 
 # VIP-коды демо: код, название, сопровождается, коэффициент

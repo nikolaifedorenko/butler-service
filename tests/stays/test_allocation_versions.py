@@ -181,7 +181,7 @@ def test_in_house_piece_after_withdrawal_relocated(manager_role_client, manager_
     """Заселённая бронь без закрепления: версия с D выводит её объект — часть после D переезжает
     с предупреждением, текущая часть остаётся; повторная публикация на ту же дату (строка части
     уже есть) проверяет её снова."""
-    from app.modules.stays.application import allocation, fund_drafts
+    from app.modules.stays.application import allocation, fund_publish
 
     today("2035-10-01")
     cat = make_category(manager_role_client, n_units=2)
@@ -201,7 +201,7 @@ def test_in_house_piece_after_withdrawal_relocated(manager_role_client, manager_
             assert resp.status_code == 200, resp.text
             rev = resp.json()["rev"]
         db.expire_all()
-        fund_drafts.publish(db, None, rev)
+        fund_publish.publish(db, None, rev)
         state = db.info[allocation.CACHE_KEY]
         db.commit()
         return [w.text for w in state.warnings if w.kind == "unit_invalid" and r["id"] in state.members[w.key]]

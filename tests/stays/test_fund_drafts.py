@@ -21,6 +21,7 @@ from app.modules.stays.adapters.orm import (
     UnitStateFlag,
 )
 from app.modules.stays.application import fund_drafts as fd
+from app.modules.stays.application import fund_publish as fp
 from app.modules.stays.application.fund import FundConflict, FundError
 from app.modules.stays.application.fund_versions import fund_on, snapshot_of
 
@@ -127,7 +128,7 @@ def test_rename_category_code_keeps_id(db, world):
 def test_change_label_from_date(db, world):
     d = _open(db)
     fd.save_unit(db, d.rev, {"label": "4103"}, world["u1"])
-    fd.publish(db, None)
+    fp.publish(db, None)
     u = world["u1"]
     assert fund_on(db, D - dt.timedelta(days=1)).units[u].label == "4003"
     assert fund_on(db, D).units[u].label == "4103"
@@ -194,7 +195,7 @@ def test_flag_from_date(db, world):
     d = _open(db)
     fd.set_flag(db, d.rev, world["flag"], [world["u2"]], True)
     fd.set_flag(db, d.rev, world["flag"], [world["u1"]], False)
-    fd.publish(db, None)
+    fp.publish(db, None)
     before, after = fund_on(db, D - dt.timedelta(days=1)), fund_on(db, D)
     assert before.units[world["u1"]].flags == {world["flag"]} and before.units[world["u2"]].flags == set()
     assert after.units[world["u1"]].flags == set() and after.units[world["u2"]].flags == {world["flag"]}
@@ -203,12 +204,12 @@ def test_flag_from_date(db, world):
 def test_draft_on_existing_version_date_replaces_it(db, world):
     d = _open(db)
     fd.save_unit(db, d.rev, {"floor": "7"}, world["u1"])
-    first = fd.publish(db, None).version
+    first = fp.publish(db, None).version
     d2 = _open(db, D)                                     # правка «с той же даты»
     assert d2.valid_from == D and d2.base_version_id == first.id
     assert snapshot_of(db, d2.id).units[world["u1"]].floor == "7"
     fd.save_unit(db, d2.rev, {"floor": "8", "label": "4003x"}, world["u1"])
-    second = fd.publish(db, None).version
+    second = fp.publish(db, None).version
     assert second.id == first.id and fd.current_draft(db) is None
     assert db.scalar(select(func.count()).select_from(FundVersion).where(FundVersion.valid_from == D)) == 1
     u = fund_on(db, D).units[world["u1"]]
@@ -220,15 +221,15 @@ def test_publish_stale_draft_date_409(db, world, today):
     d = _open(db, dt.date(2093, 1, 11))                   # «завтра»
     today("2093-01-12")                                   # «сегодня» — послезавтра
     with pytest.raises(FundConflict, match="сдвиньте"):
-        fd.publish(db, None)
+        fp.publish(db, None)
     fd.move_draft_date(db, d.rev, dt.date(2093, 1, 12))
-    assert fd.publish(db, None).version.valid_from == dt.date(2093, 1, 12)
+    assert fp.publish(db, None).version.valid_from == dt.date(2093, 1, 12)
 
 
 def test_publish_writes_audit(db, world):
     d = _open(db)
     fd.save_unit(db, d.rev, {"label": "4103"}, world["u1"])
-    v = fd.publish(db, None).version
+    v = fp.publish(db, None).version
     db.flush()
     row = db.scalar(select(AuditLog).where(AuditLog.action == "stays_fund_version").order_by(AuditLog.id.desc()))
     assert row.target == f"fund_version:{v.id}" and "4103" in json.dumps(row.payload, ensure_ascii=False)
@@ -248,19 +249,19 @@ def test_diff_kinds(db, world):
 
 def test_delete_current_version_409(db, world):
     with pytest.raises(FundConflict):
-        fd.delete_version(db, world["v0"])                # действующая
+        fp.delete_version(db, world["v0"])                # действующая
     first = db.scalar(select(FundVersion.id).order_by(FundVersion.valid_from).limit(1))
     with pytest.raises(FundConflict):
-        fd.delete_version(db, first)                      # исходная
+        fp.delete_version(db, first)                      # исходная
 
 
 def test_delete_future_version_ok(db, world):
     d = _open(db)
-    v = fd.publish(db, None).version
-    fd.delete_version(db, v.id)
+    v = fp.publish(db, None).version
+    fp.delete_version(db, v.id)
     assert db.get(FundVersion, v.id) is None
     d2 = _open(db, dt.date(2093, 3, 1))                   # черновик тоже удаляется
-    fd.delete_version(db, d2.id)
+    fp.delete_version(db, d2.id)
     assert fd.current_draft(db) is None
     assert d.id  # публикация переиспользовала строку черновика
 
@@ -280,13 +281,13 @@ def test_delete_used_flag_409_archive_ok(db, world):
 
 def test_delete_version_under_draft_409(db, world):
     d = _open(db)
-    v = fd.publish(db, None).version
+    v = fp.publish(db, None).version
     d2 = _open(db, D)                                     # черновик опирается на v
     assert d2.base_version_id == v.id
     with pytest.raises(FundConflict, match="черновик"):
-        fd.delete_version(db, v.id)
-    fd.delete_version(db, d2.id)
-    fd.delete_version(db, v.id)
+        fp.delete_version(db, v.id)
+    fp.delete_version(db, d2.id)
+    fp.delete_version(db, v.id)
     assert d.id
 
 
@@ -305,9 +306,9 @@ def test_publish_checks_rev_under_lock(db, world):
     d = _open(db)
     fd.save_unit(db, d.rev, {"floor": "5"}, world["u1"])
     with pytest.raises(FundConflict):
-        fd.publish(db, None, d.rev - 1)
+        fp.publish(db, None, d.rev - 1)
     assert fd.current_draft(db) is not None
-    fd.publish(db, None, d.rev)
+    fp.publish(db, None, d.rev)
     assert fd.current_draft(db) is None
 
 
@@ -334,7 +335,7 @@ def test_missing_draft_409(db, world):
     with pytest.raises(FundConflict):
         fd.save_unit(db, 1, {"floor": "5"}, world["u1"])
     with pytest.raises(FundConflict):
-        fd.publish(db, None)
+        fp.publish(db, None)
 
 
 def test_repeated_ids_in_merge_and_set_flag(db, world):
@@ -369,7 +370,7 @@ def test_fund_on_before_first_version(db, world):
 def test_group_escorted_versioned(db, world):
     d = _open(db)
     fd.save_group(db, d.rev, {"escorted": True}, world["g1"])
-    fd.publish(db, None)
+    fp.publish(db, None)
     assert fund_on(db, D - dt.timedelta(days=1)).groups[world["g1"]].escorted is False
     assert fund_on(db, D).groups[world["g1"]].escorted is True
     assert fund_on(db, D).groups[world["g2"]].escorted is False       # узел отмечается сам, не потомки
@@ -378,7 +379,7 @@ def test_group_escorted_versioned(db, world):
 def test_branch_inherits_escorted(db, world):
     d = _open(db)
     fd.save_group(db, d.rev, {"escorted": True}, world["g1"])
-    fd.publish(db, None)
+    fp.publish(db, None)
     snap, before = fund_on(db, D), fund_on(db, D - dt.timedelta(days=1))
     assert snap.unit_escorted(world["u1"]) and snap.unit_escorted(world["u2"])   # u1 — во внуке, u2 — в самом узле
     assert not before.unit_escorted(world["u1"]) and not snap.unit_escorted(None) and not snap.unit_escorted(-1)
@@ -387,7 +388,7 @@ def test_branch_inherits_escorted(db, world):
 def test_unit_escorted_by_category(db, world):
     d = _open(db)
     fd.save_category(db, d.rev, {"escorted": True}, world["b"])
-    fd.publish(db, None)
+    fp.publish(db, None)
     snap = fund_on(db, D)
     assert snap.unit_escorted(world["u2"]) and not snap.unit_escorted(world["u1"])
 
@@ -404,10 +405,10 @@ def test_group_escorted_in_diff(db, world):
 def test_carry_to_later_versions_keeps_escorted(db, world):
     later = fd.open_draft(db, dt.date(2093, 3, 1), None)
     fd.save_unit(db, later.rev, {"floor": "9"}, world["u1"])
-    fd.publish(db, None)
+    fp.publish(db, None)
     d = _open(db)
     fd.save_group(db, d.rev, {"escorted": True}, world["g1"])
-    fd.publish(db, None)
+    fp.publish(db, None)
     assert fund_on(db, dt.date(2093, 3, 2)).groups[world["g1"]].escorted is True      # перенесено
     assert fund_on(db, dt.date(2093, 3, 2)).units[world["u1"]].floor == "9"
 

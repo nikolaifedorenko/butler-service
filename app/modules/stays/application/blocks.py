@@ -16,7 +16,7 @@ from ..adapters.orm import Block, BlockNight
 from . import allocation
 from .fund import FundConflict, FundError
 from .fund_versions import fund_for
-from .views import ViewError
+from .view_filters import ViewError
 
 SORTS = ("title", "start", "end", "nights", "placed", "short", "created_at")
 MAX_LIMIT = 200
