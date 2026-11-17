@@ -21,10 +21,10 @@ from ..application import block_edit, blocks
 from ..application.block_edit import BlockIn, BlockPut, NightsIn
 from ._ops import PREVIEW
 from .schemas import BlockCardOut, BlockListOut, BlockSavedOut, DeletedOut, PreviewedOut
-from .views_api import SEE
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 EDIT = require_perm("stays.edit")
+SEE = require_perm("stays.view", "stays.occupancy")
 
 
 def _query(first: Optional[dt.date] = None, last: Optional[dt.date] = None,

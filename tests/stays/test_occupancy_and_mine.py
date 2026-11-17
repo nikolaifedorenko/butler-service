@@ -318,7 +318,7 @@ def test_occupancy_past_blocks_from_recorded_nights(manager_role_client, manager
     d.call("POST", "units", label=code + "-2", category_id=cid, group_id=b)
     d.publish()
     today("2040-09-20")
-    from app.modules.stays.application import views
+    from app.modules.board.application import views
     monkeypatch.setattr(views, "local_date", lambda: dt.date(2040, 9, 20))
     _block(manager_client, "2040-09-10", "2040-09-12", {cat["id"]: {"2040-09-10": 2}, cid: {"2040-09-10": 1, "2040-09-11": 1}})
     body = _occ(manager_client, "2040-09-09", "2040-09-12", group_ids=[a, b])

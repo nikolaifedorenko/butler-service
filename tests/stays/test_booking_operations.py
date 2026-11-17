@@ -6,8 +6,9 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.errors import Validation
+from app.modules.board.application import views
 from app.modules.stays.adapters.orm import Block, Ooo, Reservation, StayGroup
-from app.modules.stays.application import block_edit, ooo_edit, reservation_edit, views
+from app.modules.stays.application import block_edit, ooo_edit, reservation_edit
 from app.modules.stays.application.previewed import OverbookRefusedError
 
 from .helpers import API, create_res, make_category, make_guest, res_body, uniq

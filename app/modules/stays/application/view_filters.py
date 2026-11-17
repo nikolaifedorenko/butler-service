@@ -56,3 +56,17 @@ def fund_match(snap: FundSnapshot, unit_id: int | None, category_id: int | None,
             and (not f.kind_ids or (cat is not None and cat.kind_id in f.kind_ids))
             and (not f.flag_ids or set(f.flag_ids) <= u.flags)
             and (not f.floor or u.floor == f.floor))
+
+
+REMOVED_PARAMS = ("building", "category_id", "kind", "kinds", "vip")
+
+
+def fund_filter_dims(query_params, group_ids, category_ids, flag_ids, kind_ids, floor) -> dict:
+    """Измерения фонда (§7) — повторяющиеся параметры запроса. Прежние одиночные параметры — 422, а
+    не молча без фильтра: старый клиент иначе показал бы весь фонд как отфильтрованный."""
+    old = [p for p in REMOVED_PARAMS if p in query_params]
+    if old:
+        raise ViewError(f"Параметр {', '.join(old)} больше не поддерживается: "
+                        "group_ids, category_ids, flag_ids, kind_ids, special, vip_code_ids")
+    return {"group_ids": tuple(group_ids), "category_ids": tuple(category_ids), "flag_ids": tuple(flag_ids),
+            "kind_ids": tuple(kind_ids), "floor": floor or None}

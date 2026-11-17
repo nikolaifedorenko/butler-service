@@ -11,10 +11,9 @@ from sqlalchemy.orm import Session
 from app.core.auth import Principal
 from app.core.errors import NotFound
 from app.modules.guests.application.catalog import Guest
-
-from ..ports.duty import DutyPort
-from . import mine
-from .visibility import level_for
+from app.modules.stays.application import mine
+from app.modules.stays.application.visibility import level_for
+from app.modules.stays.ports.duty import DutyPort
 
 
 def _me(principal: Principal) -> int:

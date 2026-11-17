@@ -75,6 +75,7 @@ forbidden_modules =
     app.main
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -98,6 +99,7 @@ forbidden_modules =
     app.main
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -120,6 +122,7 @@ forbidden_modules =
     app.main
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -136,7 +139,7 @@ allow_indirect_imports = True
 name = Слои модулей: импорт только вниз, соседи по слою независимы (ADR-0013, раздел 5)
 type = layers
 layers =
-    app.modules.settings
+    app.modules.board | app.modules.settings
     app.modules.access | app.modules.docs | app.modules.employees | app.modules.stays
     app.modules.guests | app.modules.night
     app.modules.audit | app.modules.cars | app.modules.fund | app.modules.notify | app.modules.timesheet
@@ -151,6 +154,7 @@ source_modules =
     app.main
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -174,6 +178,7 @@ name = R3: domain/adapters/interface access приватны
 type = forbidden
 source_modules =
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -197,6 +202,7 @@ name = R3: domain/adapters/interface audit приватны
 type = forbidden
 source_modules =
     app.modules.access
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -215,12 +221,37 @@ forbidden_modules =
     app.modules.audit.interface
 allow_indirect_imports = True
 
+[importlinter:contract:board-private]
+name = R3: domain/adapters/interface board приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.exchange
+    app.modules.fund
+    app.modules.guests
+    app.modules.night
+    app.modules.notify
+    app.modules.people
+    app.modules.settings
+    app.modules.stays
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.board.domain
+    app.modules.board.adapters
+    app.modules.board.interface
+allow_indirect_imports = True
+
 [importlinter:contract:cars-private]
 name = R3: domain/adapters/interface cars приватны
 type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.docs
     app.modules.employees
     app.modules.exchange
@@ -244,6 +275,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.employees
     app.modules.exchange
@@ -267,6 +299,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.exchange
@@ -290,6 +323,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -313,6 +347,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -336,6 +371,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -359,6 +395,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -382,6 +419,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -405,6 +443,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -428,6 +467,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -451,6 +491,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees
@@ -474,6 +515,7 @@ type = forbidden
 source_modules =
     app.modules.access
     app.modules.audit
+    app.modules.board
     app.modules.cars
     app.modules.docs
     app.modules.employees

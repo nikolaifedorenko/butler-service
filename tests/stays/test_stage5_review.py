@@ -84,9 +84,9 @@ def test_set_days_batch_with_preview(manager_role_client, manager_client, butler
 def test_butlers_board_memoizes_days(monkeypatch, db):
     """I4: контекст считает stays_on и warnings один раз на день, а не на каждого батлера."""
     from app.core.time import local_date
+    from app.modules.board.application.boards import butlers_board
     from app.modules.stays.adapters.duty_timesheet import TimesheetDuty
     from app.modules.stays.application import context as ctxmod
-    from app.modules.stays.application.boards import butlers_board
     calls = {"n": 0}
     orig = ctxmod.StaysContext._stays_on
 

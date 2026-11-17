@@ -15,15 +15,13 @@ from app.modules.fund.application.fund_versions import FundTimeline, boundary_po
 from app.modules.guests.application.catalog import Guest, VipCode
 from app.modules.guests.application.guests import short_name, text_search
 from app.modules.people.application.catalog import Employee
-
-from ..adapters.orm import Assignment, CoverageLine, Label, Move, Occupant, Reservation
-from ..domain.allocate import natural_key
-from ..domain.halfday import Piece, pieces, segments
-from . import allocation
-from .context import load_context
-from .reservations import STATUS_TITLES
-from .view_filters import BoardFilters, ViewError, fund_match
-from .visibility import LEVEL_ORDER, Level
+from app.modules.stays.application import allocation
+from app.modules.stays.application.catalog import Assignment, CoverageLine, Label, Move, Occupant, Reservation
+from app.modules.stays.application.context import load_context
+from app.modules.stays.application.reservations import STATUS_TITLES
+from app.modules.stays.application.rules import Piece, natural_key, pieces, segments
+from app.modules.stays.application.view_filters import BoardFilters, ViewError, fund_match
+from app.modules.stays.application.visibility import LEVEL_ORDER, Level
 
 Mode = Literal["stay", "check_in", "check_out", "created"]
 MODES = ("stay", "check_in", "check_out", "created")

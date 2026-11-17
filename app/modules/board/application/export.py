@@ -10,11 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.exchange.application.tables import Cell, Column, Fill, Sheet, write_xlsx
+from app.modules.stays.application.catalog import Logistics, Reservation
+from app.modules.stays.application.context import load_context
+from app.modules.stays.application.reservations import STATUS_TITLES
+from app.modules.stays.application.rules import PM, pos
 
-from ..adapters.orm import Logistics, Reservation
-from ..domain.halfday import PM, pos
-from .context import load_context
-from .reservations import STATUS_TITLES
 from .views import BoardFilters, check_window, units_board
 
 ESCORT_TITLES = {"rules": "по правилам", "required": "требуется", "declined": "отказался"}

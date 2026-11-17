@@ -87,6 +87,7 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 | **cars** | Электрокары: парк, заряд/возврат, места, ночная проверка | `application` (cars, catalog) |
 | **fund** | «Фонд»: категории, объекты и узлы дерева версиями «с даты», черновик и публикация данных, файл фонда в Excel, справочники флагов и видов категорий (слой 2; таблицы `fund_*`) | `application` (catalog, fund_versions, fund_drafts, fund_xlsx, fund_forms, fund_schemas) |
 | **guests** | «Гости»: профили, связи «кто кому», пожелания к объекту, VIP-коды, определения настраиваемых полей, семейное дерево (слой 3; таблицы `guests`, `guests_*`); собственного роутера нет — API гостей собирает `stays` | `application` (catalog, guests, vip_codes, family, guest_fields, guest_forms) |
+| **board** | «Табло»: представления только для чтения — шахматка объектов и батлеров, табло дня, «Мои гости», список броней, карточки, выгрузка в Excel, чтение профилей гостей (слой 5; своих таблиц нет) | `application` (views, boards, bookings, export, *_screen) |
 | **stays** | «Шахматка»: брони, автораспределение по объектам, покрытие батлерами, предпросмотр изменений (23.10.2026) | `application` (catalog); График читает через публичный `timesheet.application.roster` |
 | **docs** | Заявления DOCX/PDF, сетка Графика в Excel, шаблоны | `application` (doc_render, grid_docx, doc_templates) |
 | **notify** | Общая доставка: Telegram + почта, каталог чатов, журнал отправок | `application` (config, dispatch, recipients, chats, catalog), `ports` (TransportError) |
@@ -94,14 +95,15 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 | **access** | Вход/сессии/impersonation, экран «Права доступа» | `interface` (модели — core/identity) |
 | **audit** | Журнал действий + CSV | `interface` (модель и audit() — core/audit) |
 
-**Внутреннее деление `stays` (ADR-0013, шаг 5).** Фонд (`fund`, слой 2) и гости (`guests`, слой 3)
-выделены в свои модули: `stays` ходит в них только через `application`. Остальное внутри `stays`
-разнесено на группы — `stays` (брони, блоки, OOO, размещение, покрытие, начальная загрузка, правка
-гостей, которая знает о бронях) → `board` (представления только для чтения). Группа импортирует
-только свою и нижние; список групп и проверку держит `tests/stays/test_split_layers.py`. Что фонду и
+**Деление `stays` (ADR-0013, шаг 5).** Из `stays` выделены три модуля: `fund` (слой 2), `guests`
+(слой 3) и `board` (слой 5). Все они связаны только через публичный `application`: `stays` читает
+`fund` и `guests`, а `board` читает `stays`, `fund` и `guests`. Приватные слои `stays` (домен,
+адаптеры, роутеры) для `board` закрыты; нужное он берёт из `stays.application.catalog` (модели),
+`rules` (чистые правила размещения и половинок суток) и `duty` (кто в день на смене). Что фонду и
 гостям нужно от броней, делает слой выше: публикацию версии с переводом броней и пересчётом
 размещения — `fund_publish`, объединение дублей гостей — `guest_merge`. Права `stays.*`, меню,
-экраны настроек и подписи аудита объявляет манифест `stays`: ключи прав не меняются.
+экраны настроек и подписи аудита объявляет манифест `stays`: ключи прав не меняются, адреса остаются
+`/api/stays/...`.
 
 Кросс-модульное: медиа (Photo) и роутер photos — `core/media*`; ключ-значение
 `Setting` — `core/settings_store`; транспорт рендера — `core/render`;

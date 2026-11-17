@@ -16,10 +16,10 @@ from sqlalchemy.orm import Session
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
+from app.modules.stays.application import mine as mine_app
+from app.modules.stays.application.duty import timesheet_duty
 
-from ..adapters.duty_timesheet import TimesheetDuty
 from ..application import board_screen, boards, mine_screen, views
-from ..application import mine as mine_app
 from .schemas import (
     ButlersBoardOut,
     DayBoardOut,
@@ -37,7 +37,7 @@ router = APIRouter(prefix="/api/stays", tags=["stays"])
 @router.get("/board/butlers", response_model=ButlersBoardOut)
 def board_butlers(first: dt.date, last: dt.date, principal: Principal = Depends(require_perm("stays.view")),
                   db: Session = Depends(get_db)):
-    return board_screen.butlers_board(db, first, last, TimesheetDuty(db))
+    return board_screen.butlers_board(db, first, last, timesheet_duty(db))
 
 
 @router.get("/day", response_model=DayBoardOut)
@@ -47,7 +47,7 @@ def day_board(date: dt.date, dims: dict = Depends(fund_filters), escorted_only: 
               db: Session = Depends(get_db)):
     f = boards.DayFilters(**dims, escorted_only=escorted_only, special=special, vip_code_ids=tuple(vip_code_ids),
                           employee_id=employee_id, q=q)
-    return board_screen.day_board(db, principal, date, f, TimesheetDuty(db))
+    return board_screen.day_board(db, principal, date, f, timesheet_duty(db))
 
 
 @router.get("/occupancy", response_model=OccupancyOut)
@@ -67,7 +67,7 @@ def mine_today(principal: Principal = Depends(require_perm("stays.mine")), db: S
 def mine_month(first: dt.date, last: dt.date, principal: Principal = Depends(require_perm("stays.mine")),
                db: Session = Depends(get_db)):
     """«Мой месяц»: свои брони полосами, нагрузка по дням и отсутствия по Графику (не больше 62 дней)."""
-    return mine_screen.month(db, principal, first, last, TimesheetDuty(db))
+    return mine_screen.month(db, principal, first, last, timesheet_duty(db))
 
 
 @router.get("/mine/guests", response_model=MineGuestsOut)
