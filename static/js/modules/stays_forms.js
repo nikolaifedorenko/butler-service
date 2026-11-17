@@ -744,3 +744,31 @@ async function openGuestForm(id, onSaved, opts = {}) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_ROLE,
+  STAYS_STATUS,
+  STAYS_COMPANION,
+  STAYS_LINK,
+  STAYS_GENDER,
+  STAYS_FAMILY_LINK,
+  staysRelativesHtml,
+  staysFieldInputs,
+  staysFieldValues,
+  renderPreview,
+  previewThenSave,
+  staysFormFoot,
+  staysBindFoot,
+  staysBindGatedFoot,
+  openReservationForm,
+  openTransferForm,
+  openCoverageForm,
+  openGroupForm,
+  openGuestCard,
+  STAYS_PREF_KIND,
+  renderGuestPrefs,
+  openStatusForm,
+  openGuestForm,
+});
+/* ── конец моста ── */

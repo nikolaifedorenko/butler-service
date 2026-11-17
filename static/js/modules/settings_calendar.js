@@ -127,3 +127,12 @@ function settingsBindDayPanel(panel) {
   $$('[data-day-check]', panel).forEach(b => b.onclick = () => settingsResolverModal());
   $$('[data-day-tabel]', panel).forEach(b => b.onclick = () => navigate('timesheet'));
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  settingsScreenCalendar,
+  settingsCalRows,
+  settingsDayPanel,
+  settingsBindDayPanel,
+});
+/* ── конец моста ── */

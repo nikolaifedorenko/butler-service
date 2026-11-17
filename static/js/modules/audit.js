@@ -55,3 +55,10 @@ async function loadAudit() {
   $('#au-prev').onclick = () => { f.offset = Math.max(0, f.offset - AUDIT_PAGE); loadAudit(); };
   $('#au-next').onclick = () => { f.offset += AUDIT_PAGE; loadAudit(); };
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  AUDIT_PAGE,
+  loadAudit,
+});
+/* ── конец моста ── */

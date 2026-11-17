@@ -2,7 +2,7 @@
   "name": "butler-service-frontend-tools",
   "private": true,
   "version": "1.0.0",
-  "description": "Инструменты фронтенда: линтер, смоук интерфейса в jsdom, снимки разделов",
+  "description": "Инструменты фронтенда: линтер, сценарии в Playwright, смоук в jsdom (уходит с переносом разделов), снимки разделов",
   "type": "module",
   "scripts": {
     "globals": "python3 tools/gen_js_globals.py",
@@ -15,11 +15,16 @@
     "smoke:nightzones": "./tools/run_night_zones_scenario.sh",
     "smoke:norms": "./tools/run_norms_scenario.sh",
     "smoke:settings": "./tools/run_settings_scenario.sh",
-    "snapshot": "./tools/run_snapshot.sh"
+    "snapshot": "./tools/run_snapshot.sh",
+    "vendor": "node tools/vendor.mjs",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install chromium"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "eslint": "^10.14.0",
     "globals": "^17.14.0",
-    "jsdom": "^31.0.0"
+    "jsdom": "^31.0.0",
+    "lit-html": "^3.3.3"
   }
 }

@@ -312,3 +312,26 @@ function staysOpenNodeDay(node, day) {
   staysState.tab = 'units';
   loadStays();
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_DUTY,
+  STAYS_WARN,
+  boardState,
+  renderButlersBoard,
+  openButlerDay,
+  openReplace,
+  DAY_TABS,
+  dayStatusHtml,
+  dayReasonsHtml,
+  dayOooHtml,
+  dayRowHtml,
+  renderDayBoard,
+  OC_ROWS,
+  ocHeat,
+  renderOccupancyGrid,
+  ocIsOpen,
+  ocGridHtml,
+  staysOpenNodeDay,
+});
+/* ── конец моста ── */

@@ -178,6 +178,24 @@ jobs:
           ./tools/run_ui_check.sh 8190 rukovod stays
           ./tools/run_ui_check.sh 8189 sluzhba stays
 
+      - name: Сценарии интерфейса в настоящем браузере (Playwright)
+        # ES-модули, мост имён, lit-html и обход разделов пяти ролей на реальном Chromium;
+        # смоук в jsdom выше уходит по мере переноса разделов на модули (ADR-0013, раздел 7)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
+      - name: Отчёт Playwright при падении
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Сценарий раздела «Настройки» (клики, мастер, проверитель, публикация версии)
         # Смоук проверяет, что экраны ОТРИСОВАНЫ; этот сценарий — что они РАБОТАЮ:
         # переопределение правила сохраняется, «Проверитель» объясняет значение,

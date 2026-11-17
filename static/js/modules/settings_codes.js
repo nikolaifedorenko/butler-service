@@ -311,3 +311,15 @@ function settingsWindowModal(key) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  SETTINGS_CODE_FLAGS,
+  settingsScreenCodes,
+  settingsCodesCards,
+  settingsWindowsTable,
+  settingsBindCodesBody,
+  settingsCodeModal,
+  settingsWindowModal,
+});
+/* ── конец моста ── */

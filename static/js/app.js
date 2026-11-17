@@ -464,3 +464,40 @@ async function bootApp() {
   }
 }
 bootApp();
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  ICONS,
+  can,
+  MODULE_VIEWS,
+  MODULE_SCREENS,
+  registerModule,
+  GRAFIK_LAYERS,
+  GRAFIK_ALIAS,
+  visibleTabs,
+  renderNav,
+  renderCategoryFooter,
+  navigate,
+  grafikLayers,
+  LAYER_LOADERS,
+  grafikSkeleton,
+  loadGrafik,
+  renderGrafikTabs,
+  clearTimers,
+  pollers,
+  POLL_MS,
+  poll,
+  showLogin,
+  applyMe,
+  loadPerms,
+  startView,
+  resetUserViewState,
+  selfcheckDetails,
+  renderSchemaBanner,
+  enterApp,
+  renderUserChip,
+  loadDirectory,
+  LOGIN_ERRORS,
+  bootApp,
+});
+/* ── конец моста ── */

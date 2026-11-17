@@ -400,3 +400,28 @@ async function fetchFact() {
       <p class="hint">Моменты исходные (с секундами в источнике), без округления и дневной нарезки:
         сессия может пересекать полночь. Расчётные часы — во вкладке «Управленческий табель».</p></div>`;
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  loadFact,
+  FG_DAY_W,
+  FG_FALLBACK_CATEGORIES,
+  fgHours,
+  fgCategoryBands,
+  fgCategoryLegend,
+  fgDarken,
+  fgHmX,
+  fgT2x,
+  fgBar,
+  fgWin,
+  loadFactMonth,
+  renderFactMonth,
+  loadFactSessions,
+  loadFactNumbers,
+  fetchFactDay,
+  factMarksCell,
+  factOtCell,
+  renderFactNumbers,
+  fetchFact,
+});
+/* ── конец моста ── */

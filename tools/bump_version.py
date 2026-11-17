@@ -42,7 +42,7 @@ def local_assets() -> list[str]:
     EXECUTION-SPEC-v2 §6) — нерекурсивный glob оставлял бы PWA без оболочки.
     """
     out = []
-    for sub in ("css", "js"):
+    for sub in ("css", "js", "vendor"):
         for p in sorted((ASSETS_DIR / sub).rglob("*")):
             if p.suffix in (".css", ".js"):
                 out.append("/static/" + p.relative_to(ASSETS_DIR).as_posix())
@@ -50,10 +50,11 @@ def local_assets() -> list[str]:
 
 
 def scripts_block(version: str) -> str:
-    """Теги <script> оболочки: ядро, затем файлы разделов (их порядок не важен, ADR-0008)."""
+    """Теги <script type="module"> оболочки: ядро, затем файлы разделов. Модули выполняются по
+    порядку в документе после разбора страницы; порядок файлов разделов не важен (ADR-0008)."""
     mods = sorted((ASSETS_DIR / "js" / "modules").glob("*.js"))
     srcs = ["js/core.js", "js/app.js"] + [f"js/modules/{p.name}" for p in mods]
-    return "".join(f'<script src="/static/{s}?v={version}"></script>\n' for s in srcs)
+    return "".join(f'<script type="module" src="/static/{s}?v={version}"></script>\n' for s in srcs)
 
 
 def with_scripts(html: str, version: str) -> str:

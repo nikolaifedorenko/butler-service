@@ -5,8 +5,10 @@
    транспорт (api/multipartApi/downloadBlob), общее состояние и модалки.
    Подключается в index.html ПЕРЕД app.js и файлами разделов.
 
-   Пока это обычный скрипт (не ES-модуль): объявления попадают в общую
-   глобальную лексическую область, поэтому существующий код работает без правок.
+   Файл подключается как ES-модуль (<script type="module">), но явных import/export у него
+   пока нет: блок-мост в конце файла (tools/gen_js_globals.py) публикует объявления в
+   globalThis, поэтому остальной код работает без правок. Мост исчезнет, когда разделы
+   перейдут на import/export (ADR-0013, раздел 7).
    Правила:
      * разделы могут использовать ядро, ядро разделы — НЕ знает
        (единственное исключение — api() вызывает showLogin() при 401,
@@ -336,3 +338,49 @@ async function downloadBlob(path, fallbackName) {
 }
 $('#modal-backdrop').addEventListener('click', e => { if (e.target.id === 'modal-backdrop') closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  $,
+  $$,
+  esc,
+  hhmm,
+  dateRu,
+  hours,
+  durationRu,
+  plural,
+  cssColor,
+  withAlpha,
+  textOn,
+  initials,
+  syncServerClock,
+  todayISO,
+  MONTHS,
+  MONTHS_GEN,
+  WD,
+  WD_SHORT,
+  toast,
+  loadGenerations,
+  loadGeneration,
+  loadGenerationFor,
+  loading,
+  getCookie,
+  parseBody,
+  httpError,
+  api,
+  multipartApi,
+  now0,
+  state,
+  ROLE_TITLES,
+  roleTitle,
+  POSITION_COLORS,
+  openModal,
+  closeModal,
+  confirmDialog,
+  loadMediaLimits,
+  mediaHint,
+  downloadBlob,
+});
+Object.defineProperty(globalThis, 'serverShiftMs', { get: () => serverShiftMs, set: (v) => { serverShiftMs = v; }, configurable: true });
+Object.defineProperty(globalThis, 'pendingLoads', { get: () => pendingLoads, set: (v) => { pendingLoads = v; }, configurable: true });
+/* ── конец моста ── */

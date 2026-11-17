@@ -109,3 +109,9 @@ async function settingsScreenGroups(host) {
     } catch (e) { toast(e.message, 'err'); }
   };
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  settingsScreenGroups,
+});
+/* ── конец моста ── */

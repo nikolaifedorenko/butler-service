@@ -486,3 +486,28 @@ async function openBlockCard(id, onChanged) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_BLOCK_COLS,
+  STAYS_BLOCK_PAGE,
+  STAYS_BLOCK_MAX_NIGHTS,
+  staysBlockEmpty,
+  staysBlock,
+  staysPeriodRange,
+  staysPeriodBar,
+  staysPeriodBind,
+  staysSearchBind,
+  staysPickHtml,
+  staysPickBind,
+  staysBlockParams,
+  staysBlockRowHtml,
+  staysBlockTableHtml,
+  renderBlocksTab,
+  staysBlockNights,
+  staysGridCopy,
+  staysBlockCellHtml,
+  staysBlockHeadHtml,
+  openBlockCard,
+});
+/* ── конец моста ── */

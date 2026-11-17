@@ -16,7 +16,7 @@ const OUT = process.argv[3] || path.join(HERE, 'snapshot.html');
 
 const html = fs.readFileSync(path.join(ROOT, 'static/index.html'), 'utf8');
 const css = fs.readFileSync(path.join(ROOT, 'static/css/app.css'), 'utf8');
-const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)]
+const scripts = [...html.matchAll(/<script (?:type="module" )?src="([^"]+)"><\/script>/g)]
   .map(m => path.join(ROOT, m[1].split('?v=')[0].replace(/^\//, '')));
 
 const jar = new Map();

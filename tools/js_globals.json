@@ -1448,6 +1448,7 @@
   "modules/timesheet_layers.js": [
    "loadSchedule",
    "openRangeModal"
-  ]
+  ],
+  "ui/html.js": []
  }
 }

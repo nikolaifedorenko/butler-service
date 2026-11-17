@@ -776,3 +776,25 @@ function openCellModal(empId, dateISO) {
   });
 }
 
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  loadSchedule,
+  scheduleShell,
+  bindScheduleToolbar,
+  GROUP_ORDER_UI,
+  groupOrder,
+  filteredRows,
+  renderGrid,
+  scrollGridToToday,
+  cellWholeOff,
+  cellSegLines,
+  workTypeOfShift,
+  cellColor,
+  cellTd,
+  empRow,
+  P_NAME_W,
+  printGrid,
+  openRangeModal,
+  openCellModal,
+});
+/* ── конец моста ── */

@@ -217,3 +217,23 @@ function staysSortRows(rows, { by = 'tree', dir = 'asc', grouped = true } = {}, 
     || (by === 'floor' ? emptyLast(a.floor, b.floor) : 0)
     || sign * key(a, b) || byTree(a, b) || a.unit_id - b.unit_id);
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_FILTERS_KEY,
+  STAYS_SORTS,
+  staysFilterOpen,
+  staysResetUserState,
+  staysFiltersKey,
+  staysSavedFilters,
+  staysWriteFilters,
+  staysSaveFilter,
+  staysDeleteFilter,
+  staysCleanFilters,
+  staysTreeOrder,
+  staysKindChoices,
+  staysFilterPanel,
+  staysSortRows,
+});
+Object.defineProperty(globalThis, 'staysSearchDraft', { get: () => staysSearchDraft, set: (v) => { staysSearchDraft = v; }, configurable: true });
+/* ── конец моста ── */

@@ -92,3 +92,9 @@ async function settingsScreenDocs(host) {
     onMount(m) { m.querySelector('[data-ok]').onclick = closeModal; },
   }));
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  settingsScreenDocs,
+});
+/* ── конец моста ── */

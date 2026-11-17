@@ -176,3 +176,19 @@ async function openOooForm(src, onChanged) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_OOO_COLS,
+  STAYS_OOO_PAGE,
+  staysOooEmpty,
+  staysOoo,
+  staysOooParams,
+  staysOooStart,
+  staysOooEnd,
+  staysOooRowHtml,
+  staysOooTableHtml,
+  renderOooTab,
+  openOooForm,
+});
+/* ── конец моста ── */

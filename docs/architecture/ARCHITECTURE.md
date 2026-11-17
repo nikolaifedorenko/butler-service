@@ -258,6 +258,15 @@ SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки
 ESLint `no-undef` — отказ от `window.App.modules.*` отклонён (property-доступ не
 проверяется статически; прецедент — регрессия loadNight/loadCars). Список `<script>` в
 index.html генерирует `tools/bump_version.py` (core, app, затем `modules/*.js` по алфавиту).
+С 17.11.2026 (шаг 6а перестройки, ADR-0013, раздел 7) все файлы подключаются как ES-модули
+(`<script type="module">`): модуль выполняется по порядку в документе после разбора страницы.
+Явных `import`/`export` у разделов пока нет — в конец каждого файла `tools/gen_js_globals.py`
+дописывает блок-мост, публикующий объявления в `globalThis` (`let`/`var` — «живыми»
+свойствами); файл, перешедший на `import`/`export`, мост теряет. Шаблоны разметки — `lit-html`
+(`static/vendor/lit-html/`, вход `static/js/ui/html.js`; обновление `npm run vendor`).
+Сценарии в настоящем браузере — Playwright (`e2e/`, `npm run e2e`, сервер `tools/e2e_server.sh`);
+смоук в jsdom (`tools/*.mjs`) читает файлы как обычные скрипты и потому проверяет только
+разделы без `import`/`export`: раздел, получивший их, переносит свои проверки в Playwright.
 Контракты: `tools/check_api_contract.py` (JS-вызовы ↔ OpenAPI, rglob),
 `tools/bump_version.py` (версии кэша + SHELL `sw.js` c файлами `modules/`, rglob).
 

@@ -83,7 +83,7 @@ window.HTMLElement.prototype.scrollIntoView = function () {};
 
 /* инжектим ВСЕ локальные скрипты из index.html по порядку — как это делает браузер */
 window.matchMedia = window.matchMedia || (q => ({ matches: false, media: q }));
-const srcs = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+const srcs = [...html.matchAll(/<script (?:type="module" )?src="([^"]+)"><\/script>/g)].map(m => m[1]);
 if (!srcs.length) srcs.push('/static/js/app.js');
 for (const src of srcs) {
   const rel = src.split('?v=')[0].replace(/^\//, '');

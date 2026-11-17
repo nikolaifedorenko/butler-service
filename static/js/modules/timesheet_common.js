@@ -51,3 +51,16 @@ function v4Contacts(e) {
   return `<div class="contacts">${tel ? `<a href="tel:${esc(tel.replace(/[^0-9+]/g, ''))}">📞 ${esc(tel)}</a>` : ''}${
     tg ? `<a href="https://t.me/${esc(tg.replace(/[^A-Za-z0-9_]/g, ''))}" target="_blank" rel="noopener">✈️ @${esc(tg)}</a>` : ''}</div>`;
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  V4_CODE_COLORS,
+  v4CodeColor,
+  V4_FLAG_CLASS,
+  v4MonthNav,
+  v4BindMonthNav,
+  v4DayHead,
+  v4Hours,
+  v4Contacts,
+});
+/* ── конец моста ── */

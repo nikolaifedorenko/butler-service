@@ -246,3 +246,17 @@ async function loadMyHistory() {
   }).join('');
   $$('[data-note]', host).forEach(b => b.onclick = () => openOtNoteModal(+b.dataset.note, b.dataset.cur, 0));
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  loadMe,
+  renderMe,
+  carStripHtml,
+  bindCarStrip,
+  loadMeSilently,
+  doPunch,
+  openOtNoteModal,
+  loadMyHistory,
+});
+Object.defineProperty(globalThis, 'punchInFlight', { get: () => punchInFlight, set: (v) => { punchInFlight = v; }, configurable: true });
+/* ── конец моста ── */
