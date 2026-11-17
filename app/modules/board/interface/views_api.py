@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.db import get_db
-from app.core.errors import Validation
 from app.core.permissions import require_perm
+from app.modules.stays.application.duty import timesheet_duty
+from app.modules.stays.application.view_filters import fund_filter_dims
 
-from ..adapters.duty_timesheet import TimesheetDuty
 from ..application import view_screen, views
 from .schemas import GuestFullCardOut, ReservationCardOut, ReservationHistoryOut, UnitsBoardOut
 
@@ -24,20 +24,11 @@ router = APIRouter(prefix="/api/stays", tags=["stays"])
 SEE = require_perm("stays.view", "stays.occupancy")
 
 
-REMOVED_PARAMS = ("building", "category_id", "kind", "kinds", "vip")
-
-
 def fund_filters(request: Request, group_ids: list[int] = Query(default=[]),
                  category_ids: list[int] = Query(default=[]), flag_ids: list[int] = Query(default=[]),
                  kind_ids: list[int] = Query(default=[]), floor: Optional[str] = None) -> dict:
-    """Измерения фонда (§7) — повторяющиеся параметры. Прежние одиночные параметры — 422, а не
-    молча без фильтра: старый клиент иначе показал бы весь фонд как отфильтрованный."""
-    old = [p for p in REMOVED_PARAMS if p in request.query_params]
-    if old:
-        raise Validation(f"Параметр {', '.join(old)} больше не поддерживается: "
-                         "group_ids, category_ids, flag_ids, kind_ids, special, vip_code_ids")
-    return {"group_ids": tuple(group_ids), "category_ids": tuple(category_ids), "flag_ids": tuple(flag_ids),
-            "kind_ids": tuple(kind_ids), "floor": floor or None}
+    """Измерения фонда (§7) — повторяющиеся параметры; прежние одиночные — 422."""
+    return fund_filter_dims(request.query_params, group_ids, category_ids, flag_ids, kind_ids, floor)
 
 
 @router.get("/board/units", response_model=UnitsBoardOut)
@@ -52,7 +43,7 @@ def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters
 @router.get("/reservations/{rid}/card", response_model=ReservationCardOut)
 def reservation_card(rid: int, principal: Principal = Depends(require_perm("stays.view")),
                      db: Session = Depends(get_db)):
-    return view_screen.reservation_card(db, principal, rid, TimesheetDuty(db))
+    return view_screen.reservation_card(db, principal, rid, timesheet_duty(db))
 
 
 @router.get("/reservations/{rid}/history", response_model=list[ReservationHistoryOut])

@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -17,20 +17,28 @@ from app.core.db import get_db
 from app.core.permissions import require_perm
 
 from ..adapters.duty_timesheet import TimesheetDuty
-from ..application import ooo, ooo_edit, views
+from ..application import ooo, ooo_edit
 from ..application.ooo_edit import OooIn, OooPut
+from ..application.view_filters import BoardFilters, fund_filter_dims
 from ._ops import PREVIEW
 from .schemas import DeletedOut, OooListOut, OooSavedOut, PreviewedOut
-from .views_api import SEE, fund_filters
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 EDIT = require_perm("stays.edit")
+SEE = require_perm("stays.view", "stays.occupancy")
+
+
+def fund_filters(request: Request, group_ids: list[int] = Query(default=[]),
+                 category_ids: list[int] = Query(default=[]), flag_ids: list[int] = Query(default=[]),
+                 kind_ids: list[int] = Query(default=[]), floor: Optional[str] = None) -> dict:
+    """Измерения фонда (§7) — повторяющиеся параметры; прежние одиночные — 422."""
+    return fund_filter_dims(request.query_params, group_ids, category_ids, flag_ids, kind_ids, floor)
 
 
 def _query(first: Optional[dt.date] = None, last: Optional[dt.date] = None, dims: dict = Depends(fund_filters),
            q: str = "", sort: str = "start", dir: Literal["asc", "desc"] = "asc", offset: int = Query(0, ge=0),
            limit: int = Query(ooo.MAX_LIMIT, ge=1, le=ooo.MAX_LIMIT)) -> ooo.OooQuery:
-    return ooo.OooQuery(first, last, views.BoardFilters(**dims, q=q), sort, dir, offset, limit)
+    return ooo.OooQuery(first, last, BoardFilters(**dims, q=q), sort, dir, offset, limit)
 
 
 @router.get("/ooo", response_model=OooListOut)

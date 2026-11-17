@@ -22,8 +22,8 @@ from app.modules.fund.application.fund_versions import (
 from app.modules.guests.application import family
 from app.modules.guests.application.catalog import Guest, VipCode
 from app.modules.guests.application.guests import TextSearch, short_name, text_search
-
-from ..adapters.orm import (
+from app.modules.stays.application import allocation
+from app.modules.stays.application.catalog import (
     Assignment,
     Block,
     BlockNight,
@@ -35,15 +35,22 @@ from ..adapters.orm import (
     Ooo,
     Reservation,
 )
-from ..domain.allocate import natural_key
-from ..domain.halfday import PIECE_BASE, PM, Piece, ooo_span, pieces, pos, segments
-from ..domain.prefs import scorer
-from ..ports.duty import DutyPort
-from . import allocation
-from .context import StaysContext, butlers_on, load_context, nights, reservation_escort
-from .reservations import STATUS_TITLES, vip_code_of
-from .view_filters import BoardFilters, ViewError, fund_match
-from .visibility import Level, at_least, serialize_bar
+from app.modules.stays.application.context import StaysContext, butlers_on, load_context, nights, reservation_escort
+from app.modules.stays.application.reservations import STATUS_TITLES, vip_code_of
+from app.modules.stays.application.rules import (
+    PIECE_BASE,
+    PM,
+    Piece,
+    natural_key,
+    ooo_span,
+    pieces,
+    pos,
+    scorer,
+    segments,
+)
+from app.modules.stays.application.view_filters import BoardFilters, ViewError, fund_match
+from app.modules.stays.application.visibility import Level, at_least, serialize_bar
+from app.modules.stays.ports.duty import DutyPort
 
 MAX_DAYS = 62
 

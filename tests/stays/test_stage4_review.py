@@ -71,7 +71,7 @@ def test_set_day_refuses_double_whole_cover(manager_role_client, manager_client,
 
 def test_board_budget_with_today_in_window(manager_client, big_fund, sql_counter, monkeypatch):
     """I3: шахматка за период с «сегодня» — тоже не больше 30 запросов."""
-    from app.modules.stays.application import views
+    from app.modules.board.application import views
     monkeypatch.setattr(views, "local_date", lambda: dt.date(2029, 6, 15))
     with sql_counter() as c:
         r = manager_client.get(f"{API}/board/units", params=big_fund)

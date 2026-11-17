@@ -10,10 +10,10 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import transactional
 from app.core.errors import Forbidden
+from app.modules.stays.application.visibility import Level, level_for
 
 from . import bookings
 from .export import bookings_xlsx
-from .visibility import Level, level_for
 
 
 def _access(db: Session, principal: Principal) -> Level:

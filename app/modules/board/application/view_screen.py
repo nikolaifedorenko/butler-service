@@ -13,11 +13,12 @@ from app.core.auth import Principal
 from app.core.errors import NotFound
 from app.modules.guests.application import guests
 from app.modules.guests.application.catalog import Guest
+from app.modules.stays.application import history, reservations
+from app.modules.stays.application.guest_access import my_reservations, own_guest
+from app.modules.stays.application.visibility import level_for
+from app.modules.stays.ports.duty import DutyPort
 
-from ..ports.duty import DutyPort
-from . import history, reservations, views
-from .guest_access import my_reservations, own_guest
-from .visibility import level_for
+from . import views
 
 
 def units_board(db: Session, principal: Principal, first: dt.date, last: dt.date, f: views.BoardFilters) -> dict:

@@ -14,11 +14,10 @@ from app.core.errors import Forbidden, NotFound
 from app.modules.guests.application import family as family_graph
 from app.modules.guests.application import guests, vip_codes
 from app.modules.guests.application.catalog import Guest
-
-from . import guests_list, history, mine
-from .guest_access import own_guest, require_full
-from .guest_card import card
-from .visibility import at_least, level_for
+from app.modules.stays.application import guests_list, history, mine
+from app.modules.stays.application.guest_access import own_guest, require_full
+from app.modules.stays.application.guest_card import card
+from app.modules.stays.application.visibility import at_least, level_for
 
 
 def _guest(db: Session, gid: int) -> Guest:
