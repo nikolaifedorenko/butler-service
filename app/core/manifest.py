@@ -145,4 +145,6 @@ CORE = ModuleManifest(
     routers=("app.core.media_api:router",),
     models=("app.core.identity", "app.core.audit", "app.core.media", "app.core.settings_store"),
     permissions=(Perm("media.delete_any", "Фото и видео", "Удалить чужое фото или видео", SUPERVISOR_UP),),
+    # чистка медиа по сроку хранения (решение владельца В-8): раз в сутки
+    jobs=(JobSpec("media_cleanup", "app.core.media:media_cleanup_job", every_seconds=24 * 3600),),
 )

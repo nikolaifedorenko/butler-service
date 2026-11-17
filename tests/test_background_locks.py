@@ -1,4 +1,4 @@
-"""Межпроцессные замки и фоновый поток.
+"""Межпроцессные замки: старт приложения и отправка во время запроса.
 
 «Другой воркер» держит замок так же, как настоящий соседний процесс: advisory-lock
 PostgreSQL в отдельном соединении.
@@ -8,7 +8,6 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
-import types
 
 import pytest
 
@@ -83,68 +82,3 @@ def test_lock_keys_are_stable_and_differ_by_name(sl):
     a, b = sl._advisory_key("night-sync"), sl._advisory_key("notify-outbox")
     assert a != b and a == sl._advisory_key("night-sync")
     assert -2**63 <= a < 2**63          # ключ advisory-lock — знаковый int64
-
-
-# ── фоновый поток bootstrap/night_sync.py ──────────────────────────────────────
-
-@pytest.fixture()
-def ns(app_stack, monkeypatch):
-    from app.bootstrap import night_sync
-
-    monkeypatch.setattr(night_sync, "_thread", None)
-    monkeypatch.setitem(night_sync._last_cleanup, "ts", None)
-    return night_sync
-
-
-def test_outbox_round_runs_in_one_process(ns, monkeypatch):
-    from app.modules.notify.application import dispatch
-
-    monkeypatch.setattr(dispatch, "fail_stale_sending", lambda db: 1)
-    monkeypatch.setattr(dispatch, "run_outbox", lambda db: ["a", "b"])
-    with neighbour_holds("notify-outbox"):
-        assert ns.run_outbox_once() is None              # раунд у соседа
-    assert ns.run_outbox_once() == 2
-
-
-def test_media_cleanup_skipped_while_neighbour_cleans(ns):
-    with neighbour_holds("media-cleanup"):
-        assert ns.run_media_cleanup_if_due() is None
-    assert ns._last_cleanup["ts"] is None                 # чистки не было — попробуем снова
-
-
-def test_loop_survives_failing_round(ns, monkeypatch):
-    calls = []
-    monkeypatch.setattr(ns, "run_sync_once", lambda: (calls.append("sync"), 1 / 0))
-    monkeypatch.setattr(ns, "run_media_cleanup_if_due", lambda: calls.append("media") or 1 / 0)
-    monkeypatch.setattr(ns, "run_outbox_once", lambda: calls.append("outbox"))
-    ticks = iter([False, False, True])                    # два раунда, затем стоп
-    monkeypatch.setattr(ns, "_stop", types.SimpleNamespace(wait=lambda period: next(ticks)))
-    ns._loop(0)
-    assert calls == ["sync", "media", "outbox"] * 2
-
-
-def test_start_is_idempotent_clamps_period_and_respects_flag(ns, monkeypatch):
-    from app.core.config import settings
-
-    periods = []
-
-    def fake_loop(period):
-        periods.append(period)
-        ns._stop.wait(5)
-
-    monkeypatch.setattr(ns, "_loop", fake_loop)
-    monkeypatch.setattr(settings, "night_sync_enabled", False)
-    ns.start_night_sync()
-    assert ns._thread is None
-    monkeypatch.setattr(settings, "night_sync_enabled", True)
-    monkeypatch.setattr(settings, "night_sync_seconds", 1)     # опечатка: раз в секунду
-    try:
-        ns.start_night_sync()
-        first = ns._thread
-        ns.start_night_sync()                              # второй вызов lifespan
-        assert ns._thread is first and first.is_alive()
-        assert ns._last_cleanup["ts"] is not None          # init_db только что чистил медиа
-    finally:
-        ns.stop_night_sync()
-        ns._thread.join(5)
-    assert periods == [ns.MIN_PERIOD_SECONDS] and not first.is_alive()

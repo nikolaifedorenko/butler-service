@@ -113,8 +113,6 @@ def _check_writable_dirs() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    from .bootstrap.night_sync import start_night_sync, stop_night_sync
-
     _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
     from .modules.notify.application.secrets import check_key_config
     check_key_config()    # NOTIFY_SECRET_KEY задан, но не разбирается — отказ на старте
@@ -123,14 +121,7 @@ async def lifespan(_: FastAPI):
         init_db()
     else:
         schema_version.ensure_current()   # миграции сделал сервис migrate (ADR-0002)
-    # обслуживание ночных отчётов (досоздание смен, автозакрытие в 08:00) больше не
-    # выполняется в GET-запросах — его делает фоновый поток (ревью 20.10.2026, P1);
-    # несколько воркеров: раунд выполняет один процесс под замком try_lock
-    start_night_sync()
-    try:
-        yield
-    finally:
-        stop_night_sync()
+    yield
 
 
 def _docs_urls() -> dict:

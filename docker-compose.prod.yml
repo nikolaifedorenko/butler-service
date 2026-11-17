@@ -89,9 +89,8 @@ services:
       # схему не мигрирует — только сверяет ревизию: миграции сделал сервис migrate
       MIGRATE_ON_START: "0"
     # несколько воркеров допустимы: схему готовит сервис migrate (воркеры только сверяют
-    # ревизию; startup_lock — страховка ручного запуска), фоновая синхронизация ночных
-    # отчётов (bootstrap/night_sync.py) — один раунд на всех под try_lock,
-    # замок отметок — строка БД (SELECT … FOR UPDATE), лимит входа — общий, в таблице
+    # ревизию; startup_lock — страховка ручного запуска), фоновые задачи выполняет
+    # сервис worker (очередь на PostgreSQL), замок отметок — строка БД (SELECT … FOR UPDATE), лимит входа — общий, в таблице
     # login_attempts (ADR-0005). Заголовки прокси разбирает само приложение (core/net,
     # TRUST_PROXY_HEADERS): uvicorn их не трогает (--no-proxy-headers) — прежний
     # --forwarded-allow-ips "*" подставлял клиенту ЛЕВЫЙ адрес X-Forwarded-For
@@ -111,6 +110,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+  # воркер очереди задач (ADR-0013, §6): досоздание ночных отчётов и автозакрытие в 08:00,
+  # доотправка уведомлений, чистка медиа по сроку хранения. Не публикует портов; несколько
+  # экземпляров безопасны (задачи берутся FOR UPDATE SKIP LOCKED)
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-env
+      MIGRATE_ON_START: "0"
+    command: ["python", "-m", "app.bootstrap.jobs_worker"]
+    volumes:
+      - app_data:/srv/timetrack/data
+      - app_templates:/srv/timetrack/templates
 
   nginx:
     image: nginx:1.29-alpine

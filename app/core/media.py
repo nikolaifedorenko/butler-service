@@ -19,6 +19,7 @@ cleanup_photos() при старте сервера; запись в БД ост
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import os
 import shutil
 import struct
@@ -35,6 +36,8 @@ from .audit import audit
 from .db import Base, transactional
 from .errors import Forbidden, Gone, NotFound, PayloadTooLarge
 from .time import Moment, local_iso, local_now, now
+
+log = logging.getLogger("uvicorn.error")
 
 # app/core/media.py → корень проекта на ДВА уровня выше app (был app/photos.py —
 # на один). data/uploads живёт в корне проекта — путь критичен для уже загруженных файлов.
@@ -371,6 +374,14 @@ def retention_days(db: Session, media_type: str = "photo") -> int:
     """Настроенный срок хранения в днях (0 — хранить всегда); свой у фото и у видео."""
     lim = media_limits(db)
     return max(0, lim["video_retention_days" if media_type == "video" else "photo_retention_days"])
+
+
+def media_cleanup_job(db: Session, payload: dict) -> int:
+    """Задача очереди: удалить медиа старше срока хранения; возвращает число удалённых файлов."""
+    removed = cleanup_photos(db)
+    if removed:
+        log.info("media_cleanup: удалено файлов по сроку хранения: %d", removed)
+    return removed
 
 
 def cleanup_photos(db: Session, days: Optional[int] = None) -> int:

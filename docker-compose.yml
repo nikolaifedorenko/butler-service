@@ -49,6 +49,27 @@ services:
       - app_data:/srv/timetrack/data            # загруженные фото и видео
       - app_templates:/srv/timetrack/templates  # фирменные бланки заявлений
 
+  # воркер очереди задач (ADR-0013, §6): ночные отчёты, доотправка уведомлений, чистка медиа;
+  # схему проверяет и ждёт, пока app её подготовит (до этого завершается и перезапускается)
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: postgres
+      SECRET_KEY: ${SECRET_KEY:-local-demo-only-secret-key-0123456789}
+      APP_TZ: ${APP_TZ:-Europe/Moscow}
+      TZ: ${APP_TZ:-Europe/Moscow}
+    command: ["python", "-m", "app.bootstrap.jobs_worker"]
+    volumes:
+      - app_data:/srv/timetrack/data
+      - app_templates:/srv/timetrack/templates
+
 volumes:
   pg_data:
   app_data:

@@ -336,7 +336,7 @@ POST /api/punches: сериализация по сотруднику (lock) →
   `core.auth → employees.catalog`, в runtime — инъекция `set_employee_loader`);
 * composition root (`main.py`, `bootstrap/`) — единственный импортёр всего
   (реестр моделей `registry.ensure_models()` — явные импорты всех `adapters.orm`;
-  фоновый поток `bootstrap/night_sync` — обслуживание ночных отчётов вне запросов);
+  воркер очереди `bootstrap/jobs_worker` — фоновые задачи модулей вне запросов);
 * циклов нет: кросс-модульные импорты идут в чужие `application`-границы, которые
   не импортируют чужие модули обратно (проверяется запуском + контрактами).
 

@@ -9,8 +9,8 @@
   (DOCX-выгрузка больше не подписывает закрытый отчёт «Открыт · закроется 08:00»);
 * **P1-night-3** — переоткрытый вручную отчёт не закрывается снова: ``reopened_at``
   выключает для него автозакрытие, а GET /today и /reports больше не выполняют
-  ``sync_reports`` (обслуживание — стартовый прогон и фоновый поток
-  ``bootstrap/night_sync.py`` под неблокирующим замком ``try_lock``);
+  ``sync_reports`` (обслуживание — стартовый прогон и задача очереди
+  ``night_sync`` воркера, модуль jobs);
 * **P1-night-4** — окно досоздания пропущенных смен честно равно BACKFILL_DAYS
   (прежняя формула ``min(len(have) + 31, 31)`` всегда давала 31 и имитировала
   более умное поведение).
@@ -264,16 +264,17 @@ def test_night_api_bolshe_ne_vyzyvaet_sync_reports():
 
 # ─────────────────────── P1-night-3: фоновый раунд и замок лидера ───────────────────────
 
-def test_run_sync_once_zakryvaet_prosrochennyi_otchet(db, freeze):
-    """Раунд фоновой синхронизации: просроченный открытый отчёт закрывается (auto)."""
-    from app.bootstrap.night_sync import run_sync_once
+def test_sync_job_zakryvaet_prosrochennyi_otchet(db, freeze):
+    """Задача синхронизации: просроченный открытый отчёт закрывается (auto)."""
+    from app.core.db import SessionLocal
+    from app.modules.night.application.jobs import sync_reports_job
 
     created: set[dt.date] = set()
     try:
         with _smena_rt(db, freeze, D_SYNC_ONCE) as rep:
             before = _dates(db)
-            res = run_sync_once()          # реальное время: дедлайн июня давно прошёл
-            assert "skipped" not in res, res
+            with SessionLocal() as other:   # задача очереди работает в своей сессии
+                res = sync_reports_job(other, {})    # реальное время: дедлайн июня давно прошёл
             db.commit()                    # снять снимок сессии: раунд писал ДРУГОЙ сессией
             created |= _dates(db) - before
             db.refresh(rep)
@@ -283,38 +284,6 @@ def test_run_sync_once_zakryvaet_prosrochennyi_otchet(db, freeze):
         from app.modules.night.application.night import current_shift_date
 
         _cleanup_dates(db, created - {current_shift_date()})
-
-
-def test_run_sync_once_propuskaet_raund_esli_zamok_u_soseda():
-    """Несколько воркеров: раунд выполняет один процесс, соседние пропускают (try_lock)."""
-    from app.bootstrap.night_sync import LOCK_NAME, run_sync_once
-    from app.core.startup_lock import try_lock
-
-    holder = subprocess.Popen(
-        [sys.executable, "-c",
-         "import time\n"
-         "from app.core.startup_lock import try_lock\n"
-         f"with try_lock({LOCK_NAME!r}) as got:\n"
-         "    print('held' if got else 'busy', flush=True)\n"
-         "    time.sleep(10)\n"],
-        cwd=BASE, env=os.environ.copy(), stdout=subprocess.PIPE, text=True)
-    try:
-        assert holder.stdout is not None
-        assert holder.stdout.readline().strip() == "held", "ребёнок не взял замок"
-        res = run_sync_once()
-        assert res.get("skipped"), f"раунд не пропущен при занятом замке: {res}"
-    finally:
-        holder.kill()
-        holder.wait(timeout=10)
-    # после выхода соседа замок свободен. PostgreSQL снимает его, когда заметит обрыв
-    # соединения убитого процесса, — не мгновенно, поэтому ждём
-    deadline = time.monotonic() + 10
-    while True:
-        with try_lock(LOCK_NAME) as got:
-            if got or time.monotonic() > deadline:
-                break
-        time.sleep(0.1)
-    assert got is True, "замок не освободился за 10 секунд после выхода соседа"
 
 
 def test_try_lock_neblokiruyushchiy_i_osvobozhdaetsya():
@@ -402,11 +371,12 @@ def test_povtornaya_otmetka_kara_obnovlyaet_checked_at(manager_client, db, freez
         assert card2["last_checked_at"] == t2, "карточка кара осталась со старым временем проверки"
 
 
-def test_settings_nochnoy_sinhronizacii(app_stack):
-    """Фоновая синхронизация настраивается и по умолчанию включена (60 с)."""
-    from app.bootstrap import night_sync
+def test_nochnaya_sinhronizaciya_zadacha_ocheredi(app_stack):
+    """Синхронизация — задача очереди раз в минуту; воркер находит её по манифесту модуля."""
+    from app.bootstrap import modules
     from app.core.config import settings
 
-    assert settings.night_sync_enabled is True
     assert settings.night_sync_seconds == 60
-    assert night_sync.LOCK_NAME == "night-sync"
+    spec = next(s for s in modules.job_specs(modules.discover()) if s.name == "night_sync")
+    assert spec.every_seconds == 60
+    assert modules.job_handlers(modules.discover())["night_sync"].__name__ == "sync_reports_job"
