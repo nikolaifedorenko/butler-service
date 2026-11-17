@@ -20553,6 +20553,25 @@
         "title": "SettingsIn",
         "type": "object"
       },
+      "app__modules__guests__application__guest_forms__MergeIn": {
+        "description": "keep_id — кого оставить, drop_id — дубль, который удаляется.",
+        "properties": {
+          "drop_id": {
+            "title": "Drop Id",
+            "type": "integer"
+          },
+          "keep_id": {
+            "title": "Keep Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keep_id",
+          "drop_id"
+        ],
+        "title": "MergeIn",
+        "type": "object"
+      },
       "app__modules__night__interface__schemas__TemplateOut": {
         "additionalProperties": false,
         "properties": {
@@ -20774,25 +20793,6 @@
           "last"
         ],
         "title": "TemplateIn",
-        "type": "object"
-      },
-      "app__modules__stays__application__guest_forms__MergeIn": {
-        "description": "keep_id — кого оставить, drop_id — дубль, который удаляется.",
-        "properties": {
-          "drop_id": {
-            "title": "Drop Id",
-            "type": "integer"
-          },
-          "keep_id": {
-            "title": "Keep Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "keep_id",
-          "drop_id"
-        ],
-        "title": "MergeIn",
         "type": "object"
       },
       "app__modules__stays__application__reservation_forms__GroupIn": {
@@ -32538,7 +32538,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__application__guest_forms__MergeIn"
+                "$ref": "#/components/schemas/app__modules__guests__application__guest_forms__MergeIn"
               }
             }
           },

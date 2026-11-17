@@ -57,6 +57,8 @@ from app.modules.fund.application.fund_xlsx import (
     fund_sheets,
 )
 from app.modules.fund.application.locking import lock_module
+from app.modules.guests.application.catalog import CustomField, Guest, GuestLink, GuestPref, VipCode
+from app.modules.guests.application.vip_codes import code_texts
 
 from ..adapters.orm import (
     Assignment,
@@ -65,11 +67,7 @@ from ..adapters.orm import (
     Companion,
     CoverageGuest,
     CoverageLine,
-    CustomField,
     Escort,
-    Guest,
-    GuestLink,
-    GuestPref,
     Label,
     Logistics,
     Move,
@@ -78,11 +76,9 @@ from ..adapters.orm import (
     Reservation,
     StayGroup,
     StaysSettings,
-    VipCode,
 )
 from . import allocation
 from .stays_catalog import get_settings
-from .vip_codes import code_texts
 
 CONFIRM_WORD = "ЗАМЕНИТЬ"
 IDS_IGNORED = "ID в файле будут проигнорированы"
@@ -93,7 +89,7 @@ SHEET_GUESTS = "Гости"
 BACKUP_DIR = BASE_DIR / "data" / "backups" / "stays"
 BACKUP_NAME = re.compile(r"stays-\d{8}-\d{6}\.xlsx")
 
-# Таблицы stays_* и fund_*: каждая — либо данные шахматки (удаляются, в порядке внешних ключей: сначала
+# Таблицы stays_*, fund_* и guests*: каждая — либо данные шахматки (удаляются, в порядке внешних ключей: сначала
 # ссылающиеся), либо настройки модуля (остаются). Тест сверяет списки со всей схемой модуля.
 WIPE = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
         StayGroup, GuestLink, GuestPref, Guest, BlockNight, Block, Ooo, UnitLineage, UnitStateFlag, UnitState, GroupState,

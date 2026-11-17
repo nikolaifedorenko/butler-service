@@ -19,7 +19,8 @@ from app.modules.fund.application import fund_xlsx as fx
 from app.modules.fund.application.catalog import FundVersion, GroupState, UnitState
 from app.modules.fund.application.fund_drafts import FundFileError
 from app.modules.fund.application.fund_versions import INITIAL_DATE
-from app.modules.stays.adapters.orm import CoverageLine, CustomField, Escort, Label, Ooo, StaysSettings
+from app.modules.guests.application.catalog import CustomField
+from app.modules.stays.adapters.orm import CoverageLine, Escort, Label, Ooo, StaysSettings
 from app.modules.stays.application import fund_reset as fr
 
 from .helpers import API
@@ -114,15 +115,20 @@ def _backups() -> list[str]:
 # ── права и состояние модуля ───────────────────────────────────────────────
 
 
+def _stays_table(name: str) -> bool:
+    """Таблица данных шахматки: сами модули stays, fund и guests."""
+    return name.startswith(("stays_", "fund_", "guests_")) or name == "guests"
+
+
 def test_reset_tables_cover_whole_stays_schema():
-    """Каждая таблица stays_* и fund_* решена явно: данные шахматки (удаляются) или настройки (остаются)."""
-    stays = {t for t in Base.metadata.tables if t.startswith(("stays_", "fund_"))}
+    """Каждая таблица stays_*, fund_* и guests* решена явно: данные шахматки (удаляются) или настройки (остаются)."""
+    stays = {t for t in Base.metadata.tables if _stays_table(t)}
     wipe = {m.__tablename__ for m in fr.WIPE}
     keep = {m.__tablename__ for m in fr.KEEP}
     assert not wipe & keep
     assert wipe | keep == stays, stays ^ (wipe | keep)
-    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts", "fund_category_kinds",
-                    "stays_vip_codes"}
+    assert keep == {"stays_settings", "stays_labels", "guests_fields", "stays_escorts", "fund_category_kinds",
+                    "guests_vip_codes"}
 
 
 def test_reset_requires_stays_reset_perm(manager_role_client, admin_client, db):
@@ -299,7 +305,7 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
 def test_reset_keeps_vip_codes(admin_client, db):
     """Справочник VIP-кодов — настройка модуля: переживает «заменить всё» (как виды категорий),
     хотя гости и брони, ссылавшиеся на коды, удалены; в сырую копию он не входит."""
-    from app.modules.stays.adapters.orm import Guest, VipCode
+    from app.modules.guests.application.catalog import Guest, VipCode
 
     code = VipCode(code="9777", title="Остаётся", escorted=True, factor=1.5)
     db.add(code)
@@ -309,7 +315,7 @@ def test_reset_keeps_vip_codes(admin_client, db):
     db.commit()
     codes = _rows(db, VipCode)
     assert VipCode not in fr.WIPE and VipCode in fr.KEEP
-    assert "stays_vip_codes" not in fr.raw_sheet_names()
+    assert "guests_vip_codes" not in fr.raw_sheet_names()
     try:
         data = _no_ids(_export(admin_client))
         r = _reset(admin_client, data, _preview(admin_client, data).json()["fingerprint"])
@@ -329,7 +335,7 @@ def test_reset_keeps_vip_codes(admin_client, db):
 
 def _other_tables(db) -> dict[str, int]:
     return {t: db.scalar(select(func.count()).select_from(Base.metadata.tables[t]))
-            for t in Base.metadata.tables if not t.startswith(("stays_", "fund_")) and t != "audit_log"}
+            for t in Base.metadata.tables if not _stays_table(t) and t != "audit_log"}
 
 
 def test_reset_keeps_employees_schedule_tabel_audit_and_module_settings(admin_client, db):

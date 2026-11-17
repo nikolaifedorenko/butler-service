@@ -264,7 +264,7 @@ def test_card_status_partial_and_cancelled(manager_role_client, manager_client):
 
 
 def test_merge_caps_prefs(manager_role_client, manager_client):
-    from app.modules.stays.application.guests import MAX_PREFS
+    from app.modules.guests.application.guests import MAX_PREFS
 
     cat = make_category(manager_role_client, n_units=2)
     flags = [manager_role_client.post(f"{API}/fund/flags", json={"title": f"пж-флаг-{uniq()}{i}"}).json()["id"]

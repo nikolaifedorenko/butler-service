@@ -15,13 +15,14 @@ from app.core.auth import Principal
 from app.core.db import transactional
 from app.core.errors import Forbidden, NotFound
 from app.core.time import local_date
+from app.modules.guests.application import guests
+from app.modules.guests.application.catalog import Guest
+from app.modules.guests.application.guest_forms import FormerIn, GuestIn, GuestUpdateIn, LinkIn, MergeIn, PrefsIn
 
-from ..adapters.orm import Guest
 from ..ports.duty import DutyPort
-from . import allocation, guest_merge, guests, mine, reservations
+from . import allocation, guest_merge, mine, reservations
 from .guest_access import own_guest, own_link, require_full
 from .guest_card import card
-from .guest_forms import FormerIn, GuestIn, GuestUpdateIn, LinkIn, MergeIn, PrefsIn
 from .previewed import run_previewed
 
 

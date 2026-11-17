@@ -19,28 +19,28 @@ from app.modules.fund.application.fund_versions import (
     fund_for_stays,
     version_cuts,
 )
+from app.modules.guests.application import family
+from app.modules.guests.application.catalog import Guest, VipCode
+from app.modules.guests.application.guests import TextSearch, short_name, text_search
 
 from ..adapters.orm import (
     Assignment,
     Block,
     BlockNight,
     Companion,
-    Guest,
     Label,
     Logistics,
     Move,
     Occupant,
     Ooo,
     Reservation,
-    VipCode,
 )
 from ..domain.allocate import natural_key
 from ..domain.halfday import PIECE_BASE, PM, Piece, ooo_span, pieces, pos, segments
 from ..domain.prefs import scorer
 from ..ports.duty import DutyPort
-from . import allocation, family
+from . import allocation
 from .context import StaysContext, butlers_on, load_context, nights, reservation_escort
-from .guests import TextSearch, short_name, text_search
 from .reservations import STATUS_TITLES, vip_code_of
 from .view_filters import BoardFilters, ViewError, fund_match
 from .visibility import Level, at_least, serialize_bar

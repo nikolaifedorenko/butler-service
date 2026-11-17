@@ -8,8 +8,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Collection, Mapping
 
-KINDS = ("group", "flag", "unit")
-
 
 @dataclass(frozen=True)
 class Pref:

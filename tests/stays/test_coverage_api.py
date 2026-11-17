@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 
 from app.core.audit import AuditLog
 from app.modules.fund.application.fund_versions import CategoryInfo, FundSnapshot, FundTimeline, GroupInfo, UnitInfo
-from app.modules.stays.adapters.orm import CoverageLine, Guest, Occupant, Reservation, VipCode
+from app.modules.guests.application.catalog import Guest, VipCode
+from app.modules.stays.adapters.orm import CoverageLine, Occupant, Reservation
 from app.modules.stays.application.context import StaysContext
 from app.modules.stays.domain.escort import EscortNeed
 from app.modules.stays.domain.types import Line

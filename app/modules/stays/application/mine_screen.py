@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.errors import NotFound
+from app.modules.guests.application.catalog import Guest
 
-from ..adapters.orm import Guest
 from ..ports.duty import DutyPort
 from . import mine
 from .visibility import level_for

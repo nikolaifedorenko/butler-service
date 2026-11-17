@@ -10,19 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.fund.application.fund_versions import CategoryInfo, FundTimeline, boundary_pos, fund_for
+from app.modules.guests.application.catalog import Guest, VipCode
+from app.modules.guests.application.guests import short_name
 from app.modules.people.application.catalog import Employee
 
-from ..adapters.orm import (
-    Assignment,
-    CoverageGuest,
-    CoverageLine,
-    Escort,
-    Guest,
-    Move,
-    Occupant,
-    Reservation,
-    VipCode,
-)
+from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Escort, Move, Occupant, Reservation
 from ..domain.coverage import resolve_day
 from ..domain.escort import EscortNeed, escort_need
 from ..domain.halfday import PM, Piece, pieces, pos, segments
@@ -31,7 +23,6 @@ from ..domain.types import DayCover, Line, StayDay, Warning
 from ..domain.warnings import day_warnings
 from ..ports.duty import DutyDay, DutyPort
 from . import allocation
-from .guests import short_name
 from .stays_catalog import get_settings
 
 NO_GUESTS = 0          # бронь без состава — один «неизвестный» гость, чтобы дыра была видна

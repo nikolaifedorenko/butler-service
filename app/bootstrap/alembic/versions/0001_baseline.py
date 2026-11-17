@@ -182,7 +182,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('title')
     )
-    op.create_table('stays_fields',
+    op.create_table('guests_fields',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('target', sa.String(length=12), nullable=False),
     sa.Column('code', sa.String(length=32), nullable=False),
@@ -192,7 +192,7 @@ def upgrade() -> None:
     sa.Column('searchable', sa.Boolean(), nullable=False),
     sa.Column('sort_order', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('target', 'code', name='uq_stays_field')
+    sa.UniqueConstraint('target', 'code', name='uq_guests_field')
     )
     op.create_table('fund_groups',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -231,7 +231,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('stays_vip_codes',
+    op.create_table('guests_vip_codes',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('code', sa.String(length=8), nullable=False),
     sa.Column('title', sa.String(length=80), nullable=False),
@@ -336,7 +336,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['group_id'], ['stays_groups.id'], ),
     sa.ForeignKeyConstraint(['label_id'], ['stays_labels.id'], ),
     sa.ForeignKeyConstraint(['paid_category_id'], ['fund_categories.id'], ),
-    sa.ForeignKeyConstraint(['vip_code_id'], ['stays_vip_codes.id'], name='fk_stays_reservations_vip_code'),
+    sa.ForeignKeyConstraint(['vip_code_id'], ['guests_vip_codes.id'], name='fk_stays_reservations_vip_code'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_stays_res_dates', 'stays_reservations', ['check_in', 'check_out'], unique=False)
@@ -520,7 +520,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('employee_id')
     )
-    op.create_table('stays_guests',
+    op.create_table('guests',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('last_name', sa.String(length=80), nullable=False),
     sa.Column('first_name', sa.String(length=80), nullable=False),
@@ -542,11 +542,11 @@ def upgrade() -> None:
     sa.Column('name_text', sa.String(length=400), server_default='', nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['created_by_employee_id'], ['employees.id'], name='fk_stays_guests_created_by'),
-    sa.ForeignKeyConstraint(['vip_code_id'], ['stays_vip_codes.id'], name='fk_stays_guests_vip_code'),
+    sa.ForeignKeyConstraint(['created_by_employee_id'], ['employees.id'], name='fk_guests_created_by'),
+    sa.ForeignKeyConstraint(['vip_code_id'], ['guests_vip_codes.id'], name='fk_guests_vip_code'),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_stays_guests_created_by_employee_id'), 'stays_guests', ['created_by_employee_id'], unique=False)
+    op.create_index(op.f('ix_guests_created_by_employee_id'), 'guests', ['created_by_employee_id'], unique=False)
     op.create_table('stays_logistics',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('reservation_id', sa.Integer(), nullable=False),
@@ -832,7 +832,7 @@ def upgrade() -> None:
     sa.Column('coverage_id', sa.Integer(), nullable=False),
     sa.Column('guest_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['coverage_id'], ['stays_coverage.id'], ),
-    sa.ForeignKeyConstraint(['guest_id'], ['stays_guests.id'], ),
+    sa.ForeignKeyConstraint(['guest_id'], ['guests.id'], ),
     sa.PrimaryKeyConstraint('coverage_id', 'guest_id')
     )
     op.create_table('fund_versions',
@@ -852,30 +852,30 @@ def upgrade() -> None:
     )
     op.create_index('uq_fund_one_draft', 'fund_versions', ['status'], unique=True, postgresql_where=sa.text("status = 'draft'"))
     op.create_index('uq_fund_published_from', 'fund_versions', ['valid_from'], unique=True, postgresql_where=sa.text("status = 'published'"))
-    op.create_table('stays_guest_links',
+    op.create_table('guests_links',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('guest_a_id', sa.Integer(), nullable=False),
     sa.Column('guest_b_id', sa.Integer(), nullable=False),
     sa.Column('kind', sa.String(length=16), nullable=False),
     sa.Column('former', sa.Boolean(), nullable=False),
-    sa.ForeignKeyConstraint(['guest_a_id'], ['stays_guests.id'], ),
-    sa.ForeignKeyConstraint(['guest_b_id'], ['stays_guests.id'], ),
+    sa.ForeignKeyConstraint(['guest_a_id'], ['guests.id'], ),
+    sa.ForeignKeyConstraint(['guest_b_id'], ['guests.id'], ),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('guest_a_id', 'guest_b_id', 'kind', name='uq_stays_guest_link')
+    sa.UniqueConstraint('guest_a_id', 'guest_b_id', 'kind', name='uq_guests_link')
     )
-    op.create_index(op.f('ix_stays_guest_links_guest_a_id'), 'stays_guest_links', ['guest_a_id'], unique=False)
-    op.create_index(op.f('ix_stays_guest_links_guest_b_id'), 'stays_guest_links', ['guest_b_id'], unique=False)
-    op.create_table('stays_guest_prefs',
+    op.create_index(op.f('ix_guests_links_guest_a_id'), 'guests_links', ['guest_a_id'], unique=False)
+    op.create_index(op.f('ix_guests_links_guest_b_id'), 'guests_links', ['guest_b_id'], unique=False)
+    op.create_table('guests_prefs',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('guest_id', sa.Integer(), nullable=False),
     sa.Column('kind', sa.String(length=8), nullable=False),
     sa.Column('ref_id', sa.Integer(), nullable=False),
     sa.Column('priority', sa.Integer(), nullable=False),
-    sa.CheckConstraint("kind IN ('group', 'flag', 'unit')", name='ck_stays_guest_prefs_kind'),
-    sa.ForeignKeyConstraint(['guest_id'], ['stays_guests.id'], ),
+    sa.CheckConstraint("kind IN ('group', 'flag', 'unit')", name='ck_guests_prefs_kind'),
+    sa.ForeignKeyConstraint(['guest_id'], ['guests.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_stays_guest_prefs_guest_id'), 'stays_guest_prefs', ['guest_id'], unique=False)
+    op.create_index(op.f('ix_guests_prefs_guest_id'), 'guests_prefs', ['guest_id'], unique=False)
     op.create_table('stays_occupants',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('reservation_id', sa.Integer(), nullable=False),
@@ -883,7 +883,7 @@ def upgrade() -> None:
     sa.Column('date_from', sa.Date(), nullable=False),
     sa.Column('date_to', sa.Date(), nullable=False),
     sa.Column('role', sa.String(length=8), nullable=False),
-    sa.ForeignKeyConstraint(['guest_id'], ['stays_guests.id'], ),
+    sa.ForeignKeyConstraint(['guest_id'], ['guests.id'], ),
     sa.ForeignKeyConstraint(['reservation_id'], ['stays_reservations.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -1160,11 +1160,11 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_stays_occupants_reservation_id'), table_name='stays_occupants')
     op.drop_index(op.f('ix_stays_occupants_guest_id'), table_name='stays_occupants')
     op.drop_table('stays_occupants')
-    op.drop_index(op.f('ix_stays_guest_prefs_guest_id'), table_name='stays_guest_prefs')
-    op.drop_table('stays_guest_prefs')
-    op.drop_index(op.f('ix_stays_guest_links_guest_b_id'), table_name='stays_guest_links')
-    op.drop_index(op.f('ix_stays_guest_links_guest_a_id'), table_name='stays_guest_links')
-    op.drop_table('stays_guest_links')
+    op.drop_index(op.f('ix_guests_prefs_guest_id'), table_name='guests_prefs')
+    op.drop_table('guests_prefs')
+    op.drop_index(op.f('ix_guests_links_guest_b_id'), table_name='guests_links')
+    op.drop_index(op.f('ix_guests_links_guest_a_id'), table_name='guests_links')
+    op.drop_table('guests_links')
     op.drop_index('uq_fund_published_from', table_name='fund_versions', postgresql_where=sa.text("status = 'published'"))
     op.drop_index('uq_fund_one_draft', table_name='fund_versions', postgresql_where=sa.text("status = 'draft'"))
     op.drop_table('fund_versions')
@@ -1219,8 +1219,8 @@ def downgrade() -> None:
     op.drop_table('stays_moves')
     op.drop_index(op.f('ix_stays_logistics_reservation_id'), table_name='stays_logistics')
     op.drop_table('stays_logistics')
-    op.drop_index(op.f('ix_stays_guests_created_by_employee_id'), table_name='stays_guests')
-    op.drop_table('stays_guests')
+    op.drop_index(op.f('ix_guests_created_by_employee_id'), table_name='guests')
+    op.drop_table('guests')
     op.drop_table('stays_escorts')
     op.drop_index(op.f('ix_stays_coverage_reservation_id'), table_name='stays_coverage')
     op.drop_index('ix_stays_coverage_emp_day', table_name='stays_coverage')
@@ -1263,14 +1263,14 @@ def downgrade() -> None:
     op.drop_table('night_areas')
     op.drop_table('employees')
     op.drop_table('subdivisions')
-    op.drop_table('stays_vip_codes')
+    op.drop_table('guests_vip_codes')
     op.drop_table('fund_units')
     op.drop_table('fund_unit_flags')
     op.drop_table('stays_settings')
     op.drop_table('stays_labels')
     op.drop_table('stays_groups')
     op.drop_table('fund_groups')
-    op.drop_table('stays_fields')
+    op.drop_table('guests_fields')
     op.drop_table('fund_category_kinds')
     op.drop_table('fund_categories')
     op.drop_table('statement_kinds')

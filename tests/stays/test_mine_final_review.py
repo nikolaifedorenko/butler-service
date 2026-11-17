@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from app.modules.stays.adapters.orm import Guest
-from app.modules.stays.application import family, mine
+from app.modules.guests.application import family
+from app.modules.guests.application.catalog import Guest
+from app.modules.stays.application import mine
 
 from .helpers import API, create_res, make_category, make_guest, uniq
 from .test_mine_edit import _link
@@ -246,7 +247,7 @@ def test_relatives_among_reads_only_their_families(manager_client, monkeypatch, 
         event.remove(engine, "before_cursor_execute", before)
     assert got == {granny}
     assert loaded == [{husband, wife, granny}]
-    links_q = [s for s in stmts if "FROM STAYS_GUEST_LINKS" in s]
+    links_q = [s for s in stmts if "FROM GUESTS_LINKS" in s]
     assert links_q and all(" IN " in s.split("WHERE", 1)[-1] for s in links_q if "WHERE" in s)
     assert all("WHERE" in s for s in links_q)
 

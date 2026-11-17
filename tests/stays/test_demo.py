@@ -33,8 +33,9 @@ def test_demo_fund_and_warnings(demo_db):
     """Демо показывает весь фонд, гостей, брони и по примеру каждого предупреждения."""
     from app.core.time import local_date
     from app.modules.fund.application.fund_versions import INITIAL_DATE, fund_on
+    from app.modules.guests.application.catalog import Guest, GuestLink
     from app.modules.stays.adapters.duty_timesheet import TimesheetDuty
-    from app.modules.stays.adapters.orm import Guest, GuestLink, Reservation
+    from app.modules.stays.adapters.orm import Reservation
     from app.modules.stays.application.context import load_context
 
     db = demo_db
@@ -130,8 +131,8 @@ def test_seed_initial_refuses_filled_version(db):
 
 def test_demo_three_generation_family(db):
     """Демо (B1): семья Петровых из трёх поколений — родство вычисляется, правнук виден у прабабушки."""
-    from app.modules.stays.adapters.orm import Guest
-    from app.modules.stays.application.family import family
+    from app.modules.guests.application.catalog import Guest
+    from app.modules.guests.application.family import family
 
     by = {(g.last_name, g.first_name): g for g in db.scalars(select(Guest).where(Guest.source == "demo"))}
     anna, petr = by[("Смирнова", "Анна")], by[("Петров", "Пётр")]
@@ -141,7 +142,8 @@ def test_demo_three_generation_family(db):
 
 
 def test_demo_has_special_and_codes(db):
-    from app.modules.stays.adapters.orm import Guest, Reservation, VipCode
+    from app.modules.guests.application.catalog import Guest, VipCode
+    from app.modules.stays.adapters.orm import Reservation
 
     assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.special.is_(True))) >= 2
     assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.vip_code_id.is_not(None))) >= 2

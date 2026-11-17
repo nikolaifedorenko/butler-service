@@ -12,9 +12,10 @@ from app.core.auth import Principal
 from app.core.db import transactional
 from app.modules.fund.application import fund
 from app.modules.fund.application.fund_forms import EscortIn, FieldIn, LabelIn, SeedIn, SettingsIn
+from app.modules.guests.application import guest_fields, guests, vip_codes
+from app.modules.guests.application.catalog import VipCode
 
-from ..adapters.orm import VipCode
-from . import guest_fields, guests, reservations, stays_catalog, vip_codes
+from . import reservations, stays_catalog
 
 
 def overview(db: Session, *, with_staff: bool) -> dict:

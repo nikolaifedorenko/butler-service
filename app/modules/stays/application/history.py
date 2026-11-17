@@ -11,11 +11,12 @@ from app.core import manifest
 from app.core.audit import AuditLog
 from app.core.time import utc_iso
 from app.modules.fund.application.fund_versions import fund_for_stays
+from app.modules.guests.application.catalog import Guest
+from app.modules.guests.application.guests import short_name
 from app.modules.people.application.catalog import Employee
 
-from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Guest, Occupant, Reservation
+from ..adapters.orm import Assignment, CoverageGuest, CoverageLine, Occupant, Reservation
 from . import allocation
-from .guests import short_name
 from .reservations import STATUS_TITLES
 from .visibility import Level
 

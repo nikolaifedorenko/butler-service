@@ -123,7 +123,7 @@ def make_code(setup_client, escorted: bool = True, factor: float = 1, title: str
 def set_guest(guest_id: int, **cols) -> None:
     """Поля профиля гостя напрямую в БД — когда нужен обход API (архивный код, особый гость)."""
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import Guest
+    from app.modules.guests.application.catalog import Guest
 
     with SessionLocal() as s:
         g = s.get(Guest, guest_id)

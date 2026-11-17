@@ -21,6 +21,9 @@ from app.core.time import local_date
 from app.modules.fund.application import fund_drafts, fund_versions
 from app.modules.fund.application.catalog import CategoryKind, CategoryState
 from app.modules.fund.application.fund_versions import INITIAL_DATE
+from app.modules.guests.application import vip_codes
+from app.modules.guests.application.catalog import Guest, GuestLink, VipCode
+from app.modules.guests.application.guests import guest_search_text
 from app.modules.people.application.catalog import Employee
 from app.modules.timesheet.application.catalog import TabelDay
 from app.modules.timesheet.application.engine_common import engine_ports
@@ -31,8 +34,6 @@ from ..adapters.orm import (
     Block,
     BlockNight,
     CoverageLine,
-    Guest,
-    GuestLink,
     Label,
     Logistics,
     Move,
@@ -40,10 +41,8 @@ from ..adapters.orm import (
     Ooo,
     Reservation,
     StayGroup,
-    VipCode,
 )
-from . import allocation, fund_publish, vip_codes
-from .guests import guest_search_text
+from . import allocation, fund_publish
 from .stays_catalog import seed_escorts_from_positions
 
 CATEGORIES = [  # код, название, вид, сопровождение, вес, объектов

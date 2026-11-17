@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.errors import NotFound
+from app.modules.guests.application import guests
+from app.modules.guests.application.catalog import Guest
 
-from ..adapters.orm import Guest
 from ..ports.duty import DutyPort
-from . import guests, history, reservations, views
+from . import history, reservations, views
 from .guest_access import my_reservations, own_guest
 from .visibility import level_for
 

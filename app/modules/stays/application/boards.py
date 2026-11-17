@@ -9,13 +9,14 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.guests.application.family import kin_among
+from app.modules.guests.application.guests import text_search
+
 from ..adapters.orm import Companion, Logistics, Ooo, Reservation
 from ..domain.types import OFF, StayDay
 from ..ports.duty import DutyPort
 from .context import NO_GUESTS, StaysContext, load_context
 from .coverage import _known, rank_in_ctx
-from .family import kin_among
-from .guests import text_search
 from .views import fund_match
 from .visibility import Level
 

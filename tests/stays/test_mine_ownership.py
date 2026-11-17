@@ -144,7 +144,7 @@ def test_group_line_owns_member_guests(stay, butlers, db):
 
 
 def test_created_by_butler_own(manager_client, butlers, butler_client, db):
-    from app.modules.stays.adapters.orm import Guest
+    from app.modules.guests.application.catalog import Guest
 
     g = make_guest(manager_client)
     assert butler_client.get(f"{API}/guests/{g['id']}").status_code == 403

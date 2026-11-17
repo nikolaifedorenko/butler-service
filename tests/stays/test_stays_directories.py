@@ -5,7 +5,8 @@ import pytest
 from sqlalchemy import select
 
 from app.core.audit import AuditLog
-from app.modules.stays.adapters.orm import CustomField, Label, VipCode
+from app.modules.guests.application.catalog import CustomField, VipCode
+from app.modules.stays.adapters.orm import Label
 from app.modules.stays.application import stays_directories
 
 from .helpers import API, uniq

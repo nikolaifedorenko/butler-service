@@ -13,5 +13,5 @@ def test_coverage_guests_table(db):
 
 
 def test_guest_search_text_not_indexed(db):
-    idx = {i["name"] for i in inspect(db.get_bind()).get_indexes("stays_guests")}
-    assert "ix_stays_guests_search_text" not in idx
+    idx = {i["name"] for i in inspect(db.get_bind()).get_indexes("guests")}
+    assert "ix_guests_search_text" not in idx
