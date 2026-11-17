@@ -278,7 +278,8 @@ def test_family_endpoint_visibility(manager_client, names_client, occupancy_clie
     names = names_client.get(url)
     assert names.status_code == 200
     people = names.json()["people"]
-    assert people and all(set(p) == {"id", "name", "gender", "special", "vip_code"} for p in people)
+    assert people and all(set(p) == {"id", "name", "gender", "special", "vip_code", "phone", "birth_date"}
+                          and p["phone"] is None and p["birth_date"] is None for p in people)
     full = {p["id"]: p for p in manager_client.get(url).json()["people"]}
     assert full[g["maria"]["id"]]["phone"] == "+7 916 000-00-77"
     assert full[g["maria"]["id"]]["birth_date"] == "1990-05-01"
@@ -534,7 +535,7 @@ def test_profile_code_update_off_leaves_reservations(manager_role_client, manage
     code = make_code(manager_role_client)
     r = _put(manager_client, g, vip_code_id=code["id"], update_reservations=False)
     assert r.status_code == 200 and r.json()["updated_reservations"] == 0
-    assert r.json()["guest"]["vip_code_id"] == code["id"] and "diff" not in r.json()
+    assert r.json()["guest"]["vip_code_id"] == code["id"] and r.json()["diff"] is None
     assert _code_of(manager_client, now) is None and _code_of(manager_client, future) is None
 
 

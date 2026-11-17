@@ -221,7 +221,8 @@ doublepay, schedule, engine_settings, shift_types, bank) и модели отв�
 помечена `@transactional` (`core/db.py`), запись аудита делает сама, поэтому аудит всегда в
 одной транзакции с изменением. Роутер `commit` не вызывает. Так устроены все модули, кроме
 части `stays` (шахматка): версии фонда и справочники уже в прикладном слое (`fund_screen`, `fund_draft_edit`,
-`fund_dictionaries`, `fund_admin`, `stays_directories`; предпросмотр — `previewed.py`), а в остальных роутерах
+`fund_dictionaries`, `fund_admin`, `stays_directories`, `guest_screen`, `guest_edit`,
+`guest_access`; предпросмотр — `previewed.py`), а в остальных роутерах
 `interface/*_api.py` фиксация пока в обработчике. Ошибки шахматки (`FundError` и наследники)
 — `ServiceError`: статус задаёт класс. Свои единицы работы, каждая с причиной: задачи планировщика
 (`sync_reports`, `cleanup_photos`), очередь рассылки (строка фиксируется до обращения к сети),
