@@ -7,8 +7,7 @@ from sqlalchemy import func, select
 from app.core.audit import AuditLog
 from app.modules.guests.application.catalog import Guest, GuestLink
 from app.modules.stays.application import guest_edit
-
-from .helpers import API, make_guest, uniq
+from tests.stays.helpers import API, make_guest, uniq
 
 
 def test_guest_is_not_saved_when_audit_fails(manager_client, db, monkeypatch):

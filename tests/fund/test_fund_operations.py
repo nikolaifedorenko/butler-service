@@ -17,8 +17,8 @@ from app.modules.stays.application.mine import MineForbidden
 from app.modules.stays.application.ooo import OooConflict, OooNotFound
 from app.modules.stays.application.previewed import discarded
 from app.modules.stays.application.reservations import ReservationConflict, ReservationInvalid
+from tests.stays.helpers import API, uniq
 
-from .helpers import API, uniq
 from .test_fund_versions_api import _clean  # noqa: F401 — autouse: снять версии и сущности теста
 
 

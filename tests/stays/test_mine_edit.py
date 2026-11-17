@@ -10,10 +10,10 @@ from sqlalchemy import func, select
 
 from app.modules.guests.application.catalog import Guest
 from app.modules.stays.application import mine
+from tests.board.test_occupancy_and_mine import _body, _doc
 
 from .helpers import API, create_res, make_category, make_code, make_guest, units_of
 from .test_mine_ownership import _guest_body, _line, ivanov_grant, stay  # noqa: F401 — фикстуры
-from .test_occupancy_and_mine import _body, _doc
 
 
 def _link(c, a: int, b: int, kind: str, **kw):

@@ -4,8 +4,17 @@ from __future__ import annotations
 import datetime as dt
 
 from app.modules.stays.adapters.orm import Block, BlockNight
-
-from .helpers import API, FundDraft, create_res, kind_id, make_category, make_code, make_guest, set_guest, uniq
+from tests.stays.helpers import (
+    API,
+    FundDraft,
+    create_res,
+    kind_id,
+    make_category,
+    make_code,
+    make_guest,
+    set_guest,
+    uniq,
+)
 
 
 def _doc(c, rid):

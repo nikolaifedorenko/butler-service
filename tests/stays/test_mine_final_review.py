@@ -10,12 +10,12 @@ import datetime as dt
 from app.modules.guests.application import family
 from app.modules.guests.application.catalog import Guest
 from app.modules.stays.application import mine
+from tests.board.test_mine_screens import D, on_day  # noqa: F401 — фикстура
+from tests.board.test_occupancy_and_mine import _body, _doc
 
 from .helpers import API, create_res, make_category, make_guest, uniq
 from .test_mine_edit import _link
 from .test_mine_ownership import _line, _set_res
-from .test_mine_screens import D, on_day  # noqa: F401 — фикстура
-from .test_occupancy_and_mine import _body, _doc
 
 PHONE = "+79165550188"
 

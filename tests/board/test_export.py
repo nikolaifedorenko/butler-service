@@ -7,8 +7,7 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app.core.audit import AuditLog
-
-from .helpers import API, create_res, make_category, make_guest
+from tests.stays.helpers import API, create_res, make_category, make_guest
 
 Q = {"first": "2037-02-01", "last": "2037-02-07"}
 

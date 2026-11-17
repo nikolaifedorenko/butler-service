@@ -9,8 +9,7 @@ from sqlalchemy import delete, select
 
 from app.modules.guests.application.catalog import Guest, VipCode
 from app.modules.stays.adapters.orm import Reservation, StaysSettings
-
-from .helpers import API
+from tests.stays.helpers import API
 
 PREFIX = "9"      # коды теста — девятка и три знака; демо-коды (03, 13, 14) начинаются иначе
 

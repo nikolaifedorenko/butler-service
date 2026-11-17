@@ -8,9 +8,8 @@ import pytest
 from sqlalchemy import delete, select
 
 from app.modules.stays.application import mine
-
-from .helpers import API, create_res, make_category, make_guest, set_guest
-from .test_mine_ownership import _line
+from tests.stays.helpers import API, create_res, make_category, make_guest, set_guest
+from tests.stays.test_mine_ownership import _line
 
 
 def D(iso: str) -> dt.date:
@@ -304,7 +303,7 @@ def test_month_span_max_62_422(butler_client):
 # ── «Все мои гости» и карточка ───────────────────────────────────────────────
 
 def test_all_guests_search_only_own(manager_role_client, manager_client, butlers, butler_client):
-    from .helpers import uniq
+    from tests.stays.helpers import uniq
     u = uniq()
     cat = make_category(manager_role_client, n_units=2)
     mine_g = make_guest(manager_client, f"Поисксвой{u}")

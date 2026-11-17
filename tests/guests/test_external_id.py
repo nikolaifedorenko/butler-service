@@ -11,8 +11,7 @@ from app.modules.guests.adapters.orm import Guest
 from app.modules.guests.application import guests
 from app.modules.stays.adapters.orm import Reservation
 from app.modules.stays.application import guest_merge, reservations
-
-from .helpers import API, create_res, make_category, make_guest, uniq
+from tests.stays.helpers import API, create_res, make_category, make_guest, uniq
 
 
 def _ref(system: str = "fidelio", instance: str = "", ext_id: str | None = None) -> ExternalRef:

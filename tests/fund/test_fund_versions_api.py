@@ -20,8 +20,7 @@ from app.modules.fund.application.catalog import (
     UnitStateFlag,
 )
 from app.modules.stays.adapters.orm import Assignment
-
-from .helpers import API, kind_id, make_category, uniq
+from tests.stays.helpers import API, kind_id, make_category, uniq
 
 
 @pytest.fixture(autouse=True)
@@ -221,7 +220,7 @@ def test_flag_dictionary_crud(manager_role_client, db):
 
 def test_draft_diff_lists_lineage_of_split_units(manager_role_client, db):
     """«новый · из 12134»: у объектов, полученных делением, в diff черновика — откуда они."""
-    from .helpers import make_category
+    from tests.stays.helpers import make_category
 
     c = manager_role_client
     cat = make_category(c, n_units=1)

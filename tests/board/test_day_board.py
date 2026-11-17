@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from .helpers import API, create_res, make_category, make_guest, units_of
+from tests.stays.helpers import API, create_res, make_category, make_guest, units_of
 
 DAY = dt.date(2036, 1, 10)
 

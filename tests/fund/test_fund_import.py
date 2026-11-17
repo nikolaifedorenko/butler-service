@@ -10,8 +10,8 @@ from app.core.audit import AuditLog
 from app.modules.fund.application import fund_drafts as fd
 from app.modules.fund.application import fund_xlsx as fx
 from app.modules.fund.application.catalog import Category, FundVersion, Unit, UnitFlag, UnitLineage
+from tests.stays.helpers import API, FundDraft, kind_id, uniq
 
-from .helpers import API, FundDraft, kind_id, uniq
 from .test_fund_versions_api import _clean  # noqa: F401 — autouse: снять версии и сущности теста
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

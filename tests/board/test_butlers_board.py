@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from .helpers import API, create_res, make_category, make_guest
+from tests.stays.helpers import API, create_res, make_category, make_guest
 
 
 def _board(c, butlers, days):
