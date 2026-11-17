@@ -318,7 +318,7 @@ def test_adjacent_blocks_no_false_overbook(manager_role_client, manager_client, 
     create_res(manager_client, cat, "2051-03-10", "2051-03-12")
     assert _block(manager_client, "P", "2051-03-10", "2051-03-11", _grid(cat, "2051-03-10", 1, 1)).status_code == 200
     pv = _block(no_overbook_client, "Q", "2051-03-11", "2051-03-12", _grid(cat, "2051-03-11", 1, 1), preview=1)
-    assert pv.status_code == 200 and "overbook_refused" not in pv.json(), pv.text
+    assert pv.status_code == 200 and pv.json()["overbook_refused"] is None, pv.text
     r = _block(no_overbook_client, "Q", "2051-03-11", "2051-03-12", _grid(cat, "2051-03-11", 1, 1))
     assert r.status_code == 200, r.text
     assert "overbooked" not in {w["kind"] for w in r.json()["diff"]["warnings_added"]}

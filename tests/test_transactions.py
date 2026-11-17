@@ -41,7 +41,7 @@ ALLOWED = {
 
 # модуль → (commit, HTTPException, эндпоинты без модели ответа) в его роутерах
 LEGACY: dict[str, tuple[int, int, int]] = {
-    "stays": (5, 28, 39),
+    "stays": (3, 17, 19),
 }
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}

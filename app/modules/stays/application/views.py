@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import Validation
 from app.core.time import local_date
 
 from ..adapters.orm import (
@@ -47,7 +48,7 @@ from .visibility import Level, at_least, serialize_bar
 MAX_DAYS = 62
 
 
-class ViewError(ValueError):
+class ViewError(Validation, ValueError):
     """Ошибка параметров вида → 422."""
 
 

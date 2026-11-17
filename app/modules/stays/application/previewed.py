@@ -58,7 +58,8 @@ def run_previewed(db: Session, operation: Callable[[], Any], *, preview_only: bo
     def attempt() -> tuple[Any, dict]:
         nonlocal refused
         try:
-            result, diff = preview.run_operation(db, operation, window, duty, may_overbook=may_overbook)
+            result, diff = preview.run_operation(db, operation, window, duty if window else None,
+                                                 may_overbook=may_overbook)
         except preview.OverbookRefused as e:
             if not preview_only:
                 raise OverbookRefusedError(e.text, e.diff) from e

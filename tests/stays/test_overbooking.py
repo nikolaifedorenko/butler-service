@@ -82,7 +82,7 @@ def test_overbook_with_perm_saves_with_warning(manager_role_client, manager_clie
     create_res(manager_client, cat, "2036-03-10", "2036-03-14")
     r = manager_client.post(f"{API}/reservations", json=res_body(cat, "2036-03-11", "2036-03-13", number="882"))
     assert r.status_code == 200, r.text
-    assert "overbook_refused" not in r.json()
+    assert r.json()["overbook_refused"] is None
     res = r.json()["result"]
     assert res["segments"][0]["unit_id"] is None
     assert res["warnings"] == [f"Бронь 882: нет свободных объектов категории {cat['code']} на 11.03–13.03"]
