@@ -20,7 +20,8 @@ CONFIG = ROOT / ".importlinter"
 MARKER = "; ── ниже — генерирует tools/gen_importlinter.py из app/modules/*/manifest.py, руками не править ──\n"
 # модули, которые не знают ни composition root, ни другие модули: notify — эталон C3,
 # people — общий справочник (ADR-0013, раздел 5)
-ISOLATED = {"exchange": "Сервис: exchange", "notify": "Эталон (C3): notify", "people": "Справочник: people"}
+ISOLATED = {"exchange": "Сервис: exchange", "jobs": "Сервис: jobs", "notify": "Эталон (C3): notify",
+            "people": "Справочник: people"}
 # сквозные сервисы без предметной логики: их может импортировать любой модуль, в том числе
 # изолированный (ADR-0013, раздел 5)
 SERVICES = ("exchange",)

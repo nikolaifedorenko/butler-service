@@ -150,7 +150,7 @@ def test_schema_stores_json_as_jsonb(db):
         for column in table.columns:
             if isinstance(column.type, Json):
                 expected[f"{table.name}.{column.name}"] = "jsonb"
-    assert len(expected) == 18
+    assert len(expected) == 19
     assert {"engine_settings_versions.payload", "base_schedule_config.groups"} <= set(expected)
     actual = dict(db.execute(text(
         "SELECT table_name || '.' || column_name, data_type FROM information_schema.columns "

@@ -717,6 +717,33 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_night_area_sections_report_id'), 'night_area_sections', ['report_id'], unique=False)
     op.create_index('ix_night_area_sections_zone', 'night_area_sections', ['zone_id'], unique=False)
+    op.create_table('jobs_queue',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('name', sa.String(length=80), nullable=False),
+    sa.Column('payload', postgresql.JSONB(), nullable=False),
+    sa.Column('status', sa.String(length=8), nullable=False),
+    sa.Column('run_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('attempts', sa.Integer(), nullable=False),
+    sa.Column('max_attempts', sa.Integer(), nullable=False),
+    sa.Column('locked_until', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('schedule_name', sa.String(length=80), nullable=True),
+    sa.Column('last_error', sa.Text(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('finished_at', sa.DateTime(timezone=True), nullable=True),
+    sa.CheckConstraint("status IN ('queued', 'running', 'done', 'failed')", name='ck_jobs_queue_status'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_jobs_queue_due', 'jobs_queue', ['status', 'run_at'], unique=False)
+    op.create_index('uq_jobs_queue_schedule_open', 'jobs_queue', ['schedule_name'], unique=True, postgresql_where=sa.text("schedule_name IS NOT NULL AND status IN ('queued', 'running')"))
+    op.create_table('jobs_schedule',
+    sa.Column('name', sa.String(length=80), nullable=False),
+    sa.Column('every_seconds', sa.Integer(), nullable=False),
+    sa.Column('next_run_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('last_run_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('enabled', sa.Boolean(), nullable=False),
+    sa.PrimaryKeyConstraint('name')
+    )
     op.create_table('notify_dispatches',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('domain', sa.String(length=32), nullable=False),
@@ -1130,6 +1157,10 @@ def _reference_rows() -> None:
 
 
 def downgrade() -> None:
+    op.drop_table('jobs_schedule')
+    op.drop_index('uq_jobs_queue_schedule_open', table_name='jobs_queue', postgresql_where=sa.text("schedule_name IS NOT NULL AND status IN ('queued', 'running')"))
+    op.drop_index('ix_jobs_queue_due', table_name='jobs_queue')
+    op.drop_table('jobs_queue')
     op.drop_index('ix_fund_unit_state_flags_version_flag', table_name='fund_unit_state_flags')
     op.drop_table('fund_unit_state_flags')
     op.drop_table('fund_unit_states')
