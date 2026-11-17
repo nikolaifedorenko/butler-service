@@ -1900,6 +1900,37 @@
         "title": "BulkIn",
         "type": "object"
       },
+      "ButlersBoardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "number"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "days",
+          "limit",
+          "rows"
+        ],
+        "title": "ButlersBoardOut",
+        "type": "object"
+      },
       "CarCheckOut": {
         "additionalProperties": false,
         "description": "Отметка кара в обходе смены.",
@@ -3157,6 +3188,80 @@
         "title": "CountsOut",
         "type": "object"
       },
+      "CoverageCandidateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "knows_guest": {
+            "title": "Knows Guest",
+            "type": "boolean"
+          },
+          "load_after": {
+            "title": "Load After",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "same_place": {
+            "title": "Same Place",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "employee_id",
+          "name",
+          "load_after",
+          "knows_guest",
+          "same_place",
+          "note"
+        ],
+        "title": "CoverageCandidateOut",
+        "type": "object"
+      },
+      "CoverageLineOut": {
+        "additionalProperties": false,
+        "properties": {
+          "line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Id"
+          }
+        },
+        "required": [
+          "line_id"
+        ],
+        "title": "CoverageLineOut",
+        "type": "object"
+      },
+      "CoverageWrittenOut": {
+        "additionalProperties": false,
+        "properties": {
+          "written": {
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "written"
+        ],
+        "title": "CoverageWrittenOut",
+        "type": "object"
+      },
       "CreatedOut": {
         "additionalProperties": false,
         "properties": {
@@ -3314,6 +3419,75 @@
           }
         },
         "title": "DatedAction",
+        "type": "object"
+      },
+      "DayBoardOut": {
+        "additionalProperties": false,
+        "description": "Табло дня; в строках броней поля зависят от уровня видимости (§8).",
+        "properties": {
+          "arrivals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Arrivals",
+            "type": "array"
+          },
+          "attention": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attention",
+            "type": "array"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "departures": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Departures",
+            "type": "array"
+          },
+          "in_house": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "In House",
+            "type": "array"
+          },
+          "no_show": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "No Show",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/DayTotalsOut"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "visibility",
+          "arrivals",
+          "departures",
+          "in_house",
+          "no_show",
+          "attention",
+          "totals"
+        ],
+        "title": "DayBoardOut",
         "type": "object"
       },
       "DayChoice": {
@@ -3496,6 +3670,113 @@
           "error"
         ],
         "title": "DayRefusalOut",
+        "type": "object"
+      },
+      "DayTotalsOut": {
+        "additionalProperties": false,
+        "description": "Итоги табло. Уровень «загрузка» (без данных гостей) видит только первые пять.",
+        "properties": {
+          "arrivals": {
+            "title": "Arrivals",
+            "type": "integer"
+          },
+          "covered": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Covered"
+          },
+          "declined": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declined"
+          },
+          "departures": {
+            "title": "Departures",
+            "type": "integer"
+          },
+          "in_house": {
+            "title": "In House",
+            "type": "integer"
+          },
+          "need_replacement": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Need Replacement"
+          },
+          "no_show": {
+            "title": "No Show",
+            "type": "integer"
+          },
+          "not_required": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Required"
+          },
+          "overbooked": {
+            "title": "Overbooked",
+            "type": "integer"
+          },
+          "special": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special"
+          },
+          "uncovered": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncovered"
+          }
+        },
+        "required": [
+          "arrivals",
+          "departures",
+          "in_house",
+          "no_show",
+          "overbooked",
+          "covered",
+          "declined",
+          "need_replacement",
+          "not_required",
+          "special",
+          "uncovered"
+        ],
+        "title": "DayTotalsOut",
         "type": "object"
       },
       "DefectCountsOut": {
@@ -8323,6 +8604,161 @@
         "title": "GuestCardOut",
         "type": "object"
       },
+      "GuestFullCardOut": {
+        "additionalProperties": false,
+        "description": "Карточка гостя целиком — с историей проживаний.",
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "title": "Fields",
+            "type": "object"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/GuestLinkRowOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "main_current": {
+            "title": "Main Current",
+            "type": "integer"
+          },
+          "middle_name": {
+            "title": "Middle Name",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "phone_display": {
+            "title": "Phone Display",
+            "type": "string"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Preferences",
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "special_dates": {
+            "items": {
+              "$ref": "#/components/schemas/SpecialDateOut"
+            },
+            "title": "Special Dates",
+            "type": "array"
+          },
+          "stays": {
+            "items": {
+              "$ref": "#/components/schemas/GuestStayOut"
+            },
+            "title": "Stays",
+            "type": "array"
+          },
+          "vip_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuestVipCodeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
+          }
+        },
+        "required": [
+          "id",
+          "last_name",
+          "first_name",
+          "middle_name",
+          "phone",
+          "phone_display",
+          "email",
+          "birth_date",
+          "gender",
+          "special",
+          "vip_code_id",
+          "vip_code",
+          "main_current",
+          "note",
+          "external_id",
+          "source",
+          "preferences",
+          "special_dates",
+          "fields",
+          "links",
+          "stays"
+        ],
+        "title": "GuestFullCardOut",
+        "type": "object"
+      },
       "GuestIn": {
         "properties": {
           "birth_date": {
@@ -11202,6 +11638,341 @@
         "title": "MgmtTraceOut",
         "type": "object"
       },
+      "MineGuestCardOut": {
+        "additionalProperties": false,
+        "description": "Профиль своего гостя и история проживаний с тем, кто его вёл.",
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "title": "Fields",
+            "type": "object"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/GuestLinkRowOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "main_current": {
+            "title": "Main Current",
+            "type": "integer"
+          },
+          "middle_name": {
+            "title": "Middle Name",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "phone_display": {
+            "title": "Phone Display",
+            "type": "string"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Preferences",
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "special_dates": {
+            "items": {
+              "$ref": "#/components/schemas/SpecialDateOut"
+            },
+            "title": "Special Dates",
+            "type": "array"
+          },
+          "vip_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuestVipCodeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
+          }
+        },
+        "required": [
+          "id",
+          "last_name",
+          "first_name",
+          "middle_name",
+          "phone",
+          "phone_display",
+          "email",
+          "birth_date",
+          "gender",
+          "special",
+          "vip_code_id",
+          "vip_code",
+          "main_current",
+          "note",
+          "external_id",
+          "source",
+          "preferences",
+          "special_dates",
+          "fields",
+          "links",
+          "history"
+        ],
+        "title": "MineGuestCardOut",
+        "type": "object"
+      },
+      "MineGuestRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "guest_id": {
+            "title": "Guest Id",
+            "type": "integer"
+          },
+          "last_stay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Stay"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_stay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Stay"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "stays": {
+            "title": "Stays",
+            "type": "integer"
+          },
+          "vip_code": {
+            "title": "Vip Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "guest_id",
+          "name",
+          "special",
+          "vip_code",
+          "stays",
+          "last_stay",
+          "next_stay"
+        ],
+        "title": "MineGuestRowOut",
+        "type": "object"
+      },
+      "MineGuestsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MineGuestRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "rows"
+        ],
+        "title": "MineGuestsOut",
+        "type": "object"
+      },
+      "MineMonthLoadOut": {
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "guests": {
+            "title": "Guests",
+            "type": "integer"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "day",
+          "guests",
+          "level",
+          "value"
+        ],
+        "title": "MineMonthLoadOut",
+        "type": "object"
+      },
+      "MineMonthOut": {
+        "additionalProperties": false,
+        "properties": {
+          "absences": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Absences",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "number"
+          },
+          "load": {
+            "items": {
+              "$ref": "#/components/schemas/MineMonthLoadOut"
+            },
+            "title": "Load",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "days",
+          "limit",
+          "load",
+          "rows",
+          "absences"
+        ],
+        "title": "MineMonthOut",
+        "type": "object"
+      },
+      "MineTodayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "reservations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Reservations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "reservations"
+        ],
+        "title": "MineTodayOut",
+        "type": "object"
+      },
       "ModifierAddedOut": {
         "additionalProperties": false,
         "properties": {
@@ -11702,6 +12473,38 @@
           "end"
         ],
         "title": "NullablePeriodOut",
+        "type": "object"
+      },
+      "OccupancyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "total": {
+            "additionalProperties": true,
+            "title": "Total",
+            "type": "object"
+          }
+        },
+        "required": [
+          "days",
+          "nodes",
+          "total"
+        ],
+        "title": "OccupancyOut",
         "type": "object"
       },
       "OccupantIn": {
@@ -12847,6 +13650,74 @@
         "title": "PreviewedOut[BlockSavedOut]",
         "type": "object"
       },
+      "PreviewedOut_CoverageLineOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/CoverageLineOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[CoverageLineOut]",
+        "type": "object"
+      },
+      "PreviewedOut_CoverageWrittenOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/CoverageWrittenOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[CoverageWrittenOut]",
+        "type": "object"
+      },
       "PreviewedOut_DeletedOut_": {
         "additionalProperties": false,
         "properties": {
@@ -12913,6 +13784,40 @@
           "overbook_refused"
         ],
         "title": "PreviewedOut[GroupJoinedOut]",
+        "type": "object"
+      },
+      "PreviewedOut_Ok_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/Ok"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[Ok]",
         "type": "object"
       },
       "PreviewedOut_OooSavedOut_": {
@@ -13875,6 +14780,78 @@
         "title": "RenderIn",
         "type": "object"
       },
+      "ReplacementRowOut": {
+        "additionalProperties": false,
+        "description": "Бронь, которой нужна подмена: батлер на смене с кодом отсутствия, и подобранные кандидаты.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageCandidateOut"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "employee": {
+            "title": "Employee",
+            "type": "string"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "reservation_id": {
+            "title": "Reservation Id",
+            "type": "integer"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "day",
+          "employee_id",
+          "employee",
+          "reservation_id",
+          "group_id",
+          "number",
+          "code",
+          "unit",
+          "candidates"
+        ],
+        "title": "ReplacementRowOut",
+        "type": "object"
+      },
       "ReportBriefOut": {
         "additionalProperties": false,
         "description": "Отчёт в архиве: без пунктов объектов.",
@@ -14189,6 +15166,248 @@
         "title": "ReportsOut",
         "type": "object"
       },
+      "ReservationCardOut": {
+        "additionalProperties": false,
+        "description": "Карточка брони; состав полей по уровню видимости, остальное — как в документе брони.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "check_in": {
+            "title": "Check In",
+            "type": "string"
+          },
+          "check_out": {
+            "title": "Check Out",
+            "type": "string"
+          },
+          "companions": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Companions"
+          },
+          "coverage": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "customer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer"
+          },
+          "early": {
+            "title": "Early",
+            "type": "boolean"
+          },
+          "escort": {
+            "additionalProperties": true,
+            "title": "Escort",
+            "type": "object"
+          },
+          "escort_mode": {
+            "title": "Escort Mode",
+            "type": "string"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "late": {
+            "title": "Late",
+            "type": "boolean"
+          },
+          "logistics": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logistics"
+          },
+          "mine": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mine"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "occupants": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Occupants",
+            "type": "array"
+          },
+          "paid_category": {
+            "title": "Paid Category",
+            "type": "string"
+          },
+          "paid_category_id": {
+            "title": "Paid Category Id",
+            "type": "integer"
+          },
+          "pref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pref"
+          },
+          "segments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "upgrade": {
+            "title": "Upgrade",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "vip_code": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "number",
+          "status",
+          "status_title",
+          "check_in",
+          "check_out",
+          "early",
+          "late",
+          "category",
+          "paid_category",
+          "paid_category_id",
+          "upgrade",
+          "label",
+          "customer",
+          "note",
+          "escort_mode",
+          "escort",
+          "vip_code",
+          "pref",
+          "group_id",
+          "fields",
+          "segments",
+          "occupants",
+          "companions",
+          "logistics",
+          "coverage",
+          "mine"
+        ],
+        "title": "ReservationCardOut",
+        "type": "object"
+      },
       "ReservationCompanionOut": {
         "additionalProperties": false,
         "properties": {
@@ -14441,6 +15660,41 @@
           "rule_reasons"
         ],
         "title": "ReservationEscortOut",
+        "type": "object"
+      },
+      "ReservationHistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "diff": {
+            "additionalProperties": true,
+            "title": "Diff",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actor",
+          "title",
+          "ts",
+          "diff"
+        ],
+        "title": "ReservationHistoryOut",
         "type": "object"
       },
       "ReservationIn": {
@@ -18369,6 +19623,74 @@
         "title": "UncoveredDayOut",
         "type": "object"
       },
+      "UnitsBoardOut": {
+        "additionalProperties": false,
+        "description": "Шахматка объектов; поля внутри полос и объектов зависят от уровня видимости (§8).",
+        "properties": {
+          "bars": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Bars",
+            "type": "array"
+          },
+          "blocks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "holds": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "units": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Units",
+            "type": "array"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "days",
+          "units",
+          "bars",
+          "holds",
+          "blocks",
+          "warnings",
+          "visibility"
+        ],
+        "title": "UnitsBoardOut",
+        "type": "object"
+      },
       "UpcomingVersionOut": {
         "additionalProperties": false,
         "properties": {
@@ -19216,6 +20538,126 @@
         "title": "ModifierOut",
         "type": "object"
       },
+      "app__modules__stays__application__coverage_forms__DaysIn": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DayChoice"
+            },
+            "maxItems": 62,
+            "minItems": 1,
+            "title": "Days",
+            "type": "array"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "guest_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Guest Ids",
+            "type": "array"
+          },
+          "reservation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Id"
+          }
+        },
+        "required": [
+          "days"
+        ],
+        "title": "DaysIn",
+        "type": "object"
+      },
+      "app__modules__stays__application__coverage_forms__TemplateIn": {
+        "properties": {
+          "butlers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Butlers",
+            "type": "array"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "guest_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Guest Ids",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "pair",
+              "single"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last": {
+            "format": "date",
+            "title": "Last",
+            "type": "string"
+          },
+          "replace": {
+            "default": false,
+            "title": "Replace",
+            "type": "boolean"
+          },
+          "reservation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Id"
+          }
+        },
+        "required": [
+          "kind",
+          "butlers",
+          "first",
+          "last"
+        ],
+        "title": "TemplateIn",
+        "type": "object"
+      },
       "app__modules__stays__application__fund_forms__KindIn": {
         "properties": {
           "expanded": {
@@ -19393,126 +20835,6 @@
           "version"
         ],
         "title": "StatusIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__coverage_api__DaysIn": {
-        "properties": {
-          "days": {
-            "items": {
-              "$ref": "#/components/schemas/DayChoice"
-            },
-            "maxItems": 62,
-            "minItems": 1,
-            "title": "Days",
-            "type": "array"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "guest_ids": {
-            "default": [],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Guest Ids",
-            "type": "array"
-          },
-          "reservation_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reservation Id"
-          }
-        },
-        "required": [
-          "days"
-        ],
-        "title": "DaysIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__coverage_api__TemplateIn": {
-        "properties": {
-          "butlers": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Butlers",
-            "type": "array"
-          },
-          "first": {
-            "format": "date",
-            "title": "First",
-            "type": "string"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "guest_ids": {
-            "default": [],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Guest Ids",
-            "type": "array"
-          },
-          "kind": {
-            "enum": [
-              "pair",
-              "single"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "last": {
-            "format": "date",
-            "title": "Last",
-            "type": "string"
-          },
-          "replace": {
-            "default": false,
-            "title": "Replace",
-            "type": "boolean"
-          },
-          "reservation_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reservation Id"
-          }
-        },
-        "required": [
-          "kind",
-          "butlers",
-          "first",
-          "last"
-        ],
-        "title": "TemplateIn",
         "type": "object"
       },
       "app__modules__timesheet__application__doublepay_edit__DaysIn": {
@@ -27550,7 +28872,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ButlersBoardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -27728,7 +29052,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/UnitsBoardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28342,7 +29668,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -28425,7 +29753,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CoverageCandidateOut"
+                  },
+                  "title": "Response Get Candidates Api Stays Coverage Candidates Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -28478,7 +29812,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_CoverageLineOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -28522,7 +29858,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__coverage_api__DaysIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__coverage_forms__DaysIn"
               }
             }
           },
@@ -28532,7 +29868,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_CoverageWrittenOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -28583,7 +29921,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReplacementRowOut"
+                  },
+                  "title": "Response Get Replacements Api Stays Coverage Replacements Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -28626,7 +29970,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__coverage_api__TemplateIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__coverage_forms__TemplateIn"
               }
             }
           },
@@ -28636,7 +29980,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_CoverageWrittenOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -28688,7 +30034,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_Ok_"
+                }
               }
             },
             "description": "Successful Response"
@@ -28856,7 +30204,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/DayBoardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29013,9 +30363,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
-              }
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
             },
             "description": "Successful Response"
           },
@@ -31348,7 +32696,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestFullCardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -31758,7 +33108,7 @@
     },
     "/api/stays/mine/guests": {
       "get": {
-        "description": "«Все мои гости»: свои гости за всё время, поиск по ФИО (с полным уровнем — как подбор гостя),\nпо 50.",
+        "description": "«Все мои гости»: свои гости за всё время, поиск по ФИО, по 50.",
         "operationId": "mine_guests_api_stays_mine_guests_get",
         "parameters": [
           {
@@ -31799,7 +33149,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MineGuestsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -31840,7 +33192,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MineGuestCardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -31892,7 +33246,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MineMonthOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -31922,7 +33278,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MineTodayOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -32041,7 +33399,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OccupancyOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -32610,7 +33970,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationCardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -32696,7 +34058,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReservationHistoryOut"
+                  },
+                  "title": "Response Reservation History Api Stays Reservations  Rid  History Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"

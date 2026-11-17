@@ -47,7 +47,7 @@ def test_butler_own_card_full(own_reservation, butler_client):
     own = butler_client.get(f"{API}/reservations/{mine['id']}/card").json()
     assert own["note"] == "старое" and "logistics" in own and "customer" in own          # полный уровень
     foreign = butler_client.get(f"{API}/reservations/{other['id']}/card").json()
-    assert "note" not in foreign and "logistics" not in foreign and foreign["occupants"]  # «с фамилиями»
+    assert foreign["note"] is None and foreign["logistics"] is None and foreign["occupants"]  # «с фамилиями»
 
 
 def test_butler_candidates_readable(own_reservation, butler_client):
