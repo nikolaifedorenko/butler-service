@@ -8,6 +8,7 @@ import datetime as dt
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.external import ExternalRef, external_of, find_external, set_external
 from app.core.time import local_date
 from app.modules.fund.application.fund import FundError, changes
 from app.modules.fund.application.fund_versions import (
@@ -18,6 +19,7 @@ from app.modules.fund.application.fund_versions import (
     unit_exists,
     version_cuts,
 )
+from app.modules.fund.application.locking import lock_module
 from app.modules.guests.application.catalog import Guest, VipCode
 from app.modules.guests.application.guests import searchable_codes, short_name, validate_fields
 from app.modules.guests.application.vip_codes import check_selectable
@@ -38,7 +40,7 @@ TRANSITIONS = {
     "no_show": {"confirmed"},
 }
 SCALARS = ("number", "check_in", "check_out", "early", "late", "category_id", "paid_category_id", "label_id",
-           "customer", "note", "escort_mode", "vip_code_id", "group_id", "external_id", "source")
+           "customer", "note", "escort_mode", "vip_code_id", "group_id")
 COMPANION_KINDS = {"security", "driver", "nanny", "pet", "other"}
 LOGISTICS_KINDS = {"flight", "transfer", "car"}
 
@@ -288,6 +290,21 @@ def save_reservation(db: Session, doc: dict, rid: int | None,
     return r, before
 
 
+def upsert_reservation(db: Session, ref: ExternalRef, doc: dict) -> tuple[Reservation, dict, bool]:
+    """Бронь из внешней системы: найдена по «система, экземпляр, id» — заменяется документом, иначе
+    создаётся. Версия берётся у найденной брони: внешняя система — источник истины, спор о версии
+    с ней не ведётся. Возвращает бронь, снимок «до» (пустой у новой) и признак «создана»."""
+    lock_module(db)            # поиск и запись — под одним замком: два импорта не создадут двух броней
+    found = find_external(db, Reservation, ref)
+    if found is None:
+        r, before = save_reservation(db, doc, None, None)
+        set_external(r, ref)
+        db.flush()
+        return r, before, True
+    r, before = save_reservation(db, doc, found.id, found.version)
+    return r, before, False
+
+
 def _replace_children(db: Session, r: Reservation, doc: dict) -> None:
     db.execute(delete(Move).where(Move.reservation_id == r.id))
     db.add_all(Move(reservation_id=r.id, move_date=m["move_date"], category_id=m["category_id"])
@@ -454,7 +471,7 @@ def reservation_dict(db: Session, r: Reservation, state: allocation.AllocationSt
     names = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_({o.guest_id for o in occ})))} if occ else {}
     return {
         "id": r.id, "version": r.version, "status": r.status, "status_title": STATUS_TITLES[r.status],
-        **{k: _d(getattr(r, k)) for k in SCALARS}, "fields": r.fields,
+        **{k: _d(getattr(r, k)) for k in SCALARS}, "fields": r.fields, "external": external_of(r),
         "paid_category_id": r.paid_category_id or r.category_id,
         "moves": [{"move_date": _d(d), "category_id": c} for d, c in moves],
         "segments": [{"index": s.index, "category_id": s.category_id, "start": _d(s.start), "end": _d(s.end),

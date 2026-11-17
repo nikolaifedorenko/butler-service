@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, Json
+from app.core.external import ExternalRefColumns
 from app.core.time import Moment, now
 
 
@@ -40,10 +41,11 @@ class VipCode(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
-class Guest(Base):
+class Guest(ExternalRefColumns, Base):
     """Профиль гостя. «Особый гость» и VIP-код — свойства человека; код копируется в его брони."""
 
     __tablename__ = "guests"
+    __table_args__ = (UniqueConstraint("ext_system", "ext_instance", "ext_id", name="uq_guests_external"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     last_name: Mapped[str] = mapped_column(String(80))
@@ -60,8 +62,6 @@ class Guest(Base):
     special_dates: Mapped[list] = mapped_column(Json, default=list)
     fields: Mapped[dict] = mapped_column(Json, default=dict)
     note: Mapped[str] = mapped_column(Text, default="")
-    external_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    source: Mapped[str] = mapped_column(String(16), default="")
     # батлер, заведший профиль через семейное дерево: гость — его «свой» (часть 4 §3–§4)
     created_by_employee_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("employees.id", name="fk_guests_created_by"), nullable=True, index=True)

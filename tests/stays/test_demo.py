@@ -44,10 +44,10 @@ def test_demo_fund_and_warnings(demo_db):
     cats = {c.id for c in fund.categories.values() if c.code in codes}
     assert len(cats) == 11
     assert sum(1 for u in fund.units.values() if u.category_id in cats) == 440
-    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo")) >= 60
-    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.special.is_(True))) == 2
+    assert db.scalar(select(func.count(Guest.id)).where(Guest.ext_system == "demo")) >= 60
+    assert db.scalar(select(func.count(Guest.id)).where(Guest.ext_system == "demo", Guest.special.is_(True))) == 2
     assert db.scalar(select(func.count(GuestLink.id))) >= 5
-    res = list(db.scalars(select(Reservation).where(Reservation.source == "demo")))
+    res = list(db.scalars(select(Reservation).where(Reservation.ext_system == "demo")))
     assert len(res) >= 300
     assert {r.status for r in res} >= {"confirmed", "in_house", "no_show"}
     assert any(r.group_id for r in res) and any(r.escort_mode == "declined" for r in res)
@@ -134,7 +134,7 @@ def test_demo_three_generation_family(db):
     from app.modules.guests.application.catalog import Guest
     from app.modules.guests.application.family import family
 
-    by = {(g.last_name, g.first_name): g for g in db.scalars(select(Guest).where(Guest.source == "demo"))}
+    by = {(g.last_name, g.first_name): g for g in db.scalars(select(Guest).where(Guest.ext_system == "demo"))}
     anna, petr = by[("Смирнова", "Анна")], by[("Петров", "Пётр")]
     kin = {k["person_id"]: k["title"] for k in family(db, anna.id, full=False)["kin"]}
     assert kin[petr.id] == "правнук"
@@ -145,10 +145,10 @@ def test_demo_has_special_and_codes(db):
     from app.modules.guests.application.catalog import Guest, VipCode
     from app.modules.stays.adapters.orm import Reservation
 
-    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.special.is_(True))) >= 2
-    assert db.scalar(select(func.count(Guest.id)).where(Guest.source == "demo", Guest.vip_code_id.is_not(None))) >= 2
+    assert db.scalar(select(func.count(Guest.id)).where(Guest.ext_system == "demo", Guest.special.is_(True))) >= 2
+    assert db.scalar(select(func.count(Guest.id)).where(Guest.ext_system == "demo", Guest.vip_code_id.is_not(None))) >= 2
     coded = {c for (c,) in db.execute(select(VipCode.code).join(Reservation, Reservation.vip_code_id == VipCode.id)
-                                      .where(Reservation.source == "demo")).all()}
+                                      .where(Reservation.ext_system == "demo")).all()}
     assert coded == {"03", "13"}
-    assert db.scalar(select(func.count(Reservation.id)).where(Reservation.source == "demo",
+    assert db.scalar(select(func.count(Reservation.id)).where(Reservation.ext_system == "demo",
                                                                 Reservation.escort_mode == "declined")) > 0

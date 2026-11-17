@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from app.core.external import ExternalRef
 from app.core.schemas import ApiModel
 from app.modules.fund.application.fund_schemas import FundDiffOut
 from app.modules.guests.application.guest_schemas import GuestCardOut, GuestPrefOut
@@ -279,8 +280,7 @@ class ReservationDocOut(ApiModel):
     vip_code_id: Optional[int]
     vip_code: Optional[ReservationVipCodeOut]
     group_id: Optional[int]
-    external_id: Optional[str]
-    source: str
+    external: Optional[ExternalRef]
     fields: JsonDict
     moves: list[ReservationMoveOut]
     segments: list[ReservationSegmentOut]

@@ -23,6 +23,7 @@ from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, Json
+from app.core.external import ExternalRefColumns
 from app.core.time import Moment, now
 
 # ── 3.1 Фонд ───────────────────────────────────────────────────────────────
@@ -103,12 +104,13 @@ class StayGroup(Base):
     title: Mapped[str] = mapped_column(String(120), default="")
 
 
-class Reservation(Base):
+class Reservation(ExternalRefColumns, Base):
     """Бронь. number (Fidelio) не уникален: совместные брони. version — защита от
     одновременной правки (§9: второе сохранение получает 409)."""
 
     __tablename__ = "stays_reservations"
-    __table_args__ = (Index("ix_stays_res_dates", "check_in", "check_out"),)
+    __table_args__ = (Index("ix_stays_res_dates", "check_in", "check_out"),
+                      UniqueConstraint("ext_system", "ext_instance", "ext_id", name="uq_stays_res_external"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
     number: Mapped[str] = mapped_column(String(40), default="", index=True)
@@ -126,8 +128,6 @@ class Reservation(Base):
         ForeignKey("guests_vip_codes.id", name="fk_stays_reservations_vip_code"), nullable=True)
     escort_mode: Mapped[str] = mapped_column(String(8), default="rules")   # rules | required | declined
     fields: Mapped[dict] = mapped_column(Json, default=dict)
-    external_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    source: Mapped[str] = mapped_column(String(16), default="")
     group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_groups.id"), nullable=True,
                                                     index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)

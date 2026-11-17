@@ -214,7 +214,7 @@ def seed_stays_demo(db: Session) -> None:
     guests = []
     for i, last in enumerate(SURNAMES):
         g = Guest(last_name=last, first_name=FIRST[i % len(FIRST)], gender="mf"[i % 2], special=i in (0, 1),
-                  source="demo",
+                  ext_system="demo",
                   phone=f"+7916{1000000 + i * 7919:07d}",
                   preferences={"allergy": "орехи"} if i % 9 == 0 else {})
         g.search_text = guest_search_text(g, set())
@@ -229,7 +229,7 @@ def seed_stays_demo(db: Session) -> None:
                        (2, 14, "security"), (3, 15, "parent"), (4, 16, "spouse")):
         db.add(GuestLink(guest_a_id=guests[a].id, guest_b_id=guests[b].id, kind=kind))
     family = {key: Guest(last_name=last, first_name=first, middle_name="", phone="", email="", gender=gender,
-                         special=special, source="demo")
+                         special=special, ext_system="demo")
               for key, last, first, gender, special in FAMILY}
     for g in family.values():
         g.search_text = guest_search_text(g, set())
@@ -247,7 +247,7 @@ def seed_stays_demo(db: Session) -> None:
     def book(cat: str, ci: dt.date, co: dt.date, unit: SimpleNamespace | None, **kw) -> Reservation:
         status = "in_house" if ci <= today < co else "confirmed"
         r = Reservation(number=f"F{len(made) + 1:05d}", status=kw.pop("status", status), check_in=ci, check_out=co,
-                        category_id=cats[cat].id, label_id=labels[len(made) % 3].id, source="demo",
+                        category_id=cats[cat].id, label_id=labels[len(made) % 3].id, ext_system="demo",
                         search_text=f"f{len(made) + 1:05d}", **kw)
         db.add(r)
         db.flush()
