@@ -32,6 +32,16 @@ def overview_checks(manifests: list[ModuleManifest]) -> list:
     return [_attr(spec) for m in manifests for spec in m.overview_checks]
 
 
+def job_specs(manifests: list[ModuleManifest]) -> list:
+    """Фоновые задачи всех модулей (JobSpec из манифестов)."""
+    return [spec for m in manifests for spec in m.jobs]
+
+
+def job_handlers(manifests: list[ModuleManifest]) -> dict:
+    """Имя задачи → обработчик ``(db, payload)``, найденный по строке «пакет.модуль:функция»."""
+    return {spec.name: _attr(spec.handler) for spec in job_specs(manifests)}
+
+
 def import_models(manifests: list[ModuleManifest]) -> None:
     for m in manifests:
         for path in m.models:

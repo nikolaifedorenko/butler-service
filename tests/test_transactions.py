@@ -35,6 +35,11 @@ ALLOWED = {
     ("modules/notify/application/dispatch.py", "claim"),
     ("modules/notify/application/dispatch.py", "run_outbox"),
     ("modules/notify/application/dispatch.py", "fail_stale_sending"),
+    # очередь задач: каждая операция — своя единица работы, состояние задачи видят все воркеры сразу
+    ("modules/jobs/application/queue.py", "enqueue"), ("modules/jobs/application/queue.py", "claim_next"),
+    ("modules/jobs/application/queue.py", "finish"), ("modules/jobs/application/queue.py", "fail"),
+    ("modules/jobs/application/queue.py", "requeue_stale"),
+    ("modules/jobs/application/schedule.py", "sync"), ("modules/jobs/application/schedule.py", "tick"),
     # закрытие периода — своя транзакция на сотрудника
     ("modules/timesheet/adapters/sql_uow.py", "__exit__"),
 }

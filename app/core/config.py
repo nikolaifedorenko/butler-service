@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # (ревью 20.10.2026, P1) — их делает фоновый поток с периодом night_sync_seconds.
     # Несколько воркеров: в раунде работает один (замок core.startup_lock.try_lock).
     night_sync_enabled: bool = True
+    # воркер очереди задач (модуль jobs, app/bootstrap/jobs_worker.py): как часто опрашивать очередь
+    # и на какой срок задача закрепляется за воркером (дольше — вернётся в очередь)
+    jobs_poll_seconds: int = 5
+    jobs_lease_seconds: int = 900
     night_sync_seconds: int = 60
     # пустая база: DEMO_SEED=1 — демо-сотрудники с паролем demo1234 (локально, тесты, сценарии);
     # иначе только справочники и администратор admin с паролем ADMIN_PASSWORD (аудит, SEC-02)

@@ -64,6 +64,18 @@ class Screen:
 
 
 @dataclass(frozen=True)
+class JobSpec:
+    """Фоновая задача модуля (ADR-0013, §6). ``handler`` — «пакет.модуль:функция», функция
+    ``(db, payload) -> None``; ``every_seconds`` — период расписания (None — только по запросу
+    ``jobs.enqueue``); ``max_attempts`` — сколько раз пробовать до отказа."""
+
+    name: str
+    handler: str
+    every_seconds: int | None = None
+    max_attempts: int = 3
+
+
+@dataclass(frozen=True)
 class ModuleManifest:
     name: str
     title: str
@@ -82,6 +94,8 @@ class ModuleManifest:
     # сверки для экрана «Настройки → Обзор»: «пакет.модуль:функция», функция(db) -> список
     # замечаний {"code", "level", "screen", "text"}
     overview_checks: tuple[str, ...] = ()
+    # фоновые задачи модуля: их выполняет воркер очереди (модуль jobs), см. JobSpec
+    jobs: tuple[JobSpec, ...] = ()
 
 
 _REGISTERED: list[ModuleManifest] = []

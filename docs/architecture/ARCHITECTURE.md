@@ -90,6 +90,7 @@ cars, docs, notify, settings, access, audit, stays), каждый — гекса
 | **board** | «Табло»: представления только для чтения — шахматка объектов и батлеров, табло дня, «Мои гости», список броней, карточки, выгрузка в Excel, чтение профилей гостей (слой 5; своих таблиц нет) | `application` (views, boards, bookings, export, *_screen) |
 | **stays** | «Шахматка»: брони, автораспределение по объектам, покрытие батлерами, предпросмотр изменений (23.10.2026) | `application` (catalog); График читает через публичный `timesheet.application.roster` |
 | **docs** | Заявления DOCX/PDF, сетка Графика в Excel, шаблоны | `application` (doc_render, grid_docx, doc_templates) |
+| **jobs** | Очередь задач на PostgreSQL: таблицы `jobs_queue` и `jobs_schedule`, повторы с растущей паузой, возврат зависших, расписание; захват `FOR UPDATE SKIP LOCKED`. Задачи объявляют модули в манифестах (`jobs=(JobSpec(...),)`), выполняет отдельный процесс `python -m app.bootstrap.jobs_worker` (слой 1; другие модули `jobs` не импортируют) | `application` (queue, schedule, runner), `domain` (retry) |
 | **notify** | Общая доставка: Telegram + почта, каталог чатов, журнал отправок | `application` (config, dispatch, recipients, chats, catalog), `ports` (TransportError) |
 | **settings** | Единый центр настроек (агрегирует границы timesheet/docs) | `interface` (своей логики нет) |
 | **access** | Вход/сессии/impersonation, экран «Права доступа» | `interface` (модели — core/identity) |
