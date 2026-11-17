@@ -20,7 +20,7 @@ def kind_id(code: str) -> int:
     from sqlalchemy import select
 
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import CategoryKind
+    from app.modules.fund.application.catalog import CategoryKind
 
     with SessionLocal() as s:
         kid = s.scalar(select(CategoryKind.id).where(CategoryKind.title == KIND_TITLES[code]))
@@ -34,7 +34,7 @@ class FundDraft:
     иначе он заблокировал бы остальные тесты."""
 
     def __init__(self, setup_client):
-        from app.modules.stays.application import fund_drafts
+        from app.modules.fund.application import fund_drafts
 
         self.c = setup_client
         r = setup_client.post(f"{API}/fund/draft", json={"valid_from": fund_drafts.local_date().isoformat()})

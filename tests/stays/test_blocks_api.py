@@ -244,7 +244,7 @@ def test_long_block_preview_window(manager_role_client, manager_client, big_fund
     from sqlalchemy import select as sel
 
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import CategoryState
+    from app.modules.fund.application.catalog import CategoryState
 
     with SessionLocal() as s:
         big = list(s.scalars(sel(CategoryState.category_id).where(CategoryState.code.in_(("BIGDLX", "BIGSTE", "BIGVIL")))

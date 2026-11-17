@@ -22,7 +22,6 @@ from ..adapters.orm import (
     UnitState,
     UnitStateFlag,
 )
-from ..domain import halfday
 
 INITIAL_DATE = dt.date(2000, 1, 1)
 
@@ -131,7 +130,7 @@ class FundTimeline:
 
 def boundary_pos(d: dt.date) -> int:
     """Позиция границы версии с valid_from = d: вечер (PM) этого дня."""
-    return halfday.pos(d, halfday.PM)
+    return d.toordinal() * 2 + 1
 
 
 def fund_day(p: int) -> dt.date:

@@ -10,7 +10,7 @@ import pytest
 from openpyxl import load_workbook
 from sqlalchemy import delete, select, update
 
-from app.modules.stays.adapters.orm import CategoryKind, CategoryState
+from app.modules.fund.application.catalog import CategoryKind, CategoryState
 
 from .helpers import API, FundDraft, kind_id, make_category, uniq
 from .test_fund_import import _draft, _edit, _export, _row, _upload
@@ -44,7 +44,7 @@ def _snapshot(c, **params) -> dict:
 
 
 def _today() -> str:
-    from app.modules.stays.application import fund_drafts as fd
+    from app.modules.fund.application import fund_drafts as fd
     return fd.local_date().isoformat()
 
 
@@ -222,8 +222,8 @@ def test_xlsx_roundtrip_with_kinds(manager_role_client, db):
 def test_reset_plan_kind_by_title(db):
     """Начальная загрузка: вид — по названию из справочника; пустой, неизвестный и архивный — ошибка
     файла с листом и строкой (справочник видов загрузка не трогает — он в KEEP)."""
+    from app.modules.fund.application import fund_xlsx as fx
     from app.modules.stays.application import fund_reset as fr
-    from app.modules.stays.application import fund_xlsx as fx
 
     kinds = [CategoryKind(id=1, title="вилла", archived=False), CategoryKind(id=2, title="старое", archived=True)]
     cats = [fx.ParsedCategory(row_no=n, id=None, code=f"C{n}", title="К", kind=k, weight=1, escorted=False,
@@ -235,8 +235,8 @@ def test_reset_plan_kind_by_title(db):
 
 
 def test_reset_plan_empty_kind_dictionary_hint():
+    from app.modules.fund.application import fund_xlsx as fx
     from app.modules.stays.application import fund_reset as fr
-    from app.modules.stays.application import fund_xlsx as fx
 
     cats = [fx.ParsedCategory(row_no=2, id=None, code="C", title="К", kind="замок", weight=1, escorted=False,
                               sort_order=1)]

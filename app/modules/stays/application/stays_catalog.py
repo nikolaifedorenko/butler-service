@@ -10,10 +10,10 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.fund.application.fund import FundConflict, FundError, as_dict, upsert_row
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import CustomField, Escort, Label, Reservation, StaysSettings
-from .fund import FundConflict, FundError, as_dict, upsert_row
 from .guest_fields import field_dict
 
 LABEL_FIELDS = ("id", "title", "color")

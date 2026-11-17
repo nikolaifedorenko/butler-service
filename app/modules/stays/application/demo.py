@@ -18,6 +18,9 @@ from sqlalchemy.orm import Session
 from app.core.identity import User
 from app.core.security import hash_password
 from app.core.time import local_date
+from app.modules.fund.application import fund_drafts, fund_versions
+from app.modules.fund.application.catalog import CategoryKind, CategoryState
+from app.modules.fund.application.fund_versions import INITIAL_DATE
 from app.modules.people.application.catalog import Employee
 from app.modules.timesheet.application.catalog import TabelDay
 from app.modules.timesheet.application.engine_common import engine_ports
@@ -27,8 +30,6 @@ from ..adapters.orm import (
     Assignment,
     Block,
     BlockNight,
-    CategoryKind,
-    CategoryState,
     CoverageLine,
     Guest,
     GuestLink,
@@ -41,8 +42,7 @@ from ..adapters.orm import (
     StayGroup,
     VipCode,
 )
-from . import allocation, fund_drafts, fund_publish, fund_versions, vip_codes
-from .fund_versions import INITIAL_DATE
+from . import allocation, fund_publish, vip_codes
 from .guests import guest_search_text
 from .stays_catalog import seed_escorts_from_positions
 

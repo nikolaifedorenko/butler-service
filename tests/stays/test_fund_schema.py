@@ -8,18 +8,18 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
-from app.modules.stays.adapters.orm import (
+from app.modules.fund.application.catalog import (
     Category,
     CategoryState,
     FundGroup,
     FundVersion,
     GroupState,
-    StaysSettings,
     Unit,
     UnitFlag,
     UnitState,
     UnitStateFlag,
 )
+from app.modules.stays.adapters.orm import StaysSettings
 
 from .helpers import kind_id
 

@@ -11,13 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.core.identity import User
 from app.core.time import local_iso
+from app.modules.fund.application.fund import FundConflict, FundError
+from app.modules.fund.application.fund_versions import fund_for, unit_exists
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Ooo
 from ..domain.halfday import ooo_span, overlaps
 from . import allocation
-from .fund import FundConflict, FundError
-from .fund_versions import fund_for, unit_exists
 from .view_filters import BoardFilters, ViewError, fund_match
 
 SORTS = ("unit", "category", "start", "end", "reason", "author", "created_at")

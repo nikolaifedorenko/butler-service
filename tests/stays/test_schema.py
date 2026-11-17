@@ -6,7 +6,7 @@ from sqlalchemy import inspect, select
 
 def test_stays_tables_created(db):
     names = set(inspect(db.get_bind()).get_table_names())
-    assert {"stays_categories", "stays_units", "stays_ooo", "stays_blocks", "stays_block_nights", "stays_guest_prefs", "stays_labels", "stays_guests",
+    assert {"fund_categories", "fund_units", "stays_ooo", "stays_blocks", "stays_block_nights", "stays_guest_prefs", "stays_labels", "stays_guests",
             "stays_guest_links", "stays_groups", "stays_reservations", "stays_moves",
             "stays_assignments", "stays_occupants", "stays_companions", "stays_logistics",
             "stays_escorts", "stays_coverage", "stays_coverage_guests", "stays_fields",
@@ -44,7 +44,7 @@ def test_escort_rules_columns_and_defaults(db):
     assert {"vip_code_id", "special"} <= cols("stays_guests")
     assert {"vip_code_id", "escort_mode"} <= cols("stays_reservations")
     assert "special_factor" in cols("stays_settings")
-    assert "escorted" in cols("stays_group_states")
+    assert "escorted" in cols("fund_group_states")
     assert Guest.__table__.c.special.default.arg is False
     assert Reservation.__table__.c.escort_mode.default.arg == "rules"
     assert StaysSettings.__table__.c.special_factor.default.arg == Decimal("2")

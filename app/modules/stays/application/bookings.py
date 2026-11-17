@@ -11,6 +11,7 @@ from sqlalchemy import Date, cast, literal, null, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.core.time import local_iso, local_midnight
+from app.modules.fund.application.fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import Assignment, CoverageLine, Guest, Label, Move, Occupant, Reservation, VipCode
@@ -18,7 +19,6 @@ from ..domain.allocate import natural_key
 from ..domain.halfday import Piece, pieces, segments
 from . import allocation
 from .context import load_context
-from .fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
 from .guests import short_name, text_search
 from .reservations import STATUS_TITLES
 from .view_filters import BoardFilters, ViewError, fund_match

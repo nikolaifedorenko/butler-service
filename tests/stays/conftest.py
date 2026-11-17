@@ -40,8 +40,9 @@ def today(monkeypatch):
     import datetime as dt
 
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import FundVersion
-    from app.modules.stays.application import allocation, fund_drafts, reservations
+    from app.modules.fund.application import fund_drafts
+    from app.modules.fund.application.catalog import FundVersion
+    from app.modules.stays.application import allocation, reservations
 
     with SessionLocal() as s:
         top = s.scalar(select(func.coalesce(func.max(FundVersion.id), 0)))
@@ -59,7 +60,7 @@ def today(monkeypatch):
 def _drop_versions(s, ids: list[int]) -> None:
     from sqlalchemy import delete, update
 
-    from app.modules.stays.adapters.orm import (
+    from app.modules.fund.application.catalog import (
         CategoryState,
         FundVersion,
         GroupState,
@@ -119,8 +120,9 @@ def big_fund(app_stack):
 
     from app.core.db import SessionLocal
     from app.core.time import local_date
-    from app.modules.stays.adapters.orm import CategoryState, Guest, Occupant, Reservation, VipCode
-    from app.modules.stays.application import fund_drafts as fd
+    from app.modules.fund.application import fund_drafts as fd
+    from app.modules.fund.application.catalog import CategoryState
+    from app.modules.stays.adapters.orm import Guest, Occupant, Reservation, VipCode
     from app.modules.stays.application import fund_publish as fp
     from app.modules.stays.application.allocation import run_allocation
 

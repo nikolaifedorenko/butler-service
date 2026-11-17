@@ -244,7 +244,8 @@ def test_block_short_shown_on_board(manager_role_client, manager_client, today, 
 def test_board_query_budget_with_blocks(manager_client, big_fund, sql_counter, blocks):
     """Шахматка 440 × 31 с блоками и OOO — не больше 30 запросов."""
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import CategoryState, Ooo, Unit
+    from app.modules.fund.application.catalog import CategoryState, Unit
+    from app.modules.stays.adapters.orm import Ooo
 
     with SessionLocal() as s:
         cats = list(s.scalars(select(CategoryState.category_id).where(CategoryState.code.in_(("BIGDLX", "BIGSTE", "BIGVIL")))

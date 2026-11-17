@@ -63,7 +63,7 @@ def test_code_text_rules(manager_role_client):
 
 
 def test_normalize_code_unit():
-    from app.modules.stays.application.fund import FundError
+    from app.modules.fund.application.fund import FundError
     from app.modules.stays.application.vip_codes import normalize_code
 
     assert normalize_code(" 03 ") == "03" and normalize_code("3") == "3"
@@ -131,7 +131,7 @@ def test_archive_used_code_ok_delete_409(manager_role_client, db):
 
 
 def test_check_selectable(manager_role_client, db):
-    from app.modules.stays.application.fund import FundError
+    from app.modules.fund.application.fund import FundError
     from app.modules.stays.application.vip_codes import check_selectable
 
     c = manager_role_client

@@ -6,8 +6,8 @@ import datetime as dt
 import pytest
 from sqlalchemy import delete, func, select, update
 
-from app.modules.stays.adapters.orm import (
-    Assignment,
+from app.modules.fund.application import fund_drafts as fd
+from app.modules.fund.application.catalog import (
     Category,
     CategoryState,
     FundGroup,
@@ -19,7 +19,7 @@ from app.modules.stays.adapters.orm import (
     UnitState,
     UnitStateFlag,
 )
-from app.modules.stays.application import fund_drafts as fd
+from app.modules.stays.adapters.orm import Assignment
 
 from .helpers import API, kind_id, make_category, uniq
 

@@ -7,7 +7,8 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
-from app.modules.stays.adapters.orm import Block, BlockNight, Category, Guest, GuestPref, Ooo, Unit
+from app.modules.fund.application.catalog import Category, Unit
+from app.modules.stays.adapters.orm import Block, BlockNight, Guest, GuestPref, Ooo
 
 D = dt.date(2040, 1, 10)
 

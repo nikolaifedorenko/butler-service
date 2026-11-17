@@ -44,7 +44,7 @@ def test_migrate_command_prepares_empty_base(fresh_database):
     roles = {code for (code,) in rows(fresh_database, "SELECT code FROM roles")}
     assert roles == {"admin", "manager", "supervisor", "employee", "mgmt_view", "occupancy"}
     assert rows(fresh_database, "SELECT id FROM stays_settings") == [(1,)]
-    assert rows(fresh_database, "SELECT status FROM stays_fund_versions") == [("published",)]
+    assert rows(fresh_database, "SELECT status FROM fund_versions") == [("published",)]
 
 
 def test_worker_without_migrate_stops_on_stale_schema(fresh_database):

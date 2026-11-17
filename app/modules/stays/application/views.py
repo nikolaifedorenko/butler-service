@@ -9,6 +9,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
+from app.modules.fund.application.fund_versions import (
+    CategoryInfo,
+    FundSnapshot,
+    FundTimeline,
+    UnitInfo,
+    fund_day,
+    fund_for,
+    fund_for_stays,
+    version_cuts,
+)
 
 from ..adapters.orm import (
     Assignment,
@@ -30,16 +40,6 @@ from ..domain.prefs import scorer
 from ..ports.duty import DutyPort
 from . import allocation, family
 from .context import StaysContext, butlers_on, load_context, nights, reservation_escort
-from .fund_versions import (
-    CategoryInfo,
-    FundSnapshot,
-    FundTimeline,
-    UnitInfo,
-    fund_day,
-    fund_for,
-    fund_for_stays,
-    version_cuts,
-)
 from .guests import TextSearch, short_name, text_search
 from .reservations import STATUS_TITLES, vip_code_of
 from .view_filters import BoardFilters, ViewError, fund_match
