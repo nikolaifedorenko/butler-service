@@ -44,3 +44,11 @@ def require_full(db: Session, principal: Principal) -> None:
     вместе с доступом к шахматке с фамилиями."""
     if level_for(db, principal) != "full":
         raise Forbidden("Справочник гостей — с правом «Профили гостей целиком»")
+
+
+def my_reservations(db: Session, principal: Principal) -> set[int] | None:
+    """Брони батлера для выделения на шахматке: одно множество на запрос. ``None`` — у принципала
+    нет ``stays.mine`` или к учётной записи не привязан сотрудник (признака «своя» в ответе нет)."""
+    if "stays.mine" not in principal.gate_permissions or principal.employee is None:
+        return None
+    return mine.my_reservation_ids(db, principal.employee.id)

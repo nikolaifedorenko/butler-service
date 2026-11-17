@@ -22,7 +22,7 @@ def test_reservation_card_levels(names_client, mgmt_client, occupancy_client, de
     assert [(o["guest"], o["date_from"], o["role"]) for o in card["occupants"]] == [
         (demo_small.guests[4]["last_name"], "2029-02-02", "main"),
         (demo_small.guests[5]["last_name"], "2029-02-03", "main")]
-    assert "logistics" not in card and "phone" not in str(card)
+    assert card["logistics"] is None and "phone" not in str(card)
     full = mgmt_client.get(f"{API}/reservations/{rid}/card").json()
     assert full["logistics"][0]["description"].startswith("SU")
     assert occupancy_client.get(f"{API}/reservations/{rid}/card").status_code == 403

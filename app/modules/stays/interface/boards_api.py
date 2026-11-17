@@ -1,11 +1,16 @@
 """API шахматки батлеров и табло дня (§6.2, §6.3). Шахматка батлеров — только с фамилиями
-(stays.view); табло — на всех уровнях, поля по уровню видимости (§8)."""
+(stays.view); табло — на всех уровнях, поля по уровню видимости (§8). «Мои гости» — батлеру
+(stays.mine).
+
+Правила — в прикладном слое: ``board_screen`` и ``mine_screen``. Роутер разбирает запрос и
+проверяет право.
+"""
 from __future__ import annotations
 
 import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -13,85 +18,68 @@ from app.core.db import get_db
 from app.core.permissions import require_perm
 
 from ..adapters.duty_timesheet import TimesheetDuty
-from ..adapters.orm import Guest
-from ..application import boards, views
+from ..application import board_screen, boards, mine_screen, views
 from ..application import mine as mine_app
-from ..application.fund import FundError
-from ..application.visibility import level_for
+from .schemas import (
+    ButlersBoardOut,
+    DayBoardOut,
+    MineGuestCardOut,
+    MineGuestsOut,
+    MineMonthOut,
+    MineTodayOut,
+    OccupancyOut,
+)
 from .views_api import fund_filters
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
-MAX_DAYS = 62
 
 
-@router.get("/board/butlers")
+@router.get("/board/butlers", response_model=ButlersBoardOut)
 def board_butlers(first: dt.date, last: dt.date, principal: Principal = Depends(require_perm("stays.view")),
                   db: Session = Depends(get_db)):
-    if last < first or (last - first).days + 1 > MAX_DAYS:
-        raise HTTPException(status_code=422, detail=f"Период — не больше {MAX_DAYS} дней")
-    return boards.butlers_board(db, first, last, TimesheetDuty(db))
+    return board_screen.butlers_board(db, first, last, TimesheetDuty(db))
 
 
-@router.get("/day")
+@router.get("/day", response_model=DayBoardOut)
 def day_board(date: dt.date, dims: dict = Depends(fund_filters), escorted_only: bool = False, special: bool = False,
               vip_code_ids: list[int] = Query(default=[]), employee_id: Optional[int] = None, q: str = "",
               principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
               db: Session = Depends(get_db)):
     f = boards.DayFilters(**dims, escorted_only=escorted_only, special=special, vip_code_ids=tuple(vip_code_ids),
                           employee_id=employee_id, q=q)
-    return boards.day_board(db, date, level_for(db, principal), f, TimesheetDuty(db))
+    return board_screen.day_board(db, principal, date, f, TimesheetDuty(db))
 
 
-@router.get("/occupancy")
+@router.get("/occupancy", response_model=OccupancyOut)
 def occupancy(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters), escorted: bool = False,
               principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
               db: Session = Depends(get_db)):
-    try:
-        return views.occupancy_grid(db, first, last, views.BoardFilters(**dims, escorted_only=escorted))
-    except views.ViewError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
+    return board_screen.occupancy(db, first, last, views.BoardFilters(**dims, escorted_only=escorted))
 
 
-def _me(principal: Principal) -> int:
-    if principal.employee is None:
-        raise HTTPException(status_code=404, detail="К учётной записи не привязан сотрудник")
-    return principal.employee.id
-
-
-@router.get("/mine/today")
+@router.get("/mine/today", response_model=MineTodayOut)
 def mine_today(principal: Principal = Depends(require_perm("stays.mine")), db: Session = Depends(get_db)):
     """«Мои гости» — «Сегодня» (часть 4 §5): брони, где батлер ведёт гостей в эту ночь."""
-    return mine_app.mine_today(db, _me(principal))
+    return mine_screen.today_reservations(db, principal)
 
 
-@router.get("/mine/month")
+@router.get("/mine/month", response_model=MineMonthOut)
 def mine_month(first: dt.date, last: dt.date, principal: Principal = Depends(require_perm("stays.mine")),
                db: Session = Depends(get_db)):
     """«Мой месяц»: свои брони полосами, нагрузка по дням и отсутствия по Графику (не больше 62 дней)."""
-    me = _me(principal)
-    try:
-        return mine_app.mine_month(db, me, first, last, TimesheetDuty(db))
-    except FundError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
+    return mine_screen.month(db, principal, first, last, TimesheetDuty(db))
 
 
-@router.get("/mine/guests")
+@router.get("/mine/guests", response_model=MineGuestsOut)
 def mine_guests(q: str = "", offset: int = Query(0, ge=0),
                 limit: int = Query(mine_app.GUESTS_PAGE, ge=1, le=mine_app.GUESTS_PAGE),
                 principal: Principal = Depends(require_perm("stays.mine")), db: Session = Depends(get_db)):
-    """«Все мои гости»: свои гости за всё время, поиск по ФИО (с полным уровнем — как подбор гостя),
-    по 50."""
-    return mine_app.mine_guests(db, _me(principal), q, offset, limit, full=level_for(db, principal) == "full")
+    """«Все мои гости»: свои гости за всё время, поиск по ФИО, по 50."""
+    return mine_screen.guests(db, principal, q, offset, limit)
 
 
-@router.get("/mine/guests/{gid}")
+@router.get("/mine/guests/{gid}", response_model=MineGuestCardOut)
 def mine_guest_card(gid: int, principal: Principal = Depends(require_perm("stays.mine")),
                     db: Session = Depends(get_db)):
     """Карточка своего гостя: профиль целиком и история проживаний с тем, кто его вёл. Чужой — 403."""
-    me = _me(principal)
-    g = db.get(Guest, gid)
-    if g is None:
-        raise HTTPException(status_code=404, detail="Гость не найден")
-    if not mine_app.owns_guest(db, me, gid):
-        raise HTTPException(status_code=403, detail="Это не ваш гость: вы не ведёте его брони")
-    return mine_app.mine_guest_card(db, me, g)
+    return mine_screen.guest_card(db, principal, gid)
