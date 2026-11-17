@@ -30,9 +30,9 @@ from ..domain.types import DayCover, Line, StayDay, Warning
 from ..domain.warnings import day_warnings
 from ..ports.duty import DutyDay, DutyPort
 from . import allocation
-from .fund import get_settings
 from .fund_versions import CategoryInfo, FundTimeline, boundary_pos, fund_for
 from .guests import short_name
+from .stays_catalog import get_settings
 
 NO_GUESTS = 0          # бронь без состава — один «неизвестный» гость, чтобы дыра была видна
 

@@ -18,10 +18,10 @@ from app.core.time import local_date
 
 from ..adapters.orm import Guest
 from ..ports.duty import DutyPort
-from . import allocation, guests, mine, reservations
+from . import allocation, guest_merge, guests, mine, reservations
 from .guest_access import own_guest, own_link, require_full
+from .guest_card import card
 from .guest_forms import FormerIn, GuestIn, GuestUpdateIn, LinkIn, MergeIn, PrefsIn
-from .guest_screen import card
 from .previewed import run_previewed
 
 
@@ -98,7 +98,7 @@ def merge(db: Session, principal: Principal, payload: MergeIn, *, preview_only: 
     require_full(db, principal)
 
     def operation() -> dict:
-        out = guests.merge_guests(db, payload.keep_id, payload.drop_id)
+        out = guest_merge.merge_guests(db, payload.keep_id, payload.drop_id)
         audit(db, principal, "stays_guest_merge", f"guest:{payload.keep_id}",
               {"drop_id": payload.drop_id, "not_carried": out.pop("not_carried"), "moves": out["moves"]})
         return out

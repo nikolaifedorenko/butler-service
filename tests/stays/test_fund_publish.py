@@ -25,6 +25,7 @@ from app.modules.stays.adapters.orm import (
     UnitStateFlag,
 )
 from app.modules.stays.application import fund_drafts as fd
+from app.modules.stays.application import fund_publish as fp
 from app.modules.stays.application.fund import FundConflict
 from app.modules.stays.application.fund_versions import fund_on
 
@@ -83,7 +84,7 @@ def _later(db, edit) -> int:
     """Опубликовать позднюю версию с L: edit(rev) правит её черновик."""
     d = fd.open_draft(db, L, None)
     edit(d.rev)
-    return fd.publish(db, None).version.id
+    return fp.publish(db, None).version.id
 
 
 def _unit(db, day, uid):
@@ -94,7 +95,7 @@ def test_propagate_untouched_field(db, world):
     _later(db, lambda rev: fd.save_unit(db, rev, {"floor": "5"}, world["u2"]))
     d = fd.open_draft(db, D, None)
     fd.save_unit(db, d.rev, {"floor": "7"}, world["u1"])
-    res = fd.publish(db, None)
+    res = fp.publish(db, None)
     assert _unit(db, L, world["u1"]).floor == "7"               # поздняя версия поле не меняла
     assert _unit(db, L, world["u2"]).floor == "5"               # её собственная правка на месте
     assert [(p["entity"], p["id"], p["field"], p["valid_from"]) for p in res.propagated] == [
@@ -106,7 +107,7 @@ def test_propagate_keeps_later_own_change(db, world):
     _later(db, lambda rev: fd.save_unit(db, rev, {"floor": "9", "label": "4103"}, world["u1"]))
     d = fd.open_draft(db, D, None)
     fd.save_unit(db, d.rev, {"floor": "7", "category_id": world["b"]}, world["u1"])
-    res = fd.publish(db, None)
+    res = fp.publish(db, None)
     later = _unit(db, L, world["u1"])
     assert (later.floor, later.label, later.category_id) == ("9", "4103", world["b"])
     assert _unit(db, D, world["u1"]).floor == "7"
@@ -119,7 +120,7 @@ def test_propagate_label_conflict_skipped(db, world):
     d = fd.open_draft(db, D, None)
     taken = fd.save_unit(db, d.rev, {"label": "5001", "category_id": world["a"]}, None)
     free = fd.save_unit(db, d.rev, {"label": "5002", "category_id": world["a"], "flags": [world["flag"]]}, None)
-    res = fd.publish(db, None)
+    res = fp.publish(db, None)
     later = fund_on(db, L)
     assert taken not in later.units and free in later.units
     assert later.units[free].flags == {world["flag"]}
@@ -136,14 +137,14 @@ def test_propagate_retire_and_flag(db, world):
     d = fd.open_draft(db, D, None)
     fd.set_flag(db, d.rev, world["flag"], [world["u1"]], False)
     fd.retire_unit(db, d.rev, world["u2"])
-    res = fd.publish(db, None)
+    res = fp.publish(db, None)
     assert _unit(db, L, world["u1"]).flags == set()
     assert _unit(db, L, world["u2"]) is not None                # поздняя версия меняла объект — оставлен
     assert [(k["id"], k["field"]) for k in res.kept] == [(world["u2"], None)]
 
     d = fd.open_draft(db, D, None)                              # объект, который поздняя версия не меняла
     fd.retire_unit(db, d.rev, world["u1"])
-    fd.publish(db, None)
+    fp.publish(db, None)
     assert _unit(db, L, world["u1"]) is None
 
 
@@ -151,7 +152,7 @@ def test_propagate_false_leaves_later_versions(db, world):
     _later(db, lambda rev: fd.save_unit(db, rev, {"floor": "5"}, world["u2"]))
     d = fd.open_draft(db, D, None)
     fd.save_unit(db, d.rev, {"floor": "7"}, world["u1"])
-    res = fd.publish(db, None, propagate=False)
+    res = fp.publish(db, None, propagate=False)
     assert _unit(db, L, world["u1"]).floor == "4"
     assert _unit(db, D, world["u1"]).floor == "7"
     assert res.propagated == res.kept == res.skipped == []
@@ -175,7 +176,7 @@ def test_move_same_date_draft_before_its_version_409(db, world):
     with pytest.raises(FundConflict, match="между датами"):
         fd.move_draft_date(db, d.rev, D)
     fd.move_draft_date(db, d.rev, L + dt.timedelta(days=3))
-    fd.publish(db, None)
+    fp.publish(db, None)
 
 
 # ── предпросмотр и перевод броней (через API) ──────────────────────────────

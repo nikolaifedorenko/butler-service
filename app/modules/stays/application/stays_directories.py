@@ -12,13 +12,13 @@ from app.core.auth import Principal
 from app.core.db import transactional
 
 from ..adapters.orm import VipCode
-from . import fund, guests, vip_codes
+from . import fund, guest_fields, guests, reservations, stays_catalog, vip_codes
 from .fund_forms import EscortIn, FieldIn, LabelIn, SeedIn, SettingsIn
 
 
 def overview(db: Session, *, with_staff: bool) -> dict:
     """Справочники одним ответом; ``with_staff`` — список сотрудников для экрана «Сопровождение»."""
-    out = {"staff": None, **fund.list_fund(db, with_staff=with_staff)}
+    out = {"staff": None, **stays_catalog.list_fund(db, with_staff=with_staff)}
     out["vip_codes"] = [vip_codes.code_dict(c) for c in vip_codes.all_codes(db)]     # и архивные
     return out
 
@@ -29,39 +29,40 @@ def _write(db: Session, principal: Principal, target: str, before: dict, after: 
 
 @transactional
 def save_label(db: Session, principal: Principal, payload: LabelIn, label_id: int | None) -> dict:
-    row, before = fund.save_label(db, payload.model_dump(), label_id)
-    after = fund.as_dict(row, fund.LABEL_FIELDS)
+    row, before = stays_catalog.save_label(db, payload.model_dump(), label_id)
+    after = fund.as_dict(row, stays_catalog.LABEL_FIELDS)
     _write(db, principal, f"label:{row.id}", before, after)
     return after
 
 
 @transactional
 def delete_label(db: Session, principal: Principal, label_id: int) -> dict:
-    before = fund.delete_label(db, label_id)
+    before = stays_catalog.delete_label(db, label_id)
     _write(db, principal, f"label:{label_id}", before, {k: None for k in before})
     return {"ok": True}
 
 
 @transactional
 def save_field(db: Session, principal: Principal, payload: FieldIn, field_id: int | None) -> dict:
-    row, before = fund.save_field(db, payload.model_dump(), field_id)
-    after = fund.field_dict(row)
+    row, before = guest_fields.save_field(db, payload.model_dump(), field_id)
+    after = guest_fields.field_dict(row)
     if bool(before.get("searchable")) != after["searchable"]:
         guests.reindex_search(db)          # флаг «искать по полю» меняет состав search_text
+        reservations.reindex_search(db)
     _write(db, principal, f"field:{row.id}", before, after)
     return after
 
 
 @transactional
 def delete_field(db: Session, principal: Principal, field_id: int) -> dict:
-    before = fund.delete_field(db, field_id)
+    before = guest_fields.delete_field(db, field_id)
     _write(db, principal, f"field:{field_id}", before, {k: None for k in before})
     return {"ok": True}
 
 
 @transactional
 def set_escort(db: Session, principal: Principal, employee_id: int, payload: EscortIn) -> dict:
-    row = fund.set_escort(db, employee_id, payload.active)
+    row = stays_catalog.set_escort(db, employee_id, payload.active)
     after = {"employee_id": employee_id, "active": row.active}
     _write(db, principal, f"escort:{employee_id}", {}, after)
     return after
@@ -69,16 +70,16 @@ def set_escort(db: Session, principal: Principal, employee_id: int, payload: Esc
 
 @transactional
 def seed_escorts(db: Session, principal: Principal, payload: SeedIn) -> dict:
-    added = fund.seed_escorts_from_positions(db, payload.position)
+    added = stays_catalog.seed_escorts_from_positions(db, payload.position)
     _write(db, principal, "escorts:seed", {}, {"added": added})
     return {"added": added}
 
 
 @transactional
 def save_settings(db: Session, principal: Principal, payload: SettingsIn) -> dict:
-    row, before = fund.save_settings(db, payload.special_factor, payload.daily_limit,
+    row, before = stays_catalog.save_settings(db, payload.special_factor, payload.daily_limit,
                                      payload.replacement_codes)
-    after = fund.as_dict(row, fund.SETTINGS_FIELDS)
+    after = fund.as_dict(row, stays_catalog.SETTINGS_FIELDS)
     _write(db, principal, "settings", before, after)
     return after
 
@@ -117,6 +118,6 @@ def archive_vip_code(db: Session, principal: Principal, code_id: int, archived: 
 @transactional
 def delete_vip_code(db: Session, principal: Principal, code_id: int) -> dict:
     before = _code_before(db, code_id)
-    vip_codes.delete_code(db, code_id)
+    vip_codes.delete_code(db, code_id, used_elsewhere=reservations.vip_code_in_use(db, code_id))
     _code_audit(db, principal, code_id, before, {k: None for k in before})
     return {"id": code_id}

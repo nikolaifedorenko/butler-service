@@ -121,6 +121,7 @@ def big_fund(app_stack):
     from app.core.time import local_date
     from app.modules.stays.adapters.orm import CategoryState, Guest, Occupant, Reservation, VipCode
     from app.modules.stays.application import fund_drafts as fd
+    from app.modules.stays.application import fund_publish as fp
     from app.modules.stays.application.allocation import run_allocation
 
     from .helpers import kind_id
@@ -134,8 +135,8 @@ def big_fund(app_stack):
             for i in range(440):
                 fd.save_unit(s, draft.rev, {"label": f"B{i:03d}", "category_id": cat_ids[i % 3],
                                             "floor": str(i // 40)}, None)
-            with mock.patch.object(fd._allocation, "run_allocation", lambda db: None):
-                fd.publish(s, None)                 # распределение — один раз, после броней
+            with mock.patch.object(fp.allocation, "run_allocation", lambda db: None):
+                fp.publish(s, None)                 # распределение — один раз, после броней
             base = dt.date(2029, 6, 1)
             vip = VipCode(code="79999999", title="big_fund", escorted=True)   # одна бронь с кодом — запрос кодов в видах
             s.add(vip)

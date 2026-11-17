@@ -58,7 +58,7 @@ from ..adapters.orm import (
     VipCode,
 )
 from . import allocation, fund_drafts
-from .fund import FundConflict, FundError, get_settings
+from .fund import FundConflict, FundError
 from .fund_drafts import _COLOR, _WEIGHT_MAX, FundFileError, _file_weight, unknown_kind_message
 from .fund_versions import INITIAL_DATE, fund_on
 from .fund_xlsx import (
@@ -72,6 +72,7 @@ from .fund_xlsx import (
     fund_sheets,
 )
 from .locking import lock_module
+from .stays_catalog import get_settings
 from .vip_codes import code_texts
 
 CONFIRM_WORD = "ЗАМЕНИТЬ"

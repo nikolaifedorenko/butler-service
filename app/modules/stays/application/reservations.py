@@ -27,7 +27,7 @@ from . import allocation
 from .context import reservation_escort
 from .fund import FundError, changes
 from .fund_versions import category_exists, fund_day, fund_for_stays, fund_on, unit_exists, version_cuts
-from .guests import reservation_search_text, searchable_codes, short_name, validate_fields
+from .guests import searchable_codes, short_name, validate_fields
 from .vip_codes import check_selectable
 
 STATUS_TITLES = {"tentative": "предварительная", "confirmed": "подтверждена", "in_house": "заселён",
@@ -401,6 +401,28 @@ def set_status(db: Session, rid: int, status: str, expected_version: int,
     db.flush()
     allocation.run_allocation(db)
     return r, before
+
+
+def reservation_search_text(r: Reservation, searchable: set[str]) -> str:
+    fields = r.fields
+    parts = [r.number, r.customer, *(str(v) for k, v in fields.items() if k in searchable)]
+    return " ".join(p for p in parts if p).lower()[:1000]
+
+
+def reindex_search(db: Session) -> int:
+    """Пересчёт ``search_text`` броней после изменения флага «искать по полю»."""
+    codes = searchable_codes(db, "reservation")
+    n = 0
+    for r in db.scalars(select(Reservation)):
+        r.search_text = reservation_search_text(r, codes)
+        n += 1
+    db.flush()
+    return n
+
+
+def vip_code_in_use(db: Session, code_id: int) -> bool:
+    """Стоит ли VIP-код хотя бы у одной брони."""
+    return db.scalar(select(Reservation.id).where(Reservation.vip_code_id == code_id).limit(1)) is not None
 
 
 def vip_code_of(db: Session, code_id: int | None) -> dict | None:

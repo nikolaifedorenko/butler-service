@@ -21,7 +21,7 @@ from .context import load_context
 from .fund_versions import FundTimeline, boundary_pos, fund_day, fund_for_stays
 from .guests import short_name, text_search
 from .reservations import STATUS_TITLES
-from .views import BoardFilters, ViewError, fund_match
+from .view_filters import BoardFilters, ViewError, fund_match
 from .visibility import LEVEL_ORDER, Level
 
 Mode = Literal["stay", "check_in", "check_out", "created"]

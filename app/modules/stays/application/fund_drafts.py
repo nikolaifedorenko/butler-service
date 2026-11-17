@@ -20,7 +20,6 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import delete, func, insert, literal, select, update
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.time import local_date, local_now
 
 from ..adapters.orm import (
@@ -30,17 +29,14 @@ from ..adapters.orm import (
     FundGroup,
     FundVersion,
     GroupState,
-    Reservation,
     Unit,
     UnitFlag,
     UnitLineage,
     UnitState,
     UnitStateFlag,
 )
-from . import allocation as _allocation
-from . import reservations
 from .fund import FundConflict, FundError
-from .fund_versions import INITIAL_DATE, FundSnapshot, fund_on, snapshot_of
+from .fund_versions import INITIAL_DATE, FundSnapshot, snapshot_of
 from .fund_xlsx import SHEET_CATEGORIES, SHEET_FLAGS, SHEET_TREE, SHEET_UNITS, FileError, ParsedFund
 from .locking import lock_module
 
@@ -678,48 +674,6 @@ def _propagate_later(db: Session, draft: FundVersion, out: PublishResult) -> Non
     db.expire_all()
 
 
-# ── перевод броней на категорию (§4.3) ─────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class Transfer:
-    reservation_id: int
-    category_id: int
-
-
-def _transfer(db: Session, principal, version: FundVersion, t: Transfer, categories: set[int]) -> dict:
-    """Заезд с D и позже — бронь целиком в категорию; бронь, живущая на D, — переезд с D.
-    Записывается тем же путём, что и правка формы: журнал брони «было → стало»."""
-    day = version.valid_from
-    r = db.get(Reservation, t.reservation_id)
-    if r is None:
-        raise FundError("бронь для перевода не найдена")
-    who = f"бронь {r.number or r.id}"
-    if t.category_id not in categories:
-        raise FundError(f"{who}: категории перевода нет в фонде с {day:%d.%m.%Y}")
-    if r.check_out <= day:
-        raise FundError(f"{who}: выезд до {day:%d.%m.%Y} — переводить нечего")
-    whole = r.check_in >= day
-    if whole:
-        doc = reservations.doc_of(db, r, category_id=t.category_id)
-    else:
-        doc = reservations.doc_of(db, r)
-        doc["moves"] = sorted([m for m in doc["moves"] if m["move_date"] != day]
-                              + [{"move_date": day, "category_id": t.category_id}], key=lambda m: m["move_date"])
-    # члены группы получают ту же категорию и переезды (save_reservation) — журнал и им
-    group = list(db.scalars(select(Reservation).where(Reservation.group_id == r.group_id,
-                                                      Reservation.id != r.id))) if r.group_id else []
-    others = [(m, reservations.reservation_snapshot(db, m)) for m in group]
-    saved, before = reservations.save_reservation(db, doc, r.id, r.version)
-    for m, was in [(saved, before), *others]:
-        change = reservations.diff_of(was, db, m)
-        if change or m is saved:
-            audit(db, principal, "stays_reservation", f"reservation:{m.id}",
-                  {"diff": change, "fund_version": version.id})
-    return {"reservation_id": saved.id, "number": saved.number, "category_id": t.category_id,
-            "since": None if whole else day.isoformat()}
-
-
 # ── публикация и удаление ──────────────────────────────────────────────────
 
 
@@ -733,11 +687,10 @@ class PublishResult:
     transfers: list[dict] = field(default_factory=list)
 
 
-def publish(db: Session, principal, rev: int | None = None, propagate: bool = True,
-            transfers: Sequence[Transfer] = ()) -> PublishResult:
-    """rev — ревизия, которую видел автор; сверяется уже под замком модуля, как в каждой записи.
-    propagate — перенести правки в опубликованные версии после даты черновика (§4.4);
-    transfers — перевод броней на категорию с даты версии (§4.3). Всё — одной транзакцией."""
+def publish_data(db: Session, rev: int | None = None, propagate: bool = True) -> PublishResult:
+    """Данные публикации: черновик становится версией (или заменяет снимок версии на ту же дату),
+    правки переносятся в поздние версии. Перевод броней, пересчёт размещения и журнал делает тот, кто
+    знает о бронях (``fund_publish``). ``rev`` сверяется под замком модуля, как в каждой записи."""
     lock_module(db)
     draft = current_draft(db)
     if draft is None:
@@ -771,18 +724,12 @@ def publish(db: Session, principal, rev: int | None = None, propagate: bool = Tr
     version.rev = 1
     out.version = version
     db.flush()
-    db.info.pop(_allocation.CACHE_KEY, None)            # фонд другой — прежнее состояние распределения не годится
-    if transfers:
-        categories = set(fund_on(db, day).categories)
-        out.transfers = [_transfer(db, principal, version, t, categories) for t in transfers]
-    _allocation.run_allocation(db)
-    audit(db, principal, "stays_fund_version", f"fund_version:{version.id}",
-          {"valid_from": day.isoformat(), "diff": change, "propagated": out.propagated, "kept": out.kept,
-           "skipped": out.skipped, "transfers": out.transfers})
     return out
 
 
-def delete_version(db: Session, version_id: int) -> None:
+def delete_version_data(db: Session, version_id: int) -> bool:
+    """Удалить версию или черновик. ``True`` — удалена опубликованная версия: размещение броней
+    придётся пересчитать (это делает ``fund_publish``)."""
     lock_module(db)
     v = db.get(FundVersion, version_id)
     if v is None:
@@ -803,8 +750,7 @@ def delete_version(db: Session, version_id: int) -> None:
     was_published = v.status == "published"
     db.delete(v)
     db.flush()
-    if was_published:
-        _allocation.run_allocation(db)
+    return was_published
 
 
 # ── начальная загрузка ─────────────────────────────────────────────────────

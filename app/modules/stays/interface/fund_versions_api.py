@@ -21,7 +21,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 
-from ..application import fund_admin, fund_dictionaries, fund_draft_edit, fund_screen
+from ..application import fund_admin, fund_dictionaries, fund_draft_edit, fund_publish, fund_screen
 from ..application.fund_forms import (
     ArchiveIn,
     DraftCategoryIn,
@@ -98,7 +98,7 @@ def move_draft(payload: DraftMoveIn, principal: Principal = Depends(SETUP), db: 
 def remove_version(vid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
                    db: Session = Depends(get_db)):
     """Удаление черновика или будущей версии и его предпросмотр (?preview=1)."""
-    return fund_draft_edit.delete_version(db, principal, vid, preview_only=preview_flag)
+    return fund_publish.delete_previewed(db, principal, vid, preview_only=preview_flag)
 
 
 @router.post("/fund/draft/categories", response_model=DraftEntityOut)
@@ -174,7 +174,7 @@ def put_draft_flags(payload: FlagValueIn, principal: Principal = Depends(SETUP),
 def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
                   db: Session = Depends(get_db)):
     """Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается (§4.3)."""
-    return fund_draft_edit.publish(db, principal, payload, preview_only=preview_flag)
+    return fund_publish.publish_previewed(db, principal, payload, preview_only=preview_flag)
 
 
 # ── файл фонда (§9) ──────────────────────────────────────────────────────────

@@ -13,20 +13,16 @@ from app.core.db import plain_json
 from app.core.time import local_date
 
 from ..adapters.orm import (
-    CoverageGuest,
     CustomField,
     FundGroup,
     Guest,
     GuestLink,
     GuestPref,
-    Occupant,
-    Reservation,
     Unit,
     UnitFlag,
 )
 from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
 from ..domain.prefs import KINDS as PREF_KINDS
-from . import allocation
 from .fund import FundConflict, FundError, as_dict, changes
 from .fund_versions import fund_for
 from .locking import lock_module
@@ -132,21 +128,13 @@ def guest_search_text(g: Guest, searchable: set[str]) -> str:
     return " ".join(p for p in parts if p).lower()[:1000]
 
 
-def reservation_search_text(r: Reservation, searchable: set[str]) -> str:
-    fields = r.fields
-    parts = [r.number, r.customer, *(str(v) for k, v in fields.items() if k in searchable)]
-    return " ".join(p for p in parts if p).lower()[:1000]
-
-
 def reindex_search(db: Session) -> int:
-    """Пересчёт search_text после изменения флага «искать по полю»."""
-    g_codes, r_codes = searchable_codes(db, "guest"), searchable_codes(db, "reservation")
+    """Пересчёт ``search_text`` гостей после изменения флага «искать по полю»; броней — там же,
+    где они (``reservations.reindex_search``)."""
+    codes = searchable_codes(db, "guest")
     n = 0
     for g in db.scalars(select(Guest)):
-        g.search_text = guest_search_text(g, g_codes)
-        n += 1
-    for r in db.scalars(select(Reservation)):
-        r.search_text = reservation_search_text(r, r_codes)
+        g.search_text = guest_search_text(g, codes)
         n += 1
     db.flush()
     return n
@@ -355,7 +343,7 @@ class TextSearch:
     def guest(self, g: Guest) -> bool:
         return self.needle in ((g.search_text if self.full else g.name_text) or "")
 
-    def reservation(self, r: Reservation) -> bool:
+    def reservation(self, r) -> bool:
         return self.needle in ((r.search_text if self.full else (r.number or "").lower()) or "")
 
     def text(self, s: str) -> bool:
@@ -402,7 +390,7 @@ def _symmetric(kind: str) -> bool:
 Plan = list[tuple[GuestLink, str, int, int, GuestLink | None]]
 
 
-def _plan_links(db: Session, keep_id: int, drop_id: int) -> Plan:
+def plan_links(db: Session, keep_id: int, drop_id: int) -> Plan:
     """Что станет со связями дубля: (связь, итог, новая A, новая B, связь keep для «current»).
     Итог: moved — переносится; duplicate — такая уже есть у keep; removed — связь между ними;
     current — у keep с тем же человеком бывший брак, у дубля действующий: брак keep становится
@@ -457,7 +445,7 @@ def _plan_links(db: Session, keep_id: int, drop_id: int) -> Plan:
     return plan
 
 
-def _apply_links(db: Session, plan: Plan, keep_id: int) -> list[dict]:
+def apply_links(db: Session, plan: Plan, keep_id: int) -> list[dict]:
     others = {a if b == keep_id else b for _, _, a, b, _ in plan}
     names = {g.id: short_name(g) for g in db.scalars(select(Guest).where(Guest.id.in_(others)))} if others else {}
     out = [{"guest_id": (a if b == keep_id else b), "name": names.get(a if b == keep_id else b, ""),
@@ -475,74 +463,13 @@ def _apply_links(db: Session, plan: Plan, keep_id: int) -> list[dict]:
     return out
 
 
-def _nights_runs(rows: list[Occupant]) -> list[tuple[dt.date, dt.date, str]]:
-    """Проживание одного человека в брони по ночам: главный, если хоть одна запись главная
-    в эту ночь; подряд идущие ночи с одной ролью — одна запись."""
-    roles: dict[dt.date, str] = {}
-    for o in rows:
-        d = o.date_from
-        while d < o.date_to:
-            roles[d] = "main" if o.role == "main" or roles.get(d) == "main" else "guest"
-            d += dt.timedelta(days=1)
-    runs: list[list] = []
-    for d in sorted(roles):
-        if runs and runs[-1][1] == d and runs[-1][2] == roles[d]:
-            runs[-1][1] = d + dt.timedelta(days=1)
-        else:
-            runs.append([d, d + dt.timedelta(days=1), roles[d]])
-    return [tuple(r) for r in runs]
-
-
-def _merge_occupants(db: Session, keep_id: int, drop_id: int) -> list[dict]:
-    """Записи «проживающий» дубля → оставляемому. Если оба живут в одной брони (Review Focus 1),
-    их записи сливаются в записи одного человека: без дубля в составе, главный — там, где
-    главным был любой из двух (двух главных на ночь у брони не бывает)."""
-    drop_occ = list(db.scalars(select(Occupant).where(Occupant.guest_id == drop_id).order_by(Occupant.id)))
-    rids = sorted({o.reservation_id for o in drop_occ})
-    if not rids:
-        return []
-    keep_occ = list(db.scalars(select(Occupant).where(Occupant.guest_id == keep_id,
-                                                      Occupant.reservation_id.in_(rids)).order_by(Occupant.id)))
-    shared = {o.reservation_id for o in keep_occ}
-    for o in drop_occ:
-        if o.reservation_id not in shared:
-            o.guest_id = keep_id
-    for rid in sorted(shared):
-        rows = [o for o in keep_occ + drop_occ if o.reservation_id == rid]
-        runs = _nights_runs(rows)
-        for o in rows:
-            db.delete(o)
-        db.add_all(Occupant(reservation_id=rid, guest_id=keep_id, date_from=a, date_to=b, role=role)
-                   for a, b, role in runs)
-    out = []
-    for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids)).order_by(Reservation.id)):
-        r.version += 1                       # открытая форма брони со старым составом получит 409
-        out.append({"id": r.id, "number": r.number, "shared": r.id in shared})
-    db.flush()
-    return out
-
-
-def _merge_coverage(db: Session, keep_id: int, drop_id: int) -> int:
-    """Строки покрытия, где дубль выбран явно, — на оставляемого (без повтора в строке)."""
-    lines = set(db.scalars(select(CoverageGuest.coverage_id).where(CoverageGuest.guest_id == drop_id)))
-    if not lines:
-        return 0
-    both = set(db.scalars(select(CoverageGuest.coverage_id).where(CoverageGuest.guest_id == keep_id,
-                                                                  CoverageGuest.coverage_id.in_(lines))))
-    if both:
-        db.execute(delete(CoverageGuest).where(CoverageGuest.guest_id == drop_id,
-                                               CoverageGuest.coverage_id.in_(both)))
-    db.execute(update(CoverageGuest).where(CoverageGuest.guest_id == drop_id).values(guest_id=keep_id))
-    return len(lines)
-
-
-def _fill_missing(mine: dict, theirs: dict) -> list[str]:
+def fill_missing(mine: dict, theirs: dict) -> list[str]:
     added = [k for k, v in theirs.items() if v not in (None, "") and mine.get(k) in (None, "")]
     mine.update({k: theirs[k] for k in added})
     return added
 
 
-def _merge_profile(keep: Guest, drop: Guest) -> dict:
+def merge_profile(keep: Guest, drop: Guest) -> dict:
     """Значения оставляемого побеждают; недостающее берётся у дубля. «Особый гость» — если он
     у любого из двоих; VIP-код дубля переходит, только если у оставляемого его нет; примечания —
     оба, через перевод строки."""
@@ -560,10 +487,10 @@ def _merge_profile(keep: Guest, drop: Guest) -> dict:
         keep.note = f"{keep.note.rstrip()}\n{note}" if (keep.note or "").strip() else note
         profile.append("note")
     prefs = dict(keep.preferences)
-    pref_added = _fill_missing(prefs, drop.preferences)
+    pref_added = fill_missing(prefs, drop.preferences)
     keep.preferences = prefs
     fields = dict(keep.fields)
-    fields_added = _fill_missing(fields, drop.fields)
+    fields_added = fill_missing(fields, drop.fields)
     keep.fields = fields
     dates = list(keep.special_dates)
     dates_added = [d for d in drop.special_dates if d not in dates]
@@ -571,7 +498,7 @@ def _merge_profile(keep: Guest, drop: Guest) -> dict:
     return {"profile": profile, "preferences": pref_added, "fields": fields_added, "special_dates": dates_added}
 
 
-def _not_carried(dropped: dict, kept: dict) -> dict:
+def not_carried(dropped: dict, kept: dict) -> dict:
     """Что из профиля дубля не перешло оставляемому (значения keep победили) — только это
     пишется в журнал: персональных данных в аудите — не больше необходимого."""
     out: dict = {}
@@ -646,7 +573,7 @@ def save_prefs(db: Session, guest_id: int, prefs: list[dict]) -> list[dict]:
     return prefs_of(db, guest_id)
 
 
-def _merge_prefs(db: Session, keep_id: int, drop_id: int) -> int:
+def merge_prefs(db: Session, keep_id: int, drop_id: int) -> int:
     """Пожелания дубля — оставляемому без повторов: тот же вид и объект — приоритет keep.
     Массовыми запросами, как покрытие: без связи в ORM порядок с удалением гостя не определён."""
     mine = {(p.kind, p.ref_id) for p in db.scalars(select(GuestPref).where(GuestPref.guest_id == keep_id))}
@@ -661,34 +588,3 @@ def _merge_prefs(db: Session, keep_id: int, drop_id: int) -> int:
     if len(ids) > MAX_PREFS:
         db.execute(delete(GuestPref).where(GuestPref.id.in_(ids[MAX_PREFS:])))
     return len(theirs) - len(dup)
-
-
-def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
-    """Объединить дубль drop в keep (addendum §3): проживания, строки покрытия, связи,
-    предпочтения, особые даты, настраиваемые поля переходят к keep, профиль drop удаляется.
-    Ввод — 422, нарушение семейного дерева — 409; все проверки — до первой записи.
-    Предпросмотр — этот же код с откатом (preview.run_operation). Ничего не коммитит."""
-    lock_module(db)
-    if keep_id == drop_id:
-        raise GuestError("Нельзя объединить гостя с самим собой")
-    keep, drop = db.get(Guest, keep_id), db.get(Guest, drop_id)
-    if keep is None or drop is None:
-        raise GuestError("Гость не найден")
-    plan = _plan_links(db, keep_id, drop_id)
-    dropped = guest_dict(drop)
-    reservations = _merge_occupants(db, keep_id, drop_id)
-    coverage = _merge_coverage(db, keep_id, drop_id)
-    links = _apply_links(db, plan, keep_id)
-    prefs = _merge_prefs(db, keep_id, drop_id)
-    merged = _merge_profile(keep, drop)
-    if keep.created_by_employee_id != drop.created_by_employee_id:
-        # автор профиля делает гостя «своим» батлеру (часть 4 §3): у слитого профиля — история
-        # обоих, автор остаётся, только если он у обоих один (решение 10)
-        keep.created_by_employee_id = None
-    db.delete(drop)
-    db.flush()
-    keep.search_text = guest_search_text(keep, searchable_codes(db, "guest"))
-    db.flush()
-    allocation.run_allocation(db)               # пожелания keep теперь действуют на перенесённые брони
-    return {"keep_id": keep_id, "drop_id": drop_id, "not_carried": _not_carried(dropped, guest_dict(keep)),
-            "moves": {"reservations": reservations, "links": links, "coverage": coverage, "prefs": prefs, **merged}}
