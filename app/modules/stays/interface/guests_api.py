@@ -1,134 +1,53 @@
 """API профилей гостей (§3.2, §8): список с фамилиями — stays.view, карточка целиком —
 stays.guests, запись — stays.edit. Батлер (часть 4 §3) — только свои гости: чтение — stays.mine,
 профиль, пожелания и связи — stays.mine_guest_edit. Изменения — в журнале аудита с разницей полей.
-Вкладка «Гости» (addendum §3): справочник с фильтрами, история проживаний, объединение дублей."""
+Вкладка «Гости» (addendum §3): справочник с фильтрами, история проживаний, объединение дублей.
+
+Правила — в прикладном слое: ``guest_screen`` (чтение), ``guest_edit`` (запись), ``guest_access``
+(кто что видит и правит). Роутер разбирает запрос и проверяет право эндпоинта.
+"""
 from __future__ import annotations
 
 import datetime as dt
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
-from app.core.time import local_date
+from app.core.schemas import Ok
 
-from ..adapters.orm import Guest
-from ..application import allocation, family, guests, guests_list, history, mine, reservations, vip_codes
-from ..application.fund import FundConflict, FundError
-from ..application.visibility import at_least, level_for
-from ._mine import own_guest, own_link
-from ._ops import PREVIEW, run
+from ..adapters.duty_timesheet import TimesheetDuty
+from ..application import guest_edit, guest_screen, guests_list
+from ..application.guest_forms import FormerIn, GuestIn, GuestUpdateIn, LinkIn, MergeIn, PrefsIn
+from ._ops import PREVIEW
+from .schemas import (
+    FamilyOut,
+    GuestCardOut,
+    GuestLinkCreatedOut,
+    GuestLinkFormerOut,
+    GuestMergedOut,
+    GuestPickOut,
+    GuestPrefOut,
+    GuestPrefsSavedOut,
+    GuestStayOut,
+    GuestTabOut,
+    GuestUpdatedOut,
+)
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 
 
-def _err(e: FundError) -> HTTPException:
-    return HTTPException(status_code=409 if isinstance(e, FundConflict) else 422, detail=str(e))
-
-
-class SpecialDate(BaseModel):
-    date: dt.date
-    what: str = Field(max_length=120)
-
-
-class GuestIn(BaseModel):
-    last_name: str = Field(min_length=1, max_length=80)
-    first_name: str = Field("", max_length=80)
-    middle_name: str = Field("", max_length=80)
-    phone: str = Field("", max_length=40)
-    email: str = Field("", max_length=120)
-    birth_date: Optional[dt.date] = None
-    gender: Literal["m", "f", ""] = ""
-    special: bool = False
-    vip_code_id: Optional[int] = None
-    preferences: dict[str, str] = {}
-    special_dates: list[SpecialDate] = []
-    fields: dict = {}
-    note: str = Field("", max_length=4000)
-
-
-class GuestUpdateIn(GuestIn):
-    """Правка профиля: сменился код — update_reservations переносит его в текущие и будущие
-    брони, где гость главный (§3.1); по умолчанию — да."""
-    update_reservations: bool = True
-
-
-class NewGuestIn(BaseModel):
-    last_name: str = Field(min_length=1, max_length=80)
-    first_name: str = Field("", max_length=80)
-    gender: Literal["m", "f", ""] = ""
-
-
-class LinkIn(BaseModel):
-    """parent — гость из пути родитель guest_id; former — бывшие супруги. Вторая сторона —
-    guest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая
-    сторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка."""
-    guest_id: Optional[int] = None
-    new_guest: Optional[NewGuestIn] = None
-    kind: str
-    former: bool = False
-    other_is_parent: bool = False
-    also_parent_id: Optional[int] = None
-
-
-class FormerIn(BaseModel):
-    """former — супруги бывшие (true) или действующие (false)."""
-    former: bool
-
-
-class PrefIn(BaseModel):
-    """Пожелание к объекту: узел фонда, флаг или объект; priority — больше, важнее."""
-    kind: Literal["group", "flag", "unit"]
-    ref_id: int = Field(ge=1)
-    priority: int = Field(1, ge=1, le=guests.MAX_PRIORITY)
-
-
-class PrefsIn(BaseModel):
-    prefs: list[PrefIn] = Field(max_length=guests.MAX_PREFS)
-
-
-class MergeIn(BaseModel):
-    """keep_id — кого оставить, drop_id — дубль, который удаляется."""
-    keep_id: int
-    drop_id: int
-
-
-def _card(db: Session, g: Guest) -> dict:
-    return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, g.id)}
-
-
-@router.get("/guests")
+@router.get("/guests", response_model=list[GuestPickOut])
 def list_guests(q: str = "", mine_only: bool = Query(False, alias="mine"),
                 principal: Principal = Depends(require_perm("stays.view")), db: Session = Depends(get_db)):
-    """Подбор гостя: без контактов и дат рождения. Полный уровень — по ФИО, телефону, почте и
-    полям с поиском; ниже — только по ФИО (решение 8: иначе по ответу подбирается чужой телефон).
-    mine=1 — только свои гости батлера (редактор связей, часть 4 §3)."""
-    full = level_for(db, principal) == "full"
-    if mine_only:
-        found = [] if principal.employee is None else mine.search_my_guests(db, principal.employee.id, q, full)
-    else:
-        found = guests.search_guests(db, q, full=full)
-    codes = vip_codes.code_texts(db) if any(g.vip_code_id for g in found) else {}
-    return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
-             "middle_name": g.middle_name, "special": bool(g.special),
-             "vip_code_id": g.vip_code_id, "vip_code": codes.get(g.vip_code_id, ("", False))[0],
-             "short": guests.short_name(g)}
-            for g in found]
+    """Подбор гостя; mine=1 — только свои гости батлера (редактор связей, часть 4 §3)."""
+    return guest_screen.search(db, principal, q, mine_only)
 
 
-def _require_full(db: Session, principal: Principal) -> None:
-    """Вкладка «Гости» и всё, что из неё (addendum §3): только полный уровень — stays.guests
-    вместе с доступом к шахматке с фамилиями."""
-    if level_for(db, principal) != "full":
-        raise HTTPException(status_code=403, detail="Справочник гостей — с правом «Профили гостей целиком»")
-
-
-@router.get("/guests/list")
+@router.get("/guests/list", response_model=GuestTabOut)
 def guests_tab(q: str = "", special: bool = False, vip_code_id: Optional[int] = None,
                stayed_from: Optional[dt.date] = None, stayed_to: Optional[dt.date] = None,
                birthday_days: Optional[int] = Query(None, ge=0, le=guests_list.MAX_BIRTHDAY_DAYS),
@@ -136,217 +55,85 @@ def guests_tab(q: str = "", special: bool = False, vip_code_id: Optional[int] = 
                offset: int = Query(0, ge=0), limit: int = Query(guests_list.MAX_LIMIT, ge=1, le=guests_list.MAX_LIMIT),
                principal: Principal = Depends(require_perm("stays.guests")), db: Session = Depends(get_db)):
     """Вкладка «Гости»: только полный уровень (stays.guests), остальным — 403."""
-    _require_full(db, principal)
-    try:
-        query = guests_list.GuestQuery(q, special, vip_code_id, stayed_from, stayed_to, birthday_days, sort, dir,
-                                        offset, limit)
-    except FundError as e:
-        raise _err(e) from e
-    return guests_list.list_guests(db, query)
+    return guest_screen.tab(db, principal, q=q, special=special, vip_code_id=vip_code_id,
+                            stayed_from=stayed_from, stayed_to=stayed_to, birthday_days=birthday_days,
+                            sort=sort, direction=dir, offset=offset, limit=limit)
 
 
-@router.post("/guests/merge")
+@router.post("/guests/merge", response_model=GuestMergedOut)
 def merge_guests(payload: MergeIn, preview_flag: bool = PREVIEW,
                  principal: Principal = Depends(require_perm("stays.edit")), db: Session = Depends(get_db)):
     """Объединение дублей: ?preview=1 — что перенесётся, тем же кодом с откатом."""
-    _require_full(db, principal)
-
-    def op() -> dict:
-        out = guests.merge_guests(db, payload.keep_id, payload.drop_id)
-        audit(db, principal, "stays_guest_merge", f"guest:{payload.keep_id}",
-              {"drop_id": payload.drop_id, "not_carried": out.pop("not_carried"), "moves": out["moves"]})
-        return out
-
-    done = run(db, op, preview_flag, None, principal)
-    return {"preview": done["preview"], **done["result"], "diff": done["diff"],
-            **({"overbook_refused": done["overbook_refused"]} if "overbook_refused" in done else {})}
+    return guest_edit.merge(db, principal, payload, preview_only=preview_flag)
 
 
-@router.get("/guests/{gid}")
+@router.get("/guests/{gid}", response_model=GuestCardOut)
 def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
               db: Session = Depends(get_db)):
-    g = db.get(Guest, gid)
-    if g is None:
-        raise HTTPException(status_code=404, detail="Гость не найден")
-    own_guest(db, principal, gid, "stays.guests")
-    return _card(db, g)
+    return guest_screen.get_card(db, principal, gid)
 
 
-@router.get("/guests/{gid}/stays")
+@router.get("/guests/{gid}/stays", response_model=list[GuestStayOut])
 def guest_stays(gid: int, principal: Principal = Depends(require_perm("stays.guests")),
                 db: Session = Depends(get_db)):
     """История проживаний гостя: все брони, где он жил, с объектами по фонду дня и батлерами."""
-    _require_full(db, principal)
-    if db.get(Guest, gid) is None:
-        raise HTTPException(status_code=404, detail="Гость не найден")
-    return history.guest_stays(db, gid)
+    return guest_screen.stays_of(db, principal, gid)
 
 
-@router.get("/guests/{gid}/prefs")
+@router.get("/guests/{gid}/prefs", response_model=list[GuestPrefOut])
 def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
                 db: Session = Depends(get_db)):
-    """Пожелания гостя к объекту (часть 2 §5): полный уровень (stays.guests) или свой гость батлера."""
-    if db.get(Guest, gid) is None:
-        raise HTTPException(status_code=404, detail="Гость не найден")
-    if not own_guest(db, principal, gid, "stays.guests"):
-        _require_full(db, principal)
-    return guests.prefs_of(db, gid)
+    """Пожелания гостя к объекту (часть 2 §5): полный уровень или свой гость батлера."""
+    return guest_screen.prefs(db, principal, gid)
 
 
-@router.put("/guests/{gid}/prefs")
+@router.put("/guests/{gid}/prefs", response_model=GuestPrefsSavedOut)
 def set_guest_prefs(gid: int, payload: PrefsIn, preview_flag: bool = PREVIEW,
                     principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                     db: Session = Depends(get_db)):
-    """Заменить пожелания гостя целиком. Распределение пересчитывается тут же (брони гостя могут
-    переехать): ?preview=1 показывает, кто переедет; новый овербукинг без права stays.overbook — 409.
-    stays.edit — с полным уровнем; батлер — своему гостю, тем же предпросмотром."""
-    if db.get(Guest, gid) is None:
-        raise HTTPException(status_code=404, detail="Гость не найден")
-    if not own_guest(db, principal, gid, "stays.edit"):
-        _require_full(db, principal)
-
-    def op() -> list[dict]:
-        before = guests.prefs_of(db, gid)               # под замком модуля (run_operation)
-        after = guests.save_prefs(db, gid, [p.model_dump() for p in payload.prefs])
-        allocation.run_allocation(db)
-        audit(db, principal, "stays_guest_prefs", f"guest:{gid}", {"diff": {"prefs": [before, after]}})
-        return after
-
-    return run(db, op, preview_flag, None, principal)
+    """Заменить пожелания гостя целиком; ?preview=1 показывает, кто из броней переедет."""
+    return guest_edit.set_prefs(db, principal, gid, payload, preview_only=preview_flag)
 
 
-def _guest_data(data: dict) -> dict:
-    return {**data, "special_dates": [{"date": d["date"].isoformat(), "what": d["what"]} for d in data["special_dates"]]}
-
-
-def _save(db: Session, principal: Principal, payload: GuestIn, gid: Optional[int]) -> dict:
-    try:
-        g, before = guests.save_guest(db, _guest_data(payload.model_dump()), gid)
-    except FundError as e:
-        raise _err(e) from e
-    audit(db, principal, "stays_guest", f"guest:{g.id}", {"diff": guests.guest_changes(before, g)})
-    db.commit()
-    return _card(db, g)
-
-
-@router.post("/guests")
+@router.post("/guests", response_model=GuestCardOut)
 def create_guest(payload: GuestIn, principal: Principal = Depends(require_perm("stays.edit")),
                  db: Session = Depends(get_db)):
-    return _save(db, principal, payload, None)
+    return guest_edit.create(db, principal, payload)
 
 
-@router.put("/guests/{gid}")
+@router.put("/guests/{gid}", response_model=GuestUpdatedOut)
 def update_guest(gid: int, payload: GuestUpdateIn, preview_flag: bool = PREVIEW,
                  principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                  db: Session = Depends(get_db)):
-    """Правка профиля. Код сменился и update_reservations — той же операцией код переходит в текущие и
-    будущие брони, где гость главный; ?preview=1 показывает, что изменится (окно — от сегодня до самого
-    позднего выезда этих броней). Ответ: {guest, updated_reservations, diff?}."""
-    data = payload.model_dump(exclude={"update_reservations"})
-    g = db.get(Guest, gid)
-    window = None
-    if g is not None:
-        if own_guest(db, principal, gid, "stays.edit"):
-            try:
-                mine.check_guest_change(guests.guest_dict(g), data)
-            except mine.MineForbidden as e:
-                raise HTTPException(status_code=403, detail=str(e)) from e
-        if payload.update_reservations and payload.vip_code_id != g.vip_code_id:
-            today = local_date()
-            ahead = reservations.main_reservations(db, gid, today)
-            if ahead:
-                window = (today, max(r.check_out for r in ahead) - dt.timedelta(days=1))
-
-    def op() -> dict:
-        saved, before = guests.save_guest(db, _guest_data(data), gid)
-        audit(db, principal, "stays_guest", f"guest:{saved.id}", {"diff": guests.guest_changes(before, saved)})
-        done = 0
-        if payload.update_reservations and saved.vip_code_id != before.get("vip_code_id"):
-            # под замком модуля: состав броней перечитан после записи профиля
-            affected = reservations.main_reservations(db, gid, local_date())
-            for r, was in reservations.set_main_code(db, affected, saved.vip_code_id):
-                audit(db, principal, "stays_reservation", f"reservation:{r.id}",
-                      {"diff": {"vip_code_id": [was, r.vip_code_id]}})
-                done += 1
-        return {"guest": _card(db, saved), "updated_reservations": done}
-
-    out = run(db, op, preview_flag, window, principal)
-    return {"preview": out["preview"], **out["result"], **({"diff": out["diff"]} if window else {}),
-            **({"overbook_refused": out["overbook_refused"]} if "overbook_refused" in out else {})}
+    """Правка профиля; смена кода переходит в текущие и будущие брони, где гость главный."""
+    return guest_edit.update(db, principal, gid, payload, preview_only=preview_flag, duty=TimesheetDuty(db))
 
 
-@router.post("/guests/{gid}/links")
+@router.post("/guests/{gid}/links", response_model=GuestLinkCreatedOut)
 def create_link(gid: int, payload: LinkIn,
                 principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                 db: Session = Depends(get_db)):
-    """Связь, при необходимости — с новым гостем и вторым родителем: всё одной записью под
-    замком модуля; отказ любой проверки — 422, не создаётся ничего. Батлер — только своему гостю;
-    заведённый им новый человек становится его «своим» (часть 4 §3)."""
-    butler = own_guest(db, principal, gid, "stays.edit")
-    if butler:
-        # существующая вторая сторона и второй родитель — тоже свои: иначе связью «прямая связь»
-        # батлер открыл бы себе чужой профиль (через состав брони); новый человек — свободно
-        for other_id in (payload.guest_id, payload.also_parent_id):
-            if other_id is not None and not mine.owns_guest(db, principal.employee.id, other_id):
-                raise HTTPException(status_code=403, detail="Связать можно только со своим гостем или новым человеком")
-    try:
-        rows, other = guests.add_links(
-            db, gid, payload.kind, other_id=payload.guest_id,
-            new_guest=payload.new_guest.model_dump() if payload.new_guest else None, former=payload.former,
-            other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id,
-            created_by=principal.employee.id if butler else None)    # заведённый батлером — его «свой»
-    except FundError as e:
-        db.rollback()          # новый гость и первая связь уже в flush — откат целиком
-        raise _err(e) from e
-    if payload.new_guest:
-        audit(db, principal, "stays_guest", f"guest:{other}", {"created": payload.new_guest.model_dump()})
-    for row in rows:
-        audit(db, principal, "stays_guest_link", f"guest:{row.guest_a_id}",
-              {"added": {"guest_id": row.guest_b_id, "kind": row.kind, "former": row.former, "link_id": row.id}})
-    db.commit()
-    return {"id": rows[0].id, "guest_id": other, "ids": [r.id for r in rows]}
+    """Связь, при необходимости — с новым гостем и вторым родителем; отказ — ничего не создаётся."""
+    return guest_edit.add_link(db, principal, gid, payload)
 
 
-@router.get("/guests/{gid}/family")
+@router.get("/guests/{gid}/family", response_model=FamilyOut)
 def guest_family(gid: int, principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
                  db: Session = Depends(get_db)):
-    """Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только
-    полный уровень. Граф — до 3 поколений вверх и вниз и через брак."""
-    level = level_for(db, principal)
-    if not at_least(level, "names"):
-        raise HTTPException(status_code=403, detail="Семейное дерево — с уровня «с фамилиями»")
-    if db.get(Guest, gid) is None:
-        raise HTTPException(status_code=404, detail="Гость не найден")
-    return family.family(db, gid, level)
+    """Семейное дерево (§4): уровень «с фамилиями» и выше."""
+    return guest_screen.family(db, principal, gid)
 
 
-@router.patch("/guest-links/{link_id}")
+@router.patch("/guest-links/{link_id}", response_model=GuestLinkFormerOut)
 def set_link_former(link_id: int, payload: FormerIn,
                     principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                     db: Session = Depends(get_db)):
-    """«Бывшие» на линии супругов в редакторе дерева: снять — только если у обоих нет
-    другого действующего супруга (422). Батлер — если хотя бы одна сторона своя."""
-    own_link(db, principal, link_id)
-    try:
-        row, before = guests.set_former(db, link_id, payload.former)
-    except FundError as e:
-        raise _err(e) from e
-    audit(db, principal, "stays_guest_link", f"guest:{row.guest_a_id}",
-          {"former": [before, row.former], "guest_id": row.guest_b_id, "link_id": link_id})
-    db.commit()
-    return {"id": row.id, "former": row.former}
+    """«Бывшие» на линии супругов в редакторе дерева."""
+    return guest_edit.set_link_former(db, principal, link_id, payload)
 
 
-@router.delete("/guest-links/{link_id}")
+@router.delete("/guest-links/{link_id}", response_model=Ok)
 def remove_link(link_id: int, principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                 db: Session = Depends(get_db)):
     """Батлер — если хотя бы одна сторона связи своя."""
-    own_link(db, principal, link_id)
-    try:
-        row = guests.delete_link(db, link_id)
-    except FundError as e:
-        raise _err(e) from e
-    audit(db, principal, "stays_guest_link", f"guest:{row.guest_a_id}",
-          {"removed": {"guest_id": row.guest_b_id, "kind": row.kind, "link_id": link_id}})
-    db.commit()
-    return {"ok": True}
+    return guest_edit.remove_link(db, principal, link_id)

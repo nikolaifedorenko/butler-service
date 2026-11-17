@@ -6262,6 +6262,175 @@
         "title": "FactSessionsOut",
         "type": "object"
       },
+      "FamilyKinOut": {
+        "additionalProperties": false,
+        "properties": {
+          "degree": {
+            "title": "Degree",
+            "type": "integer"
+          },
+          "person_id": {
+            "title": "Person Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "person_id",
+          "title",
+          "degree"
+        ],
+        "title": "FamilyKinOut",
+        "type": "object"
+      },
+      "FamilyLinkOut": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "integer"
+          },
+          "b": {
+            "title": "B",
+            "type": "integer"
+          },
+          "former": {
+            "title": "Former",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "a",
+          "b",
+          "former"
+        ],
+        "title": "FamilyLinkOut",
+        "type": "object"
+      },
+      "FamilyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "kin": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyKinOut"
+            },
+            "title": "Kin",
+            "type": "array"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyLinkOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "parents": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Parents",
+            "type": "array"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyPersonOut"
+            },
+            "title": "People",
+            "type": "array"
+          },
+          "spouses": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Spouses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "people",
+          "parents",
+          "spouses",
+          "links",
+          "kin"
+        ],
+        "title": "FamilyOut",
+        "type": "object"
+      },
+      "FamilyPersonOut": {
+        "additionalProperties": false,
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "vip_code": {
+            "title": "Vip Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "gender",
+          "special",
+          "vip_code",
+          "phone",
+          "birth_date"
+        ],
+        "title": "FamilyPersonOut",
+        "type": "object"
+      },
       "FieldIn": {
         "properties": {
           "choices": {
@@ -7532,6 +7701,152 @@
         "title": "GroupOut",
         "type": "object"
       },
+      "GuestCardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "title": "Fields",
+            "type": "object"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/GuestLinkRowOut"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "main_current": {
+            "title": "Main Current",
+            "type": "integer"
+          },
+          "middle_name": {
+            "title": "Middle Name",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "phone_display": {
+            "title": "Phone Display",
+            "type": "string"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Preferences",
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "special_dates": {
+            "items": {
+              "$ref": "#/components/schemas/SpecialDateOut"
+            },
+            "title": "Special Dates",
+            "type": "array"
+          },
+          "vip_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuestVipCodeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
+          }
+        },
+        "required": [
+          "id",
+          "last_name",
+          "first_name",
+          "middle_name",
+          "phone",
+          "phone_display",
+          "email",
+          "birth_date",
+          "gender",
+          "special",
+          "vip_code_id",
+          "vip_code",
+          "main_current",
+          "note",
+          "external_id",
+          "source",
+          "preferences",
+          "special_dates",
+          "fields",
+          "links"
+        ],
+        "title": "GuestCardOut",
+        "type": "object"
+      },
       "GuestIn": {
         "properties": {
           "birth_date": {
@@ -7635,6 +7950,415 @@
           "last_name"
         ],
         "title": "GuestIn",
+        "type": "object"
+      },
+      "GuestLinkCreatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "guest_id": {
+            "title": "Guest Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "guest_id",
+          "ids"
+        ],
+        "title": "GuestLinkCreatedOut",
+        "type": "object"
+      },
+      "GuestLinkFormerOut": {
+        "additionalProperties": false,
+        "properties": {
+          "former": {
+            "title": "Former",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "former"
+        ],
+        "title": "GuestLinkFormerOut",
+        "type": "object"
+      },
+      "GuestLinkRowOut": {
+        "additionalProperties": false,
+        "description": "Связь гостя в его карточке.",
+        "properties": {
+          "former": {
+            "title": "Former",
+            "type": "boolean"
+          },
+          "guest_id": {
+            "title": "Guest Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "vip_code": {
+            "title": "Vip Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "guest_id",
+          "kind",
+          "former",
+          "label",
+          "name",
+          "special",
+          "vip_code"
+        ],
+        "title": "GuestLinkRowOut",
+        "type": "object"
+      },
+      "GuestMergedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "drop_id": {
+            "title": "Drop Id",
+            "type": "integer"
+          },
+          "keep_id": {
+            "title": "Keep Id",
+            "type": "integer"
+          },
+          "moves": {
+            "additionalProperties": true,
+            "title": "Moves",
+            "type": "object"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "preview",
+          "keep_id",
+          "drop_id",
+          "moves",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "GuestMergedOut",
+        "type": "object"
+      },
+      "GuestPickOut": {
+        "additionalProperties": false,
+        "description": "Гость в подборе: без контактов и дат рождения.",
+        "properties": {
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_name": {
+            "title": "Last Name",
+            "type": "string"
+          },
+          "middle_name": {
+            "title": "Middle Name",
+            "type": "string"
+          },
+          "short": {
+            "title": "Short",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "vip_code": {
+            "title": "Vip Code",
+            "type": "string"
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
+          }
+        },
+        "required": [
+          "id",
+          "last_name",
+          "first_name",
+          "middle_name",
+          "special",
+          "vip_code_id",
+          "vip_code",
+          "short"
+        ],
+        "title": "GuestPickOut",
+        "type": "object"
+      },
+      "GuestPrefOut": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "ref_id": {
+            "title": "Ref Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref_id",
+          "priority",
+          "title"
+        ],
+        "title": "GuestPrefOut",
+        "type": "object"
+      },
+      "GuestPrefsSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/GuestPrefOut"
+            },
+            "title": "Result",
+            "type": "array"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "GuestPrefsSavedOut",
+        "type": "object"
+      },
+      "GuestStayOut": {
+        "additionalProperties": false,
+        "properties": {
+          "butlers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Butlers",
+            "type": "array"
+          },
+          "date_from": {
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "title": "Date To",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "reservation_id": {
+            "title": "Reservation Id",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reservation_id",
+          "number",
+          "role",
+          "status",
+          "status_title",
+          "date_from",
+          "date_to",
+          "units",
+          "butlers"
+        ],
+        "title": "GuestStayOut",
+        "type": "object"
+      },
+      "GuestTabOut": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/GuestTabRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "rows"
+        ],
+        "title": "GuestTabOut",
+        "type": "object"
+      },
+      "GuestTabRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_stay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Stay"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "stays": {
+            "title": "Stays",
+            "type": "integer"
+          },
+          "vip_code": {
+            "title": "Vip Code",
+            "type": "string"
+          },
+          "vip_code_archived": {
+            "title": "Vip Code Archived",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "special",
+          "vip_code",
+          "vip_code_archived",
+          "gender",
+          "phone",
+          "last_stay",
+          "stays"
+        ],
+        "title": "GuestTabRowOut",
         "type": "object"
       },
       "GuestUpdateIn": {
@@ -7746,6 +8470,81 @@
           "last_name"
         ],
         "title": "GuestUpdateIn",
+        "type": "object"
+      },
+      "GuestUpdatedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImpactDiffOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guest": {
+            "$ref": "#/components/schemas/GuestCardOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "updated_reservations": {
+            "title": "Updated Reservations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "preview",
+          "guest",
+          "updated_reservations",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "GuestUpdatedOut",
+        "type": "object"
+      },
+      "GuestVipCodeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "title",
+          "archived"
+        ],
+        "title": "GuestVipCodeOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -14902,6 +15701,25 @@
         "title": "SpecialDate",
         "type": "object"
       },
+      "SpecialDateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "what": {
+            "title": "What",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "what"
+        ],
+        "title": "SpecialDateOut",
+        "type": "object"
+      },
       "SplitIn": {
         "properties": {
           "parts": {
@@ -17254,6 +18072,25 @@
         "title": "SettingsIn",
         "type": "object"
       },
+      "app__modules__stays__application__guest_forms__MergeIn": {
+        "description": "keep_id — кого оставить, drop_id — дубль, который удаляется.",
+        "properties": {
+          "drop_id": {
+            "title": "Drop Id",
+            "type": "integer"
+          },
+          "keep_id": {
+            "title": "Keep Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keep_id",
+          "drop_id"
+        ],
+        "title": "MergeIn",
+        "type": "object"
+      },
       "app__modules__stays__interface__coverage_api__DaysIn": {
         "properties": {
           "days": {
@@ -17372,25 +18209,6 @@
           "last"
         ],
         "title": "TemplateIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__guests_api__MergeIn": {
-        "description": "keep_id — кого оставить, drop_id — дубль, который удаляется.",
-        "properties": {
-          "drop_id": {
-            "title": "Drop Id",
-            "type": "integer"
-          },
-          "keep_id": {
-            "title": "Keep Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "keep_id",
-          "drop_id"
-        ],
-        "title": "MergeIn",
         "type": "object"
       },
       "app__modules__stays__interface__reservations_api__GroupIn": {
@@ -28723,7 +29541,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -28745,7 +29565,7 @@
         ]
       },
       "patch": {
-        "description": "«Бывшие» на линии супругов в редакторе дерева: снять — только если у обоих нет\nдругого действующего супруга (422). Батлер — если хотя бы одна сторона своя.",
+        "description": "«Бывшие» на линии супругов в редакторе дерева.",
         "operationId": "set_link_former_api_stays_guest_links__link_id__patch",
         "parameters": [
           {
@@ -28772,7 +29592,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestLinkFormerOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28796,7 +29618,7 @@
     },
     "/api/stays/guests": {
       "get": {
-        "description": "Подбор гостя: без контактов и дат рождения. Полный уровень — по ФИО, телефону, почте и\nполям с поиском; ниже — только по ФИО (решение 8: иначе по ответу подбирается чужой телефон).\nmine=1 — только свои гости батлера (редактор связей, часть 4 §3).",
+        "description": "Подбор гостя; mine=1 — только свои гости батлера (редактор связей, часть 4 §3).",
         "operationId": "list_guests_api_stays_guests_get",
         "parameters": [
           {
@@ -28824,7 +29646,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuestPickOut"
+                  },
+                  "title": "Response List Guests Api Stays Guests Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -28861,7 +29689,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestCardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29034,7 +29864,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestTabOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29078,7 +29910,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__guests_api__MergeIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__guest_forms__MergeIn"
               }
             }
           },
@@ -29088,7 +29920,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestMergedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29128,7 +29962,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestCardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29150,7 +29986,7 @@
         ]
       },
       "put": {
-        "description": "Правка профиля. Код сменился и update_reservations — той же операцией код переходит в текущие и\nбудущие брони, где гость главный; ?preview=1 показывает, что изменится (окно — от сегодня до самого\nпозднего выезда этих броней). Ответ: {guest, updated_reservations, diff?}.",
+        "description": "Правка профиля; смена кода переходит в текущие и будущие брони, где гость главный.",
         "operationId": "update_guest_api_stays_guests__gid__put",
         "parameters": [
           {
@@ -29189,7 +30025,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestUpdatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29254,7 +30092,7 @@
     },
     "/api/stays/guests/{gid}/family": {
       "get": {
-        "description": "Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только\nполный уровень. Граф — до 3 поколений вверх и вниз и через брак.",
+        "description": "Семейное дерево (§4): уровень «с фамилиями» и выше.",
         "operationId": "guest_family_api_stays_guests__gid__family_get",
         "parameters": [
           {
@@ -29271,7 +30109,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29295,7 +30135,7 @@
     },
     "/api/stays/guests/{gid}/links": {
       "post": {
-        "description": "Связь, при необходимости — с новым гостем и вторым родителем: всё одной записью под\nзамком модуля; отказ любой проверки — 422, не создаётся ничего. Батлер — только своему гостю;\nзаведённый им новый человек становится его «своим» (часть 4 §3).",
+        "description": "Связь, при необходимости — с новым гостем и вторым родителем; отказ — ничего не создаётся.",
         "operationId": "create_link_api_stays_guests__gid__links_post",
         "parameters": [
           {
@@ -29322,7 +30162,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestLinkCreatedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29346,7 +30188,7 @@
     },
     "/api/stays/guests/{gid}/prefs": {
       "get": {
-        "description": "Пожелания гостя к объекту (часть 2 §5): полный уровень (stays.guests) или свой гость батлера.",
+        "description": "Пожелания гостя к объекту (часть 2 §5): полный уровень или свой гость батлера.",
         "operationId": "guest_prefs_api_stays_guests__gid__prefs_get",
         "parameters": [
           {
@@ -29363,7 +30205,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuestPrefOut"
+                  },
+                  "title": "Response Guest Prefs Api Stays Guests  Gid  Prefs Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -29385,7 +30233,7 @@
         ]
       },
       "put": {
-        "description": "Заменить пожелания гостя целиком. Распределение пересчитывается тут же (брони гостя могут\nпереехать): ?preview=1 показывает, кто переедет; новый овербукинг без права stays.overbook — 409.\nstays.edit — с полным уровнем; батлер — своему гостю, тем же предпросмотром.",
+        "description": "Заменить пожелания гостя целиком; ?preview=1 показывает, кто из броней переедет.",
         "operationId": "set_guest_prefs_api_stays_guests__gid__prefs_put",
         "parameters": [
           {
@@ -29424,7 +30272,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GuestPrefsSavedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29465,7 +30315,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuestStayOut"
+                  },
+                  "title": "Response Guest Stays Api Stays Guests  Gid  Stays Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"

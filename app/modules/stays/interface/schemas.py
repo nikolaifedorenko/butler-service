@@ -289,3 +289,170 @@ class EscortChangedOut(ApiModel):
 
 class EscortsSeededOut(ApiModel):
     added: int
+
+
+# ── гости ────────────────────────────────────────────────────────────────────
+
+
+class GuestLinkRowOut(ApiModel):
+    """Связь гостя в его карточке."""
+
+    id: int
+    guest_id: int
+    kind: str
+    former: bool
+    label: str
+    name: str
+    special: bool
+    vip_code: str
+
+
+class GuestVipCodeOut(ApiModel):
+    id: int
+    code: str
+    title: str
+    archived: bool
+
+
+class SpecialDateOut(ApiModel):
+    date: str
+    what: str
+
+
+class GuestCardOut(ApiModel):
+    id: int
+    last_name: str
+    first_name: str
+    middle_name: str
+    phone: str
+    phone_display: str
+    email: str
+    birth_date: Optional[str]
+    gender: str
+    special: bool
+    vip_code_id: Optional[int]
+    vip_code: Optional[GuestVipCodeOut]
+    main_current: int                      # брони, куда дойдёт смена кода
+    note: str
+    external_id: Optional[str]
+    source: str
+    preferences: dict[str, str]
+    special_dates: list[SpecialDateOut]
+    fields: JsonDict
+    links: list[GuestLinkRowOut]
+
+
+class GuestPickOut(ApiModel):
+    """Гость в подборе: без контактов и дат рождения."""
+
+    id: int
+    last_name: str
+    first_name: str
+    middle_name: str
+    special: bool
+    vip_code_id: Optional[int]
+    vip_code: str
+    short: str
+
+
+class GuestTabRowOut(ApiModel):
+    id: int
+    name: str
+    special: bool
+    vip_code: str
+    vip_code_archived: bool
+    gender: str
+    phone: str
+    last_stay: Optional[str]
+    stays: int
+
+
+class GuestTabOut(ApiModel):
+    total: int
+    rows: list[GuestTabRowOut]
+
+
+class GuestStayOut(ApiModel):
+    reservation_id: int
+    number: str
+    role: str
+    status: str
+    status_title: str
+    date_from: str
+    date_to: str
+    units: list[str]
+    butlers: list[str]
+
+
+class GuestPrefOut(ApiModel):
+    kind: str
+    ref_id: int
+    priority: int
+    title: str
+
+
+class GuestPrefsSavedOut(ApiModel):
+    preview: bool
+    result: list[GuestPrefOut]
+    diff: ImpactDiffOut
+    overbook_refused: Optional[str]
+
+
+class GuestUpdatedOut(ApiModel):
+    preview: bool
+    guest: GuestCardOut
+    updated_reservations: int
+    diff: Optional[ImpactDiffOut]            # только если менялся код и есть брони, куда он дойдёт
+    overbook_refused: Optional[str]
+
+
+class GuestMergedOut(ApiModel):
+    preview: bool
+    keep_id: int
+    drop_id: int
+    moves: JsonDict
+    diff: ImpactDiffOut
+    overbook_refused: Optional[str]
+
+
+class GuestLinkCreatedOut(ApiModel):
+    id: int
+    guest_id: int
+    ids: list[int]
+
+
+class GuestLinkFormerOut(ApiModel):
+    id: int
+    former: bool
+
+
+class FamilyPersonOut(ApiModel):
+    id: int
+    name: str
+    gender: str
+    special: bool
+    vip_code: str
+    phone: Optional[str]                     # телефон и дата рождения — только полный уровень
+    birth_date: Optional[str]
+
+
+class FamilyLinkOut(ApiModel):
+    id: int
+    kind: str
+    a: int
+    b: int
+    former: bool
+
+
+class FamilyKinOut(ApiModel):
+    person_id: int
+    title: str
+    degree: int
+
+
+class FamilyOut(ApiModel):
+    people: list[FamilyPersonOut]
+    parents: list[list[int]]
+    spouses: list[list[Any]]                 # [a, b, бывшие]
+    links: list[FamilyLinkOut]
+    kin: list[FamilyKinOut]
