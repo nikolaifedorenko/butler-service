@@ -264,6 +264,8 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
 дописывает блок-мост, публикующий объявления в `globalThis` (`let`/`var` — «живыми»
 свойствами); файл, перешедший на `import`/`export`, мост теряет. Шаблоны разметки — `lit-html`
 (`static/vendor/lit-html/`, вход `static/js/ui/html.js`; обновление `npm run vendor`).
+Стили разделены на `tokens.css` (все значения, светлая и тёмная тема), `base.css`, `components.css` и
+`app.css` (экраны); образец — `static/design.html`, правила — `docs/architecture/DESIGN-SYSTEM.md`.
 Сценарии в настоящем браузере — Playwright (`e2e/`, `npm run e2e`, сервер `tools/e2e_server.sh`);
 смоук в jsdom (`tools/*.mjs`) читает файлы как обычные скрипты и потому проверяет только
 разделы без `import`/`export`: раздел, получивший их, переносит свои проверки в Playwright.

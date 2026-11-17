@@ -5,9 +5,11 @@ import { login, watchErrors } from './helpers.mjs';
 
 test('все скрипты оболочки — ES-модули', async ({ page }) => {
   await page.goto('/');
-  const kinds = await page.$$eval('script[src]', els => els.map(e => e.type));
-  expect(kinds.length).toBeGreaterThan(30);
-  expect(new Set(kinds)).toEqual(new Set(['module']));
+  // theme.js — единственный обычный скрипт: тема должна примениться до первой отрисовки
+  const scripts = await page.$$eval('script[src]', els => els.map(e => ({ src: e.getAttribute('src').split('?')[0], type: e.type })));
+  const classic = scripts.filter(s => s.type !== 'module').map(s => s.src);
+  expect(classic).toEqual(['/static/js/ui/theme.js']);
+  expect(scripts.length).toBeGreaterThan(30);
 });
 
 test('вход: форма, оболочка, мост имён, без ошибок консоли', async ({ page }) => {
