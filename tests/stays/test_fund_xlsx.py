@@ -4,9 +4,9 @@ import io
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from app.modules.stays.adapters.orm import UnitFlag
-from app.modules.stays.application import fund_xlsx as fx
-from app.modules.stays.application.fund_versions import CategoryInfo, FundSnapshot, GroupInfo, UnitInfo
+from app.modules.fund.application import fund_xlsx as fx
+from app.modules.fund.application.catalog import UnitFlag
+from app.modules.fund.application.fund_versions import CategoryInfo, FundSnapshot, GroupInfo, UnitInfo
 
 
 def snap() -> FundSnapshot:

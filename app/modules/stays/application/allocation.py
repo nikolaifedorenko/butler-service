@@ -27,13 +27,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
+from app.modules.fund.application.catalog import UnitLineage
+from app.modules.fund.application.fund_versions import FundTimeline, boundary_pos, fund_for
 
-from ..adapters.orm import Assignment, Block, BlockNight, GuestPref, Move, Occupant, Ooo, Reservation, UnitLineage
+from ..adapters.orm import Assignment, Block, BlockNight, GuestPref, Move, Occupant, Ooo, Reservation
 from ..domain.allocate import AllocItem, AllocWarning, Key, OooRef, SlotKey, UnitSpan, allocate
 from ..domain.blocks import slots
 from ..domain.halfday import AM, PIECE_BASE, PM, Piece, Segment, ooo_span, overlaps, pieces, pos, segments
 from ..domain.prefs import Pref, scorer, successors
-from .fund_versions import FundTimeline, boundary_pos, fund_for
 
 # статусы, которые занимают объект (отменённая и no-show — нет, §4.7)
 OCCUPYING = ("tentative", "confirmed", "in_house", "checked_out")

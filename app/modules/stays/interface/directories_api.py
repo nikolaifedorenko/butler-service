@@ -15,9 +15,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import has_perm, require_perm
 from app.core.schemas import Ok
-
-from ..application import stays_directories as directories
-from ..application.fund_forms import (
+from app.modules.fund.application.fund_forms import (
     EscortIn,
     FieldIn,
     LabelIn,
@@ -26,6 +24,8 @@ from ..application.fund_forms import (
     VipCodeArchiveIn,
     VipCodeIn,
 )
+
+from ..application import stays_directories as directories
 from .schemas import (
     CustomFieldOut,
     EscortChangedOut,

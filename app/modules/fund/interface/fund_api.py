@@ -1,12 +1,12 @@
-"""API версий фонда (спецификация stays-fund-versions §4, §6): снимок на дату и черновик.
+"""API версий фонда (спецификация stays-fund-versions §4, §6): снимок на дату, черновик, файл фонда,
+справочники флагов и видов категорий.
 
 Чтение — тем, кто видит шахматку (READ), запись — правом stays.setup. Каждая запись черновика
-несёт rev (оптимистичная блокировка: 409 при расхождении) и возвращает новый rev. Начальная
-загрузка («заменить всё») и переключатель «в эксплуатации» — правом stays.reset (§9.3).
+несёт rev (оптимистичная блокировка: 409 при расхождении) и возвращает новый rev. Публикация и
+удаление версии, начальная загрузка — в модуле stays: они знают о бронях.
 
-Правила — в прикладном слое: ``fund_screen`` (чтение), ``fund_draft_edit`` (черновик, публикация,
-загрузка файла), ``fund_dictionaries`` (флаги и виды), ``fund_admin`` (начальная загрузка).
-Роутер разбирает запрос и проверяет право.
+Правила — в прикладном слое: ``fund_screen`` (чтение), ``fund_draft_edit`` (черновик, загрузка
+файла), ``fund_dictionaries`` (флаги и виды). Роутер разбирает запрос и проверяет право.
 """
 from __future__ import annotations
 
@@ -14,14 +14,15 @@ import datetime as dt
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
+from app.core.uploads import read_upload
 
-from ..application import fund_admin, fund_dictionaries, fund_draft_edit, fund_publish, fund_screen
+from ..application import fund_dictionaries, fund_draft_edit, fund_screen, fund_xlsx
 from ..application.fund_forms import (
     ArchiveIn,
     DraftCategoryIn,
@@ -31,16 +32,11 @@ from ..application.fund_forms import (
     DraftUnitIn,
     FlagIn,
     FlagValueIn,
-    InProductionIn,
     KindIn,
     MergeIn,
-    PublishIn,
     SplitIn,
 )
-from ._upload import read_upload
-from .fund_api import READ, SETUP
 from .schemas import (
-    DeleteVersionOut,
     DraftEntityOut,
     DraftMovedOut,
     DraftOpenedOut,
@@ -51,15 +47,12 @@ from .schemas import (
     FundSnapshotOut,
     FundVersionRowOut,
     IdOut,
-    InProductionOut,
-    PublishOut,
-    ResetOut,
-    ResetPreviewOut,
 )
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
-RESET = require_perm("stays.reset")
-PREVIEW = Query(False, alias="preview", description="Только показать, что изменится, без сохранения")
+# чтение — тем, кто видит шахматку; батлеру (stays.mine) — ради определений полей: данных гостей здесь нет
+READ = require_perm("stays.view", "stays.occupancy", "stays.setup", "stays.mine")
+SETUP = require_perm("stays.setup")
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 # ── чтение ───────────────────────────────────────────────────────────────────
@@ -92,13 +85,6 @@ def open_draft(payload: DraftIn, principal: Principal = Depends(SETUP), db: Sess
 @router.patch("/fund/draft", response_model=DraftMovedOut)
 def move_draft(payload: DraftMoveIn, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     return fund_draft_edit.move_draft(db, principal, payload)
-
-
-@router.delete("/fund/versions/{vid}", response_model=DeleteVersionOut)
-def remove_version(vid: int, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
-                   db: Session = Depends(get_db)):
-    """Удаление черновика или будущей версии и его предпросмотр (?preview=1)."""
-    return fund_publish.delete_previewed(db, principal, vid, preview_only=preview_flag)
 
 
 @router.post("/fund/draft/categories", response_model=DraftEntityOut)
@@ -170,16 +156,6 @@ def put_draft_flags(payload: FlagValueIn, principal: Principal = Depends(SETUP),
     return fund_draft_edit.set_flags(db, principal, payload)
 
 
-@router.post("/fund/draft/publish", response_model=PublishOut)
-def publish_draft(payload: PublishIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(SETUP),
-                  db: Session = Depends(get_db)):
-    """Публикация и её предпросмотр (?preview=1) — одна операция: предпросмотр откатывается (§4.3)."""
-    return fund_publish.publish_previewed(db, principal, payload, preview_only=preview_flag)
-
-
-# ── файл фонда (§9) ──────────────────────────────────────────────────────────
-
-
 @router.get("/fund/export", response_class=Response, responses={200: {"content": {XLSX: {}}}})
 def export_fund(date: dt.date, principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     """Фонд на дату файлом Excel — он же образец для загрузки (§9.1)."""
@@ -193,36 +169,7 @@ def import_fund(valid_from: dt.date = Form(...), file: UploadFile = File(...),
                 principal: Principal = Depends(SETUP), db: Session = Depends(get_db)):
     """«Загрузить как черновик с даты» (§9.3). Ошибки файла — 422 {errors: [{sheet, row, message}]},
     и тогда не остаётся ничего, даже черновика."""
-    return fund_draft_edit.import_file(db, principal, valid_from, file.filename, read_upload(file))
-
-
-@router.post("/fund/reset", response_model=ResetPreviewOut | ResetOut)
-def reset_fund(file: UploadFile = File(...), confirm: str = Form(""), fingerprint: str = Form(""),
-               preview_flag: bool = PREVIEW, principal: Principal = Depends(RESET),
-               db: Session = Depends(get_db)):
-    """«Начальная загрузка (заменить всё)». ?preview=1 — что будет удалено и загружено,
-    предупреждения и fingerprint; без него — замена: нужны confirm = «ЗАМЕНИТЬ» (иначе 422) и
-    fingerprint предпросмотра (данные изменились — 409). Пока «в эксплуатации» — 409."""
-    data = read_upload(file)
-    if preview_flag:
-        return fund_admin.reset_preview(db, data)
-    return fund_admin.reset(db, principal, data, file.filename, confirm, fingerprint)
-
-
-@router.get("/fund/backups/{name}", response_class=FileResponse, responses={200: {"content": {XLSX: {}}}})
-def get_backup(name: str, principal: Principal = Depends(RESET), db: Session = Depends(get_db)):
-    """Копия перед начальной загрузкой; скачивание — в журнале аудита."""
-    return FileResponse(fund_admin.backup_file(db, principal, name), media_type=XLSX, filename=name)
-
-
-@router.put("/fund/in-production", response_model=InProductionOut)
-def put_in_production(payload: InProductionIn, principal: Principal = Depends(RESET),
-                      db: Session = Depends(get_db)):
-    """Переключатель «Шахматка в эксплуатации»: включён — начальной загрузки нет (§9.3)."""
-    return fund_admin.set_in_production(db, principal, payload.value)
-
-
-# ── справочник флагов (вне черновика) ────────────────────────────────────────
+    return fund_draft_edit.import_file(db, principal, valid_from, file.filename, read_upload(file, fund_xlsx.MAX_FILE_BYTES))
 
 
 @router.post("/fund/flags", response_model=IdOut)

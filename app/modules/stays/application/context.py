@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.fund.application.fund_versions import CategoryInfo, FundTimeline, boundary_pos, fund_for
 from app.modules.people.application.catalog import Employee
 
 from ..adapters.orm import (
@@ -30,7 +31,6 @@ from ..domain.types import DayCover, Line, StayDay, Warning
 from ..domain.warnings import day_warnings
 from ..ports.duty import DutyDay, DutyPort
 from . import allocation
-from .fund_versions import CategoryInfo, FundTimeline, boundary_pos, fund_for
 from .guests import short_name
 from .stays_catalog import get_settings
 

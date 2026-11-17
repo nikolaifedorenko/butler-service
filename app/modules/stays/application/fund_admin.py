@@ -13,10 +13,10 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import transactional
 from app.core.errors import NotFound
+from app.modules.fund.application import fund_drafts as fd
+from app.modules.fund.application import fund_xlsx as fx
 
-from . import fund_drafts as fd
 from . import fund_reset as fr
-from . import fund_xlsx as fx
 from .previewed import discarded
 
 

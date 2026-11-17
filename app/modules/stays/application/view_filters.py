@@ -8,8 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from app.core.errors import Validation
+from app.modules.fund.application.fund_versions import FundSnapshot
 
-from .fund_versions import FundSnapshot
 from .visibility import Level
 
 

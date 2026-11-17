@@ -23,22 +23,50 @@ from app.core.audit import audit
 from app.core.media import BASE_DIR
 from app.core.time import local_date, local_iso, local_now
 from app.modules.exchange.application.tables import Sheet, write_xlsx
+from app.modules.fund.application import fund_drafts
+from app.modules.fund.application.catalog import (
+    Category,
+    CategoryKind,
+    CategoryState,
+    FundGroup,
+    FundVersion,
+    GroupState,
+    Unit,
+    UnitFlag,
+    UnitLineage,
+    UnitState,
+    UnitStateFlag,
+)
+from app.modules.fund.application.fund import FundConflict, FundError
+from app.modules.fund.application.fund_drafts import (
+    _COLOR,
+    _WEIGHT_MAX,
+    FundFileError,
+    _file_weight,
+    unknown_kind_message,
+)
+from app.modules.fund.application.fund_versions import INITIAL_DATE, fund_on
+from app.modules.fund.application.fund_xlsx import (
+    PATH_SEP,
+    SHEET_CATEGORIES,
+    SHEET_FLAGS,
+    SHEET_TREE,
+    SHEET_UNITS,
+    FileError,
+    ParsedFund,
+    fund_sheets,
+)
+from app.modules.fund.application.locking import lock_module
 
 from ..adapters.orm import (
     Assignment,
     Block,
     BlockNight,
-    Category,
-    CategoryKind,
-    CategoryState,
     Companion,
     CoverageGuest,
     CoverageLine,
     CustomField,
     Escort,
-    FundGroup,
-    FundVersion,
-    GroupState,
     Guest,
     GuestLink,
     GuestPref,
@@ -50,28 +78,9 @@ from ..adapters.orm import (
     Reservation,
     StayGroup,
     StaysSettings,
-    Unit,
-    UnitFlag,
-    UnitLineage,
-    UnitState,
-    UnitStateFlag,
     VipCode,
 )
-from . import allocation, fund_drafts
-from .fund import FundConflict, FundError
-from .fund_drafts import _COLOR, _WEIGHT_MAX, FundFileError, _file_weight, unknown_kind_message
-from .fund_versions import INITIAL_DATE, fund_on
-from .fund_xlsx import (
-    PATH_SEP,
-    SHEET_CATEGORIES,
-    SHEET_FLAGS,
-    SHEET_TREE,
-    SHEET_UNITS,
-    FileError,
-    ParsedFund,
-    fund_sheets,
-)
-from .locking import lock_module
+from . import allocation
 from .stays_catalog import get_settings
 from .vip_codes import code_texts
 
@@ -84,7 +93,7 @@ SHEET_GUESTS = "Гости"
 BACKUP_DIR = BASE_DIR / "data" / "backups" / "stays"
 BACKUP_NAME = re.compile(r"stays-\d{8}-\d{6}\.xlsx")
 
-# Таблицы stays_*: каждая — либо данные шахматки (удаляются, в порядке внешних ключей: сначала
+# Таблицы stays_* и fund_*: каждая — либо данные шахматки (удаляются, в порядке внешних ключей: сначала
 # ссылающиеся), либо настройки модуля (остаются). Тест сверяет списки со всей схемой модуля.
 WIPE = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
         StayGroup, GuestLink, GuestPref, Guest, BlockNight, Block, Ooo, UnitLineage, UnitStateFlag, UnitState, GroupState,

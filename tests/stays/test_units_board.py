@@ -202,7 +202,7 @@ def test_board_budget_with_ooo_and_blocks(manager_role_client, manager_client, b
     from sqlalchemy import select
 
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import CategoryState
+    from app.modules.fund.application.catalog import CategoryState
 
     with SessionLocal() as s:
         rows = list(s.execute(select(CategoryState.category_id, CategoryState.code)

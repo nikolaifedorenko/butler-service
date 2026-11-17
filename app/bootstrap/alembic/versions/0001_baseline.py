@@ -169,11 +169,11 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('code')
     )
-    op.create_table('stays_categories',
+    op.create_table('fund_categories',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('stays_category_kinds',
+    op.create_table('fund_category_kinds',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=40), nullable=False),
     sa.Column('sort_order', sa.Integer(), nullable=False),
@@ -194,7 +194,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('target', 'code', name='uq_stays_field')
     )
-    op.create_table('stays_fund_groups',
+    op.create_table('fund_groups',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
@@ -218,7 +218,7 @@ def upgrade() -> None:
     sa.Column('in_production', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('stays_unit_flags',
+    op.create_table('fund_unit_flags',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=80), nullable=False),
     sa.Column('color', sa.String(length=9), nullable=False),
@@ -227,7 +227,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('title')
     )
-    op.create_table('stays_units',
+    op.create_table('fund_units',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
@@ -332,10 +332,10 @@ def upgrade() -> None:
     sa.Column('search_text', sa.String(length=1000), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['category_id'], ['stays_categories.id'], ),
+    sa.ForeignKeyConstraint(['category_id'], ['fund_categories.id'], ),
     sa.ForeignKeyConstraint(['group_id'], ['stays_groups.id'], ),
     sa.ForeignKeyConstraint(['label_id'], ['stays_labels.id'], ),
-    sa.ForeignKeyConstraint(['paid_category_id'], ['stays_categories.id'], ),
+    sa.ForeignKeyConstraint(['paid_category_id'], ['fund_categories.id'], ),
     sa.ForeignKeyConstraint(['vip_code_id'], ['stays_vip_codes.id'], name='fk_stays_reservations_vip_code'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -478,9 +478,9 @@ def upgrade() -> None:
     sa.Column('pinned', sa.Boolean(), nullable=False),
     sa.Column('start_pos', sa.Integer(), nullable=True),
     sa.Column('pin_unit_id', sa.Integer(), nullable=True),
-    sa.ForeignKeyConstraint(['pin_unit_id'], ['stays_units.id'], name='fk_stays_assignments_pin_unit'),
+    sa.ForeignKeyConstraint(['pin_unit_id'], ['fund_units.id'], name='fk_stays_assignments_pin_unit'),
     sa.ForeignKeyConstraint(['reservation_id'], ['stays_reservations.id'], ),
-    sa.ForeignKeyConstraint(['unit_id'], ['stays_units.id'], ),
+    sa.ForeignKeyConstraint(['unit_id'], ['fund_units.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('reservation_id', 'seg_index', name='uq_stays_assignment')
     )
@@ -563,7 +563,7 @@ def upgrade() -> None:
     sa.Column('reservation_id', sa.Integer(), nullable=False),
     sa.Column('move_date', sa.Date(), nullable=False),
     sa.Column('category_id', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['category_id'], ['stays_categories.id'], ),
+    sa.ForeignKeyConstraint(['category_id'], ['fund_categories.id'], ),
     sa.ForeignKeyConstraint(['reservation_id'], ['stays_reservations.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('reservation_id', 'move_date', name='uq_stays_move')
@@ -835,7 +835,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['guest_id'], ['stays_guests.id'], ),
     sa.PrimaryKeyConstraint('coverage_id', 'guest_id')
     )
-    op.create_table('stays_fund_versions',
+    op.create_table('fund_versions',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('valid_from', sa.Date(), nullable=False),
     sa.Column('status', sa.String(length=10), nullable=False),
@@ -845,13 +845,13 @@ def upgrade() -> None:
     sa.Column('note', sa.Text(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('published_at', sa.DateTime(timezone=True), nullable=True),
-    sa.CheckConstraint("status IN ('draft', 'published')", name='ck_stays_fund_status'),
+    sa.CheckConstraint("status IN ('draft', 'published')", name='ck_fund_version_status'),
     sa.ForeignKeyConstraint(['author_id'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['base_version_id'], ['stays_fund_versions.id'], ),
+    sa.ForeignKeyConstraint(['base_version_id'], ['fund_versions.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('uq_stays_fund_one_draft', 'stays_fund_versions', ['status'], unique=True, postgresql_where=sa.text("status = 'draft'"))
-    op.create_index('uq_stays_fund_published_from', 'stays_fund_versions', ['valid_from'], unique=True, postgresql_where=sa.text("status = 'published'"))
+    op.create_index('uq_fund_one_draft', 'fund_versions', ['status'], unique=True, postgresql_where=sa.text("status = 'draft'"))
+    op.create_index('uq_fund_published_from', 'fund_versions', ['valid_from'], unique=True, postgresql_where=sa.text("status = 'published'"))
     op.create_table('stays_guest_links',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('guest_a_id', sa.Integer(), nullable=False),
@@ -903,7 +903,7 @@ def upgrade() -> None:
     sa.CheckConstraint("end_half IN ('AM', 'PM')", name='ck_stays_ooo_end_half'),
     sa.CheckConstraint("start_half IN ('AM', 'PM')", name='ck_stays_ooo_start_half'),
     sa.ForeignKeyConstraint(['author_id'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['unit_id'], ['stays_units.id'], ),
+    sa.ForeignKeyConstraint(['unit_id'], ['fund_units.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_stays_ooo_unit_start', 'stays_ooo', ['unit_id', 'start'], unique=False)
@@ -1032,10 +1032,10 @@ def upgrade() -> None:
     sa.Column('quantity', sa.Integer(), nullable=False),
     sa.CheckConstraint('quantity >= 1', name='ck_stays_block_nights_quantity'),
     sa.ForeignKeyConstraint(['block_id'], ['stays_blocks.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['category_id'], ['stays_categories.id'], ),
+    sa.ForeignKeyConstraint(['category_id'], ['fund_categories.id'], ),
     sa.PrimaryKeyConstraint('block_id', 'category_id', 'night')
     )
-    op.create_table('stays_category_states',
+    op.create_table('fund_category_states',
     sa.Column('version_id', sa.Integer(), nullable=False),
     sa.Column('category_id', sa.Integer(), nullable=False),
     sa.Column('code', sa.String(length=16), nullable=False),
@@ -1044,57 +1044,57 @@ def upgrade() -> None:
     sa.Column('weight', sa.Numeric(precision=5, scale=2), nullable=False),
     sa.Column('escorted', sa.Boolean(), nullable=False),
     sa.Column('sort_order', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['category_id'], ['stays_categories.id'], ),
-    sa.ForeignKeyConstraint(['kind_id'], ['stays_category_kinds.id'], ),
-    sa.ForeignKeyConstraint(['version_id'], ['stays_fund_versions.id'], ),
+    sa.ForeignKeyConstraint(['category_id'], ['fund_categories.id'], ),
+    sa.ForeignKeyConstraint(['kind_id'], ['fund_category_kinds.id'], ),
+    sa.ForeignKeyConstraint(['version_id'], ['fund_versions.id'], ),
     sa.PrimaryKeyConstraint('version_id', 'category_id'),
-    sa.UniqueConstraint('version_id', 'code', name='uq_stays_cat_state_code')
+    sa.UniqueConstraint('version_id', 'code', name='uq_fund_cat_state_code')
     )
-    op.create_table('stays_group_states',
+    op.create_table('fund_group_states',
     sa.Column('version_id', sa.Integer(), nullable=False),
     sa.Column('group_id', sa.Integer(), nullable=False),
     sa.Column('parent_id', sa.Integer(), nullable=True),
     sa.Column('title', sa.String(length=120), nullable=False),
     sa.Column('sort_order', sa.Integer(), nullable=False),
     sa.Column('escorted', sa.Boolean(), nullable=False),
-    sa.ForeignKeyConstraint(['group_id'], ['stays_fund_groups.id'], ),
-    sa.ForeignKeyConstraint(['parent_id'], ['stays_fund_groups.id'], ),
-    sa.ForeignKeyConstraint(['version_id', 'parent_id'], ['stays_group_states.version_id', 'stays_group_states.group_id'], ),
-    sa.ForeignKeyConstraint(['version_id'], ['stays_fund_versions.id'], ),
+    sa.ForeignKeyConstraint(['group_id'], ['fund_groups.id'], ),
+    sa.ForeignKeyConstraint(['parent_id'], ['fund_groups.id'], ),
+    sa.ForeignKeyConstraint(['version_id', 'parent_id'], ['fund_group_states.version_id', 'fund_group_states.group_id'], ),
+    sa.ForeignKeyConstraint(['version_id'], ['fund_versions.id'], ),
     sa.PrimaryKeyConstraint('version_id', 'group_id')
     )
-    op.create_table('stays_unit_lineage',
+    op.create_table('fund_unit_lineage',
     sa.Column('unit_id', sa.Integer(), nullable=False),
     sa.Column('predecessor_id', sa.Integer(), nullable=False),
     sa.Column('version_id', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['predecessor_id'], ['stays_units.id'], ),
-    sa.ForeignKeyConstraint(['unit_id'], ['stays_units.id'], ),
-    sa.ForeignKeyConstraint(['version_id'], ['stays_fund_versions.id'], ),
+    sa.ForeignKeyConstraint(['predecessor_id'], ['fund_units.id'], ),
+    sa.ForeignKeyConstraint(['unit_id'], ['fund_units.id'], ),
+    sa.ForeignKeyConstraint(['version_id'], ['fund_versions.id'], ),
     sa.PrimaryKeyConstraint('unit_id', 'predecessor_id')
     )
-    op.create_table('stays_unit_states',
+    op.create_table('fund_unit_states',
     sa.Column('version_id', sa.Integer(), nullable=False),
     sa.Column('unit_id', sa.Integer(), nullable=False),
     sa.Column('label', sa.String(length=40), nullable=False),
     sa.Column('category_id', sa.Integer(), nullable=False),
     sa.Column('group_id', sa.Integer(), nullable=True),
     sa.Column('floor', sa.String(length=8), nullable=False),
-    sa.ForeignKeyConstraint(['unit_id'], ['stays_units.id'], ),
-    sa.ForeignKeyConstraint(['version_id', 'category_id'], ['stays_category_states.version_id', 'stays_category_states.category_id'], ),
-    sa.ForeignKeyConstraint(['version_id', 'group_id'], ['stays_group_states.version_id', 'stays_group_states.group_id'], ),
-    sa.ForeignKeyConstraint(['version_id'], ['stays_fund_versions.id'], ),
+    sa.ForeignKeyConstraint(['unit_id'], ['fund_units.id'], ),
+    sa.ForeignKeyConstraint(['version_id', 'category_id'], ['fund_category_states.version_id', 'fund_category_states.category_id'], ),
+    sa.ForeignKeyConstraint(['version_id', 'group_id'], ['fund_group_states.version_id', 'fund_group_states.group_id'], ),
+    sa.ForeignKeyConstraint(['version_id'], ['fund_versions.id'], ),
     sa.PrimaryKeyConstraint('version_id', 'unit_id'),
-    sa.UniqueConstraint('version_id', 'label', name='uq_stays_unit_state_label')
+    sa.UniqueConstraint('version_id', 'label', name='uq_fund_unit_state_label')
     )
-    op.create_table('stays_unit_state_flags',
+    op.create_table('fund_unit_state_flags',
     sa.Column('version_id', sa.Integer(), nullable=False),
     sa.Column('unit_id', sa.Integer(), nullable=False),
     sa.Column('flag_id', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['flag_id'], ['stays_unit_flags.id'], ondelete='RESTRICT'),
-    sa.ForeignKeyConstraint(['version_id', 'unit_id'], ['stays_unit_states.version_id', 'stays_unit_states.unit_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['flag_id'], ['fund_unit_flags.id'], ondelete='RESTRICT'),
+    sa.ForeignKeyConstraint(['version_id', 'unit_id'], ['fund_unit_states.version_id', 'fund_unit_states.unit_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('version_id', 'unit_id', 'flag_id')
     )
-    op.create_index('ix_stays_unit_state_flags_version_flag', 'stays_unit_state_flags', ['version_id', 'flag_id'], unique=False)
+    op.create_index('ix_fund_unit_state_flags_version_flag', 'fund_unit_state_flags', ['version_id', 'flag_id'], unique=False)
     _reference_rows()
 
 
@@ -1123,19 +1123,19 @@ def _reference_rows() -> None:
                             sa.column("replacement_codes"), sa.column("special_factor")),
                    [{"id": 1, "daily_limit": 8, "replacement_codes": "ОТ,ДО,Б,ОВ,К", "special_factor": 2}])
     now = dt.datetime.now(dt.UTC)
-    op.bulk_insert(sa.table("stays_fund_versions", sa.column("valid_from"), sa.column("status"), sa.column("rev"),
+    op.bulk_insert(sa.table("fund_versions", sa.column("valid_from"), sa.column("status"), sa.column("rev"),
                             sa.column("note"), sa.column("created_at"), sa.column("published_at")),
                    [{"valid_from": dt.date(2000, 1, 1), "status": "published", "rev": 1, "note": "Исходный фонд",
                      "created_at": now, "published_at": now}])
 
 
 def downgrade() -> None:
-    op.drop_index('ix_stays_unit_state_flags_version_flag', table_name='stays_unit_state_flags')
-    op.drop_table('stays_unit_state_flags')
-    op.drop_table('stays_unit_states')
-    op.drop_table('stays_unit_lineage')
-    op.drop_table('stays_group_states')
-    op.drop_table('stays_category_states')
+    op.drop_index('ix_fund_unit_state_flags_version_flag', table_name='fund_unit_state_flags')
+    op.drop_table('fund_unit_state_flags')
+    op.drop_table('fund_unit_states')
+    op.drop_table('fund_unit_lineage')
+    op.drop_table('fund_group_states')
+    op.drop_table('fund_category_states')
     op.drop_table('stays_block_nights')
     op.drop_index(op.f('ix_night_interceptions_section_id'), table_name='night_interceptions')
     op.drop_index(op.f('ix_night_interceptions_report_id'), table_name='night_interceptions')
@@ -1165,9 +1165,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_stays_guest_links_guest_b_id'), table_name='stays_guest_links')
     op.drop_index(op.f('ix_stays_guest_links_guest_a_id'), table_name='stays_guest_links')
     op.drop_table('stays_guest_links')
-    op.drop_index('uq_stays_fund_published_from', table_name='stays_fund_versions', postgresql_where=sa.text("status = 'published'"))
-    op.drop_index('uq_stays_fund_one_draft', table_name='stays_fund_versions', postgresql_where=sa.text("status = 'draft'"))
-    op.drop_table('stays_fund_versions')
+    op.drop_index('uq_fund_published_from', table_name='fund_versions', postgresql_where=sa.text("status = 'published'"))
+    op.drop_index('uq_fund_one_draft', table_name='fund_versions', postgresql_where=sa.text("status = 'draft'"))
+    op.drop_table('fund_versions')
     op.drop_table('stays_coverage_guests')
     op.drop_table('stays_blocks')
     op.drop_index(op.f('ix_schedule_shifts_employee_id'), table_name='schedule_shifts')
@@ -1264,15 +1264,15 @@ def downgrade() -> None:
     op.drop_table('employees')
     op.drop_table('subdivisions')
     op.drop_table('stays_vip_codes')
-    op.drop_table('stays_units')
-    op.drop_table('stays_unit_flags')
+    op.drop_table('fund_units')
+    op.drop_table('fund_unit_flags')
     op.drop_table('stays_settings')
     op.drop_table('stays_labels')
     op.drop_table('stays_groups')
-    op.drop_table('stays_fund_groups')
+    op.drop_table('fund_groups')
     op.drop_table('stays_fields')
-    op.drop_table('stays_category_kinds')
-    op.drop_table('stays_categories')
+    op.drop_table('fund_category_kinds')
+    op.drop_table('fund_categories')
     op.drop_table('statement_kinds')
     op.drop_table('shift_types')
     op.drop_table('settings')

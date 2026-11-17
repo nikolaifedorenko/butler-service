@@ -372,8 +372,9 @@ def history_of():
     """Батлер (новый, неактивный сотрудник) с n своими броннями в прошлом (2001–2005) и одной
     сегодня; общий гость — во всех. Без API: так быстрее. Удаляется после теста."""
     from app.core.db import SessionLocal
+    from app.modules.fund.application.catalog import CategoryState
     from app.modules.people.application.catalog import Employee
-    from app.modules.stays.adapters.orm import CategoryState, CoverageLine, Guest, Occupant, Reservation
+    from app.modules.stays.adapters.orm import CoverageLine, Guest, Occupant, Reservation
 
     made: list[tuple[int, list[int], list[int]]] = []
 

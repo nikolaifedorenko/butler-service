@@ -20435,6 +20435,124 @@
         "title": "KindIn",
         "type": "object"
       },
+      "app__modules__fund__application__fund_forms__KindIn": {
+        "properties": {
+          "expanded": {
+            "default": false,
+            "title": "Expanded",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "KindIn",
+        "type": "object"
+      },
+      "app__modules__fund__application__fund_forms__MergeIn": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "floor": {
+            "default": "",
+            "maxLength": 8,
+            "title": "Floor",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rev": {
+            "title": "Rev",
+            "type": "integer"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Unit Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rev",
+          "unit_ids",
+          "label"
+        ],
+        "title": "MergeIn",
+        "type": "object"
+      },
+      "app__modules__fund__application__fund_forms__SettingsIn": {
+        "properties": {
+          "daily_limit": {
+            "maximum": 999.0,
+            "title": "Daily Limit",
+            "type": "number"
+          },
+          "replacement_codes": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Replacement Codes",
+            "type": "string"
+          },
+          "special_factor": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Factor"
+          }
+        },
+        "required": [
+          "daily_limit"
+        ],
+        "title": "SettingsIn",
+        "type": "object"
+      },
       "app__modules__night__interface__schemas__TemplateOut": {
         "additionalProperties": false,
         "properties": {
@@ -20656,124 +20774,6 @@
           "last"
         ],
         "title": "TemplateIn",
-        "type": "object"
-      },
-      "app__modules__stays__application__fund_forms__KindIn": {
-        "properties": {
-          "expanded": {
-            "default": false,
-            "title": "Expanded",
-            "type": "boolean"
-          },
-          "sort_order": {
-            "default": 100,
-            "maximum": 100000.0,
-            "minimum": -100000.0,
-            "title": "Sort Order",
-            "type": "integer"
-          },
-          "title": {
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "title": "KindIn",
-        "type": "object"
-      },
-      "app__modules__stays__application__fund_forms__MergeIn": {
-        "properties": {
-          "category_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category Id"
-          },
-          "floor": {
-            "default": "",
-            "maxLength": 8,
-            "title": "Floor",
-            "type": "string"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "label": {
-            "maxLength": 40,
-            "minLength": 1,
-            "title": "Label",
-            "type": "string"
-          },
-          "rev": {
-            "title": "Rev",
-            "type": "integer"
-          },
-          "unit_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "maxItems": 50,
-            "minItems": 2,
-            "title": "Unit Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "rev",
-          "unit_ids",
-          "label"
-        ],
-        "title": "MergeIn",
-        "type": "object"
-      },
-      "app__modules__stays__application__fund_forms__SettingsIn": {
-        "properties": {
-          "daily_limit": {
-            "maximum": 999.0,
-            "title": "Daily Limit",
-            "type": "number"
-          },
-          "replacement_codes": {
-            "default": "",
-            "maxLength": 120,
-            "title": "Replacement Codes",
-            "type": "string"
-          },
-          "special_factor": {
-            "anyOf": [
-              {
-                "maximum": 99.0,
-                "minimum": 0.1,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Special Factor"
-          }
-        },
-        "required": [
-          "daily_limit"
-        ],
-        "title": "SettingsIn",
         "type": "object"
       },
       "app__modules__stays__application__guest_forms__MergeIn": {
@@ -31107,7 +31107,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__MergeIn"
+                "$ref": "#/components/schemas/app__modules__fund__application__fund_forms__MergeIn"
               }
             }
           },
@@ -31610,7 +31610,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__KindIn"
+                "$ref": "#/components/schemas/app__modules__fund__application__fund_forms__KindIn"
               }
             }
           },
@@ -31702,7 +31702,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__KindIn"
+                "$ref": "#/components/schemas/app__modules__fund__application__fund_forms__KindIn"
               }
             }
           },
@@ -34157,7 +34157,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__SettingsIn"
+                "$ref": "#/components/schemas/app__modules__fund__application__fund_forms__SettingsIn"
               }
             }
           },

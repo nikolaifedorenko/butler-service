@@ -14,14 +14,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
+from app.modules.fund.application.fund_versions import fund_day, fund_for
+from app.modules.fund.application.locking import lock_module
 
 from ..adapters.orm import Reservation
 from ..domain.halfday import PIECE_BASE
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import load_context
-from .fund_versions import fund_day, fund_for
-from .locking import lock_module
 
 # (вид, день, батлер, бронь, текст)
 WarningKey = tuple[str, str | None, int | None, int | None, str]

@@ -7,12 +7,12 @@ from sqlalchemy import select
 
 from app.core.audit import AuditLog
 from app.core.errors import Conflict, Forbidden, NotFound, Validation
-from app.modules.stays.adapters.orm import FundVersion, UnitFlag
-from app.modules.stays.application import fund_drafts as fd
+from app.modules.fund.application import fund_drafts as fd
+from app.modules.fund.application.catalog import FundVersion, UnitFlag
+from app.modules.fund.application.fund import FundConflict, FundError
+from app.modules.fund.application.fund_xlsx import FileError
 from app.modules.stays.application.blocks import BlockNotFound
 from app.modules.stays.application.coverage import CoverageForbidden
-from app.modules.stays.application.fund import FundConflict, FundError
-from app.modules.stays.application.fund_xlsx import FileError
 from app.modules.stays.application.mine import MineForbidden
 from app.modules.stays.application.ooo import OooConflict, OooNotFound
 from app.modules.stays.application.previewed import discarded
@@ -54,7 +54,7 @@ def test_discarded_rolls_back_everything_it_wrote(db):
 
 def test_flag_write_and_audit_are_one_transaction(admin_client, db, monkeypatch):
     """Сбой журнала откатывает и запись флага: «записалось всё или ничего»."""
-    from app.modules.stays.application import fund_dictionaries
+    from app.modules.fund.application import fund_dictionaries
 
     def broken(*_a, **_k):
         raise RuntimeError("журнал недоступен")

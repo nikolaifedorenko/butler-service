@@ -17,6 +17,7 @@ from sqlalchemy import and_, exists, func, or_, select, union
 from sqlalchemy.orm import Session, aliased
 
 from app.core.time import local_date
+from app.modules.fund.application.fund import FundError
 
 from ..adapters.orm import (
     CoverageGuest,
@@ -33,7 +34,6 @@ from ..ports.duty import DutyPort
 from . import allocation, family
 from .context import load_context
 from .family import full_name
-from .fund import FundError
 from .guests import (
     format_phone,
     guest_dict,

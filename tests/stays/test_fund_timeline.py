@@ -7,7 +7,7 @@ import uuid
 import pytest
 from sqlalchemy import delete
 
-from app.modules.stays.adapters.orm import (
+from app.modules.fund.application.catalog import (
     Category,
     CategoryState,
     FundGroup,
@@ -16,7 +16,7 @@ from app.modules.stays.adapters.orm import (
     Unit,
     UnitState,
 )
-from app.modules.stays.application.fund_versions import (
+from app.modules.fund.application.fund_versions import (
     INITIAL_DATE,
     CategoryInfo,
     FundSnapshot,

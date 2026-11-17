@@ -10,9 +10,10 @@ import datetime as dt
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
+from app.modules.fund.application.locking import lock_module
+
 from ..adapters.orm import CoverageGuest, Guest, Occupant, Reservation
 from . import allocation, guests
-from .locking import lock_module
 
 
 def _nights_runs(rows: list[Occupant]) -> list[tuple[dt.date, dt.date, str]]:

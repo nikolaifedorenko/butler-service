@@ -12,7 +12,6 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     ForeignKey,
-    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -20,7 +19,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     event,
-    text,
 )
 from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,55 +27,6 @@ from app.core.db import Base, Json
 from app.core.time import Moment, now
 
 # ── 3.1 Фонд ───────────────────────────────────────────────────────────────
-
-
-class Category(Base):
-    """Категория: постоянна только id; код, название, вид, вес — в CategoryState версии фонда."""
-
-    __tablename__ = "stays_categories"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-
-
-class Unit(Base):
-    """Физический объект: постоянна только id; обозначение, категория, этаж — в UnitState."""
-
-    __tablename__ = "stays_units"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-
-
-class FundGroup(Base):
-    """Узел дерева фонда (корпус, этаж…): постоянна только id; название и родитель — в GroupState."""
-
-    __tablename__ = "stays_fund_groups"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-
-
-class UnitFlag(Base):
-    """Справочник флагов объекта. Не версионируется; использованный флаг архивируется."""
-
-    __tablename__ = "stays_unit_flags"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(80), unique=True)
-    color: Mapped[str] = mapped_column(String(9), default="#3b6fd8")
-    sort_order: Mapped[int] = mapped_column(Integer, default=100)
-    archived: Mapped[bool] = mapped_column(Boolean, default=False)
-
-
-class CategoryKind(Base):
-    """Справочник видов категорий (вилла, номер…). Не версионируется; использованный вид
-    архивируется. expanded — раздел дерева шахматки с категорией этого вида раскрыт сразу."""
-
-    __tablename__ = "stays_category_kinds"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(40), unique=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=100)
-    expanded: Mapped[bool] = mapped_column(Boolean, default=False)
-    archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class VipCode(Base):
@@ -95,105 +44,6 @@ class VipCode(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
-class FundVersion(Base):
-    """Версия фонда «с даты»: полный снимок категорий, узлов и объектов. Действует с вечера
-    valid_from (§3.3). rev — счётчик правок черновика (оптимистичная блокировка)."""
-
-    __tablename__ = "stays_fund_versions"
-    __table_args__ = (
-        CheckConstraint("status IN ('draft', 'published')", name="ck_stays_fund_status"),
-        # дата уникальна среди опубликованных (черновик на ту же дату заменяет версию); черновик один
-        Index("uq_stays_fund_published_from", "valid_from", unique=True,
-              postgresql_where=text("status = 'published'")),
-        Index("uq_stays_fund_one_draft", "status", unique=True,
-              postgresql_where=text("status = 'draft'")),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    valid_from: Mapped[dt.date] = mapped_column(Date)
-    status: Mapped[str] = mapped_column(String(10), default="draft")    # draft | published
-    base_version_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_fund_versions.id"), nullable=True)
-    rev: Mapped[int] = mapped_column(Integer, default=1)
-    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    note: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
-    published_at: Mapped[Optional[dt.datetime]] = mapped_column(Moment, nullable=True)
-
-
-class CategoryState(Base):
-    __tablename__ = "stays_category_states"
-    __table_args__ = (UniqueConstraint("version_id", "code", name="uq_stays_cat_state_code"),)
-
-    version_id: Mapped[int] = mapped_column(ForeignKey("stays_fund_versions.id"), primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"), primary_key=True)
-    code: Mapped[str] = mapped_column(String(16))
-    title: Mapped[str] = mapped_column(String(120))
-    kind_id: Mapped[int] = mapped_column(ForeignKey("stays_category_kinds.id"))
-    weight: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("1"))
-    escorted: Mapped[bool] = mapped_column(Boolean, default=False)
-    sort_order: Mapped[int] = mapped_column(Integer, default=100)
-
-
-class GroupState(Base):
-    __tablename__ = "stays_group_states"
-    __table_args__ = (
-        ForeignKeyConstraint(["version_id", "parent_id"],
-                             ["stays_group_states.version_id", "stays_group_states.group_id"]),
-    )
-
-    version_id: Mapped[int] = mapped_column(ForeignKey("stays_fund_versions.id"), primary_key=True)
-    group_id: Mapped[int] = mapped_column(ForeignKey("stays_fund_groups.id"), primary_key=True)
-    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_fund_groups.id"), nullable=True)
-    title: Mapped[str] = mapped_column(String(120))
-    sort_order: Mapped[int] = mapped_column(Integer, default=100)
-    escorted: Mapped[bool] = mapped_column(Boolean, default=False)
-
-
-class UnitState(Base):
-    __tablename__ = "stays_unit_states"
-    __table_args__ = (
-        UniqueConstraint("version_id", "label", name="uq_stays_unit_state_label"),
-        ForeignKeyConstraint(["version_id", "category_id"],
-                             ["stays_category_states.version_id", "stays_category_states.category_id"]),
-        ForeignKeyConstraint(["version_id", "group_id"],
-                             ["stays_group_states.version_id", "stays_group_states.group_id"]),
-    )
-
-    version_id: Mapped[int] = mapped_column(ForeignKey("stays_fund_versions.id"), primary_key=True)
-    unit_id: Mapped[int] = mapped_column(ForeignKey("stays_units.id"), primary_key=True)
-    label: Mapped[str] = mapped_column(String(40))
-    category_id: Mapped[int] = mapped_column(Integer)
-    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    floor: Mapped[str] = mapped_column(String(8), default="")
-
-
-class UnitStateFlag(Base):
-    """Строка есть — у объекта в версии флаг стоит; строки нет — не стоит."""
-
-    __tablename__ = "stays_unit_state_flags"
-    __table_args__ = (
-        ForeignKeyConstraint(["version_id", "unit_id"],
-                             ["stays_unit_states.version_id", "stays_unit_states.unit_id"],
-                             ondelete="CASCADE"),
-        Index("ix_stays_unit_state_flags_version_flag", "version_id", "flag_id"),
-    )
-
-    version_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    unit_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    flag_id: Mapped[int] = mapped_column(ForeignKey("stays_unit_flags.id", ondelete="RESTRICT"),
-                                         primary_key=True)
-
-
-class UnitLineage(Base):
-    """«Из чего получился объект» (деление, объединение): 12134 → 1213 + 1214."""
-
-    __tablename__ = "stays_unit_lineage"
-
-    unit_id: Mapped[int] = mapped_column(ForeignKey("stays_units.id"), primary_key=True)
-    predecessor_id: Mapped[int] = mapped_column(ForeignKey("stays_units.id"), primary_key=True)
-    version_id: Mapped[int] = mapped_column(ForeignKey("stays_fund_versions.id"))
-
-
 class Ooo(Base):
     """OOO — объект не в продаже: интервал по половинам суток [start/start_half, end/end_half]
     (спецификация OOO и блоков §3). Позиция половины — pos(день, AM|PM)."""
@@ -206,7 +56,7 @@ class Ooo(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    unit_id: Mapped[int] = mapped_column(ForeignKey("stays_units.id"))
+    unit_id: Mapped[int] = mapped_column(ForeignKey("fund_units.id"))
     start: Mapped[dt.date] = mapped_column(Date)
     end: Mapped[dt.date] = mapped_column(Date)
     start_half: Mapped[str] = mapped_column(String(2), default="AM")
@@ -239,7 +89,7 @@ class BlockNight(Base):
     __table_args__ = (CheckConstraint("quantity >= 1", name="ck_stays_block_nights_quantity"),)
 
     block_id: Mapped[int] = mapped_column(ForeignKey("stays_blocks.id", ondelete="CASCADE"), primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"), primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("fund_categories.id"), primary_key=True)
     night: Mapped[dt.date] = mapped_column(Date, primary_key=True)
     quantity: Mapped[int] = mapped_column(Integer)
 
@@ -356,8 +206,8 @@ class Reservation(Base):
     check_out: Mapped[dt.date] = mapped_column(Date)
     early: Mapped[bool] = mapped_column(Boolean, default=False)
     late: Mapped[bool] = mapped_column(Boolean, default=False)
-    category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"))
-    paid_category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_categories.id"), nullable=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("fund_categories.id"))
+    paid_category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("fund_categories.id"), nullable=True)
     label_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_labels.id"), nullable=True)
     customer: Mapped[str] = mapped_column(String(160), default="")
     note: Mapped[str] = mapped_column(Text, default="")
@@ -384,7 +234,7 @@ class Move(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     reservation_id: Mapped[int] = mapped_column(ForeignKey("stays_reservations.id"))
     move_date: Mapped[dt.date] = mapped_column(Date)
-    category_id: Mapped[int] = mapped_column(ForeignKey("stays_categories.id"))
+    category_id: Mapped[int] = mapped_column(ForeignKey("fund_categories.id"))
 
 
 class Assignment(Base):
@@ -402,12 +252,12 @@ class Assignment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     reservation_id: Mapped[int] = mapped_column(ForeignKey("stays_reservations.id"))
     seg_index: Mapped[int] = mapped_column(Integer)
-    unit_id: Mapped[Optional[int]] = mapped_column(ForeignKey("stays_units.id"), nullable=True,
+    unit_id: Mapped[Optional[int]] = mapped_column(ForeignKey("fund_units.id"), nullable=True,
                                                    index=True)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     start_pos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     pin_unit_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("stays_units.id", name="fk_stays_assignments_pin_unit"), nullable=True)
+        ForeignKey("fund_units.id", name="fk_stays_assignments_pin_unit"), nullable=True)
 
 
 class Occupant(Base):

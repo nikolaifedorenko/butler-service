@@ -32,10 +32,10 @@ def demo_db(fresh_database):
 def test_demo_fund_and_warnings(demo_db):
     """Демо показывает весь фонд, гостей, брони и по примеру каждого предупреждения."""
     from app.core.time import local_date
+    from app.modules.fund.application.fund_versions import INITIAL_DATE, fund_on
     from app.modules.stays.adapters.duty_timesheet import TimesheetDuty
     from app.modules.stays.adapters.orm import Guest, GuestLink, Reservation
     from app.modules.stays.application.context import load_context
-    from app.modules.stays.application.fund_versions import INITIAL_DATE, fund_on
 
     db = demo_db
     fund = fund_on(db, INITIAL_DATE)
@@ -57,7 +57,7 @@ def test_demo_fund_and_warnings(demo_db):
 
 
 def test_demo_idempotent(db):
-    from app.modules.stays.adapters.orm import Category
+    from app.modules.fund.application.catalog import Category
     from app.modules.stays.application.demo import seed_stays_demo
     before = db.scalar(select(func.count(Category.id)))
     seed_stays_demo(db)
@@ -71,7 +71,7 @@ def _node(fund, *path):
 
 def test_demo_has_tree(db):
     from app.core.time import local_date
-    from app.modules.stays.application.fund_versions import fund_on
+    from app.modules.fund.application.fund_versions import fund_on
 
     fund = fund_on(db, local_date())
     villas = _node(fund, "Винные виллы", "Семейная", "Первая линия")
@@ -85,8 +85,8 @@ def test_demo_has_tree(db):
 
 def test_demo_has_flags(db):
     from app.core.time import local_date
-    from app.modules.stays.adapters.orm import UnitFlag
-    from app.modules.stays.application.fund_versions import fund_on
+    from app.modules.fund.application.catalog import UnitFlag
+    from app.modules.fund.application.fund_versions import fund_on
 
     fund = fund_on(db, local_date())
     titles = {f.id: f.title for f in db.scalars(select(UnitFlag))}
@@ -98,8 +98,8 @@ def test_demo_future_version_splits_connect(db):
     """Будущая версия демо (seed_connect_split) остаётся на весь прогон: правки «сегодня» других
     тестов переносятся в неё публикацией (§4.4)."""
     from app.core.time import local_date
-    from app.modules.stays.adapters.orm import FundVersion, UnitLineage
-    from app.modules.stays.application.fund_versions import fund_on
+    from app.modules.fund.application.catalog import FundVersion, UnitLineage
+    from app.modules.fund.application.fund_versions import fund_on
 
     version = db.scalar(select(FundVersion).where(FundVersion.status == "published",
                                                   FundVersion.note == "Деление коннекта 12134"))
@@ -121,8 +121,8 @@ def test_demo_future_version_splits_connect(db):
 def test_seed_initial_refuses_filled_version(db):
     import pytest
 
-    from app.modules.stays.application import fund_drafts
-    from app.modules.stays.application.fund import FundConflict
+    from app.modules.fund.application import fund_drafts
+    from app.modules.fund.application.fund import FundConflict
 
     with pytest.raises(FundConflict):
         fund_drafts.seed_initial(db, [], [], [], [])

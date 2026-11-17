@@ -10,24 +10,23 @@ import pytest
 from sqlalchemy import delete, func, select, text
 
 from app.core.audit import AuditLog
-from app.modules.stays.adapters.orm import (
+from app.modules.fund.application import fund_drafts as fd
+from app.modules.fund.application.catalog import (
     Category,
     CategoryState,
     FundGroup,
     FundVersion,
     GroupState,
-    Move,
-    Reservation,
     Unit,
     UnitFlag,
     UnitLineage,
     UnitState,
     UnitStateFlag,
 )
-from app.modules.stays.application import fund_drafts as fd
+from app.modules.fund.application.fund import FundConflict
+from app.modules.fund.application.fund_versions import fund_on
+from app.modules.stays.adapters.orm import Move, Reservation
 from app.modules.stays.application import fund_publish as fp
-from app.modules.stays.application.fund import FundConflict
-from app.modules.stays.application.fund_versions import fund_on
 
 from .helpers import API, create_res, kind_id, make_category
 
@@ -183,9 +182,9 @@ def test_move_same_date_draft_before_its_version_409(db, world):
 
 TODAY = "2036-01-10"
 DAY = "2036-02-01"
-TABLES = ("stays_reservations", "stays_moves", "stays_assignments", "stays_fund_versions",
-          "stays_category_states", "stays_group_states", "stays_unit_states", "stays_unit_state_flags",
-          "stays_unit_lineage", "stays_units", "stays_categories")
+TABLES = ("stays_reservations", "stays_moves", "stays_assignments", "fund_versions",
+          "fund_category_states", "fund_group_states", "fund_unit_states", "fund_unit_state_flags",
+          "fund_unit_lineage", "fund_units", "fund_categories")
 
 
 def dump(db) -> dict:

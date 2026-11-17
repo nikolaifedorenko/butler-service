@@ -8,7 +8,8 @@ import pytest
 from sqlalchemy import delete, func, select
 
 from app.core.audit import AuditLog
-from app.modules.stays.adapters.orm import (
+from app.modules.fund.application import fund_drafts as fd
+from app.modules.fund.application.catalog import (
     Category,
     CategoryState,
     FundGroup,
@@ -20,10 +21,9 @@ from app.modules.stays.adapters.orm import (
     UnitState,
     UnitStateFlag,
 )
-from app.modules.stays.application import fund_drafts as fd
+from app.modules.fund.application.fund import FundConflict, FundError
+from app.modules.fund.application.fund_versions import fund_on, snapshot_of
 from app.modules.stays.application import fund_publish as fp
-from app.modules.stays.application.fund import FundConflict, FundError
-from app.modules.stays.application.fund_versions import fund_on, snapshot_of
 
 from .helpers import kind_id
 
@@ -414,7 +414,7 @@ def test_carry_to_later_versions_keeps_escorted(db, world):
 
 
 def test_apply_file_sets_group_escorted(db, world):
-    from app.modules.stays.application import fund_xlsx as fx
+    from app.modules.fund.application import fund_xlsx as fx
     d = _open(db)
     parsed, errs = fx.parse_fund(fx.export_fund(snapshot_of(db, d.id), []))
     assert errs == []

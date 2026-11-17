@@ -78,6 +78,7 @@ forbidden_modules =
     app.modules.cars
     app.modules.docs
     app.modules.employees
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -99,6 +100,7 @@ forbidden_modules =
     app.modules.cars
     app.modules.docs
     app.modules.employees
+    app.modules.fund
     app.modules.night
     app.modules.people
     app.modules.settings
@@ -119,6 +121,7 @@ forbidden_modules =
     app.modules.cars
     app.modules.docs
     app.modules.employees
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.settings
@@ -133,7 +136,7 @@ layers =
     app.modules.settings
     app.modules.access | app.modules.docs | app.modules.employees | app.modules.stays
     app.modules.night
-    app.modules.audit | app.modules.cars | app.modules.notify | app.modules.timesheet
+    app.modules.audit | app.modules.cars | app.modules.fund | app.modules.notify | app.modules.timesheet
     app.modules.exchange | app.modules.people
 
 [importlinter:contract:file-formats-only-in-exchange]
@@ -148,6 +151,7 @@ source_modules =
     app.modules.cars
     app.modules.docs
     app.modules.employees
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -170,6 +174,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -191,6 +196,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -212,6 +218,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -233,6 +240,7 @@ source_modules =
     app.modules.cars
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -254,6 +262,7 @@ source_modules =
     app.modules.cars
     app.modules.docs
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -275,6 +284,7 @@ source_modules =
     app.modules.cars
     app.modules.docs
     app.modules.employees
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -287,6 +297,28 @@ forbidden_modules =
     app.modules.exchange.interface
 allow_indirect_imports = True
 
+[importlinter:contract:fund-private]
+name = R3: domain/adapters/interface fund приватны
+type = forbidden
+source_modules =
+    app.modules.access
+    app.modules.audit
+    app.modules.cars
+    app.modules.docs
+    app.modules.employees
+    app.modules.exchange
+    app.modules.night
+    app.modules.notify
+    app.modules.people
+    app.modules.settings
+    app.modules.stays
+    app.modules.timesheet
+forbidden_modules =
+    app.modules.fund.domain
+    app.modules.fund.adapters
+    app.modules.fund.interface
+allow_indirect_imports = True
+
 [importlinter:contract:night-private]
 name = R3: domain/adapters/interface night приватны
 type = forbidden
@@ -297,6 +329,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.notify
     app.modules.people
     app.modules.settings
@@ -318,6 +351,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.people
     app.modules.settings
@@ -339,6 +373,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.settings
@@ -360,6 +395,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -381,6 +417,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people
@@ -402,6 +439,7 @@ source_modules =
     app.modules.docs
     app.modules.employees
     app.modules.exchange
+    app.modules.fund
     app.modules.night
     app.modules.notify
     app.modules.people

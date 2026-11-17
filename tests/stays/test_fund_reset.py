@@ -15,21 +15,12 @@ from sqlalchemy import func, insert, select, update
 
 from app.core.audit import AuditLog
 from app.core.db import Base
-from app.modules.stays.adapters.orm import (
-    CoverageLine,
-    CustomField,
-    Escort,
-    FundVersion,
-    GroupState,
-    Label,
-    Ooo,
-    StaysSettings,
-    UnitState,
-)
+from app.modules.fund.application import fund_xlsx as fx
+from app.modules.fund.application.catalog import FundVersion, GroupState, UnitState
+from app.modules.fund.application.fund_drafts import FundFileError
+from app.modules.fund.application.fund_versions import INITIAL_DATE
+from app.modules.stays.adapters.orm import CoverageLine, CustomField, Escort, Label, Ooo, StaysSettings
 from app.modules.stays.application import fund_reset as fr
-from app.modules.stays.application import fund_xlsx as fx
-from app.modules.stays.application.fund_drafts import FundFileError
-from app.modules.stays.application.fund_versions import INITIAL_DATE
 
 from .helpers import API
 
@@ -124,13 +115,13 @@ def _backups() -> list[str]:
 
 
 def test_reset_tables_cover_whole_stays_schema():
-    """Каждая таблица stays_* решена явно: данные шахматки (удаляются) или настройки (остаются)."""
-    stays = {t for t in Base.metadata.tables if t.startswith("stays_")}
+    """Каждая таблица stays_* и fund_* решена явно: данные шахматки (удаляются) или настройки (остаются)."""
+    stays = {t for t in Base.metadata.tables if t.startswith(("stays_", "fund_"))}
     wipe = {m.__tablename__ for m in fr.WIPE}
     keep = {m.__tablename__ for m in fr.KEEP}
     assert not wipe & keep
     assert wipe | keep == stays, stays ^ (wipe | keep)
-    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts", "stays_category_kinds",
+    assert keep == {"stays_settings", "stays_labels", "stays_fields", "stays_escorts", "fund_category_kinds",
                     "stays_vip_codes"}
 
 
@@ -272,11 +263,11 @@ def test_reset_backup_written_before_delete(admin_client, db, monkeypatch):
                                  *[sheet_of[m.__tablename__] for m in fr.WIPE]]
         seen["raw"] = {t: wb[sheet_of[t]].max_row - 1 for t in tables}
         rows = {t: [[x.value for x in r] for r in wb[sheet_of[t]].iter_rows()] for t in
-                ("stays_ooo", "stays_coverage", "stays_unit_states")}
+                ("stays_ooo", "stays_coverage", "fund_unit_states")}
         seen["hold"] = [r for r in rows["stays_ooo"][1:] if r[0] == hold.id]
         seen["cover"] = [r for r in rows["stays_coverage"][1:] if r[0] == cover.id]
-        head = rows["stays_unit_states"][0]
-        seen["future"] = [r for r in rows["stays_unit_states"][1:]
+        head = rows["fund_unit_states"][0]
+        seen["future"] = [r for r in rows["fund_unit_states"][1:]
                           if r[head.index("version_id")] == future.id and r[head.index("label")] == future_label]
         seen["reservations"] = wb["Брони"].max_row - 1
         seen["guests"] = wb["Гости"].max_row - 1
@@ -338,7 +329,7 @@ def test_reset_keeps_vip_codes(admin_client, db):
 
 def _other_tables(db) -> dict[str, int]:
     return {t: db.scalar(select(func.count()).select_from(Base.metadata.tables[t]))
-            for t in Base.metadata.tables if not t.startswith("stays_") and t != "audit_log"}
+            for t in Base.metadata.tables if not t.startswith(("stays_", "fund_")) and t != "audit_log"}
 
 
 def test_reset_keeps_employees_schedule_tabel_audit_and_module_settings(admin_client, db):

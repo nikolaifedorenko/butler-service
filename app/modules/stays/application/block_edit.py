@@ -14,11 +14,11 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.errors import NotFound
+from app.modules.fund.application.fund import changes
 
 from ..adapters.orm import Block
 from ..ports.duty import DutyPort
 from . import blocks
-from .fund import changes
 from .preview import change_window
 from .previewed import run_previewed
 
