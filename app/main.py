@@ -284,7 +284,17 @@ def manifest():
                         headers={"Cache-Control": "no-cache"})
 
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+class RevalidatingStaticFiles(StaticFiles):
+    """Статика с обязательной перепроверкой (ETag → 304). Скрипты-модули подключают друг друга по
+    адресу без ?v=, поэтому браузер не должен держать устаревшую копию по эвристике Last-Modified."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", RevalidatingStaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/{full_path:path}")

@@ -9,6 +9,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { loadApp } from './jsdom_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -83,17 +84,7 @@ window.HTMLElement.prototype.scrollIntoView = function () {};
 
 /* инжектим ВСЕ локальные скрипты из index.html по порядку — как это делает браузер */
 window.matchMedia = window.matchMedia || (q => ({ matches: false, media: q }));
-const srcs = [...html.matchAll(/<script (?:type="module" )?src="([^"]+)"><\/script>/g)].map(m => m[1]);
-if (!srcs.length) srcs.push('/static/js/app.js');
-for (const src of srcs) {
-  const rel = src.split('?v=')[0].replace(/^\//, '');
-  const file = path.join(ROOT, rel);
-  if (!fs.existsSync(file)) { console.log('❌ скрипт не найден:', rel); continue; }
-  const sc = window.document.createElement('script');
-  sc.textContent = fs.readFileSync(file, 'utf8');
-  window.document.body.appendChild(sc);
-  console.log('загружен скрипт:', rel);
-}
+loadApp(window, html, ROOT, { log: m => console.log(m) });
 
 const $ = s => window.document.querySelector(s);
 const txt = s => ($(s)?.textContent || '').replace(/\s+/g, ' ').trim();

@@ -31,9 +31,9 @@ OUT = pathlib.Path(__file__).resolve().parent / "js_globals.json"
 
 # объявления верхнего уровня: function/async function/const/let/var/class
 DECL = re.compile(
-    r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)"
-    r"|^(?:const|let|var)\s+([A-Za-z_$][\w$]*)"
-    r"|^class\s+([A-Za-z_$][\w$]*)",
+    r"^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)"
+    r"|^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)"
+    r"|^(?:export\s+)?class\s+([A-Za-z_$][\w$]*)",
     re.M,
 )
 
@@ -62,9 +62,9 @@ BRIDGE_START = "/* ── мост к общей области имён (ген
 BRIDGE_END = "/* ── конец моста ── */"
 BRIDGE_RE = re.compile(re.escape(BRIDGE_START) + r".*?" + re.escape(BRIDGE_END) + r"\n?", re.S)
 DECL_KIND = re.compile(
-    r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)"
-    r"|^(const|let|var)\s+([A-Za-z_$][\w$]*)"
-    r"|^class\s+([A-Za-z_$][\w$]*)",
+    r"^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)"
+    r"|^(?:export\s+)?(const|let|var)\s+([A-Za-z_$][\w$]*)"
+    r"|^(?:export\s+)?class\s+([A-Za-z_$][\w$]*)",
     re.M,
 )
 

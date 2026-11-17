@@ -163,6 +163,9 @@ jobs:
       - name: Линтер JavaScript (no-undef ловит отсутствующие функции разделов)
         run: npx eslint --max-warnings=0 static/js static/sw.js
 
+      - name: Загрузчик модулей для jsdom (unit-тесты)
+        run: node --test tools/jsdom_modules.test.mjs
+
       - name: Список глобальных имён JS не разошёлся с кодом
         run: python tools/gen_js_globals.py --check
 
