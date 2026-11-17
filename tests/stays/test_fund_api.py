@@ -17,7 +17,7 @@ def test_fund_readable_by_supervisor_and_butler(manager_client, employee_client)
     assert {"labels", "fields", "escorts", "settings"} <= set(body)
     assert not {"categories", "units", "kinds"} & set(body)   # фонд на дату и виды — GET /fund/snapshot
     # батлер (stays.mine) читает справочник ради настраиваемых полей; списка сотрудников нет
-    assert "staff" not in employee_client.get(f"{API}/fund").json()
+    assert employee_client.get(f"{API}/fund").json()["staff"] is None
 
 
 def test_escorts_seed_from_position(manager_role_client, db):
@@ -72,7 +72,7 @@ def test_label_crud(manager_role_client):
 def test_fund_staff_only_for_setup(manager_role_client, manager_client):
     staff = manager_role_client.get(f"{API}/fund").json()["staff"]
     assert staff and {"id", "name", "position"} <= set(staff[0])
-    assert "staff" not in manager_client.get(f"{API}/fund").json()
+    assert manager_client.get(f"{API}/fund").json()["staff"] is None
 
 
 def test_settings_bounds_and_nan(manager_role_client):

@@ -2728,6 +2728,58 @@
         "title": "CreatedOut",
         "type": "object"
       },
+      "CustomFieldOut": {
+        "additionalProperties": false,
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "searchable": {
+            "title": "Searchable",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "code",
+          "title",
+          "kind",
+          "searchable",
+          "sort_order",
+          "choices"
+        ],
+        "title": "CustomFieldOut",
+        "type": "object"
+      },
       "DateRangeOut": {
         "additionalProperties": false,
         "properties": {
@@ -5463,6 +5515,25 @@
         "title": "EngineVersionOut",
         "type": "object"
       },
+      "EscortChangedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "employee_id",
+          "active"
+        ],
+        "title": "EscortChangedOut",
+        "type": "object"
+      },
       "EscortIn": {
         "properties": {
           "active": {
@@ -5474,6 +5545,44 @@
           "active"
         ],
         "title": "EscortIn",
+        "type": "object"
+      },
+      "EscortRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "employee_id": {
+            "title": "Employee Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "name",
+          "active"
+        ],
+        "title": "EscortRowOut",
+        "type": "object"
+      },
+      "EscortsSeededOut": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added"
+        ],
+        "title": "EscortsSeededOut",
         "type": "object"
       },
       "FactBarOut": {
@@ -8576,6 +8685,30 @@
           "color"
         ],
         "title": "LabelIn",
+        "type": "object"
+      },
+      "LabelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "color"
+        ],
+        "title": "LabelOut",
         "type": "object"
       },
       "LastPunchOut": {
@@ -14792,6 +14925,30 @@
         "title": "SplitIn",
         "type": "object"
       },
+      "StaffRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position"
+        ],
+        "title": "StaffRowOut",
+        "type": "object"
+      },
       "StatementEmployeeOut": {
         "additionalProperties": false,
         "properties": {
@@ -15007,6 +15164,102 @@
           "kind"
         ],
         "title": "StatementPartialOut",
+        "type": "object"
+      },
+      "StaysDirectoriesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "escorts": {
+            "items": {
+              "$ref": "#/components/schemas/EscortRowOut"
+            },
+            "title": "Escorts",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/CustomFieldOut"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "in_production": {
+            "title": "In Production",
+            "type": "boolean"
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/LabelOut"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/StaysSettingsOut"
+          },
+          "staff": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/StaffRowOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff"
+          },
+          "vip_codes": {
+            "items": {
+              "$ref": "#/components/schemas/VipCodeOut"
+            },
+            "title": "Vip Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "labels",
+          "fields",
+          "escorts",
+          "settings",
+          "in_production",
+          "vip_codes",
+          "staff"
+        ],
+        "title": "StaysDirectoriesOut",
+        "type": "object"
+      },
+      "StaysSettingsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "daily_limit": {
+            "title": "Daily Limit",
+            "type": "number"
+          },
+          "replacement_codes": {
+            "title": "Replacement Codes",
+            "type": "string"
+          },
+          "special_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Factor"
+          }
+        },
+        "required": [
+          "special_factor",
+          "daily_limit",
+          "replacement_codes"
+        ],
+        "title": "StaysSettingsOut",
         "type": "object"
       },
       "SubdivisionDeletedOut": {
@@ -16217,6 +16470,50 @@
         "title": "VipCodeIn",
         "type": "object"
       },
+      "VipCodeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "escorted": {
+            "title": "Escorted",
+            "type": "boolean"
+          },
+          "factor": {
+            "title": "Factor",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "title",
+          "escorted",
+          "factor",
+          "sort_order",
+          "archived"
+        ],
+        "title": "VipCodeOut",
+        "type": "object"
+      },
       "VipDeletedOut": {
         "additionalProperties": false,
         "properties": {
@@ -16924,6 +17221,39 @@
         "title": "MergeIn",
         "type": "object"
       },
+      "app__modules__stays__application__fund_forms__SettingsIn": {
+        "properties": {
+          "daily_limit": {
+            "maximum": 999.0,
+            "title": "Daily Limit",
+            "type": "number"
+          },
+          "replacement_codes": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Replacement Codes",
+            "type": "string"
+          },
+          "special_factor": {
+            "anyOf": [
+              {
+                "maximum": 99.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Factor"
+          }
+        },
+        "required": [
+          "daily_limit"
+        ],
+        "title": "SettingsIn",
+        "type": "object"
+      },
       "app__modules__stays__interface__coverage_api__DaysIn": {
         "properties": {
           "days": {
@@ -17042,39 +17372,6 @@
           "last"
         ],
         "title": "TemplateIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__fund_api__SettingsIn": {
-        "properties": {
-          "daily_limit": {
-            "maximum": 999.0,
-            "title": "Daily Limit",
-            "type": "number"
-          },
-          "replacement_codes": {
-            "default": "",
-            "maxLength": 120,
-            "title": "Replacement Codes",
-            "type": "string"
-          },
-          "special_factor": {
-            "anyOf": [
-              {
-                "maximum": 99.0,
-                "minimum": 0.1,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Special Factor"
-          }
-        },
-        "required": [
-          "daily_limit"
-        ],
-        "title": "SettingsIn",
         "type": "object"
       },
       "app__modules__stays__interface__guests_api__MergeIn": {
@@ -26506,7 +26803,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EscortsSeededOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26556,7 +26855,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EscortChangedOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26660,7 +26961,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CustomFieldOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26700,7 +27003,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -26748,7 +27053,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CustomFieldOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26777,7 +27084,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/StaysDirectoriesOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29195,7 +29504,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LabelOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29235,7 +29546,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
               }
             },
             "description": "Successful Response"
@@ -29283,7 +29596,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LabelOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -30316,7 +30631,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__fund_api__SettingsIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__fund_forms__SettingsIn"
               }
             }
           },
@@ -30326,7 +30641,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/StaysSettingsOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -30365,7 +30682,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VipCodeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -30405,7 +30724,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/IdOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -30453,7 +30774,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VipCodeOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -30503,7 +30826,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VipCodeOut"
+                }
               }
             },
             "description": "Successful Response"

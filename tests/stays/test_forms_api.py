@@ -44,4 +44,4 @@ def test_join_group_requires_same_category(manager_role_client, manager_client):
 
 def test_fund_readable_by_butler(butler_client):
     body = butler_client.get(f"{API}/fund").json()
-    assert "fields" in body and "staff" not in body
+    assert "fields" in body and body["staff"] is None

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -125,3 +125,56 @@ class ArchiveIn(BaseModel):
 
 class InProductionIn(BaseModel):
     value: bool
+
+
+class LabelIn(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+    color: str
+
+    @field_validator("color")
+    @classmethod
+    def _hex(cls, v: str) -> str:
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
+            raise ValueError("Цвет в формате #RRGGBB")
+        return v
+
+
+class FieldIn(BaseModel):
+    target: Literal["guest", "reservation"]
+    code: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z][A-Za-z0-9_]*$")
+    title: str = Field(min_length=1, max_length=120)
+    kind: Literal["text", "choice", "bool", "date"]
+    choices: list[str] = []
+    searchable: bool = False
+    sort_order: int = SORT
+
+
+class EscortIn(BaseModel):
+    active: bool
+
+
+class VipCodeIn(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    code: str = Field(max_length=8)           # цифры 1–8: остальное проверяет vip_codes.normalize_code
+    title: str = Field("", max_length=80)
+    escorted: bool = False
+    factor: float = Field(1.0, ge=0.1, le=99)
+    sort_order: int = SORT
+
+
+class VipCodeArchiveIn(BaseModel):
+    archived: bool
+
+
+class SeedIn(BaseModel):
+    position: str = Field("батлер", min_length=2, max_length=60)
+
+
+class SettingsIn(BaseModel):
+    # колонки Numeric(5,2): больше 999.99 PostgreSQL не примет; NaN сломал бы сравнения с лимитом
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    special_factor: Optional[float] = Field(None, ge=0.1, le=99)
+    daily_limit: float = Field(le=999)
+    replacement_codes: str = Field("", max_length=120)
