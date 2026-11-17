@@ -24,8 +24,7 @@ from app.modules.fund.application.catalog import (
 from app.modules.fund.application.fund import FundConflict, FundError
 from app.modules.fund.application.fund_versions import fund_on, snapshot_of
 from app.modules.stays.application import fund_publish as fp
-
-from .helpers import kind_id
+from tests.stays.helpers import kind_id
 
 V0 = dt.date(2093, 1, 1)          # опубликованная версия-основа
 NOW = "2093-01-10"

@@ -10,9 +10,9 @@ from sqlalchemy import delete, select
 from app.core.time import local_date
 from app.modules.stays.adapters.orm import CoverageGuest, CoverageLine, Reservation, StayGroup
 from app.modules.stays.application import mine
+from tests.board.test_occupancy_and_mine import _body, _doc
 
 from .helpers import API, create_res, make_category, make_guest
-from .test_occupancy_and_mine import _body, _doc
 
 
 def _line(employee_id: int, day: dt.date, reservation_id: int | None = None, group_id: int | None = None,

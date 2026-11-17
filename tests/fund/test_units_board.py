@@ -4,8 +4,7 @@ from __future__ import annotations
 import datetime as dt
 
 from app.modules.stays.domain.halfday import AM, PM, pos
-
-from .helpers import API, FundDraft, create_res, make_category, uniq
+from tests.stays.helpers import API, FundDraft, create_res, make_category, uniq
 
 WIN = {"first": "2029-02-01", "last": "2029-02-10"}
 

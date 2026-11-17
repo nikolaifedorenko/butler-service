@@ -4,7 +4,17 @@
 бюджет SQL месяца; прежние параметры — 422; поиск и VIP для уровня occupancy не применяются."""
 from __future__ import annotations
 
-from .helpers import API, FundDraft, create_res, kind_id, make_category, make_code, make_guest, set_guest, uniq
+from tests.stays.helpers import (
+    API,
+    FundDraft,
+    create_res,
+    kind_id,
+    make_category,
+    make_code,
+    make_guest,
+    set_guest,
+    uniq,
+)
 
 MONTH = {"first": "2036-11-01", "last": "2036-11-30"}
 

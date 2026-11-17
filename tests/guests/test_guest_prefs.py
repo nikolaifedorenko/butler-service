@@ -6,9 +6,8 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.audit import AuditLog
-
-from .helpers import API, FundDraft, create_res, make_category, make_guest, uniq, units_of
-from .test_allocation_versions import _version
+from tests.stays.helpers import API, FundDraft, create_res, make_category, make_guest, uniq, units_of
+from tests.stays.test_allocation_versions import _version
 
 MAIN = "main"
 
@@ -179,7 +178,7 @@ def test_prefs_change_moves_booking_now(manager_role_client, manager_client):
 
 
 def test_prefs_preview_equals_save(manager_role_client, manager_client, db):
-    from .test_preview import dump
+    from tests.stays.test_preview import dump
 
     cat = make_category(manager_role_client, n_units=2)
     first, want = (u["id"] for u in cat["units"])
@@ -198,8 +197,7 @@ def test_prefs_new_overbooking_needs_right(manager_role_client, manager_client, 
     """Пожелание уводит гостя в объект, нужный другой брони, которая без него остаётся без объекта: 409 без права."""
     from app.core.db import SessionLocal
     from app.core.identity import AccessGrant, Role
-
-    from .conftest import _role_user
+    from tests.stays.conftest import _role_user
 
     with SessionLocal() as s:
         if s.get(Role, "stays_guests_edit") is None:
@@ -228,7 +226,7 @@ def test_prefs_new_overbooking_needs_right(manager_role_client, manager_client, 
 
 
 def test_pin_and_continuity_beat_prefs(manager_role_client, manager_client, today, db):
-    from .test_allocation_versions import _rows
+    from tests.stays.test_allocation_versions import _rows
 
     today("2048-12-01")
     cat = make_category(manager_role_client, n_units=2)

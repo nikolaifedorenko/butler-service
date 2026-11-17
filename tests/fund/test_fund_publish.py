@@ -27,8 +27,7 @@ from app.modules.fund.application.fund import FundConflict
 from app.modules.fund.application.fund_versions import fund_on
 from app.modules.stays.adapters.orm import Move, Reservation
 from app.modules.stays.application import fund_publish as fp
-
-from .helpers import API, create_res, kind_id, make_category
+from tests.stays.helpers import API, create_res, kind_id, make_category
 
 # ── перенос в поздние версии (без API) ──────────────────────────────────────
 
@@ -266,8 +265,7 @@ def setup_no_overbook_client(app_stack):
     """Настройка фонда (stays.setup, stays.view) без права «Овербукинг»."""
     from app.core.db import SessionLocal
     from app.core.identity import AccessGrant, Role
-
-    from .conftest import _role_user
+    from tests.stays.conftest import _role_user
 
     with SessionLocal() as s:
         if s.get(Role, "stays_setup_only") is None:
@@ -421,7 +419,7 @@ def test_delete_future_version_overbook_check(manager_role_client, manager_clien
     объект, оставляет бронь без объекта. Как и публикация, — одна операция с предпросмотром:
     ?preview=1 — 200 с overbook_refused, ничего не удалено; без права «Овербукинг» — 409, версия
     на месте; с правом — удаляется, в разнице — овербукинг."""
-    from .test_allocation_versions import _version
+    from tests.stays.test_allocation_versions import _version
 
     cat = make_category(manager_role_client, n_units=1)
     vid = _version(manager_role_client, "2052-01-01",

@@ -1,7 +1,7 @@
 """Шахматка, задача 10: карточки, лента изменений брони, история проживаний гостя."""
 from __future__ import annotations
 
-from .helpers import API, create_res, make_category, make_guest
+from tests.stays.helpers import API, create_res, make_category, make_guest
 
 
 def test_history_shows_field_diff(manager_role_client, manager_client):

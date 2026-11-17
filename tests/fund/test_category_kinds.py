@@ -11,8 +11,8 @@ from openpyxl import load_workbook
 from sqlalchemy import delete, select, update
 
 from app.modules.fund.application.catalog import CategoryKind, CategoryState
+from tests.stays.helpers import API, FundDraft, kind_id, make_category, uniq
 
-from .helpers import API, FundDraft, kind_id, make_category, uniq
 from .test_fund_import import _draft, _edit, _export, _row, _upload
 from .test_fund_versions_api import _clean  # noqa: F401 — autouse: снять версии и сущности теста
 

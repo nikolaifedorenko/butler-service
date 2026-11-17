@@ -2,7 +2,7 @@
 объект переименован 4003 → 4103 с даты D — до границы видно старое, после — новое."""
 from __future__ import annotations
 
-from .helpers import API, create_res, make_category, make_guest
+from tests.stays.helpers import API, create_res, make_category, make_guest
 
 T, D = "2034-01-10", "2034-02-10"          # «сегодня» модуля и дата новой версии
 

@@ -6,8 +6,8 @@ import datetime as dt
 
 from sqlalchemy import delete, select
 
-from .helpers import API, make_category, set_guest
-from .test_mine_ownership import _line
+from tests.stays.helpers import API, make_category, set_guest
+from tests.stays.test_mine_ownership import _line
 
 DIGITS = "9165550177"
 

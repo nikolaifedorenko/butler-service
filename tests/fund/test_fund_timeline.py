@@ -29,8 +29,7 @@ from app.modules.fund.application.fund_versions import (
     snapshot_of,
 )
 from app.modules.stays.domain import halfday
-
-from .helpers import kind_id
+from tests.stays.helpers import kind_id
 
 D1, D2, D3 = dt.date(2097, 11, 15), dt.date(2097, 12, 10), dt.date(2098, 1, 5)
 

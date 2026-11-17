@@ -20,8 +20,7 @@ from app.modules.fund.application.catalog import (
     UnitStateFlag,
 )
 from app.modules.stays.adapters.orm import StaysSettings
-
-from .helpers import kind_id
+from tests.stays.helpers import kind_id
 
 _D = dt.date(2099, 1, 1)
 

@@ -9,9 +9,8 @@ from sqlalchemy import select
 
 from app.core.audit import AuditLog
 from app.core.time import local_date
-
-from .helpers import API, create_res, make_category, make_code
-from .helpers import uniq as _uniq
+from tests.stays.helpers import API, create_res, make_category, make_code
+from tests.stays.helpers import uniq as _uniq
 
 
 def uniq() -> str:

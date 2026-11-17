@@ -11,8 +11,8 @@ from sqlalchemy import select
 
 from app.core.audit import AuditLog
 from app.modules.stays.domain.allocate import natural_key
+from tests.stays.helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, set_guest, uniq
 
-from .helpers import API, FundDraft, create_res, kind_id, make_category, make_guest, set_guest, uniq
 from .test_board_filters import _flag, _groups, _set_flag
 
 URL = f"{API}/bookings"

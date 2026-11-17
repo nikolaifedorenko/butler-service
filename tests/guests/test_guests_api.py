@@ -9,8 +9,7 @@ from sqlalchemy import select
 from app.core.audit import AuditLog
 from app.core.time import local_date
 from app.modules.guests.application.guests import format_phone, normalize_phone
-
-from .helpers import archive_code, create_res, make_category, make_code
+from tests.stays.helpers import archive_code, create_res, make_category, make_code
 
 API = "/api/stays"
 
@@ -289,7 +288,7 @@ def test_family_endpoint_visibility(manager_client, names_client, occupancy_clie
 def test_relatives_among_occupants_on_card_and_day_board(manager_role_client, manager_client, names_client,
                                                          occupancy_client):
     """§4 «Где ещё»: у гостя — родственники среди проживающих, уровень «с фамилиями»."""
-    from .helpers import create_res, make_category
+    from tests.stays.helpers import create_res, make_category
 
     g = _owner_family(manager_client)
     cat = make_category(manager_role_client, n_units=2)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from .helpers import API, create_res, make_category, make_guest
+from tests.stays.helpers import API, create_res, make_category, make_guest
 
 
 def _version(setup_client, valid_from: str, *edits) -> None:
@@ -88,7 +88,7 @@ def test_check_in_on_version_day_readers(manager_role_client, manager_client, to
 def test_preview_label_of_morning_piece_on_version_day(manager_role_client, manager_client, today):
     """I2: предпросмотр новой брони с ранним заездом в день версии D, единственный объект
     выведен с D: утро D — в нём (прежняя версия), подпись «куда» — его обозначение."""
-    from .helpers import res_body
+    from tests.stays.helpers import res_body
 
     today("2041-06-01")
     cat = make_category(manager_role_client, n_units=1)
