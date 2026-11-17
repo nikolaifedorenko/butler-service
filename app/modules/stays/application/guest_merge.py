@@ -11,9 +11,11 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.fund.application.locking import lock_module
+from app.modules.guests.application import guests
+from app.modules.guests.application.catalog import Guest
 
-from ..adapters.orm import CoverageGuest, Guest, Occupant, Reservation
-from . import allocation, guests
+from ..adapters.orm import CoverageGuest, Occupant, Reservation
+from . import allocation
 
 
 def _nights_runs(rows: list[Occupant]) -> list[tuple[dt.date, dt.date, str]]:

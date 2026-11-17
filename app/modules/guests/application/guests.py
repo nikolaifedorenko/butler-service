@@ -18,10 +18,10 @@ from app.modules.fund.application.locking import lock_module
 
 from ..adapters.orm import CustomField, Guest, GuestLink, GuestPref
 from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
-from ..domain.prefs import KINDS as PREF_KINDS
 from .vip_codes import check_selectable, code_texts
 
 GENDERS = ("m", "f", "")
+PREF_KINDS = ("group", "flag", "unit")      # вид пожелания: узел фонда, флаг, объект
 # вид связи → (подпись B в профиле A, подпись A в профиле B); parent — A родитель B, семейные
 # (parent, spouse) подписываются по полу (domain/kinship.py), остальное родство вычисляется
 LINK_KINDS = {

@@ -22,7 +22,7 @@ def _stored(db, row_id: int) -> dict:
 
 
 def test_new_object_has_empty_json_values_before_flush():
-    from app.modules.stays.adapters.orm import Guest
+    from app.modules.guests.application.catalog import Guest
 
     g = Guest(last_name="Проба")
     assert (g.preferences, g.special_dates, g.fields) == ({}, [], {})

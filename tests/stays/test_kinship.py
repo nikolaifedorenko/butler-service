@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.stays.domain.kinship import FamilyGraph, Person, check_parent, check_spouse, kin_of
+from app.modules.guests.domain.kinship import FamilyGraph, Person, check_parent, check_spouse, kin_of
 
 X = 1
 

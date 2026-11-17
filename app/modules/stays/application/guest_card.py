@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from ..adapters.orm import Guest
-from . import guests, reservations
+from app.modules.guests.application import guests
+from app.modules.guests.application.catalog import Guest
+
+from . import reservations
 
 
 def card(db: Session, g: Guest) -> dict:

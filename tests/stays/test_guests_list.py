@@ -129,8 +129,9 @@ def test_guests_tab_occupancy_403(occupancy_client, mgmt_client, manager_client)
 
 
 def test_merge_guests_moves_everything(manager_role_client, manager_client, db):
+    from app.modules.guests.application.catalog import Guest
     from app.modules.people.application.catalog import Employee
-    from app.modules.stays.adapters.orm import CoverageGuest, CoverageLine, Guest, Occupant
+    from app.modules.stays.adapters.orm import CoverageGuest, CoverageLine, Occupant
 
     u = uniq()
     vip = make_code(manager_role_client)
@@ -218,7 +219,8 @@ def test_merge_guests_in_same_reservation(manager_role_client, manager_client):
 
 
 def test_merge_preview_equals_save(manager_role_client, manager_client, db):
-    from app.modules.stays.adapters.orm import Guest, Occupant
+    from app.modules.guests.application.catalog import Guest
+    from app.modules.stays.adapters.orm import Occupant
 
     u = uniq()
     cat = make_category(manager_role_client, n_units=2)
@@ -246,7 +248,7 @@ def test_merge_preview_equals_save(manager_role_client, manager_client, db):
 
 
 def test_merge_keeps_family_links_without_duplicates(manager_client, db):
-    from app.modules.stays.adapters.orm import Guest, GuestLink
+    from app.modules.guests.application.catalog import Guest, GuestLink
 
     u = uniq()
     keep, drop, child, wife, mom = (_guest(manager_client, f"{n}{u}", gender=g) for n, g in
@@ -294,7 +296,7 @@ def test_merge_keeps_family_links_without_duplicates(manager_client, db):
 def test_merge_spouse_current_beats_former(manager_client, db):
     """У keep с W бывший брак, у дубля с W — действующий: остаётся действующий брак keep–W,
     связь дубля удаляется; если у keep уже есть другой действующий супруг — 409."""
-    from app.modules.stays.adapters.orm import Guest, GuestLink
+    from app.modules.guests.application.catalog import Guest, GuestLink
 
     u = uniq()
     keep, drop, w = (_guest(manager_client, f"{n}{u}") for n in ("Оставить", "Дубль", "Жена"))

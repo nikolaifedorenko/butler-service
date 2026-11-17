@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.errors import Forbidden
+from app.modules.guests.application.catalog import GuestLink
 
-from ..adapters.orm import GuestLink
 from . import mine
 from .visibility import level_for
 

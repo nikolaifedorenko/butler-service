@@ -18,24 +18,14 @@ from app.modules.fund.application.fund_versions import (
     unit_exists,
     version_cuts,
 )
+from app.modules.guests.application.catalog import Guest, VipCode
+from app.modules.guests.application.guests import searchable_codes, short_name, validate_fields
+from app.modules.guests.application.vip_codes import check_selectable
 
-from ..adapters.orm import (
-    Assignment,
-    Companion,
-    Guest,
-    Label,
-    Logistics,
-    Move,
-    Occupant,
-    Reservation,
-    StayGroup,
-    VipCode,
-)
+from ..adapters.orm import Assignment, Companion, Label, Logistics, Move, Occupant, Reservation, StayGroup
 from ..domain.halfday import AM, PIECE_BASE, pieces, pos, segments, validate_dates
 from . import allocation
 from .context import reservation_escort
-from .guests import searchable_codes, short_name, validate_fields
-from .vip_codes import check_selectable
 
 STATUS_TITLES = {"tentative": "предварительная", "confirmed": "подтверждена", "in_house": "заселён",
                  "checked_out": "выехал", "cancelled": "отменена", "no_show": "не заехал"}

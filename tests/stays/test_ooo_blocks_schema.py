@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.modules.fund.application.catalog import Category, Unit
-from app.modules.stays.adapters.orm import Block, BlockNight, Guest, GuestPref, Ooo
+from app.modules.guests.application.catalog import Guest, GuestPref
+from app.modules.stays.adapters.orm import Block, BlockNight, Ooo
 
 D = dt.date(2040, 1, 10)
 

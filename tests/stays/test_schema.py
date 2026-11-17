@@ -6,10 +6,10 @@ from sqlalchemy import inspect, select
 
 def test_stays_tables_created(db):
     names = set(inspect(db.get_bind()).get_table_names())
-    assert {"fund_categories", "fund_units", "stays_ooo", "stays_blocks", "stays_block_nights", "stays_guest_prefs", "stays_labels", "stays_guests",
-            "stays_guest_links", "stays_groups", "stays_reservations", "stays_moves",
+    assert {"fund_categories", "fund_units", "stays_ooo", "stays_blocks", "stays_block_nights", "guests_prefs", "stays_labels", "guests",
+            "guests_links", "stays_groups", "stays_reservations", "stays_moves",
             "stays_assignments", "stays_occupants", "stays_companions", "stays_logistics",
-            "stays_escorts", "stays_coverage", "stays_coverage_guests", "stays_fields",
+            "stays_escorts", "stays_coverage", "stays_coverage_guests", "guests_fields",
             "stays_settings"} <= names
 
 
@@ -36,12 +36,13 @@ def test_escort_rules_columns_and_defaults(db):
     """Ревизия 0017: справочник VIP-кодов и новые поля модели; значения по умолчанию из модели."""
     from decimal import Decimal
 
-    from app.modules.stays.adapters.orm import Guest, Reservation, StaysSettings
+    from app.modules.guests.application.catalog import Guest
+    from app.modules.stays.adapters.orm import Reservation, StaysSettings
     insp = inspect(db.get_bind())
-    assert {"stays_vip_codes"} <= set(insp.get_table_names())
+    assert {"guests_vip_codes"} <= set(insp.get_table_names())
     cols = lambda t: {c["name"] for c in insp.get_columns(t)}  # noqa: E731
-    assert {"id", "code", "title", "escorted", "factor", "sort_order", "archived"} == cols("stays_vip_codes")
-    assert {"vip_code_id", "special"} <= cols("stays_guests")
+    assert {"id", "code", "title", "escorted", "factor", "sort_order", "archived"} == cols("guests_vip_codes")
+    assert {"vip_code_id", "special"} <= cols("guests")
     assert {"vip_code_id", "escort_mode"} <= cols("stays_reservations")
     assert "special_factor" in cols("stays_settings")
     assert "escorted" in cols("fund_group_states")
@@ -54,6 +55,6 @@ def test_old_columns_gone(db):
     """Ревизия 0018: уровни VIP/VVIP, отказ от батлера и надбавки сняты."""
     insp = inspect(db.get_bind())
     cols = lambda t: {c["name"] for c in insp.get_columns(t)}  # noqa: E731
-    assert "level" not in cols("stays_guests")
+    assert "level" not in cols("guests")
     assert "declined_butler" not in cols("stays_reservations")
     assert not {"vip_bonus", "vvip_bonus"} & cols("stays_settings")

@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.errors import Forbidden, NotFound
+from app.modules.guests.application import family as family_graph
+from app.modules.guests.application import guests, vip_codes
+from app.modules.guests.application.catalog import Guest
 
-from ..adapters.orm import Guest
-from . import family as family_graph
-from . import guests, guests_list, history, mine, vip_codes
+from . import guests_list, history, mine
 from .guest_access import own_guest, require_full
 from .guest_card import card
 from .visibility import at_least, level_for

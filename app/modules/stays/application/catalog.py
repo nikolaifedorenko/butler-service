@@ -2,9 +2,3 @@
 модели шахматки отсюда, а не из adapters. Фонд (категории, объекты) — только снимком на
 дату: постоянные строки держат лишь id (stays-fund-versions §3.1)."""
 
-from ..adapters.orm import (  # noqa: F401
-    CoverageLine,
-    Escort,
-    Guest,
-    Reservation,
-)

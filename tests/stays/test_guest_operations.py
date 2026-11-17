@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.audit import AuditLog
-from app.modules.stays.adapters.orm import Guest, GuestLink
+from app.modules.guests.application.catalog import Guest, GuestLink
 from app.modules.stays.application import guest_edit
 
 from .helpers import API, make_guest, uniq

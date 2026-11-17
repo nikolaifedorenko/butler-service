@@ -373,8 +373,9 @@ def history_of():
     сегодня; общий гость — во всех. Без API: так быстрее. Удаляется после теста."""
     from app.core.db import SessionLocal
     from app.modules.fund.application.catalog import CategoryState
+    from app.modules.guests.application.catalog import Guest
     from app.modules.people.application.catalog import Employee
-    from app.modules.stays.adapters.orm import CoverageLine, Guest, Occupant, Reservation
+    from app.modules.stays.adapters.orm import CoverageLine, Occupant, Reservation
 
     made: list[tuple[int, list[int], list[int]]] = []
 
@@ -417,8 +418,8 @@ def history_of():
 
 def test_mine_budget_independent_of_history(history_of, sql_counter, on_day, db):
     """Каждый из четырёх ответов — одно и то же число SQL-операторов при 5 и 500 своих бронях."""
+    from app.modules.guests.application.catalog import Guest
     from app.modules.stays.adapters.duty_timesheet import TimesheetDuty
-    from app.modules.stays.adapters.orm import Guest
 
     on_day(NOW)
     small, big = history_of(5), history_of(500)

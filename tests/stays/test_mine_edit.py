@@ -8,7 +8,7 @@ import datetime as dt
 
 from sqlalchemy import func, select
 
-from app.modules.stays.adapters.orm import Guest
+from app.modules.guests.application.catalog import Guest
 from app.modules.stays.application import mine
 
 from .helpers import API, create_res, make_category, make_code, make_guest, units_of

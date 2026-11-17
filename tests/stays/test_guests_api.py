@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.audit import AuditLog
 from app.core.time import local_date
-from app.modules.stays.application.guests import format_phone, normalize_phone
+from app.modules.guests.application.guests import format_phone, normalize_phone
 
 from .helpers import archive_code, create_res, make_category, make_code
 
@@ -239,7 +239,7 @@ def _owner_family(c):
 def test_owner_example_via_api(manager_client, db):
     from sqlalchemy import func
 
-    from app.modules.stays.adapters.orm import GuestLink
+    from app.modules.guests.application.catalog import GuestLink
 
     g = _owner_family(manager_client)
     petr = _guest(manager_client, "Петров" + _uniq(), first_name="Пётр", gender="m")
@@ -311,7 +311,7 @@ def test_relatives_among_occupants_on_card_and_day_board(manager_role_client, ma
 def test_link_writes_take_module_lock(manager_client, monkeypatch):
     """Проверки графа и вставка/удаление связи — под lock_module (две записи одновременно не
     пропустят третьего родителя или супруга-предка)."""
-    from app.modules.stays.application import guests as gmod
+    from app.modules.guests.application import guests as gmod
 
     calls = []
     real = gmod.lock_module
@@ -326,7 +326,7 @@ def test_link_writes_take_module_lock(manager_client, monkeypatch):
 
 def test_save_guest_takes_module_lock(manager_client, monkeypatch):
     """Создание и правка профиля — под lock_module: слияние удаляет гостей параллельно."""
-    from app.modules.stays.application import guests as gmod
+    from app.modules.guests.application import guests as gmod
 
     calls = []
     real = gmod.lock_module
@@ -364,7 +364,7 @@ def test_family_links_carry_ids(manager_client):
 def test_toggle_spouse_former(manager_client, monkeypatch, db):
     """«Бывшие» на линии супругов: переключается под замком модуля; снять «бывшие», когда у
     кого-то из пары уже есть действующий супруг, — 422; у не-супружеской связи — 422."""
-    from app.modules.stays.application import guests as gmod
+    from app.modules.guests.application import guests as gmod
 
     a, b, c = (_guest(manager_client) for _ in range(3))
     link = _link(manager_client, a, b, "spouse").json()["id"]
@@ -399,7 +399,7 @@ def test_toggle_former_requires_edit(names_client, manager_client):
 def _guest_count(db) -> int:
     from sqlalchemy import func
 
-    from app.modules.stays.adapters.orm import Guest
+    from app.modules.guests.application.catalog import Guest
     db.expire_all()
     return db.scalar(select(func.count(Guest.id)))
 
@@ -407,7 +407,7 @@ def _guest_count(db) -> int:
 def _link_count(db) -> int:
     from sqlalchemy import func
 
-    from app.modules.stays.adapters.orm import GuestLink
+    from app.modules.guests.application.catalog import GuestLink
     db.expire_all()
     return db.scalar(select(func.count(GuestLink.id)))
 
@@ -598,7 +598,8 @@ def test_special_and_code_need_edit_perm(manager_client, mgmt_client, names_clie
 
 
 def test_butler_cannot_change_special_or_code(butler_client, manager_client, manager_role_client, own_reservation):
-    from app.modules.stays.application import guests, mine
+    from app.modules.guests.application import guests
+    from app.modules.stays.application import mine
     assert not {"special", "vip_code_id", "update_reservations"} & set(mine.GUEST_FREE)
     g = own_reservation["mine_guest"]
     code = make_code(manager_role_client)
@@ -624,7 +625,7 @@ def test_butler_cannot_change_special_or_code(butler_client, manager_client, man
 
 def _orm_guest(gid):
     from app.core.db import SessionLocal
-    from app.modules.stays.adapters.orm import Guest
+    from app.modules.guests.application.catalog import Guest
     with SessionLocal() as s:
         return s.get(Guest, gid)
 
@@ -642,7 +643,7 @@ def test_profile_archived_code_kept_not_selected(manager_role_client, manager_cl
 
 def test_preferences_come_in_display_order():
     """Порядок ключей база не хранит: поля формы идут первыми, остальные — по алфавиту."""
-    from app.modules.stays.application.guests import ordered_preferences
+    from app.modules.guests.application.guests import ordered_preferences
 
     got = ordered_preferences({"z": "1", "habits": "2", "ab": "3", "allergy": "4", "food": "5"})
     assert list(got) == ["allergy", "food", "habits", "ab", "z"]

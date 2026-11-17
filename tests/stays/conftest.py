@@ -122,7 +122,8 @@ def big_fund(app_stack):
     from app.core.time import local_date
     from app.modules.fund.application import fund_drafts as fd
     from app.modules.fund.application.catalog import CategoryState
-    from app.modules.stays.adapters.orm import Guest, Occupant, Reservation, VipCode
+    from app.modules.guests.application.catalog import Guest, VipCode
+    from app.modules.stays.adapters.orm import Occupant, Reservation
     from app.modules.stays.application import fund_publish as fp
     from app.modules.stays.application.allocation import run_allocation
 

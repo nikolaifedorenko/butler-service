@@ -11,10 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.fund.application.fund import FundConflict, FundError, as_dict, upsert_row
+from app.modules.guests.application.catalog import CustomField
+from app.modules.guests.application.guest_fields import field_dict
 from app.modules.people.application.catalog import Employee
 
-from ..adapters.orm import CustomField, Escort, Label, Reservation, StaysSettings
-from .guest_fields import field_dict
+from ..adapters.orm import Escort, Label, Reservation, StaysSettings
 
 LABEL_FIELDS = ("id", "title", "color")
 SETTINGS_FIELDS = ("special_factor", "daily_limit", "replacement_codes")

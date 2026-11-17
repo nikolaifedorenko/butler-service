@@ -18,23 +18,10 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.time import local_date
 from app.modules.fund.application.fund import FundError
-
-from ..adapters.orm import (
-    CoverageGuest,
-    CoverageLine,
-    Guest,
-    GuestLink,
-    Logistics,
-    Occupant,
-    Reservation,
-)
-from ..domain.allocate import natural_key
-from ..domain.halfday import AM, PM, pos
-from ..ports.duty import DutyPort
-from . import allocation, family
-from .context import load_context
-from .family import full_name
-from .guests import (
+from app.modules.guests.application import family
+from app.modules.guests.application.catalog import Guest, GuestLink
+from app.modules.guests.application.family import full_name
+from app.modules.guests.application.guests import (
     format_phone,
     guest_dict,
     guest_search_column,
@@ -44,10 +31,17 @@ from .guests import (
     short_name,
     text_search,
 )
+from app.modules.guests.application.vip_codes import code_texts
+
+from ..adapters.orm import CoverageGuest, CoverageLine, Logistics, Occupant, Reservation
+from ..domain.allocate import natural_key
+from ..domain.halfday import AM, PM, pos
+from ..ports.duty import DutyPort
+from . import allocation
+from .context import load_context
 from .guests_list import days_to_birthday
 from .history import guest_led_history
 from .reservations import guest_profile_extra
-from .vip_codes import code_texts
 
 LOCKED = ("number", "check_in", "check_out", "early", "late", "category_id", "label_id", "customer",
           "paid_category_id", "escort_mode", "vip_code_id", "group_id")
@@ -189,7 +183,7 @@ def check_guest_change(before: dict, data: dict) -> None:
             continue
         old = before.get("phone") if k == "phone" else before.get(k)
         if k == "phone":
-            from .guests import normalize_phone
+            from app.modules.guests.application.guests import normalize_phone
             v = normalize_phone(v)
         if _iso(v) != _iso(old) and not (v in ("", None) and old in ("", None)):
             raise MineForbidden(MINE_TEXT)

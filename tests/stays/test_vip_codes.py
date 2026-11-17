@@ -7,7 +7,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import delete, select
 
-from app.modules.stays.adapters.orm import Guest, Reservation, StaysSettings, VipCode
+from app.modules.guests.application.catalog import Guest, VipCode
+from app.modules.stays.adapters.orm import Reservation, StaysSettings
 
 from .helpers import API
 
@@ -64,7 +65,7 @@ def test_code_text_rules(manager_role_client):
 
 def test_normalize_code_unit():
     from app.modules.fund.application.fund import FundError
-    from app.modules.stays.application.vip_codes import normalize_code
+    from app.modules.guests.application.vip_codes import normalize_code
 
     assert normalize_code(" 03 ") == "03" and normalize_code("3") == "3"
     for bad in ("", "A3", "123456789", "1 2", "٣"):          # пробел внутри и арабская цифра — не код
@@ -132,7 +133,7 @@ def test_archive_used_code_ok_delete_409(manager_role_client, db):
 
 def test_check_selectable(manager_role_client, db):
     from app.modules.fund.application.fund import FundError
-    from app.modules.stays.application.vip_codes import check_selectable
+    from app.modules.guests.application.vip_codes import check_selectable
 
     c = manager_role_client
     live, old = _new(c), _new(c)
@@ -211,7 +212,7 @@ def test_demo_has_codes_03_13_14(fresh_database):
     r = run_migrate(fresh_database, DEMO_SEED="1")
     assert r.returncode == 0, r.stderr[-2000:]
     got = {c: (t, bool(e), f, bool(a)) for c, t, e, f, a in rows(
-        fresh_database, "SELECT code, title, escorted, factor, archived FROM stays_vip_codes")}
+        fresh_database, "SELECT code, title, escorted, factor, archived FROM guests_vip_codes")}
     assert set(got) == {"03", "13", "14"}
     assert got["03"][1] and got["13"][1] and not got["14"][1]
     assert not any(v[3] for v in got.values())
