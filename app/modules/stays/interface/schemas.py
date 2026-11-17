@@ -456,3 +456,237 @@ class FamilyOut(ApiModel):
     spouses: list[list[Any]]                 # [a, b, бывшие]
     links: list[FamilyLinkOut]
     kin: list[FamilyKinOut]
+
+
+# ── брони, группы, блоки, OOO ────────────────────────────────────────────────
+
+
+class PreviewedOut[T](ApiModel):
+    """Ответ операции с предпросмотром: что получилось (``result``) и что изменится в бронях
+    (``diff``). ``overbook_refused`` — текст отказа, если новый овербукинг без права не сохранится
+    (в предпросмотре; при сохранении отказ — 409)."""
+
+    preview: bool
+    result: T
+    diff: ImpactDiffOut
+    overbook_refused: Optional[str]
+
+
+class ReservationOccupantOut(ApiModel):
+    id: int
+    guest_id: int
+    date_from: str
+    date_to: str
+    role: str
+    name: str
+    special: bool
+    vip_code_id: Optional[int]
+
+
+class ReservationSegmentOut(ApiModel):
+    index: int
+    category_id: int
+    start: str
+    end: str
+    unit_id: Optional[int]
+    pinned: bool
+
+
+class ReservationMoveOut(ApiModel):
+    move_date: str
+    category_id: int
+
+
+class ReservationCompanionOut(ApiModel):
+    kind: str
+    description: str
+
+
+class ReservationLogisticsOut(ApiModel):
+    kind: str
+    date: Optional[str]
+    time: str
+    description: str
+
+
+class ReservationEscortOut(ApiModel):
+    declined: bool
+    reasons: list[str]
+    required_nights: int
+    rule_reasons: list[str]
+
+
+class ReservationVipCodeOut(ApiModel):
+    id: int
+    code: str
+    title: str
+    archived: bool
+
+
+class ReservationDocOut(ApiModel):
+    """Документ брони для формы правки."""
+
+    id: int
+    version: int
+    number: str
+    status: str
+    status_title: str
+    check_in: str
+    check_out: str
+    early: bool
+    late: bool
+    category_id: int
+    paid_category_id: int
+    label_id: Optional[int]
+    customer: str
+    note: str
+    escort_mode: str
+    vip_code_id: Optional[int]
+    vip_code: Optional[ReservationVipCodeOut]
+    group_id: Optional[int]
+    external_id: Optional[str]
+    source: str
+    fields: JsonDict
+    moves: list[ReservationMoveOut]
+    segments: list[ReservationSegmentOut]
+    occupants: list[ReservationOccupantOut]
+    companions: list[ReservationCompanionOut]
+    logistics: list[ReservationLogisticsOut]
+    warnings: list[Any]
+    escort: ReservationEscortOut
+
+
+class GroupJoinedOut(ApiModel):
+    group_id: int
+
+
+class StayGroupOut(ApiModel):
+    id: int
+    title: str
+
+
+class CohabitCandidateOut(ApiModel):
+    reservation_id: int
+    number: str
+    check_in: str
+    check_out: str
+    main_guest: str
+    group_id: Optional[int]
+
+
+class BookingLabelOut(ApiModel):
+    title: str
+    color: str
+
+
+class BookingRowOut(ApiModel):
+    id: int
+    number: str
+    status: str
+    status_title: str
+    check_in: str
+    check_out: str
+    nights: int
+    early: bool
+    late: bool
+    category: str
+    unit: str
+    upgrade: str
+    main_guest: str
+    special: bool
+    vip_code: str
+    escort_mode: str
+    label: Optional[BookingLabelOut]
+    butlers: list[str]
+    created_at: str
+
+
+class BookingListOut(ApiModel):
+    total: int
+    rows: list[BookingRowOut]
+
+
+class BlockTopOut(ApiModel):
+    category_id: int
+    code: str
+    max: int
+
+
+class BlockRowOut(ApiModel):
+    id: int
+    title: str
+    start: str
+    end: str
+    nights: int
+    placed: int
+    missing: int
+    short: bool
+    top: list[BlockTopOut]
+    created_at: str
+
+
+class BlockListOut(ApiModel):
+    total: int
+    rows: list[BlockRowOut]
+
+
+class BlockCardOut(ApiModel):
+    id: int
+    title: str
+    start: str
+    end: str
+    version: int
+    nights: int
+    placed: int
+    missing: int
+    short: list[JsonDict]
+    top: list[BlockTopOut]
+    grid: dict[str, dict[str, int]]
+
+
+class BlockSavedOut(ApiModel):
+    id: int
+    title: str
+    start: str
+    end: str
+    version: int
+    grid: dict[str, dict[str, int]]
+    dropped: Optional[list[Any]]               # ночи вне новых дат (только при замене блока)
+
+
+class DeletedOut(ApiModel):
+    id: int
+    deleted: bool
+
+
+class OooSavedOut(ApiModel):
+    id: int
+    unit_id: int
+    start: str
+    end: str
+    start_half: str
+    end_half: str
+    reason: str
+    version: int
+
+
+class OooRowOut(ApiModel):
+    id: int
+    unit_id: int
+    unit: str
+    category_id: Optional[int]
+    category: str
+    group: str
+    start: str
+    end: str
+    start_half: str
+    end_half: str
+    reason: str
+    author: str
+    created_at: str
+    version: int
+
+
+class OooListOut(ApiModel):
+    total: int
+    rows: list[OooRowOut]

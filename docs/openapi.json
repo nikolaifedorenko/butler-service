@@ -957,6 +957,83 @@
         "title": "BaseSavedOut",
         "type": "object"
       },
+      "BlockCardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "grid": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Grid",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "nights": {
+            "title": "Nights",
+            "type": "integer"
+          },
+          "placed": {
+            "title": "Placed",
+            "type": "integer"
+          },
+          "short": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Short",
+            "type": "array"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "top": {
+            "items": {
+              "$ref": "#/components/schemas/BlockTopOut"
+            },
+            "title": "Top",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "start",
+          "end",
+          "version",
+          "nights",
+          "placed",
+          "missing",
+          "short",
+          "top",
+          "grid"
+        ],
+        "title": "BlockCardOut",
+        "type": "object"
+      },
       "BlockIn": {
         "properties": {
           "end": {
@@ -996,6 +1073,28 @@
           "end"
         ],
         "title": "BlockIn",
+        "type": "object"
+      },
+      "BlockListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/BlockRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "rows"
+        ],
+        "title": "BlockListOut",
         "type": "object"
       },
       "BlockPut": {
@@ -1048,6 +1147,150 @@
           "version"
         ],
         "title": "BlockPut",
+        "type": "object"
+      },
+      "BlockRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "nights": {
+            "title": "Nights",
+            "type": "integer"
+          },
+          "placed": {
+            "title": "Placed",
+            "type": "integer"
+          },
+          "short": {
+            "title": "Short",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "top": {
+            "items": {
+              "$ref": "#/components/schemas/BlockTopOut"
+            },
+            "title": "Top",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "start",
+          "end",
+          "nights",
+          "placed",
+          "missing",
+          "short",
+          "top",
+          "created_at"
+        ],
+        "title": "BlockRowOut",
+        "type": "object"
+      },
+      "BlockSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "dropped": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "grid": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Grid",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "start",
+          "end",
+          "version",
+          "grid",
+          "dropped"
+        ],
+        "title": "BlockSavedOut",
+        "type": "object"
+      },
+      "BlockTopOut": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "max": {
+            "title": "Max",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category_id",
+          "code",
+          "max"
+        ],
+        "title": "BlockTopOut",
         "type": "object"
       },
       "BoardEmployeeOut": {
@@ -1412,6 +1655,160 @@
           "file"
         ],
         "title": "Body_upload_template_api_docs_templates_post",
+        "type": "object"
+      },
+      "BookingLabelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "color"
+        ],
+        "title": "BookingLabelOut",
+        "type": "object"
+      },
+      "BookingListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/BookingRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "rows"
+        ],
+        "title": "BookingListOut",
+        "type": "object"
+      },
+      "BookingRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "butlers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Butlers",
+            "type": "array"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "check_in": {
+            "title": "Check In",
+            "type": "string"
+          },
+          "check_out": {
+            "title": "Check Out",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "early": {
+            "title": "Early",
+            "type": "boolean"
+          },
+          "escort_mode": {
+            "title": "Escort Mode",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingLabelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "late": {
+            "title": "Late",
+            "type": "boolean"
+          },
+          "main_guest": {
+            "title": "Main Guest",
+            "type": "string"
+          },
+          "nights": {
+            "title": "Nights",
+            "type": "integer"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "upgrade": {
+            "title": "Upgrade",
+            "type": "string"
+          },
+          "vip_code": {
+            "title": "Vip Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "status_title",
+          "check_in",
+          "check_out",
+          "nights",
+          "early",
+          "late",
+          "category",
+          "unit",
+          "upgrade",
+          "main_guest",
+          "special",
+          "vip_code",
+          "escort_mode",
+          "label",
+          "butlers",
+          "created_at"
+        ],
+        "title": "BookingRowOut",
         "type": "object"
       },
       "BotCheckedOut": {
@@ -2423,6 +2820,52 @@
           "title"
         ],
         "title": "CodeTitle",
+        "type": "object"
+      },
+      "CohabitCandidateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "check_in": {
+            "title": "Check In",
+            "type": "string"
+          },
+          "check_out": {
+            "title": "Check Out",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "main_guest": {
+            "title": "Main Guest",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "reservation_id": {
+            "title": "Reservation Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reservation_id",
+          "number",
+          "check_in",
+          "check_out",
+          "main_guest",
+          "group_id"
+        ],
+        "title": "CohabitCandidateOut",
         "type": "object"
       },
       "CompanionIn": {
@@ -3450,6 +3893,25 @@
           "overbook_refused"
         ],
         "title": "DeleteVersionOut",
+        "type": "object"
+      },
+      "DeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "title": "DeletedOut",
         "type": "object"
       },
       "DepartmentDeletedOut": {
@@ -7661,6 +8123,20 @@
         "title": "GroupCreatedOut",
         "type": "object"
       },
+      "GroupJoinedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "title": "Group Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "title": "GroupJoinedOut",
+        "type": "object"
+      },
       "GroupOut": {
         "additionalProperties": false,
         "properties": {
@@ -11335,6 +11811,28 @@
         "title": "OooIn",
         "type": "object"
       },
+      "OooListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OooRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "rows"
+        ],
+        "title": "OooListOut",
+        "type": "object"
+      },
       "OooPut": {
         "properties": {
           "end": {
@@ -11387,6 +11885,141 @@
           "version"
         ],
         "title": "OooPut",
+        "type": "object"
+      },
+      "OooRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "end_half": {
+            "title": "End Half",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "start_half": {
+            "title": "Start Half",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "unit_id",
+          "unit",
+          "category_id",
+          "category",
+          "group",
+          "start",
+          "end",
+          "start_half",
+          "end_half",
+          "reason",
+          "author",
+          "created_at",
+          "version"
+        ],
+        "title": "OooRowOut",
+        "type": "object"
+      },
+      "OooSavedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "end_half": {
+            "title": "End Half",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "start_half": {
+            "title": "Start Half",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "unit_id",
+          "start",
+          "end",
+          "start_half",
+          "end_half",
+          "reason",
+          "version"
+        ],
+        "title": "OooSavedOut",
         "type": "object"
       },
       "OpenSessionCardOut": {
@@ -12178,6 +12811,176 @@
           "domain"
         ],
         "title": "PreviewOut",
+        "type": "object"
+      },
+      "PreviewedOut_BlockSavedOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/BlockSavedOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[BlockSavedOut]",
+        "type": "object"
+      },
+      "PreviewedOut_DeletedOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DeletedOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[DeletedOut]",
+        "type": "object"
+      },
+      "PreviewedOut_GroupJoinedOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/GroupJoinedOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[GroupJoinedOut]",
+        "type": "object"
+      },
+      "PreviewedOut_OooSavedOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/OooSavedOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[OooSavedOut]",
+        "type": "object"
+      },
+      "PreviewedOut_ReservationDocOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImpactDiffOut"
+          },
+          "overbook_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overbook Refused"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ReservationDocOut"
+          }
+        },
+        "required": [
+          "preview",
+          "result",
+          "diff",
+          "overbook_refused"
+        ],
+        "title": "PreviewedOut[ReservationDocOut]",
         "type": "object"
       },
       "ProgressOut": {
@@ -13386,6 +14189,260 @@
         "title": "ReportsOut",
         "type": "object"
       },
+      "ReservationCompanionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "description"
+        ],
+        "title": "ReservationCompanionOut",
+        "type": "object"
+      },
+      "ReservationDocOut": {
+        "additionalProperties": false,
+        "description": "Документ брони для формы правки.",
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "check_in": {
+            "title": "Check In",
+            "type": "string"
+          },
+          "check_out": {
+            "title": "Check Out",
+            "type": "string"
+          },
+          "companions": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationCompanionOut"
+            },
+            "title": "Companions",
+            "type": "array"
+          },
+          "customer": {
+            "title": "Customer",
+            "type": "string"
+          },
+          "early": {
+            "title": "Early",
+            "type": "boolean"
+          },
+          "escort": {
+            "$ref": "#/components/schemas/ReservationEscortOut"
+          },
+          "escort_mode": {
+            "title": "Escort Mode",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "title": "Fields",
+            "type": "object"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Id"
+          },
+          "late": {
+            "title": "Late",
+            "type": "boolean"
+          },
+          "logistics": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationLogisticsOut"
+            },
+            "title": "Logistics",
+            "type": "array"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationMoveOut"
+            },
+            "title": "Moves",
+            "type": "array"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "occupants": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationOccupantOut"
+            },
+            "title": "Occupants",
+            "type": "array"
+          },
+          "paid_category_id": {
+            "title": "Paid Category Id",
+            "type": "integer"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/ReservationSegmentOut"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_title": {
+            "title": "Status Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "vip_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReservationVipCodeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
+          },
+          "warnings": {
+            "items": {},
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "number",
+          "status",
+          "status_title",
+          "check_in",
+          "check_out",
+          "early",
+          "late",
+          "category_id",
+          "paid_category_id",
+          "label_id",
+          "customer",
+          "note",
+          "escort_mode",
+          "vip_code_id",
+          "vip_code",
+          "group_id",
+          "external_id",
+          "source",
+          "fields",
+          "moves",
+          "segments",
+          "occupants",
+          "companions",
+          "logistics",
+          "warnings",
+          "escort"
+        ],
+        "title": "ReservationDocOut",
+        "type": "object"
+      },
+      "ReservationEscortOut": {
+        "additionalProperties": false,
+        "properties": {
+          "declined": {
+            "title": "Declined",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "required_nights": {
+            "title": "Required Nights",
+            "type": "integer"
+          },
+          "rule_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rule Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "declined",
+          "reasons",
+          "required_nights",
+          "rule_reasons"
+        ],
+        "title": "ReservationEscortOut",
+        "type": "object"
+      },
       "ReservationIn": {
         "properties": {
           "category_id": {
@@ -13570,6 +14627,192 @@
           "category_id"
         ],
         "title": "ReservationIn",
+        "type": "object"
+      },
+      "ReservationLogisticsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "time": {
+            "title": "Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "date",
+          "time",
+          "description"
+        ],
+        "title": "ReservationLogisticsOut",
+        "type": "object"
+      },
+      "ReservationMoveOut": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "move_date": {
+            "title": "Move Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "move_date",
+          "category_id"
+        ],
+        "title": "ReservationMoveOut",
+        "type": "object"
+      },
+      "ReservationOccupantOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date_from": {
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "title": "Date To",
+            "type": "string"
+          },
+          "guest_id": {
+            "title": "Guest Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "special": {
+            "title": "Special",
+            "type": "boolean"
+          },
+          "vip_code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code Id"
+          }
+        },
+        "required": [
+          "id",
+          "guest_id",
+          "date_from",
+          "date_to",
+          "role",
+          "name",
+          "special",
+          "vip_code_id"
+        ],
+        "title": "ReservationOccupantOut",
+        "type": "object"
+      },
+      "ReservationSegmentOut": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "unit_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Id"
+          }
+        },
+        "required": [
+          "index",
+          "category_id",
+          "start",
+          "end",
+          "unit_id",
+          "pinned"
+        ],
+        "title": "ReservationSegmentOut",
+        "type": "object"
+      },
+      "ReservationVipCodeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "title",
+          "archived"
+        ],
+        "title": "ReservationVipCodeOut",
         "type": "object"
       },
       "ResetIn": {
@@ -15984,6 +17227,25 @@
         "title": "StatementPartialOut",
         "type": "object"
       },
+      "StayGroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "StayGroupOut",
+        "type": "object"
+      },
       "StaysDirectoriesOut": {
         "additionalProperties": false,
         "properties": {
@@ -18091,6 +19353,48 @@
         "title": "MergeIn",
         "type": "object"
       },
+      "app__modules__stays__application__reservation_forms__GroupIn": {
+        "properties": {
+          "title": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "GroupIn",
+        "type": "object"
+      },
+      "app__modules__stays__application__reservation_forms__StatusIn": {
+        "properties": {
+          "new_check_in": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Check In"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "StatusIn",
+        "type": "object"
+      },
       "app__modules__stays__interface__coverage_api__DaysIn": {
         "properties": {
           "days": {
@@ -18209,48 +19513,6 @@
           "last"
         ],
         "title": "TemplateIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__reservations_api__GroupIn": {
-        "properties": {
-          "title": {
-            "default": "",
-            "maxLength": 120,
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "title": "GroupIn",
-        "type": "object"
-      },
-      "app__modules__stays__interface__reservations_api__StatusIn": {
-        "properties": {
-          "new_check_in": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New Check In"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "status",
-          "version"
-        ],
-        "title": "StatusIn",
         "type": "object"
       },
       "app__modules__timesheet__application__doublepay_edit__DaysIn": {
@@ -25953,7 +27215,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BlockListOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26004,7 +27268,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_BlockSavedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -26065,7 +27331,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_DeletedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -26103,7 +27371,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCardOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -26163,7 +27433,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_BlockSavedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -26225,7 +27497,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_BlockSavedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -26741,7 +28015,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/BookingListOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -27027,9 +28303,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
-              }
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
             },
             "description": "Successful Response"
           },
@@ -29383,7 +30657,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__reservations_api__GroupIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__reservation_forms__GroupIn"
               }
             }
           },
@@ -29393,7 +30667,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/StayGroupOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29447,7 +30723,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_GroupJoinedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -29500,7 +30778,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_ReservationDocOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -30951,7 +32231,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OooListOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -31002,7 +32284,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_OooSavedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -31063,7 +32347,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_DeletedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -31123,7 +32409,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_OooSavedOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -31176,7 +32464,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_ReservationDocOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -31216,7 +32506,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationDocOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -31276,7 +32568,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_ReservationDocOut_"
+                }
               }
             },
             "description": "Successful Response"
@@ -31356,7 +32650,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CohabitCandidateOut"
+                  },
+                  "title": "Response Cohabit Api Stays Reservations  Rid  Cohabit Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -31448,7 +32748,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__stays__interface__reservations_api__StatusIn"
+                "$ref": "#/components/schemas/app__modules__stays__application__reservation_forms__StatusIn"
               }
             }
           },
@@ -31458,7 +32758,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewedOut_ReservationDocOut_"
+                }
               }
             },
             "description": "Successful Response"

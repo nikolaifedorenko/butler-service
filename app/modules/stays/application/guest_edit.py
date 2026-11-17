@@ -68,7 +68,7 @@ def update(db: Session, principal: Principal, gid: int, payload: GuestUpdateIn, 
 
     out = run_previewed(db, operation, preview_only=preview_only,
                         may_overbook="stays.overbook" in principal.gate_permissions,
-                        window=window, duty=duty if window else None)
+                        window=window, duty=duty)
     return {"preview": out["preview"], **out["result"], "diff": out["diff"] if window else None,
             "overbook_refused": out["overbook_refused"]}
 

@@ -1,245 +1,82 @@
 """API броней (§3.3, §4.7, §9): документ брони, статусы с no-show, группы совместного
-проживания. Каждая операция пересчитывает распределение по объектам и
-пишет журнал «было → стало»; устаревшая версия брони — 409."""
+проживания. Каждая операция пересчитывает распределение по объектам и пишет журнал
+«было → стало»; устаревшая версия брони — 409.
+
+Правила — в прикладном слое: ``application/reservation_edit.py``. Роутер разбирает запрос и
+проверяет право эндпоинта.
+"""
 from __future__ import annotations
 
-import datetime as dt
-from typing import Literal, Optional
-
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 
-from ..adapters.orm import Reservation, StayGroup
-from ..application import allocation, coverage, mine, reservations
-from ._ops import PREVIEW, run
+from ..adapters.duty_timesheet import TimesheetDuty
+from ..application import reservation_edit
+from ..application.reservation_forms import GroupIn, JoinIn, LeaveIn, ReservationIn, StatusIn
+from ._ops import PREVIEW
+from .schemas import (
+    CohabitCandidateOut,
+    GroupJoinedOut,
+    PreviewedOut,
+    ReservationDocOut,
+    StayGroupOut,
+)
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 EDIT = require_perm("stays.edit")
-
-
-class MoveIn(BaseModel):
-    move_date: dt.date
-    category_id: int
-
-
-class OccupantIn(BaseModel):
-    id: Optional[int] = None
-    guest_id: int
-    date_from: dt.date
-    date_to: dt.date
-    role: Literal["main", "guest"] = "guest"
-
-
-class CompanionIn(BaseModel):
-    kind: str = "other"
-    description: str = Field("", max_length=255)
-
-
-class LogisticsIn(BaseModel):
-    kind: str = "transfer"
-    date: Optional[dt.date] = None
-    time: str = Field("", pattern=r"^(|\d{2}:\d{2})$")
-    description: str = Field("", max_length=255)
-
-
-class ReservationIn(BaseModel):
-    number: str = Field("", max_length=40)
-    status: Literal["tentative", "confirmed"] = "confirmed"     # только при создании
-    check_in: dt.date
-    check_out: dt.date
-    early: bool = False
-    late: bool = False
-    category_id: int
-    paid_category_id: Optional[int] = None                       # пусто — категория брони
-    label_id: Optional[int] = None
-    customer: str = Field("", max_length=160)
-    note: str = Field("", max_length=4000)
-    escort_mode: Literal["rules", "required", "declined"] = "rules"      # ручная отметка главнее правил
-    vip_code_id: Optional[int] = None            # пусто при создании — из профиля главного гостя
-    fields: dict = {}
-    group_id: Optional[int] = None
-    moves: list[MoveIn] = []
-    occupants: list[OccupantIn] = []
-    companions: list[CompanionIn] = []
-    logistics: list[LogisticsIn] = []
-    pins: Optional[dict[int, Optional[int]]] = None              # сегмент → объект; None — «авто»
-    version: Optional[int] = None                                 # обязательна при правке
-
-
-class StatusIn(BaseModel):
-    status: str
-    version: int
-    new_check_in: Optional[dt.date] = None
-
-
-class GroupIn(BaseModel):
-    title: str = Field("", max_length=120)
-
-
-def _doc(payload: ReservationIn) -> dict:
-    return payload.model_dump(exclude={"version"})
-
-
-def _result(db: Session, r: Reservation) -> dict:
-    return reservations.reservation_dict(db, r, allocation.current_state(db))
-
-
-def _window(r: Reservation | None, *docs) -> tuple[dt.date, dt.date]:
-    """Дни, на которые операция может повлиять: старые и новые даты брони."""
-    starts = [d["check_in"] for d in docs] + ([r.check_in] if r else [])
-    ends = [d["check_out"] for d in docs] + ([r.check_out] if r else [])
-    return min(starts), max(max(ends) - dt.timedelta(days=1), min(starts))
-
-
-def _cleanup(db: Session, principal: Principal, r: Reservation, old_group_id: int | None = None) -> None:
-    """Строки покрытия на дни, когда гостей брони уже нет, снимаются с записью в журнал (§4.2)."""
-    removed = coverage.cleanup_lines(db, r.id, old_group_id)
-    if removed:
-        audit(db, principal, "stays_coverage_cleanup", f"reservation:{r.id}", {"days": removed})
-
-
-@router.post("/reservations")
-def create_reservation(payload: ReservationIn, preview_flag: bool = PREVIEW,
-                       principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
-    doc = _doc(payload)
-
-    def op():
-        r, before = reservations.save_reservation(db, doc, None, None)
-        audit(db, principal, "stays_reservation", f"reservation:{r.id}",
-              {"diff": reservations.diff_of(before, db, r)})
-        return _result(db, r)
-    return run(db, op, preview_flag, _window(None, doc), principal)
-
-
 READ_OR_MINE = require_perm("stays.edit", "stays.mine", "stays.mine_res_edit")
 EDIT_OR_MINE = require_perm("stays.edit", "stays.mine_res_edit")
 
 
-def _mine_mode(db: Session, principal: Principal, rid: int) -> bool:
-    """Без stays.edit — батлер: только своя бронь (строка покрытия за всё время, часть 4 §4)."""
-    if "stays.edit" in principal.gate_permissions:
-        return False
-    if principal.employee is None or not mine.owns_reservation(db, principal.employee.id, rid):
-        raise HTTPException(status_code=403, detail="Это не ваша бронь: вы не ведёте её гостей")
-    return True
+@router.post("/reservations", response_model=PreviewedOut[ReservationDocOut])
+def create_reservation(payload: ReservationIn, preview_flag: bool = PREVIEW,
+                       principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
+    return reservation_edit.create(db, principal, payload, preview_only=preview_flag, duty=TimesheetDuty(db))
 
 
-@router.get("/reservations/{rid}")
+@router.get("/reservations/{rid}", response_model=ReservationDocOut)
 def get_reservation(rid: int, principal: Principal = Depends(READ_OR_MINE), db: Session = Depends(get_db)):
-    r = db.get(Reservation, rid)
-    if r is None:
-        raise HTTPException(status_code=404, detail="Бронь не найдена")
-    _mine_mode(db, principal, rid)
-    return reservations.reservation_dict(db, r)
+    return reservation_edit.get(db, principal, rid)
 
 
-@router.put("/reservations/{rid}")
+@router.put("/reservations/{rid}", response_model=PreviewedOut[ReservationDocOut])
 def update_reservation(rid: int, payload: ReservationIn, preview_flag: bool = PREVIEW,
                        principal: Principal = Depends(EDIT_OR_MINE), db: Session = Depends(get_db)):
-    if payload.version is None:
-        raise HTTPException(status_code=422, detail="Не указана версия брони")
-
-    doc = _doc(payload)
-    r0 = db.get(Reservation, rid)
-    butler: int | None = None             # батлер правит свою бронь (часть 4 §4)
-    had: set[int] = set()
-    if r0 is not None and _mine_mode(db, principal, rid):
-        butler = principal.employee.id
-        current = reservations.reservation_dict(db, r0, with_escort=False)
-        had = {o["guest_id"] for o in current["occupants"]}
-        try:
-            mine.check_reservation_change(db, current, doc)
-        except mine.MineForbidden as e:
-            raise HTTPException(status_code=403, detail=str(e)) from e
-    window = _window(r0, doc)
-    old_group = r0.group_id if r0 else None
-
-    def op():
-        owned_before = mine.owned_among(db, butler, had) if butler is not None else set()
-        r, before = reservations.save_reservation(db, doc, rid, payload.version)
-        audit(db, principal, "stays_reservation", f"reservation:{r.id}",
-              {"diff": reservations.diff_of(before, db, r)})
-        _cleanup(db, principal, r, old_group)
-        if butler is not None:
-            mine.check_no_gained_guests(db, butler, had, owned_before)       # решение 9 — 403
-        return _result(db, r)
-    return run(db, op, preview_flag, window, principal)
+    return reservation_edit.update(db, principal, rid, payload, preview_only=preview_flag,
+                                   duty=TimesheetDuty(db))
 
 
-@router.post("/reservations/{rid}/status")
+@router.post("/reservations/{rid}/status", response_model=PreviewedOut[ReservationDocOut])
 def change_status(rid: int, payload: StatusIn, preview_flag: bool = PREVIEW,
                   principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
-    r0 = db.get(Reservation, rid)
-    window = _window(r0) if r0 else None
-
-    def op():
-        r, before = reservations.set_status(db, rid, payload.status, payload.version, payload.new_check_in)
-        audit(db, principal, "stays_reservation_status", f"reservation:{r.id}",
-              {"diff": reservations.diff_of(before, db, r)})
-        _cleanup(db, principal, r)
-        return _result(db, r)
-    return run(db, op, preview_flag, window, principal)
+    return reservation_edit.change_status(db, principal, rid, payload, preview_only=preview_flag,
+                                          duty=TimesheetDuty(db))
 
 
-class JoinIn(BaseModel):
-    reservation_ids: list[int] = Field(min_length=2, max_length=10)
-
-
-class LeaveIn(BaseModel):
-    reservation_id: int
-
-
-@router.get("/reservations/{rid}/cohabit")
+@router.get("/reservations/{rid}/cohabit", response_model=list[CohabitCandidateOut])
 def cohabit(rid: int, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
-    try:
-        return reservations.cohabit_candidates(db, rid)
-    except reservations.ReservationInvalid as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    return reservation_edit.cohabit(db, rid)
 
 
-def _span(rs: list[Reservation]) -> tuple[dt.date, dt.date]:
-    return _window(None, *({"check_in": r.check_in, "check_out": r.check_out} for r in rs))
-
-
-@router.post("/groups/join")
+@router.post("/groups/join", response_model=PreviewedOut[GroupJoinedOut])
 def join_group(payload: JoinIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                db: Session = Depends(get_db)):
     """Совместное проживание (§3.3): брони — в одну группу, с предпросмотром размещения."""
-    found = [r for r in (db.get(Reservation, i) for i in payload.reservation_ids) if r is not None]
-
-    def op():
-        gid, saved = reservations.join_group(db, payload.reservation_ids)
-        for r, before in saved:
-            audit(db, principal, "stays_reservation", f"reservation:{r.id}",
-                  {"diff": reservations.diff_of(before, db, r)})
-        return {"group_id": gid}
-    return run(db, op, preview_flag, _span(found) if found else None, principal)
+    return reservation_edit.join_group(db, principal, payload, preview_only=preview_flag,
+                                       duty=TimesheetDuty(db))
 
 
-@router.post("/groups/leave")
+@router.post("/groups/leave", response_model=PreviewedOut[ReservationDocOut])
 def leave_group(payload: LeaveIn, preview_flag: bool = PREVIEW, principal: Principal = Depends(EDIT),
                 db: Session = Depends(get_db)):
-    r0 = db.get(Reservation, payload.reservation_id)
-
-    def op():
-        r, before, old = reservations.leave_group(db, payload.reservation_id)
-        audit(db, principal, "stays_reservation", f"reservation:{r.id}", {"diff": reservations.diff_of(before, db, r)})
-        _cleanup(db, principal, r, old)
-        return _result(db, r)
-    return run(db, op, preview_flag, _span([r0]) if r0 else None, principal)
+    return reservation_edit.leave_group(db, principal, payload, preview_only=preview_flag,
+                                        duty=TimesheetDuty(db))
 
 
-@router.post("/groups")
+@router.post("/groups", response_model=StayGroupOut)
 def create_group(payload: GroupIn, principal: Principal = Depends(EDIT), db: Session = Depends(get_db)):
-    g = StayGroup(title=payload.title)
-    db.add(g)
-    db.flush()
-    audit(db, principal, "stays_reservation", f"group:{g.id}", {"title": payload.title})
-    db.commit()
-    return {"id": g.id, "title": g.title}
+    return reservation_edit.create_group(db, principal, payload)
