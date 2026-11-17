@@ -1449,6 +1449,7 @@
    "loadSchedule",
    "openRangeModal"
   ],
-  "ui/html.js": []
+  "ui/html.js": [],
+  "ui/theme.js": []
  }
 }
