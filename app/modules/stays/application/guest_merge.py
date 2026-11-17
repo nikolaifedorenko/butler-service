@@ -96,7 +96,7 @@ def merge_guests(db: Session, keep_id: int, drop_id: int) -> dict:
     covered = merge_coverage(db, keep_id, drop_id)
     links = guests.apply_links(db, plan, keep_id)
     prefs = guests.merge_prefs(db, keep_id, drop_id)
-    merged = guests.merge_profile(keep, drop)
+    merged = guests.merge_profile(db, keep, drop)
     if keep.created_by_employee_id != drop.created_by_employee_id:
         # автор профиля делает гостя «своим» батлеру (часть 4 §3): у слитого профиля — история
         # обоих, автор остаётся, только если он у обоих один (решение 10)

@@ -337,6 +337,10 @@ POST /api/punches: сериализация по сотруднику (lock) →
 * composition root (`main.py`, `bootstrap/`) — единственный импортёр всего
   (реестр моделей `registry.ensure_models()` — явные импорты всех `adapters.orm`;
   воркер очереди `bootstrap/jobs_worker` — фоновые задачи модулей вне запросов);
+* внешний идентификатор записи — тройка «система, экземпляр, id» (`core/external.py`):
+  колонки `ext_system`/`ext_instance`/`ext_id` у гостя и брони, уникальная тройка;
+  `guests.upsert_guest` и `reservations.upsert_reservation` находят запись по ней и
+  обновляют, а не дублируют; в ответах API — объект `external` или `null`;
 * циклов нет: кросс-модульные импорты идут в чужие `application`-границы, которые
   не импортируют чужие модули обратно (проверяется запуском + контрактами).
 

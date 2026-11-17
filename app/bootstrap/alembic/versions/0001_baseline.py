@@ -325,11 +325,12 @@ def upgrade() -> None:
     sa.Column('vip_code_id', sa.Integer(), nullable=True),
     sa.Column('escort_mode', sa.String(length=8), nullable=False),
     sa.Column('fields', postgresql.JSONB(), nullable=False),
-    sa.Column('external_id', sa.String(length=64), nullable=True),
-    sa.Column('source', sa.String(length=16), nullable=False),
     sa.Column('group_id', sa.Integer(), nullable=True),
     sa.Column('version', sa.Integer(), nullable=False),
     sa.Column('search_text', sa.String(length=1000), nullable=False),
+    sa.Column('ext_system', sa.String(length=24), server_default='', nullable=False),
+    sa.Column('ext_instance', sa.String(length=40), server_default='', nullable=False),
+    sa.Column('ext_id', sa.String(length=64), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['category_id'], ['fund_categories.id'], ),
@@ -337,7 +338,8 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['label_id'], ['stays_labels.id'], ),
     sa.ForeignKeyConstraint(['paid_category_id'], ['fund_categories.id'], ),
     sa.ForeignKeyConstraint(['vip_code_id'], ['guests_vip_codes.id'], name='fk_stays_reservations_vip_code'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('ext_system', 'ext_instance', 'ext_id', name='uq_stays_res_external')
     )
     op.create_index('ix_stays_res_dates', 'stays_reservations', ['check_in', 'check_out'], unique=False)
     op.create_index(op.f('ix_stays_reservations_group_id'), 'stays_reservations', ['group_id'], unique=False)
@@ -535,16 +537,18 @@ def upgrade() -> None:
     sa.Column('special_dates', postgresql.JSONB(), nullable=False),
     sa.Column('fields', postgresql.JSONB(), nullable=False),
     sa.Column('note', sa.Text(), nullable=False),
-    sa.Column('external_id', sa.String(length=64), nullable=True),
-    sa.Column('source', sa.String(length=16), nullable=False),
     sa.Column('created_by_employee_id', sa.Integer(), nullable=True),
     sa.Column('search_text', sa.String(length=1000), nullable=False),
     sa.Column('name_text', sa.String(length=400), server_default='', nullable=False),
+    sa.Column('ext_system', sa.String(length=24), server_default='', nullable=False),
+    sa.Column('ext_instance', sa.String(length=40), server_default='', nullable=False),
+    sa.Column('ext_id', sa.String(length=64), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['created_by_employee_id'], ['employees.id'], name='fk_guests_created_by'),
     sa.ForeignKeyConstraint(['vip_code_id'], ['guests_vip_codes.id'], name='fk_guests_vip_code'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('ext_system', 'ext_instance', 'ext_id', name='uq_guests_external')
     )
     op.create_index(op.f('ix_guests_created_by_employee_id'), 'guests', ['created_by_employee_id'], unique=False)
     op.create_table('stays_logistics',

@@ -10,6 +10,7 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.db import plain_json
+from app.core.external import ExternalRef, external_of, find_external, set_external
 from app.core.time import local_date
 from app.modules.fund.application.catalog import FundGroup, Unit, UnitFlag
 from app.modules.fund.application.fund import FundConflict, FundError, as_dict, changes
@@ -37,7 +38,7 @@ LINK_KINDS = {
 }
 PHONE_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 PROFILE_FIELDS = ("id", "last_name", "first_name", "middle_name", "phone", "email", "birth_date",
-                  "gender", "special", "vip_code_id", "note", "external_id", "source")
+                  "gender", "special", "vip_code_id", "note")
 
 
 class GuestError(FundError):
@@ -134,7 +135,7 @@ def reindex_search(db: Session) -> int:
 
 
 def guest_dict(g: Guest) -> dict:
-    return {**as_dict(g, PROFILE_FIELDS),
+    return {**as_dict(g, PROFILE_FIELDS), "external": external_of(g),
             "birth_date": g.birth_date.isoformat() if g.birth_date else None,
             "phone_display": format_phone(g.phone),
             "preferences": ordered_preferences(g.preferences),
@@ -159,8 +160,7 @@ def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
         before = guest_dict(g)
     if "vip_code_id" in data:
         check_selectable(db, data["vip_code_id"], g.vip_code_id)       # архивный, уже стоящий, оставить можно
-    for k in ("last_name", "first_name", "middle_name", "email", "gender", "special", "vip_code_id", "note",
-              "external_id", "source"):
+    for k in ("last_name", "first_name", "middle_name", "email", "gender", "special", "vip_code_id", "note"):
         if k in data:
             setattr(g, k, data[k])
     if "phone" in data:
@@ -176,6 +176,19 @@ def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
     g.search_text = guest_search_text(g, searchable_codes(db, "guest"))
     db.flush()
     return g, before
+
+
+def upsert_guest(db: Session, ref: ExternalRef, data: dict) -> tuple[Guest, dict, bool]:
+    """Гость из внешней системы: найден по «система, экземпляр, id» — обновляется, иначе создаётся.
+    Правила те же, что у ``save_guest``. Возвращает гостя, снимок «до» (пустой у нового) и признак
+    «создан». Повторный импорт той же выгрузки дубликатов не рождает."""
+    lock_module(db)            # поиск и запись — под одним замком: два импорта не создадут двух гостей
+    found = find_external(db, Guest, ref)
+    g, before = save_guest(db, data, found.id if found else None)
+    if found is None:
+        set_external(g, ref)
+        db.flush()
+    return g, before, found is None
 
 
 def guest_changes(before: dict, g: Guest) -> dict:
@@ -370,7 +383,7 @@ def search_guests(db: Session, q: str, limit: int = 30, within=None, full: bool 
 # ── Объединение дублей (addendum §3) ──────────────────────────────────────
 
 # поля профиля, которые у оставляемого гостя заполняются из дубля, если у него пусто
-MERGE_PROFILE = ("first_name", "middle_name", "phone", "email", "birth_date", "gender", "external_id", "source")
+MERGE_PROFILE = ("first_name", "middle_name", "phone", "email", "birth_date", "gender")
 FAMILY_KINDS = ("parent", "spouse")
 
 
@@ -462,13 +475,20 @@ def fill_missing(mine: dict, theirs: dict) -> list[str]:
     return added
 
 
-def merge_profile(keep: Guest, drop: Guest) -> dict:
+def merge_profile(db: Session, keep: Guest, drop: Guest) -> dict:
     """Значения оставляемого побеждают; недостающее берётся у дубля. «Особый гость» — если он
     у любого из двоих; VIP-код дубля переходит, только если у оставляемого его нет; примечания —
     оба, через перевод строки."""
     profile = [k for k in MERGE_PROFILE if not getattr(keep, k) and getattr(drop, k)]
     for k in profile:
         setattr(keep, k, getattr(drop, k))
+    if keep.ext_id is None and drop.ext_id is not None:
+        # внешний идентификатор уникален: сначала он снимается с дубля (запись в базу), потом ставится оставляемому
+        ref = ExternalRef(system=drop.ext_system, instance=drop.ext_instance, id=drop.ext_id)
+        drop.ext_id = None
+        db.flush()
+        set_external(keep, ref)
+        profile.append("external")
     if drop.special and not keep.special:
         keep.special = True
         profile.append("special")

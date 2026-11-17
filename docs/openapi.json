@@ -6328,6 +6328,31 @@
         "title": "EscortsSeededOut",
         "type": "object"
       },
+      "ExternalRef": {
+        "additionalProperties": false,
+        "description": "Внешний идентификатор в запросах и ответах API.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instance": {
+            "default": "",
+            "title": "Instance",
+            "type": "string"
+          },
+          "system": {
+            "title": "System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "system",
+          "id"
+        ],
+        "title": "ExternalRef",
+        "type": "object"
+      },
       "FactBarOut": {
         "additionalProperties": false,
         "properties": {
@@ -8476,16 +8501,15 @@
             "title": "Email",
             "type": "string"
           },
-          "external_id": {
+          "external": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ExternalRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "External Id"
+            ]
           },
           "fields": {
             "additionalProperties": true,
@@ -8541,10 +8565,6 @@
             },
             "title": "Preferences",
             "type": "object"
-          },
-          "source": {
-            "title": "Source",
-            "type": "string"
           },
           "special": {
             "title": "Special",
@@ -8594,8 +8614,7 @@
           "vip_code",
           "main_current",
           "note",
-          "external_id",
-          "source",
+          "external",
           "preferences",
           "special_dates",
           "fields",
@@ -8623,16 +8642,15 @@
             "title": "Email",
             "type": "string"
           },
-          "external_id": {
+          "external": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ExternalRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "External Id"
+            ]
           },
           "fields": {
             "additionalProperties": true,
@@ -8688,10 +8706,6 @@
             },
             "title": "Preferences",
             "type": "object"
-          },
-          "source": {
-            "title": "Source",
-            "type": "string"
           },
           "special": {
             "title": "Special",
@@ -8748,8 +8762,7 @@
           "vip_code",
           "main_current",
           "note",
-          "external_id",
-          "source",
+          "external",
           "preferences",
           "special_dates",
           "fields",
@@ -11657,16 +11670,15 @@
             "title": "Email",
             "type": "string"
           },
-          "external_id": {
+          "external": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ExternalRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "External Id"
+            ]
           },
           "fields": {
             "additionalProperties": true,
@@ -11731,10 +11743,6 @@
             "title": "Preferences",
             "type": "object"
           },
-          "source": {
-            "title": "Source",
-            "type": "string"
-          },
           "special": {
             "title": "Special",
             "type": "boolean"
@@ -11783,8 +11791,7 @@
           "vip_code",
           "main_current",
           "note",
-          "external_id",
-          "source",
+          "external",
           "preferences",
           "special_dates",
           "fields",
@@ -15465,16 +15472,15 @@
             "title": "Escort Mode",
             "type": "string"
           },
-          "external_id": {
+          "external": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ExternalRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "External Id"
+            ]
           },
           "fields": {
             "additionalProperties": true,
@@ -15551,10 +15557,6 @@
             "title": "Segments",
             "type": "array"
           },
-          "source": {
-            "title": "Source",
-            "type": "string"
-          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -15613,8 +15615,7 @@
           "vip_code_id",
           "vip_code",
           "group_id",
-          "external_id",
-          "source",
+          "external",
           "fields",
           "moves",
           "segments",

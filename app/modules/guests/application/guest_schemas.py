@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from app.core.external import ExternalRef
 from app.core.schemas import ApiModel
 
 JsonDict = dict[str, Any]
@@ -49,8 +50,7 @@ class GuestCardOut(ApiModel):
     vip_code: Optional[GuestVipCodeOut]
     main_current: int                      # брони, куда дойдёт смена кода
     note: str
-    external_id: Optional[str]
-    source: str
+    external: Optional[ExternalRef]
     preferences: dict[str, str]
     special_dates: list[SpecialDateOut]
     fields: JsonDict
