@@ -8,7 +8,7 @@
   var root = document.documentElement;
 
   function read() {
-    try { var v = localStorage.getItem(KEY); return MODES.indexOf(v) >= 0 ? v : 'auto'; } catch (e) { return 'auto'; }
+    try { var v = localStorage.getItem(KEY); return MODES.indexOf(v) >= 0 ? v : 'auto'; } catch { return 'auto'; }
   }
   function apply(mode) {
     if (mode === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', mode);
@@ -16,7 +16,7 @@
   }
   function set(mode) {
     if (MODES.indexOf(mode) < 0) mode = 'auto';
-    try { if (mode === 'auto') localStorage.removeItem(KEY); else localStorage.setItem(KEY, mode); } catch (e) { /* без хранилища тема живёт до перезагрузки */ }
+    try { if (mode === 'auto') localStorage.removeItem(KEY); else localStorage.setItem(KEY, mode); } catch { /* без хранилища тема живёт до перезагрузки */ }
     apply(mode);
   }
   function next() { set(MODES[(MODES.indexOf(read()) + 1) % MODES.length]); }
