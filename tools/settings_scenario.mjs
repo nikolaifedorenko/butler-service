@@ -20,6 +20,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { loadApp } from './jsdom_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -80,12 +81,7 @@ window.addEventListener('unhandledrejection', e => consoleErrors.push('[unhandle
 window.Element.prototype.scrollTo = function () {};
 window.HTMLElement.prototype.scrollIntoView = function () {};
 
-for (const src of [...html.matchAll(/<script (?:type="module" )?src="([^"]+)"><\/script>/g)].map(m => m[1])) {
-  const file = path.join(ROOT, src.split('?v=')[0].replace(/^\//, ''));
-  const sc = window.document.createElement('script');
-  sc.textContent = fs.readFileSync(file, 'utf8');
-  window.document.body.appendChild(sc);
-}
+loadApp(window, html, ROOT);
 
 const $ = s => window.document.querySelector(s);
 const $$ = s => [...window.document.querySelectorAll(s)];

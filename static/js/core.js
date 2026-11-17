@@ -17,27 +17,29 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-/* ───────────────────────────── утилиты ───────────────────────────── */
-const $ = (sel, root = document) => root.querySelector(sel);
-const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+import { html, render } from './ui/html.js';
 
-function esc(v) {
+/* ───────────────────────────── утилиты ───────────────────────────── */
+export const $ = (sel, root = document) => root.querySelector(sel);
+export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
 }
-function hhmm(iso) { return iso ? iso.slice(11, 16) : ''; }
-function dateRu(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; }
-function hours(v) { return (Math.round((Number(v) || 0) * 100) / 100).toString().replace('.', ','); }
+export function hhmm(iso) { return iso ? iso.slice(11, 16) : ''; }
+export function dateRu(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; }
+export function hours(v) { return (Math.round((Number(v) || 0) * 100) / 100).toString().replace('.', ','); }
 /* Длительность «человеческими» единицами: 1370 мин → «22 ч 50 мин», 90 → «1 ч 30 мин».
    Для счётчиков на доске и в истории — там дробные сотые (22,83) не читаются. */
-function durationRu(minutes) {
+export function durationRu(minutes) {
   const m = Math.max(0, Math.round(Number(minutes) || 0));
   const h = Math.floor(m / 60), rest = m % 60;
   if (!h) return `${rest} ${plural(rest, 'минута', 'минуты', 'минут')}`;
   return rest ? `${h} ч ${rest} мин` : `${h} ${plural(h, 'час', 'часа', 'часов')}`;
 }
-function plural(n, one, few, many) {
+export function plural(n, one, few, many) {
   const m10 = n % 10, m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
   if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
@@ -46,25 +48,25 @@ function plural(n, one, few, many) {
 /* Цвет для атрибута style: только #rgb / #rrggbb, иначе fallback.
    Значения приходят из БД (цвет должности, типа смены); без проверки строка вида
    `red"><a href=…>` вырвалась бы из атрибута — HTML-инъекция. */
-function cssColor(v, fallback = '#8a94a6') {
+export function cssColor(v, fallback = '#8a94a6') {
   const s = String(v ?? '').trim();
   return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s) ? s : fallback;
 }
-function withAlpha(hex, a) {
+export function withAlpha(hex, a) {
   const h = (hex || '#888').replace('#', '');
   const f = h.length === 3 ? h.split('').map(x => x + x).join('') : h;
   const n = parseInt(f, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 /* тёмный или светлый текст на цветной ячейке */
-function textOn(hex) {
+export function textOn(hex) {
   const h = (hex || '#888').replace('#', '');
   const f = h.length === 3 ? h.split('').map(x => x + x).join('') : h;
   const n = parseInt(f, 16);
   const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
   return lum > 0.62 ? '#22304a' : '#ffffff';
 }
-function initials(name) {
+export function initials(name) {
   const p = String(name || '').split(/\s+/);
   return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase();
 }
@@ -72,25 +74,25 @@ function initials(name) {
    serverShiftMs: насколько локальное время объекта опережает UTC-часы устройства
    (учитывает и часовой пояс, и сбитые часы телефона). Обновляется из /api/health и /status. */
 let serverShiftMs = -new Date().getTimezoneOffset() * 60000;   // до первого ответа — пояс устройства
-function syncServerClock(localIso) {
+export function syncServerClock(localIso) {
   if (!localIso) return;
   const asUtc = Date.parse(String(localIso).slice(0, 19) + 'Z');
   if (!Number.isNaN(asUtc)) serverShiftMs = asUtc - Date.now();
 }
-function todayISO() { return new Date(Date.now() + serverShiftMs).toISOString().slice(0, 10); }
-const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+export function todayISO() { return new Date(Date.now() + serverShiftMs).toISOString().slice(0, 10); }
+export const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
                 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+export const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
                     'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-const WD = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
-const WD_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+export const WD = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+export const WD_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
-function toast(message, type = 'ok', warnings = []) {
+export function toast(message, type = 'ok', warnings = []) {
   const host = $('#toast-host');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = esc(message) + (warnings.length
-    ? `<ul>${warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : '');
+  render(html`${message}${warnings.length
+    ? html`<ul>${warnings.map(w => html`<li>${w}</li>`)}</ul>` : ''}`, el);
   host.appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 4600);
   setTimeout(() => el.remove(), 5100);
@@ -99,8 +101,8 @@ function toast(message, type = 'ok', warnings = []) {
    месяцев, смена даты). Без этого ответ за прошлый месяц, пришедший позже, рисовался
    поверх текущего: подпись — октябрь, сетка — сентябрь (рецензия аудита 22.10.2026).
      const fresh = loadGeneration('tabel'); const d = await api(…); if (!fresh()) return; */
-const loadGenerations = {};
-function loadGeneration(key) {
+export const loadGenerations = {};
+export function loadGeneration(key) {
   const gen = (loadGenerations[key] = (loadGenerations[key] || 0) + 1);
   return () => gen === loadGenerations[key];
 }
@@ -109,26 +111,26 @@ function loadGeneration(key) {
    контейнера (дата → категория в шахматке) отсекают запоздавший ответ, а разные контейнеры
    (новая вкладка — новый контейнер) друг другу не мешают. Глобальный ключ здесь не подходит:
    старая загрузка, дождавшись своего, брала бы поколение новее и «гасила» видимую вкладку. */
-function loadGenerationFor(el) {
+export function loadGenerationFor(el) {
   const gen = String((Number(el.dataset.loadGen) || 0) + 1);
   el.dataset.loadGen = gen;
   return () => el.dataset.loadGen === gen;
 }
 
 let pendingLoads = 0;   // спиннер скрывается только когда завершились ВСЕ видимые запросы
-function loading(on) {
+export function loading(on) {
   pendingLoads = Math.max(0, pendingLoads + (on ? 1 : -1));
   $('#loading').classList.toggle('hidden', pendingLoads === 0);
 }
 
 /* ───────────────────────────── API ───────────────────────────── */
-function getCookie(name) {
+export function getCookie(name) {
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
   return m ? decodeURIComponent(m[1]) : '';
 }
 /* Тело ответа: JSON, иначе текст. Ошибка без JSON — это страница прокси (nginx: 413, 502):
    вместо её разметки в тосте — понятный текст (аудит 21.10.2026, OPS-01). */
-function parseBody(text, status) {
+export function parseBody(text, status) {
   try { return text ? JSON.parse(text) : null; } catch {
     if (status < 400) return { detail: text };
     return { detail: status === 413 ? 'Файл слишком большой для загрузки' : `Ошибка ${status}` };
@@ -140,7 +142,7 @@ function parseBody(text, status) {
    «year: Input should be a valid integer» — поле и причина. Структурные 409
    ({message, …} — «перехват области», «всё равно закрыть?») сохраняют прежний
    контракт: e.message = msg.message, e.payload/e.status для логики вызывающего. */
-function httpError(msg, status) {
+export function httpError(msg, status) {
   if (msg && typeof msg === 'object') {
     if (Array.isArray(msg)) {
       const parts = msg.map(p => {
@@ -159,7 +161,7 @@ function httpError(msg, status) {
   }
   return new Error(String(msg));
 }
-async function api(path, opts = {}) {
+export async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', credentials: 'same-origin', headers: {} };
   if (opts.body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
@@ -199,7 +201,7 @@ async function api(path, opts = {}) {
 }
 
 /* multipart (фото): api() умеет только JSON — загрузка фото идёт через fetch напрямую */
-async function multipartApi(path, formData, { timeout = 60000 } = {}) {
+export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
   loading(true);
   try {
     const ctrl = new AbortController();
@@ -223,8 +225,8 @@ async function multipartApi(path, formData, { timeout = 60000 } = {}) {
 }
 
 /* ───────────────────────────── состояние ───────────────────────────── */
-const now0 = new Date();
-const state = {
+export const now0 = new Date();
+export const state = {
   user: null,
   perms: [],          // права пользователя (роль + группы + индивидуальные), см. /api/auth/me
   employees: [],
@@ -254,11 +256,11 @@ const state = {
                  photo_retention_days: 180, video_retention_days: 180 },
 };
 
-const ROLE_TITLES = { admin: 'Администратор', manager: 'Менеджер', supervisor: 'Супервайзер', employee: 'Сотрудник' };
+export const ROLE_TITLES = { admin: 'Администратор', manager: 'Менеджер', supervisor: 'Супервайзер', employee: 'Сотрудник' };
 /* название роли: свои роли приходят с сервера (/api/auth/me), встроенные — запасной вариант */
-function roleTitle(code) { return state.roleTitles?.[code] || ROLE_TITLES[code] || code || '—'; }
+export function roleTitle(code) { return state.roleTitles?.[code] || ROLE_TITLES[code] || code || '—'; }
 /* палитра цветов должностей */
-const POSITION_COLORS = [
+export const POSITION_COLORS = [
   { c: '#8a94a6', t: 'Батлер (серый)' },
   { c: '#e8842c', t: 'Старший батлер (оранжевый)' },
   { c: '#d9a514', t: 'Менеджер / документооборот (жёлтый)' },
@@ -268,7 +270,7 @@ const POSITION_COLORS = [
 ];
 
 /* ───────────────────────────── МОДАЛКИ ───────────────────────────── */
-function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
+export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
   m.innerHTML = `
@@ -285,9 +287,9 @@ function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
   if (onMount) onMount(m);
   return m;
 }
-function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').innerHTML = ''; }
+export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').innerHTML = ''; }
 
-function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', danger = true) {
+export function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', danger = true) {
   openModal({
     title, body: `<p style="margin:0;color:var(--muted)">${esc(text)}</p>`,
     footer: `<button class="btn btn-ghost" data-no>Отмена</button>
@@ -302,7 +304,7 @@ function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', 
 /* скачивание файлов без перехода по URL: не дёргает браузерные плашки (пароль и т.п.) */
 /* Лимиты фото/видео: один запрос при входе, дальше подсказки берут их из state.
    Недоступны — остаются значения по умолчанию (интерфейс не ломается). */
-async function loadMediaLimits() {
+export async function loadMediaLimits() {
   try {
     const lim = await api('/api/photos/limits', { silent: true });
     if (lim && typeof lim === 'object') state.mediaLimits = { ...state.mediaLimits, ...lim };
@@ -311,12 +313,12 @@ async function loadMediaLimits() {
 }
 
 /* Короткая подсказка про размеры загрузки: «фото до 12 МБ, видео до 50 МБ». */
-function mediaHint() {
+export function mediaHint() {
   const l = state.mediaLimits || {};
   return `фото до ${l.photo_max_mb || 12} МБ, видео до ${l.video_max_mb || 50} МБ`;
 }
 
-async function downloadBlob(path, fallbackName) {
+export async function downloadBlob(path, fallbackName) {
   loading(true);
   try {
     const res = await fetch(path, { credentials: 'same-origin' });

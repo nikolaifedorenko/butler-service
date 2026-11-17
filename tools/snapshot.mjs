@@ -8,6 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { loadApp } from './jsdom_modules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -15,9 +16,8 @@ const BASE = process.argv[2] || 'http://127.0.0.1:8231';
 const OUT = process.argv[3] || path.join(HERE, 'snapshot.html');
 
 const html = fs.readFileSync(path.join(ROOT, 'static/index.html'), 'utf8');
-const css = fs.readFileSync(path.join(ROOT, 'static/css/app.css'), 'utf8');
-const scripts = [...html.matchAll(/<script (?:type="module" )?src="([^"]+)"><\/script>/g)]
-  .map(m => path.join(ROOT, m[1].split('?v=')[0].replace(/^\//, '')));
+const css = ['tokens', 'base', 'components', 'app']
+  .map(n => fs.readFileSync(path.join(ROOT, `static/css/${n}.css`), 'utf8')).join('\n');
 
 const jar = new Map();
 function proxy(method, url, { body, headers } = {}) {
@@ -62,11 +62,7 @@ async function newPage(viewport, mobile) {
   w.Element.prototype.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   w.matchMedia = w.matchMedia || (q => ({ matches: false, media: q }));
-  for (const f of scripts) {
-    const sc = w.document.createElement('script');
-    sc.textContent = fs.readFileSync(f, 'utf8');
-    w.document.body.appendChild(sc);
-  }
+  loadApp(w, html, ROOT);
   // «экран» нужного размера: jsdom не считает layout, поэтому размеры в CSS подменяем
   w.document.documentElement.style.width = viewport.width + 'px';
   return { w, dom, viewport, mobile };

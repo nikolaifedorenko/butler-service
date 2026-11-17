@@ -267,8 +267,13 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
 Стили разделены на `tokens.css` (все значения, светлая и тёмная тема), `base.css`, `components.css` и
 `app.css` (экраны); образец — `static/design.html`, правила — `docs/architecture/DESIGN-SYSTEM.md`.
 Сценарии в настоящем браузере — Playwright (`e2e/`, `npm run e2e`, сервер `tools/e2e_server.sh`);
-смоук в jsdom (`tools/*.mjs`) читает файлы как обычные скрипты и потому проверяет только
-разделы без `import`/`export`: раздел, получивший их, переносит свои проверки в Playwright.
+смоук в jsdom (`tools/*.mjs`) не умеет модули, поэтому `tools/jsdom_modules.mjs` превращает их в обычные
+скрипты (зависимости первыми, `import` убирается, `export` публикует имена в `window`; unit-тесты —
+`tools/jsdom_modules.test.mjs`) — так jsdom-сценарии работают и на файлах с `import`/`export`. Ограничения:
+нет `import.meta` и верхнеуровневого `await`, два модуля не экспортируют одно имя. Статика отдаётся с
+`Cache-Control: no-cache` (ETag → 304): модули подключают друг друга по адресу без `?v=`.
+`core.js` — настоящий модуль (`export` у всех объявлений, `toast` на `lit-html`), `app.js` берёт его имена
+явным `import`; остальные разделы пока пользуются мостом.
 Контракты: `tools/check_api_contract.py` (JS-вызовы ↔ OpenAPI, rglob),
 `tools/bump_version.py` (версии кэша + SHELL `sw.js` c файлами `modules/`, rglob).
 

@@ -8,6 +8,10 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
+import {
+  api, closeModal, esc, initials, loadMediaLimits, openModal, roleTitle, state, syncServerClock, todayISO, toast,
+} from './core.js';
+
 /* ───────────────────────────── вкладки ───────────────────────────── */
 const ICONS = {
   grafik: '<svg viewBox="0 0 24 24"><path d="M12 3l8 4.4-8 4.4-8-4.4z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 12L12 16l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 16.4L12 20.4l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>',

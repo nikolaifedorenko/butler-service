@@ -50,3 +50,17 @@ test('lit-html: разметка экранирует вставки', async ({ 
   });
   expect(result).toEqual({ text: '<img src=x onerror="window.__pwned=1"><b>', imgs: 0, pwned: null });
 });
+
+test('toast: core.js — настоящий модуль с import, текст экранируется через lit-html', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'gromova');
+  const r = await page.evaluate(() => {
+    window.toast('<b>жирный</b>', 'warn', ['<i>курсив</i>']);
+    const el = document.querySelector('#toast-host .toast.warn');
+    return { text: el.textContent, tags: [...el.querySelectorAll('*')].map(e => e.tagName) };
+  });
+  expect(r.text).toContain('<b>жирный</b>');
+  expect(r.text).toContain('<i>курсив</i>');
+  expect(r.tags).toEqual(['UL', 'LI']);          // только разметка самого уведомления
+  expect(errors).toEqual([]);
+});
