@@ -89,7 +89,7 @@ def run_migrate(url: str, **env: str):
     import sys
     from pathlib import Path
 
-    full = {**os.environ, "DATABASE_URL": url, "DEMO_SEED": "0", "NIGHT_SYNC_ENABLED": "0", **env}
+    full = {**os.environ, "DATABASE_URL": url, "DEMO_SEED": "0", **env}
     return subprocess.run([sys.executable, "-m", "app.bootstrap.migrate"], env=full,
                           cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=300)
 

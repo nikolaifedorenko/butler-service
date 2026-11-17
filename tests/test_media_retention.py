@@ -23,13 +23,16 @@ def test_photo_older_than_its_own_limit_is_removed(db, monkeypatch):
     assert ph.path == ""          # файл удалён, запись осталась (история не теряется)
 
 
-def test_media_cleanup_runs_once_a_day(app_stack, monkeypatch):
-    """Фоновый поток чистит медиа не чаще раза в сутки (раньше — только при старте)."""
-    from app.bootstrap import night_sync
+def test_media_cleanup_is_a_daily_job(app_stack, monkeypatch):
+    """Чистка медиа — задача очереди раз в сутки (раньше — поток, а до него только старт сервера)."""
+    from app.bootstrap import modules
+    from app.core.db import SessionLocal
 
+    spec = next(s for s in modules.job_specs(modules.discover()) if s.name == "media_cleanup")
+    assert spec.every_seconds == 24 * 3600
     calls: list[int] = []
-    monkeypatch.setattr("app.core.media.cleanup_photos", lambda db: calls.append(1) or 0)
-    monkeypatch.setitem(night_sync._last_cleanup, "ts", None)     # чистки ещё не было
-    assert night_sync.run_media_cleanup_if_due() == 0
-    assert night_sync.run_media_cleanup_if_due() is None     # сутки ещё не прошли
+    monkeypatch.setattr("app.core.media.cleanup_photos", lambda db: calls.append(1) or 3)
+    handler = modules.job_handlers(modules.discover())["media_cleanup"]
+    with SessionLocal() as db:
+        assert handler(db, {}) == 3
     assert calls == [1]

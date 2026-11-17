@@ -1,13 +1,26 @@
 """Манифест модуля (ADR-0012): что модуль добавляет в приложение."""
 from __future__ import annotations
 
-from app.core.manifest import EVERYONE, SUPERVISOR_UP, MenuItem, ModuleManifest, NotifyDomain, Perm, Screen
+from app.core.config import settings
+from app.core.manifest import (
+    EVERYONE,
+    SUPERVISOR_UP,
+    JobSpec,
+    MenuItem,
+    ModuleManifest,
+    NotifyDomain,
+    Perm,
+    Screen,
+)
 
 MODULE = ModuleManifest(
     name="night", title="Ночной отчёт", order=60, layer=3,
     routers=("app.modules.night.interface.night_api:router",),
     overview_checks=("app.modules.night.application.checks:overview_checks",),
     models=("app.modules.night.adapters.orm",),
+    # досоздание наступивших смен и автозакрытие в 08:00 — воркер очереди, не GET-запросы (ревью 20.10.2026)
+    jobs=(JobSpec("night_sync", "app.modules.night.application.jobs:sync_reports_job",
+                  every_seconds=max(5, settings.night_sync_seconds)),),
     permissions=(
         Perm("night.view", "Ночной отчёт",
              "Ночной отчёт", EVERYONE),

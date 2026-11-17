@@ -223,7 +223,7 @@ def deliver_row(db: Session, row: NotifyDispatch, *, cfg: Optional[NotifyConfig]
 def run_outbox(db: Session, *, ids: Optional[Sequence[int]] = None,
                cfg: Optional[NotifyConfig] = None, bot=None, mailer=None) -> list[NotifyDispatch]:
     """Отправить очередь: строки ids — сразу из запроса, без ids — все queued (фоновая
-    доотправка, bootstrap/night_sync). Каждая строка коммитится дважды: sending до сети
+    доотправка — задача очереди notify_outbox). Каждая строка коммитится дважды: sending до сети
     и sent | failed после — повторно её не возьмёт никто."""
     from .config import load_config
 

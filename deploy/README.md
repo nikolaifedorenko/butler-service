@@ -51,9 +51,10 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 | `LOG_JSON` | `1` | структурированный access-лог (uvicorn стартует с `--no-access-log`) |
 | `METRICS_ENABLED` | `1` | `/metrics` для внутреннего скрейпера |
 | `MIGRATE_ON_START` | `0` | воркеры схему не мигрируют, а сверяют ревизию: миграции, справочники и первого администратора готовит сервис `migrate` (`python -m app.bootstrap.migrate`) до старта `app` |
-| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (схему готовит сервис `migrate` до старта воркеров, ручной запуск страхует замок `app/core/startup_lock.py`; фоновая синхронизация ночных отчётов — один раунд на всех под неблокирующим `try_lock("night-sync")`; очередь отправки службам — под `try_lock("night-dispatch")`, доотправка очереди (outbox) — один процесс под `try_lock("notify-outbox")`; замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). лимит входа — общий, в таблице `login_attempts` (ADR-0005) |
-| `NIGHT_SYNC_ENABLED` | `1` | фоновая синхронизация ночных отчётов (досоздание смен, автозакрытие в 08:00): поток в lifespan, GET-запросы разделов — чистое чтение. `0` — выключить поток (останется только стартовый прогон `init_db`) |
-| `NIGHT_SYNC_SECONDS` | `60` | период фонового раунда (минимум 5). Автозакрытие и появление отчёта в 20:00 запаздывают не больше чем на период |
+| `UVICORN_WORKERS` | `2` | воркеры приложения; корректность при N>1 обеспечена (схему готовит сервис `migrate` до старта воркеров, ручной запуск страхует замок `app/core/startup_lock.py`; фоновые задачи выполняет отдельный сервис `worker` (очередь на PostgreSQL); отправка замечаний службам во время запроса — под `try_lock("night-dispatch")`; замок отметок — `SELECT … FOR UPDATE`, CSRF stateless). лимит входа — общий, в таблице `login_attempts` (ADR-0005) |
+| `NIGHT_SYNC_SECONDS` | `60` | период задачи «ночные отчёты» (досоздание смен, автозакрытие в 08:00; минимум 5). Автозакрытие и появление отчёта в 20:00 запаздывают не больше чем на период. Выполняет сервис `worker`: без него отчёты досоздаются только при старте `app` |
+| `JOBS_POLL_SECONDS` | `5` | как часто воркер очереди опрашивает очередь, когда задач нет |
+| `JOBS_LEASE_SECONDS` | `900` | на сколько секунд задача закрепляется за воркером; не закончил в срок — вернётся в очередь (процесс, видимо, прерван) |
 | `API_DOCS` | `0` | Swagger `/api/docs` и схема `/api/openapi.json` выключены: полная карта API без входа облегчает разведку. Для отладки — `1` |
 | `CSP_REPORT_ONLY` | `0` | при раскатке можно временно `1` — браузер предупреждает, но не блокирует |
 
@@ -193,6 +194,28 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable --now timetrack
 systemctl status timetrack          # journalctl -u timetrack -f  — логи
+```
+Фоновые задачи (ночные отчёты, доотправка уведомлений, чистка медиа) выполняет отдельный процесс-воркер:
+```ini
+# /etc/systemd/system/timetrack-worker.service
+[Unit]
+Description=Батлер Сервис — воркер очереди задач
+After=network.target postgresql.service timetrack.service
+
+[Service]
+User=timetrack
+Group=timetrack
+WorkingDirectory=/opt/timetrack
+EnvironmentFile=/opt/timetrack/.env
+ExecStart=/opt/timetrack/.venv/bin/python -m app.bootstrap.jobs_worker
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl enable --now timetrack-worker
 ```
 
 ### 7.5. nginx + HTTPS
