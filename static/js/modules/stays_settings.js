@@ -199,3 +199,20 @@ async function renderStaysLabels(host) {
   $$('[data-lb-edit]', host).forEach(b => { b.onclick = () => form(fund.labels.find(l => l.id === Number(b.dataset.lbEdit))); });
   staysBindDeletes(host, 'data-lb-del', '/api/stays/labels', 'метку', rerender);
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_FIELD_KINDS,
+  staysForm,
+  sfRow,
+  sfInput,
+  sfCheck,
+  sfSelect,
+  staysDeleteButton,
+  staysBindDeletes,
+  staysFactorText,
+  renderStaysEscort,
+  renderStaysFields,
+  renderStaysLabels,
+});
+/* ── конец моста ── */

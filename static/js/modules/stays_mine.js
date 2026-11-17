@@ -222,3 +222,28 @@ async function openMineGuest(gid, onChanged) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  MINE_TABS,
+  MINE_LEVEL,
+  MINE_PAGE,
+  mineState,
+  mineDdmm,
+  mineCanResEdit,
+  mineCanGuestEdit,
+  renderMine,
+  mineLogisticsDay,
+  mineTodayCardHtml,
+  renderMineToday,
+  mineBindActions,
+  mineBarHtml,
+  mineLoadCellHtml,
+  mineMonthGridHtml,
+  renderMineMonth,
+  mineGuestRowHtml,
+  renderMineGuests,
+  mineLedHtml,
+  openMineGuest,
+});
+/* ── конец моста ── */

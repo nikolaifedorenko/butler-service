@@ -41,3 +41,7 @@ htmlcov/
 # бэкапы прод-профиля и SSH-ключ второго сервера (deploy/README.md §4)
 backups/
 deploy/backup-ssh/
+
+# Playwright
+test-results/
+playwright-report/

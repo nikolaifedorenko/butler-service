@@ -325,3 +325,15 @@ function tabelResetModal(d) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  loadTabel,
+  v4CellLabel,
+  scrollTabelToToday,
+  renderTabel,
+  tabelCellModal,
+  tabelFillModal,
+  tabelResetModal,
+});
+/* ── конец моста ── */

@@ -103,7 +103,7 @@ window.Element.prototype.scrollTo = function () {};
 window.HTMLElement.prototype.scrollIntoView = function () {};
 window.HTMLAnchorElement.prototype.click = function () {};   // скачивание (downloadBlob): навигации в jsdom нет
 
-for (const src of [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1])) {
+for (const src of [...html.matchAll(/<script (?:type="module" )?src="([^"]+)"><\/script>/g)].map(m => m[1])) {
   const file = path.join(ROOT, src.split('?v=')[0].replace(/^\//, ''));
   const sc = window.document.createElement('script');
   sc.textContent = fs.readFileSync(file, 'utf8');

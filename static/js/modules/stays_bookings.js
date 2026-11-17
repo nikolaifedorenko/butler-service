@@ -197,3 +197,21 @@ async function renderBookings(body) {
       .catch(err => toast(err.message, 'warn'));
   };
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_BOOK_MODES,
+  STAYS_BOOK_STATUSES,
+  STAYS_BOOK_COLS,
+  STAYS_BOOK_MAX_DAYS,
+  STAYS_BOOK_PAGE,
+  staysBookEmpty,
+  staysBook,
+  staysBookRange,
+  staysBookParams,
+  staysBookToolbar,
+  staysBookRowHtml,
+  staysBookTableHtml,
+  renderBookings,
+});
+/* ── конец моста ── */

@@ -7,6 +7,13 @@
 ровно тот класс бага, из-за которого интерфейс показывал пустые разделы:
 `navigate()` ссылался на loadNight/loadCars, которых в коде не существовало.
 
+Мост к общей области имён (ADR-0013, раздел 7, шаг 6а): файлы подключаются как ES-модули
+(``<script type="module">``), а имена модуля снаружи не видны. Пока разделы не получили явные
+``import``/``export``, в конец каждого файла генератор дописывает блок-мост: он публикует
+объявления верхнего уровня в ``globalThis``, и остальной код работает, как раньше. Блок
+пересобирается этим же скриптом (``--check`` ловит расхождение), а у файла, перешедшего на
+``import``/``export``, удаляется целиком.
+
 Список генерируется, а не пишется руками:
     python3 tools/gen_js_globals.py           # записать tools/js_globals.json
     python3 tools/gen_js_globals.py --check   # сверить с файлом (для CI)
@@ -51,6 +58,47 @@ def collect() -> dict[str, str]:
     return dict(sorted(names.items()))
 
 
+BRIDGE_START = "/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */"
+BRIDGE_END = "/* ── конец моста ── */"
+BRIDGE_RE = re.compile(re.escape(BRIDGE_START) + r".*?" + re.escape(BRIDGE_END) + r"\n?", re.S)
+DECL_KIND = re.compile(
+    r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)"
+    r"|^(const|let|var)\s+([A-Za-z_$][\w$]*)"
+    r"|^class\s+([A-Za-z_$][\w$]*)",
+    re.M,
+)
+
+
+def bridge_block(text: str) -> str:
+    """Блок-мост для файла: прямые имена — одним ``Object.assign``, ``let``/``var`` — через
+    свойства с геттером и сеттером (присваивание из другого файла должно менять переменную)."""
+    direct: list[str] = []
+    live: list[str] = []
+    for m in DECL_KIND.finditer(BRIDGE_RE.sub("", text)):
+        if m.group(1) or m.group(4):
+            direct.append(m.group(1) or m.group(4))
+        elif m.group(2) in ("let", "var"):
+            live.append(m.group(3))
+        else:
+            direct.append(m.group(3))
+    if not direct and not live:
+        return ""
+    lines = [BRIDGE_START]
+    if direct:
+        lines.append("Object.assign(globalThis, {\n  " + ",\n  ".join(direct) + ",\n});")
+    for name in live:
+        lines.append(f"Object.defineProperty(globalThis, '{name}', "
+                     f"{{ get: () => {name}, set: (v) => {{ {name} = v; }}, configurable: true }});")
+    lines.append(BRIDGE_END)
+    return "\n".join(lines) + "\n"
+
+
+def with_bridge(text: str) -> str:
+    body = BRIDGE_RE.sub("", text).rstrip("\n") + "\n"
+    block = bridge_block(body)
+    return body + ("\n" + block if block else "")
+
+
 def used_elsewhere(names: dict[str, str]) -> dict[str, list[str]]:
     """Для каждого файла — имена, объявленные в нём, но используемые в ДРУГИХ файлах.
 
@@ -83,7 +131,14 @@ def main() -> int:
         "used_elsewhere": used_elsewhere(names),
     }
     text = json.dumps(payload, ensure_ascii=False, indent=1) + "\n"
+    stale = [js for js in sorted(JS_DIR.rglob("*.js"))
+             if with_bridge(js.read_text(encoding="utf-8")) != js.read_text(encoding="utf-8")]
     if "--check" in sys.argv:
+        if stale:
+            print("✗ мост к общей области имён устарел в файлах: "
+                  + ", ".join(js.relative_to(JS_DIR).as_posix() for js in stale[:8]))
+            print("   Обновите: python3 tools/gen_js_globals.py")
+            return 1
         if not OUT.exists():
             print("✗ tools/js_globals.json отсутствует — сгенерируйте: "
                   "python3 tools/gen_js_globals.py")
@@ -102,6 +157,8 @@ def main() -> int:
             return 1
         print(f"✓ js_globals.json актуален ({len(names)} имён)")
         return 0
+    for js in stale:
+        js.write_text(with_bridge(js.read_text(encoding="utf-8")), encoding="utf-8")
     OUT.write_text(text, encoding="utf-8")
     print(f"✓ tools/js_globals.json: {len(names)} имён из {len(list(JS_DIR.rglob('*.js')))} файлов")
     return 0

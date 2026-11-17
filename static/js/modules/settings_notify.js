@@ -252,3 +252,11 @@ async function settingsScreenNotify(host) {
   settingsOn('#nt-rules', host, () => settingsGo('calc'));
   settingsOn('#nt-csv', host, () => downloadBlob('/api/notify/dispatches/export.csv', 'otpravki.csv'));
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  NOTIFY_CONSUMERS,
+  settingsScreenNotify,
+});
+Object.defineProperty(globalThis, 'NOTIFY_DOMAIN', { get: () => NOTIFY_DOMAIN, set: (v) => { NOTIFY_DOMAIN = v; }, configurable: true });
+/* ── конец моста ── */

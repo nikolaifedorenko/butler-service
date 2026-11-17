@@ -55,7 +55,7 @@ export default [
     files: ['static/js/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
-      sourceType: 'script',
+      sourceType: 'module',
       globals: { ...globals.browser, ...globals.es2021, ...gen.globals },
     },
     rules,

@@ -142,3 +142,11 @@ function settingsVersionsModal() {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  settingsScreenOverview,
+  settingsCompareWithPrevious,
+  settingsVersionsModal,
+});
+/* ── конец моста ── */

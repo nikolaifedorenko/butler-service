@@ -45,6 +45,6 @@ def test_new_module_script_is_added_by_bump(tool):
     (tool.ASSETS_DIR / "js" / "modules" / "zz_probe.js").write_text("'use strict';\n", encoding="utf-8")
     assert tool.check() == 1
     assert tool.bump("2099-01-01a") == 0
-    assert '<script src="/static/js/modules/zz_probe.js?v=2099-01-01a"></script>' in \
+    assert '<script type="module" src="/static/js/modules/zz_probe.js?v=2099-01-01a"></script>' in \
         tool.INDEX.read_text(encoding="utf-8")
     assert tool.check() == 0

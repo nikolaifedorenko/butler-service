@@ -110,3 +110,13 @@ function punchForOtherModal(emps) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  PUNCH_SOURCES,
+  punchJournal,
+  loadPunchJournal,
+  fetchPunchJournal,
+  punchForOtherModal,
+});
+/* ── конец моста ── */

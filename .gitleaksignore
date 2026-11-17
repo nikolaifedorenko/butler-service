@@ -8,3 +8,6 @@ eca6053b950ccced8c473c617920798719b58007:app/modules/employees/application/direc
 # подключения к базе и тестовый пароль из скрипта экспериментов, не секреты.
 f6ee6974b00dad0d7a854f3135ac63a23c86734d:docs/audit/15-db-engine.md:generic-api-key:21
 f6ee6974b00dad0d7a854f3135ac63a23c86734d:docs/audit/scripts/experiments.py:generic-api-key:124
+# Тестовый ключ сервера сценариев Playwright был записан в tools/e2e_server.sh; в следующем коммите
+# заменён ключом, который создаётся при каждом запуске. Это не секрет.
+3a86a717792cc8ee1fac8712850f1ade439ae63d:tools/e2e_server.sh:generic-api-key:11

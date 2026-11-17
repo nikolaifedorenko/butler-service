@@ -447,3 +447,17 @@ async function shiftModal(st) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  renderDicts,
+  renameDictModal,
+  openKindModal,
+  DEFAULT_TITLES,
+  fmtGdValue,
+  DP_MONTHS,
+  DP_WD,
+  refreshDoublePay,
+  shiftModal,
+});
+/* ── конец моста ── */

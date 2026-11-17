@@ -215,3 +215,23 @@ function openGuestMerge(a, b, onDone) {
     },
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  STAYS_GUEST_COLS,
+  STAYS_GUEST_PAGE,
+  STAYS_BIRTHDAY_DAYS,
+  STAYS_MERGE_RESULT,
+  STAYS_MERGE_KIND,
+  STAYS_MERGE_PROFILE,
+  staysGuestsEmpty,
+  staysGuests,
+  staysGuestsParams,
+  staysGuestsToolbar,
+  staysGuestRowHtml,
+  staysGuestsTableHtml,
+  renderGuestsTab,
+  staysMergeMovesHtml,
+  openGuestMerge,
+});
+/* ── конец моста ── */

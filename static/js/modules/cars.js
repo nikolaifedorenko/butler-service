@@ -669,3 +669,36 @@ function bindCarsDictScreen(host, render) {
       }, 'Удалить');
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  CAR_BADGE,
+  carsState,
+  dRuCar,
+  loadCars,
+  fetchCars,
+  carFilterSeg,
+  renderCars,
+  bindCarActions,
+  carTake,
+  personFieldHtml,
+  personFieldValue,
+  ensureCarLocations,
+  locationOptions,
+  CHARGE_OPTS,
+  photoPickHtml,
+  bindPhotoPick,
+  carReturnModal,
+  carHandoverModal,
+  carGiveModal,
+  carAssignModal,
+  carStatusModal,
+  carEditModal,
+  carAddModal,
+  carHistoryModal,
+  photoThumb,
+  bindPhotoDelete,
+  renderCarsDictScreen,
+  bindCarsDictScreen,
+});
+/* ── конец моста ── */

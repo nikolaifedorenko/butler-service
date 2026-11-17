@@ -179,3 +179,13 @@ function settingsBindOrderList(host, key, draft, touch) {
     touch();
   });
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  SETTINGS_STEPS,
+  settingsScreenCalc,
+  settingsTimeline,
+  settingsOrderList,
+  settingsBindOrderList,
+});
+/* ── конец моста ── */

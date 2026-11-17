@@ -98,3 +98,10 @@ async function renderEngineSettings(host) {
     });
   }
 }
+
+/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
+Object.assign(globalThis, {
+  V4_MOD_TITLES,
+  renderEngineSettings,
+});
+/* ── конец моста ── */
