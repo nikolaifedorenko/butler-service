@@ -1,0 +1,240 @@
+/* ══════════════════════════════════════════════════════════════════════
+   ТОКЕНЫ ДИЗАЙН-СИСТЕМЫ «Батлер Сервис» (ADR-0013, раздел 7)
+
+   Единственное место, где живут значения: цвет, шрифт, отступ, радиус, тень, слой.
+   Остальные файлы (base.css, components.css, app.css) цветов не содержат — только
+   var(--…). Тема переключается атрибутом data-theme="light|dark" на <html>
+   (static/js/ui/theme.js); без него действует prefers-color-scheme.
+
+   Имена цветов — по роли, а не по оттенку:
+     surface-0…4   поверхности от самой светлой/верхней к самой тёмной/нижней (карточка → фон)
+     line*         линии и рамки
+     text, muted*  текст; heading — заголовки; brand-fg* — фирменный цвет текста
+     <семья>-bg / -line / -fg / -solid   тон сообщения: brand, ok, warn, danger, info
+   Фирменный стиль (палитра курорта, Manrope, Playfair Display) сохраняется.
+   ══════════════════════════════════════════════════════════════════════ */
+:root {
+  color-scheme: light;
+
+  /* ── цвет: светлая тема ── */
+  /* поверхности — тёплый айвори курорта */
+  --bg: #f4f0ed;
+  --bg-soft: #faf8f5;
+  --panel: #ffffff;
+  --panel-2: #f4eeeb;
+  --line: #e2d9ce;
+  --line-soft: #ece5dc;
+  /* текст — глубокий тёмно-синий, как на сайте */
+  --text: #141a25;
+  --muted: #6e6459;
+  --muted-2: #a2968a;
+  --heading: #141a25;
+  /* акценты: терракота/бронза + золото */
+  --primary: #94583a;
+  --primary-dark: #683e29;
+  --primary-soft: #9a7060;
+  --brand-fg: #94583a;
+  --brand-fg-strong: #683e29;
+  --gold: #cbb05b;
+  --gold-deep: #a8893a;
+  /* тёмные поверхности (топбар, экран входа) — одинаковы в обеих темах */
+  --navy: #141a25;
+  --navy-2: #202530;
+  /* семантика — приглушённые природные тона */
+  --accent: #3d7a52;
+  --accent-dark: #2f6242;
+  --danger: #b81818;
+  --warn: #c96d00;
+  --info: #1d7e94;
+  /* по ролям (получены из прежних разрозненных значений app.css) */
+  --brand-bg: #f9efe7;
+  --brand-line: #e0c8b6;
+  --brand-solid: #9c5f40;
+  --danger-bg: #f9ebea;
+  --danger-bg-strong: #e29a92;
+  --danger-fg: #a1001d;
+  --danger-line: #eec8c5;
+  --danger-solid: #c0392b;
+  --info-bg: #dce8fb;
+  --info-bg-strong: #8fadea;
+  --info-fg: #1d6e80;
+  --info-fg-soft: #4457c9;
+  --info-line: #edf0f4;
+  --info-solid: #3b6fd8;
+  --ink-on-gold: #14181f;
+  --line-strong: #d9c4b4;
+  --navy-deep: #0b0f16;
+  --ok-bg: #e9f0e6;
+  --ok-fg: #3d6b45;
+  --ok-line: #cddcc7;
+  --ok-solid: #47885e;
+  --on-navy: #f3ede2;
+  --on-navy-muted: #b7ab97;
+  --on-solid: #fff;
+  --surface-0: #fff;
+  --surface-1: #f8f5f0;
+  --surface-2: #f7efe7;
+  --surface-3: #efe8df;
+  --surface-4: #ddd;
+  --violet-solid: #6b3fa0;
+  --warn-bg: #faf0dc;
+  --warn-fg: #8a5a10;
+  --warn-fg-soft: #f0dcb0;
+  --warn-line: #ecd9ae;
+  --scrim: rgba(16, 20, 29, .5);
+  --shadow: 0 10px 28px rgba(20, 26, 37, .08);
+  --shadow-lg: 0 22px 60px rgba(20, 26, 37, .18);
+
+  /* ── шрифты ── */
+  --font-body: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+               'PT Sans', 'Noto Sans', Arial, sans-serif;
+  --font-display: 'Playfair Display', 'SangBleu Kingdom', Georgia,
+                  'Times New Roman', serif;
+  --text-xs: 11px;      /* подписи, бейджи */
+  --text-sm: 12.5px;    /* вторичный текст, кнопки малые */
+  --text-md: 14px;      /* основной текст интерфейса */
+  --text-lg: 17px;
+  --text-xl: 24px;      /* заголовок страницы */
+
+  /* ── отступы (шаг 4 px) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* ── радиусы — острые, как у кнопок сайта ── */
+  --r-lg: 10px;
+  --r-md: 6px;
+  --r-sm: 4px;
+
+  /* ── размеры каркаса ── */
+  --head-h: 60px;
+  --tab-h: 62px;
+  --side-w: 224px;
+
+  /* ── слои ── */
+  --z-topbar: 40;
+  --z-drawer: 90;
+  --z-modal: 100;
+  --z-toast: 200;
+  --z-loading: 300;
+
+  /* ── движение ── */
+  --ease: .18s ease-out;
+}
+
+/* ── тёмная тема ── */
+:root[data-theme="dark"] {
+  --surface-0: #1b212c;
+  --surface-1: #202734;
+  --surface-2: #262e3c;
+  --surface-3: #2d3646;
+  --surface-4: #3a4458;
+  --line-strong: #4a566d;
+  --on-solid: #ffffff;
+  --on-navy: #f3ede2;
+  --on-navy-muted: #b7ab97;
+  --ink-on-gold: #14181f;
+  --navy-deep: #0b0f16;
+  --brand-bg: #35241b;
+  --brand-line: #5a3d2e;
+  --brand-solid: #b2694a;
+  --danger-bg: #3b1f20;
+  --danger-bg-strong: #7a3a38;
+  --danger-fg: #f29a9a;
+  --danger-line: #6a3436;
+  --danger-solid: #d4543f;
+  --warn-bg: #3a3118;
+  --warn-fg: #f0cf85;
+  --warn-fg-soft: #f0dcb0;
+  --warn-line: #5c4c20;
+  --ok-bg: #1f3326;
+  --ok-fg: #9ad0a6;
+  --ok-line: #35553f;
+  --ok-solid: #4f9a68;
+  --info-bg: #1b2f3d;
+  --info-bg-strong: #3e5f86;
+  --info-fg: #8fcbe0;
+  --info-fg-soft: #9fb0f5;
+  --info-line: #2f4c5f;
+  --info-solid: #5a8be8;
+  --violet-solid: #8e62c4;
+  --bg: #11151c;
+  --bg-soft: #161b24;
+  --panel: #1b212c;
+  --panel-2: #202734;
+  --line: #364054;
+  --line-soft: #2a3240;
+  --text: #e9e4da;
+  --muted: #a79e91;
+  --muted-2: #8a8175;
+  --primary: #a85f3a;
+  --primary-dark: #8e4d2e;
+  --primary-soft: #c08060;
+  --heading: #f1ece2;
+  --brand-fg: #e0a07c;
+  --brand-fg-strong: #f0bd9f;
+  --shadow: 0 10px 28px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 22px 60px rgba(0, 0, 0, .6);
+  --scrim: rgba(5, 8, 13, .62);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --surface-0: #1b212c;
+    --surface-1: #202734;
+    --surface-2: #262e3c;
+    --surface-3: #2d3646;
+    --surface-4: #3a4458;
+    --line-strong: #4a566d;
+    --on-solid: #ffffff;
+    --on-navy: #f3ede2;
+    --on-navy-muted: #b7ab97;
+    --ink-on-gold: #14181f;
+    --navy-deep: #0b0f16;
+    --brand-bg: #35241b;
+    --brand-line: #5a3d2e;
+    --brand-solid: #b2694a;
+    --danger-bg: #3b1f20;
+    --danger-bg-strong: #7a3a38;
+    --danger-fg: #f29a9a;
+    --danger-line: #6a3436;
+    --danger-solid: #d4543f;
+    --warn-bg: #3a3118;
+    --warn-fg: #f0cf85;
+    --warn-fg-soft: #f0dcb0;
+    --warn-line: #5c4c20;
+    --ok-bg: #1f3326;
+    --ok-fg: #9ad0a6;
+    --ok-line: #35553f;
+    --ok-solid: #4f9a68;
+    --info-bg: #1b2f3d;
+    --info-bg-strong: #3e5f86;
+    --info-fg: #8fcbe0;
+    --info-fg-soft: #9fb0f5;
+    --info-line: #2f4c5f;
+    --info-solid: #5a8be8;
+    --violet-solid: #8e62c4;
+    --bg: #11151c;
+    --bg-soft: #161b24;
+    --panel: #1b212c;
+    --panel-2: #202734;
+    --line: #364054;
+    --line-soft: #2a3240;
+    --text: #e9e4da;
+    --muted: #a79e91;
+    --muted-2: #8a8175;
+    --primary: #a85f3a;
+    --primary-dark: #8e4d2e;
+    --primary-soft: #c08060;
+    --heading: #f1ece2;
+    --brand-fg: #e0a07c;
+    --brand-fg-strong: #f0bd9f;
+    --shadow: 0 10px 28px rgba(0, 0, 0, .4);
+    --shadow-lg: 0 22px 60px rgba(0, 0, 0, .6);
+    --scrim: rgba(5, 8, 13, .62);
+    color-scheme: dark;
+  }
+}

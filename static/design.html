@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Дизайн-система — Батлер Сервис</title>
+  <script src="/static/js/ui/theme.js"></script>
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <style>
+    body { overflow: auto; height: auto; }
+    .ds { max-width: 1040px; margin: 0 auto; padding: var(--space-5) var(--space-4) 64px; }
+    .ds h1 { font-family: var(--font-display); font-weight: 600; font-size: 30px; margin: 0; color: var(--heading); }
+    .ds h2 { font-family: var(--font-display); font-weight: 600; font-size: 20px; margin: 40px 0 12px; color: var(--heading);
+      padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .ds .lead { color: var(--muted); margin: 6px 0 0; max-width: 70ch; }
+    .ds .top { display: flex; align-items: center; gap: 12px; }
+    .ds .top .icon-btn { margin-left: auto; color: var(--text); border-color: var(--line); background: var(--surface-0); }
+    .row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin-bottom: var(--space-3); }
+    .sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); }
+    .sw { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; background: var(--surface-0); font-size: var(--text-xs); }
+    .sw i { display: block; height: 38px; background: var(--c); }
+    .sw span { display: block; padding: 5px 8px; color: var(--muted); }
+    .pair { display: inline-flex; padding: 6px 12px; border-radius: var(--r-sm); font-size: var(--text-md); font-weight: 600; }
+    .pair.p-text { background: var(--bg); color: var(--text); }
+    .pair.p-panel { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+    .pair.p-muted { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }
+    .pair.p-brand { background: var(--panel); color: var(--brand-fg); border: 1px solid var(--line); }
+    .pair.p-primary { background: var(--primary); color: var(--on-solid); }
+    .pair.p-ok { background: var(--ok-bg); color: var(--ok-fg); }
+    .pair.p-warn { background: var(--warn-bg); color: var(--warn-fg); }
+    .pair.p-danger { background: var(--danger-bg); color: var(--danger-fg); }
+    .pair.p-info { background: var(--info-bg); color: var(--info-fg); }
+    /* модальное окно, уведомление и панель показаны на месте, а не поверх страницы */
+    .demo-box { position: relative; border: 1px dashed var(--line-strong); border-radius: var(--r-md); padding: var(--space-4);
+      background: var(--bg-soft); display: grid; gap: var(--space-4); justify-items: start; }
+    .demo-box .modal, .demo-box .toast, .demo-box .drawer { position: static; animation: none; }
+    .demo-box .drawer { width: 100%; max-width: 480px; height: 300px; }
+    .type-scale > div { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+<main class="ds">
+  <div class="top">
+    <div>
+      <h1>Дизайн-система</h1>
+      <p class="lead">Токены и компоненты «Батлер Сервис». Экраны собираются только из них: цвета, отступы и шрифты берутся из <code>tokens.css</code>, а не пишутся в экране. Переключатель темы справа.</p>
+    </div>
+    <button class="icon-btn" id="theme-toggle" title="Тема: светлая / тёмная / как в системе" aria-label="Переключить тему">
+      <svg class="theme-ico theme-ico-light" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <svg class="theme-ico theme-ico-dark" viewBox="0 0 24 24" width="20" height="20"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+      <svg class="theme-ico theme-ico-auto" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+    </button>
+  </div>
+
+  <h2>Цвет</h2>
+  <p class="lead">Названия — по роли, а не по оттенку. Тёмная тема переопределяет те же имена.</p>
+  <div class="sw-grid" id="ds-palette">
+    <div class="sw"><i style="--c: var(--bg)"></i><span>bg</span></div>
+    <div class="sw"><i style="--c: var(--bg-soft)"></i><span>bg-soft</span></div>
+    <div class="sw"><i style="--c: var(--panel)"></i><span>panel · surface-0</span></div>
+    <div class="sw"><i style="--c: var(--surface-1)"></i><span>surface-1</span></div>
+    <div class="sw"><i style="--c: var(--surface-2)"></i><span>surface-2</span></div>
+    <div class="sw"><i style="--c: var(--surface-3)"></i><span>surface-3</span></div>
+    <div class="sw"><i style="--c: var(--surface-4)"></i><span>surface-4</span></div>
+    <div class="sw"><i style="--c: var(--line)"></i><span>line</span></div>
+    <div class="sw"><i style="--c: var(--line-strong)"></i><span>line-strong</span></div>
+    <div class="sw"><i style="--c: var(--text)"></i><span>text</span></div>
+    <div class="sw"><i style="--c: var(--muted)"></i><span>muted</span></div>
+    <div class="sw"><i style="--c: var(--primary)"></i><span>primary</span></div>
+    <div class="sw"><i style="--c: var(--gold)"></i><span>gold</span></div>
+    <div class="sw"><i style="--c: var(--ok-bg)"></i><span>ok-bg</span></div>
+    <div class="sw"><i style="--c: var(--warn-bg)"></i><span>warn-bg</span></div>
+    <div class="sw"><i style="--c: var(--danger-bg)"></i><span>danger-bg</span></div>
+    <div class="sw"><i style="--c: var(--info-bg)"></i><span>info-bg</span></div>
+  </div>
+  <h2>Контраст текста</h2>
+  <p class="lead">Основные пары «текст на фоне» проходят WCAG AA (не ниже 4,5 : 1) в обеих темах — это проверяет сценарий Playwright. <code>muted-2</code> — только для второстепенных подсказок, не для значимого текста.</p>
+  <div class="row" id="ds-pairs">
+    <span class="pair p-text">text на bg</span>
+    <span class="pair p-panel">text на panel</span>
+    <span class="pair p-muted">muted на panel</span>
+    <span class="pair p-brand">brand-fg на panel</span>
+    <span class="pair p-primary">on-solid на primary</span>
+    <span class="pair p-ok">ok</span>
+    <span class="pair p-warn">warn</span>
+    <span class="pair p-danger">danger</span>
+    <span class="pair p-info">info</span>
+  </div>
+
+  <h2>Шрифты</h2>
+  <div class="type-scale">
+    <div style="font-family: var(--font-display); font-size: var(--text-xl); font-weight: 600">Playfair Display — заголовок страницы, 24</div>
+    <div style="font-size: var(--text-lg); font-weight: 600">Manrope — подзаголовок, 17</div>
+    <div style="font-size: var(--text-md)">Manrope — основной текст интерфейса, 14</div>
+    <div style="font-size: var(--text-sm); color: var(--muted)">Вторичный текст и подписи, 12,5</div>
+    <div style="font-size: var(--text-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 700">Подпись, 11</div>
+  </div>
+
+  <h2>Кнопки</h2>
+  <div class="row">
+    <button class="btn btn-primary">Основная</button>
+    <button class="btn btn-accent">Подтвердить</button>
+    <button class="btn">Обычная</button>
+    <button class="btn btn-ghost">Прозрачная</button>
+    <button class="btn btn-danger">Удалить</button>
+    <button class="btn" disabled>Недоступна</button>
+    <button class="btn btn-sm">Малая</button>
+  </div>
+
+  <h2>Поля формы</h2>
+  <div class="row" style="align-items: flex-start">
+    <label class="field" style="width: 240px"><span>Фамилия</span><input type="text" value="Иванов"></label>
+    <label class="field" style="width: 200px"><span>Дата</span><input type="date" value="2026-11-17"></label>
+    <label class="field" style="width: 200px"><span>Категория</span>
+      <select><option>Вилла</option><option>Имение</option></select></label>
+    <label class="field" style="width: 280px"><span>Примечание</span><textarea>Текст примечания</textarea></label>
+  </div>
+  <div class="form-error" style="max-width: 420px">Неверное имя или пароль</div>
+
+  <h2>Бейджи и показатели</h2>
+  <div class="row">
+    <span class="badge ok">на смене</span>
+    <span class="badge warn">внимание</span>
+    <span class="badge danger">ошибка</span>
+    <span class="badge info">справка</span>
+    <span class="badge muted">архив</span>
+  </div>
+  <div class="stat-grid" style="max-width: 640px">
+    <div class="stat"><div class="k">Занято</div><div class="v">42</div></div>
+    <div class="stat accent"><div class="k">Свободно</div><div class="v">18</div></div>
+    <div class="stat warn"><div class="k">Выезд сегодня</div><div class="v">6</div></div>
+    <div class="stat danger"><div class="k">Овербукинг</div><div class="v">1</div></div>
+  </div>
+
+  <h2>Сегмент-переключатель</h2>
+  <div class="seg"><button class="active">День</button><button>Неделя</button><button>Месяц</button></div>
+
+  <h2>Панель</h2>
+  <div class="panel" style="max-width: 520px">
+    <h3 class="panel-title">Заголовок панели</h3>
+    Содержимое: карточка, группа настроек, блок экрана.
+  </div>
+
+  <h2>Сообщения</h2>
+  <div style="display: grid; gap: 8px; max-width: 640px">
+    <div class="alert ok">Сохранено. Изменения вступят в силу с завтрашнего дня.</div>
+    <div class="alert warn">Для категории PRS нет свободных объектов на 22–29 ноября.</div>
+    <div class="alert danger">Не удалось отправить: канал доставки не настроен.</div>
+    <div class="alert info">Фонд на эту дату действует по версии №3.</div>
+  </div>
+
+  <h2>Модальное окно, уведомление, боковая панель</h2>
+  <div class="demo-box">
+    <div class="modal">
+      <div class="modal-head"><div><h3>Подтверждение</h3><p>Действие нельзя отменить</p></div></div>
+      <div class="modal-body">Удалить бронь F00331? Состав и история будут потеряны.</div>
+      <div class="modal-foot"><button class="btn">Отмена</button><button class="btn btn-danger">Удалить</button></div>
+    </div>
+    <div class="toast ok">Бронь сохранена</div>
+    <div class="drawer">
+      <div class="drawer-head"><div><h3>Бронь F00331</h3><p>Заезд 17.11 · выезд 22.11</p></div></div>
+      <div class="drawer-body">Карточка открывается сбоку и не уводит с экрана.</div>
+      <div class="drawer-foot"><button class="btn">Закрыть</button><button class="btn btn-primary">Сохранить</button></div>
+    </div>
+  </div>
+</main>
+</body>
+</html>
