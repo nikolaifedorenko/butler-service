@@ -49,12 +49,22 @@ def local_assets() -> list[str]:
     return out
 
 
+CLASSIC_SCRIPTS = {"/static/js/ui/theme.js"}      # обычные скрипты (не модули): версия — в адресе
+
+
+def versioned(asset: str) -> bool:
+    """Версия ``?v=`` — у стилей и обычных скриптов. Модули подключают друг друга по адресу без версии
+    (import ... from './core.js'): адрес с ?v= был бы другим модулем и выполнился бы дважды. Свежесть
+    модулей держит ``Cache-Control: no-cache`` у статики (app/main.py) и новая версия кэша sw.js."""
+    return asset.endswith(".css") or asset in CLASSIC_SCRIPTS
+
+
 def scripts_block(version: str) -> str:
     """Теги <script type="module"> оболочки: ядро, затем файлы разделов. Модули выполняются по
     порядку в документе после разбора страницы; порядок файлов разделов не важен (ADR-0008)."""
     mods = sorted((ASSETS_DIR / "js" / "modules").glob("*.js"))
     srcs = ["js/core.js", "js/app.js"] + [f"js/modules/{p.name}" for p in mods]
-    return "".join(f'<script type="module" src="/static/{s}?v={version}"></script>\n' for s in srcs)
+    return "".join(f'<script type="module" src="/static/{s}"></script>\n' for s in srcs)
 
 
 def with_scripts(html: str, version: str) -> str:
@@ -126,7 +136,7 @@ def bump(version: str) -> int:
     sw = SW.read_text(encoding="utf-8")
     sw_new = re.sub(r"const VERSION = 'tt-[\w.\-]+'", f"const VERSION = 'tt-{version}'", sw)
     shell_items = ["  '/'"]
-    shell_items += [f"  '{a}?v={version}'" for a in local_assets()]
+    shell_items += [f"  '{a}?v={version}'" if versioned(a) else f"  '{a}'" for a in local_assets()]
     shell_items += ["  '/manifest.webmanifest'", "  '/static/icons/icon-192.png'",
                     "  '/static/icons/icon-512.png'"]
     block = "const SHELL = [\n" + ",\n".join(shell_items) + ",\n];"

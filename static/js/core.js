@@ -17,7 +17,7 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { html, render } from './ui/html.js';
+import { html, render, unsafeHTML } from './ui/html.js';
 
 /* ───────────────────────────── утилиты ───────────────────────────── */
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -73,7 +73,7 @@ export function initials(name) {
 /* «Сегодня» — по часам объекта (APP_TZ на сервере), а не по часовому поясу телефона.
    serverShiftMs: насколько локальное время объекта опережает UTC-часы устройства
    (учитывает и часовой пояс, и сбитые часы телефона). Обновляется из /api/health и /status. */
-let serverShiftMs = -new Date().getTimezoneOffset() * 60000;   // до первого ответа — пояс устройства
+export let serverShiftMs = -new Date().getTimezoneOffset() * 60000;   // до первого ответа — пояс устройства
 export function syncServerClock(localIso) {
   if (!localIso) return;
   const asUtc = Date.parse(String(localIso).slice(0, 19) + 'Z');
@@ -270,24 +270,32 @@ export const POSITION_COLORS = [
 ];
 
 /* ───────────────────────────── МОДАЛКИ ───────────────────────────── */
+/* Тело и подвал окна — шаблон lit-html (новый код) или строка с готовой разметкой (старые
+   вызовы, экранированная через esc()): строки вставляются как есть, пока их вызывающие не переехали. */
+function modalContent(x) { return typeof x === 'string' ? unsafeHTML(x) : x; }
+
 export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
-  m.innerHTML = `
+  m.replaceChildren();                       // каждое окно — новое дерево, без остатков прежнего
+  const root = document.createElement('div');
+  root.style.display = 'contents';           // обёртка не влияет на раскладку головы/тела/подвала
+  m.appendChild(root);
+  render(html`
     <div class="modal-head">
-      <div><h3>${esc(title)}</h3>${subtitle ? `<p>${esc(subtitle)}</p>` : ''}</div>
+      <div><h3>${title}</h3>${subtitle ? html`<p>${subtitle}</p>` : ''}</div>
       <button class="icon-btn x" aria-label="Закрыть">
         <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <div class="modal-body">${body}</div>
-    ${footer ? `<div class="modal-foot">${footer}</div>` : ''}`;
+    <div class="modal-body">${modalContent(body)}</div>
+    ${footer ? html`<div class="modal-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#modal-backdrop').classList.remove('hidden');
   m.querySelector('.x').onclick = closeModal;
   if (onMount) onMount(m);
   return m;
 }
-export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').innerHTML = ''; }
+export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').replaceChildren(); }
 
 export function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', danger = true) {
   openModal({
@@ -384,5 +392,4 @@ Object.assign(globalThis, {
   downloadBlob,
 });
 Object.defineProperty(globalThis, 'serverShiftMs', { get: () => serverShiftMs, set: (v) => { serverShiftMs = v; }, configurable: true });
-Object.defineProperty(globalThis, 'pendingLoads', { get: () => pendingLoads, set: (v) => { pendingLoads = v; }, configurable: true });
 /* ── конец моста ── */

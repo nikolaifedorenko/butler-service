@@ -38,13 +38,27 @@ DECL = re.compile(
 )
 
 
+MODULE_SYNTAX = re.compile(r"^(?:import|export)\b", re.M)
+EXPORTED = re.compile(
+    r"^export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)"
+    r"|^export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)"
+    r"|^export\s+class\s+([A-Za-z_$][\w$]*)",
+    re.M,
+)
+
+
+def is_real_module(text: str) -> bool:
+    """Файл с import/export: его внутренние имена приватны, в общую область идут только экспортируемые."""
+    return bool(MODULE_SYNTAX.search(BRIDGE_RE.sub("", text)))
+
+
 def collect() -> dict[str, str]:
     names: dict[str, str] = {}
     dupes: dict[str, list[str]] = {}
     for js in sorted(JS_DIR.rglob("*.js")):   # рекурсивно: разделы — в js/modules/ (фаза C6)
         rel = js.relative_to(JS_DIR).as_posix()
         text = js.read_text(encoding="utf-8")
-        for m in DECL.finditer(text):
+        for m in (EXPORTED if is_real_module(text) else DECL).finditer(text):
             name = next(g for g in m.groups() if g)
             if name in names and names[name] != rel:
                 dupes.setdefault(name, [names[name]]).append(rel)
@@ -74,7 +88,10 @@ def bridge_block(text: str) -> str:
     свойства с геттером и сеттером (присваивание из другого файла должно менять переменную)."""
     direct: list[str] = []
     live: list[str] = []
+    real = is_real_module(text)
     for m in DECL_KIND.finditer(BRIDGE_RE.sub("", text)):
+        if real and not m.group(0).startswith("export"):
+            continue
         if m.group(1) or m.group(4):
             direct.append(m.group(1) or m.group(4))
         elif m.group(2) in ("let", "var"):

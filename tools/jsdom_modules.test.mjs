@@ -35,3 +35,15 @@ test('минифицированный файл с export{…} в середин
   assert.equal(win.html(), 3);
   assert.equal(win.other, 2);
 });
+
+test('минифицированные import подряд на одной строке', () => {
+  const code = 'import{nothing as t}from"../lit-html.js";import{directive as r}from"../directive.js";\nclass e{}export{e as unsafeHTML};\n';
+  assert.deepEqual(importsOf(code), ['../lit-html.js', '../directive.js']);
+  assert.ok(!/import/.test(toClassic(code)));
+});
+
+test('import с псевдонимом: локальное имя указывает на экспорт зависимости', () => {
+  const win = { Directive: class Base {} };
+  new Function('window', `return (function(){ ${toClassic('import{Directive as s}from"./d.js";class E extends s{}export{E as made};')} }).call(window)`)(win);
+  assert.ok(new win.made() instanceof win.Directive);
+});

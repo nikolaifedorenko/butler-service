@@ -10,8 +10,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const IMPORT_RE = /^import\s+(?:[\s\S]*?\s+from\s+)?(['"])([^'"]+)\1\s*;?[ \t]*$/gm;
-const REEXPORT_RE = /^export\s*\{[^}]*\}\s*from\s*(['"])([^'"]+)\1\s*;?[ \t]*$/gm;
+/* Операторы ищем и в минифицированном коде (несколько на одной строке, без пробелов): начало оператора —
+   начало строки либо «;» / «}» перед ним. */
+const IMPORT_RE = /(?<=^|[;}\n])[ \t]*import\s*(?:[^'";]*?\s*from\s*)?(['"])([^'"]+)\1\s*;?/g;
+const REEXPORT_RE = /(?<=^|[;}\n])[ \t]*export\s*\{[^}]*\}\s*from\s*(['"])([^'"]+)\1\s*;?/g;
 const EXPORT_LIST_RE = /\bexport\s*\{([^}]*)\}\s*;?/g;
 const EXPORT_DECL_RE = /^export\s+(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/gm;
 
@@ -30,8 +32,16 @@ export function toClassic(code) {
   const hasModuleSyntax = /(^|[;}])\s*(import|export)\b/m.test(code);
   if (!hasModuleSyntax) return code;
   const names = [];
+  const aliases = [];     // import { a as b } → const b = window.a (без псевдонима имя и так найдётся в window)
   let body = code.replace(REEXPORT_RE, '');
-  body = body.replace(IMPORT_RE, '');
+  body = body.replace(IMPORT_RE, clause => {
+    const list = clause.match(/\{([^}]*)\}/);
+    for (const part of (list ? list[1].split(',') : []).map(x => x.trim()).filter(Boolean)) {
+      const [from, local] = part.split(/\s+as\s+/);
+      if (local && local !== from) aliases.push(`const ${local} = window.${from};`);
+    }
+    return '';
+  });
   body = body.replace(EXPORT_LIST_RE, (_, list) => {
     for (const part of list.split(',').map(s => s.trim()).filter(Boolean)) {
       const [local, exported] = part.split(/\s+as\s+/);
@@ -42,7 +52,7 @@ export function toClassic(code) {
   body = body.replace(EXPORT_DECL_RE, (m, name) => { names.push([name, name]); return m.replace(/^export\s+/, ''); });
   const publish = names.length
     ? `\nObject.assign(window, { ${names.map(([e, l]) => (e === l ? e : `${e}: ${l}`)).join(', ')} });` : '';
-  return `(function () {\n${body}${publish}\n}).call(window);\n`;
+  return `(function () {\n${aliases.join('\n')}\n${body}${publish}\n}).call(window);\n`;
 }
 
 function resolveImport(from, spec, root) {
