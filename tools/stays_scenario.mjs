@@ -1393,9 +1393,9 @@ async function escortScreens() {
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#st-body').innerHTML));
 
   /* дата до первой версии фонда: снимок 404 — «правила недоступны» только в блоке правил, остальной экран жив */
-  const host = $('#st-body');
-  host.dataset.escortDate = '1990-01-01';
-  window.eval('renderStaysEscort(document.querySelector("#st-body"))');
+  const early = $('#se-date');
+  early.value = '1990-01-01';
+  early.dispatchEvent(new window.Event('change'));
   check('сопровождение: дата до фонда — сообщение в блоке правил',
     await waitFor(() => /правила на эту дату недоступны/.test(text('#st-body'))), text('#st-body').slice(0, 200));
   check('сопровождение: таблица кодов и список батлеров на месте', !!$('#se-codes-table') && !!$('[data-escort]')

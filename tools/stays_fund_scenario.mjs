@@ -421,8 +421,9 @@ async function kindsFlow() {
   const today = serverToday();
   const opened = await apiJson('POST', '/api/stays/fund/draft', { valid_from: addDays(today, 1) });
   check('черновик открыт', opened.status === 200, JSON.stringify(opened.body));
-  window.eval("fundUI.view = 'draft'");
   await go('stays_fund');
+  await waitFor(() => !!$('#fund-view'));
+  if ($('#fund-view').value !== 'draft') change($('#fund-view'), 'draft');
   await waitFor(() => !!$('[data-fund-tab="cats"]'));
   click($('[data-fund-tab="cats"]'));
   await waitFor(() => !!$('#fund-cat-add'));
