@@ -1,6 +1,12 @@
 /* Раздел «Настройки»: экран «Документы и справочники» (вынесено из settings.js, шаг 6.5 аудита).
-   Оболочка, черновик версии справочников и общие помощники — в settings.js. */
+   Оболочка, черновик версии справочников и общие помощники — в settings.js.
+   Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
+
+import { can, registerModule } from '../app.js';
+import { $, $$, api, closeModal, openModal, state, toast } from '../core.js';
+import { html, mount, nothing, render } from '../ui/html.js';
+import { settingsHeadView, settingsPanelView, settingsRefresh, settingsUI } from './settings.js';
 
 registerModule({ screens: { docs: { render: settingsScreenDocs, icon: 'doc' } } });
 
@@ -14,57 +20,13 @@ async function settingsScreenDocs(host) {
   let docsInfo = { kinds: state.docKinds || [], placeholders: state.docPlaceholders || {} };
   try { docsInfo = await api('/api/docs/kinds', { silent: true }); } catch { /* работаем с кешем */ }
   state.docKinds = docsInfo.kinds || []; state.docPlaceholders = docsInfo.placeholders || {};
-
   const input = item => {
     if (item.type === 'bool') {
-      return `<label class="switch"><input type="checkbox" data-k="${esc(item.key)}" ${item.value ? 'checked' : ''} ${edit ? '' : 'disabled'}><span class="sl"></span></label>`;
+      return html`<label class="switch"><input type="checkbox" data-k=${item.key} .checked=${!!item.value} ?disabled=${!edit}><span class="sl"></span></label>`;
     }
-    const type = item.type === 'int' ? 'number' : 'text';
-    return `<input type="${type}" data-k="${esc(item.key)}" value="${esc(item.value ?? '')}" style="max-width:180px" ${edit ? '' : 'disabled'}>`;
+    return html`<input type=${item.type === 'int' ? 'number' : 'text'} data-k=${item.key} .value=${String(item.value ?? '')} style="max-width:180px" ?disabled=${!edit}>`;
   };
-
-  host.innerHTML = `
-    ${settingsHead('Документы и справочники',
-      'Реквизиты для печати, виды заявлений и бланки, департаменты и службы, прочие правила объекта. На математику расчёта не влияют.',
-      edit ? '<button class="btn btn-sm btn-primary" id="dc-save">Сохранить правила объекта</button>' : '')}
-    ${settingsPanel('Реквизиты организации', `
-      <div class="grid-2">
-        <label class="field"><span>Организация</span><input type="text" id="d-company" value="${esc(data.doc?.company || '')}" ${edit ? '' : 'disabled'}></label>
-        <label class="field"><span>Кому (шапка заявления)</span><input type="text" id="d-director" value="${esc(data.doc?.director || '')}" ${edit ? '' : 'disabled'}></label>
-      </div>
-      ${edit ? '<button class="btn btn-primary btn-sm" id="d-save">Сохранить реквизиты</button>' : ''}`)}
-    ${settingsPanel('Виды заявлений и шаблоны', `
-      <p class="hint" style="margin:-4px 0 12px">Виды заявлений — расширяемый справочник: у каждого свой текст
-        с плейсхолдерами и (по желанию) фирменный бланк .docx. Вид привязывается к отсутствию в словаре смен —
-        документ печатается из ячейки Графика («Печать заявления», DOCX, PDF).
-        ${docsInfo?.pdf_available ? '' : `<br>PDF на сервере недоступен: ${esc(docsInfo?.pdf?.error || 'не установлен reportlab')}. DOCX работает всегда.`}</p>
-      <table class="data"><thead><tr><th>Вид заявления</th><th>Код</th><th>Фирменный бланк</th><th></th></tr></thead>
-      <tbody>${(docsInfo?.kinds || []).map(k => `<tr>
-        <td>${esc(k.name)}${k.builtin ? ' <span class="badge">встроенный</span>' : ''}${k.active ? '' : ' <span class="badge muted">скрыт</span>'}</td>
-        <td><code>${esc(k.code)}</code></td>
-        <td>${k.template?.uploaded ? `<span class="badge ok" title="${esc(k.template.filename || '')}">загружен</span>` : '<span class="badge muted">печать текстом</span>'}</td>
-        <td class="num" style="white-space:nowrap">${edit ? `<button class="btn btn-sm btn-ghost" data-kind="${k.id}">Изменить</button>` : ''}</td>
-      </tr>`).join('') || '<tr><td colspan="4" class="empty">Виды заявлений не найдены</td></tr>'}</tbody></table>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        ${edit ? '<button class="btn btn-sm" id="d-add-kind">+ Новый вид заявления</button>' : ''}
-        <button class="btn btn-sm btn-ghost" id="d-kind-help">Справка по плейсхолдерам</button>
-      </div>`)}
-    ${settingsPanel('Департаменты и службы', `
-      <p class="hint" style="margin:-4px 0 12px">Значения справочников попадают в карточку сотрудника и
-        подставляются в документы. Переименование обновляет карточки, удаление — очищает поле у сотрудников,
-        где значение было выбрано.</p>
-      <div class="grid-2" id="dicts-body"><div class="empty">Загрузка…</div></div>`)}
-    ${settingsPanel('Прочие правила объекта', `
-      ${(data.items || []).map(i => `<div class="rule-row">
-        <div><div class="lbl">${esc(i.description || i.key)}</div>
-          <div class="desc"><code>${esc(i.key)}</code> · по умолчанию: ${esc(i.default)}</div></div>
-        <div class="rule-input">${input(i)}${String(i.value) !== String(i.default)
-          ? `<span class="badge warn" title="по умолчанию ${esc(i.default)}">изменено</span>` : ''}</div>
-      </div>`).join('') || '<p class="hint">Правил нет</p>'}
-      <p class="hint">Правила расчёта часов, переработок и банка — на экранах «Расчёт» и «Правила оплаты».</p>`)}`;
-
-  renderDicts();
-  settingsOn('#dc-save', host, async () => {
+  const saveRules = async () => {
     const payload = $$('[data-k]', host).map(i => ({ key: i.dataset.k,
       value: String(i.type === 'checkbox' ? (i.checked ? '1' : '0') : i.value) }));
     try {
@@ -72,29 +34,61 @@ async function settingsScreenDocs(host) {
       toast('Правила объекта сохранены', 'ok');
       await settingsRefresh();
     } catch (e) { toast(e.message, 'err'); }
-  });
-  settingsOn('#d-save', host, async () => {
+  };
+  const saveDoc = async () => {
     try {
       await api('/api/settings/doc', { method: 'PUT', body: {
-        company: $('#d-company').value, director: $('#d-director').value } });
+        company: $('#d-company', host).value, director: $('#d-director', host).value } });
       toast('Реквизиты сохранены', 'ok');
       await settingsRefresh();
     } catch (e) { toast(e.message, 'err'); }
-  });
-  settingsOn('#d-add-kind', host, () => openKindModal(null));
-  $$('[data-kind]', host).forEach(b => b.onclick = () =>
-    openKindModal((docsInfo?.kinds || []).find(k => k.id === +b.dataset.kind)));
-  settingsOn('#d-kind-help', host, () => openModal({
+  };
+  const help = () => openModal({
     title: 'Плейсхолдеры документов', wide: true,
-    body: `<table class="data">${Object.entries(docsInfo?.placeholders || {}).map(([k, v]) =>
-      `<tr><td><code>{${esc(k)}}</code></td><td>${esc(v)}</td></tr>`).join('')}</table>`,
-    footer: '<button class="btn btn-primary" data-ok>Понятно</button>',
+    body: html`<table class="data">${Object.entries(docsInfo?.placeholders || {}).map(([k, v]) =>
+      html`<tr><td><code>{${k}}</code></td><td>${v}</td></tr>`)}</table>`,
+    footer: html`<button class="btn btn-primary" data-ok>Понятно</button>`,
     onMount(m) { m.querySelector('[data-ok]').onclick = closeModal; },
-  }));
+  });
+  const kinds = docsInfo?.kinds || [];
+  render(html`
+    ${settingsHeadView('Документы и справочники',
+      'Реквизиты для печати, виды заявлений и бланки, департаменты и службы, прочие правила объекта. На математику расчёта не влияют.',
+      edit ? html`<button class="btn btn-sm btn-primary" id="dc-save" @click=${saveRules}>Сохранить правила объекта</button>` : nothing)}
+    ${settingsPanelView('Реквизиты организации', html`
+      <div class="grid-2">
+        <label class="field"><span>Организация</span><input type="text" id="d-company" .value=${data.doc?.company || ''} ?disabled=${!edit}></label>
+        <label class="field"><span>Кому (шапка заявления)</span><input type="text" id="d-director" .value=${data.doc?.director || ''} ?disabled=${!edit}></label>
+      </div>
+      ${edit ? html`<button class="btn btn-primary btn-sm" id="d-save" @click=${saveDoc}>Сохранить реквизиты</button>` : nothing}`)}
+    ${settingsPanelView('Виды заявлений и шаблоны', html`
+      <p class="hint" style="margin:-4px 0 12px">Виды заявлений — расширяемый справочник: у каждого свой текст
+        с плейсхолдерами и (по желанию) фирменный бланк .docx. Вид привязывается к отсутствию в словаре смен —
+        документ печатается из ячейки Графика («Печать заявления», DOCX, PDF).
+        ${docsInfo?.pdf_available ? nothing : html`<br>PDF на сервере недоступен: ${docsInfo?.pdf?.error || 'не установлен reportlab'}. DOCX работает всегда.`}</p>
+      <table class="data"><thead><tr><th>Вид заявления</th><th>Код</th><th>Фирменный бланк</th><th></th></tr></thead>
+      <tbody>${kinds.length ? kinds.map(k => html`<tr>
+        <td>${k.name}${k.builtin ? html` <span class="badge">встроенный</span>` : nothing}${k.active ? nothing : html` <span class="badge muted">скрыт</span>`}</td>
+        <td><code>${k.code}</code></td>
+        <td>${k.template?.uploaded ? html`<span class="badge ok" title=${k.template.filename || ''}>загружен</span>` : html`<span class="badge muted">печать текстом</span>`}</td>
+        <td class="num" style="white-space:nowrap">${edit ? html`<button class="btn btn-sm btn-ghost" data-kind=${k.id} @click=${() => openKindModal(k)}>Изменить</button>` : nothing}</td>
+      </tr>`) : html`<tr><td colspan="4" class="empty">Виды заявлений не найдены</td></tr>`}</tbody></table>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${edit ? html`<button class="btn btn-sm" id="d-add-kind" @click=${() => openKindModal(null)}>+ Новый вид заявления</button>` : nothing}
+        <button class="btn btn-sm btn-ghost" id="d-kind-help" @click=${help}>Справка по плейсхолдерам</button>
+      </div>`)}
+    ${settingsPanelView('Департаменты и службы', html`
+      <p class="hint" style="margin:-4px 0 12px">Значения справочников попадают в карточку сотрудника и
+        подставляются в документы. Переименование обновляет карточки, удаление — очищает поле у сотрудников,
+        где значение было выбрано.</p>
+      <div class="grid-2" id="dicts-body"><div class="empty">Загрузка…</div></div>`)}
+    ${settingsPanelView('Прочие правила объекта', html`
+      ${(data.items || []).length ? data.items.map(i => html`<div class="rule-row">
+        <div><div class="lbl">${i.description || i.key}</div>
+          <div class="desc"><code>${i.key}</code> · по умолчанию: ${i.default}</div></div>
+        <div class="rule-input">${input(i)}${String(i.value) !== String(i.default)
+          ? html`<span class="badge warn" title=${`по умолчанию ${i.default}`}>изменено</span>` : nothing}</div>
+      </div>`) : html`<p class="hint">Правил нет</p>`}
+      <p class="hint">Правила расчёта часов, переработок и банка — на экранах «Расчёт» и «Правила оплаты».</p>`)}`, mount(host));
+  renderDicts();
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  settingsScreenDocs,
-});
-/* ── конец моста ── */

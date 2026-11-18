@@ -17,32 +17,40 @@
    переопределения, мастер «что → кому → когда» и «Проверитель», который объясняет
    значение для (сотрудник, день) тем же доменным приоритетом 1–7, что и расчёт.
 
-   Зависит от core.js ($, api, state, esc, openModal, toast, …), app.js (can,
-   renderDicts, refreshDoublePay, shiftModal, openKindModal, loadDirectory,
-   DEFAULT_TITLES, fmtGdValue) и modules/engine_settings.js (renderEngineSettings — режим эксперта).
+   Модуль на lit-html (ADR-0013, раздел 7). Помощники экранов — в двух видах: шаблоны (…View)
+   для переведённых экранов и строки (settingsHead, settingsPanel…) для ещё не переведённых;
+   строковые уйдут, когда переедет последний экран (шаг 6з).
 
    Экраны — по файлу на экран: modules/settings_<экран>.js (шаг 6.5 аудита, 22.10.2026);
    здесь — оболочка, реестр, состояние, черновик и публикация версии, здоровье, поиск.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
+import { MODULE_SCREENS, can, navigate, registerModule } from '../app.js';
+import {
+  $, $$, api, closeModal, confirmDialog, cssColor, dateRu, esc, hours, openModal, plural, state, toast, todayISO,
+  withAlpha,
+} from '../core.js';
+import { html, mount, nothing, render, svg } from '../ui/html.js';
+import { v4CodeColor } from './timesheet_common.js';
+
 /* ─────────────────────────── реестр под-разделов ─────────────────────────── */
-const SETTINGS_ICONS = {
-  home: '<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
-  calc: '<rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M8 7h8M8 11h3M13 11h3M8 15h3M13 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
-  money: '<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7v10M9.5 9.5h4a1.6 1.6 0 0 1 0 3.2h-3a1.6 1.6 0 0 0 0 3.2h4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
-  codes: '<rect x="3" y="5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 5v15" stroke="currentColor" stroke-width="1.7"/><path d="M12 14h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
-  people: '<circle cx="9" cy="8" r="3.1" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.5 20c.8-3.3 3-5 5.5-5s4.7 1.7 5.5 5" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
-  cal: '<rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/>',
-  shift: '<circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7.2V12l3.2 2" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  doc: '<path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 12h7M9 16h7M9 8h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
-  gear: '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
-  code: '<path d="M9 6l-5 6 5 6M15 6l5 6-5 6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  shield: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9.4 12.2l1.9 1.9 3.4-3.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  list: '<path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 11h7M9 15h7M9 7h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
-  mail: '<rect x="3" y="5.5" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.8 7l8.2 6 8.2-6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
-  moon: '<path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>',
-  car: '<path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/>',
+export const SETTINGS_ICONS = {
+  home: svg`<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>`,
+  calc: svg`<rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M8 7h8M8 11h3M13 11h3M8 15h3M13 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  money: svg`<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7v10M9.5 9.5h4a1.6 1.6 0 0 1 0 3.2h-3a1.6 1.6 0 0 0 0 3.2h4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>`,
+  codes: svg`<rect x="3" y="5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 5v15" stroke="currentColor" stroke-width="1.7"/><path d="M12 14h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  people: svg`<circle cx="9" cy="8" r="3.1" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.5 20c.8-3.3 3-5 5.5-5s4.7 1.7 5.5 5" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  cal: svg`<rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/>`,
+  shift: svg`<circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7.2V12l3.2 2" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  doc: svg`<path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 12h7M9 16h7M9 8h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  gear: svg`<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  code: svg`<path d="M9 6l-5 6 5 6M15 6l5 6-5 6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  shield: svg`<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9.4 12.2l1.9 1.9 3.4-3.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  list: svg`<path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M9 11h7M9 15h7M9 7h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  mail: svg`<rect x="3" y="5.5" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M3.8 7l8.2 6 8.2-6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>`,
+  moon: svg`<path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>`,
+  car: svg`<path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/>`,
 };
 
 /* Состав раздела (ред. 19.10.2026 — единый центр конфигурации,
@@ -50,14 +58,14 @@ const SETTINGS_ICONS = {
    «Объект» (ночной обход, электрокары, документы), «Доставка», «Администрирование».
    Подписи, группы, порядок и право ВИДИМОСТИ экранов объявляют манифесты модулей (Screen,
    шаг 5.4) — список приходит в /api/auth/me уже по правам; рендер и иконку регистрирует
-   файл, где живёт экран (registerModule): справочники «Объекта» — modules/night.js и
-   modules/cars.js, рядом со своим доменом. `external` — переход в самостоятельный view:
+   файл, где живёт экран (registerModule): справочники «Объекта» — modules/night_dict.js и
+   modules/cars_dict.js. `external` — переход в самостоятельный view:
    «Права доступа» и «Журнал аудита» убраны из верхнего меню (19.10.2026) и открываются
    отсюда. Право правки экраны проверяют сами (night.edit, cars.manage, settings.edit). */
 registerModule({ views: { settings: loadSettings } });   // экраны регистрируют свои файлы settings_*.js
 
 /* Экраны в порядке манифестов, с записями групп ({ group }) перед первым экраном группы. */
-function settingsScreens() {
+export function settingsScreens() {
   const out = [];
   let group = null;
   (state.settingsScreens || []).forEach(({ group: g, ...s }) => {
@@ -67,20 +75,20 @@ function settingsScreens() {
   });
   return out;
 }
-function settingsTitle(id) { return settingsScreens().find(s => s.id === id)?.title; }
+export function settingsTitle(id) { return settingsScreens().find(s => s.id === id)?.title; }
 
 /* Открыть конкретный экран Настроек из другого раздела (deep-link 19.10.2026):
    «Справочник» в «Ночном отчёте» и «+ Кар»/«Места» в «Электрокарах» больше не
    открывают свои модалки — единственное место правки справочника здесь.
    Hash читает loadSettings при входе в раздел. */
-function settingsOpen(screenId) {
+export function settingsOpen(screenId) {
   location.hash = `#/settings/${screenId}`;
   navigate('settings');
 }
 
 /* Карточки модификаторов CFG-MODIFIERS: что делает правило, пример и ссылка на норму.
    Тексты — из спецификации v7.1 (5.2, CFG-MODIFIERS, CFG-WEIGHTS), не из кода. */
-const SETTINGS_MODS = [
+export const SETTINGS_MODS = [
   { name: 'pays_overtime', title: 'Оплачиваются ли переработки', type: 'bool', def: 'Да',
     what: 'Переработка дня идёт в УТ («Да») или в банк часов по весу кода («Нет»).',
     ex: '12 ч ДЯ2 при «Нет» → 24 ч банка, в УТ дня кодов нет (INV-NO-CODES-WHEN-EXCLUDED).',
@@ -98,13 +106,13 @@ const SETTINGS_MODS = [
     ex: 'Уровень 7 для этого правила — колонка кода, а не глобальная строка (CHK-DEFAULTS).',
     spec: 'CFG-DAY-CODES.counts_in_ut · участвует в pays_overtime' },
 ];
-const SETTINGS_LEVEL_FORMS = { 1: 'сотрудник + день', 2: 'сотрудник + период', 3: 'группа + день',
+export const SETTINGS_LEVEL_FORMS = { 1: 'сотрудник + день', 2: 'сотрудник + период', 3: 'группа + день',
   4: 'группа + период', 5: 'все + день', 6: 'все + период', 7: 'глобальный дефолт' };
 
 /* ─────────────────────────── состояние раздела ─────────────────────────── */
 /* Отдельный объект, а не поля глобального `state`: здесь живут черновик версии
    справочников и кеши запросов экрана, которые не нужны остальным разделам. */
-const settingsUI = {
+export const settingsUI = {
   screen: null,
   data: null,          // /api/settings
   health: null,        // /api/engine-settings/health
@@ -116,94 +124,104 @@ const settingsUI = {
   searchBound: false,
 };
 
-function settingsInvalidate() {
+export function settingsInvalidate() {
   settingsUI.engine = null; settingsUI.health = null; settingsUI.draft = null;
 }
-async function settingsEngine() {
+export async function settingsEngine() {
   if (!settingsUI.engine) settingsUI.engine = await api('/api/engine-settings');
   return settingsUI.engine;
 }
-async function settingsHealth() {
+export async function settingsHealth() {
   if (!settingsUI.health) settingsUI.health = await api('/api/engine-settings/health', { silent: true });
   return settingsUI.health;
 }
-function settingsPayload() { return settingsUI.engine?.active?.payload || null; }
-function settingsDraft() {
+export function settingsPayload() { return settingsUI.engine?.active?.payload || null; }
+export function settingsDraft() {
   const p = settingsPayload();
   if (!p) return null;
   if (!settingsUI.draft) settingsUI.draft = JSON.parse(JSON.stringify(p));
   return settingsUI.draft;
 }
-function settingsDirty() {
+export function settingsDirty() {
   const p = settingsPayload();
   return !!(p && settingsUI.draft && JSON.stringify(p) !== JSON.stringify(settingsUI.draft));
 }
-async function settingsRefresh() {
+export async function settingsRefresh() {
   settingsInvalidate();
   await loadSettings();
 }
 
 /* ─────────────────────────── мелкие помощники ─────────────────────────── */
-function settingsHm(min) {
+export function settingsHm(min) {
   const m = ((Number(min) || 0) % 1440 + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
-function settingsMin(hhmm) {
+export function settingsMin(hhmm) {
   const [h, m] = String(hhmm || '').split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return null;
   return h * 60 + m;
 }
-function settingsSnap(min, step) {
+export function settingsSnap(min, step) {
   const s = Number(step) || 15;
   return Math.round((Number(min) || 0) / s) * s;
 }
-function settingsHoursText(min) {
+export function settingsHoursText(min) {
   const m = Number(min) || 0;
   return `${hours(m / 60)} ч`;
 }
-function settingsLevelBadge(level) {
+export function settingsLevelBadge(level) {
   return `<span class="level-badge${level === 7 ? ' l7' : ''}" title="Уровень приоритета ${level}: ${esc(SETTINGS_LEVEL_FORMS[level] || '')}">${level}</span>`;
 }
-function settingsChainHtml(chain) {
+export function settingsChainHtml(chain) {
   if (!chain || !chain.length) return '';
   return `<div class="chain">${chain.map((c, i) => `${i ? '<span class="arrow">→</span>' : ''}
     <span class="step${c.hit ? ' hit' : ''}">${settingsLevelBadge(c.level)} ${esc(c.form)}${c.hit ? ' ✓' : ''}</span>`).join('')}</div>`;
 }
-function settingsCodeColor(code, policy) {
+export function settingsCodeColor(code, policy) {
   const from = policy?.[code]?.color;
   return cssColor(from, v4CodeColor(code, null));
 }
-function settingsCodePill(code, policy) {
+export function settingsCodePill(code, policy) {
   const c = settingsCodeColor(code, policy);
   return `<span class="code-pill" style="background:${withAlpha(c, .16)};color:${c}">${esc(code)}</span>`;
 }
-function settingsPanel(title, body, extra = '') {
+export function settingsPanel(title, body, extra = '') {
   return `<div class="panel">${title ? `<h3 class="panel-title">${title}</h3>` : ''}${extra}${body}</div>`;
 }
-function settingsHead(title, sub, right = '') {
+export function settingsHead(title, sub, right = '') {
   return `<div class="page-head"><div><h2>${esc(title)}</h2><div class="sub">${sub}</div></div>
     <div class="spacer"></div>${right}</div>`;
 }
 /* Привязка клика к элементу, которого может не быть: кнопки правки не отрисовываются
    без права settings.edit, и обращение к null роняло весь экран (найдено снимком
    интерфейса под супервайзером). */
-function settingsOn(sel, host, fn) {
+export function settingsOn(sel, host, fn) {
   const el = $(sel, host);
   if (el) el.onclick = fn;
   return el;
 }
-function settingsFail(host, e) {
-  host.innerHTML = `<div class="panel"><h3 class="panel-title">Не загрузилось</h3>
-    <p style="color:var(--danger);font-weight:600">${esc(e?.message || e)}</p>
+export function settingsFail(host, e) {
+  render(html`<div class="panel"><h3 class="panel-title">Не загрузилось</h3>
+    <p style="color:var(--danger);font-weight:600">${e?.message || e}</p>
     <p class="hint">Проверьте соединение и повторите. Если ошибка повторяется — откройте
     «Система → Диагностика» и пришлите текст ошибки.</p>
-    <button class="btn btn-sm" id="st-retry">Повторить</button></div>`;
-  const b = $('#st-retry', host);
-  if (b) b.onclick = () => settingsRefresh();
+    <button class="btn btn-sm" id="st-retry" @click=${() => settingsRefresh()}>Повторить</button></div>`, mount(host));
+}
+
+/* ── шаблонные помощники экранов (переведённые экраны берут их вместо строковых) ── */
+export const settingsPanelView = (title, body, extra) => html`<div class="panel">${title ? html`<h3 class="panel-title">${title}</h3>` : nothing}${extra || nothing}${body}</div>`;
+export const settingsHeadView = (title, sub, right) => html`<div class="page-head"><div><h2>${title}</h2><div class="sub">${sub}</div></div>
+    <div class="spacer"></div>${right || nothing}</div>`;
+export const settingsLevelBadgeView = level => html`<span class=${`level-badge${level === 7 ? ' l7' : ''}`} title=${`Уровень приоритета ${level}: ${SETTINGS_LEVEL_FORMS[level] || ''}`}>${level}</span>`;
+export const settingsChainView = chain => (!chain || !chain.length ? nothing : html`<div class="chain">${chain.map((c, i) => html`${i ? html`<span class="arrow">→</span>` : nothing}
+    <span class=${`step${c.hit ? ' hit' : ''}`}>${settingsLevelBadgeView(c.level)} ${c.form}${c.hit ? ' ✓' : ''}</span>`)}</div>`);
+export function settingsCodePillView(code, policy) {
+  const c = settingsCodeColor(code, policy);
+  return html`<span class="code-pill" style=${`background:${withAlpha(c, .16)};color:${c}`}>${code}</span>`;
 }
 
 /* ─────────────────────────── оболочка раздела ─────────────────────────── */
-function settingsScreenAllowed(id) {
+export function settingsScreenAllowed(id) {
   /* id обязателен: у записей групп ({ group: … }) его нет, и find по undefined
      матчил бы группу — экран «undefined» вместо «Обзора» (найдено сценарием) */
   if (!id) return false;
@@ -211,10 +229,10 @@ function settingsScreenAllowed(id) {
   return !!item && !item.external && (!item.perm || can(item.perm));
 }
 
-async function loadSettings() {
+export async function loadSettings() {
   const host = $('#view-settings');
   if (!host) return;
-  host.innerHTML = '<div class="empty">Загрузка…</div>';
+  render(html`<div class="empty">Загрузка…</div>`, mount(host));
   try {
     settingsUI.data = await api('/api/settings', { silent: true });
   } catch (e) {
@@ -236,28 +254,28 @@ async function loadSettings() {
   try { health = await settingsHealth(); } catch { health = null; }   // «Обзор» покажет причину
 
   const errors = (health?.checks || []).filter(c => c.level === 'error').length;
-  host.innerHTML = `
+  render(html`
     <div class="page-head">
       <div><h2>Настройки</h2>
         <div class="sub">Правила расчёта и деньги · справочники Табеля · словарь смен · документы.
           Каждый экран имеет собственный адрес — на него можно дать ссылку</div></div>
       <div class="spacer"></div>
-      <button class="settings-search" id="st-search" title="Поиск по настройкам">
+      <button class="settings-search" id="st-search" title="Поиск по настройкам" @click=${() => settingsSearchPalette()}>
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <span>Поиск по настройкам…</span><kbd>⌘K</kbd></button>
     </div>
     <div class="settings-layout">
       <nav class="settings-nav" id="st-nav" aria-label="Под-разделы настроек"></nav>
-      <div class="settings-body" id="st-body"><div class="empty">Загрузка…</div></div>
-    </div>`;
-  settingsOn('#st-search', host, () => settingsSearchPalette());
+      <div class="settings-body" id="st-body"></div>
+    </div>`, mount(host));
   settingsRenderNav(health, errors);
   await settingsRenderScreen();
 }
 
-function settingsRenderNav(health, errors) {
+export function settingsRenderNav(health = navCache.health, errors = navCache.errors) {
   const nav = $('#st-nav');
   if (!nav) return;
+  Object.assign(navCache, { health, errors });
   const s = health?.stats || {};
   const counters = {
     overview: errors ? { n: (health?.checks || []).length, bad: true } : null,
@@ -266,24 +284,23 @@ function settingsRenderNav(health, errors) {
     shifts: { n: (state.shiftTypes || []).filter(x => !x.archived).length },
     calendar: s.rules_upcoming ? { n: s.rules_upcoming } : null,
   };
-  nav.innerHTML = settingsScreens().filter(x => !x.perm || can(x.perm)).map(item => {
-    if (item.group) return `<div class="nav-group">${esc(item.group)}</div>`;
-    const active = item.id === settingsUI.screen ? ' active' : '';
+  render(html`${settingsScreens().filter(x => !x.perm || can(x.perm)).map(item => {
+    if (item.group) return html`<div class="nav-group">${item.group}</div>`;
     const c = counters[item.id];
-    const arrow = item.external ? ' ↗' : '';
-    return `<button class="nav-item${active}" data-st="${item.id}" title="${esc(item.title)}">
-      <svg viewBox="0 0 24 24" aria-hidden="true">${SETTINGS_ICONS[item.icon] || ''}</svg>
-      <span>${esc(item.title)}${arrow}</span>
-      ${c ? `<span class="cnt${c.bad ? ' bad' : ''}">${c.n}</span>` : ''}</button>`;
-  }).join('') + `<div class="nav-foot">Движок v7.1${health?.version?.id
-    ? ` · версия справочников #${health.version.id}<br>действует с ${dateRu(health.version.valid_from)}`
-    : ' · справочники по умолчанию'}<br>${errors
-    ? `<b style="color:var(--danger)">ошибок конфигурации: ${errors}</b>`
-    : 'конфигурация здорова'}</div>`;
-  $$('#st-nav [data-st]').forEach(b => b.onclick = () => settingsGo(b.dataset.st));
+    return html`<button class=${`nav-item${item.id === settingsUI.screen ? ' active' : ''}`} data-st=${item.id} title=${item.title}
+      @click=${() => settingsGo(item.id)}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">${SETTINGS_ICONS[item.icon] || nothing}</svg>
+      <span>${item.title}${item.external ? ' ↗' : ''}</span>
+      ${c ? html`<span class=${`cnt${c.bad ? ' bad' : ''}`}>${c.n}</span>` : nothing}</button>`;
+  })}<div class="nav-foot">Движок v7.1${health?.version?.id
+    ? ` · версия справочников #${health.version.id}` : ' · справочники по умолчанию'}${health?.version?.id
+    ? html`<br>действует с ${dateRu(health.version.valid_from)}` : nothing}<br>${errors
+    ? html`<b style="color:var(--danger)">ошибок конфигурации: ${errors}</b>`
+    : 'конфигурация здорова'}</div>`, nav);
 }
+const navCache = { health: null, errors: 0 };
 
-function settingsGo(id) {
+export function settingsGo(id) {
   const item = settingsScreens().find(s => s.id === id);
   if (!item) return;
   if (item.external) { navigate(item.external); return; }
@@ -306,7 +323,7 @@ function settingsGo(id) {
 /* Последний закрытый период — по сотрудникам (решение владельца 25.10.2026): закрытие
    «всё или ничего», но период мог остаться закрытым частично (прежние правила, сбой);
    тогда — сколько закрыто и у кого нет, чтобы докрыть «Закрыть месяц». */
-function closedPeriodText(lc, { recalcNote = true } = {}) {
+export function closedPeriodText(lc, { recalcNote = true } = {}) {
   if (!lc) return 'закрытых периодов нет';
   const head = `начинается ${dateRu(lc.start)}`;
   if (lc.complete) {
@@ -320,7 +337,7 @@ function closedPeriodText(lc, { recalcNote = true } = {}) {
 
 let settingsRenderGen = 0;
 
-async function settingsRenderScreen() {
+export async function settingsRenderScreen() {
   const gen = ++settingsRenderGen;
   const old = $('#st-body');
   if (!old) return;
@@ -335,8 +352,8 @@ async function settingsRenderScreen() {
     || settingsScreens().find(s => s.id === 'overview');
   settingsUI.screen = item.id;
   if (history.replaceState) history.replaceState(null, '', `#/settings/${item.id}`);
-  $$('#st-nav [data-st]').forEach(b => b.classList.toggle('active', b.dataset.st === item.id));
-  body.innerHTML = '<div class="empty">Загрузка…</div>';
+  settingsRenderNav();
+  render(html`<div class="empty">Загрузка…</div>`, mount(body));
   body.scrollTop = 0;
   try {
     await item.render(body);
@@ -351,7 +368,7 @@ async function settingsRenderScreen() {
 }
 
 /* Черновик версии справочников: одна плавающая панель на всех экранах, где он есть. */
-function settingsUpdateDraftBars() {
+export function settingsUpdateDraftBars() {
   $$('[data-draft-bar]').forEach(bar => {
     const dirty = settingsDirty();
     const n = dirty ? settingsDiff(settingsPayload(), settingsUI.draft).length : 0;
@@ -363,7 +380,7 @@ function settingsUpdateDraftBars() {
     $$('[data-draft-act]', bar).forEach(b => { b.disabled = !dirty; });
   });
 }
-function settingsDraftBarHtml() {
+export function settingsDraftBarHtml() {
   if (!can('settings.edit')) return '';
   return `<div class="draft-bar idle" data-draft-bar>
     <span class="t">Черновика нет: показана действующая версия справочников</span>
@@ -373,21 +390,33 @@ function settingsDraftBarHtml() {
     <button class="btn btn-sm btn-primary" data-draft-publish data-draft-act disabled>Опубликовать версию…</button>
   </div>`;
 }
-function settingsBindDraftBar(host) {
+export function settingsBindDraftBar(host) {
   const bar = $('[data-draft-bar]', host);
   if (!bar) return;
-  $('[data-draft-diff]', bar).onclick = () =>
-    settingsDiffModal(settingsPayload(), settingsUI.draft, 'Черновик против действующей версии');
-  $('[data-draft-reset]', bar).onclick = () => confirmDialog('Сбросить черновик?',
-    'Несохранённые изменения справочников будут потеряны.',
-    () => { settingsUI.draft = null; settingsRenderScreen(); }, 'Сбросить', false);
+  $('[data-draft-diff]', bar).onclick = draftDiff;
+  $('[data-draft-reset]', bar).onclick = draftReset;
   $('[data-draft-publish]', bar).onclick = () => settingsPublishModal();
+}
+const draftDiff = () => settingsDiffModal(settingsPayload(), settingsUI.draft, 'Черновик против действующей версии');
+const draftReset = () => confirmDialog('Сбросить черновик?',
+  'Несохранённые изменения справочников будут потеряны.',
+  () => { settingsUI.draft = null; settingsRenderScreen(); }, 'Сбросить', false);
+/* то же шаблоном: обработчики привязаны к кнопкам сразу */
+export function settingsDraftBarView() {
+  if (!can('settings.edit')) return nothing;
+  return html`<div class="draft-bar idle" data-draft-bar>
+    <span class="t">Черновика нет: показана действующая версия справочников</span>
+    <span class="spacer"></span>
+    <button class="btn btn-sm" data-draft-diff data-draft-act disabled @click=${draftDiff}>Что изменилось</button>
+    <button class="btn btn-sm" data-draft-reset data-draft-act disabled @click=${draftReset}>Сбросить</button>
+    <button class="btn btn-sm btn-primary" data-draft-publish data-draft-act disabled @click=${() => settingsPublishModal()}>Опубликовать версию…</button>
+  </div>`;
 }
 
 /* ─────────────────────────── diff и публикация версии ─────────────────────────── */
-function settingsGranularityText(g) { return g === 'half_month' ? 'полмесяца (1–15 / 16–конец)' : 'месяц'; }
+export function settingsGranularityText(g) { return g === 'half_month' ? 'полмесяца (1–15 / 16–конец)' : 'месяц'; }
 
-function settingsDiff(base, draft) {
+export function settingsDiff(base, draft) {
   const out = [];
   if (!base || !draft) return out;
   const push = (block, text) => out.push({ block, text });
@@ -455,20 +484,20 @@ function settingsDiff(base, draft) {
   return out;
 }
 
-function settingsDiffModal(base, draft, title) {
+export function settingsDiffModal(base, draft, title) {
   const lines = settingsDiff(base, draft);
   openModal({
     title: title || 'Что изменилось', wide: true,
     subtitle: lines.length ? `${lines.length} ${plural(lines.length, 'правка', 'правки', 'правок')} в черновике` : 'изменений нет',
     body: lines.length
-      ? `<div class="settings-list">${[...new Set(lines.map(l => l.block))].map(block => `
+      ? html`<div class="settings-list">${[...new Set(lines.map(l => l.block))].map(block => html`
           <div class="panel" style="margin:0;box-shadow:none">
-            <h3 class="panel-title">${esc(block)}</h3>
+            <h3 class="panel-title">${block}</h3>
             ${lines.filter(l => l.block === block).map(l =>
-              `<div class="kv"><span class="v" style="text-align:left;font-weight:600">${esc(l.text)}</span></div>`).join('')}
-          </div>`).join('')}</div>`
-      : '<p class="hint">Черновик совпадает с действующей версией справочников.</p>',
-    footer: '<button class="btn btn-primary" data-ok>Закрыть</button>',
+              html`<div class="kv"><span class="v" style="text-align:left;font-weight:600">${l.text}</span></div>`)}
+          </div>`)}</div>`
+      : html`<p class="hint">Черновик совпадает с действующей версией справочников.</p>`,
+    footer: html`<button class="btn btn-primary" data-ok>Закрыть</button>`,
     onMount(m) { m.querySelector('[data-ok]').onclick = closeModal; },
   });
 }
@@ -476,7 +505,7 @@ function settingsDiffModal(base, draft, title) {
 /* Фактическая дата применения: версия выбирается по дате НАЧАЛА периода
    (base_version(period.start)), поэтому любая дата внутри периода означает
    «с начала следующего» — показываем честно, до публикации (дефект D25). */
-function settingsAppliesFrom(validFrom, granularity) {
+export function settingsAppliesFrom(validFrom, granularity) {
   const d = new Date(`${validFrom}T12:00:00`);
   if (Number.isNaN(d.getTime())) return null;
   if (granularity === 'half_month') {
@@ -488,7 +517,7 @@ function settingsAppliesFrom(validFrom, granularity) {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
-function settingsPublishModal() {
+export function settingsPublishModal() {
   const draft = settingsDraft();
   if (!draft) return;
   const lines = settingsDiff(settingsPayload(), draft);
@@ -499,21 +528,21 @@ function settingsPublishModal() {
   openModal({
     title: 'Опубликовать версию справочников', wide: true,
     subtitle: `${lines.length} ${plural(lines.length, 'правка', 'правки', 'правок')} · проверка CHK-* выполняется при сохранении`,
-    body: `
+    body: html`
       <div class="wizard-steps">
         <div class="ws on"><b>1 · Что меняем</b>черновик справочников</div>
         <div class="ws on"><b>2 · С какой даты</b>любая дата</div>
         <div class="ws"><b>3 · Проверка</b>сервер вернёт все нарушения разом</div>
       </div>
       <div class="settings-list" style="max-height:34vh;overflow:auto">
-        ${[...new Set(lines.map(l => l.block))].map(block => `<div>
-          <div class="opt-group-title">${esc(block)}</div>
+        ${[...new Set(lines.map(l => l.block))].map(block => html`<div>
+          <div class="opt-group-title">${block}</div>
           ${lines.filter(l => l.block === block).map(l =>
-            `<div class="kv"><span class="v" style="text-align:left;font-weight:600">${esc(l.text)}</span></div>`).join('')}
-        </div>`).join('')}
+            html`<div class="kv"><span class="v" style="text-align:left;font-weight:600">${l.text}</span></div>`)}
+        </div>`)}
       </div>
       <div class="grid-2" style="margin-top:14px">
-        <label class="field"><span>Действует с</span><input type="date" id="pb-from" value="${esc(first)}">
+        <label class="field"><span>Действует с</span><input type="date" id="pb-from" .value=${first}>
           <div class="hint">Дата больше не ограничена 1-м или 16-м числом: версия применяется к периодам,
             <b>начинающимся</b> с этой даты или позже</div></label>
         <label class="field"><span>Комментарий (обязателен)</span><input type="text" id="pb-note"
@@ -523,7 +552,7 @@ function settingsPublishModal() {
       <p class="hint">Закрытые периоды не пересчитываются (RUL-CLOSED-PERIOD-IMMUTABLE): чтобы исправить
         последний закрытый период, опубликуйте версию датой не позже его начала и выполните
         «Пересчитать» в «Управленческом табеле».</p>`,
-    footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
+    footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-save>Опубликовать</button>`,
     onMount(m) {
       const from = m.querySelector('#pb-from');
@@ -532,31 +561,30 @@ function settingsPublishModal() {
       const health = settingsUI.health;
       const lastClosed = health?.periods?.last_closed_start || null;
       const cur = health?.periods?.current || null;
-      const render = () => {
+      const draw = () => {
         const v = from.value || today;
         const applies = settingsAppliesFrom(v, gran);
         const rows = [
           ['Указана дата', dateRu(v)],
-          ['Фактически применится', `к периодам, начинающимся с <b>${dateRu(applies)}</b>`],
+          ['Фактически применится', html`к периодам, начинающимся с <b>${dateRu(applies)}</b>`],
         ];
         if (cur && applies > cur.end) {
           rows.push([`Текущий период (${dateRu(cur.start)}–${dateRu(cur.end)})`,
             'считается по прежней версии — дата лежит внутри него']);
         } else if (cur && applies <= cur.start) {
           rows.push([`Текущий период (${dateRu(cur.start)}–${dateRu(cur.end)})`,
-            '<b style="color:var(--warn)">будет пересчитан по новой версии</b>']);
+            html`<b style="color:var(--warn)">будет пересчитан по новой версии</b>`]);
         }
         if (lastClosed) {
           const lc = health?.periods?.last_closed;
           const who = lc && !lc.complete ? ` (закрыт у ${lc.closed_count} из ${lc.total})` : '';
           rows.push(['Последний закрытый период', applies <= lastClosed
-            ? `<b style="color:var(--warn)">начинается ${dateRu(lastClosed)}${esc(who)} — нужен явный пересчёт в «Управленческом табеле»</b>`
-            : `начинается ${dateRu(lastClosed)}${esc(who)} — не затрагивается`]);
+            ? html`<b style="color:var(--warn)">начинается ${dateRu(lastClosed)}${who} — нужен явный пересчёт в «Управленческом табеле»</b>`
+            : `начинается ${dateRu(lastClosed)}${who} — не затрагивается`]);
         }
-        preview.innerHTML = rows.map(([k, val]) =>
-          `<div class="row"><span class="k">${esc(k)}</span><span>${val}</span></div>`).join('');
+        render(html`${rows.map(([k, val]) => html`<div class="row"><span class="k">${k}</span><span>${val}</span></div>`)}`, preview);
       };
-      from.onchange = render; render();
+      from.onchange = draw; draw();
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-save]').onclick = async () => {
         if (!note.value.trim()) return toast('Напишите комментарий: зачем меняется конфигурация', 'warn');
@@ -576,7 +604,7 @@ function settingsPublishModal() {
 }
 
 /* ─────────────────────────── здоровье конфигурации ─────────────────────────── */
-function settingsHealthBanner(health) {
+export function settingsHealthBanner(health) {
   const checks = health?.checks || [];
   if (!checks.length) {
     return `<div class="health ok"><b>Конфигурация здорова</b>
@@ -595,14 +623,33 @@ function settingsHealthBanner(health) {
       <button data-go="${esc(c.screen)}">${esc(settingsTitle(c.screen) || c.screen)} →</button></li>`).join('')}
       ${checks.length > 12 ? `<li><span>… и ещё ${checks.length - 12}</span></li>` : ''}</ul></div>`;
 }
-function settingsBindHealth(host) {
+export function settingsBindHealth(host) {
   $$('[data-go]', host).forEach(b => b.onclick = () => settingsGo(b.dataset.go));
+}
+/* то же шаблоном */
+export function settingsHealthBannerView(health) {
+  const checks = health?.checks || [];
+  if (!checks.length) {
+    return html`<div class="health ok"><b>Конфигурация здорова</b>
+      <ul><li>Проверки CHK-* и сверки справочников не нашли замечаний на ${dateRu(health?.on)}</li></ul></div>`;
+  }
+  const errors = checks.filter(c => c.level === 'error');
+  const warns = checks.filter(c => c.level !== 'error');
+  return html`<div class=${`health ${errors.length ? 'bad' : ''}`}>
+    <b>${errors.length
+      ? `${errors.length} ${plural(errors.length, 'ошибка', 'ошибки', 'ошибок')} конфигурации — расчёт остановится`
+      : `${warns.length} ${plural(warns.length, 'предупреждение', 'предупреждения', 'предупреждений')}`}</b>
+    <ul>${checks.slice(0, 12).map(c => html`<li>
+      <span>${c.level === 'error' ? '⛔' : '⚠'} ${c.text}
+        <span class="spec-ref">[${c.code}]</span></span>
+      <button data-go=${c.screen} @click=${() => settingsGo(c.screen)}>${settingsTitle(c.screen) || c.screen} →</button></li>`)}
+      ${checks.length > 12 ? html`<li><span>… и ещё ${checks.length - 12}</span></li>` : nothing}</ul></div>`;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
    ПОИСК ПО НАСТРОЙКАМ (⌘K / Ctrl+K) — любая настройка находится за 2 нажатия
    ══════════════════════════════════════════════════════════════════════ */
-function settingsSearchIndex() {
+export function settingsSearchIndex() {
   const out = [];
   settingsScreens().filter(s => s.id).forEach(s => out.push({
     title: s.title, hint: s.external ? 'отдельная вкладка приложения' : 'под-раздел настроек',
@@ -646,23 +693,18 @@ function settingsSearchIndex() {
   return out;
 }
 
-function settingsSearchPalette() {
+export function settingsSearchPalette() {
   const index = settingsSearchIndex();
   openModal({
     title: 'Поиск по настройкам', wide: true,
     subtitle: `${index.length} ${plural(index.length, 'пункт', 'пункта', 'пунктов')} · экраны, справочники, правила, смены`,
-    body: `<div class="search-palette">
+    body: html`<div class="search-palette">
       <input type="text" id="sp-q" placeholder="например: переработки, окно, лимит, Смена 1…" autocomplete="off">
       <div class="res" id="sp-res"></div></div>`,
     onMount(m) {
       const q = m.querySelector('#sp-q'), res = m.querySelector('#sp-res');
-      const draw = list => {
-        res.innerHTML = list.slice(0, 40).map((x, i) => `<button data-i="${i}" class="${i === 0 ? 'sel' : ''}">
-          <span><b>${esc(x.title)}</b><br><small style="color:var(--muted-2)">${esc(x.hint || '')}</small></span>
-          <small>${esc(settingsTitle(x.screen) || '')}${x.external ? ' ↗' : ''}</small></button>`).join('')
-          || '<p class="hint" style="padding:10px">Ничего не найдено</p>';
-        $$('[data-i]', res).forEach(b => b.onclick = () => pick(list[+b.dataset.i]));
-      };
+      let list = [];
+      let sel = 0;
       const pick = x => {
         if (!x) return;
         closeModal();
@@ -670,28 +712,34 @@ function settingsSearchPalette() {
         if (x.screen !== settingsUI.screen) settingsGo(x.screen);
         else settingsRenderScreen();
       };
+      const draw = () => render(list.length ? html`${list.slice(0, 40).map((x, i) => html`<button data-i=${i} class=${i === sel ? 'sel' : ''}
+          @click=${() => pick(x)}>
+          <span><b>${x.title}</b><br><small style="color:var(--muted-2)">${x.hint || ''}</small></span>
+          <small>${settingsTitle(x.screen) || ''}${x.external ? ' ↗' : ''}</small></button>`)}`
+        : html`<p class="hint" style="padding:10px">Ничего не найдено</p>`, res);
       const filter = () => {
         const s = q.value.trim().toLowerCase();
-        draw(!s ? index : index.filter(x =>
-          `${x.title} ${x.hint || ''} ${settingsTitle(x.screen) || ''}`.toLowerCase().includes(s)));
+        list = !s ? index : index.filter(x =>
+          `${x.title} ${x.hint || ''} ${settingsTitle(x.screen) || ''}`.toLowerCase().includes(s));
+        sel = 0;
+        draw();
       };
       q.oninput = filter;
       q.onkeydown = e => {
-        const items = $$('[data-i]', res);
-        const cur = items.findIndex(b => b.classList.contains('sel'));
+        const shown = Math.min(list.length, 40);
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
-          const next = Math.min(items.length - 1, Math.max(0, cur + (e.key === 'ArrowDown' ? 1 : -1)));
-          items.forEach((b, i) => b.classList.toggle('sel', i === next));
-          items[next]?.scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'Enter') { e.preventDefault(); pick(items[cur >= 0 ? cur : 0] && index[+items[cur >= 0 ? cur : 0].dataset.i]); }
+          sel = Math.min(shown - 1, Math.max(0, sel + (e.key === 'ArrowDown' ? 1 : -1)));
+          draw();
+          $$('[data-i]', res)[sel]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') { e.preventDefault(); pick(list[sel]); }
       };
       filter(); q.focus();
     },
   });
 }
 
-function settingsBindSearch() {
+export function settingsBindSearch() {
   if (settingsUI.searchBound) return;
   settingsUI.searchBound = true;
   document.addEventListener('keydown', e => {
@@ -734,6 +782,11 @@ Object.assign(globalThis, {
   settingsHead,
   settingsOn,
   settingsFail,
+  settingsPanelView,
+  settingsHeadView,
+  settingsLevelBadgeView,
+  settingsChainView,
+  settingsCodePillView,
   settingsScreenAllowed,
   loadSettings,
   settingsRenderNav,
@@ -743,6 +796,7 @@ Object.assign(globalThis, {
   settingsUpdateDraftBars,
   settingsDraftBarHtml,
   settingsBindDraftBar,
+  settingsDraftBarView,
   settingsGranularityText,
   settingsDiff,
   settingsDiffModal,
@@ -750,9 +804,9 @@ Object.assign(globalThis, {
   settingsPublishModal,
   settingsHealthBanner,
   settingsBindHealth,
+  settingsHealthBannerView,
   settingsSearchIndex,
   settingsSearchPalette,
   settingsBindSearch,
 });
-Object.defineProperty(globalThis, 'settingsRenderGen', { get: () => settingsRenderGen, set: (v) => { settingsRenderGen = v; }, configurable: true });
 /* ── конец моста ── */
