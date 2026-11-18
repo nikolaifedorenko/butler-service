@@ -3,6 +3,7 @@
    Модуль на lit-html (ADR-0013, раздел 7): разметка — шаблоны, вставки экранируются сами;
    границы — import/export, наружу (в мост) выходит только loadMe: его зовёт раздел «Электрокары». */
 import { poll, registerModule } from '../app.js';
+import { CAR_BADGE, carHandoverModal, carReturnModal } from './cars.js';
 import {
   $, api, closeModal, confirmDialog, hhmm, hours, MONTHS_GEN, openModal, state, syncServerClock, toast, WD,
 } from '../core.js';
