@@ -13,6 +13,8 @@ import { html, nothing, render } from '../ui/html.js';
 import { staysEmptyFilters, staysState } from './stays.js';
 import { boardState } from './stays_board.js';
 import { staysBook, staysBookEmpty } from './stays_bookings.js';
+import { staysBlock, staysBlockEmpty } from './stays_blocks.js';
+import { staysOoo, staysOooEmpty } from './stays_ooo.js';
 
 const STAYS_FILTERS_KEY = 'stays.filters';   // + '.<id пользователя>': на общем устройстве наборы не смешиваются
 export const STAYS_SORTS = [['tree', 'по дереву'], ['label', 'по номеру'], ['category', 'по категории'],

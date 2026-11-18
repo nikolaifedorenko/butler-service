@@ -96,7 +96,7 @@ export function staysFormFoot() {
   return `<button class="btn btn-ghost" data-close>Отмена</button>
     <button class="btn" id="rf-preview">Проверить</button><button class="btn btn-primary" data-save>Сохранить</button>`;
 }
-const formFootView = () => html`<button class="btn btn-ghost" data-close>Отмена</button>
+export const formFootView = () => html`<button class="btn btn-ghost" data-close>Отмена</button>
     <button class="btn" id="rf-preview">Проверить</button><button class="btn btn-primary" data-save>Сохранить</button>`;
 function staysBindFoot(m, flow, onSaved, okText) {
   $('[data-close]', m).onclick = closeModal;
@@ -730,6 +730,7 @@ Object.assign(globalThis, {
   renderPreview,
   previewThenSave,
   staysFormFoot,
+  formFootView,
   staysBindGatedFoot,
   openReservationForm,
   openTransferForm,
