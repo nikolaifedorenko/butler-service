@@ -1,14 +1,14 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-11-18b';
-// содержимое оболочки: e3e01184b782a489
+const VERSION = 'tt-2026-11-18c';
+// содержимое оболочки: 0a0d75e0daf45f8b
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-11-18b',
-  '/static/css/base.css?v=2026-11-18b',
-  '/static/css/components.css?v=2026-11-18b',
-  '/static/css/tokens.css?v=2026-11-18b',
+  '/static/css/app.css?v=2026-11-18c',
+  '/static/css/base.css?v=2026-11-18c',
+  '/static/css/components.css?v=2026-11-18c',
+  '/static/css/tokens.css?v=2026-11-18c',
   '/static/js/app.js',
   '/static/js/core.js',
   '/static/js/modules/access.js',
@@ -53,7 +53,7 @@ const SHELL = [
   '/static/js/modules/timesheet_layers.js',
   '/static/js/modules/today.js',
   '/static/js/ui/html.js',
-  '/static/js/ui/theme.js?v=2026-11-18b',
+  '/static/js/ui/theme.js?v=2026-11-18c',
   '/static/vendor/lit-html/directive.js',
   '/static/vendor/lit-html/directives/unsafe-html.js',
   '/static/vendor/lit-html/lit-html.js',
