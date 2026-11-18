@@ -15,11 +15,13 @@ export function watchErrors(page) {
   return errors;
 }
 
-/** Войти через форму входа и дождаться оболочки приложения. */
+/** Войти через форму входа и дождаться, пока приложение откроет стартовый экран «Сегодня»: пока
+    enterApp() не закончил, его navigate() перебил бы раздел, открытый сценарием. */
 export async function login(page, username) {
   await page.goto('/');
   await page.locator('#login-username').fill(username);
   await page.locator('#login-password').fill(DEMO_PASSWORD);
   await page.locator('#login-form button[type=submit]').click();
   await page.locator('#app:not(.hidden)').waitFor();
+  await page.locator('#view-today.active').waitFor();
 }

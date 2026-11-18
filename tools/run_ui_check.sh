@@ -7,7 +7,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 PORT="${1:-8141}"
 LOGIN="${2:-gromova}"
-VIEWS="${3:-grafik,schedule,marks,fact,timesheet,mgmt,employees,me,night,cars,stays,mystays,access,audit,settings}"
+VIEWS="${3:-today,grafik,schedule,marks,fact,timesheet,mgmt,employees,me,night,cars,stays,mystays,access,audit,settings}"
 DB_URL="$(python3 "$HERE/scenario_db.py" "ui_harness")" || exit 1
 rm -f /tmp/ui_server.log
 

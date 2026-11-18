@@ -201,7 +201,7 @@ async function doPunch() {
   }
 }
 
-function openOtNoteModal(punchId, current, otHours) {
+export function openOtNoteModal(punchId, current, otHours) {
   openModal({
     title: 'Описание переработки',
     subtitle: otHours ? `Переработка ${hours(otHours)} ч — опишите, с кем работали и что делали` : 'Описание попадёт в табель и в выгрузку Excel',
@@ -254,5 +254,6 @@ async function loadMyHistory() {
 /* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
 Object.assign(globalThis, {
   loadMe,
+  openOtNoteModal,
 });
 /* ── конец моста ── */

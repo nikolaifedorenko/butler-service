@@ -264,6 +264,10 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
 дописывает блок-мост, публикующий объявления в `globalThis` (`let`/`var` — «живыми»
 свойствами); файл, перешедший на `import`/`export`, мост теряет. Шаблоны разметки — `lit-html`
 (`static/vendor/lit-html/`, вход `static/js/ui/html.js`; обновление `npm run vendor`).
+Стартовый экран — «Сегодня» (`modules/today.js`, пункт меню первый у всех): набор блоков зависит от прав
+и привязки к сотруднику — смена и кнопка «Пришёл / Ушёл» (сотрудник), мои брони и гости (`stays.mine`),
+присутствие (`presence.view`), у остальных — переходы по их меню. Серверного кода у экрана нет: он
+собирается из ответов `/api/punches/status`, `/api/stays/mine/today`, `/api/presence/board`.
 Стили разделены на `tokens.css` (все значения, светлая и тёмная тема), `base.css`, `components.css` и
 `app.css` (экраны); образец — `static/design.html`, правила — `docs/architecture/DESIGN-SYSTEM.md`.
 Сценарии в настоящем браузере — Playwright (`e2e/`, `npm run e2e`, сервер `tools/e2e_server.sh`);
@@ -272,7 +276,7 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
 `tools/jsdom_modules.test.mjs`) — так jsdom-сценарии работают и на файлах с `import`/`export`. Ограничения:
 нет `import.meta` и верхнеуровневого `await`, два модуля не экспортируют одно имя. Статика отдаётся с
 `Cache-Control: no-cache` (ETag → 304): модули подключают друг друга по адресу без `?v=`.
-Настоящие модули (с `import`/`export`): `core.js`, `app.js`, `modules/me.js`, `modules/marks.js`. У такого
+Настоящие модули (с `import`/`export`): `core.js`, `app.js`, `modules/me.js`, `modules/marks.js`, `modules/today.js`. У такого
 файла внутренние имена приватны, а мост публикует в `globalThis` только экспортируемые — то, чем пока
 пользуются ещё не переехавшие файлы (генератор `tools/gen_js_globals.py` решает это сам). Разметка
 экранов — шаблоны `lit-html`; `openModal` принимает тело и подвал шаблоном или строкой с готовой
