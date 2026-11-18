@@ -1132,6 +1132,7 @@
   "modules/fact.js": [
    "loadFact"
   ],
+  "modules/grafik.js": [],
   "modules/marks.js": [
    "fetchMarks"
   ],
