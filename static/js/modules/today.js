@@ -100,7 +100,10 @@ function shiftStrip() {
       <div class="today-shift-v">${canIn ? 'Ещё не на смене' : (s.punch_status_hint || 'Отметка сейчас недоступна')}</div>`;
     if (canIn) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${punch}>Пришёл</button>`;
   } else {
-    line = html`<div class="today-shift-k">График</div><div class="today-shift-v">Сегодня смены нет</div>`;
+    /* по Графику смены нет, но отметиться можно: часы учтутся как переработка — как в «Моих отметках» */
+    line = html`<div class="today-shift-k">График</div>
+      <div class="today-shift-v">Сегодня смены нет${canIn ? '' : ` · ${s.punch_status_hint || 'отметка недоступна'}`}</div>`;
+    if (canIn) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${punch}>Пришёл</button>`;
   }
   return html`<div class="today-shift"><div class="today-shift-text">${line}</div>${action}</div>`;
 }
