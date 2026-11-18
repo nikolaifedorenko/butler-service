@@ -1,11 +1,13 @@
 'use strict';
 /* ══ ПЕЧАТЬ И ЗАЯВЛЕНИЯ: чистое окно печати, шаблоны, скачивание DOCX/PDF ══
    Вынесено из app.js (15.10.2026) без изменения логики: границы разделов —
-   файлами (сборки намеренно нет, ADR-0008), общие функции — через глобальную
-   область (реестр tools/js_globals.json, ESLint no-undef ловит пропуски). */
+   файлами (сборки намеренно нет, ADR-0008). Модуль (ADR-0013, раздел 7). Окно печати —
+   отдельный документ, который собирается строкой с esc(): в страницу приложения она не попадает. */
+
+import { api, dateRu, esc, getCookie, hours, loading, state, todayISO, toast } from '../core.js';
 
 /* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ── */
-function printWindow(title, bodyHtml, extraCss = '') {
+export function printWindow(title, bodyHtml, extraCss = '') {
   const w = window.open('', '_blank', 'width=1200,height=800');
   if (!w) { toast('Браузер заблокировал окно печати — разрешите всплывающие окна', 'warn'); return; }
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -25,7 +27,7 @@ function printWindow(title, bodyHtml, extraCss = '') {
 
 
 /* ── заявление на отпуск: печать по редактируемому шаблону, период подхватывается целиком ── */
-async function getDocTemplates() {
+export async function getDocTemplates() {
   if (!state.doc) {
     const s = await api('/api/settings', { silent: true });
     state.doc = s.doc;
@@ -37,7 +39,7 @@ async function getDocTemplates() {
   return state.doc;
 }
 
-function fillTemplate(tpl, values) {
+export function fillTemplate(tpl, values) {
   return (tpl || '').replace(/\{(\w+)\}/g, (m, k) => (values[k] ?? m));
 }
 
@@ -45,7 +47,7 @@ function fillTemplate(tpl, values) {
    начинается в одном месяце, а заканчивается в следующем (исправление бага печати).
    absenceId — печать заявления по ОДНОМУ интервалу отлучки (без него сервер отдаёт
    все интервалы дня одним периодом: перечнем в `intervals_text`). */
-async function absencePeriodInfo(empId, dateISO, absenceId = null) {
+export async function absencePeriodInfo(empId, dateISO, absenceId = null) {
   return await api(`/api/schedule/absence-period?employee_id=${empId}&date=${dateISO}`
     + (absenceId ? `&absence_id=${absenceId}` : ''));
 }
@@ -54,7 +56,7 @@ async function absencePeriodInfo(empId, dateISO, absenceId = null) {
    за свой счёт и оплачиваемый выходной — коды Табеля (первичный документ, слой 0),
    а «отпросился (выходной за часы)» — данные Графика (слой 1). Сервер сообщает источник
    в `source`; кнопка не того слоя объясняет, куда идти, а не печатает чужой документ. */
-function statementLayerOk(p, layer) {
+export function statementLayerOk(p, layer) {
   if (!layer || !p.source || p.source === layer) return true;
   toast(p.source === 'tabel_code'
     ? 'Это отсутствие — код Табеля (отпуск, больничный, отгул): заявление печатается из раздела «Табель», из ячейки дня'
@@ -63,7 +65,7 @@ function statementLayerOk(p, layer) {
   return false;
 }
 
-function triggerDownload(blob, name) {
+export function triggerDownload(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name;
@@ -74,7 +76,7 @@ function triggerDownload(blob, name) {
 /* DOCX/PDF из корпоративного шаблона (Настройки → Шаблоны документов компании).
    PDF собирается на сервере встроенным рендером и открывается в новой
    вкладке — из неё сразу можно печатать. */
-async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenceId = null) {
+export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenceId = null) {
   let p;
   try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
@@ -130,7 +132,7 @@ async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenceId = n
 }
 
 /* Быстрая печать заявления окном браузера (по редактируемому шаблону из Настроек) */
-async function printAbsenceRequest(empId, dateISO, layer = '', absenceId = null) {
+export async function printAbsenceRequest(empId, dateISO, layer = '', absenceId = null) {
   let p;
   try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
