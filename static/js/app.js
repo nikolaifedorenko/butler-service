@@ -8,9 +8,13 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import {
-  api, closeModal, esc, initials, loadMediaLimits, openModal, roleTitle, state, syncServerClock, todayISO, toast,
-} from './core.js';
+import { $, $$, api, closeModal, initials, loadMediaLimits, openModal, roleTitle, setLoginHandler, serverShiftMs, state, syncServerClock, toast, todayISO } from './core.js';
+import { html, mount, nothing, render } from './ui/html.js';
+import { MODULE_SCREENS, MODULE_VIEWS, registerModule } from './registry.js';
+import { carsState } from './modules/cars.js';
+import { nightState } from './modules/night.js';
+import { settingsUI } from './modules/settings.js';
+import { staysResetUserState } from './modules/stays_filters.js';
 
 /* ───────────────────────────── вкладки ───────────────────────────── */
 const ICONS = {
@@ -32,18 +36,16 @@ const ICONS = {
   settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
 };
 
+/* Иконка пункта меню: ICONS — собственные постоянные строки с svg (не данные сервера), узел
+   разбирается DOM-ом, каждый раз новый. */
+const icon = id => (ICONS[id] ? document.createRange().createContextualFragment(ICONS[id]) : nothing);
+
 /* Права приходят с сервера (/api/auth/me → permissions): роль + группы + индивидуальные. */
 export function can(perm) { return (state.perms || []).includes(perm); }
 
-/* Реестр разделов: файл модуля сообщает загрузчики разделов (views: id → load) и экраны
-   Настроек (screens: id → {render, icon}). Подписи, порядок и права пунктов — в манифесте
-   модуля на сервере. Иконку пункта меню файл модуля может добавить в ICONS. */
-const MODULE_VIEWS = {};
-export const MODULE_SCREENS = {};
-export function registerModule({ views = {}, screens = {} }) {
-  Object.assign(MODULE_VIEWS, views);
-  Object.assign(MODULE_SCREENS, screens);
-}
+/* Реестр разделов (registry.js): файл модуля сообщает загрузчики разделов и экраны Настроек.
+   Здесь — повторный экспорт, чтобы модули по-прежнему брали registerModule из app.js. */
+export { MODULE_SCREENS, registerModule };
 
 /* «График» — один пункт меню с четырьмя слоями (modules/grafik.js). */
 /* старые имена разделов — алиасы слоёв: navigate('timesheet') и др. продолжают
@@ -66,26 +68,24 @@ function renderNav() {
     const b = document.createElement('button');
     b.className = 'nav-item' + (activeView === t.id ? ' active' : '');
     b.dataset.view = t.id;
-    b.innerHTML = `${ICONS[t.id] || ''}<span>${esc(t.title)}</span>`;
+    render(html`${icon(t.id)}<span>${t.title}</span>`, b);
     b.onclick = () => navigate(t.id);
     $('#sidenav').insertBefore(b, foot);
   });
-  $('#tabbar').innerHTML = tabs.slice(0, 5).map(t =>
-    `<button data-view="${t.id}" class="${activeView === t.id ? 'active' : ''}">${ICONS[t.id] || ''}<span>${esc(t.title)}</span></button>`
-  ).join('');
-  $$('#tabbar button').forEach(b => b.onclick = () => navigate(b.dataset.view));
+  render(tabs.slice(0, 5).map(t => html`<button data-view=${t.id} class=${activeView === t.id ? 'active' : ''}
+    @click=${() => navigate(t.id)}>${icon(t.id)}<span>${t.title}</span></button>`), mount($('#tabbar')));
   if (tabs.length > 5) {
     const more = document.createElement('button');
     more.className = 'nav-item' + (tabs.slice(5).some(t => t.id === activeView) ? ' active' : '');
-    more.innerHTML = `${ICONS.settings}<span>Ещё</span>`;
+    render(html`${icon('settings')}<span>Ещё</span>`, more);
     more.onclick = () => openModal({
       title: 'Разделы',
-      body: tabs.slice(5).map(t => `<button class="btn btn-block" style="justify-content:flex-start;margin-bottom:8px" data-more="${t.id}">${ICONS[t.id] || ''} ${esc(t.title)}</button>`).join(''),
-      onMount(m) { $$('[data-more]', m).forEach(b => b.onclick = () => { closeModal(); navigate(b.dataset.more); }); },
+      body: html`${tabs.slice(5).map(t => html`<button class="btn btn-block" style="justify-content:flex-start;margin-bottom:8px" data-more=${t.id}
+        @click=${() => { closeModal(); navigate(t.id); }}>${icon(t.id)} ${t.title}</button>`)}`,
     });
     $('#sidenav').insertBefore(more, foot);
   }
-  foot.innerHTML = `Учёт кратен шагу (по умолчанию 1 ч)<br><span id="nav-categories"></span>Часы — по календарным дням`;
+  render(html`Учёт кратен шагу (по умолчанию 1 ч)<br><span id="nav-categories"></span>Часы — по календарным дням`, mount(foot));
   renderCategoryFooter(state.timeCategories);
 }
 
@@ -95,8 +95,8 @@ export function renderCategoryFooter(categories) {
   if (categories && categories.length) state.timeCategories = categories;
   const el = $('#nav-categories');
   if (!el) return;
-  el.innerHTML = state.timeCategories
-    ? `${esc(state.timeCategories.map(c => `${c.code} ${c.start}–${c.end}`).join(' · '))}<br>` : '';
+  render(state.timeCategories
+    ? html`${state.timeCategories.map(c => `${c.code} ${c.start}–${c.end}`).join(' · ')}<br>` : nothing, mount(el));
 }
 
 export function navigate(view) {
@@ -119,18 +119,18 @@ export function navigate(view) {
      ошибка в файле) или загрузчик упал — вместо пустого экрана заглушка с причиной. */
   const run = MODULE_VIEWS[view] || (() => {
     if (!el) return;
-    el.innerHTML = `<div class="panel"><h3 class="panel-title">Раздел не найден</h3>
-      <p class="hint">Неизвестный раздел <code>${esc(view)}</code>. Обновите страницу
-      с очисткой кэша (Cmd/Ctrl+Shift+R).</p></div>`;
+    render(html`<div class="panel"><h3 class="panel-title">Раздел не найден</h3>
+      <p class="hint">Неизвестный раздел <code>${view}</code>. Обновите страницу
+      с очисткой кэша (Cmd/Ctrl+Shift+R).</p></div>`, mount(el));
   });
   Promise.resolve().then(run).catch(err => {
     console.error(err);
-    if (el) el.innerHTML = `<div class="panel"><h3 class="panel-title">Раздел не загрузился</h3>
-      <p style="color:var(--danger);font-weight:600">${esc(err?.message || err)}</p>
+    if (el) render(html`<div class="panel"><h3 class="panel-title">Раздел не загрузился</h3>
+      <p style="color:var(--danger);font-weight:600">${String(err?.message || err)}</p>
       <p class="hint">Что сделать: 1) обновите страницу с очисткой кеша (Cmd/Ctrl+Shift+R);
       2) перезапустите сервер (Ctrl+C и ./run.sh) — миграции применяются при старте;
       3) откройте http://127.0.0.1:8000/api/selfcheck — он покажет, не отстаёт ли схема БД;
-      4) если ошибка повторяется, пришлите хвост server.log и текст из консоли браузера (F12 → Console).</p></div>`;
+      4) если ошибка повторяется, пришлите хвост server.log и текст из консоли браузера (F12 → Console).</p></div>`, mount(el));
   });
 }
 
@@ -171,6 +171,7 @@ export function showLogin() {
   $('#login-screen').classList.remove('hidden');
   $('#login-password').value = '';   // после выхода форма логина пустая (16.10.2026)
 }
+setLoginHandler(showLogin);
 
 /* Ответ /api/auth/me → права и роли. Роли — данные сервера (ADR-0011): названия своих ролей
    и список ролей, которые пользователь вправе назначать (иерархия считается там же). */
@@ -231,7 +232,7 @@ export function resetUserViewState() {
      их рисуют загрузчики при открытии; каркас #view-grafik восстановит
      mount() в modules/grafik.js. Прежняя очистка одного
      #grafik-tabs оставляла чужую разметку остальных разделов до первого открытия. */
-  $$('.view').forEach(v => { v.innerHTML = ''; });
+  $$('.view').forEach(v => v.replaceChildren());
 }
 
 /* Перечень расхождений схемы сервер отдаёт только администратору (/api/selfcheck), остальным —
@@ -246,13 +247,13 @@ export function selfcheckDetails(chk, limit = 6) {
 export function renderSchemaBanner(chk) {
   const el = $('#schema-banner');
   if (!el) return;
-  if (!chk || chk.ok !== false) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  if (!chk || chk.ok !== false) { el.classList.add('hidden'); el.replaceChildren(); return; }
   const items = selfcheckDetails(chk, 50);
-  el.innerHTML = `<div class="sb-text"><b>Схема БД не в порядке.</b> ${esc(chk.hint || '')}
-      ${items.length ? `<ul>${items.map(i => `<li><code>${esc(i)}</code></li>`).join('')}</ul>` : ''}</div>
-    <button class="icon-btn" data-schema-close title="Скрыть до следующего входа" aria-label="Скрыть">✕</button>`;
+  render(html`<div class="sb-text"><b>Схема БД не в порядке.</b> ${chk.hint || ''}
+      ${items.length ? html`<ul>${items.map(i => html`<li><code>${i}</code></li>`)}</ul>` : nothing}</div>
+    <button class="icon-btn" data-schema-close title="Скрыть до следующего входа" aria-label="Скрыть"
+      @click=${() => el.classList.add('hidden')}>✕</button>`, mount(el));
   el.classList.remove('hidden');
-  el.querySelector('[data-schema-close]').onclick = () => el.classList.add('hidden');
 }
 
 async function enterApp() {
@@ -336,11 +337,11 @@ $('#nav-toggle').onclick = () => $('#sidenav').classList.toggle('open');
 $('#change-pass-btn').onclick = () => openModal({
   title: 'Смена пароля',
   subtitle: 'Потребуется старый пароль для подтверждения',
-  body: `
+  body: html`
     <label class="field"><span>Старый пароль</span><input type="password" id="cp-old" autocomplete="current-password"></label>
     <label class="field"><span>Новый пароль</span><input type="password" id="cp-new" autocomplete="new-password"></label>
     <label class="field"><span>Подтверждение нового пароля</span><input type="password" id="cp-new2" autocomplete="new-password"></label>`,
-  footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
+  footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
            <button class="btn btn-primary" data-save>Сменить пароль</button>`,
   onMount(m) {
     m.querySelector('[data-cancel]').onclick = closeModal;
@@ -401,24 +402,10 @@ export async function bootApp() {
     box.classList.remove('hidden');
   }
 }
+/* Точка входа для сквозных тестов (Playwright) и отладки в консоли браузера: остальные имена модулей
+   снаружи не видны. Код интерфейса этими свойствами не пользуется. */
+Object.assign(window, { navigate, state, toast, openModal });
+/* Точка входа для сквозных тестов (Playwright) и отладки в консоли браузера: остальные имена модулей
+   снаружи не видны. Код интерфейса этими свойствами не пользуется. */
+Object.assign(window, { navigate, state, toast, openModal });
 bootApp();
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  can,
-  MODULE_SCREENS,
-  registerModule,
-  renderCategoryFooter,
-  navigate,
-  poll,
-  showLogin,
-  applyMe,
-  loadPerms,
-  resetUserViewState,
-  selfcheckDetails,
-  renderSchemaBanner,
-  renderUserChip,
-  loadDirectory,
-  bootApp,
-});
-/* ── конец моста ── */

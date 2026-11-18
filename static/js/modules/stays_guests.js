@@ -218,12 +218,3 @@ export function openGuestMerge(a, b, onDone) {
     },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  staysGuestsEmpty,
-  staysGuests,
-  renderGuestsTab,
-  openGuestMerge,
-});
-/* ── конец моста ── */

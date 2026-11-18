@@ -69,12 +69,13 @@ test('Отметки: счётчики, карточки и обновление
   expect(errors).toEqual([]);
 });
 
-test('окно: openModal принимает строки с разметкой и закрывается, не оставляя узлов', async ({ page }) => {
+test('окно: строки в openModal выводятся текстом, окно закрывается, не оставляя узлов', async ({ page }) => {
   await login(page, 'gromova');
   await open(page, 'me');
   await page.evaluate(() => window.openModal({ title: 'Проба <b>', subtitle: 'под <i>', body: '<p id="x">старый</p>', footer: '<button id="y">ok</button>' }));
   await expect(page.locator('#modal .modal-head h3')).toHaveText('Проба <b>');
-  await expect(page.locator('#modal #x')).toHaveText('старый');
+  await expect(page.locator('#modal .modal-body')).toHaveText('<p id="x">старый</p>');
+  await expect(page.locator('#modal #x')).toHaveCount(0);
   await page.locator('#modal .x').click();
   await expect(page.locator('#modal-backdrop')).toHaveClass(/hidden/);
   expect(await page.locator('#modal').evaluate(el => el.children.length)).toBe(0);

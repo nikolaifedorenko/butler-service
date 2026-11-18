@@ -6,6 +6,9 @@
 import { can, registerModule } from '../app.js';
 import { api, closeModal, dateRu, openModal, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { fmtGdValue } from './dicts.js';
+import { settingsCodeModal, settingsWindowModal } from './settings_codes.js';
+import { settingsResolverModal, settingsWizard } from './settings_pay.js';
 import {
   SETTINGS_MODS, settingsDiffModal, settingsDraftBarView, settingsEngine, settingsGo, settingsHeadView,
   settingsHealth, settingsHealthBannerView, settingsPanelView, settingsUI,
@@ -140,11 +143,3 @@ export function settingsVersionsModal() {
     onMount(m) { m.querySelector('[data-ok]').onclick = closeModal; },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  settingsCompareWithPrevious,
-  settingsPayloadModal,
-  settingsVersionsModal,
-});
-/* ── конец моста ── */

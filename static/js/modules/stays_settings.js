@@ -192,14 +192,3 @@ export async function renderStaysLabels(host) {
       html`<button class="btn btn-sm btn-primary" id="slb-add" style="float:right" @click=${() => form(null)}>+ Метка</button>`)}`,
   mount(host));
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  STAYS_FIELD_KINDS,
-  staysForm,
-  staysConfirmDelete,
-  renderStaysEscort,
-  renderStaysFields,
-  renderStaysLabels,
-});
-/* ── конец моста ── */

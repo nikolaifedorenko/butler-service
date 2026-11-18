@@ -116,7 +116,6 @@ python -m pytest tests/ -q                    # весь набор
 python -m pytest tests/engine -q --cov=app.modules.timesheet.domain --cov-report=term   # покрытие домена ≥ 95 %
 python -m ruff check .                        # линтер Python
 npm install && npm run lint                   # ESLint (no-undef по списку глобальных имён)
-npm run globals:check                         # tools/js_globals.json актуален
 python tools/check_api_contract.py --verbose  # фронтенд не зовёт несуществующие маршруты
 python tools/bump_version.py --check          # версии статики согласованы
 ```

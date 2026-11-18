@@ -177,16 +177,3 @@ export async function printAbsenceRequest(empId, dateISO, layer = '', absenceId 
       `<div style="white-space:pre-wrap;font-size:13px;line-height:1.7;width:170mm;margin:0 auto">${esc(fillTemplate(tplText, vals))}</div>`);
   } catch (e) { toast(e.message, 'err'); }
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  printWindow,
-  getDocTemplates,
-  fillTemplate,
-  absencePeriodInfo,
-  statementLayerOk,
-  triggerDownload,
-  downloadAbsenceDoc,
-  printAbsenceRequest,
-});
-/* ── конец моста ── */

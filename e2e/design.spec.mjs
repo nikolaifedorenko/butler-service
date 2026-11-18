@@ -78,7 +78,7 @@ for (const mode of ['light', 'dark']) {
     await page.addInitScript(m => localStorage.setItem('butler-theme', m), mode);
     await login(page, 'admin');
     await page.evaluate(() => {
-      window.openModal({ title: 'Проба', body: '<p>текст</p>' });
+      window.openModal({ title: 'Проба', body: 'текст' });
       window.toast('Проба', 'ok');
     });
     const colors = await page.evaluate(() => {

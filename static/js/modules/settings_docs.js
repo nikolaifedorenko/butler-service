@@ -7,6 +7,7 @@ import { can, registerModule } from '../app.js';
 import { $, $$, api, closeModal, openModal, state, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { settingsHeadView, settingsPanelView, settingsRefresh, settingsUI } from './settings.js';
+import { openKindModal, renderDicts } from './dicts.js';
 
 registerModule({ screens: { docs: { render: settingsScreenDocs, icon: 'doc' } } });
 

@@ -28,11 +28,12 @@
 
 import { MODULE_SCREENS, can, navigate, registerModule } from '../app.js';
 import {
-  $, $$, api, closeModal, confirmDialog, cssColor, dateRu, esc, hours, openModal, plural, state, toast, todayISO,
+  $, $$, api, closeModal, confirmDialog, cssColor, dateRu, hours, openModal, plural, state, toast, todayISO,
   withAlpha,
 } from '../core.js';
 import { html, mount, nothing, render, svg } from '../ui/html.js';
 import { v4CodeColor } from './timesheet_common.js';
+import { fmtGdValue } from './dicts.js';
 
 /* ─────────────────────────── реестр под-разделов ─────────────────────────── */
 export const SETTINGS_ICONS = {
@@ -169,28 +170,9 @@ export function settingsHoursText(min) {
   const m = Number(min) || 0;
   return `${hours(m / 60)} ч`;
 }
-export function settingsLevelBadge(level) {
-  return `<span class="level-badge${level === 7 ? ' l7' : ''}" title="Уровень приоритета ${level}: ${esc(SETTINGS_LEVEL_FORMS[level] || '')}">${level}</span>`;
-}
-export function settingsChainHtml(chain) {
-  if (!chain || !chain.length) return '';
-  return `<div class="chain">${chain.map((c, i) => `${i ? '<span class="arrow">→</span>' : ''}
-    <span class="step${c.hit ? ' hit' : ''}">${settingsLevelBadge(c.level)} ${esc(c.form)}${c.hit ? ' ✓' : ''}</span>`).join('')}</div>`;
-}
 export function settingsCodeColor(code, policy) {
   const from = policy?.[code]?.color;
   return cssColor(from, v4CodeColor(code, null));
-}
-export function settingsCodePill(code, policy) {
-  const c = settingsCodeColor(code, policy);
-  return `<span class="code-pill" style="background:${withAlpha(c, .16)};color:${c}">${esc(code)}</span>`;
-}
-export function settingsPanel(title, body, extra = '') {
-  return `<div class="panel">${title ? `<h3 class="panel-title">${title}</h3>` : ''}${extra}${body}</div>`;
-}
-export function settingsHead(title, sub, right = '') {
-  return `<div class="page-head"><div><h2>${esc(title)}</h2><div class="sub">${sub}</div></div>
-    <div class="spacer"></div>${right}</div>`;
 }
 /* Привязка клика к элементу, которого может не быть: кнопки правки не отрисовываются
    без права settings.edit, и обращение к null роняло весь экран (найдено снимком
@@ -379,23 +361,6 @@ export function settingsUpdateDraftBars() {
       : 'Черновика нет: показана действующая версия справочников';
     $$('[data-draft-act]', bar).forEach(b => { b.disabled = !dirty; });
   });
-}
-export function settingsDraftBarHtml() {
-  if (!can('settings.edit')) return '';
-  return `<div class="draft-bar idle" data-draft-bar>
-    <span class="t">Черновика нет: показана действующая версия справочников</span>
-    <span class="spacer"></span>
-    <button class="btn btn-sm" data-draft-diff data-draft-act disabled>Что изменилось</button>
-    <button class="btn btn-sm" data-draft-reset data-draft-act disabled>Сбросить</button>
-    <button class="btn btn-sm btn-primary" data-draft-publish data-draft-act disabled>Опубликовать версию…</button>
-  </div>`;
-}
-export function settingsBindDraftBar(host) {
-  const bar = $('[data-draft-bar]', host);
-  if (!bar) return;
-  $('[data-draft-diff]', bar).onclick = draftDiff;
-  $('[data-draft-reset]', bar).onclick = draftReset;
-  $('[data-draft-publish]', bar).onclick = () => settingsPublishModal();
 }
 const draftDiff = () => settingsDiffModal(settingsPayload(), settingsUI.draft, 'Черновик против действующей версии');
 const draftReset = () => confirmDialog('Сбросить черновик?',
@@ -604,28 +569,6 @@ export function settingsPublishModal() {
 }
 
 /* ─────────────────────────── здоровье конфигурации ─────────────────────────── */
-export function settingsHealthBanner(health) {
-  const checks = health?.checks || [];
-  if (!checks.length) {
-    return `<div class="health ok"><b>Конфигурация здорова</b>
-      <ul><li>Проверки CHK-* и сверки справочников не нашли замечаний на ${esc(dateRu(health?.on))}</li></ul></div>`;
-  }
-  const errors = checks.filter(c => c.level === 'error');
-  const warns = checks.filter(c => c.level !== 'error');
-  const cls = errors.length ? 'bad' : '';
-  return `<div class="health ${cls}">
-    <b>${errors.length
-      ? `${errors.length} ${plural(errors.length, 'ошибка', 'ошибки', 'ошибок')} конфигурации — расчёт остановится`
-      : `${warns.length} ${plural(warns.length, 'предупреждение', 'предупреждения', 'предупреждений')}`}</b>
-    <ul>${checks.slice(0, 12).map(c => `<li>
-      <span>${c.level === 'error' ? '⛔' : '⚠'} ${esc(c.text)}
-        <span class="spec-ref">[${esc(c.code)}]</span></span>
-      <button data-go="${esc(c.screen)}">${esc(settingsTitle(c.screen) || c.screen)} →</button></li>`).join('')}
-      ${checks.length > 12 ? `<li><span>… и ещё ${checks.length - 12}</span></li>` : ''}</ul></div>`;
-}
-export function settingsBindHealth(host) {
-  $$('[data-go]', host).forEach(b => b.onclick = () => settingsGo(b.dataset.go));
-}
 /* то же шаблоном */
 export function settingsHealthBannerView(health) {
   const checks = health?.checks || [];
@@ -753,60 +696,3 @@ export function settingsBindSearch() {
     settingsSearchPalette();
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  SETTINGS_ICONS,
-  settingsScreens,
-  settingsTitle,
-  settingsOpen,
-  SETTINGS_MODS,
-  SETTINGS_LEVEL_FORMS,
-  settingsUI,
-  settingsInvalidate,
-  settingsEngine,
-  settingsHealth,
-  settingsPayload,
-  settingsDraft,
-  settingsDirty,
-  settingsRefresh,
-  settingsHm,
-  settingsMin,
-  settingsSnap,
-  settingsHoursText,
-  settingsLevelBadge,
-  settingsChainHtml,
-  settingsCodeColor,
-  settingsCodePill,
-  settingsPanel,
-  settingsHead,
-  settingsOn,
-  settingsFail,
-  settingsPanelView,
-  settingsHeadView,
-  settingsLevelBadgeView,
-  settingsChainView,
-  settingsCodePillView,
-  settingsScreenAllowed,
-  loadSettings,
-  settingsRenderNav,
-  settingsGo,
-  closedPeriodText,
-  settingsRenderScreen,
-  settingsUpdateDraftBars,
-  settingsDraftBarHtml,
-  settingsBindDraftBar,
-  settingsDraftBarView,
-  settingsGranularityText,
-  settingsDiff,
-  settingsDiffModal,
-  settingsAppliesFrom,
-  settingsPublishModal,
-  settingsHealthBanner,
-  settingsBindHealth,
-  settingsHealthBannerView,
-  settingsSearchIndex,
-  settingsSearchPalette,
-  settingsBindSearch,
-});
-/* ── конец моста ── */

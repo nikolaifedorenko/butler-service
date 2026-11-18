@@ -11,6 +11,8 @@ import {
 import { html, mount, nothing, render } from '../ui/html.js';
 import { loadTabel } from './tabel.js';
 import { V4_CODE_COLORS } from './timesheet_common.js';
+import { downloadAbsenceDoc, printAbsenceRequest, printWindow } from './docs.js';
+import { openEmployeeCard } from './employees.js';
 
 export async function loadSchedule() {
   draw();                        // каркас с «Загрузка…», пока идут запросы
@@ -780,10 +782,3 @@ function openCellModal(empId, dateISO) {
     },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  loadSchedule,
-  openRangeModal,
-});
-/* ── конец моста ── */

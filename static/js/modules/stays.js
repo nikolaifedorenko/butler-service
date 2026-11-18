@@ -462,39 +462,3 @@ export async function openReservationCard(rid, onChanged) {
     },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  STAYS_SPECIAL_MARK,
-  STAYS_ESCORT_MODE,
-  staysGuestMark,
-  staysCodeTag,
-  staysGuestMarkView,
-  staysCodeTagView,
-  staysState,
-  staysEmptyFilters,
-  staysOrdinal,
-  staysPos,
-  staysAddDays,
-  staysToday,
-  staysMonthRange,
-  staysMonthNavView,
-  staysMonthNav,
-  staysBindMonthNav,
-  staysFocusDay,
-  staysFundParams,
-  staysPeopleParams,
-  staysWeight,
-  staysPanelInto,
-  staysFilterView,
-  staysFund,
-  loadStays,
-  staysTabAllowed,
-  staysBoardParams,
-  staysDayHead,
-  staysDayHeadView,
-  staysColor,
-  renderUnitsBoard,
-  openReservationCard,
-});
-/* ── конец моста ── */

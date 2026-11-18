@@ -10,7 +10,7 @@
 import { can } from '../app.js';
 import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
-import { relativesView } from './stays_forms.js';
+import { relativesView, STAYS_STATUS } from './stays_forms.js';
 import { openOooForm } from './stays_ooo.js';
 import {
   staysCodeTagView, staysDayHeadView, staysFilterView, staysGuestMarkView, loadStays, staysMonthNavView, openReservationCard, staysAddDays, staysFocusDay, staysFund,
@@ -306,12 +306,3 @@ function staysOpenNodeDay(node, day) {
   staysState.tab = 'units';
   loadStays();
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  boardState,
-  renderButlersBoard,
-  renderDayBoard,
-  renderOccupancyGrid,
-});
-/* ── конец моста ── */

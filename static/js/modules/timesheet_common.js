@@ -83,19 +83,3 @@ export function contactsView(e) {
   return html`<div class="contacts">${tel ? html`<a href=${'tel:' + tel.replace(/[^0-9+]/g, '')}>📞 ${tel}</a>` : nothing}${
     tg ? html`<a href=${'https://t.me/' + tg.replace(/[^A-Za-z0-9_]/g, '')} target="_blank" rel="noopener">✈️ @${tg}</a>` : nothing}</div>`;
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  V4_CODE_COLORS,
-  v4CodeColor,
-  V4_FLAG_CLASS,
-  v4MonthNav,
-  v4BindMonthNav,
-  v4DayHead,
-  v4Hours,
-  v4Contacts,
-  dayHeadCell,
-  monthNav,
-  contactsView,
-});
-/* ── конец моста ── */

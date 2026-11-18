@@ -859,10 +859,3 @@ function openFundFlagsDict() {
     footer: html`<button class="btn btn-ghost" data-close @click=${closeModal}>Закрыть</button><button class="btn btn-primary" id="ff-add" @click=${() => form(null)}>+ Флаг</button>`,
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  fundUI,
-  renderStaysFund,
-});
-/* ── конец моста ── */
