@@ -45,3 +45,30 @@ test('календарь правил: выбор дня показывает п
   await expect(view.locator('td.sel')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
+
+test('«Расчёт», «Коды», «Оплата», «Чаты и Почта», «Электрокары», «Ночной обход»: экраны открываются и отзываются (6ж-2)', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  await open(page, 'settings');
+  const view = page.locator('#view-settings');
+  for (const id of ['calc', 'codes', 'pay', 'notify', 'cars', 'night']) {
+    await view.locator(`[data-st=${id}]`).click();
+    await expect(view.locator(`[data-st=${id}]`)).toHaveClass(/active/);
+    await expect(view.locator('#st-body .page-head h2')).toBeVisible();
+    await expect(view.locator('#st-body')).not.toContainText('Загрузка…');
+  }
+  // «Коды»: вкладка окон
+  await view.locator('[data-st=codes]').click();
+  await view.locator('[data-tab=windows]').click();
+  await expect(view.locator('#cd-body')).toContainText('Окна и значения');
+  // «Ночной обход»: вкладки
+  await view.locator('[data-st=night]').click();
+  await view.locator('[data-dtab=services]').click();
+  await expect(view.locator('#dict-host')).toBeVisible();
+  // «Расчёт»: смена шага расчёта попадает в черновик (последним: черновик не даёт уйти с экрана без подтверждения)
+  await view.locator('[data-st=calc]').click();
+  await view.locator('#cl-step button[data-v="30"]').click();
+  await expect(view.locator('#cl-step button[data-v="30"]')).toHaveClass(/active/);
+  await expect(view.locator('[data-draft-bar]')).not.toHaveClass(/idle/);
+  expect(errors).toEqual([]);
+});

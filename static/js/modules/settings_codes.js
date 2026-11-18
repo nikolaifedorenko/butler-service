@@ -1,6 +1,17 @@
 /* Раздел «Настройки»: экран «Коды Табеля» (вынесено из settings.js, шаг 6.5 аудита).
-   Оболочка, черновик версии справочников и общие помощники — в settings.js. */
+   Оболочка, черновик версии справочников и общие помощники — в settings.js.
+   Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
+
+import { can, registerModule } from '../app.js';
+import { api, closeModal, confirmDialog, openModal, state, toast } from '../core.js';
+import { html, mount, nothing, render } from '../ui/html.js';
+import { settingsTimeline } from './settings_calc.js';
+import {
+  settingsCodeColor, settingsCodePillView, settingsDraft, settingsDraftBarView, settingsEngine, settingsGo,
+  settingsHeadView, settingsHm, settingsHoursText, settingsMin, settingsPanelView, settingsPayload,
+  settingsRenderScreen, settingsSnap, settingsUI, settingsUpdateDraftBars,
+} from './settings.js';
 
 registerModule({ screens: { codes: { render: settingsScreenCodes, icon: 'codes' } } });
 
@@ -9,7 +20,7 @@ registerModule({ screens: { codes: { render: settingsScreenCodes, icon: 'codes' 
    Словаря смен здесь НЕТ: это другой экран («Смены и отсутствия»), другая
    сущность и другое право (план, ред. 3, §3.4/§3.4б).
    ══════════════════════════════════════════════════════════════════════ */
-const SETTINGS_CODE_FLAGS = [
+export const SETTINGS_CODE_FLAGS = [
   { key: 'carries_hours', title: 'Несёт часы', hint: 'Код задаёт план строки Табеля; план карточки = длина окна (R34)' },
   { key: 'accepts_ut', title: 'Принимает коды УТ', hint: 'В день с этим кодом можно разместить переработку/погашение' },
   { key: 'counts_in_ut', title: 'Учитывается в УТ', hint: 'Уровень 7 правила «Учитываются ли часы в УТ» (CHK-DEFAULTS)' },
@@ -27,162 +38,126 @@ async function settingsScreenCodes(host) {
   }
   const p = settingsPayload();
   const d = settingsDraft();
-  if (!p || !d) { host.innerHTML = '<div class="empty">Справочники не загружены</div>'; return; }
+  if (!p || !d) { render(html`<div class="empty">Справочники не загружены</div>`, mount(host)); return; }
   const edit = can('settings.edit');
   const tab = settingsUI.codesTab || (settingsUI.codesTab = 'codes');
   const codes = Object.entries(d.day_code_policy || {});
   const windows = Object.entries(d.windows || {});
-  const shifts = (state.shiftTypes || []);
   const step = Number(d.step_minutes) || 15;
+  const setTab = t => () => { settingsUI.codesTab = t; settingsRenderScreen(); };
 
-  host.innerHTML = `
-    ${settingsHead('Коды Табеля',
+  render(html`
+    ${settingsHeadView('Коды Табеля',
       'Нормы расчёта: какие коды бывают в Табеле, что они означают, какой у них режим отметок и заявление, и какие окна (значения) у них есть. Это не словарь смен — он на отдельном экране.',
-      `<button class="btn btn-sm btn-ghost" data-go="shifts">Смены и отсутствия ↗</button>
-       ${edit ? `<button class="btn btn-sm btn-primary" id="cd-add">${tab === 'codes' ? '+ Код Табеля' : '+ Значение и окно'}</button>` : ''}`)}
+      html`<button class="btn btn-sm btn-ghost" data-go="shifts" @click=${() => settingsGo('shifts')}>Смены и отсутствия ↗</button>
+       ${edit ? html`<button class="btn btn-sm btn-primary" id="cd-add"
+         @click=${() => (tab === 'codes' ? settingsCodeModal(null) : settingsWindowModal(null))}>${tab === 'codes' ? '+ Код Табеля' : '+ Значение и окно'}</button>` : nothing}`)}
     <div class="tabs">
-      <button data-tab="codes" class="${tab === 'codes' ? 'active' : ''}">Коды Табеля · ${codes.length}</button>
-      <button data-tab="windows" class="${tab === 'windows' ? 'active' : ''}">Окна и значения · ${windows.length}</button>
+      <button data-tab="codes" class=${tab === 'codes' ? 'active' : ''} @click=${setTab('codes')}>Коды Табеля · ${codes.length}</button>
+      <button data-tab="windows" class=${tab === 'windows' ? 'active' : ''} @click=${setTab('windows')}>Окна и значения · ${windows.length}</button>
     </div>
-    <div id="cd-body">${tab === 'codes' ? settingsCodesCards(codes, windows, shifts, d, edit)
-      : settingsWindowsTable(windows, codes, step, edit)}</div>
-    ${settingsDraftBarHtml()}`;
-
-  settingsBindHealth(host);
-  settingsBindDraftBar(host);
-  $$('[data-tab]', host).forEach(b => b.onclick = () => {
-    settingsUI.codesTab = b.dataset.tab; settingsRenderScreen();
-  });
-  const add = $('#cd-add');
-  if (add) add.onclick = () => (tab === 'codes' ? settingsCodeModal(null) : settingsWindowModal(null));
-  settingsBindCodesBody(host, d, edit);
+    <div id="cd-body">${tab === 'codes' ? codesCards(codes, d, edit) : windowsTable(windows, codes, step, edit, d)}</div>
+    ${settingsDraftBarView()}`, mount(host));
 }
 
-function settingsCodesCards(codes, windows, shifts, d, edit) {
+function codesCards(codes, d, edit) {
   /* Компактный список (решение владельца 18.10.2026): строка = пилюля + название +
      «Изменить» + «✕». Флаги расчёта, режим отметок и заявление настраиваются ТОЛЬКО
      в модалке «Изменить» — дублирование в списке убрано; окна и значения — на
      вкладке «Окна и значения». Логика и сервер не менялись. */
-  return `${settingsPanel('Коды Табеля · CFG-DAY-CODES', `
-    <div class="code-cards">${codes.map(([code, row]) => `
-      <div class="code-card" style="padding:10px 14px">
-        <div class="cc-head">
-          ${settingsCodePill(code, d.day_code_policy)}
-          <div class="cc-name"><b>${esc(row.title || '—')}</b></div>
-          <div style="flex:1"></div>
-          ${edit ? `<span class="cc-actions">
-            <button class="btn btn-sm btn-ghost" data-cedit="${esc(code)}" title="Изменить карточку кода">Изменить</button>
-            <button class="btn btn-sm btn-ghost" data-cdel="${esc(code)}" title="Удалить код из справочника">✕</button></span>` : ''}
-        </div>
-      </div>`).join('')}</div>
-    <p class="hint">Флаги расчёта, режим отметок «Пришёл/Ушёл» и шаблон заявления настраиваются
-      в карточке кода («Изменить») и больше не дублируются в списке (18.10.2026).
-      Значения и окна кода — на вкладке «Окна и значения».</p>`)}`;
-}
-
-function settingsWindowsTable(windows, codes, step, edit) {
-  const rows = windows.map(([key, w]) => {
-    const code = key.split(' ')[0];
-    const len = Number(w.end_minute) - Number(w.start_minute);
-    return { key, code, w, len };
-  }).sort((a, b) => a.code.localeCompare(b.code, 'ru') || a.w.start_minute - b.w.start_minute);
-  return `${settingsPanel('Окна и значения · CFG-WINDOWS', `
-    <div class="table-wrap"><table class="data responsive"><thead><tr>
-      <th>Значение Табеля</th><th>Код</th><th>Окно</th><th class="num">Длина окна</th>
-      <th>Часов в значении</th><th></th></tr></thead>
-    <tbody>${rows.map(r => `<tr>
-      <td data-label="Значение"><b>${esc(r.key)}</b></td>
-      <td data-label="Код">${settingsCodePill(r.code, Object.fromEntries(codes))}</td>
-      <td data-label="Окно" class="num">${esc(settingsHm(r.w.start_minute))}–${esc(settingsHm(r.w.end_minute))}</td>
-      <td class="num" data-label="Длина">${esc(settingsHoursText(r.len))}</td>
-      <td data-label="Часов">${esc(r.key.split(' ')[1] || '—')} <span class="hint" style="margin:0">зарплатный атрибут строки</span></td>
-      <td class="num">${edit ? `<button class="btn btn-sm btn-ghost" data-win="${esc(r.key)}">Изменить</button>
-        <button class="btn btn-sm btn-ghost" data-windel="${esc(r.key)}" title="Удалить значение">✕</button>` : ''}</td>
-    </tr>`).join('') || '<tr><td colspan="6" class="empty">Окон нет — добавьте значение</td></tr>'}</tbody></table></div>
-    <p class="hint">План карточки и недостача считаются от <b>окна</b>, а не от числа часов в значении:
-      «Я 10,75» при окне 08:00–20:00 даёт план 12 ч, а часы значения — зарплатная норма строки
-      (RUL-PLAN-BELOW-WINDOW, EX-51). Окно не пересекает полночь: смена через полночь оформляется
-      одним значением в дне начала (CHK-WINDOW-BOUNDS).</p>`) }
-  ${settingsPanel('Все окна на полосе суток · сетка = шаг ' + step + ' мин',
-    settingsTimeline(rows.map(r => ({ label: r.key, start: r.w.start_minute, end: r.w.end_minute,
-      color: settingsCodeColor(r.code, Object.fromEntries(codes)) }))))}`;
-}
-
-function settingsBindCodesBody(host, draft, edit) {
-  if (!edit) {
-    $$('[data-winof]', host).forEach(b => b.onclick = () => { settingsUI.codesTab = 'windows'; settingsRenderScreen(); });
-    return;
-  }
-  const touch = () => settingsUpdateDraftBars();
-  $$('[data-flag]', host).forEach(cb => cb.onchange = () => {
-    const [code, flag] = cb.dataset.flag.split(':');
-    draft.day_code_policy[code][flag] = cb.checked;
-    /* «Несёт часы» переключает состав карточки: отметки (с часами) либо заявление
-       (без часов) — перерисовываем экран, остальные флаги копятся молча */
-    if (flag === 'carries_hours') settingsRenderScreen(); else touch();
-  });
-  $$('[data-punch]', host).forEach(cb => cb.onchange = () => {
-    const [code, key] = cb.dataset.punch.split(':');
-    draft.day_code_policy[code][key] = cb.checked; touch();
-  });
-  $$('[data-doc]', host).forEach(sel => sel.onchange = () => {
-    draft.day_code_policy[sel.dataset.doc].doc_type = sel.value; touch();
-  });
-  $$('[data-cedit]', host).forEach(b => b.onclick = () => settingsCodeModal(b.dataset.cedit));
-  $$('[data-cdel]', host).forEach(b => b.onclick = () => {
-    const code = b.dataset.cdel;
-    const row = draft.day_code_policy[code] || {};
-    const winKeys = Object.keys(draft.windows || {}).filter(k => k.split(' ')[0] === code);
+  const del = code => {
+    const row = d.day_code_policy[code] || {};
+    const winKeys = Object.keys(d.windows || {}).filter(k => k.split(' ')[0] === code);
     confirmDialog('Удалить код Табеля?',
       `«${code}»${row.title ? ' (' + row.title + ')' : ''} исчезнет из справочника вместе со значениями/окнами: `
       + (winKeys.length ? winKeys.map(k => `«${k}»`).join(', ') : 'окон у кода нет')
       + '. При публикации сервер проверит: код, который стоит в Табеле или на который ссылается живая смена словаря, удалить не получится.',
       () => {
-        delete draft.day_code_policy[code];
-        winKeys.forEach(k => delete draft.windows[k]);
+        delete d.day_code_policy[code];
+        winKeys.forEach(k => delete d.windows[k]);
         toast('Код удалён из черновика — опубликуйте версию', 'ok');
         settingsRenderScreen();
       }, 'Удалить из черновика');
-  });
-  $$('[data-winof]', host).forEach(b => b.onclick = () => { settingsUI.codesTab = 'windows'; settingsRenderScreen(); });
-  $$('[data-win]', host).forEach(b => b.onclick = () => settingsWindowModal(b.dataset.win));
-  $$('[data-windel]', host).forEach(b => b.onclick = () => confirmDialog('Удалить значение Табеля?',
-    `«${b.dataset.windel}» исчезнет из справочника вместе с окном. Строки Табеля с этим значением, которые уже сохранены, перестанут считаться (CHK-WINDOW-EXISTS) — сначала замените их в Табеле.`,
-    () => {
-      delete draft.windows[b.dataset.windel];
-      toast('Значение удалено из черновика — опубликуйте версию', 'ok');
-      settingsRenderScreen();
-    }, 'Удалить из черновика'));
+  };
+  return settingsPanelView('Коды Табеля · CFG-DAY-CODES', html`
+    <div class="code-cards">${codes.map(([code, row]) => html`
+      <div class="code-card" style="padding:10px 14px">
+        <div class="cc-head">
+          ${settingsCodePillView(code, d.day_code_policy)}
+          <div class="cc-name"><b>${row.title || '—'}</b></div>
+          <div style="flex:1"></div>
+          ${edit ? html`<span class="cc-actions">
+            <button class="btn btn-sm btn-ghost" data-cedit=${code} title="Изменить карточку кода" @click=${() => settingsCodeModal(code)}>Изменить</button>
+            <button class="btn btn-sm btn-ghost" data-cdel=${code} title="Удалить код из справочника" @click=${() => del(code)}>✕</button></span>` : nothing}
+        </div>
+      </div>`)}</div>
+    <p class="hint">Флаги расчёта, режим отметок «Пришёл/Ушёл» и шаблон заявления настраиваются
+      в карточке кода («Изменить») и больше не дублируются в списке (18.10.2026).
+      Значения и окна кода — на вкладке «Окна и значения».</p>`);
 }
 
-function settingsCodeModal(code) {
+function windowsTable(windows, codes, step, edit, draft) {
+  const rows = windows.map(([key, w]) => {
+    const code = key.split(' ')[0];
+    const len = Number(w.end_minute) - Number(w.start_minute);
+    return { key, code, w, len };
+  }).sort((a, b) => a.code.localeCompare(b.code, 'ru') || a.w.start_minute - b.w.start_minute);
+  const policy = Object.fromEntries(codes);
+  const del = key => confirmDialog('Удалить значение Табеля?',
+    `«${key}» исчезнет из справочника вместе с окном. Строки Табеля с этим значением, которые уже сохранены, перестанут считаться (CHK-WINDOW-EXISTS) — сначала замените их в Табеле.`,
+    () => {
+      delete draft.windows[key];
+      toast('Значение удалено из черновика — опубликуйте версию', 'ok');
+      settingsRenderScreen();
+    }, 'Удалить из черновика');
+  return html`${settingsPanelView('Окна и значения · CFG-WINDOWS', html`
+    <div class="table-wrap"><table class="data responsive"><thead><tr>
+      <th>Значение Табеля</th><th>Код</th><th>Окно</th><th class="num">Длина окна</th>
+      <th>Часов в значении</th><th></th></tr></thead>
+    <tbody>${rows.length ? rows.map(r => html`<tr>
+      <td data-label="Значение"><b>${r.key}</b></td>
+      <td data-label="Код">${settingsCodePillView(r.code, policy)}</td>
+      <td data-label="Окно" class="num">${settingsHm(r.w.start_minute)}–${settingsHm(r.w.end_minute)}</td>
+      <td class="num" data-label="Длина">${settingsHoursText(r.len)}</td>
+      <td data-label="Часов">${r.key.split(' ')[1] || '—'} <span class="hint" style="margin:0">зарплатный атрибут строки</span></td>
+      <td class="num">${edit ? html`<button class="btn btn-sm btn-ghost" data-win=${r.key} @click=${() => settingsWindowModal(r.key)}>Изменить</button>
+        <button class="btn btn-sm btn-ghost" data-windel=${r.key} title="Удалить значение" @click=${() => del(r.key)}>✕</button>` : nothing}</td>
+    </tr>`) : html`<tr><td colspan="6" class="empty">Окон нет — добавьте значение</td></tr>`}</tbody></table></div>
+    <p class="hint">План карточки и недостача считаются от <b>окна</b>, а не от числа часов в значении:
+      «Я 10,75» при окне 08:00–20:00 даёт план 12 ч, а часы значения — зарплатная норма строки
+      (RUL-PLAN-BELOW-WINDOW, EX-51). Окно не пересекает полночь: смена через полночь оформляется
+      одним значением в дне начала (CHK-WINDOW-BOUNDS).</p>`)}
+  ${settingsPanelView('Все окна на полосе суток · сетка = шаг ' + step + ' мин',
+    settingsTimeline(rows.map(r => ({ label: r.key, start: r.w.start_minute, end: r.w.end_minute,
+      color: settingsCodeColor(r.code, policy) }))))}`;
+}
+
+export function settingsCodeModal(code) {
   const draft = settingsDraft();
   if (!draft) return;
   const isNew = !code;
   const row = isNew ? null : draft.day_code_policy[code];
   const docKinds = state.docKinds || [];
+  const flag = (id, label, on) => html`<label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted);margin-bottom:6px">
+    <input type="checkbox" id=${id} .checked=${on} style="width:17px;height:17px;accent-color:var(--primary)"> ${label}</label>`;
   openModal({
     title: isNew ? 'Новый код Табеля' : `Код «${code}»`,
     subtitle: 'Строка CFG-DAY-CODES: как день считается. Публикуется версией справочников',
-    body: `
+    body: html`
       <div class="grid-2">
         <label class="field"><span>Код (как в Т-13)</span>
-          <input type="text" id="nc-code" value="${esc(code || '')}" ${isNew ? '' : 'readonly'} maxlength="4" placeholder="Я"></label>
+          <input type="text" id="nc-code" .value=${code || ''} ?readonly=${!isNew} maxlength="4" placeholder="Я"></label>
         <label class="field"><span>Название</span>
-          <input type="text" id="nc-title" value="${esc(row?.title || '')}" placeholder="Явка (дневная работа)"></label>
-        <label class="field"><span>Цвет</span><input type="color" id="nc-color" value="${esc(row?.color || '#34a862')}" style="height:44px;padding:4px"></label>
+          <input type="text" id="nc-title" .value=${row?.title || ''} placeholder="Явка (дневная работа)"></label>
+        <label class="field"><span>Цвет</span><input type="color" id="nc-color" .value=${row?.color || '#34a862'} style="height:44px;padding:4px"></label>
       </div>
-      ${SETTINGS_CODE_FLAGS.map(f => `<label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-bottom:8px">
-        <input type="checkbox" id="nc-${f.key}" ${row?.[f.key] ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary);margin-top:2px">
-        <span><b style="color:var(--text)">${esc(f.title)}</b><br><span class="hint" style="margin:0">${esc(f.hint)}</span></span></label>`).join('')}
+      ${SETTINGS_CODE_FLAGS.map(f => html`<label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-bottom:8px">
+        <input type="checkbox" id=${`nc-${f.key}`} .checked=${!!row?.[f.key]} style="width:17px;height:17px;accent-color:var(--primary);margin-top:2px">
+        <span><b style="color:var(--text)">${f.title}</b><br><span class="hint" style="margin:0">${f.hint}</span></span></label>`)}
       <div id="nc-punch-wrap" style="border-top:1px dashed var(--line);padding-top:10px;margin-bottom:10px">
         <div class="opt-group-title" style="margin:0 0 6px">Кнопки отметок в день с этим кодом</div>
-        <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted);margin-bottom:6px">
-          <input type="checkbox" id="nc-punch-in" ${row?.punch_in !== false ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary)">
-          Разрешить «Пришёл на работу»</label>
-        <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--muted)">
-          <input type="checkbox" id="nc-punch-out" ${row?.punch_out !== false ? 'checked' : ''} style="width:17px;height:17px;accent-color:var(--primary)">
-          Разрешить «Ушёл с работы»</label>
+        ${flag('nc-punch-in', 'Разрешить «Пришёл на работу»', row?.punch_in !== false)}
+        ${flag('nc-punch-out', 'Разрешить «Ушёл с работы»', row?.punch_out !== false)}
         <div class="hint" style="margin-top:4px">Флаги соблюдает сервер: пока флаг снят, отметку принять нельзя
           (409 с текстом статуса), а кнопка в «Моих отметках» неактивна.</div>
       </div>
@@ -190,9 +165,9 @@ function settingsCodeModal(code) {
         <label class="field"><span>Заявление по назначению кода (шаблон)</span>
           <select id="nc-doc">
             <option value="">— не печатать —</option>
-            ${docKinds.filter(k => k.active !== false).map(k => `<option value="${esc(k.code)}">${esc(k.name)}</option>`).join('')}
+            ${docKinds.filter(k => k.active !== false).map(k => html`<option value=${k.code} ?selected=${row?.doc_type === k.code}>${k.name}</option>`)}
             ${row?.doc_type && !docKinds.some(k => k.code === row.doc_type)
-              ? `<option value="${esc(row.doc_type)}" selected>${esc(row.doc_type)} (вид удалён — выберите другой)</option>` : ''}
+              ? html`<option value=${row.doc_type} selected>${row.doc_type} (вид удалён — выберите другой)</option>` : nothing}
           </select>
           <div class="hint" style="margin-top:2px">По этому шаблону печатается заявление, когда код назначен
             на период («Печать заявления» в Табеле и Графике). Виды и бланки — экран «Документы и справочники».</div></label>
@@ -201,10 +176,9 @@ function settingsCodeModal(code) {
         на вкладке «Окна и значения» — там же видно, что окно положено только коду, несущему часы.
         Чтобы код можно было поставить из Графика, нужен вид смены с этим кодом Табеля —
         экран «Смены и отсутствия».</p>`,
-    footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
+    footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-save>${isNew ? 'Добавить в черновик' : 'Сохранить'}</button>`,
     onMount(m) {
-      if (!isNew) m.querySelector('#nc-doc').value = row?.doc_type || '';
       /* «Пришёл/Ушёл» — у кода, несущего часы; заявление — у кода без часов
          (решение владельца 16.10.2026): блоки переключаются чекбоксом «Несёт часы» */
       const carriesBox = m.querySelector('#nc-carries_hours');
@@ -231,12 +205,13 @@ function settingsCodeModal(code) {
         toast(isNew ? `Код «${c}» добавлен в черновик` : `Код «${c}» обновлён в черновике`, 'ok');
         settingsUI.codesTab = 'codes';
         settingsRenderScreen();
+        settingsUpdateDraftBars();
       };
     },
   });
 }
 
-function settingsWindowModal(key) {
+export function settingsWindowModal(key) {
   const draft = settingsDraft();
   if (!draft) return;
   const isNew = !key;
@@ -251,20 +226,20 @@ function settingsWindowModal(key) {
   openModal({
     title: isNew ? 'Новое значение и окно' : `Значение «${key}»`,
     subtitle: 'Строка CFG-WINDOWS: ключ «КОД ЧАСЫ» + окно в сутках. План карточки = длина окна',
-    body: `
+    body: html`
       <div class="grid-2">
-        <label class="field"><span>Код Табеля</span><select id="nw-code" ${isNew ? '' : 'disabled'}>
-          ${codes.map(c => `<option value="${esc(c)}" ${c === curCode ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+        <label class="field"><span>Код Табеля</span><select id="nw-code" ?disabled=${!isNew}>
+          ${codes.map(c => html`<option value=${c} ?selected=${c === curCode}>${c}</option>`)}
         </select></label>
         <label class="field"><span>Часов в значении (зарплатная норма)</span>
-          <input type="text" id="nw-hours" value="${esc(curHours || '12')}" placeholder="12 / 10,75"
+          <input type="text" id="nw-hours" .value=${curHours || '12'} placeholder="12 / 10,75"
             list="nw-hours-list">
           <datalist id="nw-hours-list">${['12', '11', '10,75', '10', '9', '8'].map(h =>
-            `<option value="${h}"></option>`).join('')}</datalist></label>
+            html`<option value=${h}></option>`)}</datalist></label>
         <label class="field"><span>Начало окна</span>
-          <input type="time" id="nw-start" value="${settingsHm(w.start_minute)}" step="${step * 60}"></label>
+          <input type="time" id="nw-start" .value=${settingsHm(w.start_minute)} step=${step * 60}></label>
         <label class="field"><span>Конец окна</span>
-          <input type="time" id="nw-end" value="${settingsHm(w.end_minute)}" step="${step * 60}"></label>
+          <input type="time" id="nw-end" .value=${settingsHm(w.end_minute)} step=${step * 60}></label>
       </div>
       <div class="preview" id="nw-preview"></div>
       <p class="hint">В списке — только коды, несущие часы: стандартное окно и часы бывают лишь
@@ -272,25 +247,25 @@ function settingsWindowModal(key) {
         через запятую (CHK-WINDOW-KEY). Окно не пересекает полночь (CHK-WINDOW-BOUNDS), границы лежат
         на сетке шага ${step} мин (CHK-GRID). Часов в значении может быть меньше длины окна —
         это зарплатная норма (RUL-PLAN-BELOW-WINDOW).</p>`,
-    footer: `<button class="btn btn-ghost" data-cancel>Отмена</button>
+    footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-save>${isNew ? 'Добавить в черновик' : 'Сохранить'}</button>`,
     onMount(m) {
       const codeSel = m.querySelector('#nw-code'), hoursInp = m.querySelector('#nw-hours');
       const startInp = m.querySelector('#nw-start'), endInp = m.querySelector('#nw-end');
       const preview = m.querySelector('#nw-preview');
       const newKey = () => `${codeSel.value} ${hoursInp.value.trim().replace('.', ',')}`;
-      const render = () => {
+      const draw = () => {
         const s = settingsSnap(settingsMin(startInp.value) ?? 0, step);
         const e = settingsSnap(settingsMin(endInp.value) ?? 0, step);
         const len = e - s;
-        preview.innerHTML = `
-          <div class="row"><span class="k">Значение Табеля</span><b>${esc(newKey())}</b></div>
-          <div class="row"><span class="k">Окно</span><b>${esc(settingsHm(s))}–${esc(settingsHm(e))}</b></div>
+        render(html`
+          <div class="row"><span class="k">Значение Табеля</span><b>${newKey()}</b></div>
+          <div class="row"><span class="k">Окно</span><b>${settingsHm(s)}–${settingsHm(e)}</b></div>
           <div class="row"><span class="k">Длина окна = план карточки</span><b>${len > 0
-            ? esc(settingsHoursText(len)) : '<span style="color:var(--danger)">конец должен быть позже начала</span>'}</b></div>`;
+            ? settingsHoursText(len) : html`<span style="color:var(--danger)">конец должен быть позже начала</span>`}</b></div>`, preview);
       };
-      [codeSel, hoursInp, startInp, endInp].forEach(el => el.oninput = render);
-      render();
+      [codeSel, hoursInp, startInp, endInp].forEach(el => { el.oninput = draw; });
+      draw();
       m.querySelector('[data-cancel]').onclick = closeModal;
       m.querySelector('[data-save]').onclick = () => {
         const k = newKey();
@@ -315,10 +290,6 @@ function settingsWindowModal(key) {
 /* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
 Object.assign(globalThis, {
   SETTINGS_CODE_FLAGS,
-  settingsScreenCodes,
-  settingsCodesCards,
-  settingsWindowsTable,
-  settingsBindCodesBody,
   settingsCodeModal,
   settingsWindowModal,
 });
