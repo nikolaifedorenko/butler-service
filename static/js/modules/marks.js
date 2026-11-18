@@ -8,7 +8,9 @@
    ══════════════════════════════════════════════════════════════════ */
 import { poll, registerModule } from '../app.js';
 import { $, api, durationRu } from '../core.js';
-import { html, mount, render, unsafeHTML } from '../ui/html.js';
+import { html, mount, render } from '../ui/html.js';
+import { loadPunchJournal } from './punches_journal.js';
+import { contactsView } from './timesheet_common.js';
 
 registerModule({ views: { marks: loadMarks } });
 
@@ -43,7 +45,6 @@ function draw() {
 
 const fio = e => (e.position || '—') + (e.group ? ' · ' + e.group : '');
 
-/* v4Contacts собирает строку разметки со своим экранированием (timesheet_common.js) — пока так */
 function openCard(c) {
   const e = c.employee || {};
   /* shift_today_hm — готовые HH:MM в поясе объекта (UTC-моменты shift_today
@@ -52,7 +53,7 @@ function openCard(c) {
   return html`<div class="presence-card">
     <div class="nm"><span class="pulse"></span>${e.short_name || c.employee_id}</div>
     <div class="pos">${fio(e)}</div>
-    ${unsafeHTML(v4Contacts(e))}
+    ${contactsView(e)}
     <div class="row"><span style="color:var(--muted)">На работе с</span><b>${c.open_since_hm}</b></div>
     <div class="row"><span style="color:var(--muted)">Уже работает</span><b>${durationRu(c.minutes_open)}</b></div>
     <div class="row"><span style="color:var(--muted)">По графику сегодня</span>
@@ -65,7 +66,7 @@ function arrivalCard(a) {
   return html`<div class="presence-card ${a.already_started ? 'late' : ''}">
     <div class="nm">${e.short_name || a.employee_id}</div>
     <div class="pos">${fio(e)}</div>
-    ${unsafeHTML(v4Contacts(e))}
+    ${contactsView(e)}
     <div class="row"><span style="color:var(--muted)">Ожидается к</span>
       <b style=${a.already_started ? 'color:var(--danger)' : ''}>${a.expected_at_hm}</b></div>
     ${a.already_started

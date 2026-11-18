@@ -276,7 +276,7 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
 `tools/jsdom_modules.test.mjs`) — так jsdom-сценарии работают и на файлах с `import`/`export`. Ограничения:
 нет `import.meta` и верхнеуровневого `await`, два модуля не экспортируют одно имя. Статика отдаётся с
 `Cache-Control: no-cache` (ETag → 304): модули подключают друг друга по адресу без `?v=`.
-Настоящие модули (с `import`/`export`): `core.js`, `app.js`, `modules/me.js`, `modules/marks.js`, `modules/today.js`. У такого
+Настоящие модули (с `import`/`export`): `core.js`, `app.js`, `modules/me.js`, `modules/marks.js`, `modules/today.js`, `modules/punches_journal.js`, `modules/mgmt.js`, `modules/timesheet_common.js`. У такого
 файла внутренние имена приватны, а мост публикует в `globalThis` только экспортируемые — то, чем пока
 пользуются ещё не переехавшие файлы (генератор `tools/gen_js_globals.py` решает это сам). Разметка
 экранов — шаблоны `lit-html`; `openModal` принимает тело и подвал шаблоном или строкой с готовой

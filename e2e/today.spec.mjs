@@ -54,17 +54,15 @@ test('сотрудник: смена и кнопка «Пришёл / Ушёл»
   await login(page, 'gromova');
   const view = today(page);
   await expect(view.locator('.today-shift')).toBeVisible();
+  // кнопка есть и когда смена есть, и когда её нет (тогда часы учтутся как переработка — как в «Моих отметках»)
   const btn = view.locator('#today-punch');
-  if (await btn.count()) {
-    const was = (await btn.textContent()).trim();
-    await btn.click();
-    await expect(view.locator('#today-punch')).not.toHaveText(was);
-    if (was === 'Ушёл') {                              // после ухода предлагают описать переработку
-      await expect(page.locator('#modal .modal-head h3')).toHaveText('Описание переработки');
-      await page.locator('#modal [data-skip]').click();
-    }
-  } else {
-    await expect(view.locator('.today-shift')).toContainText(/смены нет|Смена|Вне графика/);
+  await expect(btn).toBeVisible();
+  const was = (await btn.textContent()).trim();
+  await btn.click();
+  await expect(view.locator('#today-punch')).not.toHaveText(was);
+  if (was === 'Ушёл') {                              // после ухода предлагают описать переработку
+    await expect(page.locator('#modal .modal-head h3')).toHaveText('Описание переработки');
+    await page.locator('#modal [data-skip]').click();
   }
   expect(errors).toEqual([]);
 });
