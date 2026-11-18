@@ -45,16 +45,7 @@ export function registerModule({ views = {}, screens = {} }) {
   Object.assign(MODULE_SCREENS, screens);
 }
 
-/* T5 (норматив 12.10.2026): «График» — ОДИН пункт меню с четырьмя слоями внутри
-   (Q2): 0 Табель · 1 План/График · 2 Факт · 3 Управленческий Табель. Пункт виден,
-   если есть право хотя бы на один слой; сами слои фильтруются по правам в
-   grafikLayers(). Доска «Отметки» — отдельный пункт меню (Q7). */
-const GRAFIK_LAYERS = [
-  { view: 'timesheet', num: '0', title: 'Табель', sub: 'первоисточник · бухгалтерия', perm: 'tabel.view' },
-  { view: 'schedule', num: '1', title: 'План / График', sub: 'операционный план · флаги', perm: 'schedule.view' },
-  { view: 'fact', num: '2', title: 'Факт', sub: 'отметки · округление до шага', perm: 'presence.view' },
-  { view: 'mgmt', num: '3', title: 'Управленческий Табель', sub: 'результат · банк · закрытие', perm: 'mgmt.view' },
-];
+/* «График» — один пункт меню с четырьмя слоями (modules/grafik.js). */
 /* старые имена разделов — алиасы слоёв: navigate('timesheet') и др. продолжают
    работать (переходы из модалок, сценарии, смоук harness) */
 const GRAFIK_ALIAS = { timesheet: 'grafik', schedule: 'grafik', fact: 'grafik', mgmt: 'grafik' };
@@ -141,61 +132,6 @@ export function navigate(view) {
       3) откройте http://127.0.0.1:8000/api/selfcheck — он покажет, не отстаёт ли схема БД;
       4) если ошибка повторяется, пришлите хвост server.log и текст из консоли браузера (F12 → Console).</p></div>`;
   });
-}
-
-/* ───────────── «График» = 4 слоя: обёртка и панель слоёв (T5) ───────────── */
-function grafikLayers() { return GRAFIK_LAYERS.filter(l => can(l.perm)); }
-
-const LAYER_LOADERS = {
-  timesheet: () => loadTabel(), schedule: () => loadSchedule(),
-  fact: () => loadFact(), mgmt: () => loadMgmt(),
-};
-
-/* Каркас обёртки живёт в index.html; восстанавливаем его, если предыдущая
-   загрузка раздела упала и заглушка ошибки перезаписала #view-grafik целиком. */
-function grafikSkeleton() {
-  $('#view-grafik').innerHTML = `
-    <div class="layer-tabs" id="grafik-tabs"></div>
-    <section id="view-timesheet" class="layer-pane"></section>
-    <section id="view-schedule" class="layer-pane"></section>
-    <section id="view-fact" class="layer-pane"></section>
-    <section id="view-mgmt" class="layer-pane"></section>`;
-}
-
-registerModule({ views: { grafik: loadGrafik } });
-
-async function loadGrafik() {
-  if (!document.getElementById('grafik-tabs')) grafikSkeleton();
-  const layers = grafikLayers();
-  if (!layers.some(l => l.view === state.grafikLayer)) {
-    /* слой по умолчанию — План/График (как раньше открывался раздел «График»);
-       без права на него — первый доступный слой цепочки */
-    state.grafikLayer = (layers.find(l => l.view === 'schedule') || layers[0] || {}).view || null;
-  }
-  renderGrafikTabs();
-  $$('#view-grafik .layer-pane').forEach(p =>
-    p.classList.toggle('on', !!state.grafikLayer && p.id === `view-${state.grafikLayer}`));
-  if (!state.grafikLayer) {
-    const wrap = $('#view-grafik');
-    if (!wrap.querySelector('.layer-noperm')) {
-      wrap.insertAdjacentHTML('beforeend',
-        '<div class="panel layer-noperm"><div class="empty">Нет прав ни на один слой «Графика»</div></div>');
-    }
-    return;
-  }
-  await LAYER_LOADERS[state.grafikLayer]();
-}
-
-function renderGrafikTabs() {
-  const host = $('#grafik-tabs');
-  if (!host) return;
-  host.innerHTML = grafikLayers().map(l => `
-    <button class="layer-tab${l.view === state.grafikLayer ? ' active' : ''}" data-layer="${l.view}"
-      title="Слой ${l.num} · ${esc(l.title)}: ${esc(l.sub)}">
-      <span class="lnum">${l.num}</span>
-      <span class="ltt">${esc(l.title)}<small>${esc(l.sub)}</small></span>
-    </button>`).join('');
-  $$('#grafik-tabs .layer-tab').forEach(b => b.onclick = () => navigate(b.dataset.layer));
 }
 
 window.addEventListener('unhandledrejection', e => {
@@ -293,7 +229,7 @@ export function resetUserViewState() {
     draft: null, calYear: 0, calMonth: 0, shiftTab: 'work', payFilter: '' });
   /* DOM разделов — в начальное пустое состояние: в index.html все .view пустые,
      их рисуют загрузчики при открытии; каркас #view-grafik восстановит
-     grafikSkeleton() (loadGrafik проверяет #grafik-tabs). Прежняя очистка одного
+     mount() в modules/grafik.js. Прежняя очистка одного
      #grafik-tabs оставляла чужую разметку остальных разделов до первого открытия. */
   $$('.view').forEach(v => { v.innerHTML = ''; });
 }
