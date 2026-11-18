@@ -1118,3 +1118,44 @@ tr.fund-retired td .badge { text-decoration: none; }
 .ft-add input:not([type=checkbox]), .ft-add select { min-width: 0; max-width: 100%; }
 .ft-kin > div { padding: 2px 0; font-size: 13px; }
 .ft-kin-name { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline dotted; cursor: pointer; }
+
+/* ══════════════════════════ СЕГОДНЯ (стартовый экран) ══════════════════════════
+   Макет «Сегодня» (12.11.2026): тёмная шапка с приветствием и сменой, под ней блоки по правам.
+   На телефоне — один столбец; на широком экране шапка остаётся сверху, блоки — в ширину карточки. */
+.today { max-width: 760px; margin: 0 auto; }
+.today-head { background: var(--navy); color: var(--on-navy); padding: var(--space-5) var(--space-4) var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-3); border-radius: var(--r-lg); margin-bottom: var(--space-4); }
+.today-date { font-size: var(--text-sm); color: var(--on-navy-muted); }
+.today-hello { margin: 0; font-family: var(--font-display); font-size: 26px; font-weight: 700; color: var(--on-navy); }
+.today-shift { display: flex; align-items: center; gap: var(--space-3); background: var(--navy-2); padding: var(--space-3) var(--space-3);
+  border-radius: var(--r-md); }
+.today-shift-text { flex: 1; min-width: 0; }
+.today-shift-k { font-size: var(--text-sm); color: var(--on-navy-muted); }
+.today-shift-v { font-weight: 600; }
+.today-punch { min-height: 44px; padding: 0 var(--space-4); background: none; border-color: var(--gold); color: var(--warn-fg-soft);
+  font-weight: 700; }
+.today-punch:hover { background: rgba(203, 176, 91, .14); border-color: var(--gold); }
+.today-body { display: flex; flex-direction: column; gap: var(--space-3); }
+.today-stats { margin-bottom: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.today-stats .stat { padding: var(--space-2) var(--space-3); }
+.today-stats .stat .v { font-size: 24px; margin-top: 0; font-variant-numeric: lining-nums; }
+.today-stats .stat .k { letter-spacing: .06em; }
+.today-h { margin: var(--space-2) 0 0; font-size: var(--text-sm); font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted); }
+.today-card { display: flex; flex-direction: column; gap: var(--space-2); text-align: left; width: 100%;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--space-4);
+  color: var(--text); cursor: pointer; font-size: var(--text-md); transition: border-color var(--ease); }
+.today-card:hover { border-color: var(--primary-soft); }
+.today-card.urgent { border-color: var(--warn); }
+.today-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.today-unit { font-size: var(--text-sm); color: var(--muted); }
+.today-name { font-size: var(--text-lg); font-weight: 700; }
+.today-vip { margin-left: var(--space-1); }
+.today-more { font-size: var(--text-sm); font-weight: 500; color: var(--muted); }
+.today-text { line-height: 1.45; color: var(--text); }
+.today-soon { font-size: var(--text-sm); font-weight: 600; color: var(--brand-fg); }
+.today-more-link { display: flex; justify-content: flex-end; }
+.today-shortcuts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+@media (max-width: 640px) {
+  .today-head { border-radius: 0; margin: -10px -12px var(--space-4); }
+}

@@ -14,6 +14,7 @@ import {
 
 /* ───────────────────────────── вкладки ───────────────────────────── */
 const ICONS = {
+  today: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   grafik: '<svg viewBox="0 0 24 24"><path d="M12 3l8 4.4-8 4.4-8-4.4z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 12L12 16l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 16.4L12 20.4l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>',
   schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   attendance: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4s5.8 1.8 7 5.4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
@@ -59,7 +60,9 @@ const GRAFIK_LAYERS = [
 const GRAFIK_ALIAS = { timesheet: 'grafik', schedule: 'grafik', fact: 'grafik', mgmt: 'grafik' };
 
 /* Пункты меню — из манифестов модулей (MenuItem), сервер уже отфильтровал их по правам. */
-function visibleTabs() { return state.menu || []; }
+/* «Сегодня» — первый пункт для всех: набор блоков внутри зависит от прав (modules/today.js) */
+const TODAY_TAB = { id: 'today', title: 'Сегодня' };
+function visibleTabs() { return [TODAY_TAB, ...(state.menu || [])]; }
 
 function renderNav() {
   const tabs = visibleTabs();
@@ -248,14 +251,9 @@ export async function loadPerms() {
 }
 
 function startView() {
-  const tabs = visibleTabs().map(t => t.id);
-  /* Телефон — основной инструмент батлера (решение владельца 19.10.2026): смену
-     начинают с «Моих отметок» (пришёл/ушёл — самое частое действие), а не с «Графика».
-     У менеджмента стартовый раздел прежний. */
-  const order = state.user?.role === 'employee'
-    ? ['me', 'marks', 'grafik']
-    : ['grafik', 'marks', 'me'];
-  return order.find(v => tabs.includes(v)) || tabs[0] || 'me';
+  /* Стартовый экран — «Сегодня» (решение владельца 12.11.2026); у него свой набор блоков для каждой роли.
+     Прежний выбор «Мои отметки» для сотрудника теперь внутри «Сегодня» (кнопка «Пришёл / Ушёл»). */
+  return 'today';
 }
 
 /* Сброс состояния при смене пользователя (вход, вход/выход из режима
