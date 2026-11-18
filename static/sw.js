@@ -1,19 +1,20 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-11-18f';
-// содержимое оболочки: 88fc8fede9dc9d8b
+const VERSION = 'tt-2026-11-18g';
+// содержимое оболочки: 60df992b277304a2
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-11-18f',
-  '/static/css/base.css?v=2026-11-18f',
-  '/static/css/components.css?v=2026-11-18f',
-  '/static/css/tokens.css?v=2026-11-18f',
+  '/static/css/app.css?v=2026-11-18g',
+  '/static/css/base.css?v=2026-11-18g',
+  '/static/css/components.css?v=2026-11-18g',
+  '/static/css/tokens.css?v=2026-11-18g',
   '/static/js/app.js',
   '/static/js/core.js',
   '/static/js/modules/access.js',
   '/static/js/modules/audit.js',
   '/static/js/modules/cars.js',
+  '/static/js/modules/cars_dict.js',
   '/static/js/modules/dicts.js',
   '/static/js/modules/docs.js',
   '/static/js/modules/employees.js',
@@ -24,6 +25,7 @@ const SHELL = [
   '/static/js/modules/me.js',
   '/static/js/modules/mgmt.js',
   '/static/js/modules/night.js',
+  '/static/js/modules/night_dict.js',
   '/static/js/modules/punches_journal.js',
   '/static/js/modules/settings.js',
   '/static/js/modules/settings_calc.js',
@@ -54,7 +56,7 @@ const SHELL = [
   '/static/js/modules/today.js',
   '/static/js/ui/form.js',
   '/static/js/ui/html.js',
-  '/static/js/ui/theme.js?v=2026-11-18f',
+  '/static/js/ui/theme.js?v=2026-11-18g',
   '/static/vendor/lit-html/directive.js',
   '/static/vendor/lit-html/directives/unsafe-html.js',
   '/static/vendor/lit-html/lit-html.js',
