@@ -6,9 +6,15 @@
    новый гость — openGuestForm (stays_forms.js). Объединение: отметить двух гостей →
    «Объединить…» → кого оставить → «Проверить» (что перенесётся) → «Объединить».
    Вкладка — только полный уровень (stays.guests, см. staysTabAllowed в stays.js).
-   Использует хелперы app.js: $ $$ esc api toast can dateRu openModal closeModal.
+   Модуль на lit-html (ADR-0013, раздел 7): панель фильтров рисуется один раз, список — шаблоном.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
+
+import { can } from '../app.js';
+import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
+import { html, mount, nothing, render } from '../ui/html.js';
+import { STAYS_LINK, openGuestCard, openGuestForm } from './stays_forms.js';
+import { STAYS_SPECIAL_MARK, staysGuestMarkView } from './stays.js';
 
 /* колонки: ключ сортировки сервера (null — без сортировки) — заголовок */
 const STAYS_GUEST_COLS = [['name', 'Гость'], ['special', 'VIP-код'], [null, 'Телефон'], ['last_stay', 'Последний заезд'],
@@ -21,10 +27,10 @@ const STAYS_MERGE_KIND = { parent: 'родитель — ребёнок' };
 const STAYS_MERGE_PROFILE = { first_name: 'имя', middle_name: 'отчество', phone: 'телефон', email: 'email',
   birth_date: 'дата рождения', gender: 'пол', external_id: 'внешний id', source: 'источник', special: '◆ Особый гость', vip_code_id: 'VIP-код', note: 'примечание' };
 
-function staysGuestsEmpty() {
+export function staysGuestsEmpty() {
   return { q: '', special: false, stayed_from: '', stayed_to: '', birthday: false, sort: 'name', dir: 'asc', picked: [] };
 }
-const staysGuests = staysGuestsEmpty();
+export const staysGuests = staysGuestsEmpty();
 
 function staysGuestsParams(offset) {
   const s = staysGuests;
@@ -37,47 +43,46 @@ function staysGuestsParams(offset) {
   return p;
 }
 
-function staysGuestsToolbar() {
+const staysGuestsToolbar = () => {
   const s = staysGuests;
   const edit = can('stays.edit');
-  return `<div class="sb-toolbar">
-    <input type="search" id="gl-q" value="${esc(s.q)}" placeholder="Фамилия, телефон, номер брони">
-    <label class="chk"><input type="checkbox" id="gl-special"${s.special ? ' checked' : ''}> ${STAYS_SPECIAL_MARK}Особые</label>
-    <label class="muted">был с <input type="date" id="gl-from" value="${esc(s.stayed_from)}"></label>
-    <label class="muted">по <input type="date" id="gl-to" value="${esc(s.stayed_to)}"${s.stayed_from ? ` min="${esc(s.stayed_from)}"` : ''}></label>
-    <label class="chk"><input type="checkbox" id="gl-birthday"${s.birthday ? ' checked' : ''}>
+  return html`<div class="sb-toolbar">
+    <input type="search" id="gl-q" .value=${s.q} placeholder="Фамилия, телефон, номер брони">
+    <label class="chk"><input type="checkbox" id="gl-special" .checked=${s.special}> ${STAYS_SPECIAL_MARK}Особые</label>
+    <label class="muted">был с <input type="date" id="gl-from" .value=${s.stayed_from}></label>
+    <label class="muted">по <input type="date" id="gl-to" .value=${s.stayed_to} min=${s.stayed_from || nothing}></label>
+    <label class="chk"><input type="checkbox" id="gl-birthday" .checked=${s.birthday}>
       день рождения в ближайшие ${STAYS_BIRTHDAY_DAYS} дней</label>
-    ${edit ? `<button class="btn btn-sm" id="gl-merge" title="Отметьте двух гостей"${s.picked.length === 2 ? '' : ' disabled'}>Объединить…</button>
-      <button class="btn btn-sm btn-primary" id="gl-new">Новый гость</button>` : ''}
+    ${edit ? html`<button class="btn btn-sm" id="gl-merge" title="Отметьте двух гостей" ?disabled=${s.picked.length !== 2}>Объединить…</button>
+      <button class="btn btn-sm btn-primary" id="gl-new">Новый гость</button>` : nothing}
   </div>`;
-}
+};
 
-function staysGuestRowHtml(r, edit) {
-  const code = r.vip_code ? `${esc(r.vip_code)}${r.vip_code_archived ? ' <span class="muted">в архиве</span>' : ''}` : '<span class="muted">—</span>';
-  return `<tr class="bk-row" data-gl-row="${r.id}" tabindex="0">
-    ${edit ? `<td><input type="checkbox" data-gl-pick="${r.id}"${staysGuests.picked.includes(r.id) ? ' checked' : ''} title="Для объединения"></td>` : ''}
-    <td>${staysGuestMark(r.special)}${esc(r.name)}</td><td data-gl-code>${code}</td>
-    <td>${esc(r.phone || '—')}</td>
-    <td>${r.last_stay ? esc(dateRu(r.last_stay)) : '<span class="muted">—</span>'}</td><td>${r.stays}</td></tr>`;
-}
+const staysGuestRow = (r, edit) => html`<tr class="bk-row" data-gl-row=${r.id} tabindex="0">
+    ${edit ? html`<td><input type="checkbox" data-gl-pick=${r.id} .checked=${staysGuests.picked.includes(r.id)} title="Для объединения"></td>` : nothing}
+    <td>${staysGuestMarkView(r.special)}${r.name}</td><td data-gl-code>${r.vip_code
+      ? html`${r.vip_code}${r.vip_code_archived ? html` <span class="muted">в архиве</span>` : nothing}` : html`<span class="muted">—</span>`}</td>
+    <td>${r.phone || '—'}</td>
+    <td>${r.last_stay ? dateRu(r.last_stay) : html`<span class="muted">—</span>`}</td><td>${r.stays}</td></tr>`;
 
-function staysGuestsTableHtml(rows, total) {
+const staysGuestsTable = (rows, total, onMore) => {
   const edit = can('stays.edit');
   const arrow = key => (staysGuests.sort === key ? (staysGuests.dir === 'asc' ? ' ↑' : ' ↓') : '');
   const cols = STAYS_GUEST_COLS.length + (edit ? 1 : 0);
-  return `<div class="muted" id="gl-total">Найдено гостей: ${total}${rows.length < total ? ` · показано ${rows.length}` : ''}</div>
-    <div class="sb-scroll"><table class="bk-table"><thead><tr>${edit ? '<th></th>' : ''}${STAYS_GUEST_COLS.map(([k, t]) => (k
-    ? `<th data-gl-sort="${k}" title="Сортировать" style="cursor:pointer">${esc(t)}${arrow(k)}</th>` : `<th>${esc(t)}</th>`)).join('')}</tr></thead>
-    <tbody>${rows.map(r => staysGuestRowHtml(r, edit)).join('') || `<tr><td colspan="${cols}" class="empty">Гостей по фильтру нет</td></tr>`}</tbody></table></div>
-    ${rows.length < total ? `<button class="btn" id="gl-more">Показать ещё ${Math.min(STAYS_GUEST_PAGE, total - rows.length)}</button>` : ''}`;
-}
+  return html`<div class="muted" id="gl-total">Найдено гостей: ${total}${rows.length < total ? ` · показано ${rows.length}` : ''}</div>
+    <div class="sb-scroll"><table class="bk-table"><thead><tr>${edit ? html`<th></th>` : nothing}${STAYS_GUEST_COLS.map(([k, t]) => (k
+    ? html`<th data-gl-sort=${k} title="Сортировать" style="cursor:pointer">${t}${arrow(k)}</th>` : html`<th>${t}</th>`))}</tr></thead>
+    <tbody>${rows.length ? rows.map(r => staysGuestRow(r, edit)) : html`<tr><td colspan=${cols} class="empty">Гостей по фильтру нет</td></tr>`}</tbody></table></div>
+    ${rows.length < total ? html`<button class="btn" id="gl-more" @click=${onMore}>Показать ещё ${Math.min(STAYS_GUEST_PAGE, total - rows.length)}</button>` : nothing}`;
+};
 
 /* панель фильтров рисуется один раз и не перерисовывается: поиск печатается без потери фокуса;
    смена фильтра или сортировки перегружает только список (#gl-result) */
-function renderGuestsTab(body) {
+export function renderGuestsTab(body) {
   const s = staysGuests;
-  body.innerHTML = `${staysGuestsToolbar()}<div id="gl-result"><div class="empty">Загрузка…</div></div>`;
+  render(html`${staysGuestsToolbar()}<div id="gl-result"></div>`, mount(body));
   const result = $('#gl-result', body);
+  render(html`<div class="empty">Загрузка…</div>`, result);
   const known = new Map();
   const mergeBtn = $('#gl-merge', body);
   const syncMerge = () => { if (mergeBtn) mergeBtn.disabled = s.picked.length !== 2; };
@@ -87,18 +92,17 @@ function renderGuestsTab(body) {
   const page = offset => api('/api/stays/guests/list?' + staysGuestsParams(offset), { silent: true });
   const paint = fresh => {
     rows.forEach(r => known.set(r.id, r));
-    result.innerHTML = error ? `<div class="panel"><p class="muted">${esc(error)}</p></div>` : staysGuestsTableHtml(rows, total);
-    const more = $('#gl-more', result);
-    if (more) more.onclick = async () => {
-      more.disabled = true;
+    const more = async e => {
+      e.currentTarget.disabled = true;
       try {
         const next = await page(rows.length);
         if (!fresh()) return;
         rows = rows.concat(next.rows);
         total = next.total;
-      } catch (e) { toast(e.message, 'warn'); }
+      } catch (err) { toast(err.message, 'warn'); }
       paint(fresh);
     };
+    render(error ? html`<div class="panel"><p class="muted">${error}</p></div>` : staysGuestsTable(rows, total, more), result);
   };
   const reload = async () => {
     const fresh = loadGenerationFor(result);
@@ -161,34 +165,34 @@ function renderGuestsTab(body) {
 }
 
 /* что перенесётся при объединении (ответ ?preview=1 и сохранения — одинаковые moves) */
-function staysMergeMovesHtml(m) {
-  const list = (title, items) => `<h4>${esc(title)}</h4>${items.length ? items.join('') : '<div class="muted">нет</div>'}`;
-  return [
-    list('Брони', m.reservations.map(r => `<div>${esc(r.number || '#' + r.id)}${r.shared ? ' <span class="muted">— оба в составе: останется один гость</span>' : ''}</div>`)),
-    list('Связи', m.links.map(l => `<div>${esc(l.name)} · ${esc(l.former ? STAYS_LINK.spouse_former : STAYS_MERGE_KIND[l.kind] || STAYS_LINK[l.kind] || l.kind)} — ${esc(STAYS_MERGE_RESULT[l.result] || l.result)}</div>`)),
-    list('Предпочтения', m.preferences.map(k => `<div>${esc(k)}</div>`)),
-    list('Особые даты', m.special_dates.map(d => `<div>${esc(dateRu(d.date))} — ${esc(d.what)}</div>`)),
-    list('Профиль: заполнится из дубля', m.profile.map(k => `<div>${esc(STAYS_MERGE_PROFILE[k] || k)}</div>`)),
-    m.fields.length ? list('Настраиваемые поля', m.fields.map(k => `<div>${esc(k)}</div>`)) : '',
-    m.coverage ? `<div class="muted">Строк покрытия с выбранным гостем: ${m.coverage}</div>` : '',
-  ].join('');
+function staysMergeMoves(m) {
+  const list = (title, items) => html`<h4>${title}</h4>${items.length ? items : html`<div class="muted">нет</div>`}`;
+  return html`
+    ${list('Брони', m.reservations.map(r => html`<div>${r.number || '#' + r.id}${r.shared ? html` <span class="muted">— оба в составе: останется один гость</span>` : nothing}</div>`))}
+    ${list('Связи', m.links.map(l => html`<div>${l.name} · ${l.former ? STAYS_LINK.spouse_former : STAYS_MERGE_KIND[l.kind] || STAYS_LINK[l.kind] || l.kind} — ${STAYS_MERGE_RESULT[l.result] || l.result}</div>`))}
+    ${list('Предпочтения', m.preferences.map(k => html`<div>${k}</div>`))}
+    ${list('Особые даты', m.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`))}
+    ${list('Профиль: заполнится из дубля', m.profile.map(k => html`<div>${STAYS_MERGE_PROFILE[k] || k}</div>`))}
+    ${m.fields.length ? list('Настраиваемые поля', m.fields.map(k => html`<div>${k}</div>`)) : nothing}
+    ${m.coverage ? html`<div class="muted">Строк покрытия с выбранным гостем: ${m.coverage}</div>` : nothing}`;
 }
 
-function openGuestMerge(a, b, onDone) {
+export function openGuestMerge(a, b, onDone) {
   openModal({
     title: 'Объединить гостей', wide: true,
     subtitle: 'Брони, связи, предпочтения и особые даты перейдут к оставленному гостю, второй профиль удалится',
-    body: `<div class="sb-line"><label class="chk"><input type="radio" name="gm-keep" value="${a.id}" checked> оставить ${esc(a.name)}</label></div>
-      <div class="sb-line"><label class="chk"><input type="radio" name="gm-keep" value="${b.id}"> оставить ${esc(b.name)}</label></div>
+    body: html`<div class="sb-line"><label class="chk"><input type="radio" name="gm-keep" value=${a.id} checked> оставить ${a.name}</label></div>
+      <div class="sb-line"><label class="chk"><input type="radio" name="gm-keep" value=${b.id}> оставить ${b.name}</label></div>
       <div id="gm-out" class="sp-out"></div>`,
-    footer: `<button class="btn btn-ghost" data-close>Отмена</button>
+    footer: html`<button class="btn btn-ghost" data-close>Отмена</button>
       <button class="btn" id="gm-preview">Проверить</button><button class="btn btn-primary" data-save>Объединить</button>`,
     onMount(m) {
+      const out = $('#gm-out', m);
       const ids = () => {
         const keep = Number($$('[name="gm-keep"]', m).find(x => x.checked).value);
         return { keep_id: keep, drop_id: keep === a.id ? b.id : a.id };
       };
-      $$('[name="gm-keep"]', m).forEach(x => { x.onchange = () => { $('#gm-out', m).innerHTML = ''; }; });
+      $$('[name="gm-keep"]', m).forEach(x => { x.onchange = () => render(nothing, out); });
       $('[data-close]', m).onclick = closeModal;
       /* пока запрос идёт, обе кнопки заперты: двойной клик не отправит объединение дважды */
       const buttons = [$('#gm-preview', m), $('[data-save]', m)];
@@ -198,9 +202,8 @@ function openGuestMerge(a, b, onDone) {
         try {
           const r = await api('/api/stays/guests/merge?preview=1', { method: 'POST', body: ids() });
           // новый овербукинг без права «Овербукинг» — объединение не сохранится (409)
-          $('#gm-out', m).innerHTML = (r.overbook_refused ? `<p class="sp-warn"><b>Не сохранится:</b> ${esc(r.overbook_refused)}</p>` : '')
-            + staysMergeMovesHtml(r.moves);
-        } catch (e) { $('#gm-out', m).innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+          render(html`${r.overbook_refused ? html`<p class="sp-warn"><b>Не сохранится:</b> ${r.overbook_refused}</p>` : nothing}${staysMergeMoves(r.moves)}`, out);
+        } catch (e) { render(html`<p class="muted">${e.message}</p>`, out); }
         busy(false);
       };
       $('[data-save]', m).onclick = async () => {
@@ -218,20 +221,9 @@ function openGuestMerge(a, b, onDone) {
 
 /* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
 Object.assign(globalThis, {
-  STAYS_GUEST_COLS,
-  STAYS_GUEST_PAGE,
-  STAYS_BIRTHDAY_DAYS,
-  STAYS_MERGE_RESULT,
-  STAYS_MERGE_KIND,
-  STAYS_MERGE_PROFILE,
   staysGuestsEmpty,
   staysGuests,
-  staysGuestsParams,
-  staysGuestsToolbar,
-  staysGuestRowHtml,
-  staysGuestsTableHtml,
   renderGuestsTab,
-  staysMergeMovesHtml,
   openGuestMerge,
 });
 /* ── конец моста ── */

@@ -1254,7 +1254,7 @@ async function guestsTab() {
   check('вкладка «Гости» есть', !!$('#view-stays [data-stab="guests"]'));
   click($('#view-stays [data-stab="guests"]'));
   check('вкладка «Гости» отрисована', await waitFor(() => !!$('#gl-total')));
-  const rerendered = async (sel, act) => { const old = $(sel); act(); return waitFor(() => $(sel) && $(sel) !== old); };
+  const rerendered = async (sel, act) => { act(); await idle(); return !!$(sel); };   // шаблоны lit обновляют элементы на месте
   /* посимвольный ввод с паузой дольше задержки поиска: поле не перерисовывается, фокус и текст на месте */
   const q = $('#gl-q');
   q.focus();
@@ -1265,7 +1265,7 @@ async function guestsTab() {
     q.dispatchEvent(new window.Event('input', { bubbles: true }));
     await sleep(i === 3 ? 700 : 40);           // на 4-м символе поиск успевает уйти и вернуться
   }
-  check('поиск по фамилии', await waitFor(() => $('#gl-total') !== firstTotal && $$('[data-gl-row]').length === 2),
+  check('поиск по фамилии', await waitFor(() => $$('[data-gl-row]').length === 2),
     text('#gl-total'));
   check('при вводе поле поиска не теряет фокус и текст', $('#gl-q') === q && window.document.activeElement === q
     && q.value === typed, `${window.document.activeElement?.id} «${q.value}»`);
@@ -1468,7 +1468,7 @@ async function guestProfileCode() {
   check('◆ у особого гостя', text(`[data-gl-row="${g.id}"]`).includes('◆') && !text(`[data-gl-row="${plain.id}"]`).includes('◆'));
   const old = $('#gl-total');
   $('#gl-special').checked = true; change($('#gl-special'));
-  check('фильтр «◆ Особые»', await waitFor(() => $('#gl-total') !== old && $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(g.id)),
+  check('фильтр «◆ Особые»', await waitFor(() => $$('[data-gl-row]').map(tr => Number(tr.dataset.glRow)).join() === String(g.id)),
     text('#gl-total'));
   window.eval('Object.assign(staysGuests, staysGuestsEmpty());');
   check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
@@ -1553,13 +1553,13 @@ async function familyEditor() {
   const former = $('#gc-family [data-ft-former]');
   former.checked = true;
   change(former);
-  check('«бывшие» сохранены', await waitFor(() => $('#gc-family [data-ft-former]') !== former
-    && $('#gc-family [data-ft-former]').checked));
+  await idle();
+  check('«бывшие» сохранены', !!$('#gc-family [data-ft-former]')?.checked);
   check('API: брак бывший', (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && l.former));
   const back = $('#gc-family [data-ft-former]');
   back.checked = false;
   change(back);
-  await waitFor(() => $('#gc-family [data-ft-former]') !== back);
+  await idle();
   check('«бывшие» сняты', (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && !l.former));
 
   /* второй родитель Ивана через поиск — и удаление связи крестиком на линии */
