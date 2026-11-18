@@ -124,9 +124,10 @@ const modalClosed = () => $('#modal-backdrop').classList.contains('hidden');
 const toasts = () => text('#toast-host');
 
 async function main() {
-  /* печать заявлений проверяем по содержимому: перехватываем printWindow */
+  /* печать заявлений проверяем по содержимому: printWindow открывает окно и пишет в него
+     документ целиком — перехватываем window.open (стили лежат в том же документе) */
   const printed = [];
-  window.printWindow = (t, h, css) => printed.push({ t, h, css: css || '' });
+  window.open = () => ({ document: { write: doc => printed.push({ t: '', h: doc, css: doc }), close() {} } });
 
   await sleep(400);
   const loginRes = await jsend('POST', '/api/auth/login', { username: LOGIN, password: 'demo1234' });

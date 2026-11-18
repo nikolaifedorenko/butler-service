@@ -90,7 +90,7 @@ def test_fe2_rehire_pattern_uses_tabel_values():
     src = _src("modules/employees.js")
     body = _body(src, "async function rehireModal(")
     assert "/api/tabel-values" in body, "rehireModal не грузит значения Табеля"
-    assert "patternFieldsHtml('rh', kind, values, today)" in body
+    assert "patternFields('rh', kind, values, today)" in body
     # словарь типов смен больше не подменяет значения Табеля (упоминание в
     # комментарии допустимо — проверяем отсутствие объявления и обращения)
     assert "state.shiftTypes" not in body
