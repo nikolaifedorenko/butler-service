@@ -11,6 +11,7 @@ import {
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { dayHeadCell, monthNav, v4CodeColor } from './timesheet_common.js';
+import { openRangeModal } from './timesheet_layers.js';
 
 /* что показывает слой: загрузка, текст ошибки либо ответ сервера (state.tabel) */
 const screen = { loading: true, error: '' };

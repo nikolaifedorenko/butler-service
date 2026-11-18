@@ -72,3 +72,23 @@ test('образец содержит все компоненты', async ({ pag
     await expect(page.locator(`main ${sel}`).first(), sel).toBeVisible();
   }
 });
+
+for (const mode of ['light', 'dark']) {
+  test(`модальное окно и уведомление берут фон поверхности, а не тон сообщения (${mode})`, async ({ page }) => {
+    await page.addInitScript(m => localStorage.setItem('butler-theme', m), mode);
+    await login(page, 'admin');
+    await page.evaluate(() => {
+      window.openModal({ title: 'Проба', body: '<p>текст</p>' });
+      window.toast('Проба', 'ok');
+    });
+    const colors = await page.evaluate(() => {
+      const surface = getComputedStyle(document.documentElement).getPropertyValue('--surface-0').trim();
+      const probe = document.createElement('div'); probe.style.background = surface; document.body.appendChild(probe);
+      const expected = getComputedStyle(probe).backgroundColor; probe.remove();
+      return { expected, modal: getComputedStyle(document.querySelector('#modal')).backgroundColor,
+               toast: getComputedStyle(document.querySelector('#toast-host .toast')).backgroundColor };
+    });
+    expect(colors.modal).toBe(colors.expected);
+    expect(colors.toast).toBe(colors.expected);
+  });
+}
