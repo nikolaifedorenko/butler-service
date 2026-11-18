@@ -3,43 +3,51 @@
    Фон дня батлера — смена по Графику; красное — перегруз, «вне смены», подмена.
    Табло — заезды / выезды / проживают / требуют внимания и «не заехали»;
    на телефоне — одной колонкой. Предупреждения сервер считает при каждом чтении.
-   Использует хелперы app.js: $ $$ esc api openModal closeModal toast can dateRu.
+   Модуль на lit-html (ADR-0013, раздел 7): разметка — шаблоны, вставки экранируются сами.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
+
+import { can } from '../app.js';
+import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
+import { html, mount, nothing, render, unsafeHTML } from '../ui/html.js';
+import {
+  staysCodeTagView, staysDayHeadView, staysFilterView, staysGuestMarkView, loadStays, staysMonthNavView, openReservationCard, staysAddDays, staysFocusDay, staysFund,
+  staysFundParams, staysMonthRange, staysPeopleParams, staysState, staysToday, staysWeight,
+} from './stays.js';
 
 const STAYS_DUTY = { shift: 'на смене', off: 'выходной', absent: 'отсутствие' };
 const STAYS_WARN = { off_shift: 'вне смены', overload: 'перегруз', need_replacement: 'нужна подмена',
   hole: 'гости без батлера', double_cover: 'два батлера у гостя' };
-const boardState = { day: null, tab: 'arrivals' };   // месяц — общий state; фильтры — staysState.filters
+export const boardState = { day: null, tab: 'arrivals' };   // месяц — общий state; фильтры — staysState.filters
+
+/* подпись поля в окнах: подпись над элементом управления */
+const fieldRow = (label, control) => html`<label class="field"><span>${label}</span>${control}</label>`;
 
 /* ─────────────── Шахматка батлеров ─────────────── */
-async function renderButlersBoard(body) {
+export async function renderButlersBoard(body) {
   const { first, last } = staysMonthRange();
   const fresh = loadGenerationFor(body);    // запоздавший ответ не перерисовывает (stays.js)
   const data = await api(`/api/stays/board/butlers?first=${first}&last=${last}`, { silent: true });
   if (!fresh()) return;
   const today = staysToday();
-  body.innerHTML = `
+  const rerender = () => renderButlersBoard(body);
+  render(html`
     <div class="sb-toolbar">
-      ${staysMonthNav()}
+      ${staysMonthNavView(body, rerender)}
       <span class="muted">лимит нагрузки — ${staysWeight(data.limit)}</span>
     </div>
-    <div class="sb-grid bb-grid" style="--days:${data.days.length}">
-      <div class="bb-row sb-head"><div class="sb-unit">Батлер</div>${data.days.map(d => staysDayHead(d, today)).join('')}</div>
-      ${data.rows.map(r => `<div class="bb-row"><div class="sb-unit"><b>${esc(r.name)}</b>${r.escort ? '' : '<small>не в списке</small>'}</div>
-        ${r.cells.map(c => `<div class="bb-cell duty-${c.duty}${c.warnings.length ? ' warn' : ''}" data-bb-emp="${r.employee_id}"
-          data-day="${esc(c.day)}" data-warn="${esc(c.warnings.join(' '))}" title="${esc(STAYS_DUTY[c.duty] + (c.code ? ' · ' + c.code : ''))}">
-          <div>${esc(c.units.map(u => u.label).join(', ') || (c.duty === 'shift' ? '—' : STAYS_DUTY[c.duty]))}</div>
-          ${c.load ? `<small>${staysWeight(c.load)}/${staysWeight(data.limit)}</small>` : ''}
-          ${c.warnings.length ? `<small class="bb-w">${esc(c.warnings.map(w => STAYS_WARN[w] || w).join(', '))}</small>` : ''}
-        </div>`).join('')}</div>`).join('') || '<div class="empty">Список «Сопровождают гостей» пуст — Настройки → Сопровождение</div>'}
-    </div>`;
-  const rerender = () => renderButlersBoard(body);
-  staysBindMonthNav(body, rerender);
-  $$('[data-bb-emp]', body).forEach(cell => {
-    const row = data.rows.find(r => r.employee_id === Number(cell.dataset.bbEmp));
-    cell.onclick = () => openButlerDay(row, row.cells.find(c => c.day === cell.dataset.day), rerender);
-  });
+    <div class="sb-grid bb-grid" style=${`--days:${data.days.length}`}>
+      <div class="bb-row sb-head"><div class="sb-unit">Батлер</div>${data.days.map(d => staysDayHeadView(d, today))}</div>
+      ${data.rows.length ? data.rows.map(r => html`<div class="bb-row"><div class="sb-unit"><b>${r.name}</b>${r.escort ? nothing : html`<small>не в списке</small>`}</div>
+        ${r.cells.map(c => html`<div class="bb-cell duty-${c.duty}${c.warnings.length ? ' warn' : ''}" data-bb-emp=${r.employee_id}
+          data-day=${c.day} data-warn=${c.warnings.join(' ')} title=${STAYS_DUTY[c.duty] + (c.code ? ' · ' + c.code : '')}
+          @click=${() => openButlerDay(r, c, rerender)}>
+          <div>${c.units.map(u => u.label).join(', ') || (c.duty === 'shift' ? '—' : STAYS_DUTY[c.duty])}</div>
+          ${c.load ? html`<small>${staysWeight(c.load)}/${staysWeight(data.limit)}</small>` : nothing}
+          ${c.warnings.length ? html`<small class="bb-w">${c.warnings.map(w => STAYS_WARN[w] || w).join(', ')}</small>` : nothing}
+        </div>`)}</div>`)
+        : html`<div class="empty">Список «Сопровождают гостей» пуст — Настройки → Сопровождение</div>`}
+    </div>`, mount(body));
   staysFocusDay(body);
 }
 
@@ -49,18 +57,19 @@ async function openButlerDay(row, cell, onChanged) {
   const kinds = offShift ? (await api('/api/shift-types', { silent: true })).filter(t => t.kind === 'work' && t.active) : [];
   openModal({
     title: `${row.name} · ${dateRu(cell.day)}`, subtitle: `${STAYS_DUTY[cell.duty]}${cell.code ? ' · ' + cell.code : ''} · нагрузка ${staysWeight(cell.load)}`,
-    body: `${cell.units.map(u => `<div class="sb-line"><b>${esc(u.label)}</b>
-        <button class="btn btn-sm btn-ghost" data-open-res="${u.reservation_id}">Бронь…</button>
-        ${assign && cell.warnings.includes('need_replacement') ? `<button class="btn btn-sm" data-replace-res="${u.reservation_id}">Заменить</button>` : ''}</div>`).join('') || '<p class="muted">Гостей не ведёт</p>'}
-      ${cell.guests.length ? `<p>${esc(cell.guests.join(', '))}</p>` : ''}
-      ${cell.warnings.length ? `<div class="dict-banner gold"><span>⚠</span><span>${esc(cell.warnings.map(w => STAYS_WARN[w] || w).join(', '))}</span></div>` : ''}
-      ${offShift ? `${sfRow('Смена Графика', `<select id="bb-shift-type">${kinds.map(k =>
-        `<option value="${k.id}">${esc(k.name)} ${esc(k.start_time)}–${esc(k.end_time)}</option>`).join('')}</select>`)}
-        <p class="hint">Добавится ручная смена в График (нужно право на правку Графика); Табель не меняется.</p>` : ''}
+    body: html`${cell.units.length ? cell.units.map(u => html`<div class="sb-line"><b>${u.label}</b>
+        <button class="btn btn-sm btn-ghost" data-open-res=${u.reservation_id}>Бронь…</button>
+        ${assign && cell.warnings.includes('need_replacement') ? html`<button class="btn btn-sm" data-replace-res=${u.reservation_id}>Заменить</button>` : nothing}</div>`)
+        : html`<p class="muted">Гостей не ведёт</p>`}
+      ${cell.guests.length ? html`<p>${cell.guests.join(', ')}</p>` : nothing}
+      ${cell.warnings.length ? html`<div class="dict-banner gold"><span>⚠</span><span>${cell.warnings.map(w => STAYS_WARN[w] || w).join(', ')}</span></div>` : nothing}
+      ${offShift ? html`${fieldRow('Смена Графика', html`<select id="bb-shift-type">${kinds.map(k =>
+        html`<option value=${k.id}>${k.name} ${k.start_time}–${k.end_time}</option>`)}</select>`)}
+        <p class="hint">Добавится ручная смена в График (нужно право на правку Графика); Табель не меняется.</p>` : nothing}
       <div id="bb-assign-box"></div>`,
-    footer: `<button class="btn btn-ghost" data-close>Закрыть</button>
-      ${assign && row.escort ? '<button class="btn" id="bb-assign">Назначить на этот день</button>' : ''}
-      ${offShift && kinds.length ? '<button class="btn btn-primary" id="bb-add-shift">Добавить смену в График</button>' : ''}`,
+    footer: html`<button class="btn btn-ghost" data-close>Закрыть</button>
+      ${assign && row.escort ? html`<button class="btn" id="bb-assign">Назначить на этот день</button>` : nothing}
+      ${offShift && kinds.length ? html`<button class="btn btn-primary" id="bb-add-shift">Добавить смену в График</button>` : nothing}`,
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       $$('[data-open-res]', m).forEach(b => { b.onclick = () => openReservationCard(Number(b.dataset.openRes), onChanged); });
@@ -70,9 +79,10 @@ async function openButlerDay(row, cell, onChanged) {
         /* брони дня, где гостей ещё никто не ведёт, — табло дня уже знает их статус */
         const day = await api('/api/stays/day?date=' + cell.day, { silent: true });
         const open = day.in_house.filter(x => x.cover_status === 'uncovered' || x.cover_status === 'replacement');
-        $('#bb-assign-box', m).innerHTML = open.length ? `${sfRow('Бронь без батлера', `<select id="bb-res">${open.map(x =>
-          `<option value="${x.reservation_id}">${esc(x.unit)} · ${esc(x.guests.map(g => g.name).join(', '))}</option>`).join('')}</select>`)}
-          <button class="btn btn-primary" id="bb-assign-save">Назначить ${esc(row.name)}</button>` : '<p class="muted">Все гости дня уже с батлерами</p>';
+        render(open.length ? html`${fieldRow('Бронь без батлера', html`<select id="bb-res">${open.map(x =>
+          html`<option value=${x.reservation_id}>${x.unit} · ${x.guests.map(g => g.name).join(', ')}</option>`)}</select>`)}
+          <button class="btn btn-primary" id="bb-assign-save">Назначить ${row.name}</button>` : html`<p class="muted">Все гости дня уже с батлерами</p>`,
+        $('#bb-assign-box', m));
         const save = $('#bb-assign-save', m);
         if (save) save.onclick = async () => {
           try {
@@ -99,11 +109,11 @@ async function openReplace(rid, day, onChanged) {
   const got = await api(`/api/stays/coverage/candidates?day=${day}&reservation_id=${rid}`);
   openModal({
     title: `Замена на ${dateRu(day)}`,
-    body: got.map(c => `<div class="sb-line"><b>${esc(c.name)}</b>
-      <span class="muted">${c.knows_guest ? 'знает гостя · ' : ''}нагрузка ${staysWeight(c.load_after)}${c.note ? ' · ' + esc(c.note) : ''}</span>
-      <button class="btn btn-sm btn-primary" data-pick="${c.employee_id}">Назначить</button></div>`).join('')
-      || '<p class="muted">Свободных на смене в пределах лимита нет</p>',
-    footer: '<button class="btn btn-ghost" data-close>Закрыть</button>',
+    body: got.length ? got.map(c => html`<div class="sb-line"><b>${c.name}</b>
+      <span class="muted">${c.knows_guest ? 'знает гостя · ' : ''}нагрузка ${staysWeight(c.load_after)}${c.note ? ' · ' + c.note : ''}</span>
+      <button class="btn btn-sm btn-primary" data-pick=${c.employee_id}>Назначить</button></div>`)
+      : html`<p class="muted">Свободных на смене в пределах лимита нет</p>`,
+    footer: html`<button class="btn btn-ghost" data-close>Закрыть</button>`,
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       $$('[data-pick]', m).forEach(b => {
@@ -122,45 +132,45 @@ async function openReplace(rid, day, onChanged) {
 /* «Требуют внимания» — всем уровням: OOO дня и овербукинг (на уровне «занятость» — без гостей) */
 const DAY_TABS = [['arrivals', 'Заезды'], ['departures', 'Выезды'], ['in_house', 'Проживают'], ['attention', 'Требуют внимания']];
 
-function dayStatusHtml(r) {
+function dayStatus(r) {
+  const candidates = r.candidates?.length ? html` <span class="muted">кандидаты: ${r.candidates.map(c => c.name).join(', ')}</span>` : nothing;
   switch (r.cover_status) {
-    case 'covered': return `<span class="badge ok">${esc(r.covered.map(c => c.name + (c.guests.length ? ' — ' + c.guests.join(', ') : '')).join('; '))}</span>`;
-    case 'uncovered': return `<span class="badge danger">⚠ не назначено</span>${r.candidates?.length ? ` <span class="muted">кандидаты: ${esc(r.candidates.map(c => c.name).join(', '))}</span>` : ''}`;
-    case 'replacement': return `<span class="badge warn">↔ нужна подмена</span>${r.candidates?.length ? ` <span class="muted">кандидаты: ${esc(r.candidates.map(c => c.name).join(', '))}</span>` : ''}`;
-    case 'declined': return '<span class="badge muted">сопровождение: отказался</span>';
-    default: return '<span class="badge muted">не требуется</span>';
+    case 'covered': return html`<span class="badge ok">${r.covered.map(c => c.name + (c.guests.length ? ' — ' + c.guests.join(', ') : '')).join('; ')}</span>`;
+    case 'uncovered': return html`<span class="badge danger">⚠ не назначено</span>${candidates}`;
+    case 'replacement': return html`<span class="badge warn">↔ нужна подмена</span>${candidates}`;
+    case 'declined': return html`<span class="badge muted">сопровождение: отказался</span>`;
+    default: return html`<span class="badge muted">не требуется</span>`;
   }
 }
 
 /* почему сопровождение нужно / не нужно (§4.1): категория, узел, код, ◆, вручную */
-function dayReasonsHtml(r) {
-  return r.escort_reasons?.length ? `<div class="muted" data-db-reasons>${esc(r.escort_reasons.join(' · '))}</div>` : '';
-}
+const dayReasons = r => (r.escort_reasons?.length ? html`<div class="muted" data-db-reasons>${r.escort_reasons.join(' · ')}</div>` : nothing);
 
 /* OOO в «Требуют внимания»: начинается и/или заканчивается в этот день */
-function dayOooHtml(r) {
+function dayOoo(r, onClick) {
   const ev = r.events.map(e => (e === 'starts' ? 'начинается' : 'заканчивается')).join(' и ');
-  return `<div class="db-row db-ooo" data-db-ooo="${r.id}">
-    <div class="db-time"><span class="badge danger">OOO</span></div><div class="db-unit"><b>${esc(r.unit)}</b></div>
-    <div class="db-guests">${esc(r.title || 'без причины')}</div>
-    <div class="db-status">${esc(ev)} · ${esc(dateRu(r.start))} ${r.start_half === 'AM' ? 'с утра' : 'с вечера'} – ${esc(dateRu(r.end))} ${r.end_half === 'PM' ? 'до вечера' : 'до утра'}</div>
+  return html`<div class="db-row db-ooo" data-db-ooo=${r.id} @click=${onClick}>
+    <div class="db-time"><span class="badge danger">OOO</span></div><div class="db-unit"><b>${r.unit}</b></div>
+    <div class="db-guests">${r.title || 'без причины'}</div>
+    <div class="db-status">${ev} · ${dateRu(r.start)} ${r.start_half === 'AM' ? 'с утра' : 'с вечера'} – ${dateRu(r.end)} ${r.end_half === 'PM' ? 'до вечера' : 'до утра'}</div>
     <div class="db-det muted"></div></div>`;
 }
 
-function dayRowHtml(r, names) {
-  if (r.kind === 'ooo') return dayOooHtml(r);
-  const guests = names ? r.guests.map(g => `${staysGuestMark(g.special)}${esc(g.name)}${g.role === 'main' ? staysCodeTag(r.vip_code) : ''}`).join(', ')
-    + r.guests.filter(g => g.relatives?.length).map(g => staysRelativesHtml(g.relatives.map(x => ({ ...x, title: `${g.name}: ${x.title}` })))).join('')
+function dayRow(r, names, rerender) {
+  if (r.kind === 'ooo') return dayOoo(r, can('stays.edit') && names ? () => openOooForm(r, rerender) : nothing);
+  const guests = names
+    ? html`${r.guests.map((g, i) => html`${i ? ', ' : ''}${staysGuestMarkView(g.special)}${g.name}${g.role === 'main' ? staysCodeTagView(r.vip_code) : nothing}`)}${
+      r.guests.filter(g => g.relatives?.length).map(g => unsafeHTML(staysRelativesHtml(g.relatives.map(x => ({ ...x, title: `${g.name}: ${x.title}` })))))}`
     : `${r.guests_count} гост.`;
   const det = r.details ? [...r.details.logistics.map(l => `${l.time} ${l.description}`), ...r.details.companions.map(c => c.description),
     ...r.details.allergies.map(a => 'аллергия: ' + a)].filter(Boolean).join(' · ') : '';
-  return `<div class="db-row" data-db-row="${r.reservation_id}">
-    <div class="db-time">${esc(r.time)}</div><div class="db-unit"><b>${esc(r.unit)}</b>${r.overbooked ? ' <span class="badge danger">овербукинг</span>' : ''}</div>
-    <div class="db-guests">${guests}</div><div class="db-status">${names ? dayStatusHtml(r) + dayReasonsHtml(r) : esc(STAYS_STATUS[r.status] || r.status)}</div>
-    <div class="db-det muted">${esc(det)}</div></div>`;
+  return html`<div class="db-row" data-db-row=${r.reservation_id} @click=${names ? () => openReservationCard(r.reservation_id, rerender) : nothing}>
+    <div class="db-time">${r.time}</div><div class="db-unit"><b>${r.unit}</b>${r.overbooked ? html` <span class="badge danger">овербукинг</span>` : nothing}</div>
+    <div class="db-guests">${guests}</div><div class="db-status">${names ? html`${dayStatus(r)}${dayReasons(r)}` : STAYS_STATUS[r.status] || r.status}</div>
+    <div class="db-det muted">${det}</div></div>`;
 }
 
-async function renderDayBoard(body) {
+export async function renderDayBoard(body) {
   const fund = await staysFund();
   if (!boardState.day) boardState.day = staysToday();
   const f = staysState.filters;
@@ -173,39 +183,31 @@ async function renderDayBoard(body) {
   const names = data.visibility !== 'occupancy';
   const t = data.totals;
   const list = data[boardState.tab] || data.arrivals;
-  body.innerHTML = `
-    <div class="sb-toolbar">
-      <button class="btn btn-sm" id="db-prev">◀</button><input type="date" id="db-date" value="${esc(boardState.day)}">
-      <button class="btn btn-sm" id="db-next">▶</button><button class="btn btn-sm btn-ghost" id="db-today">Сегодня</button>
-    </div>
-    <div data-sf-slot></div>
-    <div class="db-sum">
-      <div>▲ Заезды <b>${t.arrivals}</b></div><div>▼ Выезды <b>${t.departures}</b></div><div>🏠 Проживают <b>${t.in_house}</b></div>
-      ${names ? `<div>🤵 Ведёт батлер <b>${t.covered}</b></div><div class="danger">⚠ Нужно, не назначено <b>${t.uncovered}</b></div>
-        <div class="warn">↔ Нужна подмена <b>${t.need_replacement}</b></div><div>— Не требуется <b>${t.not_required}</b></div>
-        <div data-db-special>◆ Особых гостей <b>${t.special}</b></div>` : ''}
-      <div>Не заехали <b>${t.no_show}</b></div>
-      ${t.overbooked ? `<div class="danger">Овербукинг <b>${t.overbooked}</b></div>` : ''}
-    </div>
-    <div class="layer-tabs">${DAY_TABS.map(([id, title]) => `<button class="btn btn-sm${boardState.tab === id ? ' btn-primary' : ''}" data-dtab="${id}">${esc(title)}
-      ${(data[id] || []).length}</button>`).join('')}</div>
-    <div class="db-list">${list.map(r => dayRowHtml(r, names)).join('') || '<div class="empty">Нет броней</div>'}</div>
-    ${boardState.tab === 'arrivals' && data.no_show.length ? `<h4>Не заехали</h4>${data.no_show.map(r =>
-      `<div class="db-row" data-db-row="${r.reservation_id}"><div class="db-unit">${esc(names ? r.number || '#' + r.reservation_id : 'бронь')}</div></div>`).join('')}` : ''}`;
   const rerender = () => renderDayBoard(body);
   const go = d => { boardState.day = d; rerender(); };
-  $('#db-prev', body).onclick = () => go(staysAddDays(boardState.day, -1));
-  $('#db-next', body).onclick = () => go(staysAddDays(boardState.day, 1));
-  $('#db-today', body).onclick = () => go(staysToday());
-  $('#db-date', body).onchange = e => go(e.target.value || staysToday());
-  $$('[data-dtab]', body).forEach(b => { b.onclick = () => { boardState.tab = b.dataset.dtab; rerender(); }; });
-  staysPanelInto(body, fund, rerender, { people: names });
-  if (names) {
-    $$('[data-db-row]', body).forEach(el => { el.onclick = () => openReservationCard(Number(el.dataset.dbRow), rerender); });
-    $$('[data-db-ooo]', body).forEach(el => {
-      el.onclick = () => { if (can('stays.edit')) openOooForm(list.find(x => x.kind === 'ooo' && x.id === Number(el.dataset.dbOoo)), rerender); };
-    });
-  }
+  render(html`
+    <div class="sb-toolbar">
+      <button class="btn btn-sm" id="db-prev" @click=${() => go(staysAddDays(boardState.day, -1))}>◀</button>
+      <input type="date" id="db-date" .value=${boardState.day} @change=${e => go(e.target.value || staysToday())}>
+      <button class="btn btn-sm" id="db-next" @click=${() => go(staysAddDays(boardState.day, 1))}>▶</button>
+      <button class="btn btn-sm btn-ghost" id="db-today" @click=${() => go(staysToday())}>Сегодня</button>
+    </div>
+    ${staysFilterView(fund, rerender, { people: names })}
+    <div class="db-sum">
+      <div>▲ Заезды <b>${t.arrivals}</b></div><div>▼ Выезды <b>${t.departures}</b></div><div>🏠 Проживают <b>${t.in_house}</b></div>
+      ${names ? html`<div>🤵 Ведёт батлер <b>${t.covered}</b></div><div class="danger">⚠ Нужно, не назначено <b>${t.uncovered}</b></div>
+        <div class="warn">↔ Нужна подмена <b>${t.need_replacement}</b></div><div>— Не требуется <b>${t.not_required}</b></div>
+        <div data-db-special>◆ Особых гостей <b>${t.special}</b></div>` : nothing}
+      <div>Не заехали <b>${t.no_show}</b></div>
+      ${t.overbooked ? html`<div class="danger">Овербукинг <b>${t.overbooked}</b></div>` : nothing}
+    </div>
+    <div class="layer-tabs">${DAY_TABS.map(([id, title]) => html`<button class="btn btn-sm${boardState.tab === id ? ' btn-primary' : ''}" data-dtab=${id}
+      @click=${() => { boardState.tab = id; rerender(); }}>${title}
+      ${(data[id] || []).length}</button>`)}</div>
+    <div class="db-list">${list.length ? list.map(r => dayRow(r, names, rerender)) : html`<div class="empty">Нет броней</div>`}</div>
+    ${boardState.tab === 'arrivals' && data.no_show.length ? html`<h4>Не заехали</h4>${data.no_show.map(r =>
+      html`<div class="db-row" data-db-row=${r.reservation_id} @click=${names ? () => openReservationCard(r.reservation_id, rerender) : nothing}>
+        <div class="db-unit">${names ? r.number || '#' + r.reservation_id : 'бронь'}</div></div>`)}` : nothing}`, mount(body));
 }
 
 /* ─────────────── Сводная загрузка (§6.1) ─────────────── */
@@ -217,9 +219,10 @@ const OC_ROWS = [['total', 'Всего объектов'], ['living', 'Прож�
 /* «OOO» и «Блоки» — по половинкам: ночь занята, если занята половинка PM дня (часть 2 §6); «Свободно»
    без нижней границы 0 — отрицательное значение это овербукинг */
 
-function ocHeat(pct) { return pct == null ? '' : pct >= 1 ? 'heat3' : pct >= 0.8 ? 'heat2' : pct >= 0.5 ? 'heat1' : ''; }
+const ocHeat = pct => (pct == null ? '' : pct >= 1 ? 'heat3' : pct >= 0.8 ? 'heat2' : pct >= 0.5 ? 'heat1' : '');
+const ocIsOpen = key => staysState.ocOpen[key] ?? key === 'total';
 
-async function renderOccupancyGrid(body) {
+export async function renderOccupancyGrid(body) {
   const fund = await staysFund();
   const { first, last } = staysMonthRange();
   const q = staysFundParams(new URLSearchParams({ first, last }));
@@ -228,72 +231,61 @@ async function renderOccupancyGrid(body) {
   const data = await api('/api/stays/occupancy?' + q, { silent: true });
   if (!fresh()) return;
   const rerender = () => renderOccupancyGrid(body);
-  body.innerHTML = `
+  const draw = () => render(html`
     <div class="sb-toolbar">
-      ${staysMonthNav()}
+      ${staysMonthNavView(body, rerender)}
       <span class="oc-modes">${[['pct', '%'], ['count', 'штуки']].map(([m, t]) =>
-        `<button class="btn btn-sm${staysState.ocMode === m ? ' btn-primary' : ''}" data-oc-mode="${m}">${esc(t)}</button>`).join('')}</span>
+        html`<button class="btn btn-sm${staysState.ocMode === m ? ' btn-primary' : ''}" data-oc-mode=${m}
+          @click=${() => { staysState.ocMode = m; draw(); }}>${t}</button>`)}</span>
       <span class="muted">цвет: от 50 % · от 80 % · 100 % и больше</span>
     </div>
-    <div data-sf-slot></div>
-    <div class="sb-grid bb-grid oc-grid" style="--days:${data.days.length}"></div>`;
-  /* поиск и VIP к загрузке не применяются: в ней нет данных гостей (§6.1) */
-  staysPanelInto(body, fund, rerender, { people: false });
-  const grid = $('.oc-grid', body);
-  const paint = () => { grid.innerHTML = ocGridHtml(data); };
-  paint();
-  staysBindMonthNav(body, rerender);
-  $$('[data-oc-mode]', body).forEach(b => {
-    b.onclick = () => {
-      staysState.ocMode = b.dataset.ocMode;
-      $$('[data-oc-mode]', body).forEach(x => x.classList.toggle('btn-primary', x === b));
-      paint();
-    };
-  });
-  grid.onclick = e => {
+    <!-- поиск и VIP к загрузке не применяются: в ней нет данных гостей (§6.1) -->
+    ${staysFilterView(fund, rerender, { people: false })}
+    <div class="sb-grid bb-grid oc-grid" style=${`--days:${data.days.length}`} @click=${gridClick}>${ocGrid(data)}</div>`, mount(body));
+  const gridClick = e => {
     const tog = e.target.closest('[data-oc-toggle]');
     if (tog) {
       const key = tog.dataset.ocToggle;
       staysState.ocOpen[key] = !ocIsOpen(key);
-      paint();
+      draw();
       return;
     }
     const cell = e.target.closest('[data-oc-living]');
     if (cell) staysOpenNodeDay(cell.dataset.ocNode, cell.dataset.day);
   };
+  draw();
   staysFocusDay(body);
 }
 
-function ocIsOpen(key) { return staysState.ocOpen[key] ?? key === 'total'; }
-
-function ocGridHtml(data) {
+function ocGrid(data) {
   const today = staysToday();
   const count = staysState.ocMode === 'count';
-  const nodeHtml = (n, key) => {
+  const nodeView = (n, key) => {
     const name = n.path[n.path.length - 1] || '';
     const sub = n.path.slice(0, -1).join(' / ');
     const isOpen = ocIsOpen(key);
-    const label = (extra) => `<div class="sb-unit"><button class="oc-name" data-oc-toggle="${esc(key)}" title="Свернуть / развернуть">
-      ${isOpen ? '▾' : '▸'} ${esc(name)}</button>${sub ? `<small>${esc(sub)}</small>` : ''}${extra ? `<small>${esc(extra)}</small>` : ''}</div>`;
+    const label = extra => html`<div class="sb-unit"><button class="oc-name" data-oc-toggle=${key} title="Свернуть / развернуть">
+      ${isOpen ? '▾' : '▸'} ${name}</button>${sub ? html`<small>${sub}</small>` : nothing}${extra ? html`<small>${extra}</small>` : nothing}</div>`;
     /* «Проживают» узла ведёт в шахматку объектов; «Без группы» фильтром «Где» не выбрать */
     const node = key === 'total' ? '' : n.group_id == null ? null : String(n.group_id);
     if (!isOpen) {
-      return `<div class="oc-node" data-oc-group="${esc(key)}"><div class="bb-row oc-line">${label('загрузка')}
-        ${n.days.map(x => `<div class="oc-cell ${ocHeat(x.pct)}" title="занято (проживают + блоки) / доступно (всего − OOO)">${count
-          ? `${x.living + x.blocks}/${x.total - x.ooo}` : (x.pct == null ? '—' : Math.round(x.pct * 100) + '%')}</div>`).join('')}</div></div>`;
+      return html`<div class="oc-node" data-oc-group=${key}><div class="bb-row oc-line">${label('загрузка')}
+        ${n.days.map(x => html`<div class="oc-cell ${ocHeat(x.pct)}" title="занято (проживают + блоки) / доступно (всего − OOO)">${count
+          ? `${x.living + x.blocks}/${x.total - x.ooo}` : (x.pct == null ? '—' : Math.round(x.pct * 100) + '%')}</div>`)}</div></div>`;
     }
-    return `<div class="oc-node" data-oc-group="${esc(key)}">${OC_ROWS.map(([field, title], i) => `<div class="bb-row oc-line">
-      ${i === 0 ? label(title) : `<div class="sb-unit oc-sub">${esc(title)}</div>`}
+    return html`<div class="oc-node" data-oc-group=${key}>${OC_ROWS.map(([field, title], i) => html`<div class="bb-row oc-line">
+      ${i === 0 ? label(title) : html`<div class="sb-unit oc-sub">${title}</div>`}
       ${n.days.map((x, d) => (field === 'living'
-        ? `<div class="oc-cell ${ocHeat(x.pct)}"${node != null ? ` data-oc-living data-oc-node="${esc(node)}" data-day="${esc(data.days[d])}"` : ''}
-            title="${x.pct == null ? 'загрузка —' : 'загрузка ' + Math.round(x.pct * 100) + '%'}">${x.living}</div>`
+        ? html`<div class="oc-cell ${ocHeat(x.pct)}" data-oc-living=${node != null ? '' : nothing} data-oc-node=${node != null ? node : nothing}
+            data-day=${node != null ? data.days[d] : nothing}
+            title=${x.pct == null ? 'загрузка —' : 'загрузка ' + Math.round(x.pct * 100) + '%'}>${x.living}</div>`
         : field === 'free' && x.free < 0
-          ? `<div class="oc-cell oc-neg" title="овербукинг: броней и блоков больше, чем свободных объектов">${x.free}</div>`
-          : `<div class="oc-cell">${x[field]}</div>`)).join('')}</div>`).join('')}</div>`;
+          ? html`<div class="oc-cell oc-neg" title="овербукинг: броней и блоков больше, чем свободных объектов">${x.free}</div>`
+          : html`<div class="oc-cell">${x[field]}</div>`))}</div>`)}</div>`;
   };
-  return `<div class="bb-row sb-head oc-head"><div class="sb-unit">Узел</div>${data.days.map(d => staysDayHead(d, today)).join('')}</div>
-    ${data.nodes.length ? nodeHtml(data.total, 'total') + data.nodes.map(n => nodeHtml(n, n.group_id == null ? 'none' : String(n.group_id))).join('')
-    : '<div class="empty">Фонд пуст</div>'}`;
+  return html`<div class="bb-row sb-head oc-head"><div class="sb-unit">Узел</div>${data.days.map(d => staysDayHeadView(d, today))}</div>
+    ${data.nodes.length ? html`${nodeView(data.total, 'total')}${data.nodes.map(n => nodeView(n, n.group_id == null ? 'none' : String(n.group_id)))}`
+      : html`<div class="empty">Фонд пуст</div>`}`;
 }
 
 /* клик по «Проживают» (§6.1): шахматка объектов узла, раздел узла развёрнут, докрутка к дню */
@@ -315,23 +307,9 @@ function staysOpenNodeDay(node, day) {
 
 /* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
 Object.assign(globalThis, {
-  STAYS_DUTY,
-  STAYS_WARN,
   boardState,
   renderButlersBoard,
-  openButlerDay,
-  openReplace,
-  DAY_TABS,
-  dayStatusHtml,
-  dayReasonsHtml,
-  dayOooHtml,
-  dayRowHtml,
   renderDayBoard,
-  OC_ROWS,
-  ocHeat,
   renderOccupancyGrid,
-  ocIsOpen,
-  ocGridHtml,
-  staysOpenNodeDay,
 });
 /* ── конец моста ── */

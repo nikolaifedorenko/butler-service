@@ -1,0 +1,164 @@
+/* «Шахматка», основные виды (шаг 6д-1): объекты, батлеры, табло дня, загрузка, брони. */
+import { expect, test } from '@playwright/test';
+import { login, watchErrors } from './helpers.mjs';
+
+const open = (page, view) => page.evaluate(v => window.navigate(v), view);
+const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
+
+test('вкладки по правам и шахматка объектов: сетка, разделы дерева, сортировка', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const view = page.locator('#view-stays');
+  expect(await view.locator('[data-stab]').count()).toBeGreaterThanOrEqual(6);
+  await expect(view.locator('[data-stab].btn-primary')).toHaveText('Объекты');
+  await expect(view.locator('.sb-grid')).toBeVisible();
+  await expect(view.locator('#stays-body')).not.toContainText('Загрузка…');
+  await expect(view.locator('.sf-panel')).toBeVisible();
+  const rows = await view.locator('[data-unit-row]').count();
+  expect(rows).toBeGreaterThan(5);
+  expect(await view.locator('.sb-head [data-day]').count()).toBeGreaterThanOrEqual(28);
+  expect(await view.locator('.sb-bar').count()).toBeGreaterThan(0);
+  // раздел дерева сворачивается и разворачивается
+  const sec = view.locator('[data-sec][data-open="1"]').first();
+  const name = await sec.locator('span').textContent();
+  await sec.click();
+  await expect(view.locator('[data-sec]', { hasText: name.replace(/^[▾▸]\s*/, '') }).first()).toHaveAttribute('data-open', '0');
+  expect(await view.locator('[data-unit-row]').count()).toBeLessThan(rows);
+  // сортировка без нового запроса
+  await view.locator('#sb-sort').selectOption('label');
+  await expect(view.locator('#sb-sort')).toHaveValue('label');
+  await view.locator('#sb-grouped').uncheck();
+  await expect(view.locator('[data-sec]')).toHaveCount(0);
+  // листание месяца и «Сегодня»
+  const label = (await view.locator('#sm-label').textContent()).trim();
+  await view.locator('#sm-next').click();
+  await expect(view.locator('#sm-label')).not.toHaveText(label);
+  await expect(view.locator('.sb-grid')).toBeVisible();
+  await view.locator('#sm-today').click();
+  await expect(view.locator('#sm-label')).toHaveText(label);
+  expect(errors).toEqual([]);
+});
+
+test('панель фильтров: поиск не теряет фокус и текст, фильтр по категории сужает, «Сбросить»', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const view = page.locator('#view-stays');
+  await expect(view.locator('.sb-grid')).toBeVisible();
+  const total = await view.locator('[data-unit-row]').count();
+  // поиск: фокус и каретка остаются в поле после перерисовки вида
+  const q = view.locator('#sf-q');
+  await q.click();
+  await page.keyboard.type('Орлов', { delay: 60 });
+  await page.waitForTimeout(900);
+  await expect(q).toBeFocused();
+  await expect(q).toHaveValue('Орлов');
+  await expect(view.locator('.sb-grid')).toBeVisible();
+  await view.locator('#sf-reset').click();
+  await expect(q).toHaveValue('');
+  // категория
+  await view.locator('[data-sf-dd=cat] summary').click();
+  const first = view.locator('[data-sf-cat]').first();
+  await first.check();
+  await expect.poll(async () => view.locator('[data-unit-row]').count()).toBeLessThan(total);
+  await expect(view.locator('[data-sf-dd=cat] summary b')).not.toHaveText('все');
+  await view.locator('#sf-reset').click();
+  await expect.poll(async () => view.locator('[data-unit-row]').count()).toBe(total);
+  expect(errors).toEqual([]);
+});
+
+test('сохранённые наборы фильтров: сохранить, выбрать, удалить', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const view = page.locator('#view-stays');
+  await expect(view.locator('.sf-panel')).toBeVisible();
+  await view.locator('[data-sf-dd=cat] summary').click();
+  await view.locator('[data-sf-cat]').first().check();
+  await expect(view.locator('[data-sf-dd=cat] summary b')).not.toHaveText('все');   // вид перерисован — панель знает фильтр
+  await view.locator('#sf-save-name').fill('мой набор');
+  await view.locator('#sf-save').click();
+  await expect(view.locator('#sf-saved option[value="мой набор"]')).toBeAttached();
+  await view.locator('#sf-reset').click();
+  await view.locator('#sf-saved').selectOption('мой набор');
+  await expect(view.locator('[data-sf-dd=cat] summary b')).not.toHaveText('все');
+  await view.locator('#sf-del').click();
+  await expect(view.locator('#sf-saved option[value="мой набор"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('батлеры, табло дня и загрузка: сетки, счётчики, переходы', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const view = page.locator('#view-stays');
+  await tab(page, 'butlers').click();
+  await expect(view.locator('.bb-grid')).toBeVisible();
+  await expect(view.locator('#stays-body')).toContainText('лимит нагрузки');
+  // день батлера открывается окном
+  const cell = view.locator('[data-bb-emp]').first();
+  if (await cell.count()) {
+    await cell.click();
+    await expect(page.locator('#modal .modal-head h3')).toContainText('·');
+    await page.locator('#modal [data-close]').click();
+  }
+  await tab(page, 'day').click();
+  await expect(view.locator('.db-sum')).toBeVisible();
+  await expect(view.locator('[data-dtab]')).toHaveCount(4);
+  const date = await view.locator('#db-date').inputValue();
+  await view.locator('#db-prev').click();
+  await expect(view.locator('#db-date')).not.toHaveValue(date);
+  await view.locator('#db-today').click();
+  await expect(view.locator('#db-date')).toHaveValue(date);
+  await view.locator('[data-dtab=in_house]').click();
+  await expect(view.locator('[data-dtab=in_house]')).toHaveClass(/btn-primary/);
+  await tab(page, 'occupancy').click();
+  await expect(view.locator('.oc-grid')).toBeVisible();
+  await expect(view.locator('[data-oc-toggle]').first()).toBeVisible();
+  await view.locator('[data-oc-mode=count]').click();
+  await expect(view.locator('[data-oc-mode=count]')).toHaveClass(/btn-primary/);
+  await view.locator('[data-oc-toggle]').first().click();            // свернуть узел «Итого»
+  await expect(view.locator('.oc-grid .oc-line').first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('«Брони»: список, сортировка, свой период, карточка брони', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const view = page.locator('#view-stays');
+  await tab(page, 'bookings').click();
+  await expect(view.locator('#bk-total')).toContainText('Найдено броней');
+  expect(await view.locator('tr.bk-row').count()).toBeGreaterThan(0);
+  // сортировка по клику на заголовок: стрелка показывает направление
+  await view.locator('th[data-bk-sort=number]').click();
+  await expect(view.locator('th[data-bk-sort=number]')).toContainText('↑');
+  await view.locator('th[data-bk-sort=number]').click();
+  await expect(view.locator('th[data-bk-sort=number]')).toContainText('↓');
+  // свой период: появляются поля дат
+  await view.locator('#bk-period').selectOption('custom');
+  await expect(view.locator('#bk-first')).toBeVisible();
+  await expect(view.locator('#bk-last')).toBeVisible();
+  // карточка брони по клику на строку
+  await view.locator('#bk-period').selectOption('month');
+  await view.locator('#bk-mode').selectOption('stay');
+  const row = view.locator('tr.bk-row').first();
+  await row.click();
+  await expect(page.locator('#modal .modal-head h3')).toContainText('Бронь');
+  await expect(page.locator('#modal')).toContainText('История изменений');
+  await page.locator('#modal [data-close]').click();
+  expect(errors).toEqual([]);
+});
+
+test('«Шахматка» и «Мои гости» под ролями; стирание раздела снаружи не ломает загрузку', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'rukovod');
+  await open(page, 'stays');
+  await expect(page.locator('#view-stays .sb-grid')).toBeVisible();
+  await page.evaluate(() => document.querySelectorAll('.view').forEach(v => { v.innerHTML = ''; }));
+  await open(page, 'stays');
+  await expect(page.locator('#view-stays .sb-grid')).toBeVisible();
+  await expect(page.locator('#view-stays [data-stab]').first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

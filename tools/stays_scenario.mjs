@@ -151,17 +151,23 @@ async function openMonth(iso, tab = 'units') {
   return waitFor(() => !!$(`#stays-body .sb-head [data-day="${iso.slice(0, 8)}01"]`));
 }
 /* фильтр меняет разметку целиком: ждём новую (иначе следующий шаг уйдёт в старую панель) */
+/* вид на шаблонах lit не пересоздаёт панель фильтров (поле поиска живёт между перерисовками), поэтому
+   «перерисовалось» — это «запросы закончились»: выдерживаем паузу и ждём, пока спиннер скрыт */
+async function idle() {
+  await sleep(300);
+  return waitFor(() => $('#loading')?.classList.contains('hidden') !== false);
+}
 async function setCheck(sel, on) {
   const el = $(sel);
   if (!el) return false;
   el.checked = on;
   change(el);
-  return waitFor(() => $(sel) && $(sel) !== el);
+  return idle();
 }
 async function resetFilters() {
   const old = $('#sf-reset');
   click(old);
-  return waitFor(() => $('#sf-reset') && $('#sf-reset') !== old);
+  return idle();
 }
 
 /* Категория с объектами — черновиком фонда с сегодня и публикацией (старый CRUD /categories,
@@ -584,14 +590,14 @@ async function savedFilters() {
     && ($('#sf-q')?.value ?? '') === '');
   /* «перезагрузка»: память раздела сброшена, набор читается из хранилища */
   window.eval('staysState.filters = staysEmptyFilters(); staysState.fund = null;');
-  const before = $('.sf-panel');
   window.navigate('stays');
-  await waitFor(() => $('.sf-panel') && $('.sf-panel') !== before && $(`[data-sf-group="${villas.id}"]`));
+  await idle();
+  await waitFor(() => $('.sf-panel') && $(`[data-sf-group="${villas.id}"]`));
   check('после перезагрузки набор — в списке', $$('#sf-saved option').some(o => o.value === name));
   check('после перезагрузки фильтр пуст', $(`[data-sf-group="${villas.id}"]`)?.checked === false);
   const old = $('#sf-saved');
   change(old, name);
-  await waitFor(() => $('#sf-saved') && $('#sf-saved') !== old);
+  await idle();
   check('выбранный набор применён (без поиска)', $(`[data-sf-group="${villas.id}"]`)?.checked === true
     && $('#sf-q').value === ''
     && $$('#view-stays [data-unit-row]').every(r => r.dataset.root === String(villas.id)));
@@ -602,9 +608,9 @@ async function savedFilters() {
   window.eval(`Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('denied'); } })`);
   check('без хранилища — пустой список наборов', window.eval('staysSavedFilters().length') === 0
     && window.eval('staysSaveFilter("x", staysEmptyFilters())') === false);
-  const prev = $('.sf-panel');
   window.navigate('stays');
-  check('без хранилища — панель фильтров на месте', await waitFor(() => $('.sf-panel') && $('.sf-panel') !== prev
+  await idle();
+  check('без хранилища — панель фильтров на месте', await waitFor(() => $('.sf-panel')
     && !!$('#view-stays [data-unit-row]')));
   window.eval('delete window.localStorage');
 }
@@ -1171,7 +1177,7 @@ async function bookingsTab() {
   check('вкладка «Брони» есть', !!$('#view-stays [data-stab="bookings"]'));
   click($('#view-stays [data-stab="bookings"]'));
   check('вкладка «Брони» отрисована', await waitFor(() => !!$('#bk-total')));
-  const rerendered = async (sel, act) => { const old = $(sel); act(); return waitFor(() => $(sel) && $(sel) !== old); };
+  const rerendered = async (sel, act) => { act(); await idle(); return !!$(sel); };   // шаблоны lit не пересоздают элементы
   check('свой период', await rerendered('#bk-period', () => change($('#bk-period'), 'custom')) && !!$('#bk-first'));
   await rerendered('#bk-first', () => change($('#bk-first'), day(30)));
   check('конец периода ограничен 366 днями', $('#bk-last').max === day(30 + 365));
