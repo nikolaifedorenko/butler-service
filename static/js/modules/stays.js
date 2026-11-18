@@ -12,8 +12,14 @@ import { can, registerModule } from '../app.js';
 import {
   $, $$, api, closeModal, dateRu, downloadBlob, esc, loadGenerationFor, MONTHS, openModal, state, todayISO, toast, WD_SHORT,
 } from '../core.js';
-import { html, mount, nothing, render, unsafeHTML } from '../ui/html.js';
+import { html, mount, nothing, render } from '../ui/html.js';
 import { renderBookings } from './stays_bookings.js';
+import { renderGuestsTab } from './stays_guests.js';
+import { renderFamilyTree } from './stays_family.js';
+import {
+  STAYS_COMPANION, openCoverageForm, openGroupForm, openGuestCard, openReservationForm, openStatusForm, openTransferForm,
+  relativesView,
+} from './stays_forms.js';
 import { renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
 import { filterPanelTemplate, staysFilterPanel, staysSearchState, STAYS_SORTS, staysSortRows } from './stays_filters.js';
 
@@ -397,7 +403,7 @@ export async function openReservationCard(rid, onChanged) {
   const diffText = diff => Object.entries(diff || {}).map(([k, [a, b]], i) =>
     html`${i ? html`<br>` : nothing}${k}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
   /* родственники — разметку собирает файл семейного дерева, который ещё не переехал */
-  const relatives = rel => unsafeHTML(staysRelativesHtml(rel));
+  const relatives = relativesView;
   openModal({
     title: `Бронь ${card.number || '#' + card.id}`, wide: true,
     subtitle: `${card.status_title} · ${dateRu(card.check_in)}–${dateRu(card.check_out)}`,

@@ -3,46 +3,53 @@
    кнопка «Проверить» отправляет то же тело с ?preview=1 и показывает, куда встанет
    бронь, какие чужие брони сдвинутся и какие предупреждения появятся или исчезнут;
    «Сохранить» отправляет то же тело без preview.
-   Использует хелперы app.js: $ $$ esc api openModal closeModal toast dateRu.
+   Модуль на lit-html (ADR-0013, раздел 7): тела окон — шаблоны, списки форм перерисовываются
+   через render(); значения из полей читаются при отправке, как и прежде.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-const STAYS_ROLE = { main: 'главный', guest: 'проживает' };
-const STAYS_STATUS = { tentative: 'предварительная', confirmed: 'подтверждена', in_house: 'заселён',
+import { can } from '../app.js';
+import { $, $$, api, closeModal, dateRu, openModal, toast } from '../core.js';
+import { html, nothing, render } from '../ui/html.js';
+import { checkField, fieldRow, optionView, textInput } from '../ui/form.js';
+import { renderFamilyTree } from './stays_family.js';
+import {
+  STAYS_ESCORT_MODE, STAYS_SPECIAL_MARK, staysAddDays, staysFund, staysToday, staysWeight,
+} from './stays.js';
+
+export const STAYS_ROLE = { main: 'главный', guest: 'проживает' };
+export const STAYS_STATUS = { tentative: 'предварительная', confirmed: 'подтверждена', in_house: 'заселён',
   checked_out: 'выехал', cancelled: 'отменена', no_show: 'не заехал' };
 
-const STAYS_COMPANION = { security: 'охрана', driver: 'водитель', nanny: 'няня', pet: 'животное', other: 'другое' };
+export const STAYS_COMPANION = { security: 'охрана', driver: 'водитель', nanny: 'няня', pet: 'животное', other: 'другое' };
 /* кем выбранный гость приходится открытому; семейные связи — только «родитель» (parent) и «супруг»
    (spouse, former — бывшие): их подписи нужны предпросмотру объединения, правятся они в дереве
    (stays_family.js), остальное родство вычисляет сервер (§4) */
-const STAYS_LINK = { spouse: 'супруг(а)', spouse_former: 'бывший(ая) супруг(а)', parent: 'ребёнок',
+export const STAYS_LINK = { spouse: 'супруг(а)', spouse_former: 'бывший(ая) супруг(а)', parent: 'ребёнок',
   relative: 'родственник', assistant: 'ассистент', security: 'охрана', driver: 'водитель', nanny: 'няня',
   colleague: 'коллега', other: 'другое' };
-const STAYS_GENDER = { '': 'не указан', m: 'мужской', f: 'женский' };
+export const STAYS_GENDER = { '': 'не указан', m: 'мужской', f: 'женский' };
 /* семейные связи правятся в дереве (stays_family.js); в «Прочих связях» карточки — остальные виды */
 const STAYS_FAMILY_LINK = new Set(['spouse', 'spouse_former', 'parent']);
 
 /* родственники среди проживающих (§4): «мать — Петрова М.» */
-function staysRelativesHtml(rel) {
-  return rel?.length ? `<div class="muted">${rel.map(x => `${esc(x.title)} — ${esc(x.name)}`).join(', ')}</div>` : '';
-}
+export const relativesView = rel => (rel?.length ? html`<div class="muted">${rel.map((x, i) => html`${i ? ', ' : ''}${x.title} — ${x.name}`)}</div>` : nothing);
 
-/* настраиваемые поля (§3.5): элемент ввода по типу поля; attr — data-атрибут с кодом */
-function staysFieldInputs(defs, values, attr) {
-  return defs.map(f => {
-    const v = values?.[f.code];
-    let control;
-    if (f.kind === 'choice') {
-      control = `<select ${attr}="${esc(f.code)}"><option value="">—</option>${f.choices.map(c =>
-        `<option value="${esc(c)}"${c === v ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
-    } else if (f.kind === 'bool') {
-      control = `<input type="checkbox" ${attr}="${esc(f.code)}"${v ? ' checked' : ''}>`;
-    } else {
-      control = `<input type="${f.kind === 'date' ? 'date' : 'text'}" ${attr}="${esc(f.code)}" value="${esc(String(v ?? ''))}">`;
-    }
-    return sfRow(f.title, control);
-  }).join('');
+/* настраиваемые поля (§3.5): элемент ввода по типу поля; attr — data-атрибут с кодом (у двух форм — свой) */
+function fieldControl(f, v, attr) {
+  const rf = attr === 'data-rf-field';
+  if (f.kind === 'choice') {
+    const options = html`<option value="">—</option>${f.choices.map(c => html`<option value=${c} ?selected=${c === v}>${c}</option>`)}`;
+    return rf ? html`<select data-rf-field=${f.code}>${options}</select>` : html`<select data-gf-field=${f.code}>${options}</select>`;
+  }
+  if (f.kind === 'bool') {
+    return rf ? html`<input type="checkbox" data-rf-field=${f.code} .checked=${!!v}>` : html`<input type="checkbox" data-gf-field=${f.code} .checked=${!!v}>`;
+  }
+  const type = f.kind === 'date' ? 'date' : 'text';
+  return rf ? html`<input type=${type} data-rf-field=${f.code} .value=${String(v ?? '')}>`
+    : html`<input type=${type} data-gf-field=${f.code} .value=${String(v ?? '')}>`;
 }
+const fieldInputs = (defs, values, attr) => defs.map(f => fieldRow(f.title, fieldControl(f, values?.[f.code], attr)));
 function staysFieldValues(m, attr) {
   const out = {};
   $$(`[${attr}]`, m).forEach(el => {
@@ -52,40 +59,45 @@ function staysFieldValues(m, attr) {
   return out;
 }
 
-function renderPreview(diff, el, refused) {
+/* картина «что изменится»; extra — шаблон, который форма ставит перед списком (смена VIP-кода и т. п.) */
+export function renderPreview(diff, el, refused, extra) {
   const items = [];
   // новый овербукинг без права «Овербукинг»: сохранение будет отклонено (409)
-  if (refused) items.push(`<li class="sp-warn"><b>Не сохранится:</b> ${esc(refused)}</li>`);
+  if (refused) items.push(html`<li class="sp-warn"><b>Не сохранится:</b> ${refused}</li>`);
   (diff.moved || []).forEach(m => {
     const who = m.new ? 'Новая бронь' : `Бронь ${m.number || '#' + m.reservation_id}`;
     // seg_index — сегмент; since — дата части сегмента за границей версии фонда
     const seg = (m.seg_index ? ` (сегмент ${m.seg_index + 1})` : '') + (m.since ? ` с ${dateRu(m.since)}` : '');
-    items.push(`<li>${esc(who)}${esc(seg)}: ${esc(m.from_label || 'без объекта')} → <b>${esc(m.to_label || 'без объекта')}</b></li>`);
+    items.push(html`<li>${who}${seg}: ${m.from_label || 'без объекта'} → <b>${m.to_label || 'без объекта'}</b></li>`);
   });
-  (diff.warnings_added || []).forEach(w => items.push(`<li class="sp-warn">⚠ ${esc(w.text)}</li>`));
-  (diff.warnings_removed || []).forEach(w => items.push(`<li class="sp-ok">✓ снято: ${esc(w.text)}</li>`));
-  (diff.coverage_changes || []).forEach(c => items.push(`<li>${esc(dateRu(c.day))} · ${esc(c.employee || '')}: ${c.gained?.length ? `+${esc(c.gained.join(', '))}` : ''} ${c.lost?.length ? `−${esc(c.lost.join(', '))}` : ''}</li>`));
-  (diff.load_changes || []).forEach(c => items.push(`<li class="${c.after > c.limit ? 'sp-warn' : ''}">${esc(dateRu(c.day))} · ${esc(c.employee || '')}: нагрузка ${staysWeight(c.before)} → ${staysWeight(c.after)} из ${staysWeight(c.limit)}</li>`));
-  el.innerHTML = `<div class="sp-head">Что изменится</div>${items.length ? `<ul>${items.join('')}</ul>`
-    : '<div class="muted">Размещение и предупреждения не меняются</div>'}`;
+  (diff.warnings_added || []).forEach(w => items.push(html`<li class="sp-warn">⚠ ${w.text}</li>`));
+  (diff.warnings_removed || []).forEach(w => items.push(html`<li class="sp-ok">✓ снято: ${w.text}</li>`));
+  (diff.coverage_changes || []).forEach(c => items.push(html`<li>${dateRu(c.day)} · ${c.employee || ''}: ${c.gained?.length ? `+${c.gained.join(', ')}` : ''} ${c.lost?.length ? `−${c.lost.join(', ')}` : ''}</li>`));
+  (diff.load_changes || []).forEach(c => items.push(html`<li class=${c.after > c.limit ? 'sp-warn' : ''}>${dateRu(c.day)} · ${c.employee || ''}: нагрузка ${staysWeight(c.before)} → ${staysWeight(c.after)} из ${staysWeight(c.limit)}</li>`));
+  render(html`${extra || nothing}<div class="sp-head">Что изменится</div>${items.length ? html`<ul>${items}</ul>`
+    : html`<div class="muted">Размещение и предупреждения не меняются</div>`}`, el);
 }
 
-/* одна точка для всех форм: preview → картина; save → то же тело без preview */
-function previewThenSave({ url, method, body, out }) {
+/* одна точка для всех форм: preview → картина; save → то же тело без preview;
+   extra(r) — дополнение к картине по ответу сервера */
+export function previewThenSave({ url, method, body, out, extra }) {
   return {
     async preview() {
       const r = await api(`${url}${url.includes('?') ? '&' : '?'}preview=1`, { method, body: body() });
-      renderPreview(r.diff || {}, out(), r.overbook_refused);
+      renderPreview(r.diff || {}, out(), r.overbook_refused, extra?.(r));
       return r;
     },
     async save() { return api(url, { method, body: body() }); },
   };
 }
 
-function staysFormFoot() {
+/* подвал форм: строкой — для файлов раздела, которые ещё не переехали на шаблоны; шаблоном — для новых */
+export function staysFormFoot() {
   return `<button class="btn btn-ghost" data-close>Отмена</button>
     <button class="btn" id="rf-preview">Проверить</button><button class="btn btn-primary" data-save>Сохранить</button>`;
 }
+const formFootView = () => html`<button class="btn btn-ghost" data-close>Отмена</button>
+    <button class="btn" id="rf-preview">Проверить</button><button class="btn btn-primary" data-save>Сохранить</button>`;
 function staysBindFoot(m, flow, onSaved, okText) {
   $('[data-close]', m).onclick = closeModal;
   const check = $('#rf-preview', m);        // у форм без предпросмотра (новый гость) кнопки «Проверить» нет
@@ -99,7 +111,7 @@ function staysBindFoot(m, flow, onSaved, okText) {
    (новый овербукинг без права stays.overbook) или сервер ответил 409 с этим же текстом; любая
    правка полей снимает запрет — предпросмотр устарел. done(результат) — что делать после записи
    (по умолчанию закрыть окно и обновить вид). */
-function staysBindGatedFoot(m, flow, { onSaved, okText = 'Готово', out, done }) {
+export function staysBindGatedFoot(m, flow, { onSaved, okText = 'Готово', out, done }) {
   const save = $('[data-save]', m);
   const gate = text => { save.disabled = !!text; save.title = text || ''; };
   $('[data-close]', m).onclick = closeModal;
@@ -126,7 +138,7 @@ function staysBindGatedFoot(m, flow, { onSaved, okText = 'Готово', out, do
 }
 
 /* ─────────────── Бронь ─────────────── */
-async function openReservationForm(id, opts = {}) {
+export async function openReservationForm(id, opts = {}) {
   /* opts.mine — батлер дополняет свою бронь: даты, объект, категория, метка, заказчик и главный
      гость заперты (сервер всё равно проверяет, stays.mine_res_edit) */
   const fund = await staysFund();
@@ -139,7 +151,6 @@ async function openReservationForm(id, opts = {}) {
     companions: (r?.companions || []).map(c => ({ ...c })),
     pins: Object.fromEntries((r?.segments || []).filter(s => s.pinned).map(s => [s.index, s.unit_id])),
   };
-  const opt = (v, t, cur) => `<option value="${esc(String(v ?? ''))}"${String(v ?? '') === String(cur ?? '') ? ' selected' : ''}>${esc(t)}</option>`;
   const catCode = cid => fund.categories.find(c => c.id === Number(cid))?.code || '?';
   /* категории фонда на дату заезда (§5); текущее значение, которого в фонде нет, остаётся выбранным —
      иначе браузер молча подставит первую категорию, и сохранение запишет ложный «апгрейд» */
@@ -147,34 +158,34 @@ async function openReservationForm(id, opts = {}) {
     const list = cur != null && cur !== '' && !cats.some(c => c.id === Number(cur))
       ? [...cats, { id: Number(cur), code: fund.categories.find(c => c.id === Number(cur))?.code || '#' + cur, title: 'нет в фонде на эту дату' }]
       : cats;
-    return list.map(c => opt(c.id, `${c.code} · ${c.title}`, cur)).join('');
+    return html`${list.map(c => optionView(c.id, `${c.code} · ${c.title}`, cur))}`;
   };
   /* VIP-коды: действующие; архивный — только уже стоящий в брони, с пометкой (§3) */
-  const codeOptions = opt('', '—', r?.vip_code_id) + (fund.vip_codes || [])
-    .filter(c => !c.archived || c.id === r?.vip_code_id)
-    .map(c => opt(c.id, `${c.code}${c.title ? ' — ' + c.title : ''}${c.archived ? ' (в архиве)' : ''}`, r?.vip_code_id)).join('');
+  const codeList = (extraArchived, cur) => html`${optionView('', '—', cur)}${(fund.vip_codes || [])
+    .filter(c => !c.archived || c.id === r?.vip_code_id || String(c.id) === String(extraArchived ?? ''))
+    .map(c => optionView(c.id, `${c.code}${c.title ? ' — ' + c.title : ''}${c.archived ? ' (в архиве)' : ''}`, cur))}`;
   const escortHint = e => (e ? `по правилам: ${e.rule_reasons?.length ? 'нужен — ' + e.rule_reasons.join(', ') : 'не нужен'}` : '');
   openModal({
     title: r ? `Бронь ${r.number || '#' + r.id}` : 'Новая бронь', wide: true,
-    body: `
+    body: html`
       <div class="grid-2">
-        ${sfRow('Номер брони (Fidelio)', sfInput('rf-number', r?.number))}
-        ${sfRow('Категория', `<select id="rf-category">${catOptions(fund.categories, r?.category_id)}</select>`)}
-        ${sfRow('Заезд', sfInput('rf-check-in', r?.check_in, 'date'))}
-        ${sfRow('Выезд', sfInput('rf-check-out', r?.check_out, 'date'))}
+        ${fieldRow('Номер брони (Fidelio)', textInput('rf-number', r?.number))}
+        ${fieldRow('Категория', html`<select id="rf-category"></select>`)}
+        ${fieldRow('Заезд', textInput('rf-check-in', r?.check_in, 'date'))}
+        ${fieldRow('Выезд', textInput('rf-check-out', r?.check_out, 'date'))}
       </div>
-      ${sfCheck('rf-early', 'Ранний заезд', r?.early)} ${sfCheck('rf-late', 'Поздний выезд', r?.late)}
+      ${checkField('rf-early', 'Ранний заезд', r?.early)} ${checkField('rf-late', 'Поздний выезд', r?.late)}
       <div class="grid-2">
-        ${sfRow('VIP-код', `<select id="rf-vip-code">${codeOptions}</select>`)}
-        ${sfRow('Сопровождение', `<select id="rf-escort">${Object.entries(STAYS_ESCORT_MODE).map(([k, t]) => opt(k, t, r?.escort_mode || 'rules')).join('')}</select>`)}
+        ${fieldRow('VIP-код', html`<select id="rf-vip-code"></select>`)}
+        ${fieldRow('Сопровождение', html`<select id="rf-escort">${Object.entries(STAYS_ESCORT_MODE).map(([k, t]) => optionView(k, t, r?.escort_mode || 'rules'))}</select>`)}
       </div>
-      <div class="muted" id="rf-escort-hint">${esc(escortHint(r?.escort))}</div>
+      <div class="muted" id="rf-escort-hint">${escortHint(r?.escort)}</div>
       <div class="grid-2">
-        ${sfRow('Метка', `<select id="rf-label">${opt('', '—', r?.label_id)}${fund.labels.map(l => opt(l.id, l.title, r?.label_id)).join('')}</select>`)}
-        ${sfRow('Заказчик', sfInput('rf-customer', r?.customer))}
-        ${sfRow('Оплата за', `<select id="rf-paid">${catOptions(fund.categories, r?.paid_category_id ?? r?.category_id)}</select>`)}
+        ${fieldRow('Метка', html`<select id="rf-label"></select>`)}
+        ${fieldRow('Заказчик', textInput('rf-customer', r?.customer))}
+        ${fieldRow('Оплата за', html`<select id="rf-paid"></select>`)}
       </div>
-      ${sfRow('Примечание', `<textarea id="rf-note" rows="2">${esc(r?.note || '')}</textarea>`)}
+      ${fieldRow('Примечание', html`<textarea id="rf-note" rows="2" .value=${r?.note || ''}></textarea>`)}
       <h4>Гости</h4><div id="rf-occupants"></div>
       <div class="sb-toolbar"><input type="search" id="rf-guest-q" placeholder="Найти гостя: фамилия или телефон"></div>
       <div id="rf-guest-res"></div>
@@ -186,45 +197,46 @@ async function openReservationForm(id, opts = {}) {
       <div id="rf-linked-box"></div>
       <h4>Логистика</h4><div id="rf-logistics"></div><button class="btn btn-sm btn-ghost" id="rf-log-add">+ Рейс / трансфер / авто</button>
       <h4>Сопровождающие</h4><div id="rf-companions"></div><button class="btn btn-sm btn-ghost" id="rf-comp-add">+ Охрана / водитель / няня…</button>
-      ${rFields.length ? `<h4>Дополнительно</h4><div class="grid-2">${staysFieldInputs(rFields, r?.fields, 'data-rf-field')}</div>` : ''}
+      ${rFields.length ? html`<h4>Дополнительно</h4><div class="grid-2">${fieldInputs(rFields, r?.fields, 'data-rf-field')}</div>` : nothing}
       <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: staysFormFoot(),
+    footer: formFootView(),
     onMount(m) {
       const val = sel => $(sel, m).value;
+      /* списки с содержимым, которое форма перерисовывает сама, — пустые в шаблоне, наполняются здесь */
+      const fillCats = (cats, cat, paid) => {
+        render(catOptions(cats, cat), $('#rf-category', m));
+        render(catOptions(cats, paid), $('#rf-paid', m));
+      };
+      fillCats(fund.categories, r?.category_id, r?.paid_category_id ?? r?.category_id);
+      const fillCodes = (extraArchived, cur) => render(codeList(extraArchived, cur), $('#rf-vip-code', m));
+      fillCodes(null, r?.vip_code_id);
+      render(html`${optionView('', '—', r?.label_id)}${fund.labels.map(l => optionView(l.id, l.title, r?.label_id))}`, $('#rf-label', m));
       if (opts.mine) {
         ['#rf-number', '#rf-category', '#rf-check-in', '#rf-check-out', '#rf-early', '#rf-late', '#rf-vip-code', '#rf-escort',
           '#rf-label', '#rf-customer', '#rf-paid', '#rf-move-add', '#rf-new-add', '#rf-new-last']
           .forEach(sel => { const el = $(sel, m); if (el) el.disabled = true; });
         if (r) {
-          $('#rf-category', m).innerHTML = `<option value="${r.category_id}">—</option>`;
-          $('#rf-paid', m).innerHTML = `<option value="${r.paid_category_id ?? r.category_id}">—</option>`;
-          $('#rf-label', m).innerHTML = `<option value="${r.label_id ?? ''}">—</option>`;
+          render(html`<option value=${r.category_id}>—</option>`, $('#rf-category', m));
+          render(html`<option value=${r.paid_category_id ?? r.category_id}>—</option>`, $('#rf-paid', m));
+          render(html`<option value=${r.label_id ?? ''}>—</option>`, $('#rf-label', m));
         }
       }
-      const drawOcc = () => {
-        $('#rf-occupants', m).innerHTML = form.occupants.map((o, i) => `<div class="sb-line">
-          <b>${esc(o.name || '')}</b>
-          <select data-occ-role="${i}">${opt('main', STAYS_ROLE.main, o.role)}${opt('guest', STAYS_ROLE.guest, o.role)}</select>
-          <input type="date" data-occ-from="${i}" value="${esc(o.date_from || '')}"> –
-          <input type="date" data-occ-to="${i}" value="${esc(o.date_to || '')}">
-          <button class="btn btn-sm btn-ghost" data-occ-del="${i}">×</button></div>`).join('') || '<div class="muted">Гостей пока нет</div>';
-        $$('[data-occ-role]', m).forEach(s => {
-          s.onchange = () => { const o = form.occupants[s.dataset.occRole]; o.role = s.value; if (o.role === 'main') takeCode(o); };
-        });
-        $$('[data-occ-from]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occFrom].date_from = s.value; }; });
-        $$('[data-occ-to]', m).forEach(s => { s.onchange = () => { form.occupants[s.dataset.occTo].date_to = s.value; }; });
-        $$('[data-occ-del]', m).forEach(b => { b.onclick = () => { form.occupants.splice(Number(b.dataset.occDel), 1); drawOcc(); }; });
-      };
       /* главный гость выбран — VIP-код брони из его профиля (§3.1); можно поменять вручную */
       const takeCode = o => {
         if (opts.mine || o.vip_code_id === undefined) return;
         const sel = $('#rf-vip-code', m), v = String(o.vip_code_id ?? '');
         /* архивный код профиля в списке не предлагается, но копия из профиля его принимает (§3.1) */
-        const c = (fund.vip_codes || []).find(x => String(x.id) === v);
-        if (c && ![...sel.options].some(x => x.value === v)) {
-          sel.insertAdjacentHTML('beforeend', opt(c.id, `${c.code}${c.title ? ' — ' + c.title : ''} (в архиве)`));
-        }
+        fillCodes(v, sel.value || null);
         if ([...sel.options].some(x => x.value === v)) sel.value = v;
+      };
+      const drawOcc = () => {
+        render(form.occupants.length ? form.occupants.map((o, i) => html`<div class="sb-line">
+          <b>${o.name || ''}</b>
+          <select data-occ-role=${i} @change=${e => { o.role = e.target.value; if (o.role === 'main') takeCode(o); }}>${optionView('main', STAYS_ROLE.main, o.role)}${optionView('guest', STAYS_ROLE.guest, o.role)}</select>
+          <input type="date" data-occ-from=${i} .value=${o.date_from || ''} @change=${e => { o.date_from = e.target.value; }}> –
+          <input type="date" data-occ-to=${i} .value=${o.date_to || ''} @change=${e => { o.date_to = e.target.value; }}>
+          <button class="btn btn-sm btn-ghost" data-occ-del=${i} @click=${() => { form.occupants.splice(i, 1); drawOcc(); }}>×</button></div>`)
+          : html`<div class="muted">Гостей пока нет</div>`, $('#rf-occupants', m));
       };
       const addGuest = (gid, name, vipCode) => {
         const o = { guest_id: gid, name, vip_code_id: vipCode, role: form.occupants.some(x => x.role === 'main') ? 'guest' : 'main',
@@ -234,40 +246,29 @@ async function openReservationForm(id, opts = {}) {
         drawOcc();
       };
       const drawMoves = () => {
-        $('#rf-moves', m).innerHTML = form.moves.map((mv, i) => `<div class="sb-line">
-          <input type="date" data-mv-date="${i}" value="${esc(mv.move_date || '')}">
-          <select data-mv-cat="${i}">${fund.categories.map(c => opt(c.id, c.code, mv.category_id)).join('')}</select>
-          <button class="btn btn-sm btn-ghost" data-mv-del="${i}">×</button></div>`).join('');
-        $$('[data-mv-date]', m).forEach(s => { s.onchange = () => { form.moves[s.dataset.mvDate].move_date = s.value; }; });
-        $$('[data-mv-cat]', m).forEach(s => { s.onchange = () => { form.moves[s.dataset.mvCat].category_id = Number(s.value); drawPins(); }; });
-        $$('[data-mv-del]', m).forEach(b => { b.onclick = () => { form.moves.splice(Number(b.dataset.mvDel), 1); drawMoves(); drawPins(); }; });
+        render(html`${form.moves.map((mv, i) => html`<div class="sb-line">
+          <input type="date" data-mv-date=${i} .value=${mv.move_date || ''} @change=${e => { mv.move_date = e.target.value; }}>
+          <select data-mv-cat=${i} @change=${e => { mv.category_id = Number(e.target.value); drawPins(); }}>${fund.categories.map(c => optionView(c.id, c.code, mv.category_id))}</select>
+          <button class="btn btn-sm btn-ghost" data-mv-del=${i} @click=${() => { form.moves.splice(i, 1); drawMoves(); drawPins(); }}>×</button></div>`)}`, $('#rf-moves', m));
       };
       const drawPins = () => {
         const cats = [Number(val('#rf-category')), ...form.moves.map(mv => mv.category_id)];
-        $('#rf-pins', m).innerHTML = cats.map((cid, i) => `<div class="sb-line">Сегмент ${i + 1} (${esc(catCode(cid))}):
-          <select id="rf-unit-${i}" data-pin="${i}">${opt('', 'Авто')}${fund.units.filter(u => u.category_id === cid && u.active)
-            .map(u => opt(u.id, u.label, form.pins[i])).join('')}</select></div>`).join('');
-        $$('[data-pin]', m).forEach(s => { s.onchange = () => { form.pins[s.dataset.pin] = s.value ? Number(s.value) : null; }; });
+        render(html`${cats.map((cid, i) => html`<div class="sb-line">Сегмент ${i + 1} (${catCode(cid)}):
+          <select id=${'rf-unit-' + i} data-pin=${i} @change=${e => { form.pins[i] = e.target.value ? Number(e.target.value) : null; }}>${optionView('', 'Авто')}${fund.units.filter(u => u.category_id === cid && u.active)
+            .map(u => optionView(u.id, u.label, form.pins[i]))}</select></div>`)}`, $('#rf-pins', m));
       };
       const drawLog = () => {
-        $('#rf-logistics', m).innerHTML = form.logistics.map((l, i) => `<div class="sb-line">
-          <select data-lg-kind="${i}">${opt('flight', 'рейс', l.kind)}${opt('transfer', 'трансфер', l.kind)}${opt('car', 'автомобиль', l.kind)}</select>
-          <input type="date" data-lg-date="${i}" value="${esc(l.date || '')}"><input type="time" data-lg-time="${i}" value="${esc(l.time || '')}">
-          <input data-lg-desc="${i}" value="${esc(l.description || '')}" placeholder="SU1234, Mercedes А123ВС…">
-          <button class="btn btn-sm btn-ghost" data-lg-del="${i}">×</button></div>`).join('');
-        [['kind', 'lgKind'], ['date', 'lgDate'], ['time', 'lgTime'], ['description', 'lgDesc']].forEach(([key, ds]) => {
-          $$(`[data-lg-${ds.slice(2).toLowerCase()}]`, m).forEach(s => { s.onchange = () => { form.logistics[s.dataset[ds]][key] = s.value; }; });
-        });
-        $$('[data-lg-del]', m).forEach(b => { b.onclick = () => { form.logistics.splice(Number(b.dataset.lgDel), 1); drawLog(); }; });
+        render(html`${form.logistics.map((l, i) => html`<div class="sb-line">
+          <select data-lg-kind=${i} @change=${e => { l.kind = e.target.value; }}>${optionView('flight', 'рейс', l.kind)}${optionView('transfer', 'трансфер', l.kind)}${optionView('car', 'автомобиль', l.kind)}</select>
+          <input type="date" data-lg-date=${i} .value=${l.date || ''} @change=${e => { l.date = e.target.value; }}><input type="time" data-lg-time=${i} .value=${l.time || ''} @change=${e => { l.time = e.target.value; }}>
+          <input data-lg-desc=${i} .value=${l.description || ''} placeholder="SU1234, Mercedes А123ВС…" @change=${e => { l.description = e.target.value; }}>
+          <button class="btn btn-sm btn-ghost" data-lg-del=${i} @click=${() => { form.logistics.splice(i, 1); drawLog(); }}>×</button></div>`)}`, $('#rf-logistics', m));
       };
       const drawComp = () => {
-        $('#rf-companions', m).innerHTML = form.companions.map((c, i) => `<div class="sb-line">
-          <select data-cp-kind="${i}">${Object.entries(STAYS_COMPANION).map(([k, t]) => opt(k, t, c.kind)).join('')}</select>
-          <input data-cp-desc="${i}" value="${esc(c.description || '')}" placeholder="Описание">
-          <button class="btn btn-sm btn-ghost" data-cp-del="${i}">×</button></div>`).join('');
-        $$('[data-cp-kind]', m).forEach(x => { x.onchange = () => { form.companions[x.dataset.cpKind].kind = x.value; }; });
-        $$('[data-cp-desc]', m).forEach(x => { x.onchange = () => { form.companions[x.dataset.cpDesc].description = x.value; }; });
-        $$('[data-cp-del]', m).forEach(b => { b.onclick = () => { form.companions.splice(Number(b.dataset.cpDel), 1); drawComp(); }; });
+        render(html`${form.companions.map((c, i) => html`<div class="sb-line">
+          <select data-cp-kind=${i} @change=${e => { c.kind = e.target.value; }}>${Object.entries(STAYS_COMPANION).map(([k, t]) => optionView(k, t, c.kind))}</select>
+          <input data-cp-desc=${i} .value=${c.description || ''} placeholder="Описание" @change=${e => { c.description = e.target.value; }}>
+          <button class="btn btn-sm btn-ghost" data-cp-del=${i} @click=${() => { form.companions.splice(i, 1); drawComp(); }}>×</button></div>`)}`, $('#rf-companions', m));
       };
       drawOcc(); drawMoves(); drawPins(); drawLog(); drawComp();
       $('#rf-comp-add', m).onclick = () => { form.companions.push({ kind: 'other', description: '' }); drawComp(); };
@@ -292,10 +293,7 @@ async function openReservationForm(id, opts = {}) {
         }
         if (!$('#rf-check-in', m)) return;                // форму закрыли, пока шёл запрос
         if (val('#rf-check-in') !== d) return;            // дату успели сменить — этот ответ устарел
-        const catSel = $('#rf-category', m), paidSel = $('#rf-paid', m);
-        const [c, p] = [catSel.value, paidSel.value];
-        catSel.innerHTML = catOptions(snapCats[d], c);
-        paidSel.innerHTML = catOptions(snapCats[d], p);
+        fillCats(snapCats[d], $('#rf-category', m).value, $('#rf-paid', m).value);
       };
       $('#rf-check-in', m).onchange = () => { follow(); if (!opts.mine) reloadCats(); };
       if (r?.check_in && !opts.mine) reloadCats();
@@ -312,12 +310,10 @@ async function openReservationForm(id, opts = {}) {
         timer = setTimeout(async () => {
           const q = e.target.value.trim();
           const found = q.length < 2 ? [] : await api('/api/stays/guests?q=' + encodeURIComponent(q), { silent: true });
-          $('#rf-guest-res', m).innerHTML = found.map(g => `<button class="btn btn-sm btn-ghost" data-pick-guest="${g.id}" data-name="${esc(g.short)}" data-code="${g.vip_code_id ?? ''}">
-            ${g.special ? STAYS_SPECIAL_MARK : ''}${esc(g.last_name)} ${esc(g.first_name)} ${esc(g.middle_name)}</button>`).join('')
-            || (q.length >= 2 ? '<span class="muted">не найдено</span>' : '');
-          $$('[data-pick-guest]', m).forEach(b => {
-            b.onclick = () => { addGuest(Number(b.dataset.pickGuest), b.dataset.name, b.dataset.code ? Number(b.dataset.code) : null); $('#rf-guest-res', m).innerHTML = ''; };
-          });
+          render(found.length ? html`${found.map(g => html`<button class="btn btn-sm btn-ghost" data-pick-guest=${g.id} data-name=${g.short} data-code=${g.vip_code_id ?? ''}
+            @click=${() => { addGuest(g.id, g.short, g.vip_code_id ?? null); render(nothing, $('#rf-guest-res', m)); }}>
+            ${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}</button>`)}`
+            : (q.length >= 2 ? html`<span class="muted">не найдено</span>` : nothing), $('#rf-guest-res', m));
         }, 300);
       };
       $('#rf-new-add', m).onclick = async () => {
@@ -341,15 +337,17 @@ async function openReservationForm(id, opts = {}) {
         pins: opts.mine ? null : Object.fromEntries([Number(val('#rf-category')), ...form.moves].map((_, i) => [i, form.pins[i] ?? null])),
         version: r?.version,
       });
-      const flow = previewThenSave({ url: r ? `/api/stays/reservations/${r.id}` : '/api/stays/reservations',
-        method: r ? 'PUT' : 'POST', body, out: () => $('#rf-preview-out', m) });
       /* предпросмотр: подсказка правил на даты формы и смена кода («код 13 → 03» при смене главного) */
+      const codeChange = res => {
+        const now = res.result?.vip_code?.code || '—', was = r?.vip_code?.code || '—';
+        return now !== was ? html`<div data-code-change>VIP-код: ${was} → <b>${now}</b></div>` : nothing;
+      };
+      const flow = previewThenSave({ url: r ? `/api/stays/reservations/${r.id}` : '/api/stays/reservations',
+        method: r ? 'PUT' : 'POST', body, out: () => $('#rf-preview-out', m), extra: codeChange });
       const preview = flow.preview;
       flow.preview = async () => {
         const res = await preview();
-        const now = res.result?.vip_code?.code || '—', was = r?.vip_code?.code || '—';
         $('#rf-escort-hint', m).textContent = escortHint(res.result?.escort);
-        if (now !== was) $('#rf-preview-out', m).insertAdjacentHTML('afterbegin', `<div data-code-change>VIP-код: ${esc(was)} → <b>${esc(now)}</b></div>`);
         return res;
       };
       staysBindFoot(m, flow, opts.onSaved, 'Бронь сохранена');
@@ -372,32 +370,32 @@ async function openReservationForm(id, opts = {}) {
             }
           });
         });
-        $('#rf-linked-box', m).innerHTML = linked.size ? `<div class="sb-line"><select id="rf-linked">${[...linked.values()].map(l =>
-          `<option value="${l.guest_id}">${esc(l.name)} · ${esc(l.label)}</option>`).join('')}</select>
-          <button class="btn btn-sm" id="rf-linked-add">+ Добавить связанного гостя</button></div>` : '';
-        const add = $('#rf-linked-add', m);
-        if (add) add.onclick = () => { const l = linked.get(Number(val('#rf-linked'))); addGuest(l.guest_id, l.name); };
+        render(linked.size ? html`<div class="sb-line"><select id="rf-linked">${[...linked.values()].map(l =>
+          html`<option value=${l.guest_id}>${l.name} · ${l.label}</option>`)}</select>
+          <button class="btn btn-sm" id="rf-linked-add" @click=${() => { const l = linked.get(Number(val('#rf-linked'))); addGuest(l.guest_id, l.name); }}>+ Добавить связанного гостя</button></div>` : nothing,
+        $('#rf-linked-box', m));
       })().catch(e => toast(e.message, 'err'));
     },
   });
 }
 
 /* ─────────────── «Перенести» сегмент брони в другой объект или категорию ─────────────── */
-async function openTransferForm(rid, segIndex, onSaved) {
+export async function openTransferForm(rid, segIndex, onSaved) {
   const [fund, r] = await Promise.all([staysFund(), api(`/api/stays/reservations/${rid}`)]);
   const seg = r.segments[segIndex];
   const units = cid => fund.units.filter(u => u.category_id === Number(cid) && u.active);
-  const unitOptions = cid => `<option value="">Авто</option>${units(cid).map(u =>
-    `<option value="${u.id}"${u.id === seg.unit_id && seg.pinned ? ' selected' : ''}>${esc(u.label)}</option>`).join('')}`;
+  const unitOptions = cid => html`<option value="">Авто</option>${units(cid).map(u =>
+    html`<option value=${u.id} ?selected=${u.id === seg.unit_id && seg.pinned}>${u.label}</option>`)}`;
   openModal({
     title: `Перенести бронь ${r.number || '#' + r.id}`, subtitle: `${dateRu(seg.start)}–${dateRu(seg.end)}`,
-    body: `${sfRow('Категория', `<select id="tf-cat">${fund.categories.map(c =>
-        `<option value="${c.id}"${c.id === seg.category_id ? ' selected' : ''}>${esc(c.code)} · ${esc(c.title)}</option>`).join('')}</select>`)}
-      ${sfRow('Объект', `<select id="tf-unit">${unitOptions(seg.category_id)}</select>`)}
+    body: html`${fieldRow('Категория', html`<select id="tf-cat">${fund.categories.map(c =>
+        html`<option value=${c.id} ?selected=${c.id === seg.category_id}>${c.code} · ${c.title}</option>`)}</select>`)}
+      ${fieldRow('Объект', html`<select id="tf-unit"></select>`)}
       <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: staysFormFoot(),
+    footer: formFootView(),
     onMount(m) {
-      $('#tf-cat', m).onchange = e => { $('#tf-unit', m).innerHTML = unitOptions(e.target.value); };
+      render(unitOptions(seg.category_id), $('#tf-unit', m));
+      $('#tf-cat', m).onchange = e => { render(unitOptions(e.target.value), $('#tf-unit', m)); };
       const body = () => {
         const cat = Number($('#tf-cat', m).value);
         const moves = r.moves.map((mv, i) => (i === segIndex - 1 ? { ...mv, category_id: cat } : mv));
@@ -413,37 +411,37 @@ async function openTransferForm(rid, segIndex, onSaved) {
 }
 
 /* ─────────────── Назначение батлеров: шаблон с предпросмотром дельты покрытия ─────────────── */
-async function openCoverageForm(card, onSaved) {
+export async function openCoverageForm(card, onSaved) {
   const fund = await staysFund(true);
   const escorts = fund.escorts.filter(e => e.active);
   const lastNight = staysAddDays(card.check_out, -1);
   const guests = [...new Map(card.occupants.map(o => [o.guest_id, o])).values()];
-  const people = escorts.map(e => `<option value="${e.employee_id}">${esc(e.name)}</option>`).join('');
+  const people = escorts.map(e => html`<option value=${e.employee_id}>${e.name}</option>`);
   openModal({
     title: `Батлеры брони ${card.number || '#' + card.id}`, wide: true,
     subtitle: 'Шаблон заполняет только пустые дни; ручные назначения остаются, пока не выбрано «заменить»',
-    body: `<div class="grid-2">
-        ${sfRow('Как назначить', `<select id="cf-kind"><option value="pair">пара посменно (по Графику)</option>
+    body: html`<div class="grid-2">
+        ${fieldRow('Как назначить', html`<select id="cf-kind"><option value="pair">пара посменно (по Графику)</option>
           <option value="single">один на весь срок</option><option value="manual">вручную по дням</option></select>`)}
-        <div class="cf-tpl">${sfRow('Батлер A / X', `<select id="cf-b1">${people}</select>`)}</div>
-        <div id="cf-b2-wrap">${sfRow('Батлер B', `<select id="cf-b2">${people}</select>`)}</div>
-        <div class="cf-tpl">${sfRow('С', sfInput('cf-first', card.check_in, 'date'))}</div>
-        <div class="cf-tpl">${sfRow('По (последняя ночь)', sfInput('cf-last', lastNight, 'date'))}</div>
+        <div class="cf-tpl">${fieldRow('Батлер A / X', html`<select id="cf-b1">${people}</select>`)}</div>
+        <div id="cf-b2-wrap">${fieldRow('Батлер B', html`<select id="cf-b2">${people}</select>`)}</div>
+        <div class="cf-tpl">${fieldRow('С', textInput('cf-first', card.check_in, 'date'))}</div>
+        <div class="cf-tpl">${fieldRow('По (последняя ночь)', textInput('cf-last', lastNight, 'date'))}</div>
       </div>
       <div id="cf-days" style="display:none">${card.coverage.map(d => {
         const cur = d.butlers.length === 1 ? d.butlers[0].employee_id : '';
-        return `<div class="sb-line"><span style="width:90px">${esc(dateRu(d.day))}</span>
-          <select data-cf-day="${esc(d.day)}" data-was="${cur}"><option value="">— нет</option>${escorts.map(e =>
-            `<option value="${e.employee_id}"${e.employee_id === cur ? ' selected' : ''}>${esc(e.name)}</option>`).join('')}</select>
-          ${d.butlers.length > 1 ? `<span class="muted">сейчас: ${esc(d.butlers.map(x => x.name).join(', '))}</span>` : ''}</div>`;
-      }).join('')}</div>
-      ${card.group_id ? sfCheck('cf-group', 'На всю группу совместного проживания', false) : ''}
+        return html`<div class="sb-line"><span style="width:90px">${dateRu(d.day)}</span>
+          <select data-cf-day=${d.day} data-was=${cur}><option value="">— нет</option>${escorts.map(e =>
+            html`<option value=${e.employee_id} ?selected=${e.employee_id === cur}>${e.name}</option>`)}</select>
+          ${d.butlers.length > 1 ? html`<span class="muted">сейчас: ${d.butlers.map(x => x.name).join(', ')}</span>` : nothing}</div>`;
+      })}</div>
+      ${card.group_id ? checkField('cf-group', 'На всю группу совместного проживания', false) : nothing}
       <div class="sb-line"><span class="muted">Только эти гости (пусто — все):</span>${guests.map(g =>
-        `<label class="chk"><input type="checkbox" data-cf-guest="${g.guest_id}"> ${esc(g.guest)}</label>`).join('')}</div>
-      ${sfCheck('cf-replace', 'Заменить уже назначенных', false)}
-      <div class="sb-line"><button class="btn btn-sm btn-ghost" id="cf-cand">Подобрать на ${esc(dateRu(card.check_in))}</button><span id="cf-cand-out"></span></div>
+        html`<label class="chk"><input type="checkbox" data-cf-guest=${g.guest_id}> ${g.guest}</label>`)}</div>
+      ${checkField('cf-replace', 'Заменить уже назначенных', false)}
+      <div class="sb-line"><button class="btn btn-sm btn-ghost" id="cf-cand">Подобрать на ${dateRu(card.check_in)}</button><span id="cf-cand-out"></span></div>
       <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: staysFormFoot(),
+    footer: formFootView(),
     onMount(m) {
       const kind = $('#cf-kind', m);
       const sync = () => {
@@ -465,9 +463,10 @@ async function openCoverageForm(card, onSaved) {
           const q = new URLSearchParams({ day: card.check_in, guest_ids: sc.guest_ids.join(',') });
           if (sc.group_id) q.set('group_id', sc.group_id); else q.set('reservation_id', sc.reservation_id);
           const got = await api('/api/stays/coverage/candidates?' + q);
-          $('#cf-cand-out', m).innerHTML = got.map(c => `<button class="btn btn-sm btn-ghost" data-pick-emp="${c.employee_id}">
-            ${esc(c.name)}${c.knows_guest ? ' · знает гостя' : ''} · ${staysWeight(c.load_after)}</button>`).join('') || '<span class="muted">свободных на смене нет</span>';
-          $$('[data-pick-emp]', m).forEach(b => { b.onclick = () => { $('#cf-b1', m).value = b.dataset.pickEmp; }; });
+          render(got.length ? html`${got.map(c => html`<button class="btn btn-sm btn-ghost" data-pick-emp=${c.employee_id}
+            @click=${() => { $('#cf-b1', m).value = c.employee_id; }}>
+            ${c.name}${c.knows_guest ? ' · знает гостя' : ''} · ${staysWeight(c.load_after)}</button>`)}` : html`<span class="muted">свободных на смене нет</span>`,
+          $('#cf-cand-out', m));
         } catch (e) { toast(e.message, 'err'); }
       };
       const out = () => $('#rf-preview-out', m);
@@ -489,20 +488,20 @@ async function openCoverageForm(card, onSaved) {
 }
 
 /* ─────────────── Совместное проживание (§3.3): одна операция с предпросмотром ─────────────── */
-async function openGroupForm(card, onSaved) {
+export async function openGroupForm(card, onSaved) {
   const cands = await api(`/api/stays/reservations/${card.id}/cohabit`);
   const mates = cands.filter(c => card.group_id && c.group_id === card.group_id);
   const free = cands.filter(c => !card.group_id || c.group_id !== card.group_id);
-  const row = c => `${esc(c.number || '#' + c.reservation_id)} · ${esc(c.main_guest || 'без гостя')} · ${esc(dateRu(c.check_in))}–${esc(dateRu(c.check_out))}`;
+  const row = c => `${c.number || '#' + c.reservation_id} · ${c.main_guest || 'без гостя'} · ${dateRu(c.check_in)}–${dateRu(c.check_out)}`;
   openModal({
     title: `Совместное проживание · ${card.number || '#' + card.id}`,
     subtitle: 'Брони одной категории в одном объекте, каждая на своего гостя; переезды у группы общие',
-    body: `${mates.length ? `<h4>Уже вместе</h4>${mates.map(c => `<div>${row(c)}</div>`).join('')}
-        ${sfCheck('gr-leave', 'Вывести эту бронь из группы', false)}` : ''}
-      <h4>Проживать вместе с</h4>${free.map(c => `<label class="chk"><input type="checkbox" data-cohabit="${c.reservation_id}"> ${row(c)}
-        ${c.group_id ? '<span class="muted">(в своей группе)</span>' : ''}</label>`).join('') || '<p class="muted">Подходящих броней нет</p>'}
+    body: html`${mates.length ? html`<h4>Уже вместе</h4>${mates.map(c => html`<div>${row(c)}</div>`)}
+        ${checkField('gr-leave', 'Вывести эту бронь из группы', false)}` : nothing}
+      <h4>Проживать вместе с</h4>${free.length ? free.map(c => html`<label class="chk"><input type="checkbox" data-cohabit=${c.reservation_id}> ${row(c)}
+        ${c.group_id ? html`<span class="muted">(в своей группе)</span>` : nothing}</label>`) : html`<p class="muted">Подходящих броней нет</p>`}
       <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: staysFormFoot(),
+    footer: formFootView(),
     onMount(m) {
       const out = () => $('#rf-preview-out', m);
       const leave = () => $('#gr-leave', m)?.checked;
@@ -516,39 +515,40 @@ async function openGroupForm(card, onSaved) {
 }
 
 /* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
-async function openGuestCard(gid, onChanged) {
+export async function openGuestCard(gid, onChanged) {
   const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund(), api(`/api/stays/guests/${gid}/prefs`)]);
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   /* правка: stays.edit — любой гость; батлер (stays.mine_guest_edit) — свой: карточку он открывает только
      у своих, анкетные поля в форме заперты (сервер проверяет и принадлежность, и поля) */
   const full = can('stays.edit');
   const edit = full || can('stays.mine_guest_edit');
-  const role = { main: 'главный', guest: 'проживает' };
   const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
+  const prefsShown = Object.entries(g.preferences).filter(([, v]) => v);
   openModal({
     title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
     subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}${g.vip_code.archived ? ' (в архиве)' : ''}` : '', g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
-    body: `<div class="grid-2">
-        <div><h4>Предпочтения</h4>${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('') || '<span class="muted">нет</span>'}
+    body: html`<div class="grid-2">
+        <div><h4>Предпочтения</h4>${prefsShown.length ? prefsShown.map(([k, v]) => html`<div>${k}: ${v}</div>`) : html`<span class="muted">нет</span>`}
           <h4>Предпочитает</h4><div id="gc-prefs"></div>
-          ${g.special_dates.length ? `<h4>Особые даты</h4>${g.special_dates.map(d => `<div>${esc(dateRu(d.date))} — ${esc(d.what)}</div>`).join('')}` : ''}
-          ${Object.keys(g.fields).length ? `<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => `<div>${esc(titles[k] || k)}: ${esc(String(v))}</div>`).join('')}` : ''}
-          ${g.note ? `<h4>Примечание</h4><p>${esc(g.note)}</p>` : ''}</div>
-        <div><h4>Прочие связи</h4><div id="gc-links">${other.map(l => `<div class="sb-line">${esc(l.name)} <span class="muted">${esc(l.label)}</span>
-            ${edit ? `<button class="btn btn-sm btn-ghost" data-link-del="${l.id}">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}</div>
-          ${edit ? `<div class="sb-line"><input type="search" id="gc-link-q" placeholder="Связать с гостем: фамилия">
-            <select id="gc-link-kind">${Object.entries(STAYS_LINK).filter(([k]) => !STAYS_FAMILY_LINK.has(k)).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select>
-            <button class="btn btn-sm" id="gc-link-add" disabled>Связать</button></div><div id="gc-link-res"></div>` : ''}</div>
+          ${g.special_dates.length ? html`<h4>Особые даты</h4>${g.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`)}` : nothing}
+          ${Object.keys(g.fields).length ? html`<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => html`<div>${titles[k] || k}: ${String(v)}</div>`)}` : nothing}
+          ${g.note ? html`<h4>Примечание</h4><p>${g.note}</p>` : nothing}</div>
+        <div><h4>Прочие связи</h4><div id="gc-links">${other.length ? other.map(l => html`<div class="sb-line">${l.name} <span class="muted">${l.label}</span>
+            ${edit ? html`<button class="btn btn-sm btn-ghost" data-link-del=${l.id}>×</button>` : nothing}</div>`) : html`<span class="muted">нет</span>`}</div>
+          ${edit ? html`<div class="sb-line"><input type="search" id="gc-link-q" placeholder="Связать с гостем: фамилия">
+            <select id="gc-link-kind">${Object.entries(STAYS_LINK).filter(([k]) => !STAYS_FAMILY_LINK.has(k)).map(([k, t]) => html`<option value=${k}>${t}</option>`)}</select>
+            <button class="btn btn-sm" id="gc-link-add" disabled>Связать</button></div><div id="gc-link-res"></div>` : nothing}</div>
       </div>
-      <h4>Семейное дерево</h4><div id="gc-family" class="ft"><div class="muted">Загрузка…</div></div>
+      <h4>Семейное дерево</h4><div id="gc-family" class="ft"></div>
       <h4>История проживаний</h4>
-      <div id="gc-history" class="sb-history">${g.stays.map(x => `<div><b>${esc(x.number || '#' + x.reservation_id)}</b> · ${esc(x.units.join(' → ') || 'без объекта')}
-        · ${esc(dateRu(x.date_from))}–${esc(dateRu(x.date_to))} · ${esc(role[x.role])} · ${esc(x.status_title)}
-        ${x.butlers.length ? `<div class="muted">вели: ${esc(x.butlers.join(', '))}</div>` : ''}</div>`).join('') || '<span class="muted">проживаний нет</span>'}</div>`,
-    footer: `<button class="btn btn-ghost" data-close>Закрыть</button>${edit ? '<button class="btn btn-primary" id="gc-edit">Изменить профиль</button>' : ''}`,
+      <div id="gc-history" class="sb-history">${g.stays.length ? g.stays.map(x => html`<div><b>${x.number || '#' + x.reservation_id}</b> · ${x.units.join(' → ') || 'без объекта'}
+        · ${dateRu(x.date_from)}–${dateRu(x.date_to)} · ${STAYS_ROLE[x.role]} · ${x.status_title}
+        ${x.butlers.length ? html`<div class="muted">вели: ${x.butlers.join(', ')}</div>` : nothing}</div>`) : html`<span class="muted">проживаний нет</span>`}</div>`,
+    footer: html`<button class="btn btn-ghost" data-close>Закрыть</button>${edit ? html`<button class="btn btn-primary" id="gc-edit">Изменить профиль</button>` : nothing}`,
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       const reopen = () => openGuestCard(gid, onChanged);
+      render(html`<div class="muted">Загрузка…</div>`, $('#gc-family', m));
       renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
       renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit, onChanged);
       const ed = $('#gc-edit', m);
@@ -568,10 +568,8 @@ async function openGuestCard(gid, onChanged) {
           /* батлер связывает только со своими гостями — поиск среди своих */
           const found = q.value.trim().length < 2 ? [] : (await api(`/api/stays/guests?q=${encodeURIComponent(q.value.trim())}${full ? '' : '&mine=1'}`, { silent: true }))
             .filter(x => x.id !== gid);
-          $('#gc-link-res', m).innerHTML = found.map(x => `<button class="btn btn-sm btn-ghost" data-link-pick="${x.id}">${esc(x.short)}</button>`).join('');
-          $$('[data-link-pick]', m).forEach(b => {
-            b.onclick = () => { picked = Number(b.dataset.linkPick); q.value = b.textContent.trim(); $('#gc-link-add', m).disabled = false; };
-          });
+          render(html`${found.map(x => html`<button class="btn btn-sm btn-ghost" data-link-pick=${x.id}
+            @click=${() => { picked = x.id; q.value = x.short; $('#gc-link-add', m).disabled = false; }}>${x.short}</button>`)}`, $('#gc-link-res', m));
         }, 300);
       };
       $('#gc-link-add', m).onclick = async () => {
@@ -589,6 +587,7 @@ async function openGuestCard(gid, onChanged) {
 const STAYS_PREF_KIND = { group: 'узел', flag: 'флаг', unit: 'объект' };
 function renderGuestPrefs(host, gid, initial, fund, editable, onChanged) {
   let list = initial.map(p => ({ kind: p.kind, ref_id: p.ref_id, title: p.title }));
+  let kind = 'group';
   const options = {
     group: fund.groups.map(x => [x.id, x.path.map(i => fund.groups.find(y => y.id === i)?.title || '').join(' / ')]),
     flag: fund.flags.filter(f => !f.archived).map(f => [f.id, f.title]),
@@ -617,51 +616,38 @@ function renderGuestPrefs(host, gid, initial, fund, editable, onChanged) {
     draw();
   };
   const draw = () => {
-    const kind = host.querySelector('[data-pref-kind]')?.value || 'group';
-    host.innerHTML = `${list.map((p, i) => `<div class="sb-line" data-pref-row="${i}"><b>${i + 1}.</b> ${esc(STAYS_PREF_KIND[p.kind])}: ${esc(p.title)}
-        ${editable ? `<button class="btn btn-sm btn-ghost" data-pref-up="${i}"${i ? '' : ' disabled'} title="Важнее">↑</button>
-          <button class="btn btn-sm btn-ghost" data-pref-del="${i}" title="Убрать">×</button>` : ''}</div>`).join('') || '<span class="muted">нет</span>'}
-      ${editable ? `<div class="sb-line"><select data-pref-kind>${Object.entries(STAYS_PREF_KIND).map(([k, t]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
-        <select data-pref-ref>${options[kind].map(([id, t]) => `<option value="${id}">${esc(t)}</option>`).join('')}</select>
-        <button class="btn btn-sm" data-pref-add${options[kind].length ? '' : ' disabled'}>Добавить</button>
-        ${options[kind].length ? '' : '<span class="muted">в справочнике пока нет вариантов</span>'}</div>
-        ${pending ? `<div class="sp-out" id="gc-pref-out"></div><div class="sb-line">
-          <button class="btn btn-sm btn-primary" data-pref-apply${pending.refused ? ' disabled' : ''}>Применить</button>
-          <button class="btn btn-sm btn-ghost" data-pref-cancel>Отмена</button></div>` : ''}` : ''}`;
-    if (pending) {
-      renderPreview(pending.diff, $('#gc-pref-out', host), pending.refused);
-      $('[data-pref-apply]', host).onclick = () => apply(pending.next);
-      $('[data-pref-cancel]', host).onclick = () => { pending = null; draw(); };
-    }
-    $$('[data-pref-up]', host).forEach(b => {
-      b.onclick = () => { const i = Number(b.dataset.prefUp); const n = [...list]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; save(n); };
-    });
-    $$('[data-pref-del]', host).forEach(b => { b.onclick = () => save(list.filter((_, i) => i !== Number(b.dataset.prefDel))); });
-    const k = $('[data-pref-kind]', host);
-    if (k) k.onchange = draw;
-    const add = $('[data-pref-add]', host);
-    if (add) {
-      add.onclick = () => {
-        const ref = Number($('[data-pref-ref]', host).value);
-        if (!ref) return;
-        if (list.some(p => p.kind === k.value && p.ref_id === ref)) { toast('Такое пожелание уже есть', 'warn'); return; }
-        save([...list, { kind: k.value, ref_id: ref }]);
-      };
-    }
+    render(html`${list.length ? list.map((p, i) => html`<div class="sb-line" data-pref-row=${i}><b>${i + 1}.</b> ${STAYS_PREF_KIND[p.kind]}: ${p.title}
+        ${editable ? html`<button class="btn btn-sm btn-ghost" data-pref-up=${i} ?disabled=${!i} title="Важнее"
+            @click=${() => { const n = [...list]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; save(n); }}>↑</button>
+          <button class="btn btn-sm btn-ghost" data-pref-del=${i} title="Убрать" @click=${() => save(list.filter((_, j) => j !== i))}>×</button>` : nothing}</div>`)
+        : html`<span class="muted">нет</span>`}
+      ${editable ? html`<div class="sb-line"><select data-pref-kind @change=${e => { kind = e.target.value; draw(); }}>${Object.entries(STAYS_PREF_KIND).map(([k, t]) => html`<option value=${k} ?selected=${k === kind}>${t}</option>`)}</select>
+        <select data-pref-ref>${options[kind].map(([id, t]) => html`<option value=${id}>${t}</option>`)}</select>
+        <button class="btn btn-sm" data-pref-add ?disabled=${!options[kind].length} @click=${e => {
+          const ref = Number($('[data-pref-ref]', host).value);
+          if (!ref) return;
+          if (list.some(p => p.kind === kind && p.ref_id === ref)) { toast('Такое пожелание уже есть', 'warn'); return; }
+          save([...list, { kind, ref_id: ref }]);
+        }}>Добавить</button>
+        ${options[kind].length ? nothing : html`<span class="muted">в справочнике пока нет вариантов</span>`}</div>
+        ${pending ? html`<div class="sp-out" id="gc-pref-out"></div><div class="sb-line">
+          <button class="btn btn-sm btn-primary" data-pref-apply ?disabled=${!!pending.refused} @click=${() => apply(pending.next)}>Применить</button>
+          <button class="btn btn-sm btn-ghost" data-pref-cancel @click=${() => { pending = null; draw(); }}>Отмена</button></div>` : nothing}` : nothing}`, host);
+    if (pending) renderPreview(pending.diff, $('#gc-pref-out', host), pending.refused);
   };
   draw();
 }
 
 /* ─────────────── Статус брони ─────────────── */
-function openStatusForm(card, onSaved) {
+export function openStatusForm(card, onSaved) {
   const today = staysToday();
   openModal({
     title: `Статус брони ${card.number || '#' + card.id}`, subtitle: `Сейчас: ${card.status_title}`,
-    body: `${sfRow('Новый статус', `<select id="rs-status">${Object.entries(STAYS_STATUS).filter(([k]) => k !== card.status)
-      .map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select>`)}
-      <div id="rs-new-ci-wrap">${sfRow('Новая дата заезда (если гость приехал позже)', sfInput('rs-new-ci', card.status === 'no_show' ? today : '', 'date'))}</div>
+    body: html`${fieldRow('Новый статус', html`<select id="rs-status">${Object.entries(STAYS_STATUS).filter(([k]) => k !== card.status)
+      .map(([k, t]) => html`<option value=${k}>${t}</option>`)}</select>`)}
+      <div id="rs-new-ci-wrap">${fieldRow('Новая дата заезда (если гость приехал позже)', textInput('rs-new-ci', card.status === 'no_show' ? today : '', 'date'))}</div>
       <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: staysFormFoot(),
+    footer: formFootView(),
     onMount(m) {
       $('#rs-new-ci-wrap', m).style.display = card.status === 'no_show' ? '' : 'none';
       const flow = previewThenSave({ url: `/api/stays/reservations/${card.id}/status`, method: 'POST',
@@ -673,37 +659,36 @@ function openStatusForm(card, onSaved) {
 }
 
 /* ─────────────── Гость ─────────────── */
-async function openGuestForm(id, onSaved, opts = {}) {
+export async function openGuestForm(id, onSaved, opts = {}) {
   const [g, fund] = await Promise.all([id ? api(`/api/stays/guests/${id}`) : null, staysFund()]);
   const gFields = fund.fields.filter(f => f.target === 'guest');
   const dates = (g?.special_dates || []).map(d => ({ ...d }));
   /* батлер (opts.mine): анкетные поля только для чтения — менять можно предпочтения и заметки */
-  const lock = html => (opts.mine ? html.replace(/<(input|select)/, '<$1 disabled') : html);
+  const locked = !!opts.mine;
   /* «◆ Особый гость» и VIP-код — право stays.edit; архивный код виден, пока он стоит у гостя */
   const codes = (fund.vip_codes || []).filter(c => !c.archived || c.id === g?.vip_code_id);
   const codeOptions = [['', '—'], ...codes.map(c => [c.id, `${c.code}${c.title ? ' — ' + c.title : ''}${c.archived ? ' (в архиве)' : ''}`])];
-  const rows = [
-    sfRow('Фамилия', lock(sfInput('gf-last', g?.last_name))), sfRow('Имя', lock(sfInput('gf-first', g?.first_name))),
-    sfRow('Отчество', lock(sfInput('gf-middle', g?.middle_name))), sfRow('Телефон', lock(sfInput('gf-phone', g?.phone_display))),
-    sfRow('Email', lock(sfInput('gf-email', g?.email))), sfRow('Дата рождения', lock(sfInput('gf-birth', g?.birth_date, 'date'))),
-    sfRow('Пол', lock(sfSelect('gf-gender', Object.entries(STAYS_GENDER), g?.gender || ''))),
-    lock(sfCheck('gf-special', `${STAYS_SPECIAL_MARK}Особый гость`, g?.special)),
-    sfRow('VIP-код', lock(sfSelect('gf-code', codeOptions, g?.vip_code_id ?? ''))),
-    `<div id="gf-upd-row" hidden>${sfCheck('gf-upd', `обновить в бронях: ${g?.main_current ?? 0}`, true)}
-      <div class="muted">текущие и будущие брони, где гость главный</div></div>`,
-    sfRow('Аллергии', sfInput('gf-allergy', g?.preferences?.allergy)), sfRow('Питание', sfInput('gf-food', g?.preferences?.food)),
-    sfRow('Привычки', sfInput('gf-habits', g?.preferences?.habits)),
-    sfRow('Примечание', `<textarea id="gf-note" rows="2">${esc(g?.note || '')}</textarea>`),
-    `<h4>Особые даты</h4><div id="gf-dates"></div><button class="btn btn-sm btn-ghost" id="gf-sd-add" type="button">+ Дата</button>`,
-    gFields.length ? `<h4>Дополнительно</h4>${staysFieldInputs(gFields, g?.fields, 'data-gf-field')}` : '',
-    '<div id="rf-preview-out" class="sp-out"></div>',
-  ];
+  const text = (id2, v, type = 'text') => html`<input id=${id2} type=${type} .value=${String(v ?? '')} ?disabled=${locked}>`;
   /* существующему гостю (не батлеру) — «Проверить»: смена кода идёт в брони той же операцией (§3.1) */
   const canPreview = !!g && !opts.mine;
   openModal({
-    title: g ? `Гость ${g.last_name}` : 'Новый гость', body: rows.join(''),
-    footer: canPreview ? staysFormFoot()
-      : '<button class="btn btn-ghost" data-close>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>',
+    title: g ? `Гость ${g.last_name}` : 'Новый гость',
+    body: html`${fieldRow('Фамилия', text('gf-last', g?.last_name))}${fieldRow('Имя', text('gf-first', g?.first_name))}
+      ${fieldRow('Отчество', text('gf-middle', g?.middle_name))}${fieldRow('Телефон', text('gf-phone', g?.phone_display))}
+      ${fieldRow('Email', text('gf-email', g?.email))}${fieldRow('Дата рождения', text('gf-birth', g?.birth_date, 'date'))}
+      ${fieldRow('Пол', html`<select id="gf-gender" ?disabled=${locked}>${Object.entries(STAYS_GENDER).map(([k, t]) => optionView(k, t, g?.gender || ''))}</select>`)}
+      <label class="chk"><input id="gf-special" type="checkbox" .checked=${!!g?.special} ?disabled=${locked}> ${STAYS_SPECIAL_MARK}Особый гость</label>
+      ${fieldRow('VIP-код', html`<select id="gf-code" ?disabled=${locked}>${codeOptions.map(([v, t]) => optionView(v, t, g?.vip_code_id ?? ''))}</select>`)}
+      <div id="gf-upd-row" hidden>${checkField('gf-upd', `обновить в бронях: ${g?.main_current ?? 0}`, true)}
+        <div class="muted">текущие и будущие брони, где гость главный</div></div>
+      ${fieldRow('Аллергии', textInput('gf-allergy', g?.preferences?.allergy))}${fieldRow('Питание', textInput('gf-food', g?.preferences?.food))}
+      ${fieldRow('Привычки', textInput('gf-habits', g?.preferences?.habits))}
+      ${fieldRow('Примечание', html`<textarea id="gf-note" rows="2" .value=${g?.note || ''}></textarea>`)}
+      <h4>Особые даты</h4><div id="gf-dates"></div><button class="btn btn-sm btn-ghost" id="gf-sd-add" type="button">+ Дата</button>
+      ${gFields.length ? html`<h4>Дополнительно</h4>${fieldInputs(gFields, g?.fields, 'data-gf-field')}` : nothing}
+      <div id="rf-preview-out" class="sp-out"></div>`,
+    footer: canPreview ? formFootView()
+      : html`<button class="btn btn-ghost" data-close>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
     onMount(m) {
       const v = sel => $(sel, m).value;
       const codeId = () => (v('#gf-code') ? Number(v('#gf-code')) : null);
@@ -718,26 +703,15 @@ async function openGuestForm(id, onSaved, opts = {}) {
       const syncUpd = () => { $('#gf-upd-row', m).hidden = !(g && g.main_current > 0 && codeId() !== (g.vip_code_id ?? null)); };
       $('#gf-code', m).onchange = syncUpd;
       syncUpd();
+      const codeUpdate = res => (res.updated_reservations ? html`<div data-code-update>VIP-код обновится в бронях: ${res.updated_reservations}</div>` : nothing);
       const flow = previewThenSave({ url: g ? `/api/stays/guests/${g.id}` : '/api/stays/guests', method: g ? 'PUT' : 'POST',
-        body, out: () => $('#rf-preview-out', m) });
-      const preview = flow.preview;
-      flow.preview = async () => {
-        const res = await preview();
-        if (res.updated_reservations) {
-          $('#rf-preview-out', m).insertAdjacentHTML('afterbegin',
-            `<div data-code-update>VIP-код обновится в бронях: ${res.updated_reservations}</div>`);
-        }
-        return res;
-      };
+        body, out: () => $('#rf-preview-out', m), extra: codeUpdate });
       staysBindFoot(m, flow, onSaved, 'Гость сохранён');
       const draw = () => {
-        $('#gf-dates', m).innerHTML = dates.map((d, i) => `<div class="sb-line">
-          <input type="date" data-sd-date="${i}" value="${esc(d.date || '')}">
-          <input data-sd-what="${i}" value="${esc(d.what || '')}" placeholder="день рождения, годовщина…">
-          <button class="btn btn-sm btn-ghost" type="button" data-sd-del="${i}">×</button></div>`).join('');
-        $$('[data-sd-date]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdDate].date = x.value; }; });
-        $$('[data-sd-what]', m).forEach(x => { x.onchange = () => { dates[x.dataset.sdWhat].what = x.value; }; });
-        $$('[data-sd-del]', m).forEach(b => { b.onclick = () => { dates.splice(Number(b.dataset.sdDel), 1); draw(); }; });
+        render(html`${dates.map((d, i) => html`<div class="sb-line">
+          <input type="date" data-sd-date=${i} .value=${d.date || ''} @change=${e => { d.date = e.target.value; }}>
+          <input data-sd-what=${i} .value=${d.what || ''} placeholder="день рождения, годовщина…" @change=${e => { d.what = e.target.value; }}>
+          <button class="btn btn-sm btn-ghost" type="button" data-sd-del=${i} @click=${() => { dates.splice(i, 1); draw(); }}>×</button></div>`)}`, $('#gf-dates', m));
       };
       draw();
       $('#gf-sd-add', m).onclick = () => { dates.push({ date: '', what: '' }); draw(); };
@@ -752,22 +726,16 @@ Object.assign(globalThis, {
   STAYS_COMPANION,
   STAYS_LINK,
   STAYS_GENDER,
-  STAYS_FAMILY_LINK,
-  staysRelativesHtml,
-  staysFieldInputs,
-  staysFieldValues,
+  relativesView,
   renderPreview,
   previewThenSave,
   staysFormFoot,
-  staysBindFoot,
   staysBindGatedFoot,
   openReservationForm,
   openTransferForm,
   openCoverageForm,
   openGroupForm,
   openGuestCard,
-  STAYS_PREF_KIND,
-  renderGuestPrefs,
   openStatusForm,
   openGuestForm,
 });

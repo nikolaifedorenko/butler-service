@@ -9,7 +9,8 @@
 
 import { can } from '../app.js';
 import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
-import { html, mount, nothing, render, unsafeHTML } from '../ui/html.js';
+import { html, mount, nothing, render } from '../ui/html.js';
+import { relativesView } from './stays_forms.js';
 import {
   staysCodeTagView, staysDayHeadView, staysFilterView, staysGuestMarkView, loadStays, staysMonthNavView, openReservationCard, staysAddDays, staysFocusDay, staysFund,
   staysFundParams, staysMonthRange, staysPeopleParams, staysState, staysToday, staysWeight,
@@ -160,7 +161,7 @@ function dayRow(r, names, rerender) {
   if (r.kind === 'ooo') return dayOoo(r, can('stays.edit') && names ? () => openOooForm(r, rerender) : nothing);
   const guests = names
     ? html`${r.guests.map((g, i) => html`${i ? ', ' : ''}${staysGuestMarkView(g.special)}${g.name}${g.role === 'main' ? staysCodeTagView(r.vip_code) : nothing}`)}${
-      r.guests.filter(g => g.relatives?.length).map(g => unsafeHTML(staysRelativesHtml(g.relatives.map(x => ({ ...x, title: `${g.name}: ${x.title}` })))))}`
+      r.guests.filter(g => g.relatives?.length).map(g => relativesView(g.relatives.map(x => ({ ...x, title: `${g.name}: ${x.title}` }))))}`
     : `${r.guests_count} гост.`;
   const det = r.details ? [...r.details.logistics.map(l => `${l.time} ${l.description}`), ...r.details.companions.map(c => c.description),
     ...r.details.allergies.map(a => 'аллергия: ' + a)].filter(Boolean).join(' · ') : '';
