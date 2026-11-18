@@ -103,6 +103,8 @@ def test_fe3_double_title_escaped():
     offenders = []
     for path in sorted(JS.rglob("*.js")):
         text = path.read_text(encoding="utf-8")
+        if "from '../ui/html.js'" in text:
+            continue            # шаблоны lit-html экранируют каждую вставку сами (ADR-0013, раздел 7)
         for m in re.finditer(r"double_title", text):
             line = text[text.rfind("\n", 0, m.start()) + 1:text.find("\n", m.end())]
             if "esc(" not in line:
