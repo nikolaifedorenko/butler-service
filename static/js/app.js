@@ -32,14 +32,14 @@ const ICONS = {
 };
 
 /* Права приходят с сервера (/api/auth/me → permissions): роль + группы + индивидуальные. */
-function can(perm) { return (state.perms || []).includes(perm); }
+export function can(perm) { return (state.perms || []).includes(perm); }
 
 /* Реестр разделов: файл модуля сообщает загрузчики разделов (views: id → load) и экраны
    Настроек (screens: id → {render, icon}). Подписи, порядок и права пунктов — в манифесте
    модуля на сервере. Иконку пункта меню файл модуля может добавить в ICONS. */
 const MODULE_VIEWS = {};
-const MODULE_SCREENS = {};
-function registerModule({ views = {}, screens = {} }) {
+export const MODULE_SCREENS = {};
+export function registerModule({ views = {}, screens = {} }) {
   Object.assign(MODULE_VIEWS, views);
   Object.assign(MODULE_SCREENS, screens);
 }
@@ -97,7 +97,7 @@ function renderNav() {
 
 /* Категории времени в подвале меню — из настроек периода, когда их прислал Факт;
    раньше здесь были зашиты 22:00–06:00 (рецензия аудита 22.10.2026). */
-function renderCategoryFooter(categories) {
+export function renderCategoryFooter(categories) {
   if (categories && categories.length) state.timeCategories = categories;
   const el = $('#nav-categories');
   if (!el) return;
@@ -105,7 +105,7 @@ function renderCategoryFooter(categories) {
     ? `${esc(state.timeCategories.map(c => `${c.code} ${c.start}–${c.end}`).join(' · '))}<br>` : '';
 }
 
-function navigate(view) {
+export function navigate(view) {
   if (GRAFIK_ALIAS[view]) { state.grafikLayer = view; view = GRAFIK_ALIAS[view]; }
   state.view = view;
   $('#sidenav').classList.remove('open');
@@ -210,7 +210,7 @@ const pollers = [];
 /* Интервалы опроса разделов, мс (HARD-02: раньше числа были разбросаны по модулям).
    Доска и «Мои отметки» живые — 30 с; ночной обход и кары меняются реже — 60 с. */
 const POLL_MS = { marks: 30000, me: 30000, night: 60000, cars: 60000 };
-function poll(view, fn, ms = POLL_MS[view] || 30000) {
+export function poll(view, fn, ms = POLL_MS[view] || 30000) {
   if (pollers.some(x => x.view === view)) return;   // повторный вызов loadX() не плодит интервалы
   const tick = () => { if (state.view === view && !document.hidden) fn(); };
   state.timers.push(setInterval(tick, ms));
@@ -226,7 +226,7 @@ document.addEventListener('visibilitychange', () => {
 /* ───────────────────────────── вход ───────────────────────────── */
 
 
-function showLogin() {
+export function showLogin() {
   clearTimers();
   $('#app').classList.add('hidden');
   $('#login-screen').classList.remove('hidden');
@@ -235,7 +235,7 @@ function showLogin() {
 
 /* Ответ /api/auth/me → права и роли. Роли — данные сервера (ADR-0011): названия своих ролей
    и список ролей, которые пользователь вправе назначать (иерархия считается там же). */
-function applyMe(me) {
+export function applyMe(me) {
   state.perms = me.permissions || [];
   state.menu = me.menu || [];
   state.settingsScreens = me.settings_screens || [];
@@ -243,7 +243,7 @@ function applyMe(me) {
   state.assignableRoles = me.assignable_roles || [];
 }
 
-async function loadPerms() {
+export async function loadPerms() {
   try { applyMe(await api('/api/auth/me', { silent: true })); } catch { applyMe({}); }
 }
 
@@ -266,7 +266,7 @@ function startView() {
    сетки, фильтры, позиция UI и состояния модулей (carsState/nightState/
    settingsUI) переживали смену пользователя. loadDirectory и загрузчики
    разделов наполнят всё заново при входе. */
-function resetUserViewState() {
+export function resetUserViewState() {
   state.factMode = null; state.factMonth = null; state.factDay = null;
   state.factEmp = null; state.factFrom = null; state.factTo = null;
   state.employees = [];
@@ -302,14 +302,14 @@ function resetUserViewState() {
 
 /* Перечень расхождений схемы сервер отдаёт только администратору (/api/selfcheck), остальным —
    строку details: раньше chk.missing.slice у них падал TypeError, и предупреждение терялось. */
-function selfcheckDetails(chk, limit = 6) {
+export function selfcheckDetails(chk, limit = 6) {
   if (Array.isArray(chk.missing)) return chk.missing.slice(0, limit);
   return chk.details ? [chk.details] : [];
 }
 
 /* Плашка «Схема БД не в порядке» — до закрытия (тост исчезал через 5 с и вмещал 6 строк).
    Перечень — у администратора целиком: для пропущенного индекса там команда его создания. */
-function renderSchemaBanner(chk) {
+export function renderSchemaBanner(chk) {
   const el = $('#schema-banner');
   if (!el) return;
   if (!chk || chk.ok !== false) { el.classList.add('hidden'); el.innerHTML = ''; return; }
@@ -342,7 +342,7 @@ async function enterApp() {
   navigate(startView());
 }
 
-function renderUserChip() {
+export function renderUserChip() {
   const u = state.user;
   $('#user-name').textContent = u.name;
   $('#user-role').textContent = roleTitle(u.role);
@@ -350,7 +350,7 @@ function renderUserChip() {
   $('#impersonation-bar').classList.toggle('hidden', !u.impersonated);
 }
 
-async function loadDirectory() {
+export async function loadDirectory() {
   const [emps, types] = await Promise.all([api('/api/employees'), api('/api/shift-types')]);
   state.employees = emps;
   state.shiftTypes = types;
@@ -446,7 +446,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   }).catch(e => console.warn('SW:', e));
 }
 
-async function bootApp() {
+export async function bootApp() {
   api('/api/health', { silent: true, allow401: true })
     .then(h => { syncServerClock(h?.server_time_local); state.appTz = h?.tz || ''; }).catch(() => {});
   const loginErr = new URLSearchParams(location.search).get('login_error');
@@ -471,37 +471,20 @@ bootApp();
 
 /* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
 Object.assign(globalThis, {
-  ICONS,
   can,
-  MODULE_VIEWS,
   MODULE_SCREENS,
   registerModule,
-  GRAFIK_LAYERS,
-  GRAFIK_ALIAS,
-  visibleTabs,
-  renderNav,
   renderCategoryFooter,
   navigate,
-  grafikLayers,
-  LAYER_LOADERS,
-  grafikSkeleton,
-  loadGrafik,
-  renderGrafikTabs,
-  clearTimers,
-  pollers,
-  POLL_MS,
   poll,
   showLogin,
   applyMe,
   loadPerms,
-  startView,
   resetUserViewState,
   selfcheckDetails,
   renderSchemaBanner,
-  enterApp,
   renderUserChip,
   loadDirectory,
-  LOGIN_ERRORS,
   bootApp,
 });
 /* ── конец моста ── */

@@ -19,8 +19,8 @@ test('вход: форма, оболочка, мост имён, без ошиб
   const bridge = await page.evaluate(() => ({
     fn: typeof window.navigate,
     state: typeof window.state?.user?.username,
-    live: (() => { const before = window.pendingLoads; window.pendingLoads = before + 7;
-                   const ok = window.pendingLoads === before + 7; window.pendingLoads = before; return ok; })(),
+    live: (() => { const before = window.serverShiftMs; window.serverShiftMs = before + 7;
+                   const ok = window.serverShiftMs === before + 7; window.serverShiftMs = before; return ok; })(),
   }));
   expect(bridge).toEqual({ fn: 'function', state: 'string', live: true });
   await expect(page.locator('#nav, nav').first()).toBeVisible();

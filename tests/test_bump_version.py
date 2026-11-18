@@ -45,6 +45,17 @@ def test_new_module_script_is_added_by_bump(tool):
     (tool.ASSETS_DIR / "js" / "modules" / "zz_probe.js").write_text("'use strict';\n", encoding="utf-8")
     assert tool.check() == 1
     assert tool.bump("2099-01-01a") == 0
-    assert '<script type="module" src="/static/js/modules/zz_probe.js?v=2099-01-01a"></script>' in \
+    assert '<script type="module" src="/static/js/modules/zz_probe.js"></script>' in \
         tool.INDEX.read_text(encoding="utf-8")
     assert tool.check() == 0
+
+
+def test_module_scripts_have_no_version_query(tool):
+    """Модуль, подключённый с ?v=, — другой модуль, чем тот же файл по import без запроса: код выполнился бы дважды."""
+    tool.bump("2099-01-01a")
+    index = tool.INDEX.read_text(encoding="utf-8")
+    assert 'type="module" src="/static/js/core.js"' in index and 'type="module" src="/static/js/app.js"' in index
+    assert '<script type="module" src="/static/js/core.js?' not in index
+    assert 'ui/theme.js?v=2099-01-01a' in index                  # обычный скрипт версионируется
+    shell = tool.SW.read_text(encoding="utf-8")
+    assert "'/static/js/core.js'," in shell and "'/static/css/tokens.css?v=2099-01-01a'" in shell
