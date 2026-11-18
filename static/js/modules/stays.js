@@ -15,6 +15,9 @@ import {
 import { html, mount, nothing, render } from '../ui/html.js';
 import { renderBookings } from './stays_bookings.js';
 import { renderGuestsTab } from './stays_guests.js';
+import { openBlockCard, renderBlocksTab } from './stays_blocks.js';
+import { openOooForm, renderOooTab } from './stays_ooo.js';
+import { renderMine } from './stays_mine.js';
 import { renderFamilyTree } from './stays_family.js';
 import {
   STAYS_COMPANION, openCoverageForm, openGroupForm, openGuestCard, openReservationForm, openStatusForm, openTransferForm,

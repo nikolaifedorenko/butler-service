@@ -8,9 +8,17 @@
    «Проверить» показывает, кто останется без объекта и где блоку не хватит, «Сохранить» отправляет
    сетку целиком. Видят все уровни доступа, пишет только stays.edit.
    Здесь же — общие для списков блоков и OOO помощники периода, выбора из списка и поиска.
-   Использует хелперы app.js: $ $$ esc api openModal closeModal toast can dateRu loadGenerationFor.
+   Модуль на lit-html (ADR-0013, раздел 7): списки и сетка — шаблоны.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
+
+import { can } from '../app.js';
+import { $, $$, api, closeModal, dateRu, loadGenerationFor, MONTHS, openModal, toast, WD_SHORT } from '../core.js';
+import { html, mount, nothing, render } from '../ui/html.js';
+import { fieldRow } from '../ui/form.js';
+import { formFootView, renderPreview, staysBindGatedFoot } from './stays_forms.js';
+import { staysFilterOpen } from './stays_filters.js';
+import { staysAddDays, staysFund, staysMonthNavView, staysMonthRange, staysToday } from './stays.js';
 
 /* колонки: ключ сортировки сервера (null — без сортировки) — заголовок */
 const STAYS_BLOCK_COLS = [['title', 'Название'], ['start', 'С'], ['end', 'По'], ['nights', 'Ночей'],
@@ -18,81 +26,62 @@ const STAYS_BLOCK_COLS = [['title', 'Название'], ['start', 'С'], ['end'
 const STAYS_BLOCK_PAGE = 200;
 const STAYS_BLOCK_MAX_NIGHTS = 366;       // как MAX_NIGHTS сервера: поля дат это ограничивают
 
-function staysBlockEmpty() {
-  return { mode: 'month', first: '', last: '', category_ids: [], short_only: false, q: '', focusQ: false,
-    sort: 'start', dir: 'asc' };
+export function staysBlockEmpty() {
+  return { mode: 'month', first: '', last: '', category_ids: [], short_only: false, q: '', sort: 'start', dir: 'asc' };
 }
-const staysBlock = staysBlockEmpty();
+export const staysBlock = staysBlockEmpty();
 
 /* ─────────────── Общие помощники списков блоков и OOO ─────────────── */
 /* период: месяц разделов, свой диапазон или все даты; null — без ограничения */
-function staysPeriodRange(st) {
+export function staysPeriodRange(st) {
   if (st.mode === 'all') return null;
   return st.mode === 'custom' && st.first && st.last ? { first: st.first, last: st.last } : staysMonthRange();
 }
-function staysPeriodBar(st) {
+export function staysPeriodBarView(st, body, rerender) {
   const range = staysPeriodRange(st) || staysMonthRange();
-  return `<select id="pd-mode" title="Период списка (пересечение с периодом)">
-      <option value="month"${st.mode === 'month' ? ' selected' : ''}>Месяц разделов</option>
-      <option value="custom"${st.mode === 'custom' ? ' selected' : ''}>Свой период</option>
-      <option value="all"${st.mode === 'all' ? ' selected' : ''}>Все даты</option></select>
+  return html`<select id="pd-mode" title="Период списка (пересечение с периодом)" @change=${e => {
+      st.mode = e.target.value;
+      if (st.mode === 'custom' && !(st.first && st.last)) ({ first: st.first, last: st.last } = staysMonthRange());
+      rerender();
+    }}>
+      <option value="month" ?selected=${st.mode === 'month'}>Месяц разделов</option>
+      <option value="custom" ?selected=${st.mode === 'custom'}>Свой период</option>
+      <option value="all" ?selected=${st.mode === 'all'}>Все даты</option></select>
     ${st.mode === 'custom'
-    ? `<input type="date" id="pd-first" value="${esc(range.first)}" max="${esc(range.last)}" title="Начало периода">
-      <input type="date" id="pd-last" value="${esc(range.last)}" min="${esc(range.first)}" title="Конец периода">`
-    : st.mode === 'month' ? staysMonthNav() : ''}`;
+    ? html`<input type="date" id="pd-first" .value=${range.first} max=${range.last} title="Начало периода" @change=${e => {
+        if (!e.target.value) return;
+        st.first = e.target.value;
+        if (st.last < st.first) st.last = st.first;
+        rerender();
+      }}>
+      <input type="date" id="pd-last" .value=${range.last} min=${range.first} title="Конец периода" @change=${e => {
+        if (!e.target.value) return;
+        st.last = e.target.value;
+        if (st.last < st.first) { toast('Конец периода раньше начала', 'warn'); st.last = st.first; }
+        rerender();
+      }}>`
+    : st.mode === 'month' ? staysMonthNavView(body, rerender) : nothing}`;
 }
-function staysPeriodBind(body, st, rerender) {
-  if (st.mode === 'month') staysBindMonthNav(body, rerender);
-  $('#pd-mode', body).onchange = e => {
-    st.mode = e.target.value;
-    if (st.mode === 'custom' && !(st.first && st.last)) ({ first: st.first, last: st.last } = staysMonthRange());
-    rerender();
-  };
-  const first = $('#pd-first', body);
-  if (!first) return;
-  const last = $('#pd-last', body);
-  first.onchange = () => {
-    if (!first.value) return;
-    st.first = first.value;
-    if (st.last < st.first) st.last = st.first;
-    rerender();
-  };
-  last.onchange = () => {
-    if (!last.value) return;
-    st.last = last.value;
-    if (st.last < st.first) { toast('Конец периода раньше начала', 'warn'); st.last = st.first; }
-    rerender();
-  };
-}
-/* поиск: запрос уходит после паузы, фокус и курсор переживают перерисовку вкладки */
-function staysSearchBind(input, st, rerender) {
-  if (st.focusQ) {
-    st.focusQ = false;
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
-  }
+/* поиск: запрос уходит после паузы; поле не пересоздаётся, поэтому фокус и курсор переживают перерисовку
+   (value — атрибут, а не свойство: набранный текст перерисовка не затирает) */
+export function staysSearchView(id, placeholder, st, rerender) {
   let timer = null;
-  input.oninput = () => {
+  return html`<input type="search" id=${id} placeholder=${placeholder} value=${st.q} @input=${e => {
     clearTimeout(timer);
-    timer = setTimeout(() => { st.q = input.value; st.focusQ = true; rerender(); }, 350);
-  };
+    const value = e.target.value;
+    timer = setTimeout(() => { st.q = value; rerender(); }, 350);
+  }}>`;
 }
-/* выпадающий список флажков (как «Статусы» во вкладке «Брони»); состояние раскрытия — staysFilterOpen */
-function staysPickHtml(key, title, items, chosen) {
+/* выпадающий список флажков категорий (как «Статусы» во вкладке «Брони»); раскрытие — staysFilterOpen */
+function categoryPickView(items, chosen, onChange) {
   const picked = items.filter(([v]) => chosen.includes(v)).map(([, t]) => t);
-  return `<details class="sf-dd" data-pk-dd="${key}"${staysFilterOpen.has('pk-' + key) ? ' open' : ''}>
-    <summary>${esc(title)}: <b>${esc(picked.length ? picked.join(', ') : 'все')}</b></summary>
-    <div class="sf-list">${items.map(([v, t]) => `<label class="chk">
-      <input type="checkbox" data-pk-${key}="${esc(String(v))}"${chosen.includes(v) ? ' checked' : ''}> ${esc(t)}</label>`).join('')
-      || '<span class="muted">нет</span>'}</div></details>`;
-}
-function staysPickBind(body, key, cast, onChange) {
-  $$(`[data-pk-${key}]`, body).forEach(cb => {
-    cb.onchange = () => onChange($$(`[data-pk-${key}]`, body).filter(x => x.checked).map(x => cast(x.getAttribute(`data-pk-${key}`))));
-  });
-  $$(`[data-pk-dd="${key}"]`, body).forEach(d => {
-    d.addEventListener('toggle', () => { if (d.open) staysFilterOpen.add('pk-' + key); else staysFilterOpen.delete('pk-' + key); });
-  });
+  return html`<details class="sf-dd" data-pk-dd="cat" ?open=${staysFilterOpen.has('pk-cat')}
+    @toggle=${e => { if (e.target.open) staysFilterOpen.add('pk-cat'); else staysFilterOpen.delete('pk-cat'); }}>
+    <summary>Категории: <b>${picked.length ? picked.join(', ') : 'все'}</b></summary>
+    <div class="sf-list" @change=${e => onChange([...e.currentTarget.querySelectorAll('input[type=checkbox]')]
+      .filter(x => x.checked).map(x => Number(x.getAttribute('data-pk-cat'))))}>${items.length ? items.map(([v, t]) => html`<label class="chk">
+      <input type="checkbox" data-pk-cat=${String(v)} .checked=${chosen.includes(v)}> ${t}</label>`)
+      : html`<span class="muted">нет</span>`}</div></details>`;
 }
 
 /* ─────────────── Вкладка «Блоки» ─────────────── */
@@ -107,31 +96,20 @@ function staysBlockParams() {
   return p;
 }
 
-function staysBlockRowHtml(r) {
-  const top = r.top.map(t => `${t.code} до ${t.max}`).join(', ');
-  return `<tr class="bk-row" data-bl-row="${r.id}" tabindex="0">
-    <td>${esc(r.title)}</td><td>${esc(dateRu(r.start))}</td><td>${esc(dateRu(r.end))}</td><td>${r.nights}</td>
-    <td>${esc(top || '—')}</td><td>${r.placed}</td>
-    <td>${r.short ? `<span class="sp-warn" title="Нехватка: клеток «категория × ночь» без объекта">нехватка ${r.missing}</span>` : '—'}</td></tr>`;
-}
+const staysBlockRow = (r, open) => html`<tr class="bk-row" data-bl-row=${r.id} tabindex="0" @click=${open}
+    @keydown=${e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}>
+    <td>${r.title}</td><td>${dateRu(r.start)}</td><td>${dateRu(r.end)}</td><td>${r.nights}</td>
+    <td>${r.top.map(t => `${t.code} до ${t.max}`).join(', ') || '—'}</td><td>${r.placed}</td>
+    <td>${r.short ? html`<span class="sp-warn" title="Нехватка: клеток «категория × ночь» без объекта">нехватка ${r.missing}</span>` : '—'}</td></tr>`;
 
-function staysBlockTableHtml(rows, total) {
-  const arrow = key => (staysBlock.sort === key ? (staysBlock.dir === 'asc' ? ' ↑' : ' ↓') : '');
-  return `<div class="muted" id="bl-total">Найдено блоков: ${total}${rows.length < total ? ` · показано ${rows.length}` : ''}</div>
-    <div class="sb-scroll"><table class="bk-table"><thead><tr>${STAYS_BLOCK_COLS.map(([k, t]) => (k
-    ? `<th data-bl-sort="${k}" title="Сортировать" style="cursor:pointer">${esc(t)}${arrow(k)}</th>` : `<th>${esc(t)}</th>`)).join('')}</tr></thead>
-    <tbody>${rows.map(staysBlockRowHtml).join('')
-    || `<tr><td colspan="${STAYS_BLOCK_COLS.length}" class="empty">Блоков по фильтру нет</td></tr>`}</tbody></table></div>
-    ${rows.length < total ? `<button class="btn" id="bl-more">Показать ещё ${Math.min(STAYS_BLOCK_PAGE, total - rows.length)}</button>` : ''}`;
-}
-
-async function renderBlocksTab(body) {
+export async function renderBlocksTab(body) {
   const fund = await staysFund();
   const fresh = loadGenerationFor(body);
   const b = staysBlock;
   let rows = [];
   let total = 0;
   let error = '';
+  let loadingMore = false;
   const page = offset => {
     const p = staysBlockParams();
     p.set('offset', offset);
@@ -145,50 +123,40 @@ async function renderBlocksTab(body) {
     toast(error, 'warn');
   }
   if (!fresh()) return;
-  body.innerHTML = `<div class="sb-toolbar">${staysPeriodBar(b)}
-    ${staysPickHtml('cat', 'Категории', fund.categories.map(c => [c.id, c.code]), b.category_ids)}
-    <label class="chk"><input type="checkbox" id="bl-short"${b.short_only ? ' checked' : ''}> с нехваткой</label>
-    <input type="search" id="bl-q" placeholder="название блока" value="${esc(b.q)}">
-    ${can('stays.edit') ? '<button class="btn btn-sm btn-primary" id="bl-new">+ Блок</button>' : ''}</div>
-    <div id="bl-result"></div>`;
   const rerender = () => renderBlocksTab(body);
-  staysPeriodBind(body, b, rerender);
-  staysSearchBind($('#bl-q', body), b, rerender);
-  staysPickBind(body, 'cat', Number, v => { b.category_ids = v; rerender(); });
-  $('#bl-short', body).onchange = e => { b.short_only = e.target.checked; rerender(); };
-  const result = $('#bl-result', body);
-  const paint = () => {
-    result.innerHTML = error ? `<div class="panel"><p class="muted">${esc(error)}</p></div>` : staysBlockTableHtml(rows, total);
-    const more = $('#bl-more', result);
-    if (more) more.onclick = async () => {
-      more.disabled = true;
-      try {
-        const next = await page(rows.length);
-        if (!fresh()) return;
-        rows = rows.concat(next.rows);
-        total = next.total;
-      } catch (e) { toast(e.message, 'warn'); }
-      paint();
-    };
+  const draw = () => render(screen(), mount(body));
+  const sortBy = key => {
+    if (b.sort === key) b.dir = b.dir === 'asc' ? 'desc' : 'asc'; else { b.sort = key; b.dir = 'asc'; }
+    rerender();
   };
-  paint();
-  result.onclick = e => {
-    const th = e.target.closest('[data-bl-sort]');
-    if (th) {
-      const key = th.dataset.blSort;
-      if (b.sort === key) b.dir = b.dir === 'asc' ? 'desc' : 'asc'; else { b.sort = key; b.dir = 'asc'; }
-      rerender();
-      return;
-    }
-    const tr = e.target.closest('[data-bl-row]');
-    if (tr) openBlockCard(Number(tr.dataset.blRow), rerender).catch(err => toast(err.message, 'warn'));
+  const more = async () => {
+    loadingMore = true; draw();
+    try {
+      const next = await page(rows.length);
+      if (!fresh()) return;
+      rows = rows.concat(next.rows);
+      total = next.total;
+    } catch (e) { toast(e.message, 'warn'); }
+    loadingMore = false;
+    draw();
   };
-  result.onkeydown = e => {
-    const tr = e.target.closest?.('[data-bl-row]');
-    if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tr.click(); }
-  };
-  const add = $('#bl-new', body);
-  if (add) add.onclick = () => openBlockCard(null, rerender).catch(err => toast(err.message, 'warn'));
+  const arrow = key => (b.sort === key ? (b.dir === 'asc' ? ' ↑' : ' ↓') : '');
+  const result = () => (error ? html`<div class="panel"><p class="muted">${error}</p></div>`
+    : html`<div class="muted" id="bl-total">Найдено блоков: ${total}${rows.length < total ? ` · показано ${rows.length}` : ''}</div>
+      <div class="sb-scroll"><table class="bk-table"><thead><tr>${STAYS_BLOCK_COLS.map(([k, t]) => (k
+        ? html`<th data-bl-sort=${k} title="Сортировать" style="cursor:pointer" @click=${() => sortBy(k)}>${t}${arrow(k)}</th>` : html`<th>${t}</th>`))}</tr></thead>
+      <tbody>${rows.length ? rows.map(r => staysBlockRow(r, () => openBlockCard(r.id, rerender).catch(err => toast(err.message, 'warn'))))
+        : html`<tr><td colspan=${STAYS_BLOCK_COLS.length} class="empty">Блоков по фильтру нет</td></tr>`}</tbody></table></div>
+      ${rows.length < total ? html`<button class="btn" id="bl-more" ?disabled=${loadingMore} @click=${more}>Показать ещё ${Math.min(STAYS_BLOCK_PAGE, total - rows.length)}</button>` : nothing}`);
+  const screen = () => html`<div class="sb-toolbar">${staysPeriodBarView(b, body, rerender)}
+    ${categoryPickView(fund.categories.map(c => [c.id, c.code]), b.category_ids, v => { b.category_ids = v; rerender(); })}
+    <label class="chk"><input type="checkbox" id="bl-short" .checked=${b.short_only}
+      @change=${e => { b.short_only = e.target.checked; rerender(); }}> с нехваткой</label>
+    ${staysSearchView('bl-q', 'название блока', b, rerender)}
+    ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary" id="bl-new"
+      @click=${() => openBlockCard(null, rerender).catch(err => toast(err.message, 'warn'))}>+ Блок</button>` : nothing}</div>
+    <div id="bl-result">${result()}</div>`;
+  draw();
 }
 
 /* ─────────────── Карточка блока ─────────────── */
@@ -201,31 +169,32 @@ function staysBlockNights(start, end) {
 }
 const staysGridCopy = g => Object.fromEntries(Object.entries(g || {}).map(([c, by]) => [c, { ...by }]));
 
-/* клетка сетки: остаток; если блок сохранён и клетка не менялась — «разложено / нехватка» сервера */
-function staysBlockCellHtml(c, n, qty, missing, dirty) {
+/* клетка сетки: остаток; если блок сохранён и клетка не менялась — «разложено / нехватка» сервера;
+   r и i — индексы клетки для выделения */
+function staysBlockCell(c, n, qty, missing, dirty, r, i) {
   const short = missing > 0 && !dirty;
   const title = short ? `разложено ${qty - missing} из ${qty}, не хватает ${missing}` : qty ? `остаток ${qty}` : '';
-  return `<td class="bg-cell${short ? ' short' : ''}${dirty ? ' dirty' : ''}" data-bg-c="${c}" data-bg-n="${esc(n)}" title="${esc(title)}">${
-    qty ? `${qty}${short ? `<small>−${missing}</small>` : ''}` : ''}</td>`;
+  return html`<td class=${`bg-cell${short ? ' short' : ''}${dirty ? ' dirty' : ''}`} data-bg-c=${c} data-bg-n=${n} data-r=${r} data-i=${i}
+    title=${title}>${qty ? html`${qty}${short ? html`<small>−${missing}</small>` : nothing}` : nothing}</td>`;
 }
 
 /* шапка: месяцы с colspan, под ними числа и дни недели */
-function staysBlockHeadHtml(nights) {
+function staysBlockHead(nights) {
   const months = [];
   nights.forEach(n => {
     const key = n.slice(0, 7);
     if (months.length && months[months.length - 1].key === key) months[months.length - 1].span++;
     else months.push({ key, span: 1, title: `${MONTHS[Number(n.slice(5, 7)) - 1]} ${n.slice(0, 4)}` });
   });
-  return `<tr><th class="bg-cat" rowspan="2">Категория</th>${months.map(m =>
-    `<th class="bg-month" colspan="${m.span}">${esc(m.title)}</th>`).join('')}</tr>
+  return html`<tr><th class="bg-cat" rowspan="2">Категория</th>${months.map(m =>
+    html`<th class="bg-month" colspan=${m.span}>${m.title}</th>`)}</tr>
     <tr>${nights.map(n => {
     const wd = new Date(n + 'T12:00:00Z').getUTCDay();
-    return `<th class="bg-day${wd === 0 || wd === 6 ? ' we' : ''}" data-bg-h="${esc(n)}">${Number(n.slice(8))}<small>${esc(WD_SHORT[(wd + 6) % 7])}</small></th>`;
-  }).join('')}</tr>`;
+    return html`<th class=${`bg-day${wd === 0 || wd === 6 ? ' we' : ''}`} data-bg-h=${n}>${Number(n.slice(8))}<small>${WD_SHORT[(wd + 6) % 7]}</small></th>`;
+  })}</tr>`;
 }
 
-async function openBlockCard(id, onChanged) {
+export async function openBlockCard(id, onChanged) {
   const [fund, card] = await Promise.all([staysFund(), id ? api('/api/stays/blocks/' + id) : Promise.resolve(null)]);
   const edit = can('stays.edit');
   const st = { id: card ? card.id : null, version: card?.version, title: card?.title || '',
@@ -249,53 +218,54 @@ async function openBlockCard(id, onChanged) {
     return out;
   };
   const title = () => (st.id ? `Блок · ${st.title}` : 'Новый блок');
-  const gridBody = () => {
+  const gridView = () => {
     const nights = staysBlockNights(st.start, st.end);
     const rows = rowsOf();
     const miss = missingMap();
     const sums = nights.map(n => rows.reduce((a, r) => a + (st.grid[r.id]?.[n] || 0), 0));
-    return `<table class="bg-table" aria-label="Остатки блока по категориям и ночам">
-      <thead>${staysBlockHeadHtml(nights)}</thead>
-      <tbody>${rows.map(r => `<tr><th class="bg-cat" scope="row">${esc(r.code)}</th>${nights.map(n => {
+    return html`<table class="bg-table" aria-label="Остатки блока по категориям и ночам">
+      <thead>${staysBlockHead(nights)}</thead>
+      <tbody>${rows.map((r, ri) => html`<tr><th class="bg-cat" scope="row">${r.code}</th>${nights.map((n, ni) => {
     const q = st.grid[r.id]?.[n] || 0;
     const dirty = q !== (st.saved[r.id]?.[n] || 0);
-    return staysBlockCellHtml(r.id, n, q, miss[r.id]?.[n] || 0, dirty);
-  }).join('')}</tr>`).join('')}
-      <tr class="bg-sum"><th class="bg-cat" scope="row">Всего</th>${sums.map(s => `<td>${s || ''}</td>`).join('')}</tr></tbody></table>`;
+    return staysBlockCell(r.id, n, q, miss[r.id]?.[n] || 0, dirty, ri, ni);
+  })}</tr>`)}
+      <tr class="bg-sum"><th class="bg-cat" scope="row">Всего</th>${sums.map(s => html`<td>${s || ''}</td>`)}</tr></tbody></table>`;
   };
-  const summaryHtml = () => {
-    if (!st.id) return '<span class="muted">Сохраните блок — сервер покажет, сколько разложено по объектам и где не хватает</span>';
-    return `Разложено по объектам: <b>${st.placed}</b>${st.missing ? ` · <span class="sp-warn">нехватка: <b>${st.missing}</b></span>` : ''}
-      ${st.short.map(x => `<div class="sp-warn" data-block-short>⚠ ${esc(codeOf(x.category_id))}: не хватает ${x.missing} с ${esc(dateRu(x.first))} по ${esc(dateRu(x.last))}</div>`).join('')}`;
+  const summaryView = () => {
+    if (!st.id) return html`<span class="muted">Сохраните блок — сервер покажет, сколько разложено по объектам и где не хватает</span>`;
+    return html`Разложено по объектам: <b>${st.placed}</b>${st.missing ? html` · <span class="sp-warn">нехватка: <b>${st.missing}</b></span>` : nothing}
+      ${st.short.map(x => html`<div class="sp-warn" data-block-short>⚠ ${codeOf(x.category_id)}: не хватает ${x.missing} с ${dateRu(x.first)} по ${dateRu(x.last)}</div>`)}`;
   };
-  const controls = () => `
+  const controls = () => html`
     <div class="bg-tools">
       <div class="bg-tool"><b>Выделение</b> <span id="bg-sel-info" class="muted">клик по клетке, shift-клик или протяжка — диапазон</span>
-        <input type="number" id="bg-qty" min="0" max="500" value="1" title="Остаток для выделенных клеток">
+        <input type="number" id="bg-qty" min="0" max="500" .value=${'1'} title="Остаток для выделенных клеток">
         <button class="btn btn-sm" id="bg-set">Задать число</button>
         <button class="btn btn-sm btn-ghost" id="bg-clear" title="Убрать остаток у выделенных клеток">Очистить</button></div>
       <div class="bg-tool"><b>Заполнить</b>
-        <select id="bg-fill-cat" title="Категория">${rowsOf().map(r => `<option value="${esc(r.id)}">${esc(r.code)}</option>`).join('')}</select>
+        <select id="bg-fill-cat" title="Категория">${rowsOf().map(r => html`<option value=${r.id}>${r.code}</option>`)}</select>
         <input type="date" id="bg-fill-from" title="Первая ночь"><input type="date" id="bg-fill-to" title="Последняя ночь">
-        <input type="number" id="bg-fill-qty" min="0" max="500" value="1" title="Остаток">
+        <input type="number" id="bg-fill-qty" min="0" max="500" .value=${'1'} title="Остаток">
         <button class="btn btn-sm" id="bg-fill">Заполнить</button></div></div>`;
+  const dateInput = (id, value) => html`<input id=${id} type="date" .value=${value} ?disabled=${!edit}>`;
 
   openModal({
     title: title(), wide: true,
     subtitle: edit ? 'Остаток по категориям на каждую ночь: блок держит объекты категории под группу. «Проверить» покажет, кто останется без объекта'
       : 'Остаток по категориям на каждую ночь',
-    body: `<div class="grid-2">
-        ${sfRow('Название', `<input id="bg-title" type="text" maxlength="120" value="${esc(st.title)}"${edit ? '' : ' disabled'}>`)}
-        <div class="grid-2">${sfRow('С', sfInput('bg-start', st.start, 'date').replace('<input', `<input${edit ? '' : ' disabled'}`))}
-          ${sfRow('По (выезд)', sfInput('bg-end', st.end, 'date').replace('<input', `<input${edit ? '' : ' disabled'}`))}</div>
+    body: html`<div class="grid-2">
+        ${fieldRow('Название', html`<input id="bg-title" type="text" maxlength="120" .value=${st.title} ?disabled=${!edit}>`)}
+        <div class="grid-2">${fieldRow('С', dateInput('bg-start', st.start))}
+          ${fieldRow('По (выезд)', dateInput('bg-end', st.end))}</div>
       </div>
-      <div id="bg-summary" class="bg-summary">${summaryHtml()}</div>
-      ${edit ? controls() : ''}
+      <div id="bg-summary" class="bg-summary"></div>
+      ${edit ? controls() : nothing}
       <div class="bg-wrap" id="bg-wrap"></div>
       <div id="bg-note" class="muted"></div>
       <div id="rf-preview-out" class="sp-out"></div>`,
-    footer: `${edit && st.id ? '<button class="btn btn-danger" id="bg-delete">Удалить…</button>' : ''}
-      ${edit ? staysFormFoot() : '<button class="btn btn-ghost" data-close>Закрыть</button>'}`,
+    footer: html`${edit && st.id ? html`<button class="btn btn-danger" id="bg-delete">Удалить…</button>` : nothing}
+      ${edit ? formFootView() : html`<button class="btn btn-ghost" data-close>Закрыть</button>`}`,
     onMount(m) {
       m.classList.add('v4-xl');
       const wrap = $('#bg-wrap', m);
@@ -319,14 +289,11 @@ async function openBlockCard(id, onChanged) {
         }
       };
       const paintGrid = () => {
-        wrap.innerHTML = gridBody();
+        render(gridView(), wrap);
         cells = $$('.bg-table td[data-bg-c]', wrap);
-        const rowIdx = Object.fromEntries(rowsOf().map((r, k) => [r.id, k]));
-        const nightIdx = Object.fromEntries(staysBlockNights(st.start, st.end).map((n, k) => [n, k]));
-        cells.forEach(td => { td.dataset.r = rowIdx[td.dataset.bgC]; td.dataset.i = nightIdx[td.dataset.bgN]; });
         const outside = Object.values(st.grid).reduce((a, by) => a + Object.keys(by).filter(n => !(n >= st.start && n < st.end)).length, 0);
         $('#bg-note', m).textContent = outside ? `Ночей вне дат блока: ${outside} — при сохранении они удалятся` : '';
-        $('#bg-summary', m).innerHTML = summaryHtml();
+        render(summaryView(), $('#bg-summary', m));
         $('.modal-head h3', m).textContent = title();
         paintSel();
       };
@@ -434,9 +401,8 @@ async function openBlockCard(id, onChanged) {
       const editFlow = {
         async preview() {
           const r = await api(`${url()}?preview=1`, { method: method(), body: body() });
-          renderPreview(r.diff, out(), r.overbook_refused);
           const dropped = r.result?.dropped?.length;
-          if (dropped) out().insertAdjacentHTML('beforeend', `<div class="sp-warn">Уйдут ночи вне новых дат: ${dropped}</div>`);
+          renderPreview(r.diff, out(), r.overbook_refused, dropped ? html`<div class="sp-warn">Уйдут ночи вне новых дат: ${dropped}</div>` : nothing);
           return r;
         },
         save: () => api(url(), { method: method(), body: body() }),
@@ -450,9 +416,15 @@ async function openBlockCard(id, onChanged) {
           grid: staysGridCopy(fresh.grid), saved: staysGridCopy(fresh.grid), short: fresh.short,
           placed: fresh.placed, missing: fresh.missing, sel: null, anchor: null });
         $('#bg-title', m).value = st.title; $('#bg-start', m).value = st.start; $('#bg-end', m).value = st.end;
-        out().innerHTML = '';
+        render(nothing, out());
         paintGrid();
-        if (!$('#bg-delete', m)) m.querySelector('.modal-foot').insertAdjacentHTML('afterbegin', '<button class="btn btn-danger" id="bg-delete">Удалить…</button>');
+        if (!$('#bg-delete', m)) {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-danger';
+          btn.id = 'bg-delete';
+          btn.textContent = 'Удалить…';
+          m.querySelector('.modal-foot').prepend(btn);
+        }
         bindDelete();
       };
       let foot = { reset() {} };
@@ -489,25 +461,12 @@ async function openBlockCard(id, onChanged) {
 
 /* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
 Object.assign(globalThis, {
-  STAYS_BLOCK_COLS,
-  STAYS_BLOCK_PAGE,
-  STAYS_BLOCK_MAX_NIGHTS,
   staysBlockEmpty,
   staysBlock,
   staysPeriodRange,
-  staysPeriodBar,
-  staysPeriodBind,
-  staysSearchBind,
-  staysPickHtml,
-  staysPickBind,
-  staysBlockParams,
-  staysBlockRowHtml,
-  staysBlockTableHtml,
+  staysPeriodBarView,
+  staysSearchView,
   renderBlocksTab,
-  staysBlockNights,
-  staysGridCopy,
-  staysBlockCellHtml,
-  staysBlockHeadHtml,
   openBlockCard,
 });
 /* ── конец моста ── */

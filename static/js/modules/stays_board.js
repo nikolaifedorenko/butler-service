@@ -11,6 +11,7 @@ import { can } from '../app.js';
 import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { relativesView } from './stays_forms.js';
+import { openOooForm } from './stays_ooo.js';
 import {
   staysCodeTagView, staysDayHeadView, staysFilterView, staysGuestMarkView, loadStays, staysMonthNavView, openReservationCard, staysAddDays, staysFocusDay, staysFund,
   staysFundParams, staysMonthRange, staysPeopleParams, staysState, staysToday, staysWeight,
