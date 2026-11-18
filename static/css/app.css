@@ -138,7 +138,7 @@
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; height: calc(var(--tab-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  background: var(--warn-bg); border-top: 1px solid var(--line);
+  background: var(--surface-0); border-top: 1px solid var(--line);
   display: none; z-index: 45;
 }
 .tabbar button {
@@ -339,7 +339,7 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
 .me-date { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 12px;
   text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
 .me-shift { border-radius: var(--r-lg); padding: 22px 20px; text-align: center; border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--warn-bg) 0%, var(--surface-1) 100%); margin-bottom: 18px; position: relative;
+  background: linear-gradient(180deg, var(--surface-0) 0%, var(--surface-1) 100%); margin-bottom: 18px; position: relative;
   overflow: hidden; box-shadow: var(--shadow); }
 .me-shift::after { content: ""; position: absolute; inset: auto 0 0 0; height: 3px;
   background: linear-gradient(90deg, var(--gold), var(--primary)); }
@@ -670,7 +670,7 @@ table.sched thead th.today.double-day .dow { color: var(--gold); }
    Слева липкая колонка имён, справа горизонтальная прокрутка SVG-полотна. */
 .fg-wrap { display: flex; border: 1px solid var(--line); border-radius: var(--r-md);
   overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
-.fg-names { flex: 0 0 210px; border-right: 1px solid var(--line); background: var(--info-bg); }
+.fg-names { flex: 0 0 210px; border-right: 1px solid var(--line); background: var(--surface-0); }
 .fg-names .fg-hd { height: 34px; border-bottom: 1px solid var(--line); display: flex;
   align-items: center; padding: 0 10px; font-weight: 700; font-size: 10.5px; color: var(--muted);
   text-transform: uppercase; letter-spacing: .08em; }
@@ -697,7 +697,7 @@ table.sched thead th.today.double-day .dow { color: var(--gold); }
 .tc-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
 .tc-chip.sel { box-shadow: 0 0 0 3px rgba(148, 88, 58, .28); transform: translateY(-1px); }
 .tc-chip.sel::after { content: '✓'; margin-left: 5px; color: var(--brand-fg); }
-.tc-chip.clear { background: var(--info-bg); border-color: var(--line); color: var(--muted); font-weight: 600; }
+.tc-chip.clear { background: var(--surface-1); border-color: var(--line); color: var(--muted); font-weight: 600; }
 .tc-chip small { font-weight: 500; color: var(--muted); margin-left: 6px; font-size: 11.5px; }
 .tc-chip.off { opacity: .5; cursor: not-allowed; border-style: dashed; font-weight: 600; }
 .v4-ut { min-width: 46px; vertical-align: top; border-bottom: 1px solid var(--line-soft); }
@@ -770,7 +770,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
 .grid-3 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 
 .rule-card { border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px 16px;
-  margin-bottom: 10px; background: linear-gradient(180deg, var(--warn-bg), var(--surface-0)); }
+  margin-bottom: 10px; background: linear-gradient(180deg, var(--surface-0), var(--surface-0)); }
 .rule-card .rc-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .rule-card h4 { margin: 0; font-size: 15.5px; font-weight: 800; }
 .rule-card .rc-body { color: var(--muted); font-size: 13px; margin-top: 8px; line-height: 1.6; }
@@ -805,7 +805,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
   white-space: nowrap; background: none; border: none; cursor: pointer; font-size: 12.5px; }
 
 .timeline { position: relative; border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--warn-bg); padding: 10px 12px 6px; overflow: hidden; }
+  background: var(--surface-0); padding: 10px 12px 6px; overflow: hidden; }
 .tl-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted-2);
   font-variant-numeric: tabular-nums; margin-bottom: 6px; }
 .tl-row { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
@@ -1007,7 +1007,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
 .bg-table .bg-day.we { color: var(--danger-fg); }
 .bg-table .bg-cat { position: sticky; left: 0; z-index: 2; background: var(--surface-1); text-align: left; min-width: 70px; }
 .bg-table thead .bg-cat { z-index: 3; }
-.bg-cell { cursor: cell; background: var(--warn-bg); }
+.bg-cell { cursor: cell; background: var(--surface-0); }
 .bg-cell.dirty { background: var(--warn-bg); }
 .bg-cell.short { background: var(--danger-bg); color: var(--danger-fg); font-weight: 700; }
 .bg-cell.short small { display: block; font-size: 10px; }
@@ -1060,7 +1060,7 @@ tr.fund-retired td .badge { text-decoration: none; }
 .bb-cell small { display: block; color: var(--muted); }
 .bb-cell .bb-w { color: var(--danger-fg); }
 .db-sum { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.db-sum > div { padding: 6px 10px; border-radius: 8px; background: var(--info-bg); }
+.db-sum > div { padding: 6px 10px; border-radius: 8px; background: var(--surface-1); }
 .db-sum .danger { background: var(--danger-bg); } .db-sum .warn { background: var(--warn-bg); }
 .db-row { display: grid; grid-template-columns: 70px 130px 1fr 1.3fr 1fr; gap: 8px; padding: 8px 6px;
   border-bottom: 1px solid var(--info-line); cursor: pointer; align-items: start; }
