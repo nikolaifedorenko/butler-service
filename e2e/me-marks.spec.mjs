@@ -79,3 +79,18 @@ test('окно: openModal принимает строки с разметкой 
   await expect(page.locator('#modal-backdrop')).toHaveClass(/hidden/);
   expect(await page.locator('#modal').evaluate(el => el.children.length)).toBe(0);
 });
+
+test('содержимое раздела стёрто снаружи (смена пользователя): следующая загрузка рисует заново без ошибок', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  await open(page, 'marks');
+  await expect(page.locator('#view-marks .stat').first()).toBeVisible();
+  await open(page, 'me');
+  // как resetUserViewState() при выходе: все разделы — в пустое состояние
+  await page.evaluate(() => document.querySelectorAll('.view').forEach(v => { v.innerHTML = ''; }));
+  await open(page, 'marks');
+  await expect(page.locator('#view-marks .stat').first()).toBeVisible();
+  await open(page, 'me');
+  await expect(page.locator('#view-me .me-wrap')).toBeVisible();
+  expect(errors).toEqual([]);
+});

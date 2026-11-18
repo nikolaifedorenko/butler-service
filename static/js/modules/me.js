@@ -6,12 +6,12 @@ import { poll, registerModule } from '../app.js';
 import {
   $, api, closeModal, confirmDialog, hhmm, hours, MONTHS_GEN, openModal, state, syncServerClock, toast, WD,
 } from '../core.js';
-import { html, nothing, render } from '../ui/html.js';
+import { html, mount, nothing, render } from '../ui/html.js';
 
 registerModule({ views: { me: loadMe } });
 
 export async function loadMe() {
-  const host = $('#view-me');
+  const host = mount($('#view-me'));
   render(html`<div class="me-wrap"><div class="empty">Загрузка…</div></div>`, host);
   try {
     const status = await api('/api/punches/status');
@@ -94,7 +94,7 @@ function renderMe(s) {
     ${state.user.impersonated ? html`<div class="alert warn" style="margin-top:16px">
       <p style="margin:0">Демо-режим: вы смотрите интерфейс сотрудника
       <b>${state.user.name}</b>. Отметки, нажатые здесь, попадут в его табель.</p></div>` : nothing}
-  </div>`, $('#view-me'));
+  </div>`, mount($('#view-me')));
 
   /* История — с catch (ревью 20.10.2026, P1-fe-5): без него сбой запроса
      (/api/punches) уходил в unhandledrejection и пугал общим тостом «Ошибка

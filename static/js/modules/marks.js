@@ -8,7 +8,7 @@
    ══════════════════════════════════════════════════════════════════ */
 import { poll, registerModule } from '../app.js';
 import { $, api, durationRu } from '../core.js';
-import { html, render, unsafeHTML } from '../ui/html.js';
+import { html, mount, render, unsafeHTML } from '../ui/html.js';
 
 registerModule({ views: { marks: loadMarks } });
 
@@ -38,7 +38,7 @@ export async function fetchMarks(silent) {
 
 function draw() {
   const host = $('#view-marks');
-  if (host) render(boardTemplate(), host);
+  if (host) render(boardTemplate(), mount(host));
 }
 
 const fio = e => (e.position || '—') + (e.group ? ' · ' + e.group : '');

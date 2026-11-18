@@ -251,6 +251,7 @@
   "mineMonthGridHtml": "readonly",
   "mineState": "readonly",
   "mineTodayCardHtml": "readonly",
+  "mount": "readonly",
   "multipartApi": "readonly",
   "navigate": "readonly",
   "nightArchiveModal": "readonly",
@@ -813,6 +814,7 @@
   "mineMonthGridHtml": "modules/stays_mine.js",
   "mineState": "modules/stays_mine.js",
   "mineTodayCardHtml": "modules/stays_mine.js",
+  "mount": "ui/html.js",
   "multipartApi": "core.js",
   "navigate": "app.js",
   "nightArchiveModal": "modules/night.js",
@@ -1397,7 +1399,9 @@
    "loadSchedule",
    "openRangeModal"
   ],
-  "ui/html.js": [],
+  "ui/html.js": [
+   "mount"
+  ],
   "ui/theme.js": []
  }
 }
