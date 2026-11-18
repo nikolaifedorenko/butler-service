@@ -282,8 +282,8 @@ async function main() {
   check('вкладка «Чек-листы» открылась', await waitFor(() => !!$('#di-zone')));
   const zoneSel = $('#di-zone');
   change(zoneSel, String(zoneId));
-  check('шаблон зоны показан', await rerendered(zoneSel, '#di-zone',
-    el => el.value === String(zoneId)) && /Витражи закрыты/.test(text('#dict-host')));
+  check('шаблон зоны показан', await waitFor(() => $('#di-zone')?.value === String(zoneId)
+    && /Витражи закрыты/.test(text('#dict-host'))));
   input($('#di-text'), 'Сценарный пункт зоны');
   click($('#di-add'));
   check('пункт добавлен в шаблон зоны', await waitFor(() => /Сценарный пункт зоны/.test(text('#dict-host'))));
@@ -304,8 +304,9 @@ async function main() {
     .find(a => a.name === 'Вилла 4005').id;
   const areaSel = $('#di-area');
   change(areaSel, String(areaId));
-  check('выбор объекта для правок', await rerendered(areaSel, '#di-area',
-    el => el.value === String(areaId)) && $$('#dict-host [data-ov]').length >= 4,
+  check('выбор объекта для правок', await waitFor(() => $('#di-area')?.value === String(areaId)
+    && $('#dict-host [data-own]')?.dataset.own === String(areaId)
+    && $$('#dict-host [data-ov]').length >= 4),
     String($$('#dict-host [data-ov]').length));
   const ovBtn = $$('#dict-host [data-ov]')[0];
   click(ovBtn);
