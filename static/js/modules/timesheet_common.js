@@ -63,6 +63,19 @@ export function dayHeadCell(iso) {
   return html`<th class="v4-day${weekend ? ' we' : ''}${iso === todayISO() ? ' today' : ''}">${d.getDate()}<small>${WD_SHORT[(d.getDay() + 6) % 7]}</small></th>`;
 }
 
+/* Переход по месяцам: шаблон с обработчиками (старая пара v4MonthNav + v4BindMonthNav остаётся для файлов,
+   которые ещё не переехали). reload вызывается после смены state.year / state.month. */
+export function monthNav(prefix, reload) {
+  const shift = delta => {
+    let m = state.month + delta, y = state.year;
+    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+    state.month = m; state.year = y; reload();
+  };
+  return html`<div class="month-nav"><button id=${prefix + '-prev'} @click=${() => shift(-1)}>‹</button>
+    <div class="label" id=${prefix + '-label'}>${MONTHS[state.month - 1]} ${state.year}</div>
+    <button id=${prefix + '-next'} @click=${() => shift(1)}>›</button></div>`;
+}
+
 export function contactsView(e) {
   const tel = String(e.phone || '').trim();
   const tg = String(e.telegram || '').trim().replace(/^@+/, '');
@@ -82,6 +95,7 @@ Object.assign(globalThis, {
   v4Hours,
   v4Contacts,
   dayHeadCell,
+  monthNav,
   contactsView,
 });
 /* ── конец моста ── */
