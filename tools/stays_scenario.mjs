@@ -75,8 +75,15 @@ function proxy(method, url, { body, headers } = {}) {
 const dom = new JSDOM(html, { url: BASE + '/', runScripts: 'dangerously',
   pretendToBeVisual: true, virtualConsole: vc });
 const { window } = dom;
-window.fetch = (url, init = {}) => proxy(init.method || 'GET', url,
-  { body: typeof init.body === 'string' ? init.body : undefined, headers: init.headers });
+let inflight = 0;      // запросы интерфейса в полёте: по ним «idle» понимает, что вид дорисовался
+const FETCH_DELAY_MS = Number(process.env.SCN_FETCH_DELAY_MS || 0);   // имитация медленной сети (CI): SCN_FETCH_DELAY_MS=400
+window.fetch = (url, init = {}) => {
+  inflight++;
+  const send = () => proxy(init.method || 'GET', url,
+    { body: typeof init.body === 'string' ? init.body : undefined, headers: init.headers });
+  return (FETCH_DELAY_MS ? new Promise(r => setTimeout(r, FETCH_DELAY_MS)).then(send) : send())
+    .finally(() => { inflight--; });
+};
 window.URL.createObjectURL = () => 'blob:stub';
 window.URL.revokeObjectURL = () => {};
 window.print = () => {};
@@ -155,7 +162,10 @@ async function openMonth(iso, tab = 'units') {
    «перерисовалось» — это «запросы закончились»: выдерживаем паузу и ждём, пока спиннер скрыт */
 async function idle() {
   await sleep(300);
-  return waitFor(() => $('#loading')?.classList.contains('hidden') !== false);
+  /* запросов нет и спиннера нет подряд дважды: между двумя запросами цепочки (фонд → сетка) пауза мала */
+  const ok = await waitFor(() => inflight === 0 && $('#loading')?.classList.contains('hidden') !== false);
+  await sleep(150);
+  return ok && inflight === 0;
 }
 async function setCheck(sel, on) {
   const el = $(sel);
