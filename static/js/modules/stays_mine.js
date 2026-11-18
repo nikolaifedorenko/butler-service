@@ -20,7 +20,7 @@ import {
 const MINE_TABS = [['today', 'Сегодня'], ['month', 'Мой месяц'], ['guests', 'Все мои гости']];
 const MINE_LEVEL = { one: 'один гость', many: 'несколько гостей', over: 'выше лимита' };
 const MINE_PAGE = 50;
-const mineState = { tab: 'today', q: '' };
+export const mineState = { tab: 'today', q: '' };
 
 const mineDdmm = iso => dateRu(iso).slice(0, 5);
 const mineCanResEdit = () => can('stays.edit') || can('stays.mine_res_edit');
@@ -212,6 +212,7 @@ async function openMineGuest(gid, onChanged) {
 
 /* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
 Object.assign(globalThis, {
+  mineState,
   renderMine,
 });
 /* ── конец моста ── */
