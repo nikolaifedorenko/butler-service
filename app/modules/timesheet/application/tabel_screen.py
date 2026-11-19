@@ -8,7 +8,7 @@
 чтение. После сохранения дня D — перегенерация Графика дня D (16.3). Пересчёт часов не
 запускается (16.1 п.2).
 
-Циклы графика — инструмент заполнения Табеля (решение владельца 11.10.2026)."""
+Циклы графика — инструмент заполнения Табеля."""
 from __future__ import annotations
 
 import datetime as dt
@@ -60,7 +60,7 @@ def _code_titles(db: Session) -> dict[str, str]:
 
 def _code_colors(db: Session) -> dict[str, str]:
     """Цвета кодов Табеля (presentation версии справочников) — общий сервис:
-    тот же источник использует График для цветов ячеек (16.10.2026)."""
+    тот же источник использует График для цветов ячеек."""
     return day_code_colors(db)
 
 
@@ -105,7 +105,7 @@ def tabel(db: Session, principal: Principal, year: int, month: int,
             "codes": [{"code": code, "title": titles.get(code, ""),
                        "carries_hours": p.carries_hours, "accepts_ut": p.accepts_ut,
                        "counts_in_ut": p.counts_in_ut, "plan_equals_fact_auto": p.plan_equals_fact_auto,
-                       # шаблон заявления кода (18.10.2026): слой 0 печатает по коду,
+                       # шаблон заявления кода: слой 0 печатает по коду,
                        # словарь смен в заявлениях больше не участвует
                        "doc_type": (code_rows.get(code) or {}).get("doc_type") or ""}
                       for code, p in st.day_code_policy.items()],
@@ -139,9 +139,9 @@ class BulkIn(BaseModel):
 
 def _apply_cell(db: Session, principal: Principal, emp_id: int, day: dt.date, code: str,
                 hours: float, note: str, *, rebuild: bool = True) -> Optional[str]:
-    """Запись одной ячейки Табеля (+ заметка, аудит, предупреждения).
+    """Запись одной ячейки Табеля.
 
-    `rebuild=False` — массовый режим (P0-3 ревью 20.10.2026): График перегенерирует
+    `rebuild=False` — массовый режим: График перегенерирует
     вызывающий код один раз на затронутый месяц, поэтому `manual_shifts_dropped`
     здесь пуст, а удалённые ручные смены собирает пакетная перегенерация.
     """
@@ -282,7 +282,7 @@ class ResetIn(BaseModel):
 
 @transactional
 def reset(db: Session, principal: Principal, payload: ResetIn) -> dict:
-    """«Сбросить» (T3, решение владельца Q5 от 12.10.2026): убрать РУЧНЫЕ коды периода
+    """«Сбросить»: убрать РУЧНЫЕ коды периода
     и вернуть автозаполнение Табеля из циклов.
 
     Табель — первичный документ: он заполняется из настроек сотрудника (циклов блоков),

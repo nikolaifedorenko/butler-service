@@ -243,7 +243,7 @@ def dismiss(db: Session, principal: Principal, employee_id: int,
     if emp.user:
         emp.user.is_active = False
         # сессии завершаются: иначе после повторного приёма в пределах срока жизни токена
-        # старая cookie снова работала бы (AUTHZ-04, рецензия аудита 22.10.2026)
+        # старая cookie снова работала бы
         revoke_user_sessions(db, emp.user.id)
     # При увольнении все закрепления электрокаров снимаются автоматически (ТЗ, ч.3)
     for car in db.scalars(select(Car).where(Car.assigned_to == emp.id)):

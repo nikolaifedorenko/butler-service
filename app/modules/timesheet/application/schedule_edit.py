@@ -125,7 +125,7 @@ class AbsenceIn(BaseModel):
     next_day: bool = False
     kind_id: Optional[int] = None    # тип отсутствия из словаря (заявление, режим отметок)
     note: str = ""
-    doc_type: str = ""               # шаблон заявления (18.10.2026): пусто — по точке ввода
+    doc_type: str = ""               # шаблон заявления: пусто — по точке ввода
 
 
 @transactional
@@ -151,7 +151,7 @@ def add_absence(db: Session, principal: Principal, payload: AbsenceIn) -> int:
         row.kind_id = payload.kind_id
         row.note = payload.note[:255]
         row.created_by = principal.user.id
-        # выбранный в диалоге шаблон заявления (18.10.2026): пусто — правило
+        # выбранный в диалоге шаблон заявления: пусто — правило
         # по точке входа (вся смена / интервал) из doc_type_of_absence
         row.doc_type = (payload.doc_type or "").strip()[:40]
     audit(db, principal, "schedule_absence", f"employee:{payload.employee_id}",
@@ -196,7 +196,7 @@ def day_window_hhmm(db: Session, st, employee_id: int, day: dt.date) -> tuple[st
             window = st.windows.get(value)
             if window is not None:
                 # окно до полуночи (end_minute = 1440, CHK-WINDOW-BOUNDS) — «00:00 следующих
-                # суток»: «24:00» роняло dt.time ValueError'ом → 500 (рецензия аудита 22.10.2026)
+                # суток»: «24:00» роняло dt.time ValueError'ом → 500
                 end_next_day = window.end_minute == 1440
                 end = 0 if end_next_day else window.end_minute
                 return (f"{window.start_minute // 60:02d}:{window.start_minute % 60:02d}",
@@ -269,7 +269,7 @@ def range_absence(db: Session, principal: Principal, payload: RangeAbsenceIn) ->
       сотрудник не ожидается, флагов нет);
     * **кода Табеля нет** («Выходной за часы», «Отпросился») — пишется согласованное
       отсутствие в График, Табель не трогается: явка остаётся, недостачу гасит банк
-      (норматив от 12.10.2026, паттерн EX-29).
+.
 
     Период может пересекать границы месяцев.
     """
@@ -285,7 +285,7 @@ def range_absence(db: Session, principal: Principal, payload: RangeAbsenceIn) ->
         raise Validation("Вид отсутствия не найден")
     if not code and kind is not None:
         # вид без кода Табеля — «отпросился (выходной за часы)»: согласованное
-        # отсутствие в График, Табель не трогается (норматив 12.10.2026, EX-29)
+        # отсутствие в График, Табель не трогается
         return all_or_nothing(db, lambda: _range_absence_as_schedule(db, principal, payload, kind))
     st = period_settings(db, month_period(payload.first.year, payload.first.month))
     policy = st.day_code_policy.get(code)
@@ -357,7 +357,7 @@ class ClearMonthIn(BaseModel):
 
 @transactional
 def reset_month(db: Session, principal: Principal, payload: ClearMonthIn) -> dict:
-    """«Сбросить месяц» в Графике (решения владельца 16.10.2026): убрать РУЧНЫЕ
+    """«Сбросить месяц» в Графике: убрать РУЧНЫЕ
     смены и согласованные ОТСУТСТВИЯ месяца (отлучки-интервалы и «выходные за
     часы») и перегенерировать График из Табеля — слой 1 возвращается к чистому
     плану из слоя 0.

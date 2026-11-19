@@ -1,7 +1,7 @@
 """Наблюдаемость и защита транспорта: middleware request-id/лога/метрик,
 CSRF (double-submit cookie), заголовки безопасности и CSP (ядро, R5).
 
-Перенесено из app/main.py в фазе C1 (20.10.2026, EXECUTION-SPEC-v2 §2):
+Перенесено из app/main.py в фазе C1:
 main.py остаётся composition root — создаёт FastAPI, вызывает register(app)
 и подключает роутеры. Порядок регистрации middleware сохранён (снизу вверх:
 csrf_protection → security_headers → request_context; последний — самый внешний,

@@ -1,4 +1,4 @@
-/* Раздел «Настройки»: экран «Расчёт» (вынесено из settings.js, шаг 6.5 аудита).
+/* Раздел «Настройки»: экран «Расчёт».
    Оболочка, черновик версии справочников и общие помощники — в settings.js.
    Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
@@ -157,7 +157,7 @@ export function settingsTimeline(rows) {
   </div>`;
 }
 
-export function settingsOrderListView(key, order, edit, onMove) {
+function settingsOrderListView(key, order, edit, onMove) {
   return html`<div class="order-list" data-order=${key}>${order.map((code, i) => html`
     <span class="item">
       <span class="n">${i + 1}</span>${code}

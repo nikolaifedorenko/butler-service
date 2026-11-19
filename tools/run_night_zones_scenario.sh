@@ -33,7 +33,7 @@ export APP_TZ
 # Ключ ≥16 символов (см. app/main.py); CSRF отключён, как в других сценариях:
 # запросы идут из node без браузерной пары «cookie + заголовок». Сам механизм CSRF
 # покрыт tests/test_csrf.py и смоуком интерфейса (run_ui_check.sh).
-export DEMO_SEED=1 DATABASE_URL="$DB_URL" SECRET_KEY="scenario-secret-key-0123456789abcdef" CSRF_ENABLED=0 PYTHONPATH="$ROOT"
+export DEMO_SEED=1 DATABASE_URL="$DB_URL" CSRF_ENABLED=0 PYTHONPATH="$ROOT"
 # сценарий сохраняет токен бота — секреты уведомлений шифруются (только тестовый ключ)
 export NOTIFY_SECRET_KEY="${NOTIFY_SECRET_KEY:-tS9b4qY7kMSv3cEq0wHf1uXr6nAjZpLd2oKgVyB5iT8=}"
 echo "часовой пояс сценария: $APP_TZ (локальное время ≈ 23:00 — смена идёт)"

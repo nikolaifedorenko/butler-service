@@ -4,5 +4,5 @@
 Слои: application (сервис cars.py + catalog — публичная поверхность моделей),
 adapters (orm — модели car_*), interface (роутер cars_api), domain/ports —
 тривиальные (код перенесён «как есть»). Ночной обход каров связан с модулем night строковым FK (report_id) —
-кросс-модульная relationship удалена (R6, батч 20.10.2026).
+кросс-модульная relationship удалена.
 """

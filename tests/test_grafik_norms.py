@@ -39,7 +39,6 @@ if "DATABASE_URL" not in os.environ:
     if os.path.exists(_tmp_db):
         os.remove(_tmp_db)
     os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db}"
-    os.environ["SECRET_KEY"] = "test-secret-key"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

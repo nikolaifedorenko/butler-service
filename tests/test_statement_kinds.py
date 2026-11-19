@@ -11,7 +11,6 @@ tmp_db = os.path.join(tempfile.gettempdir(), "tt_test_kinds.db")
 if os.path.exists(tmp_db):
     os.remove(tmp_db)
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{tmp_db}")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from docx import Document  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

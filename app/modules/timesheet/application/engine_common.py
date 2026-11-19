@@ -39,7 +39,7 @@ def covers_window(st, row, day, start_local, end_local) -> bool:
         hours = fmt_hours(row.plan_minutes)
     except ValueError as exc:
         # Битая строка Табеля (план не кратен 15, CHK-PLAN-FORMAT): типизированный
-        # отказ (409) вместо сырого ValueError → 500 (ревью 20.10.2026, P1-ts-3).
+        # отказ (409) вместо сырого ValueError → 500.
         raise TimesheetRowCorruptError(row.employee_id, day, row.plan_minutes) from exc
     window = st.windows.get(f"{row.code} {hours}")
     if window is None:
@@ -155,7 +155,7 @@ def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
 
     Домен читает их как `Settings.day_code_policy`, но HTTP-слою список нужен там,
     где домен не участвует: редактор словаря смен проверяет, что «код в табеле»
-    существует (T1, норматив 12.10.2026), health-панель сверяет два справочника
+    существует, health-панель сверяет два справочника
     (APP-SHIFT-CODE / APP-CODE-NO-SHIFT). Порядок — как в payload версии: тот же,
     что видит экран «Коды Табеля».
 
@@ -178,7 +178,7 @@ def day_code_rows(db: Session, day: dt.date | None = None) -> dict[str, dict]:
                           "accepts_ut": bool(row.get("accepts_ut")),
                           "counts_in_ut": bool(row.get("counts_in_ut")),
                           # режим отметок и шаблон заявления — атрибуты карточки кода
-                          # (решение владельца 16.10.2026). Отсутствующий ключ в старой
+                          # Отсутствующий ключ в старой
                           # версии = разрешение (RUL-ALL-MARKS-COUNTED), заявления нет.
                           "punch_in": bool(row.get("punch_in", True)),
                           "punch_out": bool(row.get("punch_out", True)),

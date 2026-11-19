@@ -346,7 +346,7 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
                 fresh.append(s)
         # слоты той же категории (любого блока) прошлой ночи: их объекты — первыми, чтобы соседние
         # блоки шли в один объект и не дробили его для броней; HK к слотам не применяется — слоты
-        # виртуальные, после них не убирают (финальное ревью, Important 1)
+        # виртуальные, после них не убирают
         before = {(k[1], uid) for k, uid in slot_units.items() if k[3] == n - 1 and uid is not None}
         for s in fresh:
             cands = [u for u in covering(s.category_id, a, z) if free(u.unit_id, a, z)]

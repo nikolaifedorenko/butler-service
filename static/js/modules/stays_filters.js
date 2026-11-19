@@ -9,7 +9,7 @@
 'use strict';
 
 import { state, toast } from '../core.js';
-import { html, nothing, render } from '../ui/html.js';
+import { html, nothing } from '../ui/html.js';
 import { staysEmptyFilters, staysState } from './stays.js';
 import { boardState } from './stays_board.js';
 import { staysBook, staysBookEmpty } from './stays_bookings.js';
@@ -46,7 +46,7 @@ export function staysResetUserState() {
    поиск (фамилия, № брони, телефон), «Особый гость» и VIP-код не сохраняются — персональные данные гостей не
    остаются в браузере после выхода. Хранилища может не быть (приватный режим, запрет
    сайта) — тогда наборов просто нет; без пользователя — тоже. */
-export function staysFiltersKey() {
+function staysFiltersKey() {
   const id = state.user?.id;
   return id == null ? null : `${STAYS_FILTERS_KEY}.${id}`;
 }
@@ -61,7 +61,7 @@ export function staysSavedFilters() {
     return [];
   }
 }
-export function staysWriteFilters(list) {
+function staysWriteFilters(list) {
   try {
     const key = staysFiltersKey();
     if (!key) return false;
@@ -82,7 +82,7 @@ export function staysSaveFilter(name, filters) {
   return staysWriteFilters([...staysSavedFilters().filter(x => x.name !== n),
     { name: n, filters: fund, sort: { by, dir, grouped } }]);
 }
-export function staysDeleteFilter(name) {
+function staysDeleteFilter(name) {
   return staysWriteFilters(staysSavedFilters().filter(x => x.name !== name));
 }
 /* набор из хранилища мог быть записан старой версией или руками — только известные поля */
@@ -123,7 +123,7 @@ const CHECKBOX = {
 let lastSavedName = '';           // имя только что сохранённого набора: он выбран в списке после перерисовки панели
 
 /* people — фильтры по гостям (поиск, VIP); уровню occupancy их не показываем: сервер их
-   для него не применяет (находка C1 аудита). Шаблон: панель встраивается прямо в вид. */
+   для него не применяет. Шаблон: панель встраивается прямо в вид. */
 export function filterPanelTemplate(fund, filters, onChange, { people = true } = {}) {
   const f = staysCleanFilters(filters);
   const emit = patch => { lastSavedName = ''; onChange({ ...f, ...patch }); };
@@ -194,13 +194,6 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true } =
   </div>`;
 }
 
-/* то же готовым элементом — для файлов раздела, которые ещё не переехали на шаблоны (staysPanelInto) */
-export function staysFilterPanel(fund, filters, onChange, opts) {
-  const wrap = document.createElement('div');
-  wrap.style.display = 'contents';
-  render(filterPanelTemplate(fund, filters, onChange, opts), wrap);
-  return wrap;
-}
 
 /* ─────────────── Сортировка строк шахматки объектов (§7) ─────────────── */
 /* Номер и категория — по значению на первый день месяца (label / category_id строки).

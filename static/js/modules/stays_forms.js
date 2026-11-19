@@ -91,11 +91,7 @@ export function previewThenSave({ url, method, body, out, extra }) {
   };
 }
 
-/* подвал форм: строкой — для файлов раздела, которые ещё не переехали на шаблоны; шаблоном — для новых */
-export function staysFormFoot() {
-  return `<button class="btn btn-ghost" data-close>Отмена</button>
-    <button class="btn" id="rf-preview">Проверить</button><button class="btn btn-primary" data-save>Сохранить</button>`;
-}
+/* подвал форм с кнопкой «Проверить» */
 export const formFootView = () => html`<button class="btn btn-ghost" data-close>Отмена</button>
     <button class="btn" id="rf-preview">Проверить</button><button class="btn btn-primary" data-save>Сохранить</button>`;
 function staysBindFoot(m, flow, onSaved, okText) {

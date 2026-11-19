@@ -6,13 +6,13 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { $, cssColor, esc, hours, MONTHS, state, todayISO, WD_SHORT } from '../core.js';
+import { cssColor, hours, MONTHS, state, todayISO, WD_SHORT } from '../core.js';
 import { html, nothing } from '../ui/html.js';
 
 /* Цвета кодов Табеля — только подстраховка: основной источник — блок presentation
    версии справочников (payload.day_code_policy[code].color), если он заполнен.
    Кодов «С», «НВ» и «НБ» здесь нет: из справочника Табеля они исключены
-   (нормативы 12.10.2026 и 16.10.2026) — суточная смена это явка «Я 10,75»
+ — суточная смена это явка «Я 10,75»
    в дне-якоре, выходной за часы — отсутствие в Графике, а «НБ»
    (неоплачиваемый больничный) — артефакт старого наполнения. */
 export const V4_CODE_COLORS = {
@@ -26,45 +26,16 @@ export function v4CodeColor(code, fromPayload) {
 }
 export const V4_FLAG_CLASS = { LATE: 'warn', EARLY_DEPARTURE: 'warn', OFF_SHIFT_ATTENDANCE: 'info' };
 
-export function v4MonthNav(prefix, onShift) {
-  return `<div class="month-nav"><button id="${prefix}-prev">‹</button>
-    <div class="label" id="${prefix}-label">${MONTHS[state.month - 1]} ${state.year}</div>
-    <button id="${prefix}-next">›</button></div>`;
-}
-export function v4BindMonthNav(prefix, reload) {
-  const shift = delta => {
-    let m = state.month + delta, y = state.year;
-    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
-    state.month = m; state.year = y; reload();
-  };
-  $(`#${prefix}-prev`).onclick = () => shift(-1);
-  $(`#${prefix}-next`).onclick = () => shift(1);
-}
-export function v4DayHead(iso) {
-  const d = new Date(iso + 'T12:00:00');
-  const wd = WD_SHORT[(d.getDay() + 6) % 7];
-  const weekend = d.getDay() === 0 || d.getDay() === 6;
-  return `<th class="v4-day${weekend ? ' we' : ''}${iso === todayISO() ? ' today' : ''}">${d.getDate()}<small>${wd}</small></th>`;
-}
 export function v4Hours(v) { return v ? hours(v) : ''; }
-export function v4Contacts(e) {
-  const tel = String(e.phone || '').trim();
-  const tg = String(e.telegram || '').trim().replace(/^@+/, '');
-  if (!tel && !tg) return '';
-  return `<div class="contacts">${tel ? `<a href="tel:${esc(tel.replace(/[^0-9+]/g, ''))}">📞 ${esc(tel)}</a>` : ''}${
-    tg ? `<a href="https://t.me/${esc(tg.replace(/[^A-Za-z0-9_]/g, ''))}" target="_blank" rel="noopener">✈️ @${esc(tg)}</a>` : ''}</div>`;
-}
 
-/* Шаблоны lit-html для новых экранов; строковые v4DayHead / v4Contacts остаются для файлов, которые
-   ещё не переехали (они уйдут вместе с последним потребителем). */
+/* Шаблоны lit-html: ячейка заголовка дня, переход по месяцам. */
 export function dayHeadCell(iso) {
   const d = new Date(iso + 'T12:00:00');
   const weekend = d.getDay() === 0 || d.getDay() === 6;
   return html`<th class="v4-day${weekend ? ' we' : ''}${iso === todayISO() ? ' today' : ''}">${d.getDate()}<small>${WD_SHORT[(d.getDay() + 6) % 7]}</small></th>`;
 }
 
-/* Переход по месяцам: шаблон с обработчиками (старая пара v4MonthNav + v4BindMonthNav остаётся для файлов,
-   которые ещё не переехали). reload вызывается после смены state.year / state.month. */
+/* Переход по месяцам: шаблон с обработчиками. reload вызывается после смены state.year / state.month. */
 export function monthNav(prefix, reload) {
   const shift = delta => {
     let m = state.month + delta, y = state.year;

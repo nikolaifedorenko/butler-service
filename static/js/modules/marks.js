@@ -17,7 +17,7 @@ registerModule({ views: { marks: loadMarks } });
 /* то, что показывает доска: последний ответ сервера либо текст ошибки */
 const board = { nowHm: '—', data: null, error: '' };
 
-export async function loadMarks() {
+async function loadMarks() {
   board.data = null; board.error = '';
   draw();
   await fetchMarks();

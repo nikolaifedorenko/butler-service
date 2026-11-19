@@ -56,7 +56,7 @@ def close_period(employee_id: str, period: Period, now: dt.datetime,
         with ports.unit_of_work():
             # вход читается и результат пишется под одной блокировкой сотрудника: правка
             # отметок/Табеля/Графика/банка ждёт закрытия и не теряется между чтением и
-            # сохранением (рецензия аудита 22.10.2026, TOCTOU)
+            # сохранением
             ports.store.lock_employee(employee_id)
             # повторная проверка права внутри — конкурентное закрытие
             inp, view = _compute(employee_id, period, effective, now, ports)
@@ -71,6 +71,6 @@ def close_period(employee_id: str, period: Period, now: dt.datetime,
         # настоящую гонку закрывает уникальный ключ (сотрудник, период). Соперник успел
         # закоммититься между нашей проверкой и flush — период закрыт ДРУГОЙ транзакцией;
         # UoW откатил наши записи (атомарность, тест-план 15). Типизированный конфликт
-        # состояния → 409 (найдено ревью 20.10.2026, P1-ts-1: раньше — IntegrityError → 500).
+        # состояния → 409.
         raise PeriodAlreadyClosedError(f"{employee_id}:{period.start}") from exc
     return view

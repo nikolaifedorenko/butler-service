@@ -18,7 +18,7 @@ MODULE = ModuleManifest(
     routers=("app.modules.night.interface.night_api:router",),
     overview_checks=("app.modules.night.application.checks:overview_checks",),
     models=("app.modules.night.adapters.orm",),
-    # досоздание наступивших смен и автозакрытие в 08:00 — воркер очереди, не GET-запросы (ревью 20.10.2026)
+    # досоздание наступивших смен и автозакрытие в 08:00 — воркер очереди, не GET-запросы
     jobs=(JobSpec("night_sync", "app.modules.night.application.jobs:sync_reports_job",
                   every_seconds=max(5, settings.night_sync_seconds)),),
     permissions=(

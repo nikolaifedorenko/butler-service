@@ -105,7 +105,7 @@ class SqlSettlementStore:
         except IntegrityError as exc:
             # конкурентное закрытие (7.3): проверка права прошла до коммита соперника,
             # гонку закрыл уникальный ключ — контрактный сигнал порта, use case
-            # переведёт его в PeriodAlreadyClosedError (409, P1-ts-1). Откатывает UoW.
+            # переведёт его в PeriodAlreadyClosedError. Откатывает UoW.
             raise StorageConflictError(str(getattr(exc, "orig", exc))) from exc
 
     def load_result(self, employee_id: str, period: Period) -> tuple[SettleResult, FlagsResult] | None:

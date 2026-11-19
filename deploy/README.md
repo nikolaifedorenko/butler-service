@@ -9,7 +9,6 @@
 ```bash
 cp .env.example .env
 # в .env обязательно:
-#   SECRET_KEY=$(openssl rand -hex 32)
 #   POSTGRES_PASSWORD=<надёжный пароль>
 #   ADMIN_PASSWORD=<пароль admin>   # первый старт на пустой базе; демо-учёток в проде нет
 #   BACKUP_AGE_RECIPIENT=age1…      # открытый ключ шифрования бэкапов, BACKUP_REMOTE — второй сервер (§4)
@@ -153,7 +152,7 @@ sudo mkdir -p /opt/timetrack && sudo chown timetrack:timetrack /opt/timetrack
 # uv: https://docs.astral.sh/uv/getting-started/installation/ — ставит зависимости из uv.lock
 sudo -u timetrack sh -c 'cd /opt/timetrack && uv sync --frozen --no-dev'
 sudo -u timetrack cp /opt/timetrack/.env.example /opt/timetrack/.env
-sudo -u timetrack nano /opt/timetrack/.env     # SECRET_KEY=<(openssl rand -hex 32>), APP_TZ
+sudo -u timetrack nano /opt/timetrack/.env     # POSTGRES_PASSWORD, NOTIFY_SECRET_KEY, APP_TZ
 ```
 
 ### 7.3. PostgreSQL (рекомендуется для боевого режима)
@@ -256,7 +255,7 @@ docker compose up -d --build   # локальный профиль с демо-�
 22.10.2026, нужно один раз передать этому пользователю — команда в `deploy/README.md` §6.
 
 ### 7.7. Эксплуатация
-* **Бэкапы:** `pg_dump timetrack > dump.sql` по cron. Храните также `.env` (SECRET_KEY).
+* **Бэкапы:** `pg_dump timetrack > dump.sql` по cron. Храните также `.env` (NOTIFY_SECRET_KEY: без него шифрованные секреты уведомлений не прочитать).
 * **Обновление:** заменить файлы → `uv sync --frozen --no-dev` →
   `systemctl restart timetrack`. Таблицы добавляются автоматически; при изменении схемы
   колонок (редко) может понадобиться пересоздание БД из бэкапа — см. «Ограничения» в SPEC.md.
@@ -276,8 +275,8 @@ docker compose up -d --build   # локальный профиль с демо-�
 * Часовой пояс объекта: `APP_TZ` (по умолчанию `Europe/Moscow`) — должен совпадать
   с `Settings.tz` движка; DST намеренно не поддерживается (локальные сутки = 1440 мин,
   решение владельца R24).
-* `SECRET_KEY` — обязательно задайте уникальный: с пустым/коротким/примерным ключом
-  приложение **отказывается стартовать** (см. `app/main.py`).
+* Сессии хранятся в базе (таблица `user_sessions`): ключа подписи нет, ключ шифрования уведомлений
+  — `NOTIFY_SECRET_KEY`.
 * Боевые флаги по умолчанию безопасны: CSP блокирующая, `/metrics` выключен.
   Демо-вход «как сотрудник» включён по умолчанию (решение владельца от
   15.10.2026) — `ALLOW_IMPERSONATION=0` выключает. За reverse-proxy включите

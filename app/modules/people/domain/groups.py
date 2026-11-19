@@ -47,10 +47,6 @@ def normalize_group(name: str | None) -> str:
     return LEGACY_NAMES.get(raw, raw)
 
 
-def group_kind(group: str | None) -> str:
-    return GROUP_META.get(normalize_group(group), {}).get("kind", "base")
-
-
 def group_choices() -> list[dict]:
     """Список блоков для интерфейса (порядок = порядок строк в сетке)."""
     return [{"name": g, "kind": GROUP_META[g]["kind"], "title": GROUP_META[g]["title"],

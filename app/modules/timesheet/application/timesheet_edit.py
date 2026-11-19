@@ -39,7 +39,7 @@ def lock_state(employee_id: str, day: dt.date, ports: EnginePorts) -> str:
 
 def ensure_unlocked(employee_id: str, day: dt.date, ports: EnginePorts) -> bool:
     """Исходные данные «замороженного» периода (закрыт он и следующий) не меняются: его
-    итог пересчитать уже нельзя. Одно правило для Табеля и отметок (аудит 22.10.2026).
+    итог пересчитать уже нельзя. Одно правило для Табеля и отметок.
 
     True — период последний закрытый: правка войдёт в результат только через пересчёт,
     об этом надо предупредить (как needs_recalculate у ячейки Табеля)."""
@@ -53,7 +53,7 @@ def save_timesheet_day(employee_id: str, day: dt.date, code: str, plan_minutes: 
                        ports: EnginePorts, *, rebuild: bool = True) -> TimesheetEditOutcome:
     """Запись ячейки Табеля (доменные проверки F-16) + перегенерация Графика дня.
 
-    `rebuild=False` — режим массовой операции (P0-3 ревью 20.10.2026): перегенерация
+    `rebuild=False` — режим массовой операции: перегенерация
     Графика на каждую ячейку — это DELETE+INSERT generated-строк на каждый день, то
     есть сотни тысяч запросов на массовке 500×366. Вызывающий код ОБЯЗАН после записи
     всех ячеек вызвать `schedule_view.rebuild_generated_for_days` по записанным дням:

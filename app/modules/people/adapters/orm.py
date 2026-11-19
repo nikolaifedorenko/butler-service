@@ -73,7 +73,7 @@ class Employee(Base):
     deleted_at: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)  # «полное удаление»: скрыт, но в истории
 
     department: Mapped[Optional[Department]] = relationship(back_populates="employees")
-    # R6 (батч 20.10.2026): связь с core — односторонняя (User.employee удалён);
+    # R6: связь с core — односторонняя (User.employee удалён);
     # user_id — строковый FK на users, маппер разрешает цель по реестру.
     user: Mapped[Optional[User]] = relationship(uselist=False)
     contacts: Mapped[list[EmergencyContact]] = relationship(

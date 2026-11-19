@@ -1,4 +1,4 @@
-/* Раздел «Настройки»: экран «Коды Табеля» (вынесено из settings.js, шаг 6.5 аудита).
+/* Раздел «Настройки»: экран «Коды Табеля».
    Оболочка, черновик версии справочников и общие помощники — в settings.js.
    Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
@@ -20,7 +20,7 @@ registerModule({ screens: { codes: { render: settingsScreenCodes, icon: 'codes' 
    Словаря смен здесь НЕТ: это другой экран («Смены и отсутствия»), другая
    сущность и другое право (план, ред. 3, §3.4/§3.4б).
    ══════════════════════════════════════════════════════════════════════ */
-export const SETTINGS_CODE_FLAGS = [
+const SETTINGS_CODE_FLAGS = [
   { key: 'carries_hours', title: 'Несёт часы', hint: 'Код задаёт план строки Табеля; план карточки = длина окна (R34)' },
   { key: 'accepts_ut', title: 'Принимает коды УТ', hint: 'В день с этим кодом можно разместить переработку/погашение' },
   { key: 'counts_in_ut', title: 'Учитывается в УТ', hint: 'Уровень 7 правила «Учитываются ли часы в УТ» (CHK-DEFAULTS)' },
@@ -30,7 +30,7 @@ export const SETTINGS_CODE_FLAGS = [
 async function settingsScreenCodes(host) {
   await settingsEngine();
   if (!state.docKinds) {
-    /* виды заявлений — для «Заявление по назначению кода» в карточке кода (16.10.2026) */
+    /* виды заявлений — для «Заявление по назначению кода» в карточке кода */
     try {
       const di = await api('/api/docs/kinds', { silent: true });
       state.docKinds = di.kinds || []; state.docPlaceholders = di.placeholders || {};
@@ -61,7 +61,7 @@ async function settingsScreenCodes(host) {
 }
 
 function codesCards(codes, d, edit) {
-  /* Компактный список (решение владельца 18.10.2026): строка = пилюля + название +
+  /* Компактный список: строка = пилюля + название +
      «Изменить» + «✕». Флаги расчёта, режим отметок и заявление настраиваются ТОЛЬКО
      в модалке «Изменить» — дублирование в списке убрано; окна и значения — на
      вкладке «Окна и значения». Логика и сервер не менялись. */
@@ -180,7 +180,7 @@ export function settingsCodeModal(code) {
              <button class="btn btn-primary" data-save>${isNew ? 'Добавить в черновик' : 'Сохранить'}</button>`,
     onMount(m) {
       /* «Пришёл/Ушёл» — у кода, несущего часы; заявление — у кода без часов
-         (решение владельца 16.10.2026): блоки переключаются чекбоксом «Несёт часы» */
+: блоки переключаются чекбоксом «Несёт часы» */
       const carriesBox = m.querySelector('#nc-carries_hours');
       const syncWraps = () => {
         const carries = carriesBox.checked;

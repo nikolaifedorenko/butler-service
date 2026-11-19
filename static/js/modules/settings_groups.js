@@ -1,4 +1,4 @@
-/* Раздел «Настройки»: экран «Группы и графики» (вынесено из settings.js, шаг 6.5 аудита).
+/* Раздел «Настройки»: экран «Группы и графики».
    Оболочка, черновик версии справочников и общие помощники — в settings.js.
    Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
@@ -45,7 +45,7 @@ async function settingsScreenGroups(host) {
   const saveBase = async () => {
     const cycle = $('#b-cycle', host).value === 'custom' ? 'custom:' + $('#b-cycle-custom', host).value.trim() : $('#b-cycle', host).value;
     /* значения рабочего дня и выходные блоков сохраняются как есть: они правятся
-       в карточках сотрудников, экран базового цикла их не редактирует (18.10.2026) */
+       в карточках сотрудников, экран базового цикла их не редактирует */
     const keepGroups = {};
     for (const [name, gc] of Object.entries(base.groups || {})) {
       const keep = {};

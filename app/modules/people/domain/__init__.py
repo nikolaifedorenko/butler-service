@@ -9,7 +9,6 @@ from .groups import (  # noqa: F401
     LEGACY_NAMES,
     group_choices,
     group_index,
-    group_kind,
     normalize_group,
     sorted_groups,
 )

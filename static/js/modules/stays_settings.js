@@ -18,13 +18,13 @@ registerModule({ screens: {
   stays_labels: { render: renderStaysLabels, icon: 'code' },
 } });
 
-export const STAYS_FIELD_KINDS = { text: 'текст', choice: 'список', bool: 'да / нет', date: 'дата' };
+const STAYS_FIELD_KINDS = { text: 'текст', choice: 'список', bool: 'да / нет', date: 'дата' };
 
 const staysFormFootView = () => html`<button class="btn btn-ghost" data-close>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`;
 
 /* форма-модалка: rows — шаблон полей, кнопка [data-save] вызывает save(окно);
    mountForm(окно) — по желанию, после отрисовки */
-export function staysForm(title, rows, save, mountForm) {
+function staysForm(title, rows, save, mountForm) {
   openModal({
     title,
     body: html`${rows}`,
@@ -40,7 +40,7 @@ export function staysForm(title, rows, save, mountForm) {
 }
 
 /* удаление записи справочника с подтверждением; rerender — перерисовать экран */
-export function staysConfirmDelete(url, id, what, rerender) {
+function staysConfirmDelete(url, id, what, rerender) {
   confirmDialog(`Удалить ${what}?`, 'Действие попадёт в журнал аудита.', async () => {
     try { await api(`${url}/${id}`, { method: 'DELETE' }); toast('Удалено'); rerender(); }
     catch (e) { toast(e.message, 'err'); }
@@ -50,7 +50,7 @@ export function staysConfirmDelete(url, id, what, rerender) {
 /* ─────────────── Сопровождение ─────────────── */
 const staysFactorText = n => String(Number(n)).replace('.', ',');
 
-export async function renderStaysEscort(host) {
+async function renderStaysEscort(host) {
   const date = host.dataset.escortDate || staysToday();
   const [fund, snap] = await Promise.all([api('/api/stays/fund', { silent: true }),
     api('/api/stays/fund/snapshot?date=' + date, { silent: true }).catch(() => null)]);   // дата до первой версии фонда — 404
@@ -136,7 +136,7 @@ export async function renderStaysEscort(host) {
 }
 
 /* ─────────────── Настраиваемые поля ─────────────── */
-export async function renderStaysFields(host) {
+async function renderStaysFields(host) {
   const fund = await api('/api/stays/fund', { silent: true });
   const rerender = () => renderStaysFields(host);
   const target = { guest: 'гость', reservation: 'бронь' };
@@ -170,7 +170,7 @@ export async function renderStaysFields(host) {
 }
 
 /* ─────────────── Метки броней ─────────────── */
-export async function renderStaysLabels(host) {
+async function renderStaysLabels(host) {
   const fund = await api('/api/stays/fund', { silent: true });
   const rerender = () => renderStaysLabels(host);
   const form = l => staysForm(l ? `Метка «${l.title}»` : 'Новая метка', html`

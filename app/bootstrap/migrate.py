@@ -3,7 +3,7 @@
     python -m app.bootstrap.migrate
 
 В прод-профиле его выполняет сервис `migrate` docker-compose до старта приложения, а воркеры
-с MIGRATE_ON_START=0 только сверяют ревизию схемы (ADR-0002, аудит 22.10.2026, DB-02, SEC-02).
+с MIGRATE_ON_START=0 только сверяют ревизию схемы.
 Локально и в демо-compose всё по-прежнему делает первый воркер при старте.
 """
 from __future__ import annotations

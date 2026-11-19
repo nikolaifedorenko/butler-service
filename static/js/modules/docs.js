@@ -1,6 +1,6 @@
 'use strict';
 /* ══ ПЕЧАТЬ И ЗАЯВЛЕНИЯ: чистое окно печати, шаблоны, скачивание DOCX/PDF ══
-   Вынесено из app.js (15.10.2026) без изменения логики: границы разделов —
+   Вынесено из app.js без изменения логики: границы разделов —
    файлами (сборки намеренно нет, ADR-0008). Модуль (ADR-0013, раздел 7). Окно печати —
    отдельный документ, который собирается строкой с esc(): в страницу приложения она не попадает. */
 
@@ -27,7 +27,7 @@ export function printWindow(title, bodyHtml, extraCss = '') {
 
 
 /* ── заявление на отпуск: печать по редактируемому шаблону, период подхватывается целиком ── */
-export async function getDocTemplates() {
+async function getDocTemplates() {
   if (!state.doc) {
     const s = await api('/api/settings', { silent: true });
     state.doc = s.doc;
@@ -39,7 +39,7 @@ export async function getDocTemplates() {
   return state.doc;
 }
 
-export function fillTemplate(tpl, values) {
+function fillTemplate(tpl, values) {
   return (tpl || '').replace(/\{(\w+)\}/g, (m, k) => (values[k] ?? m));
 }
 
@@ -47,12 +47,12 @@ export function fillTemplate(tpl, values) {
    начинается в одном месяце, а заканчивается в следующем (исправление бага печати).
    absenceId — печать заявления по ОДНОМУ интервалу отлучки (без него сервер отдаёт
    все интервалы дня одним периодом: перечнем в `intervals_text`). */
-export async function absencePeriodInfo(empId, dateISO, absenceId = null) {
+async function absencePeriodInfo(empId, dateISO, absenceId = null) {
   return await api(`/api/schedule/absence-period?employee_id=${empId}&date=${dateISO}`
     + (absenceId ? `&absence_id=${absenceId}` : ''));
 }
 
-/* Заявление печатается из своего слоя (Q4, норматив 12.10.2026): отпуск, больничный,
+/* Заявление печатается из своего слоя: отпуск, больничный,
    за свой счёт и оплачиваемый выходной — коды Табеля (первичный документ, слой 0),
    а «отпросился (выходной за часы)» — данные Графика (слой 1). Сервер сообщает источник
    в `source`; кнопка не того слоя объясняет, куда идти, а не печатает чужой документ. */
@@ -65,7 +65,7 @@ export function statementLayerOk(p, layer) {
   return false;
 }
 
-export function triggerDownload(blob, name) {
+function triggerDownload(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name;

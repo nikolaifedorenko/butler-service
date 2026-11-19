@@ -105,7 +105,7 @@ def applies_from(valid_from: dt.date, granularity: str) -> dt.date:
 def period_state_of(db: Session, start: dt.date) -> dict:
     """Закрыт ли период, начинающийся `start`, — по сотрудникам, и доступен ли пересчёт.
 
-    Закрытие идёт «всё или ничего» по штату (решение владельца 25.10.2026), но период
+    Закрытие идёт «всё или ничего» по штату, но период
     мог остаться закрытым частично — прежние правила, сбой посреди закрытия. Раньше
     признак брал общий максимум закрытий: один закрытый сотрудник делал «закрытым» весь
     период. Теперь — «закрыт у N из M» и кто не закрыт; пересчёт — только у всех сразу.
@@ -203,7 +203,7 @@ def lock_and_check_base_version(db: Session, base_version_id: Optional[int]) -> 
 
 
 def guard_removed_day_codes(payload: dict, db: Session, valid_from: dt.date) -> None:
-    """Удаление кода Табеля из справочника — с серверной защитой (16.10.2026).
+    """Удаление кода Табеля из справочника — с серверной защитой.
 
     Владелец разрешил удалять коды из карточек «Коды Табеля», но версия, которая
     сломала бы расчёт, опубликована не будет: код, стоящий в Табеле, изъять нельзя
@@ -237,7 +237,7 @@ def guard_removed_day_codes(payload: dict, db: Session, valid_from: dt.date) -> 
 def _guard_deferred_tariffs(st, start: dt.date, db: Session) -> None:
     """Тариф, по которому лежит перенос в ещё не закрытый период новой версии, из весов
     не убирается: тариф блока заморожен прошлым периодом, и закрытие следующего упало
-    бы на CHK-DEFERRED-IN (рецензия аудита 22.10.2026, §2.2: переименование ДН → НОЧЬ)."""
+    бы на CHK-DEFERRED-IN."""
     closed = select(PeriodClosing.id).where(PeriodClosing.employee_id == DeferredCarry.employee_id,
                                             PeriodClosing.period_start == DeferredCarry.period_start)
     used = sorted(set(db.scalars(select(DeferredCarry.tariff).where(
@@ -424,7 +424,7 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
     out: list[dict] = []
     codes = payload.get("day_code_policy") or {}
 
-    # Значение рабочего дня — атрибут сотрудника (18.10.2026): без него цикл
+    # Значение рабочего дня — атрибут сотрудника: без него цикл
     # не заполнит рабочие дни, поэтому подсвечиваем таких сотрудников заранее.
 
     emps = list(db.scalars(select(Employee).where(Employee.deleted_at.is_(None))))

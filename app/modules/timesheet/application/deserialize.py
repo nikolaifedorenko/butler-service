@@ -29,8 +29,7 @@ def _reason(d: dict) -> Reason:
     if d["step"] not in ALL_STEPS:
         # Не assert: он исчезает под python -O (битые данные молча проходят), а без -O
         # даёт AssertionError → 500. Путь горячий — каждое чтение закрытого периода
-        # (7.2, RUL-CLOSED-PERIOD-IMMUTABLE). Типизированный отказ состояния → 409
-        # (ревью 20.10.2026, P1-ts-6).
+        # (7.2, RUL-CLOSED-PERIOD-IMMUTABLE). Типизированный отказ состояния → 409.
         raise StoredResultCorruptError(f"повреждён: неизвестный шаг расчёта «{d['step']}»")
     return Reason(d["step"], d["code"], data)
 

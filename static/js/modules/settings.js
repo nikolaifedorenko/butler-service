@@ -21,7 +21,7 @@
    для переведённых экранов и строки (settingsHead, settingsPanel…) для ещё не переведённых;
    строковые уйдут, когда переедет последний экран (шаг 6з).
 
-   Экраны — по файлу на экран: modules/settings_<экран>.js (шаг 6.5 аудита, 22.10.2026);
+   Экраны — по файлу на экран: modules/settings_<экран>.js;
    здесь — оболочка, реестр, состояние, черновик и публикация версии, здоровье, поиск.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
@@ -36,7 +36,7 @@ import { v4CodeColor } from './timesheet_common.js';
 import { fmtGdValue } from './dicts.js';
 
 /* ─────────────────────────── реестр под-разделов ─────────────────────────── */
-export const SETTINGS_ICONS = {
+const SETTINGS_ICONS = {
   home: svg`<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/>`,
   calc: svg`<rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M8 7h8M8 11h3M13 11h3M8 15h3M13 15h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
   money: svg`<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 7v10M9.5 9.5h4a1.6 1.6 0 0 1 0 3.2h-3a1.6 1.6 0 0 0 0 3.2h4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>`,
@@ -61,7 +61,7 @@ export const SETTINGS_ICONS = {
    шаг 5.4) — список приходит в /api/auth/me уже по правам; рендер и иконку регистрирует
    файл, где живёт экран (registerModule): справочники «Объекта» — modules/night_dict.js и
    modules/cars_dict.js. `external` — переход в самостоятельный view:
-   «Права доступа» и «Журнал аудита» убраны из верхнего меню (19.10.2026) и открываются
+   «Права доступа» и «Журнал аудита» убраны из верхнего меню и открываются
    отсюда. Право правки экраны проверяют сами (night.edit, cars.manage, settings.edit). */
 registerModule({ views: { settings: loadSettings } });   // экраны регистрируют свои файлы settings_*.js
 
@@ -76,9 +76,9 @@ export function settingsScreens() {
   });
   return out;
 }
-export function settingsTitle(id) { return settingsScreens().find(s => s.id === id)?.title; }
+function settingsTitle(id) { return settingsScreens().find(s => s.id === id)?.title; }
 
-/* Открыть конкретный экран Настроек из другого раздела (deep-link 19.10.2026):
+/* Открыть конкретный экран Настроек из другого раздела:
    «Справочник» в «Ночном отчёте» и «+ Кар»/«Места» в «Электрокарах» больше не
    открывают свои модалки — единственное место правки справочника здесь.
    Hash читает loadSettings при входе в раздел. */
@@ -125,7 +125,7 @@ export const settingsUI = {
   searchBound: false,
 };
 
-export function settingsInvalidate() {
+function settingsInvalidate() {
   settingsUI.engine = null; settingsUI.health = null; settingsUI.draft = null;
 }
 export async function settingsEngine() {
@@ -143,7 +143,7 @@ export function settingsDraft() {
   if (!settingsUI.draft) settingsUI.draft = JSON.parse(JSON.stringify(p));
   return settingsUI.draft;
 }
-export function settingsDirty() {
+function settingsDirty() {
   const p = settingsPayload();
   return !!(p && settingsUI.draft && JSON.stringify(p) !== JSON.stringify(settingsUI.draft));
 }
@@ -177,12 +177,7 @@ export function settingsCodeColor(code, policy) {
 /* Привязка клика к элементу, которого может не быть: кнопки правки не отрисовываются
    без права settings.edit, и обращение к null роняло весь экран (найдено снимком
    интерфейса под супервайзером). */
-export function settingsOn(sel, host, fn) {
-  const el = $(sel, host);
-  if (el) el.onclick = fn;
-  return el;
-}
-export function settingsFail(host, e) {
+function settingsFail(host, e) {
   render(html`<div class="panel"><h3 class="panel-title">Не загрузилось</h3>
     <p style="color:var(--danger);font-weight:600">${e?.message || e}</p>
     <p class="hint">Проверьте соединение и повторите. Если ошибка повторяется — откройте
@@ -203,7 +198,7 @@ export function settingsCodePillView(code, policy) {
 }
 
 /* ─────────────────────────── оболочка раздела ─────────────────────────── */
-export function settingsScreenAllowed(id) {
+function settingsScreenAllowed(id) {
   /* id обязателен: у записей групп ({ group: … }) его нет, и find по undefined
      матчил бы группу — экран «undefined» вместо «Обзора» (найдено сценарием) */
   if (!id) return false;
@@ -221,7 +216,7 @@ export async function loadSettings() {
     /* Данные раздела недоступны (например, пункту «Настройки» хватит права
        access.manage/audit.view — а /api/settings требует settings.view): оболочку
        всё равно рисуем, external-экраны работают без данных, остальные покажут
-       свою ошибку в теле (19.10.2026). */
+       свою ошибку в теле. */
     settingsUI.data = null;
   }
 
@@ -254,7 +249,7 @@ export async function loadSettings() {
   await settingsRenderScreen();
 }
 
-export function settingsRenderNav(health = navCache.health, errors = navCache.errors) {
+function settingsRenderNav(health = navCache.health, errors = navCache.errors) {
   const nav = $('#st-nav');
   if (!nav) return;
   Object.assign(navCache, { health, errors });
@@ -309,11 +304,11 @@ export function settingsGo(id) {
   settingsRenderScreen();
 }
 
-/* Поколение рендера экрана настроек (ревью 20.10.2026, P1-fe-6): при быстром
+/* Поколение рендера экрана настроек: при быстром
    переключении экранов медленный render прежнего экрана возвращался ПОСЛЕ
    нового и перезаписывал #st-body чужим содержимым (nav подсвечивал один
    экран, показывался другой). */
-/* Последний закрытый период — по сотрудникам (решение владельца 25.10.2026): закрытие
+/* Последний закрытый период — по сотрудникам: закрытие
    «всё или ничего», но период мог остаться закрытым частично (прежние правила, сбой);
    тогда — сколько закрыто и у кого нет, чтобы докрыть «Закрыть месяц». */
 export function closedPeriodText(lc, { recalcNote = true } = {}) {
@@ -339,7 +334,7 @@ export async function settingsRenderScreen() {
      поэтому $('#st-body') везде указывает на актуальный узел. */
   const body = old.cloneNode(false);
   old.replaceWith(body);
-  /* fallback — «Обзор», а не settingsScreens()[1]: после перегруппировки (19.10.2026)
+  /* fallback — «Обзор», а не settingsScreens()[1]: после перегруппировки
      под этим индексом может оказаться запись группы без render */
   const item = settingsScreens().find(s => s.id && s.id === settingsUI.screen)
     || settingsScreens().find(s => s.id === 'overview');
@@ -390,9 +385,9 @@ export function settingsDraftBarView() {
 }
 
 /* ─────────────────────────── diff и публикация версии ─────────────────────────── */
-export function settingsGranularityText(g) { return g === 'half_month' ? 'полмесяца (1–15 / 16–конец)' : 'месяц'; }
+function settingsGranularityText(g) { return g === 'half_month' ? 'полмесяца (1–15 / 16–конец)' : 'месяц'; }
 
-export function settingsDiff(base, draft) {
+function settingsDiff(base, draft) {
   const out = [];
   if (!base || !draft) return out;
   const push = (block, text) => out.push({ block, text });
@@ -493,7 +488,7 @@ export function settingsAppliesFrom(validFrom, granularity) {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
-export function settingsPublishModal() {
+function settingsPublishModal() {
   const draft = settingsDraft();
   if (!draft) return;
   const lines = settingsDiff(settingsPayload(), draft);
@@ -603,7 +598,7 @@ export function settingsHealthBannerView(health) {
 /* ══════════════════════════════════════════════════════════════════════
    ПОИСК ПО НАСТРОЙКАМ (⌘K / Ctrl+K) — любая настройка находится за 2 нажатия
    ══════════════════════════════════════════════════════════════════════ */
-export function settingsSearchIndex() {
+function settingsSearchIndex() {
   const out = [];
   settingsScreens().filter(s => s.id).forEach(s => out.push({
     title: s.title, hint: s.external ? 'отдельная вкладка приложения' : 'под-раздел настроек',
@@ -627,7 +622,7 @@ export function settingsSearchIndex() {
     out.push({ title: 'Порядок каскада и размещения', hint: 'CFG-CASCADE, CFG-PLACEMENT', screen: 'calc' });
   }
   SETTINGS_MODS.forEach(m => out.push({ title: m.title, hint: m.what, screen: 'pay' }));
-  /* Справочники группы «Объект» (19.10.2026) — статические записи: содержимое
+  /* Справочники группы «Объект» — статические записи: содержимое
      экраны подгружают сами, а найти их поиском можно уже отсюда. */
   if (can('night.view')) {
     out.push({ title: 'Зоны ночного обхода', hint: 'справочник обхода: зоны, объекты', screen: 'night' });
@@ -647,7 +642,7 @@ export function settingsSearchIndex() {
   return out;
 }
 
-export function settingsSearchPalette() {
+function settingsSearchPalette() {
   const index = settingsSearchIndex();
   openModal({
     title: 'Поиск по настройкам', wide: true,
@@ -693,7 +688,7 @@ export function settingsSearchPalette() {
   });
 }
 
-export function settingsBindSearch() {
+function settingsBindSearch() {
   if (settingsUI.searchBound) return;
   settingsUI.searchBound = true;
   document.addEventListener('keydown', e => {

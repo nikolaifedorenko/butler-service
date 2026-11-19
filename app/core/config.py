@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     postgres_user: str = "timetrack"
     postgres_password: str = ""
     postgres_db: str = "timetrack"
-    secret_key: str = "change-me-in-production"
     app_tz: str = "Europe/Moscow"
     # срок жизни сессии: 48 ч (было 14 суток) — короткое окно для украденной cookie;
     # переопределяется SESSION_TTL_HOURS
@@ -51,30 +50,27 @@ class Settings(BaseSettings):
     # 0 — только сверяет ревизию: миграции делает отдельный шаг python -m app.bootstrap.migrate
     migrate_on_start: bool = True
     # Swagger /api/docs и схема /api/openapi.json; в проде 0 — полная карта API без входа
-    # облегчает разведку (OPS-04). Схему для разработки отдаёт tools/export_openapi.py.
+    # облегчает разведку. Схему для разработки отдаёт tools/export_openapi.py.
     api_docs: bool = True
     # семантическая версия приложения: bump при релизе (тег + запись в CHANGELOG.md)
     app_version: str = "0.1.0"
-    # разрешить запуск со слабым/пустым SECRET_KEY — ТОЛЬКО для локальной разработки.
-    # В остальных случаях приложение откажется стартовать (см. app/main.py).
-    allow_insecure_dev_secret: bool = False
     # фоновая работа выполняется воркером очереди задач (модуль jobs, app/bootstrap/jobs_worker.py):
     # досоздание наступивших смен и автозакрытие ночных отчётов в 08:00 (задача night_sync с периодом
-    # night_sync_seconds), доотправка уведомлений, чистка медиа. В GET-запросах этого нет (ревью 20.10.2026, P1).
+    # night_sync_seconds), доотправка уведомлений, чистка медиа. В GET-запросах этого нет.
     # воркер очереди задач (модуль jobs, app/bootstrap/jobs_worker.py): как часто опрашивать очередь
     # и на какой срок задача закрепляется за воркером (дольше — вернётся в очередь)
     jobs_poll_seconds: int = 5
     jobs_lease_seconds: int = 900
     night_sync_seconds: int = 60
     # пустая база: DEMO_SEED=1 — демо-сотрудники с паролем demo1234 (локально, тесты, сценарии);
-    # иначе только справочники и администратор admin с паролем ADMIN_PASSWORD (аудит, SEC-02)
+    # иначе только справочники и администратор admin с паролем ADMIN_PASSWORD
     demo_seed: bool = False
     admin_password: str = ""
     # адрес Telegram Bot API (корпоративный прокси); из UI не меняется — иначе токен бота
-    # уходит на любой хост (аудит 21.10.2026, SEC-03). Пусто — сохранённый или api.telegram.org
+    # уходит на любой хост. Пусто — сохранённый или api.telegram.org
     notify_telegram_api: str = ""
     # ключ Fernet шифрования секретов уведомлений в БД (токен бота, пароль SMTP);
-    # "новый,старый" — смена ключа (app/modules/notify/application/secrets.py, 25.10.2026)
+    # "новый,старый" — смена ключа
     notify_secret_key: str = ""
 
     @model_validator(mode="after")

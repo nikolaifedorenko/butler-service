@@ -88,7 +88,7 @@ def _absence_brief(row: ScheduleAbsence, kind: Optional[ShiftType],
 
 def _cell_color(shifts: list, absences: list, trow: Optional[TabelDay], work_types: dict,
                 code_colors: dict) -> Optional[str]:
-    """Цвет ячейки Графика (16.10.2026; 18.10.2026 — без связки «вид → код Табеля»).
+    """Цвет ячейки Графика.
 
     Разрешается СЕРВЕРОМ, чтобы экран, браузерная печать, PDF и Excel красили
     одинаково: плашка «выходной за часы» — цвет вида отсутствия из словаря
@@ -134,7 +134,7 @@ def _visible_segments(shift_rows: list, absence_rows: list) -> list[list[str]]:
 
 
 def _position_rank(position: Optional[str]) -> int:
-    """Порядок внутри блока (решение владельца 16.10.2026): старшие («Старший
+    """Порядок внутри блока: старшие («Старший
     батлер» и т.п.) впереди остальных, дальше — алфавит. Работает на всех стоках
     сетки разом (экран, печать, PDF, Excel), потому что порядок задаётся здесь."""
     return 0 if position and "старш" in position.lower() else 1
