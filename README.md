@@ -28,6 +28,7 @@ docker compose up -d --build   # приложение, воркер и PostgreSQ
 | 7 | [Руководство пользователя и администратора](docs/07-rukovodstvo.md) |
 | 8 | [Шаблоны документов](docs/08-shablony-dokumentov.md) |
 | 9 | [Расчёт времени — спецификация v7.1](docs/09-raschet-v7-1.md) — единственный норматив |
+| 10 | [Регламент оператора](docs/10-regulament-operatora.md) — мониторинг, сбои, обновление |
 
 Также: [ADR](docs/adr/) — принятые решения; [openapi.json](docs/openapi.json) — контракт API;
 [deploy/README.md](deploy/README.md) — боевой стек; [CHANGELOG.md](CHANGELOG.md);

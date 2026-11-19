@@ -1,0 +1,67 @@
+# Правила оповещений Prometheus для «Батлер Сервис» (регламент — docs/10-regulament-operatora.md).
+# Подключите файл в prometheus.yml (rule_files) и задайте имя задачи скрейпера: job="butler" ниже —
+# то имя, под которым вы опрашиваете /metrics приложения (METRICS_ENABLED=1, доступ — только из
+# внутренней сети: nginx /metrics наружу не отдаёт).
+groups:
+  - name: butler-service
+    rules:
+      - alert: ButlerDown
+        expr: up{job="butler"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Приложение не отвечает на /metrics"
+          description: "Проверьте контейнер app и nginx: docker compose -f docker-compose.prod.yml ps, затем logs app."
+
+      - alert: ButlerWorkerStopped
+        expr: tt_jobs_overdue{job="butler"} > 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Воркер очереди не работает: расписания просрочены"
+          description: >
+            Не закрываются ночные отчёты (08:00), не создаются новые смены (20:00) и не уходят уведомления.
+            Проверьте контейнер worker (docker compose ... logs worker, restart worker).
+
+      - alert: ButlerJobsFailing
+        expr: tt_jobs_failed_24h{job="butler"} > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Фоновые задачи проваливаются"
+          description: "За сутки есть окончательно проваленные задачи: причина — в last_error таблицы jobs_queue и в логе worker."
+
+      - alert: ButlerQueueBacklog
+        expr: tt_jobs_queue{job="butler",status="queued"} > 50
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "В очереди задач копится работа"
+          description: "Воркер не справляется или стоит; сверьте с ButlerWorkerStopped и нагрузкой на базу."
+
+      - alert: ButlerPdfUnavailable
+        expr: tt_pdf_available{job="butler"} == 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Сервис PDF (Gotenberg) недоступен"
+          description: "PDF не собираются (501 с подсказкой), DOCX, печать и Excel работают. Проверьте контейнер gotenberg."
+
+      - alert: ButlerServerErrors
+        expr: |
+          sum(rate(tt_http_requests_total{job="butler",status=~"5.."}[5m]))
+            / clamp_min(sum(rate(tt_http_requests_total{job="butler"}[5m])), 0.01) > 0.05
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "Больше 5 % запросов заканчиваются ошибкой сервера"
+          description: "Смотрите JSON-лог app (поле status ≥ 500) и request_id запроса пользователя."
+
+      - alert: ButlerSlowRequests
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(tt_http_request_duration_seconds_bucket{job="butler"}[10m]))) > 2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "95-й процентиль времени ответа выше двух секунд"
+          description: "Проверьте нагрузку на базу и воркеры (docker stats), медленные маршруты — по метке route."

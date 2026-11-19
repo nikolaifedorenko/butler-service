@@ -176,6 +176,15 @@ async def request_context(request: Request, call_next):
     return response
 
 
+def register_collector(collector) -> None:
+    """Подключить сборщик метрик, который опрашивает состояние при каждом чтении /metrics (очередь задач,
+    PDF-сервис). Без METRICS_ENABLED и без prometheus_client ничего не делает."""
+    if settings.metrics_enabled and _PROM_OK:
+        from prometheus_client import REGISTRY
+
+        REGISTRY.register(collector)
+
+
 def metrics_endpoint():
     """Prometheus-метрики. Включаются METRICS_ENABLED=1; по умолчанию 404 —
     счётчики не должны быть публичными (за прокси доступ можно ограничить по IP)."""
