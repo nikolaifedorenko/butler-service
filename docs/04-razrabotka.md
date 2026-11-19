@@ -46,10 +46,10 @@ python -m ruff check .                         # линтер Python
 | Команда | Что проверяет |
 |---|---|
 | `npm run lint` | ESLint: `no-undef`, неиспользуемое, запрет `innerHTML` / `insertAdjacentHTML` / `unsafeHTML` |
-| `npx playwright test` | сценарии в настоящем браузере (`e2e/`); сервер поднимает `tools/e2e_server.sh` на свежей демо-базе |
+| `npx playwright test` | сценарии в настоящем браузере (`e2e/`); три сервера на свежих демо-базах (`tools/e2e_server.sh`): основной, «сценарии» (длинные пути с изменением данных: настройки, фонд — `e2e/scenarios/`) и «ночной» (пояс подобран так, что идёт ночная смена: ночной обход, электрокары). Один проект: `--project=scenarios` |
 | `./tools/run_ui_check.sh 8141 gromova` | смоук в jsdom: обход разделов под ролью (порт, логин) |
 | `./tools/run_stays_scenario.sh 8148 admin` | шахматка: бронь, предпросмотр, батлеры, табло |
-| `./tools/run_stays_fund_scenario.sh`, `run_settings_scenario.sh`, `run_norms_scenario.sh`, `run_layers_scenario.sh`, `run_night_cars_scenario.sh`, `run_night_zones_scenario.sh` | сценарии одноимённых разделов в jsdom |
+| `./tools/run_norms_scenario.sh`, `run_layers_scenario.sh` | сценарии норматива и «Графика = 4 слоя» в jsdom (переезжают на Playwright) |
 | `python tools/bump_version.py <версия> / --check` | версия статики в `index.html` и `sw.js` |
 | `python tools/check_api_contract.py --verbose` | интерфейс не вызывает несуществующих маршрутов |
 
