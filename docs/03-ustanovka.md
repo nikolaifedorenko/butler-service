@@ -2,9 +2,10 @@
 
 ## 3.1 Локальная машина
 
-Приложение и база запускаются в Docker.
+Приложение, воркер, база и сервис PDF (Gotenberg) запускаются в Docker. Образ Gotenberg большой
+(~2,4 ГБ с LibreOffice): при первом запуске нужен интернет.
 
-* Нужны Docker Desktop (или Docker Engine с плагином compose) и ~1,5 ГБ под образы.
+* Нужны Docker Desktop (или Docker Engine с плагином compose) и ~4 ГБ под образы.
 
 ```bash
 cd butler-service
@@ -40,7 +41,7 @@ docker compose up -d --build
 ## 3.2 Боевой сервер
 
 Одно место описания — [`deploy/README.md`](../deploy/README.md): Docker-профиль
-(`docker-compose.prod.yml`: `db`, `migrate`, `app`, `worker`, `nginx`, `backup`), бэкапы с
+(`docker-compose.prod.yml`: `db`, `gotenberg`, `migrate`, `app`, `worker`, `nginx`, `backup`), бэкапы с
 шифрованием и проверкой восстановления, обновление версии, запуск не от root и установка без
 Docker (systemd + nginx + HTTPS).
 
@@ -76,6 +77,8 @@ Docker (systemd + nginx + HTTPS).
 | `NIGHT_SYNC_SECONDS` | 60 | период задачи «ночные отчёты» (не меньше 5) |
 | `JOBS_POLL_SECONDS` / `JOBS_LEASE_SECONDS` | 5 / 900 | опрос очереди; на сколько секунд задача закрепляется за воркером |
 | `DEMO_SEED` / `ADMIN_PASSWORD` | 0 / — | демо-данные; пароль `admin` пустой базы |
+| `GOTENBERG_URL` | — | адрес сервиса PDF (в compose `http://gotenberg:3000`); пусто — PDF отключён |
+| `GOTENBERG_TIMEOUT_SECONDS` | 60 | сколько ждать конвертацию одного документа |
 | `NOTIFY_SECRET_KEY` | — | см. выше; `новый,старый` — смена ключа |
 | `NOTIFY_TELEGRAM_API` | — | адрес Telegram Bot API (корпоративный прокси); из интерфейса не меняется |
 

@@ -197,7 +197,6 @@ source_modules =
 forbidden_modules =
     openpyxl
     docx
-    reportlab
     PIL
 allow_indirect_imports = True
 

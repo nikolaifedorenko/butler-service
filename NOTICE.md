@@ -10,7 +10,7 @@
 
 | Актив | Где используется | Лицензия |
 |---|---|---|
-| DejaVu Sans / DejaVu Serif (`assets/fonts/*.ttf`) | встроенный PDF-рендер (`app/modules/exchange/adapters/pdf_reportlab.py`) | Bitstream Vera License (https://dejavu-fonts.github.io/License.html) — свободное использование, копирование и распространение с сохранением уведомлений; торговая марка Bitstream/AML требует согласия только при использовании наименований «Bitstream»/«Vera» |
+| DejaVu Sans / DejaVu Serif (`assets/fonts/*.ttf`) | контейнер Gotenberg: шрифты с кириллицей для PDF (том `assets/fonts`, см. `docker-compose.yml`) | Bitstream Vera License (https://dejavu-fonts.github.io/License.html) — свободное использование, копирование и распространение с сохранением уведомлений; торговая марка Bitstream/AML требует согласия только при использовании наименований «Bitstream»/«Vera» |
 | Manrope (`static/fonts/manrope-*.woff2`) | веб-интерфейс | SIL Open Font License 1.1, © Ivan Zhuravlev |
 | Playfair Display (`static/fonts/playfair-display-*.woff2`) | веб-интерфейс | SIL Open Font License 1.1, © Claus Eggers Sørensen |
 
@@ -21,7 +21,8 @@
 
 fastapi, uvicorn, starlette, pydantic, pydantic-settings, SQLAlchemy, alembic,
 python-dotenv, openpyxl, python-docx, python-multipart — MIT; httpx — BSD-3-Clause;
-prometheus-client — Apache-2.0; reportlab — BSD-3-Clause; pillow — MIT-CMU (HPND).
+prometheus-client — Apache-2.0; pillow — MIT-CMU (HPND).
+Gotenberg (отдельный контейнер `gotenberg/gotenberg`, не часть образа приложения) — MIT; внутри него LibreOffice — MPL-2.0.
 Точный состав и версии фиксирует `uv.lock`.
 
 ## Зависимости JavaScript (dev, `package.json`)

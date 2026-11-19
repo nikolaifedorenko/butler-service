@@ -29,10 +29,15 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      gotenberg:
+        image: gotenberg/gotenberg:8.40.0
+        ports: ["3000:3000"]
     env:
       # сервер PostgreSQL для тестов и сценариев; базы создаются сами (tests/conftest.py,
       # tools/scenario_db.py)
       TEST_DATABASE_SERVER: postgresql+psycopg2://postgres:ci@localhost:5432
+      # сервис PDF для тестов выгрузок (настоящая конвертация DOCX → PDF)
+      GOTENBERG_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v7
 
@@ -55,6 +60,15 @@ jobs:
 
       - name: Контракты импортов (import-linter, .importlinter)
         run: lint-imports
+
+      - name: Ждём сервис PDF (Gotenberg)
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/health > /dev/null && exit 0
+            sleep 2
+          done
+          echo "Gotenberg не поднялся за 2 минуты" >&2
+          exit 1
 
       - name: Тесты + порог покрытия (приложение ≥ 90 %, ядро расчёта ≥ 95 %)
         # с 25.10.2026 порог блокирующий: DoD спецификации — ядро ≥ 95 % (сейчас 98 %),

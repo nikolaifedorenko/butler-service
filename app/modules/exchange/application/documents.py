@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 
+from app.core.config import settings
 from app.core.media import BASE_DIR
 
-from ..adapters import docx, pdf_reportlab
+from ..adapters import docx
+from ..adapters.gotenberg import GotenbergConverter
 from ..domain.documents import (  # noqa: F401 — публичные типы описания документа
     Document,
     Font,
@@ -22,6 +25,7 @@ from ..domain.documents import (  # noqa: F401 — публичные типы �
     TCell,
     text,
 )
+from ..ports import PdfConverter, PdfUnavailable
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PDF_MEDIA_TYPE = "application/pdf"
@@ -77,22 +81,65 @@ def fill_template(name: str, values: dict, fallback_text: str) -> bytes:
 
 
 # ─────────────────────────── PDF ───────────────────────────
+_HEALTH_TTL_SECONDS = 15.0
+_converter: PdfConverter | None = None
+_converter_ready = False
+_health: tuple[float, str] | None = None       # (когда проверено, "" — сервис отвечает, иначе причина)
+
+
+def set_pdf_converter(converter: PdfConverter | None) -> None:
+    """Подменить преобразователь (тесты, composition root); None — вернуть настройку по умолчанию."""
+    global _converter, _converter_ready, _health
+    _converter, _converter_ready, _health = converter, converter is not None, None
+
+
+def _pdf_converter() -> PdfConverter | None:
+    global _converter, _converter_ready
+    if not _converter_ready:
+        url = (settings.gotenberg_url or "").strip()
+        _converter = GotenbergConverter(url, settings.gotenberg_timeout_seconds) if url else None
+        _converter_ready = True
+    return _converter
+
+
+def _unconfigured() -> str:
+    return "сервис PDF не настроен (задайте GOTENBERG_URL)."
+
+
 def docx_to_pdf(docx_bytes: bytes, filename: str = "document.pdf") -> tuple[bytes | None, str]:
     """PDF из DOCX. Возвращает (байты или None, чем сделано либо почему не вышло)."""
-    return pdf_reportlab.docx_to_pdf(docx_bytes, filename)
-
-
-def pdf_mode() -> str:
-    """native | none — может ли сервер делать PDF."""
-    return pdf_reportlab.pdf_mode()
+    converter = _pdf_converter()
+    if converter is None:
+        return None, _unconfigured()
+    try:
+        return converter.convert(docx_bytes, filename), "gotenberg"
+    except PdfUnavailable as exc:
+        return None, str(exc)
 
 
 def pdf_error() -> str:
-    return pdf_reportlab.native_error()
+    """Почему PDF недоступен ("" — доступен). Ответ сервиса запоминается на несколько секунд."""
+    global _health
+    converter = _pdf_converter()
+    if converter is None:
+        return _unconfigured()
+    moment = time.monotonic()
+    if _health is None or moment - _health[0] > _HEALTH_TTL_SECONDS:
+        try:
+            converter.check()
+            _health = (moment, "")
+        except PdfUnavailable as exc:
+            _health = (moment, str(exc))
+    return _health[1]
+
+
+def pdf_mode() -> str:
+    """gotenberg | none — может ли сервер делать PDF."""
+    return "none" if pdf_error() else "gotenberg"
 
 
 def pdf_unavailable_detail(how: str) -> str:
     """Текст для пользователя, когда PDF собрать не удалось: чем заменить и что проверить."""
     return (f"PDF на сервере собрать не удалось: {how} "
-            "Проверьте установку зависимостей: uv sync. "
-            "Без PDF работают «Печать» в браузере и выгрузка Excel.")
+            "Проверьте контейнер gotenberg и адрес GOTENBERG_URL. "
+            "Без PDF работают «Печать» в браузере, DOCX и выгрузка Excel.")

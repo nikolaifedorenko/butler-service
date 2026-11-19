@@ -250,6 +250,5 @@ def pdf_available() -> bool:
 def pdf_status() -> dict:
     mode = documents.pdf_mode()
     return {"mode": mode,
-            "title": {"native": "встроенный рендер (шрифты DejaVu)",
-                      "none": "недоступно"}.get(mode, mode),
-            "error": "" if mode != "none" else (documents.pdf_error() or "не установлен reportlab")}
+            "title": {"gotenberg": "сервис Gotenberg", "none": "недоступно"}.get(mode, mode),
+            "error": documents.pdf_error() if mode == "none" else ""}

@@ -20,7 +20,6 @@ RUN --mount=from=uv,source=/uv,target=/bin/uv \
 RUN pip uninstall -y setuptools pip
 COPY app ./app
 COPY static ./static
-COPY assets ./assets
 ENV PYTHONUNBUFFERED=1
 # не от root (OPS-02): загруженные файлы и бланки — пользователя app; chown до VOLUME, иначе он не сохранится.
 # Новые тома получают этого владельца из образа, старые (созданные от root) — deploy/README.md §6
