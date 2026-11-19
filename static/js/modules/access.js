@@ -115,7 +115,7 @@ function accessRoles() {
     <div class="panel"><h3 class="panel-title">${r.title} · ${r.effective.length} из ${a.permissions.length}
       <span class=${`badge ${r.builtin ? 'muted' : 'info'}`}>${r.builtin ? 'встроенная' : 'своя'} · пользователей ${r.users}</span></h3>
       <div class="v4-chips">${a.permissions.map(p => html`<span class=${`badge ${r.effective.includes(p.key) ? 'ok' : 'muted'}`}>${p.title}</span> `)}</div>
-      <div style="display:flex;gap:8px;margin-top:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
         <button class="btn btn-sm" data-role=${r.role} @click=${() => matrixModal({ title: `Права роли «${r.title}»`, grants: r.overrides,
           baseline: new Set(r.defaults), prefix: 'ar', url: `/api/access/roles/${r.role}`, ok: 'Права роли сохранены' })}>Изменить права роли</button>
         ${r.builtin ? nothing : html`<button class="btn btn-sm" data-role-set=${r.role} @click=${() => roleSettingsModal(r)}>Настройки роли</button>

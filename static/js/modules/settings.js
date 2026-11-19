@@ -266,7 +266,18 @@ export function settingsRenderNav(health = navCache.health, errors = navCache.er
     shifts: { n: (state.shiftTypes || []).filter(x => !x.archived).length },
     calendar: s.rules_upcoming ? { n: s.rules_upcoming } : null,
   };
-  render(html`${settingsScreens().filter(x => !x.perm || can(x.perm)).map(item => {
+  const allowed = settingsScreens().filter(x => !x.perm || can(x.perm));
+  /* телефон: вместо ленты из тридцати кнопок — одна кнопка с текущим экраном и список в окне */
+  const pick = () => openModal({
+    title: 'Раздел настроек',
+    body: html`<div class="st-pick-list">${allowed.map(item => (item.group
+      ? html`<div class="nav-group">${item.group}</div>`
+      : html`<button class=${`st-pick-item${item.id === settingsUI.screen ? ' active' : ''}`} data-st-pick=${item.id}
+        @click=${() => { closeModal(); settingsGo(item.id); }}>${item.title}${item.external ? ' ↗' : ''}</button>`))}</div>`,
+  });
+  render(html`<button class="settings-nav-pick" id="st-pick" @click=${pick}>
+      <span class="muted">Раздел</span><b>${settingsTitle(settingsUI.screen) || 'Обзор'}</b><span class="chev" aria-hidden="true">▾</span></button>
+    ${allowed.map(item => {
     if (item.group) return html`<div class="nav-group">${item.group}</div>`;
     const c = counters[item.id];
     return html`<button class=${`nav-item${item.id === settingsUI.screen ? ' active' : ''}`} data-st=${item.id} title=${item.title}
