@@ -2,13 +2,11 @@
   "name": "butler-service-frontend-tools",
   "private": true,
   "version": "1.0.0",
-  "description": "Инструменты фронтенда: линтер, сценарии в Playwright, смоук в jsdom (уходит с переносом разделов), снимки разделов",
+  "description": "Инструменты фронтенда: линтер, сценарии и обход разделов в Playwright, снимки интерфейса",
   "type": "module",
   "scripts": {
     "lint": "eslint --max-warnings=0 static/js static/sw.js",
-    "smoke": "./tools/run_ui_check.sh",
-    "smoke:employee": "./tools/run_ui_check.sh 8198 ivanov",
-    "snapshot": "./tools/run_snapshot.sh",
+    "screenshots": "SHOTS=1 playwright test e2e/screenshots.spec.mjs",
     "vendor": "node tools/vendor.mjs",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium"
@@ -17,7 +15,6 @@
     "@playwright/test": "^1.65.1",
     "eslint": "^10.15.0",
     "globals": "^17.14.0",
-    "jsdom": "^31.0.1",
     "lit-html": "^3.3.3"
   }
 }

@@ -14,7 +14,7 @@ updates:
       httpx2:
         patterns: ["httpx2", "httpcore2"]
 
-  # dev-зависимости фронтенда (jsdom/eslint для смоуков)
+  # dev-зависимости фронтенда (eslint, playwright)
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
