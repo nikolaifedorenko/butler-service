@@ -143,28 +143,3 @@ def test_template_must_be_docx(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="корректным .docx"):
         documents.save_template("vacation", b"not a zip")
     assert list(tmp_path.iterdir()) == []
-
-
-def test_pdf_from_document():
-    if documents.pdf_mode() == "none":
-        pytest.skip("нет шрифта с кириллицей для встроенного рендера")
-    from pypdf import PdfReader
-
-    pdf, how = documents.docx_to_pdf(write_docx(Document([text("Ночной отчёт"), Table(
-        [[TCell((text("Пункт"),)), TCell((text("ОК"),))]], widths_mm=(60, 20))])))
-    assert pdf and how == "native"
-    assert "Ночной отчёт" in PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
-
-
-def test_pdf_uses_fonts_shipped_with_project(monkeypatch):
-    """Шрифты с кириллицей лежат в assets/fonts корня проекта (в образе — рядом с app/): PDF
-    не зависит от шрифтов системы. До 13.11.2026 каталог искали внутри app/, и в контейнере без
-    системных шрифтов PDF не собирался."""
-    from app.modules.exchange.adapters import pdf_reportlab
-
-    monkeypatch.delenv("PDF_FONT", raising=False)
-    for name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"):
-        own = pdf_reportlab.FONTS_DIR / name
-        assert own.is_file(), own
-        assert next(p for p in pdf_reportlab._candidates(name) if p.exists()) == own
-    assert documents.pdf_mode() == "native"

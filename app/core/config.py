@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     jobs_poll_seconds: int = 5
     jobs_lease_seconds: int = 900
     night_sync_seconds: int = 60
+    # сервис PDF (контейнер Gotenberg): адрес вида http://gotenberg:3000; пусто — PDF недоступен,
+    # DOCX и Excel работают
+    gotenberg_url: str = ""
+    gotenberg_timeout_seconds: float = 60.0
     # пустая база: DEMO_SEED=1 — демо-сотрудники с паролем demo1234 (локально, тесты, сценарии);
     # иначе только справочники и администратор admin с паролем ADMIN_PASSWORD
     demo_seed: bool = False

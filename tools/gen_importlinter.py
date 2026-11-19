@@ -66,7 +66,7 @@ def generated(mods: list[str]) -> str:
                "type = forbidden\nsource_modules =\n"
                f"{_list(['app.core', 'app.bootstrap', 'app.main'])}"
                f"{_list(f'app.modules.{o}' for o in mods if o != 'exchange')}"
-               f"forbidden_modules =\n{_list(['openpyxl', 'docx', 'reportlab', 'PIL'])}"
+               f"forbidden_modules =\n{_list(['openpyxl', 'docx', 'PIL'])}"
                "allow_indirect_imports = True\n")
     for m in mods:
         out.append(f"[importlinter:contract:{m}-private]\n"

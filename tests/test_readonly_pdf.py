@@ -149,7 +149,7 @@ class TestReadonlySchedule(unittest.TestCase):
                                   params={"year": YEAR, "month": MONTH}).status_code, 401)
 
 
-@unittest.skipIf(pdf_mode() == "none", "нет PDF-движка (reportlab или шрифта с кириллицей)")
+@unittest.skipIf(pdf_mode() == "none", "нет сервиса PDF (задайте GOTENBERG_URL)")
 class TestPdfExport(unittest.TestCase):
     """PDF графика и табеля собирается на сервере (DOCX → PDF)."""
 
@@ -180,11 +180,11 @@ class TestPdfHint(unittest.TestCase):
         from unittest import mock
 
         with mock.patch("app.modules.timesheet.application.schedule_grid.docx_to_pdf",
-                        return_value=(None, "reportlab не установлен")):
+                        return_value=(None, "сервис PDF не отвечает.")):
             r = client.get("/api/schedule/pdf", params={"year": YEAR, "month": MONTH})
         self.assertEqual(r.status_code, 501, r.text)
         detail = r.json()["detail"]
-        self.assertIn("uv sync", detail)
+        self.assertIn("GOTENBERG_URL", detail)
         self.assertIn("Печать", detail)
 
 
