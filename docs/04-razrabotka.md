@@ -3,15 +3,14 @@
 ## 4.1 Окружение
 
 * Python 3.15, менеджер зависимостей `uv` (`pyproject.toml` + `uv.lock`, с хешами пакетов).
-* Node ≥ 22 — для ESLint, jsdom-сценариев и Playwright (jsdom 30+ тянет undici 7, который на
-  Node 20 падает).
+* Node ≥ 22 — для ESLint и Playwright.
 * Docker — для PostgreSQL.
 
 ```bash
 docker compose up -d db          # PostgreSQL на 127.0.0.1:54329
 uv sync                          # окружение из uv.lock, с dev-группой
 source .venv/bin/activate
-npm install                      # ESLint, jsdom, Playwright
+npm install                      # ESLint, Playwright
 npx playwright install chromium  # один раз
 ```
 
@@ -47,7 +46,7 @@ python -m ruff check .                         # линтер Python
 |---|---|
 | `npm run lint` | ESLint: `no-undef`, неиспользуемое, запрет `innerHTML` / `insertAdjacentHTML` / `unsafeHTML` |
 | `npx playwright test` | сценарии в настоящем браузере (`e2e/`); три сервера на свежих демо-базах (`tools/e2e_server.sh`): основной, «сценарии» (длинные пути с изменением данных: настройки, фонд, норматив Табеля и Графика, «График = 4 слоя», шахматка под четырьмя ролями — `e2e/scenarios/`) и «ночной» (пояс подобран так, что идёт ночная смена: ночной обход, электрокары). Один проект: `--project=scenarios` |
-| `./tools/run_ui_check.sh 8141 gromova` | смоук в jsdom: обход разделов под ролью (порт, логин) |
+| `npm run screenshots` | снимки всех разделов под тремя ролями, десктоп и телефон, в `ui-screenshots/` (для документации и ревью) |
 | `python tools/bump_version.py <версия> / --check` | версия статики в `index.html` и `sw.js` |
 | `python tools/check_api_contract.py --verbose` | интерфейс не вызывает несуществующих маршрутов |
 
@@ -71,7 +70,7 @@ python -m ruff check .                         # линтер Python
 
 `.github/workflows/ci.yml`, четыре задания: Python (ruff, mypy ядра расчёта, pytest с покрытием,
 контракты, OpenAPI, самодиагностика схемы, `pip-audit`), JavaScript (синтаксис, `npm audit`,
-ESLint, jsdom-смоук, Playwright, сценарии разделов), сборка Docker-образа, gitleaks.
+ESLint, Playwright (обход разделов, сценарии)), сборка Docker-образа, gitleaks.
 
 ## 4.6 Правила кода
 

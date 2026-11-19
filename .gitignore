@@ -25,7 +25,7 @@ server.log
 *.log
 .DS_Store
 
-# node (jsdom-харнесс интерфейса)
+# node (ESLint, Playwright)
 node_modules/
 
 # кэши инструментов тестирования/линтинга
@@ -45,3 +45,6 @@ deploy/backup-ssh/
 # Playwright
 test-results/
 playwright-report/
+
+# снимки интерфейса (e2e/screenshots.spec.mjs)
+ui-screenshots/

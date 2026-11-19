@@ -142,8 +142,6 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          # jsdom 30+ (undici 7) требует Node ≥22: на 20 харнес падал с
-          # «webidl.util.markAsUncloneable is not a function» (дефект 15.10.2026)
           node-version: "22"
 
       - uses: actions/setup-python@v7
@@ -164,7 +162,7 @@ jobs:
             echo "node --check $f"; node --check "$f";
           done
 
-      - name: Зависимости (python + jsdom + eslint)
+      - name: Зависимости (python + eslint + playwright)
         run: |
           uv sync --frozen --no-dev
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
@@ -177,25 +175,10 @@ jobs:
       - name: Линтер JavaScript (no-undef ловит отсутствующие функции разделов)
         run: npx eslint --max-warnings=0 static/js static/sw.js
 
-      - name: Загрузчик модулей для jsdom (unit-тесты)
-        run: node --test tools/jsdom_modules.test.mjs
-
-      - name: Смоук интерфейса (все разделы, три роли)
-        # admin добавлен вместе с новым разделом «Настройки»: смоук обходит ВСЕ его
-        # под-экраны (обзор, расчёт, правила оплаты, коды и окна, группы, календарь,
-        # смены, документы, система, режим эксперта) — под ролью с правом settings.edit,
-        # чтобы проверялись и кнопки правки, а не только чтение.
-        run: |
-          ./tools/run_ui_check.sh 8199 gromova
-          ./tools/run_ui_check.sh 8198 ivanov
-          ./tools/run_ui_check.sh 8197 admin
-          ./tools/run_ui_check.sh 8190 rukovod stays
-          ./tools/run_ui_check.sh 8189 sluzhba stays
-
       - name: Сценарии интерфейса в настоящем браузере (Playwright)
-        # три сервера на свежих базах: быстрые проверки разделов, длинные сценарии (настройки, фонд,
-        # ночной обход) и ночной обход при открытой смене; смоук и сценарии в jsdom уходят по мере
-        # переноса на Playwright
+        # три сервера на свежих базах: обход разделов и экранов «Настроек» под пятью ролями и быстрые
+        # проверки; длинные сценарии (настройки, фонд, норматив, слои, шахматка); ночной обход при
+        # открытой смене
         run: |
           npx playwright install --with-deps chromium
           npm run e2e

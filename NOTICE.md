@@ -27,4 +27,4 @@ Gotenberg (отдельный контейнер `gotenberg/gotenberg`, не ч�
 
 ## Зависимости JavaScript (dev, `package.json`)
 
-jsdom — MIT; eslint и плагины — MIT.
+playwright — Apache-2.0; eslint и плагины — MIT.

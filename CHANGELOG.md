@@ -8,6 +8,12 @@ PR — https://github.com/nikolaifedorenko/butler-service/pull/<номер>.
 
 ## 19.11.2026
 
+### Интерфейс проверяется только Playwright (jsdom удалён)
+* Сценарии настроек, фонда, норматива, «График = 4 слоя», шахматки и ночного обхода переехали из jsdom в
+  настоящий Chromium (`e2e/scenarios/`) с прежним числом проверок; смоук обхода разделов — `e2e/sections.spec.mjs`
+  под пятью ролями с проверкой экранов «Настроек» и мусора в разметке. Удалены `jsdom`, загрузчик модулей,
+  `run_ui_check.sh`, `run_snapshot.sh`; снимки интерфейса — `npm run screenshots` (Playwright).
+
 ### PDF через Gotenberg (хвост ADR-0013, раздел 6)
 * PDF из DOCX делает контейнер Gotenberg (`GOTENBERG_URL`); встроенный рендер на reportlab и зависимость
   `reportlab` удалены. Документ выглядит как в Word: подложка, колонтитулы, заливка таблиц. Шрифты с
