@@ -5,6 +5,7 @@ import { login } from '../helpers.mjs';
 import { fundScenario } from './fund.mjs';
 import { layersScenario } from './layers.mjs';
 import { normsScenario } from './norms.mjs';
+import { staysScenario } from './stays.mjs';
 import { settingsScenario } from './settings.mjs';
 
 /** Запуск функции-сценария в странице; возвращает строки с провалами. */
@@ -40,3 +41,13 @@ test('«График = 4 слоя»: один пункт меню, слои 0–
   await login(page, 'admin');
   await run(page, layersScenario, { LOGIN: 'admin' });
 });
+
+/* Шахматка: путь менеджера (admin), «Мои гости» (ivanov), занятость без данных гостей (sluzhba) и просмотр (rukovod) */
+for (const who of ['admin', 'ivanov', 'sluzhba', 'rukovod']) {
+  test(`«Шахматка» под ${who}`, async ({ page }) => {
+    test.setTimeout(900_000);
+    if (who === 'ivanov') await page.setViewportSize({ width: 375, height: 812 });   // «Мои гости» — телефонный сценарий
+    await login(page, who);
+    await run(page, staysScenario, { LOGIN: who });
+  });
+}

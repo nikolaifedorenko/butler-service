@@ -510,7 +510,7 @@ PostgreSQL 16 в CI — настоящее подключение роли с п
 
 Проверено: 917 тестов (SQLite), тесты модуля и миграций на PostgreSQL 16, ruff,
 lint-imports, ESLint, контракт API, OpenAPI, смоук интерфейса, сценарий Настроек и новый
-сценарий `tools/run_stays_scenario.sh` (19 проверок).
+сценарий `e2e/scenarios/stays.mjs` (19 проверок на тот момент).
 
 ## 22.10.2026
 

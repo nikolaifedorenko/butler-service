@@ -211,18 +211,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: "Сценарий «Шахматки» (бронь с предпросмотром, батлеры, табло; роли)"
-        # Под admin — путь менеджера: бронь формой с предпросмотром, вытеснение чужой
-        # брони, 409 при устаревшей версии, «Перенести», назначение шаблоном, «вне смены» →
-        # «Добавить смену в График», табло дня, ручная правка по дням, загрузка и полный
-        # фонд на 440 объектах. Под ivanov — «Мои гости» и правка своей брони; под sluzhba —
-        # вкладки без единой фамилии гостя; rukovod — просмотр без правки.
-        run: |
-          ./tools/run_stays_scenario.sh 8188 admin
-          ./tools/run_stays_scenario.sh 8187 ivanov
-          ./tools/run_stays_scenario.sh 8186 sluzhba
-          ./tools/run_stays_scenario.sh 8185 rukovod
-
   docker:
     name: Docker-образ собирается
     runs-on: ubuntu-latest
