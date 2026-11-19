@@ -291,7 +291,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
 
     holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
               "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
-              # причина OOO — без персональных данных (решение владельца): видна всем уровням
+              # причина OOO — без персональных данных: видна всем уровням
               "title": h.reason,
               **dict(zip(("start_pos", "end_pos"), ooo_span(h.start, h.start_half, h.end, h.end_half), strict=True))}
              for h in db.scalars(select(Ooo).where(Ooo.start <= last, Ooo.end >= first))

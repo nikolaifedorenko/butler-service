@@ -1,4 +1,4 @@
-"""Фаза 3 аудита (22.10.2026): расхождения интерфейса и API.
+"""Фаза 3 аудита: расхождения интерфейса и API.
 
 * UI-01 — «Стартовый банк часов» убран: движок v7.1 его не читал (EXP-BANK), а супервайзер,
   которому корректировка банка запрещена, это поле правил (EXP-SUPBANK). Присланное поле
@@ -50,7 +50,7 @@ def test_give_does_not_bypass_maintenance(manager_client, db):
 
 
 def test_who_returned_needs_issue_right(employee_client):
-    """BUG-03 (решение владельца В-11): «кто вернул» за другого — только с правом cars.issue;
+    """BUG-03: «кто вернул» за другого — только с правом cars.issue;
     свой возврат без этих полей работает как раньше."""
     from tests.test_cars import RETURN_FORM, _free_car
 

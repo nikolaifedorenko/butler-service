@@ -98,7 +98,7 @@ def test_zony_vidny_vsem_rolyam(employee_client, manager_client):
 
 
 def test_prava_na_spravochnik_zon(employee_client, manager_client):
-    """Правки зон — по праву night.edit (19.10.2026; раньше — роль is_manager);
+    """Правки зон — по праву night.edit;
     батлер только смотрит."""
     assert employee_client.post("/api/night/zones", json={"name": "Зона батлера"}).status_code == 403
     r = manager_client.post("/api/night/zones", json={"name": "Тестовая зона", "sort_order": 900})

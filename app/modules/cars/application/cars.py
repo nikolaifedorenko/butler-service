@@ -154,7 +154,7 @@ def history_dict(h: CarHistory, photos: dict[int, list[dict]]) -> dict:
 
 
 def _assigned_name(car: Car) -> str:
-    """Имя закреплённого сотрудника (R6, батч 20.10.2026: вместо кросс-модульной
+    """Имя закреплённого сотрудника (R6: вместо кросс-модульной
     связи Car.assigned_employee — db.get по assigned_to из сессии объекта;
     identity map делает повторные чтения в списке бесплатными)."""
     if not car.assigned_to:

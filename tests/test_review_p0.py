@@ -288,7 +288,7 @@ def test_startup_lock_is_reentrant_in_same_process():
 
 
 def test_c4a_scratch_script_is_not_tracked():
-    """Черновик фазы C4a не должен жить в репозитории (находка ревью 20.10.2026)."""
+    """Черновик фазы C4a не должен жить в репозитории."""
     assert not (BASE / ".c4a.py").exists(), "в рабочем каталоге лежит черновик .c4a.py"
     proc = subprocess.run(["git", "ls-files"], cwd=BASE, capture_output=True, text=True)
     if proc.returncode != 0:                      # не git-репозиторий (например, архив)

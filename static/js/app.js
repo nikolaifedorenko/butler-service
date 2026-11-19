@@ -169,7 +169,7 @@ export function showLogin() {
   clearTimers();
   $('#app').classList.add('hidden');
   $('#login-screen').classList.remove('hidden');
-  $('#login-password').value = '';   // после выхода форма логина пустая (16.10.2026)
+  $('#login-password').value = '';   // после выхода форма логина пустая
 }
 setLoginHandler(showLogin);
 
@@ -196,10 +196,9 @@ function startView() {
 /* Сброс состояния при смене пользователя (вход, вход/выход из режима
    «посмотреть глазами сотрудника»): выход не перезагружает страницу, поэтому
    кэши и DOM разделов не должны доставаться следующему пользователю.
-   Полнота сброса — ревью 20.10.2026, P1-fe-1: раньше чистились только
-   fact-поля, employees, grafikLayer и вкладки «Графика», а кэши справочников,
-   сетки, фильтры, позиция UI и состояния модулей (carsState/nightState/
-   settingsUI) переживали смену пользователя. loadDirectory и загрузчики
+   Сброс полный: кэши справочников, сетки, фильтры, позиция UI, fact-поля, employees, grafikLayer,
+   вкладки «Графика» и состояния модулей (carsState/nightState/settingsUI) не переживают смену
+   пользователя. loadDirectory и загрузчики
    разделов наполнят всё заново при входе. */
 export function resetUserViewState() {
   state.factMode = null; state.factMonth = null; state.factDay = null;

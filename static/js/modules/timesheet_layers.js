@@ -406,7 +406,7 @@ export function openRangeModal(mode = 'tabel') {
   const rows = (state.grid?.rows || state.tabel?.rows || []);
   const people = rows.length ? rows.map(r => r.employee)
     : (state.employees || []).map(e => ({ id: e.id, full_name: e.full_name, position: e.position }));
-  /* 18.10.2026: справочники независимы. «За счёт часов» — системный вид словаря
+  /* Справочники независимы. «За счёт часов» — системный вид словаря
      смен; отсутствия периода (отпуск, больничный…) — коды Табеля без часов. */
   const kinds = state.shiftTypes.filter(x => x.kind === 'absence' && !x.is_default_off);
   openModal({

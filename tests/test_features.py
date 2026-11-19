@@ -118,7 +118,7 @@ class TestNewFeatures(unittest.TestCase):
         self.assertEqual(p["shift"]["code"], "ОТ",
                          "краткая справка отсутствия — код Табеля и его название")
 
-    # ── 1b. «НБ» — артефакт: код исключён из справочника (16.10.2026) ──
+    # ── 1b. «НБ» — артефакт: код исключён из справочника ──
     def test_01b_sick_unpaid_code_removed(self):
         """16.10.2026: «Неоплачиваемого больничного» не существует — код «НБ» изъят
         из справочника (REMOVED_DAY_CODES), вид SICK_UNPAID удалён миграцией,
@@ -179,7 +179,7 @@ class TestNewFeatures(unittest.TestCase):
             self.assertEqual(cell["planned_hours"], cell["tabel"]["hours"], iso)
 
     # ── 3. «отпросился (выходной за часы)»: согласованное отсутствие — логический
-    #       разрез Графика; точка ввода «интервал» единой сущности (Q3, 12.10.2026) ──
+    #       разрез Графика; точка ввода «интервал» единой сущности ──
     def test_03_partial_absence(self):
         emp = _create_employee("feat_partial", "Отпрос Петр Отпросович", TODAY - dt.timedelta(days=90))
         away = _shift_by_code("TIMEOFF_HOURS")

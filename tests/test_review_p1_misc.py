@@ -250,7 +250,7 @@ def test_misc4_interfaces_do_not_read_uploads_into_memory():
 
 
 def test_conc04_route_handlers_are_sync():
-    """CONC-04 (аудит 21.10.2026): обработчик `async def` с синхронными БД и диском держал
+    """CONC-04: обработчик `async def` с синхронными БД и диском держал
     event loop воркера — пока один телефон грузил фото, ждали все запросы. Обработчики
     маршрутов — только `def` (FastAPI выполняет их в пуле потоков)."""
     import ast

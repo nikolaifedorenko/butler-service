@@ -158,7 +158,7 @@ def test_day_board_ooo_and_overbook_attention(manager_role_client, manager_clien
     b2 = manager_client.get(f"{API}/day", params={"date": _iso(day + dt.timedelta(days=2))}).json()
     assert [x["reservation_id"] for x in b2["attention"] if x.get("kind") != "ooo"] == [over["id"]]
     assert next(x for x in b2["in_house"] if x["reservation_id"] == over["id"])["overbooked"] is True
-    # уровень «занятость» (финальное ревью, T6): OOO видны всем — те же записи; овербукинг —
+    # уровень «занятость»: OOO видны всем — те же записи; овербукинг —
     # строки и счётчик без данных гостей
     o1 = occupancy_client.get(f"{API}/day", params={"date": _iso(day)}).json()
     assert o1["attention"] == b1["attention"]

@@ -1,4 +1,4 @@
-"""Отметки и «замороженный» период (аудит 22.10.2026): период, за которым уже закрыт следующий,
+"""Отметки и «замороженный» период: период, за которым уже закрыт следующий,
 пересчитать нельзя — значит, его исходные данные не меняются. Табель это соблюдал, а отметка
 задним числом и отмена отметки проходили: Факт расходился с закрытым УТ. Последний закрытый
 период править можно (его пересчитывают), как и Табель.
@@ -69,7 +69,7 @@ def test_last_closed_period_still_accepts_backfill(manager_client, closed_two_mo
 
 def test_cancel_in_last_closed_period_warns_about_recalculation(manager_client, closed_two_months, db):
     """Отмена отметки из последнего закрытого периода: раньше — молчаливое {"ok": true},
-    хотя закрытый результат её ещё учитывает (рецензия аудита 22.10.2026, P1)."""
+    хотя закрытый результат её ещё учитывает."""
     from app.modules.timesheet.adapters.orm import Punch
 
     emp, _frozen_day, last_closed_day, _old_id = closed_two_months
@@ -97,7 +97,7 @@ def test_cancel_in_open_period_has_no_warning(manager_client, db):
 
 def test_month_journal_is_not_truncated(manager_client, db):
     """Журнал за месяц отдаёт все отметки: раньше выдача обрезалась на 2000 строках, и при
-    ~35 сотрудниках начало месяца пропадало молча (аудит 22.10.2026)."""
+    ~35 сотрудниках начало месяца пропадало молча."""
     from app.modules.people.application.catalog import Employee
     from app.modules.timesheet.adapters.orm import Punch
 

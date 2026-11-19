@@ -39,7 +39,7 @@ def save_schedule_day(employee_id: str, day: dt.date, shifts: Sequence[Shift],
     if not day_editable(employee_id, day, ports):
         raise ScheduleDayNotEditableError(employee_id, day)
     # ручная смена ЗАМЕЩАЕТ генерацию дня целиком (16.3): generated-строки дня
-    # убираются сразу, иначе в ячейке соседствуют оба интервала (дефект 16.10.2026:
+    # убираются сразу, иначе в ячейке соседствуют оба интервала (раньше
     # «Я 12 08:00–20:00» не пропадала после ручной 09:00–18:00)
     ports.schedule_store.replace_generated(employee_id, Period(day, day), ())
     ports.schedule_store.save_manual(employee_id, day, shifts)

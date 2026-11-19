@@ -255,7 +255,7 @@ async function unitsBoard() {
   window.navigate('stays');
   check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 8));
   /* панель фильтров появляется после загрузки фонда и шахматки: в медленном CI сценарий
-     менял фильтры раньше — change() уходил в пустоту (падало через раз, 25.10.2026) */
+     менял фильтры раньше — change() уходил в пустоту */
   check('шахматка отрисована (месяц и панель фильтров)', await waitFor(() => $('#sm-label') && $('.sf-panel')));
   check('выбор «7 / 14 / 31 дн.» и даты убран', !$('#sb-days') && !$('#sb-first'));
   check('месяц шахматки — общий месяц разделов', text('#sm-label') === monthTitle(), text('#sm-label'));

@@ -489,7 +489,7 @@ async function nightCarCheckModal(rep, carId, after) {
   const c = entry.car, k = entry.check || null;
   /* первая отметка — значения из карточки кара, повторная — уже сохранённые в отметке */
   const pick = (carVal, checkVal) => (k ? checkVal : carVal);
-  /* места два: где батлер нашёл кар и куда переставил (у отметок до 19.10.2026
+  /* места два: где батлер нашёл кар и куда переставил (у прежних отметок
      было одно поле location — берём его как «где нашёл», если перепарковки не было) */
   const foundLoc = k ? (k.found_location || (k.moved ? '' : k.location) || '') : (c.location || '');
   const newLoc = k?.moved ? (k.location || '') : '';

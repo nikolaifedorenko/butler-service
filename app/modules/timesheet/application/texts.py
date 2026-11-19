@@ -183,7 +183,7 @@ def _date(value) -> str:
 
 
 def _scope_text(scope: dict) -> str:
-    """Область действия правила словами: «группа «Смена 1», 12.10.2026»."""
+    """Область действия правила словами: «группа «Смена 1», с 12.10»."""
     if not scope:
         return "—"
     who = (f"сотрудник #{scope['employee_id']}" if scope.get("employee_id")

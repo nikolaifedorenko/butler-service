@@ -111,7 +111,7 @@ def test_login_rate_limit(app_stack):
 
 
 def test_login_rate_limit_is_shared_between_workers(app_stack):
-    """ADR-0005 (пересмотрен 22.10.2026): неудачи, записанные другим воркером или контейнером
+    """ADR-0005: неудачи, записанные другим воркером или контейнером
     (здесь — прямо в таблицу), считаются в общий лимит; старше окна — не считаются."""
     import datetime as dt
 

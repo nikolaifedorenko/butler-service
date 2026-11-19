@@ -44,8 +44,8 @@ def from_payload(payload: dict) -> Settings:
         # Битый tz сохранённого payload — повреждённое СОСТОЯНИЕ системы:
         # ConfigError → 409 на вкладках (редактор настроек ловит его локально
         # и валидирует ВВОД → 422). Раньше ZoneInfoNotFoundError (KeyError!)
-        # не ловилась ничем и роняла каждый запрос 500-й (ревью 20.10.2026,
-        # P1-ts-5). ZoneInfoNotFoundError — KeyError, поэтому в редакционном
+        # не ловилась ничем и роняла каждый запрос 500-й.
+        # ZoneInfoNotFoundError — KeyError, поэтому в редакционном
         # catch (KeyError, ValueError, TypeError) она тонула в нетипизированном
         # «Некорректный формат настроек».
         raise ConfigError([("CFG-TZ", {"tz": str(tz)})]) from exc

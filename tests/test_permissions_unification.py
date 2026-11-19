@@ -1,4 +1,4 @@
-"""Этап B — унификация прав (20.10.2026, docs/archive/EXECUTION-SPEC-v2.md §5.2).
+"""Этап B — унификация прав.
 
 Ролевые зависимости require_manager/require_supervisor/require_admin удалены из
 app/auth.py: единственный вход проверки прав — require_perm("<ключ>") из каталога
@@ -45,7 +45,7 @@ def test_novye_klyuchi_v_kataloge(admin_client):
 def test_rolevyh_zavisimostey_bolshe_net():
     """require_manager/require_supervisor/require_admin удалены — только require_perm.
 
-    Фаза C1 (20.10.2026): модуль переехал в app/core/auth.py — проверяем и новый
+    Фаза C1: модуль переехал в app/core/auth.py — проверяем и новый
     путь, и отсутствие старого."""
     import importlib.util
 
@@ -68,7 +68,7 @@ def test_zakrytie_i_pereotkrytie_smeny(manager_client, employee_client, open_shi
         assert manager_client.post(f"/api/night/reports/{rid}/reopen").status_code == 200
         # переоткрытие ОТКРЫТОГО отчёта — 409, симметрично закрытию уже закрытого:
         # no-op проставил бы reopened_at и навсегда выключил автозакрытие смены
-        # (ревью 20.10.2026, P1; до фикса был «идемпотентный» 200 с записью)
+        #
         assert manager_client.post(f"/api/night/reports/{rid}/reopen").status_code == 409
         # переоткрытие объекта — тот же ключ
         secs = manager_client.get(f"/api/night/reports/{rid}").json()["report"]["areas"]
@@ -169,7 +169,7 @@ def test_neaktivnye_kary_vidny_tolko_upravleniyu_parkom(admin_client, manager_cl
 
 
 def test_inline_is_manager_v_modulyah_bolshe_net():
-    """Страж долга §5.2 и AUTHZ-05 (22.10.2026): доступ решают только ключи каталога.
+    """Страж долга §5.2 и AUTHZ-05: доступ решают только ключи каталога.
 
     Роль (`principal.role`, `is_manager`, `is_admin`) читают лишь ядро прав —
     core/auth.py, core/auth_guards.py (иерархия can_manage_user), core/permissions.py —

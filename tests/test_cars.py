@@ -9,7 +9,7 @@
     отдавал эту ссылку, а маршрут существовал только как /api/night/photos/…,
     поэтому каждое загруженное фото показывалось как 404.
 
-Отметка кара в ночном обходе (19.10.2026) приведена к окну возврата кара: та же
+Отметка кара в ночном обходе приведена к окну возврата кара: та же
 форма (место из справочника, заряд, чекбоксы состояния, комментарий), чекбокс
 «Кар найден на месте» и фото-доказательство — поэтому эндпоинт принимает
 multipart, а не JSON (POST /api/night/reports/{id}/cars/{car_id}/check).
@@ -196,7 +196,7 @@ def test_vozvrat_polnogo_kara_na_zaryadku_razreshen(manager_client, admin_client
 
 
 def test_veshchi_v_saloned_perevodyat_na_obsluzhivanie(manager_client, admin_client):
-    """Чекбокс «В салоне вещи» (18.10.2026) — замечание: кар уходит на обслуживание."""
+    """Чекбокс «В салоне вещи» — замечание: кар уходит на обслуживание."""
     car = _free_car(manager_client)
     r = manager_client.post(f"/api/cars/{car['id']}/take", json={"ack_assigned": False})
     assert r.status_code == 200, r.text
@@ -567,7 +567,7 @@ def test_otvet_dobavleniya_mesta_vsegda_s_restored(admin_client):
         assert admin_client.delete(f"/api/cars/locations/{first.json()['id']}").json() == {"ok": True}
 
 
-# ───────────────────── права и удаление мест (18.10.2026) ─────────────────────
+# ───────────────────── права и удаление мест ─────────────────────
 def test_prava_operacii_razgranicheny(employee_client, manager_client, manager_role_client):
     """Сотрудник не выдаёт и не правит парк; супервайзер не создаёт кары и места."""
     park = employee_client.get("/api/cars").json()["cars"]

@@ -318,7 +318,7 @@ def test_all_guests_search_only_own(manager_role_client, manager_client, butlers
     assert body["total"] == 1
     (row,) = body["rows"]
     assert row["guest_id"] == mine_g["id"] and row["name"].startswith(f"Поисксвой{u}")
-    # обе брони в будущем: проживаний ещё нет, следующий заезд — ближайший (финальное ревью, п. 3)
+    # обе брони в будущем: проживаний ещё нет, следующий заезд — ближайший
     assert row["stays"] == 0 and row["last_stay"] is None and row["next_stay"] == "2041-02-01"
     assert row["special"] is False and row["vip_code"] == ""
     everyone = butler_client.get(f"{API}/mine/guests").json()

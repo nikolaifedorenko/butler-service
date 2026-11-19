@@ -72,8 +72,8 @@ async function settingsScreenCalc(host) {
       <div class="grid-2">
         <label class="field"><span>Часовой пояс объекта</span>
           <input type="text" id="cl-tz" .value=${state.appTz || d.tz || ''} disabled>
-          <div class="hint">Пояс объекта задаётся при установке (<code>APP_TZ</code>) и здесь не меняется
-            (решение владельца 21.10.2026). DST намеренно не поддерживается: локальные сутки = 1440 мин (R24)</div></label>
+          <div class="hint">Пояс объекта задаётся при установке (<code>APP_TZ</code>) и здесь не меняется.
+            DST намеренно не поддерживается: локальные сутки = 1440 мин (R24)</div></label>
         <label class="field"><span>Период расчёта</span>
           <div class="seg" id="cl-gran" style="margin-top:4px">
             <button data-v="month" class=${d.period_granularity === 'month' ? 'active' : ''} ?disabled=${!edit} @click=${() => setGran('month')}>месяц</button>

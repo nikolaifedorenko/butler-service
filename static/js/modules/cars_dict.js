@@ -74,7 +74,7 @@ async function renderCarsDictScreen(host) {
           <td class="num">${canEdit ? html`<button class="btn btn-sm btn-ghost" data-cd-edit=${c.id} @click=${() => carEditModal(c, again)}>Карточка</button>` : nothing}</td>
         </tr>`) : html`<tr><td colspan="6" class="empty">Парк пуст</td></tr>`}</tbody></table></div>
       <p class="hint">Новый кар создаётся свободным без места стоянки — место указывается при возврате
-      и в карточке (решение владельца 18.10.2026). Отключение кара (чекбокс в карточке) убирает его
+      и в карточке. Отключение кара (чекбокс в карточке) убирает его
       из списка сотрудников; история операций сохраняется.</p>`)}
     ${settingsPanelView('Места стоянки', html`
       <div class="check-list" style="max-height:320px">${carsState.locations.length ? carsState.locations.map(l => html`
