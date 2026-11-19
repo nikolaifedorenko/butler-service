@@ -76,7 +76,7 @@ def test_board_budget_with_today_in_window(manager_client, big_fund, sql_counter
     with sql_counter() as c:
         r = manager_client.get(f"{API}/board/units", params=big_fund)
     assert r.status_code == 200
-    assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
+    assert c["total"] <= 31, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
 
 
 def test_replacements_constant_queries(manager_role_client, manager_client, butlers, db, sql_counter):

@@ -41,7 +41,22 @@ class User(Base):
     employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
-    token_version: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class UserSession(Base):
+    """Сессия входа (ADR-0013, раздел 8): случайный токен в cookie, здесь — его SHA-256. Отзыв —
+    удалением записи. employee_id — чьими глазами смотрит пользователь (свой сотрудник либо тот,
+    «как» кто он вошёл); impersonated — режим «как сотрудник»."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True)
+    impersonated: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(Moment, default=now)
+    expires_at: Mapped[dt.datetime] = mapped_column(Moment, index=True)
 
 
 

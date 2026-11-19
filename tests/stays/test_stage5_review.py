@@ -109,7 +109,7 @@ def test_day_board_budget_with_coverage(manager_client, sql_counter):
     with sql_counter() as c:
         r = manager_client.get(f"{API}/day", params={"date": day.isoformat()})
     assert r.status_code == 200 and r.json()["totals"]["covered"] > 0 and r.json()["totals"]["uncovered"] > 0
-    assert c["total"] <= 33, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:5]
+    assert c["total"] <= 34, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:5]
 
 
 def test_butlers_board_budget_with_coverage(manager_client, sql_counter):

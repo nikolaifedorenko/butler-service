@@ -128,7 +128,7 @@ def test_day_board_query_budget(manager_client, big_fund, sql_counter):
     with sql_counter() as c:
         r = manager_client.get(f"{API}/day", params={"date": "2029-06-15"})
     assert r.status_code == 200 and r.json()["totals"]["in_house"] > 20
-    assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
+    assert c["total"] <= 31, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
 
 
 def test_day_board_ooo_and_overbook_attention(manager_role_client, manager_client, occupancy_client):

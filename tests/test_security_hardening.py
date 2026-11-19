@@ -8,35 +8,36 @@
 """
 from __future__ import annotations
 
-import hashlib
 
+def test_password_hash_is_argon2id():
+    from argon2 import PasswordHasher
 
-def test_password_hash_current_params():
-    from app.core.security import _ITERATIONS, hash_password, needs_rehash
+    from app.core.security import hash_password, needs_rehash, verify_password
 
-    assert _ITERATIONS >= 600_000, "OWASP: PBKDF2-SHA256 не ниже 600 000 итераций"
     h = hash_password("x")
-    assert h.startswith(f"pbkdf2${_ITERATIONS}$")
+    assert h.startswith("$argon2id$")
+    assert verify_password("x", h) and not verify_password("y", h)
     assert not needs_rehash(h)
-    # старый хеш (120k) и мусор — требуют обновления
-    assert needs_rehash("pbkdf2$120000$" + "00" * 16 + "$" + "ab" * 32)
-    assert needs_rehash("garbage")
+    # слабее текущих параметров и чужой формат — требуют обновления; чужой формат не проходит проверку
+    weak = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1).hash("x")
+    assert needs_rehash(weak) and needs_rehash("garbage")
+    assert not verify_password("x", "pbkdf2$600000$" + "00" * 16 + "$" + "ab" * 32)
+    assert not verify_password("x", "garbage")
 
 
-def test_login_rehashes_legacy_password(app_stack):
-    """Успешный вход с хешем старых параметров прозрачно обновляет его до текущих."""
+def test_login_rehashes_weak_password(app_stack):
+    """Успешный вход с хешем более слабых параметров прозрачно обновляет его до текущих."""
+    from argon2 import PasswordHasher
     from fastapi.testclient import TestClient
     from sqlalchemy import select
 
     from app.core.identity import User
-    from app.core.security import _ITERATIONS
+    from app.core.security import needs_rehash
 
-    salt = "11" * 16
-    digest = hashlib.pbkdf2_hmac("sha256", b"demo1234", salt.encode(), 120_000).hex()
     db = app_stack["SessionLocal"]()
     try:
         user = db.scalar(select(User).where(User.username == "ivanov"))
-        user.password_hash = f"pbkdf2$120000${salt}${digest}"
+        user.password_hash = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1).hash("demo1234")
         db.commit()
     finally:
         db.close()
@@ -48,9 +49,7 @@ def test_login_rehashes_legacy_password(app_stack):
     db = app_stack["SessionLocal"]()
     try:
         user = db.scalar(select(User).where(User.username == "ivanov"))
-        assert user.password_hash.startswith(f"pbkdf2${_ITERATIONS}$"), \
-            "хеш не обновлён при входе"
-        # повторный вход с новым хешем тоже успешен
+        assert not needs_rehash(user.password_hash), "хеш не обновлён при входе"
     finally:
         db.close()
     assert c.post("/api/auth/login", json={"username": "ivanov", "password": "demo1234"}).status_code == 200

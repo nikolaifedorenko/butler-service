@@ -25,6 +25,7 @@ from app.core.format import normalize_hex_color
 from app.core.identity import User
 from app.core.roles import ROLE_EMPLOYEE
 from app.core.security import MIN_PASSWORD_LEN, hash_password
+from app.core.sessions import revoke_user_sessions
 from app.core.time import local_date
 from app.modules.cars.application.catalog import Car
 from app.modules.people.application import (
@@ -279,7 +280,7 @@ def update_employee(db: Session, principal: Principal, employee_id: int, payload
             changes["password_changed"] = True
         if "role" in changes or "password_changed" in changes:
             # прежние сессии (в том числе украденная cookie) больше не действуют
-            emp.user.token_version = int(emp.user.token_version or 0) + 1
+            revoke_user_sessions(db, emp.user.id)
     _sync_contacts(db, emp, payload.contacts)
     audit(db, principal, "employee_update", f"employee:{emp.id}", {"full_name": emp.full_name, **changes})
     db.flush()
@@ -322,7 +323,7 @@ def delete_employee(db: Session, principal: Principal, employee_id: int) -> dict
     emp.active = False
     if emp.user:
         emp.user.is_active = False
-        emp.user.token_version = int(emp.user.token_version or 0) + 1   # сессии завершаются
+        revoke_user_sessions(db, emp.user.id)   # сессии завершаются
     audit(db, principal, "employee_delete", f"employee:{emp.id}",
           {"full_name": emp.full_name, "note": "данные истории сохранены"})
     return employee_dict(emp, with_user=True)

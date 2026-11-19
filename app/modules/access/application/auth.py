@@ -1,14 +1,13 @@
 """Вход и сессия: проверка учётных данных, лимит попыток, выход, смена пароля, вход «как
 сотрудник».
 
-Сессия — подписанный токен в cookie: операции возвращают токен, cookie ставит роутер.
-Токен несёт версию (``token_version``): её увеличение — выход и смена пароля — отзывает все
-ранее выданные токены пользователя на всех устройствах.
+Сессия — случайный токен в cookie и запись в таблице user_sessions (core/sessions.py): операции
+возвращают токен, cookie ставит роутер. Выход и смена пароля удаляют все сессии пользователя
+на всех устройствах.
 """
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -24,12 +23,11 @@ from app.core.identity import LoginAttempt, User
 from app.core.permissions import principal_permissions
 from app.core.security import (
     MIN_PASSWORD_LEN,
-    SESSION_TOKEN,
-    create_token,
     hash_password,
     needs_rehash,
     verify_password,
 )
+from app.core.sessions import open_session, revoke_session, revoke_user_sessions
 from app.core.time import local_date, local_iso, now, to_local
 from app.modules.people.application import Employee
 from app.modules.timesheet.application.punch_plan import plan_for_date
@@ -70,15 +68,6 @@ def _record_failure(db: Session, ip: str, username: str) -> None:
     db.commit()
 
 
-# ─────────────────────────── токен ───────────────────────────
-
-def session_token(user: User, employee_id: Optional[int], impersonated: bool = False) -> str:
-    body = {"typ": SESSION_TOKEN, "uid": user.id, "emp_id": employee_id, "tv": int(user.token_version or 0)}
-    if impersonated:
-        body["imp"] = True
-    return create_token(body)
-
-
 # ─────────────────────────── вход и выход ───────────────────────────
 
 def _authenticate(db: Session, ip: str, username: str, password: str) -> Principal:
@@ -103,14 +92,14 @@ def login(db: Session, ip: str, username: str, password: str, *, via_form: bool 
     """Вход по логину и паролю. Возвращает пользователя и токен сессии."""
     principal = _authenticate(db, ip, username, password)
     audit(db, principal, "login", f"user:{principal.user.username}" + (" (form)" if via_form else ""))
-    return principal, session_token(principal.user, principal.employee.id if principal.employee else None)
+    return principal, open_session(db, principal.user, principal.employee.id if principal.employee else None)
 
 
 @transactional
 def logout(db: Session, principal: Principal) -> None:
-    """Выход: все токены пользователя отзываются — украденная cookie перестаёт работать."""
+    """Выход: все сессии пользователя удаляются — украденная cookie перестаёт работать."""
     user = principal.user
-    user.token_version = int(user.token_version or 0) + 1
+    revoke_user_sessions(db, user.id)
     audit(db, principal, "logout", f"user:{user.username}")
 
 
@@ -123,9 +112,9 @@ def change_password(db: Session, principal: Principal, old_password: str, new_pa
     if len(new_password) < MIN_PASSWORD_LEN:
         raise Rejected(f"Новый пароль слишком короткий (минимум {MIN_PASSWORD_LEN} символов)")
     user.password_hash = hash_password(new_password)
-    user.token_version = int(user.token_version or 0) + 1
+    revoke_user_sessions(db, user.id)
     audit(db, principal, "password_change", f"user:{user.username}")
-    return session_token(user, principal.employee.id if principal.employee else None, principal.impersonated)
+    return open_session(db, user, principal.employee.id if principal.employee else None, principal.impersonated)
 
 
 # ─────────────────────────── вход «как сотрудник» ───────────────────────────
@@ -141,7 +130,9 @@ def impersonate(db: Session, principal: Principal, employee_id: int) -> tuple[Pr
         raise NotFound("Сотрудник не найден")
     can_manage_user(db, principal, db.scalar(select(User).where(User.employee_id == employee.id)))
     audit(db, principal, "impersonate", f"employee:{employee.id}", {"employee": employee.full_name})
-    return Principal(principal.user, employee, True), session_token(principal.user, employee.id, True)
+    if principal.session_id is not None:
+        revoke_session(db, principal.session_id)
+    return Principal(principal.user, employee, True), open_session(db, principal.user, employee.id, True)
 
 
 @transactional
@@ -150,7 +141,9 @@ def stop_impersonation(db: Session, principal: Principal) -> tuple[Principal, st
         raise Rejected("Вы не в режиме просмотра от имени сотрудника")
     employee = db.get(Employee, principal.user.employee_id) if principal.user.employee_id else None
     audit(db, principal, "impersonate_stop", "")
-    return Principal(principal.user, employee), session_token(principal.user, employee.id if employee else None)
+    if principal.session_id is not None:
+        revoke_session(db, principal.session_id)
+    return Principal(principal.user, employee), open_session(db, principal.user, employee.id if employee else None)
 
 
 # ─────────────────────────── текущий пользователь ───────────────────────────

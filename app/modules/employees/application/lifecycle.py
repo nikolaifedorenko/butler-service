@@ -19,6 +19,7 @@ from app.core.auth_guards import can_manage_user
 from app.core.db import transactional
 from app.core.errors import Conflict, NotFound, Validation
 from app.core.roles import ROLE_EMPLOYEE
+from app.core.sessions import revoke_user_sessions
 from app.core.time import local_date
 from app.modules.cars.application.catalog import Car
 from app.modules.people.application import (
@@ -243,7 +244,7 @@ def dismiss(db: Session, principal: Principal, employee_id: int,
         emp.user.is_active = False
         # сессии завершаются: иначе после повторного приёма в пределах срока жизни токена
         # старая cookie снова работала бы (AUTHZ-04, рецензия аудита 22.10.2026)
-        emp.user.token_version = int(emp.user.token_version or 0) + 1
+        revoke_user_sessions(db, emp.user.id)
     # При увольнении все закрепления электрокаров снимаются автоматически (ТЗ, ч.3)
     for car in db.scalars(select(Car).where(Car.assigned_to == emp.id)):
         car.assigned_to = None

@@ -434,7 +434,7 @@ butler-service/
 │   ├── core/                 # инфраструктура (R5: не знает о модулях):
 │   │                         #   config, db (engine/SessionLocal/Base), startup_lock (сериализация
 │   │                         #   init_db между воркерами), time (TZ/now — единственный
-│   │                         #   источник), errors (ServiceError-иерархия), security (pbkdf2),
+│   │                         #   источник), errors (ServiceError-иерархия), security (argon2id, токен сессии), sessions (user_sessions),
 │   │                         #   auth (Principal/сессии), auth_guards (can_manage_user), permissions
 │   │                         #   (каталог прав + require_perm), identity (User/гранты), audit
 │   │                         #   (AuditLog + audit()), media (Photo + хранилище) + media_api
