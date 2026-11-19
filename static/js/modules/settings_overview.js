@@ -1,4 +1,4 @@
-/* Раздел «Настройки»: экран «Обзор» (вынесено из settings.js, шаг 6.5 аудита).
+/* Раздел «Настройки»: экран «Обзор».
    Оболочка, черновик версии справочников и общие помощники — в settings.js.
    Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
@@ -97,7 +97,7 @@ async function settingsScreenOverview(host) {
     ${settingsDraftBarView()}`, mount(host));
 }
 
-export async function settingsCompareWithPrevious() {
+async function settingsCompareWithPrevious() {
   const engine = await settingsEngine();
   const versions = engine?.versions || [];
   const current = versions.find(v => v.id === engine?.active?.id);

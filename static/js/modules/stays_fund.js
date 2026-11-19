@@ -27,7 +27,7 @@ const FUND_STATUS = { draft: 'черновик', future: 'будущая', curre
 const FUND_ENTITY = { unit: 'объект', group: 'узел', category: 'категория' };
 const FUND_TABS = [['units', 'Объекты'], ['flags', 'Флаги объектов'], ['cats', 'Категории'], ['kinds', 'Виды']];
 /* что открыто на экране: view — 'current' | 'draft' | id версии; node — узел дерева */
-export const fundUI = { view: null, node: null, tab: 'units', picked: new Set(), rev: null, host: null, data: null, drag: null };
+const fundUI = { view: null, node: null, tab: 'units', picked: new Set(), rev: null, host: null, data: null, drag: null };
 
 /* ─────────────── данные ─────────────── */
 function fundVersionStatus(v, versions, today) {
@@ -225,7 +225,7 @@ async function fundMoveGroup(snapshot, id, parent, before) {
 }
 
 /* ─────────────── экран ─────────────── */
-export async function renderStaysFund(host) {
+async function renderStaysFund(host) {
   fundUI.host = host;
   const fresh = loadGenerationFor(host);          // переключение версий подряд: запоздавший ответ не рисуем
   const data = await fundLoad();

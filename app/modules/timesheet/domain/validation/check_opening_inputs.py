@@ -5,7 +5,7 @@ previous_step_minutes, source_day < period.start, тариф есть в CFG-WEI
 
 Тариф блока заморожен прошлым периодом, а веса берутся из настроек текущего: после
 переименования категории (ДН → НОЧЬ) блок «ДН» дошёл бы до каскада и уронил расчёт
-KeyError'ом (рецензия аудита 22.10.2026, §2.2) — ловим на стадии 1."""
+KeyError'ом — ловим на стадии 1."""
 from __future__ import annotations
 
 from typing import Collection, Sequence

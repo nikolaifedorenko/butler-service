@@ -40,7 +40,7 @@
 (токен сессии) в `docs/adr/`:
 CSRF (double-submit, проверка до обработчика), сессии в таблице `user_sessions`
 (случайный токен в cookie, в базе — его SHA-256, отзыв удалением записи),
-пароли argon2id с ленивым rehash, rate-limit входа, fail-fast на слабый `SECRET_KEY`, каталог прав с
+пароли argon2id с ленивым rehash, rate-limit входа, каталог прав с
 группами и индивидуальными грантами, защита от CSV/Excel formula injection и
 zip-бомб, лимиты загрузки, CSP/HSTS/nosniff/frame-deny заголовки, журнал
 аудита действий.

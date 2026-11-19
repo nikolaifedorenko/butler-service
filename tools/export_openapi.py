@@ -20,9 +20,8 @@ import pathlib
 import sys
 
 # окружение — до импорта app.*: значения ни на что не влияют (схема статична, к базе
-# экспорт не подключается), но Settings требует секрет и адрес PostgreSQL
+# экспорт не подключается), но Settings требует адрес PostgreSQL
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://openapi:export@127.0.0.1:1/none")
-os.environ.setdefault("SECRET_KEY", "openapi-export-only-not-a-secret")
 os.environ.setdefault("CSRF_ENABLED", "0")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]

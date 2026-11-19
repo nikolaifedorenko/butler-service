@@ -28,7 +28,6 @@ tmp_db = os.path.join(tempfile.gettempdir(), "tt_timesheet_norm.db")
 if os.path.exists(tmp_db):
     os.remove(tmp_db)
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{tmp_db}")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402

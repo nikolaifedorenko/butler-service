@@ -40,8 +40,8 @@ def _shift_dict(s: ShiftType, revisions: int = 0) -> dict:
 
 
 def tabel_values(db: Session) -> list[dict]:
-    """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода
-    (18.10.2026): строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
+    """Значения рабочего дня для выбора в карточке сотрудника и диалогах перевода:
+    строки CFG-WINDOWS кодов, несущих часы, — код, часы и окно."""
     _today = local_date()
     st = SqlSettingsAdapter(db).load(month_period(_today.year, _today.month))
     rows = day_code_rows(db)

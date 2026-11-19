@@ -26,7 +26,7 @@ def view_period(employee_id: str, period: Period, now: dt.datetime,
         if saved is None:
             # Контракт порта — tuple | None: closed=True без сохранённой строки
             # (гонка с удалением, рассинхрон хранилища). Типизированный отказ (409)
-            # вместо слепого saved[0] → TypeError → 500 (ревью 20.10.2026, P1-ts-7).
+            # вместо слепого saved[0] → TypeError → 500.
             raise StoredResultCorruptError(
                 f"отсутствует ({employee_id}, период с {period.start})")
         return PeriodView(saved[0], saved[1], employment, days)

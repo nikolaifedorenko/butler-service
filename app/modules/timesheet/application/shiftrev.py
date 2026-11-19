@@ -160,15 +160,6 @@ def add_revision(db: Session, shift: ShiftType, effective_from: dt.date) -> Shif
     return rev
 
 
-def find_by_code(db: Session, code: str, catalog: Optional[ShiftCatalog] = None) -> Optional[ShiftType]:
-    """Поиск смены по коду — включая архивные (нужны для прошлых графиков)."""
-    if not code:
-        return None
-    if catalog is not None:
-        return catalog.by_code(code)
-    return db.scalar(select(ShiftType).where(ShiftType.code == code))
-
-
 def archive_shift(db: Session, shift: ShiftType) -> None:
     """«Удаление» смены из словаря = архивация: прошлые ячейки продолжают считаться."""
     freeze_before_update(db, shift, local_date())

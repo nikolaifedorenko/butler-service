@@ -76,7 +76,7 @@ function bodyTemplate() {
 
 const cellLabel = c => (c ? c.value.replace(' ', '') : '');
 
-/* «Сегодня» — как в Графике (18.10.2026): докрутка к колонке дня и подсветка */
+/* «Сегодня» — как в Графике: докрутка к колонке дня и подсветка */
 export function scrollTabelToToday() {
   const host = $('#tb-body .v4-grid-wrap');
   const th = host && host.querySelector('thead th.today');
@@ -136,14 +136,14 @@ function tabelCellModal(empId, day) {
   const row = d.rows.find(r => r.employee.id === empId);
   const cur = row.cells[day] || null;
   const lastDay = d.days[d.days.length - 1].slice(8);
-  /* Q4 (норматив 12.10.2026): отпуск, больничный, за свой счёт и оплачиваемый выходной —
+  /* Q4: отпуск, больничный, за свой счёт и оплачиваемый выходной —
      коды Табеля, и заявления по ним печатаются ОТСЮДА (из слоя 0). «Отпросился
      (выходной за часы)» — данные Графика, его заявление печатается из ячейки Графика. */
   /* 18.10.2026: шаблон заявления — атрибут КАРТОЧКИ кода Табеля (doc_type строки
      CFG-DAY-CODES); словарь смен в заявлениях слоя 0 больше не участвует. */
   const docOfCode = code => ((d.codes || []).find(x => x.code === code) || {}).doc_type || '';
   const statementNameByDoc = doc => (state.docKinds || []).find(x => x.code === doc)?.name || doc;
-  /* Значение — только плашкой из справочников (решение владельца 16.10.2026): код без
+  /* Значение — только плашкой из справочников: код без
      часов (CFG-DAY-CODES) — одна плашка, код с часами — по плашке на строку CFG-WINDOWS
      («Я 12», «Я 9»…). Плашка и есть значение, поэтому часы, которых нет в справочнике,
      ввести нельзя: сервер их и так отклонял (CHK-WINDOW-EXISTS, CHK-PLAN-CONSISTENT/
@@ -247,7 +247,7 @@ function tabelCellModal(empId, day) {
           if (until > +day.slice(8)) {
             const dates = d.days.filter(x => +x.slice(8) >= +day.slice(8) && +x.slice(8) <= until);
             res = await api('/api/tabel/bulk', { method: 'POST', body: { employee_ids: [empId], dates, code, hours: h, note: $('#tc-note', m).value } });
-            /* «всё или ничего» (25.10.2026): хоть одна ошибка — не записано ни одной ячейки */
+            /* «всё или ничего»: хоть одна ошибка — не записано ни одной ячейки */
             if (!res.ok) {
               toast(`Ничего не записано: ошибок ${res.errors.length} — исправьте и повторите`, 'err',
                     res.errors.slice(0, 8).map(e => `${dateRu(e.date)}: ${e.detail}`));
@@ -258,7 +258,7 @@ function tabelCellModal(empId, day) {
             res = await api('/api/tabel/cell', { method: 'PUT', body: { employee_id: empId, date: day, code, hours: h, note: $('#tc-note', m).value } });
             if (res.warning) toast(res.warning, 'warn');
           }
-          /* Модалка НЕ закрывается (решение владельца 16.10.2026): после сохранения
+          /* Модалка НЕ закрывается: после сохранения
              заявление печатается сразу, а сетка за модалкой показывает новое значение.
              Перезагружаем Табель и пересобираем модалку по свежим данным. */
           toast('Табель сохранён', 'ok');
@@ -304,7 +304,7 @@ function tabelFillModal(d) {
   });
 }
 
-/* «Сбросить» (T3, решение владельца Q5 от 12.10.2026): убирает введённые вручную коды
+/* «Сбросить»: убирает введённые вручную коды
    периода и возвращает автозаполнение из циклов; закрытых периодов не касается. */
 function tabelResetModal(d) {
   const rows = d.rows || [];

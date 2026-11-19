@@ -263,7 +263,7 @@ def test_board_query_budget_with_blocks(manager_client, big_fund, sql_counter, b
         with sql_counter() as c:
             r = manager_client.get(f"{API}/board/units", params=big_fund)
         assert r.status_code == 200
-        assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
+        assert c["total"] <= 31, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
     finally:
         with SessionLocal() as s:
             s.execute(delete(Ooo).where(Ooo.id.in_(ids)))

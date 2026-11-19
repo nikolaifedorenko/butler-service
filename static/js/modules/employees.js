@@ -1,6 +1,6 @@
 'use strict';
 /* ══ СОТРУДНИКИ: список → карточка → редактор ══
-   Вынесено из app.js (15.10.2026) без изменения логики.
+   Вынесено из app.js без изменения логики.
    Модуль на lit-html (ADR-0013, раздел 7). */
 
 import { applyMe, can, loadDirectory, navigate, registerModule, renderUserChip, resetUserViewState } from '../app.js';
@@ -15,7 +15,7 @@ import { html, mount, nothing, render } from '../ui/html.js';
    ══════════════════════════════════════════════════════════════════ */
 registerModule({ views: { employees: loadEmployees } });
 
-export async function loadEmployees() {
+async function loadEmployees() {
   const host = $('#view-employees');
   await loadDirectory();
   render(html`
@@ -67,7 +67,7 @@ export async function openEmployeeCard(empId) {
 /* После изменений карточки освежаем справочник и ТЕКУЩИЙ раздел: карточка
    открывается не только из «Сотрудников», но и из Табеля/Графика — сетка за
    модалкой должна показать свежие ФИО, цвет и статус. */
-export async function refreshAfterEmployeeChange() {
+async function refreshAfterEmployeeChange() {
   await loadDirectory();
   if (state.view === 'employees') loadEmployees();
   else navigate(state.view);
@@ -75,7 +75,7 @@ export async function refreshAfterEmployeeChange() {
 
 const bold = v => html`<div style="font-weight:600">${v}</div>`;
 
-export async function employeeCard(emp) {
+async function employeeCard(emp) {
   const history = await api(`/api/employees/${emp.id}/history`);
   const contacts = emp.contacts?.length ? emp.contacts
     : (emp.emergency_name ? [{ name: emp.emergency_name, phone: emp.emergency_phone, relation: '' }] : []);
@@ -168,7 +168,7 @@ export async function employeeCard(emp) {
 
 /* ── шаблоны блоков: пятидневка (свои выходные) или индивидуальный цикл (3/3, 1/3, custom:РРВВ) ── */
 function patternFields(prefix, kind, values, today) {
-  /* Значение рабочего дня (18.10.2026): код и окно из CFG-WINDOWS; пусто — берётся
+  /* Значение рабочего дня: код и окно из CFG-WINDOWS; пусто — берётся
      значение блока из настроек объекта. Список значений — /api/tabel-values. */
   const valueField = html`
     <label class="field" style="margin-top:8px"><span>Значение рабочего дня</span>
@@ -295,7 +295,7 @@ async function rehireModal(emp) {
   /* «Значение рабочего дня» — из /api/tabel-values (код + окно CFG-WINDOWS,
      форма {value,title,start_hm,end_hm}), как в модалке перевода блока (da).
      Раньше сюда передавали workShifts (словарь типов смен) — селектор рисовал
-     пустые option «undefined · undefined» (ревью 20.10.2026, P1-fe-2). */
+     пустые option «undefined · undefined». */
   let values = [];
   try { values = (await api('/api/tabel-values', { silent: true })).values || []; } catch { values = []; }
   openModal({
@@ -400,7 +400,7 @@ async function bankAdjustModal(emp, history) {
   }
 }
 
-export async function employeeModal(emp) {
+async function employeeModal(emp) {
   let groups = [];
   try { groups = await api('/api/group-choices'); } catch { groups = []; }
   const groupList = (groups.length ? groups : ['Смена 1', 'Смена 2', 'Пятидневка', 'Другие смены'].map(name => ({ name })))

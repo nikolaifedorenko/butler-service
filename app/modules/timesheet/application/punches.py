@@ -82,7 +82,7 @@ def _employed_on(db: Session, emp: Employee, date: dt.date) -> bool:
 
 def _resolve_employee(principal: Principal, employee_id: Optional[int], db: Session) -> Employee:
     # отметка за другого — по ключу punches.punch_for_others (бывш. is_manager, §5.2);
-    # без права — 403, а не молча своя отметка (аудит 21.10.2026, AUTHZ-02)
+    # без права — 403, а не молча своя отметка
     if employee_id and employee_id != (principal.employee.id if principal.employee else None):
         if not has_perm(db, principal, "punches.punch_for_others"):
             raise Forbidden("Недостаточно прав: отметка за другого сотрудника")
@@ -103,7 +103,7 @@ def _open_session(db: Session, emp_id: int) -> Optional[Punch]:
     15.10.2026, ADR-0009). Прежнее окно «план − 4 ч» обрезало длинные сессии:
     личный экран предлагал «Пришёл» при фактически открытой сессии, а расчёт
     всё равно склеивал сессии (sanitize адаптера отбрасывает повторный IN) —
-    окно не защищало расчёт, а лишь разводило экраны (дефект 15.10.2026).
+    окно не защищало расчёт, а лишь разводило экраны.
     """
     last = db.scalar(select(Punch).where(Punch.employee_id == emp_id)
                      .order_by(Punch.ts.desc(), Punch.id.desc()).limit(1))
@@ -284,7 +284,7 @@ def _punch_locked(db: Session, principal: Principal, payload: PunchIn, emp: Empl
     if kind not in ("IN", "OUT"):
         raise Validation("kind должен быть in/out/auto")
     if not backfill:
-        # Режим отметок соблюдается на сервере (находка 16.10.2026): флаги вида
+        # Режим отметок соблюдается на сервере: флаги вида
         # отсутствия и карточки кода Табеля раньше читал только фронтенд — прямой
         # запрос к API позволял отметиться в отпуске. Корректировка задним числом
         # (backfill, инструмент менеджера) этому ограничению не подлежит.
@@ -311,7 +311,7 @@ def _punch_locked(db: Session, principal: Principal, payload: PunchIn, emp: Empl
         # Корректировка задним числом: направление — по сессии, открытой на момент ts, как
         # у кнопок (_open_session). Раньше «auto» смотрел только отметки с 00:00 даты ts:
         # ночной «Пришёл» накануне не попадал в окно, и «Ушёл» в 00:30 становился вторым
-        # «Пришёл» (рецензия аудита 22.10.2026, P1)
+        # «Пришёл»
         open_at = _open_session_at(db, emp.id, ts)
         if payload.kind == "auto":
             kind = "OUT" if open_at else "IN"
@@ -363,7 +363,7 @@ def list_punches(db: Session, principal: Principal, date: Optional[dt.date] = No
     """Журнал отметок. Сотрудник видит только свои, менеджер — всех."""
     stmt = select(Punch).order_by(Punch.ts.desc())
     # день или месяц сами ограничивают объём; раньше месяц обрезался на 2000 строк, и при
-    # ~35 сотрудниках журнал молча терял начало месяца (аудит 22.10.2026)
+    # ~35 сотрудниках журнал молча терял начало месяца
     limit = None
     # журнал всех сотрудников — по ключу punches.view_all (бывш. is_manager, §5.2)
     if "punches.view_all" not in principal_permissions(db, principal):
@@ -383,7 +383,7 @@ def list_punches(db: Session, principal: Principal, date: Optional[dt.date] = No
         limit = 500   # без фильтра по дате — только последние отметки
 
     punches = db.scalars(stmt.limit(limit)).all()
-    # R6 (батч 20.10.2026): вместо relationship Punch.employee (lazy=joined) —
+    # R6: вместо relationship Punch.employee (lazy=joined) —
     # один батч-запрос сотрудников на страницу журнала.
     emp_ids = {p.employee_id for p in punches if p.employee_id}
     emps = {e.id: e for e in db.scalars(select(Employee).where(Employee.id.in_(emp_ids)))} \
@@ -400,7 +400,7 @@ def list_punches(db: Session, principal: Principal, date: Optional[dt.date] = No
 
 @transactional
 def delete_punch(db: Session, principal: Principal, punch_id: int) -> Optional[str]:
-    """Отменить ошибочную отметку (с записью в аудит). Возвращает предупреждение, если период
+    """Отменить ошибочную отметку. Возвращает предупреждение, если период
     отметки закрыт и отмена попадёт в результат только через пересчёт."""
     p = db.get(Punch, punch_id)
     if not p:

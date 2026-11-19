@@ -101,9 +101,9 @@ export function toast(message, type = 'ok', warnings = []) {
 }
 /* Поколения загрузок раздела: ответ устарел, если раздел успели перезагрузить (листание
    месяцев, смена даты). Без этого ответ за прошлый месяц, пришедший позже, рисовался
-   поверх текущего: подпись — октябрь, сетка — сентябрь (рецензия аудита 22.10.2026).
+   поверх текущего: подпись — октябрь, сетка — сентябрь.
      const fresh = loadGeneration('tabel'); const d = await api(…); if (!fresh()) return; */
-export const loadGenerations = {};
+const loadGenerations = {};
 export function loadGeneration(key) {
   const gen = (loadGenerations[key] = (loadGenerations[key] || 0) + 1);
   return () => gen === loadGenerations[key];
@@ -131,20 +131,20 @@ export function getCookie(name) {
   return m ? decodeURIComponent(m[1]) : '';
 }
 /* Тело ответа: JSON, иначе текст. Ошибка без JSON — это страница прокси (nginx: 413, 502):
-   вместо её разметки в тосте — понятный текст (аудит 21.10.2026, OPS-01). */
-export function parseBody(text, status) {
+   вместо её разметки в тосте — понятный текст. */
+function parseBody(text, status) {
   try { return text ? JSON.parse(text) : null; } catch {
     if (status < 400) return { detail: text };
     return { detail: status === 413 ? 'Файл слишком большой для загрузки' : `Ошибка ${status}` };
   }
 }
-/* Ошибка HTTP-ответа → Error с человеческим текстом (ревью 20.10.2026, P1-fe-4).
+/* Ошибка HTTP-ответа → Error с человеческим текстом.
    FastAPI на 422 (pydantic-валидация) отдаёт detail МАССИВОМ {loc, msg, type} —
    раньше он попадал в тост сырым JSON («[{"loc":["body","year"]…»). Теперь:
    «year: Input should be a valid integer» — поле и причина. Структурные 409
    ({message, …} — «перехват области», «всё равно закрыть?») сохраняют прежний
    контракт: e.message = msg.message, e.payload/e.status для логики вызывающего. */
-export function httpError(msg, status) {
+function httpError(msg, status) {
   if (msg && typeof msg === 'object') {
     if (Array.isArray(msg)) {
       const parts = msg.map(p => {
@@ -227,7 +227,7 @@ export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
 }
 
 /* ───────────────────────────── состояние ───────────────────────────── */
-export const now0 = new Date();
+const now0 = new Date();
 export const state = {
   user: null,
   perms: [],          // права пользователя (роль + группы + индивидуальные), см. /api/auth/me
@@ -258,7 +258,7 @@ export const state = {
                  photo_retention_days: 180, video_retention_days: 180 },
 };
 
-export const ROLE_TITLES = { admin: 'Администратор', manager: 'Менеджер', supervisor: 'Супервайзер', employee: 'Сотрудник' };
+const ROLE_TITLES = { admin: 'Администратор', manager: 'Менеджер', supervisor: 'Супервайзер', employee: 'Сотрудник' };
 /* название роли: свои роли приходят с сервера (/api/auth/me), встроенные — запасной вариант */
 export function roleTitle(code) { return state.roleTitles?.[code] || ROLE_TITLES[code] || code || '—'; }
 /* палитра цветов должностей */

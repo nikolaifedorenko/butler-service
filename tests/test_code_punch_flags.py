@@ -26,7 +26,6 @@ if "DATABASE_URL" not in os.environ:
     if os.path.exists(_tmp_db):
         os.remove(_tmp_db)
     os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db}"
-    os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402

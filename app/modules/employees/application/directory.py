@@ -312,7 +312,7 @@ def employee_history(db: Session, employee_id: int) -> dict:
 @transactional
 def delete_employee(db: Session, principal: Principal, employee_id: int) -> dict:
     """«Полное удаление»: сотрудник исчезает из списков и графика, но ВСЯ история
-    (табель, отметки, аудит) сохраняется — записи помечаются deleted_at."""
+ сохраняется — записи помечаются deleted_at."""
     emp = db.get(Employee, employee_id)
     if not emp:
         raise NotFound("Сотрудник не найден")

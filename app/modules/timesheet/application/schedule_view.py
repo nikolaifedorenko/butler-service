@@ -130,7 +130,7 @@ def rebuild_generated_schedule(employee_id: str, period: Period,
 
 def rebuild_generated_for_days(employee_id: str, days: Iterable[dt.date],
                                ports: EnginePorts) -> RebuildOutcome:
-    """Пакетная перегенерация Графика после МАССОВОЙ записи Табеля (P0-3).
+    """Пакетная перегенерация Графика после МАССОВОЙ записи Табеля.
 
     `days` — дни, которые операция действительно записала. Вместо перегенерации на
     каждую ячейку (DELETE+INSERT generated-строк на каждый день) — один проход на

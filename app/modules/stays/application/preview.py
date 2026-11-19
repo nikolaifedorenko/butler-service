@@ -61,7 +61,7 @@ def overbooked_keys(state: allocation.AllocationState) -> frozenset[tuple[int, i
 
 
 def change_window(*ranges: tuple[dt.date, dt.date]) -> Window:
-    """Окно снимка предпросмотра OOO и блока (§7, находка P2 аудита): ±62 дня вокруг изменения —
+    """Окно снимка предпросмотра OOO и блока: ±62 дня вокруг изменения —
     от самого раннего до самого позднего из дат «было» и «стало»; изменение длиннее 124 дней
     обрезается, чтобы окно оставалось ограниченным."""
     span = dt.timedelta(days=CHANGE_DAYS)
@@ -206,7 +206,7 @@ def run_operation[T](db: Session, op: Callable[[], T], window: Window | None = N
     may_overbook=False (нет права stays.overbook): если после op появился новый овербукинг —
     ночь брони без объекта, которой до op не было, — OverbookRefused с предпросмотром. Уже
     существующий овербукинг не мешает. Импорт из Fidelio передаёт may_overbook=True (§7)."""
-    lock_module(db)                              # до первого чтения состояния (ревью этапа 2, I1)
+    lock_module(db)                              # до первого чтения состояния
     db.info.pop(allocation.CACHE_KEY, None)
     before = take_snapshot(db, window, duty)
     result = op()

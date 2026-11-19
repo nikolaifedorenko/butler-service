@@ -96,7 +96,7 @@ jobs:
 
       - name: Самодиагностика схемы (/api/selfcheck)
         run: |
-          DATABASE_URL="$(python tools/scenario_db.py selfcheck)" SECRET_KEY="ci-only-not-a-secret" DEMO_SEED=1 \
+          DATABASE_URL="$(python tools/scenario_db.py selfcheck)" DEMO_SEED=1 \
           python -c "
           from fastapi.testclient import TestClient
           from app.main import app, init_db, schema_report

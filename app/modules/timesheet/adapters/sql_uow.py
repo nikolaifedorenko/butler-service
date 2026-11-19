@@ -22,6 +22,6 @@ class SqlUnitOfWork:
             self.db.commit()
         except IntegrityError as conflict:
             # страховка отложенного flush: конкурентная запись нарушила уникальность —
-            # откат и контрактный сигнал порта (use case решает бизнес-смысл, P1-ts-1)
+            # откат и контрактный сигнал порта
             self.db.rollback()
             raise StorageConflictError(str(getattr(conflict, "orig", conflict))) from conflict

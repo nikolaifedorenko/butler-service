@@ -47,7 +47,7 @@ python -m pytest tests/ -q       # параллельно; у каждого п�
 Запуск приложения без контейнера — на базе из compose:
 ```bash
 POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=54329 POSTGRES_USER=postgres POSTGRES_PASSWORD=dev \
-POSTGRES_DB=postgres SECRET_KEY=$(openssl rand -hex 32) DEMO_SEED=1 \
+POSTGRES_DB=postgres DEMO_SEED=1 \
 python -m uvicorn app.main:app --port 8000
 ```
 

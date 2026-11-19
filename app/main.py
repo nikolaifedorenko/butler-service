@@ -71,32 +71,8 @@ def _init_db_steps() -> None:
         db.close()
 
 
-def _weak_secret_key() -> bool:
-    """Слабый ключ подписи сессий: пустой, слишком короткий или значение из примера.
-
-    С таким ключом подделать cookie-сессию может кто угодно, поэтому по умолчанию
-    старт запрещён; локально его можно разрешить флагом ALLOW_INSECURE_DEV_SECRET=1.
-    """
-    key = (settings.secret_key or "").strip()
-    return len(key) < 16 or key.startswith("change-me")
-
-
-def _check_secret_key() -> None:
-    if not _weak_secret_key():
-        return
-    msg = (
-        "SECRET_KEY не задан или слишком короткий — сессии можно подделать. "
-        "Сгенерируйте ключ: python -c \"import secrets; print(secrets.token_hex(32))\" "
-        "и пропишите SECRET_KEY в .env / окружение.")
-    if settings.allow_insecure_dev_secret:
-        import logging
-        logging.getLogger("uvicorn.error").warning(msg)
-    else:
-        raise RuntimeError(msg)
-
-
 def _check_writable_dirs() -> None:
-    """Каталоги данных доступны на запись. Контейнер работает не от root (22.10.2026), а тома,
+    """Каталоги данных доступны на запись. Контейнер работает не от root, а тома,
     созданные раньше, принадлежат root: объясняем, что сделать, вместо непонятной ошибки
     на первой загрузке фото или бланка."""
     import os
@@ -113,7 +89,6 @@ def _check_writable_dirs() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    _check_secret_key()   # до инициализации БД: не мутируем базу, если ключ не задан
     from .modules.notify.application.secrets import check_key_config
     check_key_config()    # NOTIFY_SECRET_KEY задан, но не разбирается — отказ на старте
     _check_writable_dirs()
@@ -125,7 +100,7 @@ async def lifespan(_: FastAPI):
 
 
 def _docs_urls() -> dict:
-    """Swagger и схема API — только при API_DOCS=1; ReDoc не используется (OPS-04)."""
+    """Swagger и схема API — только при API_DOCS=1; ReDoc не используется."""
     on = settings.api_docs
     return {"docs_url": "/api/docs" if on else None,
             "openapi_url": "/api/openapi.json" if on else None, "redoc_url": None}

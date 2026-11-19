@@ -4,8 +4,7 @@
 punch.py (отметки), schedule.py (график и смены), engine_store.py (хранилище
 движка) и таймшит-часть directory.py (BlockAssignment, BankAdjustment,
 DoublePayDay, VipDoublePay). Каталог персонала (Employee, Department, …) в
-фазе C4 переехал в modules/employees/adapters/orm.py. R6 выполнен полностью
-(батч 20.10.2026): кросс-модульных relationship нет — FK строками, сотрудники
+фазе C4 переехал в modules/employees/adapters/orm.py. Кросс-модульных relationship нет — FK строками, сотрудники
 достаются по employee_id через employees.application (батч-словари в экранах).
 Публичная поверхность для других модулей — application/catalog.py.
 """
@@ -113,7 +112,7 @@ class VipDoublePay(Base):
 
 
 
-# User переехал в core/identity.py (фаза C1, 20.10.2026): учётные записи —
+# User переехал в core/identity.py: учётные записи —
 # фундамент аутентификации и прав. Employee.user разрешается реестром SQLAlchemy
 # (импорт User ниже — для аннотации и явной связи).
 # ────
@@ -161,7 +160,7 @@ class ShiftType(Base):
     # можно ли во время этого отсутствия жать «Пришёл»/«Ушёл» (например,
     # в отпуске отмечаться не нужно). Серверная проверка обоих слоёв режима —
     # api/punches.py::_punch_permissions; помимо вида, режим задаётся в карточке
-    # кода Табеля (punch_in/punch_out строки day_code_policy, 16.10.2026).
+    # кода Табеля.
     # Поячеечных переопределений нет: прежняя schedule_entries — легаси-таблица.
     punch_in_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     punch_out_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -252,7 +251,7 @@ class ScheduleAbsence(Base):
     end_utc: Mapped[dt.datetime] = mapped_column(Moment)
     kind_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shift_types.id"), nullable=True)
     note: Mapped[str] = mapped_column(String(255), default="")
-    # выбранный сотрудником/менеджером шаблон заявления (18.10.2026): переопределяет
+    # выбранный сотрудником/менеджером шаблон заявления: переопределяет
     # привязку вида и точку ввода; пусто — правило по точке ввода (вся смена/интервал)
     doc_type: Mapped[str] = mapped_column(String(40), default="")
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)

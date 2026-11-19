@@ -635,7 +635,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
     тента — просто факт, в замечания не идёт. Отметки пишутся в общую базу: состояние
     карточки кара обновляется автоматически.
 
-    Два места (19.10.2026): `found_location` — где батлер нашёл кар, `location` —
+    Два места: `found_location` — где батлер нашёл кар, `location` —
     где оставил. Кар мог стоять не там, что в карточке (её место устарело), а найденный
     кар батлер мог ПЕРЕПАРКОВАТЬ — тогда `moved=True`, и место в карточке кара
     меняется на новое. Перепарковка — факт, а не замечание: в счётчик «замечаний»
@@ -658,7 +658,7 @@ def check_car_night(db: Session, report, car: Car, principal, *, found: bool, lo
         db.add(ch)
     # время отметки обновляется при КАЖДОМ сохранении (перезапись — last write wins):
     # иначе повторная отметка оставалась с checked_at первой, а вместе с ней старели
-    # car.last_checked_at и флаг «кар взяли после проверки» (ревью 20.10.2026, P1)
+    # car.last_checked_at и флаг «кар взяли после проверки»
     ch.checked_at = local_now()
     ch.car_number = car.number
     ch.checker_user_id = principal.user.id

@@ -35,8 +35,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: dev
       POSTGRES_DB: postgres
-      # учебный ключ — только для локального запуска; в бою ключ задаётся в .env (prod-профиль)
-      SECRET_KEY: ${SECRET_KEY:-local-demo-only-secret-key-0123456789}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       TZ: ${APP_TZ:-Europe/Moscow}
       # демо-сотрудники с паролем demo1234; 0 — пустая база с администратором ADMIN_PASSWORD
@@ -62,7 +60,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: dev
       POSTGRES_DB: postgres
-      SECRET_KEY: ${SECRET_KEY:-local-demo-only-secret-key-0123456789}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       TZ: ${APP_TZ:-Europe/Moscow}
     command: ["python", "-m", "app.bootstrap.jobs_worker"]

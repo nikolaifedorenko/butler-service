@@ -20,7 +20,7 @@ from .identity import AccessGrant, AccessGroupMember
 from .manifest import Perm
 from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
 
-# Каталог собирают манифесты модулей (ADR-0012, 22.10.2026): load_catalog() вызывает
+# Каталог собирают манифесты модулей: load_catalog() вызывает
 # bootstrap/registry.wire(). Объекты заполняются на месте — модули держат на них ссылки.
 PERMISSIONS: list[dict] = []
 ALL_KEYS: list[str] = []

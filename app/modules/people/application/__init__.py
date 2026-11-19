@@ -13,7 +13,6 @@ from ..domain.groups import (  # noqa: F401
     LEGACY_NAMES,
     group_choices,
     group_index,
-    group_kind,
     normalize_group,
     sorted_groups,
 )
@@ -29,10 +28,7 @@ from .catalog import (  # noqa: F401
 from .employment import (  # noqa: F401
     close_period,
     employed_on,
-    employed_ranges,
     ensure_periods,
-    is_employed,
-    last_day,
     open_period,
     periods_of,
     ranges_from_periods,

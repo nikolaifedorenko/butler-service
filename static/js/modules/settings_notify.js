@@ -1,4 +1,4 @@
-/* Раздел «Настройки»: экран «Чаты и Почта» (вынесено из settings.js, шаг 6.5 аудита).
+/* Раздел «Настройки»: экран «Чаты и Почта».
    Оболочка, черновик версии справочников и общие помощники — в settings.js.
    Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
@@ -35,7 +35,7 @@ async function settingsScreenNotify(host) {
   }
   const cfg = data.config || {};
   const tg = cfg.telegram || {}, em = cfg.email || {}, ready = cfg.ready || {};
-  /* секреты в БД зашифрованы ключом NOTIFY_SECRET_KEY (25.10.2026): ключ потерян или сменился —
+  /* секреты в БД зашифрованы ключом NOTIFY_SECRET_KEY: ключ потерян или сменился —
      сервер не может их прочитать и просит ввести заново
 */
   const unreadable = new Set(cfg.unreadable || []);

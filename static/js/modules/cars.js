@@ -114,7 +114,7 @@ function carsBody() {
   const row = c => {
     const mine = c.id === me.held;
     const assignedToMe = c.id === me.assigned;
-    /* Кнопки операций не существуют одновременно (решение владельца 18.10.2026):
+    /* Кнопки операций не существуют одновременно:
        свободный кар — «Взять»/«Выдать»; мой кар — «Вернул»/«Передать»; чужой занятый —
        операции держателя скрыты, менеджеру (cars.issue) доступны возврат/передача
        от имени держателя. Права: cars.use — свои операции, cars.issue — выдача и т.п. */
@@ -330,7 +330,7 @@ export function carReturnModal(car, after) {
              <button class="btn btn-primary" data-ok>Отметить возврат</button>`,
     onMount(m) {
       m.querySelector('[data-cancel]').onclick = closeModal;
-      /* фото: съёмка камерой смартфона (capture) или выбор из галереи (18.10.2026) */
+      /* фото: съёмка камерой смартфона (capture) или выбор из галереи */
       const pickPhoto = bindPhotoPick(m, 'cr');
       m.querySelector('[data-ok]').onclick = async () => {
         const charge = $('#cr-charge').value;

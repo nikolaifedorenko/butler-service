@@ -11,7 +11,7 @@ import { can } from '../app.js';
 import { $, api, dateRu, MONTHS, state, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 
-export const V4_MOD_TITLES = {
+const V4_MOD_TITLES = {
   double_overtime: 'Двойные переработки', pays_overtime: 'Оплачиваются ли переработки',
   plan_equals_fact: 'План=Факт', counts_in_ut: 'Учитываются ли часы в УТ',
 };

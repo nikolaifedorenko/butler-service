@@ -1,6 +1,6 @@
 'use strict';
 /* ══ НАСТРОЙКИ (продолжение): справочники, виды заявлений, двойные оплаты, словарь смен ══
-   Вынесено из app.js (15.10.2026) без изменения логики.
+   Вынесено из app.js без изменения логики.
    Модуль на lit-html (ADR-0013, раздел 7). */
 
 import { can, loadDirectory } from '../app.js';
@@ -58,7 +58,7 @@ export async function renderDicts() {
     col(subs, 'sub', '/api/subdivisions', 'Службы / подразделения', 'Новая служба')}`, mount(host));
 }
 
-export function renameDictModal(url, item) {
+function renameDictModal(url, item) {
   if (!item) return;
   openModal({
     title: 'Переименовать',
@@ -184,8 +184,6 @@ export function openKindModal(kind) {
   });
 }
 
-export const DEFAULT_TITLES = { pays_overtime: 'Оплачиваются ли переработки',
-                         double_overtime: 'Двойные переработки', plan_equals_fact: 'План=Факт' };
 export function fmtGdValue(name, v) {
   if (name === 'plan_equals_fact') return { yes: 'Да', no: 'Нет', auto: 'Авто' }[v] || String(v);
   return (v === true || v === 'true' || v === 1) ? 'Да' : 'Нет';
@@ -383,7 +381,7 @@ export async function shiftModal(st) {
       const kindToggle = () => {
         const isWork = q('#sh-kind').value === 'work';
         q('#sh-punch-wrap').style.display = isWork ? 'none' : '';
-        /* заявление печатается только по отсутствию (пункт 6 задания 17.10.2026) */
+        /* заявление печатается только по отсутствию */
         q('#sh-doc-wrap').style.display = isWork ? 'none' : '';
       };
       q('#sh-kind').onchange = kindToggle; kindToggle();

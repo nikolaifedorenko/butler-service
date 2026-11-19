@@ -30,8 +30,7 @@ with SessionLocal() as db:
 
 def _run(url, **env):
     full = {k: v for k, v in os.environ.items() if k not in ("DEMO_SEED", "ADMIN_PASSWORD")}
-    full.update(DATABASE_URL=url, SECRET_KEY="test-secret-key-0123456789",
-                **env)
+    full.update(DATABASE_URL=url, **env)
     return subprocess.run([sys.executable, "-c", PROBE], cwd=ROOT, env=full,
                           capture_output=True, text=True, timeout=120)
 

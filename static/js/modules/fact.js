@@ -1,7 +1,7 @@
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════════
-   ФАКТ — слой 2 модели «График = 4 слоя» (T5, норматив 12.10.2026).
+   ФАКТ — слой 2 модели «График = 4 слоя».
    Три представления одних и тех же отметок СКУД (порядок вкладок и вкладка по умолчанию —
    решения владельца 16.10.2026: Месяц первым, затем День и Сотрудник):
    · «Месяц» — гант фактических присутствий на непрерывной оси времени;
@@ -76,7 +76,7 @@ function layerTemplate() {
 
 const errorPanel = text => html`<div class="panel"><div class="empty">${text}</div></div>`;
 
-/* ── вкладка «Месяц»: ГАНТ фактических присутствий (16.10.2026) ──
+/* ── вкладка «Месяц»: ГАНТ фактических присутствий ──
    Ось X — непрерывное время месяца (не колонки дней), поэтому смена через
    полночь — ОДНА полоса. Данные — GET /api/fact/month: сессии из ОКРУГЛЁННЫХ
    отметок (to_calc_mark + pair_marks, то же ядро, что у вкладки «День»), целиком,
@@ -93,7 +93,7 @@ const FG_FALLBACK_CATEGORIES = [{ code: 'ДЯ', start: '06:00', end: '22:00' },
 const fgHours = hms => { const [h, m] = hms.split(':').map(Number); return h + m / 60; };
 /* Полосы категорий суток в часах: [{code, label, spans: [[h1, h2], …], tone}] в порядке
    настроек. tone 0 — самая длинная категория, 1 — самая короткая (темнее): правило не
-   зависит ни от порядка категорий в настройках, ни от их кодов (25.10.2026). */
+   зависит ни от порядка категорий в настройках, ни от их кодов. */
 export function fgCategoryBands(categories) {
   const list = (categories && categories.length ? categories : FG_FALLBACK_CATEGORIES).map((c, i) => {
     const a = fgHours(c.start), b = fgHours(c.end);
@@ -129,7 +129,7 @@ const fgWin = (x1, x2, y, col, pid) => svg`<rect x=${x1.toFixed(1)} y=${(y - FG_
   width=${Math.max(2, x2 - x1).toFixed(1)} height=${FG_WIN_H} fill=${`url(#${pid})`}
   stroke=${withAlpha(cssColor(col), .55)} stroke-dasharray="3 2"><title>стандартное окно Табеля (ожидание)</title></rect>`;
 
-export async function loadFactMonth() {
+async function loadFactMonth() {
   tab.month.loading = true; tab.month.error = '';
   draw();
   const fresh = loadGeneration('fact-month');
@@ -341,7 +341,7 @@ function sessionsPane() {
 }
 
 /* ── вкладка «День»: сетка дня (Q7, T5) ── */
-export async function loadFactNumbers() {
+async function loadFactNumbers() {
   if (!state.factDay) state.factDay = todayISO();
   await fetchFactDay();
 }

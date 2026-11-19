@@ -41,10 +41,6 @@ def employed_on(periods: Iterable[EmploymentPeriod], date: dt.date) -> bool:
     return any(p.start_date <= date and (p.end_date is None or p.end_date >= date) for p in periods)
 
 
-def is_employed(db: Session, emp: Employee, date: dt.date) -> bool:
-    return employed_on(periods_of(db, emp.id), date)
-
-
 def ranges_from_periods(periods: Iterable[EmploymentPeriod], first: dt.date,
                         last: dt.date) -> list[dict]:
     """То же, что employed_ranges, но по уже загруженным периодам (без запроса).
@@ -60,11 +56,6 @@ def ranges_from_periods(periods: Iterable[EmploymentPeriod], first: dt.date,
             out.append({"start": s.isoformat(), "end": e.isoformat(),
                         "open": p.end_date is None, "note": p.note or ""})
     return out
-
-
-def employed_ranges(db: Session, emp_id: int, first: dt.date, last: dt.date) -> list[dict]:
-    """Периоды работы, обрезанные по границам месяца (для «неактивных» ячеек графика)."""
-    return ranges_from_periods(periods_of(db, emp_id), first, last)
 
 
 def open_period(db: Session, emp: Employee, since: dt.date, note: str = "",
@@ -104,8 +95,3 @@ def close_period(db: Session, emp: Employee, until: dt.date, note: str = "") -> 
         if note:
             cur.note = note
     db.flush()
-
-
-def last_day(periods: Iterable[EmploymentPeriod]) -> Optional[dt.date]:
-    ends = [p.end_date for p in periods if p.end_date]
-    return max(ends) if ends else None

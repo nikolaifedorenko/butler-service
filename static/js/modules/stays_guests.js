@@ -177,7 +177,7 @@ function staysMergeMoves(m) {
     ${m.coverage ? html`<div class="muted">Строк покрытия с выбранным гостем: ${m.coverage}</div>` : nothing}`;
 }
 
-export function openGuestMerge(a, b, onDone) {
+function openGuestMerge(a, b, onDone) {
   openModal({
     title: 'Объединить гостей', wide: true,
     subtitle: 'Брони, связи, предпочтения и особые даты перейдут к оставленному гостю, второй профиль удалится',

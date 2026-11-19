@@ -65,7 +65,6 @@ def drop_database(name: str) -> None:
 
 # свежая база на каждый прогон: сид создаётся при первом init_db()
 os.environ["DATABASE_URL"] = create_database(f"butler_test_{WORKER}")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
 # тесты опираются на демо-сотрудников и пароль demo1234 (см. app/bootstrap/seed.py)
 os.environ.setdefault("DEMO_SEED", "1")
 os.environ.setdefault("APP_TZ", "Europe/Moscow")

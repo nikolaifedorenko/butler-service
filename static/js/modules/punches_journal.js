@@ -1,7 +1,7 @@
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════════
-   ЖУРНАЛ ОТМЕТОК — инструмент менеджера в разделе «Отметки» (ревью 22.10.2026):
+   ЖУРНАЛ ОТМЕТОК — инструмент менеджера в разделе «Отметки»:
    все отметки за месяц, отметка за сотрудника (в т.ч. задним числом — забытый
    уход) и отмена ошибочной. Бэкенд был готов давно (POST /api/punches с
    employee_id/ts, DELETE /api/punches/{id}), кнопок не было — правили SQL-ом.
@@ -78,7 +78,7 @@ function bodyTemplate() {
     </tr>`)}</tbody></table></div>`;
 }
 
-export async function fetchPunchJournal() {
+async function fetchPunchJournal() {
   const [y, m] = (punchJournal.month || '').split('-').map(Number);
   if (!y || !m) { table.loading = false; table.error = ''; table.items = null; drawJournal(); return; }
   const emp = punchJournal.employeeId ? `&employee_id=${punchJournal.employeeId}` : '';

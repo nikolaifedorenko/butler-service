@@ -34,7 +34,7 @@ class BoardFilters:
 
     def for_level(self, level: Level) -> BoardFilters:
         """Поиск, «Особый гость» и VIP-код опираются на данные гостей: уровню occupancy они не
-        применяются (находка C1 аудита) — иначе по ответу можно было бы подобрать фамилию или
+        применяются — иначе по ответу можно было бы подобрать фамилию или
         признак гостя."""
         return self if level != "occupancy" else replace(self, q="", special=False, vip_code_ids=(),
                                                          employee_id=None)

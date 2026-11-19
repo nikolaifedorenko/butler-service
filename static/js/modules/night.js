@@ -164,7 +164,7 @@ function nightHead(rep) {
   const hid = on => (on ? '' : ' hidden');
   const sendable = rep ? (rep.areas || []).reduce((n, a) => n
     + (a.items || []).filter(i => i.answer === 'bad' && !i.dispatched_at).length, 0) : 0;
-  /* закрытие/переоткрытие смены — право night.close из каталога (этап B, 20.10.2026),
+  /* закрытие/переоткрытие смены — право night.close из каталога,
      а не проверка роли: базово оно у supervisor+, но выдаётся и снимается грантами */
   const sub = !rep ? 'Смена 20:00–08:00 · отчёт относится к дате начала смены'
     : (rep.reopened_at

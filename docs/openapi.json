@@ -27342,7 +27342,7 @@
     },
     "/api/punches/{punch_id}": {
       "delete": {
-        "description": "Отменить ошибочную отметку (с записью в аудит).",
+        "description": "Отменить ошибочную отметку.",
         "operationId": "delete_punch_api_punches__punch_id__delete",
         "parameters": [
           {

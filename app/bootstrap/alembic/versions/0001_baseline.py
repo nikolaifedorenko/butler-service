@@ -580,11 +580,25 @@ def upgrade() -> None:
     sa.Column('employee_id', sa.Integer(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('token_version', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
+    op.create_table('user_sessions',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('token_hash', sa.String(length=64), nullable=False),
+    sa.Column('employee_id', sa.Integer(), nullable=True),
+    sa.Column('impersonated', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('token_hash')
+    )
+    op.create_index(op.f('ix_user_sessions_user_id'), 'user_sessions', ['user_id'], unique=False)
+    op.create_index(op.f('ix_user_sessions_expires_at'), 'user_sessions', ['expires_at'], unique=False)
     op.create_table('access_grants',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('group_id', sa.Integer(), nullable=True),
@@ -1249,6 +1263,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_access_grants_user_id'), table_name='access_grants')
     op.drop_index(op.f('ix_access_grants_group_id'), table_name='access_grants')
     op.drop_table('access_grants')
+    op.drop_index(op.f('ix_user_sessions_expires_at'), table_name='user_sessions')
+    op.drop_index(op.f('ix_user_sessions_user_id'), table_name='user_sessions')
+    op.drop_table('user_sessions')
     op.drop_index(op.f('ix_users_username'), table_name='users')
     op.drop_table('users')
     op.drop_table('stays_moves')

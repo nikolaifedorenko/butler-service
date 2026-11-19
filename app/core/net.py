@@ -23,9 +23,9 @@ def client_ip(request) -> str:
     подделывается клиентом и лимит обходится/направляется на чужой IP.
 
     Правый адрес дописал наш nginx ($proxy_add_x_forwarded_for); левые присылает клиент —
-    по ним лимит обходился сменой заголовка (аудит 21.10.2026, SEC-01). Сам uvicorn
+    по ним лимит обходился сменой заголовка. Сам uvicorn
     заголовки прокси не разбирает (--no-proxy-headers): с --forwarded-allow-ips "*" он
-    подставлял ЛЕВЫЙ адрес, и при TRUST_PROXY_HEADERS=0 обход возвращался (22.10.2026)."""
+    подставлял ЛЕВЫЙ адрес, и при TRUST_PROXY_HEADERS=0 обход возвращался."""
     peer = request.client.host if request.client else "unknown"
     if settings.trust_proxy_headers:
         xff = request.headers.get("x-forwarded-for", "")

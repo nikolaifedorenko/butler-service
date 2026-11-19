@@ -1,6 +1,6 @@
 """Роли пользователей — константы идентификации (ядро, R5).
 
-Перенесено из app/models/common.py (фаза C1, 20.10.2026): роли нужны core.auth,
+Перенесено из app/models/common.py: роли нужны core.auth,
 core.permissions и core.auth_guards, поэтому живут в core, а не в моделях.
 """
 from __future__ import annotations

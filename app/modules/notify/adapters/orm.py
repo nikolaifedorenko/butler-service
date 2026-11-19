@@ -1,6 +1,6 @@
-"""Поддомен «Доставка уведомлений»: общие сущности Telegram и почты (v2, 19.10.2026).
+"""Поддомен «Доставка уведомлений»: общие сущности Telegram и почты.
 
-Решение владельца (19.10.2026): отправка сообщений — ОБЩАЯ функциональность
+Решение владельца: отправка сообщений — ОБЩАЯ функциональность
 приложения, а не принадлежность ночного отчёта. Позже к ней подключат электрокары
 (замечания при возврате), График и Табель (заявления, закрытие периода), отметки
 (опоздания). Поэтому получатели и сущности транспорта живут здесь, а разделы
@@ -77,7 +77,7 @@ class NotifyChat(Base):
     __tablename__ = "notify_chats"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # id чатов Telegram (-100…) больше 2³¹: в PostgreSQL нужен BIGINT (DB-06, 21.10.2026)
+    # id чатов Telegram (-100…) больше 2³¹: в PostgreSQL нужен BIGINT
     chat_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     title: Mapped[str] = mapped_column(String(255), default="")
     username: Mapped[str] = mapped_column(String(120), default="")            # @username, если есть

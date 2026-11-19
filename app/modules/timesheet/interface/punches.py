@@ -47,7 +47,7 @@ def list_punches(date: Optional[dt.date] = None, year: Optional[int] = None, mon
 @router.delete("/{punch_id}", response_model=PunchDeletedOut)
 def delete_punch(punch_id: int, principal: Principal = Depends(require_perm("punches.manage")),
                  db: Session = Depends(get_db)):
-    """Отменить ошибочную отметку (с записью в аудит)."""
+    """Отменить ошибочную отметку."""
     return {"ok": True, "warning": punches.delete_punch(db, principal, punch_id)}
 
 

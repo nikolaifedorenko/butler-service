@@ -10,7 +10,7 @@
 
 import { can, registerModule } from '../app.js';
 import {
-  $, $$, api, closeModal, dateRu, downloadBlob, esc, loadGenerationFor, MONTHS, openModal, state, todayISO, toast, WD_SHORT,
+  $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, state, todayISO, toast, WD_SHORT,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { renderBookings } from './stays_bookings.js';
@@ -24,7 +24,7 @@ import {
   relativesView,
 } from './stays_forms.js';
 import { renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
-import { filterPanelTemplate, staysFilterPanel, staysSearchState, STAYS_SORTS, staysSortRows } from './stays_filters.js';
+import { filterPanelTemplate, STAYS_SORTS, staysSortRows } from './stays_filters.js';
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
@@ -33,10 +33,6 @@ const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], 
 /* «Особый гость» — ◆ у имени; VIP-код брони — рядом с главным гостем (правила сопровождения §6) */
 export const STAYS_SPECIAL_MARK = '◆ ';
 export const STAYS_ESCORT_MODE = { rules: 'по правилам', required: 'требуется', declined: 'не требуется (гость отказался)' };
-/* строки с разметкой — для файлов раздела, которые ещё не переехали на шаблоны */
-export function staysGuestMark(special) { return special ? `<span class="sb-star">${STAYS_SPECIAL_MARK}</span>` : ''; }
-export function staysCodeTag(code) { return code ? ` <span class="badge muted" data-vip-code>${esc(code)}</span>` : ''; }
-/* то же шаблонами */
 export const staysGuestMarkView = special => (special ? html`<span class="sb-star">${STAYS_SPECIAL_MARK}</span>` : nothing);
 export const staysCodeTagView = code => (code ? html` <span class="badge muted" data-vip-code>${code}</span>` : nothing);
 
@@ -86,18 +82,6 @@ export const staysMonthNavView = (body, rerender) => html`<div class="month-nav"
     <div class="label" id="sm-label">${MONTHS[state.month - 1]} ${state.year}</div>
     <button id="sm-next" title="Следующий месяц" @click=${() => shiftMonth(1, rerender)}>▶</button></div>
     <button class="btn btn-sm" id="sm-today" title="Текущий месяц и колонка сегодняшнего дня" @click=${() => goToday(body, rerender)}>Сегодня</button>`;
-/* строка и привязка — для файлов раздела, которые ещё не переехали */
-export function staysMonthNav() {
-  return `<div class="month-nav"><button id="sm-prev" title="Предыдущий месяц">◀</button>
-    <div class="label" id="sm-label">${esc(MONTHS[state.month - 1])} ${state.year}</div>
-    <button id="sm-next" title="Следующий месяц">▶</button></div>
-    <button class="btn btn-sm" id="sm-today" title="Текущий месяц и колонка сегодняшнего дня">Сегодня</button>`;
-}
-export function staysBindMonthNav(body, rerender) {
-  $('#sm-prev', body).onclick = () => shiftMonth(-1, rerender);
-  $('#sm-next', body).onclick = () => shiftMonth(1, rerender);
-  $('#sm-today', body).onclick = () => goToday(body, rerender);
-}
 /* докрутка сетки к колонке staysState.focusDay и подсветка (как scrollTabelToToday) */
 export function staysFocusDay(body) {
   const day = staysState.focusDay;
@@ -132,22 +116,6 @@ export function staysPeopleParams(p, f) {
 }
 /* вес места/нагрузка: один знак, запятая («5,5») */
 export function staysWeight(n) { return Number(n).toFixed(1).replace('.', ','); }
-/* панель фильтров вида для файлов, которые ещё не переехали: заменяет слот [data-sf-slot] готовой панелью */
-export function staysPanelInto(body, fund, rerender, opts) {
-  const slot = $('[data-sf-slot]', body);
-  if (!slot) return;
-  const panel = staysFilterPanel(fund, staysState.filters, f => { staysState.filters = f; rerender(); }, opts);
-  slot.replaceWith(panel);
-  /* перерисовка после набора в поиске — фокус и курсор остаются в поле */
-  const q = $('#sf-q', panel);
-  const draft = staysSearchState();
-  if (draft && q) {
-    q.focus();
-    const c = Math.min(draft.caret ?? q.value.length, q.value.length);
-    q.setSelectionRange(c, c);
-    if (draft.value === staysState.filters.q) staysSearchState(null);
-  }
-}
 /* панель фильтров вида шаблоном: изменение — новые фильтры и перерисовка вида */
 export const staysFilterView = (fund, rerender, opts) => filterPanelTemplate(fund, staysState.filters,
   f => { staysState.filters = f; rerender(); }, opts);
@@ -187,7 +155,7 @@ export function staysTabAllowed([id]) {
   if (id === 'guests') return can('stays.guests') && can('stays.view');
   return (id !== 'butlers' && id !== 'bookings') || can('stays.view');
 }
-/* вкладки из файлов раздела, которые ещё не переехали, — по имени при вызове */
+/* вкладка → функция отрисовки */
 function staysTabRender(tab) {
   return { units: renderUnitsBoard, butlers: renderButlersBoard, day: renderDayBoard,
     occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab, guests: renderGuestsTab }[tab] || renderUnitsBoard;
@@ -209,10 +177,6 @@ export function staysBoardParams() {
 
 /* заголовок колонок дня — общий для видов месяца: data-day, «сегодня», выходные */
 const weekdayOf = d => new Date(d + 'T12:00:00Z').getUTCDay();
-export function staysDayHead(d, today) {
-  const wd = weekdayOf(d);
-  return `<div data-day="${esc(d)}" class="${d === today ? 'today' : ''}${wd === 0 || wd === 6 ? ' we' : ''}">${Number(d.slice(8))}<small>${esc(WD_SHORT[(wd + 6) % 7])}</small></div>`;
-}
 export const staysDayHeadView = (d, today) => {
   const wd = weekdayOf(d);
   return html`<div data-day=${d} class="${d === today ? 'today' : ''}${wd === 0 || wd === 6 ? ' we' : ''}">${Number(d.slice(8))}<small>${WD_SHORT[(wd + 6) % 7]}</small></div>`;
@@ -255,7 +219,7 @@ function blockBarTemplate(b, base, span) {
     style=${`left:${left}%;width:${right - left}%;--bh:${hue}`} title=${(b.title || 'Блок') + ' · ' + dateRu(b.start) + '–' + dateRu(b.end)}>${b.title || 'Блок'}</div>`;
 }
 
-export async function renderUnitsBoard(body) {
+async function renderUnitsBoard(body) {
   const fund = await staysFund();
   /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
      (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
@@ -405,7 +369,6 @@ export async function openReservationCard(rid, onChanged) {
   const mineEdit = !can('stays.edit') && card.mine && can('stays.mine_res_edit');
   const diffText = diff => Object.entries(diff || {}).map(([k, [a, b]], i) =>
     html`${i ? html`<br>` : nothing}${k}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
-  /* родственники — разметку собирает файл семейного дерева, который ещё не переехал */
   const relatives = relativesView;
   openModal({
     title: `Бронь ${card.number || '#' + card.id}`, wide: true,

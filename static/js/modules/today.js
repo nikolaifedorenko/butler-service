@@ -1,6 +1,6 @@
 'use strict';
 /* ══════════════════════════════════════════════════════════════════
-   СЕГОДНЯ — стартовый экран (ADR-0013, раздел 7; макет «Сегодня», одобрен 12.11.2026).
+   СЕГОДНЯ — стартовый экран.
    Свой набор блоков у каждого по правам и привязке к сотруднику:
      * сотрудник — смена и кнопка «Пришёл / Ушёл»;
      * батлер (stays.mine) — мои брони, что важно сейчас, мои гости;
@@ -22,7 +22,7 @@ const view = { status: null, mine: null, board: null, loaded: false, busy: false
 
 const PREF_TITLES = { allergy: 'Аллергия', food: 'Питание', habits: 'Привычки' };
 
-export async function loadToday() {
+async function loadToday() {
   view.loaded = false;
   draw();
   await refresh();
