@@ -2,7 +2,7 @@
 
 Референс-стек: **nginx (TLS) → приложение (uvicorn, N воркеров) → PostgreSQL 18**,
 плюс ежедневные бэкапы. Локальный запуск и база для тестов — `docker-compose.yml`
-(docs/INSTALL.md).
+(docs/03-ustanovka.md).
 
 ## 1. Подготовка
 
@@ -43,7 +43,7 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 | Флаг | Прод-значение | Смысл |
 |---|---|---|
 | `NOTIFY_SECRET_KEY` | ключ Fernet из `.env` (обязателен) | шифрует токен Telegram-бота и пароль SMTP в БД — в базе и бэкапах только шифротекст. Сгенерировать: `python3 -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"`. Храните копию вне сервера (рядом с закрытым ключом бэкапов): потерян — токен и пароль вводятся заново в «Настройки → Чаты и Почта». Смена: `новый,старый` — при старте всё перешифруется новым, затем старый убрать |
-| `POSTGRES_HOST` / `_USER` / `_PASSWORD` / `_DB` / `_PORT` | `db` / из `.env` | адрес БД собирает приложение и экранирует пароль — в нём допустимы любые символы. Старше — явный `DATABASE_URL`, младше — SQLite `SQLITE_PATH` (в образе — `/srv/timetrack/data/timetrack.db`, в томе) |
+| `POSTGRES_HOST` / `_USER` / `_PASSWORD` / `_DB` / `_PORT` | `db` / из `.env` | адрес БД собирает приложение и экранирует пароль — в нём допустимы любые символы. Старше — явный `DATABASE_URL` |
 | `COOKIE_SECURE` | `1` | cookie только по TLS |
 | `ALLOW_IMPERSONATION` | `1` | демо-вход «как сотрудник» включён по умолчанию (решение владельца 15.10.2026); `0` — выключить |
 | `TRUST_PROXY_HEADERS` | `1` | IP для rate-limit берётся из X-Forwarded-For (доверяем своему nginx) |
