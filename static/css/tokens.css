@@ -27,7 +27,7 @@
   /* текст — глубокий тёмно-синий, как на сайте */
   --text: #141a25;
   --muted: #6e6459;
-  --muted-2: #a2968a;
+  --muted-2: #6f6458;
   --heading: #141a25;
   /* акценты: терракота/бронза + золото */
   --primary: #94583a;
@@ -169,7 +169,7 @@
   --line-soft: #2a3240;
   --text: #e9e4da;
   --muted: #a79e91;
-  --muted-2: #8a8175;
+  --muted-2: #aaa194;
   --primary: #a85f3a;
   --primary-dark: #8e4d2e;
   --primary-soft: #c08060;
@@ -225,7 +225,7 @@
     --line-soft: #2a3240;
     --text: #e9e4da;
     --muted: #a79e91;
-    --muted-2: #8a8175;
+    --muted-2: #aaa194;
     --primary: #a85f3a;
     --primary-dark: #8e4d2e;
     --primary-soft: #c08060;

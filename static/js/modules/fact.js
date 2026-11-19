@@ -318,7 +318,7 @@ function sessionsBody() {
   return html`
     <div class="panel"><h3 class="panel-title">${d.employee.short_name || d.employee.full_name || ''} ·
       сессий: ${d.sessions.length}</h3>
-      <div class="table-wrap"><table class="data responsive">
+      <div class="table-wrap" tabindex="0"><table class="data responsive">
         <thead><tr><th>День</th><th>Пришёл</th><th>Ушёл</th><th>Длительность</th><th>Примечания</th></tr></thead>
         <tbody>${rows.length ? rows : html`<tr><td colspan="5" class="empty">Сессий в диапазоне нет</td></tr>`}</tbody>
       </table></div>
@@ -418,7 +418,7 @@ function dayBody() {
   const d = state.factDayData;
   if (!d) return nothing;
   return html`
-    <div class="table-wrap"><table class="data responsive">
+    <div class="table-wrap" tabindex="0"><table class="data responsive">
       <thead><tr><th class="who">Сотрудник</th><th>Отметки (СКУД → округление)</th>
         <th>Окно (из Табеля)</th><th>План</th><th>Отработано</th><th>Недоработка</th>
         <th>Переработка</th><th>Флаги (из Графика)</th></tr></thead>

@@ -53,9 +53,9 @@ async function settingsScreenSystem(host) {
       <p class="hint">Пересчёт «всего месяца» не нужен: управленческий табель считается при открытии (view),
         закрытые периоды меняются только явным пересчётом последнего закрытого.</p>`)}
     ${settingsPanelView('Версии справочников и откат', html`
-      <div class="table-wrap"><table class="data"><thead><tr>
+      <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>№</th><th>Действует с</th><th>Комментарий</th><th>Кто</th><th></th></tr></thead>
-      <tbody>${versions.length ? versions.slice(0, 12).map(v => html`<tr style=${v.id === engine?.active?.id ? 'background:#f7f1ea' : nothing}>
+      <tbody>${versions.length ? versions.slice(0, 12).map(v => html`<tr style=${v.id === engine?.active?.id ? 'background:var(--surface-3)' : nothing}>
         <td><b>#${v.id}</b>${v.id === engine?.active?.id ? html` <span class="badge ok">действует</span>` : nothing}</td>
         <td>${dateRu(v.valid_from)}</td><td>${v.note || '—'}</td><td>${v.created_by || '—'}</td>
         <td class="num" style="white-space:nowrap">

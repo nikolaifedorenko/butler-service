@@ -116,7 +116,7 @@ function tabelTable(d) {
     ${missing ? html`<div class="alert warn"><div><b>${missing}</b> ${plural(missing, 'ячейка', 'ячейки', 'ячеек')} не заполнены.
       Табель обязан покрывать период: ровно одна строка на каждый день трудоустройства
       (RUL-TIMESHEET-COVERS-PERIOD) — иначе расчёт УТ не запустится. Заполните вручную или «Заполнить из циклов».</div></div>` : nothing}
-    <div class="table-wrap v4-grid-wrap"><table class="data v4-grid">
+    <div class="table-wrap v4-grid-wrap" tabindex="0"><table class="data v4-grid">
       <thead><tr><th class="who">Сотрудник</th>${d.days.map(dayHeadCell)}<th>План, ч</th></tr></thead>
       <tbody>${d.rows.length ? d.rows.map(r => html`<tr>
         <td class="who${canCard ? ' who-click' : ''}" data-emp=${canCard ? r.employee.id : nothing}

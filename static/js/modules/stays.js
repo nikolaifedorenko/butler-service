@@ -10,7 +10,7 @@
 
 import { can, registerModule } from '../app.js';
 import {
-  $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, state, todayISO, toast, WD_SHORT,
+  $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, state, textOn, todayISO, toast, WD_SHORT,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { renderBookings } from './stays_bookings.js';
@@ -204,7 +204,7 @@ function barTemplate(b, base, span, names) {
     : `занято · ${b.guests_count} гост.`;
   const tip = names ? `${b.number} · ${dateRu(b.start)}–${dateRu(b.end)}` : `${dateRu(b.start)}–${dateRu(b.end)}`;
   return html`<div class="sb-bar${b.status === 'tentative' ? ' tentative' : ''}${b.mine ? ' sb-mine' : ''}" data-bar=${b.reservation_id}
-    style=${`left:${left}%;width:${right - left}%;background:${staysColor(color)}`} title=${b.mine ? 'Ваша бронь · ' + tip : tip}>${text}</div>`;
+    style=${`left:${left}%;width:${right - left}%;background:${staysColor(color)};color:${textOn(staysColor(color))}`} title=${b.mine ? 'Ваша бронь · ' + tip : tip}>${text}</div>`;
 }
 
 /* Цвет блока — по его номеру из небольшой палитры (в БД цвета нет); полосы блока пунктиром и не
@@ -276,7 +276,7 @@ async function renderUnitsBoard(body) {
     </div>
     ${staysFilterView(fund, rerender, { people: names })}
     ${data.warnings.length ? html`<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}
-    <div class="sb-grid" style=${`--days:${data.days.length}`} @click=${gridClick}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
+    <div class="sb-grid" tabindex="0" style=${`--days:${data.days.length}`} @click=${gridClick}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
     ${(byUnit.none || []).length ? html`<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
       html`<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar=${b.reservation_id}
         @click=${names ? () => openReservationCard(b.reservation_id, rerender) : nothing}>${b.overbooked ? html`<span class="badge danger">овербукинг</span> ` : nothing}${names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь'} · ${dateRu(b.start)}–${dateRu(b.end)}</div>`)}</div>` : nothing}`;

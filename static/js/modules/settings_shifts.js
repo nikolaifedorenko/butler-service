@@ -82,7 +82,7 @@ async function settingsScreenShifts(host) {
       <button data-stab="archived" class=${tab === 'archived' ? 'active' : ''} @click=${setTab('archived')}>Архив · ${shiftList.filter(s => s.archived).length}</button>
     </div>
     ${settingsPanelView('', html`
-      <div class="table-wrap" style="max-height:none"><table class="data responsive"><thead><tr>
+      <div class="table-wrap" tabindex="0" style="max-height:none"><table class="data responsive"><thead><tr>
         <th>Код</th><th>Название</th><th>Время</th><th class="num">Часов</th><th>Признаки</th><th></th>
       </tr></thead><tbody>
       ${shown.length ? shown.map(row) : html`<tr><td colspan="7" class="empty">Пусто</td></tr>`}

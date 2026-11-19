@@ -130,9 +130,9 @@ export function settingsVersionsModal() {
   openModal({
     title: 'История версий справочников', wide: true,
     subtitle: 'Версия выбирается по дате начала периода; закрытые периоды читаются из хранилища',
-    body: versions.length ? html`<div class="table-wrap"><table class="data"><thead><tr>
+    body: versions.length ? html`<div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>№</th><th>Действует с</th><th>Комментарий</th><th>Кто</th><th>Создана</th><th></th>
-      </tr></thead><tbody>${versions.map(v => html`<tr style=${v.id === activeId ? 'background:#f7f1ea' : nothing}>
+      </tr></thead><tbody>${versions.map(v => html`<tr style=${v.id === activeId ? 'background:var(--surface-3)' : nothing}>
         <td><b>#${v.id}</b>${v.id === activeId ? html` <span class="badge ok">действует</span>` : nothing}</td>
         <td>${dateRu(v.valid_from)}</td><td>${v.note || '—'}</td>
         <td>${v.created_by || '—'}</td><td>${(v.created_at || '').replace('T', ' ').slice(0, 16)}</td>

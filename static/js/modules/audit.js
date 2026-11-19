@@ -42,7 +42,7 @@ async function loadAudit() {
       <label class="field"><span>По</span><input type="date" id="af-to" .value=${f.date_to}></label>
       <button class="btn btn-primary" id="af-go" @click=${go}>Показать</button></div></div>
     <div id="au-body">${error ? html`<div class="panel"><div class="empty">${error}</div></div>` : html`
-    <div class="table-wrap"><table class="data responsive"><thead><tr><th>Время</th><th>Кто</th><th>Действие</th><th>Объект</th><th>Данные</th></tr></thead>
+    <div class="table-wrap" tabindex="0"><table class="data responsive"><thead><tr><th>Время</th><th>Кто</th><th>Действие</th><th>Объект</th><th>Данные</th></tr></thead>
       <tbody>${data.items.length ? data.items.map(i => html`<tr>
         <td data-label="Время" style="white-space:nowrap">${i.ts.replace('T', ' ')}</td>
         <td data-label="Кто">${i.actor}</td>

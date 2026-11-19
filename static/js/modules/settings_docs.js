@@ -23,9 +23,9 @@ async function settingsScreenDocs(host) {
   state.docKinds = docsInfo.kinds || []; state.docPlaceholders = docsInfo.placeholders || {};
   const input = item => {
     if (item.type === 'bool') {
-      return html`<label class="switch"><input type="checkbox" data-k=${item.key} .checked=${!!item.value} ?disabled=${!edit}><span class="sl"></span></label>`;
+      return html`<label class="switch"><input type="checkbox" aria-label=${item.description || item.key} data-k=${item.key} .checked=${!!item.value} ?disabled=${!edit}><span class="sl"></span></label>`;
     }
-    return html`<input type=${item.type === 'int' ? 'number' : 'text'} data-k=${item.key} .value=${String(item.value ?? '')} style="max-width:180px" ?disabled=${!edit}>`;
+    return html`<input type=${item.type === 'int' ? 'number' : 'text'} aria-label=${item.description || item.key} data-k=${item.key} .value=${String(item.value ?? '')} style="max-width:180px" ?disabled=${!edit}>`;
   };
   const saveRules = async () => {
     const payload = $$('[data-k]', host).map(i => ({ key: i.dataset.k,

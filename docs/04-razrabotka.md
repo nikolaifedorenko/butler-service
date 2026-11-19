@@ -46,6 +46,7 @@ python -m ruff check .                         # линтер Python
 |---|---|
 | `npm run lint` | ESLint: `no-undef`, неиспользуемое, запрет `innerHTML` / `insertAdjacentHTML` / `unsafeHTML` |
 | `npx playwright test` | сценарии в настоящем браузере (`e2e/`); три сервера на свежих демо-базах (`tools/e2e_server.sh`): основной, «сценарии» (длинные пути с изменением данных: настройки, фонд, норматив Табеля и Графика, «График = 4 слоя», шахматка под четырьмя ролями — `e2e/scenarios/`) и «ночной» (пояс подобран так, что идёт ночная смена: ночной обход, электрокары). Один проект: `--project=scenarios` |
+| `npx playwright test e2e/a11y.spec.mjs` | доступность: axe (WCAG 2.1 A и AA) по всем разделам и экранам «Настроек», светлая и тёмная тема (входит в `npx playwright test`) |
 | `npm run screenshots` | снимки всех разделов под тремя ролями, десктоп и телефон, в `ui-screenshots/` (для документации и ревью) |
 | `python tools/bump_version.py <версия> / --check` | версия статики в `index.html` и `sw.js` |
 | `python tools/check_api_contract.py --verbose` | интерфейс не вызывает несуществующих маршрутов |

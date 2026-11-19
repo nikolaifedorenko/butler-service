@@ -825,7 +825,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
 .health ul { margin: 8px 0 0; padding-left: 0; list-style: none; }
 .health li { font-size: 12.8px; color: var(--muted); padding: 4px 0; display: flex; gap: 8px;
   align-items: flex-start; }
-.health li a { color: var(--brand-fg); font-weight: 700; text-decoration: none; margin-left: auto;
+.health li a, .health li button { color: var(--brand-fg); font-weight: 700; text-decoration: none; margin-left: auto;
   white-space: nowrap; background: none; border: none; cursor: pointer; font-size: 12.5px; }
 
 .timeline { position: relative; border: 1px solid var(--line); border-radius: var(--r-md);

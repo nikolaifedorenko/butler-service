@@ -179,7 +179,7 @@ function carsBody() {
         <div class="lbl">№${rec.number} · ${rec.location || 'место не указано'}</div>
         <div class="desc">Взять можно и кар на зарядке. Если он закреплён за другим — система спросит подтверждение (закрепление рекомендательное).</div>
       </div><div class="rule-input">${act(rec, 'take', `Взять №${rec.number}`, 'btn-accent')}</div></div></div>` : nothing}
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0">
       <table class="data responsive">
         <thead><tr><th>Кар</th><th>Статус</th><th>Место</th><th>Заряд</th><th>Держит</th>
           <th>Закреплён</th><th>Ключ</th><th>Проверен</th><th>Действия</th></tr></thead>

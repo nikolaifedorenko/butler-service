@@ -65,8 +65,13 @@ export function textOn(hex) {
   const h = (hex || '#888').replace('#', '');
   const f = h.length === 3 ? h.split('').map(x => x + x).join('') : h;
   const n = parseInt(f, 16);
-  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  return lum > 0.62 ? '#22304a' : '#ffffff';
+  /* относительная яркость по WCAG: выбираем тот из двух текстов, у которого контраст с фоном выше */
+  const lin = c => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const bg = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  /* белый, фирменный тёмно-синий и почти чёрный: на средних тонах (зелёный, оранжевый) только последний даёт 4,5 : 1 */
+  const candidates = [['#ffffff', 1], ['#22304a', 0.0286], ['#0b1220', 0.0057]];
+  return candidates.reduce((best, c) => (ratio(bg, c[1]) > ratio(bg, best[1]) ? c : best))[0];
 }
 export function initials(name) {
   const p = String(name || '').split(/\s+/);

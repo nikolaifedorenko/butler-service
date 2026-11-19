@@ -65,7 +65,7 @@ function bodyTemplate() {
   if (!items) return html`<div class="empty">Выберите месяц</div>`;
   if (!items.length) return html`<div class="empty">Отметок за месяц нет</div>`;
   const canCancel = can('punches.manage');
-  return html`<div class="table-wrap"><table class="data"><thead><tr>
+  return html`<div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
       <th>Дата</th><th>Время</th><th>Сотрудник</th><th>Отметка</th><th>Кто поставил</th><th>Комментарий</th>
       ${canCancel ? html`<th></th>` : nothing}</tr></thead><tbody>
     ${items.map(p => html`<tr>

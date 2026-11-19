@@ -193,7 +193,7 @@ export const settingsChainView = chain => (!chain || !chain.length ? nothing : h
     <span class=${`step${c.hit ? ' hit' : ''}`}>${settingsLevelBadgeView(c.level)} ${c.form}${c.hit ? ' ✓' : ''}</span>`)}</div>`);
 export function settingsCodePillView(code, policy) {
   const c = settingsCodeColor(code, policy);
-  return html`<span class="code-pill" style=${`background:${withAlpha(c, .16)};color:${c}`}>${code}</span>`;
+  return html`<span class="code-pill" style=${`background:${withAlpha(c, .16)};box-shadow:inset 0 0 0 1px ${c};color:var(--text)`}>${code}</span>`;
 }
 
 /* ─────────────────────────── оболочка раздела ─────────────────────────── */

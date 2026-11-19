@@ -68,7 +68,7 @@ async function settingsScreenGroups(host) {
       html`<span class="chip">версия #${engine?.active?.id ?? '—'}</span>`)}
     ${groupChecks.length ? settingsHealthBannerView({ ...health, checks: groupChecks }) : nothing}
     ${settingsPanelView('Группы · единый источник (CFG-GROUPS)', html`
-      <div class="table-wrap"><table class="data"><thead><tr>
+      <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>Группа</th><th class="num">Сотрудников</th><th>Шаблон графика</th><th>Правил оплаты</th><th></th>
       </tr></thead><tbody>${(d?.groups || []).map(g => html`<tr>
         <td><b>${g}</b></td>

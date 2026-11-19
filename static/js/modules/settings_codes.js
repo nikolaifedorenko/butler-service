@@ -111,7 +111,7 @@ function windowsTable(windows, codes, step, edit, draft) {
       settingsRenderScreen();
     }, 'Удалить из черновика');
   return html`${settingsPanelView('Окна и значения · CFG-WINDOWS', html`
-    <div class="table-wrap"><table class="data responsive"><thead><tr>
+    <div class="table-wrap" tabindex="0"><table class="data responsive"><thead><tr>
       <th>Значение Табеля</th><th>Код</th><th>Окно</th><th class="num">Длина окна</th>
       <th>Часов в значении</th><th></th></tr></thead>
     <tbody>${rows.length ? rows.map(r => html`<tr>
