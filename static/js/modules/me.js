@@ -251,10 +251,3 @@ async function loadMyHistory() {
     </div>`;
   })}`, host);
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  loadMe,
-  openOtNoteModal,
-});
-/* ── конец моста ── */

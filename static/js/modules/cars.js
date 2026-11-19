@@ -13,6 +13,8 @@ import {
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { checkField } from '../ui/form.js';
+import { loadMe } from './me.js';
+import { settingsOpen } from './settings.js';
 
 /* бейдж статуса кара (используется и в «Моих отметках», и в ночном обходе) */
 export const CAR_BADGE = { free: 'ok', busy: 'warn', charging: 'info', maintenance: 'danger', disabled: 'muted' };
@@ -563,20 +565,3 @@ export function photoThumb(p, after) {
         catch (e) { toast(e.message, 'err'); }
       }, 'Удалить')}>✕</button>`;
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  CAR_BADGE,
-  carsState,
-  ensureCarLocations,
-  locationOptions,
-  CHARGE_OPTS,
-  photoPick,
-  bindPhotoPick,
-  carReturnModal,
-  carHandoverModal,
-  carEditModal,
-  carAddModal,
-  photoThumb,
-});
-/* ── конец моста ── */

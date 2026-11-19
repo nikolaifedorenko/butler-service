@@ -5,8 +5,6 @@
   "description": "Инструменты фронтенда: линтер, сценарии в Playwright, смоук в jsdom (уходит с переносом разделов), снимки разделов",
   "type": "module",
   "scripts": {
-    "globals": "python3 tools/gen_js_globals.py",
-    "globals:check": "python3 tools/gen_js_globals.py --check",
     "lint": "eslint --max-warnings=0 static/js static/sw.js",
     "smoke": "./tools/run_ui_check.sh",
     "smoke:employee": "./tools/run_ui_check.sh 8198 ivanov",

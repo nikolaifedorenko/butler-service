@@ -7,6 +7,8 @@ import { can, navigate, registerModule } from '../app.js';
 import { api, dateRu, MONTHS, state, todayISO, WD_SHORT } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { settingsEngine, settingsHeadView, settingsPanelView, settingsRenderScreen, settingsUI } from './settings.js';
+import { refreshDoublePay } from './dicts.js';
+import { settingsModValue, settingsResolverModal, settingsWhoText, settingsWizard } from './settings_pay.js';
 
 registerModule({ screens: { calendar: { render: settingsScreenCalendar, icon: 'cal' } } });
 

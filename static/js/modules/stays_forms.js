@@ -718,26 +718,3 @@ export async function openGuestForm(id, onSaved, opts = {}) {
     },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  STAYS_ROLE,
-  STAYS_STATUS,
-  STAYS_COMPANION,
-  STAYS_LINK,
-  STAYS_GENDER,
-  relativesView,
-  renderPreview,
-  previewThenSave,
-  staysFormFoot,
-  formFootView,
-  staysBindGatedFoot,
-  openReservationForm,
-  openTransferForm,
-  openCoverageForm,
-  openGroupForm,
-  openGuestCard,
-  openStatusForm,
-  openGuestForm,
-});
-/* ── конец моста ── */

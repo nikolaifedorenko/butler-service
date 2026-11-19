@@ -266,9 +266,3 @@ async function mgmtDetail(empId) {
     },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  loadMgmt,
-});
-/* ── конец моста ── */

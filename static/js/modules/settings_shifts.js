@@ -3,9 +3,10 @@
    Модуль на lit-html (ADR-0013, раздел 7). */
 'use strict';
 
-import { can, registerModule } from '../app.js';
+import { can, loadDirectory, registerModule } from '../app.js';
 import { api, confirmDialog, cssColor, dateRu, hours, state, textOn, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { shiftModal } from './dicts.js';
 import {
   settingsEngine, settingsGo, settingsHeadView, settingsPanelView, settingsRefresh, settingsRenderScreen, settingsUI,
 } from './settings.js';

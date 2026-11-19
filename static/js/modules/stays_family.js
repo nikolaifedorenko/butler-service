@@ -199,9 +199,3 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
   };
   return draw();          // true — дерево нарисовано (false — ошибка: можно запросить снова)
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  renderFamilyTree,
-});
-/* ── конец моста ── */

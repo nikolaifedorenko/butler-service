@@ -13,6 +13,7 @@ import {
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { checkField } from '../ui/form.js';
+import { settingsOpen } from './settings.js';
 import {
   CAR_BADGE, CHARGE_OPTS, bindPhotoPick, ensureCarLocations, locationOptions, photoPick, photoThumb,
 } from './cars.js';
@@ -849,9 +850,3 @@ async function nightDefectsModal() {
   };
   await draw();
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  nightState,
-});
-/* ── конец моста ── */

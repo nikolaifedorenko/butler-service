@@ -107,10 +107,3 @@ export async function renderEngineSettings(host) {
       <label class="field"><span>Комментарий</span><input type="text" id="md-note"></label>
       <button class="btn" id="md-add" @click=${addMod}>Добавить</button></div>` : nothing}`, mount(host));
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  V4_MOD_TITLES,
-  renderEngineSettings,
-});
-/* ── конец моста ── */

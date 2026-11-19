@@ -165,10 +165,3 @@ export function settingsOrderListView(key, order, edit, onMove) {
       <button data-move=${code} data-dir="1" ?disabled=${i === order.length - 1} title="Позже" @click=${() => onMove(code, 1)}>›</button>` : nothing}
     </span>${i < order.length - 1 ? html`<span class="arrow">→</span>` : nothing}`)}</div>`;
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  settingsTimeline,
-  settingsOrderListView,
-});
-/* ── конец моста ── */

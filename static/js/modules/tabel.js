@@ -12,6 +12,8 @@ import {
 import { html, mount, nothing, render } from '../ui/html.js';
 import { dayHeadCell, monthNav, v4CodeColor } from './timesheet_common.js';
 import { openRangeModal } from './timesheet_layers.js';
+import { downloadAbsenceDoc, printAbsenceRequest } from './docs.js';
+import { openEmployeeCard } from './employees.js';
 
 /* что показывает слой: загрузка, текст ошибки либо ответ сервера (state.tabel) */
 const screen = { loading: true, error: '' };
@@ -355,10 +357,3 @@ function tabelResetModal(d) {
     },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  loadTabel,
-  scrollTabelToToday,
-});
-/* ── конец моста ── */

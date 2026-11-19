@@ -110,10 +110,3 @@ function boardTemplate() {
     <div id="mk-body">${bodyTemplate()}</div>
     <div id="mk-journal"></div>`;
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  loadMarks,
-  fetchMarks,
-});
-/* ── конец моста ── */

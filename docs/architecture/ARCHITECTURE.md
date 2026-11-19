@@ -253,16 +253,15 @@ SPA без сборки (ADR-0008): `core.js` (утилиты/api/модалки
 `engine_settings.js` (CFG-*), `me.js`, `employees.js`, `night.js`, `cars.js`, `docs.js`,
 `dicts.js`, `settings.js` (оболочка единого центра конфигурации) и `settings_<экран>.js` —
 по файлу на экран Настроек (с 22.10.2026; порядок подключения файлов не важен, ADR-0008). До 22.10.2026 семь экранов движка жили в `timesheet_v4.js`. Глобальные функции
-сохранены: межфайловые вызовы через глобальную область, границы держат
-`tools/gen_js_globals.py` (рекурсивный скан `static/js/**` → `js_globals.json`) и
-ESLint `no-undef` — отказ от `window.App.modules.*` отклонён (property-доступ не
-проверяется статически; прецедент — регрессия loadNight/loadCars). Список `<script>` в
+заменены явными `import`/`export` (6з, 19.11.2026): межфайловые зависимости видит ESLint `no-undef`
+(прецедент — регрессия loadNight/loadCars); отказ от `window.App.modules.*` остаётся в силе. Список `<script>` в
 index.html генерирует `tools/bump_version.py` (core, app, затем `modules/*.js` по алфавиту).
 С 17.11.2026 (шаг 6а перестройки, ADR-0013, раздел 7) все файлы подключаются как ES-модули
 (`<script type="module">`): модуль выполняется по порядку в документе после разбора страницы.
-Явных `import`/`export` у разделов пока нет — в конец каждого файла `tools/gen_js_globals.py`
-дописывает блок-мост, публикующий объявления в `globalThis` (`let`/`var` — «живыми»
-свойствами); файл, перешедший на `import`/`export`, мост теряет. Шаблоны разметки — `lit-html`
+Моста имён больше нет: каждый файл — настоящий модуль, внутренние имена приватны. Реестр разделов
+(`registry.js`) вынесен в файл без зависимостей, обработчик входа при 401 задаёт `app.js` через
+`setLoginHandler` (иначе круг импортов `core.js` ↔ `app.js` выполнил бы `app.js` раньше ядра);
+для сквозных тестов `app.js` публикует в `window` только `navigate`, `state`, `toast`, `openModal`. Шаблоны разметки — `lit-html`
 (`static/vendor/lit-html/`, вход `static/js/ui/html.js`; обновление `npm run vendor`).
 Стартовый экран — «Сегодня» (`modules/today.js`, пункт меню первый у всех): набор блоков зависит от прав
 и привязки к сотруднику — смена и кнопка «Пришёл / Ушёл» (сотрудник), мои брони и гости (`stays.mine`),
@@ -276,12 +275,10 @@ index.html генерирует `tools/bump_version.py` (core, app, затем `
 `tools/jsdom_modules.test.mjs`) — так jsdom-сценарии работают и на файлах с `import`/`export`. Ограничения:
 нет `import.meta` и верхнеуровневого `await`, два модуля не экспортируют одно имя. Статика отдаётся с
 `Cache-Control: no-cache` (ETag → 304): модули подключают друг друга по адресу без `?v=`.
-Настоящие модули (с `import`/`export`): `core.js`, `app.js`, `modules/me.js`, `modules/marks.js`, `modules/today.js`, `modules/punches_journal.js`, `modules/mgmt.js`, `modules/tabel.js`, `modules/fact.js`, `modules/timesheet_layers.js`, `modules/grafik.js` (обёртка «График»: панель слоёв и панели-контейнеры), `modules/timesheet_common.js`, `modules/stays.js`, `modules/stays_filters.js`, `modules/stays_board.js`, `modules/stays_bookings.js`, `modules/stays_forms.js`, `modules/stays_family.js`, `modules/stays_guests.js`, `modules/stays_blocks.js`, `modules/stays_ooo.js`, `modules/stays_mine.js`, `modules/stays_fund.js`, `modules/stays_settings.js`, `modules/cars.js` (электрокары; общие для раздела и ночного обхода места стоянки и выбор/миниатюры фото), `modules/night.js` (ночной отчёт). Оболочка Настроек (`modules/settings.js`: реестр экранов, черновик версии, поиск ⌘K, помощники `…View`) и экраны «Обзор», «Система», «Режим эксперта», «Группы», «Календарь», «Смены», «Документы» (`modules/settings_*.js`, `engine_settings.js`) на шаблонах; экраны «Расчёт», «Коды Табеля», «Правила оплаты», «Чаты и Почта» и справочники «Электрокары» и «Ночной обход» (`modules/settings_calc|codes|pay|notify.js`, `cars_dict.js`, `night_dict.js`) тоже на шаблонах; «Сотрудники», «Права доступа», «Журнал аудита», справочники и двойные дни (`dicts.js`) и печать/заявления (`docs.js`, окно печати остаётся документом-строкой с `esc`) — тоже модули. Экраны шахматки в Настройках — «Фонд и категории» (`stays_fund.js`: дерево с перетаскиванием, версии, черновик, публикация, файл фонда) и «Сопровождение», «Настраиваемые поля», «Метки» (`stays_settings.js`) — тоже на шаблонах. Строковые помощники settings.js остались без потребителей и уйдут в 6з. (шахматка: каркас, фильтры, батлеры / табло дня / загрузка, брони, формы с предпросмотром, семейное дерево, «Гости», «Блоки», «OOO», «Мои гости»; общие поля форм — `ui/form.js`). Панель фильтров шахматки — шаблон внутри вида, а не пересоздаваемый элемент: поле поиска живёт между перерисовками, фокус и каретка остаются. У такого
-файла внутренние имена приватны, а мост публикует в `globalThis` только экспортируемые — то, чем пока
-пользуются ещё не переехавшие файлы (генератор `tools/gen_js_globals.py` решает это сам). Разметка
-экранов — шаблоны `lit-html`; `openModal` принимает тело и подвал шаблоном или строкой с готовой
-разметкой (`unsafeHTML` — переходная мера для старых вызовов и `v4Contacts`, уйдёт с последним
-потребителем). Контейнер, который наполняет другой код, в шаблоне остаётся пустым: `render()` дописывает
+Настоящие модули (с `import`/`export`): `core.js`, `app.js`, `modules/me.js`, `modules/marks.js`, `modules/today.js`, `modules/punches_journal.js`, `modules/mgmt.js`, `modules/tabel.js`, `modules/fact.js`, `modules/timesheet_layers.js`, `modules/grafik.js` (обёртка «График»: панель слоёв и панели-контейнеры), `modules/timesheet_common.js`, `modules/stays.js`, `modules/stays_filters.js`, `modules/stays_board.js`, `modules/stays_bookings.js`, `modules/stays_forms.js`, `modules/stays_family.js`, `modules/stays_guests.js`, `modules/stays_blocks.js`, `modules/stays_ooo.js`, `modules/stays_mine.js`, `modules/stays_fund.js`, `modules/stays_settings.js`, `modules/cars.js` (электрокары; общие для раздела и ночного обхода места стоянки и выбор/миниатюры фото), `modules/night.js` (ночной отчёт). Оболочка Настроек (`modules/settings.js`: реестр экранов, черновик версии, поиск ⌘K, помощники `…View`) и экраны «Обзор», «Система», «Режим эксперта», «Группы», «Календарь», «Смены», «Документы» (`modules/settings_*.js`, `engine_settings.js`) на шаблонах; экраны «Расчёт», «Коды Табеля», «Правила оплаты», «Чаты и Почта» и справочники «Электрокары» и «Ночной обход» (`modules/settings_calc|codes|pay|notify.js`, `cars_dict.js`, `night_dict.js`) тоже на шаблонах; «Сотрудники», «Права доступа», «Журнал аудита», справочники и двойные дни (`dicts.js`) и печать/заявления (`docs.js`, окно печати остаётся документом-строкой с `esc`) — тоже модули. Экраны шахматки в Настройках — «Фонд и категории» (`stays_fund.js`: дерево с перетаскиванием, версии, черновик, публикация, файл фонда) и «Сопровождение», «Настраиваемые поля», «Метки» (`stays_settings.js`) — тоже на шаблонах. Строковых помощников у settings.js больше нет. (шахматка: каркас, фильтры, батлеры / табло дня / загрузка, брони, формы с предпросмотром, семейное дерево, «Гости», «Блоки», «OOO», «Мои гости»; общие поля форм — `ui/form.js`). Панель фильтров шахматки — шаблон внутри вида, а не пересоздаваемый элемент: поле поиска живёт между перерисовками, фокус и каретка остаются. У такого
+файла внутренние имена приватны. Разметка экранов — шаблоны `lit-html`; `openModal` принимает тело и
+подвал шаблоном (строка выводится текстом), `unsafeHTML` из проекта убран, `innerHTML` и
+`insertAdjacentHTML` запрещены ESLint (`no-restricted-syntax`). Контейнер, который наполняет другой код, в шаблоне остаётся пустым: `render()` дописывает
 в контейнер, а не заменяет его содержимое. Раздел, который могут стереть снаружи
 (`resetUserViewState` очищает все `.view` при смене пользователя), рисуется через `mount(host)`
 (`ui/html.js`): lit хранит метки вывода в контейнере, и после `innerHTML = ''` обычный `render()` падал бы. Адреса модулей — без `?v=` (`tools/bump_version.py`): модуль с
@@ -481,7 +478,7 @@ butler-service/
 │   │                         #   AST-законы движка, application (4 режима 7.2, R35–R40)
 │   ├── test_modules_architecture.py  # структура/R1/R3/R6 всех 9 модулей + core
 │   └── test_api.py test_features.py test_engine_api.py …   # интеграция приложения
-├── tools/                    # check_api_contract, gen_js_globals, bump_version, смоуки/сценарии
+├── tools/                    # check_api_contract, bump_version, смоуки/сценарии
 ├── docs/                     # спека v7.1, SPEC, ARCHITECTURE, EXECUTION-SPEC-v2, ADR, CHANGES
 └── pyproject.toml, uv.lock
 ```

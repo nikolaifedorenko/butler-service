@@ -216,9 +216,3 @@ function screen() {
     </div>
   </div>`;
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  loadToday,
-});
-/* ── конец моста ── */

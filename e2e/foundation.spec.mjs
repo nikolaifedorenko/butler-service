@@ -1,5 +1,5 @@
-/* Основа интерфейса (шаг 6а): файлы подключаются как ES-модули, мост к общей области имён
-   работает, lit-html экранирует вставки. Сценарии разделов добавляются по мере переноса. */
+/* Основа интерфейса (шаг 6а): файлы подключаются как ES-модули, точка входа для тестов
+   доступна, lit-html экранирует вставки. Сценарии разделов добавляются по мере переноса. */
 import { expect, test } from '@playwright/test';
 import { login, watchErrors } from './helpers.mjs';
 
@@ -12,17 +12,16 @@ test('все скрипты оболочки — ES-модули', async ({ page
   expect(scripts.length).toBeGreaterThan(30);
 });
 
-test('вход: форма, оболочка, мост имён, без ошибок консоли', async ({ page }) => {
+test('вход: форма, оболочка, точка входа для тестов, без ошибок консоли', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'gromova');
-  // мост: имена модулей доступны в globalThis, а let-переменные — «живые»
-  const bridge = await page.evaluate(() => ({
+  // снаружи видны только имена, которые app.js публикует для тестов; остальное — приватно в модулях
+  const hook = await page.evaluate(() => ({
     fn: typeof window.navigate,
     state: typeof window.state?.user?.username,
-    live: (() => { const before = window.serverShiftMs; window.serverShiftMs = before + 7;
-                   const ok = window.serverShiftMs === before + 7; window.serverShiftMs = before; return ok; })(),
+    hidden: typeof window.settingsUI,
   }));
-  expect(bridge).toEqual({ fn: 'function', state: 'string', live: true });
+  expect(hook).toEqual({ fn: 'function', state: 'string', hidden: 'undefined' });
   await expect(page.locator('#nav, nav').first()).toBeVisible();
   expect(errors).toEqual([]);
 });

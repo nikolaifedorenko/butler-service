@@ -458,15 +458,3 @@ export async function openBlockCard(id, onChanged) {
     },
   });
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  staysBlockEmpty,
-  staysBlock,
-  staysPeriodRange,
-  staysPeriodBarView,
-  staysSearchView,
-  renderBlocksTab,
-  openBlockCard,
-});
-/* ── конец моста ── */

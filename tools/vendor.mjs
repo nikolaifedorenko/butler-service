@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FILES = {
-  'lit-html': ['lit-html.js', 'directive.js', 'directives/unsafe-html.js', 'LICENSE'],
+  'lit-html': ['lit-html.js', 'directive.js', 'LICENSE'],
 };
 
 for (const [pkg, files] of Object.entries(FILES)) {

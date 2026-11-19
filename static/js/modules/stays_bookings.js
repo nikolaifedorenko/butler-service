@@ -174,11 +174,3 @@ export async function renderBookings(body) {
   const screen = () => html`${toolbar()}${staysFilterView(fund, rerender, { people: true })}<div id="bk-result">${result()}</div>`;
   draw();
 }
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  staysBookEmpty,
-  staysBook,
-  renderBookings,
-});
-/* ── конец моста ── */

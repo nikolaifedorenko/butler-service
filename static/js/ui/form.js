@@ -13,13 +13,3 @@ export const selectField = (id, options, value) => html`<select id=${id}>${optio
   html`<option value=${String(v)} ?selected=${String(v) === String(value)}>${t}</option>`)}</select>`;
 /* вариант списка: пустое значение и null считаются равными (как в прежних формах) */
 export const optionView = (v, t, cur) => html`<option value=${String(v ?? '')} ?selected=${String(v ?? '') === String(cur ?? '')}>${t}</option>`;
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  fieldRow,
-  textInput,
-  checkField,
-  selectField,
-  optionView,
-});
-/* ── конец моста ── */

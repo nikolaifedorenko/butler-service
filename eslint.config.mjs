@@ -1,21 +1,9 @@
-import fs from 'node:fs';
 import globals from 'globals';
-
-/* Список глобальных имён интерфейса генерируется (tools/gen_js_globals.py):
-   фронтенд пока на обычных скриптах, поэтому функции одного файла видны другим
-   через глобальную область. Без этого списка ESLint считал бы их неопределёнными,
-   а со списком — ловит настоящие ошибки вида «вызвали функцию, которой нет»
-   (именно так интерфейс показывал пустые разделы: navigate() ссылался на
-   loadNight/loadCars, которых в коде не существовало). */
-const gen = JSON.parse(
-  fs.readFileSync(new URL('./tools/js_globals.json', import.meta.url), 'utf8'));
 
 const rules = {
   // главное: несуществующие имена и повторы объявлений
   'no-undef': 'error',
-  // builtinGlobals: false — список глобальных имён проекта передаётся в languageOptions,
-  // иначе каждое объявление в файле считается «переопределением встроенного».
-  // Дубли между файлами ловит tools/gen_js_globals.py (он же падает на них).
+  // builtinGlobals: false — иначе каждое объявление в файле считается «переопределением встроенного».
   'no-redeclare': ['error', { builtinGlobals: false }],
   'no-dupe-keys': 'error',
   'no-dupe-args': 'error',
@@ -23,7 +11,7 @@ const rules = {
   // заведомо мёртвый код
   'no-unreachable': 'error',
   'no-constant-condition': ['error', { checkLoops: false }],
-  'no-unused-vars': ['warn', { args: 'none', varsIgnorePattern: '^_' }],
+  'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none', varsIgnorePattern: '^_' }],
   // частые источники тихих багов
   'use-isnan': 'error',
   'valid-typeof': 'error',
@@ -33,22 +21,16 @@ const rules = {
   'getter-return': 'error',
   'no-async-promise-executor': 'error',
   'require-atomic-updates': 'off',
+  // разметка — только шаблонами lit-html (ADR-0013, раздел 7): строка в DOM не вставляется
+  'no-restricted-syntax': ['error',
+    { selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]",
+      message: 'Разметка — шаблоном html`` и render() (ui/html.js), а не строкой в innerHTML/outerHTML.' },
+    { selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+      message: 'Разметка — шаблоном html`` и render() (ui/html.js), а не insertAdjacentHTML.' },
+  ],
+  'no-restricted-imports': ['error', { patterns: [{ group: ['**/unsafe-html.js'],
+    message: 'unsafeHTML не используется: строка с разметкой в страницу не вставляется.' }] }],
 };
-
-/* Имена, объявленные в одном файле, а используемые в других: ESLint анализирует
-   файл изолированно и счёл бы их мёртвыми. Подставляем их в varsIgnorePattern
-   ПО ФАЙЛАМ — правило остаётся включённым и продолжает находить настоящий
-   неиспользуемый код. */
-const rx = s => s.replace(/[$]/g, '\\$&');
-const crossFile = Object.fromEntries(
-  Object.entries(gen.used_elsewhere || {}).map(([file, names]) => [
-    `static/js/${file}`,
-    { rules: { ...rules, 'no-unused-vars': ['warn', {
-        args: 'none', caughtErrors: 'none',
-        varsIgnorePattern: names.length ? `^(${names.map(rx).join('|')})$` : '^_',
-      }] } },
-  ]),
-);
 
 export default [
   {
@@ -56,11 +38,10 @@ export default [
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',
-      globals: { ...globals.browser, ...globals.es2021, ...gen.globals },
+      globals: { ...globals.browser, ...globals.es2021 },
     },
     rules,
   },
-  ...Object.entries(crossFile).map(([file, cfg]) => ({ files: [file], ...cfg })),
   {
     // service worker — другая среда: self, caches, clients
     files: ['static/sw.js'],

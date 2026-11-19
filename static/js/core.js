@@ -5,19 +5,21 @@
    транспорт (api/multipartApi/downloadBlob), общее состояние и модалки.
    Подключается в index.html ПЕРЕД app.js и файлами разделов.
 
-   Файл подключается как ES-модуль (<script type="module">), но явных import/export у него
-   пока нет: блок-мост в конце файла (tools/gen_js_globals.py) публикует объявления в
-   globalThis, поэтому остальной код работает без правок. Мост исчезнет, когда разделы
-   перейдут на import/export (ADR-0013, раздел 7).
+   Файл — ES-модуль: общее ядро импортируют разделы (ADR-0013, раздел 7).
    Правила:
      * разделы могут использовать ядро, ядро разделы — НЕ знает
-       (единственное исключение — api() вызывает showLogin() при 401,
-       это происходит в рантайме, когда все скрипты уже загружены);
+       (единственное исключение — api() при 401 вызывает обработчик входа,
+       который app.js задаёт через setLoginHandler);
      * новое общее — сюда, специфичное для раздела — в modules/<раздел>.js.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { html, render, unsafeHTML } from './ui/html.js';
+import { html, render } from './ui/html.js';
+
+/* Показ формы входа при 401: ядро раздела не знает, app.js сообщает обработчик при запуске
+   (прямой import app.js создал бы круг, в котором app.js выполнился бы раньше ядра). */
+let showLogin = () => {};
+export function setLoginHandler(fn) { showLogin = fn; }
 
 /* ───────────────────────────── утилиты ───────────────────────────── */
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -270,9 +272,8 @@ export const POSITION_COLORS = [
 ];
 
 /* ───────────────────────────── МОДАЛКИ ───────────────────────────── */
-/* Тело и подвал окна — шаблон lit-html (новый код) или строка с готовой разметкой (старые
-   вызовы, экранированная через esc()): строки вставляются как есть, пока их вызывающие не переехали. */
-function modalContent(x) { return typeof x === 'string' ? unsafeHTML(x) : x; }
+/* Тело и подвал окна — шаблон lit-html; строка выводится текстом. */
+const modalContent = x => x;
 
 export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
   const m = $('#modal');
@@ -299,9 +300,9 @@ export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('
 
 export function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', danger = true) {
   openModal({
-    title, body: `<p style="margin:0;color:var(--muted)">${esc(text)}</p>`,
-    footer: `<button class="btn btn-ghost" data-no>Отмена</button>
-             <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-yes>${esc(yesLabel)}</button>`,
+    title, body: html`<p style="margin:0;color:var(--muted)">${text}</p>`,
+    footer: html`<button class="btn btn-ghost" data-no>Отмена</button>
+             <button class=${`btn ${danger ? 'btn-danger' : 'btn-primary'}`} data-yes>${yesLabel}</button>`,
     onMount(m) {
       m.querySelector('[data-no]').onclick = closeModal;
       m.querySelector('[data-yes]').onclick = async () => { closeModal(); await onYes(); };
@@ -348,48 +349,3 @@ export async function downloadBlob(path, fallbackName) {
 }
 $('#modal-backdrop').addEventListener('click', e => { if (e.target.id === 'modal-backdrop') closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-
-/* ── мост к общей области имён (генерируется tools/gen_js_globals.py; уйдёт вместе с переходом файла на import/export) ── */
-Object.assign(globalThis, {
-  $,
-  $$,
-  esc,
-  hhmm,
-  dateRu,
-  hours,
-  durationRu,
-  plural,
-  cssColor,
-  withAlpha,
-  textOn,
-  initials,
-  syncServerClock,
-  todayISO,
-  MONTHS,
-  MONTHS_GEN,
-  WD,
-  WD_SHORT,
-  toast,
-  loadGenerations,
-  loadGeneration,
-  loadGenerationFor,
-  loading,
-  getCookie,
-  parseBody,
-  httpError,
-  api,
-  multipartApi,
-  now0,
-  state,
-  ROLE_TITLES,
-  roleTitle,
-  POSITION_COLORS,
-  openModal,
-  closeModal,
-  confirmDialog,
-  loadMediaLimits,
-  mediaHint,
-  downloadBlob,
-});
-Object.defineProperty(globalThis, 'serverShiftMs', { get: () => serverShiftMs, set: (v) => { serverShiftMs = v; }, configurable: true });
-/* ── конец моста ── */
