@@ -1,6 +1,6 @@
 """Увольнение и удаление сотрудника завершают его сессии (рецензия аудита 22.10.2026, P2).
 
-token_version рос только при смене пароля и роли. Пока сотрудник уволен, вход закрывает
+Сессии отзывались только при смене пароля и роли. Пока сотрудник уволен, вход закрывает
 is_active=False, но после повторного приёма в пределах срока жизни токена (48 ч) старая
 cookie снова работала — например, на телефоне, оставленном коллеге.
 """
@@ -41,12 +41,15 @@ def test_dismiss_then_rehire_does_not_revive_old_session(app_stack, admin_client
 
 
 def test_delete_ends_sessions(app_stack, admin_client, db):
-    from app.core.identity import User
+    from sqlalchemy import func, select
+
+    from app.core.identity import User, UserSession
 
     emp_id = _new_employee(admin_client, "sess_delete")
-    _session(app_stack, "sess_delete")
+    old = _session(app_stack, "sess_delete")
     user = db.query(User).filter(User.username == "sess_delete").one()
-    before = int(user.token_version or 0)
+    assert db.scalar(select(func.count()).select_from(UserSession).where(UserSession.user_id == user.id)) == 1
     assert admin_client.post(f"/api/employees/{emp_id}/delete").status_code == 200
     db.expire_all()
-    assert int(db.get(User, user.id).token_version or 0) == before + 1
+    assert db.scalar(select(func.count()).select_from(UserSession).where(UserSession.user_id == user.id)) == 0
+    assert old.get("/api/auth/me").status_code == 401

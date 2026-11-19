@@ -252,37 +252,30 @@ class TestApi(unittest.TestCase):
         self.assertEqual(anon.post("/api/punches", json={"kind": "IN"}).status_code, 401)
 
     def test_16b_change_password_flow(self):
-        # верный старый пароль → смена; неверный старый → 400; вход с новым паролем работает
-        from app.core.db import SessionLocal
-        from app.core.identity import User
+        # верный старый пароль → смена; неверный старый → 400; вход с новым паролем работает.
+        # Отдельная учётка: смена пароля завершает ВСЕ сессии пользователя, а сессии ivanov держат
+        # другие тесты этого процесса.
+        created = client.post("/api/employees", json={
+            "full_name": "Смена Пароля", "position": "Батлер (тест пароля)",
+            "hired_at": (local_date() - dt.timedelta(days=30)).isoformat(),
+            "schedule_group": "Смена 1", "role": "employee", "username": "pwchange", "password": "demo1234"})
+        self.assertEqual(created.status_code, 200, created.text)
+        mine = TestClient(app)
+        self.assertEqual(mine.post("/api/auth/login", json={"username": "pwchange", "password": "demo1234"}).status_code, 200)
         old_session = TestClient(app)
         self.assertEqual(old_session.post("/api/auth/login",
-                                          json={"username": "ivanov", "password": "demo1234"}).status_code, 200)
-        r = self.emp_client.post("/api/auth/change-password",
-                                 json={"old_password": "demo1234", "new_password": "temp-pass-1"})
+                                          json={"username": "pwchange", "password": "demo1234"}).status_code, 200)
+        r = mine.post("/api/auth/change-password", json={"old_password": "demo1234", "new_password": "temp-pass-1"})
         self.assertEqual(r.status_code, 200, r.text)
-        r = self.emp_client.post("/api/auth/change-password",
-                                 json={"old_password": "wrong", "new_password": "temp-pass-2"})
+        r = mine.post("/api/auth/change-password", json={"old_password": "wrong", "new_password": "temp-pass-2"})
         self.assertEqual(r.status_code, 400)
         fresh = TestClient(app)
-        self.assertEqual(fresh.post("/api/auth/login", json={"username": "ivanov", "password": "demo1234"}).status_code, 401)
+        self.assertEqual(fresh.post("/api/auth/login", json={"username": "pwchange", "password": "demo1234"}).status_code, 401)
         ok = TestClient(app)
-        self.assertEqual(ok.post("/api/auth/login", json={"username": "ivanov", "password": "temp-pass-1"}).status_code, 200)
-        # возвращаем демо-пароль, чтобы не влиять на остальные тесты
+        self.assertEqual(ok.post("/api/auth/login", json={"username": "pwchange", "password": "temp-pass-1"}).status_code, 200)
         # сессия, открытая до смены пароля, больше не действует; текущая — переоформлена
         self.assertEqual(old_session.get("/api/auth/me").status_code, 401)
-        self.assertEqual(self.emp_client.get("/api/auth/me").status_code, 200)
-        r = self.emp_client.post("/api/auth/change-password",
-                                 json={"old_password": "temp-pass-1", "new_password": "demo1234"})
-        self.assertEqual(r.status_code, 200)
-        # тестовая уборка: возвращаем версию токена, чтобы сессии ivanov в других тест-модулях жили
-        db = SessionLocal()
-        try:
-            u = db.query(User).filter_by(username="ivanov").one()
-            u.token_version = 0
-            db.commit()
-        finally:
-            db.close()
+        self.assertEqual(mine.get("/api/auth/me").status_code, 200)
 
     def test_15b_employee_card_actions(self):
         today = local_date()

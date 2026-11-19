@@ -1,4 +1,4 @@
-"""Текущая сессия пользователя (подписанная cookie): Principal и его разрешение.
+"""Текущая сессия пользователя (токен в cookie → запись в user_sessions): Principal и его разрешение.
 
 Ядро (R5) не импортирует модели модулей: сотрудника загружает функция, которую подключает
 bootstrap (set_employee_loader). Права — в core/permissions.py, страж иерархии ролей — в
@@ -16,7 +16,7 @@ from .config import settings
 from .db import get_db
 from .identity import User
 from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
-from .security import SESSION_TOKEN, read_token
+from .sessions import find_session
 
 
 @dataclass
@@ -24,6 +24,7 @@ class Principal:
     user: User
     employee: Optional[Any]       # people.Employee — ядро не знает модели модулей
     impersonated: bool = False
+    session_id: Optional[int] = None   # запись user_sessions, по которой вошли (None — Principal собран не из cookie)
 
     @property
     def role(self) -> str:
@@ -81,24 +82,18 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
     token = request.cookies.get(settings.cookie_name)
     if not token:
         raise _unauthorized()
-    payload = read_token(token)
-    # тип токена: подпись одна на все токены, и токен другого назначения (сброс пароля,
-    # ссылка на документ — если появятся) не должен сойти за сессию (рецензия 22.10.2026)
-    if not payload or payload.get("typ") != SESSION_TOKEN:
+    row = find_session(db, token)
+    if row is None:
         raise _unauthorized()
-    user = db.get(User, payload.get("uid"))
+    user = db.get(User, row.user_id)
     if not user or not user.is_active:
         raise _unauthorized()
-    # смена пароля увеличивает token_version → старые cookie (в т.ч. украденные) перестают работать
-    if int(payload.get("tv", 0)) != int(user.token_version or 0):
-        raise _unauthorized()
     employee = None
-    emp_id = payload.get("emp_id")
-    if emp_id and _EMPLOYEE_LOADER is not None:
-        employee = _EMPLOYEE_LOADER(db, emp_id)
-    if payload.get("imp") and (employee is None or not employee.active):
+    if row.employee_id and _EMPLOYEE_LOADER is not None:
+        employee = _EMPLOYEE_LOADER(db, row.employee_id)
+    if row.impersonated and (employee is None or not employee.active):
         raise _unauthorized()          # «как сотрудник» за уволенного/удалённого — сессия кончилась
-    return Principal(user=user, employee=employee, impersonated=bool(payload.get("imp")))
+    return Principal(user=user, employee=employee, impersonated=row.impersonated, session_id=row.id)
 
 
 def optional_principal(request: Request, db: Session = Depends(get_db)) -> Optional[Principal]:

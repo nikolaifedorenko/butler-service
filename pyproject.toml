@@ -26,6 +26,7 @@ dependencies = [
     # notify/application/secrets.py
     "cryptography>=44",
     "prometheus-client>=0.20",     # метрики /metrics при METRICS_ENABLED=1
+    "argon2-cffi>=23.1",
 ]
 
 [dependency-groups]

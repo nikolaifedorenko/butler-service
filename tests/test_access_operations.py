@@ -56,13 +56,13 @@ def test_login_limit_and_reset_on_success(app_stack, db, attempts):
     assert _failures(app_stack, "ivanov") == auth.LOGIN_MAX_ATTEMPTS
 
 
-def test_successful_login_is_audited_with_token_of_current_version(db, attempts):
+def test_successful_login_is_audited_and_opens_session(db, attempts):
     before = db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "login"))
     principal, token = auth.login(db, IP, " Smirnov ", "demo1234", via_form=True)
-    from app.core.security import read_token
+    from app.core.sessions import find_session
 
-    body = read_token(token)
-    assert (body["uid"], body["tv"]) == (principal.user.id, int(principal.user.token_version or 0))
+    row = find_session(db, token)
+    assert row is not None and row.user_id == principal.user.id and not row.impersonated
     db.rollback()
     assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "login")) == before + 1
     last = db.scalar(select(AuditLog).where(AuditLog.action == "login").order_by(AuditLog.id.desc()))
@@ -73,13 +73,18 @@ def test_change_password_refusals_do_not_touch_sessions(db):
     from app.core.auth import Principal
 
     user = db.scalar(select(User).where(User.username == "smirnov"))
-    version = user.token_version
+    from app.core.sessions import open_session
+
+    token = open_session(db, user, None)
+    db.commit()
     for old, new, text in (("не тот", "NewPass-2026", "Неверный текущий пароль"),
                            ("demo1234", "123", "слишком короткий")):
         with pytest.raises(errors.Rejected, match=text):
             auth.change_password(db, Principal(user, None), old, new)
     db.expire_all()
-    assert db.get(User, user.id).token_version == version
+    from app.core.sessions import find_session
+
+    assert find_session(db, token) is not None, "отказ смены пароля не должен завершать сессии"
 
 
 def test_stop_impersonation_requires_impersonation(db, admin):

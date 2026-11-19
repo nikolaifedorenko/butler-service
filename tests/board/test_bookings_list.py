@@ -218,7 +218,7 @@ def test_bookings_query_budget(manager_client, big_fund, sql_counter):
         r = manager_client.get(URL, params=win)
     assert r.status_code == 200 and r.json()["total"] >= 300
     # 12 + 1 запрос кодов VIP (у брони big_fund есть код; без кодов запроса нет) — Ruling 3
-    assert c["total"] <= 13, list(c["by_statement"].items())
+    assert c["total"] <= 14, list(c["by_statement"].items())
 
 
 def test_export_audited(manager_role_client, manager_client, db):

@@ -119,19 +119,31 @@ def test_image_accepted_only_by_content():
     assert sniff_media(heic, "IMG_0001.HEIC") == ("", ""), "HEIC — как и раньше, отклоняется"
 
 
-def test_session_requires_session_token_type(app_stack, db):
+def test_session_requires_known_token(app_stack, db):
+    """Cookie принимается только как токен существующей записи user_sessions: подпись, чужой
+    формат и угаданная строка сессией не считаются; просроченная запись не действует."""
+    import datetime as dt
+
+    from sqlalchemy import select
+
     from app.core.config import settings
-    from app.core.identity import User
-    from app.core.security import create_token
+    from app.core.identity import User, UserSession
+    from app.core.security import token_digest
+    from app.core.sessions import open_session
 
     user = db.scalar(select(User).where(User.username == "ivanov"))
-    body = {"uid": user.id, "emp_id": user.employee_id, "tv": int(user.token_version or 0)}
-    for token, expected in ((create_token(body), 401),                      # без типа
-                            (create_token(body | {"typ": "reset"}), 401),   # чужой тип
-                            (create_token(body | {"typ": "session"}), 200)):
+    good = open_session(db, user, user.employee_id)
+    expired = open_session(db, user, user.employee_id)
+    db.flush()
+    db.scalar(select(UserSession).where(UserSession.token_hash == token_digest(expired))).expires_at = \
+        dt.datetime(2000, 1, 1, tzinfo=dt.UTC)
+    db.commit()
+    for token, expected in (("", 401), ("abc", 401), ("eyJ1aWQiOjF9.0123456789abcdef", 401),
+                            (expired, 401), (good, 200)):
         c = TestClient(app_stack["app"])
-        c.cookies.set(settings.cookie_name, token)
-        assert c.get("/api/auth/me").status_code == expected
+        if token:
+            c.cookies.set(settings.cookie_name, token)
+        assert c.get("/api/auth/me").status_code == expected, token
 
 
 # ── публикация настроек ───────────────────────────────────────────────────────────────

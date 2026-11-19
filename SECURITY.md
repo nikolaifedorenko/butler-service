@@ -38,9 +38,9 @@
 
 Решения записаны в ADR-0003 (пароли), ADR-0004 (CSRF и CSP), ADR-0005 (лимит входа) и ADR-0007
 (токен сессии) в `docs/adr/`:
-CSRF (double-submit, проверка до обработчика), подписанные cookie-сессии с
-отзывом через `token_version`, PBKDF2-HMAC-SHA256 600 000 итераций с ленивым
-rehash, rate-limit входа, fail-fast на слабый `SECRET_KEY`, каталог прав с
+CSRF (double-submit, проверка до обработчика), сессии в таблице `user_sessions`
+(случайный токен в cookie, в базе — его SHA-256, отзыв удалением записи),
+пароли argon2id с ленивым rehash, rate-limit входа, fail-fast на слабый `SECRET_KEY`, каталог прав с
 группами и индивидуальными грантами, защита от CSV/Excel formula injection и
 zip-бомб, лимиты загрузки, CSP/HSTS/nosniff/frame-deny заголовки, журнал
 аудита действий.
