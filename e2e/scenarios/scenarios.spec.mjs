@@ -3,6 +3,8 @@
 import { expect, test } from '@playwright/test';
 import { login } from '../helpers.mjs';
 import { fundScenario } from './fund.mjs';
+import { layersScenario } from './layers.mjs';
+import { normsScenario } from './norms.mjs';
 import { settingsScenario } from './settings.mjs';
 
 /** Запуск функции-сценария в странице; возвращает строки с провалами. */
@@ -28,3 +30,13 @@ for (const who of ['admin', 'rukovod']) {
     await run(page, fundScenario, { LOGIN: who });
   });
 }
+
+test('норматив: Табель и График — код смены из справочника, «Сбросить», отпросился, заявления', async ({ page }) => {
+  await login(page, 'admin');
+  await run(page, normsScenario, { LOGIN: 'admin' });
+});
+
+test('«График = 4 слоя»: один пункт меню, слои 0–3, «Номера», права по слоям', async ({ page }) => {
+  await login(page, 'admin');
+  await run(page, layersScenario, { LOGIN: 'admin' });
+});
