@@ -216,7 +216,7 @@ def grid(db: Session, principal: Principal, year: int, month: int) -> dict:
         ShiftType.id.in_({a.kind_id for a in absence_rows if a.kind_id})))} \
         if absence_rows else {}
     # цвета ячеек — из словаря «Смены и отсутствия» (общий сервис: те же цвета
-    # у Графика, Факта-Ганта и печатных форм, 16.10.2026)
+    # у Графика, Факта-Ганта и печатных форм)
     work_types, code_colors = color_lookups(db)
     shifts_by_emp_day: dict[tuple[int, str], list] = {}
     for row in shift_rows:

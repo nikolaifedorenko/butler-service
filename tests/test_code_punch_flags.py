@@ -1,4 +1,4 @@
-"""Карточка кода Табеля (решение владельца 16.10.2026): режим отметок и заявление.
+"""Карточка кода Табеля: режим отметок и заявление.
 
 Что проверяем:
 * app-поля строк day_code_policy (punch_in/punch_out/doc_type) — в стартовом
@@ -163,7 +163,7 @@ class TestCodePunchFlags(unittest.TestCase):
             self.assertEqual(ctx.exception.status_code, 422)
             self.assertIn("«Я»", ctx.exception.message)
             self.assertIn("Табел", ctx.exception.message)
-            # связка со словарём смен удалена (18.10.2026): второй предохранитель —
+            # связка со словарём смен удалена: второй предохранитель —
             # только история Табеля, видов отсутствий в словаре больше нет
         finally:
             db.close()

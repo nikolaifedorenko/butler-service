@@ -155,7 +155,7 @@ def publish(db: Session, principal: Principal, data: SettingsIn) -> dict:
                 pol["color"] = normalize_hex_color(color, "#8a94a6")
             except ValueError as exc:
                 raise Validation(f"Цвет кода Табеля «{code}»: {exc}") from exc
-    # HARD-01 (решение владельца В-10): пояс расчёта — только пояс объекта APP_TZ; иначе
+    # HARD-01: пояс расчёта — только пояс объекта APP_TZ; иначе
     # отметки переводятся по одному поясу, а сутки режутся по другому — сдвиг часов без ошибки
     if data.payload.get("tz") not in (None, "", app_settings.app_tz):
         raise Validation(
@@ -186,8 +186,7 @@ def lock_and_check_base_version(db: Session, base_version_id: Optional[int]) -> 
     """«Моя версия ещё последняя?» и вставка новой — под одной блокировкой (CONC-03).
 
     Раньше сверка и вставка не были атомарны: две вкладки, опубликовавшие в одну и ту же
-    долю секунды, проходили обе, и правки первой молча терялись (рецензия аудита
-    22.10.2026). Блокировка — пустой UPDATE последней версии: на PostgreSQL это замок
+    долю секунды, проходили обе, и правки первой молча терялись. Блокировка — пустой UPDATE последней версии: на PostgreSQL это замок
     строки, на SQLite — замок записи базы; вторая публикация ждёт первую, затем
     перечитывает последнюю версию и получает 409."""
     if base_version_id is None:

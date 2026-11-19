@@ -248,7 +248,7 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
             n, _held = hold(it, run) if it.in_house else (0, None)
             if n < len(run):
                 # всё неудержанное будущее заселённой — до слотов: и отнятое OOO/фондом, и уже
-                # оставшееся без объекта (решения владельца: блок не оставляет живущего без объекта)
+                # оставшееся без объекта (блок не оставляет живущего без объекта)
                 (displaced if it.in_house else open_runs).append((it, run[n:]))
 
     def choose(it: AllocItem, chunk: list[Piece], cands: list[UnitSpan]) -> UnitSpan:

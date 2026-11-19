@@ -92,7 +92,7 @@ class TestHealth(unittest.TestCase):
         chk = [c for c in d["checks"] if c["code"].startswith("CHK-")]
         self.assertEqual(chk, [], [c["text"] for c in chk])
         for c in d["checks"]:
-            # night/cars — экраны группы «Объект» (19.10.2026): справочник ночного
+            # night/cars — экраны группы «Объект»: справочник ночного
             # обхода и парк переехали в «Настройки», health-сверки ведут на них
             self.assertIn(c["screen"], {"overview", "calc", "pay", "codes", "groups",
                                         "shifts", "docs", "system", "expert",
@@ -149,7 +149,7 @@ class TestHealth(unittest.TestCase):
             self.assertFalse(any(f"«{code}»" in c["text"] for c in warns), d["checks"])
 
     def test_06_archive_no_longer_breaks_links(self):
-        """Архив вида больше не рвёт связь справочников: связи нет (18.10.2026)."""
+        """Архив вида больше не рвёт связь справочников: связи нет."""
         d = self.admin.get("/api/engine-settings/health").json()
         self.assertEqual([c for c in d["checks"] if c["code"] == "APP-CODE-NO-SHIFT"], [])
 

@@ -90,7 +90,7 @@ def _candidates(ctx: StaysContext, s: StayDay, day: dt.date, known) -> list[dict
 
 def _ooo_today(db: Session, ctx: StaysContext, day: dt.date, f: DayFilters) -> list[dict]:
     """OOO, которые начинаются или заканчиваются в этот день (часть 2 §6) — в «Требуют внимания».
-    Причина — без персональных данных (решение владельца). Объект — по фильтрам фонда дня."""
+    Причина — без персональных данных. Объект — по фильтрам фонда дня."""
     out = []
     for h in db.scalars(select(Ooo).where((Ooo.start == day) | (Ooo.end == day)).order_by(Ooo.start, Ooo.id)):
         if not fund_match(ctx.fund.on(day), h.unit_id, None, f):
@@ -188,7 +188,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
         totals |= {"covered": statuses.count("covered"), "uncovered": statuses.count("uncovered"),
                    "need_replacement": statuses.count("replacement"), "declined": statuses.count("declined"),
                    "not_required": statuses.count("not_required"), "special": special}
-    # «Требуют внимания» — всем уровням (решение владельца: OOO видны всем): овербукинг (бронь без
+    # «Требуют внимания» — всем уровням (OOO видны всем): овербукинг (бронь без
     # объекта, часть 2 §4.2) и OOO дня; на уровне «занятость» строки броней — без данных гостей,
     # непокрытые и подмены — только с уровня «имена»
     out["attention"] = [x for x in in_house if x.get("overbooked") or (

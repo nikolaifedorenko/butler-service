@@ -188,8 +188,7 @@ def _bulk(db: Session, principal: Principal, payload: BulkIn) -> dict:
     errors: list[dict] = []
     cells = len(payload.dates) * len(payload.employee_ids)
     # записанные дни по сотрудникам: График перегенерируется ОДИН раз на затронутый
-    # месяц после всей массовки, а не на каждую ячейку (P0-3 ревью 20.10.2026 —
-    # 500×366 ячеек иначе делали сотни тысяч DELETE+INSERT generated-строк)
+    # месяц после всей массовки, а не на каждую ячейку (500×366 ячеек иначе делали сотни тысяч DELETE+INSERT generated-строк)
     touched: dict[int, list[dt.date]] = {}
     for d in payload.dates:
         for eid in payload.employee_ids:
@@ -222,7 +221,7 @@ class FillIn(BaseModel):
 
 @transactional
 def fill(db: Session, principal: Principal, payload: FillIn) -> dict:
-    """Циклы графика заполняют Табель (инструмент ввода, решение владельца); График
+    """Циклы графика заполняют Табель (инструмент ввода); График
     перегенерируется из Табеля (16.3). Закрытые периоды не трогаются (16.5)."""
     ensure_period(payload.year, payload.month)
     period = month_period(payload.year, payload.month)

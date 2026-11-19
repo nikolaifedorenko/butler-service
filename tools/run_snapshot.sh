@@ -10,7 +10,7 @@ OUT="${2:-$ROOT/ui-snapshot.html}"
 DB_URL="$(python3 "$HERE/scenario_db.py" "ui_snapshot")" || exit 1
 
 cd "$ROOT" || exit 1
-# Ключ ≥16 символов (см. app/main.py); CSRF отключён: снапшот-харнес ходит в API
+# CSRF отключён: снапшот-харнес ходит в API
 # напрямую из node, без браузерной пары «cookie + заголовок» (как tests/conftest.py).
 export DEMO_SEED=1 DATABASE_URL="$DB_URL" CSRF_ENABLED=0 APP_TZ="Europe/Moscow" PYTHONPATH="$ROOT"
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >/tmp/ui_snapshot_server.log 2>&1 &

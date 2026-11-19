@@ -1,4 +1,4 @@
-"""tools/bump_version.py (аудит 22.10.2026, UI-04): --check ловит правку оболочки без новой
+"""tools/bump_version.py: --check ловит правку оболочки без новой
 версии, а ключ вместо версии (`--help`) не записывается в index.html и sw.js."""
 from __future__ import annotations
 

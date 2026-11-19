@@ -92,8 +92,8 @@ def put_manual_shift(db: Session, principal: Principal, payload: ManualShiftIn) 
             ScheduleShift.date == payload.date, ScheduleShift.source == "manual")
             # ORDER BY обязателен: zip расставляет ноты по интервалам запроса, а без
             # порядка БД строки возвращаются как угодно (PostgreSQL порядок не
-            # гарантирует) — ноты ложились бы на чужие смены (ревью 20.10.2026,
-            # P1-ts-2). id назначаются в порядке вставки одним flush в save_manual,
+            # гарантирует) — ноты ложились бы на чужие смены.
+            # id назначаются в порядке вставки одним flush в save_manual,
             # т.е. порядок id = порядок intervals (start не годится: интервалы
             # запроса могут быть вне хронологии).
             .order_by(ScheduleShift.id)),
@@ -208,7 +208,7 @@ def _range_absence_as_schedule(db: Session, principal: Principal, payload: Range
                                kind: ShiftType) -> dict:
     """Вид отсутствия БЕЗ кода Табеля: пишем согласованные отсутствия в График.
 
-    Норматив от 12.10.2026: «выходной за ранее отработанные часы» и «отпросился» —
+    Норматив: «выходной за ранее отработанные часы» и «отпросился» —
     данные Графика, а не код первичного документа. В Табеле остаётся явка («Я»/«К»),
     отсутствие не меняет план (RUL-ABSENCE-ONLY-FLAGS), недостачу гасит банк часов —
     то есть ранее накопленные переработки (EX-29).
@@ -303,8 +303,7 @@ def _range_absence_as_code(db: Session, principal: Principal, payload: RangeAbse
     ports = engine_ports(db, principal, now_utc())
     written, skipped, errors = 0, 0, []
     # дни, которые ДЕЙСТВИТЕЛЬНО записаны: График перегенерируется один раз на
-    # затронутый месяц после цикла, а не на каждую ячейку (P0-3 ревью 20.10.2026 —
-    # на пределе 500×366 по-ячеечная перегенерация давала сотни тысяч запросов)
+    # затронутый месяц после цикла, а не на каждую ячейку (на пределе 500×366 по-ячеечная перегенерация давала сотни тысяч запросов)
     touched: dict[int, list[dt.date]] = {}
     for employee_id in payload.employee_ids:
         periods = periods_of(db, employee_id)

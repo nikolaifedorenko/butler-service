@@ -70,10 +70,11 @@ async function newPage(viewport, mobile) {
 
 async function login(page, user) {
   const { w } = page;
-  w.document.querySelector('#login-username').value = user;
-  w.document.querySelector('#login-password').value = 'demo1234';
-  w.document.querySelector('#login-form')
-    .dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  // форма входа отправляется обычным POST с переадресацией (менеджеры паролей), jsdom её не
+  // исполняет: входим запросом к API и запускаем приложение, как это делает смоук интерфейса
+  const res = await proxy('POST', '/api/auth/login', {
+    body: JSON.stringify({ username: user, password: 'demo1234' }), headers: { 'Content-Type': 'application/json' } });
+  if (res.ok) w.eval('bootApp()');
   for (let i = 0; i < 200 && w.document.querySelector('#app').classList.contains('hidden'); i++) await sleep(150);
   if (w.document.querySelector('#app').classList.contains('hidden')) throw new Error('вход не выполнен');
   await sleep(900);

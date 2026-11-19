@@ -338,7 +338,7 @@ class TestApi(unittest.TestCase):
         today = local_date()
         st = client.get("/api/settings").json()
         self.assertIn("{date_from}", st["doc"]["vacation"])
-        # запись настроек — settings.edit (этап B, 20.10.2026): у супервайзера
+        # запись настроек — settings.edit: у супервайзера
         # (client = gromova) его нет, реквизиты правит админ
         r = self.admin.put("/api/settings/doc", json={
             "company": "ООО «Ромашка»", "director": "Директору Ромашкину",

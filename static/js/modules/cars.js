@@ -256,8 +256,7 @@ export function locationOptions(selected) {
 export const CHARGE_OPTS = [['full', 'полный'], ['half', 'половина'], ['empty', 'разряжен']];
 
 /* ─────────── выбор фото: съёмка камерой смартфона или из галереи ───────────
-   Блок общий для окна возврата кара и отметки ночного обхода (камера — с
-   18.10.2026, в обходе — с 19.10.2026): на смартфоне «Снять на камеру» открывает
+   Блок общий для окна возврата кара и отметки ночного обхода: на смартфоне «Снять на камеру» открывает
    камеру сразу со съёмкой (capture=environment), «Из галереи» — готовый снимок.
    bindPhotoPick() возвращает функцию-геттер выбранного файла для FormData. */
 /* Выбор медиа: фото и видео (этап 2 ночного отчёта v2). Видео снимается
@@ -336,7 +335,7 @@ export function carReturnModal(car, after) {
         const charge = $('#cr-charge').value;
         const onCharge = $('#cr-oncharge').checked;
         const fd = new FormData();
-        // «кто вернул» за другого — только с правом выдачи (решение владельца В-11)
+        // «кто вернул» за другого — только с правом выдачи
         const person = can('cars.issue') ? personFieldValue('cr') : { employee_id: null, name: '' };
         if (person.employee_id) fd.append('by_employee_id', String(person.employee_id));
         if (person.name) fd.append('by_name', person.name);
@@ -505,7 +504,7 @@ export function carAddModal(after) {
     body: html`<label class="field"><span>Номер (обязательно)</span>
         <input type="text" id="ca-number" maxlength="40" placeholder="Например: 04"></label>
       <p class="hint">Место стоянки и состояние указываются при возврате и в карточке кара —
-        новый кар создаётся свободным без места (решение владельца 18.10.2026).</p>`,
+        новый кар создаётся свободным без места.</p>`,
     footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-ok>Добавить</button>`,
     onMount(m) {

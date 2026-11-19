@@ -99,7 +99,7 @@ async function settingsScreenGroups(host) {
             .value=${custom ? String(base.cycle).slice(7) : ''} ?disabled=${!edit}></label>
       </div>
       <p class="hint" style="margin:-4px 0 10px">Смена 2 работает в противофазе со Сменой 1 — системное
-        правило (18.10.2026). Значение рабочего дня (код и окно) задаётся в карточке
+        правило. Значение рабочего дня (код и окно) задаётся в карточке
         сотрудника при приёме и переводе в блок.</p>
       ${edit ? html`<button class="btn btn-primary btn-sm" id="b-save" style="margin-top:10px" @click=${saveBase}>Сохранить базовый цикл</button>` : nothing}`)}
     ${settingsPanelView('Пятидневка и «Другие смены»', html`
