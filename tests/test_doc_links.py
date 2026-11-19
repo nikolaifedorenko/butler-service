@@ -17,7 +17,7 @@ def test_broken_links_are_found_and_exceptions_skipped(tmp_path):
     local_only = ROOT / "docs" / "_doc_links_local_only.md"
     local_only.write_text("есть только на диске", encoding="utf-8")
     md.write_text(
-        "есть: `app/main.py`, [SPEC](SPEC.md), [сайт](https://example.com), `app/modules/<имя>/`\n"
+        "есть: `app/main.py`, [обзор](01-obzor.md), [сайт](https://example.com), `app/modules/<имя>/`\n"
         "из .gitignore: `deploy/backup-ssh/id_ed25519`\n"
         "нет: `app/nope.py` и [старый](archive/nope.md)\n"
         "не под git: [локальный](_doc_links_local_only.md)\n"
