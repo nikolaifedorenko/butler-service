@@ -106,7 +106,7 @@ async function renderStaysEscort(host) {
           ${p.name} <span class="muted">${p.position}</span></label>`) : html`<div class="empty">Нет сотрудников</div>`}</div>`,
       html`<button class="btn btn-sm" id="se-seed" style="float:right" @click=${seed}>Заполнить по должности «батлер»</button>`)}
     ${settingsPanelView('VIP-коды', html`
-      <div class="table-wrap"><table class="data" id="se-codes-table">
+      <div class="table-wrap" tabindex="0"><table class="data" id="se-codes-table">
         <thead><tr><th>Код</th><th>Что значит</th><th>Сопровождение</th><th>Коэффициент</th><th>Порядок</th><th></th></tr></thead>
         <tbody>${codes.length ? codes.map(c => html`<tr data-code-row=${c.id} class=${c.archived ? 'muted' : ''}>
           <td><b>${c.code}</b>${c.archived ? html` <span class="badge muted">в архиве</span>` : nothing}</td><td>${c.title}</td>
@@ -156,7 +156,7 @@ async function renderStaysFields(host) {
   render(html`
     ${settingsHeadView('Настраиваемые поля', 'Дополнительные сведения о гостях и бронях; по отмеченным полям работает поиск.')}
     ${settingsPanelView('Поля', html`
-      <div class="table-wrap"><table class="data">
+      <div class="table-wrap" tabindex="0"><table class="data">
         <thead><tr><th>К чему</th><th>Название</th><th>Код</th><th>Тип</th><th>Поиск</th><th></th></tr></thead>
         <tbody>${fund.fields.length ? fund.fields.map(f => html`<tr>
           <td>${target[f.target]}</td><td><b>${f.title}</b></td><td>${f.code}</td>

@@ -90,7 +90,7 @@ export async function renderEngineSettings(host) {
       Приоритет: сотрудник+день → сотрудник+период → группа+день → группа+период → все+день → все+период → глобальный дефолт.
       «План=Факт = Авто» разрешается в «Да» только колонкой кода (стартово — у «К»).
       Две записи одного уровня на один день — конфликт конфигурации.</p>
-    <div class="table-wrap"><table class="data"><thead><tr><th>Модификатор</th><th>Значение</th><th>Кому</th><th>Когда</th><th>Комментарий</th><th></th></tr></thead><tbody>
+    <div class="table-wrap" tabindex="0"><table class="data"><thead><tr><th>Модификатор</th><th>Значение</th><th>Кому</th><th>Когда</th><th>Комментарий</th><th></th></tr></thead><tbody>
       ${mods.length ? mods.map(m => html`<tr><td>${V4_MOD_TITLES[m.name] || m.name}</td><td>${m.value === '1' ? 'Да' : (m.value === '0' ? 'Нет' : 'Авто')}</td>
         <td>${m.employee_id ? empName(m.employee_id) : (m.group ? 'группа «' + m.group + '»' : 'все')}</td>
         <td>${m.date ? dateRu(m.date) : 'весь период'}</td><td>${m.note}</td>

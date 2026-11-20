@@ -116,13 +116,13 @@ async function settingsScreenCalc(host) {
         а не признак двойного дня: <code>ДН = 2</code> даст двойное начисление в банк за ночные часы.
         Движок порождает только коды с весом 1 и 2 (<code>weight_of_day</code>), поэтому вес 3+ — мёртвая
         конфигурация, пока не добавлено правило R42.</p>
-      <div class="table-wrap"><table class="data"><thead><tr>
+      <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>Код УТ</th><th>Категория</th><th class="num">Вес</th><th>Смысл</th></tr></thead>
       <tbody>${Object.entries(d.weights || {}).map(([code, w]) => html`<tr>
         <td>${settingsCodePillView(code, d.day_code_policy)}</td>
         <td>${code.replace(/2$/, '')}</td>
         <td class="num"><input type="number" min="1" max="9" step="1" .value=${String(Number(w) || 1)}
-          data-weight=${code} style="max-width:90px;text-align:right" ?disabled=${!edit}
+          aria-label=${`Вес кода ${code}`} data-weight=${code} style="max-width:90px;text-align:right" ?disabled=${!edit}
           @change=${e => { const v = Math.max(1, Math.round(Number(e.target.value) || 1)); e.target.value = v; d.weights[code] = v; touch(); }}></td>
         <td class="hint" style="margin:0">${Number(w) === 2 ? 'двойной тариф (ДЯ2/ДН2)' : 'одинарный тариф'}</td>
       </tr>`)}</tbody></table></div>`)}

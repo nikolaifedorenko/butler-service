@@ -63,7 +63,7 @@ async function renderCarsDictScreen(host) {
        ${canEdit ? html`<button class="btn btn-sm btn-primary" id="cd-add" @click=${() => carAddModal(again)}>+ Кар</button>` : nothing}`)}
     ${canEdit ? nothing : html`<div class="dict-banner gold"><span>🔒</span><span>Только просмотр: для правок парка и мест нужно право <b>cars.manage</b> (выдаётся в «Настройки → Права доступа»).</span></div>`}
     ${settingsPanelView('Парк', html`
-      <div class="table-wrap"><table class="data">
+      <div class="table-wrap" tabindex="0"><table class="data">
         <thead><tr><th>Кар</th><th>Статус</th><th>Место стоянки</th><th>Закреплён</th><th>Примечание</th><th></th></tr></thead>
         <tbody>${cars.length ? cars.map(c => html`<tr>
           <td><b>№${c.number}</b>${c.active ? nothing : html` <span class="badge muted">отключён</span>`}</td>

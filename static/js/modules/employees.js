@@ -24,7 +24,7 @@ async function loadEmployees() {
       <div class="spacer"></div>
       ${can('employees.edit') ? html`<button class="btn btn-primary btn-sm" id="e-add" @click=${() => employeeModal(null)}>+ Добавить сотрудника</button>` : nothing}
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0">
       <table class="data responsive"><thead><tr>
         <th>Сотрудник</th><th>Должность</th><th>Блок графика</th><th>Статус</th><th></th>
       </tr></thead><tbody>

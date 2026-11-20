@@ -328,7 +328,7 @@ async function renderStaysFund(host) {
         <div id="fund-tab-body">${tabs[fundUI.tab](data, editing, rerender)}</div>
       </div>
     </div>
-    ${settingsPanelView('История версий', html`<div class="table-wrap" id="fund-history"><table class="data">
+    ${settingsPanelView('История версий', html`<div class="table-wrap" tabindex="0" id="fund-history"><table class="data">
       <thead><tr><th>С даты</th><th>Статус</th><th>Автор</th><th>Примечание</th><th></th></tr></thead>
       <tbody>${versions.slice().reverse().map(v => {
         const st = fundVersionStatus(v, versions, today);
@@ -394,7 +394,7 @@ function fundUnitsTab(data, editing, rerender) {
         @click=${() => openFundMergeForm([...fundUI.picked].filter(id => unitOf(id)), snap, rerender)}>Объединить (${picked})</button>
       <button class="btn btn-sm" id="fund-move" ?disabled=${picked < 1}
         @click=${() => fundMoveForm([...fundUI.picked].map(unitOf).filter(Boolean), snap, rerender)}>Сменить узел…</button></div>` : nothing}
-    <div class="table-wrap" style="max-height:520px"><table class="data">
+    <div class="table-wrap" tabindex="0" style="max-height:520px"><table class="data">
       <thead><tr>${editing ? html`<th></th>` : nothing}<th>Объект</th><th>Категория</th><th>Узел</th><th>Этаж</th><th>Флаги</th><th></th></tr></thead>
       <tbody>${units.length ? units.map(u => html`<tr data-fund-unit=${u.id} class=${u.retired ? 'fund-retired' : ''}>
         ${editing ? html`<td>${u.retired ? nothing : html`<input type="checkbox" data-fund-pick=${u.id} .checked=${fundUI.picked.has(u.id)} @change=${e => pick(e, u.id)}>`}</td>` : nothing}
@@ -421,7 +421,7 @@ function fundFlagsTab(data, editing, rerender) {
     catch (e) { cb.checked = !value; fundFail(e); }
   };
   return html`<p class="hint">${editing ? '«Все в узле» отмечает флаг у всех объектов выбранного узла.' : 'Только просмотр — менять флаги можно в черновике.'}</p>
-    <div class="table-wrap" style="max-height:520px"><table class="data">
+    <div class="table-wrap" tabindex="0" style="max-height:520px"><table class="data">
       <thead><tr><th>Объект</th>${flags.map(f => html`<th>${fundSwatch(f)} ${f.title}${editing
         ? html`<br><label class="chk"><input type="checkbox" data-fund-flag-all=${f.id} .checked=${!!units.length && units.every(u => u.flags.includes(f.id))}
           @change=${e => setFlag(e.target, f.id, units.map(u => u.id))}> все в узле</label>` : nothing}</th>`)}</tr></thead>
@@ -441,7 +441,7 @@ function fundCatsTab(data, editing, rerender) {
     catch (e) { fundFail(e); }
   }, 'Вывести');
   return html`${editing ? html`<div class="sb-toolbar"><button class="btn btn-sm btn-primary" id="fund-cat-add" @click=${() => fundCategoryForm(null, data, rerender)}>+ Категория</button></div>` : nothing}
-    <div class="table-wrap"><table class="data">
+    <div class="table-wrap" tabindex="0"><table class="data">
       <thead><tr><th>Код</th><th>Название</th><th>Вид</th><th>Сопровождение</th><th class="num">Вес</th><th class="num">Объектов</th><th></th></tr></thead>
       <tbody>${snap.categories.length ? snap.categories.map(c => html`<tr data-fund-cat=${c.id}>
         <td><b>${c.code}</b> ${fundId(c.id)} ${fundMark(marks[c.id], since, true)}</td>
@@ -469,7 +469,7 @@ function fundKindsTab(data, _editing, rerender) {
   return html`<p class="hint">Справочник правится сразу, без черновика. «Раскрывать» — раздел дерева шахматки с категорией
       этого вида открыт по умолчанию. Использованный вид удалить нельзя — только в архив.</p>
     <div class="sb-toolbar"><button class="btn btn-sm btn-primary" id="fund-kind-add" @click=${() => fundKindForm(null, rerender)}>+ Вид</button></div>
-    <div class="table-wrap"><table class="data">
+    <div class="table-wrap" tabindex="0"><table class="data">
       <thead><tr><th>Название</th><th class="num">Порядок</th><th>Раскрывать</th><th></th></tr></thead>
       <tbody>${kinds.length ? kinds.map(k => html`<tr data-fund-kind=${k.id} class=${k.archived ? 'fund-retired' : ''}>
         <td><b>${k.title}</b> ${fundId(k.id)}${k.archived ? html` <span class="badge muted">архив</span>` : nothing}${used.has(k.id) ? nothing : html` <span class="muted">не используется</span>`}</td>

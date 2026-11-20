@@ -140,7 +140,7 @@ async function settingsScreenNotify(host) {
        <span class=${`badge ${ready.email ? 'ok' : 'muted'}`}>Почта ${ready.email ? 'настроена' : 'не настроена'}</span>`)}
 
     ${settingsPanelView('Кто использует доставку', html`
-      <div class="table-wrap"><table class="data"><thead><tr>
+      <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>Раздел</th><th>Что отправляет</th><th>Получатели</th><th>Статус</th></tr></thead>
         <tbody>${NOTIFY_CONSUMERS.map(c => html`<tr><td><b>${c.area}</b></td><td>${c.what}</td>
           <td>${c.to}</td>
@@ -172,7 +172,7 @@ async function settingsScreenNotify(host) {
       <div class="row-actions" style="margin-bottom:8px">
         <button class="btn btn-sm" id="nt-chats" @click=${refreshChats}>Обновить список чатов (getUpdates)</button>
         <span class="hint" style="margin:0">найдено чатов: ${chats.length}</span></div>
-      <div class="table-wrap"><table class="data"><thead><tr>
+      <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>Название</th><th>chat_id</th><th>Тип</th><th>Виден</th><th>Закреплён за службами</th><th></th></tr></thead>
         <tbody>${chats.length ? chats.map(c => html`<tr>
           <td>${c.title}${c.username ? html` <small class="muted">@${c.username}</small>` : nothing}</td>

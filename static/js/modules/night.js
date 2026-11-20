@@ -636,7 +636,7 @@ async function nightArchiveModal() {
     title: 'Архив ночных отчётов',
     subtitle: `${reports.length} смен · последние 60`,
     wide: true,
-    body: html`<div class="table-wrap" style="max-height:56vh"><table class="data responsive">
+    body: html`<div class="table-wrap" tabindex="0" style="max-height:56vh"><table class="data responsive">
         <thead><tr><th>Дата</th><th>Статус</th><th>Итог</th><th>Области</th><th>Электрокары</th><th>Закрыт</th><th></th></tr></thead>
         <tbody>${reports.length ? reports.map(r => html`<tr>
           <td data-label="Дата"><b>${dateRu(r.date)}</b><small>${r.shift_label || ''}</small></td>
@@ -707,7 +707,7 @@ function defectGroup(g, selectedIds, again) {
 
 function defectJournal(rows) {
   if (!rows.length) return html`<div class="empty">Отправок пока не было</div>`;
-  return html`<div class="table-wrap"><table class="data"><thead><tr>
+  return html`<div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
       <th>Время</th><th>Кто</th><th>Служба</th><th>Канал</th><th>Получатель</th>
       <th>Позиций</th><th>Вложений</th><th>Статус</th><th></th></tr></thead><tbody>
     ${rows.map(d => html`<tr>

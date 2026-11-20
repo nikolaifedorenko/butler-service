@@ -174,7 +174,7 @@ function accessUsers() {
   const gname = id => (a.groups.find(g => g.id === id) || {}).name || id;
   const filter = e => $$('#ac-body tr[data-n]').forEach(tr => { tr.style.display = tr.dataset.n.includes(e.target.value.toLowerCase()) ? '' : 'none'; });
   return html`<div class="panel"><input type="text" id="au-q" placeholder="Поиск по имени или логину" style="width:100%;max-width:360px" @input=${filter}></div>
-    <div class="table-wrap"><table class="data responsive"><thead><tr><th>Пользователь</th><th>Роль</th><th>Группы</th>
+    <div class="table-wrap" tabindex="0"><table class="data responsive"><thead><tr><th>Пользователь</th><th>Роль</th><th>Группы</th>
       <th>Индивидуально</th><th>Итого прав</th><th></th></tr></thead><tbody>
     ${a.users.map(u => html`<tr data-n=${(u.name + ' ' + u.username).toLowerCase()}>
       <td class="who" data-label="Пользователь">${u.name}<small>${u.username}${u.active ? '' : ' · отключён'}</small></td>

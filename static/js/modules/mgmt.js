@@ -140,7 +140,7 @@ function mgmtTable(d) {
     'погашение банком и каскадом и сохраняет результат, снимок флагов и переносы.';
   return html`
     <div class="panel" style="padding:12px 16px"><span class="hint" style="margin:0">${modeNote}</span></div>
-    <div class="table-wrap v4-grid-wrap"><table class="data v4-grid">
+    <div class="table-wrap v4-grid-wrap" tabindex="0"><table class="data v4-grid">
       <thead><tr><th class="who">Сотрудник</th>${d.days.map(dayHeadCell)}
         ${d.tariffs.map(t => html`<th>${t}</th>`)}<th>Недостача</th><th>Банк</th><th title="Отложенные блоки">→</th><th>Статус</th></tr></thead>
       <tbody>${d.rows.length ? d.rows.map(r => employeeRow(r, d))
@@ -196,7 +196,7 @@ function mgmtProblems(kind, r) {
     : `Готово у ${r.done.length}; у остальных данные изменились во время операции — повторите её`;
   openModal({
     title, subtitle: sub, wide: true,
-    body: html`<div class="table-wrap"><table class="data"><thead><tr><th>Сотрудник</th><th>Что не так</th></tr></thead>
+    body: html`<div class="table-wrap" tabindex="0"><table class="data"><thead><tr><th>Сотрудник</th><th>Что не так</th></tr></thead>
       <tbody>${r.errors.map(e => html`<tr data-emp=${e.employee_id} style="cursor:pointer"
         @click=${() => { closeModal(); mgmtDetail(e.employee_id); }}>
         <td class="who">${e.name}</td><td>${e.error}</td></tr>`)}</tbody></table></div>
@@ -246,7 +246,7 @@ async function mgmtDetail(empId) {
         + корректировки ${hours(b.adjustments_h)} + зачислено неоплачиваемых переработок ${hours(b.credited_h)}.
         Остаток недостачи всегда переносится минусом банка.</p>
       ${outDays.length ? html`<p class="hint">Дни вне трудоустройства («не в штате»): ${outDays.map(x => dateRu(x).slice(0, 6)).join(', ')}</p>` : nothing}
-      <div class="table-wrap" style="max-height:46vh"><table class="data">
+      <div class="table-wrap" tabindex="0" style="max-height:46vh"><table class="data">
         <thead><tr><th>День</th><th>Табель</th><th>План (окно)</th><th>План строки</th><th>Факт</th>
           <th>Рабочее</th><th>Перераб.</th><th>Недост.</th><th>Коды дня</th><th>Итог УТ</th><th>Флаги</th></tr></thead>
         <tbody>${(r.days || []).map(dv => dayCardRow(r, dv))}</tbody></table></div>

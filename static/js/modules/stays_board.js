@@ -38,7 +38,7 @@ export async function renderButlersBoard(body) {
       ${staysMonthNavView(body, rerender)}
       <span class="muted">лимит нагрузки — ${staysWeight(data.limit)}</span>
     </div>
-    <div class="sb-grid bb-grid" style=${`--days:${data.days.length}`}>
+    <div class="sb-grid bb-grid" tabindex="0" style=${`--days:${data.days.length}`}>
       <div class="bb-row sb-head"><div class="sb-unit">Батлер</div>${data.days.map(d => staysDayHeadView(d, today))}</div>
       ${data.rows.length ? data.rows.map(r => html`<div class="bb-row"><div class="sb-unit"><b>${r.name}</b>${r.escort ? nothing : html`<small>не в списке</small>`}</div>
         ${r.cells.map(c => html`<div class="bb-cell duty-${c.duty}${c.warnings.length ? ' warn' : ''}" data-bb-emp=${r.employee_id}
@@ -243,7 +243,7 @@ export async function renderOccupancyGrid(body) {
     </div>
     <!-- поиск и VIP к загрузке не применяются: в ней нет данных гостей (§6.1) -->
     ${staysFilterView(fund, rerender, { people: false })}
-    <div class="sb-grid bb-grid oc-grid" style=${`--days:${data.days.length}`} @click=${gridClick}>${ocGrid(data)}</div>`, mount(body));
+    <div class="sb-grid bb-grid oc-grid" tabindex="0" style=${`--days:${data.days.length}`} @click=${gridClick}>${ocGrid(data)}</div>`, mount(body));
   const gridClick = e => {
     const tog = e.target.closest('[data-oc-toggle]');
     if (tog) {

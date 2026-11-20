@@ -123,7 +123,7 @@ async function renderMineMonth(body, fresh) {
   render(html`<div class="sb-toolbar">${staysMonthNavView(body, renderMine)}</div>
     <div class="muted mm-legend"><span class="mm-key lv-one"></span> один гость <span class="mm-key lv-many"></span> несколько
       <span class="mm-key lv-over"></span> выше лимита · <b class="mm-abs">О</b> — отсутствие</div>
-    <div class="sb-grid mm-grid" style=${`--days:${data.days.length}`}>${mineMonthGrid(data)}</div>`, mount(body));
+    <div class="sb-grid mm-grid" tabindex="0" style=${`--days:${data.days.length}`}>${mineMonthGrid(data)}</div>`, mount(body));
   staysFocusDay(body);
 }
 

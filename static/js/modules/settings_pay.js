@@ -90,12 +90,12 @@ async function settingsScreenPay(host) {
             ? html`<span class="val-picker">по коду дня <button class="btn btn-sm btn-ghost" data-go="codes" @click=${() => settingsGo('codes')}>коды Табеля →</button></span>`
             : m.type === 'tri'
               ? html`<span class="val-picker">глобально
-                  <select data-gd=${m.name} ?disabled=${!edit} @change=${e => setDefault(m.name, e.target.value)}>
+                  <select data-gd=${m.name} aria-label=${`${m.title}: глобальное значение`} ?disabled=${!edit} @change=${e => setDefault(m.name, e.target.value)}>
                     ${[['no', 'Нет'], ['yes', 'Да'], ['auto', 'Авто (по коду Табеля)']].map(([v, t]) =>
                       html`<option value=${v} ?selected=${String(draftVal) === v}>${t}</option>`)}
                   </select></span>`
               : html`<span class="val-picker">глобально
-                  <label class="switch"><input type="checkbox" data-gd=${m.name}
+                  <label class="switch"><input type="checkbox" aria-label=${`${m.title}: глобальное значение`} data-gd=${m.name}
                     .checked=${!!draftVal} ?disabled=${!edit} @change=${e => setDefault(m.name, e.target.checked)}><span class="sl"></span></label>
                   <b>${settingsModValue(m.name, draftVal)}</b></span>`}
           ${changed ? html`<span class="badge warn">в черновике — не опубликовано</span>` : nothing}
@@ -108,7 +108,7 @@ async function settingsScreenPay(host) {
           ${edit ? html`<button class="btn btn-sm" data-add=${m.name} @click=${() => settingsWizard(m.name)}>+ Переопределение</button>` : nothing}
           <button class="btn btn-sm btn-ghost" data-check=${m.name} @click=${() => settingsResolverModal(m.name)}>Проверить для дня</button>
         </div>
-        ${list.length ? html`<div class="table-wrap" style="margin-top:10px"><table class="data"><thead><tr>
+        ${list.length ? html`<div class="table-wrap" tabindex="0" style="margin-top:10px"><table class="data"><thead><tr>
             <th>Значение</th><th>Кому</th><th>Когда</th><th>Уровень</th><th>Комментарий</th><th>Кто задал</th><th></th>
           </tr></thead><tbody>${list.map(x => html`<tr>
             <td><b>${settingsModValue(x.name, x.value)}</b></td>
