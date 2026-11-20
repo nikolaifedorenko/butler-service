@@ -27,6 +27,12 @@ services:
   gotenberg:
     image: gotenberg/gotenberg:9.5.1
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./assets/fonts:/usr/local/share/fonts/butler:ro
 
@@ -74,6 +80,12 @@ services:
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       TZ: ${APP_TZ:-Europe/Moscow}
     command: ["python", "-m", "app.bootstrap.jobs_worker"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.bootstrap.jobs_worker", "--check"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
     volumes:
       - app_data:/srv/timetrack/data
       - app_templates:/srv/timetrack/templates

@@ -66,5 +66,28 @@ def main() -> None:
     log.info("jobs: воркер остановлен")
 
 
+def check() -> int:
+    """Проверка живости для healthcheck контейнера: 0 — расписания тикают, 1 — какое-то просрочено
+    (воркер не работает или завис) либо база недоступна. Печатает причину."""
+    from app.core.db import SessionLocal
+    from app.modules.jobs.application import stats
+
+    try:
+        with SessionLocal() as db:
+            late = stats.overdue(db)
+    except Exception as exc:                              # база недоступна — воркеру тоже нечего делать
+        print(f"jobs: проверка не удалась: {type(exc).__name__}")
+        return 1
+    if late:
+        print("jobs: расписание просрочено: " + ", ".join(late))
+        return 1
+    print("jobs: ok")
+    return 0
+
+
 if __name__ == "__main__":
+    import sys
+
+    if "--check" in sys.argv[1:]:
+        raise SystemExit(check())
     main()

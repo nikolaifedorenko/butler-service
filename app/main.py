@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 
+from .bootstrap import metrics as state_metrics
 from .bootstrap import modules, registry, schema_version
 from .bootstrap.seed import seed_if_empty, seed_statement_kinds
 from .core import observability
@@ -154,6 +155,7 @@ async def _engine_application_error_handler(request: Request, exc: ApplicationEr
 # переехали в core/observability.py (фаза C1): main.py — composition root.
 # Порядок регистрации сохранён (см. docstring observability.register).
 observability.register(app)
+state_metrics.register()
 
 
 # роутеры — из манифестов модулей (ADR-0012), в порядке order

@@ -30,7 +30,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
       gotenberg:
-        image: gotenberg/gotenberg:8.40.0
+        image: gotenberg/gotenberg:9.5.1
         ports: ["3000:3000"]
     env:
       # сервер PostgreSQL для тестов и сценариев; базы создаются сами (tests/conftest.py,
