@@ -20,8 +20,8 @@ OOO — в расчёте, назначения слотов — только в
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -66,7 +66,7 @@ def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
     return out
 
 
-def load_prefs(db: Session, rids: list[int]) -> tuple[dict[int, list[Pref]], dict[int, frozenset[int]]]:
+def load_prefs(db: Session, rids: list[int]) -> tuple[dict[int, list[Pref]], Mapping[int, frozenset[int]]]:
     """Пожелания главного гостя по броням (часть 2 §5): бронь → пожелания и наследники объектов
     по lineage. Главный — первый по дате проживающий с ролью main; у брони без главного или без
     пожеланий записи нет. Запросов: проживающие, пожелания, lineage (только при пожеланиях-объектах)."""
@@ -80,7 +80,7 @@ def load_prefs(db: Session, rids: list[int]) -> tuple[dict[int, list[Pref]], dic
     if main:
         for p in db.scalars(select(GuestPref).where(GuestPref.guest_id.in_(set(main.values())))):
             by_guest.setdefault(p.guest_id, []).append(Pref(p.kind, p.ref_id, p.priority))
-    heirs = {}
+    heirs: Mapping[int, frozenset[int]] = {}
     if any(p.kind == "unit" for ps in by_guest.values() for p in ps):
         heirs = successors([(p, u) for p, u in db.execute(select(UnitLineage.predecessor_id, UnitLineage.unit_id))])
     return {rid: by_guest[gid] for rid, gid in main.items() if gid in by_guest}, heirs
@@ -92,9 +92,13 @@ def pref_scorers(db: Session, rids: list[int]) -> dict[int, Callable[[UnitSpan],
     prefs, heirs = load_prefs(db, rids)
     out: dict[int, Callable[[UnitSpan], int]] = {}
     for rid, ps in prefs.items():
-        score = scorer(ps, heirs)
-        out[rid] = lambda u, score=score: score(u.unit_id, u.group_path, u.flags)
+        out[rid] = _span_scorer(scorer(ps, heirs))
     return out
+
+
+def _span_scorer(score: Callable[..., int]) -> Callable[[UnitSpan], int]:
+    """Счёт пожеланий по интервалу объекта: объект, путь узла и флаги — из интервала."""
+    return lambda u: score(u.unit_id, u.group_path, u.flags)
 
 
 def unit_spans(timeline: FundTimeline, lo: int, hi: int) -> list[UnitSpan]:
@@ -266,20 +270,20 @@ def compute(db: Session) -> AllocationState:
     rows_of: dict[int, dict[int, Assignment]] = {r.id: {} for r in res}
     starts: dict[int, list[int]] = {}
     if res:
-        for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([r.id for r in res]))):
-            rows_of[a.reservation_id][a.seg_index] = a
-            if a.start_pos is not None:
-                starts.setdefault(a.reservation_id, []).append(a.start_pos)
+        for asg in db.scalars(select(Assignment).where(Assignment.reservation_id.in_([r.id for r in res]))):
+            rows_of[asg.reservation_id][asg.seg_index] = asg
+            if asg.start_pos is not None:
+                starts.setdefault(asg.reservation_id, []).append(asg.start_pos)
     stored: dict[int, list[_Row]] = {}
     for r in res:
-        stored[r.id] = [_Row(r.id, p.start_pos, p.end_pos, p.seg_index, a.unit_id, bool(a.pinned), a.pin_unit_id)
+        stored[r.id] = [_Row(r.id, p.start_pos, p.end_pos, p.seg_index, sa.unit_id, bool(sa.pinned), sa.pin_unit_id)
                         for p in pieces(own_segs[r.id], own_cuts(cuts, starts, r.id))
-                        if (a := rows_of[r.id].get(p.index)) is not None]
+                        if (sa := rows_of[r.id].get(p.index)) is not None]
     by_rid = {r.id: r for r in res}
 
     by_unit: dict[int, list[UnitSpan]] = {}
-    for u in spans:
-        by_unit.setdefault(u.unit_id, []).append(u)
+    for span in spans:
+        by_unit.setdefault(span.unit_id, []).append(span)
 
     def unit_cat(uid: int, p: Piece) -> int | None:
         """Категория объекта на всей части; None — объекта нет в фонде на части целиком."""
@@ -315,8 +319,9 @@ def compute(db: Session) -> AllocationState:
         for seg in {s.index for s in segs}:
             rows = [row for row in mine if row.seg_index == seg and row.pin_target is not None]
             live = [row for row in rows if row.end_pos >= morning]
-            if rows:
-                pins[seg] = (live or rows)[-1].pin_target      # как effective_pin: последняя живая часть
+            target = (live or rows)[-1].pin_target if rows else None   # как effective_pin: последняя живая часть
+            if target is not None:
+                pins[seg] = target
         fixed: dict[int, int | None] = {}
         fixed_pin: dict[int, tuple[bool, int | None]] = {}
         lost: dict[int, int] = {}
@@ -324,19 +329,20 @@ def compute(db: Session) -> AllocationState:
         for p in ps:
             row = stored_at(p)
             ok = row is not None and (by_rid[row.rid].status in FROZEN_STATUSES or p.end <= today)
-            uid = row.unit_id if ok else None
+            uid = row.unit_id if ok and row is not None else None
+            row_pinned = bool(row is not None and row.pinned)
             if p.end_pos < morning or (p.start_pos < evening and (uid is not None or settled)):
                 # закончившаяся до сегодняшнего утра — заморожена и без объекта (L1); заселённая до
                 # сегодняшнего вечера — в своём объекте или без объекта, как было
-                kept = ok and row.pinned
+                kept = ok and row_pinned
                 fixed[p.index] = uid
-                fixed_pin[p.index] = (kept, row.pin_unit_id if kept and uid is None else None)
+                fixed_pin[p.index] = (kept, row.pin_unit_id if kept and uid is None and row is not None else None)
             elif settled and uid is not None and (prev is None or prev.seg_index != p.seg_index
                                                   or (prev.index in fixed and fixed[prev.index] is None)):
                 # перед частью нет замороженной с объектом (заезд сегодня, переезд по категории,
                 # прошлое без объекта): держит объект строки, пока тот есть в фонде и не под OOO
                 if unit_cat(uid, p) is not None and under_ooo(uid, p) is None:
-                    fixed[p.index], fixed_pin[p.index] = uid, (row.pinned, None)
+                    fixed[p.index], fixed_pin[p.index] = uid, (row_pinned, None)
                 else:
                     lost[p.index] = uid
             prev = p
@@ -400,15 +406,15 @@ def compute(db: Session) -> AllocationState:
         final = [*cuts, *keep]
         for r in inf.rs:
             for mp in pieces(own_segs[r.id], final):
-                p = next((q for q in inf.pieces if q.start_pos <= mp.start_pos <= q.end_pos), None)
-                if p is None:
+                src = next((q for q in inf.pieces if q.start_pos <= mp.start_pos <= q.end_pos), None)
+                if src is None:
                     continue
-                out_units[(r.id, mp.index)], out_pinned[(r.id, mp.index)], pin_unit = state[p.index]
+                out_units[(r.id, mp.index)], out_pinned[(r.id, mp.index)], pin_unit = state[src.index]
                 if pin_unit is not None:
                     out_pin_units[(r.id, mp.index)] = pin_unit
                 out_spans[(r.id, mp.index)] = (mp.start_pos, mp.end_pos)
-                if (it.key, p.index) in overbooked:
-                    lo, hi = max(mp.start_pos, p.start_pos), min(mp.end_pos, p.end_pos)
+                if (it.key, src.index) in overbooked:
+                    lo, hi = max(mp.start_pos, src.start_pos), min(mp.end_pos, src.end_pos)
                     out_overbooked |= {(r.id, n) for n in range(lo // 2, hi // 2 + 1) if lo <= 2 * n + 1 <= hi}
     return AllocationState(out_units, out_pinned, warnings, members, out_spans, slot_units,
                            frozenset(out_overbooked), out_pin_units)
@@ -436,8 +442,8 @@ def _place_warnings(it: AllocItem, inf: _Info, got, timeline: FundTimeline, unit
         return
     prev: Piece | None = None
     for p in inf.pieces:
-        same = prev is not None and prev.seg_index == p.seg_index
-        ref = (got.get((it.key, prev.index)) if same else None) if p.index not in inf.lost else inf.lost[p.index]
+        before = got.get((it.key, prev.index)) if prev is not None and prev.seg_index == p.seg_index else None
+        ref = inf.lost.get(p.index, before)
         prev = p
         if p.index in it.fixed or ref is None or p.seg_index in it.pinned:
             continue              # у закреплённого сегмента о переезде скажет pin_invalid / pin_conflict
@@ -445,8 +451,8 @@ def _place_warnings(it: AllocItem, inf: _Info, got, timeline: FundTimeline, unit
         if new == ref:
             continue
         where = "переезд в " + (label(new, p) or str(new)) if new is not None else "без объекта"
-        o = under_ooo(ref, p) if unit_cat(ref, p) == p.category_id else None
-        if o is None:
+        blocker = under_ooo(ref, p) if unit_cat(ref, p) == p.category_id else None
+        if blocker is None:
             warnings.append(AllocWarning(
                 "unit_invalid", it.key, p.index,
                 f"Бронь {inf.number}: объект {label(ref, p) or ref} не подходит по фонду с "
@@ -454,8 +460,8 @@ def _place_warnings(it: AllocItem, inf: _Info, got, timeline: FundTimeline, unit
         else:
             warnings.append(AllocWarning(
                 "ooo_move", it.key, p.index,
-                f"Бронь {inf.number} (заселена): объект {label(ref, p) or ref} — OOO «{o.title}» с "
-                f"{day_label(max(o.start_pos, p.start_pos))} — {where} с {p.start.strftime('%d.%m')} до выезда"))
+                f"Бронь {inf.number} (заселена): объект {label(ref, p) or ref} — OOO «{blocker.title}» с "
+                f"{day_label(max(blocker.start_pos, p.start_pos))} — {where} с {p.start.strftime('%d.%m')} до выезда"))
 
 
 def run_allocation(db: Session) -> AllocationState:
@@ -466,9 +472,9 @@ def run_allocation(db: Session) -> AllocationState:
     in_window = select(Reservation.id).where(Reservation.check_out >= local_date())
     rows = {(a.reservation_id, a.seg_index): a
             for a in db.scalars(select(Assignment).where(Assignment.reservation_id.in_(in_window)))}
-    for k, a in rows.items():
+    for k, stale in rows.items():
         if k not in state.units:
-            db.delete(a)
+            db.delete(stale)
     for (rid, piece), uid in state.units.items():
         a = rows.get((rid, piece))
         if a is None:

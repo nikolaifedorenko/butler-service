@@ -39,7 +39,8 @@ class BlockIn(BaseModel):
 
 
 class BlockPut(BlockIn):
-    grid: Optional[dict[int, dict[dt.date, int]]] = None   # не передана — прежняя сетка, ночи вне дат уходят
+    # не передана — прежняя сетка, ночи вне дат уходят; правке разрешено «не передано» (None), созданию — нет
+    grid: Optional[dict[int, dict[dt.date, int]]] = None   # type: ignore[assignment]
     version: int
 
 

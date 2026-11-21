@@ -16,6 +16,13 @@ from . import mine
 from .visibility import level_for
 
 
+def butler_id(principal: Principal) -> int:
+    """Сотрудник-батлер принципала; режим батлера без карточки сотрудника — отказ."""
+    if principal.employee is None:
+        raise mine.MineForbidden("Учётная запись не связана с сотрудником")
+    return principal.employee.id
+
+
 def own_guest(db: Session, principal: Principal, gid: int, full_perm: str) -> bool:
     """С ``full_perm`` — любой гость (False). Без него — только свой гость принципала, иначе
     отказ; True — режим батлера."""

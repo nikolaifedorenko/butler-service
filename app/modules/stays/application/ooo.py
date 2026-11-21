@@ -85,9 +85,10 @@ def save_ooo(db: Session, data: dict, oid: int | None, author_id: int | None = N
         db.add(o)
         before: dict = {}
     else:
-        o = db.get(Ooo, oid)
-        if o is None:
+        found = db.get(Ooo, oid)
+        if found is None:
             raise OooNotFound("OOO не найден")
+        o = found
         if data.get("version") != o.version:
             raise OooConflict("OOO изменили — обновите")
         validate(db, data, oid)
@@ -126,7 +127,7 @@ class OooQuery:
     def __post_init__(self) -> None:
         if (self.first is None) != (self.last is None):
             raise ViewError("Период задаётся парой first и last")
-        if self.first is not None and self.last < self.first:
+        if self.first is not None and self.last is not None and self.last < self.first:
             raise ViewError("Конец периода раньше начала")
         if self.sort not in SORTS:
             raise ViewError("Неизвестная колонка сортировки")
@@ -139,7 +140,7 @@ class OooQuery:
 def _check_days(fund, o: Ooo, q: OooQuery) -> list[dt.date]:
     """Дни OOO в периоде, на которых фонд меняется (начало и границы версий): объект и категория
     читаются по фонду дня, а фильтры узла и категории — «или» по этим дням."""
-    a, z = (max(o.start, q.first), min(o.end, q.last)) if q.first else (o.start, o.end)
+    a, z = (max(o.start, q.first), min(o.end, q.last)) if q.first and q.last else (o.start, o.end)
     return [a, *(d for d in fund.boundaries() if a < d <= z)]
 
 
@@ -168,7 +169,7 @@ def list_ooo(db: Session, q: OooQuery) -> dict:
             group = " / ".join(fund.on(days[0]).path_titles(u.group_id))
         row = {**ooo_dict(o), "unit": u.label if u is not None else f"№{o.unit_id}",
                "category_id": u.category_id if u is not None else None, "category": cat.code if cat else "",
-               "group": group, "author": authors.get(o.author_id, ""), "created_at": local_iso(o.created_at, "minutes")}
+               "group": group, "author": authors.get(o.author_id or 0, ""), "created_at": local_iso(o.created_at, "minutes")}
         if f.q.strip() and f.q.strip().lower() not in f"{row['reason']} {row['unit']}".lower():
             continue
         items.append(row)

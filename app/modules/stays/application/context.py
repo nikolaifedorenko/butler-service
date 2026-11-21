@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -100,7 +101,7 @@ class StaysContext:
             # свои «Особые» — первыми, затем остальные из группы
             names = list(dict.fromkeys(specials[r.id] + (by_group.get(r.group_id, []) if r.group_id is not None else [])))
             code = self.vip_codes.get(r.vip_code_id) if r.vip_code_id is not None else None
-            facts = {"category": (cat.title, cat.escorted),
+            facts: dict[str, Any] = {"category": (cat.title, cat.escorted),
                      "nodes": [(snap.groups[g].title, snap.groups[g].escorted) for g in path],
                      "code": (code.code, code.title, bool(code.escorted)) if code else None,
                      "specials": [self.guest_name(g) for g in names]}
@@ -119,7 +120,9 @@ class StaysContext:
         """Сопровождение брони за ночи [first, last] (§4.1): сколько ночей нужен батлер, отказался
         ли гость при требовании правил, причины — объединение по ночам; rule_reasons — что дают
         правила без ручной отметки."""
-        required, declined, reasons, rule_reasons = 0, False, [], []
+        required, declined = 0, False
+        reasons: list[str] = []
+        rule_reasons: list[str] = []
         for d in nights(first, last + dt.timedelta(days=1)):
             s = next((s for s in self.stays_on(d) if s.reservation_id == rid), None)
             if s is None:
@@ -127,7 +130,9 @@ class StaysContext:
             required += s.need.required
             declined = declined or s.need.declined
             reasons += s.need.reasons
-            rule_reasons += self.rules_need(d, rid).reasons
+            rule = self.rules_need(d, rid)     # stays_on выше посчитал правила для каждой брони ночи
+            if rule is not None:
+                rule_reasons += rule.reasons
         return {"required_nights": required, "declined": declined, "reasons": list(dict.fromkeys(reasons)),
                 "rule_reasons": list(dict.fromkeys(rule_reasons))}
 

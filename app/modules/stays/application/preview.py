@@ -74,9 +74,11 @@ def take_snapshot(db: Session, window: Window | None = None, duty: DutyPort | No
     предупреждения покрытия по дням окна (§4.6 «дельта покрытия»)."""
     db.flush()
     state = allocation.current_state(db)
-    warns = set()
+    # (вид, день, сотрудник, бронь, текст)
+    warns: set[tuple[str, str | None, int | None, int | None, str]] = set()
     for w in state.warnings:
-        for rid in state.members[w.key] or [None]:         # предупреждение блока — без брони
+        rids: list[int | None] = [*state.members[w.key]] or [None]   # предупреждение блока — без брони
+        for rid in rids:
             warns.add((w.kind, None, None, rid, w.text))
     snap = Snapshot(dict(state.units), frozenset(warns), frozenset(db.scalars(select(Reservation.id))),
                     spans=dict(state.spans), overbooked=overbooked_keys(state))
@@ -119,7 +121,7 @@ def _changed_pieces(before: Snapshot, after: Snapshot) -> list[tuple[tuple[int, 
         return out
 
     was_by, now_by = by_seg(before), by_seg(after)
-    out = []
+    out: list[tuple[tuple[int, int], int | None, int | None, int]] = []
     covered: set[tuple[int, int]] = set()
     for seg, now_pieces in now_by.items():
         old = sorted(was_by.get(seg, []))

@@ -129,8 +129,8 @@ def find_guests(db: Session, q: GuestQuery, today: dt.date | None = None) -> lis
     for g in guests:
         s = stays.get(g.id, empty)
         rows.append({"id": g.id, "name": full_name(g), "special": bool(g.special),
-                     "vip_code": codes.get(g.vip_code_id, ("", False))[0],
-                     "vip_code_archived": codes.get(g.vip_code_id, ("", False))[1], "gender": g.gender,
+                     "vip_code": codes.get(g.vip_code_id or 0, ("", False))[0],
+                     "vip_code_archived": codes.get(g.vip_code_id or 0, ("", False))[1], "gender": g.gender,
                      "phone": format_phone(g.phone), "last_stay": s.last.isoformat() if s.last else None,
                      "stays": len(s.rids)})
     return rows

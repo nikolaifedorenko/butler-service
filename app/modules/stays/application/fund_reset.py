@@ -15,6 +15,7 @@ import os
 import re
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -91,13 +92,14 @@ BACKUP_NAME = re.compile(r"stays-\d{8}-\d{6}\.xlsx")
 
 # Таблицы stays_*, fund_* и guests*: каждая — либо данные шахматки (удаляются, в порядке внешних ключей: сначала
 # ссылающиеся), либо настройки модуля (остаются). Тест сверяет списки со всей схемой модуля.
-WIPE = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
+# модели разных таблиц: общего типа с id и __table__ у них нет — Any
+WIPE: tuple[Any, ...] = (CoverageGuest, CoverageLine, Occupant, Companion, Logistics, Move, Assignment, Reservation,
         StayGroup, GuestLink, GuestPref, Guest, BlockNight, Block, Ooo, UnitLineage, UnitStateFlag, UnitState, GroupState,
         CategoryState, FundVersion, UnitFlag, Unit, Category, FundGroup)
 KEEP = (StaysSettings, Label, CustomField, Escort, CategoryKind, VipCode)
 
 # что будет удалено (предпросмотр) — тот же словарь служит отпечатком для 409 при повторе
-COUNTED = {"units": Unit, "categories": Category, "groups": FundGroup, "flags": UnitFlag,
+COUNTED: dict[str, Any] = {"units": Unit, "categories": Category, "groups": FundGroup, "flags": UnitFlag,
            "versions": FundVersion, "reservations": Reservation, "guests": Guest,
            "coverage": CoverageLine, "ooo": Ooo, "blocks": Block}
 
@@ -226,7 +228,7 @@ def _will_load(plan: dict) -> dict[str, int]:
 
 
 def _warnings(parsed: ParsedFund) -> list[str]:
-    rows = [*parsed.categories, *parsed.groups, *parsed.flags, *parsed.units]
+    rows: list[Any] = [*parsed.categories, *parsed.groups, *parsed.flags, *parsed.units]
     if any(r.id is not None for r in rows) or any(u.predecessors for u in parsed.units):
         return [IDS_IGNORED]
     return []
@@ -298,13 +300,13 @@ def backup_bytes(db: Session) -> bytes:
             "поля"],
            ([r.id, r.number, r.status, r.check_in, r.check_out, yn[bool(r.early)], yn[bool(r.late)],
              code.get(r.category_id, f"#{r.category_id}"), ", ".join(units.get(r.id, [])),
-             "; ".join(occ.get(r.id, [])), labels.get(r.label_id, ""), r.customer, code.get(r.paid_category_id or r.category_id, ""),
-             r.note, vip.get(r.vip_code_id, ("", False))[0], r.escort_mode, r.ext_system, r.ext_instance, r.ext_id or "", _raw(r.fields)]
+             "; ".join(occ.get(r.id, [])), labels.get(r.label_id or 0, ""), r.customer, code.get(r.paid_category_id or r.category_id, ""),
+             r.note, vip.get(r.vip_code_id or 0, ("", False))[0], r.escort_mode, r.ext_system, r.ext_instance, r.ext_id or "", _raw(r.fields)]
             for r in db.scalars(select(Reservation).order_by(Reservation.check_in, Reservation.id)))))
     sheets.append(_sheet(SHEET_GUESTS,
            ["ID", "фамилия", "имя", "отчество", "телефон", "email", "дата рождения", "особый", "код",
             "предпочтения", "особые даты", "поля", "примечание", "система", "экземпляр", "внешний ID"],
-           ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, yn[bool(g.special)], vip.get(g.vip_code_id, ("", False))[0],
+           ([g.id, g.last_name, g.first_name, g.middle_name, g.phone, g.email, g.birth_date, yn[bool(g.special)], vip.get(g.vip_code_id or 0, ("", False))[0],
              _raw(g.preferences), _raw(g.special_dates), _raw(g.fields), g.note, g.ext_system, g.ext_instance, g.ext_id or ""]
             for g in guests.values())))
     sheets += _raw_sheets(db)

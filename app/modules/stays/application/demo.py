@@ -93,7 +93,7 @@ FLAGS = [("Смежные номера", "#d8833b"), ("Вид на море", "#
          ("Для аллергиков", "#7a4fd0")]
 CONNECT = ("CNX", "Коннект", "room", False, 2, 1)                      # объект «12134» делится в будущей версии
 ROOT_VILLAS = "Винные виллы"
-VILLA_NODES = {"VEG": [(ROOT_VILLAS, "Семейная", "Первая линия"), (ROOT_VILLAS, "Семейная", "Вторая линия")],
+VILLA_NODES: dict[str, list[tuple[str, ...]]] = {"VEG": [(ROOT_VILLAS, "Семейная", "Первая линия"), (ROOT_VILLAS, "Семейная", "Вторая линия")],
                "FWV": [(ROOT_VILLAS, "У воды")], "VIG": [(ROOT_VILLAS, "С видом")]}
 BLOCKS = {"1": "Блок A", "2": "Блок B"}
 VIEWS = ("Вид на море", "Вид на парк")
@@ -235,8 +235,8 @@ def seed_stays_demo(db: Session) -> None:
         g.search_text = guest_search_text(g, set())
     db.add_all(family.values())
     db.flush()
-    for a, b, kind in FAMILY_LINKS:
-        db.add(GuestLink(guest_a_id=family[a].id, guest_b_id=family[b].id, kind=kind))
+    for key_a, key_b, kind in FAMILY_LINKS:
+        db.add(GuestLink(guest_a_id=family[key_a].id, guest_b_id=family[key_b].id, kind=kind))
 
     made: list[Reservation] = []
     gi = iter(range(10_000))
@@ -389,7 +389,8 @@ def _demo_coverage(db: Session, today: dt.date, made: list[Reservation], units: 
                        if not v.on_shift and v.tabel_code and e in ids), None)
         if target is not None:
             row = db.scalar(select(TabelDay).where(TabelDay.employee_id == target[0], TabelDay.date == target[1]))
-            row.code = "ОТ"
+            if row is not None:
+                row.code = "ОТ"
     # «Мои гости» для демо-входа ivanov: одна ночь сегодня (тесты берут Иванова с завтрашнего дня)
     ivanov = db.scalar(select(Employee.id).where(Employee.full_name.like("Иванов%")))
     tonight = next((r for r in made if r.category_id in escorted and r.check_in <= today < r.check_out
@@ -398,8 +399,8 @@ def _demo_coverage(db: Session, today: dt.date, made: list[Reservation], units: 
         line(tonight, today, ivanov)
     if target is not None:
         e, d = target
-        r = next((r for r in made if r.category_id in escorted and r.check_in <= d < r.check_out
-                  and r.status != "no_show"), None)
-        if r is not None:
-            line(r, d, e)
+        pick = next((r for r in made if r.category_id in escorted and r.check_in <= d < r.check_out
+                     and r.status != "no_show"), None)
+        if pick is not None:
+            line(pick, d, e)
     db.flush()

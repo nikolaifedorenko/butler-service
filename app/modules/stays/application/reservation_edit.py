@@ -18,6 +18,7 @@ from app.core.errors import NotFound, Validation
 from ..adapters.orm import Reservation, StayGroup
 from ..ports.duty import DutyPort
 from . import allocation, coverage, mine, reservations
+from .guest_access import butler_id
 from .previewed import run_previewed
 from .reservation_forms import GroupIn, JoinIn, LeaveIn, ReservationIn, StatusIn
 
@@ -91,7 +92,7 @@ def update(db: Session, principal: Principal, rid: int, payload: ReservationIn, 
     butler: int | None = None             # батлер правит свою бронь (часть 4 §4)
     had: set[int] = set()
     if r0 is not None and mine_mode(db, principal, rid):
-        butler = principal.employee.id
+        butler = butler_id(principal)
         current = reservations.reservation_dict(db, r0, with_escort=False)
         had = {o["guest_id"] for o in current["occupants"]}
         mine.check_reservation_change(db, current, doc)
