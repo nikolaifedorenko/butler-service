@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..domain.codes_registry import flag_codes as F
@@ -194,7 +195,8 @@ def _scope_text(scope: dict) -> str:
     return f"{who}, {when}"
 
 
-def config_violation_text(code: str, data: dict | None = None) -> str:
+def config_violation_text(code: str, data: Any = None) -> str:
+    # data — свободный словарь параметров нарушения (у каждого кода свои ключи)
     """Одно нарушение конфигурации — одной фразой, с указание на что править."""
     data = data or {}
     title = CONFIG_TITLES.get(code, code)
@@ -202,7 +204,7 @@ def config_violation_text(code: str, data: dict | None = None) -> str:
         return (f"{title}: «{data.get('tz')}» — укажите существующий часовой пояс "
                 "(например, Europe/Moscow) в редакторе настроек движка")
     if code == "CHK-MODIFIER-CONFLICT":
-        scopes = data.get("scopes") or ({}, {})
+        scopes: Any = data.get("scopes") or ({}, {})
         level = data.get("level")
         names = MODIFIER_TITLES.get(data.get("name"), data.get("name", "правило"))
         where = f" на {_date(data['day'])}" if data.get("day") else ""
@@ -334,7 +336,7 @@ def error_text(exc: Exception) -> str:
     if isinstance(exc, IncompletePeriodError):
         return f"Период ещё не завершён: закрыть можно с 00:00 {exc.period_end + dt.timedelta(days=1):%d.%m.%Y}"
     if isinstance(exc, InvalidInputDataError):
-        unknown = exc.code == "CHK-DEFERRED-IN" and (exc.data or {}).get("unknown_tariffs")
+        unknown: Any = exc.code == "CHK-DEFERRED-IN" and (exc.data or {}).get("unknown_tariffs")
         if unknown:
             listed = ", ".join(f"«{t}»" for t in unknown)
             return (f"Перенос из прошлого периода — по тарифу {listed}, которого нет в весах "

@@ -14,10 +14,10 @@ from __future__ import annotations
 import datetime as dt
 import threading
 from collections import defaultdict
-from typing import Optional
+from typing import Optional, cast
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import String, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -429,6 +429,7 @@ def set_punch_note(db: Session, principal: Principal, punch_id: int, payload: No
     if ("punches.view_all" not in principal_permissions(db, principal)
             and (not principal.employee or principal.employee.id != p.employee_id)):
         raise Forbidden("Можно комментировать только свои отметки")
-    p.note = payload.note.strip()[:Punch.__table__.c.note.type.length]   # String(255): на PG длиннее — 500
+    note_max = cast(String, Punch.__table__.c.note.type).length   # String(255): на PG длиннее — 500
+    p.note = payload.note.strip()[:note_max]
     audit(db, principal, "punch_note", f"punch:{punch_id}", {"note": p.note})
     return p.note

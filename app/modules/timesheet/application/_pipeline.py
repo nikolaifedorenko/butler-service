@@ -4,6 +4,7 @@ plan_equals_fact из карточек → evaluate_flags (7.1). Единств�
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 from ..domain.flags.evaluate_flags import evaluate_flags
 from ..domain.pipeline.settle import settle
@@ -11,7 +12,7 @@ from .load_inputs import Inputs
 from .period_view import PeriodView
 
 
-def run_pipeline(inp: Inputs, now: dt.datetime, mode: str) -> PeriodView:
+def run_pipeline(inp: Inputs, now: dt.datetime, mode: Literal["view", "close"]) -> PeriodView:
     result = settle(inp.period, inp.days, inp.marks, inp.opening_mark, inp.bank_open,
                     inp.adjustments, inp.deferred_in, inp.st, now, mode, inp.previous_step)
     pef = {card.day: card.plan_equals_fact_applied for card in result.cards}

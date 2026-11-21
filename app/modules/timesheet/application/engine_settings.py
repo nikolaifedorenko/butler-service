@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select, text
@@ -113,10 +113,11 @@ def period_state_of(db: Session, start: dt.date) -> dict:
     last = db.scalar(select(func.max(PeriodClosing.period_start)))
     rows = db.execute(select(PeriodClosing.employee_id, PeriodClosing.period_end)
                       .where(PeriodClosing.period_start == start)).all()
-    out = {"start": start.isoformat(), "closed": bool(rows),
-           "last_closed_start": last.isoformat() if last else None,
-           "end": None, "closed_count": 0, "total": 0, "complete": False, "not_closed": [],
-           "recalc_available": False}
+    out: dict[str, Any] = {
+        "start": start.isoformat(), "closed": bool(rows),
+        "last_closed_start": last.isoformat() if last else None,
+        "end": None, "closed_count": 0, "total": 0, "complete": False, "not_closed": [],
+        "recalc_available": False}
     if not rows:
         return out
     end = max(r.period_end for r in rows)
@@ -340,8 +341,8 @@ def add_modifier(db: Session, principal: Principal, data: ModifierIn) -> int:
     if data.employee_id and data.group:
         raise Validation("Область — сотрудник ИЛИ группа")
     granularity = _granularity(db, data.period_start or data.date or local_date())
-    period = None if data.date else Period(data.period_start,
-                                           _period_end_of(data.period_start, granularity))
+    start = data.period_start            # ровно одно из date / period_start — проверено выше
+    period = None if start is None else Period(start, _period_end_of(start, granularity))
     conflict = _conflicting(db, data, period, granularity)
     if conflict is not None:
         scope = (f"сотрудник #{conflict.employee_id}" if conflict.employee_id
@@ -503,7 +504,7 @@ def health(db: Session, on: Optional[dt.date] = None) -> dict:
         who = (f"сотрудник #{m.employee_id}" if m.employee_id
                else f"группа «{m.group}»" if m.group else "все")
         upcoming.append({"kind": "rule", "screen": "pay",
-                         "date": (m.date or m.period_start).isoformat(),
+                         "date": (m.date or m.period_start or day).isoformat(),   # одно из двух задано
                          "text": f"правило #{m.id}: {MODIFIER_TITLES.get(m.name, m.name)} = "
                                  f"{_mod_value_text(m.name, m.value)}, {who}"})
     upcoming.sort(key=lambda x: x["date"])
@@ -600,7 +601,7 @@ def resolve_rules(db: Session, employee_id: int, date: dt.date, name: Optional[s
     group = normalize_group(emp.schedule_group) or "Другие смены"
     code = row.code if row else ""
     day = Day(date, code or "В", int(row.plan_minutes) if row else 0, str(employee_id), group)
-    out = []
+    out: list[dict[str, Any]] = []
     for mod in ([name] if name else list(MODIFIER_NAMES)):
         if mod == MOD_COUNTS_IN_UT and code not in st.day_code_policy:
             out.append({"name": mod, "title": MODIFIER_TITLES[mod], "value": None, "text": "—",

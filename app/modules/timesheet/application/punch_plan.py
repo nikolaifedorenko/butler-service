@@ -35,7 +35,8 @@ def plan_for_date(db: Session, emp_id: int, today: dt.date,
         ScheduleShift.employee_id == emp_id, ScheduleShift.start_utc < hi,
         ScheduleShift.end_utc > lo).order_by(ScheduleShift.start_utc)).all()
     now = at_ts or local_now()
-    today_rows, y_rows = [], []
+    today_rows: list[tuple[dict, dt.datetime, dt.datetime]] = []
+    y_rows: list[tuple[dict, dt.datetime, dt.datetime]] = []
     for row in rows:
         start, end = to_local(row.start_utc), to_local(row.end_utc)
         # в ответ API идёт словарь (время — местное, строкой); моменты — рядом, для сравнений
@@ -75,11 +76,11 @@ def subintervals(db: Session, emp_id: int, day: dt.date) -> tuple:
     return expected_subintervals(merge_spans(spans), merged_abs, day)
 
 
-def _start(row: ScheduleShift) -> dt.datetime:
+def _start(row: ScheduleShift | ScheduleAbsence) -> dt.datetime:
     return row.start_utc
 
 
-def _end(row: ScheduleShift) -> dt.datetime:
+def _end(row: ScheduleShift | ScheduleAbsence) -> dt.datetime:
     return row.end_utc
 
 

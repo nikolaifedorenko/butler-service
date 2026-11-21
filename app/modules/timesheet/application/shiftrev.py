@@ -46,6 +46,19 @@ class ShiftView:
     __slots__ = ("id", "active", "sort_order", "archived_at", "is_revision", "revision_from",
                  "punch_in_allowed", "punch_out_allowed") + REV_FIELDS
 
+    # поля снимка (REV_FIELDS) — заполняются в __init__ через setattr
+    code: str
+    name: str
+    kind: str
+    start_time: str
+    end_time: str
+    overnight: bool
+    color: str
+    is_working: bool
+    counts_as_worked: bool
+    is_default_off: bool
+    doc_type: str
+
     def __init__(self, shift: ShiftType, values: Optional[dict] = None,
                  revision_from: Optional[dt.date] = None):
         self.id = shift.id

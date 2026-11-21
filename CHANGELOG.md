@@ -8,6 +8,11 @@ PR — https://github.com/nikolaifedorenko/butler-service/pull/<номер>.
 
 ## 21.11.2026
 
+### Долг типов: прикладной слой табеля
+* Из исключений mypy убран `timesheet.application`; в долге остался только `stays.application`.
+* `ShiftView` объявляет поля снимка смены (раньше — только через `setattr`); режим конвейера — `Literal["view", "close"]`;
+  длина примечания отметки — из типа колонки через `cast(String, …)`; переменные, переиспользованные под другой тип, переименованы.
+
 ### Долг типов: доска, номерной фонд, адаптеры табеля, домен броней
 * Из исключений mypy убраны `board.application`, `fund.application`, `stays.domain`, `timesheet.adapters`; в долге
   остались `stays.application` и `timesheet.application`.
