@@ -93,7 +93,7 @@ def _code_audit(db: Session, principal: Principal, code_id: int, before: dict, a
     audit(db, principal, "stays_vip_code", f"vip_code:{code_id}", {"diff": fund.changes(before, after)})
 
 
-def _code_before(db: Session, code_id: int | None) -> dict:
+def _code_state(db: Session, code_id: int | None) -> dict:
     row = db.get(VipCode, code_id) if code_id is not None else None
     return vip_codes.code_dict(row) if row else {}
 
@@ -101,25 +101,25 @@ def _code_before(db: Session, code_id: int | None) -> dict:
 @transactional
 def save_vip_code(db: Session, principal: Principal, data: dict, code_id: int | None) -> dict:
     """``data`` — тело запроса; при правке только заданные поля (остальные остаются прежними)."""
-    before = _code_before(db, code_id)
+    before = _code_state(db, code_id)
     rid = vip_codes.save_code(db, data, code_id)
-    after = vip_codes.code_dict(db.get(VipCode, rid))
+    after = _code_state(db, rid)
     _code_audit(db, principal, rid, before, after)
     return after
 
 
 @transactional
 def archive_vip_code(db: Session, principal: Principal, code_id: int, archived: bool) -> dict:
-    before = _code_before(db, code_id)
+    before = _code_state(db, code_id)
     vip_codes.archive_code(db, code_id, archived)
-    after = vip_codes.code_dict(db.get(VipCode, code_id))
+    after = _code_state(db, code_id)
     _code_audit(db, principal, code_id, before, after)
     return after
 
 
 @transactional
 def delete_vip_code(db: Session, principal: Principal, code_id: int) -> dict:
-    before = _code_before(db, code_id)
+    before = _code_state(db, code_id)
     vip_codes.delete_code(db, code_id, used_elsewhere=reservations.vip_code_in_use(db, code_id))
     _code_audit(db, principal, code_id, before, {k: None for k in before})
     return {"id": code_id}

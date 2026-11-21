@@ -187,6 +187,12 @@ def _main_on_arrival(occupants, check_in: dt.date) -> int | None:
                  if o["role"] == "main" and o["date_from"] <= check_in < o["date_to"]), None)
 
 
+def _guest_code(db: Session, guest_id: int | None) -> int | None:
+    """VIP-код из профиля гостя; гостя нет — кода нет."""
+    g = db.get(Guest, guest_id) if guest_id is not None else None
+    return g.vip_code_id if g is not None else None
+
+
 def _vip_code(db: Session, r: Reservation, doc: dict, rid: int | None) -> int | None:
     """Код брони (§3.1): ручной выбор в этом сохранении побеждает; иначе при создании и смене
     главного — код из профиля главного гостя, поверх прежнего; иначе прежний. Архивный код
@@ -196,13 +202,13 @@ def _vip_code(db: Session, r: Reservation, doc: dict, rid: int | None) -> int | 
     main = _main_on_arrival(doc["occupants"], doc["check_in"])
     if doc.get("vip_code_id") != prev:
         code = doc.get("vip_code_id")
-        own = db.get(Guest, main).vip_code_id if main is not None else None
+        own = _guest_code(db, main)
         if code != own:
             check_selectable(db, code, prev)
     elif rid is None or main != _main_on_arrival(
             [{"guest_id": o.guest_id, "role": o.role, "date_from": o.date_from, "date_to": o.date_to}
              for o in db.scalars(select(Occupant).where(Occupant.reservation_id == rid))], r.check_in):
-        code = db.get(Guest, main).vip_code_id if main is not None else None
+        code = _guest_code(db, main)
     else:
         code = prev
     return code
@@ -249,9 +255,10 @@ def save_reservation(db: Session, doc: dict, rid: int | None,
             raise ReservationInvalid("Новая бронь — предварительная или подтверждённая")
         before: dict = {}
     else:
-        r = db.get(Reservation, rid)
-        if r is None:
+        found = db.get(Reservation, rid)
+        if found is None:
             raise ReservationInvalid("Бронь не найдена")
+        r = found
         if r.version != expected_version:
             raise ReservationConflict()
         before = reservation_snapshot(db, r)
@@ -369,11 +376,11 @@ def _apply_pins(db: Session, r: Reservation, pins: dict | None) -> None:
                     a.pinned = False
                 continue
             for i in live.get(int(seg), []):
-                a = parts.get(i)
-                if a is None:
-                    a = Assignment(reservation_id=m.id, seg_index=i)
-                    db.add(a)
-                a.unit_id, a.pinned, a.pin_unit_id = uid, True, None
+                part = parts.get(i)
+                if part is None:
+                    part = Assignment(reservation_id=m.id, seg_index=i)
+                    db.add(part)
+                part.unit_id, part.pinned, part.pin_unit_id = uid, True, None
     db.flush()
 
 
@@ -521,7 +528,7 @@ def cohabit_candidates(db: Session, rid: int) -> list[dict]:
         Reservation.id != rid, Reservation.category_id == r.category_id,
         Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in < r.check_out,
         Reservation.check_out > r.check_in).order_by(Reservation.check_in, Reservation.id)))
-    mains = {}
+    mains: dict[int, int] = {}
     if rows:
         for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_([x.id for x in rows]),
                                                   Occupant.role == "main").order_by(Occupant.date_from)):
@@ -529,14 +536,15 @@ def cohabit_candidates(db: Session, rid: int) -> list[dict]:
     names = {g.id: short_name(g) for g in db.scalars(select(Guest).where(Guest.id.in_(set(mains.values()))))} \
         if mains else {}
     return [{"reservation_id": x.id, "number": x.number, "check_in": _d(x.check_in), "check_out": _d(x.check_out),
-             "group_id": x.group_id, "main_guest": names.get(mains.get(x.id), "")} for x in rows]
+             "group_id": x.group_id, "main_guest": names.get(mains.get(x.id, 0), "")} for x in rows]
 
 
 def join_group(db: Session, rids: list[int]) -> tuple[int, list[tuple[Reservation, dict]]]:
     """Совместное проживание одной операцией: брони встают в одну группу (существующую у
     кого-то из них или новую) — тот же путь, что правка брони, с проверками и переездами группы."""
-    res = [db.get(Reservation, rid) for rid in dict.fromkeys(rids)]
-    if len(res) < 2 or any(r is None for r in res):
+    found = [db.get(Reservation, rid) for rid in dict.fromkeys(rids)]
+    res = [r for r in found if r is not None]
+    if len(found) < 2 or len(res) != len(found):
         raise ReservationInvalid("Укажите хотя бы две брони")
     if any(r.status not in allocation.OCCUPYING for r in res):
         raise ReservationInvalid("Отменённую бронь и «не заехал» в группу не включить")

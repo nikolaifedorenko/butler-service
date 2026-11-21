@@ -50,12 +50,13 @@ def fund_match(snap: FundSnapshot, unit_id: int | None, category_id: int | None,
     if u is None and (f.group_ids or f.flag_ids or f.floor):
         return False
     cid = u.category_id if u is not None else category_id
-    cat = snap.categories.get(cid)
+    cat = snap.categories.get(cid) if cid is not None else None
+    # без объекта фильтры по узлу, флагам и этажу уже отсеяли выше — здесь u есть, когда они заданы
     return ((not f.group_ids or bool(set(f.group_ids) & set(snap.unit_path(unit_id))))
             and (not f.category_ids or cid in f.category_ids)
             and (not f.kind_ids or (cat is not None and cat.kind_id in f.kind_ids))
-            and (not f.flag_ids or set(f.flag_ids) <= u.flags)
-            and (not f.floor or u.floor == f.floor))
+            and (not f.flag_ids or (u is not None and set(f.flag_ids) <= u.flags))
+            and (not f.floor or (u is not None and u.floor == f.floor)))
 
 
 REMOVED_PARAMS = ("building", "category_id", "kind", "kinds", "vip")

@@ -185,7 +185,8 @@ def delete_block(db: Session, bid: int, version: int) -> dict:
 def shortage(state: allocation.AllocationState, bid: int) -> list[dict]:
     """Нехватка блока: диапазоны ночей, где объектов категории не хватило под слоты."""
     return [{"category_id": w.category_id, "first": dt.date.fromordinal(w.piece_index).isoformat(),
-             "last": dt.date.fromordinal(w.last).isoformat(), "missing": w.missing}
+             "last": dt.date.fromordinal(w.last if w.last is not None else w.piece_index).isoformat(),
+             "missing": w.missing}
             for w in state.warnings if w.kind == "block_short" and w.key == ("b", bid)]
 
 
@@ -213,7 +214,7 @@ class BlockQuery:
     def __post_init__(self) -> None:
         if (self.first is None) != (self.last is None):
             raise ViewError("Период задаётся парой first и last")
-        if self.first is not None and self.last < self.first:
+        if self.first is not None and self.last is not None and self.last < self.first:
             raise ViewError("Конец периода раньше начала")
         if self.sort not in SORTS:
             raise ViewError("Неизвестная колонка сортировки")
@@ -264,7 +265,7 @@ def list_blocks(db: Session, q: BlockQuery) -> dict:
     for b in blocks:
         grid = grids[b.id]
         if q.category_ids and not any(c in q.category_ids and any(
-                (q.first is None or q.first <= n <= q.last) for n in by) for c, by in grid.items()):
+                (q.first is None or q.last is None or q.first <= n <= q.last) for n in by) for c, by in grid.items()):
             continue
         if q.q.strip() and q.q.strip().lower() not in b.title.lower():
             continue

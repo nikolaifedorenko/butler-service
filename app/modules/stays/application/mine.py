@@ -11,6 +11,7 @@ domain/coverage.resolve_day), или кого он сам завёл через 
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 from itertools import groupby
 
 from sqlalchemy import and_, exists, func, or_, select, union
@@ -35,7 +36,7 @@ from app.modules.guests.application.vip_codes import code_texts
 
 from ..adapters.orm import CoverageGuest, CoverageLine, Logistics, Occupant, Reservation
 from ..domain.allocate import natural_key
-from ..domain.halfday import AM, PM, pos
+from ..domain.halfday import AM, PM, Piece, pos
 from ..ports.duty import DutyPort
 from . import allocation
 from .context import load_context
@@ -273,6 +274,11 @@ def mine_today(db: Session, employee_id: int) -> dict:
     return {"date": today.isoformat(), "reservations": out}
 
 
+def _seg_unit(asg: dict[tuple[int, int], int | None], rid: int) -> Callable[[Piece], tuple[int, int | None]]:
+    """Ключ полосы брони rid: сегмент и объект части."""
+    return lambda p: (p.seg_index, asg.get((rid, p.index)))
+
+
 def mine_month(db: Session, employee_id: int, first: dt.date, last: dt.date, duty: DutyPort) -> dict:
     """«Мой месяц»: свои брони периода полосами по половинкам суток (как на шахматке) — строки по
     объектам (обозначение по фонду дня), «без объекта» внизу; нагрузка батлера по дням из одного
@@ -293,8 +299,8 @@ def mine_month(db: Session, employee_id: int, first: dt.date, last: dt.date, dut
         main = next((o for o in mains if o.date_from <= on_day < o.date_to), mains[0] if mains else None)
         special = any(ctx.guests[o.guest_id].special for o in occ if o.guest_id in ctx.guests)
         # полоса — соседние части одного сегмента с тем же объектом (граница версии фонда не видна)
-        for (_seg, uid), run in groupby(ctx.segs[rid], key=lambda p, rid=rid: (p.seg_index, ctx.asg.get((rid, p.index)))):
-            run = list(run)
+        for (_seg, uid), group in groupby(ctx.segs[rid], key=_seg_unit(ctx.asg, rid)):
+            run = list(group)
             start, end = run[0].start_pos, run[-1].end_pos
             if end < lo or start > hi:
                 continue
@@ -347,7 +353,7 @@ def mine_guests(db: Session, employee_id: int, q: str = "", offset: int = 0, lim
                 nxt[gid] = min(nxt.get(gid, a), a)
     codes = code_texts(db) if any(g.vip_code_id for g in page) else {}
     rows = [{"guest_id": g.id, "name": full_name(g), "special": bool(g.special),
-             "vip_code": codes.get(g.vip_code_id, ("", False))[0],
+             "vip_code": codes.get(g.vip_code_id or 0, ("", False))[0],
              "last_stay": _iso(last.get(g.id)), "next_stay": _iso(nxt.get(g.id)),
              "stays": len(past.get(g.id, ()))} for g in page]
     return {"rows": rows, "total": total}

@@ -21,7 +21,7 @@ from app.modules.guests.application.guest_forms import FormerIn, GuestIn, GuestU
 
 from ..ports.duty import DutyPort
 from . import allocation, guest_merge, mine, reservations
-from .guest_access import own_guest, own_link, require_full
+from .guest_access import butler_id, own_guest, own_link, require_full
 from .guest_card import card
 from .previewed import run_previewed
 
@@ -120,13 +120,13 @@ def add_link(db: Session, principal: Principal, gid: int, payload: LinkIn) -> di
         # существующая вторая сторона и второй родитель — тоже свои: иначе связью «прямая связь»
         # батлер открыл бы себе чужой профиль (через состав брони); новый человек — свободно
         for other_id in (payload.guest_id, payload.also_parent_id):
-            if other_id is not None and not mine.owns_guest(db, principal.employee.id, other_id):
+            if other_id is not None and not mine.owns_guest(db, butler_id(principal), other_id):
                 raise Forbidden("Связать можно только со своим гостем или новым человеком")
     rows, other = guests.add_links(
         db, gid, payload.kind, other_id=payload.guest_id,
         new_guest=payload.new_guest.model_dump() if payload.new_guest else None, former=payload.former,
         other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id,
-        created_by=principal.employee.id if butler else None)    # заведённый батлером — его «свой»
+        created_by=butler_id(principal) if butler else None)    # заведённый батлером — его «свой»
     if payload.new_guest:
         audit(db, principal, "stays_guest", f"guest:{other}", {"created": payload.new_guest.model_dump()})
     for row in rows:

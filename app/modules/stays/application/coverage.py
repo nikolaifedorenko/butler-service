@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
+from typing import Literal
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -125,7 +126,8 @@ def apply_template(db: Session, scope: Scope, kind: str, butlers: list[int], fir
     if replace:
         delete_lines(db, [r.id for r in _same_scope(db, scope, days)])
     busy = _covered_days(db, members, scope, days)       # уже покрыты любой строкой, в т. ч. группы
-    plan = fill_template(kind, days, tuple(butlers), duty.duty(butlers, first, last), busy)
+    template: Literal["pair", "single"] = "pair" if kind == "pair" else "single"   # kind проверен выше
+    plan = fill_template(template, days, tuple(butlers), duty.duty(butlers, first, last), busy)
     for d, e in plan:
         _add_line(db, scope, d, e, "template")
     return plan
@@ -318,7 +320,7 @@ def replacement_list(db: Session, first: dt.date, last: dt.date, duty: DutyPort)
     out, seen = [], set()
     for d in ctx.days():
         for w in ctx.warnings(d):
-            if w.kind != "need_replacement":
+            if w.kind != "need_replacement" or w.reservation_id is None:
                 continue
             r = ctx.res[w.reservation_id]
             scope_key = ("g", r.group_id) if r.group_id is not None else ("r", r.id)
