@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -133,11 +133,11 @@ def effective_items(db: Session, area: NightArea) -> list[dict]:
                         "overridden": bool(ov is not None and ov.text),
                         "service_id": sid, "service_name": svc_names.get(sid or 0, ""),
                         "service_own": bool(ov is not None and ov.service_id)})
-    for it in db.scalars(select(ChecklistItem)
-                         .where(ChecklistItem.area_id == area.id, ChecklistItem.active.is_(True))
-                         .order_by(ChecklistItem.sort_order, ChecklistItem.id)):
-        out.append({"id": it.id, "src": "area", "text": it.text, "overridden": False,
-                    "service_id": it.service_id, "service_name": svc_names.get(it.service_id or 0, ""),
+    for own in db.scalars(select(ChecklistItem)
+                          .where(ChecklistItem.area_id == area.id, ChecklistItem.active.is_(True))
+                          .order_by(ChecklistItem.sort_order, ChecklistItem.id)):
+        out.append({"id": own.id, "src": "area", "text": own.text, "overridden": False,
+                    "service_id": own.service_id, "service_name": svc_names.get(own.service_id or 0, ""),
                     "service_own": False})
     return out
 
@@ -172,7 +172,7 @@ def ensure_report(db: Session, shift_d: dt.date, *, cars_step: bool = True) -> O
         snap = effective_items(db, area)
         section = NightAreaSection(
             report_id=report.id, area_id=area.id, name=area.name, category=area.category,
-            zone_id=area.zone_id, zone_name=zones.get(area.zone_id, area.category or ""),
+            zone_id=area.zone_id, zone_name=zones.get(area.zone_id or 0, area.category or ""),
             snapshot=snap, sort_order=order)
         db.add(section)
         db.flush()
@@ -287,7 +287,7 @@ def progress_of(sections: list[NightAreaSection]) -> dict:
 def section_dict(sec: NightAreaSection, *, with_items: bool = True) -> dict:
     items = sorted(sec.items, key=lambda x: (x.sort_order, x.id))
     answered = sum(1 for i in items if i.answer)
-    data = {
+    data: dict[str, Any] = {
         "id": sec.id, "area_id": sec.area_id, "name": sec.name, "category": sec.category,
         # зона — снимком: у старых отчётов zone_name пустой, тогда группируем по категории
         "zone_id": sec.zone_id, "zone_name": sec.zone_name or sec.category or "",
@@ -497,7 +497,7 @@ def car_checks_of(db, rep: NightReport) -> tuple[list[dict], list[dict]]:
 def report_dict(rep: NightReport, *, with_items: bool = True, db=None) -> dict:
     sections = sorted(rep.areas, key=lambda s: (s.sort_order, s.id))
     prog = progress_of(sections)
-    data = {
+    data: dict[str, Any] = {
         "id": rep.id, "date": rep.date.isoformat(), "shift_label": rep.shift_label,
         "status": rep.status, "result": rep.result,
         "result_title": {"full": "полный", "partial": "неполный"}.get(rep.result, "—"),

@@ -104,7 +104,7 @@ def family(db: Session, gid: int, *, full: bool) -> dict:
     def person(g: Guest) -> dict:
         out = {"id": g.id, "name": full_name(g) if full else f"{g.last_name} {g.first_name}".strip(),
                "gender": g.gender, "special": bool(g.special),
-               "vip_code": codes.get(g.vip_code_id, ("", False))[0]}
+               "vip_code": codes.get(g.vip_code_id, ("", False))[0] if g.vip_code_id else ""}
         if full:
             out |= {"phone": format_phone(g.phone), "birth_date": g.birth_date.isoformat() if g.birth_date else None}
         return out

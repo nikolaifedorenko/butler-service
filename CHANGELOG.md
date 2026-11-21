@@ -6,6 +6,18 @@
 
 PR — https://github.com/nikolaifedorenko/butler-service/pull/<номер>.
 
+## 21.11.2026
+
+### Проверка типов на всё приложение
+* mypy проверяет весь `app/`, а не только `timesheet/domain`. Исключения — пакеты с ещё не исправленными ошибками
+  (board/fund/stays application, stays domain, timesheet adapters/application) — перечислены в `pyproject.toml` как долг.
+* Исправлено найденное в ядре, bootstrap и модулях access, cars, employees, exchange, guests, jobs, night, notify, settings:
+  `Optional` без проверки, переиспользованные под другой тип переменные, неаннотированные словари ответов.
+  `core.db.affected_rows()` — число затронутых строк без обращения к `rowcount` у общего `Result`;
+  у `to_local`/`local_iso` перегрузки (непустой момент → непустой результат); `Principal.gate_permissions` — объявленное
+  поле (пустое множество, пока гейт прав не пройден).
+* Тесты, названные по этапам аудита, переименованы по предмету проверки (#220).
+
 ## 19.11.2026
 
 ### Доступность интерфейса (axe)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -133,7 +134,8 @@ def update_base(db: Session, principal: Principal, data: BaseIn) -> dict:
         dt.date.fromisoformat(data.anchor)
     except ValueError:
         raise Validation("Опорная дата должна быть в формате ГГГГ-ММ-ДД") from None
-    cfg = {"cycle": data.cycle, "anchor": data.anchor, "groups": data.groups or DEFAULT_BASE["groups"]}
+    cfg: dict[str, Any] = {"cycle": data.cycle, "anchor": data.anchor,
+                           "groups": data.groups or DEFAULT_BASE["groups"]}
     probe = local_date()
     for name, group in cfg["groups"].items():
         try:

@@ -91,7 +91,7 @@ def _children(parents: Parents) -> dict[int, list[int]]:
 
 def _walk(start: int, step) -> dict[int, tuple[int, ...]]:
     """Обход в ширину: человек → кратчайший путь от start (start включён)."""
-    paths = {start: (start,)}
+    paths: dict[int, tuple[int, ...]] = {start: (start,)}
     queue = deque([start])
     while queue:
         cur = queue.popleft()

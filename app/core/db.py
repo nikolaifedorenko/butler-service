@@ -123,6 +123,12 @@ def transactional[**P, R](operation: Callable[Concatenate[Session, P], R]) -> Ca
     return run
 
 
+def affected_rows(result: Any) -> int:
+    """Сколько строк затронул INSERT/UPDATE/DELETE. ``Session.execute`` объявлен как возвращающий
+    ``Result``, а ``rowcount`` есть только у его подкласса ``CursorResult`` — тот и приходит."""
+    return getattr(result, "rowcount", 0) or 0
+
+
 def lock_employee(db, employee_id: int) -> None:
     """Сериализовать записи входных данных сотрудника (отметки, Табель, График, банк) с
     закрытием и пересчётом его периода — до конца текущей транзакции.

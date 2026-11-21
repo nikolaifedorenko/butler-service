@@ -155,7 +155,7 @@ def list_areas(db: Session) -> list[dict]:
             ZoneChecklistItem.zone_id == area.zone_id, ZoneChecklistItem.active.is_(True))))) if area.zone_id else 0
         own_active = len([i for i in items if i["active"]])
         out.append({"id": area.id, "name": area.name, "category": area.category, "zone_id": area.zone_id,
-                    "zone_name": zones.get(area.zone_id, area.category or ""),
+                    "zone_name": zones.get(area.zone_id or 0, area.category or ""),
                     "sort_order": area.sort_order, "active": area.active,
                     "items": items, "items_total": own_active, "effective_total": zone_items + own_active})
     return out

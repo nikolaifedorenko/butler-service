@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
@@ -154,9 +155,10 @@ def save_guest(db: Session, data: dict, gid: int | None) -> tuple[Guest, dict]:
         db.add(g)
         before: dict = {}
     else:
-        g = db.get(Guest, gid)
-        if g is None:
+        found = db.get(Guest, gid)
+        if found is None:
             raise GuestError("Гость не найден")
+        g = found
         before = guest_dict(g)
     if "vip_code_id" in data:
         check_selectable(db, data["vip_code_id"], g.vip_code_id)       # архивный, уже стоящий, оставить можно
@@ -210,7 +212,7 @@ def links_of(db: Session, guest_id: int) -> list[dict]:
         label = _link_label(r, mine_is_a, g.gender if g else "")
         out.append({"id": r.id, "guest_id": other, "kind": r.kind, "former": r.former, "label": label,
                     "name": short_name(g) if g else "", "special": bool(g and g.special),
-                    "vip_code": texts.get(g.vip_code_id, ("", False))[0] if g else ""})
+                    "vip_code": texts.get(g.vip_code_id, ("", False))[0] if g and g.vip_code_id else ""})
     return out
 
 
@@ -255,6 +257,7 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
         g = save_guest(db, {"middle_name": "", "phone": "", "email": "", "note": "", **new_guest}, None)[0]
         g.created_by_employee_id = created_by
         other_id = g.id
+    assert other_id is not None     # ровно один из other_id / new_guest — проверено в начале
     a, b = (other_id, guest_id) if other_is_parent else (guest_id, other_id)
     rows = [_add_link_locked(db, a, b, kind, former)]
     if also_parent_id is not None:
@@ -515,6 +518,7 @@ def not_carried(dropped: dict, kept: dict) -> dict:
     """Что из профиля дубля не перешло оставляемому (значения keep победили) — только это
     пишется в журнал: персональных данных в аудите — не больше необходимого."""
     out: dict = {}
+    lost: Any
     for k, v in dropped.items():
         if k in ("id", "phone_display") or v in (None, "", [], {}) or v is False:
             continue

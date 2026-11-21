@@ -55,9 +55,9 @@ def attempt_key(ip: str, username: str) -> str:
 
 def _too_many_attempts(db: Session, ip: str, username: str) -> bool:
     recent = select(func.count()).select_from(LoginAttempt).where(LoginAttempt.ts >= _window_start())
-    if db.scalar(recent.where(LoginAttempt.key == attempt_key(ip, username))) >= LOGIN_MAX_ATTEMPTS:
+    if (db.scalar(recent.where(LoginAttempt.key == attempt_key(ip, username))) or 0) >= LOGIN_MAX_ATTEMPTS:
         return True
-    return db.scalar(recent.where(LoginAttempt.key.like(f"ip:{ip}|%"))) >= LOGIN_MAX_PER_IP
+    return (db.scalar(recent.where(LoginAttempt.key.like(f"ip:{ip}|%"))) or 0) >= LOGIN_MAX_PER_IP
 
 
 def _record_failure(db: Session, ip: str, username: str) -> None:

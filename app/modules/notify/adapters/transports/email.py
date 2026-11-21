@@ -31,6 +31,7 @@ Mailer = Callable[[object, EmailMessage], None]
 
 def smtp_mailer(cfg, msg: EmailMessage) -> None:
     """Отправитель по умолчанию: smtplib из стандартной библиотеки."""
+    server: smtplib.SMTP
     try:
         if cfg.smtp_security == "ssl":
             server = smtplib.SMTP_SSL(cfg.smtp_host, cfg.smtp_port, timeout=cfg.timeout)

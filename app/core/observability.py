@@ -53,10 +53,9 @@ async def csrf_protection(request: Request, call_next):
     """
     if not settings.csrf_enabled:
         return await call_next(request)
-    token = request.cookies.get(settings.csrf_cookie_name)
-    fresh_cookie = token is None
-    if fresh_cookie:
-        token = new_csrf_token()
+    cookie = request.cookies.get(settings.csrf_cookie_name)
+    fresh_cookie = cookie is None
+    token = new_csrf_token() if cookie is None else cookie
     if request.method not in _CSRF_SAFE_METHODS and request.url.path not in _CSRF_EXEMPT_PATHS:
         header = request.headers.get("x-csrf-token", "")
         header_b = header.encode("utf-8", "surrogateescape")

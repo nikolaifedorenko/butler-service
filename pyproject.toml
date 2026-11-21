@@ -82,13 +82,31 @@ known-first-party = ["app"]
 
 [tool.mypy]
 # проверка типов (решение владельца 25.10.2026): сначала ядро расчёта — чистый домен без
-# фреймворков, где ошибка типа = ошибка в деньгах сотрудников. Расширять — по слоям.
+# фреймворков, где ошибка типа = ошибка в деньгах сотрудников. С 21.11.2026 проверяется всё
+# приложение; пакеты из списка долга ниже пока исключены и вычищаются по одному.
 python_version = "3.15"
-files = ["app/modules/timesheet/domain"]
+files = ["app"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unreachable = false
 strict_equality = true
+
+[[tool.mypy.overrides]]
+# у openpyxl нет встроенных аннотаций типов
+module = ["openpyxl", "openpyxl.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# долг типов: ошибки ещё не вычищены. Пакет исправили — убрать его отсюда
+module = [
+    "app.modules.board.application.*",
+    "app.modules.fund.application.*",
+    "app.modules.stays.application.*",
+    "app.modules.stays.domain.*",
+    "app.modules.timesheet.adapters.*",
+    "app.modules.timesheet.application.*",
+]
+ignore_errors = true
 
 [tool.coverage.run]
 source = ["app"]
