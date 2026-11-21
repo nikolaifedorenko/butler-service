@@ -44,8 +44,8 @@ def print_copy(path) -> io.BytesIO:
     бы снимок с телефона лёжа."""
     from PIL import Image, ImageOps
 
-    with Image.open(path) as im:
-        im = ImageOps.exif_transpose(im)
+    with Image.open(path) as original:
+        im = ImageOps.exif_transpose(original)
         im.thumbnail((PRINT_MAX_PX, PRINT_MAX_PX))
         buf = io.BytesIO()
         im.convert("RGB").save(buf, "JPEG", quality=85)
@@ -58,6 +58,7 @@ def _picture(cell, spec: Picture) -> bool:
     target = Path(spec.path) if spec.path else None
     ok = target is not None and target.is_file()
     if ok:
+        source: io.BytesIO | str
         try:
             source = print_copy(target)
         except Exception:

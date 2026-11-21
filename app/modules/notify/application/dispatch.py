@@ -24,6 +24,7 @@ from typing import Optional, Sequence
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.core.db import affected_rows
 from app.core.media import ALLOWED_EXT, ALLOWED_VIDEO_EXT, BASE_DIR, Photo
 from app.core.time import local_iso, local_now
 
@@ -188,10 +189,10 @@ def queue_group(db: Session, *, domain: str, ref_id: int, actor_id: Optional[int
 def claim(db: Session, row_id: int, from_status: str) -> bool:
     """Взять строку журнала в отправку: from_status → sending одним UPDATE и commit ДО сети.
     Второй отправитель (двойной повтор, фоновая доотправка, другой воркер) получит False."""
-    taken = db.execute(update(NotifyDispatch)
-                       .where(NotifyDispatch.id == row_id, NotifyDispatch.status == from_status)
-                       .values(status=SENDING, sending_at=local_now())
-                       .execution_options(synchronize_session=False)).rowcount
+    taken = affected_rows(db.execute(update(NotifyDispatch)
+                          .where(NotifyDispatch.id == row_id, NotifyDispatch.status == from_status)
+                          .values(status=SENDING, sending_at=local_now())
+                          .execution_options(synchronize_session=False)))
     db.commit()
     return taken == 1
 
@@ -245,11 +246,11 @@ def fail_stale_sending(db: Session) -> int:
     """Строки, застрявшие в sending (процесс упал посреди доставки): дошло ли сообщение —
     неизвестно. Автоматически не повторяем — дубль службе хуже; помечаем ошибкой, чтобы
     повторить вручную после проверки."""
-    n = db.execute(update(NotifyDispatch)
-                   .where(NotifyDispatch.status == SENDING,
-                          NotifyDispatch.sending_at < local_now() - STALE_SENDING)
-                   .values(status="failed", error=UNKNOWN_DELIVERY,
-                           attempts=NotifyDispatch.attempts + 1)
-                   .execution_options(synchronize_session=False)).rowcount
+    n = affected_rows(db.execute(update(NotifyDispatch)
+                      .where(NotifyDispatch.status == SENDING,
+                             NotifyDispatch.sending_at < local_now() - STALE_SENDING)
+                      .values(status="failed", error=UNKNOWN_DELIVERY,
+                              attempts=NotifyDispatch.attempts + 1)
+                      .execution_options(synchronize_session=False)))
     db.commit()
     return n

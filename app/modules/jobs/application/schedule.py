@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core.db import affected_rows
 from app.core.manifest import JobSpec
 from app.core.time import now as _now
 
@@ -25,14 +26,14 @@ def sync(db: Session, specs: Sequence[JobSpec], *, now: Optional[dt.datetime] = 
     """Привести расписание к списку задач с периодом: новые — запускаются сразу, изменённый период
     обновляется, исчезнувшие — отключаются (история остаётся)."""
     moment = now or _now()
-    wanted = {s.name: s for s in specs if s.every_seconds}
+    wanted = {s.name: s.every_seconds for s in specs if s.every_seconds}
     have = {r.name: r for r in db.scalars(select(Schedule))}
-    for name, spec in wanted.items():
+    for name, every in wanted.items():
         row = have.get(name)
         if row is None:
-            db.add(Schedule(name=name, every_seconds=spec.every_seconds, next_run_at=moment, enabled=True))
+            db.add(Schedule(name=name, every_seconds=every, next_run_at=moment, enabled=True))
         else:
-            row.every_seconds = spec.every_seconds
+            row.every_seconds = every
             row.enabled = True
     for name, row in have.items():
         if name not in wanted:
@@ -55,7 +56,7 @@ def tick(db: Session, specs: Sequence[JobSpec], *, now: Optional[dt.datetime] = 
                 max_attempts=spec.max_attempts, schedule_name=row.name, last_error="", created_at=moment,
             ).on_conflict_do_nothing(index_elements=["schedule_name"],
                                      index_where=(Job.schedule_name.is_not(None)) & Job.status.in_(("queued", "running"))))
-            put += added.rowcount or 0
+            put += affected_rows(added)
         row.last_run_at = moment
         row.next_run_at = moment + dt.timedelta(seconds=row.every_seconds)
     db.commit()

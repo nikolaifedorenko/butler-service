@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -71,7 +72,7 @@ SHIFT_TYPES = [
     ("TIMEOFF_HOURS", "Отпросился (выходной за часы)", "absence", "", "", False, "#0e9aa7", 110, False, False, False),
 ]
 
-SHIFT_EXTRA = {
+SHIFT_EXTRA: dict[str, dict[str, Any]] = {
     "VACATION": {"doc_type": "vacation_paid", "punch_in_allowed": False, "punch_out_allowed": False},
     "VACATION_UNPAID": {"doc_type": "vacation_unpaid", "punch_in_allowed": False,
                         "punch_out_allowed": False},
@@ -369,30 +370,30 @@ def _fill_empty(db: Session) -> None:
             if row is not None:                    # ручная строка Табеля (отсутствие/код)
                 policy = defaults.day_code_policy.get(row.code)
                 works = works and policy is not None and policy.carries_hours
-            if works:
+            if works and window is not None:
                 midnight = local_midnight(d)
-                start = midnight + dt.timedelta(minutes=window.start_minute)
-                end = midnight + dt.timedelta(minutes=window.end_minute)
-                if start <= now < end:                      # смена идёт прямо сейчас
-                    add_punch(emp.id, start + dt.timedelta(minutes=rnd.randint(-8, 12)), "IN")
-                elif end <= now:
+                shift_start = midnight + dt.timedelta(minutes=window.start_minute)
+                shift_end = midnight + dt.timedelta(minutes=window.end_minute)
+                if shift_start <= now < shift_end:          # смена идёт прямо сейчас
+                    add_punch(emp.id, shift_start + dt.timedelta(minutes=rnd.randint(-8, 12)), "IN")
+                elif shift_end <= now:
                     dice = rnd.random()
                     late_in = rnd.randint(3, 27) if dice < 0.3 else rnd.randint(-10, 2)
                     out_shift = rnd.choice([-95, -70, -40, -15, 0, 10, 25, 45, 80, 130])
-                    add_punch(emp.id, start + dt.timedelta(minutes=late_in), "IN")
+                    add_punch(emp.id, shift_start + dt.timedelta(minutes=late_in), "IN")
                     note = rnd.choice(ot_descriptions) if out_shift >= 45 else ""
-                    add_punch(emp.id, end + dt.timedelta(minutes=out_shift), "OUT", note)
+                    add_punch(emp.id, shift_end + dt.timedelta(minutes=out_shift), "OUT", note)
                     # аномалии для демонстрации: забытый уход и «не пришёл»
                     if emp.full_name.startswith("Фёдоров") and d == today - dt.timedelta(days=4):
                         db.query(Punch).filter(
-                            Punch.employee_id == emp.id, Punch.ts >= end,
-                            Punch.ts <= end + dt.timedelta(hours=6),
+                            Punch.employee_id == emp.id, Punch.ts >= shift_end,
+                            Punch.ts <= shift_end + dt.timedelta(hours=6),
                             Punch.kind == "OUT").delete()
                     if emp.full_name.startswith("Смирнов") and d == today - dt.timedelta(days=2):
                         db.query(Punch).filter(
                             Punch.employee_id == emp.id,
-                            Punch.ts >= start - dt.timedelta(hours=2),
-                            Punch.ts <= end + dt.timedelta(hours=6)).delete()
+                            Punch.ts >= shift_start - dt.timedelta(hours=2),
+                            Punch.ts <= shift_end + dt.timedelta(hours=6)).delete()
             d += dt.timedelta(days=1)
     db.flush()
 

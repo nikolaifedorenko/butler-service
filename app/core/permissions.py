@@ -76,7 +76,7 @@ def principal_permissions(db: Session, principal: Principal) -> set[str]:
 
 
 def has_perm(db: Session, principal: Optional[Principal], key: str) -> bool:
-    return bool(principal) and key in principal_permissions(db, principal)
+    return principal is not None and key in principal_permissions(db, principal)
 
 
 def require_perm(*keys: str):

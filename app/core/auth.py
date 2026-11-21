@@ -6,7 +6,7 @@ core/auth_guards.py, журнал — в core/audit.py.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Request, status
@@ -25,6 +25,8 @@ class Principal:
     employee: Optional[Any]       # people.Employee — ядро не знает модели модулей
     impersonated: bool = False
     session_id: Optional[int] = None   # запись user_sessions, по которой вошли (None — Principal собран не из cookie)
+    # права, проверенные гейтом require_perm, — для чтений в том же запросе; пусто — гейт не проходили
+    gate_permissions: set[str] = field(default_factory=set)
 
     @property
     def role(self) -> str:

@@ -40,7 +40,7 @@ def group_by_service(db: Session, rows: list[dict]) -> list[dict]:
         sid = row.get("service_id")
         g = groups.get(sid)
         if g is None:
-            svc = svcs.get(sid)
+            svc = svcs.get(sid) if sid is not None else None
             chats = service_chat_ids(svc) if svc is not None else []
             to = split_addresses(svc.email_to) if svc is not None else []
             cc = split_addresses(svc.email_copy) if svc is not None else []

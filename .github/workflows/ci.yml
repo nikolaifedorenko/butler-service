@@ -79,7 +79,7 @@ jobs:
           python -m coverage report --skip-covered --skip-empty --fail-under=90 | tail -3
           python -m coverage report --include='app/modules/timesheet/domain/*' --fail-under=95 | tail -1
 
-      - name: Типы ядра расчёта (mypy, [tool.mypy] в pyproject.toml)
+      - name: Типы приложения (mypy, [tool.mypy] в pyproject.toml)
         run: python -m mypy
 
       - name: Версии статики согласованы (index.html ↔ sw.js)

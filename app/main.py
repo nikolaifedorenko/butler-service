@@ -193,7 +193,7 @@ def schema_report() -> dict:
             if column.name not in have:
                 missing.append(f"{table.name}.{column.name}")
         have_idx = {i["name"] for i in insp.get_indexes(table.name)}
-        for index in sorted((i for i in table.indexes if i.unique and i.name), key=lambda i: i.name):
+        for index in sorted((i for i in table.indexes if i.unique and i.name), key=lambda i: str(i.name)):
             if index.name not in have_idx:
                 sql = str(CreateIndex(index).compile(dialect=engine.dialect)).strip()
                 missing_indexes.append(f"индекс {index.name} ({table.name}: "

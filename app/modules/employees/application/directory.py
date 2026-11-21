@@ -106,10 +106,10 @@ def cars_by_employee(db: Session, employee_ids: list[int]) -> dict[int, Car]:
     if not employee_ids:
         return {}
     return {c.assigned_to: c for c in db.scalars(
-        select(Car).where(Car.assigned_to.in_(employee_ids)))}
+        select(Car).where(Car.assigned_to.in_(employee_ids))) if c.assigned_to is not None}
 
 
-def _guard_supervisor(db: Session, principal: Principal, new_role: str,
+def _guard_supervisor(db: Session, principal: Principal, new_role: Optional[str],
                       target_user: Optional[User]) -> None:
     can_manage_user(db, principal, target_user, new_role)
 
@@ -149,8 +149,8 @@ class EmployeeIn(BaseModel):
 
 
 def _sync_contacts(db: Session, emp: Employee, contacts: list[ContactIn]) -> None:
-    for c in list(emp.contacts):
-        db.delete(c)
+    for old in list(emp.contacts):
+        db.delete(old)
     db.flush()
     for c in contacts:
         if c.name.strip():

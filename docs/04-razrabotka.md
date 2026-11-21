@@ -69,7 +69,8 @@ python -m ruff check .                         # линтер Python
 
 ## 4.5 CI
 
-`.github/workflows/ci.yml`, четыре задания: Python (ruff, mypy ядра расчёта, pytest с покрытием,
+`.github/workflows/ci.yml`, четыре задания: Python (ruff, mypy всего `app/` — пакеты с ещё не вычищенными
+ошибками перечислены в `pyproject.toml` как долг, pytest с покрытием,
 контракты, OpenAPI, самодиагностика схемы, `pip-audit`), JavaScript (синтаксис, `npm audit`,
 ESLint, Playwright (обход разделов, сценарии)), сборка Docker-образа, gitleaks.
 

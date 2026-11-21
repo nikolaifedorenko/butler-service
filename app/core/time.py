@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import overload
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import DateTime
@@ -28,6 +29,12 @@ def now() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
 
 
+@overload
+def to_local(moment: dt.datetime) -> dt.datetime: ...
+@overload
+def to_local(moment: None) -> None: ...
+@overload
+def to_local(moment: dt.datetime | None) -> dt.datetime | None: ...
 def to_local(moment: dt.datetime | None) -> dt.datetime | None:
     """Момент в поясе объекта (с поясом)."""
     return None if moment is None else moment.astimezone(TZ)
@@ -55,6 +62,12 @@ def local_midnight(day: dt.date) -> dt.datetime:
     return dt.datetime.combine(day, dt.time(0), TZ)
 
 
+@overload
+def local_iso(moment: dt.datetime, timespec: str = "seconds") -> str: ...
+@overload
+def local_iso(moment: None, timespec: str = "seconds") -> None: ...
+@overload
+def local_iso(moment: dt.datetime | None, timespec: str = "seconds") -> str | None: ...
 def local_iso(moment: dt.datetime | None, timespec: str = "seconds") -> str | None:
     """Строка времени для API: местное время объекта без смещения («2026-11-12T10:30:00»)."""
     return None if moment is None else moment.astimezone(TZ).replace(tzinfo=None).isoformat(timespec=timespec)

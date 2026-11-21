@@ -15,7 +15,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.core.audit import audit
 from app.core.auth import Principal
-from app.core.db import plain_json, transactional
+from app.core.db import affected_rows, plain_json, transactional
 from app.core.errors import Forbidden, NotFound, Rejected
 from app.core.media import UploadRef, photos_of, save_photo_ref
 from app.core.permissions import has_perm, principal_permissions
@@ -240,7 +240,7 @@ def take_car(db: Session, principal: Principal, car_id: int, *, ack_assigned: bo
     # CONC-01: два «взять» одного кара — проходит тот, чей UPDATE первым застал прочитанный статус
     claimed = db.execute(update(Car).where(Car.id == car.id, Car.status == car.status)
                          .values(status="busy").execution_options(synchronize_session=False))
-    if claimed.rowcount != 1:
+    if affected_rows(claimed) != 1:
         raise CarConflict("Кар только что взял другой сотрудник — обновите экран")
     car.status = "busy"
     car.on_charge = False
@@ -601,7 +601,7 @@ def night_cars_state(db: Session, report) -> dict:
     out = []
     for car in db.scalars(select(Car).where(Car.active.is_(True)).order_by(Car.number)):
         ch = checked.get(car.id)
-        entry = {"car": car_dict(car), "checked": ch is not None, "check": None}
+        entry: dict[str, Any] = {"car": car_dict(car), "checked": ch is not None, "check": None}
         if ch is not None:
             entry["check"] = {
                 "id": ch.id, "found": bool(ch.found), "location": ch.location or "",
