@@ -8,6 +8,14 @@ PR — https://github.com/nikolaifedorenko/butler-service/pull/<номер>.
 
 ## 21.11.2026
 
+### Долг типов: доска, номерной фонд, адаптеры табеля, домен броней
+* Из исключений mypy убраны `board.application`, `fund.application`, `stays.domain`, `timesheet.adapters`; в долге
+  остались `stays.application` и `timesheet.application`.
+* `visibility.required_level()` — уровень видимости для экранов размещения с отказом 403 вместо ошибки сервера,
+  если уровня нет; своя бронь батлера по-прежнему открывается целиком.
+* `SqlSettlementStore.save_result` получил значение `step_minutes` по умолчанию, как в порте; сохранение категории
+  и узла фонда возвращает id из строки состояния; переменные, переиспользованные под другой тип, переименованы.
+
 ### Проверка типов на всё приложение
 * mypy проверяет весь `app/`, а не только `timesheet/domain`. Исключения — пакеты с ещё не исправленными ошибками
   (board/fund/stays application, stays domain, timesheet adapters/application) — перечислены в `pyproject.toml` как долг.

@@ -46,15 +46,14 @@ def _modifier_rows(db: Session, period: Period, granularity: str) -> list[dict]:
         (DayModifier.period_start <= period.end) & (DayModifier.period_start.is_not(None)))
     ).order_by(DayModifier.id))
     for m in rows:
-        if m.period_start is not None and not (m.period_start <= period.end
-                                               and _period_end(m, granularity) >= period.start):
+        start = m.period_start
+        if start is not None and not (start <= period.end and _period_end(start, granularity) >= period.start):
             continue
         out.append({"name": m.name, "value": m.value,
                     "employee_id": m.employee_id, "group": m.group or None,
                     "day": m.date.isoformat() if m.date else None,
-                    "period_start": m.period_start.isoformat() if m.period_start else None,
-                    "period_end": _period_end(m, granularity).isoformat()
-                    if m.period_start else None})
+                    "period_start": start.isoformat() if start else None,
+                    "period_end": _period_end(start, granularity).isoformat() if start else None})
     for d in db.scalars(select(DoublePayDay).where(DoublePayDay.date >= period.start,
                                                    DoublePayDay.date <= period.end)):
         for group in SCOPE_GROUPS.get(d.scope, (None,)):
@@ -75,9 +74,8 @@ def _month_end(start: dt.date) -> dt.date:
     return nxt - dt.timedelta(days=1)
 
 
-def _period_end(m: DayModifier, granularity: str) -> dt.date:
-    """Конец периода записи: месяц либо половина месяца по гранулярности (R36)."""
-    start = m.period_start
+def _period_end(start: dt.date, granularity: str) -> dt.date:
+    """Конец периода записи, начатого start: месяц либо половина месяца по гранулярности (R36)."""
     if start.day == 16:
         return _month_end(start)
     if start.day == 1 and granularity != "month":

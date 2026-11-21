@@ -15,6 +15,7 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
+from app.core.errors import Forbidden
 from app.core.permissions import principal_permissions
 
 Level = Literal["occupancy", "names", "full"]
@@ -36,6 +37,15 @@ def level_for(db: Session, principal: Principal) -> Level | None:
     if "stays.occupancy" in perms:
         return "occupancy"
     return None
+
+
+def required_level(db: Session, principal: Principal) -> Level:
+    """Уровень для экранов размещения. Без права на них — отказ (обычно раньше отсекает гейт
+    маршрута; без этой проверки отсутствие уровня стало бы ошибкой сервера в сериализаторе)."""
+    level = level_for(db, principal)
+    if level is None:
+        raise Forbidden("Нет права на просмотр размещения")
+    return level
 
 
 def at_least(level: Level | None, needed: Level) -> bool:

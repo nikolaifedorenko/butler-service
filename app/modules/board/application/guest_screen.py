@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
@@ -39,14 +40,14 @@ def search(db: Session, principal: Principal, q: str, mine_only: bool) -> list[d
     codes = vip_codes.code_texts(db) if any(g.vip_code_id for g in found) else {}
     return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
              "middle_name": g.middle_name, "special": bool(g.special),
-             "vip_code_id": g.vip_code_id, "vip_code": codes.get(g.vip_code_id, ("", False))[0],
+             "vip_code_id": g.vip_code_id, "vip_code": codes.get(g.vip_code_id or 0, ("", False))[0],
              "short": guests.short_name(g)}
             for g in found]
 
 
 def tab(db: Session, principal: Principal, *, q: str, special: bool, vip_code_id: int | None,
         stayed_from: dt.date | None, stayed_to: dt.date | None, birthday_days: int | None, sort: str,
-        direction: str, offset: int, limit: int) -> dict:
+        direction: Literal["asc", "desc"], offset: int, limit: int) -> dict:
     """Вкладка «Гости»: только полный уровень, остальным — 403; затем проверка самого запроса (422)."""
     require_full(db, principal)
     query = guests_list.GuestQuery(q, special, vip_code_id, stayed_from, stayed_to, birthday_days, sort,

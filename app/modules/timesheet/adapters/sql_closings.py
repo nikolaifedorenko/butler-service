@@ -83,7 +83,7 @@ class SqlSettlementStore:
 
     def save_result(self, employee_id: str, period: Period, result: SettleResult,
                     flags: FlagsResult, inputs_snapshot: ClosingInputs,
-                    settings_versions: Sequence[str], step_minutes: int) -> None:
+                    settings_versions: Sequence[str], step_minutes: int = 60) -> None:
         row = self._row(employee_id, period)
         if row is None:
             row = PeriodClosing(employee_id=emp_pk(employee_id), period_start=period.start,

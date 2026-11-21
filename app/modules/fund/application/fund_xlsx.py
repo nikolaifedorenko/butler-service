@@ -288,7 +288,7 @@ def parse_fund(data: bytes, known_unit_ids: set[int] | None = None) -> tuple[Par
 
 def _parse(wb, known_unit_ids: set[int] | None, ctx: _Ctx) -> tuple[ParsedFund | None, list[FileError]]:
     if SHEET_TREE in wb.sheets:           # прежний формат: «ID | путь узла | порядок» без «Родителя»
-        head = next(wb.rows(SHEET_TREE, max_row=1, max_col=4), ())
+        head = tuple(next(wb.rows(SHEET_TREE, max_row=1, max_col=4), ()))
         if len(head) < 3 or not _text(head[2]).lower().startswith("родитель"):
             ctx.err(SHEET_TREE, 1, "старый формат файла: нет колонки «Родитель» — выгрузите фонд заново")
             return None, ctx.errors

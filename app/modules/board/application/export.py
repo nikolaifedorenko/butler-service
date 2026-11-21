@@ -14,6 +14,7 @@ from app.modules.stays.application.catalog import Logistics, Reservation
 from app.modules.stays.application.context import load_context
 from app.modules.stays.application.reservations import STATUS_TITLES
 from app.modules.stays.application.rules import PM, pos
+from app.modules.stays.application.visibility import Level
 
 from .views import BoardFilters, check_window, units_board
 
@@ -36,13 +37,13 @@ def occupancy_counts(board: dict, days: list[dt.date]) -> dict[str, dict[str, in
 
 def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full", "anon"]) -> bytes:
     days = check_window(first, last)
-    level = "full" if kind == "full" else "occupancy"
+    level: Level = "full" if kind == "full" else "occupancy"
     board = units_board(db, first, last, BoardFilters(), level)
     day_titles = [d.strftime("%d.%m") for d in days]
 
     grid = []
     for u in board["units"]:
-        cells = []
+        cells: list[Cell | None] = []
         for d in days:
             p = pos(d, PM)
             bar = next((b for b in board["bars"] if b["unit_id"] == u["unit_id"] and b["start_pos"] <= p <= b["end_pos"]), None)
@@ -62,7 +63,9 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     labels = {u["unit_id"]: u for u in board["units"]}
     rids = sorted({b["reservation_id"] for b in board["bars"]})
     res = {r.id: r for r in db.scalars(select(Reservation).where(Reservation.id.in_(rids)))} if rids else {}
-    butlers, logistics, occupants = {}, {}, {}
+    butlers: dict[int, dict[str, list[str]]] = {}
+    logistics: dict[int, list[str]] = {}
+    occupants: dict[int, list[str]] = {}
     if kind == "full" and rids:
         ctx = load_context(db, first, last, None)
         for d in ctx.days():

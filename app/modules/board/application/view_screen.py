@@ -15,7 +15,7 @@ from app.modules.guests.application import guests
 from app.modules.guests.application.catalog import Guest
 from app.modules.stays.application import history, reservations
 from app.modules.stays.application.guest_access import my_reservations, own_guest
-from app.modules.stays.application.visibility import level_for
+from app.modules.stays.application.visibility import Level, required_level
 from app.modules.stays.ports.duty import DutyPort
 
 from . import views
@@ -23,14 +23,20 @@ from . import views
 
 def units_board(db: Session, principal: Principal, first: dt.date, last: dt.date, f: views.BoardFilters) -> dict:
     """Шахматка объектов: полосы броней, блоки, OOO; поля — по уровню видимости."""
-    return views.units_board(db, first, last, f, level_for(db, principal), my_reservations(db, principal))
+    return views.units_board(db, first, last, f, required_level(db, principal), my_reservations(db, principal))
+
+
+def _level_for_reservation(db: Session, principal: Principal, rid: int,
+                           mine_ids: set[int] | None) -> Level:
+    """Своя бронь батлера — целиком (часть 4 §6), даже без общего уровня; иначе уровень по правам."""
+    if mine_ids is not None and rid in mine_ids:
+        return "full"
+    return required_level(db, principal)
 
 
 def reservation_card(db: Session, principal: Principal, rid: int, duty: DutyPort) -> dict:
-    level = level_for(db, principal)
     mine_ids = my_reservations(db, principal)
-    if mine_ids is not None and rid in mine_ids:
-        level = "full"                              # своя бронь — полная карточка (часть 4 §6)
+    level = _level_for_reservation(db, principal, rid, mine_ids)
     try:
         card = views.reservation_card(db, rid, level, duty)
     except LookupError as e:
@@ -43,11 +49,8 @@ def reservation_card(db: Session, principal: Principal, rid: int, duty: DutyPort
 
 
 def reservation_history(db: Session, principal: Principal, rid: int) -> list[dict]:
-    level = level_for(db, principal)
     mine_ids = my_reservations(db, principal)
-    if mine_ids is not None and rid in mine_ids:
-        level = "full"                              # своя бронь — история целиком, как карточка (часть 4 §6)
-    return history.reservation_history(db, rid, level)
+    return history.reservation_history(db, rid, _level_for_reservation(db, principal, rid, mine_ids))
 
 
 def guest_card(db: Session, principal: Principal, gid: int) -> dict:
