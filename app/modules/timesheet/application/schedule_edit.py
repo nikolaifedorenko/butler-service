@@ -369,8 +369,8 @@ def reset_month(db: Session, principal: Principal, payload: ClearMonthIn) -> dic
     ensure_period(payload.year, payload.month)
     first, last = month_bounds(payload.year, payload.month)
     ports = engine_ports(db, principal, now_utc())
-    emps = [db.get(Employee, i) for i in (payload.employee_ids or [])]
-    emps = [e for e in emps if e is not None and e.deleted_at is None] or \
+    picked = [db.get(Employee, i) for i in (payload.employee_ids or [])]
+    emps = [e for e in picked if e is not None and e.deleted_at is None] or \
         visible_employees(db, first, last)[0]
     lo_utc, hi_utc = month_bounds_utc(first, last)
     cleared, absences_cleared, skipped = 0, 0, 0
@@ -389,8 +389,8 @@ def reset_month(db: Session, principal: Principal, payload: ClearMonthIn) -> dic
         absences = list(db.scalars(select(ScheduleAbsence).where(
             ScheduleAbsence.employee_id == emp.id, ScheduleAbsence.start_utc < hi_utc,
             ScheduleAbsence.end_utc > lo_utc)))
-        for row in absences:
-            db.delete(row)
+        for ab in absences:
+            db.delete(ab)
         absences_cleared += len(absences)
         db.flush()      # rebuild не должен видеть удалённые строки (autoflush off)
         schedule_view.rebuild_generated_schedule(str(emp.id),

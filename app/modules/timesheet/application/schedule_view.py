@@ -141,7 +141,8 @@ def rebuild_generated_for_days(employee_id: str, days: Iterable[dt.date],
     Соседние дни за границей записи не перегенерируются: их строки Табеля не менялись,
     а generated-строки дня D пересоздаются вместе с месяцем D.
     """
-    generated, dropped = 0, set()
+    generated = 0
+    dropped: set[dt.date] = set()
     for year, month in sorted({(d.year, d.month) for d in days}):
         out = rebuild_generated_schedule(employee_id, month_period(year, month), ports)
         generated += out.generated

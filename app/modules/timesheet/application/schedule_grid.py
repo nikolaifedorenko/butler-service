@@ -228,13 +228,13 @@ def grid(db: Session, principal: Principal, year: int, month: int) -> dict:
                 shifts_by_emp_day.setdefault((row.employee_id, day.isoformat()), []).append(row)
             day += dt.timedelta(days=1)
     absences_by_emp_day: dict[tuple[int, str], list] = {}
-    for row in absence_rows:
-        start_local = row.start_utc.astimezone(TZ)
-        end_local = row.end_utc.astimezone(TZ)
+    for ab in absence_rows:
+        start_local = ab.start_utc.astimezone(TZ)
+        end_local = ab.end_utc.astimezone(TZ)
         day = start_local.date()
         while day <= min(end_local.date(), last):
             if first <= day <= last:
-                absences_by_emp_day.setdefault((row.employee_id, day.isoformat()), []).append(row)
+                absences_by_emp_day.setdefault((ab.employee_id, day.isoformat()), []).append(ab)
             day += dt.timedelta(days=1)
 
     today = local_date()

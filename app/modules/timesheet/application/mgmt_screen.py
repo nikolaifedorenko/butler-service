@@ -13,7 +13,7 @@ close_period; «Пересчитать» → recalculate (только посл�
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
@@ -147,8 +147,8 @@ def _run_all(db: Session, principal: Principal, payload: PeriodAction, check, ac
     или прерванный сбоем."""
     now, ports, _granularity, period, emps = _context(db, principal, payload.year, payload.month,
                                                       payload.half, None)
-    out = {"period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
-           "total": len(emps), "skipped_closed": 0, "stage": "check", "done": [], "errors": []}
+    out: dict[str, Any] = {"period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
+                           "total": len(emps), "skipped_closed": 0, "stage": "check", "done": [], "errors": []}
     todo = []
     for emp in emps:
         if skip_closed and ports.store.period_state(str(emp.id), period).closed:

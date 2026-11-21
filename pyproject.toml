@@ -100,7 +100,6 @@ ignore_missing_imports = true
 # долг типов: ошибки ещё не вычищены. Пакет исправили — убрать его отсюда
 module = [
     "app.modules.stays.application.*",
-    "app.modules.timesheet.application.*",
 ]
 ignore_errors = true
 
