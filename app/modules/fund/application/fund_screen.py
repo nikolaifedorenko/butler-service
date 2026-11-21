@@ -63,8 +63,11 @@ def snapshot(db: Session, date: Optional[dt.date], version_id: Optional[int]) ->
             raise NotFound("Версии фонда нет")
         snap = snapshot_of(db, version_id)
     else:
+        assert date is not None         # ровно один из параметров — проверено выше
         snap = fund_at(db, date)
         version = db.get(FundVersion, snap.version_id)
+        if version is None:
+            raise NotFound("Версии фонда нет")
     return _snapshot_dict(db, version, snap)
 
 

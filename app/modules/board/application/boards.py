@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,7 +31,8 @@ def butlers_board(db: Session, first: dt.date, last: dt.date, duty: DutyPort) ->
         for d in ctx.days():
             st = ctx.duty.get((e, d), OFF)
             by_res = {s.reservation_id: s for s in ctx.stays_on(d)}
-            units, guests = [], []
+            units: list[dict] = []
+            guests: list[str] = []
             for (rid, g), emps in ctx.cover(d).by_guest.items():
                 if e in emps:
                     label = ctx.unit_label(by_res[rid].unit_id, d)
@@ -143,7 +145,7 @@ def day_board(db: Session, day: dt.date, level: Level, f: DayFilters, duty: Duty
         if not fund_match(ctx.fund.on(night), unit_id, piece.category_id if piece else r.category_id, f):
             return None
         guests = guests_of(r, night)
-        base = {"reservation_id": r.id, "status": r.status, "unit": ctx.unit_label(unit_id, night),
+        base: dict[str, Any] = {"reservation_id": r.id, "status": r.status, "unit": ctx.unit_label(unit_id, night),
                 **({"overbooked": True} if unit_id is None else {}),
                 "time": {"arrival": "РЗ" if r.early else "14:00", "departure": "ПВ" if r.late else "12:00"}.get(kind, ""),
                 "guests_count": len(guests) or 1}

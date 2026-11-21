@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import Date, cast, literal, null, or_, select, union_all
+from sqlalchemy import ColumnElement, Date, cast, literal, null, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.core.time import local_iso, local_midnight
@@ -136,7 +136,7 @@ def find_bookings(db: Session, q: BookingQuery, level: Level) -> list[dict]:
     # переезды и назначения — один запрос (UNION ALL): бюджет SQL вкладки — 12 запросов (§8, §10)
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
-    both = union_all(
+    both: Any = union_all(
         select(literal("m").label("kind"), Move.reservation_id.label("rid"), Move.category_id.label("a"),
                literal(0).label("b"), Move.move_date.label("d")).where(Move.reservation_id.in_(rids)),
         select(literal("a"), Assignment.reservation_id, Assignment.seg_index, Assignment.unit_id,
@@ -240,7 +240,7 @@ def _attach_butlers(db: Session, items: list[_Item]) -> None:
         return
     rids = [it.r.id for it in items]
     gids = {it.r.group_id for it in items if it.r.group_id is not None}
-    cond = CoverageLine.reservation_id.in_(rids)
+    cond: ColumnElement[bool] = CoverageLine.reservation_id.in_(rids)
     if gids:
         cond = or_(cond, CoverageLine.group_id.in_(gids))
     by_res: dict[int, list[CoverageLine]] = {}
@@ -252,7 +252,7 @@ def _attach_butlers(db: Session, items: list[_Item]) -> None:
         names[ln.employee_id] = short or full
         if ln.reservation_id is not None:
             by_res.setdefault(ln.reservation_id, []).append(ln)
-        else:
+        elif ln.group_id is not None:
             by_group.setdefault(ln.group_id, []).append(ln)
     for it in items:
         r = it.r
@@ -285,7 +285,7 @@ def _sorted(items: list[_Item], q: BookingQuery) -> list[_Item]:
 def _row(it: _Item, codes: dict[int, str]) -> dict:
     r = it.r
     return {"id": r.id, "number": r.number, "main_guest": it.main, "special": it.special,
-            "vip_code": codes.get(r.vip_code_id, ""), "escort_mode": r.escort_mode,
+            "vip_code": codes.get(r.vip_code_id or 0, ""), "escort_mode": r.escort_mode,
             "check_in": r.check_in.isoformat(), "check_out": r.check_out.isoformat(),
             "nights": (r.check_out - r.check_in).days,
             "category": " → ".join(it.categories), "unit": " → ".join(lbl for _, lbl in it.units),

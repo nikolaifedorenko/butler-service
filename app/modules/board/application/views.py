@@ -134,7 +134,8 @@ def _board_rows(fund: FundTimeline, days: list[dt.date], f: BoardFilters) -> lis
             if row is None:
                 path = snap.unit_path(uid)
                 rows[uid] = row = BoardRow(u, snap.categories[u.category_id], path,
-                                           " / ".join(snap.path_titles(u.group_id)) if path else "",
+                                           " / ".join(snap.path_titles(u.group_id))
+                                           if path and u.group_id is not None else "",
                                            [(d, u.label)], [(d, u.category_id)])
             else:
                 if row.labels[-1][1] != u.label:
@@ -263,13 +264,13 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         mains = [o for o in rocc if o.role == "main"]
         on_day = max(r.check_in, first)
         main_now = next((o for o in mains if o.date_from <= on_day < o.date_to), mains[0] if mains else None)
-        lb = labels.get(r.label_id)
+        lb = labels.get(r.label_id) if r.label_id is not None else None
         base = {"reservation_id": r.id, "status": r.status, "guests_count": len({o.guest_id for o in rocc}),
                 "number": r.number, "label": {"title": lb.title, "color": lb.color} if lb else None,
                 "main_guest": short_name(guests[main_now.guest_id]) if main_now and main_now.guest_id in guests else "",
                 "mains": [{"guest": short_name(guests[o.guest_id]), "from": _d(o.date_from), "to": _d(o.date_to)}
                           for o in mains if o.guest_id in guests],
-                "special": special, "vip_code": codes.get(r.vip_code_id, ""), "butlers_today": on_duty.get(r.id, []),
+                "special": special, "vip_code": codes.get(r.vip_code_id or 0, ""), "butlers_today": on_duty.get(r.id, []),
                 "customer": r.customer, "paid_category_id": r.paid_category_id or r.category_id,
                 "note": r.note, "escort_mode": r.escort_mode, "fields": r.fields}
         # полоса — соседние части сегмента с одним объектом; seg_index полосы — индекс её первой
@@ -408,7 +409,7 @@ def _pref_status(db: Session, r: Reservation, fund: FundTimeline) -> dict | None
     ok = 0
     for a in rows:
         snap = fund.on(fund_day(a.start_pos if a.start_pos is not None else pos(r.check_in, PM)))
-        u = snap.units.get(a.unit_id)
+        u = snap.units.get(a.unit_id) if a.unit_id is not None else None
         ok += u is not None and score(u.id, snap.unit_path(u.id), u.flags) > 0
     met = bool(rows) and ok == len(rows)
     partial = 0 < ok < len(rows)
@@ -480,8 +481,8 @@ def _nodes(fund: FundTimeline, f: BoardFilters) -> list[tuple[int | None, tuple[
     """Узлы «Загрузки»: выбранные в фильтре «Где», иначе корневые узлы дерева (и «Без группы»,
     если в периоде есть объекты без узла). Путь названиями — по первой версии, где узел есть."""
     snaps = fund.snapshots()
+    out: list[tuple[int | None, tuple[str, ...]]] = []
     if f.group_ids:
-        out = []
         for gid in dict.fromkeys(f.group_ids):
             snap = next((s for s in snaps if gid in s.groups), None)
             if snap is not None:
@@ -492,7 +493,7 @@ def _nodes(fund: FundTimeline, f: BoardFilters) -> list[tuple[int | None, tuple[
         for g in s.groups.values():
             if g.parent_id is None and g.id not in roots:
                 roots[g.id] = (g.sort_order, g.title)
-    out = [(gid, (title,)) for gid, (_o, title) in sorted(roots.items(), key=lambda x: (x[1], x[0]))]
+    out += [(gid, (title,)) for gid, (_o, title) in sorted(roots.items(), key=lambda x: (x[1], x[0]))]
     if any(not s.unit_path(uid) for s in snaps for uid in s.units):
         out.append((None, (NO_GROUP,)))
     return out
@@ -516,10 +517,11 @@ def _unplaced_demand(state: allocation.AllocationState, st: _Stays, first: dt.da
                     key = (p.category_id, dt.date.fromordinal(n))
                     out[key] = out.get(key, 0) + 1
     for w in state.warnings:
-        if w.kind == "block_short":
+        # у block_short категория, последняя ночь и нехватка заполнены всегда (allocate.AllocWarning)
+        if w.kind == "block_short" and w.category_id is not None and w.last is not None:
             for n in range(max(w.piece_index, lo), min(w.last, hi) + 1):
                 key = (w.category_id, dt.date.fromordinal(n))
-                out[key] = out.get(key, 0) + w.missing
+                out[key] = out.get(key, 0) + (w.missing or 0)
     return out
 
 
@@ -600,7 +602,7 @@ def occupancy_grid(db: Session, first: dt.date, last: dt.date, f: BoardFilters) 
     def cats_of(snap: FundSnapshot, units: set[int]) -> set[int]:
         return {snap.units[u].category_id for u in units if u in snap.units}
 
-    rows = {gid: [] for gid, _ in nodes}
+    rows: dict[int | None, list[dict]] = {gid: [] for gid, _ in nodes}
     total_days = []
     for d in days:
         snap, prev = fund.on(d), fund.on(d - one)

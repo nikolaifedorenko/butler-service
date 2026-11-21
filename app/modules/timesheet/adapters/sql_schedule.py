@@ -8,6 +8,7 @@ CHK-ABSENCE-ORDER, CHK-ABSENCE-LENGTH → ConfigError до входа в дом�
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -18,6 +19,8 @@ from ..domain.types.entities import Absence, Period, Shift, ShiftEntry
 from ..domain.types.errors import ConfigError
 from ._db import emp_pk, local_midnight_utc
 from .orm import ScheduleAbsence, ScheduleShift
+
+ShiftSource = Literal["generated", "manual"]
 
 DAY = dt.timedelta(days=1)
 MAX_ABSENCE = dt.timedelta(hours=24)
@@ -133,7 +136,8 @@ class SqlScheduleStore:
             q = q.where(ScheduleShift.employee_id == emp_pk(employee_id))
         rows = self.db.scalars(q.order_by(ScheduleShift.date, ScheduleShift.start_utc,
                                           ScheduleShift.id))
-        return [ShiftEntry(_shift(r), r.source) for r in rows]
+        # колонка source хранит только generated | manual (пишет её этот же адаптер)
+        return [ShiftEntry(_shift(r), cast(ShiftSource, r.source)) for r in rows]
 
     # записи Графика — вход закрытия периода: под блокировкой сотрудника (TOCTOU)
     def save_manual(self, employee_id: str, day: dt.date, shifts) -> None:

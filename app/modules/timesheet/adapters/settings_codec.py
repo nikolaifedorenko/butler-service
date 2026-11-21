@@ -6,6 +6,7 @@ Payload хранит строки справочников как данные; 
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..domain.settings.defaults import default_settings
@@ -85,7 +86,7 @@ def _modifier(m: dict) -> ModifierEntry:
 
 
 def _defaults(raw: dict) -> GlobalDefaults:
-    out = {}
+    out: dict[str, Any] = {}
     for key in ("double_overtime", "pays_overtime"):
         out[key] = None if raw.get(key) is None else _bool(raw[key])
     pef = raw.get("plan_equals_fact")

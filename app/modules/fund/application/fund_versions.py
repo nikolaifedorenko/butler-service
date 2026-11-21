@@ -75,12 +75,14 @@ class FundSnapshot:
 
     def unit_path(self, unit_id: int | None) -> tuple[int, ...]:
         """Путь узла объекта от корня; объект без узла (или не в фонде) — пустой путь."""
-        u = self.units.get(unit_id)
-        return self.groups[u.group_id].path if u is not None and u.group_id in self.groups else ()
+        u = self.units.get(unit_id) if unit_id is not None else None
+        if u is None or u.group_id is None or u.group_id not in self.groups:
+            return ()
+        return self.groups[u.group_id].path
 
     def unit_escorted(self, unit_id: int | None) -> bool:
         """Объект «с сопровождением»: его категория escorted или любой узел на пути объекта escorted."""
-        u = self.units.get(unit_id)
+        u = self.units.get(unit_id) if unit_id is not None else None
         if u is None:
             return False
         cat = self.categories.get(u.category_id)
@@ -159,10 +161,11 @@ def _group_paths(rows: list[GroupState]) -> dict[int, GroupInfo]:
     def path(gid: int) -> tuple[int, ...]:
         chain: list[int] = []
         seen: set[int] = set()
-        while gid is not None and gid in by_id and gid not in seen:
-            seen.add(gid)
-            chain.append(gid)
-            gid = by_id[gid].parent_id
+        cur: int | None = gid
+        while cur is not None and cur in by_id and cur not in seen:
+            seen.add(cur)
+            chain.append(cur)
+            cur = by_id[cur].parent_id
         return tuple(reversed(chain))
 
     return {r.group_id: GroupInfo(id=r.group_id, parent_id=r.parent_id, title=r.title,
@@ -182,27 +185,27 @@ def _load(db: Session, versions: list[tuple[int, dt.date]],
     ids = [v for v, _ in versions]
     if cats is None:
         cats = defaultdict(dict)
-        for r, kind in db.execute(select(CategoryState, CategoryKind.title)
-                                  .outerjoin(CategoryKind, CategoryKind.id == CategoryState.kind_id)
-                                  .where(CategoryState.version_id.in_(ids))):
-            cats[r.version_id][r.category_id] = _category_info(r, kind)
+        for cat, kind in db.execute(select(CategoryState, CategoryKind.title)
+                                    .outerjoin(CategoryKind, CategoryKind.id == CategoryState.kind_id)
+                                    .where(CategoryState.version_id.in_(ids))):
+            cats[cat.version_id][cat.category_id] = _category_info(cat, kind)
     group_rows: dict[int, list[GroupState]] = defaultdict(list)
-    for r in db.scalars(select(GroupState).where(GroupState.version_id.in_(ids))):
-        group_rows[r.version_id].append(r)
+    for grp in db.scalars(select(GroupState).where(GroupState.version_id.in_(ids))):
+        group_rows[grp.version_id].append(grp)
     unit_rows: dict[tuple[int, int], UnitState] = {}
     flags: dict[tuple[int, int], set[int]] = defaultdict(set)
-    for r, fid in db.execute(
+    for unit, fid in db.execute(
             select(UnitState, UnitStateFlag.flag_id)
             .outerjoin(UnitStateFlag, and_(UnitStateFlag.version_id == UnitState.version_id,
                                            UnitStateFlag.unit_id == UnitState.unit_id))
             .where(UnitState.version_id.in_(ids))):
-        unit_rows[(r.version_id, r.unit_id)] = r
+        unit_rows[(unit.version_id, unit.unit_id)] = unit
         if fid is not None:
-            flags[(r.version_id, r.unit_id)].add(fid)
+            flags[(unit.version_id, unit.unit_id)].add(fid)
     units: dict[int, dict[int, UnitInfo]] = defaultdict(dict)
-    for (vid, uid), r in unit_rows.items():
-        units[vid][uid] = UnitInfo(id=uid, label=r.label, category_id=r.category_id, group_id=r.group_id,
-                                   floor=r.floor, flags=frozenset(flags.get((vid, uid), ())))
+    for (vid, uid), unit in unit_rows.items():
+        units[vid][uid] = UnitInfo(id=uid, label=unit.label, category_id=unit.category_id, group_id=unit.group_id,
+                                   floor=unit.floor, flags=frozenset(flags.get((vid, uid), ())))
     return [FundSnapshot(version_id=vid, valid_from=d, categories=cats.get(vid, {}),
                          groups=_group_paths(group_rows[vid]), units=units[vid])
             for vid, d in versions]

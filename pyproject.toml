@@ -99,11 +99,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # долг типов: ошибки ещё не вычищены. Пакет исправили — убрать его отсюда
 module = [
-    "app.modules.board.application.*",
-    "app.modules.fund.application.*",
     "app.modules.stays.application.*",
-    "app.modules.stays.domain.*",
-    "app.modules.timesheet.adapters.*",
     "app.modules.timesheet.application.*",
 ]
 ignore_errors = true

@@ -16,6 +16,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from sqlalchemy import delete, func, insert, literal, select, update
 from sqlalchemy.orm import Session
@@ -255,7 +256,7 @@ def save_category(db: Session, rev: int, data: dict, category_id: int | None) ->
     row.sort_order = _sort_order(data, row.sort_order)
     bump(draft)
     db.flush()
-    return category_id
+    return row.category_id
 
 
 def retire_category(db: Session, rev: int, category_id: int) -> None:
@@ -291,7 +292,8 @@ def save_group(db: Session, rev: int, data: dict, group_id: int | None) -> int:
             if cur == group_id or cur in seen:
                 raise FundError("узел нельзя вложить в самого себя или своего потомка")
             seen.add(cur)
-            cur = db.get(GroupState, (draft.id, cur)).parent_id
+            node = db.get(GroupState, (draft.id, cur))
+            cur = node.parent_id if node is not None else None
     if row is None:
         g = FundGroup()
         db.add(g)
@@ -304,7 +306,7 @@ def save_group(db: Session, rev: int, data: dict, group_id: int | None) -> int:
     row.escorted = bool(data.get("escorted", row.escorted if row.escorted is not None else False))
     bump(draft)
     db.flush()
-    return group_id
+    return row.group_id
 
 
 def retire_group(db: Session, rev: int, group_id: int) -> None:
@@ -491,7 +493,8 @@ def diff(db: Session, base_id: int, other_id: int) -> FundDiff:
 # ── перенос в поздние версии (§4.4) ────────────────────────────────────────
 
 # сущность → (модель, ключ, поля в версии); порядок — порядок составных FK
-_STATE = {
+# вид состояния → (модель, колонка-ключ, колонки значений)
+_STATE: dict[str, tuple[Any, str, tuple[str, ...]]] = {
     "category": (CategoryState, "category_id", ("code", "title", "kind_id", "weight", "escorted", "sort_order")),
     "group": (GroupState, "group_id", ("parent_id", "title", "sort_order", "escorted")),
     "unit": (UnitState, "unit_id", ("label", "category_id", "group_id", "floor")),
@@ -795,7 +798,7 @@ def seed_initial(db: Session, categories: list[dict], groups: list[dict], flags:
         if f["title"] not in flag_ids:
             flag_ids[f["title"]] = save_flag(db, f, None)
     db.flush()
-    pending = []
+    pending: list[tuple[int, int]] = []
     for u in units:
         uid = _add(db, Unit())
         group = node(tuple(u["path"])) if u.get("path") else None
@@ -905,14 +908,14 @@ def _plan_flags(parsed: ParsedFund, dictionary: dict[int, UnitFlag], err) -> _Fl
     headers = parsed.flag_columns
     mapped: dict[int, str] = {}
     for h in headers:
-        fid = plan.column.get(h)
-        if fid is None:
+        col = plan.column.get(h)
+        if col is None:
             continue
-        if fid in mapped:
-            err(SHEET_UNITS, 1, f"колонка флага «{h}» не совпадает с листом «Флаги»: флаг ID {fid} "
-                                f"там называется «{on_sheet[fid].title if fid in on_sheet else dictionary[fid].title}», "
-                                f"и колонка «{mapped[fid]}» — тоже он; оставьте одну колонку")
-        mapped.setdefault(fid, h)
+        if col in mapped:
+            err(SHEET_UNITS, 1, f"колонка флага «{h}» не совпадает с листом «Флаги»: флаг ID {col} "
+                                f"там называется «{on_sheet[col].title if col in on_sheet else dictionary[col].title}», "
+                                f"и колонка «{mapped[col]}» — тоже он; оставьте одну колонку")
+        mapped.setdefault(col, h)
     lost = [fid for fid in plan.rename if fid not in mapped]  # переименован на листе, колонки нет
     sheet_titles = {f.title for f in parsed.flags if f.row_no}
     for h in headers:
@@ -995,7 +998,8 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dic
         had = have.flags.get(u.id, set()) if u.id is not None else set().union(
             *(have.flags.get(p, set()) for p in u.predecessors))
         for t in sorted(u.flags):
-            f = dictionary.get(plan.column.get(t))
+            known = plan.column.get(t)
+            f = dictionary.get(known) if known is not None else None
             if f is not None and f.archived and f.id not in had:
                 err(SHEET_UNITS, u.row_no, f"флаг «{t}» в архиве")
     if errors:
@@ -1014,11 +1018,11 @@ def apply_file(db: Session, rev: int, parsed: ParsedFund) -> tuple[FundDiff, dic
         changes["recoloured"].append({"id": fid, "from": dictionary[fid].color, "to": color})
         dictionary[fid].color = color
     db.flush()
-    flag_ids = dict(plan.column)
-    for title, fid in plan.column.items():
-        if fid is None:
-            color = plan.new_color.get(title)
-            flag_ids[title] = save_flag(db, {"title": title, **({"color": color} if color else {})}, None)
+    flag_ids = {t: known for t, known in plan.column.items() if known is not None}
+    for title, planned in plan.column.items():
+        if planned is None:
+            new_color = plan.new_color.get(title)
+            flag_ids[title] = save_flag(db, {"title": title, **({"color": new_color} if new_color else {})}, None)
             changes["created"].append({"id": flag_ids[title], "title": title})
 
     want = _Fund({"category": {}, "group": {}, "unit": {}}, {})

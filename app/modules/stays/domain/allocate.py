@@ -308,7 +308,9 @@ def allocate(spans: Sequence[UnitSpan], ooo: Sequence[OooRef], slots: Sequence[S
             if cands:
                 uid = choose(it, chunk, cands).unit_id
                 for p in chunk:
-                    place(it, p, fit(uid, p))
+                    span = fit(uid, p)
+                    assert span is not None     # кандидат покрывает весь кусок — отобрано выше
+                    place(it, p, span)
             else:
                 for p in chunk:
                     unplaced(it, p)

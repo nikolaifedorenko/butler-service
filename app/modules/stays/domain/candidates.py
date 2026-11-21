@@ -21,7 +21,7 @@ def common_prefix(a: tuple[int, ...], b: tuple[int, ...]) -> int:
 def _closeness(here: set[tuple[str, object]], unit_id: int | None,
                group_path: tuple[int, ...]) -> tuple[bool, bool, int]:
     """(тот же объект, тот же узел, длина общего префикса пути) по местам батлера в этот день."""
-    paths = [p for kind, p in here if kind == "path"]
+    paths = [p for kind, p in here if kind == "path" and isinstance(p, tuple)]
     same_node = bool(group_path) and any(p and p[-1] == group_path[-1] for p in paths)
     return (("unit", unit_id) in here, same_node, max((common_prefix(p, group_path) for p in paths), default=0))
 
