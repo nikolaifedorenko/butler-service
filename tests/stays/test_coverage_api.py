@@ -183,7 +183,7 @@ def test_preview_equals_save_coverage_ops(manager_role_client, manager_client, b
 def test_candidates_known_guest_first(manager_role_client, manager_client, butlers):
     from app.core.db import SessionLocal
     a, b = butlers["a"], butlers["b"]
-    # дни, где у a и b нет строк покрытия других тестов (test_butlers_board, test_stage4_review,
+    # дни, где у a и b нет строк покрытия других тестов (test_butlers_board, test_groups_coverage_and_board_budget,
     # test_day_board ведут a в днях 8–12 окна): иначе a или b вне лимита и выпадают из кандидатов —
     # а какие дни на смене, зависит от Графика на сегодняшнюю дату
     with SessionLocal() as s:
