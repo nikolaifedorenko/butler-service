@@ -199,6 +199,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: Compose-файлы валидны (локальный и прод-профиль)
+        # остаток аудита 25.10.2026 (C1): опечатка в YAML, имя сервиса/сети или синтаксис
+        # политики уезжала в main и всплывала при развёртывании; ловим до сборки образа.
+        # Прод-файл требует секреты (`${VAR:?}`) — подставляем фиктивные.
+        run: |
+          docker compose -f docker-compose.yml config -q
+          POSTGRES_PASSWORD=ci-check NOTIFY_SECRET_KEY=ci-check \
+            docker compose -f docker-compose.prod.yml config -q
+
       - name: Сборка
         run: docker build -t butler-service:ci .
 
