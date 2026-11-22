@@ -9,7 +9,9 @@ set -o pipefail
 : "${BACKUP_AGE_RECIPIENT:?задайте BACKUP_AGE_RECIPIENT — открытый ключ age (age1…), см. deploy/README.md §4}"
 BACKUP_INTERVAL="${BACKUP_INTERVAL:-86400}"
 BACKUP_KEEP="${BACKUP_KEEP:-14}"
-SSH_DIR=/run/backup-ssh
+# ключи — копия в домашнем каталоге от entrypoint: смонтированный каталог read-only
+# и принадлежит владельцу репозитория, ssh требует ключ у своего пользователя с 600
+SSH_DIR="$HOME/.ssh"
 
 mkdir -p /backups
 while true; do
