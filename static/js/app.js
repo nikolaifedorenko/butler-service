@@ -29,6 +29,8 @@ const ICONS = {
   employees: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 20c.9-3.3 3.2-5 6-5s5.1 1.7 6 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M16 11h5M18.5 8.5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   me: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>',
   night: '<svg viewBox="0 0 24 24"><path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>',
+  stays: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M9.3 3.5v17M14.7 3.5v17M3.5 9.3h17M3.5 14.7h17" stroke="currentColor" stroke-width="1.6"/></svg>',
+  mystays: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7.6" r="3.3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M5 20c1.2-3.6 3.9-5.4 7-5.4 1.6 0 3 .4 4.2 1.2" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M17.6 15.2l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/></svg>',
   cars: '<svg viewBox="0 0 24 24"><path d="M4 16v-3.2L6.2 8h11.6L20 12.8V16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><rect x="3" y="15" width="18" height="4.5" rx="1.6" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="7.3" cy="17.2" r="1" fill="currentColor"/><circle cx="16.7" cy="17.2" r="1" fill="currentColor"/></svg>',
   mgmt: '<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15.5 16.5l1.5 1.5 3-3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   access: '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><circle cx="12" cy="11" r="2.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 13.2V16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
@@ -74,17 +76,9 @@ function renderNav() {
   });
   render(tabs.slice(0, 5).map(t => html`<button data-view=${t.id} class=${activeView === t.id ? 'active' : ''}
     @click=${() => navigate(t.id)}>${icon(t.id)}<span>${t.title}</span></button>`), mount($('#tabbar')));
-  if (tabs.length > 5) {
-    const more = document.createElement('button');
-    more.className = 'nav-item' + (tabs.slice(5).some(t => t.id === activeView) ? ' active' : '');
-    render(html`${icon('settings')}<span>Ещё</span>`, more);
-    more.onclick = () => openModal({
-      title: 'Разделы',
-      body: html`${tabs.slice(5).map(t => html`<button class="btn btn-block" style="justify-content:flex-start;margin-bottom:8px" data-more=${t.id}
-        @click=${() => { closeModal(); navigate(t.id); }}>${icon(t.id)} ${t.title}</button>`)}`,
-    });
-    $('#sidenav').insertBefore(more, foot);
-  }
+  /* Кнопки «Ещё» здесь больше нет: сайднав и так показывает все разделы, а в мобильном
+     таббаре она давала шестой пункт при лимите пяти. Раньше она добавлялась в сайднав,
+     дублировала пункты 6+ и получала active одновременно с ними (ревью скриншотов 22.11.2026). */
   render(html`Учёт кратен шагу (по умолчанию 1 ч)<br><span id="nav-categories"></span>Часы — по календарным дням`, mount(foot));
   renderCategoryFooter(state.timeCategories);
 }
