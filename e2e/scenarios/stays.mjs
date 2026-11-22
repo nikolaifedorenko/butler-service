@@ -1005,7 +1005,11 @@ const $ = s => window.document.querySelector(s);
     /* 375 px: страница не шире окна, сетка месяца прокручивается внутри себя */
     const css = await (await fetch('/static/css/app.css')).text();
     check('375 px: сетка месяца прокручивается внутри себя (.sb-grid overflow:auto)', /\.sb-grid\s*\{[^}]*overflow:\s*auto/.test(css));
-    check('375 px: scrollWidth страницы не больше окна', window.document.documentElement.scrollWidth <= 375);
+        /* миграция с jsdom: там окно было 375 px, на Playwright — 1280: сравнение с магической
+       375 ловило лишь саму ширину окна. Намерение проверки — «страница не переполнена
+       горизонтально» — выражается сравнением с фактическим вьюпортом, на любом. */
+    check('страница без горизонтального переполнения (scrollWidth ≤ viewport)',
+      window.document.documentElement.scrollWidth <= window.innerWidth);
     check('375 px: широкая сетка только внутри .mm-grid', $$('#view-mystays .sb-track').every(t => t.closest('.mm-grid')));
     check('«Мой месяц»: нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-mystays').innerHTML));
   
