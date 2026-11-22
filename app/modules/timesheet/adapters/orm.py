@@ -355,6 +355,8 @@ class DeferredCarry(Base):
     """Отложенные блоки кодов УТ, переданные во вход следующего периода (CarryOverPort)."""
 
     __tablename__ = "deferred_carry"
+    __table_args__ = (UniqueConstraint("employee_id", "period_start",
+                                       name="uq_deferred_carry_employee_period"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
