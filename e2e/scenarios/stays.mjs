@@ -898,7 +898,8 @@ const $ = s => window.document.querySelector(s);
     check('объект выбран в списке', refSel.value === String(target.id));
     click($('#gc-prefs [data-pref-add]'));
     const row = () => [...$$('#gc-prefs [data-pref-row]')].some(r => r.textContent.includes(target.label));
-    await waitFor(() => !!$('#gc-prefs [data-pref-apply]') || row());
+    /* около полуночи фоновый night_sync держит блокировки — preview ждёт их дольше обычного */
+    await waitFor(() => !!$('#gc-prefs [data-pref-apply]') || row(), 30000);
     if ($('#gc-prefs [data-pref-apply]')) {
       check('предпросмотр «что изменится» показан', text('#gc-pref-out').length > 0, text('#gc-prefs'));
       check('предпросмотр ничего не сохранил', (await apiJson('GET', `/api/stays/guests/${gid}/prefs`)).body.length === was);
