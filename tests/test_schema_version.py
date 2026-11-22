@@ -2,10 +2,15 @@
 воркер без миграций останавливается на неготовой схеме."""
 from __future__ import annotations
 
+import datetime as dt
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from tests.conftest import rows, run_migrate
 
@@ -45,6 +50,29 @@ def test_migrate_command_prepares_empty_base(fresh_database):
     assert roles == {"admin", "manager", "supervisor", "employee", "mgmt_view", "occupancy"}
     assert rows(fresh_database, "SELECT id FROM stays_settings") == [(1,)]
     assert rows(fresh_database, "SELECT status FROM fund_versions") == [("published",)]
+
+
+def test_deferred_carry_one_row_per_employee_period(db):
+    """Переносы на пару «сотрудник + период-получатель» — одна строка: держит база
+    (остаток аудита 25.10.2026, C5), а не только код записи (DELETE+INSERT)."""
+    from app.modules.people.application import Employee
+    from app.modules.timesheet.adapters.orm import DeferredCarry
+
+    period = dt.date(2030, 1, 1)          # за пределами демо-периодов: никто не читает
+    emp_id = db.scalar(select(Employee.id).limit(1))
+    row = DeferredCarry(employee_id=emp_id, period_start=period,
+                        source_day=dt.date(2029, 12, 31), tariff="ДЯ", minutes=60)
+    db.add(row)
+    db.commit()
+    try:
+        db.add(DeferredCarry(employee_id=emp_id, period_start=period,
+                             source_day=dt.date(2029, 12, 31), tariff="ДЯ", minutes=60))
+        with pytest.raises(IntegrityError):
+            db.commit()
+    finally:
+        db.rollback()
+        db.execute(delete(DeferredCarry).where(DeferredCarry.period_start == period))
+        db.commit()
 
 
 def test_worker_without_migrate_stops_on_stale_schema(fresh_database):
