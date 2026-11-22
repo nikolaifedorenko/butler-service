@@ -9,7 +9,7 @@ from app.modules.guests.application.catalog import CustomField, VipCode
 from app.modules.stays.adapters.orm import Label
 from app.modules.stays.application import stays_directories
 
-from .helpers import API, uniq
+from .helpers import API, make_guest, uniq
 
 
 def _break_audit(monkeypatch) -> None:
@@ -47,6 +47,26 @@ def test_field_create_update_delete_and_audit(admin_client, db):
     assert db.get(CustomField, fid) is None
     actions = [a.target for a in db.scalars(select(AuditLog).where(AuditLog.target == f"field:{fid}"))]
     assert actions == [f"field:{fid}", f"field:{fid}"]
+
+
+def test_field_delete_rebuilds_guest_search_text(admin_client, manager_client, db):
+    """L4 (аудит 25.10.2026): удаление настраиваемого поля пересобирает search_text —
+    иначе поиск находит гостя по значению уже удалённого поля."""
+    from app.modules.guests.application.catalog import Guest
+
+    code = "s" + uniq().lower()
+    fid = admin_client.post(f"{API}/fields", json={"target": "guest", "code": code,
+                                                   "title": "Поисковое", "kind": "text",
+                                                   "searchable": True}).json()["id"]
+    g = make_guest(manager_client)
+    value = "знч" + uniq().lower()
+    r = manager_client.put(f"{API}/guests/{g['id']}", json={"last_name": g["last_name"],
+                                                            "fields": {code: value}})
+    assert r.status_code == 200, r.text
+    assert [x.id for x in db.scalars(select(Guest).where(Guest.search_text.contains(value)))] == [g["id"]]
+    assert admin_client.delete(f"{API}/fields/{fid}").json() == {"ok": True}
+    db.rollback()
+    assert db.scalars(select(Guest).where(Guest.search_text.contains(value))).all() == []
 
 
 def test_directories_overview_has_staff_only_for_setup(admin_client, manager_client):

@@ -58,6 +58,15 @@ def save_field(db: Session, principal: Principal, payload: FieldIn, field_id: in
 @transactional
 def delete_field(db: Session, principal: Principal, field_id: int) -> dict:
     before = guest_fields.delete_field(db, field_id)
+    # значения удалённого поля остаются в JSON, но состав search_text меняется:
+    # иначе поиск находил гостей и брони по уже удалённому полю (L4, аудит 25.10.2026).
+    # Сессия без autoflush: без промежуточного flush reindex увидит ещё не удалённое поле
+    # и пересоберёт индекс с его кодом.
+    db.flush()
+    if before["target"] == "guest":
+        guests.reindex_search(db)
+    else:
+        reservations.reindex_search(db)
     _write(db, principal, f"field:{field_id}", before, {k: None for k in before})
     return {"ok": True}
 
