@@ -20,16 +20,16 @@ test('раздел «Гости»: список, поиск без потери 
   await expect(q).toHaveValue('а');
   await q.fill('');
   await expect(view.locator('#gl-total')).toContainText('Найдено гостей');
-  // карточка первого гостя и вкладка «Семья» (дерево рисуется шаблоном)
+  // карточка первого гостя — боковая панель — и семейное дерево (рисуется шаблоном)
   await rows.first().click();
-  const modal = page.locator('#modal');
-  await expect(modal).toContainText('История проживаний');
-  await expect(modal.locator('.ft-tree')).toBeVisible();
-  await expect(modal.locator('[data-ft-person]').first()).toBeVisible();
-  await modal.locator('[data-ft-add=spouse]').click();
-  await expect(modal.locator('[data-ft-q]')).toBeVisible();
-  await modal.locator('[data-ft-cancel]').click();
-  await expect(modal.locator('[data-ft-q]')).toHaveCount(0);
+  const drawer = page.locator('#drawer');
+  await expect(drawer).toContainText('История проживаний');
+  await expect(drawer.locator('.ft-tree')).toBeVisible();
+  await expect(drawer.locator('[data-ft-person]').first()).toBeVisible();
+  await drawer.locator('[data-ft-add=spouse]').click();
+  await expect(drawer.locator('[data-ft-q]')).toBeVisible();
+  await drawer.locator('[data-ft-cancel]').click();
+  await expect(drawer.locator('[data-ft-q]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

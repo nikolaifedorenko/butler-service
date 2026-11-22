@@ -303,6 +303,31 @@ export function openModal({ title, subtitle, body, footer, wide = false, onMount
 }
 export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').replaceChildren(); }
 
+/* Боковая панель (ADR-0013, раздел 7: «карточка открывается боковой панелью»): строение как у
+   модального окна — голова, прокручиваемое тело, подвал с действиями. Открытые поверх неё
+   модальные окна (редакторы) закрываются по Esc первыми. */
+export function openDrawer({ title, subtitle, body, footer, onMount }) {
+  const d = $('#drawer');
+  d.replaceChildren();
+  const root = document.createElement('div');
+  root.style.display = 'contents';
+  d.appendChild(root);
+  render(html`
+    <div class="drawer-head">
+      <div><h3>${title}</h3>${subtitle ? html`<p>${subtitle}</p>` : ''}</div>
+      <button class="icon-btn x" aria-label="Закрыть">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body">${modalContent(body)}</div>
+    ${footer ? html`<div class="drawer-foot">${modalContent(footer)}</div>` : ''}`, root);
+  $('#drawer-backdrop').classList.remove('hidden');
+  d.querySelector('.x').onclick = closeDrawer;
+  if (onMount) onMount(d);
+  return d;
+}
+export function closeDrawer() { $('#drawer-backdrop').classList.add('hidden'); $('#drawer').replaceChildren(); }
+
 export function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', danger = true) {
   openModal({
     title, body: html`<p style="margin:0;color:var(--muted)">${text}</p>`,
@@ -353,4 +378,6 @@ export async function downloadBlob(path, fallbackName) {
   finally { loading(false); }
 }
 $('#modal-backdrop').addEventListener('click', e => { if (e.target.id === 'modal-backdrop') closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+$('#drawer-backdrop').addEventListener('click', e => { if (e.target.id === 'drawer-backdrop') closeDrawer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal();
+  if ($('#modal-backdrop').classList.contains('hidden')) closeDrawer(); } });
