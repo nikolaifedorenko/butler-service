@@ -14,6 +14,7 @@ from .checks.modifier_scope import check_modifier_scope
 from .checks.modifier_type import check_modifier_type
 from .checks.placement_full import check_placement_full
 from .checks.step_divides_60 import check_step_divides_60
+from .checks.step_representable import check_step_representable
 from .checks.weights_positive import check_weights_positive
 from .checks.window_bounds import check_window_bounds
 from .checks.window_key import check_window_key
@@ -22,7 +23,7 @@ from .types import Settings
 
 CHECKS = (check_window_plan, check_window_bounds, check_window_key, check_categories_cover,
           check_codes_exist, check_cascade_full, check_weights_positive, check_step_divides_60,
-          check_grid, check_placement_full, check_defaults, check_modifier_scope,
+          check_step_representable, check_grid, check_placement_full, check_defaults, check_modifier_scope,
           check_modifier_type, check_modifier_conflict)
 
 

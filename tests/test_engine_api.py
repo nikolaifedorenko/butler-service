@@ -275,6 +275,18 @@ def test_engine_settings_validation(admin):
     assert "CHK-STEP-DIVIDES-60" in detail and "CHK-CASCADE-FULL" in detail
 
 
+def test_engine_settings_step_not_representable(admin):
+    """Шаг 10 делит 60, но длительности непредставимы в значениях Табеля —
+    отдельная проверка CHK-STEP-REPRESENTABLE (A3, аудит 25.10.2026)."""
+    payload = admin.get("/api/engine-settings").json()["active"]["payload"]
+    payload["step_minutes"] = 10
+    r = admin.put("/api/engine-settings", json={
+        "valid_from": f"{TODAY.year}-{TODAY.month:02d}-01", "payload": payload, "note": "test"})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "CHK-STEP-REPRESENTABLE" in detail and "CHK-STEP-DIVIDES-60" not in detail
+
+
 def test_mgmt_xlsx_export(admin, emp):
     r = admin.get("/api/mgmt/xlsx", params={"year": PREV.year, "month": PREV.month})
     assert r.status_code == 200

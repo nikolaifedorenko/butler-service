@@ -121,6 +121,21 @@ def test_chk_step_divides_60_violation():
     assert "CHK-STEP-DIVIDES-60" in _codes_of(exc.value)
 
 
+def test_chk_step_representable_violation():
+    """10 делит 60, но длительности кратные 10 (10, 20, 500 мин) непредставимы
+    в сотых долях часа — отказ fmt_hours (A3, аудит 25.10.2026)."""
+    with pytest.raises(ConfigError) as exc:
+        validate_settings(settings(step_minutes=10))
+    codes = _codes_of(exc.value)
+    assert "CHK-STEP-REPRESENTABLE" in codes
+    assert "CHK-STEP-DIVIDES-60" not in codes
+
+
+def test_chk_step_representable_allows_quarter_steps():
+    for step in (3, 6, 12, 15, 30, 60):
+        validate_settings(settings(step_minutes=step))
+
+
 def test_chk_grid_violation():
     st = settings(windows={**dict(settings().windows), "Я 9": Window(9 * 60 + 30, 18 * 60)})
     with pytest.raises(ConfigError) as exc:

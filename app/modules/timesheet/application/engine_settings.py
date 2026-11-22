@@ -383,7 +383,7 @@ CHECK_SCREENS = {
     "CHK-WINDOW-KEY": "codes", "CHK-WINDOW-BOUNDS": "codes", "CHK-WINDOW-PLAN": "codes",
     "CHK-WINDOW-EXISTS": "codes", "CHK-CODES-EXIST": "calc", "CHK-CATEGORIES-COVER": "calc",
     "CHK-CASCADE-FULL": "calc", "CHK-PLACEMENT-FULL": "calc", "CHK-WEIGHTS-POSITIVE": "calc",
-    "CHK-STEP-DIVIDES-60": "calc", "CHK-GRID": "calc", "CHK-DEFAULTS": "pay",
+    "CHK-STEP-DIVIDES-60": "calc", "CHK-STEP-REPRESENTABLE": "calc", "CHK-GRID": "calc", "CHK-DEFAULTS": "pay",
     "CHK-MODIFIER-SCOPE": "pay", "CHK-MODIFIER-TYPE": "pay", "CHK-MODIFIER-CONFLICT": "pay",
 }
 SETTINGS_ACTIONS = ("engine_settings", "day_modifier_create", "day_modifier_delete",
