@@ -22,17 +22,41 @@ ESCORT_TITLES = {"rules": "по правилам", "required": "требуетс
 BUSY = Fill("DCE6F5")
 
 
-def occupancy_counts(board: dict, days: list[dt.date]) -> dict[str, dict[str, int]]:
-    """Категория → день → занято объектов (ночь дня: полоса покрывает PM даты)."""
+def occupancy_counts(board: dict, days: list[dt.date], at: dict[tuple[int, int], dict]) -> dict[str, dict[str, int]]:
+    """Категория → день → занято объектов (ночь дня: полоса покрывает PM даты).
+
+    Занятость дня — позиция → объекты из индекса «(объект, позиция) → полоса»,
+    а не скан всех полос на каждый день (P1, аудит 25.10.2026)."""
     cat_of = {u["unit_id"]: u["category"] for u in board["units"]}
+    units_at: dict[int, set[int]] = {}
+    for (uid, p) in at:
+        units_at.setdefault(p, set()).add(uid)
     out: dict[str, dict[str, int]] = {}
     for d in days:
-        p = pos(d, PM)
-        busy = {b["unit_id"] for b in board["bars"] if b["unit_id"] and b["start_pos"] <= p <= b["end_pos"]}
+        busy = units_at.get(pos(d, PM), set())
         for uid in busy:
             out.setdefault(cat_of[uid], {}).setdefault(d.isoformat(), 0)
             out[cat_of[uid]][d.isoformat()] += 1
     return out
+
+
+def _bar_index(bars: list[dict]) -> tuple[dict[tuple[int, int], dict], dict[int, list[dict]]]:
+    """Один проход по полосам: (объект, позиция) → полоса и бронь → её полосы.
+
+    Раньше каждая клетка шахматки и каждая бронь листа «Брони» сканировали весь
+    список полос линейно (P1, аудит 25.10.2026). Полосы одного объекта не
+    пересекаются (инвариант «объект не занят дважды»), коллизий в словаре нет;
+    у полосы «без объекта» unit_id None — в индекс позиций она не попадает."""
+    at: dict[tuple[int, int], dict] = {}
+    by_rid: dict[int, list[dict]] = {}
+    for b in bars:
+        by_rid.setdefault(b["reservation_id"], []).append(b)
+        uid = b["unit_id"]
+        if uid is None:
+            continue
+        for p in range(b["start_pos"], b["end_pos"] + 1):
+            at[(uid, p)] = b
+    return at, by_rid
 
 
 def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full", "anon"]) -> bytes:
@@ -41,12 +65,13 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     board = units_board(db, first, last, BoardFilters(), level)
     day_titles = [d.strftime("%d.%m") for d in days]
 
+    at, by_rid = _bar_index(board["bars"])
+
     grid = []
     for u in board["units"]:
         cells: list[Cell | None] = []
         for d in days:
-            p = pos(d, PM)
-            bar = next((b for b in board["bars"] if b["unit_id"] == u["unit_id"] and b["start_pos"] <= p <= b["end_pos"]), None)
+            bar = at.get((u["unit_id"], pos(d, PM)))
             if bar is None:
                 cells.append(None)
             else:
@@ -80,7 +105,7 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     bookings = []
     for rid in rids:
         r = res[rid]
-        bars = [b for b in board["bars"] if b["reservation_id"] == rid]
+        bars = by_rid[rid]
         units = ", ".join(dict.fromkeys(labels[b["unit_id"]]["label"] for b in bars if b["unit_id"] in labels)) or "без объекта"
         cats = ", ".join(dict.fromkeys(labels[b["unit_id"]]["category"] for b in bars if b["unit_id"] in labels))
         values = [units, cats, r.check_in.strftime("%d.%m.%Y"), r.check_out.strftime("%d.%m.%Y"),
@@ -94,7 +119,7 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
                        "; ".join(logistics.get(rid, []))]
         bookings.append(values)
 
-    counts = occupancy_counts(board, days)
+    counts = occupancy_counts(board, days, at)
     totals: dict[str, int] = {}
     for u in board["units"]:
         totals[u["category"]] = totals.get(u["category"], 0) + 1
