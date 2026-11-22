@@ -889,7 +889,13 @@ const $ = s => window.document.querySelector(s);
     if (!target) return;
     const was = (await apiJson('GET', `/api/stays/guests/${gid}/prefs`)).body.length;
     change($('#gc-prefs [data-pref-kind]'), 'unit');
-    change($('#gc-prefs [data-pref-ref]'), String(target.id));
+    /* фонд карточки мог быть взят из кэша до паблиша фонда сценарием: ждём, пока список
+       объектов обновится, и проверяем, что выбор встал — иначе add молча ничего не сделает */
+    await waitFor(() => { const sel = $('#gc-prefs [data-pref-ref]');
+      return sel && [...sel.options].some(o => o.value === String(target.id)); }, 15000);
+    const refSel = $('#gc-prefs [data-pref-ref]');
+    change(refSel, String(target.id));
+    check('объект выбран в списке', refSel.value === String(target.id));
     click($('#gc-prefs [data-pref-add]'));
     const row = () => [...$$('#gc-prefs [data-pref-row]')].some(r => r.textContent.includes(target.label));
     await waitFor(() => !!$('#gc-prefs [data-pref-apply]') || row());
