@@ -75,12 +75,14 @@ export async function renderEngineSettings(host) {
     <details><summary>Редактировать справочники (JSON)</summary>
       <textarea id="es-json" style="width:100%;min-height:320px;font-family:monospace;font-size:12px" ?readonly=${!edit} .value=${JSON.stringify(p, null, 2)}></textarea>
       ${edit ? html`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:8px">
-        <label class="field" style="margin:0"><span>Действует с (1 или 16 число)</span><input type="date" id="es-from" .value=${first}></label>
+        <label class="field" style="margin:0"><span>${p.period_granularity === 'half_month'
+            ? 'Действует с (граница периода — 1-е или 16-е число)' : 'Действует с (граница периода — 1-е число месяца)'}</span><input type="date" id="es-from" .value=${first}></label>
         <label class="field" style="margin:0;flex:1"><span>Комментарий</span><input type="text" id="es-note" placeholder="что и почему меняем"></label>
         <button class="btn btn-primary" id="es-save" @click=${save}>Сохранить новую версию</button></div>
-        <p class="hint">Перед сохранением конфигурация проверяется правилами CHK-* уровня 1;
-          все нарушения выводятся разом. Шаг и гранулярность меняются только с границы периода.
-          Закрытые периоды не пересчитываются автоматически.</p>` : nothing}
+        <p class="hint">Версия применяется с начала периода, в который попадает дата; дата внутри
+          периода — со следующей границы. Смена гранулярности — только с 1-го числа месяца.
+          Перед сохранением конфигурация проверяется правилами CHK-* уровня 1; все нарушения
+          выводятся разом. Закрытые периоды не пересчитываются автоматически.</p>` : nothing}
     </details>
     <details style="margin-top:8px"><summary>История версий (${data.versions.length})</summary>
       ${data.versions.map(v => html`<div class="audit-item"><span class="ts">${dateRu(v.valid_from)}</span><span class="ac">#${v.id}</span>
