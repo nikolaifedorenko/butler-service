@@ -28,7 +28,7 @@ async function loadEmployees() {
       <table class="data responsive"><thead><tr>
         <th>Сотрудник</th><th>Должность</th><th>Блок графика</th><th>Статус</th><th></th>
       </tr></thead><tbody>
-      ${state.employees.map(e => html`<tr data-card=${e.id} style="cursor:pointer" @click=${() => employeeCard(e)}>
+      ${state.employees.map(e => html`<tr data-card=${e.id} class="row-card" @click=${() => employeeCard(e)}>
         <td class="who" data-label="Сотрудник">
           <span class="dot-pos" style=${`display:inline-block;width:9px;height:9px;border-radius:3px;background:${cssColor(e.group_color)};margin-right:7px`}></span>${e.full_name}
           ${e.telegram ? html`<small>tg: ${e.telegram}</small>` : nothing}</td>
@@ -37,7 +37,7 @@ async function loadEmployees() {
         <td data-label="Статус">${e.deleted ? html`<span class="badge muted">удалён (в истории)</span>`
           : e.dismissed_at ? html`<span class="badge muted">уволен ${dateRu(e.dismissed_at)}</span>`
           : e.active ? html`<span class="badge ok">работает</span>` : html`<span class="badge muted">неактивен</span>`}</td>
-        <td class="num"><span class="badge muted">карточка →</span></td>
+        <td class="num row-go" aria-hidden="true">→</td>
       </tr>`)}
       </tbody></table>
     </div>

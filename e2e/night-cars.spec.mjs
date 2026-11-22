@@ -52,7 +52,9 @@ test('«Электрокары»: список, фильтр, поиск и ис
   await expect(view.locator('tbody')).toContainText('Нет каров по фильтру');
   await q.fill('');
   await expect(rows.first()).not.toContainText('Нет каров по фильтру');
-  await view.locator('[data-act=history]').first().click();
+  /* «История» — вторичная операция: сидит в выпадающем меню «⋯» строки */
+  await view.locator('[data-menu-btn]').first().click();
+  await view.locator('.menu-wrap.open [data-act=history]').click();
   const modal = page.locator('#modal');
   await expect(modal).toContainText('История кара');
   await modal.locator('[data-cancel]').click();

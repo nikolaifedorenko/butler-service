@@ -24,6 +24,21 @@ export const carsState = { data: null, meta: null, locations: [], filter: 'all',
 /* dateRu() из app.js рассчитан на «YYYY-MM-DD»; для datetime берём только дату */
 const dRuCar = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
 
+/* Меню строки «⋯» (вторичные операции): открыто одно, закрывается по клику вне,
+   по Esc и перед любой операцией. Слушатели — на уровне модуля: рендер раздела
+   происходит многократно, вешать их на каждый рендер нельзя. */
+let openCarMenu = null;
+function closeCarMenu() {
+  if (!openCarMenu) return;
+  openCarMenu.classList.remove('open');
+  openCarMenu.querySelector('[data-menu-btn]')?.setAttribute('aria-expanded', 'false');
+  openCarMenu = null;
+}
+document.addEventListener('click', e => { if (openCarMenu && !openCarMenu.contains(e.target)) closeCarMenu(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCarMenu(); });
+window.addEventListener('scroll', closeCarMenu, { passive: true, capture: true });
+window.addEventListener('resize', closeCarMenu);
+
 /* ─────────────────────────── раздел ─────────────────────────── */
 registerModule({ views: { cars: loadCars } });
 
@@ -109,7 +124,28 @@ function carsBody() {
   const byId = id => d.cars.find(c => c.id === Number(id));
   /* одна кнопка операции: data-act / data-id нужны сценариям и тестам */
   const act = (car, kind, label, cls, title) => html`<button class=${`btn btn-sm ${cls}`} data-act=${kind} data-id=${car.id}
-    title=${title || nothing} @click=${() => runAct(byId(car.id), kind, refresh)}>${label}</button>`;
+    title=${title || nothing} @click=${() => { closeCarMenu(); runAct(byId(car.id), kind, refresh); }}>${label}</button>`;
+
+  /* Вторичные операции строки — в выпадающем меню «⋯», а не кнопками в ряд: строка
+     теряла треть ширины на 4–6 кнопках. Пункты меню сохраняют data-act/data-id —
+     сценарии и тесты кликают по ним как прежде. Панель позиционируется fixed от
+     координат кнопки: иначе её обрезал бы overflow прокрутки таблицы. */
+  const rowMenu = (car, items) => html`<span class="menu-wrap">
+    <button class="menu-btn" data-menu-btn aria-haspopup="menu" aria-expanded="false"
+      aria-label="Действия с каром №${car.number}"
+      @click=${e => { e.stopPropagation(); const w = e.currentTarget.closest('.menu-wrap');
+        const willOpen = !w.classList.contains('open');
+        closeCarMenu();
+        if (!willOpen) return;
+        const pop = w.querySelector('.menu-pop');
+        const r = e.currentTarget.getBoundingClientRect();
+        pop.style.top = `${Math.max(8, Math.min(r.bottom + 4, innerHeight - pop.offsetHeight - 8))}px`;
+        pop.style.left = `${Math.max(8, Math.min(r.right - 210, innerWidth - 218))}px`;
+        w.classList.add('open');
+        e.currentTarget.setAttribute('aria-expanded', 'true');
+        openCarMenu = w; }}>⋯</button>
+    <span class="menu-pop" role="menu">${items}</span>
+  </span>`;
 
   const row = c => {
     const mine = c.id === me.held;
@@ -155,7 +191,7 @@ function carsBody() {
       <td data-label="Закреплён">${c.assigned_name || html`<span class="muted">—</span>`}</td>
       <td data-label="Ключ">${c.has_key ? 'в карточке' : html`<span class="muted">нет</span>`}</td>
       <td data-label="Проверен" class="num">${c.last_checked_at ? hhmm(c.last_checked_at) : '—'}</td>
-      <td data-label="Действия"><div class="row-actions">${acts}</div></td>
+      <td data-label="Действия"><div class="row-actions">${acts[0]}${acts.length > 1 ? rowMenu(c, acts.slice(1)) : nothing}</div></td>
     </tr>`;
   };
   const rec = me.free_recommended && !me.held ? d.cars.find(c => c.id === me.free_recommended) : null;
