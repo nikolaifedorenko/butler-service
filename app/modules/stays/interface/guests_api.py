@@ -48,8 +48,9 @@ def set_guest_prefs(gid: int, payload: PrefsIn, preview_flag: bool = PREVIEW,
 
 
 @router.post("/guests", response_model=GuestCardOut)
-def create_guest(payload: GuestIn, principal: Principal = Depends(require_perm("stays.edit")),
+def create_guest(payload: GuestIn, principal: Principal = Depends(require_perm("stays.edit", "stays.mine_guest_edit")),
                  db: Session = Depends(get_db)):
+    """Новый гость: менеджер — полный профиль; батлер — без VIP-кода и «особого», гость сразу «свой»."""
     return guest_edit.create(db, principal, payload)
 
 

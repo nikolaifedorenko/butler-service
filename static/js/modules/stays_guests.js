@@ -1,16 +1,18 @@
 /* ══════════════════════════════════════════════════════════════════════
-   «ШАХМАТКА» — вкладка «Гости»: справочник гостей и объединение дублей
-   (спецификация docs/superpowers/specs/2026-10-28-stays-part1-addendum-design.md §3).
+   РАЗДЕЛ «ГОСТИ» — справочник гостей и объединение дублей.
+   Самостоятельный раздел (ревью UI 22.11.2026): раньше был вкладкой внутри Шахматки,
+   микро-поиск гостя остался в шапке шахматки. Полный уровень (stays.guests) — поиск,
+   фильтры, сортировка, дубли; батлер (stays.mine_guest_edit) — создание гостя, который
+   сразу становится «своим» (список целиком без полного уровня недоступен — 403).
    Поиск, фильтры, сортировка и срез страницы — на сервере (GET /api/stays/guests/list), по 200;
    клиент держит накопленные страницы («Показать ещё»). Карточка гостя — openGuestCard,
    новый гость — openGuestForm (stays_forms.js). Объединение: отметить двух гостей →
    «Объединить…» → кого оставить → «Проверить» (что перенесётся) → «Объединить».
-   Вкладка — только полный уровень (stays.guests, см. staysTabAllowed в stays.js).
    Модуль на lit-html (ADR-0013, раздел 7): панель фильтров рисуется один раз, список — шаблоном.
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { can } from '../app.js';
+import { can, registerModule } from '../app.js';
 import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { STAYS_LINK, openGuestCard, openGuestForm } from './stays_forms.js';
@@ -31,6 +33,24 @@ export function staysGuestsEmpty() {
   return { q: '', special: false, stayed_from: '', stayed_to: '', birthday: false, sort: 'name', dir: 'asc', picked: [] };
 }
 export const staysGuests = staysGuestsEmpty();
+
+registerModule({ views: { guests: loadGuests } });
+
+/* раздел «Гости»: полный уровень — справочник; батлер — панель создания (гость сразу «свой») */
+async function loadGuests() {
+  const host = $('#view-guests');
+  if (!can('stays.guests')) {
+    render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Новые гости из вашего списка</div></div></div>
+      <div class="panel"><p>Заведённый вами гость сразу попадает в <b>«Мои гости»</b> — вы его ведёте по умолчанию.
+        VIP-код и отметку «особый» задаёт менеджер.</p>
+        <button class="btn btn-primary" id="gl-new">Новый гость</button></div>`, mount(host));
+    $('#gl-new', host).onclick = () => openGuestForm(null, () => {}, { mine: true });
+    return;
+  }
+  render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Справочник: поиск, фильтры, дубли</div></div></div>
+    <div id="gl-body"></div>`, mount(host));
+  await renderGuestsTab($('#gl-body', host));
+}
 
 function staysGuestsParams(offset) {
   const s = staysGuests;

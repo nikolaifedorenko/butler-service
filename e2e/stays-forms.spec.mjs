@@ -4,12 +4,11 @@ import { login, watchErrors } from './helpers.mjs';
 
 const open = (page, view) => page.evaluate(v => window.navigate(v), view);
 
-test('вкладка «Гости»: список, поиск без потери фокуса, карточка гостя с деревом', async ({ page }) => {
+test('раздел «Гости»: список, поиск без потери фокуса, карточка гостя с деревом', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'admin');
-  await open(page, 'stays');
-  const view = page.locator('#view-stays');
-  await view.locator('[data-stab=guests]').click();
+  await open(page, 'guests');
+  const view = page.locator('#view-guests');
   await expect(view.locator('#gl-total')).toContainText('Найдено гостей');
   const rows = view.locator('[data-gl-row]');
   expect(await rows.count()).toBeGreaterThan(0);
