@@ -8,13 +8,14 @@ from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.core.auth import Principal
+from app.core.auth import Principal, current_principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 from app.core.schemas import ApiModel
 from app.modules.exchange.application.documents import DOCX_MEDIA_TYPE
 
 from ..application import statements
+from ..application.print_page import PRINT_MEDIA_TYPE, PrintIn, print_page
 from ..application.statements import KindIn, KindUpdate, RenderIn
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
@@ -119,3 +120,13 @@ def remove_template(type: str, principal: Principal = Depends(EDIT), db: Session
 def render(payload: RenderIn, principal: Principal = Depends(VIEW), db: Session = Depends(get_db)):
     """Сформировать заявление сотрудника в DOCX или PDF."""
     return _attachment(*statements.render(db, principal, payload))
+
+
+@router.post("/print", response_class=Response)
+def print_document(payload: PrintIn, principal: Principal = Depends(current_principal)):
+    """Страница для печати: чистый HTML документ (заявления, график сменности).
+
+    Не сохраняет состояние; право — как у входа: печать доступна каждой роли.
+    Данные клиент собирает шаблонами lit-html (экранирование на месте), поэтому
+    body/css вставляются как есть; заголовок экранируется сервером."""
+    return Response(print_page(payload), media_type=PRINT_MEDIA_TYPE)

@@ -6,23 +6,40 @@
 
 import { api, dateRu, esc, getCookie, hours, loading, state, todayISO, toast } from '../core.js';
 
-/* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ── */
-export function printWindow(title, bodyHtml, extraCss = '') {
-  const w = window.open('', '_blank', 'width=1200,height=800');
-  if (!w) { toast('Браузер заблокировал окно печати — разрешите всплывающие окна', 'warn'); return; }
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
-    <style>
-      @page { size: A4 landscape; margin: 10mm; }
-      body { font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color: #1a2438; font-size: 11px; }
-      h1 { font-size: 16px; margin: 0 0 2mm; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #b9c2d0; padding: 1.2mm 1mm; text-align: center; font-size: 9px; }
-      th.name, td.name { text-align: left; padding-left: 2mm; width: 52mm; font-size: 10px; }
-      tr.group td { background: #eef2f8; font-weight: 700; text-align: left; padding-left: 2mm; font-size: 10px; }
-      .muted { color: #8b98ad; }
-      ${extraCss}
-    </style></head><body>${bodyHtml}<script>window.onload = () => { window.print(); };<\/script></body></html>`);
-  w.document.close();
+/* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ──
+   Страницу собирает сервер (POST /api/docs/print): прежний document.write в about:blank
+   с inline-скриптом автопечати блокировался CSP (A1, аудит 25.10.2026). Документ
+   показывается в скрытом фрейме; автопечать делает внешний скрипт страницы, после
+   диалога фрейм удаляется по сообщению от него. */
+export async function printWindow(title, bodyHtml, extraCss = '') {
+  let html;
+  try {
+    const r = await fetch('/api/docs/print', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCookie('tt_csrf') },
+      body: JSON.stringify({ title, body: bodyHtml, css: extraCss }),
+    });
+    if (!r.ok) throw new Error(`Ошибка ${r.status}`);
+    html = await r.text();
+  } catch (e) {
+    toast(`Печать не подготовилась — ${e.message}`, 'warn');
+    return;
+  }
+  const f = document.createElement('iframe');
+  f.setAttribute('aria-hidden', 'true');
+  f.title = title;
+  Object.assign(f.style, { position: 'fixed', top: '0', left: '-10000px', width: '1px', height: '1px',
+    border: '0' });
+  const cleanup = () => {
+    window.removeEventListener('message', onDone);
+    clearTimeout(fallback);
+    f.remove();
+  };
+  const onDone = e => { if (e.origin === location.origin && e.data && e.data.butler_print_done) cleanup(); };
+  const fallback = setTimeout(cleanup, 5 * 60 * 1000);   // диалог так и не открыли/закрыли молча
+  window.addEventListener('message', onDone);
+  document.body.appendChild(f);
+  f.srcdoc = html;
 }
 
 

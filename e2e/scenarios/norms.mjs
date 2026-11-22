@@ -94,10 +94,14 @@ const $ = s => window.document.querySelector(s);
   const toasts = () => text('#toast-host');
   
   async function main() {
-    /* печать заявлений проверяем по содержимому: printWindow открывает окно и пишет в него
-       документ целиком — перехватываем window.open (стили лежат в том же документе) */
+    /* печать заявлений проверяем по содержимому: printWindow показывает документ в скрытом
+       iframe (srcdoc), автопечать делает внешний скрипт страницы — ловим появление фрейма */
     const printed = [];
-    window.open = () => ({ document: { write: doc => printed.push({ t: '', h: doc, css: doc }), close() {} } });
+    new MutationObserver(ms => {
+      for (const m of ms) for (const n of m.addedNodes) {
+        if (n.tagName === 'IFRAME' && n.title) printed.push({ t: n.title, h: n.srcdoc, css: n.srcdoc });
+      }
+    }).observe(document.body, { childList: true });
   
     await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
     check('вход выполнен', !$('#app').classList.contains('hidden'), text('#login-error'));
