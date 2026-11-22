@@ -226,7 +226,7 @@ const $ = s => window.document.querySelector(s);
     await apiJson('POST', '/api/stays/guests', { last_name: guest });
   
     window.navigate('stays');
-    check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 8));
+    check('вкладки шахматки', await waitFor(() => $$('#view-stays [data-stab]').length === 7));
     /* панель фильтров появляется после загрузки фонда и шахматки: в медленном CI сценарий
        менял фильтры раньше — change() уходил в пустоту */
     check('шахматка отрисована (месяц и панель фильтров)', await waitFor(() => $('#sm-label') && $('.sf-panel')));
@@ -754,8 +754,11 @@ const $ = s => window.document.querySelector(s);
       check(names ? 'вкладка «Брони» есть (с фамилиями)' : 'вкладки «Брони» нет (занятость)',
         !!$('#view-stays [data-stab="bookings"]') === names);
       const full = names && me.permissions.includes('stays.guests');
-      check(full ? 'вкладка «Гости» есть (полный уровень)' : 'вкладки «Гости» нет',
-        !!$('#view-stays [data-stab="guests"]') === full);
+      const mineEdit = me.permissions.includes('stays.mine_guest_edit');
+      check('вкладки «Гости» в шахматке больше нет', !$('#view-stays [data-stab="guests"]'));
+      check(full || mineEdit ? 'раздел «Гости» есть в меню (полный уровень или правка своих)'
+                             : 'раздела «Гости» нет в меню',
+        window.state.menu.some(m => m.id === 'guests') === (full || mineEdit));
       if (me.permissions.includes('stays.view') || me.permissions.includes('stays.occupancy')) {
         for (const [tab, newBtn] of [['blocks', '#bl-new'], ['ooo', '#oo-new']]) {
           check(`вкладка «${tab}» есть для всех уровней`, !!$(`#view-stays [data-stab="${tab}"]`));
@@ -1216,11 +1219,8 @@ const $ = s => window.document.querySelector(s);
     check('гости и бронь дубля созданы', !!keep.id && !!drop.id && res.status === 200, JSON.stringify(res.body));
   
     Object.assign(MODS.guests.staysGuests, MODS.guests.staysGuestsEmpty());
-    window.navigate('stays');
-    await waitFor(() => $$('#view-stays [data-stab]').length > 0);
-    check('вкладка «Гости» есть', !!$('#view-stays [data-stab="guests"]'));
-    click($('#view-stays [data-stab="guests"]'));
-    check('вкладка «Гости» отрисована', await waitFor(() => !!$('#gl-total')));
+    window.navigate('guests');
+    check('раздел «Гости» отрисован', await waitFor(() => !!$('#gl-total')));
     const rerendered = async (sel, act) => { act(); await idle(); return !!$(sel); };   // шаблоны lit обновляют элементы на месте
     /* посимвольный ввод с паузой дольше задержки поиска: поле не перерисовывается, фокус и текст на месте */
     const q = $('#gl-q');
@@ -1268,7 +1268,7 @@ const $ = s => window.document.querySelector(s);
       && card.preferences.food === 'без лактозы', JSON.stringify(card.stays));
     check('дубль удалён', (await apiJson('GET', `/api/stays/guests/${drop.id}`)).status === 404);
     Object.assign(MODS.guests.staysGuests, MODS.guests.staysGuestsEmpty());
-    check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
+    check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-guests').innerHTML));
   }
   
   /* 7в · Настройки → Сопровождение, ◆ и код на экранах, табло с причинами, фильтры (правила сопровождения §5, §6) */

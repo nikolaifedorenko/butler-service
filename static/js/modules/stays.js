@@ -14,7 +14,6 @@ import {
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { renderBookings } from './stays_bookings.js';
-import { renderGuestsTab } from './stays_guests.js';
 import { openBlockCard, renderBlocksTab } from './stays_blocks.js';
 import { openOooForm, renderOooTab } from './stays_ooo.js';
 import { renderMine } from './stays_mine.js';
@@ -28,8 +27,10 @@ import { filterPanelTemplate, STAYS_SORTS, staysSortRows } from './stays_filters
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
 
+/* вкладки шахматки — оперативные (сезон «время × объекты»); справочник гостей вынесен
+   в самостоятельный раздел «Гости» (ревью UI 22.11.2026), там же создание гостей батлером */
 const STAYS_TABS = [['units', 'Объекты'], ['butlers', 'Батлеры'], ['day', 'Табло дня'], ['occupancy', 'Загрузка'], ['bookings', 'Брони'],
-  ['blocks', 'Блоки'], ['ooo', 'OOO'], ['guests', 'Гости']];
+  ['blocks', 'Блоки'], ['ooo', 'OOO']];
 /* «Особый гость» — ◆ у имени; VIP-код брони — рядом с главным гостем (правила сопровождения §6) */
 export const STAYS_SPECIAL_MARK = '◆ ';
 export const STAYS_ESCORT_MODE = { rules: 'по правилам', required: 'требуется', declined: 'не требуется (гость отказался)' };
@@ -136,7 +137,8 @@ export async function staysFund(force = false) {
 export async function loadStays() {
   const host = $('#view-stays');
   render(html`
-    <div class="page-head"><div><h2>Шахматка</h2><div class="sub">Кто где живёт и кто из батлеров ведёт гостей</div></div></div>
+    <div class="page-head"><div><h2>Шахматка</h2><div class="sub">Кто где живёт и кто из батлеров ведёт гостей</div></div>
+      <div class="spacer"></div>${guestFindView()}</div>
     <div class="layer-tabs">${STAYS_TABS.filter(staysTabAllowed).map(([id, t]) => html`<button
       class="btn btn-sm${staysState.tab === id ? ' btn-primary' : ''}" data-stab=${id}
       @click=${() => { staysState.tab = id; loadStays(); }}>${t}</button>`)}</div>
@@ -150,15 +152,44 @@ export async function loadStays() {
     render(html`<div class="panel"><p class="muted">${e.message}</p></div>`, mount(body));
   }
 }
-/* «Батлеры» и «Брони» — с уровня «с фамилиями»; «Гости» — справочник целиком (stays.guests, §3) */
+/* «Батлеры» и «Брони» — с уровня «с фамилиями» */
 export function staysTabAllowed([id]) {
-  if (id === 'guests') return can('stays.guests') && can('stays.view');
   return (id !== 'butlers' && id !== 'bookings') || can('stays.view');
 }
 /* вкладка → функция отрисовки */
 function staysTabRender(tab) {
   return { units: renderUnitsBoard, butlers: renderButlersBoard, day: renderDayBoard,
-    occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab, guests: renderGuestsTab }[tab] || renderUnitsBoard;
+    occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab }[tab] || renderUnitsBoard;
+}
+
+/* микро-поиск гостя в шапке шахматки (ревью UI 22.11.2026): карточка открывается из любой
+   вкладки; батлер ищет среди своих. Справочник целиком — раздел «Гости». */
+function guestFindView() {
+  const full = can('stays.guests');
+  if (!full && !can('stays.mine_guest_edit')) return nothing;
+  let timer = null;
+  return html`<div class="guest-find"><input type="search" id="sg-q" placeholder="Найти гостя…"
+    @input=${e => {
+      clearTimeout(timer);
+      const host = e.target.closest('.guest-find');
+      timer = setTimeout(async () => {
+        const needle = e.target.value.trim();
+        if (needle.length < 2) { render(nothing, $('[data-sg-res]', host)); return; }
+        try {
+          const found = await api(`/api/stays/guests?q=${encodeURIComponent(needle)}${full ? '' : '&mine=1'}`, { silent: true });
+          render(found.length ? found.map(g => html`<button type="button" class="btn btn-sm btn-ghost" data-sg-guest=${g.id}>${g.short}</button>`)
+            : html`<span class="muted">не найдено</span>`, $('[data-sg-res]', host));
+        } catch (err) { toast(err.message, 'warn'); }
+      }, 300);
+    }}>
+    <div class="guest-find-res" data-sg-res @click=${e => {
+      const b = e.target.closest('[data-sg-guest]');
+      if (!b) return;
+      openGuestCard(Number(b.dataset.sgGuest), () => loadStays());
+      const host = e.currentTarget.closest('.guest-find');
+      $('input', host).value = '';
+      render(nothing, e.currentTarget);
+    }}></div></div>`;
 }
 
 async function loadMyStays() {

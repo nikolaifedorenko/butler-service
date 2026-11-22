@@ -14,6 +14,7 @@ from app.core.audit import audit
 from app.core.auth import Principal
 from app.core.db import transactional
 from app.core.errors import Forbidden, NotFound
+from app.core.permissions import has_perm
 from app.core.time import local_date
 from app.modules.guests.application import guests
 from app.modules.guests.application.catalog import Guest
@@ -32,7 +33,18 @@ def _data(data: dict) -> dict:
 
 @transactional
 def create(db: Session, principal: Principal, payload: GuestIn) -> dict:
-    g, before = guests.save_guest(db, _data(payload.model_dump()), None)
+    data = _data(payload.model_dump())
+    if not has_perm(db, principal, "stays.edit"):
+        # батлер заводит гостя (раздел «Гости», ревью UI 22.11.2026): VIP-код и «особый» —
+        # только менеджеры; новый гость сразу «свой» (ведёт тот, кто завёл)
+        if data.get("special") or data.get("vip_code_id"):
+            raise Forbidden("VIP-код и «особый гость» задаёт менеджер")
+        data["special"] = False
+        data["vip_code_id"] = None
+        g, before = guests.save_guest(db, data, None)
+        g.created_by_employee_id = butler_id(principal)
+    else:
+        g, before = guests.save_guest(db, data, None)
     audit(db, principal, "stays_guest", f"guest:{g.id}", {"diff": guests.guest_changes(before, g)})
     return card(db, g)
 

@@ -32363,6 +32363,7 @@
         ]
       },
       "post": {
+        "description": "Новый гость: менеджер — полный профиль; батлер — без VIP-кода и «особого», гость сразу «свой».",
         "operationId": "create_guest_api_stays_guests_post",
         "requestBody": {
           "content": {

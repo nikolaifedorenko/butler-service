@@ -659,8 +659,11 @@ export async function openGuestForm(id, onSaved, opts = {}) {
   const [g, fund] = await Promise.all([id ? api(`/api/stays/guests/${id}`) : null, staysFund()]);
   const gFields = fund.fields.filter(f => f.target === 'guest');
   const dates = (g?.special_dates || []).map(d => ({ ...d }));
-  /* батлер (opts.mine): анкетные поля только для чтения — менять можно предпочтения и заметки */
-  const locked = !!opts.mine;
+  /* батлер (opts.mine): анкетные поля только для чтения — менять можно предпочтения и заметки.
+     При СОЗДАНИИ (нет g) поля открыты: батлер заводит гостя сам (раздел «Гости»); VIP-код,
+     «особый» и «обновить в бронях» ему недоступны и в форме не рисуются (сервер всё равно откажет) */
+  const locked = !!opts.mine && !!g;
+  const butlerCreate = !!opts.mine && !g;
   /* «◆ Особый гость» и VIP-код — право stays.edit; архивный код виден, пока он стоит у гостя */
   const codes = (fund.vip_codes || []).filter(c => !c.archived || c.id === g?.vip_code_id);
   const codeOptions = [['', '—'], ...codes.map(c => [c.id, `${c.code}${c.title ? ' — ' + c.title : ''}${c.archived ? ' (в архиве)' : ''}`])];
@@ -673,8 +676,8 @@ export async function openGuestForm(id, onSaved, opts = {}) {
       ${fieldRow('Отчество', text('gf-middle', g?.middle_name))}${fieldRow('Телефон', text('gf-phone', g?.phone_display))}
       ${fieldRow('Email', text('gf-email', g?.email))}${fieldRow('Дата рождения', text('gf-birth', g?.birth_date, 'date'))}
       ${fieldRow('Пол', html`<select id="gf-gender" ?disabled=${locked}>${Object.entries(STAYS_GENDER).map(([k, t]) => optionView(k, t, g?.gender || ''))}</select>`)}
-      <label class="chk"><input id="gf-special" type="checkbox" .checked=${!!g?.special} ?disabled=${locked}> ${STAYS_SPECIAL_MARK}Особый гость</label>
-      ${fieldRow('VIP-код', html`<select id="gf-code" ?disabled=${locked}>${codeOptions.map(([v, t]) => optionView(v, t, g?.vip_code_id ?? ''))}</select>`)}
+      ${butlerCreate ? nothing : html`<label class="chk"><input id="gf-special" type="checkbox" .checked=${!!g?.special} ?disabled=${locked}> ${STAYS_SPECIAL_MARK}Особый гость</label>
+      ${fieldRow('VIP-код', html`<select id="gf-code" ?disabled=${locked}>${codeOptions.map(([v, t]) => optionView(v, t, g?.vip_code_id ?? ''))}</select>`)}`}
       <div id="gf-upd-row" hidden>${checkField('gf-upd', `обновить в бронях: ${g?.main_current ?? 0}`, true)}
         <div class="muted">текущие и будущие брони, где гость главный</div></div>
       ${fieldRow('Аллергии', textInput('gf-allergy', g?.preferences?.allergy))}${fieldRow('Питание', textInput('gf-food', g?.preferences?.food))}
@@ -690,14 +693,16 @@ export async function openGuestForm(id, onSaved, opts = {}) {
       const codeId = () => (v('#gf-code') ? Number(v('#gf-code')) : null);
       const body = () => ({ last_name: v('#gf-last'), first_name: v('#gf-first'), middle_name: v('#gf-middle'),
         phone: v('#gf-phone'), email: v('#gf-email'), birth_date: v('#gf-birth') || null, gender: v('#gf-gender'),
-        special: $('#gf-special', m).checked, vip_code_id: codeId(),
+        special: butlerCreate ? false : $('#gf-special', m).checked,
+        vip_code_id: butlerCreate ? null : codeId(),
         ...(g ? { update_reservations: $('#gf-upd', m).checked } : {}),
         preferences: { ...(g?.preferences || {}), allergy: v('#gf-allergy'), food: v('#gf-food'), habits: v('#gf-habits') },
         special_dates: dates.filter(d => d.date && d.what),
         fields: { ...(g?.fields || {}), ...staysFieldValues(m, 'data-gf-field') }, note: v('#gf-note') });
       /* галочка «обновить в бронях: N» — только когда код сменился и есть куда обновлять */
       const syncUpd = () => { $('#gf-upd-row', m).hidden = !(g && g.main_current > 0 && codeId() !== (g.vip_code_id ?? null)); };
-      $('#gf-code', m).onchange = syncUpd;
+      const codeSel = $('#gf-code', m);
+      if (codeSel) codeSel.onchange = syncUpd;   /* при создании батлером VIP-кода в форме нет */
       syncUpd();
       const codeUpdate = res => (res.updated_reservations ? html`<div data-code-update>VIP-код обновится в бронях: ${res.updated_reservations}</div>` : nothing);
       const flow = previewThenSave({ url: g ? `/api/stays/guests/${g.id}` : '/api/stays/guests', method: g ? 'PUT' : 'POST',
