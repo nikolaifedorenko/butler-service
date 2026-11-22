@@ -20,6 +20,10 @@ const STAYS_FILTERS_KEY = 'stays.filters';   // + '.<id пользователя
 export const STAYS_SORTS = [['tree', 'по дереву'], ['label', 'по номеру'], ['category', 'по категории'],
   ['floor', 'по этажу'], ['load', 'по загрузке за месяц']];
 export const staysFilterOpen = new Set();   // раскрытые списки панели — переживают перерисовку
+/* панель фильтров на телефоне свёрнута за кнопку «Фильтры (N)»: раскрытые списки и
+   чекбоксы занимали весь первый экран до самой доски. Состояние — на уровне модуля,
+   переживает перерисовки вида (сбрасывается сменой пользователя). */
+let sfPanelOpen = false;
 /* набираемый поиск: перерисовка вида после паузы не отнимает фокус и не теряет символы,
    набранные, пока шёл запрос (сбрасывается при смене пользователя) */
 let staysSearchDraft = null;         // { value, caret }
@@ -38,6 +42,7 @@ export function staysResetUserState() {
   Object.assign(staysBlock, staysBlockEmpty());
   Object.assign(staysOoo, staysOooEmpty());
   staysFilterOpen.clear();
+  sfPanelOpen = false;
   staysSearchDraft = null;
 }
 
@@ -150,19 +155,42 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true } =
   const vipItems = (fund.vip_codes || []).filter(c => !c.archived || f.vip_code_ids.includes(c.id))
     .map(c => ({ value: c.id, label: c.code + (c.archived ? ' (в архиве)' : '') }));
   const saved = staysSavedFilters();
+  /* активные фильтры — чипами с индивидуальным снятием: видно, что доска отфильтрована,
+     и что снять, не раскрывая списки. Значения — из тех же списков, что панель. */
+  const titleOf = (items, id) => items.find(i => i.value === id)?.label ?? String(id);
+  const chip = (label, clear) => html`<span class="chip">${label}<button class="chip-x" title="Убрать фильтр"
+    aria-label=${`Убрать фильтр «${label}»`} @click=${clear}><span aria-hidden="true">✕</span></button></span>`;
+  const chips = html`
+    ${f.group_ids.map(id => chip(titleOf(lists[0][3], id), () => emit({ group_ids: f.group_ids.filter(x => x !== id) })))}
+    ${f.category_ids.map(id => chip(titleOf(lists[1][3], id), () => emit({ category_ids: f.category_ids.filter(x => x !== id) })))}
+    ${f.flag_ids.map(id => chip(titleOf(lists[2][3], id), () => emit({ flag_ids: f.flag_ids.filter(x => x !== id) })))}
+    ${f.kind_ids.map(id => chip(titleOf(lists[3][3], id), () => emit({ kind_ids: f.kind_ids.filter(x => x !== id) })))}
+    ${f.escorted ? chip('с сопровождением', () => emit({ escorted: false })) : nothing}
+    ${people && f.special ? chip('◆ особый гость', () => emit({ special: false })) : nothing}
+    ${people ? f.vip_code_ids.map(id => chip(titleOf(vipItems, id), () => emit({ vip_code_ids: f.vip_code_ids.filter(x => x !== id) }))) : nothing}`;
+  const activeCount = f.group_ids.length + f.category_ids.length + f.flag_ids.length + f.kind_ids.length
+    + (f.escorted ? 1 : 0) + (people && f.special ? 1 : 0) + f.vip_code_ids.length;
   let timer = null;
-  return html`<div class="sb-toolbar sf-panel">
-    ${lists.map(view)}
-    <label class="chk"><input type="checkbox" id="sf-esc" .checked=${f.escorted} @change=${e => emit({ escorted: e.target.checked })}> с сопровождением</label>
-    ${people ? html`<label class="chk"><input type="checkbox" id="sf-special" .checked=${f.special} @change=${e => emit({ special: e.target.checked })}> ◆ Особый гость</label>
-      <div @change=${onList('vip_code_ids', 'vipcode', Number)} style="display:contents">${list('vipcode', 'vip_code_ids', Number, 'VIP-код', vipItems, f.vip_code_ids)}</div>
-      <input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" .value=${staysSearchDraft?.value ?? f.q}
+  return html`<div class="sb-toolbar sf-bar">
+    <button class="btn btn-sm sf-toggle only-mobile" aria-expanded=${sfPanelOpen ? 'true' : 'false'}
+      @click=${e => { sfPanelOpen = !sfPanelOpen; e.target.closest('.sf-bar').nextElementSibling.classList.toggle('open', sfPanelOpen);
+        e.target.setAttribute('aria-expanded', String(sfPanelOpen)); }}>
+      Фильтры${activeCount ? html` <b>(${activeCount})</b>` : nothing}</button>
+    ${chips}
+    ${people ? html`<input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" .value=${staysSearchDraft?.value ?? f.q}
         @input=${e => {
           staysSearchDraft = { value: e.target.value, caret: e.target.selectionStart };
           clearTimeout(timer);
           const value = e.target.value;
           timer = setTimeout(() => emit({ q: value }), 350);
         }}>` : nothing}
+  </div>
+  <div class="sb-toolbar sf-panel${sfPanelOpen ? ' open' : ''}">
+    ${lists.map(view)}
+    <label class="chk"><input type="checkbox" id="sf-esc" .checked=${f.escorted} @change=${e => emit({ escorted: e.target.checked })}> с сопровождением</label>
+    ${people ? html`<label class="chk"><input type="checkbox" id="sf-special" .checked=${f.special} @change=${e => emit({ special: e.target.checked })}> ◆ Особый гость</label>
+      <div @change=${onList('vip_code_ids', 'vipcode', Number)} style="display:contents">${list('vipcode', 'vip_code_ids', Number, 'VIP-код', vipItems, f.vip_code_ids)}</div>` : nothing}
+    <div class="sf-saved-row">
     <select id="sf-saved" title="Сохранённые наборы фильтров" @change=${e => {
         const s = staysSavedFilters().find(x => x.name === e.target.value);
         if (!s) return;
@@ -191,6 +219,7 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true } =
         onChange(f);
       }}>Сохранить набор</button>
     <button class="btn btn-sm btn-ghost" id="sf-reset" @click=${() => { staysSearchDraft = null; lastSavedName = ''; onChange(staysEmptyFilters()); }}>Сбросить</button>
+    </div>
   </div>`;
 }
 

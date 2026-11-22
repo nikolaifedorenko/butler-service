@@ -272,14 +272,17 @@ async function renderUnitsBoard(body) {
         @change=${e => { st.grouped = e.target.checked; draw(); }}> группировать по дереву</label>
       <button class="btn btn-sm btn-ghost" id="sb-xlsx-anon" title="Объекты, даты, статусы, число гостей — без данных гостей" @click=${xlsx('anon')}>Выгрузить (без гостей)</button>
       ${can('stays.export') && can('stays.guests') ? html`<button class="btn btn-sm btn-ghost" id="sb-xlsx-full" @click=${xlsx('full')}>Выгрузить полностью</button>` : nothing}
-      ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}
+      ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary hide-mobile" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}
     </div>
     ${staysFilterView(fund, rerender, { people: names })}
     ${data.warnings.length ? html`<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}
     <div class="sb-grid" tabindex="0" style=${`--days:${data.days.length}`} @click=${gridClick}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
     ${(byUnit.none || []).length ? html`<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
       html`<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar=${b.reservation_id}
-        @click=${names ? () => openReservationCard(b.reservation_id, rerender) : nothing}>${b.overbooked ? html`<span class="badge danger">овербукинг</span> ` : nothing}${names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь'} · ${dateRu(b.start)}–${dateRu(b.end)}</div>`)}</div>` : nothing}`;
+        @click=${names ? () => openReservationCard(b.reservation_id, rerender) : nothing}>${b.overbooked ? html`<span class="badge danger">овербукинг</span> ` : nothing}${names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь'} · ${dateRu(b.start)}–${dateRu(b.end)}</div>`)}</div>` : nothing}
+    /* на телефоне создание брони — плавающая кнопка: тулбара на узком экране всё равно не видно */
+    ${can('stays.edit') ? html`<button class="fab only-mobile" id="sb-new-fab" aria-label="Новая бронь" title="Новая бронь"
+      @click=${() => openReservationForm(null, { onSaved: rerender })}>+</button>` : nothing}`;
   draw();
   staysFocusDay(body);
 }

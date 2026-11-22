@@ -178,3 +178,21 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .row-card:hover { background: var(--surface-1); }
 .row-go { color: var(--muted); opacity: 0; transition: opacity .15s ease; width: 2em; }
 .row-card:hover .row-go, .row-card:focus-within .row-go { opacity: 1; }
+
+/* Чип активного фильтра: снимается по ✕ без раскрытия списков (шахматка) */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px;
+  border-radius: 999px; background: var(--brand-bg); border: 1px solid var(--brand-line);
+  color: var(--brand-fg-strong); font-size: 12.5px; white-space: nowrap; }
+.chip-x { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  border: none; border-radius: 50%; background: transparent; color: var(--brand-fg);
+  cursor: pointer; font-size: 12px; line-height: 1; }
+.chip-x:hover { background: var(--brand-line); color: var(--brand-fg-strong); }
+
+/* Плавающая кнопка действия (на телефоне — вместо кнопки в тулбаре) */
+.fab { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 46;
+  width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--primary); color: var(--on-solid); font-size: 28px; line-height: 1;
+  box-shadow: var(--shadow-lg); align-items: center; justify-content: center;
+  transition: background .15s ease; }
+.fab:hover { background: var(--primary-dark); }
+.fab:active { transform: scale(.96); }

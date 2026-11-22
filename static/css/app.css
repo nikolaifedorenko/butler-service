@@ -509,6 +509,13 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
   table.data { display: block; max-width: 100%; overflow-x: auto; }
   /* выпадающий список фильтра раскрывается в потоке: у края экрана абсолютное окно вылезало вправо */
   .sf-panel .sf-dd .sf-list { position: static; min-width: 0; max-width: 100%; box-shadow: none; }
+  /* панель фильтров шахматки свёрнута за кнопку «Фильтры (N)»: раскрытые списки и
+     чекбоксы занимали весь первый экран до самой доски */
+  /* специфичность выше позднего .sb-toolbar { display:flex } (строка ~965): иначе каскад отдавал бы панели flex */
+  .sb-toolbar.sf-panel { display: none; }
+  .sb-toolbar.sf-panel.open { display: flex; }
+  /* кнопка «+ Бронь» в тулбаре — только на десктопе; на телефоне её заменяет FAB */
+  .hide-mobile { display: none !important; }
   /* переключатели из нескольких кнопок переносятся, длинные плашки — тоже */
   .seg { flex-wrap: wrap; max-width: 100%; }
   .v4-chips .badge { white-space: normal; }
@@ -963,6 +970,10 @@ tr.v4-click:hover td { background: var(--surface-1); }
 /* ── Шахматка (модуль stays) ── */
 .stays-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; }
 .sb-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+/* строка навигации вида (месяц ◀ ▶) прилипает при прокрутке контента; панель фильтров
+   не прилипает — иначе на телефоне два прилипших блока сожрали бы экран */
+.sb-toolbar:not(.sf-bar):not(.sf-panel) { position: sticky; top: 0; z-index: 20; background: var(--bg); padding: 4px 0; }
+.sf-bar { margin-bottom: 4px; }
 .sb-toolbar input[type=search] { min-width: 220px; flex: 1; }
 .sb-toolbar select, .sb-toolbar input[type=text], .sb-toolbar input[type=date] { width: auto; padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
 .sb-toolbar input[type=text] { max-width: 160px; }
@@ -1182,3 +1193,8 @@ tr.fund-retired td .badge { text-decoration: none; }
 @media (max-width: 640px) {
   .today-head { border-radius: 0; margin: -10px -12px var(--space-4); }
 }
+
+/* строка сохранённых наборов — на своей строке панели, у правого края: раньше её прижимал
+   туда гибкий поиск (flex:1), и открытые списки фильтров слева её не перекрывали */
+.sf-saved-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex-basis: 100%;
+  justify-content: flex-end; }
