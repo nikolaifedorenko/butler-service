@@ -1,14 +1,14 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-11-22a';
-// содержимое оболочки: 2bd5e0c264227367
+const VERSION = 'tt-2026-11-22d';
+// содержимое оболочки: 2ad8ead19aabc19c
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-11-22a',
-  '/static/css/base.css?v=2026-11-22a',
-  '/static/css/components.css?v=2026-11-22a',
-  '/static/css/tokens.css?v=2026-11-22a',
+  '/static/css/app.css?v=2026-11-22d',
+  '/static/css/base.css?v=2026-11-22d',
+  '/static/css/components.css?v=2026-11-22d',
+  '/static/css/tokens.css?v=2026-11-22d',
   '/static/js/app.js',
   '/static/js/core.js',
   '/static/js/modules/access.js',
@@ -54,10 +54,11 @@ const SHELL = [
   '/static/js/modules/timesheet_common.js',
   '/static/js/modules/timesheet_layers.js',
   '/static/js/modules/today.js',
+  '/static/js/print-page.js',
   '/static/js/registry.js',
   '/static/js/ui/form.js',
   '/static/js/ui/html.js',
-  '/static/js/ui/theme.js?v=2026-11-22a',
+  '/static/js/ui/theme.js?v=2026-11-22d',
   '/static/vendor/lit-html/directive.js',
   '/static/vendor/lit-html/lit-html.js',
   '/manifest.webmanifest',

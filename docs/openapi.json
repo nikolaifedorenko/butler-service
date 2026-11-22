@@ -13895,6 +13895,31 @@
         "title": "PreviewedOut[ReservationDocOut]",
         "type": "object"
       },
+      "PrintIn": {
+        "additionalProperties": false,
+        "description": "Тело запроса на страницу печати: собранный клиентом HTML и его стили.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "css": {
+            "default": "",
+            "title": "Css",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "PrintIn",
+        "type": "object"
+      },
       "ProgressOut": {
         "additionalProperties": false,
         "properties": {
@@ -22944,6 +22969,41 @@
           }
         },
         "summary": "Update Kind",
+        "tags": [
+          "docs"
+        ]
+      }
+    },
+    "/api/docs/print": {
+      "post": {
+        "description": "Страница для печати: чистый HTML документ (заявления, график сменности).\n\nНе сохраняет состояние; право — как у входа: печать доступна каждой роли.\nДанные клиент собирает шаблонами lit-html (экранирование на месте), поэтому\nbody/css вставляются как есть; заголовок экранируется сервером.",
+        "operationId": "print_document_api_docs_print_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrintIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Print Document",
         "tags": [
           "docs"
         ]
