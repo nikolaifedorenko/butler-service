@@ -13,6 +13,8 @@ cp .env.example .env
 #   ADMIN_PASSWORD=<пароль admin>   # первый старт на пустой базе; демо-учёток в проде нет
 #   BACKUP_AGE_RECIPIENT=age1…      # открытый ключ шифрования бэкапов, BACKUP_REMOTE — второй сервер (§4)
 mkdir -p certs backups certbot-www
+# контейнер бэкапов работает не от root: каталог копий должен быть доступен ему на запись
+chown 100:101 backups 2>/dev/null || true   # uid:gid пользователя backup в образе
 # сертификаты Let's Encrypt:
 #   certs/fullchain.pem, certs/privkey.pem
 ```
