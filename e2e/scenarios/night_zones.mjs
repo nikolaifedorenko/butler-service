@@ -86,10 +86,11 @@ const $ = (s, root) => (root || window.document).querySelector(s);
   }
   /* переход в раздел: navigate() перерисовывает асинхронно, поэтому ждём две фазы —
      снятие старой разметки и появление свежей (иначе клик уходит в отсоединённый узел) */
+  const loading = () => $('#night-body .skel-wrap') || text('#night-body').includes('Загрузка');
   async function gotoNight() {
     window.navigate('night');
-    await waitFor(() => !$('#night-body') || text('#night-body').includes('Загрузка'));
-    return waitFor(() => !!$('#night-body') && !text('#night-body').includes('Загрузка'), 20000);
+    await waitFor(() => !$('#night-body') || loading());
+    return waitFor(() => !!$('#night-body') && !loading(), 20000);
   }
   const api = async (method, url, body) => proxy(method, url, body
     ? { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } } : {});

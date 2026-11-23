@@ -72,7 +72,7 @@ const $ = s => window.document.querySelector(s);
     click($(`#st-nav [data-st="${screen}"]`));
     await waitFor(() => {
       const t = text('#st-body');
-      return t && !t.includes('Загрузка…');
+      return t && !t.includes('Загрузка…') && !$('#st-body .skel-wrap');
     });
   }
   
