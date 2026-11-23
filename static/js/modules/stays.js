@@ -439,8 +439,10 @@ export async function openReservationCard(rid, onChanged) {
       if (assign) assign.onclick = () => openCoverageForm(card, onChanged);
       const st = $('#rc-status', m);
       if (st) st.onclick = () => openStatusForm(card, onChanged);
-      /* гость своей брони, которого явно ведёт другой батлер, — чужой: сервер ответит 403 */
-      $$('[data-guest-card]', m).forEach(b => { b.onclick = () => openGuestCard(Number(b.dataset.guestCard), onChanged).catch(e => toast(e.message, 'err')); });
+      /* гость своей брони, которого явно ведёт другой батлер, — чужой: сервер ответит 403.
+         Карточка — боковая панель: модалку закрываем, иначе она (z-100) накроет её (z-90) */
+      $$('[data-guest-card]', m).forEach(b => { b.onclick = () => { closeModal();
+        openGuestCard(Number(b.dataset.guestCard), onChanged).catch(e => toast(e.message, 'err')); }; });
       /* семейное дерево гостя — только просмотр: правится в карточке гостя (§4, с уровня «с фамилиями») */
       $$('[data-family]', m).forEach(b => {
         b.onclick = () => {

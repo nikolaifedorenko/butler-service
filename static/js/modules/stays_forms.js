@@ -9,7 +9,7 @@
 'use strict';
 
 import { can } from '../app.js';
-import { $, $$, api, closeModal, dateRu, openModal, toast } from '../core.js';
+import { $, $$, api, closeDrawer, closeModal, dateRu, openDrawer, openModal, toast } from '../core.js';
 import { html, nothing, render } from '../ui/html.js';
 import { checkField, fieldRow, optionView, textInput } from '../ui/form.js';
 import { renderFamilyTree } from './stays_family.js';
@@ -520,8 +520,9 @@ export async function openGuestCard(gid, onChanged) {
   const edit = full || can('stays.mine_guest_edit');
   const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
   const prefsShown = Object.entries(g.preferences).filter(([, v]) => v);
-  openModal({
-    title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
+  /* боковая панель (ADR-0013 §7): дерево и история дышат по ширине, доска остаётся видна */
+  openDrawer({
+    title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(),
     subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}${g.vip_code.archived ? ' (в архиве)' : ''}` : '', g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
     body: html`<div class="grid-2">
         <div><h4>Предпочтения</h4>${prefsShown.length ? prefsShown.map(([k, v]) => html`<div>${k}: ${v}</div>`) : html`<span class="muted">нет</span>`}
@@ -542,7 +543,7 @@ export async function openGuestCard(gid, onChanged) {
         ${x.butlers.length ? html`<div class="muted">вели: ${x.butlers.join(', ')}</div>` : nothing}</div>`) : html`<span class="muted">проживаний нет</span>`}</div>`,
     footer: html`<button class="btn btn-ghost" data-close>Закрыть</button>${edit ? html`<button class="btn btn-primary" id="gc-edit">Изменить профиль</button>` : nothing}`,
     onMount(m) {
-      $('[data-close]', m).onclick = closeModal;
+      $('[data-close]', m).onclick = closeDrawer;
       const reopen = () => openGuestCard(gid, onChanged);
       render(html`<div class="muted">Загрузка…</div>`, $('#gc-family', m));
       renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
