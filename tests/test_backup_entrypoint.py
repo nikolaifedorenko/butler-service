@@ -115,11 +115,12 @@ def test_remote_backup_rejects_unavailable_ssh_material(container_root, name, mi
     assert not (container_root / "home" / ".ssh").exists()
 
 
-def test_local_backup_rejects_unwritable_backup_directory(container_root):
-    (container_root / "backups").chmod(0o500)
+@pytest.mark.parametrize("mode", [0o500, 0o600], ids=["not-writable", "not-searchable"])
+def test_local_backup_rejects_inaccessible_backup_directory(container_root, mode):
+    (container_root / "backups").chmod(mode)
     result = run_entrypoint(container_root, remote="")
 
-    assert result.returncode == 1, result.stderr
+    assert result.returncode == 1, result.stdout + result.stderr
     assert result.stdout == ""
     assert "каталог ./backups недоступен для записи" in result.stderr
     assert f"uid {BACKUP_UID}" in result.stderr

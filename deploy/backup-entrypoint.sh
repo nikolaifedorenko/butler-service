@@ -2,7 +2,7 @@
 # Для удалённой копии ssh нужен закрытый ключ с правами 600 у пользователя backup.
 set -eu
 
-if [ ! -w /backups ]; then
+if [ ! -d /backups ] || [ ! -w /backups ] || [ ! -x /backups ]; then
   echo "каталог /backups недоступен для записи пользователю backup (uid $(id -u)):" >&2
   echo "chown $(id -u):$(id -g) ./backups на хосте или удалите каталог — docker создаст его заново" >&2
   exit 1
