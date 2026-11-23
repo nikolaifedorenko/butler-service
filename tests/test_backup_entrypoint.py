@@ -124,4 +124,7 @@ def test_local_backup_rejects_inaccessible_backup_directory(container_root, mode
     assert result.stdout == ""
     assert "каталог ./backups недоступен для записи" in result.stderr
     assert f"uid {BACKUP_UID}" in result.stderr
-    assert f"chown {BACKUP_UID}:" in result.stderr
+    assert "deploy/README.md" in result.stderr
+    assert "docker compose -f docker-compose.prod.yml run --rm -T --no-deps --build" in result.stderr
+    assert "chown backup:backup ./backups && chmod u+rwx ./backups" in result.stderr
+    assert "удалите" not in result.stderr

@@ -3,8 +3,14 @@
 set -eu
 
 if [ ! -d /backups ] || [ ! -w /backups ] || [ ! -x /backups ]; then
-  echo "каталог /backups недоступен для записи пользователю backup (uid $(id -u)):" >&2
-  echo "chown $(id -u):$(id -g) ./backups на хосте или удалите каталог — docker создаст его заново" >&2
+  echo "каталог /backups недоступен для записи или прохода пользователю backup (uid $(id -u))." >&2
+  cat >&2 <<'COMMAND'
+Подготовьте ./backups в каталоге репозитория по deploy/README.md (§1).
+mkdir -p ./backups && \
+  docker compose -f docker-compose.prod.yml run --rm -T --no-deps --build \
+    --user root --entrypoint /bin/sh backup \
+    -ec 'chown backup:backup /backups && chmod u+rwx /backups'
+COMMAND
   exit 1
 fi
 
