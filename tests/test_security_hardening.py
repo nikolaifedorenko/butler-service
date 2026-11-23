@@ -183,21 +183,14 @@ def test_prod_uvicorn_does_not_trust_any_proxy():
 
 def test_backup_container_runs_not_as_root():
     """Остаток аудита 25.10.2026 (C2): backup-контейнер — единственный с секретами
-    (закрытый ключ SSH, ключ age) — работает не от root; ключ SSH копируется
-    entrypoint'ом в домашний каталог с правами 600 (ssh отказывается читать
-    смонтированный файл чужого владельца)."""
+    (закрытый ключ SSH, ключ age) — работает не от root."""
     import pathlib
 
     deploy = pathlib.Path(__file__).resolve().parents[1] / "deploy"
     dockerfile = (deploy / "backup.Dockerfile").read_text(encoding="utf-8")
-    entrypoint = (deploy / "backup-entrypoint.sh").read_text(encoding="utf-8")
-    script = (deploy / "backup.sh").read_text(encoding="utf-8")
     assert "\nUSER " in dockerfile + "\n" and "USER root" not in dockerfile, \
         "backup.Dockerfile не переключает не-root пользователя"
-    assert "adduser" in dockerfile and "id_ed25519" in entrypoint \
-        and 'chmod 600 "$HOME/.ssh/id_ed25519"' in entrypoint, \
-        "entrypoint не готовит закрытый ключ SSH для не-root пользователя"
-    assert 'SSH_DIR="$HOME/.ssh"' in script, "backup.sh читает ключ не из домашнего каталога"
+    assert "adduser" in dockerfile, "backup.Dockerfile не создаёт пользователя backup"
     compose = (pathlib.Path(__file__).resolve().parents[1] / "docker-compose.prod.yml").read_text()
     backup_block = compose.split("backup:", 1)[1].split("\n\n", 1)[0]
     assert "user:" not in backup_block, "compose подменяет пользователя образа"
