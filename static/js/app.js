@@ -11,6 +11,7 @@
 import { $, $$, api, closeModal, initials, loadMediaLimits, openModal, roleTitle, setLoginHandler, serverShiftMs, state, syncServerClock, toast, todayISO } from './core.js';
 import { html, mount, nothing, render } from './ui/html.js';
 import { MODULE_SCREENS, MODULE_VIEWS, registerModule } from './registry.js';
+import { paletteBoot, paletteInit } from './ui/palette.js';
 import { carsState } from './modules/cars.js';
 import { nightState } from './modules/night.js';
 import { settingsUI } from './modules/settings.js';
@@ -402,4 +403,6 @@ Object.assign(window, { navigate, state, toast, openModal });
 /* Точка входа для сквозных тестов (Playwright) и отладки в консоли браузера: остальные имена модулей
    снаружи не видны. Код интерфейса этими свойствами не пользуется. */
 Object.assign(window, { navigate, state, toast, openModal });
+paletteInit({ menu: () => (state.menu || []), navigate });
+paletteBoot();
 bootApp();
