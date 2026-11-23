@@ -77,7 +77,7 @@ function arrivalCard(a) {
 function bodyTemplate() {
   if (board.error) return html`<div class="panel"><div class="empty">${board.error}</div></div>`;
   const d = board.data;
-  if (!d) return html`<div class="empty">Загрузка…</div>`;
+  if (!d) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   return html`
     <div class="stat-grid">
       <div class="stat accent"><div class="k">Сейчас на работе</div><div class="v">${d.at_work_now}</div></div>

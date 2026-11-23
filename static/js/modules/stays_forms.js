@@ -547,7 +547,7 @@ export async function openGuestCard(gid, onChanged) {
     onMount(m) {
       $('[data-close]', m).onclick = closeDrawer;
       const reopen = () => openGuestCard(gid, onChanged);
-      render(html`<div class="muted">Загрузка…</div>`, $('#gc-family', m));
+      render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, $('#gc-family', m));
       renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
       renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit, onChanged);
       const ed = $('#gc-edit', m);

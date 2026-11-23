@@ -69,7 +69,7 @@ function layerTemplate() {
 }
 
 function bodyTemplate() {
-  if (screen.loading) return html`<div class="empty">Загрузка…</div>`;
+  if (screen.loading) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   if (screen.error) return html`<div class="panel"><div class="empty">${screen.error}</div></div>`;
   return tabelTable(state.tabel);
 }

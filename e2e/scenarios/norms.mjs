@@ -517,7 +517,7 @@ const $ = s => window.document.querySelector(s);
     click($('#st-nav [data-st="shifts"]'));
     check('экран «Смены» отрисован', await waitFor(() => {
       const t = text('#st-body');
-      return t && !t.includes('Загрузка…') && /Как связаны Табель и График/.test(t);
+      return t && !t.includes('Загрузка…') && !$('#st-body .skel-wrap') && /Как связаны Табель и График/.test(t);
     }));
     check('справочники независимы: правила поля tzh больше нет',
       !/только коды справочника или пустое значение/.test(text('#st-body')));

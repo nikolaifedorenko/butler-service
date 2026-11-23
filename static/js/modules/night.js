@@ -197,7 +197,7 @@ function nightBody() {
       <p style="color:var(--danger);font-weight:600">${view.error}</p>
       <p class="hint">Нажмите «Обновить». Если ошибка повторяется — откройте «Архив» и выберите смену вручную.</p></div>`;
   }
-  if (loadingPage) return html`<div class="empty">Загрузка…</div>`;
+  if (loadingPage) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   const rep = view.rep;
   if (!rep) {
     return html`<div class="panel"><h3 class="panel-title">Отчёта пока нет</h3>

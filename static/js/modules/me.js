@@ -13,7 +13,7 @@ registerModule({ views: { me: loadMe } });
 
 export async function loadMe() {
   const host = mount($('#view-me'));
-  render(html`<div class="me-wrap"><div class="empty">Загрузка…</div></div>`, host);
+  render(html`<div class="me-wrap"><div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>`, host);
   try {
     const status = await api('/api/punches/status');
     state.status = status;
@@ -113,7 +113,7 @@ const carTitle = html`<h3 class="panel-title">Электрокар</h3>`;
 async function bindCarStrip() {
   const host = $('#car-strip');
   if (!host) return;
-  if (!host.dataset.ready) render(html`${carTitle}<div class="empty" style="padding:12px">Загрузка…</div>`, host);
+  if (!host.dataset.ready) render(html`${carTitle}<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, host);
   try {
     const data = await api('/api/cars', { silent: true });
     const cars = data.cars || [];
@@ -234,7 +234,7 @@ async function loadMyHistory() {
     render(html`<div class="empty">К учётной записи не привязан сотрудник — своих отметок нет</div>`, host);
     return;
   }
-  if (!host.dataset.ready) render(html`<div class="empty">Загрузка…</div>`, host);
+  if (!host.dataset.ready) render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, host);
   const d = new Date();
   const items = await api(`/api/punches?year=${d.getFullYear()}&month=${d.getMonth() + 1}&employee_id=${state.user.employee_id}`);
   host.dataset.ready = '1';

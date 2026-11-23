@@ -102,7 +102,7 @@ export function renderGuestsTab(body) {
   const s = staysGuests;
   render(html`${staysGuestsToolbar()}<div id="gl-result"></div>`, mount(body));
   const result = $('#gl-result', body);
-  render(html`<div class="empty">Загрузка…</div>`, result);
+  render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, result);
   const known = new Map();
   const mergeBtn = $('#gl-merge', body);
   const syncMerge = () => { if (mergeBtn) mergeBtn.disabled = s.picked.length !== 2; };

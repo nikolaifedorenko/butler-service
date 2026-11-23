@@ -104,7 +104,7 @@ function carsBody() {
       <p class="hint">Проверьте связь и нажмите «Обновить». Состояние каров также видно
       в разделе «Ночной отчёт» → шаг «Проверка электрокаров».</p></div>`;
   }
-  if (!d) return html`<div class="empty">Загрузка…</div>`;
+  if (!d) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   const meta = carsState.meta || { can_manage: false, can_edit_park: false };
   const me = d.me || {};
   const list = d.cars.filter(c => {

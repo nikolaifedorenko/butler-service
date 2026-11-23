@@ -391,7 +391,7 @@ async function loadItems(zones) {
 
 function itemsTab(items, zones, services, canEdit, again, host) {
   if (!zones.length) return html`<div class="empty">Сначала создайте зону — форма в списке слева</div>`;
-  if (!items) return html`<div class="empty">Загрузка…</div>`;
+  if (!items) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   if (items.error) return html`<div class="empty">${items.error}</div>`;
   const { zid, zd, zoneAreas, cl } = items;
   const addItem = async () => {

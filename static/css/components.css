@@ -196,3 +196,28 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
   transition: background .15s ease; }
 .fab:hover { background: var(--primary-dark); }
 .fab:active { transform: scale(.96); }
+
+/* Скелетон загрузки: вместо текста «Загрузка…» — тёплые плашки с пробегающим бликом.
+   База и блик — из токенов поверхностей, в тёмной теме не светятся. */
+.skel-wrap { display: flex; flex-direction: column; gap: 10px; padding: 6px 0; }
+.skel-line { height: 14px; border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%; animation: skel-slide 1.1s var(--ease) infinite; }
+.skel-line:nth-child(2) { width: 82%; }
+.skel-line:nth-child(3) { width: 64%; }
+.skel-line.skel-lg { height: 34px; border-radius: var(--r-md); }
+@keyframes skel-slide { from { background-position: 120% 0; } to { background-position: -80% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .skel-line { animation: none; }
+}
+
+/* Микродвижения (атмосфера 23.11.2026): фокус с клавиатуры — кольцо фирменного цвета;
+   hover/press — на общей кривой. Без :focus, чтобы не дублировать клик мышью. */
+.btn, .nav-item, .chip, .menu-btn, .ft-person, .icon-btn { transition: background var(--dur-1) var(--ease),
+  border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease); }
+.btn:active { transform: translateY(1px); }
+.fab:active { transform: scale(.96) translateY(1px); }
+:focus-visible { outline: 2px solid var(--brand-fg); outline-offset: 1px; border-radius: var(--r-sm); }
+
+/* Табличные цифры там, где смотрят на столбцы чисел: сетки времени, статистика, навигация месяца */
+.tnum, .sb-head, .stat .v, .month-nav .label, .oc-cell, .sb-cell, td.num { font-variant-numeric: tabular-nums; }

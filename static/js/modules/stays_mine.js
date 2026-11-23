@@ -35,7 +35,7 @@ export async function renderMine() {
     <div id="mine-body"></div>`, mount(host));
   const body = $('#mine-body', host);
   body.className = 'empty';
-  render(html`Загрузка…`, mount(body));
+  render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(body));
   const fresh = loadGenerationFor(body);
   const draw = { today: renderMineToday, month: renderMineMonth, guests: renderMineGuests }[mineState.tab];
   try {
@@ -145,7 +145,7 @@ async function renderMineGuests(body) {
     }}></div>
     <div id="mg-result"></div>`, mount(body));
   const result = $('#mg-result', body);
-  render(html`<div class="empty">Загрузка…</div>`, result);
+  render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, result);
   let rows = [];
   let total = 0;
   const page = offset => api(`/api/stays/mine/guests?q=${encodeURIComponent(mineState.q.trim())}&offset=${offset}&limit=${MINE_PAGE}`, { silent: true });

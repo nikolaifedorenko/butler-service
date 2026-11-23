@@ -144,7 +144,7 @@ export async function loadStays() {
       @click=${() => { staysState.tab = id; loadStays(); }}>${t}</button>`)}</div>
     <div id="stays-body"></div>`, mount(host));
   const body = $('#stays-body', host);
-  render(html`<div class="empty">Загрузка…</div>`, mount(body));
+  render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(body));
   try {
     await staysFund(true);          // фонд меняют в Настройках — при каждом открытии раздела заново
     await staysTabRender(staysState.tab)(body);

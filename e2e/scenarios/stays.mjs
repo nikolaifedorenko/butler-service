@@ -87,6 +87,9 @@ const $ = s => window.document.querySelector(s);
     if (cond) { passed++; console.log(`  ✓ ${name}`); }
     else { failed++; console.log(`  ❌ ${name}${extra ? ' — ' + extra : ''}`); }
   }
+  /* контент раздела загружен: ни текста «Загрузка…», ни скелетона
+     (атмосфера 23.11.2026 заменила текст скелетонами — ждать нечего) */
+  const staysReady = host => !$(`#${host} .skel-wrap`) && !text(`#${host}`).includes('Загрузка…');
   async function waitFor(fn, ms = 12000) {
     const t0 = Date.now();
     while (Date.now() - t0 < ms) { if (fn()) return true; await sleep(150); }
@@ -105,7 +108,7 @@ const $ = s => window.document.querySelector(s);
     click($(`#st-nav [data-st="${screen}"]`));
     await waitFor(() => {
       const t = text('#st-body');
-      return t && !t.includes('Загрузка…');
+      return t && !t.includes('Загрузка…') && !$('#st-body .skel-wrap');
     });
   }
   async function apiJson(method, url, body) {
@@ -743,7 +746,7 @@ const $ = s => window.document.querySelector(s);
       await waitFor(() => $$('#view-stays [data-stab]').length > 0);
       for (const b of $$('#view-stays [data-stab]').map(x => x.dataset.stab)) {
         click($(`[data-stab="${b}"]`));
-        const ok = await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
+        const ok = await waitFor(() => staysReady('stays-body') && text('#stays-body').length > 0);
         check(`вкладка «${b}» отрисована`, ok);
         if (me.permissions.includes('stays.occupancy') && !me.permissions.includes('stays.view')) {
           const leaked = DEMO_SURNAMES.filter(s => text('#view-stays').includes(s));
@@ -763,13 +766,13 @@ const $ = s => window.document.querySelector(s);
         for (const [tab, newBtn] of [['blocks', '#bl-new'], ['ooo', '#oo-new']]) {
           check(`вкладка «${tab}» есть для всех уровней`, !!$(`#view-stays [data-stab="${tab}"]`));
           click($(`#view-stays [data-stab="${tab}"]`));
-          await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
+          await waitFor(() => staysReady('stays-body') && text('#stays-body').length > 0);
           check(`вкладка «${tab}»: кнопка создания только с stays.edit`, !!$(newBtn) === me.permissions.includes('stays.edit'));
         }
       }
       if (!names) {
         click($('#view-stays [data-stab="units"]'));
-        await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
+        await waitFor(() => staysReady('stays-body') && text('#stays-body').length > 0);
         check('занятость: нет ◆ и VIP-кода', !/◆/.test($('#view-stays').textContent) && !$('#view-stays [data-vip-code]')
           && !$('#sf-special') && !$('[data-sf-dd="vipcode"]'));
       }
@@ -778,11 +781,11 @@ const $ = s => window.document.querySelector(s);
     }
     if (menu.includes('mystays')) {
       window.navigate('mystays');
-      check('«Мои гости» отрисованы', await waitFor(() => !!$('#mine-body') && !text('#mine-body').includes('Загрузка…')));
+      check('«Мои гости» отрисованы', await waitFor(() => !!$('#mine-body') && staysReady('mine-body')));
       for (const tab of ['month', 'guests', 'today']) {
         click($(`#view-mystays [data-mtab="${tab}"]`));
         check(`«Мои гости»: вкладка «${tab}» отрисована`, await waitFor(() => $(`#view-mystays [data-mtab="${tab}"]`)?.classList.contains('btn-primary')
-          && !!$('#mine-body') && !text('#mine-body').includes('Загрузка…')));
+          && !!$('#mine-body') && staysReady('mine-body')));
       }
       check('«Мои гости»: нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-mystays').innerHTML));
     }
@@ -819,7 +822,7 @@ const $ = s => window.document.querySelector(s);
     }
     for (const tab of ['ooo', 'blocks']) {
       click($(`#view-stays [data-stab="${tab}"]`));
-      await waitFor(() => !text('#stays-body').includes('Загрузка…') && text('#stays-body').length > 0);
+      await waitFor(() => staysReady('stays-body') && text('#stays-body').length > 0);
       check(`вкладка «${tab}»: без кнопки создания`, !$('#oo-new') && !$('#bl-new'));
     }
     click($('#view-stays [data-stab="day"]'));
@@ -827,8 +830,8 @@ const $ = s => window.document.querySelector(s);
     change($('#db-date'), first);
     await waitFor(() => $('#db-date')?.value === first && !!$('[data-dtab="in_house"]'));
     click($('[data-dtab="in_house"]'));
-    await waitFor(() => !text('#stays-body').includes('Загрузка…'));
-    check('табло: проживающие видны', text('#stays-body').length > 0 && !text('#stays-body').includes('Загрузка…'));
+    await waitFor(() => staysReady('stays-body'));
+    check('табло: проживающие видны', text('#stays-body').length > 0 && staysReady('stays-body'));
     check('табло: нет кнопок назначения и подмены', !$('[data-replace-res]') && !$('#bb-assign') && !$('[data-pick]'));
     const cand = await apiJson('GET', `/api/stays/coverage/candidates?day=${first}&reservation_id=${own.reservation_id}`);
     check('подбор кандидатов читается', cand.status === 200, String(cand.status));

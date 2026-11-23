@@ -82,7 +82,7 @@ async function settingsScreenDocs(host) {
       <p class="hint" style="margin:-4px 0 12px">Значения справочников попадают в карточку сотрудника и
         подставляются в документы. Переименование обновляет карточки, удаление — очищает поле у сотрудников,
         где значение было выбрано.</p>
-      <div class="grid-2" id="dicts-body"><div class="empty">Загрузка…</div></div>`)}
+      <div class="grid-2" id="dicts-body"><div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>`)}
     ${settingsPanelView('Прочие правила объекта', html`
       ${(data.items || []).length ? data.items.map(i => html`<div class="rule-row">
         <div><div class="lbl">${i.description || i.key}</div>

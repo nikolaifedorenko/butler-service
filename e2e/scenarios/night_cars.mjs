@@ -78,7 +78,8 @@ const $ = (s, root) => (root || window.document).querySelector(s);
   async function gotoNight() {
     window.navigate('night');
     await waitFor(() => !$('#night-cars-open'));
-    return waitFor(() => !!$('#night-cars-open') && !text('#night-body').includes('Загрузка'));
+    return waitFor(() => !!$('#night-cars-open') && !$('#night-body .skel-wrap')
+      && !text('#night-body').includes('Загрузка'));
   }
   
   /* запросы мимо интерфейса (тем же cookie-джаром): сверка данных на сервере */
