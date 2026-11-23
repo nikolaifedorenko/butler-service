@@ -149,7 +149,7 @@ async function loadFactMonth() {
 function monthPane() {
   const t = tab.month;
   let body;
-  if (t.loading) body = html`<div class="empty">Загрузка…</div>`;
+  if (t.loading) body = html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   else if (t.error) body = errorPanel(t.error);
   else if (!state.factMonth || !state.factMonth.rows.length) body = html`<div class="empty">Нет сотрудников в периоде</div>`;
   else body = gantt(state.factMonth);
@@ -310,7 +310,7 @@ function sessionRows(d) {
 
 function sessionsBody() {
   const t = tab.sessions;
-  if (t.loading) return html`<div class="empty">Загрузка…</div>`;
+  if (t.loading) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   if (t.error) return errorPanel(t.error);
   const d = t.data;
   if (!d) return nothing;
@@ -413,7 +413,7 @@ function dayRow(r) {
 
 function dayBody() {
   const t = tab.day;
-  if (t.loading) return html`<div class="empty">Загрузка…</div>`;
+  if (t.loading) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   if (t.error) return errorPanel(t.error);
   const d = state.factDayData;
   if (!d) return nothing;

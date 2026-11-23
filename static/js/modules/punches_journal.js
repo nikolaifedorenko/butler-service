@@ -59,7 +59,7 @@ function drawJournal() {
 }
 
 function bodyTemplate() {
-  if (table.loading) return html`<div class="empty">Загрузка…</div>`;
+  if (table.loading) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   if (table.error) return html`<div class="empty">${table.error}</div>`;
   const items = table.items;
   if (!items) return html`<div class="empty">Выберите месяц</div>`;

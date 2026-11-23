@@ -208,7 +208,7 @@ function settingsScreenAllowed(id) {
 export async function loadSettings() {
   const host = $('#view-settings');
   if (!host) return;
-  render(html`<div class="empty">Загрузка…</div>`, mount(host));
+  render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(host));
   try {
     settingsUI.data = await api('/api/settings', { silent: true });
   } catch (e) {
@@ -340,7 +340,7 @@ export async function settingsRenderScreen() {
   settingsUI.screen = item.id;
   if (history.replaceState) history.replaceState(null, '', `#/settings/${item.id}`);
   settingsRenderNav();
-  render(html`<div class="empty">Загрузка…</div>`, mount(body));
+  render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(body));
   body.scrollTop = 0;
   try {
     await item.render(body);

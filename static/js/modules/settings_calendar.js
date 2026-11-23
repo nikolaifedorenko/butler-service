@@ -67,7 +67,7 @@ async function settingsScreenCalendar(host) {
       </div>`)}
     <div id="cl-day">${dayPanel(settingsUI.calDay, marks, mods, y, m)}</div>
     ${settingsPanelView('Производственный календарь и ВИП-гости',
-      html`<div id="dp-body"><div class="empty">Загрузка…</div></div>`)}
+      html`<div id="dp-body"><div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>`)}
     <p class="hint">Массовые назначения («все субботы года», список дат из письма C&amp;B) — в форме выше:
       дни двойной оплаты подмешиваются в правила автоматически, отдельной сущности нет.</p>`, mount(host));
   draw();

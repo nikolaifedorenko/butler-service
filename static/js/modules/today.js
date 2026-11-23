@@ -205,7 +205,7 @@ function shortcuts() {
 }
 
 function screen() {
-  if (!view.loaded) return html`<div class="today"><div class="empty">Загрузка…</div></div>`;
+  if (!view.loaded) return html`<div class="today"><div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>`;
   const hasBlocks = view.status || view.mine || view.board;
   return html`<div class="today">
     ${head()}

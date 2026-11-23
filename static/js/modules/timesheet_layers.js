@@ -118,7 +118,7 @@ function filteredRows() {
 
 function gridTemplate() {
   const g = state.grid;
-  if (!g) return html`<div class="empty">Загрузка…</div>`;
+  if (!g) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
   const rows = filteredRows();
   if (!rows.length) return html`<div class="empty">Сотрудники не найдены</div>`;
   /* блоки: Смена 1, Смена 2, Пятидневка, Другие смены; сотрудник виден в каждом своём блоке */
