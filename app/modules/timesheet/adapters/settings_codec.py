@@ -53,7 +53,7 @@ def from_payload(payload: dict) -> Settings:
     return Settings(
         tz=tzinfo,
         period_granularity=payload.get("period_granularity", base.period_granularity),
-        step_minutes=int(payload.get("step_minutes", base.step_minutes)),
+        step_minutes=payload.get("step_minutes", base.step_minutes),
         late_limit_minutes=int(payload.get("late_limit_minutes", base.late_limit_minutes)),
         day_limit_minutes=int(payload.get("day_limit_minutes", base.day_limit_minutes)),
         day_code_policy={code: DayCodePolicy(_bool(row["carries_hours"]), _bool(row["accepts_ut"]),
