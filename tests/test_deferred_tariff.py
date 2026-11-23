@@ -19,14 +19,31 @@ from sqlalchemy import delete, select
 
 from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import DeferredCarry
+from app.modules.timesheet.adapters.sql_closings import SqlCarryOver
 from app.modules.timesheet.application.close_period import close_period
 from app.modules.timesheet.application.texts import error_text
-from app.modules.timesheet.domain.types.entities import DeferredBlock
+from app.modules.timesheet.domain.types.entities import DeferredBlock, Period
 from app.modules.timesheet.domain.types.errors import InvalidInputDataError
 from tests.engine.helpers import EMP, IN, OUT, at, d, day
 from tests.engine.test_application import NOV, OCT, _rows_full_month, _stand
 
 NOTE = "deferred tariff guard"
+
+
+@pytest.mark.parametrize("other_block", [
+    DeferredBlock(dt.date(2029, 12, 30), "ДЯ", 60),
+    DeferredBlock(dt.date(2029, 12, 31), "ДН", 60),
+    DeferredBlock(dt.date(2029, 12, 31), "ДЯ", 120),
+], ids=["source_day", "tariff", "minutes"])
+def test_distinct_deferred_blocks_coexist_for_employee_period(db, other_block):
+    employee_id = str(db.scalar(select(Employee.id).limit(1)))
+    period = Period(dt.date(2030, 1, 1), dt.date(2030, 1, 31))
+    block = DeferredBlock(dt.date(2029, 12, 31), "ДЯ", 60)
+    carry = SqlCarryOver(db)
+
+    carry.save_deferred(employee_id, period, (block, other_block))
+
+    assert carry.load_deferred(employee_id, period) == [block, other_block]
 
 
 def test_close_with_unknown_deferred_tariff_is_input_error():
