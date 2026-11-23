@@ -189,7 +189,7 @@ function staysMergeMoves(m) {
   const list = (title, items) => html`<h4>${title}</h4>${items.length ? items : html`<div class="muted">нет</div>`}`;
   return html`
     ${list('Брони', m.reservations.map(r => html`<div>${r.number || '#' + r.id}${r.shared ? html` <span class="muted">— оба в составе: останется один гость</span>` : nothing}</div>`))}
-    ${list('Связи', m.links.map(l => html`<div>${l.name} · ${l.former ? STAYS_LINK.spouse_former : STAYS_MERGE_KIND[l.kind] || STAYS_LINK[l.kind] || l.kind} — ${STAYS_MERGE_RESULT[l.result] || l.result}</div>`))}
+    ${list('Связи', m.links.map(l => html`<div>${l.name} · ${l.former ? STAYS_LINK[`${l.kind}_former`] || STAYS_LINK.spouse_former : STAYS_MERGE_KIND[l.kind] || STAYS_LINK[l.kind] || l.kind} — ${STAYS_MERGE_RESULT[l.result] || l.result}</div>`))}
     ${list('Предпочтения', m.preferences.map(k => html`<div>${k}</div>`))}
     ${list('Особые даты', m.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`))}
     ${list('Профиль: заполнится из дубля', m.profile.map(k => html`<div>${STAYS_MERGE_PROFILE[k] || k}</div>`))}

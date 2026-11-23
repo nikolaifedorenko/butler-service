@@ -250,11 +250,13 @@ class FamilyKinOut(ApiModel):
     person_id: int
     title: str
     degree: int
+    via_former: bool = False        # родство только через бывший брак / бывший союз
 
 
 class FamilyOut(ApiModel):
     people: list[FamilyPersonOut]
     parents: list[list[int]]
     spouses: list[list[Any]]                 # [a, b, бывшие]
+    partners: list[list[Any]] = []           # [a, b, бывшие] — действующих может быть несколько
     links: list[FamilyLinkOut]
     kin: list[FamilyKinOut]

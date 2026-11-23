@@ -1206,3 +1206,12 @@ tr.fund-retired td .badge { text-decoration: none; }
   gap: 2px; min-width: 260px; max-height: 50vh; overflow-y: auto; padding: var(--space-1);
   background: var(--surface-0); border: 1px solid var(--line); border-radius: var(--r-md);
   box-shadow: var(--shadow-lg); }
+
+/* Семейное дерево (переработка 23.11.2026): партнёры и бывшие — отдельные блоки,
+   бывшие приглушены; действия связи — компактные кнопки рядом с человеком */
+.ft-block { margin-top: 10px; }
+.ft-block h5 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.ft-ex-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 0; }
+.ft-person.ft-muted { opacity: .6; }
+.ft-ex-block .ft-person { border-style: dashed; }
+.ft-actions { display: inline-flex; gap: 4px; }

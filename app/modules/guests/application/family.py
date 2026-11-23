@@ -1,6 +1,6 @@
 """Семейное дерево гостей (спека addendum §4): загрузка графа первичных связей «родитель /
-супруг» из базы, граф семьи для карточки и родственники среди проживающих. Названия родства —
-domain/kinship.py. Ничего не коммитит."""
+супруг / партнёр» из базы, граф семьи для карточки и родственники среди проживающих. Названия
+родства — domain/kinship.py. Ничего не коммитит."""
 from __future__ import annotations
 
 from sqlalchemy import or_, select
@@ -11,7 +11,7 @@ from ..domain.kinship import FamilyGraph, Person, children_of, kin_of
 from .guests import format_phone
 from .vip_codes import code_texts
 
-FAMILY_KINDS = ("parent", "spouse")
+FAMILY_KINDS = ("parent", "spouse", "partner")
 GENERATIONS = 3          # граф карточки: до прадедов и правнуков (§4)
 MAX_HOPS = 6             # двоюродные и свояк — 4 шага; с запасом
 MAX_PEOPLE = 200
@@ -27,15 +27,19 @@ def graph_of(links) -> FamilyGraph:
     """links — GuestLink или кортежи (a, b, kind, former)."""
     parents: dict[int, tuple[int, ...]] = {}
     spouses: dict[int, tuple[tuple[int, bool], ...]] = {}
+    partners: dict[int, tuple[tuple[int, bool], ...]] = {}
     for ln in links:
         a, b, kind, former = ((ln.guest_a_id, ln.guest_b_id, ln.kind, ln.former) if isinstance(ln, GuestLink)
                               else ln)
         if kind == "parent":
             parents[b] = (*parents.get(b, ()), a)
+        elif kind == "partner":
+            partners[a] = (*partners.get(a, ()), (b, former))
+            partners[b] = (*partners.get(b, ()), (a, former))
         else:
             spouses[a] = (*spouses.get(a, ()), (b, former))
             spouses[b] = (*spouses.get(b, ()), (a, former))
-    return FamilyGraph(parents=parents, spouses=spouses)
+    return FamilyGraph(parents=parents, spouses=spouses, partners=partners)
 
 
 def family_links(db: Session, seeds: set[int]) -> list[GuestLink]:
@@ -109,13 +113,16 @@ def family(db: Session, gid: int, *, full: bool) -> dict:
             out |= {"phone": format_phone(g.phone), "birth_date": g.birth_date.isoformat() if g.birth_date else None}
         return out
 
-    kin = kin_of(gid, {i: Person(i, g.gender) for i, g in people.items()}, graph.parents, graph.spouses)
+    kin = kin_of(gid, {i: Person(i, g.gender) for i, g in people.items()}, graph.parents, graph.spouses,
+                 partners=graph.partners)
     return {"people": [person(people[i]) for i in sorted(people)],
             "parents": [[ln.guest_b_id, ln.guest_a_id] for ln in links if ln.kind == "parent"],
             "spouses": [[ln.guest_a_id, ln.guest_b_id, ln.former] for ln in links if ln.kind == "spouse"],
+            "partners": [[ln.guest_a_id, ln.guest_b_id, ln.former] for ln in links if ln.kind == "partner"],
             "links": [{"id": ln.id, "kind": ln.kind, "a": ln.guest_a_id, "b": ln.guest_b_id, "former": ln.former}
                       for ln in links],
-            "kin": [{"person_id": k.person_id, "title": k.title, "degree": k.degree} for k in kin]}
+            "kin": [{"person_id": k.person_id, "title": k.title, "degree": k.degree, "via_former": k.via_former}
+                    for k in kin]}
 
 
 def kin_among(db: Session, present: set[int], seeds: set[int] | None = None) -> dict[int, list[tuple[int, str]]]:
@@ -136,8 +143,11 @@ def kin_among(db: Session, present: set[int], seeds: set[int] | None = None) -> 
     children = children_of(graph.parents)
     out: dict[int, list[tuple[int, str]]] = {}
     for gid in sorted(seeds & set(people)):
-        rel = [(k.person_id, k.title) for k in kin_of(gid, people, graph.parents, graph.spouses, children)
-               if k.person_id in present]
+        # на табло — только действующая родня: родня бывших браков помечена via_former
+        # и остаётся в карточке гостя, а не в оперативном списке проживающих
+        rel = [(k.person_id, k.title) for k in kin_of(gid, people, graph.parents, graph.spouses, children,
+                                                      partners=graph.partners)
+               if k.person_id in present and not k.via_former]
         if rel:
             out[gid] = rel
     return out
@@ -165,7 +175,8 @@ def relatives_among(db: Session, present: set[int], candidates: set[int]) -> set
         return [ln for _, ln in sorted({e for x in ids for e in by_person.get(x, ())})]
 
     def kin(pid: int) -> set[int]:
-        return {k.person_id for k in kin_of(pid, {}, graph.parents, graph.spouses, children)}
+        return {k.person_id for k in kin_of(pid, {}, graph.parents, graph.spouses, children,
+                                            partners=graph.partners)}
 
     found: set[int] = set()
     for p in present:
