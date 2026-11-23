@@ -2,8 +2,8 @@
 # Для удалённой копии ssh нужен закрытый ключ с правами 600 у пользователя backup.
 set -eu
 
-if [ ! -d /backups ] || [ ! -w /backups ] || [ ! -x /backups ]; then
-  echo "каталог /backups недоступен для записи или прохода пользователю backup (uid $(id -u))." >&2
+if [ ! -d /backups ] || [ ! -r /backups ] || [ ! -w /backups ] || [ ! -x /backups ]; then
+  echo "каталог /backups недоступен для чтения, записи или прохода пользователю backup (uid $(id -u))." >&2
   cat >&2 <<'COMMAND'
 Подготовьте ./backups в каталоге репозитория по deploy/README.md (§1).
 mkdir -p ./backups && \

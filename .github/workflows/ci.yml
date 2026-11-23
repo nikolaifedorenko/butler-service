@@ -256,11 +256,30 @@ jobs:
             --tmpfs "/backups:uid=${owner%:*},gid=${owner#*:},mode=0700"
             --mount "type=bind,source=$fixture/backup.sh,target=/usr/local/bin/backup.sh,readonly"
           )
+          remote_args=(
+            -e BACKUP_REMOTE=backup@example.invalid:/backups/
+            --mount "type=bind,source=$fixture/ssh,target=/run/backup-ssh,readonly"
+          )
           local_output=$(docker run "${smoke_args[@]}" -e BACKUP_REMOTE= "$image")
           grep -Fx 'Local backup startup passed' <<< "$local_output"
-          remote_output=$(docker run "${smoke_args[@]}" -e BACKUP_REMOTE=backup@example.invalid:/backups/ \
-            --mount "type=bind,source=$fixture/ssh,target=/run/backup-ssh,readonly" "$image")
+          remote_output=$(docker run "${smoke_args[@]}" "${remote_args[@]}" "$image")
           grep -Fx 'Remote backup startup passed' <<< "$remote_output"
+
+          chmod 0000 "$fixture/ssh/id_ed25519"
+          unreadable_status=0
+          unreadable_output=$(docker run "${smoke_args[@]}" "${remote_args[@]}" "$image" \
+            2>"$fixture/unreadable.stderr") || unreadable_status=$?
+          if [ "$unreadable_status" -ne 1 ]; then
+            cat "$fixture/unreadable.stderr" >&2
+            echo "Unreadable key startup returned $unreadable_status, expected 1" >&2
+            exit 1
+          fi
+          grep -F '/run/backup-ssh/id_ed25519' "$fixture/unreadable.stderr" |
+            grep -F "(uid ${owner%:*})"
+          if grep -Fxq 'Remote backup startup passed' "$fixture/unreadable.stderr" - <<< "$unreadable_output"; then
+            echo 'Unreadable key startup reported success' >&2
+            exit 1
+          fi
 
       - name: Уязвимости образа (Trivy, HIGH/CRITICAL с исправлением)
         # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и

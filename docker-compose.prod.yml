@@ -182,7 +182,8 @@ services:
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}     # открытый ключ age (age1…)
       BACKUP_REMOTE: ${BACKUP_REMOTE:-}                   # user@backup-host:/srv/butler-backups/
     volumes:
-      # Подготовьте каталог на хосте. Пользователю backup нужны запись и проход (deploy/README.md).
+      # Подготовьте каталог на хосте. Пользователю backup нужны чтение, запись и проход.
+      # Команда подготовки приведена в deploy/README.md.
       - type: bind
         source: ./backups
         target: /backups
