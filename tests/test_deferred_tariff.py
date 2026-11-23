@@ -20,6 +20,7 @@ from sqlalchemy import delete, select
 from app.modules.people.application import Employee
 from app.modules.timesheet.adapters.orm import DeferredCarry
 from app.modules.timesheet.adapters.sql_closings import SqlCarryOver
+from app.modules.timesheet.adapters.sql_uow import SqlUnitOfWork
 from app.modules.timesheet.application.close_period import close_period
 from app.modules.timesheet.application.texts import error_text
 from app.modules.timesheet.domain.types.entities import DeferredBlock, Period
@@ -28,6 +29,10 @@ from tests.engine.helpers import EMP, IN, OUT, at, d, day
 from tests.engine.test_application import NOV, OCT, _rows_full_month, _stand
 
 NOTE = "deferred tariff guard"
+REPLACEMENT_BLOCKS = (
+    DeferredBlock(dt.date(2030, 1, 29), "ДЯ", 180),
+    DeferredBlock(dt.date(2030, 1, 30), "ДН", 60),
+)
 
 
 @pytest.mark.parametrize("other_block", [
@@ -44,6 +49,52 @@ def test_distinct_deferred_blocks_coexist_for_employee_period(db, other_block):
     carry.save_deferred(employee_id, period, (block, other_block))
 
     assert carry.load_deferred(employee_id, period) == [block, other_block]
+
+
+@pytest.fixture
+def committed_carry(db):
+    employee_id = db.scalars(select(Employee.id).limit(1)).one()
+    period = Period(dt.date(2030, 2, 1), dt.date(2030, 2, 28))
+    old_blocks = [
+        DeferredBlock(dt.date(2030, 1, 29), "ДЯ", 60),
+        DeferredBlock(dt.date(2030, 1, 29), "ДЯ", 120),
+    ]
+    db.add_all(DeferredCarry(employee_id=employee_id, period_start=period.start,
+                             source_day=block.source_day, tariff=block.tariff, minutes=block.minutes)
+               for block in old_blocks)
+    db.commit()
+    try:
+        yield str(employee_id), period, old_blocks
+    finally:
+        db.rollback()
+        db.execute(delete(DeferredCarry).where(DeferredCarry.employee_id == employee_id,
+                                              DeferredCarry.period_start == period.start))
+        db.commit()
+
+
+@pytest.mark.parametrize("replacement", [REPLACEMENT_BLOCKS, ()], ids=["two_blocks", "empty"])
+def test_save_deferred_replaces_entire_committed_set(app_stack, db, committed_carry, replacement):
+    employee_id, period, old_blocks = committed_carry
+    carry = SqlCarryOver(db)
+    assert carry.load_deferred(employee_id, period) == old_blocks
+
+    with SqlUnitOfWork(db):
+        carry.save_deferred(employee_id, period, replacement)
+
+    with app_stack["SessionLocal"]() as reader:
+        assert SqlCarryOver(reader).load_deferred(employee_id, period) == list(replacement)
+
+
+def test_carry_replacement_is_rolled_back_after_write_failure(db, committed_carry):
+    employee_id, period, old_blocks = committed_carry
+    carry = SqlCarryOver(db)
+
+    with pytest.raises(RuntimeError, match="injected failure after carry replacement"), SqlUnitOfWork(db):
+        carry.save_deferred(employee_id, period, REPLACEMENT_BLOCKS)
+        assert carry.load_deferred(employee_id, period) == list(REPLACEMENT_BLOCKS)
+        raise RuntimeError("injected failure after carry replacement")
+
+    assert carry.load_deferred(employee_id, period) == old_blocks
 
 
 def test_close_with_unknown_deferred_tariff_is_input_error():

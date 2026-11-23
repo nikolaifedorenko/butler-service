@@ -188,6 +188,38 @@ def test_close_atomic_failure_saves_nothing():
     assert db.deferred == {}
 
 
+@pytest.mark.parametrize("closing", [close_period, recalculate], ids=["close", "recalculate"])
+def test_carry_replacement_rolls_back_under_employee_lock(monkeypatch, closing):
+    rows = [day(1, "ОТ"), day(2, "ОТ")] + _rows_full_month("ДО", first=3)
+    db, ports = _stand(rows=rows, marks=[IN(1, 8), OUT(1, 20), IN(2, 8), OUT(2, 20)])
+    old_blocks = [DeferredBlock(d(1), "ДЯ", 720), DeferredBlock(d(2), "ДЯ", 720)]
+    if closing is recalculate:
+        close_period(EMP, OCT, at(1, 0, month=11), ports)
+        assert db.deferred[(EMP, NOV.start)] == old_blocks
+    else:
+        db.deferred[(EMP, NOV.start)] = old_blocks.copy()
+
+    old_closings = {key: row.copy() for key, row in db.closings.items()}
+    db.marks = [IN(1, 8), OUT(1, 18), IN(2, 8), OUT(2, 18)]
+    db.queries.clear()
+    save_deferred = ports.carry_over.save_deferred
+
+    def fail_after_save(employee_id, period, blocks):
+        save_deferred(employee_id, period, blocks)
+        assert db.deferred[(EMP, NOV.start)] == [
+            DeferredBlock(d(1), "ДЯ", 600), DeferredBlock(d(2), "ДЯ", 600),
+        ]
+        raise RuntimeError("injected failure after carry replacement")
+
+    monkeypatch.setattr(ports.carry_over, "save_deferred", fail_after_save)
+    with pytest.raises(RuntimeError, match="injected failure after carry replacement"):
+        closing(EMP, OCT, at(2, 0, month=11), ports)
+
+    assert db.queries.index("store.lock_employee") < db.queries.index("carry_over.save_deferred")
+    assert db.deferred[(EMP, NOV.start)] == old_blocks
+    assert db.closings == old_closings
+
+
 # ── режим 4: recalculate (7.2, v7/R28) ────────────────────────────────────────
 
 def test_recalculate_not_closed_raises():
