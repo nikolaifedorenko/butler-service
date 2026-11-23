@@ -218,6 +218,69 @@ jobs:
           docker run --rm -e DATABASE_URL=postgresql+psycopg2://image:check@127.0.0.1:1/none
           butler-service:ci python -c "import app.main, psycopg2, cryptography; print('ok')"
 
+      - name: Запуск контейнера бэкапов в локальном и удалённом режимах
+        shell: bash
+        run: |
+          image=butler-backup:ci
+          docker build -f deploy/backup.Dockerfile -t "$image" .
+          fixture=$(mktemp -d)
+          trap 'rm -rf "$fixture"' EXIT
+
+          # Подменяем только цикл бэкапов, сохраняя ENTRYPOINT и USER образа.
+          cat > "$fixture/backup.sh" <<'STUB'
+          set -eu
+          test "$(id -u)" -ne 0
+          test "$(id -un)" = backup
+          touch /backups/smoke
+          if [ -z "$BACKUP_REMOTE" ]; then
+            test ! -e "$HOME/.ssh"
+            echo 'Local backup startup passed'
+          else
+            test "$(stat -c '%u:%g:%a' "$HOME/.ssh")" = "$(id -u):$(id -g):700"
+            for name in id_ed25519 known_hosts; do
+              cmp "$HOME/.ssh/$name" "/run/backup-ssh/$name"
+              test "$(stat -c '%u:%g:%a' "$HOME/.ssh/$name")" = "$(id -u):$(id -g):600"
+            done
+            echo 'Remote backup startup passed'
+          fi
+          STUB
+          mkdir -m 0755 "$fixture/ssh"
+          printf '%s\n' 'test private key' > "$fixture/ssh/id_ed25519"
+          printf '%s\n' 'test known hosts' > "$fixture/ssh/known_hosts"
+          chmod 0644 "$fixture/backup.sh" "$fixture/ssh/id_ed25519" "$fixture/ssh/known_hosts"
+
+          owner=$(docker run --rm --network none --pull never --entrypoint /bin/sh "$image" \
+            -c 'printf "%s:%s\n" "$(id -u)" "$(id -g)"')
+          smoke_args=(
+            --rm --network none --pull never
+            --tmpfs "/backups:uid=${owner%:*},gid=${owner#*:},mode=0700"
+            --mount "type=bind,source=$fixture/backup.sh,target=/usr/local/bin/backup.sh,readonly"
+          )
+          remote_args=(
+            -e BACKUP_REMOTE=backup@example.invalid:/backups/
+            --mount "type=bind,source=$fixture/ssh,target=/run/backup-ssh,readonly"
+          )
+          local_output=$(docker run "${smoke_args[@]}" -e BACKUP_REMOTE= "$image")
+          grep -Fx 'Local backup startup passed' <<< "$local_output"
+          remote_output=$(docker run "${smoke_args[@]}" "${remote_args[@]}" "$image")
+          grep -Fx 'Remote backup startup passed' <<< "$remote_output"
+
+          chmod 0000 "$fixture/ssh/id_ed25519"
+          unreadable_status=0
+          unreadable_output=$(docker run "${smoke_args[@]}" "${remote_args[@]}" "$image" \
+            2>"$fixture/unreadable.stderr") || unreadable_status=$?
+          if [ "$unreadable_status" -ne 1 ]; then
+            cat "$fixture/unreadable.stderr" >&2
+            echo "Unreadable key startup returned $unreadable_status, expected 1" >&2
+            exit 1
+          fi
+          grep -F '/run/backup-ssh/id_ed25519' "$fixture/unreadable.stderr" |
+            grep -F "(uid ${owner%:*})"
+          if grep -Fxq 'Remote backup startup passed' "$fixture/unreadable.stderr" - <<< "$unreadable_output"; then
+            echo 'Unreadable key startup reported success' >&2
+            exit 1
+          fi
+
       - name: Уязвимости образа (Trivy, HIGH/CRITICAL с исправлением)
         # с 25.10.2026: pip-audit смотрит только Python-пакеты, а образ — это ещё и
         # системные пакеты базового python:3.15-slim. Блокирующий для уязвимостей,
