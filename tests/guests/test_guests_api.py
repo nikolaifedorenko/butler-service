@@ -206,10 +206,11 @@ def test_spouse_link_is_undirected(manager_client):
 def test_former_only_for_spouse(manager_client):
     a, b = _guest(manager_client), _guest(manager_client)
     r = _link(manager_client, a, b, "parent", former=True)
-    assert r.status_code == 422 and r.json()["detail"] == "«Бывшие» — только для супругов"
+    assert r.status_code == 422 and r.json()["detail"] == "«Бывшие» — только для супругов и партнёров"
 
 
-def test_former_spouse_gives_no_in_laws(manager_client):
+def test_former_spouse_gives_marked_in_laws(manager_client):
+    """Родня бывшего брака считается (решение владельца 23.11.2026) — с пометкой via_former."""
     u = _uniq()
     me = _guest(manager_client, "Бывшев" + u, gender="m")
     ex = _guest(manager_client, "Бывшева" + u, gender="f")
@@ -217,7 +218,9 @@ def test_former_spouse_gives_no_in_laws(manager_client):
     assert _link(manager_client, me, ex, "spouse", former=True).status_code == 200
     assert _link(manager_client, ex_mother, ex, "parent").status_code == 200
     fam = manager_client.get(f"{API}/guests/{me['id']}/family").json()
-    assert {k["person_id"]: k["title"] for k in fam["kin"]} == {ex["id"]: "бывшая жена"}
+    kin = {k["person_id"]: k for k in fam["kin"]}
+    assert kin[ex["id"]]["title"] == "бывшая жена" and kin[ex["id"]]["via_former"] is False
+    assert kin[ex_mother["id"]]["title"] == "тёща" and kin[ex_mother["id"]]["via_former"] is True
     labels = [x["label"] for x in manager_client.get(f"{API}/guests/{me['id']}").json()["links"]]
     assert labels == ["бывшая жена"]
 
@@ -382,7 +385,7 @@ def test_toggle_spouse_former(manager_client, monkeypatch, db):
     kid = _guest(manager_client)
     parent = _link(manager_client, a, kid, "parent").json()["id"]
     r = manager_client.patch(f"{API}/guest-links/{parent}", json={"former": True})
-    assert r.status_code == 422 and r.json()["detail"] == "«Бывшие» — только для супругов"
+    assert r.status_code == 422 and r.json()["detail"] == "«Бывшие» — только для супругов и партнёров"
     assert manager_client.patch(f"{API}/guest-links/999999999", json={"former": True}).status_code == 422
     rows = db.scalars(select(AuditLog).where(AuditLog.action == "stays_guest_link",
                                              AuditLog.target == f"guest:{a['id']}")).all()

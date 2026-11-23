@@ -43,15 +43,17 @@ class NewGuestIn(BaseModel):
 
 
 class LinkIn(BaseModel):
-    """parent — гость из пути родитель guest_id; former — бывшие супруги. Вторая сторона —
+    """parent — гость из пути родитель guest_id; former — бывшие супруги/партнёры. Вторая сторона —
     guest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая
-    сторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка."""
+    сторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка;
+    also_former_id — прежний брак гостя станет «бывшим» той же записью (новый супруг)."""
     guest_id: Optional[int] = None
     new_guest: Optional[NewGuestIn] = None
     kind: str
     former: bool = False
     other_is_parent: bool = False
     also_parent_id: Optional[int] = None
+    also_former_id: Optional[int] = None
 
 
 class FormerIn(BaseModel):

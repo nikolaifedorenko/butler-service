@@ -1477,7 +1477,7 @@ const $ = s => window.document.querySelector(s);
     check('дерево в карточке гостя: Иван в центре', await waitFor(() => centre() === ivan.id));
     check('родитель сверху, супруга рядом', tree().includes('Матвеева' + uniq) && tree().includes('мать')
       && tree().includes('Семьина' + uniq) && !!$('#gc-family [data-ft-former]'));
-    check('редактор: кнопки «+ родитель / + супруг(а) / + ребёнок»', ['parent', 'spouse', 'child']
+    check('редактор: кнопки «+ родитель / + супруг(а) / + партнёр / + ребёнок»', ['parent', 'spouse', 'partner', 'child']
       .every(k => !!$(`#gc-family [data-ft-add="${k}"]`)));
   
     /* пример владельца: Ивану и Марии — сын (новый гость, «и ребёнок супруги» отмечено) */
@@ -1526,20 +1526,15 @@ const $ = s => window.document.querySelector(s);
     check('новый третий родитель — тост с текстом сервера', await toastHas('У ребёнка не больше двух родителей'), text('#toast-host'));
     check('новый третий родитель — гость не создан', !(await apiJson('GET', `/api/stays/guests?q=${encodeURIComponent('Лишний' + uniq)}`)).body.length);
   
-    /* «бывшие» на линии супругов */
+    /* «бывшие» у супругов: кнопкой «развод» из блока действующего, «вернуть» — из блока бывших */
     click($('#gc-family [data-ft-home]'));
     await waitFor(() => centre() === ivan.id);
-    const former = $('#gc-family [data-ft-former]');
-    former.checked = true;
-    change(former);
-    await idle();
-    check('«бывшие» сохранены', !!$('#gc-family [data-ft-former]')?.checked);
-    check('API: брак бывший', (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && l.former));
-    const back = $('#gc-family [data-ft-former]');
-    back.checked = false;
-    change(back);
-    await idle();
-    check('«бывшие» сняты', (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && !l.former));
+    click($('#gc-family [data-ft-former]'));
+    check('«бывшие» сохранены', await waitFor(async () =>
+      (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && l.former)));
+    click($('#gc-family [data-ft-former-off]'));
+    check('«бывшие» сняты', await waitFor(async () =>
+      (await fam(ivan.id)).links.some(l => l.kind === 'spouse' && !l.former)));
   
     /* второй родитель Ивана через поиск — и удаление связи крестиком на линии */
     click($('#gc-family [data-ft-add="parent"]'));

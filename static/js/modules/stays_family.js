@@ -23,19 +23,22 @@ import { $, api, loadGenerationFor, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { STAYS_GENDER } from './stays_forms.js';
 
-const STAYS_FAMILY_ADD = { parent: '+ родитель', spouse: '+ супруг(а)', child: '+ ребёнок' };
-const STAYS_FAMILY_ADD_TITLE = { parent: 'Добавить родителя', spouse: 'Добавить супруга(у)', child: 'Добавить ребёнка' };
+const STAYS_FAMILY_ADD = { parent: '+ родитель', spouse: '+ супруг(а)', partner: '+ партнёр', child: '+ ребёнок' };
+const STAYS_FAMILY_ADD_TITLE = { parent: 'Добавить родителя', spouse: 'Добавить супруга(у)',
+  partner: 'Добавить партнёра', child: 'Добавить ребёнка' };
 
-/* кто вокруг центра c: родители, дети, супруги (со связями — для крестика) и сиблинги */
+/* кто вокруг центра c: родители, дети, супруги и партнёры (со связями — для кнопок) и сиблинги */
 function staysFamilyAround(fam, c) {
   const links = fam.links || [];
   const parents = links.filter(l => l.kind === 'parent' && l.b === c).map(l => ({ id: l.a, link: l }));
   const children = links.filter(l => l.kind === 'parent' && l.a === c).map(l => ({ id: l.b, link: l }));
   const spouses = links.filter(l => l.kind === 'spouse' && (l.a === c || l.b === c))
     .map(l => ({ id: l.a === c ? l.b : l.a, link: l }));
+  const partners = links.filter(l => l.kind === 'partner' && (l.a === c || l.b === c))
+    .map(l => ({ id: l.a === c ? l.b : l.a, link: l }));
   const up = new Set(parents.map(p => p.id));
   const siblings = [...new Set(links.filter(l => l.kind === 'parent' && up.has(l.a) && l.b !== c).map(l => l.b))];
-  return { parents, children, spouses, siblings };
+  return { parents, children, spouses, partners, siblings };
 }
 
 export async function renderFamilyTree(host, guestId, { editable = false, onChange = null } = {}) {
@@ -49,21 +52,23 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
   const paint = () => render(treeView(), mount(host));
 
   /* связь центра со второй стороной (target: {guest_id} или {new_guest}) — один запрос:
-     parent — она родитель центра; child — центр её родитель (и, если отмечено, действующий супруг) */
-  const link = (kind, target, spouseId) => api(`/api/stays/guests/${centre}/links`, { method: 'POST', body: {
-    ...target, kind: kind === 'spouse' ? 'spouse' : 'parent', other_is_parent: kind === 'parent',
-    ...(kind === 'child' && spouseId ? { also_parent_id: spouseId } : {}) } });
+     parent — она родитель центра; child — центр её родитель (и, если отмечено, действующий супруг);
+     spouse с also_former — прежний брак становится «бывшим» той же записью */
+  const link = (kind, target, extra) => api(`/api/stays/guests/${centre}/links`, { method: 'POST', body: {
+    ...target, kind: kind === 'parent' || kind === 'child' ? 'parent' : kind,
+    other_is_parent: kind === 'parent', ...extra } });
 
   const openPanel = kind => {
     const around = staysFamilyAround(fam, centre);
     const current = around.spouses.find(s => !s.link.former);
     const spouse = kind === 'child' && current ? fam.people.find(p => p.id === current.id) : null;
-    /* заранее видно, что сервер откажет: новый гость не создаётся (поиск — сервер ответит тостом) */
-    const blocked = (kind === 'parent' && around.parents.length >= 2 && 'У гостя уже два родителя — сначала удалите связь')
-      || (kind === 'spouse' && current && 'У гостя уже есть супруг(а) — отметьте прежний брак «бывшие»') || '';
+    /* заранее видно, что сервер откажет: новый гость не создаётся (поиск — сервер ответит тостом).
+       Супруг при живом браке — не тупик: предлагаем одну операцию «прежний брак станет бывшим». */
+    const blocked = (kind === 'parent' && around.parents.length >= 2 && 'У гостя уже два родителя — сначала удалите связь') || '';
     /* батлер: второй родитель — только свой гость (сервер иначе 403); пока не проверили — галочки нет */
     const full = can('stays.edit');
-    panel = { kind, spouse, blocked, both: !!spouse && full, bothVisible: !!spouse && full };
+    panel = { kind, spouse, blocked, both: !!spouse && full, bothVisible: !!spouse && full,
+              formerSpouse: kind === 'spouse' && current ? current : null, makeFormer: true };
     found = null; needleLong = false;
     paint();
     if (spouse && !full) {
@@ -75,9 +80,11 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
   };
 
   const done = async (kind, target) => {
-    const spouseId = panel?.spouse && panel.both ? panel.spouse.id : null;
+    const extra = {};
+    if (kind === 'child' && panel?.spouse && panel.both) extra.also_parent_id = panel.spouse.id;
+    if (kind === 'spouse' && panel?.formerSpouse && panel.makeFormer) extra.also_former_id = panel.formerSpouse.link.id;
     try {
-      await link(kind, target, spouseId);
+      await link(kind, target, extra);
       toast('Связь добавлена');
       changed();
       panel = null;
@@ -109,27 +116,40 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
   const treeView = () => {
     const c = centre;
     const people = new Map(fam.people.map(p => [p.id, p]));
-    const title = new Map(fam.kin.map(k => [k.person_id, k.title]));
-    const { parents, children, spouses, siblings } = staysFamilyAround(fam, c);
+    /* родня бывших браков/союзов помечена сервером — показываем происхождение */
+    const title = new Map(fam.kin.map(k => [k.person_id, k.title + (k.via_former ? ' (бывший брак)' : '')]));
+    const { parents, children, spouses, partners, siblings } = staysFamilyAround(fam, c);
     const name = id => people.get(id)?.name || '#' + id;
     const per = (id, cls) => person(c, people, title, id, cls);
     const del = l => (editable ? html`<button type="button" class="ft-del" data-ft-del=${l.id} title="Удалить связь"
       aria-label="Удалить связь" @click=${e => removeLink(e, l)}>×</button>` : nothing);
     const vline = l => html`<span class="ft-link ft-v">│${del(l)}</span>`;
-    const spouseLine = l => html`<span class="ft-link ft-h">${editable
-      ? html`<label class="ft-former" title="Бывшие супруги"><input type="checkbox" data-ft-former=${l.id} .checked=${!!l.former}
-          @change=${e => setFormer(e, l)}> бывшие</label>`
-      : (l.former ? 'бывшие' : '')}${l.former ? '┄' : '═'}${del(l)}</span>`;
+    const currentSpouse = spouses.find(s => !s.link.former);
+    const currentPartners = partners.filter(p => !p.link.former);
+    /* бывшие — отдельным приглушённым блоком, не в ряду с действующим супругом:
+       раньше различались только ┄ против ═ — на экране их не отличить */
+    const exes = [...spouses.filter(s => s.link.former).map(s => ({ ...s, kind: 'spouse' })),
+                  ...partners.filter(p => p.link.former).map(p => ({ ...p, kind: 'partner' }))];
     const half = Math.ceil(siblings.length / 2);
     const sib = id => html`<span class="ft-node">${per(id, ' ft-sib')}</span>`;
+    const toFormer = l => html`<button type="button" class="ft-del" data-ft-former=${l.id} title="Отметить «бывшие»"
+      @click=${() => setFormerValue(l, true)}>развод</button>`;
+    const backCurrent = l => html`<button type="button" class="ft-del" data-ft-former-off=${l.id} title="Сделать действующим"
+      @click=${() => setFormerValue(l, false)}>вернуть</button>`;
+    const exView = x => html`<div class="ft-ex-row">${per(x.id, ' ft-muted')}
+        ${editable ? html`<span class="ft-actions">${backCurrent(x.link)}${del(x.link)}</span>` : nothing}</div>`;
     return html`<div class="ft-tree">
         ${parents.length ? html`<div class="ft-row">${parents.map(p => html`<span class="ft-node ft-col">${per(p.id)}${vline(p.link)}</span>`)}</div>` : nothing}
         <div class="ft-row">${siblings.slice(0, half).map(sib)}
           <span class="ft-node">${per(c, ' ft-centre')}</span>
-          ${spouses.map(s => html`<span class="ft-node">${spouseLine(s.link)}${per(s.id)}</span>`)}
+          ${currentSpouse ? html`<span class="ft-node"><span class="ft-link ft-h">═</span>${per(currentSpouse.id)}
+            ${editable ? html`<span class="ft-actions">${toFormer(currentSpouse.link)}${del(currentSpouse.link)}</span>` : nothing}</span>` : nothing}
           ${siblings.slice(half).map(sib)}</div>
         ${children.length ? html`<div class="ft-row">${children.map(ch => html`<span class="ft-node ft-col">${vline(ch.link)}${per(ch.id)}</span>`)}</div>` : nothing}
       </div>
+      ${currentPartners.length ? html`<div class="ft-block"><h5>Партнёры</h5>${currentPartners.map(p =>
+        html`<div class="ft-ex-row">${per(p.id)}${editable ? html`<span class="ft-actions">${toFormer(p.link)}${del(p.link)}</span>` : nothing}</div>`)}</div>` : nothing}
+      ${exes.length ? html`<div class="ft-block ft-ex-block"><h5>Бывшие</h5>${exes.map(exView)}</div>` : nothing}
       <div class="sb-line">${c !== guestId ? html`<button type="button" class="btn btn-sm btn-ghost" data-ft-home
           @click=${() => { centre = guestId; draw(); }}>← к ${name(guestId)}</button>` : nothing}
         ${editable ? Object.entries(STAYS_FAMILY_ADD).map(([k, t]) => html`<button type="button" class="btn btn-sm" data-ft-add=${k} @click=${() => openPanel(k)}>${t}</button>`) : nothing}</div>
@@ -137,12 +157,13 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
       <h4>Все родственники</h4>
       <div class="ft-kin">${fam.kin.length ? fam.kin.map(k => html`<div><button type="button" class="ft-kin-name" data-ft-person=${k.person_id}
         @click=${() => { if (k.person_id !== centre) { centre = k.person_id; draw(); } }}>${name(k.person_id)}</button>
-        <span class="muted">— ${k.title}</span></div>`) : html`<span class="muted">родственников нет</span>`}</div>`;
+        <span class="muted">— ${k.title}${k.via_former ? ' (бывший брак)' : ''}</span></div>`) : html`<span class="muted">родственников нет</span>`}</div>`;
   };
 
   const panelView = () => {
     if (!panel) return nothing;
-    const { kind, spouse, blocked, both, bothVisible } = panel;
+    const { kind, spouse, blocked, both, bothVisible, formerSpouse } = panel;
+    const exName = formerSpouse ? (fam.people.find(p => p.id === formerSpouse.id)?.name || '#' + formerSpouse.id) : '';
     return html`<div class="ft-add">
       <b>${STAYS_FAMILY_ADD_TITLE[kind]}</b>
       <div class="sb-line"><input type="search" data-ft-q placeholder="Найти гостя: фамилия" @input=${search}></div>
@@ -163,6 +184,9 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
       ${blocked ? html`<div class="muted" data-ft-blocked>${blocked}</div>` : nothing}
       ${spouse ? html`<label class="chk" ?hidden=${!bothVisible}><input type="checkbox" data-ft-both .checked=${both}
         @change=${e => { panel.both = e.target.checked; }}> и ребёнок: ${spouse.name}</label>` : nothing}
+      ${formerSpouse ? html`<label class="chk"><input type="checkbox" data-ft-make-former .checked=${panel.makeFormer}
+        @change=${e => { panel.makeFormer = e.target.checked; }}> прежний брак (${exName})
+        станет «бывшим»</label>` : nothing}
       <div><button type="button" class="btn btn-sm btn-ghost" data-ft-cancel @click=${() => { panel = null; paint(); }}>Отмена</button></div></div>`;
   };
 
@@ -175,9 +199,10 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
     } catch (err) { toast(err.message, 'err'); }
     await draw();
   };
-  const setFormer = async (e, l) => {
+  const setFormerValue = async (l, value) => {
     try {
-      await api(`/api/stays/guest-links/${l.id}`, { method: 'PATCH', body: { former: e.target.checked } });
+      await api(`/api/stays/guest-links/${l.id}`, { method: 'PATCH', body: { former: value } });
+      toast(value ? 'Отмечено «бывшие»' : 'Связь снова действующая');
       changed();
     } catch (err) { toast(err.message, 'err'); }
     await draw();

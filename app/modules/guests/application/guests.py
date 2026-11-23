@@ -19,7 +19,15 @@ from app.modules.fund.application.fund_versions import fund_for
 from app.modules.fund.application.locking import lock_module
 
 from ..adapters.orm import CustomField, Guest, GuestLink, GuestPref
-from ..domain.kinship import check_parent, check_spouse, child_title, parent_title, spouse_title
+from ..domain.kinship import (
+    check_parent,
+    check_partner,
+    check_spouse,
+    child_title,
+    parent_title,
+    partner_title,
+    spouse_title,
+)
 from .vip_codes import check_selectable, code_texts
 
 GENDERS = ("m", "f", "")
@@ -28,6 +36,7 @@ PREF_KINDS = ("group", "flag", "unit")      # вид пожелания: узе�
 # (parent, spouse) подписываются по полу (domain/kinship.py), остальное родство вычисляется
 LINK_KINDS = {
     "spouse": ("супруг(а)", "супруг(а)"),
+    "partner": ("партнёр", "партнёр"),
     "parent": ("ребёнок", "родитель"),
     "relative": ("родственник", "родственник"),
     "assistant": ("ассистент", "работодатель"),
@@ -220,6 +229,8 @@ def _link_label(r: GuestLink, mine_is_a: bool, other_gender: str) -> str:
     """Подпись второй стороны: семейные — по её полу («дочь», «бывший муж»)."""
     if r.kind == "spouse":
         return spouse_title(other_gender, r.former)
+    if r.kind == "partner":
+        return partner_title(other_gender, r.former)
     if r.kind == "parent":
         return child_title(other_gender) if mine_is_a else parent_title(other_gender)
     return LINK_KINDS.get(r.kind, ("связь", "связь"))[0 if mine_is_a else 1]
@@ -235,13 +246,15 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
 
 def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = None, new_guest: dict | None = None,
               former: bool = False, other_is_parent: bool = False, also_parent_id: int | None = None,
-              created_by: int | None = None) -> tuple[list[GuestLink], int]:
+              also_former_id: int | None = None, created_by: int | None = None) -> tuple[list[GuestLink], int]:
     """Связь из редактора дерева (§4) одной записью под одним замком → (связи, id второй стороны).
     Вторая сторона — существующий гость other_id или новый new_guest (фамилия, имя, пол);
     other_is_parent — она родитель guest_id (иначе guest_id — её родитель при kind=parent);
-    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»); created_by — батлер,
-    который заводит нового человека: тот становится его «своим» (часть 4 §3). Любой отказ —
-    исключение после частичных flush: вызывающий откатывает, не остаётся ни гостя, ни связи."""
+    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»);
+    also_former_id — прежний брак гостя станет «бывшим» в той же записи (новый супруг:
+    без этого добавление заблокировано правилом одного действующего супруга);
+    created_by — батлер, который заводит нового человека: тот становится его «своим» (часть 4 §3).
+    Любой отказ — исключение после частичных flush: вызывающий откатывает, не остаётся ни гостя, ни связи."""
     lock_module(db)
     if (other_id is None) == (new_guest is None):
         raise GuestError("Укажите гостя для связи: существующего или нового")
@@ -251,6 +264,8 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
         raise GuestError("Второй родитель — только при добавлении ребёнка")
     if also_parent_id is not None and also_parent_id == guest_id:
         raise GuestError("Второй родитель совпадает с первым")
+    if also_former_id is not None and kind != "spouse":
+        raise GuestError("«Бывшим» прежний брак может стать только у нового супруга")
     if db.get(Guest, guest_id) is None:
         raise GuestError("Гость не найден")
     if new_guest is not None:
@@ -259,9 +274,21 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
         other_id = g.id
     assert other_id is not None     # ровно один из other_id / new_guest — проверено в начале
     a, b = (other_id, guest_id) if other_is_parent else (guest_id, other_id)
+    prev_former = None
+    if also_former_id is not None:
+        # сначала прежний брак становится «бывшим» — тогда проверка «один действующий
+        # супруг» у новой связи видит граф уже обновлённым и не отказывает
+        prev_former = db.get(GuestLink, also_former_id)
+        if prev_former is None or prev_former.kind != "spouse" or prev_former.former is not False \
+                or guest_id not in (prev_former.guest_a_id, prev_former.guest_b_id):
+            raise GuestError("Прежний брак не найден или не принадлежит гостю")
+        prev_former.former = True
+        db.flush()
     rows = [_add_link_locked(db, a, b, kind, former)]
     if also_parent_id is not None:
         rows.append(_add_link_locked(db, also_parent_id, other_id, "parent"))
+    if prev_former is not None:
+        rows.append(prev_former)
     return rows, other_id
 
 
@@ -271,22 +298,24 @@ def _add_link_locked(db: Session, guest_id: int, other_id: int, kind: str, forme
 
     if kind not in LINK_KINDS:
         raise GuestError("Неизвестный вид связи")
-    if former and kind != "spouse":
-        raise GuestError("«Бывшие» — только для супругов")
+    if former and kind not in ("spouse", "partner"):
+        raise GuestError("«Бывшие» — только для супругов и партнёров")
     if guest_id == other_id:
         raise GuestError("Гость не может быть связан сам с собой")
     if db.get(Guest, guest_id) is None or db.get(Guest, other_id) is None:
         raise GuestError("Гость не найден")
     pair = (GuestLink.guest_a_id == guest_id) & (GuestLink.guest_b_id == other_id)
-    if kind == "spouse":       # супруги — связь без направления
+    if kind in ("spouse", "partner"):       # без направления
         pair = pair | ((GuestLink.guest_a_id == other_id) & (GuestLink.guest_b_id == guest_id))
     if db.scalar(select(GuestLink.id).where(pair, GuestLink.kind == kind)) is not None:
         raise FundConflict("Такая связь уже есть")
-    if kind in ("parent", "spouse"):
+    if kind in ("parent", "spouse", "partner"):
         graph = family_graph(db, {guest_id, other_id})
         err = (check_parent(other_id, guest_id, graph) if kind == "parent"
+               else check_partner(guest_id, other_id, graph) if kind == "partner"
                else check_spouse(guest_id, other_id, graph))
         if not err and kind == "spouse" and not former:
+            # эксклюзивность — только у супругов; партнёров может быть несколько
             current = [x for x in (guest_id, other_id) if any(not f for _, f in graph.spouses.get(x, ()))]
             if current:
                 err = "У гостя уже есть супруг(а)"
@@ -305,16 +334,18 @@ def _has_current_spouse(db: Session, guest_id: int, except_link: int) -> bool:
 
 
 def set_former(db: Session, link_id: int, former: bool) -> tuple[GuestLink, bool]:
-    """Признак «бывшие» у супружеской связи (редактор дерева, §4) → (связь, прежнее значение).
-    Снять «бывшие» нельзя, если у кого-то из пары уже есть действующий супруг — 422."""
+    """Признак «бывшие» у супружеской/партнёрской связи (редактор дерева, §4) → (связь, прежнее).
+    Снять «бывшие» у супруга нельзя, если у кого-то из пары уже есть действующий супруг — 422;
+    у партнёров эксклюзивности нет — снимать можно всегда."""
     lock_module(db)
     row = db.get(GuestLink, link_id)
     if row is None:
         raise GuestError("Связь не найдена")
-    if row.kind != "spouse":
-        raise GuestError("«Бывшие» — только для супругов")
+    if row.kind not in ("spouse", "partner"):
+        raise GuestError("«Бывшие» — только для супругов и партнёров")
     before = row.former
-    if before and not former and any(_has_current_spouse(db, x, row.id) for x in (row.guest_a_id, row.guest_b_id)):
+    if row.kind == "spouse" and before and not former \
+            and any(_has_current_spouse(db, x, row.id) for x in (row.guest_a_id, row.guest_b_id)):
         raise GuestError("У гостя уже есть супруг(а)")
     row.former = former
     db.flush()

@@ -7044,6 +7044,11 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "via_former": {
+            "default": false,
+            "title": "Via Former",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7113,6 +7118,15 @@
               "type": "array"
             },
             "title": "Parents",
+            "type": "array"
+          },
+          "partners": {
+            "default": [],
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Partners",
             "type": "array"
           },
           "people": {
@@ -10518,8 +10532,19 @@
         "type": "object"
       },
       "LinkIn": {
-        "description": "parent — гость из пути родитель guest_id; former — бывшие супруги. Вторая сторона —\nguest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая\nсторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка.",
+        "description": "parent — гость из пути родитель guest_id; former — бывшие супруги/партнёры. Вторая сторона —\nguest_id (существующий) или new_guest (создаётся в той же записи). other_is_parent — вторая\nсторона родитель гостя из пути; also_parent_id — второй родитель того же ребёнка;\nalso_former_id — прежний брак гостя станет «бывшим» той же записью (новый супруг).",
         "properties": {
+          "also_former_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Also Former Id"
+          },
           "also_parent_id": {
             "anyOf": [
               {
