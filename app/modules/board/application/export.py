@@ -6,7 +6,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.exchange.application.tables import Align, Cell, Column, Fill, Sheet, write_xlsx
@@ -97,14 +97,15 @@ def export_xlsx(db: Session, first: dt.date, last: dt.date, kind: Literal["full"
     logistics: dict[int, list[str]] = {}
     occupants: dict[int, list[str]] = {}
     if kind == "full" and rids:
-        ctx = load_context(db, first, last, None)
+        ctx = load_context(db, first, last, None, fund_window_only=True)
         for d in ctx.days():
             for (rid, _g), emps in ctx.cover(d).by_guest.items():
                 for e in emps:
                     butlers.setdefault(rid, {}).setdefault(ctx.name(e), []).append(d.strftime("%d.%m"))
         for rid in rids:
             occupants[rid] = sorted({ctx.guest_name(o.guest_id) for o in ctx.occ.get(rid, [])})
-        for lg in db.scalars(select(Logistics).where(Logistics.reservation_id.in_(rids))):
+        for lg in db.scalars(select(Logistics).where(Logistics.reservation_id.in_(rids),
+                                                    or_(Logistics.date.is_(None), Logistics.date.between(first, last)))):
             logistics.setdefault(lg.reservation_id, []).append(
                 f"{lg.date.strftime('%d.%m') if lg.date else ''} {lg.time} {lg.description}".strip())
     bookings = []

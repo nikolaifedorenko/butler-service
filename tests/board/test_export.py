@@ -4,9 +4,10 @@ from __future__ import annotations
 import io
 
 from openpyxl import load_workbook
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.core.audit import AuditLog
+from app.modules.stays.application.catalog import Logistics
 from tests.stays.helpers import API, create_res, make_category, make_guest, uniq
 
 Q = {"first": "2037-02-01", "last": "2037-02-07"}
@@ -91,6 +92,33 @@ def test_group_export_keeps_all_bookings_in_order(manager_role_client, manager_c
     assert row[2:7] == (None, "занято", "занято ×4", "занято ×4", None)
     cells = _cells(anon.content)
     assert not any(ref in cell or name in cell for _, ref, name in bookings for cell in cells)
+
+
+def test_one_day_full_export_reads_in_window_and_undated_logistics(manager_role_client, manager_client):
+    cat = make_category(manager_role_client, n_units=1)
+    day = "2037-03-15"
+    res = create_res(manager_client, cat, "2037-03-01", "2037-04-01", logistics=[
+        {"kind": "transfer", "date": "2037-03-01", "time": "07:40", "description": "Ранний трансфер"},
+        {"kind": "transfer", "date": day, "time": "12:00", "description": "Трансфер сегодня"},
+        {"kind": "transfer", "date": "2037-04-01", "time": "16:00", "description": "Поздний трансфер"},
+        {"kind": "car", "date": None, "time": "", "description": "Машина без даты"},
+    ])
+    loaded = set()
+
+    def record_logistics(row, _context):
+        if row.reservation_id == res["id"]:
+            loaded.add(row.description)
+
+    event.listen(Logistics, "load", record_logistics)
+    try:
+        response = manager_role_client.get(f"{API}/export", params={"first": day, "last": day, "kind": "full"})
+    finally:
+        event.remove(Logistics, "load", record_logistics)
+    assert response.status_code == 200
+    wb = load_workbook(io.BytesIO(response.content))
+    row = next(row for row in wb["Брони"].values if row[6] == res["number"])
+    assert set(row[15].split("; ")) == {"15.03 12:00 Трансфер сегодня", "Машина без даты"}
+    assert loaded == {"Трансфер сегодня", "Машина без даты"}
 
 
 def test_export_window_limit(manager_role_client):

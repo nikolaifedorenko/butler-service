@@ -174,11 +174,13 @@ class _Stays:
     parts: dict[int, list[Piece]]           # части сегментов (границы версий фонда)
 
 
-def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int]) -> _Stays:
+def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int] | None) -> _Stays:
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(allocation.OCCUPYING),
                                                     Reservation.check_in <= last,
                                                     Reservation.check_out >= first)
                          .order_by(Reservation.id)))
+    if cuts is None:
+        cuts = version_cuts(db, (min(r.check_in for r in res), max(r.check_out for r in res))) if res else []
     rids = [r.id for r in res]
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
@@ -231,7 +233,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     units = _board_rows(fund, days, f)
     unit_ids = {u.id for u in units}
     visible_cats = {cid for u in units for _, cid in u.categories}
-    cuts = version_cuts(db)
+    cuts = version_cuts(db) if include_overlays else None
     st = _load_stays(db, first, last, cuts)
     res, asg, occ = st.res, st.asg, st.occ
     occupied = _occupied(st, first, last)
