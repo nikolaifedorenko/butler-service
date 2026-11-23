@@ -182,8 +182,20 @@ services:
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}     # открытый ключ age (age1…)
       BACKUP_REMOTE: ${BACKUP_REMOTE:-}                   # user@backup-host:/srv/butler-backups/
     volumes:
-      - ./backups:/backups
-      - ./deploy/backup-ssh:/run/backup-ssh:ro            # id_ed25519 + known_hosts второго сервера
+      # Подготовьте каталог на хосте. Пользователю backup нужны запись и проход (deploy/README.md).
+      - type: bind
+        source: ./backups
+        target: /backups
+        bind:
+          create_host_path: false
+      # В локальном режиме каталог может быть пустым. Для BACKUP_REMOTE пользователю backup
+      # нужны проход в каталог и чтение id_ed25519 и known_hosts.
+      - type: bind
+        source: ./deploy/backup-ssh
+        target: /run/backup-ssh
+        read_only: true
+        bind:
+          create_host_path: true
     # свежая копия: новейший файл моложе двух интервалов и часа; иначе контейнер «нездоров»
     healthcheck:
       test: ["CMD-SHELL", "find /backups -name 'timetrack-*.age' -mmin -$$(( (${BACKUP_INTERVAL:-86400} / 60) * 2 + 60 )) | grep -q ."]

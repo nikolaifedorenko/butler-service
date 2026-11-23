@@ -10,14 +10,20 @@
 cp .env.example .env
 # в .env обязательно:
 #   POSTGRES_PASSWORD=<надёжный пароль>
+#   NOTIFY_SECRET_KEY=<ключ Fernet, см. §3>
 #   ADMIN_PASSWORD=<пароль admin>   # первый старт на пустой базе; демо-учёток в проде нет
 #   BACKUP_AGE_RECIPIENT=age1…      # открытый ключ шифрования бэкапов, BACKUP_REMOTE — второй сервер (§4)
-mkdir -p certs backups certbot-www
-# контейнер бэкапов работает не от root: каталог копий должен быть доступен ему на запись
-chown 100:101 backups 2>/dev/null || true   # uid:gid пользователя backup в образе
+mkdir -p certs backups certbot-www deploy/backup-ssh &&
+  docker compose -f docker-compose.prod.yml run --rm -T --no-deps --build \
+    --user root --entrypoint /bin/sh backup \
+    -ec 'chown backup:backup /backups && chmod u+rwx /backups'
 # сертификаты Let's Encrypt:
 #   certs/fullchain.pem, certs/privkey.pem
 ```
+
+Команда подготовки назначает каталогу `./backups` владельца из образа. Сервис работает
+от пользователя `backup`, которому нужны права записи и прохода в `/backups`.
+Продолжайте развёртывание после успешной подготовки каталога.
 
 Для первого выпуска сертификата (когда HTTPS ещё нет) временно запускайте только
 nginx с :80 — `location /.well-known/acme-challenge/` уже настроен
@@ -63,9 +69,13 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
 
 Сервис `backup` раз в сутки (`BACKUP_INTERVAL`, по умолчанию 86400 с) делает
 `pg_dumpall | gzip`, **шифрует** копию ключом age и кладёт в `./backups/` (последние
-`BACKUP_KEEP` = 14), затем копирует на **второй сервер** (`deploy/backup.sh`). На боевом
-сервере лежит только открытый ключ: им копию можно зашифровать, но нельзя прочитать.
+`BACKUP_KEEP` = 14). При заданном `BACKUP_REMOTE` сервис также копирует бэкапы на
+**второй сервер** (`deploy/backup.sh`). На боевом сервере лежит только открытый ключ age.
+Для восстановления нужен закрытый ключ.
 Без `BACKUP_AGE_RECIPIENT` сервис не стартует — незашифрованных копий нет.
+
+Для локальных копий оставьте `BACKUP_REMOTE` пустым. SSH-ключ и `known_hosts` в этом
+режиме не нужны.
 
 **Подготовка (один раз):**
 
@@ -75,15 +85,36 @@ curl -k https://localhost/api/health                # {"ok": true, "db": "ok", "
    age-keygen -y butler-backup-key.txt     # открытый ключ age1… → в .env: BACKUP_AGE_RECIPIENT=age1…
    ```
    **Без закрытого ключа копию не восстановить никак.** Потеряли ключ — потеряли все копии.
-2. Второй сервер: пользователь с доступом только по SSH-ключу и каталог под копии, на нём
-   нужен `rsync`. На боевом сервере:
+2. Для удалённой копии создайте на втором сервере пользователя с доступом только по
+   SSH-ключу и каталог под копии. На втором сервере нужен `rsync`. На боевом сервере
+   после подготовки из §1 выполните:
    ```bash
-   mkdir -p deploy/backup-ssh && ssh-keygen -t ed25519 -N "" -f deploy/backup-ssh/id_ed25519
-   ssh-keyscan backup-host > deploy/backup-ssh/known_hosts      # сверьте отпечаток вручную
-   # содержимое deploy/backup-ssh/id_ed25519.pub — в ~/.ssh/authorized_keys пользователя на втором сервере
+   (
+     set -eu
+     umask 077
+     mkdir -p deploy/backup-ssh
+     ssh-keygen -t ed25519 -N "" -f deploy/backup-ssh/id_ed25519
+     ssh-keyscan backup-host > deploy/backup-ssh/known_hosts
+     ssh-keygen -lf deploy/backup-ssh/known_hosts
+     cat deploy/backup-ssh/id_ed25519.pub
+     docker compose -f docker-compose.prod.yml run --rm -T --no-deps \
+       --user root --entrypoint /bin/sh \
+       --volume "$PWD/deploy/backup-ssh:/ssh-setup" backup -ec '
+         chown backup:backup /ssh-setup /ssh-setup/id_ed25519 /ssh-setup/known_hosts
+         chmod 0700 /ssh-setup
+         chmod 0600 /ssh-setup/id_ed25519 /ssh-setup/known_hosts
+       '
+   )
    ```
-   В `.env`: `BACKUP_REMOTE=user@backup-host:/srv/butler-backups/`. Каталог `deploy/backup-ssh/`
-   в git не попадает. На втором сервере остаются те же 14 последних копий (`rsync --delete`).
+   Сверьте отпечатки ключей хоста с ключами второго сервера и добавьте выведенный открытый ключ
+   в `~/.ssh/authorized_keys` его пользователя. После успешной подготовки задайте в `.env`
+   `BACKUP_REMOTE=user@backup-host:/srv/butler-backups/`.
+
+   Compose монтирует `deploy/backup-ssh/` в `/run/backup-ssh` только для чтения. Пользователь
+   `backup` должен иметь право прохода в каталог и чтения обоих обычных файлов `id_ed25519`
+   и `known_hosts`. При старте сервис копирует файлы в свой `~/.ssh` с правами `0700` на каталог
+   и `0600` на файлы. Каталог `deploy/backup-ssh/` в git не попадает. На втором сервере остаются
+   те же 14 последних копий (`rsync --delete`).
 
 **Проверка восстановления — раз в месяц**, там, где лежит закрытый ключ:
 
