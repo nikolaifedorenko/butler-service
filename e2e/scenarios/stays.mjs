@@ -871,8 +871,10 @@ const $ = s => window.document.querySelector(s);
       const open = await Promise.all(ids.map(id => apiJson('GET', `/api/stays/guests/${id}`).then(r => r.status)));
       check(`поиск «${sur}» среди своих — только свои`, open.every(st => st === 200), JSON.stringify(open));
     }
-    /* карточка — боковая панель: openGuestCard перерисует её сам, закрывать не нужно */
-    MODS.forms.openGuestCard(child.id);
+    /* карточка — боковая панель: openGuestCard перерисует её сам, закрывать не нужно.
+       Ждём отрисовки: на грязной базе (прогон после admin'а) API медленный, и поздний
+       рендер ребёнка затёр бы панель перед следующим шагом */
+    await MODS.forms.openGuestCard(child.id);
     check('профиль нового человека открывается батлеру (свой)', await waitFor(() => text('#drawer').includes(last) && !!$('#gc-edit')),
       text('#drawer'));
     click($('#drawer [data-close]'));
@@ -880,7 +882,7 @@ const $ = s => window.document.querySelector(s);
   
     /* пожелание «объект» своему гостю — другой объект той же категории: сначала предпросмотр */
     const res = (await apiJson('GET', `/api/stays/reservations/${own.reservation_id}`)).body;
-    MODS.forms.openGuestCard(gid);
+    await MODS.forms.openGuestCard(gid);
     await waitFor(() => !!$('#gc-prefs [data-pref-kind]'));
     const fund = (MODS.stays.staysState.fund);
     const now = new Set(res.segments.map(sg => sg.unit_id));
