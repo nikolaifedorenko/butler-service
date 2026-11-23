@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import create_engine, insert, select
 from sqlalchemy.exc import IntegrityError
 
 from tests.conftest import rows, run_migrate
@@ -52,9 +52,8 @@ def test_migrate_command_prepares_empty_base(fresh_database):
     assert rows(fresh_database, "SELECT status FROM fund_versions") == [("published",)]
 
 
-def test_deferred_carry_one_row_per_employee_period(db):
-    """Переносы на пару «сотрудник + период-получатель» — одна строка: держит база
-    (остаток аудита 25.10.2026, C5), а не только код записи (DELETE+INSERT)."""
+def test_deferred_carry_rejects_exact_duplicate(db):
+    """База запрещает хранить один и тот же блок переноса дважды."""
     from app.modules.people.application import Employee
     from app.modules.timesheet.adapters.orm import DeferredCarry
 
@@ -63,16 +62,50 @@ def test_deferred_carry_one_row_per_employee_period(db):
     row = DeferredCarry(employee_id=emp_id, period_start=period,
                         source_day=dt.date(2029, 12, 31), tariff="ДЯ", minutes=60)
     db.add(row)
-    db.commit()
+    db.flush()
+    db.add(DeferredCarry(employee_id=emp_id, period_start=period,
+                         source_day=dt.date(2029, 12, 31), tariff="ДЯ", minutes=60))
+    with pytest.raises(IntegrityError) as err:
+        db.flush()
+    assert err.value.orig.pgcode == "23505"
+
+
+def test_migrate_preserves_distinct_deferred_carry_blocks(fresh_database):
+    """Обновление с 0001 сохраняет разные блоки и удаляет только точные дубли."""
+    from app.modules.people.application import Employee
+    from app.modules.timesheet.adapters.orm import DeferredCarry
+
+    upgrade = ("from alembic import command; from app.bootstrap.schema_version import config; "
+               "command.upgrade(config(), '0001')")
+    env = {**os.environ, "DATABASE_URL": fresh_database}
+    r = subprocess.run([sys.executable, "-c", upgrade], env=env, cwd=ROOT, capture_output=True,
+                       text=True, timeout=120)
+    assert r.returncode == 0, r.stderr[-2000:]
+
+    engine = create_engine(fresh_database)
+    period_start = dt.date(2030, 1, 1)
+    source_day = dt.date(2029, 12, 31)
     try:
-        db.add(DeferredCarry(employee_id=emp_id, period_start=period,
-                             source_day=dt.date(2029, 12, 31), tariff="ДЯ", minutes=60))
-        with pytest.raises(IntegrityError):
-            db.commit()
+        with engine.begin() as con:
+            employee_id = con.scalar(insert(Employee.__table__).values(full_name="Deferred carry migration")
+                                     .returning(Employee.id))
+            carry = dict(employee_id=employee_id, period_start=period_start, source_day=source_day,
+                         tariff="ДЯ", minutes=60)
+            con.execute(insert(DeferredCarry.__table__), [
+                dict(carry, id=3),
+                dict(carry, id=1),
+                dict(carry, id=2, minutes=120),
+            ])
     finally:
-        db.rollback()
-        db.execute(delete(DeferredCarry).where(DeferredCarry.period_start == period))
-        db.commit()
+        engine.dispose()
+
+    r = run_migrate(fresh_database, ADMIN_PASSWORD="admin-pass-123")
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert rows(fresh_database, "SELECT id, employee_id, period_start, source_day, tariff, minutes "
+                                "FROM deferred_carry ORDER BY id") == [
+        (1, employee_id, period_start, source_day, "ДЯ", 60),
+        (2, employee_id, period_start, source_day, "ДЯ", 120),
+    ]
 
 
 def test_worker_without_migrate_stops_on_stale_schema(fresh_database):

@@ -1,11 +1,7 @@
-"""deferred_carry: одна строка на пару «сотрудник + период-получатель».
+"""Переходная ревизия перед введением уникальности блока в 0003.
 
-Запись в deferred_carry — сначала DELETE по паре, потом INSERT (sql_closings.py);
-до индекса гонка двух записей могла оставить две строки на одну пару, и чтение
-переносов (sql_closings.py:145) отдавало обе — дубль попадал во вход следующего
-периода дважды. Индекс закрепляет инвариант «переносов на пару — одна строка» на
-уровне базы. Дубли, оставшиеся от прежних гонок, миграция схлопывает: остаётся
-строка с меньшим id (переносы однотипны, потеря записи невозможна).
+При обновлении с 0001 очистка выполняется в 0003 по всем полям блока. В базах,
+где 0002 уже применили, могло остаться ограничение на сотрудника и период.
 """
 from __future__ import annotations
 
@@ -18,13 +14,8 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "DELETE FROM deferred_carry a USING deferred_carry b "
-        "WHERE a.employee_id = b.employee_id AND a.period_start = b.period_start "
-        "AND a.id > b.id")
-    op.create_unique_constraint('uq_deferred_carry_employee_period', 'deferred_carry',
-                                ['employee_id', 'period_start'])
+    pass
 
 
 def downgrade() -> None:
-    op.drop_constraint('uq_deferred_carry_employee_period', 'deferred_carry', type_='unique')
+    op.drop_constraint('uq_deferred_carry_employee_period', 'deferred_carry', type_='unique', if_exists=True)

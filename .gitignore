@@ -46,5 +46,8 @@ deploy/backup-ssh/
 test-results/
 playwright-report/
 
+# isolated implementation worktrees
+.worktrees/
+
 # снимки интерфейса (e2e/screenshots.spec.mjs)
 ui-screenshots/
