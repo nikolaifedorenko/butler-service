@@ -24,8 +24,13 @@ import {
 } from './stays_forms.js';
 import { renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
 import { filterPanelTemplate, STAYS_SORTS, staysSortRows } from './stays_filters.js';
+import { paletteRegister } from '../ui/palette.js';
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
+
+/* палитра команд (⌘K): создание брони — с правом; поиск гостей живёт в самой палитре */
+paletteRegister({ id: 'stays.new-booking', title: 'Создать бронь', hint: 'шахматка',
+  when: () => can('stays.edit'), run: () => openReservationForm(null, {}) });
 
 /* вкладки шахматки — оперативные (сезон «время × объекты»); справочник гостей вынесен
    в самостоятельный раздел «Гости» (ревью UI 22.11.2026), там же создание гостей батлером */
