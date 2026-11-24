@@ -8,10 +8,11 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { $, $$, api, closeModal, initials, loadMediaLimits, openModal, roleTitle, setLoginHandler, serverShiftMs, state, syncServerClock, toast, todayISO } from './core.js';
+import { $, $$, adoptAuthContext, api, authContextSnapshot, closeDrawer, closeModal, initials, loadMediaLimits,
+  openModal, publishAuthContext, roleTitle, setLoginHandler, serverShiftMs, state, syncServerClock, toast, todayISO } from './core.js';
 import { html, mount, nothing, render } from './ui/html.js';
 import { MODULE_SCREENS, MODULE_VIEWS, registerModule } from './registry.js';
-import { paletteBoot, paletteInit } from './ui/palette.js';
+import { close as closePalette, paletteBoot, paletteInit } from './ui/palette.js';
 import { carsState } from './modules/cars.js';
 import { nightState } from './modules/night.js';
 import { settingsUI } from './modules/settings.js';
@@ -162,7 +163,11 @@ document.addEventListener('visibilitychange', () => {
 
 
 export function showLogin() {
+  state.user = null;
   clearTimers();
+  closeModal();
+  closeDrawer();
+  closePalette();
   $('#app').classList.add('hidden');
   $('#login-screen').classList.remove('hidden');
   $('#login-password').value = '';   // после выхода форма логина пустая
@@ -251,11 +256,11 @@ export function renderSchemaBanner(chk) {
   el.classList.remove('hidden');
 }
 
-async function enterApp() {
+async function enterApp(me) {
   resetUserViewState();
+  applyMe(me);
   $('#login-screen').classList.add('hidden');
   $('#app').classList.remove('hidden');
-  await loadPerms();
   renderUserChip();
   try {
     renderSchemaBanner(await api('/api/selfcheck', { silent: true, allow401: true }));
@@ -269,7 +274,7 @@ async function enterApp() {
             ' — откройте Console/Network и пришлите ошибку', 'err');
     }
   }
-  navigate(startView());
+  if (state.user === me.user) navigate(startView());
 }
 
 export function renderUserChip() {
@@ -323,10 +328,15 @@ const LOGIN_ERRORS = {
   disabled: 'Учётная запись отключена',
 };
 
+// Нативный вход завершается редиректом. Отличаем его от обычного открытия новой вкладки.
+const loginSubmitted = 'butler.login-submitted';
+$('#login-form').addEventListener('submit', () => {
+  try { sessionStorage.setItem(loginSubmitted, '1'); } catch { /* /me всё равно привяжет вкладку */ }
+});
+
 $('#logout-btn').onclick = async () => {
-  try { await api('/api/auth/logout', { method: 'POST', silent: true }); } catch { /* не важно */ }
-  state.user = null;
-  showLogin();
+  try { await api('/api/auth/logout', { method: 'POST', silent: true, allow401: true }); } catch { /* локальный выход */ }
+  publishAuthContext(null);
 };
 $('#nav-toggle').onclick = () => $('#sidenav').classList.toggle('open');
 $('#change-pass-btn').onclick = () => openModal({
@@ -346,8 +356,9 @@ $('#change-pass-btn').onclick = () => openModal({
       if (nw.length < 8) return toast('Новый пароль слишком короткий (минимум 8 символов)', 'warn');
       if (nw !== nw2) return toast('Новый пароль и подтверждение не совпадают', 'warn');
       try {
-        await api('/api/auth/change-password', { method: 'POST',
+        const res = await api('/api/auth/change-password', { method: 'POST',
           body: { old_password: $('#cp-old').value, new_password: nw } });
+        publishAuthContext(res.auth_context);
         closeModal();
         toast('Пароль изменён', 'ok');
       } catch (e) { toast(e.message, 'err'); }
@@ -356,10 +367,30 @@ $('#change-pass-btn').onclick = () => openModal({
 });
 $('#stop-impersonation').onclick = async () => {
   const r = await api('/api/auth/impersonate/stop', { method: 'POST' });
-  state.user = r.user; renderUserChip(); await loadPerms();
-  resetUserViewState(); navigate(startView());
-  toast('Вы вернулись в свой интерфейс', 'ok');
+  if (await switchImpersonation(r, startView())) toast('Вы вернулись в свой интерфейс', 'ok');
 };
+
+export async function switchImpersonation(session, view) {
+  publishAuthContext(session.auth_context);
+  closeModal();
+  clearTimers();
+  resetUserViewState();
+  applyMe({});
+  state.user = session.user;
+  renderUserChip();
+  renderNav();
+  try {
+    const me = await api('/api/auth/me');
+    if (authContextSnapshot().context !== session.auth_context) return false;
+    if (me.auth_context === session.auth_context) {
+      applyMe(me);
+      navigate(view);
+      return true;
+    }
+  } catch { /* при 401 уже показан вход; при потере связи заново загрузим оболочку */ }
+  if (authContextSnapshot().context === session.auth_context) location.reload();
+  return false;
+}
 
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'
@@ -377,16 +408,25 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 
 export async function bootApp() {
+  const initial = authContextSnapshot();
+  let fromLogin = false;
+  try {
+    fromLogin = sessionStorage.getItem(loginSubmitted) === '1';
+    sessionStorage.removeItem(loginSubmitted);
+  } catch { /* хранилище может быть отключено */ }
   api('/api/health', { silent: true, allow401: true })
     .then(h => { syncServerClock(h?.server_time_local); state.appTz = h?.tz || ''; }).catch(() => {});
   const loginErr = new URLSearchParams(location.search).get('login_error');
   if (loginErr) history.replaceState(null, '', location.pathname + location.hash);
   try {
     const me = await api('/api/auth/me', { silent: true, allow401: true });
+    if (authContextSnapshot().eventId !== initial.eventId) return;
     if (me?.user) {
+      if (fromLogin) publishAuthContext(me.auth_context);
+      else adoptAuthContext(me.auth_context);
       state.user = me.user;
       await loadMediaLimits();     // лимиты фото/видео для подсказок загрузки
-      await enterApp();
+      if (state.user === me.user && authContextSnapshot().context === me.auth_context) await enterApp(me);
       return;
     }
   } catch { /* не авторизован */ }

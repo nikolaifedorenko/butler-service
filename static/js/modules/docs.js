@@ -4,42 +4,98 @@
    файлами (сборки намеренно нет, ADR-0008). Модуль (ADR-0013, раздел 7). Окно печати —
    отдельный документ, который собирается строкой с esc(): в страницу приложения она не попадает. */
 
-import { api, dateRu, esc, getCookie, hours, loading, state, todayISO, toast } from '../core.js';
+import { api, authContextSnapshot, dateRu, esc, expireAuthContext, getCookie, hours, loading, state,
+  subscribeAuthContext, todayISO, toast } from '../core.js';
 
 /* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ──
    Страницу собирает сервер (POST /api/docs/print): прежний document.write в about:blank
    с inline-скриптом автопечати блокировался CSP (A1, аудит 25.10.2026). Документ
    показывается в скрытом фрейме; автопечать делает внешний скрипт страницы, после
    диалога фрейм удаляется по сообщению от него. */
+const printJobs = new Set();
+subscribeAuthContext(() => {
+  for (const cleanup of printJobs) cleanup();
+});
+
 export async function printWindow(title, bodyHtml, extraCss = '') {
-  let html;
+  const started = authContextSnapshot();
+  if (!started.context) return;
+  const controller = new AbortController();
+  const request = { credentials: 'same-origin', cache: 'no-store', signal: controller.signal };
+  let frame, fallback, interval, requestTimeout;
+  let validating = false;
+
+  function cleanup() {
+    if (!printJobs.delete(cleanup)) return;
+    controller.abort();
+    window.removeEventListener('message', onDone);
+    window.removeEventListener('focus', validateMounted);
+    window.removeEventListener('pageshow', validateMounted);
+    document.removeEventListener('visibilitychange', onVisible);
+    clearTimeout(fallback);
+    clearTimeout(requestTimeout);
+    clearInterval(interval);
+    frame?.remove();
+  }
+  function onDone(e) {
+    if (e.origin === location.origin && e.source === frame.contentWindow && e.data?.butler_print_done) cleanup();
+  }
+  function onVisible() {
+    if (!document.hidden) validateMounted();
+  }
+  function current() {
+    const now = authContextSnapshot();
+    return !controller.signal.aborted && started.eventId === now.eventId && started.context === now.context;
+  }
+  async function serverMatches() {
+    const r = await fetch('/api/auth/context', request);
+    if (r.status === 401 && !controller.signal.aborted) expireAuthContext(started);
+    return r.ok && (await r.json()).auth_context === started.context;
+  }
+  async function validateMounted() {
+    if (!current()) { cleanup(); return; }
+    if (validating) return;
+    validating = true;
+    requestTimeout = setTimeout(cleanup, 20_000);
+    try {
+      if (!await serverMatches() || !current()) cleanup();
+    } catch { cleanup(); }
+    finally { clearTimeout(requestTimeout); validating = false; }
+  }
+
+  printJobs.add(cleanup);
+  requestTimeout = setTimeout(cleanup, 20_000);
   try {
     const r = await fetch('/api/docs/print', {
-      method: 'POST', credentials: 'same-origin',
+      ...request, method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCookie('tt_csrf') },
       body: JSON.stringify({ title, body: bodyHtml, css: extraCss }),
     });
+    if (r.status === 401 && !controller.signal.aborted) expireAuthContext(started);
     if (!r.ok) throw new Error(`Ошибка ${r.status}`);
-    html = await r.text();
+    if (r.headers.get('X-Butler-Auth-Context') !== started.context || !current()) { cleanup(); return; }
+    const html = await r.text();
+    if (!await serverMatches() || !current()) { cleanup(); return; }
+    clearTimeout(requestTimeout);
+
+    frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.title = title;
+    Object.assign(frame.style, { position: 'fixed', top: '0', left: '-10000px', width: '1px', height: '1px',
+      border: '0' });
+    frame.srcdoc = html;
+    window.addEventListener('message', onDone);
+    window.addEventListener('focus', validateMounted);
+    window.addEventListener('pageshow', validateMounted);
+    document.addEventListener('visibilitychange', onVisible);
+    fallback = setTimeout(cleanup, 5 * 60 * 1000);
+    interval = setInterval(validateMounted, 5_000);
+    document.body.appendChild(frame);
   } catch (e) {
-    toast(`Печать не подготовилась — ${e.message}`, 'warn');
-    return;
+    const cancelled = controller.signal.aborted;
+    cleanup();
+    if (!cancelled) toast(`Печать не подготовилась — ${e.message}`, 'warn');
   }
-  const f = document.createElement('iframe');
-  f.setAttribute('aria-hidden', 'true');
-  f.title = title;
-  Object.assign(f.style, { position: 'fixed', top: '0', left: '-10000px', width: '1px', height: '1px',
-    border: '0' });
-  const cleanup = () => {
-    window.removeEventListener('message', onDone);
-    clearTimeout(fallback);
-    f.remove();
-  };
-  const onDone = e => { if (e.origin === location.origin && e.data && e.data.butler_print_done) cleanup(); };
-  const fallback = setTimeout(cleanup, 5 * 60 * 1000);   // диалог так и не открыли/закрыли молча
-  window.addEventListener('message', onDone);
-  document.body.appendChild(f);
-  f.srcdoc = html;
 }
 
 

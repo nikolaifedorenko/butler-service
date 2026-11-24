@@ -21,6 +21,72 @@ import { html, render } from './ui/html.js';
 let showLogin = () => {};
 export function setLoginHandler(fn) { showLogin = fn; }
 
+const AUTH_EVENT_KEY = 'butler.auth-context.v1';
+const authListeners = new Set();
+
+function readAuthEvent() {
+  try {
+    const value = JSON.parse(localStorage.getItem(AUTH_EVENT_KEY));
+    if (typeof value?.eventId === 'string' && value.eventId &&
+        (value.context === null || typeof value.context === 'string' && value.context)) return value;
+  } catch { /* локальное состояние и проверка cookie работают и без хранилища */ }
+  return null;
+}
+
+let storedEventId = readAuthEvent()?.eventId || '';
+let auth = { context: null, eventId: storedEventId };
+
+function notifyAuth(event, external) {
+  for (const listener of authListeners) listener({ ...event, external });
+}
+
+export function adoptAuthContext(context = null) {
+  if (auth.context === context) return;
+  auth = { context, eventId: auth.eventId };
+  notifyAuth(auth, false);
+}
+
+export function publishAuthContext(context = null) {
+  const id = Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16).padStart(8, '0')).join('');
+  auth = { context, eventId: id };
+  try {
+    localStorage.setItem(AUTH_EVENT_KEY, JSON.stringify(auth));
+    storedEventId = id;
+  } catch { /* в текущей вкладке всё равно отменяем задания синхронно */ }
+  notifyAuth(auth, false);
+  if (context === null) showLogin();
+}
+
+// Читаем последнее сохранённое событие: очередь storage могла задержаться, пока вкладка спала.
+function syncAuthEvent() {
+  const event = readAuthEvent();
+  if (!event || event.eventId === storedEventId) return;
+  storedEventId = event.eventId;
+  // Прежний экран не может печатать от нового пользователя, пока reload ожидает навигации.
+  // Подписчики получают событие сейчас, а свою идентичность новая страница примет из /me.
+  auth = { context: null, eventId: event.eventId };
+  notifyAuth({ context: event.context, eventId: event.eventId }, true);
+  if (event.context === null) showLogin();
+  else location.reload();
+}
+window.addEventListener('storage', e => { if (e.key === AUTH_EVENT_KEY) syncAuthEvent(); });
+
+export function authContextSnapshot() {
+  syncAuthEvent();
+  return { ...auth };
+}
+
+export function subscribeAuthContext(listener) {
+  authListeners.add(listener);
+  return () => authListeners.delete(listener);
+}
+
+// Запоздалый 401 из предыдущей сессии не должен разлогинить уже вошедшего пользователя.
+export function expireAuthContext(started) {
+  const current = authContextSnapshot();
+  if (started.eventId === current.eventId && started.context === current.context) publishAuthContext(null);
+}
+
 /* ───────────────────────────── утилиты ───────────────────────────── */
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -169,6 +235,7 @@ function httpError(msg, status) {
   return new Error(String(msg));
 }
 export async function api(path, opts = {}) {
+  const started = auth;
   const init = { method: opts.method || 'GET', credentials: 'same-origin', headers: {} };
   if (opts.body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
@@ -193,7 +260,7 @@ export async function api(path, opts = {}) {
         ? 'Нет подключения к интернету — действие не выполнено'
         : 'Не удалось связаться с сервером — проверьте связь и повторите');
     }
-    if (res.status === 401 && !opts.allow401) { showLogin(); throw new Error('Требуется вход'); }
+    if (res.status === 401 && !opts.allow401) { expireAuthContext(started); throw new Error('Требуется вход'); }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
@@ -209,6 +276,7 @@ export async function api(path, opts = {}) {
 
 /* multipart (фото): api() умеет только JSON — загрузка фото идёт через fetch напрямую */
 export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
+  const started = auth;
   loading(true);
   try {
     const ctrl = new AbortController();
@@ -221,7 +289,7 @@ export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
       if (e.name === 'AbortError') throw new Error('Загрузка не завершилась вовремя — проверьте связь');
       throw new Error('Не удалось связаться с сервером — проверьте связь и повторите');
     } finally { clearTimeout(timer); }
-    if (res.status === 401) { showLogin(); throw new Error('Требуется вход'); }
+    if (res.status === 401) { expireAuthContext(started); throw new Error('Требуется вход'); }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
@@ -358,9 +426,11 @@ export function mediaHint() {
 }
 
 export async function downloadBlob(path, fallbackName) {
+  const started = auth;
   loading(true);
   try {
     const res = await fetch(path, { credentials: 'same-origin' });
+    if (res.status === 401) { expireAuthContext(started); throw new Error('Требуется вход'); }
     if (!res.ok) {
       // в detail сервер отдаёт понятный текст (например, подсказку про PDF-движок)
       let msg = `Ошибка ${res.status}`;

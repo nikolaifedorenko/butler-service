@@ -3,7 +3,7 @@
    Вынесено из app.js без изменения логики.
    Модуль на lit-html (ADR-0013, раздел 7). */
 
-import { applyMe, can, loadDirectory, navigate, registerModule, renderUserChip, resetUserViewState } from '../app.js';
+import { can, loadDirectory, navigate, registerModule, switchImpersonation } from '../app.js';
 import {
   $, $$, POSITION_COLORS, WD_SHORT, api, closeModal, confirmDialog, cssColor, dateRu, hours, openModal, roleTitle, state,
   todayISO, toast,
@@ -141,11 +141,8 @@ async function employeeCard(emp) {
       const on = (sel, fn) => { const b = m.querySelector(sel); if (b) b.onclick = fn; };
       on('[data-edit]', () => { closeModal(); employeeModal(emp); });
       on('[data-imp]', async () => {
-        await api('/api/auth/impersonate', { method: 'POST', body: { employee_id: emp.id } });
-        const me = await api('/api/auth/me');
-        state.user = me.user; applyMe(me); renderUserChip(); closeModal();
-        resetUserViewState(); navigate('me');
-        toast('Вы смотрите интерфейс глазами сотрудника', 'warn');
+        const session = await api('/api/auth/impersonate', { method: 'POST', body: { employee_id: emp.id } });
+        if (await switchImpersonation(session, 'me')) toast('Вы смотрите интерфейс глазами сотрудника', 'warn');
       });
       on('[data-pos]', () => { closeModal(); datedActionModal(emp, 'position'); });
       on('[data-block]', () => { closeModal(); datedActionModal(emp, 'block'); });

@@ -47,6 +47,12 @@ def _src(rel: str) -> str:
     return (JS / rel).read_text(encoding="utf-8")
 
 
+def test_core_auth_events_do_not_introduce_import_cycles():
+    """Ядро уведомляет подписчиков: ему не нужны импорты приложения или разделов."""
+    imports = re.findall(r"""\bfrom\s+['"]([^'"]+)['"]""", _src("core.js"))
+    assert all(path != "./app.js" and not path.startswith("./modules/") for path in imports)
+
+
 def _body(src: str, fn_name: str) -> str:
     """Тело функции/блока от `fn_name` до первой закрывающей `}` в колонке 0."""
     start = src.index(fn_name)

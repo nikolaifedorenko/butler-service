@@ -3,7 +3,8 @@ from __future__ import annotations
 
 
 def test_static_scripts_and_styles_require_revalidation(client):
-    for path in ("/static/js/core.js", "/static/css/tokens.css", "/static/vendor/lit-html/lit-html.js"):
+    for path in ("/static/js/core.js", "/static/js/app.js", "/static/js/modules/docs.js",
+                 "/static/js/modules/employees.js", "/static/css/tokens.css", "/static/vendor/lit-html/lit-html.js"):
         r = client.get(path)
         assert r.status_code == 200, path
         assert r.headers["cache-control"] == "no-cache", path
