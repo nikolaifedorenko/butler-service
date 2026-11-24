@@ -76,7 +76,6 @@ function paint() {
         <span class="palette-item-title">${it.title}</span><span class="muted">${it.hint}</span>
       </button>`) : html`<div class="muted" style="padding:10px 12px">${searching ? 'ищем…' : 'ничего не найдено'}</div>`}
     </div></div>`, mount(box));
-  $('#palette-q')?.focus();
 }
 
 function retireSearch() {
@@ -138,6 +137,7 @@ export function show() {
   });
   $('#palette-backdrop')?.classList.remove('hidden');
   paint();
+  $('#palette-q')?.focus();
 }
 export function close() {
   if (!open) return;

@@ -1196,7 +1196,13 @@ tr.fund-retired td .badge { text-decoration: none; }
   transition: border-color var(--dur-1) var(--ease); }
 
 @media (prefers-reduced-motion: reduce) {
-  .view.active, .layer-pane.on, .presence-dot, .flash-today { animation: none; }
+  .view.active,
+  .layer-pane.on,
+  .pulse,
+  table.sched thead th.flash-today,
+  table.v4-grid thead th.flash-today,
+  .sb-head [data-day].flash-today { animation: none; }
+  .sidenav { transition-duration: 0s; }
 }
 .today-card:hover { border-color: var(--primary-soft); }
 .today-card.urgent { border-color: var(--warn); }

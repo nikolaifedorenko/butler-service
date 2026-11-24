@@ -498,7 +498,7 @@ Object.assign(window, { navigate, state, toast, openModal });
 paletteInit({ menu: visibleTabs, navigate });
 paletteBoot();
 document.addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+  if ((e.metaKey || e.ctrlKey) && (e.code === 'KeyK' || String(e.key).toLowerCase() === 'k')) {
     e.preventDefault();
     togglePalette();
   }

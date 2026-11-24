@@ -94,6 +94,12 @@ test('Ctrl+K в Настройках имеет одного владельца 
   await expect(page.locator('#palette-backdrop')).toBeVisible();
   await expect(page.locator('.palette')).toHaveCount(1);
   await expect(page.locator('#modal-backdrop')).toBeHidden();
+  await open(page);
+  await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'л', code: 'KeyK', ctrlKey: true, bubbles: true, cancelable: true,
+  })));
+  await expect(page.locator('#palette-backdrop')).toBeVisible();
+  await expect(page.locator('#modal-backdrop')).toBeHidden();
 });
 
 test('палитра работает без зарегистрированного guest provider', async ({ page }) => {
@@ -155,5 +161,39 @@ test('очистка и переоткрытие не принимают зап�
     registry.unregisterPaletteProvider('delayed-test');
     delete window.__paletteSignals;
     delete window.__paletteResolvers;
+  });
+});
+
+test('асинхронная перерисовка palette не забирает фокус у верхнего modal', async ({ page }) => {
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const registry = await import('/static/js/registry.js');
+    window.__focusProviderSignal = null;
+    window.__focusProviderResolve = null;
+    registry.registerPaletteProvider({
+      id: 'focus-test',
+      search(_query, signal) {
+        window.__focusProviderSignal = signal;
+        return new Promise(resolve => { window.__focusProviderResolve = resolve; });
+      },
+      activate() {},
+    });
+  });
+  await open(page);
+  await page.locator('#palette-q').fill('фокус');
+  await page.evaluate(async () => {
+    const core = await import('/static/js/core.js');
+    const { html } = await import('/static/js/ui/html.js');
+    core.openModal({ title: 'Верхнее окно', body: html`<button id="focus-owner">Владелец фокуса</button>` });
+    document.getElementById('focus-owner').focus();
+  });
+  await expect.poll(() => page.evaluate(() => Boolean(window.__focusProviderSignal))).toBe(true);
+  await expect(page.locator('#focus-owner')).toBeFocused();
+  await page.evaluate(() => window.__focusProviderResolve([{ id: 1, title: 'Результат' }]));
+  await expect(page.locator('.palette-item-title').getByText('Результат')).toBeVisible();
+  await expect(page.locator('#focus-owner')).toBeFocused();
+  await page.evaluate(async () => {
+    const registry = await import('/static/js/registry.js');
+    registry.unregisterPaletteProvider('focus-test');
   });
 });

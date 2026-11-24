@@ -36,7 +36,9 @@ test('motion tokens управляют кнопкой, palette, shimmer и чи�
     }
     const probe = document.createElement('div');
     probe.innerHTML = `<div class="palette"></div><div class="skel-line"></div>
-      <div class="today-stats"><div class="stat"><div class="v">123</div></div></div>`;
+      <div class="today-stats"><div class="stat"><div class="v">123</div></div></div>
+      <span class="pulse"></span><table class="sched"><thead><tr><th class="flash-today"></th></tr></thead></table>
+      <div class="sb-head"><span data-day class="flash-today"></span></div><aside class="sidenav"></aside>`;
     document.body.appendChild(probe);
   });
   const motion = await page.evaluate(() => {
@@ -69,10 +71,17 @@ test('motion tokens управляют кнопкой, palette, shimmer и чи�
   });
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 800, height: 700 });
   await expect.poll(() => page.evaluate(() => ({
     palette: getComputedStyle(document.querySelector('.palette')).animationName,
     shimmer: getComputedStyle(document.querySelector('.skel-line')).animationName,
-  }))).toEqual({ palette: 'none', shimmer: 'none' });
+    pulse: getComputedStyle(document.querySelector('.pulse')).animationName,
+    scheduleFlash: getComputedStyle(document.querySelector('table.sched .flash-today')).animationName,
+    boardFlash: getComputedStyle(document.querySelector('.sb-head .flash-today')).animationName,
+    sidenavDuration: getComputedStyle(document.querySelector('.sidenav')).transitionDuration,
+  }))).toEqual({
+    palette: 'none', shimmer: 'none', pulse: 'none', scheduleFlash: 'none', boardFlash: 'none', sidenavDuration: '0s',
+  });
 });
 
 test('тёмная тема действительно меняет поверхности и текст', async ({ page }) => {
