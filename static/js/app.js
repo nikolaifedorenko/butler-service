@@ -238,9 +238,6 @@ export function resetUserViewState() {
   state.year = nowObj.getFullYear(); state.month = nowObj.getMonth() + 1;
   state.attDate = todayISO(); state.dpYear = nowObj.getFullYear();
   state.grafikLayer = null;
-  /* Состояния модулей (ADR-0008: межфайловые вызовы через глобальную область).
-     settingsUI.searchBound НЕ сбрасываем: флаг стережёт одноразовую привязку
-     document-листнера ⌘K, которая не снимается — сброс удвоил бы обработчик. */
   /* шахматка: фильтры (в них поиск — фамилия, телефон гостя), разделы, вкладка — не
      переходят к следующему пользователю устройства; сохранённые наборы — у каждого свои */
   staysResetUserState();

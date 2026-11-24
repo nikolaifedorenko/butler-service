@@ -1,4 +1,4 @@
-/* «Настройки»: оболочка, переходы между экранами, поиск ⌘K, черновик (шаг 6ж-1). */
+/* «Настройки»: оболочка, переходы между экранами, поиск, черновик (шаг 6ж-1). */
 import { expect, test } from '@playwright/test';
 import { login, watchErrors } from './helpers.mjs';
 
@@ -23,7 +23,9 @@ test('поиск по настройкам: открывается, фильтр
   await login(page, 'admin');
   await open(page, 'settings');
   const view = page.locator('#view-settings');
-  await view.locator('#st-search').click();
+  const search = view.getByRole('button', { name: /Поиск по настройкам/ });
+  await expect(search).not.toContainText(/(?:⌘|Cmd|Ctrl)\s*\+?\s*K/i);
+  await search.click();
   const modal = page.locator('#modal');
   await expect(modal.locator('#sp-q')).toBeFocused();
   await modal.locator('#sp-q').fill('групп');

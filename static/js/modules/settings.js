@@ -4,7 +4,7 @@
    Реализация целевой информационной архитектуры (docs/archive/PROPOSAL-SETTINGS-IA-2026-10-19.md):
    единый центр конфигурации объекта. Под-навигация по группам («Расчёт»,
    «Персонал и смены», «Объект», «Доставка», «Администрирование»), hash-адрес
-   каждого экрана (#/settings/pay), поиск (⌘K), экран «Обзор» со здоровьем
+   каждого экрана (#/settings/pay), поиск по настройкам, экран «Обзор» со здоровьем
    конфигурации, формы вместо JSON и черновик версии справочников с diff.
    В группу «Объект» переехали справочники из операционных разделов: ночной
    обход (зоны/объекты/чек-листы/службы — право night.edit) и электрокары
@@ -237,7 +237,7 @@ export async function loadSettings() {
       <div class="spacer"></div>
       <button class="settings-search" id="st-search" title="Поиск по настройкам" @click=${() => settingsSearchPalette()}>
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span>Поиск по настройкам…</span><kbd>⌘K</kbd></button>
+        <span>Поиск по настройкам…</span></button>
     </div>
     <div class="settings-layout">
       <nav class="settings-nav" id="st-nav" aria-label="Под-разделы настроек"></nav>
@@ -594,7 +594,7 @@ export function settingsHealthBannerView(health) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   ПОИСК ПО НАСТРОЙКАМ (⌘K / Ctrl+K) — любая настройка находится за 2 нажатия
+   ПОИСК ПО НАСТРОЙКАМ
    ══════════════════════════════════════════════════════════════════════ */
 function settingsSearchIndex() {
   const out = [];
