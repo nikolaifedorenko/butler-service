@@ -114,7 +114,7 @@ export function subscribeSessionRejection(listener) {
 // Запоздалый 401 из предыдущей сессии не должен разлогинить уже вошедшего пользователя.
 export async function expireAuthContext(started) {
   const current = authContextSnapshot();
-  if (!started.context || started.eventId !== current.eventId || started.context !== current.context) return;
+  if (started.eventId !== current.eventId || started.context !== current.context) return;
   const owner = auth;
   if (suspended?.owner === owner) return suspended.check;
   const hold = { owner };
@@ -351,7 +351,11 @@ export async function api(path, opts = {}) {
       const expected = path === '/api/auth/logout' ? 'signed-out' : data?.auth_context;
       if (auth !== started || !expected || expected !== getCookie('tt_auth_context')) {
         // A retired issuer may have changed the cookie beneath the current shell.
-        if (auth !== started) authContextIsCurrent(auth);
+        if (auth !== started) {
+          const current = auth;
+          if (current.context) authContextIsCurrent(current);
+          else void expireAuthContext(current);
+        }
         else void expireAuthContext(started);
         throw new Error('Сессия изменилась');
       }

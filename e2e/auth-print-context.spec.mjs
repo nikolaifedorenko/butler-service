@@ -262,8 +262,8 @@ test('a retired rejection leaves the current mounted job intact', async ({ page 
   expect(await frames(page).count()).toBe(1);
 });
 
-async function twoPages(page, context) {
-  await login(page, 'admin');
+async function twoPages(page, context, username = 'admin') {
+  await login(page, username);
   const initial = await stored(page);
   const peer = await context.newPage();
   await peer.goto('/');
@@ -431,13 +431,46 @@ test('a common API 401 invalidates a peer immediately', async ({ page, context }
   await expect(page.locator('#login-screen')).toBeVisible();
 });
 
+const passwordChange = '/api/auth/change-password';
+const fixturePasswordChange = `/__playwright${passwordChange}`;
+const temporaryPassword = 'fixture-password-42';
+const passwordLogin = (request, username, password = DEMO_PASSWORD) => request.post('/api/auth/login', {
+  data: { username, password },
+});
+
+const passwordTest = test.extend({
+  employee: async ({ playwright, baseURL }, use) => {
+    const admin = await playwright.request.newContext({ baseURL });
+    let employee;
+    try {
+      expect((await passwordLogin(admin, 'admin')).status()).toBe(200);
+      const username = `password-fixture-${randomUUID()}`;
+      const created = await admin.post('/api/employees', { headers: await csrfHeaders(admin),
+        data: { full_name: 'Password rotation fixture', username, password: DEMO_PASSWORD } });
+      expect(created.status()).toBe(200);
+      employee = await created.json();
+      expect(employee.username).toBe(username);
+      await use({ id: employee.id, username, admin, journal: `/api/punches?employee_id=${employee.id}` });
+    } finally {
+      try {
+        if (employee) {
+          const archived = await admin.post(`/api/employees/${employee.id}/delete`, { headers: await csrfHeaders(admin) });
+          expect(archived.status()).toBe(200);
+          expect(await archived.json()).toMatchObject({ id: employee.id, active: false, deleted: true });
+        }
+      } finally { await admin.dispose(); }
+    }
+  },
+});
+
 for (const winner of ['issuer', 'peer cookie', 'peer event']) {
-  test(`held password issuer respects the ${winner} after foreground print validation`, async ({ page, context }) => {
-    const peer = await twoPages(page, context);
+  passwordTest(`held password issuer respects the ${winner} after foreground print validation`, async ({
+    page, context, employee,
+  }) => {
+    const peer = await twoPages(page, context, employee.username);
     const initial = await stored(page);
     const before = await serverContext(page);
-    await page.evaluate(() => window.navigate('settings'));
-    await expect(page.locator('#view-settings.active [data-st]').first()).toBeVisible();
+    await expect(page.locator('#view-today.active')).toBeVisible();
     for (const tab of [peer, page]) {
       await fixturePrints(tab, before);
       await mounted(tab);
@@ -471,7 +504,9 @@ for (const winner of ['issuer', 'peer cookie', 'peer event']) {
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await expect(frames(page)).toHaveCount(0);
       if (winner !== 'issuer') {
-        const other = await peer.request.post('/api/auth/login', { data: { username: 'admin', password: DEMO_PASSWORD } });
+        const other = await peer.request.post('/api/auth/login', {
+          data: { username: employee.username, password: DEMO_PASSWORD },
+        });
         expect(other.ok()).toBe(true);
         const context = (await other.json()).auth_context;
         expect(context).not.toBe(replacement);
@@ -483,7 +518,7 @@ for (const winner of ['issuer', 'peer cookie', 'peer event']) {
     } finally { release.resolve(); }
     if (winner === 'issuer') {
       await expect.poll(async () => JSON.parse(await stored(page))?.context).toBe(replacement);
-      await expect(page.locator('#app #view-settings.active [data-st]').first()).toBeVisible();
+      await expect(page.locator('#view-today.active')).toBeVisible();
       await expect(frames(peer)).toHaveCount(0);
       expect(publications).toEqual([replacement]);
       expect(navigations).toEqual([]);
@@ -493,6 +528,8 @@ for (const winner of ['issuer', 'peer cookie', 'peer event']) {
       expect(await stored(page)).toBe(expectedEvent);
       expect(publications).toEqual([]);
     }
+    expect((await employee.admin.get('/api/auth/context')).status(),
+      'Held issuer must not revoke an unrelated administrator session').toBe(200);
   });
 }
 
@@ -585,6 +622,50 @@ for (const marker of ['winner', 'different']) {
   });
 }
 
+for (const verdict of ['live', 'revoked']) {
+  test(`a late issuer after logout reconciles a ${verdict} cookie`, async ({ page }) => {
+    await fixtureShell(page);
+    const result = await page.evaluate(async () => {
+      const { api } = await import('/static/js/core.js');
+      const replies = [];
+      window.fixtureSignedOutChecks = 0;
+      window.fetch = path => {
+        if (path === '/api/auth/context') {
+          window.fixtureSignedOutChecks++;
+          return new Promise(resolve => { window.resolveSignedOutCheck = resolve; });
+        }
+        return new Promise(resolve => replies.push({ path, resolve }));
+      };
+      const late = api('/api/auth/change-password', { method: 'POST', silent: true }).then(() => true, () => false);
+      const logout = api('/api/auth/logout', { method: 'POST', silent: true }).then(() => true, () => false);
+      document.cookie = 'tt_auth_context=signed-out; path=/';
+      replies.find(reply => reply.path === '/api/auth/logout').resolve(Response.json({ ok: true }));
+      const loggedOut = await logout;
+      document.cookie = 'tt_auth_context=late; path=/';
+      replies.find(reply => reply.path === '/api/auth/change-password')
+        .resolve(Response.json({ auth_context: 'late' }));
+      return { loggedOut, lateRejected: !await late };
+    });
+    expect(result).toEqual({ loggedOut: true, lateRejected: true });
+    await expect.poll(() => page.evaluate(() => window.fixtureSignedOutChecks)).toBe(1);
+    await expect(page.locator('#app')).toBeHidden();
+    await expect(page.locator('#login-screen')).toBeVisible();
+    expect(JSON.parse(await stored(page))).toMatchObject({ context: null });
+    if (verdict === 'live') {
+      await Promise.all([
+        page.waitForEvent('domcontentloaded'),
+        page.evaluate(() => window.resolveSignedOutCheck(Response.json({ auth_context: 'late' }))),
+      ]);
+      // fixtureShell owns no real server session: the reload is the behavior under test,
+      // and the fresh document correctly falls back to login when /me returns 401.
+      await expect(page.locator('#login-screen')).toBeVisible();
+    } else {
+      await page.evaluate(() => window.resolveSignedOutCheck(Response.json({ detail: 'Expired' }, { status: 401 })));
+      await expect(page.locator('#login-screen')).toBeVisible();
+    }
+  });
+}
+
 for (const source of ['render', 'template', 'fund']) {
   test(`raw ${source} 401 expires its initiating generation`, async ({ page }) => {
     await login(page, 'admin');
@@ -641,38 +722,6 @@ for (const source of ['render', 'template', 'fund']) {
     await expect(page.locator('#login-screen')).toBeVisible();
   });
 }
-
-const passwordChange = '/api/auth/change-password';
-const fixturePasswordChange = `/__playwright${passwordChange}`;
-const temporaryPassword = 'fixture-password-42';
-const passwordLogin = (request, username, password = DEMO_PASSWORD) => request.post('/api/auth/login', {
-  data: { username, password },
-});
-
-const passwordTest = test.extend({
-  employee: async ({ playwright, baseURL }, use) => {
-    const admin = await playwright.request.newContext({ baseURL });
-    let employee;
-    try {
-      expect((await passwordLogin(admin, 'admin')).status()).toBe(200);
-      const username = `password-fixture-${randomUUID()}`;
-      const created = await admin.post('/api/employees', { headers: await csrfHeaders(admin),
-        data: { full_name: 'Password rotation fixture', username, password: DEMO_PASSWORD } });
-      expect(created.status()).toBe(200);
-      employee = await created.json();
-      expect(employee.username).toBe(username);
-      await use({ id: employee.id, username, admin, journal: `/api/punches?employee_id=${employee.id}` });
-    } finally {
-      try {
-        if (employee) {
-          const archived = await admin.post(`/api/employees/${employee.id}/delete`, { headers: await csrfHeaders(admin) });
-          expect(archived.status()).toBe(200);
-          expect(await archived.json()).toMatchObject({ id: employee.id, active: false, deleted: true });
-        }
-      } finally { await admin.dispose(); }
-    }
-  },
-});
 
 async function csrfHeaders(request) {
   const { cookies } = await request.storageState();
