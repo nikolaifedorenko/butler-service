@@ -60,3 +60,61 @@ test('«Электрокары»: список, фильтр, поиск и ис
   await modal.locator('[data-cancel]').click();
   expect(errors).toEqual([]);
 });
+
+test('меню кара остаётся в viewport и не закрывается от собственного scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 320 });
+  await login(page, 'admin');
+  await open(page, 'cars');
+  const view = page.locator('#view-cars');
+  const button = view.locator('[data-menu-btn]').first();
+  await expect(button).toBeVisible();
+
+  for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+    await button.evaluate((el, place) => {
+      Object.assign(el.style, { position: 'fixed', zIndex: '80', left: 'auto', right: 'auto', top: 'auto', bottom: 'auto' });
+      const [vertical, horizontal] = place.split('-');
+      el.style[vertical] = '0px';
+      el.style[horizontal] = '0px';
+    }, corner);
+    await button.click();
+    const menu = view.locator('.menu-wrap.open .menu-pop');
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    expect.soft(box.x, `${corner}: left`).toBeGreaterThanOrEqual(8);
+    expect.soft(box.y, `${corner}: top`).toBeGreaterThanOrEqual(8);
+    expect.soft(box.x + box.width, `${corner}: right`).toBeLessThanOrEqual(382);
+    expect.soft(box.y + box.height, `${corner}: bottom`).toBeLessThanOrEqual(312);
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+  }
+
+  await button.evaluate(el => Object.assign(el.style, { top: 'auto', left: 'auto', right: '0px', bottom: '0px' }));
+  await button.click();
+  const menu = view.locator('.menu-wrap.open .menu-pop');
+  await expect(menu).toBeVisible();
+  await menu.evaluate(el => { el.style.maxHeight = '80px'; });
+  expect(await menu.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await menu.evaluate(el => { el.scrollTop = 30; el.dispatchEvent(new Event('scroll')); });
+  await expect(menu).toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('меню кара управляется клавиатурой и возвращает фокус', async ({ page }) => {
+  await login(page, 'admin');
+  await open(page, 'cars');
+  const view = page.locator('#view-cars');
+  const button = view.locator('[data-menu-btn]').first();
+  await button.focus();
+  await page.keyboard.press('Enter');
+  const items = view.locator('.menu-wrap.open [role=menuitem]');
+  await expect(items.first()).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(items.nth(1)).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(items.first()).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(items.nth(1)).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(view.locator('.menu-wrap.open')).toHaveCount(0);
+  await expect(button).toBeFocused();
+});

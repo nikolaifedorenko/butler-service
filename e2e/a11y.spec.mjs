@@ -46,3 +46,13 @@ test('форма входа доступна (axe)', async ({ page }) => {
   await page.locator('#login-username').waitFor();
   expect(await scan(page, 'login')).toEqual([]);
 });
+
+test('открытое меню действий кара доступно (axe)', async ({ page }) => {
+  await login(page, 'admin');
+  await page.evaluate(() => window.navigate('cars'));
+  const menuButton = page.locator('#view-cars [data-menu-btn]').first();
+  await expect(menuButton).toBeVisible();
+  await menuButton.click();
+  await expect(page.locator('#view-cars .menu-wrap.open .menu-pop')).toBeVisible();
+  expect(await scan(page, 'cars/open-menu')).toEqual([]);
+});
