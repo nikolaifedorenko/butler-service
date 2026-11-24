@@ -448,22 +448,49 @@ const modalContent = x => x;
 /* Modal, drawer and command palette share one Escape owner. Each layer registers its
    close callback and the focus target that was active before it opened. */
 const overlayStack = [];
+function chainedFocus(primary, fallback) {
+  return () => Boolean(primary?.()) || Boolean(fallback?.());
+}
+function syncOverlayOrder() {
+  overlayStack.forEach((overlay, index) => {
+    const backdrop = document.getElementById(`${overlay.id}-backdrop`);
+    if (backdrop) backdrop.style.zIndex = String(100 + index * 10);
+  });
+}
 export function pushOverlay(id, close, returnFocus) {
-  const previous = overlayStack.find(x => x.id === id);
   const index = overlayStack.findIndex(x => x.id === id);
-  if (index >= 0) overlayStack.splice(index, 1);
-  overlayStack.push({ id, close, returnFocus: previous?.returnFocus || returnFocus });
+  let restore = returnFocus;
+  if (index >= 0) {
+    const wasTop = index === overlayStack.length - 1;
+    const [previous] = overlayStack.splice(index, 1);
+    if (!wasTop && overlayStack[index]) {
+      overlayStack[index].returnFocus = chainedFocus(overlayStack[index].returnFocus, previous.returnFocus);
+    }
+    restore = wasTop ? previous.returnFocus : chainedFocus(returnFocus, previous.returnFocus);
+  }
+  overlayStack.push({ id, close, returnFocus: restore });
+  syncOverlayOrder();
 }
 export function removeOverlay(id) {
   const index = overlayStack.findIndex(x => x.id === id);
   if (index < 0) return;
   const wasTop = index === overlayStack.length - 1;
   const [removed] = overlayStack.splice(index, 1);
+  if (!wasTop && overlayStack[index]) {
+    overlayStack[index].returnFocus = chainedFocus(overlayStack[index].returnFocus, removed.returnFocus);
+  }
+  document.getElementById(`${id}-backdrop`)?.style.removeProperty('z-index');
+  syncOverlayOrder();
   if (wasTop) removed.returnFocus?.();
 }
 function overlayFocusReturn() {
   const target = document.activeElement;
-  return () => { if (target instanceof HTMLElement && target.isConnected) target.focus(); };
+  const restore = () => {
+    if (!(target instanceof HTMLElement) || !target.isConnected) return false;
+    target.focus();
+    return document.activeElement === target;
+  };
+  return restore;
 }
 
 export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {

@@ -146,6 +146,30 @@ def test_current_in_law_path_wins_over_former_path():
     assert kin[mother].via_former is False
 
 
+def test_longer_current_path_wins_over_shorter_former_path():
+    me, ex, wife, brother, shared_parent = range(1, 6)
+    people = {me: Person(me, "m"), ex: Person(ex, "f"), wife: Person(wife, "f"),
+              brother: Person(brother, "m"), shared_parent: Person(shared_parent, "f")}
+    parents = {ex: (brother,), wife: (shared_parent,), brother: (shared_parent,)}
+    spouses = {me: ((ex, True), (wife, False)), ex: ((me, True),), wife: ((me, False),)}
+    kin = {k.person_id: k for k in kin_of(me, people, parents, spouses)}
+    assert kin[brother].title == "шурин"
+    assert kin[brother].via == (wife, shared_parent)
+    assert kin[brother].via_former is False
+
+
+def test_equal_former_paths_do_not_depend_on_relation_input_order():
+    me, husband, wife, mother = range(1, 5)
+    people = {me: Person(me, ""), husband: Person(husband, "m"), wife: Person(wife, "f"),
+              mother: Person(mother, "f")}
+    parents = {husband: (mother,), wife: (mother,)}
+    forward = {me: ((wife, True), (husband, True))}
+    reverse = {me: tuple(reversed(forward[me]))}
+    first = {k.person_id: k for k in kin_of(me, people, parents, forward)}[mother]
+    second = {k.person_id: k for k in kin_of(me, people, parents, reverse)}[mother]
+    assert (first.title, first.via) == (second.title, second.via) == ("свекровь", (husband,))
+
+
 def test_current_partner_wins_over_former_spouse_and_keeps_partner_label():
     people = {1: Person(1, "m"), 2: Person(2, "f")}
     spouses = {1: ((2, True),), 2: ((1, True),)}

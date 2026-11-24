@@ -158,8 +158,8 @@ def kin_among(db: Session, present: set[int], seeds: set[int] | None = None) -> 
 def relatives_among(db: Session, present: set[int], candidates: set[int]) -> set[int]:
     """Кто из candidates — родня кого-то из present по семейному дереву (часть 4 §3, состав
     брони): в дереве его карточки (до GENERATIONS поколений, через браки — как видит батлер) или
-    вычисленный родственник по domain/kinship (в любую сторону: «бабушка жены», «внук»). Через
-    бывшего супруга — только он сам, не его родня.
+    вычисленный родственник по domain/kinship (в любую сторону: «бабушка жены», «внук»).
+    Бывшие супруги/партнёры и former-only ветки остаются в истории, но не входят в активный состав.
     Читаются только связи семей present и candidates (связный граф, family_links): родство вне
     их семей ответа не меняет; обход — в памяти."""
     if not present or not candidates:

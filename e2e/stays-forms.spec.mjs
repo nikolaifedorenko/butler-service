@@ -112,9 +112,15 @@ test('Escape закрывает только верхний drawer и возвр
   await trigger.click();
   await expect(modalBackdrop).toBeVisible();
   await expect(drawerBackdrop).toBeVisible();
-  const drawerBox = await page.locator('#drawer').boundingBox();
-  expect(drawerBox.x).toBeGreaterThanOrEqual(0);
-  expect(drawerBox.x + drawerBox.width).toBeLessThanOrEqual(390);
+  const [modalZ, drawerZ] = await Promise.all([
+    modalBackdrop.evaluate(el => Number(getComputedStyle(el).zIndex)),
+    drawerBackdrop.evaluate(el => Number(getComputedStyle(el).zIndex)),
+  ]);
+  expect(drawerZ).toBeGreaterThan(modalZ);
+  await expect.poll(async () => {
+    const drawerBox = await page.locator('#drawer').boundingBox();
+    return drawerBox && [Math.round(drawerBox.x), Math.round(drawerBox.x + drawerBox.width)];
+  }).toEqual([0, 390]);
 
   await page.keyboard.press('Escape');
   await expect(drawerBackdrop).toBeHidden();
@@ -124,6 +130,77 @@ test('Escape закрывает только верхний drawer и возвр
   await page.keyboard.press('Escape');
   await expect(modalBackdrop).toBeHidden();
   await expect(page.locator('#overlay-test-opener')).toBeFocused();
+});
+
+test('удаление нижнего overlay сохраняет fallback возврата фокуса', async ({ page }) => {
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const core = await import('/static/js/core.js');
+    const { html } = await import('/static/js/ui/html.js');
+    const opener = document.createElement('button');
+    opener.id = 'overlay-fallback-opener';
+    opener.textContent = 'Открыть карточку';
+    document.body.appendChild(opener);
+    opener.focus();
+    core.openDrawer({ title: 'Нижняя карточка', body: html`<button id="overlay-modal-trigger">Окно</button>` });
+    const trigger = document.getElementById('overlay-modal-trigger');
+    trigger.focus();
+    core.openModal({ title: 'Верхнее окно', body: html`<p>Проверка</p>` });
+    core.closeDrawer();
+  });
+  await expect(page.locator('#modal-backdrop')).toBeVisible();
+  await expect(page.locator('#drawer-backdrop')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#modal-backdrop')).toBeHidden();
+  await expect(page.locator('#overlay-fallback-opener')).toBeFocused();
+});
+
+test('замена нижнего modal возвращает фокус в верхний drawer', async ({ page }) => {
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const core = await import('/static/js/core.js');
+    const { html } = await import('/static/js/ui/html.js');
+    const opener = document.createElement('button');
+    opener.id = 'overlay-replace-opener';
+    opener.textContent = 'Первое окно';
+    document.body.appendChild(opener);
+    opener.focus();
+    core.openModal({ title: 'Первое окно', body: html`<button id="replace-drawer-trigger">Карточка</button>` });
+    const firstTrigger = document.getElementById('replace-drawer-trigger');
+    firstTrigger.focus();
+    core.openDrawer({ title: 'Карточка', body: html`<button id="replace-modal-trigger">Второе окно</button>` });
+    const secondTrigger = document.getElementById('replace-modal-trigger');
+    secondTrigger.focus();
+    core.openModal({ title: 'Второе окно', body: html`<p>Новая версия окна</p>` });
+  });
+  const drawerTrigger = page.locator('#replace-modal-trigger');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#modal-backdrop')).toBeHidden();
+  await expect(page.locator('#drawer-backdrop')).toBeVisible();
+  await expect(drawerTrigger).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#drawer-backdrop')).toBeHidden();
+  await expect(page.locator('#overlay-replace-opener')).toBeFocused();
+});
+
+test('замена нижнего modal с фокусом в нём использует прежний fallback', async ({ page }) => {
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const core = await import('/static/js/core.js');
+    const { html } = await import('/static/js/ui/html.js');
+    const opener = document.createElement('button');
+    opener.id = 'overlay-stale-opener';
+    opener.textContent = 'Первое окно';
+    document.body.appendChild(opener);
+    opener.focus();
+    core.openModal({ title: 'Первое окно', body: html`<button id="stale-modal-focus">Внутри</button>` });
+    core.openDrawer({ title: 'Верхняя карточка', body: html`<p>Карточка</p>` });
+    document.getElementById('stale-modal-focus').focus();
+    core.openModal({ title: 'Второе окно', body: html`<p>Новая версия окна</p>` });
+  });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#modal-backdrop')).toBeHidden();
+  await expect(page.locator('#overlay-stale-opener')).toBeFocused();
 });
 
 test('поиск и выбор справочника гостей сбрасываются при смене пользователя', async ({ page }) => {

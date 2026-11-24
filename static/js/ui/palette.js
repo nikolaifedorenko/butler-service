@@ -105,7 +105,9 @@ export function show() {
   open = true;
   query = ''; index = 0; found = [];
   pushOverlay('palette', close, () => {
-    if (backFocus instanceof HTMLElement && backFocus.isConnected) backFocus.focus();
+    if (!(backFocus instanceof HTMLElement) || !backFocus.isConnected) return false;
+    backFocus.focus();
+    return document.activeElement === backFocus;
   });
   $('#palette-backdrop')?.classList.remove('hidden');
   paint();

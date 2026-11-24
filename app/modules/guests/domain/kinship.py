@@ -154,7 +154,7 @@ def kin_of(person_id: int, people: Mapping[int, Person], parents: Parents, spous
     def siblings(pid: int) -> list[tuple[int, int]]:
         """(сиблинг, общий родитель)."""
         out = {}
-        for p in parents.get(pid, ()):
+        for p in sorted(parents.get(pid, ())):
             for b in children.get(p, ()):
                 if b != pid and b not in out:
                     out[b] = p
@@ -215,8 +215,10 @@ def kin_of(person_id: int, people: Mapping[int, Person], parents: Parents, spous
         for t, f in partners.get(b, ()):
             if not f:
                 candidates.append((2, t, "партнёр сиблинга", (p, b), False))
+    # Действующий путь всегда важнее former-only, даже если бывшая ветка формально короче.
+    # Внутри одного статуса выбираем ближайшую и затем самую короткую детерминированную связь.
     for degree, y, title, via, former in sorted(candidates,
-                                                key=lambda c: (c[0], c[4], len(c[3]), c[1])):
+                                                key=lambda c: (c[4], c[0], len(c[3]), c[3], c[1])):
         add(y, title, degree, via, former)
     return sorted(found.values(), key=lambda k: (k.degree, k.person_id))
 
