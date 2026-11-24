@@ -64,7 +64,8 @@ def _tree_people(gid: int, touching, former_ends: bool = False) -> dict[int, int
     """Люди графа карточки: человек → поколение относительно гостя (вверх +, вниз −), в
     пределах GENERATIONS и MAX_HOPS шагов, не больше MAX_PEOPLE. touching(люди) — семейные
     связи (a, b, kind, former) любого из них (parent — a родитель b). former_ends — бывший
-    супруг в графе, но обход дальше через него не идёт (бывший не даёт свойственников, kinship)."""
+    супруг остаётся в историческом графе; при former_ends бывшие рёбра полностью исключаются
+    из активного состава брони."""
     gen = {gid: 0}
     frontier = {gid}
     for _ in range(MAX_HOPS):
@@ -75,11 +76,12 @@ def _tree_people(gid: int, touching, former_ends: bool = False) -> dict[int, int
             for me, other, delta in ((a, b, -1), (b, a, 1)):
                 if me not in frontier or other in gen:
                     continue
+                if former_ends and former:
+                    continue
                 g = gen[me] + (delta if kind == "parent" else 0)
                 if abs(g) <= GENERATIONS and len(gen) < MAX_PEOPLE:
                     gen[other] = g
-                    if not (former_ends and former):
-                        nxt.add(other)
+                    nxt.add(other)
         frontier = nxt
     return gen
 
@@ -176,7 +178,7 @@ def relatives_among(db: Session, present: set[int], candidates: set[int]) -> set
 
     def kin(pid: int) -> set[int]:
         return {k.person_id for k in kin_of(pid, {}, graph.parents, graph.spouses, children,
-                                            partners=graph.partners)}
+                                            partners=graph.partners) if not k.via_former}
 
     found: set[int] = set()
     for p in present:

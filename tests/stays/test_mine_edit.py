@@ -286,16 +286,15 @@ def test_mine_guest_search_only_own(stay, butlers, butler_client, manager_client
     assert {own, foreign} <= every and mine_only == {own}
 
 
-# ── доработка 3: через бывшего супруга — он сам и его родня (решение владельца 23.11.2026) ──
+# ── бывшая ветка остаётся в истории, но не входит в активный состав брони ──
 
-def test_mine_former_spouse_relatives_are_kin(stay, butlers, butler_client, manager_client):
-    """Родня бывшего брака считается роднёй — батлер может добавить её в состав своей брони;
-    посторонний гость по-прежнему отказ (403)."""
+def test_mine_former_only_relatives_are_not_active_kin(stay, butlers, butler_client, manager_client):
+    """Бывший супруг и его родня видны в истории семьи, но не дают доступ к составу брони."""
     r = _own(stay, butlers)
     husband = r["guests"][0]
     ex, ex_mother, stranger = (make_guest(manager_client)["id"] for _ in range(3))
     assert _link(manager_client, husband, ex, "spouse", former=True).status_code == 200
     assert _link(manager_client, ex_mother, ex, "parent").status_code == 200
-    assert _add_occupant(butler_client, r["id"], ex_mother).status_code == 200
-    assert _add_occupant(butler_client, r["id"], ex).status_code == 200
+    assert _add_occupant(butler_client, r["id"], ex_mother).status_code == 403
+    assert _add_occupant(butler_client, r["id"], ex).status_code == 403
     assert _add_occupant(butler_client, r["id"], stranger).status_code == 403

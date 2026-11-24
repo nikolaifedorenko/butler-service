@@ -130,8 +130,37 @@ def test_former_spouse_gives_marked_in_laws():
     """Родня бывшего брака считается (решение владельца 23.11.2026) — с пометкой via_former."""
     people, parents, spouses, _ = _build("m", [(S, "f", True), (U, "f")])
     kin = {k.person_id: k for k in kin_of(X, people, parents, spouses)}
-    assert kin[2].title == "бывшая жена" and kin[2].via_former is False
+    assert kin[2].title == "бывшая жена" and kin[2].via_former is True
     assert kin[3].title == "тёща" and kin[3].via_former is True
+
+
+def test_current_in_law_path_wins_over_former_path():
+    me, ex, wife, mother = range(1, 5)
+    people = {me: Person(me, "m"), ex: Person(ex, "f"), wife: Person(wife, "f"),
+              mother: Person(mother, "f")}
+    parents = {ex: (mother,), wife: (mother,)}
+    spouses = {me: ((ex, True), (wife, False)), ex: ((me, True),), wife: ((me, False),)}
+    kin = {k.person_id: k for k in kin_of(me, people, parents, spouses)}
+    assert kin[mother].title == "тёща"
+    assert kin[mother].via == (wife,)
+    assert kin[mother].via_former is False
+
+
+def test_current_partner_wins_over_former_spouse_and_keeps_partner_label():
+    people = {1: Person(1, "m"), 2: Person(2, "f")}
+    spouses = {1: ((2, True),), 2: ((1, True),)}
+    partners = {1: ((2, False),), 2: ((1, False),)}
+    kin = {k.person_id: k for k in kin_of(1, people, {}, spouses, partners=partners)}
+    assert kin[2].title == "партнёр"
+    assert kin[2].via_former is False
+
+
+def test_direct_former_partner_is_marked_former():
+    people = {1: Person(1, "m"), 2: Person(2, "f")}
+    partners = {1: ((2, True),), 2: ((1, True),)}
+    kin = {k.person_id: k for k in kin_of(1, people, {}, {}, partners=partners)}
+    assert kin[2].title == "бывший партнёр"
+    assert kin[2].via_former is True
 
 
 def test_blood_wins_over_in_law_and_degree_via():

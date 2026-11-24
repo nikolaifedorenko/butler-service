@@ -151,13 +151,6 @@ def kin_of(person_id: int, people: Mapping[int, Person], parents: Parents, spous
         if y != person_id and y not in found:
             found[y] = Kin(y, title, degree, via, via_former)
 
-    # супруги и партнёры — сами, с ближайшим статусом: действующие раньше бывших
-    for s, former in (*spouses.get(person_id, ()), *partners.get(person_id, ())):
-        if s not in found:
-            title = (partner_title(gender(s), former) if any(s == p for p, _ in partners.get(person_id, ()))
-                     else spouse_title(gender(s), former))
-            add(s, title, 0, ())
-
     def siblings(pid: int) -> list[tuple[int, int]]:
         """(сиблинг, общий родитель)."""
         out = {}
@@ -168,6 +161,12 @@ def kin_of(person_id: int, people: Mapping[int, Person], parents: Parents, spous
         return sorted(out.items())
 
     candidates: list[tuple[int, int, str, tuple[int, ...], bool]] = []   # (степень, кто, название, через, через бывших)
+    # Прямые связи тоже кандидаты: так действующая связь всегда обгоняет бывшую, а название
+    # берётся из фактического типа конкретного ребра (супруг или партнёр).
+    for s, former in spouses.get(person_id, ()):
+        candidates.append((0, s, spouse_title(gender(s), former), (), former))
+    for p, former in partners.get(person_id, ()):
+        candidates.append((0, p, partner_title(gender(p), former), (), former))
     # супруги и партнёры детей: зять — муж дочери, невестка — жена сына
     for c in children.get(person_id, ()):
         for t, f in spouses.get(c, ()):
@@ -216,7 +215,8 @@ def kin_of(person_id: int, people: Mapping[int, Person], parents: Parents, spous
         for t, f in partners.get(b, ()):
             if not f:
                 candidates.append((2, t, "партнёр сиблинга", (p, b), False))
-    for degree, y, title, via, former in sorted(candidates, key=lambda c: (c[0], c[1])):
+    for degree, y, title, via, former in sorted(candidates,
+                                                key=lambda c: (c[0], c[4], len(c[3]), c[1])):
         add(y, title, degree, via, former)
     return sorted(found.values(), key=lambda k: (k.degree, k.person_id))
 
