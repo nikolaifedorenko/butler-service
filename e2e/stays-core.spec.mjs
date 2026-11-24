@@ -9,6 +9,7 @@ test.describe('печать шахматки', () => {
   test.use({ serviceWorkers: 'block' });
   for (const transition of ['выход', 'истечение сессии', '401 при печати', 'вход как сотрудник']) {
     test(`закрывает печать при смене сессии · ${transition}`, async ({ page }) => {
+      await page.addInitScript(() => { window.print = () => {}; });
       await login(page, 'admin');
       await open(page, 'stays');
       const action = page.locator('#sb-print');
@@ -21,7 +22,9 @@ test.describe('печать шахматки', () => {
           if (args[0] !== '/api/docs/print') return fetch(...args);
           if (++prints === 3 && rejectThird) return Promise.resolve(new Response(null, { status: 401 }));
           const wait = prints === 2;
-          return Promise.resolve({ ok: true, text: async () => {
+          const context = document.cookie.match(/(?:^|;\s*)tt_auth_context=([^;]+)/)?.[1];
+          return Promise.resolve({ ok: true, status: 200,
+            headers: new Headers({ 'X-Butler-Auth-Context': decodeURIComponent(context) }), text: async () => {
             if (wait) await new Promise(resolve => { window.releasePrint = resolve; });
             return '<p>Тест печати</p>';
           } });
@@ -30,7 +33,6 @@ test.describe('печать шахматки', () => {
       await action.click();
       const frames = page.locator('body > iframe[srcdoc]');
       await expect(frames).toHaveCount(1);
-      const mounted = await frames.elementHandle();
       await action.click();
       await page.waitForFunction(() => !!window.releasePrint);
       if (transition === 'вход как сотрудник') {
@@ -42,19 +44,23 @@ test.describe('печать шахматки', () => {
         if (transition === 'выход') {
           await page.locator('#logout-btn').click();
         } else if (transition === '401 при печати') {
+          const reloaded = page.waitForEvent('domcontentloaded');
           await action.click();
+          await reloaded;
+          await expect(page.locator('#user-name')).toContainText('admin');
         } else {
           await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: {} }));
+          await page.route('**/api/auth/context', route => route.fulfill({ status: 401, json: {} }));
           await page.evaluate(async () => {
             const { api } = await import('/static/js/core.js');
             await api('/api/auth/me', { silent: true }).catch(() => {});
           });
         }
-        await expect(page.locator('#login-screen')).toBeVisible();
+        if (transition !== '401 при печати') await expect(page.locator('#login-screen')).toBeVisible();
       }
-      expect.soft(await mounted.evaluate(frame => frame.isConnected), 'открытый документ закрыт').toBe(false);
-      await page.evaluate(() => window.releasePrint());
-      expect(await frames.count(), 'задержанный документ не появился').toBe(0);
+      await expect(frames, 'открытый документ закрыт').toHaveCount(0);
+      await page.evaluate(() => window.releasePrint?.());
+      await expect(frames, 'задержанный документ не появился').toHaveCount(0);
       if (transition === 'вход как сотрудник') {
         await page.evaluate(async () => {
           const { printWindow } = await import('/static/js/modules/docs.js');
@@ -299,11 +305,10 @@ test.describe('печать шахматки', () => {
       const reads = [];
       page.on('request', req => { if (req.url().includes('/api/stays/')) reads.push(req.url()); });
       await page.evaluate(() => {
-        window.addEventListener('message', ({ source, data }) => {
+        window.addEventListener('message', ({ source, data, origin }) => {
           if (data?.butler_print_done !== true) return;
           const frame = document.querySelector('iframe[srcdoc]');
-          window.printDone = !!frame && source === frame.contentWindow && !!data.nonce
-            && data.nonce === frame.contentDocument.documentElement.dataset.printNonce;
+          window.printDone = !!frame && source === frame.contentWindow && origin === location.origin;
         });
       });
       await action.click();
