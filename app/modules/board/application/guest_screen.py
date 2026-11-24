@@ -18,7 +18,7 @@ from app.modules.guests.application.catalog import Guest
 from app.modules.stays.application import guests_list, history, mine
 from app.modules.stays.application.guest_access import own_guest, require_full
 from app.modules.stays.application.guest_card import card
-from app.modules.stays.application.visibility import at_least, level_for
+from app.modules.stays.application.visibility import Level, at_least, level_for
 
 
 def _guest(db: Session, gid: int) -> Guest:
@@ -79,6 +79,7 @@ def prefs(db: Session, principal: Principal, gid: int) -> list[dict]:
 def family(db: Session, principal: Principal, gid: int) -> dict:
     """Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только
     полный уровень. Граф — до 3 поколений вверх и вниз и через брак."""
+    level: Level | None
     if "stays.guests" in principal.gate_permissions:
         level = "full"
     else:
