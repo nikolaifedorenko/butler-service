@@ -5,6 +5,102 @@ import { login, watchErrors } from './helpers.mjs';
 const open = (page, view) => page.evaluate(v => window.navigate(v), view);
 const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
 
+test.describe('печать шахматки', () => {
+  test.use({ serviceWorkers: 'block' });
+  for (const [loginName, level] of [['admin', 'full'], ['ivanov', 'names'], ['sluzhba', 'occupancy']]) {
+    test(level, async ({ page }) => {
+      await login(page, loginName);
+      // Headless Chromium может мгновенно закрыть диалог. Управляем только его закрытием.
+      await page.addInitScript(() => { window.print = () => { window.printInvoked = true; }; });
+      let category;
+      await page.route('**/api/stays/board/units?**', async route => {
+        const response = await route.fetch();
+        const data = await response.json();
+        expect(data.visibility).toBe(level);
+        category = data.units[0].category_id;
+        const filtered = new URL(route.request().url()).searchParams.has('category_ids');
+        data.units[0].label = filtered ? 'Вилла на склоне' : 'Из нефильтрованной доски';
+        const start = data.days[2], end = data.days[4];
+        const pos = iso => (Date.parse(iso) / 86400000 + 719163) * 2;
+        // Лишние поля даже у младших ролей: печать сама выбирает разрешённые данные.
+        data.bars = [{ unit_id: data.units[0].unit_id, start, end, start_pos: pos(start) + 1,
+          end_pos: pos(end), status: 'confirmed', guests_count: 7, reservation_id: 981234567,
+          main_guest: 'Гость <Тест>', number: 'RES-PRINT-78', vip_code: 'VIP-PRINT', special: true,
+          customer: 'Заказчик-Свидетель', note: 'Закрытая заметка' }];
+        data.bars.push({ ...data.bars[0], unit_id: null, guests_count: 2 });
+        data.holds = [{ ...data.bars[0], kind: 'ooo', title: 'Замена окон' }];
+        data.blocks = [{ ...data.bars[0], title: 'Конгресс' }];
+        await route.fulfill({ response, json: data });
+      });
+      await page.evaluate(async () => {
+        const { staysState } = await import('/static/js/modules/stays.js');
+        Object.assign(staysState.filters, { q: 'частный поиск', special: true, vip_code_ids: [1] });
+      });
+      await open(page, 'stays');
+      const view = page.locator('#view-stays');
+      await expect(view.locator('.sb-grid')).toBeVisible();
+      const action = view.getByRole('button', { name: 'Печать', exact: true });
+      await expect(action).toBeVisible();
+      expect(await action.evaluate(el => el.previousElementSibling.id)).toMatch(/^sb-xlsx-(anon|full)$/);
+      const label = view.locator('#sm-label');
+      const previous = (await label.textContent()).trim();
+      await view.locator('#sm-next').click();
+      await expect(label).not.toHaveText(previous);
+      const month = (await label.textContent()).trim();
+      await view.locator('[data-sf-dd=cat] summary').click();
+      const box = view.locator(`[data-sf-cat="${category}"]`);
+      const code = (await box.locator('..').innerText()).trim();
+      await box.check();
+      await expect(view.locator('[data-sf-dd=cat] summary b')).toHaveText(code);
+      const reads = [];
+      page.on('request', req => { if (req.url().includes('/api/stays/')) reads.push(req.url()); });
+      await page.evaluate(() => {
+        window.addEventListener('message', ({ source, data }) => {
+          if (data?.butler_print_done !== true) return;
+          const frame = document.querySelector('iframe[srcdoc]');
+          window.printDone = !!frame && source === frame.contentWindow && !!data.nonce
+            && data.nonce === frame.contentDocument.documentElement.dataset.printNonce;
+        });
+      });
+      await action.click();
+      const frame = page.frameLocator('iframe[aria-hidden=true][srcdoc]');
+      await expect(frame.locator('h1')).toContainText(month);
+      await expect(frame.locator('p', { hasText: 'Категории' })).toContainText(code);
+      await expect(frame.locator('table')).toContainText('Вилла на склоне');
+      const booking = frame.getByRole('row').filter({ hasText: '7 гост.' });
+      await expect(booking).toContainText('Вилла на склоне');
+      await expect(booking.locator('td').nth(3)).toHaveText('◑');
+      await expect(booking.locator('td').nth(4)).toHaveText('●');
+      await expect(booking.locator('td').nth(5)).toHaveText('◐');
+      await expect(frame.locator('table')).toContainText('Не распределено');
+      await expect(frame.locator('table')).toContainText('2 гост.');
+      await expect(frame.locator('table')).toContainText('OOO');
+      await expect(frame.locator('table')).toContainText('Блок');
+      const dayCount = await view.locator('.sb-head [data-day]').count();
+      await expect(frame.locator('thead th').last()).toHaveText(String(dayCount));
+      const markup = await frame.locator('html').evaluate(el => el.outerHTML);
+      expect(markup).not.toMatch(/981234567|Из нефильтрованной доски/);
+      if (level === 'occupancy') {
+        expect(markup).not.toMatch(/Гость &lt;Тест|RES-PRINT|VIP|◆|особый гость|частный поиск|Конгресс|Замена окон/i);
+      } else {
+        await expect(frame.locator('p', { hasText: 'Категории' })).toContainText('частный поиск');
+        await expect(frame.locator('table')).toContainText('Гость <Тест>');
+        expect(markup).toContain('RES-PRINT-78');
+        expect(markup).toContain('VIP-PRINT');
+        expect(markup).toContain('◆');
+      }
+      for (const field of ['Заказчик-Свидетель', 'Закрытая заметка']) {
+        expect(markup.includes(field)).toBe(level === 'full');
+      }
+      await expect.poll(() => frame.locator('html').evaluate(() => window.printInvoked)).toBe(true);
+      await frame.locator('html').evaluate(() => window.dispatchEvent(new Event('afterprint')));
+      await expect(page.locator('iframe[srcdoc]')).toHaveCount(0);
+      expect(await page.evaluate(() => window.printDone)).toBe(true);
+      expect(reads).toEqual([]);
+    });
+  }
+});
+
 test('вкладки по правам и шахматка объектов: сетка, разделы дерева, сортировка', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'admin');

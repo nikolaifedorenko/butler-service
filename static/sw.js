@@ -49,6 +49,7 @@ const SHELL = [
   '/static/js/modules/stays_guests.js',
   '/static/js/modules/stays_mine.js',
   '/static/js/modules/stays_ooo.js',
+  '/static/js/modules/stays_print.js',
   '/static/js/modules/stays_settings.js',
   '/static/js/modules/tabel.js',
   '/static/js/modules/timesheet_common.js',

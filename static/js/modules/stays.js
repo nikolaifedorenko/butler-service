@@ -24,6 +24,7 @@ import {
 } from './stays_forms.js';
 import { renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
 import { filterPanelTemplate, STAYS_SORTS, staysSortRows } from './stays_filters.js';
+import { printStaysBoard } from './stays_print.js';
 import { paletteRegister } from '../ui/palette.js';
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
@@ -260,6 +261,8 @@ async function renderUnitsBoard(body) {
   /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
      (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
   const fresh = loadGenerationFor(body);
+  const filters = staysState.filters;
+  const monthLabel = `${MONTHS[state.month - 1]} ${state.year}`;
   const data = await api('/api/stays/board/units?' + staysBoardParams(), { silent: true });
   if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
@@ -308,6 +311,8 @@ async function renderUnitsBoard(body) {
         @change=${e => { st.grouped = e.target.checked; draw(); }}> группировать по дереву</label>
       <button class="btn btn-sm btn-ghost" id="sb-xlsx-anon" title="Объекты, даты, статусы, число гостей — без данных гостей" @click=${xlsx('anon')}>Выгрузить (без гостей)</button>
       ${can('stays.export') && can('stays.guests') ? html`<button class="btn btn-sm btn-ghost" id="sb-xlsx-full" @click=${xlsx('full')}>Выгрузить полностью</button>` : nothing}
+      <button class="btn btn-sm btn-ghost" @click=${() => printStaysBoard(
+        { ...data, units: staysSortRows(data.units, st, fund) }, fund, filters, data.visibility, monthLabel)}>Печать</button>
       ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary hide-mobile" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}
     </div>
     ${staysFilterView(fund, rerender, { people: names })}
