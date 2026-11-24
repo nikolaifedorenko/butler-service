@@ -47,6 +47,7 @@ class MenuItem:
     title: str
     order: int
     perms: tuple[str, ...] = ()
+    employee_perms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -131,11 +132,20 @@ def notify_domains() -> dict[str, NotifyDomain]:
     return {k: v for m in _REGISTERED for k, v in m.notify_domains.items()}
 
 
-def ui_for(perms: set[str]) -> dict[str, list[dict]]:
+def ui_for(perms: set[str], *, has_employee: bool = False) -> dict[str, list[dict]]:
     """Меню и экраны «Настроек», которые видит обладатель прав `perms` (для /api/auth/me)."""
     menu = sorted((i for m in _REGISTERED for i in m.menu), key=lambda i: i.order)
     screens = sorted((s for m in _REGISTERED for s in m.settings_screens), key=lambda s: s.order)
-    return {"menu": [asdict(i) for i in menu if not i.perms or perms & set(i.perms)],
+    def visible(i: MenuItem) -> bool:
+        matched = perms & set(i.perms)
+        return not i.perms or bool(matched - set(i.employee_perms)) or (has_employee and bool(matched))
+    menu_rows = []
+    for item in menu:
+        if visible(item):
+            row = asdict(item)
+            row.pop("employee_perms")
+            menu_rows.append(row)
+    return {"menu": menu_rows,
             "settings_screens": [asdict(s) for s in screens if s.perm is None or s.perm in perms]}
 
 

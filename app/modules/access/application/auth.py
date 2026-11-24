@@ -155,7 +155,7 @@ def me(db: Session, principal: Principal) -> dict:
             "today": None, "permissions": sorted(perms),
             "roles": [{"code": r.code, "title": r.title} for r in roles_catalog(db)],
             "assignable_roles": assignable_roles(db, principal),
-            **manifest.ui_for(perms)}
+            **manifest.ui_for(perms, has_employee=principal.employee is not None)}
     if principal.employee:
         today = local_date()
         shift, planned_start, planned_end, _plan_date, parts = plan_for_date(db, principal.employee.id, today)

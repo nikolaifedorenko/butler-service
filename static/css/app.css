@@ -149,6 +149,9 @@
 .tabbar button.active { color: var(--brand-fg); }
 .tabbar button svg { width: 22px; height: 22px; }
 
+/* Fixed action menus are measured after opening; cap their real box to the viewport. */
+.menu-pop { max-height: min(70vh, calc(100vh - 16px)); }
+
 /* ══════════════════════════ СЕТКА ГРАФИКА ══════════════════════════ */
 .grid-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 

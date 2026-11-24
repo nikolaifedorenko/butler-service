@@ -13,7 +13,6 @@ from app.core.errors import Forbidden
 from app.modules.guests.application.catalog import GuestLink
 
 from . import mine
-from .visibility import level_for
 
 
 def butler_id(principal: Principal) -> int:
@@ -47,9 +46,9 @@ def own_link(db: Session, principal: Principal, link_id: int) -> None:
 
 
 def require_full(db: Session, principal: Principal) -> None:
-    """Вкладка «Гости» и всё, что из неё (addendum §3): только полный уровень — ``stays.guests``
-    вместе с доступом к шахматке с фамилиями."""
-    if level_for(db, principal) != "full":
+    """Раздел «Гости» и всё, что из него (addendum §3): право ``stays.guests`` самостоятельно."""
+    perms = getattr(principal, "gate_permissions", None) or ()
+    if "stays.guests" not in perms:
         raise Forbidden("Справочник гостей — с правом «Профили гостей целиком»")
 
 

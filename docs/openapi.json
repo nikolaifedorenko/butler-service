@@ -8667,6 +8667,10 @@
             ],
             "title": "Birth Date"
           },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
           "email": {
             "title": "Email",
             "type": "string"
@@ -8796,7 +8800,8 @@
           "special_dates",
           "fields",
           "links",
-          "stays"
+          "stays",
+          "editable"
         ],
         "title": "GuestFullCardOut",
         "type": "object"
@@ -32510,7 +32515,7 @@
     },
     "/api/stays/guests/list": {
       "get": {
-        "description": "Вкладка «Гости»: только полный уровень (stays.guests), остальным — 403.",
+        "description": "Раздел «Гости»: только полный уровень (stays.guests), остальным — 403.",
         "operationId": "guests_tab_api_stays_guests_list_get",
         "parameters": [
           {

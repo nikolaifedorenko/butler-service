@@ -177,29 +177,43 @@ function staysTabRender(tab) {
     occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab }[tab] || renderUnitsBoard;
 }
 
+let guestFindGeneration = 0;
+let guestFindTimer = null;
+export function staysResetGuestFind() {
+  ++guestFindGeneration;
+  clearTimeout(guestFindTimer);
+  guestFindTimer = null;
+}
+
 /* микро-поиск гостя в шапке шахматки (ревью UI 22.11.2026): карточка открывается из любой
    вкладки; батлер ищет среди своих. Справочник целиком — раздел «Гости». */
 function guestFindView() {
   const full = can('stays.guests');
-  if (!full && !can('stays.mine_guest_edit')) return nothing;
-  let timer = null;
+  if (!full && !(can('stays.mine_guest_edit') && state.user?.employee_id != null)) return nothing;
+  ++guestFindGeneration; // новый рендер шапки владеет всеми следующими ответами поиска
   return html`<div class="guest-find"><input type="search" id="sg-q" placeholder="Найти гостя…"
     @input=${e => {
-      clearTimeout(timer);
-      const host = e.target.closest('.guest-find');
-      timer = setTimeout(async () => {
-        const needle = e.target.value.trim();
+      clearTimeout(guestFindTimer);
+      const input = e.currentTarget;
+      const host = input.closest('.guest-find');
+      const current = ++guestFindGeneration;
+      guestFindTimer = setTimeout(async () => {
+        if (current !== guestFindGeneration || !host.isConnected) return;
+        const needle = input.value.trim();
         if (needle.length < 2) { render(nothing, $('[data-sg-res]', host)); return; }
         try {
           const found = await api(`/api/stays/guests?q=${encodeURIComponent(needle)}${full ? '' : '&mine=1'}`, { silent: true });
+          if (current !== guestFindGeneration || !host.isConnected) return;
           render(found.length ? found.map(g => html`<button type="button" class="btn btn-sm btn-ghost" data-sg-guest=${g.id}>${g.short}</button>`)
             : html`<span class="muted">не найдено</span>`, $('[data-sg-res]', host));
-        } catch (err) { toast(err.message, 'warn'); }
+        } catch (err) { if (current === guestFindGeneration) toast(err.message, 'warn'); }
       }, 300);
     }}>
     <div class="guest-find-res" data-sg-res @click=${e => {
       const b = e.target.closest('[data-sg-guest]');
       if (!b) return;
+      ++guestFindGeneration;
+      clearTimeout(guestFindTimer);
       openGuestCard(Number(b.dataset.sgGuest), () => loadStays());
       const host = e.currentTarget.closest('.guest-find');
       $('input', host).value = '';
@@ -339,7 +353,6 @@ async function renderUnitsBoard(body) {
     ${(byUnit.none || []).length ? html`<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
       html`<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar=${b.reservation_id}
         @click=${names ? () => openReservationCard(b.reservation_id, rerender) : nothing}>${b.overbooked ? html`<span class="badge danger">овербукинг</span> ` : nothing}${names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь'} · ${dateRu(b.start)}–${dateRu(b.end)}</div>`)}</div>` : nothing}
-    /* на телефоне создание брони — плавающая кнопка: тулбара на узком экране всё равно не видно */
     ${can('stays.edit') ? html`<button class="fab only-mobile" id="sb-new-fab" aria-label="Новая бронь" title="Новая бронь"
       @click=${() => openReservationForm(null, { onSaved: rerender })}>+</button>` : nothing}`;
   draw();

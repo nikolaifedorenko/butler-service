@@ -19,7 +19,9 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
 from app.core.db import get_db
+from app.core.errors import Forbidden
 from app.core.permissions import require_perm
+from app.core.time import local_date
 from app.core.uploads import read_upload
 
 from ..application import fund_dictionaries, fund_draft_edit, fund_screen, fund_xlsx
@@ -52,6 +54,8 @@ from .schemas import (
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 # чтение — тем, кто видит шахматку; батлеру (stays.mine) — ради определений полей: данных гостей здесь нет
 READ = require_perm("stays.view", "stays.occupancy", "stays.setup", "stays.mine")
+SNAPSHOT_READ = require_perm("stays.view", "stays.occupancy", "stays.setup", "stays.mine",
+                             "stays.guests", "stays.edit", "stays.mine_guest_edit")
 SETUP = require_perm("stays.setup")
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -60,7 +64,11 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 @router.get("/fund/snapshot", response_model=FundSnapshotOut)
 def get_snapshot(date: Optional[dt.date] = None, version_id: Optional[int] = None,
-                 principal: Principal = Depends(READ), db: Session = Depends(get_db)):
+                 principal: Principal = Depends(SNAPSHOT_READ), db: Session = Depends(get_db)):
+    board_read = {"stays.view", "stays.occupancy", "stays.setup", "stays.mine"}
+    if not board_read.intersection(principal.gate_permissions) and (
+            version_id is not None or (date is not None and date != local_date())):
+        raise Forbidden("Для профиля гостя доступен только текущий фонд")
     return fund_screen.snapshot(db, date, version_id)
 
 

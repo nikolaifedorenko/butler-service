@@ -10,7 +10,7 @@
 
 import { state, toast } from '../core.js';
 import { html, nothing } from '../ui/html.js';
-import { staysEmptyFilters, staysState } from './stays.js';
+import { staysEmptyFilters, staysResetGuestFind, staysState } from './stays.js';
 import { boardState } from './stays_board.js';
 import { staysBook, staysBookEmpty } from './stays_bookings.js';
 import { staysBlock, staysBlockEmpty } from './stays_blocks.js';
@@ -35,6 +35,7 @@ export function staysResetUserState() {
   Object.assign(staysBlock, staysBlockEmpty());
   Object.assign(staysOoo, staysOooEmpty());
   staysFilterOpen.clear();
+  staysResetGuestFind();
   sfPanelOpen = false;
   clearTimeout(searchTimer);
 }
@@ -166,11 +167,12 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true, on
     ${people && f.special ? chip('◆ особый гость', () => emit({ special: false })) : nothing}
     ${people ? f.vip_code_ids.map(id => chip(titleOf(vipItems, id), () => emit({ vip_code_ids: f.vip_code_ids.filter(x => x !== id) }))) : nothing}`;
   const activeCount = f.group_ids.length + f.category_ids.length + f.flag_ids.length + f.kind_ids.length
-    + (f.escorted ? 1 : 0) + (people && f.special ? 1 : 0) + f.vip_code_ids.length;
+    + (f.escorted ? 1 : 0) + (people && f.special ? 1 : 0) + (people ? f.vip_code_ids.length : 0);
   return html`<div class="sb-toolbar sf-bar">
     <button class="btn btn-sm sf-toggle only-mobile" aria-expanded=${sfPanelOpen ? 'true' : 'false'}
-      @click=${e => { sfPanelOpen = !sfPanelOpen; e.target.closest('.sf-bar').nextElementSibling.classList.toggle('open', sfPanelOpen);
-        e.target.setAttribute('aria-expanded', String(sfPanelOpen)); }}>
+      @click=${e => { const button = e.currentTarget; sfPanelOpen = !sfPanelOpen;
+        button.closest('.sf-bar').nextElementSibling.classList.toggle('open', sfPanelOpen);
+        button.setAttribute('aria-expanded', String(sfPanelOpen)); }}>
       Фильтры${activeCount ? html` <b>(${activeCount})</b>` : nothing}</button>
     ${chips}
     ${people ? html`<input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" .value=${f.q}

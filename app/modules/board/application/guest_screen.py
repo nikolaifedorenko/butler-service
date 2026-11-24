@@ -1,4 +1,4 @@
-"""Чтение профилей гостей: подбор, вкладка «Гости», карточка, история, пожелания, семья (§3.2, §4, §8).
+"""Чтение профилей гостей: подбор, раздел «Гости», карточка, история, пожелания, семья (§3.2, §4, §8).
 
 Список с фамилиями — ``stays.view``, карточка целиком — ``stays.guests``; батлер (часть 4 §3) —
 только свои гости. Роутер проверяет право эндпоинта, остальные проверки — здесь.
@@ -18,7 +18,7 @@ from app.modules.guests.application.catalog import Guest
 from app.modules.stays.application import guests_list, history, mine
 from app.modules.stays.application.guest_access import own_guest, require_full
 from app.modules.stays.application.guest_card import card
-from app.modules.stays.application.visibility import at_least, level_for
+from app.modules.stays.application.visibility import Level, at_least, level_for
 
 
 def _guest(db: Session, gid: int) -> Guest:
@@ -32,7 +32,7 @@ def search(db: Session, principal: Principal, q: str, mine_only: bool) -> list[d
     """Подбор гостя: без контактов и дат рождения. Полный уровень — по ФИО, телефону, почте и
     полям с поиском; ниже — только по ФИО (решение 8: иначе по ответу подбирается чужой телефон).
     ``mine_only`` — только свои гости батлера (редактор связей, часть 4 §3)."""
-    full = level_for(db, principal) == "full"
+    full = "stays.guests" in principal.gate_permissions
     if mine_only:
         found = [] if principal.employee is None else mine.search_my_guests(db, principal.employee.id, q, full)
     else:
@@ -48,7 +48,7 @@ def search(db: Session, principal: Principal, q: str, mine_only: bool) -> list[d
 def tab(db: Session, principal: Principal, *, q: str, special: bool, vip_code_id: int | None,
         stayed_from: dt.date | None, stayed_to: dt.date | None, birthday_days: int | None, sort: str,
         direction: Literal["asc", "desc"], offset: int, limit: int) -> dict:
-    """Вкладка «Гости»: только полный уровень, остальным — 403; затем проверка самого запроса (422)."""
+    """Раздел «Гости»: только полный уровень, остальным — 403; затем проверка самого запроса (422)."""
     require_full(db, principal)
     query = guests_list.GuestQuery(q, special, vip_code_id, stayed_from, stayed_to, birthday_days, sort,
                                    direction, offset, limit)
@@ -79,7 +79,14 @@ def prefs(db: Session, principal: Principal, gid: int) -> list[dict]:
 def family(db: Session, principal: Principal, gid: int) -> dict:
     """Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только
     полный уровень. Граф — до 3 поколений вверх и вниз и через брак."""
-    level = level_for(db, principal)
+    level: Level | None
+    if "stays.guests" in principal.gate_permissions:
+        level = "full"
+    else:
+        level = level_for(db, principal)
+    if not at_least(level, "names") and "stays.mine_guest_edit" in principal.gate_permissions:
+        own_guest(db, principal, gid, "stays.guests")
+        level = "names"
     if not at_least(level, "names"):
         raise Forbidden("Семейное дерево — с уровня «с фамилиями»")
     _guest(db, gid)

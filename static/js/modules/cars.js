@@ -28,16 +28,47 @@ const dRuCar = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
    по Esc и перед любой операцией. Слушатели — на уровне модуля: рендер раздела
    происходит многократно, вешать их на каждый рендер нельзя. */
 let openCarMenu = null;
-function closeCarMenu() {
+let openCarMenuButton = null;
+let openCarMenuAnchor = null;
+function closeCarMenu(restoreFocus = false) {
   if (!openCarMenu) return;
+  const button = openCarMenuButton;
   openCarMenu.classList.remove('open');
-  openCarMenu.querySelector('[data-menu-btn]')?.setAttribute('aria-expanded', 'false');
+  button?.setAttribute('aria-expanded', 'false');
   openCarMenu = null;
+  openCarMenuButton = null;
+  openCarMenuAnchor = null;
+  if (restoreFocus) button?.focus();
 }
 document.addEventListener('click', e => { if (openCarMenu && !openCarMenu.contains(e.target)) closeCarMenu(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCarMenu(); });
-window.addEventListener('scroll', closeCarMenu, { passive: true, capture: true });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && openCarMenu) { e.preventDefault(); closeCarMenu(true); }
+});
+window.addEventListener('scroll', e => {
+  if (openCarMenu && e.target instanceof Node && openCarMenu.contains(e.target)) return;
+  if (!openCarMenu || !openCarMenuAnchor || !openCarMenuButton) return;
+  const anchor = openCarMenuButton.getBoundingClientRect();
+  /* Playwright and browsers may deliver the scroll used to reveal the button after its click.
+     Keep the freshly opened menu when the anchor did not actually move; close it only when a
+     later viewport/ancestor scroll detached the fixed popup from its anchor. */
+  if (Math.abs(anchor.top - openCarMenuAnchor.top) < 0.5
+      && Math.abs(anchor.left - openCarMenuAnchor.left) < 0.5) return;
+  closeCarMenu();
+}, { passive: true, capture: true });
 window.addEventListener('resize', closeCarMenu);
+
+function positionCarMenu(button, pop) {
+  const margin = 8, gap = 4;
+  const anchor = button.getBoundingClientRect();
+  const width = pop.offsetWidth, height = pop.offsetHeight;
+  let top = anchor.bottom + gap;
+  if (top + height > innerHeight - margin) top = anchor.top - gap - height;
+  top = Math.max(margin, Math.min(top, innerHeight - height - margin));
+  const left = Math.max(margin, Math.min(anchor.right - width, innerWidth - width - margin));
+  pop.style.top = `${top}px`;
+  pop.style.left = `${left}px`;
+  pop.style.visibility = '';
+}
 
 /* ─────────────────────────── раздел ─────────────────────────── */
 registerModule({ views: { cars: loadCars } });
@@ -123,8 +154,9 @@ function carsBody() {
   const refresh = () => fetchCars(true);
   const byId = id => d.cars.find(c => c.id === Number(id));
   /* одна кнопка операции: data-act / data-id нужны сценариям и тестам */
-  const act = (car, kind, label, cls, title) => html`<button class=${`btn btn-sm ${cls}`} data-act=${kind} data-id=${car.id}
-    title=${title || nothing} @click=${() => { closeCarMenu(); runAct(byId(car.id), kind, refresh); }}>${label}</button>`;
+  const act = (car, kind, label, cls, title, menuItem = false) => html`<button class=${`btn btn-sm ${cls}`} data-act=${kind} data-id=${car.id}
+    role=${menuItem ? 'menuitem' : nothing} tabindex=${menuItem ? '-1' : nothing} title=${title || nothing}
+    @click=${() => { closeCarMenu(); runAct(byId(car.id), kind, refresh); }}>${label}</button>`;
 
   /* Вторичные операции строки — в выпадающем меню «⋯», а не кнопками в ряд: строка
      теряла треть ширины на 4–6 кнопках. Пункты меню сохраняют data-act/data-id —
@@ -133,18 +165,45 @@ function carsBody() {
   const rowMenu = (car, items) => html`<span class="menu-wrap">
     <button class="menu-btn" data-menu-btn aria-haspopup="menu" aria-expanded="false"
       aria-label="Действия с каром №${car.number}"
-      @click=${e => { e.stopPropagation(); const w = e.currentTarget.closest('.menu-wrap');
+      @click=${e => { e.stopPropagation(); const button = e.currentTarget; const w = button.closest('.menu-wrap');
         const willOpen = !w.classList.contains('open');
         closeCarMenu();
         if (!willOpen) return;
         const pop = w.querySelector('.menu-pop');
-        const r = e.currentTarget.getBoundingClientRect();
-        pop.style.top = `${Math.max(8, Math.min(r.bottom + 4, innerHeight - pop.offsetHeight - 8))}px`;
-        pop.style.left = `${Math.max(8, Math.min(r.right - 210, innerWidth - 218))}px`;
+        pop.style.visibility = 'hidden';
         w.classList.add('open');
-        e.currentTarget.setAttribute('aria-expanded', 'true');
-        openCarMenu = w; }}>⋯</button>
-    <span class="menu-pop" role="menu">${items}</span>
+        button.setAttribute('aria-expanded', 'true');
+        openCarMenu = w;
+        openCarMenuButton = button;
+        const keyboard = e.detail === 0;
+        requestAnimationFrame(() => {
+          if (openCarMenu !== w) return;
+          positionCarMenu(button, pop);
+          const anchor = button.getBoundingClientRect();
+          openCarMenuAnchor = { top: anchor.top, left: anchor.left };
+          if (keyboard) pop.querySelector('[role=menuitem]')?.focus();
+        }); }}>⋯</button>
+    <span class="menu-pop" role="menu" @keydown=${e => {
+      const items = [...e.currentTarget.querySelectorAll('[role=menuitem]')];
+      const current = items.indexOf(document.activeElement);
+      let next = null;
+      if (e.key === 'ArrowDown') next = items[(current + 1) % items.length];
+      else if (e.key === 'ArrowUp') next = items[(current - 1 + items.length) % items.length];
+      else if (e.key === 'Home') next = items[0];
+      else if (e.key === 'End') next = items.at(-1);
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCarMenu(true); return; }
+      else if (e.key === 'Tab') {
+        const button = openCarMenuButton;
+        e.preventDefault();
+        closeCarMenu();
+        const focusable = [...document.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+          .filter(el => el.getClientRects().length && !el.closest('[hidden]'));
+        const index = focusable.indexOf(button);
+        focusable[index + (e.shiftKey ? -1 : 1)]?.focus();
+        return;
+      }
+      if (next) { e.preventDefault(); next.focus(); }
+    }}>${items}</span>
   </span>`;
 
   const row = c => {
@@ -157,21 +216,22 @@ function carsBody() {
     const takeable = c.status === 'free' || c.status === 'charging';
     const heldBySomeone = c.status === 'busy';
     const acts = [];
-    if (meta.can_use && !mine && takeable) acts.push(act(c, 'take', 'Взять', 'btn-accent'));
+    if (meta.can_use && !mine && takeable) acts.push(['take', 'Взять', 'btn-accent']);
     if (meta.can_use && mine) {
-      acts.push(act(c, 'return', 'Вернул', ''));
-      acts.push(act(c, 'handover', 'Передать', 'btn-ghost'));
+      acts.push(['return', 'Вернул', '']);
+      acts.push(['handover', 'Передать', 'btn-ghost']);
     } else if (meta.can_issue && heldBySomeone) {
-      acts.push(act(c, 'return', 'Вернул', '', 'Оформить возврат от имени держателя'));
-      acts.push(act(c, 'handover', 'Передать', 'btn-ghost', 'Передать от имени держателя'));
+      acts.push(['return', 'Вернул', '', 'Оформить возврат от имени держателя']);
+      acts.push(['handover', 'Передать', 'btn-ghost', 'Передать от имени держателя']);
     }
-    if (meta.can_issue && !mine && takeable) acts.push(act(c, 'give', 'Выдать', 'btn-ghost'));
+    if (meta.can_issue && !mine && takeable) acts.push(['give', 'Выдать', 'btn-ghost']);
     if (meta.can_issue) {
-      acts.push(act(c, 'assign', 'Закрепить', 'btn-ghost', 'Рекомендательное закрепление'));
-      acts.push(act(c, 'status', 'Статус', 'btn-ghost'));
+      acts.push(['assign', 'Закрепить', 'btn-ghost', 'Рекомендательное закрепление']);
+      acts.push(['status', 'Статус', 'btn-ghost']);
     }
-    acts.push(act(c, 'history', 'История', 'btn-ghost'));
-    if (meta.can_edit_park) acts.push(act(c, 'edit', 'Карточка', 'btn-ghost'));
+    acts.push(['history', 'История', 'btn-ghost']);
+    if (meta.can_edit_park) acts.push(['edit', 'Карточка', 'btn-ghost']);
+    const action = ([kind, label, cls, title], menuItem = false) => act(c, kind, label, cls, title, menuItem);
     const flags = [
       c.canopy ? nothing : html`<span class="badge warn">нет тента</span>`,
       c.condition === 'bad' ? html`<span class="badge danger">неисправен</span>` : nothing,
@@ -191,7 +251,8 @@ function carsBody() {
       <td data-label="Закреплён">${c.assigned_name || html`<span class="muted">—</span>`}</td>
       <td data-label="Ключ">${c.has_key ? 'в карточке' : html`<span class="muted">нет</span>`}</td>
       <td data-label="Проверен" class="num">${c.last_checked_at ? hhmm(c.last_checked_at) : '—'}</td>
-      <td data-label="Действия"><div class="row-actions">${acts[0]}${acts.length > 1 ? rowMenu(c, acts.slice(1)) : nothing}</div></td>
+      <td data-label="Действия"><div class="row-actions">${action(acts[0])}${acts.length > 1
+        ? rowMenu(c, acts.slice(1).map(args => action(args, true))) : nothing}</div></td>
     </tr>`;
   };
   const rec = me.free_recommended && !me.held ? d.cars.find(c => c.id === me.free_recommended) : null;

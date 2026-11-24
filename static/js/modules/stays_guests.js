@@ -13,7 +13,7 @@
 'use strict';
 
 import { can, registerModule } from '../app.js';
-import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
+import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { STAYS_LINK, openGuestCard, openGuestForm } from './stays_forms.js';
 import { STAYS_SPECIAL_MARK, staysGuestMarkView } from './stays.js';
@@ -33,18 +33,34 @@ export function staysGuestsEmpty() {
   return { q: '', special: false, stayed_from: '', stayed_to: '', birthday: false, sort: 'name', dir: 'asc', picked: [] };
 }
 export const staysGuests = staysGuestsEmpty();
+let staysGuestsSearchTimer = null;
+let staysGuestsSearchGeneration = 0;
+export function staysGuestsResetUserState() {
+  ++staysGuestsSearchGeneration;
+  clearTimeout(staysGuestsSearchTimer);
+  staysGuestsSearchTimer = null;
+  Object.assign(staysGuests, staysGuestsEmpty());
+}
 
 registerModule({ views: { guests: loadGuests } });
 
 /* раздел «Гости»: полный уровень — справочник; батлер — панель создания (гость сразу «свой») */
 async function loadGuests() {
   const host = $('#view-guests');
-  if (!can('stays.guests')) {
-    render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Новые гости из вашего списка</div></div></div>
-      <div class="panel"><p>Заведённый вами гость сразу попадает в <b>«Мои гости»</b> — вы его ведёте по умолчанию.
-        VIP-код и отметку «особый» задаёт менеджер.</p>
+  const full = can('stays.guests');
+  const managerCreate = can('stays.edit');
+  const mineCreate = !managerCreate && can('stays.mine_guest_edit') && state.user?.employee_id != null;
+  const create = managerCreate || mineCreate;
+  if (!full) {
+    if (!create) {
+      render(html`<div class="panel"><p>Раздел недоступен.</p></div>`, mount(host));
+      return;
+    }
+    render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Создание профиля гостя</div></div></div>
+      <div class="panel"><p>${mineCreate ? html`Заведённый вами гость сразу попадает в <b>«Мои гости»</b> — вы его ведёте по умолчанию.
+        VIP-код и отметку «особый» задаёт менеджер.` : 'Создайте профиль гостя для последующего добавления в бронь.'}</p>
         <button class="btn btn-primary" id="gl-new">Новый гость</button></div>`, mount(host));
-    $('#gl-new', host).onclick = () => openGuestForm(null, () => {}, { mine: true });
+    $('#gl-new', host).onclick = () => openGuestForm(null, () => {}, { mine: !can('stays.edit') });
     return;
   }
   render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Справочник: поиск, фильтры, дубли</div></div></div>
@@ -66,6 +82,7 @@ function staysGuestsParams(offset) {
 const staysGuestsToolbar = () => {
   const s = staysGuests;
   const edit = can('stays.edit');
+  const create = edit || (can('stays.mine_guest_edit') && state.user?.employee_id != null);
   return html`<div class="sb-toolbar">
     <input type="search" id="gl-q" .value=${s.q} placeholder="Фамилия, телефон, номер брони">
     <label class="chk"><input type="checkbox" id="gl-special" .checked=${s.special}> ${STAYS_SPECIAL_MARK}Особые</label>
@@ -73,8 +90,8 @@ const staysGuestsToolbar = () => {
     <label class="muted">по <input type="date" id="gl-to" .value=${s.stayed_to} min=${s.stayed_from || nothing}></label>
     <label class="chk"><input type="checkbox" id="gl-birthday" .checked=${s.birthday}>
       день рождения в ближайшие ${STAYS_BIRTHDAY_DAYS} дней</label>
-    ${edit ? html`<button class="btn btn-sm" id="gl-merge" title="Отметьте двух гостей" ?disabled=${s.picked.length !== 2}>Объединить…</button>
-      <button class="btn btn-sm btn-primary" id="gl-new">Новый гость</button>` : nothing}
+    ${edit ? html`<button class="btn btn-sm" id="gl-merge" title="Отметьте двух гостей" ?disabled=${s.picked.length !== 2}>Объединить…</button>` : nothing}
+    ${create ? html`<button class="btn btn-sm btn-primary" id="gl-new">Новый гость</button>` : nothing}
   </div>`;
 };
 
@@ -159,10 +176,15 @@ export function renderGuestsTab(body) {
     if (tr && e.target === tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tr.click(); }
   };
 
-  let timer = null;
   $('#gl-q', body).oninput = e => {
-    clearTimeout(timer);
-    timer = setTimeout(() => { s.q = e.target.value; reload(); }, 300);
+    clearTimeout(staysGuestsSearchTimer);
+    const input = e.currentTarget;
+    const current = ++staysGuestsSearchGeneration;
+    staysGuestsSearchTimer = setTimeout(() => {
+      if (current !== staysGuestsSearchGeneration || !input.isConnected) return;
+      s.q = input.value;
+      reload();
+    }, 300);
   };
   $('#gl-special', body).onchange = e => { s.special = e.target.checked; reload(); };
   const from = $('#gl-from', body);
@@ -176,7 +198,7 @@ export function renderGuestsTab(body) {
   to.onchange = () => { s.stayed_to = to.value; reload(); };
   $('#gl-birthday', body).onchange = e => { s.birthday = e.target.checked; reload(); };
   const add = $('#gl-new', body);
-  if (add) add.onclick = () => openGuestForm(null, reload);
+  if (add) add.onclick = () => openGuestForm(null, reload, { mine: !can('stays.edit') });
   if (mergeBtn) mergeBtn.onclick = () => {
     const [a, b] = s.picked.map(id => known.get(id) || { id, name: '#' + id });
     openGuestMerge(a, b, () => { s.picked = []; syncMerge(); reload(); });

@@ -23,6 +23,30 @@ const measure = () => {
   return { page: document.documentElement.scrollWidth - vw, out: [...new Set(out)].slice(0, 8) };
 };
 
+test('шахматка: счётчик показывает только доступные фильтры, FAB не перекрывает tabbar', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page, 'admin');
+  await page.route('**/api/stays/board/units?**', async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.visibility = 'occupancy';
+    await route.fulfill({ response, json: data });
+  });
+  await page.evaluate(async () => {
+    const { staysState } = await import('/static/js/modules/stays.js');
+    Object.assign(staysState.filters, { special: true, vip_code_ids: [987654] });
+    window.navigate('stays');
+  });
+  const view = page.locator('#view-stays');
+  const toggle = view.locator('.sf-toggle');
+  await expect(toggle).toHaveText('Фильтры');
+  const boxes = await page.locator('#sb-new-fab, #tabbar').evaluateAll(([fab, tabbar]) => {
+    const f = fab.getBoundingClientRect(), t = tabbar.getBoundingClientRect();
+    return { fabBottom: f.bottom, tabTop: t.top };
+  });
+  expect(boxes.fabBottom).toBeLessThanOrEqual(boxes.tabTop - 8);
+});
+
 for (const role of ROLES) {
   test(`телефон: разделы роли ${role} не шире окна`, async ({ page }) => {
     test.setTimeout(240_000);

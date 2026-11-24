@@ -12,7 +12,7 @@
   7. флаг и выбытие объекта с середины месяца: «вне фильтра» / «нет в фонде», полосы не скрыты;
   8. вкладка «Брони»: свой период, сортировка «Выезд ↓», «Показать ещё», карточка по клику,
      лимит 366 дней, экранирование; у уровня «занятость» вкладки нет;
-  9. вкладка «Гости»: поиск, фильтр «день рождения», карточка по клику, объединение дублей
+  9. раздел «Гости»: поиск, фильтр «день рождения», карточка по клику, объединение дублей
      с предпросмотром «что перенесётся»;
  10. семейное дерево: + ребёнок Ивану и Марии → «правнук» у бабушки Ивана, перецентровка,
      третий родитель — тост с текстом сервера, «бывшие», удаление связи; в карточке брони —
@@ -765,12 +765,13 @@ const $ = s => window.document.querySelector(s);
       const names = me.permissions.includes('stays.view');
       check(names ? 'вкладка «Брони» есть (с фамилиями)' : 'вкладки «Брони» нет (занятость)',
         !!$('#view-stays [data-stab="bookings"]') === names);
-      const full = names && me.permissions.includes('stays.guests');
+      const full = me.permissions.includes('stays.guests');
+      const create = me.permissions.includes('stays.edit');
       const mineEdit = me.permissions.includes('stays.mine_guest_edit');
       check('вкладки «Гости» в шахматке больше нет', !$('#view-stays [data-stab="guests"]'));
-      check(full || mineEdit ? 'раздел «Гости» есть в меню (полный уровень или правка своих)'
+      check(full || create || mineEdit ? 'раздел «Гости» есть в меню (справочник или создание)'
                              : 'раздела «Гости» нет в меню',
-        window.state.menu.some(m => m.id === 'guests') === (full || mineEdit));
+        window.state.menu.some(m => m.id === 'guests') === (full || create || mineEdit));
       if (me.permissions.includes('stays.view') || me.permissions.includes('stays.occupancy')) {
         for (const [tab, newBtn] of [['blocks', '#bl-new'], ['ooo', '#oo-new']]) {
           check(`вкладка «${tab}» есть для всех уровней`, !!$(`#view-stays [data-stab="${tab}"]`));
@@ -1225,9 +1226,9 @@ const $ = s => window.document.querySelector(s);
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
   }
   
-  /* 9 · вкладка «Гости»: справочник, поиск, «день рождения в ближайшие 30 дней», карточка, объединение */
+  /* 9 · раздел «Гости»: справочник, поиск, «день рождения в ближайшие 30 дней», карточка, объединение */
   async function guestsTab() {
-    console.log('\n9 · Вкладка «Гости»');
+    console.log('\n9 · Раздел «Гости»');
     const today = serverToday();
     const soon = addDays(today, 10);
     const birth = `${Number(soon.slice(0, 4)) - 40}${soon.slice(4)}`.replace(/-02-29$/, '-02-28');
@@ -1447,11 +1448,9 @@ const $ = s => window.document.querySelector(s);
     const kept = (await apiJson('GET', `/api/stays/reservations/${r1.id}`)).body;
     check('галочка снята — бронь сохранила прежний код', kept.vip_code_id === c03.id);
   
-    /* вкладка «Гости»: фильтр «◆ Особые» и колонка кода */
+    /* раздел «Гости»: фильтр «◆ Особые» и колонка кода */
     Object.assign(MODS.guests.staysGuests, MODS.guests.staysGuestsEmpty());
-    window.navigate('stays');
-    await waitFor(() => $$('#view-stays [data-stab]').length > 0);
-    click($('#view-stays [data-stab="guests"]'));
+    window.navigate('guests');
     await waitFor(() => !!$('#gl-total'));
     input($('#gl-q'), `профиль${uniq}`.toLowerCase());
     check('в списке оба гостя', await waitFor(() => $$('[data-gl-row]').length === 2));
