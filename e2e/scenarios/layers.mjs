@@ -101,7 +101,11 @@ const $ = s => window.document.querySelector(s);
   
   async function main() {
     await sleep(400);
-    check('вход выполнен (admin)', await login(LOGIN));
+    /* Playwright-обёртка уже вошла под LOGIN. Повторный POST /auth/login
+       здесь ротировал бы сессию посреди page.evaluate; строгая защита
+       корректно перезагрузила бы старую вкладку и оборвала сценарий. */
+    check('вход выполнен (admin)', MODS.core.state.user?.username === LOGIN,
+      MODS.core.state.user?.username || 'нет активного пользователя');
     await sleep(500);
   
     /* ── посев: сотрудник, принятый в текущем месяце (первый период + OPENING_SEED,

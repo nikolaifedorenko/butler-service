@@ -1854,9 +1854,12 @@ const $ = s => window.document.querySelector(s);
   
   async function relogin(username) {
     await sleep(300);
-    const r = await proxy('POST', '/api/auth/login', { body: JSON.stringify({ username, password: 'demo1234' }),
-      headers: { 'Content-Type': 'application/json' } });
-    if (!r.ok) return false;
+    /* Смену сессии должен завершать транспорт приложения: он атомарно
+       публикует новый auth context до запуска оболочки. Прямой fetch
+       менял cookie под старой вкладкой, поэтому защита её перезагружала. */
+    const r = await MODS.core.api('/api/auth/login', { method: 'POST',
+      body: { username, password: 'demo1234' } });
+    if (!r?.auth_context) return false;
     MODS.app.bootApp();
     const ok = await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
     await sleep(500);
