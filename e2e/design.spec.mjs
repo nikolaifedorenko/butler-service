@@ -25,6 +25,56 @@ for (const mode of ['light', 'dark']) {
   });
 }
 
+test('motion tokens управляют кнопкой, palette, shimmer и числовой статистикой', async ({ page }) => {
+  await page.goto('/static/design.html');
+  await page.evaluate(async () => {
+    if (![...document.styleSheets].some(sheet => sheet.href?.endsWith('/static/css/app.css'))) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet'; link.href = '/static/css/app.css';
+      document.head.appendChild(link);
+      await new Promise((resolve, reject) => { link.onload = resolve; link.onerror = reject; });
+    }
+    const probe = document.createElement('div');
+    probe.innerHTML = `<div class="palette"></div><div class="skel-line"></div>
+      <div class="today-stats"><div class="stat"><div class="v">123</div></div></div>`;
+    document.body.appendChild(probe);
+  });
+  const motion = await page.evaluate(() => {
+    const style = selector => getComputedStyle(document.querySelector(selector));
+    const root = style(':root');
+    const button = style('.btn');
+    const palette = style('.palette');
+    const shimmer = style('.skel-line');
+    const today = style('.today-stats .stat .v');
+    return {
+      ease: root.getPropertyValue('--ease').trim(),
+      buttonDuration: button.transitionDuration.split(', ')[0],
+      buttonEasing: [...new Set(button.transitionTimingFunction.match(/cubic-bezier\([^)]+\)/g) || [])],
+      paletteDuration: palette.animationDuration,
+      paletteEasing: palette.animationTimingFunction,
+      shimmerDuration: shimmer.animationDuration,
+      shimmerEasing: shimmer.animationTimingFunction,
+      todayNumeric: today.fontVariantNumeric,
+    };
+  });
+  expect(motion).toEqual({
+    ease: 'cubic-bezier(.2, .7, .2, 1)',
+    buttonDuration: '0.15s',
+    buttonEasing: ['cubic-bezier(0.2, 0.7, 0.2, 1)'],
+    paletteDuration: '0.25s',
+    paletteEasing: 'cubic-bezier(0.2, 0.7, 0.2, 1)',
+    shimmerDuration: '1.1s',
+    shimmerEasing: 'cubic-bezier(0.2, 0.7, 0.2, 1)',
+    todayNumeric: 'tabular-nums',
+  });
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => page.evaluate(() => ({
+    palette: getComputedStyle(document.querySelector('.palette')).animationName,
+    shimmer: getComputedStyle(document.querySelector('.skel-line')).animationName,
+  }))).toEqual({ palette: 'none', shimmer: 'none' });
+});
+
 test('тёмная тема действительно меняет поверхности и текст', async ({ page }) => {
   await page.goto('/static/design.html');
   const get = () => page.evaluate(() => { const s = getComputedStyle(document.body); return { bg: s.backgroundColor, fg: s.color }; });
