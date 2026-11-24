@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.core import sessions
 from app.core.config import settings
 from app.core.identity import User, UserSession
 from app.core.security import token_digest
@@ -28,6 +30,62 @@ def test_login_stores_only_token_digest(app_stack, db):
     assert token_digest(token) in {r.token_hash for r in rows}
 
 
+def test_session_context_distinguishes_tokens_and_digests():
+    token = "test-session"
+    context = sessions.session_context(token)
+    assert re.fullmatch(r"[0-9a-f]{64}", context)
+    assert context not in {token, token_digest(token)}
+    assert sessions.session_context(token) == context
+    assert sessions.session_context("other-session") != context
+
+
+def test_login_context_matches_current_cookie(client, db):
+    login = client.post("/api/auth/login", json={"username": "ivanov", "password": "demo1234"})
+    assert login.status_code == 200, login.text
+    assert login.json()["ok"] is True
+    context = client.get("/api/auth/context")
+    assert context.status_code == 200, context.text
+    fingerprint = login.json()["auth_context"]
+    assert context.json() == {"auth_context": fingerprint}
+    assert client.get("/api/auth/me").json()["auth_context"] == fingerprint
+    assert context.headers["cache-control"] == "no-store"
+    token = client.cookies.get(settings.cookie_name)
+    stored_hash = db.scalar(select(UserSession.token_hash).where(UserSession.token_hash == token_digest(token)))
+    assert stored_hash is not None
+    assert re.fullmatch(r"[0-9a-f]{64}", fingerprint)
+    assert fingerprint not in {token, stored_hash}
+
+
+def test_context_from_form_login_is_available_in_me(client):
+    form = client.post("/api/auth/login-form", data={"username": "ivanov", "password": "demo1234"},
+                       follow_redirects=False)
+    assert form.status_code == 303
+    assert form.headers["location"] == "/"
+    context = client.get("/api/auth/context")
+    assert context.status_code == 200, context.text
+    assert client.get("/api/auth/me").json()["auth_context"] == context.json()["auth_context"]
+
+
+def test_password_change_returns_replacement_context(app_stack, admin_client):
+    username = "password.context.test"
+    created = admin_client.post("/api/employees", json={
+        "full_name": "Смена Контекста", "username": username, "password": "demo1234", "role": "employee"})
+    assert created.status_code == 200, created.text
+    current = _login(app_stack, username)
+    old = TestClient(app_stack["app"])
+    old.cookies.set(settings.cookie_name, current.cookies.get(settings.cookie_name))
+    before = current.get("/api/auth/context")
+    replaced = current.post("/api/auth/change-password", json={
+        "old_password": "demo1234", "new_password": "new-demo1234"})
+    assert replaced.status_code == 200, replaced.text
+    assert old.get("/api/auth/context").status_code == 401
+    assert before.status_code == 200, before.text
+    assert replaced.json()["ok"] is True
+    after = replaced.json()["auth_context"]
+    assert after != before.json()["auth_context"]
+    assert current.get("/api/auth/context").json() == {"auth_context": after}
+
+
 def test_logout_revokes_all_devices(app_stack, db):
     phone, laptop = _login(app_stack), _login(app_stack)
     assert phone.get("/api/auth/me").status_code == 200 and laptop.get("/api/auth/me").status_code == 200
@@ -37,9 +95,10 @@ def test_logout_revokes_all_devices(app_stack, db):
     assert db.scalar(select(func.count()).select_from(UserSession).where(UserSession.user_id == user.id)) == 0
 
 
-def test_impersonation_replaces_session(app_stack, db):
+def test_impersonation_replaces_session(app_stack):
     admin = _login(app_stack, "admin")
     before = admin.cookies.get(settings.cookie_name)
+    before_context = admin.get("/api/auth/context")
     emp = admin.get("/api/employees").json()
     target = next(e for e in emp if e.get("username") == "ivanov" or e.get("full_name", "").startswith("Иванов"))
     r = admin.post("/api/auth/impersonate", json={"employee_id": target["id"]})
@@ -49,10 +108,20 @@ def test_impersonation_replaces_session(app_stack, db):
     old = TestClient(app_stack["app"])
     old.cookies.set(settings.cookie_name, before)
     assert old.get("/api/auth/me").status_code == 401, "прежняя сессия не должна жить рядом с «как сотрудник»"
+    assert old.get("/api/auth/context").status_code == 401
     me = admin.get("/api/auth/me").json()
     assert me["user"]["impersonated"] is True
-    assert admin.post("/api/auth/impersonate/stop").status_code == 200
+    stopped = admin.post("/api/auth/impersonate/stop")
+    assert stopped.status_code == 200
     assert admin.get("/api/auth/me").json()["user"]["impersonated"] is False
+    old.cookies.set(settings.cookie_name, after)
+    assert old.get("/api/auth/context").status_code == 401
+    assert before_context.status_code == 200, before_context.text
+    assert r.json()["ok"] is True
+    assert stopped.json()["ok"] is True
+    assert me["auth_context"] == r.json()["auth_context"]
+    assert len({before_context.json()["auth_context"], r.json()["auth_context"], stopped.json()["auth_context"]}) == 3
+    assert admin.get("/api/auth/context").json() == {"auth_context": stopped.json()["auth_context"]}
 
 
 def test_expired_sessions_are_purged_on_open(app_stack, db):
@@ -62,6 +131,9 @@ def test_expired_sessions_are_purged_on_open(app_stack, db):
     row = db.scalar(select(UserSession).where(UserSession.token_hash == token_digest(stale)))
     row.expires_at = dt.datetime(2000, 1, 1, tzinfo=dt.UTC)
     db.commit()
+    client = TestClient(app_stack["app"])
+    client.cookies.set(settings.cookie_name, stale)
+    assert client.get("/api/auth/context").status_code == 401
     open_session(db, user, user.employee_id)
     db.commit()
     assert db.scalar(select(UserSession).where(UserSession.token_hash == token_digest(stale))) is None

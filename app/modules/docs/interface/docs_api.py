@@ -21,6 +21,7 @@ from ..application.statements import KindIn, KindUpdate, RenderIn
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 VIEW = require_perm("settings.view")
 EDIT = require_perm("settings.edit")
+_AUTH_CONTEXT_HEADER = "X-Butler-Auth-Context"
 
 
 class KindTemplateOut(ApiModel):
@@ -122,11 +123,15 @@ def render(payload: RenderIn, principal: Principal = Depends(VIEW), db: Session 
     return _attachment(*statements.render(db, principal, payload))
 
 
-@router.post("/print", response_class=Response)
+@router.post("/print", response_class=Response, responses={
+    200: {"headers": {_AUTH_CONTEXT_HEADER: {"schema": {"type": "string"}}}},
+})
 def print_document(payload: PrintIn, principal: Principal = Depends(current_principal)):
     """Страница для печати: чистый HTML документ (заявления, график сменности).
 
     Не сохраняет состояние; право — как у входа: печать доступна каждой роли.
     Данные клиент собирает шаблонами lit-html (экранирование на месте), поэтому
     body/css вставляются как есть; заголовок экранируется сервером."""
-    return Response(print_page(payload), media_type=PRINT_MEDIA_TYPE)
+    assert principal.auth_context is not None   # current_principal проверил сессию из cookie
+    return Response(print_page(payload), media_type=PRINT_MEDIA_TYPE,
+                    headers={_AUTH_CONTEXT_HEADER: principal.auth_context})

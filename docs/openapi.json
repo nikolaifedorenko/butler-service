@@ -794,6 +794,21 @@
         "title": "AuditPageOut",
         "type": "object"
       },
+      "AuthContextOut": {
+        "additionalProperties": false,
+        "description": "Отпечаток действующей сессии для сравнения в браузере.",
+        "properties": {
+          "auth_context": {
+            "title": "Auth Context",
+            "type": "string"
+          }
+        },
+        "required": [
+          "auth_context"
+        ],
+        "title": "AuthContextOut",
+        "type": "object"
+      },
       "BankAdjustIn": {
         "properties": {
           "date": {
@@ -10815,6 +10830,10 @@
             "title": "Assignable Roles",
             "type": "array"
           },
+          "auth_context": {
+            "title": "Auth Context",
+            "type": "string"
+          },
           "menu": {
             "items": {
               "additionalProperties": true,
@@ -10860,6 +10879,7 @@
           }
         },
         "required": [
+          "auth_context",
           "user",
           "today",
           "permissions",
@@ -13098,6 +13118,25 @@
           "label"
         ],
         "title": "PartIn",
+        "type": "object"
+      },
+      "PasswordChangedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_context": {
+            "title": "Auth Context",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "auth_context"
+        ],
+        "title": "PasswordChangedOut",
         "type": "object"
       },
       "PeriodAction": {
@@ -17528,6 +17567,10 @@
       "SessionOut": {
         "additionalProperties": false,
         "properties": {
+          "auth_context": {
+            "title": "Auth Context",
+            "type": "string"
+          },
           "ok": {
             "default": true,
             "title": "Ok",
@@ -17538,6 +17581,7 @@
           }
         },
         "required": [
+          "auth_context",
           "user"
         ],
         "title": "SessionOut",
@@ -21815,7 +21859,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Ok"
+                  "$ref": "#/components/schemas/PasswordChangedOut"
                 }
               }
             },
@@ -21833,6 +21877,28 @@
           }
         },
         "summary": "Change Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/context": {
+      "get": {
+        "description": "Отпечаток сессии текущего запроса.",
+        "operationId": "context_api_auth_context_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthContextOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Context",
         "tags": [
           "auth"
         ]
@@ -23015,7 +23081,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Butler-Auth-Context": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {

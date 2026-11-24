@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from typing import Optional
 
 from sqlalchemy import delete, select
@@ -17,6 +18,11 @@ from .config import settings
 from .identity import User, UserSession
 from .security import new_session_token, token_digest
 from .time import now
+
+
+def session_context(token: str) -> str:
+    """Отпечаток для сравнения сессий. Для доступа используется токен из cookie."""
+    return hashlib.sha256(f"butler:auth-context:v1:{token}".encode()).hexdigest()
 
 
 def open_session(db: Session, user: User, employee_id: Optional[int], impersonated: bool = False) -> str:
