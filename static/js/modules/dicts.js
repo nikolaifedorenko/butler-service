@@ -5,7 +5,7 @@
 
 import { can, loadDirectory } from '../app.js';
 import {
-  $, api, closeModal, confirmDialog, dateRu, downloadBlob, getCookie, loading, openModal, plural, state, todayISO, toast,
+  $, api, closeModal, confirmDialog, dateRu, downloadBlob, expireAuthContext, getCookie, loading, openModal, plural, requireAuthOwnership, state, todayISO, toast,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { loadSettings } from './settings.js';
@@ -134,10 +134,13 @@ export function openKindModal(kind) {
         fd.append('file', f);
         loading(true);
         try {
+          const started = requireAuthOwnership();
           const res = await fetch(`/api/docs/templates?type=${encodeURIComponent(kind.code)}`,
             { method: 'POST', credentials: 'same-origin', body: fd,
               headers: { 'X-CSRF-Token': getCookie('tt_csrf') } });
+          if (res.status === 401) { await expireAuthContext(started); return; }
           const d = await res.json().catch(() => ({}));
+          requireAuthOwnership(started);
           if (!res.ok) throw new Error(d.detail || `Ошибка ${res.status}`);
           toast(`Бланк загружен · найдено плейсхолдеров: ${d.placeholders.length}`, 'ok');
           closeModal(); loadSettings();

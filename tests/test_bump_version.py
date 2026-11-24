@@ -17,9 +17,12 @@ def tool(tmp_path, monkeypatch):
     spec = importlib.util.spec_from_file_location("bump_version", ROOT / "tools" / "bump_version.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    print_page = tmp_path / "print_page.py"
+    shutil.copyfile(mod.PRINT_PAGE, print_page)
     monkeypatch.setattr(mod, "INDEX", tmp_path / "static" / "index.html")
     monkeypatch.setattr(mod, "SW", tmp_path / "static" / "sw.js")
     monkeypatch.setattr(mod, "ASSETS_DIR", tmp_path / "static")
+    monkeypatch.setattr(mod, "PRINT_PAGE", print_page)
     return mod
 
 
@@ -59,3 +62,25 @@ def test_module_scripts_have_no_version_query(tool):
     assert 'ui/theme.js?v=2099-01-01a' in index                  # обычный скрипт версионируется
     shell = tool.SW.read_text(encoding="utf-8")
     assert "'/static/js/core.js'," in shell and "'/static/css/tokens.css?v=2099-01-01a'" in shell
+
+
+def test_static_version_bump_keeps_print_child_key_in_sync(tool):
+    assert tool.bump("2099-01-01a") == 0
+    path = "/static/js/print-page.js?v=2099-01-01a"
+    shell = tool.SW.read_text(encoding="utf-8")
+    assert f"'{path}'" in shell
+    assert "'/static/js/print-page.js'" not in shell
+    spec = importlib.util.spec_from_file_location("bumped_print_page", tool.PRINT_PAGE)
+    renderer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(renderer)
+    assert f'<script src="{path}" defer></script>' in renderer.print_page(renderer.PrintIn(body=""))
+    assert tool.check() == 0
+
+
+@pytest.mark.parametrize("suffix", ["&extra=1", "#child", "/extra", "?again"])
+def test_check_rejects_trailing_print_child_url(tool, suffix):
+    source = tool.PRINT_PAGE.read_text(encoding="utf-8")
+    url = tool.shell_url(tool.PRINT_CHILD, tool.current_versions()["index.html"][0])
+    assert source.count(url) == 1
+    tool.PRINT_PAGE.write_text(source.replace(url, url + suffix), encoding="utf-8")
+    assert tool.check() == 1

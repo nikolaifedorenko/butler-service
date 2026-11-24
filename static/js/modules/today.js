@@ -10,41 +10,41 @@
    ══════════════════════════════════════════════════════════════════ */
 import { can, navigate, poll, registerModule } from '../app.js';
 import {
-  $, api, hhmm, MONTHS_GEN, serverShiftMs, state, syncServerClock, toast, todayISO, WD,
+  $, api, authContextIsCurrent, authContextSnapshot, hhmm, loadGeneration, MONTHS_GEN, serverShiftMs, state, syncServerClock, toast, todayISO, WD,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { openOtNoteModal } from './me.js';
 
 registerModule({ views: { today: loadToday } });
 
-/* что показывает экран: ответы разделов либо null, если блок не положен или не загрузился */
-const view = { status: null, mine: null, board: null, loaded: false, busy: false };
-
 const PREF_TITLES = { allergy: 'Аллергия', food: 'Питание', habits: 'Привычки' };
 
 async function loadToday() {
-  view.loaded = false;
-  draw();
+  const started = authContextSnapshot(), owner = state.user, fresh = loadGeneration('today');
+  const current = () => owner && owner === state.user && state.view === 'today' && fresh() && authContextIsCurrent(started);
+  if (!current()) return;
+  const view = { loaded: false, busy: false, current };
+  async function refresh() {
+    if (!current()) return;
+    const read = path => api(path, { silent: true }).catch(() => null);
+    const [status, mine, board] = await Promise.all([
+      owner.employee_id ? read('/api/punches/status') : null,
+      owner.employee_id && can('stays.mine') ? read('/api/stays/mine/today') : null,
+      can('presence.view') ? read('/api/presence/board') : null,
+    ]);
+    if (!current()) return;
+    Object.assign(view, { status, mine, board, loaded: true });
+    if (status) syncServerClock(status.now);
+    draw(view);
+  }
+  draw(view);
   await refresh();
-  view.loaded = true;
-  draw();
-  poll('today', async () => { await refresh(); draw(); });
+  if (current()) poll('today', refresh);
 }
 
-async function refresh() {
-  const jobs = [];
-  const take = (key, path) => jobs.push(
-    api(path, { silent: true }).then(d => { view[key] = d; }).catch(() => { view[key] = null; }));
-  if (state.user.employee_id) take('status', '/api/punches/status');
-  if (can('stays.mine') && state.user.employee_id) take('mine', '/api/stays/mine/today');
-  if (can('presence.view')) take('board', '/api/presence/board');
-  await Promise.all(jobs);
-  if (view.status) syncServerClock(view.status.now);
-}
-
-function draw() {
+function draw(view) {
   const host = $('#view-today');
-  if (host) render(screen(), mount(host));
+  if (host) render(screen(view), mount(host));
 }
 
 /* ── шапка: приветствие, дата, смена ── */
@@ -64,28 +64,27 @@ function dateLine() {
   return `${wd[0].toUpperCase()}${wd.slice(1)}, ${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
 }
 
-async function punch() {
+async function punch(view) {
   const s = view.status;
-  if (!s || view.busy) return;
+  if (!s || view.busy || !view.current()) return;
   view.busy = true;
-  draw();
+  draw(view);
   try {
     const res = await api('/api/punches', { method: 'POST', body: { kind: s.on_shift ? 'out' : 'in' } });
+    if (!view.current()) return;
     toast(res.message, 'ok', res.warnings || []);
     view.status = res.status;
     state.status = res.status;
-    view.busy = false;
-    draw();
     if (res.punch?.kind === 'OUT') openOtNoteModal(res.punch.id, '', 0);
   } catch (e) {
-    toast(e.message, 'err');
+    if (view.current()) toast(e.message, 'err');
   } finally {
     view.busy = false;
-    draw();
+    if (view.current()) draw(view);
   }
 }
 
-function shiftStrip() {
+function shiftStrip(view) {
   const s = view.status;
   if (!s) return nothing;
   const canIn = s.punch_in_allowed !== false;
@@ -94,25 +93,25 @@ function shiftStrip() {
   if (s.on_shift) {
     line = html`<div class="today-shift-k">${s.shift ? `Смена ${s.shift.start_hm}–${s.shift.end_hm}` : 'Вне графика'}</div>
       <div class="today-shift-v">На смене с ${hhmm(s.session_start)}${s.planned_end ? ` · до ${hhmm(s.planned_end)}` : ''}</div>`;
-    if (canOut) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${punch}>Ушёл</button>`;
+    if (canOut) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${() => punch(view)}>Ушёл</button>`;
   } else if (s.shift) {
     line = html`<div class="today-shift-k">Смена ${s.shift.start_hm}–${s.shift.end_hm}</div>
       <div class="today-shift-v">${canIn ? 'Ещё не на смене' : (s.punch_status_hint || 'Отметка сейчас недоступна')}</div>`;
-    if (canIn) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${punch}>Пришёл</button>`;
+    if (canIn) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${() => punch(view)}>Пришёл</button>`;
   } else {
     /* по Графику смены нет, но отметиться можно: часы учтутся как переработка — как в «Моих отметках» */
     line = html`<div class="today-shift-k">График</div>
       <div class="today-shift-v">Сегодня смены нет${canIn ? '' : ` · ${s.punch_status_hint || 'отметка недоступна'}`}</div>`;
-    if (canIn) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${punch}>Пришёл</button>`;
+    if (canIn) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${() => punch(view)}>Пришёл</button>`;
   }
   return html`<div class="today-shift"><div class="today-shift-text">${line}</div>${action}</div>`;
 }
 
-function head() {
+function head(view) {
   return html`<header class="today-head">
     <div class="today-date">${dateLine()}</div>
     <h2 class="today-hello">${greeting()}${firstName() ? html`, ${firstName()}` : nothing}</h2>
-    ${shiftStrip()}
+    ${shiftStrip(view)}
   </header>`;
 }
 
@@ -156,7 +155,7 @@ function resCard(r, today, urgent = false) {
   </button>`;
 }
 
-function mineBlocks() {
+function mineBlocks(view) {
   const m = view.mine;
   if (!m) return nothing;
   const today = m.date;
@@ -180,7 +179,7 @@ function mineBlocks() {
 }
 
 /* ── руководитель: присутствие ── */
-function boardBlock() {
+function boardBlock(view) {
   const b = view.board;
   if (!b) return nothing;
   const late = b.yet_to_come.filter(a => a.already_started);
@@ -204,14 +203,14 @@ function shortcuts() {
     <div class="today-shortcuts">${items.map(t => html`<button class="btn" data-go=${t.id} @click=${() => navigate(t.id)}>${t.title}</button>`)}</div>`;
 }
 
-function screen() {
+function screen(view) {
   if (!view.loaded) return html`<div class="today"><div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>`;
   const hasBlocks = view.status || view.mine || view.board;
   return html`<div class="today">
-    ${head()}
+    ${head(view)}
     <div class="today-body">
-      ${mineBlocks()}
-      ${boardBlock()}
+      ${mineBlocks(view)}
+      ${boardBlock(view)}
       ${hasBlocks && (view.mine || view.board) ? nothing : shortcuts()}
     </div>
   </div>`;

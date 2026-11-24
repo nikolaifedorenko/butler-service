@@ -4,6 +4,26 @@ import { login, watchErrors } from './helpers.mjs';
 
 const today = page => page.locator('#view-today');
 
+test('Today permissions follow normal impersonation and return to the seeded administrator', async ({ page }) => {
+  // Use empty projection data for all three blocks.
+  await page.route('**/api/presence/board', route => route.fulfill({ json: { at_work_now: 0, expected_now: 0, yet_to_come: [] } }));
+  await page.route('**/api/punches/status', route => route.fulfill({ json: { on_shift: false } }));
+  await page.route('**/api/stays/mine/today', route => route.fulfill({ json: { date: '2026-01-01', reservations: [] } }));
+  await login(page, 'admin');
+  await expect(today(page).locator('[data-stat=at-work]')).toBeVisible();
+  await page.evaluate(() => window.navigate('employees'));
+  await page.locator('#view-employees tr[data-card]').filter({ hasText: 'Иванов' }).first().click();
+  await page.locator('#modal [data-imp]').click();
+  await expect(page.locator('#view-me.active')).toBeVisible();
+  await page.evaluate(() => window.navigate('today'));
+  await expect(today(page).locator('[data-stat=mine]')).toBeVisible();
+  await expect(today(page).locator('.today-shift')).toBeVisible();
+  await expect(today(page).locator('[data-stat=at-work]')).toBeVisible(); // seeded employees have presence.view
+  await page.locator('#stop-impersonation').click();
+  await expect(today(page).locator('[data-stat=at-work]')).toBeVisible();
+  await expect(today(page).locator('[data-stat=mine], .today-shift')).toHaveCount(0);
+});
+
 test('стартовый экран — «Сегодня» и первый пункт меню, приветствие и дата', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'ivanov');

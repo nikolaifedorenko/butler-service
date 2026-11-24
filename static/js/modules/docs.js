@@ -4,53 +4,139 @@
    файлами (сборки намеренно нет, ADR-0008). Модуль (ADR-0013, раздел 7). Окно печати —
    отдельный документ, который собирается строкой с esc(): в страницу приложения она не попадает. */
 
-import { api, dateRu, esc, getCookie, hours, loading, state, todayISO, toast } from '../core.js';
+import { api, authContextIsCurrent, authContextSnapshot, dateRu, esc, expireAuthContext, getCookie, hours, loading, requireAuthOwnership, state,
+  subscribeAuthContext, subscribeSessionRejection, todayISO, toast } from '../core.js';
 
 /* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ──
    Страницу собирает сервер (POST /api/docs/print): прежний document.write в about:blank
    с inline-скриптом автопечати блокировался CSP (A1, аудит 25.10.2026). Документ
-   показывается в скрытом фрейме; автопечать делает внешний скрипт страницы, после
-   диалога фрейм удаляется по сообщению от него. */
-export async function printWindow(title, bodyHtml, extraCss = '') {
-  let html;
+   показывается в скрытом фрейме. Родитель проверяет сессию по сигналу готовности
+   и вызывает печать; после диалога фрейм удаляется по сообщению от него. */
+const printJobs = new Set();
+function cancelPrintJobs() {
+  for (const cleanup of printJobs) cleanup();
+}
+subscribeAuthContext(cancelPrintJobs);
+subscribeSessionRejection(cancelPrintJobs);
+
+export async function printWindow(title, bodyHtml, extraCss = '', started = authContextSnapshot()) {
+  if (!authContextIsCurrent(started)) return;
+  const controller = new AbortController();
+  const request = { credentials: 'same-origin', cache: 'no-store', signal: controller.signal };
+  let frame, fallback, interval, requestTimeout;
+  let validating = false;
+  let foregroundPending = false;
+  let readyDocument, printed = false;
+
+  function cleanup() {
+    if (!printJobs.delete(cleanup)) return;
+    controller.abort();
+    window.removeEventListener('message', onMessage);
+    window.removeEventListener('focus', onForeground);
+    window.removeEventListener('pageshow', onForeground);
+    document.removeEventListener('visibilitychange', onVisible);
+    clearTimeout(fallback);
+    clearTimeout(requestTimeout);
+    clearInterval(interval);
+    frame?.remove();
+  }
+  function onMessage(e) {
+    if (e.origin !== location.origin || e.source !== frame.contentWindow) return;
+    if (e.data?.butler_print_done) cleanup();
+    else if (e.data?.butler_print_ready && !readyDocument) {
+      readyDocument = frame.contentDocument;
+      onForeground();
+    }
+  }
+  function onVisible() {
+    if (!document.hidden) onForeground();
+  }
+  function onForeground() {
+    if (validating) foregroundPending = true;
+    else void validateMounted();
+  }
+  function current() {
+    return !controller.signal.aborted && authContextIsCurrent(started);
+  }
+  async function serverMatches() {
+    const r = await fetch('/api/auth/context', request);
+    const context = r.ok ? (await r.json()).auth_context : null;
+    if ((r.status === 401 || r.ok && context !== started.context) && !controller.signal.aborted) {
+      void expireAuthContext(started);
+    }
+    return r.ok && context === started.context;
+  }
+  async function validateMounted() {
+    if (!current()) { cleanup(); return; }
+    if (validating) return;
+    validating = true;
+    const ready = readyDocument;
+    requestTimeout = setTimeout(cleanup, 20_000);
+    try {
+      if (!await serverMatches() || !current()) { cleanup(); return; }
+      if (ready && !printed && !foregroundPending) {
+        if (frame.contentDocument !== ready) { cleanup(); return; }
+        printed = true;
+        frame.contentWindow.print();
+      }
+    } catch { cleanup(); }
+    finally {
+      clearTimeout(requestTimeout);
+      validating = false;
+      if (foregroundPending && !controller.signal.aborted) {
+        foregroundPending = false;
+        void validateMounted();
+      }
+    }
+  }
+
+  printJobs.add(cleanup);
+  requestTimeout = setTimeout(cleanup, 20_000);
   try {
     const r = await fetch('/api/docs/print', {
-      method: 'POST', credentials: 'same-origin',
+      ...request, method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCookie('tt_csrf') },
       body: JSON.stringify({ title, body: bodyHtml, css: extraCss }),
     });
+    if (r.status === 401 && !controller.signal.aborted) expireAuthContext(started);
     if (!r.ok) throw new Error(`Ошибка ${r.status}`);
-    html = await r.text();
+    if (!current() || r.headers.get('X-Butler-Auth-Context') !== started.context) { cleanup(); return; }
+    const html = await r.text();
+    if (!await serverMatches() || !current()) { cleanup(); return; }
+    clearTimeout(requestTimeout);
+
+    frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.title = title;
+    Object.assign(frame.style, { position: 'fixed', top: '0', left: '-10000px', width: '1px', height: '1px',
+      border: '0' });
+    frame.srcdoc = html;
+    window.addEventListener('message', onMessage);
+    window.addEventListener('focus', onForeground);
+    window.addEventListener('pageshow', onForeground);
+    document.addEventListener('visibilitychange', onVisible);
+    fallback = setTimeout(cleanup, 5 * 60 * 1000);
+    interval = setInterval(validateMounted, 5_000);
+    if (!current()) { cleanup(); return; }
+    document.body.appendChild(frame);
   } catch (e) {
-    toast(`Печать не подготовилась — ${e.message}`, 'warn');
-    return;
+    const cancelled = controller.signal.aborted;
+    cleanup();
+    if (!cancelled) toast(`Печать не подготовилась — ${e.message}`, 'warn');
   }
-  const f = document.createElement('iframe');
-  f.setAttribute('aria-hidden', 'true');
-  f.title = title;
-  Object.assign(f.style, { position: 'fixed', top: '0', left: '-10000px', width: '1px', height: '1px',
-    border: '0' });
-  const cleanup = () => {
-    window.removeEventListener('message', onDone);
-    clearTimeout(fallback);
-    f.remove();
-  };
-  const onDone = e => { if (e.origin === location.origin && e.data && e.data.butler_print_done) cleanup(); };
-  const fallback = setTimeout(cleanup, 5 * 60 * 1000);   // диалог так и не открыли/закрыли молча
-  window.addEventListener('message', onDone);
-  document.body.appendChild(f);
-  f.srcdoc = html;
 }
 
 
 /* ── заявление на отпуск: печать по редактируемому шаблону, период подхватывается целиком ── */
-async function getDocTemplates() {
+async function getDocTemplates(started) {
   if (!state.doc) {
     const s = await api('/api/settings', { silent: true });
+    if (!authContextIsCurrent(started)) return;
     state.doc = s.doc;
   }
   try {
     const kd = await api('/api/docs/kinds', { silent: true });
+    if (!authContextIsCurrent(started)) return;
     state.docKinds = kd.kinds || []; state.docPlaceholders = kd.placeholders || {};
   } catch { /* печать продолжим с кешем */ }
   return state.doc;
@@ -94,6 +180,7 @@ function triggerDownload(blob, name) {
    PDF собирается на сервере встроенным рендером и открывается в новой
    вкладке — из неё сразу можно печатать. */
 export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenceId = null) {
+  const started = authContextSnapshot();
   let p;
   try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
@@ -101,7 +188,7 @@ export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenc
       ? 'Сначала сохраните отсутствие в ячейке — тогда станет доступна печать заявления'
       : e.message, 'err');
   }
-  if (!statementLayerOk(p, layer)) return;
+  if (!authContextIsCurrent(started) || !statementLayerOk(p, layer)) return;
   /* Вид заявления определяет сервер: у единого «отпросился (выходной за часы)» он
      зависит от точки ввода — вся смена или интервал (Q3). */
   const type = p.doc_type || p.shift?.doc_type;
@@ -122,12 +209,14 @@ export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenc
         note: (p.notes || []).join('; '),
       }),
     });
+    if (res.status === 401) { await expireAuthContext(started); return; }
     if (!res.ok) {
       let msg = `Ошибка ${res.status}`;
       try { msg = (await res.json()).detail || msg; } catch {}
       throw new Error(msg);
     }
     const blob = await res.blob();
+    requireAuthOwnership(started);
     const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1]
       || `document_${empId}.${fmt}`;
     if (fmt === 'pdf') {
@@ -150,17 +239,21 @@ export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenc
 
 /* Быстрая печать заявления окном браузера (по редактируемому шаблону из Настроек) */
 export async function printAbsenceRequest(empId, dateISO, layer = '', absenceId = null) {
+  const started = authContextSnapshot();
+  if (!authContextIsCurrent(started)) return;
   let p;
   try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
+    if (!authContextIsCurrent(started)) return;
     return toast(e.message.includes('нет назначенного')
       ? 'Сначала сохраните отсутствие в ячейке — тогда станет доступна печать заявления'
       : e.message, 'err');
   }
-  if (!statementLayerOk(p, layer)) return;
+  if (!authContextIsCurrent(started) || !statementLayerOk(p, layer)) return;
   try {
     const docType = p.doc_type || p.shift?.doc_type;
-    const doc = await getDocTemplates();
+    const doc = await getDocTemplates(started);
+    if (!authContextIsCurrent(started)) return;
     const kind = (state.docKinds || []).find(k => k.code === docType);
     const tplKey = { vacation_paid: 'vacation', vacation_unpaid: 'vacation_unpaid',
                      day_off_hours: 'day_off_hours', time_off_request: 'time_off_request' }[docType]
@@ -190,7 +283,7 @@ export async function printAbsenceRequest(empId, dateISO, layer = '', absenceId 
       note: (p.notes || []).join('; '),
       today: dateRu(todayISO()),
     };
-    printWindow('Заявление',
-      `<div style="white-space:pre-wrap;font-size:13px;line-height:1.7;width:170mm;margin:0 auto">${esc(fillTemplate(tplText, vals))}</div>`);
+    await printWindow('Заявление',
+      `<div style="white-space:pre-wrap;font-size:13px;line-height:1.7;width:170mm;margin:0 auto">${esc(fillTemplate(tplText, vals))}</div>`, '', started);
   } catch (e) { toast(e.message, 'err'); }
 }

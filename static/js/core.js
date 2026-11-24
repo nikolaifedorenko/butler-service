@@ -21,6 +21,138 @@ import { html, render } from './ui/html.js';
 let showLogin = () => {};
 export function setLoginHandler(fn) { showLogin = fn; }
 
+const AUTH_EVENT_KEY = 'butler.auth-context.v1';
+const SESSION_CHANGES = new Set(['/api/auth/login', '/api/auth/logout', '/api/auth/change-password',
+  '/api/auth/impersonate', '/api/auth/impersonate/stop']);
+const authListeners = new Set();
+const rejectionListeners = new Set();
+const pendingIssuers = new Set();
+
+function readAuthEvent() {
+  try {
+    const value = JSON.parse(localStorage.getItem(AUTH_EVENT_KEY));
+    if (typeof value?.eventId === 'string' && value.eventId &&
+        (value.context === null || typeof value.context === 'string' && value.context)) return value;
+  } catch { /* локальное состояние и проверка cookie работают и без хранилища */ }
+  return null;
+}
+
+let storedEventId = readAuthEvent()?.eventId || '';
+let auth = { context: null, eventId: storedEventId };
+let suspended;
+// Sessions opened before the companion cookie was introduced remain usable until their first rotation.
+let legacyContext = null;
+
+function notifyAuth(event, external) {
+  for (const listener of authListeners) listener({ ...event, external });
+}
+
+export function adoptAuthContext(context = null) {
+  legacyContext = getCookie('tt_auth_context') ? null : context;
+  if (auth.context === context) return;
+  auth = { context, eventId: auth.eventId };
+  notifyAuth(auth, false);
+}
+
+export function publishAuthContext(context = null) {
+  legacyContext = null;
+  const id = Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16).padStart(8, '0')).join('');
+  auth = { context, eventId: id };
+  try {
+    localStorage.setItem(AUTH_EVENT_KEY, JSON.stringify(auth));
+    storedEventId = id;
+  } catch { /* в текущей вкладке всё равно отменяем задания синхронно */ }
+  notifyAuth(auth, false);
+  if (context === null) showLogin();
+}
+
+// Читаем последнее сохранённое событие: очередь storage могла задержаться, пока вкладка спала.
+function syncAuthEvent() {
+  const event = readAuthEvent();
+  if (!event || event.eventId === storedEventId) return;
+  storedEventId = event.eventId;
+  // Прежний экран не может печатать от нового пользователя, пока reload ожидает навигации.
+  // Подписчики получают событие сейчас, а свою идентичность новая страница примет из /me.
+  auth = { context: null, eventId: event.eventId };
+  notifyAuth({ context: event.context, eventId: event.eventId }, true);
+  if (event.context === null) showLogin();
+  else location.reload();
+}
+window.addEventListener('storage', e => { if (e.key === AUTH_EVENT_KEY) syncAuthEvent(); });
+
+export function authContextSnapshot() {
+  syncAuthEvent();
+  return { ...auth };
+}
+
+export function authContextIsCurrent(started) {
+  const now = authContextSnapshot();
+  if (!started.context || started.context !== now.context || started.eventId !== now.eventId || suspended?.owner === auth) {
+    return false;
+  }
+  const marker = getCookie('tt_auth_context');
+  if (marker === started.context || !marker && legacyContext === started.context) return true;
+  void expireAuthContext(started);
+  return false;
+}
+
+export function requireAuthOwnership(started = auth) {
+  if (!authContextIsCurrent(started)) throw new Error('Сессия изменилась');
+  return started;
+}
+
+export function subscribeAuthContext(listener) {
+  authListeners.add(listener);
+  return () => authListeners.delete(listener);
+}
+
+export function subscribeSessionRejection(listener) {
+  rejectionListeners.add(listener);
+  return () => rejectionListeners.delete(listener);
+}
+
+// Запоздалый 401 из предыдущей сессии не должен разлогинить уже вошедшего пользователя.
+export async function expireAuthContext(started) {
+  const current = authContextSnapshot();
+  if (started.eventId !== current.eventId || started.context !== current.context) return;
+  const owner = auth;
+  if (suspended?.owner === owner) return suspended.check;
+  const hold = { owner };
+  suspended = hold;
+  for (const listener of rejectionListeners) listener();
+  hold.check = (async () => {
+    // Only an issuer already in flight for this owner can settle its own cookie change.
+    // Rejection listeners above have already retired the UI and its print jobs.
+    const pending = [...pendingIssuers].filter(issuer => issuer.owner === owner);
+    if (pending.length) {
+      await Promise.all(pending.map(issuer => issuer.done));
+      syncAuthEvent();
+      if (auth !== owner) return;
+    }
+    const marker = getCookie('tt_auth_context');
+    try {
+      const response = await fetch('/api/auth/context', { credentials: 'same-origin', cache: 'no-store',
+        signal: AbortSignal.timeout(20_000) });
+      const verified = response.ok ? (await response.json()).auth_context : null;
+      syncAuthEvent();
+      if (auth !== owner) return;
+      if (marker === getCookie('tt_auth_context')) {
+        if (response.status === 401 && (!marker || marker === 'signed-out' || marker === started.context)) {
+          publishAuthContext(null);
+          return;
+        }
+        if (verified && (!marker || marker === verified)) {
+          location.reload();
+          return;
+        }
+      }
+    } catch { /* Неоднозначный ответ не должен разлогинить другие вкладки. */ }
+    syncAuthEvent();
+    if (auth === owner) showLogin();
+  })();
+  return hold.check;
+}
+
 /* ───────────────────────────── утилиты ───────────────────────────── */
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -169,17 +301,26 @@ function httpError(msg, status) {
   return new Error(String(msg));
 }
 export async function api(path, opts = {}) {
+  const started = auth;
+  const method = (opts.method || 'GET').toUpperCase();
+  const bootRead = method === 'GET' && opts.allow401 && (path === '/api/auth/me' || path === '/api/health');
+  if (started.context || !(bootRead || method === 'POST' && path === '/api/auth/login')) requireAuthOwnership(started);
   const init = { method: opts.method || 'GET', credentials: 'same-origin', headers: {} };
   if (opts.body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(opts.body);
   }
-  const method = (opts.method || 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') init.headers['X-CSRF-Token'] = getCookie('tt_csrf');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeout || 20000);
   init.signal = ctrl.signal;
   if (!opts.silent) loading(true);
+  let issuer, settle;
+  if (started.context && method === 'POST' && SESSION_CHANGES.has(path)) {
+    issuer = { owner: started, done: new Promise(resolve => { settle = resolve; }) };
+    pendingIssuers.add(issuer);
+  }
+  const finishIssuer = () => { if (pendingIssuers.delete(issuer)) settle(); };
   try {
     let res;
     try {
@@ -193,15 +334,37 @@ export async function api(path, opts = {}) {
         ? 'Нет подключения к интернету — действие не выполнено'
         : 'Не удалось связаться с сервером — проверьте связь и повторите');
     }
-    if (res.status === 401 && !opts.allow401) { showLogin(); throw new Error('Требуется вход'); }
+    if (res.status === 401 && !opts.allow401) {
+      finishIssuer();
+      await expireAuthContext(started);
+      throw new Error('Требуется вход');
+    }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
+      if (started.context) requireAuthOwnership(started);
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
       // единый разбор ошибок (в т.ч. 422-массив pydantic и структурные 409) — httpError
       throw httpError(msg, res.status);
     }
+    if (issuer) {
+      syncAuthEvent();
+      const expected = path === '/api/auth/logout' ? 'signed-out' : data?.auth_context;
+      if (auth !== started || !expected || expected !== getCookie('tt_auth_context')) {
+        // A retired issuer may have changed the cookie beneath the current shell.
+        if (auth !== started) {
+          const current = auth;
+          if (current.context) authContextIsCurrent(current);
+          else void expireAuthContext(current);
+        }
+        else void expireAuthContext(started);
+        throw new Error('Сессия изменилась');
+      }
+      // Commit while we still own both the initiating generation and the response cookie.
+      publishAuthContext(path === '/api/auth/logout' ? null : expected);
+    } else if (started.context && !authContextIsCurrent(started)) throw new Error('Сессия изменилась');
     return data;
   } finally {
+    finishIssuer();
     clearTimeout(timer);
     if (!opts.silent) loading(false);
   }
@@ -209,6 +372,7 @@ export async function api(path, opts = {}) {
 
 /* multipart (фото): api() умеет только JSON — загрузка фото идёт через fetch напрямую */
 export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
+  const started = requireAuthOwnership();
   loading(true);
   try {
     const ctrl = new AbortController();
@@ -221,12 +385,13 @@ export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
       if (e.name === 'AbortError') throw new Error('Загрузка не завершилась вовремя — проверьте связь');
       throw new Error('Не удалось связаться с сервером — проверьте связь и повторите');
     } finally { clearTimeout(timer); }
-    if (res.status === 401) { showLogin(); throw new Error('Требуется вход'); }
+    if (res.status === 401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
       throw httpError(msg, res.status);   // тот же разбор, что в api() (P1-fe-4)
     }
+    requireAuthOwnership(started);
     return data;
   } finally { loading(false); }
 }
@@ -281,6 +446,7 @@ export const POSITION_COLORS = [
 const modalContent = x => x;
 
 export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
+  if (!state.user) return;
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
   m.replaceChildren();                       // каждое окно — новое дерево, без остатков прежнего
@@ -307,6 +473,7 @@ export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('
    модального окна — голова, прокручиваемое тело, подвал с действиями. Открытые поверх неё
    модальные окна (редакторы) закрываются по Esc первыми. */
 export function openDrawer({ title, subtitle, body, footer, onMount }) {
+  if (!state.user) return;
   const d = $('#drawer');
   d.replaceChildren();
   const root = document.createElement('div');
@@ -360,7 +527,9 @@ export function mediaHint() {
 export async function downloadBlob(path, fallbackName) {
   loading(true);
   try {
+    const started = requireAuthOwnership();
     const res = await fetch(path, { credentials: 'same-origin' });
+    if (res.status === 401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     if (!res.ok) {
       // в detail сервер отдаёт понятный текст (например, подсказку про PDF-движок)
       let msg = `Ошибка ${res.status}`;
@@ -368,6 +537,7 @@ export async function downloadBlob(path, fallbackName) {
       throw new Error(msg);
     }
     const blob = await res.blob();
+    requireAuthOwnership(started);
     const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallbackName;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -16,7 +16,7 @@ from .config import settings
 from .db import get_db
 from .identity import User
 from .roles import ROLE_ADMIN, ROLE_EMPLOYEE, ROLE_MANAGER, ROLE_SUPERVISOR
-from .sessions import find_session
+from .sessions import find_session, session_context
 
 
 @dataclass
@@ -27,6 +27,7 @@ class Principal:
     session_id: Optional[int] = None   # запись user_sessions, по которой вошли (None — Principal собран не из cookie)
     # права, проверенные гейтом require_perm, — для чтений в том же запросе; пусто — гейт не проходили
     gate_permissions: set[str] = field(default_factory=set)
+    auth_context: str | None = None
 
     @property
     def role(self) -> str:
@@ -95,7 +96,8 @@ def current_principal(request: Request, db: Session = Depends(get_db)) -> Princi
         employee = _EMPLOYEE_LOADER(db, row.employee_id)
     if row.impersonated and (employee is None or not employee.active):
         raise _unauthorized()          # «как сотрудник» за уволенного/удалённого — сессия кончилась
-    return Principal(user=user, employee=employee, impersonated=row.impersonated, session_id=row.id)
+    return Principal(user=user, employee=employee, impersonated=row.impersonated, session_id=row.id,
+                     auth_context=session_context(token))
 
 
 def optional_principal(request: Request, db: Session = Depends(get_db)) -> Optional[Principal]:

@@ -8,7 +8,11 @@ A1 (аудит 25.10.2026): прежняя печать писала inline-ск
 """
 from __future__ import annotations
 
+import re
+
 from fastapi.testclient import TestClient
+
+from app.core.config import settings
 
 
 def test_print_page_assembles_document(employee_client):
@@ -18,13 +22,47 @@ def test_print_page_assembles_document(employee_client):
         "css": ".x { color: red }"})
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
+    assert "script-src 'self'" in r.headers["content-security-policy"].split("; ")
     html = r.text
     assert "<title>График &lt;b&gt;сменности&lt;/b&gt;</title>" in html   # заголовок экранирует сервер
     assert "<table><tr><td>Иванов</td></tr></table>" in html             # тело — как собрал клиент
     assert ".x { color: red }" in html
-    assert '<script src="/static/js/print-page.js" defer></script>' in html  # автопечать — внешний скрипт
+    stamp = re.search(r"const VERSION = 'tt-([\w.-]+)'", employee_client.get("/sw.js").text)[1]
+    assert re.findall(r'<script src="([^"]*)" defer></script>', html) == [f"/static/js/print-page.js?v={stamp}"]
     assert "<script>" not in html and "onload=" not in html               # inline-скриптов нет
 
 
 def test_print_page_requires_login(app_stack):
-    assert TestClient(app_stack["app"]).post("/api/docs/print", json={"body": "x"}).status_code == 401
+    client = TestClient(app_stack["app"])
+    denied = client.post("/api/docs/print", json={"body": "x"})
+    assert denied.status_code == 401
+    assert "x-butler-auth-context" not in denied.headers
+    assert client.get("/api/auth/context").status_code == 401
+
+
+def test_print_header_reports_current_cookie_context(employee_client):
+    response = employee_client.post("/api/docs/print", json={"body": "x"},
+                                    headers={"X-Butler-Auth-Context": "a" * 64})
+    assert response.status_code == 200
+    context = employee_client.get("/api/auth/context")
+    assert context.status_code == 200, context.text
+    assert response.headers["x-butler-auth-context"] == context.json()["auth_context"]
+
+
+def test_print_success_contract_declares_html_document_and_context(app_stack):
+    response = app_stack["app"].openapi()["paths"]["/api/docs/print"]["post"]["responses"]["200"]
+    assert response.get("content") == {"text/html": {"schema": {"type": "string"}}}
+    assert response["headers"]["X-Butler-Auth-Context"]["schema"]["type"] == "string"
+
+
+def test_auth_context_cannot_authenticate_print_or_context(client, employee_client):
+    context = employee_client.get("/api/auth/context")
+    assert context.status_code == 200, context.text
+    fingerprint = context.json()["auth_context"]
+    headers = {"X-Butler-Auth-Context": fingerprint}
+    client.cookies.set("tt_auth_context", fingerprint)
+    assert client.get("/api/auth/context").status_code == 401
+    assert client.post("/api/docs/print", json={"body": "x"}).status_code == 401
+    client.cookies.set(settings.cookie_name, fingerprint)
+    assert client.get("/api/auth/context", headers=headers).status_code == 401
+    assert client.post("/api/docs/print", json={"body": "x"}, headers=headers).status_code == 401

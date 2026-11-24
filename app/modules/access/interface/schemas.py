@@ -38,9 +38,19 @@ class UserOut(ApiModel):
     impersonated: bool
 
 
-class SessionOut(ApiModel):
+class AuthContextOut(ApiModel):
+    """Отпечаток действующей сессии для сравнения в браузере."""
+
+    auth_context: str
+
+
+class SessionOut(AuthContextOut):
     ok: bool = True
     user: UserOut
+
+
+class PasswordChangedOut(AuthContextOut):
+    ok: bool = True
 
 
 class RoleTitleOut(ApiModel):
@@ -58,7 +68,7 @@ class TodayPlanOut(ApiModel):
     expected: list[list[str]]           # отрезки «с — по», в которые ждут на работе
 
 
-class MeOut(ApiModel):
+class MeOut(AuthContextOut):
     user: UserOut
     today: Optional[TodayPlanOut]       # нет у учётной записи без сотрудника
     permissions: list[str]

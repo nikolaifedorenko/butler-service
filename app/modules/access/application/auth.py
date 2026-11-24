@@ -151,7 +151,8 @@ def stop_impersonation(db: Session, principal: Principal) -> tuple[Principal, st
 def me(db: Session, principal: Principal) -> dict:
     """Текущий пользователь: права, роли, меню и экраны по правам, план на сегодня."""
     perms = set(principal_permissions(db, principal))
-    data = {"user": principal.to_dict(), "today": None, "permissions": sorted(perms),
+    data = {"user": principal.to_dict(), "auth_context": principal.auth_context,
+            "today": None, "permissions": sorted(perms),
             "roles": [{"code": r.code, "title": r.title} for r in roles_catalog(db)],
             "assignable_roles": assignable_roles(db, principal),
             **manifest.ui_for(perms)}

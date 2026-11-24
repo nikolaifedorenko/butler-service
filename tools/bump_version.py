@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Единая точка версионирования статики (кэш-бастинг).
 
-Версия `?v=…` в index.html и `VERSION`/SHELL в sw.js должны совпадать, иначе
+Версии `?v=…` в index.html и print_page.py и `VERSION`/SHELL в sw.js должны совпадать, иначе
 пользователи останутся на старом JS (service worker отдаёт оболочку из кэша).
 Раньше версию меняли руками в пяти местах — этот скрипт делает то же одной командой
 и умеет проверять согласованность (режим --check, используется в CI).
@@ -28,9 +28,12 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 INDEX = BASE / "static" / "index.html"
 SW = BASE / "static" / "sw.js"
+PRINT_PAGE = BASE / "app" / "modules" / "docs" / "application" / "print_page.py"
 ASSETS_DIR = BASE / "static"
+PRINT_CHILD = "/static/js/print-page.js"
 
 VERSION_RE = re.compile(r"\?v=([\w.\-]+)")
+PRINT_SRC_RE = re.compile(r"""(?P<tag><script\b[^<>]*?\ssrc=(?P<quote>\\?["']))(?P<url>[^"'\\]*)(?P=quote)""")
 HASH_RE = re.compile(r"// содержимое оболочки: ([0-9a-f]+)")
 SCRIPTS_RE = re.compile(r"(<!-- скрипты:.*?-->\n).*?(<!-- /скрипты -->)", re.S)
 
@@ -49,7 +52,7 @@ def local_assets() -> list[str]:
     return out
 
 
-CLASSIC_SCRIPTS = {"/static/js/ui/theme.js"}      # обычные скрипты (не модули): версия — в адресе
+CLASSIC_SCRIPTS = {"/static/js/ui/theme.js", PRINT_CHILD}  # обычные скрипты (не модули): версия — в адресе
 
 
 def versioned(asset: str) -> bool:
@@ -57,6 +60,10 @@ def versioned(asset: str) -> bool:
     (import ... from './core.js'): адрес с ?v= был бы другим модулем и выполнился бы дважды. Свежесть
     модулей держит ``Cache-Control: no-cache`` у статики (app/main.py) и новая версия кэша sw.js."""
     return asset.endswith(".css") or asset in CLASSIC_SCRIPTS
+
+
+def shell_url(asset: str, version: str) -> str:
+    return f"{asset}?v={version}" if versioned(asset) else asset
 
 
 def scripts_block(version: str) -> str:
@@ -72,17 +79,17 @@ def with_scripts(html: str, version: str) -> str:
 
 
 def assets_hash() -> str:
-    """Хеш оболочки: css/js из SHELL и index.html без ?v= (их меняет сам bump)."""
+    """Хеш оболочки: ключи и содержимое css/js из SHELL и index.html без значения ?v=."""
     h = hashlib.sha256()
     for a in local_assets():
-        h.update(a.encode())
+        h.update(shell_url(a, "").encode())
         h.update((ASSETS_DIR / a.removeprefix("/static/")).read_bytes())
     h.update(VERSION_RE.sub("?v=", INDEX.read_text(encoding="utf-8")).encode())
     return h.hexdigest()[:16]
 
 
 def current_versions() -> dict[str, list[str]]:
-    found: dict[str, list[str]] = {"index.html": [], "sw.js": []}
+    found: dict[str, list[str]] = {}
     found["index.html"] = VERSION_RE.findall(INDEX.read_text(encoding="utf-8"))
     sw = SW.read_text(encoding="utf-8")
     found["sw.js"] = VERSION_RE.findall(sw)
@@ -99,14 +106,21 @@ def check() -> int:
     shell_plain = [s.split("?v=")[0] for s in shell]
     missing = [a for a in local_assets() if a not in shell_plain]
     problems = []
-    if len(set(all_v)) != 1:
-        problems.append(f"версии расходятся: {sorted(set(all_v))} "
-                        f"(index.html: {sorted(set(found['index.html']))}, "
-                        f"sw.js: {sorted(set(found['sw.js']))})")
+    if len(set(all_v)) != 1 or not all(found.values()):
+        versions = ", ".join(f"{file}: {sorted(set(values))}" for file, values in found.items())
+        problems.append(f"версии расходятся: {versions}")
+    print_keys = [asset for asset in shell if asset.partition("?")[0] == PRINT_CHILD]
+    version = all_v[0] if all_v else ""
+    expected = shell_url(PRINT_CHILD, version)
+    renderer = [m["url"] for m in PRINT_SRC_RE.finditer(PRINT_PAGE.read_text(encoding="utf-8"))]
+    if renderer != [expected]:
+        problems.append("в print_page.py нужен точный адрес скрипта печати с текущей версией")
+    if print_keys != [expected]:
+        problems.append("в SHELL (sw.js) нужен только ключ скрипта печати с текущей версией")
     if missing:
         problems.append(f"в SHELL (sw.js) нет файлов: {missing}")
     idx = INDEX.read_text(encoding="utf-8")
-    if not SCRIPTS_RE.search(idx) or with_scripts(idx, all_v[0]) != idx:
+    if not SCRIPTS_RE.search(idx) or with_scripts(idx, version) != idx:
         problems.append("список <script> в index.html не совпадает с static/js/modules/*.js")
     stamp = HASH_RE.search(SW.read_text(encoding="utf-8"))
     if not stamp or stamp.group(1) != assets_hash():
@@ -127,6 +141,12 @@ def bump(version: str) -> int:
         print(f"✗ Некорректная версия: {version!r} (только буквы, цифры, точка, дефис)")
         return 2
 
+    print_page, n_print = PRINT_SRC_RE.subn(lambda m: m["tag"] + shell_url(PRINT_CHILD, version) + m["quote"],
+                                           PRINT_PAGE.read_text(encoding="utf-8"))
+    if n_print != 1:
+        print("✗ В print_page.py должен быть один адрес скрипта печати")
+        return 1
+
     # 1) index.html: список <script> и все ?v=…
     idx = with_scripts(INDEX.read_text(encoding="utf-8"), version)
     idx_new, n_idx = VERSION_RE.subn(f"?v={version}", idx)
@@ -136,7 +156,7 @@ def bump(version: str) -> int:
     sw = SW.read_text(encoding="utf-8")
     sw_new = re.sub(r"const VERSION = 'tt-[\w.\-]+'", f"const VERSION = 'tt-{version}'", sw)
     shell_items = ["  '/'"]
-    shell_items += [f"  '{a}?v={version}'" if versioned(a) else f"  '{a}'" for a in local_assets()]
+    shell_items += [f"  '{shell_url(a, version)}'" for a in local_assets()]
     shell_items += ["  '/manifest.webmanifest'", "  '/static/icons/icon-192.png'",
                     "  '/static/icons/icon-512.png'"]
     block = "const SHELL = [\n" + ",\n".join(shell_items) + ",\n];"
@@ -145,10 +165,12 @@ def bump(version: str) -> int:
     sw_new = HASH_RE.sub(stamp, sw_new) if HASH_RE.search(sw_new) else \
         sw_new.replace("\nconst SHELL = [", f"\n{stamp}\nconst SHELL = [", 1)
     SW.write_text(sw_new, encoding="utf-8")
+    PRINT_PAGE.write_text(print_page, encoding="utf-8")
 
     print(f"✓ Версия статики: {version}")
     print(f"   index.html — замен ?v=: {n_idx}")
     print(f"   sw.js      — VERSION + SHELL ({len(shell_items)} элементов), замен: {n_shell + 1}")
+    print(f"   print_page.py — замен адреса скрипта: {n_print}")
     return 0
 
 

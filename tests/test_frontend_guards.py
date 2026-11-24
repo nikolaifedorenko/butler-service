@@ -32,6 +32,7 @@
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import shutil
@@ -45,6 +46,86 @@ JS = BASE / "static" / "js"
 
 def _src(rel: str) -> str:
     return (JS / rel).read_text(encoding="utf-8")
+
+
+def test_core_auth_events_do_not_introduce_import_cycles():
+    """Ядро уведомляет подписчиков: ему не нужны импорты приложения или разделов."""
+    imports = re.findall(r"""\bfrom\s+['"]([^'"]+)['"]""", _src("core.js"))
+    assert all(path != "./app.js" and not path.startswith("./modules/") for path in imports)
+
+
+def test_absence_binds_context_before_fetching_employee_data():
+    body = _body(_src("modules/docs.js"), "async function printAbsenceRequest(")
+    assert "authContextSnapshot()" in body.partition("await absencePeriodInfo")[0]
+    assert "started" in body.partition("printWindow(")[2]
+
+
+def test_print_mount_has_synchronous_cookie_guard():
+    core = _src("core.js")
+    assert "getCookie('tt_auth_context')" in core
+    body = _body(_src("modules/docs.js"), "async function printWindow(")
+    assert "authContextIsCurrent(started)" in body
+    assert "current()" in body.partition("await r.text()")[2].partition("document.createElement('iframe')")[0]
+    assert "current()" in body.partition("interval = setInterval")[2].partition("document.body.appendChild")[0]
+
+
+def test_expiry_requires_live_session_verdict():
+    body = _body(_src("core.js"), "function expireAuthContext(")
+    assert "fetch('/api/auth/context'" in body.partition("publishAuthContext(null)")[0]
+    assert "status === 401" in body.partition("publishAuthContext(null)")[0]
+
+
+def test_privileged_shell_releases_state_and_guards_employee_history():
+    app = _src("app.js")
+    assert "deactivateShell()" in _body(app, "function showLogin(")
+    assert "resetUserViewState()" in _body(app, "function deactivateShell(")
+    history = _body(_src("modules/employees.js"), "function employeeCard(")
+    assert "authContextIsCurrent(started)" in history.partition("/history")[2].partition("openModal(")[0]
+    assert "state.user" in _body(_src("ui/palette.js"), "function show(").partition("open = true")[0]
+
+
+def test_authenticated_data_is_checked_before_delivery_to_views():
+    body = _body(_src("core.js"), "async function api(")
+    assert "authContextIsCurrent(started)" in body.partition("const data = parseBody")[2].partition("return data")[0]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node недоступен")
+def test_boot_reconciles_a_rejected_identity_before_activating_the_shell():
+    """Exercise the boot decision in isolation, with a rejected final identity verdict."""
+    boot = _body(_src("app.js"), "async function bootApp()")
+    script = """
+const calls = [];
+const state = { user: null };
+const identity = { context: 'fixture', eventId: 'initial' };
+const capturedBeforePreparation = new WeakSet();
+const authContextSnapshot = () => {
+  const snapshot = { ...identity };
+  if (!calls.includes('prepare')) capturedBeforePreparation.add(snapshot);
+  return snapshot;
+};
+const authContextIsCurrent = snapshot => {
+  if (!capturedBeforePreparation.has(snapshot)) throw Error('missing initiating snapshot');
+  return false;
+};
+const loginSubmitted = 'login';
+const sessionStorage = { getItem: () => null, removeItem() {} };
+const location = { search: '', reload: () => calls.push('reload') };
+const api = async path => path === '/api/auth/me' ? { auth_context: 'fixture', user: {} } : {};
+const getCookie = () => 'fixture';
+const adoptAuthContext = () => {};
+const syncServerClock = () => {};
+const loadMediaLimits = async () => { calls.push('prepare'); };
+const enterApp = async () => { calls.push('enter'); };
+const expireAuthContext = snapshot => {
+  if (!capturedBeforePreparation.has(snapshot)) throw Error('reconciling wrong snapshot');
+  calls.push('reconcile');
+};
+const showLogin = () => { calls.push('login'); };
+"""
+    proc = subprocess.run(["node", "-e", script + boot + """
+bootApp().then(() => console.log(JSON.stringify({ calls, user: state.user })));
+"""], capture_output=True, text=True, check=True, timeout=10)
+    assert json.loads(proc.stdout) == {"calls": ["prepare", "reconcile"], "user": None}
 
 
 def _body(src: str, fn_name: str) -> str:
