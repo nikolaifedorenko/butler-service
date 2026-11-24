@@ -121,19 +121,24 @@ def test_chk_step_divides_60_violation():
     assert "CHK-STEP-DIVIDES-60" in _codes_of(exc.value)
 
 
-def test_chk_step_representable_violation():
-    """10 делит 60, но длительности кратные 10 (10, 20, 500 мин) непредставимы
-    в сотых долях часа — отказ fmt_hours (A3, аудит 25.10.2026)."""
+@pytest.mark.parametrize("step", [15.9, 15.0, "15", True, False])
+def test_chk_step_rejects_non_integer_types(step):
     with pytest.raises(ConfigError) as exc:
-        validate_settings(settings(step_minutes=10))
-    codes = _codes_of(exc.value)
-    assert "CHK-STEP-REPRESENTABLE" in codes
-    assert "CHK-STEP-DIVIDES-60" not in codes
-
-
-def test_chk_step_representable_allows_quarter_steps():
-    for step in (3, 6, 12, 15, 30, 60):
         validate_settings(settings(step_minutes=step))
+    assert exc.value.violations == (("CHK-STEP-DIVIDES-60", {"step_minutes": step}),)
+    assert type(exc.value.violations[0][1]["step_minutes"]) is type(step)
+
+
+@pytest.mark.parametrize("step", [1, 2, 4, 5, 10, 20])
+def test_chk_step_representable_violation(step):
+    with pytest.raises(ConfigError) as exc:
+        validate_settings(settings(step_minutes=step))
+    assert _codes_of(exc.value) == ["CHK-STEP-REPRESENTABLE"]
+
+
+@pytest.mark.parametrize("step", [3, 6, 12, 15, 30, 60])
+def test_chk_step_accepts_representable_divisors(step):
+    validate_settings(settings(step_minutes=step))
 
 
 def test_chk_grid_violation():
@@ -187,8 +192,9 @@ def test_chk_modifier_conflict_group_period_overlap():
     assert "CHK-MODIFIER-CONFLICT" in _codes_of(exc.value)
 
 
-def test_all_violations_reported_at_once():
-    st = settings(step_minutes=45, cascade_order=("ДЯ",))
+@pytest.mark.parametrize("step", [45, "15"])
+def test_all_violations_reported_at_once(step):
+    st = settings(step_minutes=step, cascade_order=("ДЯ",))
     with pytest.raises(ConfigError) as exc:
         validate_settings(st)
     codes = _codes_of(exc.value)

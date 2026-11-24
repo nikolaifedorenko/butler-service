@@ -1,14 +1,14 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-11-24d';
-// содержимое оболочки: e61e04a01593e3fa
+const VERSION = 'tt-2026-11-24f';
+// содержимое оболочки: 2b2248a0684deec7
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-11-24d',
-  '/static/css/base.css?v=2026-11-24d',
-  '/static/css/components.css?v=2026-11-24d',
-  '/static/css/tokens.css?v=2026-11-24d',
+  '/static/css/app.css?v=2026-11-24f',
+  '/static/css/base.css?v=2026-11-24f',
+  '/static/css/components.css?v=2026-11-24f',
+  '/static/css/tokens.css?v=2026-11-24f',
   '/static/js/app.js',
   '/static/js/core.js',
   '/static/js/modules/access.js',
@@ -49,17 +49,18 @@ const SHELL = [
   '/static/js/modules/stays_guests.js',
   '/static/js/modules/stays_mine.js',
   '/static/js/modules/stays_ooo.js',
+  '/static/js/modules/stays_print.js',
   '/static/js/modules/stays_settings.js',
   '/static/js/modules/tabel.js',
   '/static/js/modules/timesheet_common.js',
   '/static/js/modules/timesheet_layers.js',
   '/static/js/modules/today.js',
-  '/static/js/print-page.js?v=2026-11-24d',
+  '/static/js/print-page.js?v=2026-11-24f',
   '/static/js/registry.js',
   '/static/js/ui/form.js',
   '/static/js/ui/html.js',
   '/static/js/ui/palette.js',
-  '/static/js/ui/theme.js?v=2026-11-24d',
+  '/static/js/ui/theme.js?v=2026-11-24f',
   '/static/vendor/lit-html/directive.js',
   '/static/vendor/lit-html/lit-html.js',
   '/manifest.webmanifest',

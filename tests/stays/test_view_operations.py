@@ -2,14 +2,21 @@
 транзакция, отказы несут статус класса ошибки, ответы всегда с полным набором ключей."""
 from __future__ import annotations
 
+import datetime as dt
+import io
+
 import pytest
-from sqlalchemy import func, select
+from openpyxl import load_workbook
+from sqlalchemy import event, func, select, update
 
 from app.core.audit import AuditLog
-from app.modules.stays.adapters.orm import CoverageLine
+from app.modules.board.application import export
+from app.modules.fund.application.catalog import FundVersion
+from app.modules.stays.adapters.orm import Assignment, CoverageLine
 from app.modules.stays.application import coverage_edit
 
-from .helpers import API
+from .helpers import API, create_res, make_category
+from .test_allocation_versions import _rename, _version
 from .test_coverage_api import _res, _template
 
 
@@ -85,3 +92,82 @@ def test_export_requires_matching_permission_and_is_audited(manager_client, db):
     assert r.status_code == 200 and "shakhmatka_anon_2026-11-15_2026-11-20.xlsx" in r.headers["content-disposition"]
     db.rollback()
     assert _count(db, AuditLog, AuditLog.action == "stays_export") == before + 1
+
+
+def test_one_day_export_bounds_cell_expansion(manager_role_client, manager_client, monkeypatch):
+    cat = make_category(manager_role_client, n_units=1)
+    create_res(manager_client, cat, "2038-05-01", "2038-06-01")
+    expanded_ranges = []
+
+    def counted_range(*args):
+        span = range(*args)
+        expanded_ranges.append(len(span))
+        return span
+
+    monkeypatch.setattr(export, "range", counted_range, raising=False)
+    day = "2038-05-15"
+    response = manager_client.get(f"{API}/export", params={"first": day, "last": day})
+    assert response.status_code == 200
+    wb = load_workbook(io.BytesIO(response.content))
+    board = list(wb["Шахматка"].values)
+    assert board[0] == ("Объект", "Категория", "15.05")
+    assert (cat["units"][0]["label"], cat["code"], "занято") in board
+    assert all(length <= 2 for length in expanded_ranges), expanded_ranges
+
+
+def test_export_skips_allocation_queries_needed_by_board_view(manager_role_client, manager_client, sql_counter):
+    cat = make_category(manager_role_client, n_units=1)
+    create_res(manager_client, cat, "2038-06-12", "2038-06-18")
+    params = {"first": "2038-06-15", "last": "2038-06-15"}
+    with sql_counter() as view_queries:
+        view = manager_role_client.get(f"{API}/board/units", params=params)
+    assert view.status_code == 200
+    assert {"holds", "blocks", "warnings"} <= view.json().keys()
+    with sql_counter() as export_queries:
+        result = manager_role_client.get(f"{API}/export", params={**params, "kind": "full"})
+    assert result.status_code == 200
+    for table in ("stays_ooo", "stays_block_nights"):
+        assert any(statement.startswith(f"SELECT {table}.") for statement in view_queries["by_statement"])
+        assert not any(statement.startswith(f"SELECT {table}.") for statement in export_queries["by_statement"])
+
+
+def test_one_day_export_bounds_fund_queries_and_resolves_legacy_assignments(manager_role_client, manager_client, today, db):
+    today("2043-06-01")
+    cat = make_category(manager_role_client, n_units=2)
+    first, second = cat["units"]
+    check_in, check_out = "2043-06-02", "2043-06-20"
+    res = create_res(manager_client, cat, check_in, check_out)
+    _version(manager_role_client, "2043-06-07", _rename(cat, 1))
+    day = "2043-06-10"
+    _version(manager_role_client, day, ("DELETE", f"units/{first['id']}", {}))
+    _version(manager_role_client, "2043-06-15")
+    _version(manager_role_client, "2043-07-01")
+    # У старых строк есть индекс части, но нет её start_pos.
+    db.execute(update(Assignment).where(Assignment.reservation_id == res["id"]).values(start_pos=None))
+    db.commit()
+    version_id = db.scalar(select(FundVersion.id).where(FundVersion.valid_from == dt.date.fromisoformat(day),
+                                                       FundVersion.status == "published"))
+    engine = db.get_bind()
+    snapshot_ids = []
+    cut_dates = []
+
+    def record_fund(_conn, _cursor, statement, params, _ctx, _many):
+        if "FROM fund_unit_states" in statement:
+            snapshot_ids.append(set(params.values()))
+        elif "FROM fund_versions" in statement and "JOIN fund_category_states" not in statement:
+            cut_dates.append({v for v in params.values() if isinstance(v, dt.date)})
+
+    event.listen(engine, "before_cursor_execute", record_fund)
+    try:
+        for kind, cell in (("full", res["number"]), ("anon", "занято")):
+            snapshot_ids.clear()
+            cut_dates.clear()
+            response = manager_role_client.get(f"{API}/export", params={"first": day, "last": day, "kind": kind})
+            assert response.status_code == 200
+            wb = load_workbook(io.BytesIO(response.content))
+            assert (second["label"] + "-н", cat["code"], cell) in wb["Шахматка"].values
+            assert snapshot_ids and all(ids == {version_id} for ids in snapshot_ids), snapshot_ids
+            stay_dates = {dt.date.fromisoformat(check_in), dt.date.fromisoformat(check_out)}
+            assert cut_dates and all(dates == stay_dates for dates in cut_dates), cut_dates
+    finally:
+        event.remove(engine, "before_cursor_execute", record_fund)

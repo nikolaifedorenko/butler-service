@@ -5,6 +5,395 @@ import { login, watchErrors } from './helpers.mjs';
 const open = (page, view) => page.evaluate(v => window.navigate(v), view);
 const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
 
+test.describe('печать шахматки', () => {
+  test.use({ serviceWorkers: 'block' });
+  for (const transition of ['выход', 'истечение сессии', '401 при печати', 'вход как сотрудник']) {
+    test(`закрывает печать при смене сессии · ${transition}`, async ({ page }) => {
+      await page.addInitScript(() => { window.print = () => {}; });
+      await login(page, 'admin');
+      await open(page, 'stays');
+      const action = page.locator('#sb-print');
+      await expect(action).toBeEnabled();
+      // Пустой ответ без автопечати. Второй документ ждёт освобождения тела ответа.
+      await page.evaluate(rejectThird => {
+        const fetch = window.fetch.bind(window);
+        let prints = 0;
+        window.fetch = (...args) => {
+          if (args[0] !== '/api/docs/print') return fetch(...args);
+          if (++prints === 3 && rejectThird) return Promise.resolve(new Response(null, { status: 401 }));
+          const wait = prints === 2;
+          const context = document.cookie.match(/(?:^|;\s*)tt_auth_context=([^;]+)/)?.[1];
+          return Promise.resolve({ ok: true, status: 200,
+            headers: new Headers({ 'X-Butler-Auth-Context': decodeURIComponent(context) }), text: async () => {
+            if (wait) await new Promise(resolve => { window.releasePrint = resolve; });
+            return '<p>Тест печати</p>';
+          } });
+        };
+      }, transition === '401 при печати');
+      await action.click();
+      const frames = page.locator('body > iframe[srcdoc]');
+      await expect(frames).toHaveCount(1);
+      await action.click();
+      await page.waitForFunction(() => !!window.releasePrint);
+      if (transition === 'вход как сотрудник') {
+        await open(page, 'employees');
+        await page.locator('#view-employees [data-card]').filter({ hasText: 'Иванов' }).first().click();
+        await page.locator('#modal [data-imp]').click();
+        await expect(page.locator('#impersonation-bar')).toBeVisible();
+      } else {
+        if (transition === 'выход') {
+          await page.locator('#logout-btn').click();
+        } else if (transition === '401 при печати') {
+          const reloaded = page.waitForEvent('domcontentloaded');
+          await action.click();
+          await reloaded;
+          await expect(page.locator('#user-name')).toContainText('admin');
+        } else {
+          await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: {} }));
+          await page.route('**/api/auth/context', route => route.fulfill({ status: 401, json: {} }));
+          await page.evaluate(async () => {
+            const { api } = await import('/static/js/core.js');
+            await api('/api/auth/me', { silent: true }).catch(() => {});
+          });
+        }
+        if (transition !== '401 при печати') await expect(page.locator('#login-screen')).toBeVisible();
+      }
+      await expect(frames, 'открытый документ закрыт').toHaveCount(0);
+      await page.evaluate(() => window.releasePrint?.());
+      await expect(frames, 'задержанный документ не появился').toHaveCount(0);
+      if (transition === 'вход как сотрудник') {
+        await page.evaluate(async () => {
+          const { printWindow } = await import('/static/js/modules/docs.js');
+          await printWindow('Документ сотрудника', '<p>Тест</p>');
+        });
+        await expect(frames).toHaveCount(1);
+        await page.locator('#stop-impersonation').click();
+        await expect(page.locator('#impersonation-bar')).toBeHidden();
+        await expect(frames).toHaveCount(0);
+      }
+    });
+  }
+
+  test('объединяет поиск и категорию до отправки фильтров', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    const action = view.locator('#sb-print');
+    await expect(action).toBeEnabled();
+    await view.locator('[data-sf-dd=cat] summary').click();
+    const box = view.locator('[data-sf-cat]').first();
+    const category = await box.getAttribute('data-sf-cat');
+    const code = (await box.locator('..').innerText()).trim();
+    const criteria = [];
+    await page.route('**/api/stays/board/units?**', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      const pair = [params.get('q'), params.get('category_ids')];
+      criteria.push(pair);
+      const response = await route.fetch();
+      const data = await response.json();
+      data.units[0].label = pair[0] === 'Орлов' && pair[1] === category ? 'Оба критерия' : 'Неполный выбор';
+      await route.fulfill({ response, json: data });
+    });
+    await page.clock.install();
+    await view.locator('#sf-q').fill('Орлов');
+    await box.check();
+    await page.clock.runFor(450);
+    await expect(action).toBeEnabled();
+    await action.click();
+    const print = page.frameLocator('iframe[srcdoc]');
+    await expect(print.locator('h1')).toBeAttached();
+    const summary = await print.locator('p').first().textContent();
+    expect.soft(summary).toContain('Поиск: Орлов');
+    expect.soft(summary).toContain('Категории: ' + code);
+    expect.soft(await print.locator('tbody th').filter({ hasText: 'Оба критерия' }).count()).toBeGreaterThan(0);
+    expect(criteria).toEqual([['Орлов', category]]);
+  });
+
+  test('сброс отменяет поиск из прежней панели', async ({ page }) => {
+    await login(page, 'admin');
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    const search = view.locator('#sf-q');
+    await expect(search).toBeVisible();
+    const queries = [];
+    page.on('request', req => {
+      if (req.url().includes('/api/stays/board/units?')) queries.push(new URL(req.url()).searchParams.get('q'));
+    });
+    await page.clock.install();
+    for (const redraw of [true, false]) {
+      queries.length = 0;
+      await search.fill('Орлов');
+      if (redraw) await view.locator('#sb-sort').selectOption('label');
+      await view.locator('#sf-reset').click();
+      await page.clock.runFor(450);
+      await expect(view.locator('#sb-print')).toBeEnabled();
+      expect(await search.inputValue()).toBe('');
+      expect(queries).toEqual([null]);
+    }
+  });
+
+  test('запоздавшая шахматка не возвращает печать поверх новой вкладки', async ({ page }) => {
+    await login(page, 'admin');
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await expect(view.locator('#sb-print')).toBeEnabled();
+
+    let releaseBoard, markBoardStarted;
+    const boardGate = new Promise(resolve => { releaseBoard = resolve; });
+    const boardStarted = new Promise(resolve => { markBoardStarted = resolve; });
+    await page.route('**/api/stays/board/units?**', async route => {
+      markBoardStarted();
+      await boardGate;
+      await route.continue();
+    });
+
+    let releaseFund, markFundsStarted;
+    const fundGate = new Promise(resolve => { releaseFund = resolve; });
+    const fundsStarted = new Promise(resolve => { markFundsStarted = resolve; });
+    let fundRequests = 0;
+    const holdFund = async route => {
+      if (++fundRequests === 2) markFundsStarted();
+      await fundGate;
+      await route.continue();
+    };
+    await page.route('**/api/stays/fund', holdFund);
+    await page.route('**/api/stays/fund/snapshot?**', holdFund);
+
+    try {
+      await view.locator('#sm-next').click();
+      await boardStarted;
+      await tab(page, 'day').click();
+      await fundsStarted;
+      const oldResponse = page.waitForResponse(r => r.url().includes('/api/stays/board/units?'));
+      releaseBoard();
+      await oldResponse;
+      await page.waitForTimeout(200); // дать старому async-render дойти до возможного commit
+      await expect(view.locator('[data-stab].btn-primary')).toHaveText('Табло дня');
+      await expect(view.locator('#sb-print')).toHaveCount(0);
+    } finally {
+      releaseBoard();
+      releaseFund();
+    }
+  });
+
+  test('показывает код категории за выбранный прошлый месяц', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await expect(view.locator('#sb-print')).toBeEnabled();
+    let expected;
+    await page.route('**/api/stays/board/units?**', async route => {
+      const response = await route.fetch();
+      const data = await response.json();
+      const unit = data.units[0];
+      unit.category = 'OLD';
+      unit.categories = [{ from: data.days[0], category_id: unit.category_id, code: 'OLD' },
+        { from: data.days[14], category_id: unit.category_id, code: 'NEW' }];
+      expected = 'OLD → NEW с 15.' + data.days[14].slice(5, 7);
+      await route.fulfill({ response, json: data });
+    });
+    await view.locator('#sm-prev').click();
+    await expect(view.locator('#sb-print')).toBeEnabled();
+    await view.locator('#sb-grouped').uncheck();
+    expect.soft(await view.locator('.sb-change').allTextContents()).toContain(expected);
+    await view.locator('#sb-print').click();
+    const table = page.frameLocator('iframe[srcdoc]').locator('table');
+    await expect(table).toBeAttached();
+    expect(await table.textContent()).toContain(expected);
+  });
+
+  test('ждёт выбранный фильтр перед печатью', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    const action = view.getByRole('button', { name: 'Печать', exact: true });
+    await expect(action).toBeEnabled();
+    const prints = [];
+    page.on('request', req => { if (req.url().endsWith('/api/docs/print')) prints.push(req); });
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    await page.route('**/api/stays/board/units?**', async route => {
+      await pending;
+      await route.continue();
+    });
+    const search = view.locator('#sf-q');
+    const isSearch = req => req.url().includes('/api/stays/board/units?')
+      && new URL(req.url()).searchParams.get('q') === 'Орлов';
+    const requested = page.waitForRequest(isSearch);
+    const response = page.waitForResponse(isSearch);
+    try {
+      await search.fill('Орлов');
+      expect.soft(await action.isDisabled(), 'пока ввод ожидает отправки').toBe(true);
+      await requested;
+      await action.click({ force: true });
+      expect.soft(await action.isDisabled(), 'пока запрос не завершён').toBe(true);
+      // Локальная сортировка также не должна активировать устаревший ответ.
+      await view.locator('#sb-sort').selectOption('label');
+      expect.soft(await action.isDisabled()).toBe(true);
+    } finally {
+      release();
+    }
+    await response;
+    await expect(action).toBeEnabled();
+    await action.click();
+    const frames = page.locator('iframe[srcdoc]');
+    await expect(frames.last().contentFrame().locator('p').first()).toContainText('Поиск: Орлов');
+    expect(prints).toHaveLength(1);
+  });
+
+  test('печатает смены обозначения и категории с датами доски', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    const cats = await page.evaluate(async () => {
+      const { staysFund } = await import('/static/js/modules/stays.js');
+      return (await staysFund()).categories.slice(0, 2);
+    });
+    let mm;
+    await page.route('**/api/stays/board/units?**', async route => {
+      const response = await route.fetch();
+      const data = await response.json();
+      mm = data.days[0].slice(5, 7);
+      const unit = data.units[0];
+      Object.assign(unit, { label: 'Дом 7', category: cats[0].code, category_id: cats[0].id,
+        labels: [{ from: data.days[0], label: 'Дом 7' }, { from: data.days[10], label: 'Дом <17>' }],
+        categories: [{ from: data.days[0], category_id: cats[0].id },
+          { from: data.days[18], category_id: cats[1].id }] });
+      await route.fulfill({ response, json: data });
+    });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await view.locator('#sb-grouped').uncheck();
+    const rename = `Дом 7 → Дом <17> с 11.${mm}`;
+    const reclassify = `${cats[0].code} → ${cats[1].code} с 19.${mm}`;
+    const screen = view.locator('.sb-change').filter({ hasText: rename });
+    await expect(screen).toContainText(reclassify);
+    await view.getByRole('button', { name: 'Печать', exact: true }).click();
+    const caption = page.frameLocator('iframe[srcdoc]').locator('tbody th').filter({ hasText: 'Дом 7' }).first();
+    await expect(caption).toBeVisible();
+    const printed = await caption.textContent();
+    expect.soft(printed).toContain(rename);
+    expect.soft(printed).toContain(reclassify);
+  });
+
+  test('печатает все критерии сохранённого набора без данных гостей', async ({ page }) => {
+    await login(page, 'sluzhba');
+    await page.addInitScript(() => { window.print = () => {}; });
+    const category = await page.evaluate(async () => {
+      const { staysFund, staysState } = await import('/static/js/modules/stays.js');
+      const { staysSaveFilter } = await import('/static/js/modules/stays_filters.js');
+      const cat = (await staysFund()).categories[0];
+      staysSaveFilter('Прежний фонд', { category_ids: [cat.id, 8012345], kind_ids: [8012346, 8012347] });
+      Object.assign(staysState.filters, { q: 'скрытая фамилия', special: true, vip_code_ids: [8012348] });
+      return cat.code;
+    });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await view.locator('#sf-saved').selectOption('Прежний фонд');
+    await expect(view.locator('.chip', { hasText: '8012347' })).toBeVisible();
+    await view.getByRole('button', { name: 'Печать', exact: true }).click();
+    const frame = page.frameLocator('iframe[srcdoc]');
+    const filters = frame.locator('p').first();
+    await expect(filters).toContainText(category);
+    const printed = await filters.textContent();
+    for (const id of ['8012345', '8012346', '8012347']) expect.soft(printed).toContain(id);
+    expect(await frame.locator('html').evaluate(el => el.outerHTML)).not.toMatch(/8012348|VIP|◆|скрытая фамилия/i);
+  });
+  for (const [loginName, level] of [['admin', 'full'], ['ivanov', 'names'], ['sluzhba', 'occupancy']]) {
+    test(level, async ({ page }) => {
+      await login(page, loginName);
+      // Headless Chromium может мгновенно закрыть диалог. Управляем только его закрытием.
+      await page.addInitScript(() => { window.print = () => { window.printInvoked = true; }; });
+      let category;
+      await page.route('**/api/stays/board/units?**', async route => {
+        const response = await route.fetch();
+        const data = await response.json();
+        expect(data.visibility).toBe(level);
+        category = data.units[0].category_id;
+        const filtered = new URL(route.request().url()).searchParams.has('category_ids');
+        data.units[0].label = filtered ? 'Вилла на склоне' : 'Из нефильтрованной доски';
+        const start = data.days[2], end = data.days[4];
+        const pos = iso => (Date.parse(iso) / 86400000 + 719163) * 2;
+        // Лишние поля даже у младших ролей: печать сама выбирает разрешённые данные.
+        data.bars = [{ unit_id: data.units[0].unit_id, start, end, start_pos: pos(start) + 1,
+          end_pos: pos(end), status: 'confirmed', guests_count: 7, reservation_id: 981234567,
+          main_guest: 'Гость <Тест>', number: 'RES-PRINT-78', vip_code: 'VIP-PRINT', special: true,
+          customer: 'Заказчик-Свидетель', note: 'Закрытая заметка' }];
+        data.bars.push({ ...data.bars[0], unit_id: null, guests_count: 2 });
+        data.holds = [{ ...data.bars[0], kind: 'ooo', title: 'Замена окон' }];
+        data.blocks = [{ ...data.bars[0], title: 'Конгресс' }];
+        await route.fulfill({ response, json: data });
+      });
+      await page.evaluate(async () => {
+        const { staysState } = await import('/static/js/modules/stays.js');
+        Object.assign(staysState.filters, { q: 'частный поиск', special: true, vip_code_ids: [1] });
+      });
+      await open(page, 'stays');
+      const view = page.locator('#view-stays');
+      await expect(view.locator('.sb-grid')).toBeVisible();
+      const action = view.getByRole('button', { name: 'Печать', exact: true });
+      await expect(action).toBeVisible();
+      expect(await action.evaluate(el => el.previousElementSibling.id)).toMatch(/^sb-xlsx-(anon|full)$/);
+      const label = view.locator('#sm-label');
+      const previous = (await label.textContent()).trim();
+      await view.locator('#sm-next').click();
+      await expect(label).not.toHaveText(previous);
+      const month = (await label.textContent()).trim();
+      await view.locator('[data-sf-dd=cat] summary').click();
+      const box = view.locator(`[data-sf-cat="${category}"]`);
+      const code = (await box.locator('..').innerText()).trim();
+      await box.check();
+      await expect(view.locator('[data-sf-dd=cat] summary b')).toHaveText(code);
+      const reads = [];
+      page.on('request', req => { if (req.url().includes('/api/stays/')) reads.push(req.url()); });
+      await page.evaluate(() => {
+        window.addEventListener('message', ({ source, data, origin }) => {
+          if (data?.butler_print_done !== true) return;
+          const frame = document.querySelector('iframe[srcdoc]');
+          window.printDone = !!frame && source === frame.contentWindow && origin === location.origin;
+        });
+      });
+      await action.click();
+      const frame = page.frameLocator('iframe[aria-hidden=true][srcdoc]');
+      await expect(frame.locator('h1')).toContainText(month);
+      await expect(frame.locator('p', { hasText: 'Категории' })).toContainText(code);
+      await expect(frame.locator('table')).toContainText('Вилла на склоне');
+      const booking = frame.getByRole('row').filter({ hasText: '7 гост.' });
+      await expect(booking).toContainText('Вилла на склоне');
+      await expect(booking.locator('td').nth(3)).toHaveText('◑');
+      await expect(booking.locator('td').nth(4)).toHaveText('●');
+      await expect(booking.locator('td').nth(5)).toHaveText('◐');
+      await expect(frame.locator('table')).toContainText('Не распределено');
+      await expect(frame.locator('table')).toContainText('2 гост.');
+      await expect(frame.locator('table')).toContainText('OOO');
+      await expect(frame.locator('table')).toContainText('Блок');
+      const dayCount = await view.locator('.sb-head [data-day]').count();
+      await expect(frame.locator('thead th').last()).toHaveText(String(dayCount));
+      const markup = await frame.locator('html').evaluate(el => el.outerHTML);
+      expect(markup).not.toMatch(/981234567|Из нефильтрованной доски/);
+      if (level === 'occupancy') {
+        expect(markup).not.toMatch(/Гость &lt;Тест|RES-PRINT|VIP|◆|особый гость|частный поиск|Конгресс|Замена окон/i);
+      } else {
+        await expect(frame.locator('p', { hasText: 'Категории' })).toContainText('частный поиск');
+        await expect(frame.locator('table')).toContainText('Гость <Тест>');
+        expect(markup).toContain('RES-PRINT-78');
+        expect(markup).toContain('VIP-PRINT');
+        expect(markup).toContain('◆');
+      }
+      for (const field of ['Заказчик-Свидетель', 'Закрытая заметка']) {
+        expect(markup.includes(field)).toBe(level === 'full');
+      }
+      await expect.poll(() => frame.locator('html').evaluate(() => window.printInvoked)).toBe(true);
+      await frame.locator('html').evaluate(() => window.dispatchEvent(new Event('afterprint')));
+      await expect(page.locator('iframe[srcdoc]')).toHaveCount(0);
+      expect(await page.evaluate(() => window.printDone)).toBe(true);
+      expect(reads).toEqual([]);
+    });
+  }
+});
+
 test('вкладки по правам и шахматка объектов: сетка, разделы дерева, сортировка', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'admin');

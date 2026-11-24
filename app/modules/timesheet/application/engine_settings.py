@@ -135,7 +135,7 @@ def period_state_of(db: Session, start: dt.date) -> dict:
 def publish(db: Session, principal: Principal, data: SettingsIn) -> dict:
     """Опубликовать новую версию справочников: проверки ввода, затем запись версии."""
     try:
-        st = from_payload(data.payload)
+        st = from_payload(data.payload, strict_step=True)
         validate_settings(st)
     except ConfigError as exc:
         # редактор проверяет ВВОД пользователя → 422; общий перевод ConfigError в 409

@@ -24,14 +24,7 @@ export const staysFilterOpen = new Set();   // раскрытые списки �
    чекбоксы занимали весь первый экран до самой доски. Состояние — на уровне модуля,
    переживает перерисовки вида (сбрасывается сменой пользователя). */
 let sfPanelOpen = false;
-/* набираемый поиск: перерисовка вида после паузы не отнимает фокус и не теряет символы,
-   набранные, пока шёл запрос (сбрасывается при смене пользователя) */
-let staysSearchDraft = null;         // { value, caret }
-/* чтение и запись черновика поиска для файлов раздела: staysSearchState() — прочитать, staysSearchState(v) — записать */
-export function staysSearchState(...args) {
-  if (args.length) staysSearchDraft = args[0];
-  return staysSearchDraft;
-}
+let searchTimer;
 
 /* смена пользователя устройства (resetUserViewState, app.js): ничего от прежнего не остаётся */
 export function staysResetUserState() {
@@ -43,7 +36,7 @@ export function staysResetUserState() {
   Object.assign(staysOoo, staysOooEmpty());
   staysFilterOpen.clear();
   sfPanelOpen = false;
-  staysSearchDraft = null;
+  clearTimeout(searchTimer);
 }
 
 /* ─────────────── Сохранённые наборы ─────────────── */
@@ -129,9 +122,13 @@ let lastSavedName = '';           // имя только что сохранён
 
 /* people — фильтры по гостям (поиск, VIP); уровню occupancy их не показываем: сервер их
    для него не применяет. Шаблон: панель встраивается прямо в вид. */
-export function filterPanelTemplate(fund, filters, onChange, { people = true } = {}) {
+export function filterPanelTemplate(fund, filters, onChange, { people = true, onSearchInput } = {}) {
   const f = staysCleanFilters(filters);
-  const emit = patch => { lastSavedName = ''; onChange({ ...f, ...patch }); };
+  const emit = (patch, savedName = '') => {
+    clearTimeout(searchTimer);
+    lastSavedName = savedName;
+    onChange({ ...staysState.filters, ...patch });
+  };
   const list = (key, field, cast, title, items, chosen) => {
     const picked = items.filter(i => chosen.includes(i.value)).map(i => i.label);
     return html`<details class="sf-dd" data-sf-dd=${key} ?open=${staysFilterOpen.has(key)}
@@ -170,19 +167,23 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true } =
     ${people ? f.vip_code_ids.map(id => chip(titleOf(vipItems, id), () => emit({ vip_code_ids: f.vip_code_ids.filter(x => x !== id) }))) : nothing}`;
   const activeCount = f.group_ids.length + f.category_ids.length + f.flag_ids.length + f.kind_ids.length
     + (f.escorted ? 1 : 0) + (people && f.special ? 1 : 0) + f.vip_code_ids.length;
-  let timer = null;
   return html`<div class="sb-toolbar sf-bar">
     <button class="btn btn-sm sf-toggle only-mobile" aria-expanded=${sfPanelOpen ? 'true' : 'false'}
       @click=${e => { sfPanelOpen = !sfPanelOpen; e.target.closest('.sf-bar').nextElementSibling.classList.toggle('open', sfPanelOpen);
         e.target.setAttribute('aria-expanded', String(sfPanelOpen)); }}>
       Фильтры${activeCount ? html` <b>(${activeCount})</b>` : nothing}</button>
     ${chips}
-    ${people ? html`<input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" .value=${staysSearchDraft?.value ?? f.q}
+    ${people ? html`<input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" .value=${f.q}
+        @stays-search=${() => emit({})}
         @input=${e => {
-          staysSearchDraft = { value: e.target.value, caret: e.target.selectionStart };
-          clearTimeout(timer);
-          const value = e.target.value;
-          timer = setTimeout(() => emit({ q: value }), 350);
+          const input = e.currentTarget;
+          staysState.filters = { ...staysState.filters, q: input.value };
+          onSearchInput?.();
+          clearTimeout(searchTimer);
+          // После перерисовки событие получит текущий обработчик панели.
+          searchTimer = setTimeout(() => {
+            if (input.isConnected) input.dispatchEvent(new Event('stays-search'));
+          }, 350);
         }}>` : nothing}
   </div>
   <div class="sb-toolbar sf-panel${sfPanelOpen ? ' open' : ''}">
@@ -199,26 +200,28 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true } =
         if (STAYS_SORTS.some(([v]) => v === sort.by)) staysState.sort.by = sort.by;
         if (sort.dir === 'asc' || sort.dir === 'desc') staysState.sort.dir = sort.dir;
         if (typeof sort.grouped === 'boolean') staysState.sort.grouped = sort.grouped;
-        lastSavedName = '';
-        onChange({ ...staysCleanFilters(s.filters), q: f.q, special: f.special, vip_code_ids: f.vip_code_ids });
+        const { q, special, vip_code_ids } = staysState.filters;
+        emit({ ...staysCleanFilters(s.filters), q, special, vip_code_ids });
       }}><option value="">Наборы…</option>${saved.map(s => html`<option value=${s.name} ?selected=${s.name === lastSavedName}>${s.name}</option>`)}</select>
     ${saved.length ? html`<button class="btn btn-sm btn-ghost" id="sf-del" title="Удалить выбранный набор" @click=${e => {
         const name = e.target.closest('.sf-panel').querySelector('#sf-saved').value;
         if (!name) { toast('Выберите набор в списке', 'warn'); return; }
         staysDeleteFilter(name);
-        lastSavedName = '';
-        onChange(f);
+        emit({});
       }}>✕</button>` : nothing}
     <input type="text" id="sf-save-name" placeholder="имя набора" maxlength="60">
     <button class="btn btn-sm btn-ghost" id="sf-save" @click=${e => {
         const name = e.target.closest('.sf-panel').querySelector('#sf-save-name').value.trim();
         if (!name) { toast('Введите имя набора', 'warn'); return; }
-        if (!staysSaveFilter(name, f)) { toast('Браузер не даёт сохранить набор', 'warn'); return; }
+        if (!staysSaveFilter(name, staysState.filters)) { toast('Браузер не даёт сохранить набор', 'warn'); return; }
         toast('Набор «' + name + '» сохранён');
-        lastSavedName = name;
-        onChange(f);
+        emit({}, name);
       }}>Сохранить набор</button>
-    <button class="btn btn-sm btn-ghost" id="sf-reset" @click=${() => { staysSearchDraft = null; lastSavedName = ''; onChange(staysEmptyFilters()); }}>Сбросить</button>
+    <button class="btn btn-sm btn-ghost" id="sf-reset" @click=${e => {
+        const input = e.currentTarget.closest('[data-lit-root]').querySelector('#sf-q');
+        if (input) input.value = '';
+        emit(staysEmptyFilters());
+      }}>Сбросить</button>
     </div>
   </div>`;
 }

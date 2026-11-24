@@ -10,7 +10,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.fund.application.fund_versions import CategoryInfo, FundTimeline, boundary_pos, fund_for
+from app.modules.fund.application.fund_versions import (
+    CategoryInfo,
+    FundTimeline,
+    boundary_pos,
+    fund_for,
+    version_cuts,
+)
 from app.modules.guests.application.catalog import Guest, VipCode
 from app.modules.guests.application.guests import short_name
 from app.modules.people.application.catalog import Employee
@@ -193,16 +199,24 @@ def _line_rows(db: Session, first: dt.date, last: dt.date) -> list[Line]:
                  r.overnight) for r in rows]
 
 
-def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | None) -> StaysContext:
+def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | None, *,
+                 fund_window_only: bool = False) -> StaysContext:
     """Брони, ночующие в [first, last], их сегменты, объекты, гости, строки покрытия, список
     «Сопровождают гостей» и График (если передан duty) — пакетно."""
     st = get_settings(db)
     res = {r.id: r for r in db.scalars(select(Reservation).where(
         Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in <= last, Reservation.check_out > first).order_by(Reservation.id))}
-    # фонд — с дня до самого раннего заезда по самый поздний выезд: его границы режут сегменты на
-    # части так же, как у распределения, без отдельного запроса границ (бюджет SQL табло дня)
-    fund = fund_for(db, min([first, *(r.check_in for r in res.values())]) - dt.timedelta(days=1),
-                    max([last, *(r.check_out for r in res.values())]))
+    stay_first = min((r.check_in for r in res.values()), default=first)
+    stay_last = max((r.check_out for r in res.values()), default=last)
+    if fund_window_only:
+        # Выгрузка использует снимки фонда только для запрошенных дней. Индексы частей
+        # сохраняются благодаря датам границ по всему сроку выбранных броней.
+        fund = fund_for(db, first, last)
+        cuts = version_cuts(db, (stay_first, stay_last)) if res else []
+    else:
+        # Для табло дня широкий фонд даёт границы без отдельного запроса.
+        fund = fund_for(db, min(first, stay_first) - dt.timedelta(days=1), max(last, stay_last))
+        cuts = [boundary_pos(d) for d in fund.boundaries()]
     rids = list(res)
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
@@ -220,7 +234,6 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
     gids = {o.guest_id for os in occ.values() for o in os}
     guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
     vip_codes = {c.id: c for c in db.scalars(select(VipCode))}
-    cuts = [boundary_pos(d) for d in fund.boundaries()]
     segs = {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[rid]),
                         allocation.own_cuts(cuts, starts, rid))
             for rid, r in res.items()}

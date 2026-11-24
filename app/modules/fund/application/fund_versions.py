@@ -148,11 +148,13 @@ def fund_for_stays(db: Session, first_check_in: dt.date, last: dt.date) -> FundT
     return fund_for(db, first_check_in - dt.timedelta(days=1), last)
 
 
-def version_cuts(db: Session) -> list[int]:
-    """Границы всех опубликованных версий (позиции половинок). По ним режут сегменты на части и
-    распределение, и виды: индекс части (Assignment.seg_index) не зависит от окна чтения."""
-    return [boundary_pos(d) for d in db.scalars(
-        select(FundVersion.valid_from).where(FundVersion.status == "published"))]
+def version_cuts(db: Session, window: tuple[dt.date, dt.date] | None = None) -> list[int]:
+    """Границы опубликованных версий (позиции половинок). При чтении выбранных броней
+    достаточно интервала их проживания: индексы частей тогда совпадают с распределением."""
+    stmt = select(FundVersion.valid_from).where(FundVersion.status == "published")
+    if window is not None:
+        stmt = stmt.where(FundVersion.valid_from.between(*window))
+    return [boundary_pos(d) for d in db.scalars(stmt)]
 
 
 def _group_paths(rows: list[GroupState]) -> dict[int, GroupInfo]:

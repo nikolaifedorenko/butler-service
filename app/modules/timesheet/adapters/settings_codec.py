@@ -36,7 +36,13 @@ def _value(name: str, raw):
     return _bool(raw)
 
 
-def from_payload(payload: dict) -> Settings:
+def from_payload(payload: dict, *, strict_step: bool = False) -> Settings:
+    """Decode a stored snapshot; strict_step is reserved for new editor input.
+
+    Historic versions were persisted before ``step_minutes`` was canonicalized and
+    were always interpreted through ``int()`` on read.  Keep that compatibility for
+    calculation, while publication can validate the submitted JSON type verbatim.
+    """
     base = default_settings()
     tz = payload.get("tz") or str(base.tz)
     try:
@@ -53,7 +59,8 @@ def from_payload(payload: dict) -> Settings:
     return Settings(
         tz=tzinfo,
         period_granularity=payload.get("period_granularity", base.period_granularity),
-        step_minutes=int(payload.get("step_minutes", base.step_minutes)),
+        step_minutes=(payload.get("step_minutes", base.step_minutes) if strict_step
+                      else int(payload.get("step_minutes", base.step_minutes))),
         late_limit_minutes=int(payload.get("late_limit_minutes", base.late_limit_minutes)),
         day_limit_minutes=int(payload.get("day_limit_minutes", base.day_limit_minutes)),
         day_code_policy={code: DayCodePolicy(_bool(row["carries_hours"]), _bool(row["accepts_ut"]),

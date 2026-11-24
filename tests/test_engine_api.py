@@ -8,8 +8,11 @@ import calendar
 import datetime as dt
 
 import pytest
+from sqlalchemy import delete, select
 
 from app.core.time import local_date
+from app.modules.timesheet.adapters.orm import EngineSettingsVersion
+from app.modules.timesheet.adapters.settings_codec import from_payload
 from tests.period_ops import period_action
 
 TODAY = local_date()
@@ -275,16 +278,63 @@ def test_engine_settings_validation(admin):
     assert "CHK-STEP-DIVIDES-60" in detail and "CHK-CASCADE-FULL" in detail
 
 
-def test_engine_settings_step_not_representable(admin):
-    """Шаг 10 делит 60, но длительности непредставимы в значениях Табеля —
-    отдельная проверка CHK-STEP-REPRESENTABLE (A3, аудит 25.10.2026)."""
+@pytest.fixture
+def engine_step_version(db):
+    note = "тест: шаг расчёта"
+    try:
+        yield note
+    finally:
+        db.execute(delete(EngineSettingsVersion).where(EngineSettingsVersion.note == note))
+        db.commit()
+
+
+@pytest.mark.parametrize(("step", "code"), [
+    (15.9, "CHK-STEP-DIVIDES-60"),
+    (15.0, "CHK-STEP-DIVIDES-60"),
+    ("15", "CHK-STEP-DIVIDES-60"),
+    (True, "CHK-STEP-DIVIDES-60"),
+    (False, "CHK-STEP-DIVIDES-60"),
+    (1, "CHK-STEP-REPRESENTABLE"),
+    (2, "CHK-STEP-REPRESENTABLE"),
+    (4, "CHK-STEP-REPRESENTABLE"),
+    (5, "CHK-STEP-REPRESENTABLE"),
+    (10, "CHK-STEP-REPRESENTABLE"),
+    (20, "CHK-STEP-REPRESENTABLE"),
+])
+def test_engine_settings_rejects_invalid_steps_before_persistence(admin, db, engine_step_version, step, code):
     payload = admin.get("/api/engine-settings").json()["active"]["payload"]
-    payload["step_minutes"] = 10
+    payload["step_minutes"] = step
     r = admin.put("/api/engine-settings", json={
-        "valid_from": f"{TODAY.year}-{TODAY.month:02d}-01", "payload": payload, "note": "test"})
-    assert r.status_code == 422
+        "valid_from": TODAY.replace(day=1).isoformat(), "payload": payload, "note": engine_step_version})
+    stored = db.scalar(select(EngineSettingsVersion).where(EngineSettingsVersion.note == engine_step_version))
+    assert stored is None, (r.status_code, stored.payload["step_minutes"], from_payload(stored.payload).step_minutes)
+    assert r.status_code == 422, r.text
     detail = r.json()["detail"]
-    assert "CHK-STEP-REPRESENTABLE" in detail and "CHK-STEP-DIVIDES-60" not in detail
+    assert code in detail
+    assert "3, 6, 12, 15, 30, 60" in detail
+
+
+@pytest.mark.parametrize("step", [3, 6, 12, 15, 30, 60])
+def test_engine_settings_persists_and_decodes_the_same_integer_step(admin, db, engine_step_version, step):
+    payload = admin.get("/api/engine-settings").json()["active"]["payload"]
+    payload["step_minutes"] = step
+    r = admin.put("/api/engine-settings", json={
+        "valid_from": TODAY.replace(day=1).isoformat(), "payload": payload, "note": engine_step_version})
+    assert r.status_code == 200, r.text
+    raw = db.get(EngineSettingsVersion, r.json()["id"]).payload
+    decoded_step = from_payload(raw).step_minutes
+    assert type(raw["step_minutes"]) is type(decoded_step) is int
+    assert raw["step_minutes"] == decoded_step == step
+
+
+@pytest.mark.parametrize("legacy", [15.5, 15.0, "15"])
+def test_engine_settings_decodes_legacy_integral_step_values(legacy):
+    """Сохранённые прежними версиями payload читаются с прежней int-семантикой."""
+    payload = {"step_minutes": legacy}
+    decoded = from_payload(payload)
+    assert payload["step_minutes"] == legacy  # кодек не переписывает исторический JSON
+    assert type(decoded.step_minutes) is int
+    assert decoded.step_minutes == 15
 
 
 def test_mgmt_xlsx_export(admin, emp):

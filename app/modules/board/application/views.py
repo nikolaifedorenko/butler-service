@@ -76,7 +76,7 @@ class BoardRow:
     group_path: tuple[int, ...]
     group: str                              # путь узла названиями: «Корпус / Блок B»
     labels: list[tuple[dt.date, str]]
-    categories: list[tuple[dt.date, int]]
+    categories: list[tuple[dt.date, int, str]]
     in_fund: list[dt.date] = field(default_factory=list)       # дни периода, когда объект в фонде
     off: list[list] = field(default_factory=list)              # [первый, последний, причина]
 
@@ -130,18 +130,19 @@ def _board_rows(fund: FundTimeline, days: list[dt.date], f: BoardFilters) -> lis
                 marks[uid].append("absent")
                 continue
             marks[uid].append(None if uid in ok else "filtered")
+            category = snap.categories[u.category_id]
             row = rows.get(uid)
             if row is None:
                 path = snap.unit_path(uid)
-                rows[uid] = row = BoardRow(u, snap.categories[u.category_id], path,
+                rows[uid] = row = BoardRow(u, category, path,
                                            " / ".join(snap.path_titles(u.group_id))
                                            if path and u.group_id is not None else "",
-                                           [(d, u.label)], [(d, u.category_id)])
+                                           [(d, u.label)], [(d, category.id, category.code)])
             else:
                 if row.labels[-1][1] != u.label:
                     row.labels.append((d, u.label))
-                if row.categories[-1][1] != u.category_id:
-                    row.categories.append((d, u.category_id))
+                if row.categories[-1][1:] != (category.id, category.code):
+                    row.categories.append((d, category.id, category.code))
             row.in_fund.append(d)
     out = []
     for uid, row in rows.items():
@@ -174,11 +175,13 @@ class _Stays:
     parts: dict[int, list[Piece]]           # части сегментов (границы версий фонда)
 
 
-def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int]) -> _Stays:
+def _load_stays(db: Session, first: dt.date, last: dt.date, cuts: list[int] | None) -> _Stays:
     res = list(db.scalars(select(Reservation).where(Reservation.status.in_(allocation.OCCUPYING),
                                                     Reservation.check_in <= last,
                                                     Reservation.check_out >= first)
                          .order_by(Reservation.id)))
+    if cuts is None:
+        cuts = version_cuts(db, (min(r.check_in for r in res), max(r.check_out for r in res))) if res else []
     rids = [r.id for r in res]
     moves: dict[int, list] = {rid: [] for rid in rids}
     asg: dict[tuple[int, int], int | None] = {}
@@ -224,14 +227,14 @@ def _load(row: BoardRow, occupied: dict[tuple[int, dt.date], int]) -> float:
 
 
 def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level,
-                mine_ids: set[int] | None = None) -> dict:
+                mine_ids: set[int] | None = None, *, include_overlays: bool = True) -> dict:
     days = check_window(first, last)
     f = f.for_level(level)
     fund = fund_for(db, first, last)
     units = _board_rows(fund, days, f)
     unit_ids = {u.id for u in units}
-    visible_cats = {cid for u in units for _, cid in u.categories}
-    cuts = version_cuts(db)
+    visible_cats = {cid for u in units for _, cid, _ in u.categories}
+    cuts = version_cuts(db) if include_overlays else None
     st = _load_stays(db, first, last, cuts)
     res, asg, occ = st.res, st.asg, st.occ
     occupied = _occupied(st, first, last)
@@ -250,7 +253,9 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     on_duty: dict[int, list[str]] = {}
     if names and first <= today <= last:
         on_duty = butlers_on(db, today, res, st.parts, asg, occ, guests, fund)
-    state = allocation.current_state(db)          # слоты блоков и овербукинг — из распределения
+    # Выгрузке нужны только объекты и брони периода. Слоты блоков, OOO и овербукинг
+    # нужны экрану шахматки и требуют расчёта распределения за пределами периода.
+    state = allocation.current_state(db) if include_overlays else None
 
     bars = []
     for r in res:
@@ -280,7 +285,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
             uid = asg.get((r.id, p0.index))
             if uid not in unit_ids and not (uid is None and p0.category_id in visible_cats):
                 continue
-            over = uid is None and _is_overbooked(state, r.id, p0.start_pos, p1.end_pos)
+            over = uid is None and state is not None and _is_overbooked(state, r.id, p0.start_pos, p1.end_pos)
             bar = serialize_bar({**base, "seg_index": p0.index, "unit_id": uid, "category_id": p0.category_id,
                                  "overbooked": over,
                                  "start": _d(p0.start), "end": _d(p1.end), "start_pos": p0.start_pos,
@@ -290,15 +295,17 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                 bar["mine"] = r.id in mine_ids          # батлеру — рамка своих броней (часть 4 §6)
             bars.append(bar)
 
-    holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
-              "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
-              # причина OOO — без персональных данных: видна всем уровням
-              "title": h.reason,
-              **dict(zip(("start_pos", "end_pos"), ooo_span(h.start, h.start_half, h.end, h.end_half), strict=True))}
-             for h in db.scalars(select(Ooo).where(Ooo.start <= last, Ooo.end >= first))
-             if h.unit_id in unit_ids]
+    holds = []
+    if include_overlays:
+        holds = [{"id": h.id, "unit_id": h.unit_id, "start": _d(h.start), "end": _d(h.end), "kind": "ooo",
+                  "start_half": h.start_half, "end_half": h.end_half, "version": h.version,
+                  # причина OOO — без персональных данных: видна всем уровням
+                  "title": h.reason,
+                  **dict(zip(("start_pos", "end_pos"), ooo_span(h.start, h.start_half, h.end, h.end_half), strict=True))}
+                 for h in db.scalars(select(Ooo).where(Ooo.start <= last, Ooo.end >= first))
+                 if h.unit_id in unit_ids]
     warnings = []
-    if names:
+    if names and state is not None:
         shown = {b["reservation_id"] for b in bars}
         shown_holds = {("h", h["id"]) for h in holds}
         # нехватка блока (block_short) — без броней: по ночам периода и категории фильтра
@@ -313,11 +320,12 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
             "units": [{"unit_id": u.id, "label": u.label,
                        "labels": [{"from": _d(d), "label": lb} for d, lb in u.labels],
                        "category_id": u.info.category_id, "category": u.category.code,
-                       "categories": [{"from": _d(d), "category_id": cid} for d, cid in u.categories],
+                       "categories": [{"from": _d(d), "category_id": cid, "code": code}
+                                      for d, cid, code in u.categories],
                        "group_path": list(u.group_path), "group": u.group, "floor": u.info.floor,
                        "flags": sorted(u.info.flags), "load": _load(u, occupied), "off": u.off}
                       for u in units],
-            "bars": bars, "holds": holds, "blocks": _block_bars(db, state, unit_ids, first, last),
+            "bars": bars, "holds": holds, "blocks": _block_bars(db, state, unit_ids, first, last) if state is not None else [],
             "warnings": warnings}
 
 

@@ -145,8 +145,8 @@ CONFIG_TITLES = {
     "CHK-CASCADE-FULL": "Порядок каскада неполный",
     "CHK-PLACEMENT-FULL": "Порядок размещения неполный",
     "CHK-WEIGHTS-POSITIVE": "Некорректный вес кода УТ",
-    "CHK-STEP-DIVIDES-60": "Шаг расчёта не делит час без остатка",
-    "CHK-STEP-REPRESENTABLE": "Шаг расчёта: длительности непредставимы в значениях Табеля",
+    "CHK-STEP-DIVIDES-60": "Недопустимый шаг расчёта",
+    "CHK-STEP-REPRESENTABLE": "Шаг расчёта должен быть кратен 3 минутам",
     "CHK-GRID": "Граница не кратна шагу расчёта",
     "CHK-DEFAULTS": "Не задан глобальный дефолт модификатора",
     "CHK-MODIFIER-SCOPE": "Недопустимая область действия правила",
@@ -251,13 +251,12 @@ def config_violation_text(code: str, data: Any = None) -> str:
     if code == "CHK-WEIGHTS-POSITIVE":
         return (f"{title}: «{data.get('code')}» = {data.get('weight')} — нужно целое "
                 "число больше нуля")
-    if code == "CHK-STEP-DIVIDES-60":
-        return (f"{title}: шаг {data.get('step_minutes')} мин — допустимы 1, 2, 3, 4, 5, 6, "
-                "10, 12, 15, 20, 30, 60")
-    if code == "CHK-STEP-REPRESENTABLE":
-        return (f"{title}: шаг {data.get('step_minutes')} мин — значение Табеля пишется сотыми "
-                "долями часа (0,01 ч = 0,6 мин): длительности, кратные такому шагу, непредставимы. "
-                "Шаг обязан быть кратен 3 минутам (например, 15, 30, 60)")
+    if code in ("CHK-STEP-DIVIDES-60", "CHK-STEP-REPRESENTABLE"):
+        message = (f"{title}. Получено {data.get('step_minutes')!r}. "
+                   "Допустимые целые значения — 3, 6, 12, 15, 30, 60 мин")
+        if code == "CHK-STEP-REPRESENTABLE":
+            message += ". Кратность 3 минутам позволяет точно выражать длительности в сотых долях часа"
+        return message
     if code == "CHK-DEFAULTS":
         name = MODIFIER_TITLES.get(data.get("modifier"), data.get("modifier"))
         extra = (f" (получено {data['value']!r})" if "value" in data else

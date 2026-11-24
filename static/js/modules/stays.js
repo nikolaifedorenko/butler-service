@@ -24,6 +24,7 @@ import {
 } from './stays_forms.js';
 import { renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
 import { filterPanelTemplate, STAYS_SORTS, staysSortRows } from './stays_filters.js';
+import { printStaysBoard } from './stays_print.js';
 import { paletteRegister } from '../ui/palette.js';
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
@@ -149,11 +150,20 @@ export async function loadStays() {
       @click=${() => { staysState.tab = id; loadStays(); }}>${t}</button>`)}</div>
     <div id="stays-body"></div>`, mount(host));
   const body = $('#stays-body', host);
+  // Вкладки переиспользуют один #stays-body: инвалидируем async-render прежней вкладки
+  // до ожидания фонда, иначе её запоздавший ответ мог вернуть действия поверх скелетона новой.
+  loadGenerationFor(body);
+  const loadGen = String((Number(body.dataset.staysLoadGen) || 0) + 1);
+  body.dataset.staysLoadGen = loadGen;
+  const fresh = () => body.dataset.staysLoadGen === loadGen;
+  const tab = staysState.tab;
   render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(body));
   try {
     await staysFund(true);          // фонд меняют в Настройках — при каждом открытии раздела заново
-    await staysTabRender(staysState.tab)(body);
+    if (!fresh() || tab !== staysState.tab) return;
+    await staysTabRender(tab)(body);
   } catch (e) {
+    if (!fresh()) return;
     render(html`<div class="panel"><p class="muted">${e.message}</p></div>`, mount(body));
   }
 }
@@ -222,11 +232,11 @@ export const staysDayHeadView = (d, today) => {
 export function staysColor(c) { return /^#[0-9a-f]{3,8}$/i.test(c || '') ? c : '#999'; }
 
 /* «4003 → 4103 с 15.11» — смена обозначения и категории внутри месяца (§6) */
-function staysRowChanges(u, cats) {
+export function staysRowChanges(u, cats) {
   const ddmm = iso => `${iso.slice(8)}.${iso.slice(5, 7)}`;
   const chain = (items, name) => items.length > 1
     ? items.map((x, i) => (i ? ` → ${name(x)} с ${ddmm(x.from)}` : name(x))).join('') : '';
-  return [chain(u.labels, x => x.label), chain(u.categories, x => cats[x.category_id]?.code || '#' + x.category_id)]
+  return [chain(u.labels, x => x.label), chain(u.categories, x => x.code ?? cats[x.category_id]?.code ?? '#' + x.category_id)]
     .filter(Boolean).join(' · ');
 }
 
@@ -256,11 +266,18 @@ function blockBarTemplate(b, base, span) {
 }
 
 async function renderUnitsBoard(body) {
-  const fund = await staysFund();
   /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
      (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
   const fresh = loadGenerationFor(body);
-  const data = await api('/api/stays/board/units?' + staysBoardParams(), { silent: true });
+  const disablePrint = () => {
+    const action = $('#sb-print', body);
+    if (action) action.disabled = true;
+  };
+  disablePrint();
+  const filters = staysState.filters;
+  const monthLabel = `${MONTHS[state.month - 1]} ${state.year}`;
+  const [fund, data] = await Promise.all([staysFund(),
+    api('/api/stays/board/units?' + staysBoardParams(), { silent: true })]);
   if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
   const byUnit = {};
@@ -271,7 +288,11 @@ async function renderUnitsBoard(body) {
   data.blocks.forEach(b => { (blocksBy[b.unit_id] ||= []).push(b); });
   const rerender = () => renderUnitsBoard(body);
   const st = staysState.sort;
-  const draw = () => render(unitsTemplate(), mount(body));
+  const canPrint = () => fresh() && (!names || $('#sf-q', body)?.value.trim() === filters.q.trim());
+  const draw = () => {
+    render(unitsTemplate(), mount(body));
+    $('#sb-print', body).disabled = !canPrint();
+  };
   const xlsx = kind => () => {
     const { first, last } = staysMonthRange();
     downloadBlob('/api/stays/export?' + new URLSearchParams({ first, last, kind }), `shakhmatka_${kind}_${first}.xlsx`);
@@ -308,9 +329,11 @@ async function renderUnitsBoard(body) {
         @change=${e => { st.grouped = e.target.checked; draw(); }}> группировать по дереву</label>
       <button class="btn btn-sm btn-ghost" id="sb-xlsx-anon" title="Объекты, даты, статусы, число гостей — без данных гостей" @click=${xlsx('anon')}>Выгрузить (без гостей)</button>
       ${can('stays.export') && can('stays.guests') ? html`<button class="btn btn-sm btn-ghost" id="sb-xlsx-full" @click=${xlsx('full')}>Выгрузить полностью</button>` : nothing}
+      <button class="btn btn-sm btn-ghost" id="sb-print" @click=${() => canPrint() && printStaysBoard(
+        { ...data, units: staysSortRows(data.units, st, fund) }, fund, filters, data.visibility, monthLabel)}>Печать</button>
       ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary hide-mobile" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}
     </div>
-    ${staysFilterView(fund, rerender, { people: names })}
+    ${staysFilterView(fund, rerender, { people: names, onSearchInput: disablePrint })}
     ${data.warnings.length ? html`<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}
     <div class="sb-grid" tabindex="0" style=${`--days:${data.days.length}`} @click=${gridClick}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
     ${(byUnit.none || []).length ? html`<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
