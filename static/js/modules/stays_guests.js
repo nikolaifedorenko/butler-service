@@ -14,6 +14,7 @@
 
 import { can, registerModule } from '../app.js';
 import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
+import { registerPaletteProvider } from '../registry.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { STAYS_LINK, openGuestCard, openGuestForm } from './stays_forms.js';
 import { STAYS_SPECIAL_MARK, staysGuestMarkView } from './stays.js';
@@ -43,6 +44,17 @@ export function staysGuestsResetUserState() {
 }
 
 registerModule({ views: { guests: loadGuests } });
+registerPaletteProvider({
+  id: 'guests',
+  icon: 'guests',
+  hint: 'гость',
+  async search(query, signal) {
+    const guests = await api(`/api/stays/guests?q=${encodeURIComponent(query)}${can('stays.guests') ? '' : '&mine=1'}`,
+      { silent: true, signal });
+    return guests.map(guest => ({ ...guest, title: guest.short, hint: 'гость', icon: 'guests' }));
+  },
+  activate(guest) { openGuestCard(guest.id); },
+});
 
 /* раздел «Гости»: полный уровень — справочник; батлер — панель создания (гость сразу «свой») */
 async function loadGuests() {

@@ -13,7 +13,7 @@ import { $, $$, adoptAuthContext, api, authContextIsCurrent, authContextSnapshot
   subscribeAuthContext, subscribeSessionRejection, syncServerClock, toast, todayISO } from './core.js';
 import { html, mount, nothing, render } from './ui/html.js';
 import { MODULE_SCREENS, MODULE_VIEWS, registerModule } from './registry.js';
-import { close as closePalette, paletteBoot, paletteInit } from './ui/palette.js';
+import { close as closePalette, paletteBoot, paletteInit, togglePalette } from './ui/palette.js';
 import { carsState } from './modules/cars.js';
 import { nightState } from './modules/night.js';
 import { settingsUI } from './modules/settings.js';
@@ -495,6 +495,12 @@ Object.assign(window, { navigate, state, toast, openModal });
 /* Точка входа для сквозных тестов (Playwright) и отладки в консоли браузера: остальные имена модулей
    снаружи не видны. Код интерфейса этими свойствами не пользуется. */
 Object.assign(window, { navigate, state, toast, openModal });
-paletteInit({ menu: () => (state.menu || []), navigate });
+paletteInit({ menu: visibleTabs, navigate });
 paletteBoot();
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    togglePalette();
+  }
+});
 bootApp();

@@ -8,8 +8,9 @@
 'use strict';
 
 import {
-  $, api, authContextIsCurrent, authContextSnapshot, pushOverlay, removeOverlay, state, toast,
+  $, authContextIsCurrent, authContextSnapshot, pushOverlay, removeOverlay, state,
 } from '../core.js';
+import { paletteProviders } from '../registry.js';
 import { html, mount, render } from './html.js';
 
 /* действия модулей: {id, title, hint, run, when?} — when() решает видимость по правам */
@@ -19,9 +20,11 @@ export function paletteRegister(action) { actions = [...actions.filter(a => a.id
 let open = false;
 let query = '';
 let index = 0;            /* выбранный пункт списка */
-let found = [];           /* гости из живого поиска */
+let found = [];           /* результаты зарегистрированных providers */
 let searching = false;
 let timer = null;
+let searchController = null;
+let searchGeneration = 0;
 
 let navProvider = () => [];       /* пункты меню: [{id, title}] */
 let navigateFn = () => {};
@@ -46,12 +49,17 @@ function actionItems(q) {
     .map(a => ({ key: 'act:' + a.id, icon: a.icon || 'settings', title: a.title, hint: a.hint || 'действие',
                  run: a.run }));
 }
-function guestItems() {
-  return found.map(g => ({ key: 'guest:' + g.id, icon: 'guests', title: g.short, hint: 'гость',
-                           run: () => { close(); import('../modules/stays_forms.js').then(m => m.openGuestCard(g.id)).catch(e => toast(e.message, 'err')); } }));
+function providerItems() {
+  return found.map(({ provider, item }, i) => ({
+    key: `provider:${provider.id}:${item.id ?? i}`,
+    icon: item.icon || provider.icon || 'search',
+    title: item.title || item.short || String(item.id || ''),
+    hint: item.hint || provider.hint || 'результат',
+    run: () => provider.activate(item),
+  }));
 }
 
-function items() { return [...navItems(query), ...actionItems(query), ...guestItems()]; }
+function items() { return [...navItems(query), ...actionItems(query), ...providerItems()]; }
 
 function paint() {
   const box = $('#palette');
@@ -71,23 +79,41 @@ function paint() {
   $('#palette-q')?.focus();
 }
 
-function scheduleSearch() {
+function retireSearch() {
   clearTimeout(timer);
+  timer = null;
+  searchController?.abort();
+  searchController = null;
+  ++searchGeneration;
+  searching = false;
+}
+
+function scheduleSearch() {
+  retireSearch();
+  found = [];
   const q = query.trim();
-  if (q.length < 2) { found = []; return; }
+  if (q.length < 2) return;
+  const generation = searchGeneration;
+  const controller = new AbortController();
+  searchController = controller;
   timer = setTimeout(async () => {
     const started = authContextSnapshot();
     searching = true;
-    try {
-      const guests = await api(`/api/stays/guests?q=${encodeURIComponent(q)}${canAllGuests() ? '' : '&mine=1'}`, { silent: true });
-      if (!authContextIsCurrent(started) || !open || q !== query.trim()) return;
-      found = guests;
-    } catch { found = []; }
+    if (open) paint();
+    const results = await Promise.all(paletteProviders().map(async provider => {
+      try {
+        const providerFound = await provider.search(q, controller.signal);
+        return (Array.isArray(providerFound) ? providerFound : []).map(item => ({ provider, item }));
+      } catch { return []; }
+    }));
+    if (controller.signal.aborted || generation !== searchGeneration || !authContextIsCurrent(started) ||
+        !open || q !== query.trim()) return;
+    found = results.flat();
     searching = false;
+    searchController = null;
     if (open) paint();
   }, 200);
 }
-const canAllGuests = () => (state.perms || []).includes('stays.guests');
 
 function pick(it) { close(); it.run(); }
 
@@ -102,6 +128,7 @@ export function togglePalette() { open ? close() : show(); }
 export function show() {
   if (open || !state.user || !authContextIsCurrent(authContextSnapshot())) return;
   const backFocus = document.activeElement;
+  retireSearch();
   open = true;
   query = ''; index = 0; found = [];
   pushOverlay('palette', close, () => {
@@ -116,7 +143,7 @@ export function close() {
   if (!open) return;
   open = false;
   found = []; query = ''; searching = false;
-  clearTimeout(timer);
+  retireSearch();
   const box = $('#palette');
   if (box) box.replaceChildren();
   $('#palette-backdrop')?.classList.add('hidden');
@@ -124,8 +151,5 @@ export function close() {
 }
 
 export function paletteBoot() {
-  document.addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); togglePalette(); }
-  });
   $('#palette-backdrop')?.addEventListener('click', e => { if (e.target.id === 'palette-backdrop') close(); });
 }
