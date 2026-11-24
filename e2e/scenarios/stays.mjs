@@ -131,7 +131,10 @@ const $ = s => window.document.querySelector(s);
     const [y, m] = iso.split('-').map(Number);
     MODS.core.state.year = y; MODS.core.state.month = m;
     click($(`#view-stays [data-stab="${tab}"]`));
-    return waitFor(() => !!$(`#stays-body .sb-head [data-day="${iso.slice(0, 8)}01"]`));
+    await idle();
+    return waitFor(() => !!$(`#view-stays [data-stab="${tab}"].btn-primary`)
+      && !!$(`#stays-body .sb-head [data-day="${iso.slice(0, 8)}01"]`)
+      && (tab !== 'units' || !!$('#stays-body .sf-panel')));
   }
   /* фильтр меняет разметку целиком: ждём новую (иначе следующий шаг уйдёт в старую панель) */
   /* вид на шаблонах lit не пересоздаёт панель фильтров (поле поиска живёт между перерисовками), поэтому
