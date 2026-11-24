@@ -1,11 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { DEMO_PASSWORD, login } from './helpers.mjs';
 
 test.use({ serviceWorkers: 'block' });
 
 const eventKey = 'butler.auth-context.v1';
 const legacyPrintChild = '/static/js/print-page.js';
-const printChild = '/static/js/print-page.js?v=2026-11-24b';
+const worker = readFileSync(new URL('../static/sw.js', import.meta.url), 'utf8');
+const [, releaseStamp] = worker.match(/const VERSION = 'tt-([\w.-]+)'/);
+const printChild = `${legacyPrintChild}?v=${releaseStamp}`;
 const frames = page => page.locator('iframe[title^="Fixture"]');
 const stored = page => page.evaluate(key => localStorage.getItem(key), eventKey);
 const serverContext = async page => {
@@ -58,7 +61,9 @@ test.describe('service-worker upgrades', () => {
     const script = page.waitForResponse(response => new URL(response.url()).pathname === legacyPrintChild);
     await print(page, 'upgraded child');
     try {
-      expect((await script).fromServiceWorker()).toBe(true);
+      const response = await script;
+      expect(response.fromServiceWorker()).toBe(true);
+      expect(response.url()).toBe(new URL(printChild, page.url()).href);
       await page.waitForFunction(() => window.fixturePrintEvents.some(event => event === 'checking' || event === 'print'));
       expect(await page.evaluate(() => window.fixturePrintEvents)).toEqual(['ready', 'checking']);
     } finally { await page.evaluate(() => window.releaseFixturePrintCheck()); }
@@ -425,7 +430,171 @@ test('a common API 401 invalidates a peer immediately', async ({ page, context }
   await expect(page.locator('#login-screen')).toBeVisible();
 });
 
-test('rotating a password publishes the replacement context and keeps Today live', async ({ page, context }) => {
+for (const winner of ['issuer', 'peer cookie', 'peer event']) {
+  test(`held password issuer respects the ${winner} after foreground print validation`, async ({ page, context }) => {
+    const peer = await twoPages(page, context);
+    const initial = await stored(page);
+    const before = await serverContext(page);
+    await page.evaluate(() => window.navigate('settings'));
+    await expect(page.locator('#view-settings.active [data-st]').first()).toBeVisible();
+    for (const tab of [peer, page]) {
+      await fixturePrints(tab, before);
+      await mounted(tab);
+    }
+    await page.bringToFront();
+    const held = Promise.withResolvers(), release = Promise.withResolvers();
+    const publications = [], navigations = [];
+    await page.exposeFunction('waitForIssuerBody', () => { held.resolve(); return release.promise; });
+    await page.exposeFunction('observePublication', value => publications.push(value));
+    await page.evaluate(async () => {
+      const { subscribeAuthContext } = await import('/static/js/core.js');
+      subscribeAuthContext(event => { if (!event.external) void window.observePublication(event.context); });
+      const text = Response.prototype.text;
+      Response.prototype.text = async function () {
+        if (this.url.endsWith('/api/auth/change-password')) await window.waitForIssuerBody();
+        return text.call(this);
+      };
+    });
+    page.on('request', request => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigations.push(request.url());
+    });
+    await page.locator('#change-pass-btn').click();
+    for (const id of ['old', 'new', 'new2']) await page.locator(`#cp-${id}`).fill(DEMO_PASSWORD);
+    await page.locator('#modal [data-save]').click();
+    let expectedEvent = initial;
+    let replacement;
+    try {
+      await held.promise;
+      replacement = await serverContext(page);
+      expect(replacement).not.toBe(before);
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await expect(frames(page)).toHaveCount(0);
+      if (winner !== 'issuer') {
+        const other = await peer.request.post('/api/auth/login', { data: { username: 'admin', password: DEMO_PASSWORD } });
+        expect(other.ok()).toBe(true);
+        const context = (await other.json()).auth_context;
+        expect(context).not.toBe(replacement);
+        if (winner === 'peer event') {
+          await peer.evaluate(async context => (await import('/static/js/core.js')).publishAuthContext(context), context);
+          expectedEvent = await stored(peer);
+        }
+      }
+    } finally { release.resolve(); }
+    if (winner === 'issuer') {
+      await expect.poll(async () => JSON.parse(await stored(page))?.context).toBe(replacement);
+      await expect(page.locator('#app #view-settings.active [data-st]').first()).toBeVisible();
+      await expect(frames(peer)).toHaveCount(0);
+      expect(publications).toEqual([replacement]);
+      expect(navigations).toEqual([]);
+    } else {
+      await expect.poll(() => navigations.length).toBeGreaterThan(0);
+      await expect(page.locator('#view-today.active')).toBeVisible();
+      expect(await stored(page)).toBe(expectedEvent);
+      expect(publications).toEqual([]);
+    }
+  });
+}
+
+test('a suspended generation accepts exactly one matching issuer response', async ({ page }) => {
+  await fixtureShell(page);
+  const result = await page.evaluate(async () => {
+    const { api, authContextIsCurrent, authContextSnapshot, subscribeAuthContext } = await import('/static/js/core.js');
+    const started = authContextSnapshot();
+    const publications = [];
+    subscribeAuthContext(event => publications.push(event.context));
+    const responses = [];
+    window.fetch = () => new Promise(resolve => responses.push(resolve));
+    const send = (path, method) => api(path, { method, silent: true }).then(() => true, () => false);
+    const ordinary = send('/__fixture_read__', 'POST');
+    const wrongMethod = send('/api/auth/change-password', 'GET');
+    const first = send('/api/auth/change-password', 'POST');
+    const duplicate = send('/api/auth/change-password', 'POST');
+    document.cookie = 'tt_auth_context=next; path=/';
+    const current = authContextIsCurrent(started);
+    const reply = () => Response.json({ auth_context: 'next' });
+    for (const resolve of responses.slice(0, 2)) resolve(reply());
+    const rejected = await Promise.all([ordinary, wrongMethod]);
+    responses[2](reply());
+    const accepted = await first;
+    responses[3](reply());
+    return { current, rejected, accepted, duplicate: await duplicate, publications };
+  });
+  expect(result).toEqual({ current: false, rejected: [false, false], accepted: true, duplicate: false, publications: ['next'] });
+});
+
+test('a rejected issuer releases its own reconciliation wait', async ({ page }) => {
+  await fixtureShell(page);
+  for (const path of ['**/api/auth/change-password', '**/api/auth/context']) {
+    await page.route(path, route => route.fulfill({ status: 401, json: { detail: 'Fixture' } }));
+  }
+  await page.evaluate(async () => {
+    const { api } = await import('/static/js/core.js');
+    void api('/api/auth/change-password', { method: 'POST', silent: true })
+      .catch(error => { window.fixtureIssuerError = error.message; });
+  });
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.fixtureIssuerError)).toBe('Требуется вход');
+  expect(JSON.parse(await stored(page))).toMatchObject({ context: null });
+});
+
+for (const source of ['render', 'template', 'fund']) {
+  test(`raw ${source} 401 expires its initiating generation`, async ({ page }) => {
+    await login(page, 'admin');
+    const before = await serverContext(page);
+    await fixturePrints(page, before);
+    const target = { render: '**/api/docs/render', template: '**/api/docs/templates?**', fund: '**/api/stays/fund/import' }[source];
+    const send = async () => {
+      if (source === 'render') {
+        await page.route('**/api/schedule/absence-period?**', route => route.fulfill({ json: { doc_type: 'fixture' } }));
+        await page.evaluate(async () => {
+          const { downloadAbsenceDoc } = await import('/static/js/modules/docs.js');
+          void downloadAbsenceDoc(1, '2026-01-01', 'docx');
+        });
+      } else if (source === 'template') {
+        await page.evaluate(async () => (await import('/static/js/modules/dicts.js')).openKindModal({ id: 1, code: 'fixture' }));
+        await page.locator('#k-file').setInputFiles({ name: 'fixture.docx', mimeType: 'application/octet-stream', buffer: Buffer.alloc(1) });
+      } else {
+        if (!await page.locator('#fu-file').count()) {
+          await page.evaluate(() => window.navigate('settings'));
+          await page.locator('#view-settings [data-st=stays_fund]').click();
+          await page.locator('#fund-upload').click();
+        }
+        await page.locator('#fu-file').setInputFiles({ name: 'fixture.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.alloc(1) });
+        await page.locator('#fu-go').click();
+      }
+    };
+    await page.route(target, route => route.fulfill({ status: 422, json: source === 'fund'
+      ? { errors: [{ sheet: 'Fixture', row: 1, message: 'original detail' }] } : { detail: 'original detail' } }), { times: 1 });
+    await send();
+    await expect(page.locator(source === 'fund' ? '#fu-out' : '#toast-host')).toContainText('original detail');
+    const release = Promise.withResolvers(), held = Promise.withResolvers();
+    await page.route(target, async route => {
+      held.resolve();
+      await release.promise;
+      await route.fulfill({ status: 401, json: { detail: 'Fixture rejection' } });
+    });
+    await send();
+    await held.promise;
+    await page.evaluate(async before => (await import('/static/js/core.js')).publishAuthContext(before), before);
+    await mounted(page);
+    release.resolve();
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect(frames(page)).toHaveCount(1);
+    const verifier = Promise.withResolvers();
+    await page.route('**/api/auth/context', async route => {
+      await verifier.promise;
+      await route.fulfill({ status: 401, json: {} });
+    });
+    try {
+      await send();
+      await expect(page.locator('#app')).toBeHidden();
+      await expect(frames(page)).toHaveCount(0);
+    } finally { verifier.resolve(); }
+    await expect(page.locator('#login-screen')).toBeVisible();
+  });
+}
+
+async function exercisePasswordRotation({ page, context, request }, checkpoint = () => {}) {
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await login(page, 'gromova');
@@ -458,10 +627,27 @@ test('rotating a password publishes the replacement context and keeps Today live
     if (path === '/api/punches' && response.request().method() === 'POST') punches.push(response);
     if (path === '/api/punches/status') statusReads.push(response.status());
   });
-  const response = page.waitForResponse('**/api/auth/change-password');
-  await page.locator('#modal [data-save]').click();
-  expect((await response).ok()).toBe(true);
+  // This request fixture has its own cookie jar. Rotation revokes its session too.
+  const account = password => request.post('/api/auth/login', { data: { username: 'gromova', password } });
+  const cleanupLogin = await account(DEMO_PASSWORD);
+  expect(cleanupLogin.status()).toBe(200);
+  const employeeId = (await cleanupLogin.json()).user.employee_id;
+  expect(employeeId).toBeGreaterThan(0);
+  const journal = `/api/punches?employee_id=${employeeId}`;
+  const readPunches = async () => {
+    const response = await request.get(journal);
+    expect(response.status()).toBe(200);
+    return response.json();
+  };
+  const baseline = new Set((await readPunches()).map(punch => punch.id));
+  const { cookies } = await request.storageState();
+  const headers = { 'X-CSRF-Token': cookies.find(cookie => cookie.name === 'tt_csrf').value };
   try {
+    const [response] = await Promise.all([
+      page.waitForResponse('**/api/auth/change-password'), page.locator('#modal [data-save]').click(),
+    ]);
+    expect(response.ok()).toBe(true);
+    await checkpoint('submission');
     const after = await serverContext(page);
     expect(after).not.toBe(before);
     await expect.poll(async () => JSON.parse(await stored(page))?.context).toBe(after);
@@ -474,6 +660,7 @@ test('rotating a password publishes the replacement context and keeps Today live
     const check = expect.configure({ soft: true, timeout: 3000 });
     await punch.click();
     await check.poll(punchStatuses, { message: 'Today punch POST after rotation' }).toEqual([200]);
+    await checkpoint('punch');
 
     const beforeForeground = statusReads.length;
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
@@ -492,21 +679,50 @@ test('rotating a password publishes the replacement context and keeps Today live
     await expect(punch).toHaveText(initialAction === 'Пришёл' ? 'Ушёл' : 'Пришёл');
   } finally {
     try {
-      const ids = await Promise.all(punches.filter(response => response.ok())
-        .map(async response => (await response.json()).punch.id));
-      await page.evaluate(async ids => {
-        const { api } = await import('/static/js/core.js');
-        for (const id of ids) await api(`/api/punches/${id}`, { method: 'DELETE' });
-      }, ids);
-    } catch (error) { expect.soft(error, 'Restore demo punch state').toBeUndefined(); }
-    try {
-      await page.evaluate(async body => {
-        const { api } = await import('/static/js/core.js');
-        await api('/api/auth/change-password', { method: 'POST', body });
-      }, { old_password: temporary, new_password: DEMO_PASSWORD });
-    } catch (error) { expect.soft(error, 'Restore demo password').toBeUndefined(); }
+      const cleanupSession = await request.get('/api/auth/context');
+      expect([200, 401]).toContain(cleanupSession.status());
+      if (cleanupSession.status() === 401) {
+        expect((await account(temporary)).status()).toBe(200);
+        try {
+          // The serial demo scenario exclusively owns this employee's new punches.
+          for (const punch of await readPunches()) {
+            if (!baseline.has(punch.id)) {
+              expect((await request.delete(`/api/punches/${punch.id}`, { headers })).status()).toBe(200);
+            }
+          }
+        } catch (error) { expect.soft(error, 'Restore demo punches').toBeUndefined(); }
+        const restored = await request.post('/api/auth/change-password', { headers,
+          data: { old_password: temporary, new_password: DEMO_PASSWORD } });
+        expect(restored.status()).toBe(200);
+      }
+    } catch (error) { expect.soft(error, 'Restore demo account').toBeUndefined(); }
   }
+}
+
+test('rotating a password publishes the replacement context and keeps Today live', async ({ page, context, request }) => {
+  await exercisePasswordRotation({ page, context, request });
 });
+
+for (const stop of ['submission', 'punch']) {
+  test(`password cleanup survives a closed page immediately after ${stop}`, async ({ page, context, request }) => {
+    const account = { username: 'gromova', password: DEMO_PASSWORD };
+    const original = await request.post('/api/auth/login', { data: account });
+    expect(original.status()).toBe(200);
+    const employeeId = (await original.json()).user.employee_id;
+    const journal = `/api/punches?employee_id=${employeeId}`;
+    const baseline = await (await request.get(journal)).json();
+    const failure = new Error(`fixture stopped after ${stop}`);
+    await expect(exercisePasswordRotation({ page, context, request }, async phase => {
+      if (phase === stop) {
+        await page.close();
+        throw failure;
+      }
+    })).rejects.toBe(failure);
+    const restored = await request.post('/api/auth/login', { data: account });
+    expect(restored.status()).toBe(200);
+    expect(await (await request.get(journal)).json()).toEqual(baseline);
+  });
+}
 
 test('completion, timeout and invalidation release each resource once', async ({ page }) => {
   await login(page, 'admin');

@@ -8,6 +8,8 @@ A1 (аудит 25.10.2026): прежняя печать писала inline-ск
 """
 from __future__ import annotations
 
+import re
+
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
@@ -25,7 +27,8 @@ def test_print_page_assembles_document(employee_client):
     assert "<title>График &lt;b&gt;сменности&lt;/b&gt;</title>" in html   # заголовок экранирует сервер
     assert "<table><tr><td>Иванов</td></tr></table>" in html             # тело — как собрал клиент
     assert ".x { color: red }" in html
-    assert '<script src="/static/js/print-page.js?v=2026-11-24b" defer></script>' in html
+    stamp = re.search(r"const VERSION = 'tt-([\w.-]+)'", employee_client.get("/sw.js").text)[1]
+    assert re.findall(r'<script src="([^"]*)" defer></script>', html) == [f"/static/js/print-page.js?v={stamp}"]
     assert "<script>" not in html and "onload=" not in html               # inline-скриптов нет
 
 

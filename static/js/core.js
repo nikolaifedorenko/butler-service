@@ -26,6 +26,7 @@ const SESSION_CHANGES = new Set(['/api/auth/login', '/api/auth/logout', '/api/au
   '/api/auth/impersonate', '/api/auth/impersonate/stop']);
 const authListeners = new Set();
 const rejectionListeners = new Set();
+const pendingIssuers = new Set();
 
 function readAuthEvent() {
   try {
@@ -119,8 +120,16 @@ export async function expireAuthContext(started) {
   const hold = { owner };
   suspended = hold;
   for (const listener of rejectionListeners) listener();
-  const marker = getCookie('tt_auth_context');
   hold.check = (async () => {
+    // Only an issuer already in flight for this owner can settle its own cookie change.
+    // Rejection listeners above have already retired the UI and its print jobs.
+    const pending = [...pendingIssuers].filter(issuer => issuer.owner === owner);
+    if (pending.length) {
+      await Promise.all(pending.map(issuer => issuer.done));
+      syncAuthEvent();
+      if (auth !== owner) return;
+    }
+    const marker = getCookie('tt_auth_context');
     try {
       const response = await fetch('/api/auth/context', { credentials: 'same-origin', cache: 'no-store',
         signal: AbortSignal.timeout(20_000) });
@@ -306,6 +315,12 @@ export async function api(path, opts = {}) {
   const timer = setTimeout(() => ctrl.abort(), opts.timeout || 20000);
   init.signal = ctrl.signal;
   if (!opts.silent) loading(true);
+  let issuer, settle;
+  if (started.context && method === 'POST' && SESSION_CHANGES.has(path)) {
+    issuer = { owner: started, done: new Promise(resolve => { settle = resolve; }) };
+    pendingIssuers.add(issuer);
+  }
+  const finishIssuer = () => { if (pendingIssuers.delete(issuer)) settle(); };
   try {
     let res;
     try {
@@ -319,7 +334,11 @@ export async function api(path, opts = {}) {
         ? 'Нет подключения к интернету — действие не выполнено'
         : 'Не удалось связаться с сервером — проверьте связь и повторите');
     }
-    if (res.status === 401 && !opts.allow401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
+    if (res.status === 401 && !opts.allow401) {
+      finishIssuer();
+      await expireAuthContext(started);
+      throw new Error('Требуется вход');
+    }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       if (started.context) requireAuthOwnership(started);
@@ -327,16 +346,19 @@ export async function api(path, opts = {}) {
       // единый разбор ошибок (в т.ч. 422-массив pydantic и структурные 409) — httpError
       throw httpError(msg, res.status);
     }
-    if (started.context) {
-      // A successful auth mutation changes its own companion before its response reaches JavaScript.
-      const rotation = method === 'POST' && SESSION_CHANGES.has(path);
+    if (issuer) {
+      syncAuthEvent();
       const expected = path === '/api/auth/logout' ? 'signed-out' : data?.auth_context;
-      const ownRotation = rotation && expected && expected === getCookie('tt_auth_context') &&
-        authContextSnapshot().eventId === started.eventId && started === auth && suspended?.owner !== started;
-      if (!ownRotation && !authContextIsCurrent(started)) throw new Error('Сессия изменилась');
-    }
+      if (auth !== started || !expected || expected !== getCookie('tt_auth_context')) {
+        void expireAuthContext(started);
+        throw new Error('Сессия изменилась');
+      }
+      // Commit while we still own both the initiating generation and the response cookie.
+      publishAuthContext(path === '/api/auth/logout' ? null : expected);
+    } else if (started.context && !authContextIsCurrent(started)) throw new Error('Сессия изменилась');
     return data;
   } finally {
+    finishIssuer();
     clearTimeout(timer);
     if (!opts.silent) loading(false);
   }

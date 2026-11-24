@@ -70,5 +70,17 @@ def test_static_version_bump_keeps_print_child_key_in_sync(tool):
     shell = tool.SW.read_text(encoding="utf-8")
     assert f"'{path}'" in shell
     assert "'/static/js/print-page.js'" not in shell
-    assert path in tool.PRINT_PAGE.read_text(encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("bumped_print_page", tool.PRINT_PAGE)
+    renderer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(renderer)
+    assert f'<script src="{path}" defer></script>' in renderer.print_page(renderer.PrintIn(body=""))
     assert tool.check() == 0
+
+
+@pytest.mark.parametrize("suffix", ["&extra=1", "#child", "/extra", "?again"])
+def test_check_rejects_trailing_print_child_url(tool, suffix):
+    source = tool.PRINT_PAGE.read_text(encoding="utf-8")
+    url = tool.shell_url(tool.PRINT_CHILD, tool.current_versions()["index.html"][0])
+    assert source.count(url) == 1
+    tool.PRINT_PAGE.write_text(source.replace(url, url + suffix), encoding="utf-8")
+    assert tool.check() == 1

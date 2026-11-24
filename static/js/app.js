@@ -277,7 +277,7 @@ export function renderSchemaBanner(chk) {
   el.classList.remove('hidden');
 }
 
-async function enterApp(me) {
+async function enterApp(me, view = startView()) {
   resetUserViewState();
   applyMe(me);
   $('#login-screen').classList.add('hidden');
@@ -295,7 +295,7 @@ async function enterApp(me) {
             ' — откройте Console/Network и пришлите ошибку', 'err');
     }
   }
-  if (state.user === me.user) navigate(startView());
+  if (state.user === me.user) navigate(view);
 }
 
 export function renderUserChip() {
@@ -364,11 +364,7 @@ $('#logout-btn').onclick = async () => {
   const started = authContextSnapshot();
   if (!authContextIsCurrent(started)) return;
   try { await api('/api/auth/logout', { method: 'POST', silent: true }); }
-  catch { await expireAuthContext(started); return; }
-  const marker = getCookie('tt_auth_context');
-  if (started.eventId === authContextSnapshot().eventId && (!marker || marker === 'signed-out' || marker === started.context)) {
-    publishAuthContext(null);
-  }
+  catch { await expireAuthContext(started); }
 };
 $('#nav-toggle').onclick = () => $('#sidenav').classList.toggle('open');
 $('#change-pass-btn').onclick = () => openModal({
@@ -387,12 +383,23 @@ $('#change-pass-btn').onclick = () => openModal({
       if (!$('#cp-old').value) return toast('Введите старый пароль', 'warn');
       if (nw.length < 8) return toast('Новый пароль слишком короткий (минимум 8 символов)', 'warn');
       if (nw !== nw2) return toast('Новый пароль и подтверждение не совпадают', 'warn');
+      const view = state.view;
       try {
         const res = await api('/api/auth/change-password', { method: 'POST',
           body: { old_password: $('#cp-old').value, new_password: nw } });
-        publishAuthContext(res.auth_context);
+        const started = authContextSnapshot();
+        if (started.context !== res.auth_context || !authContextIsCurrent(started)) return;
         closeModal();
-        navigate(state.view);
+        if (state.user) navigate(view);
+        else {
+          // Foreground validation may have cleared the shell while the issuer body was in flight.
+          try {
+            const me = await api('/api/auth/me');
+            if (!authContextIsCurrent(started) || me.auth_context !== started.context) return;
+            state.user = me.user;
+            await enterApp(me, view);
+          } catch { await expireAuthContext(started); return; }
+        }
         toast('Пароль изменён', 'ok');
       } catch (e) { toast(e.message, 'err'); }
     };
@@ -405,7 +412,6 @@ $('#stop-impersonation').onclick = async () => {
 
 export async function switchImpersonation(session, view) {
   if (getCookie('tt_auth_context') !== session.auth_context) return false;
-  publishAuthContext(session.auth_context);
   deactivateShell();
   const started = authContextSnapshot();
   $('#user-name').textContent = session.user.name;

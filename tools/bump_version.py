@@ -33,7 +33,7 @@ ASSETS_DIR = BASE / "static"
 PRINT_CHILD = "/static/js/print-page.js"
 
 VERSION_RE = re.compile(r"\?v=([\w.\-]+)")
-PRINT_CHILD_VERSION_RE = re.compile(rf"{re.escape(PRINT_CHILD)}(?:\?v=([\w.\-]+))?")
+PRINT_SRC_RE = re.compile(r"""(?P<tag><script\b[^<>]*?\ssrc=(?P<quote>\\?["']))(?P<url>[^"'\\]*)(?P=quote)""")
 HASH_RE = re.compile(r"// содержимое оболочки: ([0-9a-f]+)")
 SCRIPTS_RE = re.compile(r"(<!-- скрипты:.*?-->\n).*?(<!-- /скрипты -->)", re.S)
 
@@ -96,7 +96,6 @@ def current_versions() -> dict[str, list[str]]:
     m = re.search(r"const VERSION = 'tt-([\w.\-]+)'", sw)
     if m:
         found["sw.js"].append(m.group(1))
-    found["print_page.py"] = PRINT_CHILD_VERSION_RE.findall(PRINT_PAGE.read_text(encoding="utf-8"))
     return found
 
 
@@ -107,16 +106,21 @@ def check() -> int:
     shell_plain = [s.split("?v=")[0] for s in shell]
     missing = [a for a in local_assets() if a not in shell_plain]
     problems = []
-    if len(set(all_v)) != 1 or "" in all_v or len(found["print_page.py"]) != 1:
+    if len(set(all_v)) != 1 or not all(found.values()):
         versions = ", ".join(f"{file}: {sorted(set(values))}" for file, values in found.items())
         problems.append(f"версии расходятся: {versions}")
     print_keys = [asset for asset in shell if asset.partition("?")[0] == PRINT_CHILD]
-    if all_v and print_keys != [f"{PRINT_CHILD}?v={all_v[0]}"]:
+    version = all_v[0] if all_v else ""
+    expected = shell_url(PRINT_CHILD, version)
+    renderer = [m["url"] for m in PRINT_SRC_RE.finditer(PRINT_PAGE.read_text(encoding="utf-8"))]
+    if renderer != [expected]:
+        problems.append("в print_page.py нужен точный адрес скрипта печати с текущей версией")
+    if print_keys != [expected]:
         problems.append("в SHELL (sw.js) нужен только ключ скрипта печати с текущей версией")
     if missing:
         problems.append(f"в SHELL (sw.js) нет файлов: {missing}")
     idx = INDEX.read_text(encoding="utf-8")
-    if not SCRIPTS_RE.search(idx) or with_scripts(idx, all_v[0]) != idx:
+    if not SCRIPTS_RE.search(idx) or with_scripts(idx, version) != idx:
         problems.append("список <script> в index.html не совпадает с static/js/modules/*.js")
     stamp = HASH_RE.search(SW.read_text(encoding="utf-8"))
     if not stamp or stamp.group(1) != assets_hash():
@@ -137,8 +141,8 @@ def bump(version: str) -> int:
         print(f"✗ Некорректная версия: {version!r} (только буквы, цифры, точка, дефис)")
         return 2
 
-    print_page, n_print = PRINT_CHILD_VERSION_RE.subn(f"{PRINT_CHILD}?v={version}",
-                                                     PRINT_PAGE.read_text(encoding="utf-8"))
+    print_page, n_print = PRINT_SRC_RE.subn(lambda m: m["tag"] + shell_url(PRINT_CHILD, version) + m["quote"],
+                                           PRINT_PAGE.read_text(encoding="utf-8"))
     if n_print != 1:
         print("✗ В print_page.py должен быть один адрес скрипта печати")
         return 1

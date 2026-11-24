@@ -22,7 +22,8 @@ def test_unmodified_static_is_answered_with_304(client):
 def test_service_worker_serves_only_the_versioned_print_child_key(client):
     worker = client.get("/sw.js")
     assert worker.status_code == 200
-    path = "/static/js/print-page.js?v=2026-11-24b"
+    stamp = re.search(r"const VERSION = 'tt-([\w.-]+)'", worker.text)[1]
+    path = f"/static/js/print-page.js?v={stamp}"
     keys = re.findall(r"'(/static/js/print-page\.js(?:\?[^']*)?)'", worker.text)
     assert keys == [path]
     child = client.get(path)

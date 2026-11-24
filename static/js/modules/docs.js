@@ -209,6 +209,7 @@ export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenc
         note: (p.notes || []).join('; '),
       }),
     });
+    if (res.status === 401) { await expireAuthContext(started); return; }
     if (!res.ok) {
       let msg = `Ошибка ${res.status}`;
       try { msg = (await res.json()).detail || msg; } catch {}

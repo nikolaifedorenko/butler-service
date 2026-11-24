@@ -14,7 +14,7 @@
 'use strict';
 
 import { can, registerModule } from '../app.js';
-import { $, $$, api, closeModal, confirmDialog, dateRu, downloadBlob, getCookie, loadGenerationFor, loading, openModal, requireAuthOwnership, toast } from '../core.js';
+import { $, $$, api, closeModal, confirmDialog, dateRu, downloadBlob, expireAuthContext, getCookie, loadGenerationFor, loading, openModal, requireAuthOwnership, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { checkField, fieldRow, optionView, selectField, textInput } from '../ui/form.js';
 import { renderPreview, staysBindGatedFoot } from './stays_forms.js';
@@ -726,6 +726,7 @@ async function fundPostFile(url, fields) {
     const started = requireAuthOwnership();
     const res = await fetch(url, { method: 'POST', credentials: 'same-origin', body: fd,
       headers: { 'X-CSRF-Token': getCookie('tt_csrf') } });
+    if (res.status === 401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     const d = await res.json().catch(() => ({}));
     requireAuthOwnership(started);
     if (!res.ok) {
@@ -819,6 +820,7 @@ function openFundUpload(data, onDone) {
           else if (checked) await replace();
           else await preview();
         } catch (e) {
+          if (!go.isConnected) return;
           if (e.status === 409 && checked) checked = null;      // данные изменились — проверить заново
           render(fundFileErrors(e), out());
           sync();
