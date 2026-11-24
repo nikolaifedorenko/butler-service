@@ -183,18 +183,22 @@ function guestFindView() {
   const full = can('stays.guests');
   if (!full && !can('stays.mine_guest_edit')) return nothing;
   let timer = null;
+  let generation = 0;
   return html`<div class="guest-find"><input type="search" id="sg-q" placeholder="Найти гостя…"
     @input=${e => {
       clearTimeout(timer);
-      const host = e.target.closest('.guest-find');
+      const input = e.currentTarget;
+      const host = input.closest('.guest-find');
+      const current = ++generation;
       timer = setTimeout(async () => {
-        const needle = e.target.value.trim();
+        const needle = input.value.trim();
         if (needle.length < 2) { render(nothing, $('[data-sg-res]', host)); return; }
         try {
           const found = await api(`/api/stays/guests?q=${encodeURIComponent(needle)}${full ? '' : '&mine=1'}`, { silent: true });
+          if (current !== generation || !host.isConnected) return;
           render(found.length ? found.map(g => html`<button type="button" class="btn btn-sm btn-ghost" data-sg-guest=${g.id}>${g.short}</button>`)
             : html`<span class="muted">не найдено</span>`, $('[data-sg-res]', host));
-        } catch (err) { toast(err.message, 'warn'); }
+        } catch (err) { if (current === generation) toast(err.message, 'warn'); }
       }, 300);
     }}>
     <div class="guest-find-res" data-sg-res @click=${e => {

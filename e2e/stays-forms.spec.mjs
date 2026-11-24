@@ -33,6 +33,37 @@ test('раздел «Гости»: список, поиск без потери 
   expect(errors).toEqual([]);
 });
 
+test('поиск гостя не принимает запоздавший ответ прежнего запроса', async ({ page }) => {
+  await login(page, 'admin');
+  let releaseOld;
+  let markOldStarted;
+  const oldMayFinish = new Promise(resolve => { releaseOld = resolve; });
+  const oldStarted = new Promise(resolve => { markOldStarted = resolve; });
+  await page.route('**/api/stays/guests?**', async route => {
+    const q = new URL(route.request().url()).searchParams.get('q');
+    if (q === 'Старый') {
+      markOldStarted();
+      await oldMayFinish;
+      await route.fulfill({ json: [{ id: 910001, short: 'Старый ответ' }] });
+    } else if (q === 'Новый') {
+      await route.fulfill({ json: [{ id: 910002, short: 'Новый ответ' }] });
+    } else {
+      await route.continue();
+    }
+  });
+  await open(page, 'stays');
+  const search = page.locator('#view-stays #sg-q');
+  await search.fill('Старый');
+  await oldStarted;
+  await search.fill('Новый');
+  const result = page.locator('#view-stays [data-sg-res]');
+  await expect(result).toContainText('Новый ответ');
+  releaseOld();
+  await page.waitForTimeout(500);
+  await expect(result).toContainText('Новый ответ');
+  await expect(result).not.toContainText('Старый ответ');
+});
+
 test('форма брони: открывается с кнопкой «Проверить» и закрывается без ошибок', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'admin');

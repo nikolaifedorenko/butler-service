@@ -51,7 +51,8 @@ from .schemas import (
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 # чтение — тем, кто видит шахматку; батлеру (stays.mine) — ради определений полей: данных гостей здесь нет
-READ = require_perm("stays.view", "stays.occupancy", "stays.setup", "stays.mine")
+READ = require_perm("stays.view", "stays.occupancy", "stays.setup", "stays.mine",
+                    "stays.guests", "stays.edit", "stays.mine_guest_edit")
 SETUP = require_perm("stays.setup")
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
