@@ -140,9 +140,9 @@ def _iso(v):
 
 def check_reservation_change(db: Session, before: dict, doc: dict) -> None:
     """Сравнить документ батлера с текущим: запертые поля, переезды, закрепления, главный гость;
-    новый проживающий — родственник кого-то из прежних проживающих по семейному дереву (в том
-    числе вычисленный, domain/kinship) или его прямая связь любого вида (§3) — иначе так можно
-    было бы открыть себе профиль любого гостя."""
+    новый проживающий — родственник кого-то из прежних проживающих по активному семейному дереву
+    (в том числе вычисленный, domain/kinship) или его прямая действующая связь (§3) — иначе так
+    можно было бы открыть себе профиль любого гостя."""
     def locked(d: dict, k: str):
         # пустая «оплата за» — категория брони
         return _iso(d.get(k) or d.get("category_id")) if k == "paid_category_id" else _iso(d.get(k))
@@ -163,10 +163,11 @@ def check_reservation_change(db: Session, before: dict, doc: dict) -> None:
     if not new:
         return
     linked = set()
-    for a, b in db.execute(select(GuestLink.guest_a_id, GuestLink.guest_b_id).where(
+    for a, b, former in db.execute(select(GuestLink.guest_a_id, GuestLink.guest_b_id, GuestLink.former).where(
             (GuestLink.guest_a_id.in_(had) & GuestLink.guest_b_id.in_(new))
             | (GuestLink.guest_b_id.in_(had) & GuestLink.guest_a_id.in_(new)))):
-        linked |= {a, b}
+        if not former:
+            linked |= {a, b}
     rest = new - linked
     if rest and not rest <= family.relatives_among(db, had, rest):
         raise MineForbidden("Батлер добавляет только родственников и связанных с проживающими брони")

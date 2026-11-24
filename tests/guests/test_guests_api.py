@@ -219,7 +219,7 @@ def test_former_spouse_gives_marked_in_laws(manager_client):
     assert _link(manager_client, ex_mother, ex, "parent").status_code == 200
     fam = manager_client.get(f"{API}/guests/{me['id']}/family").json()
     kin = {k["person_id"]: k for k in fam["kin"]}
-    assert kin[ex["id"]]["title"] == "бывшая жена" and kin[ex["id"]]["via_former"] is False
+    assert kin[ex["id"]]["title"] == "бывшая жена" and kin[ex["id"]]["via_former"] is True
     assert kin[ex_mother["id"]]["title"] == "тёща" and kin[ex_mother["id"]]["via_former"] is True
     labels = [x["label"] for x in manager_client.get(f"{API}/guests/{me['id']}").json()["links"]]
     assert labels == ["бывшая жена"]

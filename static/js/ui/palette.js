@@ -7,7 +7,9 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { $, api, authContextIsCurrent, authContextSnapshot, state, toast } from '../core.js';
+import {
+  $, api, authContextIsCurrent, authContextSnapshot, pushOverlay, removeOverlay, state, toast,
+} from '../core.js';
 import { html, mount, render } from './html.js';
 
 /* действия модулей: {id, title, hint, run, when?} — when() решает видимость по правам */
@@ -20,7 +22,6 @@ let index = 0;            /* выбранный пункт списка */
 let found = [];           /* гости из живого поиска */
 let searching = false;
 let timer = null;
-let backFocus = null;
 
 let navProvider = () => [];       /* пункты меню: [{id, title}] */
 let navigateFn = () => {};
@@ -100,9 +101,14 @@ function onKeys(e) {
 export function togglePalette() { open ? close() : show(); }
 export function show() {
   if (open || !state.user || !authContextIsCurrent(authContextSnapshot())) return;
+  const backFocus = document.activeElement;
   open = true;
   query = ''; index = 0; found = [];
-  backFocus = document.activeElement;
+  pushOverlay('palette', close, () => {
+    if (!(backFocus instanceof HTMLElement) || !backFocus.isConnected) return false;
+    backFocus.focus();
+    return document.activeElement === backFocus;
+  });
   $('#palette-backdrop')?.classList.remove('hidden');
   paint();
 }
@@ -114,17 +120,12 @@ export function close() {
   const box = $('#palette');
   if (box) box.replaceChildren();
   $('#palette-backdrop')?.classList.add('hidden');
-  backFocus?.focus?.();
+  removeOverlay('palette');
 }
 
 export function paletteBoot() {
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); togglePalette(); }
   });
-  /* Esc — в фазе захвата и с отсечкой: палитра закрывается первой, drawer и
-     модалка под ней (их обработчик в core.js — пузырьковая фаза) остаются */
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && open) { e.stopPropagation(); close(); }
-  }, true);
   $('#palette-backdrop')?.addEventListener('click', e => { if (e.target.id === 'palette-backdrop') close(); });
 }

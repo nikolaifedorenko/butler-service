@@ -445,8 +445,57 @@ export const POSITION_COLORS = [
 /* Тело и подвал окна — шаблон lit-html; строка выводится текстом. */
 const modalContent = x => x;
 
+/* Modal, drawer and command palette share one Escape owner. Each layer registers its
+   close callback and the focus target that was active before it opened. */
+const overlayStack = [];
+function chainedFocus(primary, fallback) {
+  return () => Boolean(primary?.()) || Boolean(fallback?.());
+}
+function syncOverlayOrder() {
+  overlayStack.forEach((overlay, index) => {
+    const backdrop = document.getElementById(`${overlay.id}-backdrop`);
+    if (backdrop) backdrop.style.zIndex = String(100 + index * 10);
+  });
+}
+export function pushOverlay(id, close, returnFocus) {
+  const index = overlayStack.findIndex(x => x.id === id);
+  let restore = returnFocus;
+  if (index >= 0) {
+    const wasTop = index === overlayStack.length - 1;
+    const [previous] = overlayStack.splice(index, 1);
+    if (!wasTop && overlayStack[index]) {
+      overlayStack[index].returnFocus = chainedFocus(overlayStack[index].returnFocus, previous.returnFocus);
+    }
+    restore = wasTop ? previous.returnFocus : chainedFocus(returnFocus, previous.returnFocus);
+  }
+  overlayStack.push({ id, close, returnFocus: restore });
+  syncOverlayOrder();
+}
+export function removeOverlay(id) {
+  const index = overlayStack.findIndex(x => x.id === id);
+  if (index < 0) return;
+  const wasTop = index === overlayStack.length - 1;
+  const [removed] = overlayStack.splice(index, 1);
+  if (!wasTop && overlayStack[index]) {
+    overlayStack[index].returnFocus = chainedFocus(overlayStack[index].returnFocus, removed.returnFocus);
+  }
+  document.getElementById(`${id}-backdrop`)?.style.removeProperty('z-index');
+  syncOverlayOrder();
+  if (wasTop) removed.returnFocus?.();
+}
+function overlayFocusReturn() {
+  const target = document.activeElement;
+  const restore = () => {
+    if (!(target instanceof HTMLElement) || !target.isConnected) return false;
+    target.focus();
+    return document.activeElement === target;
+  };
+  return restore;
+}
+
 export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
   if (!state.user) return;
+  const returnFocus = overlayFocusReturn();
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
   m.replaceChildren();                       // каждое окно — новое дерево, без остатков прежнего
@@ -463,17 +512,23 @@ export function openModal({ title, subtitle, body, footer, wide = false, onMount
     <div class="modal-body">${modalContent(body)}</div>
     ${footer ? html`<div class="modal-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#modal-backdrop').classList.remove('hidden');
+  pushOverlay('modal', closeModal, returnFocus);
   m.querySelector('.x').onclick = closeModal;
   if (onMount) onMount(m);
   return m;
 }
-export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').replaceChildren(); }
+export function closeModal() {
+  $('#modal-backdrop').classList.add('hidden');
+  $('#modal').replaceChildren();
+  removeOverlay('modal');
+}
 
 /* Боковая панель (ADR-0013, раздел 7: «карточка открывается боковой панелью»): строение как у
    модального окна — голова, прокручиваемое тело, подвал с действиями. Открытые поверх неё
    модальные окна (редакторы) закрываются по Esc первыми. */
 export function openDrawer({ title, subtitle, body, footer, onMount }) {
   if (!state.user) return;
+  const returnFocus = overlayFocusReturn();
   const d = $('#drawer');
   d.replaceChildren();
   const root = document.createElement('div');
@@ -489,11 +544,16 @@ export function openDrawer({ title, subtitle, body, footer, onMount }) {
     <div class="drawer-body">${modalContent(body)}</div>
     ${footer ? html`<div class="drawer-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#drawer-backdrop').classList.remove('hidden');
+  pushOverlay('drawer', closeDrawer, returnFocus);
   d.querySelector('.x').onclick = closeDrawer;
   if (onMount) onMount(d);
   return d;
 }
-export function closeDrawer() { $('#drawer-backdrop').classList.add('hidden'); $('#drawer').replaceChildren(); }
+export function closeDrawer() {
+  $('#drawer-backdrop').classList.add('hidden');
+  $('#drawer').replaceChildren();
+  removeOverlay('drawer');
+}
 
 export function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', danger = true) {
   openModal({
@@ -549,5 +609,9 @@ export async function downloadBlob(path, fallbackName) {
 }
 $('#modal-backdrop').addEventListener('click', e => { if (e.target.id === 'modal-backdrop') closeModal(); });
 $('#drawer-backdrop').addEventListener('click', e => { if (e.target.id === 'drawer-backdrop') closeDrawer(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal();
-  if ($('#modal-backdrop').classList.contains('hidden')) closeDrawer(); } });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !overlayStack.length) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  overlayStack.at(-1).close();
+}, true);
