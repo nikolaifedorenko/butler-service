@@ -339,7 +339,6 @@ async function renderUnitsBoard(body) {
     ${(byUnit.none || []).length ? html`<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
       html`<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar=${b.reservation_id}
         @click=${names ? () => openReservationCard(b.reservation_id, rerender) : nothing}>${b.overbooked ? html`<span class="badge danger">овербукинг</span> ` : nothing}${names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь'} · ${dateRu(b.start)}–${dateRu(b.end)}</div>`)}</div>` : nothing}
-    /* на телефоне создание брони — плавающая кнопка: тулбара на узком экране всё равно не видно */
     ${can('stays.edit') ? html`<button class="fab only-mobile" id="sb-new-fab" aria-label="Новая бронь" title="Новая бронь"
       @click=${() => openReservationForm(null, { onSaved: rerender })}>+</button>` : nothing}`;
   draw();

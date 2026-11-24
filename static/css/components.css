@@ -189,7 +189,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .chip-x:hover { background: var(--brand-line); color: var(--brand-fg-strong); }
 
 /* Плавающая кнопка действия (на телефоне — вместо кнопки в тулбаре) */
-.fab { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 46;
+.fab { position: fixed; right: 18px; bottom: calc(var(--tab-h) + 18px + env(safe-area-inset-bottom)); z-index: 46;
   width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
   background: var(--primary); color: var(--on-solid); font-size: 28px; line-height: 1;
   box-shadow: var(--shadow-lg); align-items: center; justify-content: center;

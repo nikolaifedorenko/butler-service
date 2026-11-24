@@ -457,6 +457,22 @@ test('панель фильтров: поиск не теряет фокус и 
   expect(errors).toEqual([]);
 });
 
+test('мобильный счётчик фильтров принадлежит кнопке и шаблон не печатает комментарий', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const view = page.locator('#view-stays');
+  const toggle = view.locator('.sf-toggle');
+  await toggle.click();
+  await view.locator('[data-sf-dd=cat] summary').click();
+  await view.locator('[data-sf-cat]').first().check();
+  await expect(toggle.locator('b')).toHaveText('(1)');
+  await toggle.locator('b').click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(view.locator('.sf-panel')).not.toHaveClass(/open/);
+  await expect(view).not.toContainText('на телефоне создание брони — плавающая кнопка');
+});
+
 test('сохранённые наборы фильтров: сохранить, выбрать, удалить', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'admin');
