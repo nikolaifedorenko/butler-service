@@ -63,3 +63,19 @@ def test_dark_theme_overrides_every_color_role():
     missing = sorted(colored - names(dark) - same_in_both)
     assert not missing, f"тёмная тема не переопределяет: {missing}"
     assert names(dark) == names(media), "блок prefers-color-scheme разошёлся с data-theme=dark"
+
+
+def test_motion_tokens_are_single_authority_for_transitions():
+    tokens = _strip_comments((CSS / "tokens.css").read_text(encoding="utf-8"))
+    assert len(re.findall(r"--ease\s*:", tokens)) == 1
+    assert re.search(r"--ease:\s*cubic-bezier\(\.2,\s*\.7,\s*\.2,\s*1\);", tokens)
+    assert re.search(r"--dur-1:\s*150ms;", tokens)
+    assert re.search(r"--dur-2:\s*250ms;", tokens)
+
+    for name in ("components.css", "app.css"):
+        css = _strip_comments((CSS / name).read_text(encoding="utf-8"))
+        declarations = re.findall(r"transition\s*:\s*([^;]+);", css)
+        assert declarations, f"в {name} не найдены transitions"
+        for declaration in declarations:
+            assert "var(--dur-" in declaration, f"{name}: transition без duration token: {declaration}"
+            assert "var(--ease)" in declaration, f"{name}: transition без easing token: {declaration}"

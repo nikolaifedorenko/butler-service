@@ -224,7 +224,6 @@ export async function loadSettings() {
     : (settingsScreenAllowed(settingsUI.screen) ? settingsUI.screen : 'overview');
   settingsUI.screen = screen;
   if (!settingsUI.calYear) { settingsUI.calYear = state.year; settingsUI.calMonth = state.month; }
-  settingsBindSearch();
 
   let health = null;
   try { health = await settingsHealth(); } catch { health = null; }   // «Обзор» покажет причину
@@ -684,20 +683,5 @@ function settingsSearchPalette() {
       };
       filter(); q.focus();
     },
-  });
-}
-
-function settingsBindSearch() {
-  if (settingsUI.searchBound) return;
-  settingsUI.searchBound = true;
-  document.addEventListener('keydown', e => {
-    if (!(e.key === 'k' || e.key === 'K' || e.key === 'л' || e.key === 'Л')) return;
-    if (!(e.metaKey || e.ctrlKey)) return;
-    if (state.view !== 'settings') return;
-    const t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
-    if (!$('#modal-backdrop')?.classList.contains('hidden')) return;
-    e.preventDefault();
-    settingsSearchPalette();
   });
 }

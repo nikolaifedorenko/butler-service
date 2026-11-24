@@ -9,7 +9,7 @@
 input[type=text], input[type=password], input[type=date], input[type=number], input[type=time], select, textarea {
   width: 100%; padding: 11px 13px; background: var(--surface-0); color: var(--text);
   border: 1px solid var(--line); border-radius: var(--r-sm); outline: none;
-  transition: border-color .18s ease-out, box-shadow .18s ease-out;
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
 input:focus, select:focus, textarea:focus { border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(148, 88, 58, .14); }
@@ -35,7 +35,8 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 15px;
   border-radius: 3px; border: 1px solid var(--line); background: var(--surface-0); color: var(--text);
   cursor: pointer; font-size: 13.5px; font-weight: 600; letter-spacing: .01em;
-  transition: .18s ease-out; white-space: nowrap; }
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease); white-space: nowrap; }
 .btn:hover { border-color: var(--primary-soft); background: var(--surface-1); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -56,7 +57,8 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .toolbar .spacer { flex: 1; }
 .seg { display: inline-flex; background: var(--surface-3); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
 .seg button { background: none; border: none; color: var(--muted); padding: 8px 13px; cursor: pointer;
-  font-size: 12.5px; font-weight: 600; letter-spacing: .02em; transition: .18s ease-out; }
+  font-size: 12.5px; font-weight: 600; letter-spacing: .02em;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
 .seg button.active { background: var(--navy); color: var(--on-navy); font-weight: 700; }
 
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 3px;
@@ -88,7 +90,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .modal { background: var(--surface-0); border: 1px solid var(--line); border-top: 3px solid var(--gold);
   border-radius: var(--r-lg);
   width: 100%; max-width: 560px; max-height: calc(100dvh - 40px); display: flex; flex-direction: column;
-  box-shadow: var(--shadow-lg); animation: pop .16s ease-out; }
+  box-shadow: var(--shadow-lg); animation: pop var(--dur-1) var(--ease); }
 .modal.wide { max-width: 780px; }
 @keyframes pop { from { opacity: 0; transform: scale(.97) translateY(6px); } to { opacity: 1; transform: none; } }
 .modal-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
@@ -104,7 +106,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
   width: min(520px, calc(100vw - 28px)); }
 .toast { background: var(--surface-0); border: 1px solid var(--line); border-left: 3px solid var(--navy);
   border-radius: var(--r-md); padding: 11px 15px; font-size: 13.5px; box-shadow: var(--shadow-lg);
-  animation: slideup .2s ease-out; max-width: 100%; }
+  animation: slideup var(--dur-2) var(--ease); max-width: 100%; }
 .toast.ok { border-left-color: var(--accent); }
 .toast.warn { border-left-color: var(--warn); }
 .toast.err { border-left-color: var(--danger); }
@@ -130,7 +132,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .drawer-backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: var(--z-drawer); }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100vw); z-index: var(--z-drawer);
   display: flex; flex-direction: column; background: var(--surface-0); border-left: 1px solid var(--line);
-  border-top: 3px solid var(--gold); box-shadow: var(--shadow-lg); animation: drawer-in .2s ease-out; }
+  border-top: 3px solid var(--gold); box-shadow: var(--shadow-lg); animation: drawer-in var(--dur-2) var(--ease); }
 .drawer.wide { width: min(720px, 100vw); }
 .drawer-head { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--space-4);
   border-bottom: 1px solid var(--line); }
@@ -176,7 +178,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
    строке; вместо повторяющегося бейджа «карточка →» — шеврон по наведению */
 .row-card { cursor: pointer; }
 .row-card:hover { background: var(--surface-1); }
-.row-go { color: var(--muted); opacity: 0; transition: opacity .15s ease; width: 2em; }
+.row-go { color: var(--muted); opacity: 0; transition: opacity var(--dur-1) var(--ease); width: 2em; }
 .row-card:hover .row-go, .row-card:focus-within .row-go { opacity: 1; }
 
 /* Чип активного фильтра: снимается по ✕ без раскрытия списков (шахматка) */
@@ -193,7 +195,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
   width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
   background: var(--primary); color: var(--on-solid); font-size: 28px; line-height: 1;
   box-shadow: var(--shadow-lg); align-items: center; justify-content: center;
-  transition: background .15s ease; }
+  transition: background var(--dur-1) var(--ease); }
 .fab:hover { background: var(--primary-dark); }
 .fab:active { transform: scale(.96); }
 
@@ -207,10 +209,6 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .skel-line:nth-child(3) { width: 64%; }
 .skel-line.skel-lg { height: 34px; border-radius: var(--r-md); }
 @keyframes skel-slide { from { background-position: 120% 0; } to { background-position: -80% 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .skel-line { animation: none; }
-}
-
 /* Микродвижения (атмосфера 23.11.2026): фокус с клавиатуры — кольцо фирменного цвета;
    hover/press — на общей кривой. Без :focus, чтобы не дублировать клик мышью. */
 .btn, .nav-item, .chip, .menu-btn, .ft-person, .icon-btn { transition: background var(--dur-1) var(--ease),
@@ -239,4 +237,7 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .palette-item.active { background: var(--surface-2); }
 @media (max-width: 860px) {
   .palette-backdrop { padding: 6vh 10px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal, .toast, .drawer, .palette, .skel-line { animation: none; }
 }

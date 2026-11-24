@@ -312,6 +312,9 @@ export async function api(path, opts = {}) {
   }
   if (method !== 'GET' && method !== 'HEAD') init.headers['X-CSRF-Token'] = getCookie('tt_csrf');
   const ctrl = new AbortController();
+  const abortFromCaller = () => ctrl.abort(opts.signal?.reason);
+  if (opts.signal?.aborted) abortFromCaller();
+  else opts.signal?.addEventListener('abort', abortFromCaller, { once: true });
   const timer = setTimeout(() => ctrl.abort(), opts.timeout || 20000);
   init.signal = ctrl.signal;
   if (!opts.silent) loading(true);
@@ -366,6 +369,7 @@ export async function api(path, opts = {}) {
   } finally {
     finishIssuer();
     clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', abortFromCaller);
     if (!opts.silent) loading(false);
   }
 }
