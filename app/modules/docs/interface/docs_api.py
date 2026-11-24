@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal, current_principal
@@ -123,7 +123,7 @@ def render(payload: RenderIn, principal: Principal = Depends(VIEW), db: Session 
     return _attachment(*statements.render(db, principal, payload))
 
 
-@router.post("/print", response_class=Response, responses={
+@router.post("/print", response_class=HTMLResponse, responses={
     200: {"headers": {_AUTH_CONTEXT_HEADER: {"schema": {"type": "string"}}}},
 })
 def print_document(payload: PrintIn, principal: Principal = Depends(current_principal)):

@@ -46,6 +46,12 @@ def test_print_header_reports_current_cookie_context(employee_client):
     assert response.headers["x-butler-auth-context"] == context.json()["auth_context"]
 
 
+def test_print_success_contract_declares_html_document_and_context(app_stack):
+    response = app_stack["app"].openapi()["paths"]["/api/docs/print"]["post"]["responses"]["200"]
+    assert response.get("content") == {"text/html": {"schema": {"type": "string"}}}
+    assert response["headers"]["X-Butler-Auth-Context"]["schema"]["type"] == "string"
+
+
 def test_auth_context_cannot_authenticate_print_or_context(client, employee_client):
     context = employee_client.get("/api/auth/context")
     assert context.status_code == 200, context.text

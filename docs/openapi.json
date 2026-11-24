@@ -23081,6 +23081,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "Successful Response",
             "headers": {
               "X-Butler-Auth-Context": {

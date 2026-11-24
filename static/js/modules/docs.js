@@ -4,14 +4,14 @@
    файлами (сборки намеренно нет, ADR-0008). Модуль (ADR-0013, раздел 7). Окно печати —
    отдельный документ, который собирается строкой с esc(): в страницу приложения она не попадает. */
 
-import { api, authContextIsCurrent, authContextSnapshot, dateRu, esc, expireAuthContext, getCookie, hours, loading, state,
+import { api, authContextIsCurrent, authContextSnapshot, dateRu, esc, expireAuthContext, getCookie, hours, loading, requireAuthOwnership, state,
   subscribeAuthContext, subscribeSessionRejection, todayISO, toast } from '../core.js';
 
 /* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ──
    Страницу собирает сервер (POST /api/docs/print): прежний document.write в about:blank
    с inline-скриптом автопечати блокировался CSP (A1, аудит 25.10.2026). Документ
-   показывается в скрытом фрейме; автопечать делает внешний скрипт страницы, после
-   диалога фрейм удаляется по сообщению от него. */
+   показывается в скрытом фрейме. Родитель проверяет сессию по сигналу готовности
+   и вызывает печать; после диалога фрейм удаляется по сообщению от него. */
 const printJobs = new Set();
 function cancelPrintJobs() {
   for (const cleanup of printJobs) cleanup();
@@ -26,11 +26,12 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
   let frame, fallback, interval, requestTimeout;
   let validating = false;
   let foregroundPending = false;
+  let readyDocument, printed = false;
 
   function cleanup() {
     if (!printJobs.delete(cleanup)) return;
     controller.abort();
-    window.removeEventListener('message', onDone);
+    window.removeEventListener('message', onMessage);
     window.removeEventListener('focus', onForeground);
     window.removeEventListener('pageshow', onForeground);
     document.removeEventListener('visibilitychange', onVisible);
@@ -39,8 +40,13 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
     clearInterval(interval);
     frame?.remove();
   }
-  function onDone(e) {
-    if (e.origin === location.origin && e.source === frame.contentWindow && e.data?.butler_print_done) cleanup();
+  function onMessage(e) {
+    if (e.origin !== location.origin || e.source !== frame.contentWindow) return;
+    if (e.data?.butler_print_done) cleanup();
+    else if (e.data?.butler_print_ready && !readyDocument) {
+      readyDocument = frame.contentDocument;
+      onForeground();
+    }
   }
   function onVisible() {
     if (!document.hidden) onForeground();
@@ -54,16 +60,25 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
   }
   async function serverMatches() {
     const r = await fetch('/api/auth/context', request);
-    if (r.status === 401 && !controller.signal.aborted) expireAuthContext(started);
-    return r.ok && (await r.json()).auth_context === started.context;
+    const context = r.ok ? (await r.json()).auth_context : null;
+    if ((r.status === 401 || r.ok && context !== started.context) && !controller.signal.aborted) {
+      void expireAuthContext(started);
+    }
+    return r.ok && context === started.context;
   }
   async function validateMounted() {
     if (!current()) { cleanup(); return; }
     if (validating) return;
     validating = true;
+    const ready = readyDocument;
     requestTimeout = setTimeout(cleanup, 20_000);
     try {
-      if (!await serverMatches() || !current()) cleanup();
+      if (!await serverMatches() || !current()) { cleanup(); return; }
+      if (ready && !printed && !foregroundPending) {
+        if (frame.contentDocument !== ready) { cleanup(); return; }
+        printed = true;
+        frame.contentWindow.print();
+      }
     } catch { cleanup(); }
     finally {
       clearTimeout(requestTimeout);
@@ -85,7 +100,7 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
     });
     if (r.status === 401 && !controller.signal.aborted) expireAuthContext(started);
     if (!r.ok) throw new Error(`Ошибка ${r.status}`);
-    if (r.headers.get('X-Butler-Auth-Context') !== started.context || !current()) { cleanup(); return; }
+    if (!current() || r.headers.get('X-Butler-Auth-Context') !== started.context) { cleanup(); return; }
     const html = await r.text();
     if (!await serverMatches() || !current()) { cleanup(); return; }
     clearTimeout(requestTimeout);
@@ -96,7 +111,7 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
     Object.assign(frame.style, { position: 'fixed', top: '0', left: '-10000px', width: '1px', height: '1px',
       border: '0' });
     frame.srcdoc = html;
-    window.addEventListener('message', onDone);
+    window.addEventListener('message', onMessage);
     window.addEventListener('focus', onForeground);
     window.addEventListener('pageshow', onForeground);
     document.addEventListener('visibilitychange', onVisible);
@@ -165,6 +180,7 @@ function triggerDownload(blob, name) {
    PDF собирается на сервере встроенным рендером и открывается в новой
    вкладке — из неё сразу можно печатать. */
 export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenceId = null) {
+  const started = authContextSnapshot();
   let p;
   try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
@@ -172,7 +188,7 @@ export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenc
       ? 'Сначала сохраните отсутствие в ячейке — тогда станет доступна печать заявления'
       : e.message, 'err');
   }
-  if (!statementLayerOk(p, layer)) return;
+  if (!authContextIsCurrent(started) || !statementLayerOk(p, layer)) return;
   /* Вид заявления определяет сервер: у единого «отпросился (выходной за часы)» он
      зависит от точки ввода — вся смена или интервал (Q3). */
   const type = p.doc_type || p.shift?.doc_type;
@@ -199,6 +215,7 @@ export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenc
       throw new Error(msg);
     }
     const blob = await res.blob();
+    requireAuthOwnership(started);
     const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1]
       || `document_${empId}.${fmt}`;
     if (fmt === 'pdf') {

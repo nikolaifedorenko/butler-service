@@ -12,6 +12,192 @@ const serverContext = async page => {
   return (await response.json()).auth_context;
 };
 
+test('child readiness waits for a fresh verdict before native print', async ({ page }) => {
+  const script = Promise.withResolvers(), releaseScript = Promise.withResolvers();
+  const decision = Promise.withResolvers(), releaseCheck = Promise.withResolvers();
+  const printed = Promise.withResolvers();
+  await page.exposeFunction('recordPrint', () => { decision.resolve('printed'); printed.resolve(); });
+  await page.addInitScript(() => { window.print = () => window.recordPrint(); });
+  await login(page, 'admin');
+  const id = await serverContext(page);
+  await page.route('**/static/js/print-page.js', async route => {
+    script.resolve();
+    await releaseScript.promise;
+    await route.continue();
+  });
+  await print(page, 'readiness');
+  await script.promise;
+  await page.route('**/api/auth/context', async route => {
+    decision.resolve('validating');
+    await releaseCheck.promise;
+    await route.fulfill({ json: { auth_context: id } });
+  });
+  try {
+    releaseScript.resolve();
+    expect(await decision.promise).toBe('validating');
+  } finally { releaseCheck.resolve(); }
+  await printed.promise;
+  const child = frames(page).contentFrame();
+  await child.locator('body').evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await expect(frames(page)).toHaveCount(0);
+});
+
+async function fixtureShell(page) {
+  await page.goto('/');
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await page.evaluate(async () => {
+    const { adoptAuthContext } = await import('/static/js/core.js');
+    document.cookie = 'tt_auth_context=fixture; path=/';
+    adoptAuthContext('fixture');
+    document.querySelector('#app').classList.remove('hidden');
+    document.querySelector('#login-screen').classList.add('hidden');
+  });
+  await page.route('**/api/auth/context', route => route.fulfill({ json: { auth_context: 'fixture' } }));
+}
+
+for (const marker of ['replacement', 'signed-out']) {
+  test(`held print child accepts no native invocation after a ${marker} marker`, async ({ page }) => {
+    let printed = 0;
+    await page.exposeFunction('recordPrint', () => { printed++; });
+    await page.addInitScript(() => { window.print = () => window.recordPrint(); });
+    await fixtureShell(page);
+    await page.route('**/api/docs/print', route => route.fulfill({ contentType: 'text/html',
+      headers: { 'X-Butler-Auth-Context': 'fixture' }, body: '<script src="/static/js/print-page.js" defer></script>' }));
+    const requested = Promise.withResolvers(), release = Promise.withResolvers();
+    await page.route('**/static/js/print-page.js', async route => {
+      requested.resolve();
+      await release.promise;
+      await route.continue();
+    });
+    await print(page, 'held child');
+    await requested.promise;
+    try {
+      await expect(frames(page)).toHaveCount(1);
+      await page.evaluate(marker => { document.cookie = 'tt_auth_context=' + marker + '; path=/'; }, marker);
+    } finally { release.resolve(); }
+    await expect(frames(page)).toHaveCount(0);
+    await expect(page.locator('#app')).toBeHidden();
+    expect(printed).toBe(0);
+  });
+}
+
+for (const verdict of ['replacement', 'signed-out', 'expired']) {
+  test(`unowned request deactivates the shell while reconciling ${verdict}`, async ({ page }) => {
+    // No authenticated cookie or application mutation endpoint is used by this transport contract.
+    await fixtureShell(page);
+    const initial = await stored(page);
+    await fixturePrints(page, 'fixture');
+    await mounted(page);
+    const result = await page.evaluate(async verdict => {
+      const { api } = await import('/static/js/core.js');
+      const routes = [];
+      let finish;
+      window.fetch = path => {
+        routes.push(path);
+        if (path === '/__fixture_request__') return Promise.resolve(new Response('{}'));
+        return new Promise(resolve => { finish = resolve; });
+      };
+      document.cookie = verdict === 'expired' ? 'tt_auth_context=; max-age=0; path=/'
+        : 'tt_auth_context=' + verdict + '; path=/';
+      const pending = api('/__fixture_request__', { method: 'POST', silent: true }).catch(() => {});
+      const snapshot = { hidden: document.querySelector('#app').classList.contains('hidden'),
+        frames: document.querySelectorAll('iframe[title="Fixture mounted"]').length, routes: [...routes] };
+      finish?.(new Response(JSON.stringify({ auth_context: verdict }), { status: verdict === 'replacement' ? 200 : 401 }));
+      await pending;
+      return snapshot;
+    }, verdict);
+    expect(result).toEqual({ hidden: true, frames: 0, routes: ['/api/auth/context'] });
+    if (verdict === 'replacement') {
+      await expect(page.locator('#login-screen')).toBeVisible(); // reload boots without credentials
+      expect(await stored(page)).toBe(initial);
+    } else {
+      await expect(page.locator('#login-screen')).toBeVisible();
+      expect(JSON.parse(await stored(page))).toMatchObject({ context: null });
+    }
+  });
+}
+
+test('Today rebuilds its blocks when the available role data changes', async ({ page }) => {
+  await login(page, 'admin');
+  const today = page.locator('#view-today');
+  await expect(today.locator('[data-stat=at-work]')).toBeVisible();
+  // Project empty, non-personal samples in the same browser session.
+  await page.route('**/api/punches/status', route => route.fulfill({ json: { on_shift: false } }));
+  await page.route('**/api/stays/mine/today', route => route.fulfill({ json: { date: '2026-01-01', reservations: [] } }));
+  await page.evaluate(() => {
+    window.state.user = { name: 'Fixture', employee_id: 1 };
+    window.state.perms = ['stays.mine'];
+    window.navigate('today');
+  });
+  await expect(today.locator('[data-stat=mine]')).toBeVisible();
+  const employeeBoard = await today.locator('[data-stat=at-work]').count();
+  await page.evaluate(() => {
+    window.state.user = { name: 'Fixture', employee_id: null };
+    window.state.perms = ['presence.view'];
+    window.navigate('today');
+  });
+  await expect(today.locator('.today-hello')).toBeVisible();
+  expect({ employeeBoard, shift: await today.locator('.today-shift').count(),
+    mine: await today.locator('[data-stat=mine]').count() }).toEqual({ employeeBoard: 0, shift: 0, mine: 0 });
+  await expect(today.locator('[data-stat=at-work]')).toBeVisible();
+});
+
+test('a declined child readiness verdict releases the job before native print', async ({ page }) => {
+  await page.addInitScript(() => { window.print = () => parent.fixturePrintCalls++; });
+  await login(page, 'admin');
+  await page.evaluate(() => { window.fixturePrintCalls = 0; });
+  const id = await serverContext(page);
+  let checks = 0;
+  await page.route('**/api/auth/context', route => route.fulfill({ json: { auth_context: ++checks === 1 ? id : 'retired' } }));
+  await print(page, 'declined');
+  await page.evaluate(() => window.fixturePending);
+  await expect(frames(page)).toHaveCount(0);
+  expect(await page.evaluate(() => window.fixturePrintCalls)).toBe(0);
+});
+
+test('a superseded Today load cannot register a poller', async ({ page }) => {
+  await login(page, 'admin');
+  await expect(page.locator('#view-today [data-stat=at-work]')).toBeVisible();
+  const requested = Promise.withResolvers(), release = Promise.withResolvers();
+  await page.route('**/api/presence/board', async route => {
+    requested.resolve();
+    await release.promise;
+    await route.fulfill({ json: { at_work_now: 0, expected_now: 0, yet_to_come: [] } });
+  });
+  await page.evaluate(async () => {
+    const { MODULE_VIEWS } = await import('/static/js/registry.js');
+    window.fixtureLoad = MODULE_VIEWS.today();
+  });
+  await requested.promise;
+  await page.evaluate(() => window.navigate('fixture-neutral'));
+  release.resolve();
+  await page.evaluate(() => window.fixtureLoad);
+  expect(await page.evaluate(() => window.state.timers.length)).toBe(0);
+});
+
+test('a retired rejection leaves the current mounted job intact', async ({ page }) => {
+  await login(page, 'admin');
+  const id = await serverContext(page);
+  const pending = Promise.withResolvers(), release = Promise.withResolvers();
+  await page.route('**/__fixture_timeout__', async route => {
+    pending.resolve();
+    await release.promise;
+    await route.fulfill({ status: 401, json: { detail: 'Fixture' } });
+  });
+  await page.evaluate(async () => {
+    const { api } = await import('/static/js/core.js');
+    window.fixtureOldRequest = api('/__fixture_timeout__', { silent: true }).catch(() => {});
+  });
+  await pending.promise;
+  try {
+    await page.evaluate(async id => (await import('/static/js/core.js')).publishAuthContext(id), id);
+    await fixturePrints(page, id);
+    await mounted(page);
+  } finally { release.resolve(); }
+  await page.evaluate(() => window.fixtureOldRequest);
+  expect(await frames(page).count()).toBe(1);
+});
+
 async function twoPages(page, context) {
   await login(page, 'admin');
   const initial = await stored(page);
@@ -119,17 +305,25 @@ for (const check of ['periodic', 'foreground']) {
     await mounted(page);
     await print(page, 'delayed');
     await gate.held;
+    const checking = Promise.withResolvers(), resume = Promise.withResolvers();
+    await page.route('**/api/auth/context', async route => {
+      checking.resolve();
+      await resume.promise;
+      await route.continue();
+    });
     try {
       const login = await peer.request.post('/api/auth/login', { data: { username: 'admin', password: DEMO_PASSWORD } });
       expect(login.ok()).toBe(true);
       expect(await serverContext(peer)).not.toBe(before);
       expect(await stored(peer)).toBe(originalEvent);
-    } finally { gate.release(); }
-    await page.evaluate(() => window.fixturePending);
-    expect(await page.evaluate(() => window.fixtureMounts)).toEqual(['Fixture mounted']);
-    if (check === 'periodic') await page.clock.fastForward(30_000);
-    else await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    await expect(frames(page)).toHaveCount(0);
+      if (check === 'periodic') await page.clock.fastForward(5_000);
+      else await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await checking.promise;
+      await expect(frames(page)).toHaveCount(0);
+      await page.evaluate(() => window.fixturePending);
+      expect(await page.evaluate(() => window.fixtureMounts)).toEqual(['Fixture mounted']);
+    } finally { gate.release(); resume.resolve(); }
+    await expect(page.locator('#view-today.active .today-hello')).toBeVisible();
   });
 }
 
@@ -420,7 +614,7 @@ test.describe('review regressions', () => {
         held.resolve();
         await release.promise;
         await route.fulfill({ status: 401, json: { detail: 'Fixture' } });
-      });
+      }, { times: 1 });
       await page.evaluate(async () => {
         const { api } = await import('/static/js/core.js');
         window.fixturePending = api('/api/auth/me', { silent: true }).catch(() => {});
@@ -430,9 +624,11 @@ test.describe('review regressions', () => {
       expect(replacement.ok()).toBe(true);
       const after = (await replacement.json()).auth_context;
       if (published) await page.evaluate(async after => (await import('/static/js/core.js')).publishAuthContext(after), after);
+      const settled = published ? page.evaluate(() => window.fixturePending) : page.waitForEvent('domcontentloaded');
       release.resolve();
-      await page.evaluate(() => window.fixturePending);
-      const latest = await stored(page);
+      await settled;
+      await expect(page.locator('#view-today.active .today-hello')).toBeVisible();
+      const latest = await stored(peer);
       if (published) expect(JSON.parse(latest).context).toBe(after);
       else expect(latest).toBe(original);
       await expect(peer.locator('#app')).toBeVisible();
@@ -493,17 +689,21 @@ test.describe('review regressions', () => {
     await page.clock.pauseAt(new Date(Date.now() + 1000));
     await mounted(page);
     const held = Promise.withResolvers(), release = Promise.withResolvers();
+    const second = Promise.withResolvers(), decline = Promise.withResolvers();
     let checks = 0;
     await page.route('**/api/auth/context', async route => {
       if (++checks === 1) { held.resolve(); await release.promise; }
+      else if (checks === 2) { second.resolve(); await decline.promise; }
+      else return route.continue(); // independent shell reconciliation
       await route.fulfill({ json: { auth_context: checks === 1 ? before : 'fixture-replaced' } });
     });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await held.promise;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     release.resolve();
+    await second.promise;
+    try { await expect(frames(page)).toHaveCount(1); } finally { decline.resolve(); }
     await expect(frames(page)).toHaveCount(0);
-    expect(checks).toBe(2);
   });
 
   test('a common 401 releases local jobs while checking whether the cookie is still valid', async ({ page, context }) => {
@@ -518,17 +718,19 @@ test.describe('review regressions', () => {
       await release.promise;
       await route.fulfill({ json: { auth_context: before } });
     });
-    await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { detail: 'Fixture' } }));
+    await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { detail: 'Fixture' } }), { times: 1 });
     await page.evaluate(async () => {
       const { api } = await import('/static/js/core.js');
       window.fixturePending = api('/api/auth/me', { silent: true }).catch(() => {});
     });
+    const reloaded = page.waitForEvent('domcontentloaded');
     try {
       await expect(frames(page)).toHaveCount(0);
       expect(await stored(peer)).toBe(initial);
       await expect.poll(() => checks).toBe(1);
     } finally { release.resolve(); }
-    await page.evaluate(() => window.fixturePending);
+    await reloaded;
+    await expect(page.locator('#view-today.active .today-hello')).toBeVisible();
     expect(await stored(peer)).toBe(initial);
     await expect(peer.locator('#app')).toBeVisible();
   });

@@ -9,8 +9,8 @@
 'use strict';
 
 import { $, $$, adoptAuthContext, api, authContextIsCurrent, authContextSnapshot, closeDrawer, closeModal, getCookie,
-  initials, loadMediaLimits, openModal, publishAuthContext, roleTitle, setLoginHandler, serverShiftMs, state,
-  subscribeAuthContext, syncServerClock, toast, todayISO } from './core.js';
+  expireAuthContext, initials, loadMediaLimits, openModal, publishAuthContext, roleTitle, setLoginHandler, serverShiftMs, state,
+  subscribeAuthContext, subscribeSessionRejection, syncServerClock, toast, todayISO } from './core.js';
 import { html, mount, nothing, render } from './ui/html.js';
 import { MODULE_SCREENS, MODULE_VIEWS, registerModule } from './registry.js';
 import { close as closePalette, paletteBoot, paletteInit } from './ui/palette.js';
@@ -178,6 +178,7 @@ function deactivateShell() {
 }
 
 subscribeAuthContext(event => { if (event.external && event.context) deactivateShell(); });
+subscribeSessionRejection(deactivateShell);
 
 export function showLogin() {
   deactivateShell();
@@ -361,7 +362,9 @@ $('#login-form').addEventListener('submit', () => {
 
 $('#logout-btn').onclick = async () => {
   const started = authContextSnapshot();
-  try { await api('/api/auth/logout', { method: 'POST', silent: true, allow401: true }); } catch { /* локальный выход */ }
+  if (!authContextIsCurrent(started)) return;
+  try { await api('/api/auth/logout', { method: 'POST', silent: true }); }
+  catch { await expireAuthContext(started); return; }
   const marker = getCookie('tt_auth_context');
   if (started.eventId === authContextSnapshot().eventId && (!marker || marker === 'signed-out' || marker === started.context)) {
     publishAuthContext(null);
@@ -452,17 +455,17 @@ export async function bootApp() {
     if (authContextSnapshot().eventId !== initial.eventId) return;
     if (me?.user) {
       const marker = getCookie('tt_auth_context');
-      if (marker && marker !== me.auth_context) { location.reload(); return; }
+      if (marker && marker !== me.auth_context) {
+        adoptAuthContext(me.auth_context);
+        await expireAuthContext(authContextSnapshot());
+        return;
+      }
       if (fromLogin) publishAuthContext(me.auth_context);
       else adoptAuthContext(me.auth_context);
       const started = authContextSnapshot();
       await loadMediaLimits();     // лимиты фото/видео для подсказок загрузки
       if (!authContextIsCurrent(started) || started.context !== me.auth_context) {
-        // A published change already handles its own transition. Reconcile an unannounced cookie change.
-        if (authContextSnapshot().eventId === started.eventId) {
-          deactivateShell();
-          location.reload();
-        }
+        await expireAuthContext(started);
         return;
       }
       state.user = me.user;

@@ -38,6 +38,7 @@ function readAuthEvent() {
 
 let storedEventId = readAuthEvent()?.eventId || '';
 let auth = { context: null, eventId: storedEventId };
+let suspended;
 // Sessions opened before the companion cookie was introduced remain usable until their first rotation.
 let legacyContext = null;
 
@@ -85,9 +86,18 @@ export function authContextSnapshot() {
 
 export function authContextIsCurrent(started) {
   const now = authContextSnapshot();
+  if (!started.context || started.context !== now.context || started.eventId !== now.eventId || suspended?.owner === auth) {
+    return false;
+  }
   const marker = getCookie('tt_auth_context');
-  return Boolean(started.context) && started.context === now.context && started.eventId === now.eventId &&
-    (marker === started.context || !marker && legacyContext === started.context);
+  if (marker === started.context || !marker && legacyContext === started.context) return true;
+  void expireAuthContext(started);
+  return false;
+}
+
+export function requireAuthOwnership(started = auth) {
+  if (!authContextIsCurrent(started)) throw new Error('Сессия изменилась');
+  return started;
 }
 
 export function subscribeAuthContext(listener) {
@@ -102,20 +112,36 @@ export function subscribeSessionRejection(listener) {
 
 // Запоздалый 401 из предыдущей сессии не должен разлогинить уже вошедшего пользователя.
 export async function expireAuthContext(started) {
-  // Drop local work immediately, including work with an outstanding validation request.
-  for (const listener of rejectionListeners) listener();
   const current = authContextSnapshot();
-  if (started.eventId !== current.eventId || started.context !== current.context) return;
+  if (!started.context || started.eventId !== current.eventId || started.context !== current.context) return;
+  const owner = auth;
+  if (suspended?.owner === owner) return suspended.check;
+  const hold = { owner };
+  suspended = hold;
+  for (const listener of rejectionListeners) listener();
   const marker = getCookie('tt_auth_context');
-  try {
-    const response = await fetch('/api/auth/context', { credentials: 'same-origin', cache: 'no-store',
-      signal: AbortSignal.timeout(20_000) });
-    const latest = authContextSnapshot();
-    if (response.status === 401 && latest.eventId === started.eventId && latest.context === started.context &&
-        marker === getCookie('tt_auth_context') && (!marker || marker === 'signed-out' || marker === started.context)) {
-      publishAuthContext(null);
-    }
-  } catch { /* A failed check is insufficient evidence to sign out another tab. */ }
+  hold.check = (async () => {
+    try {
+      const response = await fetch('/api/auth/context', { credentials: 'same-origin', cache: 'no-store',
+        signal: AbortSignal.timeout(20_000) });
+      const verified = response.ok ? (await response.json()).auth_context : null;
+      syncAuthEvent();
+      if (auth !== owner) return;
+      if (marker === getCookie('tt_auth_context')) {
+        if (response.status === 401 && (!marker || marker === 'signed-out' || marker === started.context)) {
+          publishAuthContext(null);
+          return;
+        }
+        if (verified && (!marker || marker === verified)) {
+          location.reload();
+          return;
+        }
+      }
+    } catch { /* Неоднозначный ответ не должен разлогинить другие вкладки. */ }
+    syncAuthEvent();
+    if (auth === owner) showLogin();
+  })();
+  return hold.check;
 }
 
 /* ───────────────────────────── утилиты ───────────────────────────── */
@@ -267,12 +293,14 @@ function httpError(msg, status) {
 }
 export async function api(path, opts = {}) {
   const started = auth;
+  const method = (opts.method || 'GET').toUpperCase();
+  const bootRead = method === 'GET' && opts.allow401 && (path === '/api/auth/me' || path === '/api/health');
+  if (started.context || !(bootRead || method === 'POST' && path === '/api/auth/login')) requireAuthOwnership(started);
   const init = { method: opts.method || 'GET', credentials: 'same-origin', headers: {} };
   if (opts.body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(opts.body);
   }
-  const method = (opts.method || 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') init.headers['X-CSRF-Token'] = getCookie('tt_csrf');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeout || 20000);
@@ -294,16 +322,18 @@ export async function api(path, opts = {}) {
     if (res.status === 401 && !opts.allow401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
+      if (started.context) requireAuthOwnership(started);
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
       // единый разбор ошибок (в т.ч. 422-массив pydantic и структурные 409) — httpError
       throw httpError(msg, res.status);
     }
-    if (started.context && !authContextIsCurrent(started)) {
-      // A successful auth mutation changes the cookie before its response reaches JavaScript.
+    if (started.context) {
+      // A successful auth mutation changes its own companion before its response reaches JavaScript.
       const rotation = method === 'POST' && SESSION_CHANGES.has(path);
       const expected = path === '/api/auth/logout' ? 'signed-out' : data?.auth_context;
-      if (!rotation || !expected || expected !== getCookie('tt_auth_context') ||
-          authContextSnapshot().eventId !== started.eventId) throw new Error('Сессия изменилась');
+      const ownRotation = rotation && expected && expected === getCookie('tt_auth_context') &&
+        authContextSnapshot().eventId === started.eventId && started === auth && suspended?.owner !== started;
+      if (!ownRotation && !authContextIsCurrent(started)) throw new Error('Сессия изменилась');
     }
     return data;
   } finally {
@@ -314,7 +344,7 @@ export async function api(path, opts = {}) {
 
 /* multipart (фото): api() умеет только JSON — загрузка фото идёт через fetch напрямую */
 export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
-  const started = auth;
+  const started = requireAuthOwnership();
   loading(true);
   try {
     const ctrl = new AbortController();
@@ -333,6 +363,7 @@ export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
       throw httpError(msg, res.status);   // тот же разбор, что в api() (P1-fe-4)
     }
+    requireAuthOwnership(started);
     return data;
   } finally { loading(false); }
 }
@@ -466,9 +497,9 @@ export function mediaHint() {
 }
 
 export async function downloadBlob(path, fallbackName) {
-  const started = auth;
   loading(true);
   try {
+    const started = requireAuthOwnership();
     const res = await fetch(path, { credentials: 'same-origin' });
     if (res.status === 401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     if (!res.ok) {
@@ -478,6 +509,7 @@ export async function downloadBlob(path, fallbackName) {
       throw new Error(msg);
     }
     const blob = await res.blob();
+    requireAuthOwnership(started);
     const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallbackName;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

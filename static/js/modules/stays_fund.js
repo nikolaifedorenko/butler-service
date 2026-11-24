@@ -14,7 +14,7 @@
 'use strict';
 
 import { can, registerModule } from '../app.js';
-import { $, $$, api, closeModal, confirmDialog, dateRu, downloadBlob, getCookie, loadGenerationFor, loading, openModal, toast } from '../core.js';
+import { $, $$, api, closeModal, confirmDialog, dateRu, downloadBlob, getCookie, loadGenerationFor, loading, openModal, requireAuthOwnership, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { checkField, fieldRow, optionView, selectField, textInput } from '../ui/form.js';
 import { renderPreview, staysBindGatedFoot } from './stays_forms.js';
@@ -723,9 +723,11 @@ async function fundPostFile(url, fields) {
   Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
   loading(true);
   try {
+    const started = requireAuthOwnership();
     const res = await fetch(url, { method: 'POST', credentials: 'same-origin', body: fd,
       headers: { 'X-CSRF-Token': getCookie('tt_csrf') } });
     const d = await res.json().catch(() => ({}));
+    requireAuthOwnership(started);
     if (!res.ok) {
       const e = new Error(typeof d.detail === 'string' ? d.detail : d.errors ? 'В файле есть ошибки' : `Ошибка ${res.status}`);
       e.status = res.status;

@@ -116,13 +116,16 @@ const adoptAuthContext = () => {};
 const syncServerClock = () => {};
 const loadMediaLimits = async () => { calls.push('prepare'); };
 const enterApp = async () => { calls.push('enter'); };
-const deactivateShell = () => { calls.push('deactivate'); state.user = null; };
+const expireAuthContext = snapshot => {
+  if (!capturedBeforePreparation.has(snapshot)) throw Error('reconciling wrong snapshot');
+  calls.push('reconcile');
+};
 const showLogin = () => { calls.push('login'); };
 """
     proc = subprocess.run(["node", "-e", script + boot + """
 bootApp().then(() => console.log(JSON.stringify({ calls, user: state.user })));
 """], capture_output=True, text=True, check=True, timeout=10)
-    assert json.loads(proc.stdout) == {"calls": ["prepare", "deactivate", "reload"], "user": None}
+    assert json.loads(proc.stdout) == {"calls": ["prepare", "reconcile"], "user": None}
 
 
 def _body(src: str, fn_name: str) -> str:
