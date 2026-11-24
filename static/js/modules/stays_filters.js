@@ -129,7 +129,7 @@ let lastSavedName = '';           // имя только что сохранён
 
 /* people — фильтры по гостям (поиск, VIP); уровню occupancy их не показываем: сервер их
    для него не применяет. Шаблон: панель встраивается прямо в вид. */
-export function filterPanelTemplate(fund, filters, onChange, { people = true } = {}) {
+export function filterPanelTemplate(fund, filters, onChange, { people = true, onSearchInput } = {}) {
   const f = staysCleanFilters(filters);
   const emit = patch => { lastSavedName = ''; onChange({ ...f, ...patch }); };
   const list = (key, field, cast, title, items, chosen) => {
@@ -180,6 +180,7 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true } =
     ${people ? html`<input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" .value=${staysSearchDraft?.value ?? f.q}
         @input=${e => {
           staysSearchDraft = { value: e.target.value, caret: e.target.selectionStart };
+          onSearchInput?.();
           clearTimeout(timer);
           const value = e.target.value;
           timer = setTimeout(() => emit({ q: value }), 350);

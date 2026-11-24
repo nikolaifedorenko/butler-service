@@ -7,6 +7,103 @@ const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
 
 test.describe('печать шахматки', () => {
   test.use({ serviceWorkers: 'block' });
+  test('ждёт выбранный фильтр перед печатью', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    const action = view.getByRole('button', { name: 'Печать', exact: true });
+    await expect(action).toBeEnabled();
+    const prints = [];
+    page.on('request', req => { if (req.url().endsWith('/api/docs/print')) prints.push(req); });
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    await page.route('**/api/stays/board/units?**', async route => {
+      await pending;
+      await route.continue();
+    });
+    const search = view.locator('#sf-q');
+    const isSearch = req => req.url().includes('/api/stays/board/units?')
+      && new URL(req.url()).searchParams.get('q') === 'Орлов';
+    const requested = page.waitForRequest(isSearch);
+    const response = page.waitForResponse(isSearch);
+    try {
+      await search.fill('Орлов');
+      expect.soft(await action.isDisabled(), 'пока ввод ожидает отправки').toBe(true);
+      await requested;
+      await action.click({ force: true });
+      expect.soft(await action.isDisabled(), 'пока запрос не завершён').toBe(true);
+      // Локальная сортировка также не должна активировать устаревший ответ.
+      await view.locator('#sb-sort').selectOption('label');
+      expect.soft(await action.isDisabled()).toBe(true);
+    } finally {
+      release();
+    }
+    await response;
+    await expect(action).toBeEnabled();
+    await action.click();
+    const frames = page.locator('iframe[srcdoc]');
+    await expect(frames.last().contentFrame().locator('p').first()).toContainText('Поиск: Орлов');
+    expect(prints).toHaveLength(1);
+  });
+
+  test('печатает смены обозначения и категории с датами доски', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    const cats = await page.evaluate(async () => {
+      const { staysFund } = await import('/static/js/modules/stays.js');
+      return (await staysFund()).categories.slice(0, 2);
+    });
+    let mm;
+    await page.route('**/api/stays/board/units?**', async route => {
+      const response = await route.fetch();
+      const data = await response.json();
+      mm = data.days[0].slice(5, 7);
+      const unit = data.units[0];
+      Object.assign(unit, { label: 'Дом 7', category: cats[0].code, category_id: cats[0].id,
+        labels: [{ from: data.days[0], label: 'Дом 7' }, { from: data.days[10], label: 'Дом <17>' }],
+        categories: [{ from: data.days[0], category_id: cats[0].id },
+          { from: data.days[18], category_id: cats[1].id }] });
+      await route.fulfill({ response, json: data });
+    });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await view.locator('#sb-grouped').uncheck();
+    const rename = `Дом 7 → Дом <17> с 11.${mm}`;
+    const reclassify = `${cats[0].code} → ${cats[1].code} с 19.${mm}`;
+    const screen = view.locator('.sb-change').filter({ hasText: rename });
+    await expect(screen).toContainText(reclassify);
+    await view.getByRole('button', { name: 'Печать', exact: true }).click();
+    const caption = page.frameLocator('iframe[srcdoc]').locator('tbody th').filter({ hasText: 'Дом 7' }).first();
+    await expect(caption).toBeVisible();
+    const printed = await caption.textContent();
+    expect.soft(printed).toContain(rename);
+    expect.soft(printed).toContain(reclassify);
+  });
+
+  test('печатает все критерии сохранённого набора без данных гостей', async ({ page }) => {
+    await login(page, 'sluzhba');
+    await page.addInitScript(() => { window.print = () => {}; });
+    const category = await page.evaluate(async () => {
+      const { staysFund, staysState } = await import('/static/js/modules/stays.js');
+      const { staysSaveFilter } = await import('/static/js/modules/stays_filters.js');
+      const cat = (await staysFund()).categories[0];
+      staysSaveFilter('Прежний фонд', { category_ids: [cat.id, 8012345], kind_ids: [8012346, 8012347] });
+      Object.assign(staysState.filters, { q: 'скрытая фамилия', special: true, vip_code_ids: [8012348] });
+      return cat.code;
+    });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await view.locator('#sf-saved').selectOption('Прежний фонд');
+    await expect(view.locator('.chip', { hasText: '8012347' })).toBeVisible();
+    await view.getByRole('button', { name: 'Печать', exact: true }).click();
+    const frame = page.frameLocator('iframe[srcdoc]');
+    const filters = frame.locator('p').first();
+    await expect(filters).toContainText(category);
+    const printed = await filters.textContent();
+    for (const id of ['8012345', '8012346', '8012347']) expect.soft(printed).toContain(id);
+    expect(await frame.locator('html').evaluate(el => el.outerHTML)).not.toMatch(/8012348|VIP|◆|скрытая фамилия/i);
+  });
   for (const [loginName, level] of [['admin', 'full'], ['ivanov', 'names'], ['sluzhba', 'occupancy']]) {
     test(level, async ({ page }) => {
       await login(page, loginName);

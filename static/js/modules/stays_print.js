@@ -1,14 +1,14 @@
 /* Печатный месяц из уже отфильтрованного ответа шахматки. В документ попадают
-   только подписи: внутренние ключи нужны исключительно для группировки строк. */
+   подписи фильтров и строк, без ключей броней и гостей. */
 import { esc } from '../core.js';
 import { printWindow } from './docs.js';
-import { staysPos } from './stays.js';
+import { staysPos, staysRowChanges } from './stays.js';
 import { STAYS_STATUS } from './stays_forms.js';
 
 function filterLabels(fund, filters, names) {
   const labels = [];
   const selected = (title, choices, ids, field) => {
-    const values = choices.filter(item => ids.includes(item.id)).map(item => item[field]);
+    const values = ids.map(id => choices.find(item => item.id === id)?.[field] ?? `#${id}`);
     if (values.length) labels.push(`${title}: ${values.join(', ')}`);
   };
   selected('Где', fund.groups, filters.group_ids, 'title');
@@ -66,11 +66,12 @@ export function printStaysBoard(data, fund, filters, visibility, monthLabel) {
       rows.push(`<tr><th>${esc(caption)}</th><td>${esc(label)}</td>${cells.join('')}</tr>`);
     }
   };
+  const cats = Object.fromEntries(fund.categories.map(c => [c.id, c]));
   for (const unit of data.units) {
     for (const [first, last, why] of unit.off) {
       add(unit.unit_id, staysPos(first, 0), staysPos(last, 1), why === 'absent' ? 'Нет в фонде' : 'Вне фильтра');
     }
-    writeUnit(unit.unit_id, [unit.label, unit.category].filter(Boolean).join(' · '));
+    writeUnit(unit.unit_id, [unit.label, unit.category, staysRowChanges(unit, cats)].filter(Boolean).join(' · '));
   }
   if (entries.has(null)) writeUnit(null, 'Не распределено');
   const title = `Шахматка · ${monthLabel}`;
