@@ -87,13 +87,16 @@ test('форма брони: открывается с кнопкой «Пров
 
 test('поиск и выбор справочника гостей сбрасываются при смене пользователя', async ({ page }) => {
   await login(page, 'admin');
-  const state = await page.evaluate(async () => {
+  await open(page, 'guests');
+  await page.locator('#view-guests #gl-q').fill('телефон прежнего гостя');
+  await page.evaluate(async () => {
     const guests = await import('/static/js/modules/stays_guests.js');
     const { resetUserViewState } = await import('/static/js/app.js');
-    Object.assign(guests.staysGuests, { q: 'телефон прежнего гостя', picked: [11, 12], special: true });
+    Object.assign(guests.staysGuests, { picked: [11, 12], special: true });
     resetUserViewState();
-    return { ...guests.staysGuests };
   });
+  await page.waitForTimeout(500);
+  const state = await page.evaluate(async () => ({ ...(await import('/static/js/modules/stays_guests.js')).staysGuests }));
   expect(state).toEqual({ q: '', special: false, stayed_from: '', stayed_to: '', birthday: false,
     sort: 'name', dir: 'asc', picked: [] });
 });

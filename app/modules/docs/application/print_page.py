@@ -43,5 +43,5 @@ def print_page(payload: PrintIn) -> str:
     return (f"<!doctype html><html><head><meta charset=\"utf-8\">"
             f"<title>{escape(payload.title)}</title>"
             f"<style>{_BASE_CSS}\n{payload.css}</style>"
-            f"<script src=\"/static/js/print-page.js?v=2026-11-24h\" defer></script>"
+            f"<script src=\"/static/js/print-page.js?v=2026-11-24i\" defer></script>"
             f"</head><body>{payload.body}</body></html>")

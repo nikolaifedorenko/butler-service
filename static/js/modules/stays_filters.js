@@ -10,7 +10,7 @@
 
 import { state, toast } from '../core.js';
 import { html, nothing } from '../ui/html.js';
-import { staysEmptyFilters, staysState } from './stays.js';
+import { staysEmptyFilters, staysResetGuestFind, staysState } from './stays.js';
 import { boardState } from './stays_board.js';
 import { staysBook, staysBookEmpty } from './stays_bookings.js';
 import { staysBlock, staysBlockEmpty } from './stays_blocks.js';
@@ -35,6 +35,7 @@ export function staysResetUserState() {
   Object.assign(staysBlock, staysBlockEmpty());
   Object.assign(staysOoo, staysOooEmpty());
   staysFilterOpen.clear();
+  staysResetGuestFind();
   sfPanelOpen = false;
   clearTimeout(searchTimer);
 }

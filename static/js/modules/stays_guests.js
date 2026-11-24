@@ -33,7 +33,14 @@ export function staysGuestsEmpty() {
   return { q: '', special: false, stayed_from: '', stayed_to: '', birthday: false, sort: 'name', dir: 'asc', picked: [] };
 }
 export const staysGuests = staysGuestsEmpty();
-export function staysGuestsResetUserState() { Object.assign(staysGuests, staysGuestsEmpty()); }
+let staysGuestsSearchTimer = null;
+let staysGuestsSearchGeneration = 0;
+export function staysGuestsResetUserState() {
+  ++staysGuestsSearchGeneration;
+  clearTimeout(staysGuestsSearchTimer);
+  staysGuestsSearchTimer = null;
+  Object.assign(staysGuests, staysGuestsEmpty());
+}
 
 registerModule({ views: { guests: loadGuests } });
 
@@ -169,10 +176,15 @@ export function renderGuestsTab(body) {
     if (tr && e.target === tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tr.click(); }
   };
 
-  let timer = null;
   $('#gl-q', body).oninput = e => {
-    clearTimeout(timer);
-    timer = setTimeout(() => { s.q = e.target.value; reload(); }, 300);
+    clearTimeout(staysGuestsSearchTimer);
+    const input = e.currentTarget;
+    const current = ++staysGuestsSearchGeneration;
+    staysGuestsSearchTimer = setTimeout(() => {
+      if (current !== staysGuestsSearchGeneration || !input.isConnected) return;
+      s.q = input.value;
+      reload();
+    }, 300);
   };
   $('#gl-special', body).onchange = e => { s.special = e.target.checked; reload(); };
   const from = $('#gl-from', body);

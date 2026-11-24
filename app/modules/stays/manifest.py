@@ -67,7 +67,8 @@ MODULE = ModuleManifest(
           MenuItem("mystays", "Мои гости", 56, ("stays.mine",)),
           # справочник гостей — самостоятельный раздел (ревью UI 22.11.2026): полный уровень
           # видит директорию; батлер (mine_guest_edit) — создание гостя, гость сразу «свой»
-          MenuItem("guests", "Гости", 57, ("stays.guests", "stays.edit", "stays.mine_guest_edit"))),
+          MenuItem("guests", "Гости", 57, ("stays.guests", "stays.edit", "stays.mine_guest_edit"),
+                   employee_perms=("stays.mine_guest_edit",))),
     settings_screens=(
         Screen("stays_fund", "Фонд и категории", 340, _S, "stays.setup"),
         Screen("stays_escort", "Сопровождение", 341, _S, "stays.setup"),

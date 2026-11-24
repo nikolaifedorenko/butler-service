@@ -179,6 +179,11 @@ function staysTabRender(tab) {
 
 let guestFindGeneration = 0;
 let guestFindTimer = null;
+export function staysResetGuestFind() {
+  ++guestFindGeneration;
+  clearTimeout(guestFindTimer);
+  guestFindTimer = null;
+}
 
 /* микро-поиск гостя в шапке шахматки (ревью UI 22.11.2026): карточка открывается из любой
    вкладки; батлер ищет среди своих. Справочник целиком — раздел «Гости». */
@@ -193,6 +198,7 @@ function guestFindView() {
       const host = input.closest('.guest-find');
       const current = ++guestFindGeneration;
       guestFindTimer = setTimeout(async () => {
+        if (current !== guestFindGeneration || !host.isConnected) return;
         const needle = input.value.trim();
         if (needle.length < 2) { render(nothing, $('[data-sg-res]', host)); return; }
         try {

@@ -69,3 +69,13 @@ def test_full_directory_with_own_edit_marks_only_owned_card_editable(manager_cli
         for grant in grants:
             db.delete(grant)
         db.commit()
+
+
+def test_mine_guest_edit_without_employee_has_no_dead_menu_entry(app_stack, db):
+    suffix = uuid.uuid4().hex[:8]
+    role = f"gmu_{suffix}"
+    db.add(AccessGrant(role=role, permission="stays.mine_guest_edit", effect="allow"))
+    db.commit()
+    client = _role_user(app_stack, f"guest_unlinked_{suffix}", role)
+    assert "guests" not in {item["id"] for item in client.get("/api/auth/me").json()["menu"]}
+    assert client.post("/api/stays/guests", json={"last_name": "БезСотрудника"}).status_code == 403
