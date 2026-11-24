@@ -87,5 +87,5 @@ Normal `afterprint`, authenticated completion-message, timeout, request failure,
 
 ## Integration and rollout
 
-- This PR receives its own static/service-worker version bump and CI/Playwright gate.
+- This PR receives its own static assets and service-worker version bump and CI/Playwright gate.
 - After merge, rebase/update the chessboard-print branch onto the new `main`, resolve generated OpenAPI/static-version conflicts, rerun its final review and full branch gate, then open its PR.
