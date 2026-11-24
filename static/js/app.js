@@ -455,9 +455,18 @@ export async function bootApp() {
       if (marker && marker !== me.auth_context) { location.reload(); return; }
       if (fromLogin) publishAuthContext(me.auth_context);
       else adoptAuthContext(me.auth_context);
-      state.user = me.user;
+      const started = authContextSnapshot();
       await loadMediaLimits();     // лимиты фото/видео для подсказок загрузки
-      if (state.user === me.user && authContextSnapshot().context === me.auth_context) await enterApp(me);
+      if (!authContextIsCurrent(started) || started.context !== me.auth_context) {
+        // A published change already handles its own transition. Reconcile an unannounced cookie change.
+        if (authContextSnapshot().eventId === started.eventId) {
+          deactivateShell();
+          location.reload();
+        }
+        return;
+      }
+      state.user = me.user;
+      await enterApp(me);
       return;
     }
   } catch { /* не авторизован */ }

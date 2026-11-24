@@ -323,6 +323,25 @@ test('the tab switching identity clears its previous screen before loading permi
 });
 
 test.describe('review regressions', () => {
+  test('boot keeps the shell inactive until preparation completes', async ({ page }) => {
+    const login = await page.request.post('/api/auth/login', { data: { username: 'ivanov', password: DEMO_PASSWORD } });
+    expect(login.ok()).toBe(true);
+    const preparing = Promise.withResolvers(), release = Promise.withResolvers();
+    await page.route('**/api/photos/limits', async route => {
+      preparing.resolve();
+      await release.promise;
+      await route.continue();
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    try {
+      await preparing.promise;
+      await expect(page.locator('#app')).toBeHidden();
+      expect(await page.evaluate(() => ({ active: Boolean(window.state.user), permissions: window.state.perms })))
+        .toEqual({ active: false, permissions: [] });
+    } finally { release.resolve(); }
+    await expect(page.locator('#view-today.active')).toBeVisible();
+  });
+
   test('absence preparation retains the identity of the initiating action', async ({ page }) => {
     await login(page, 'admin');
     const held = Promise.withResolvers(), release = Promise.withResolvers();

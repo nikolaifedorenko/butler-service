@@ -32,6 +32,7 @@
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import shutil
@@ -86,6 +87,42 @@ def test_privileged_shell_releases_state_and_guards_employee_history():
 def test_authenticated_data_is_checked_before_delivery_to_views():
     body = _body(_src("core.js"), "async function api(")
     assert "authContextIsCurrent(started)" in body.partition("const data = parseBody")[2].partition("return data")[0]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node недоступен")
+def test_boot_reconciles_a_rejected_identity_before_activating_the_shell():
+    """Exercise the boot decision in isolation, with a rejected final identity verdict."""
+    boot = _body(_src("app.js"), "async function bootApp()")
+    script = """
+const calls = [];
+const state = { user: null };
+const identity = { context: 'fixture', eventId: 'initial' };
+const capturedBeforePreparation = new WeakSet();
+const authContextSnapshot = () => {
+  const snapshot = { ...identity };
+  if (!calls.includes('prepare')) capturedBeforePreparation.add(snapshot);
+  return snapshot;
+};
+const authContextIsCurrent = snapshot => {
+  if (!capturedBeforePreparation.has(snapshot)) throw Error('missing initiating snapshot');
+  return false;
+};
+const loginSubmitted = 'login';
+const sessionStorage = { getItem: () => null, removeItem() {} };
+const location = { search: '', reload: () => calls.push('reload') };
+const api = async path => path === '/api/auth/me' ? { auth_context: 'fixture', user: {} } : {};
+const getCookie = () => 'fixture';
+const adoptAuthContext = () => {};
+const syncServerClock = () => {};
+const loadMediaLimits = async () => { calls.push('prepare'); };
+const enterApp = async () => { calls.push('enter'); };
+const deactivateShell = () => { calls.push('deactivate'); state.user = null; };
+const showLogin = () => { calls.push('login'); };
+"""
+    proc = subprocess.run(["node", "-e", script + boot + """
+bootApp().then(() => console.log(JSON.stringify({ calls, user: state.user })));
+"""], capture_output=True, text=True, check=True, timeout=10)
+    assert json.loads(proc.stdout) == {"calls": ["prepare", "deactivate", "reload"], "user": None}
 
 
 def _body(src: str, fn_name: str) -> str:
