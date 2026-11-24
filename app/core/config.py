@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # облегчает разведку. Схему для разработки отдаёт tools/export_openapi.py.
     api_docs: bool = True
     # семантическая версия приложения: bump при релизе (тег + запись в CHANGELOG.md)
-    app_version: str = "0.1.0"
+    app_version: str = "0.1.1"
     # фоновая работа выполняется воркером очереди задач (модуль jobs, app/bootstrap/jobs_worker.py):
     # досоздание наступивших смен и автозакрытие ночных отчётов в 08:00 (задача night_sync с периодом
     # night_sync_seconds), доотправка уведомлений, чистка медиа. В GET-запросах этого нет.
