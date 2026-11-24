@@ -425,19 +425,39 @@ test('a common API 401 invalidates a peer immediately', async ({ page, context }
   await expect(page.locator('#login-screen')).toBeVisible();
 });
 
-test('rotating a password publishes the replacement context', async ({ page, context }) => {
+test('rotating a password publishes the replacement context and keeps Today live', async ({ page, context }) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
   await login(page, 'gromova');
+  const punch = page.locator('#view-today.active #today-punch');
+  await expect(punch).toBeVisible();
+  const initialAction = await punch.textContent();
+  const name = await page.locator('#user-name').textContent();
   const peer = await context.newPage();
   await peer.goto('/');
   await expect(peer.locator('#view-today.active')).toBeVisible();
   const before = await serverContext(page);
   await fixturePrints(peer, before);
   await mounted(peer);
+  await page.bringToFront();
   const temporary = 'fixture-password-42';
   await page.locator('#change-pass-btn').click();
   await page.locator('#cp-old').fill(DEMO_PASSWORD);
   await page.locator('#cp-new').fill(temporary);
   await page.locator('#cp-new2').fill(temporary);
+  const navigations = [], punches = [], statusReads = [];
+  const requests = [];
+  const punchStatuses = () => punches.map(response => response.status());
+  page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations.push(frame.url()); });
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/punches' || path === '/api/punches/status') requests.push(`${request.method()} ${path}`);
+  });
+  page.on('response', response => {
+    const path = new URL(response.url()).pathname;
+    if (path === '/api/punches' && response.request().method() === 'POST') punches.push(response);
+    if (path === '/api/punches/status') statusReads.push(response.status());
+  });
   const response = page.waitForResponse('**/api/auth/change-password');
   await page.locator('#modal [data-save]').click();
   expect((await response).ok()).toBe(true);
@@ -447,11 +467,44 @@ test('rotating a password publishes the replacement context', async ({ page, con
     await expect.poll(async () => JSON.parse(await stored(page))?.context).toBe(after);
     expect(JSON.parse(await stored(page))).toEqual({ context: after, eventId: expect.any(String) });
     await expect(frames(peer)).toHaveCount(0);
+    await expect(page.locator('#modal-backdrop')).toBeHidden();
+    await expect(page.locator('#user-name')).toHaveText(name);
+    await expect(punch).toBeVisible();
+
+    const check = expect.configure({ soft: true, timeout: 3000 });
+    await punch.click();
+    await check.poll(punchStatuses, { message: 'Today punch POST after rotation' }).toEqual([200]);
+
+    const beforeForeground = statusReads.length;
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await check.poll(() => statusReads.slice(beforeForeground), { message: 'Today status read on foreground' }).toEqual([200]);
+
+    const beforeTick = statusReads.length;
+    await page.clock.runFor(30_000);
+    await check.poll(() => statusReads.slice(beforeTick), { message: 'Today status read on interval' }).toEqual([200]);
+
+    expect(await page.evaluate(() => window.state.timers.length)).toBe(1);
+    expect(navigations).toEqual([]);
+    expect(punchStatuses()).toEqual([200]);
+    expect(statusReads).toEqual([200, 200, 200]); // Reload, foreground and interval.
+    expect(requests).toEqual(['GET /api/punches/status', 'POST /api/punches',
+      'GET /api/punches/status', 'GET /api/punches/status']);
+    await expect(punch).toHaveText(initialAction === 'Пришёл' ? 'Ушёл' : 'Пришёл');
   } finally {
-    await page.evaluate(async body => {
-      const { api } = await import('/static/js/core.js');
-      await api('/api/auth/change-password', { method: 'POST', body });
-    }, { old_password: temporary, new_password: DEMO_PASSWORD });
+    try {
+      const ids = await Promise.all(punches.filter(response => response.ok())
+        .map(async response => (await response.json()).punch.id));
+      await page.evaluate(async ids => {
+        const { api } = await import('/static/js/core.js');
+        for (const id of ids) await api(`/api/punches/${id}`, { method: 'DELETE' });
+      }, ids);
+    } catch (error) { expect.soft(error, 'Restore demo punch state').toBeUndefined(); }
+    try {
+      await page.evaluate(async body => {
+        const { api } = await import('/static/js/core.js');
+        await api('/api/auth/change-password', { method: 'POST', body });
+      }, { old_password: temporary, new_password: DEMO_PASSWORD });
+    } catch (error) { expect.soft(error, 'Restore demo password').toBeUndefined(); }
   }
 });
 

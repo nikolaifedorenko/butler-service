@@ -392,6 +392,7 @@ $('#change-pass-btn').onclick = () => openModal({
           body: { old_password: $('#cp-old').value, new_password: nw } });
         publishAuthContext(res.auth_context);
         closeModal();
+        navigate(state.view);
         toast('Пароль изменён', 'ok');
       } catch (e) { toast(e.message, 'err'); }
     };
