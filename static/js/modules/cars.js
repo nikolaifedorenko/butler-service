@@ -29,6 +29,7 @@ const dRuCar = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
    происходит многократно, вешать их на каждый рендер нельзя. */
 let openCarMenu = null;
 let openCarMenuButton = null;
+let openCarMenuAnchor = null;
 function closeCarMenu(restoreFocus = false) {
   if (!openCarMenu) return;
   const button = openCarMenuButton;
@@ -36,6 +37,7 @@ function closeCarMenu(restoreFocus = false) {
   button?.setAttribute('aria-expanded', 'false');
   openCarMenu = null;
   openCarMenuButton = null;
+  openCarMenuAnchor = null;
   if (restoreFocus) button?.focus();
 }
 document.addEventListener('click', e => { if (openCarMenu && !openCarMenu.contains(e.target)) closeCarMenu(); });
@@ -44,6 +46,13 @@ document.addEventListener('keydown', e => {
 });
 window.addEventListener('scroll', e => {
   if (openCarMenu && e.target instanceof Node && openCarMenu.contains(e.target)) return;
+  if (!openCarMenu || !openCarMenuAnchor || !openCarMenuButton) return;
+  const anchor = openCarMenuButton.getBoundingClientRect();
+  /* Playwright and browsers may deliver the scroll used to reveal the button after its click.
+     Keep the freshly opened menu when the anchor did not actually move; close it only when a
+     later viewport/ancestor scroll detached the fixed popup from its anchor. */
+  if (Math.abs(anchor.top - openCarMenuAnchor.top) < 0.5
+      && Math.abs(anchor.left - openCarMenuAnchor.left) < 0.5) return;
   closeCarMenu();
 }, { passive: true, capture: true });
 window.addEventListener('resize', closeCarMenu);
@@ -170,6 +179,8 @@ function carsBody() {
         requestAnimationFrame(() => {
           if (openCarMenu !== w) return;
           positionCarMenu(button, pop);
+          const anchor = button.getBoundingClientRect();
+          openCarMenuAnchor = { top: anchor.top, left: anchor.left };
           if (keyboard) pop.querySelector('[role=menuitem]')?.focus();
         }); }}>⋯</button>
     <span class="menu-pop" role="menu" @keydown=${e => {

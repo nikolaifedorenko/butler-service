@@ -92,6 +92,10 @@ test('меню кара остаётся в viewport и не закрывает�
   await button.click();
   const menu = view.locator('.menu-wrap.open .menu-pop');
   await expect(menu).toBeVisible();
+  /* Запоздалый scroll от автопрокрутки к кнопке не должен закрыть только что открытое меню,
+     если сама кнопка после события не сдвинулась. */
+  await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
+  await expect(menu).toBeVisible();
   await menu.evaluate(el => { el.style.maxHeight = '80px'; });
   expect(await menu.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
   await menu.evaluate(el => { el.scrollTop = 30; el.dispatchEvent(new Event('scroll')); });
