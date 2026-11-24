@@ -7,6 +7,153 @@ const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
 
 test.describe('печать шахматки', () => {
   test.use({ serviceWorkers: 'block' });
+  for (const transition of ['выход', 'истечение сессии', '401 при печати', 'вход как сотрудник']) {
+    test(`закрывает печать при смене сессии · ${transition}`, async ({ page }) => {
+      await login(page, 'admin');
+      await open(page, 'stays');
+      const action = page.locator('#sb-print');
+      await expect(action).toBeEnabled();
+      // Пустой ответ без автопечати. Второй документ ждёт освобождения тела ответа.
+      await page.evaluate(rejectThird => {
+        const fetch = window.fetch.bind(window);
+        let prints = 0;
+        window.fetch = (...args) => {
+          if (args[0] !== '/api/docs/print') return fetch(...args);
+          if (++prints === 3 && rejectThird) return Promise.resolve(new Response(null, { status: 401 }));
+          const wait = prints === 2;
+          return Promise.resolve({ ok: true, text: async () => {
+            if (wait) await new Promise(resolve => { window.releasePrint = resolve; });
+            return '<p>Тест печати</p>';
+          } });
+        };
+      }, transition === '401 при печати');
+      await action.click();
+      const frames = page.locator('body > iframe[srcdoc]');
+      await expect(frames).toHaveCount(1);
+      const mounted = await frames.elementHandle();
+      await action.click();
+      await page.waitForFunction(() => !!window.releasePrint);
+      if (transition === 'вход как сотрудник') {
+        await open(page, 'employees');
+        await page.locator('#view-employees [data-card]').filter({ hasText: 'Иванов' }).first().click();
+        await page.locator('#modal [data-imp]').click();
+        await expect(page.locator('#impersonation-bar')).toBeVisible();
+      } else {
+        if (transition === 'выход') {
+          await page.locator('#logout-btn').click();
+        } else if (transition === '401 при печати') {
+          await action.click();
+        } else {
+          await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: {} }));
+          await page.evaluate(async () => {
+            const { api } = await import('/static/js/core.js');
+            await api('/api/auth/me', { silent: true }).catch(() => {});
+          });
+        }
+        await expect(page.locator('#login-screen')).toBeVisible();
+      }
+      expect.soft(await mounted.evaluate(frame => frame.isConnected), 'открытый документ закрыт').toBe(false);
+      await page.evaluate(() => window.releasePrint());
+      expect(await frames.count(), 'задержанный документ не появился').toBe(0);
+      if (transition === 'вход как сотрудник') {
+        await page.evaluate(async () => {
+          const { printWindow } = await import('/static/js/modules/docs.js');
+          await printWindow('Документ сотрудника', '<p>Тест</p>');
+        });
+        await expect(frames).toHaveCount(1);
+        await page.locator('#stop-impersonation').click();
+        await expect(page.locator('#impersonation-bar')).toBeHidden();
+        await expect(frames).toHaveCount(0);
+      }
+    });
+  }
+
+  test('объединяет поиск и категорию до отправки фильтров', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    const action = view.locator('#sb-print');
+    await expect(action).toBeEnabled();
+    await view.locator('[data-sf-dd=cat] summary').click();
+    const box = view.locator('[data-sf-cat]').first();
+    const category = await box.getAttribute('data-sf-cat');
+    const code = (await box.locator('..').innerText()).trim();
+    const criteria = [];
+    await page.route('**/api/stays/board/units?**', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      const pair = [params.get('q'), params.get('category_ids')];
+      criteria.push(pair);
+      const response = await route.fetch();
+      const data = await response.json();
+      data.units[0].label = pair[0] === 'Орлов' && pair[1] === category ? 'Оба критерия' : 'Неполный выбор';
+      await route.fulfill({ response, json: data });
+    });
+    await page.clock.install();
+    await view.locator('#sf-q').fill('Орлов');
+    await box.check();
+    await page.clock.runFor(450);
+    await expect(action).toBeEnabled();
+    await action.click();
+    const print = page.frameLocator('iframe[srcdoc]');
+    await expect(print.locator('h1')).toBeAttached();
+    const summary = await print.locator('p').first().textContent();
+    expect.soft(summary).toContain('Поиск: Орлов');
+    expect.soft(summary).toContain('Категории: ' + code);
+    expect.soft(await print.locator('tbody th').filter({ hasText: 'Оба критерия' }).count()).toBeGreaterThan(0);
+    expect(criteria).toEqual([['Орлов', category]]);
+  });
+
+  test('сброс отменяет поиск из прежней панели', async ({ page }) => {
+    await login(page, 'admin');
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    const search = view.locator('#sf-q');
+    await expect(search).toBeVisible();
+    const queries = [];
+    page.on('request', req => {
+      if (req.url().includes('/api/stays/board/units?')) queries.push(new URL(req.url()).searchParams.get('q'));
+    });
+    await page.clock.install();
+    for (const redraw of [true, false]) {
+      queries.length = 0;
+      await search.fill('Орлов');
+      if (redraw) await view.locator('#sb-sort').selectOption('label');
+      await view.locator('#sf-reset').click();
+      await page.clock.runFor(450);
+      await expect(view.locator('#sb-print')).toBeEnabled();
+      expect(await search.inputValue()).toBe('');
+      expect(queries).toEqual([null]);
+    }
+  });
+
+  test('показывает код категории за выбранный прошлый месяц', async ({ page }) => {
+    await login(page, 'admin');
+    await page.addInitScript(() => { window.print = () => {}; });
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await expect(view.locator('#sb-print')).toBeEnabled();
+    let expected;
+    await page.route('**/api/stays/board/units?**', async route => {
+      const response = await route.fetch();
+      const data = await response.json();
+      const unit = data.units[0];
+      unit.category = 'OLD';
+      unit.categories = [{ from: data.days[0], category_id: unit.category_id, code: 'OLD' },
+        { from: data.days[14], category_id: unit.category_id, code: 'NEW' }];
+      expected = 'OLD → NEW с 15.' + data.days[14].slice(5, 7);
+      await route.fulfill({ response, json: data });
+    });
+    await view.locator('#sm-prev').click();
+    await expect(view.locator('#sb-print')).toBeEnabled();
+    await view.locator('#sb-grouped').uncheck();
+    expect.soft(await view.locator('.sb-change').allTextContents()).toContain(expected);
+    await view.locator('#sb-print').click();
+    const table = page.frameLocator('iframe[srcdoc]').locator('table');
+    await expect(table).toBeAttached();
+    expect(await table.textContent()).toContain(expected);
+  });
+
   test('ждёт выбранный фильтр перед печатью', async ({ page }) => {
     await login(page, 'admin');
     await page.addInitScript(() => { window.print = () => {}; });

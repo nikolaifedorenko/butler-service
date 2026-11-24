@@ -227,7 +227,7 @@ export function staysRowChanges(u, cats) {
   const ddmm = iso => `${iso.slice(8)}.${iso.slice(5, 7)}`;
   const chain = (items, name) => items.length > 1
     ? items.map((x, i) => (i ? ` → ${name(x)} с ${ddmm(x.from)}` : name(x))).join('') : '';
-  return [chain(u.labels, x => x.label), chain(u.categories, x => cats[x.category_id]?.code || '#' + x.category_id)]
+  return [chain(u.labels, x => x.label), chain(u.categories, x => x.code ?? cats[x.category_id]?.code ?? '#' + x.category_id)]
     .filter(Boolean).join(' · ');
 }
 

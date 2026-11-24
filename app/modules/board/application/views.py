@@ -76,7 +76,7 @@ class BoardRow:
     group_path: tuple[int, ...]
     group: str                              # путь узла названиями: «Корпус / Блок B»
     labels: list[tuple[dt.date, str]]
-    categories: list[tuple[dt.date, int]]
+    categories: list[tuple[dt.date, int, str]]
     in_fund: list[dt.date] = field(default_factory=list)       # дни периода, когда объект в фонде
     off: list[list] = field(default_factory=list)              # [первый, последний, причина]
 
@@ -130,18 +130,19 @@ def _board_rows(fund: FundTimeline, days: list[dt.date], f: BoardFilters) -> lis
                 marks[uid].append("absent")
                 continue
             marks[uid].append(None if uid in ok else "filtered")
+            category = snap.categories[u.category_id]
             row = rows.get(uid)
             if row is None:
                 path = snap.unit_path(uid)
-                rows[uid] = row = BoardRow(u, snap.categories[u.category_id], path,
+                rows[uid] = row = BoardRow(u, category, path,
                                            " / ".join(snap.path_titles(u.group_id))
                                            if path and u.group_id is not None else "",
-                                           [(d, u.label)], [(d, u.category_id)])
+                                           [(d, u.label)], [(d, category.id, category.code)])
             else:
                 if row.labels[-1][1] != u.label:
                     row.labels.append((d, u.label))
-                if row.categories[-1][1] != u.category_id:
-                    row.categories.append((d, u.category_id))
+                if row.categories[-1][1:] != (category.id, category.code):
+                    row.categories.append((d, category.id, category.code))
             row.in_fund.append(d)
     out = []
     for uid, row in rows.items():
@@ -232,7 +233,7 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
     fund = fund_for(db, first, last)
     units = _board_rows(fund, days, f)
     unit_ids = {u.id for u in units}
-    visible_cats = {cid for u in units for _, cid in u.categories}
+    visible_cats = {cid for u in units for _, cid, _ in u.categories}
     cuts = version_cuts(db) if include_overlays else None
     st = _load_stays(db, first, last, cuts)
     res, asg, occ = st.res, st.asg, st.occ
@@ -319,7 +320,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
             "units": [{"unit_id": u.id, "label": u.label,
                        "labels": [{"from": _d(d), "label": lb} for d, lb in u.labels],
                        "category_id": u.info.category_id, "category": u.category.code,
-                       "categories": [{"from": _d(d), "category_id": cid} for d, cid in u.categories],
+                       "categories": [{"from": _d(d), "category_id": cid, "code": code}
+                                      for d, cid, code in u.categories],
                        "group_path": list(u.group_path), "group": u.group, "floor": u.info.floor,
                        "flags": sorted(u.info.flags), "load": _load(u, occupied), "off": u.off}
                       for u in units],

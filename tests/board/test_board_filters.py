@@ -149,11 +149,26 @@ def test_label_change_listed(manager_role_client, manager_client, today):
     assert row["label"] == u["label"] and row["category_id"] == cat["id"]
     assert row["labels"] == [{"from": "2036-11-01", "label": u["label"]},
                              {"from": "2036-11-15", "label": u["label"] + "-н"}]
-    assert row["categories"] == [{"from": "2036-11-01", "category_id": cat["id"]},
-                                 {"from": "2036-11-15", "category_id": second["id"]}]
+    assert row["categories"] == [{"from": "2036-11-01", "category_id": cat["id"], "code": cat["code"]},
+                                 {"from": "2036-11-15", "category_id": second["id"], "code": second["code"]}]
     # фильтр по второй категории: строка есть, дни до 15.11 — вне фильтра
     only = _rows(manager_client, category_ids=[second["id"]])[u["id"]]
     assert only["off"] == [["2036-11-01", "2036-11-14", "filtered"]]
+
+
+def test_historical_category_code_rename(manager_role_client, manager_client, today):
+    today("2036-11-01")
+    draft = FundDraft(manager_role_client)
+    fields = {"title": "Историческая категория", "kind_id": kind_id("villa"), "weight": 1}
+    cid = draft.call("POST", "categories", code="OLD", **fields)["id"]
+    uid = draft.call("POST", "units", label="Исторический объект", category_id=cid)["id"]
+    draft.publish()
+    _version(manager_role_client, "2036-11-15", ("PUT", f"categories/{cid}", {**fields, "code": "NEW"}))
+    today("2036-12-01")
+    row = _rows(manager_client, category_ids=[cid])[uid]
+    assert row["category"] == "OLD"
+    assert row["categories"] == [{"from": "2036-11-01", "category_id": cid, "code": "OLD"},
+                                 {"from": "2036-11-15", "category_id": cid, "code": "NEW"}]
 
 
 def test_load_metric(manager_role_client, manager_client, today):
