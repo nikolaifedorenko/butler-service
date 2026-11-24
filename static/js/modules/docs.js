@@ -4,8 +4,8 @@
    файлами (сборки намеренно нет, ADR-0008). Модуль (ADR-0013, раздел 7). Окно печати —
    отдельный документ, который собирается строкой с esc(): в страницу приложения она не попадает. */
 
-import { api, authContextSnapshot, dateRu, esc, expireAuthContext, getCookie, hours, loading, state,
-  subscribeAuthContext, todayISO, toast } from '../core.js';
+import { api, authContextIsCurrent, authContextSnapshot, dateRu, esc, expireAuthContext, getCookie, hours, loading, state,
+  subscribeAuthContext, subscribeSessionRejection, todayISO, toast } from '../core.js';
 
 /* ── печать отдельных документов (чистое окно: весь месяц, без служебных элементов) ──
    Страницу собирает сервер (POST /api/docs/print): прежний document.write в about:blank
@@ -13,24 +13,26 @@ import { api, authContextSnapshot, dateRu, esc, expireAuthContext, getCookie, ho
    показывается в скрытом фрейме; автопечать делает внешний скрипт страницы, после
    диалога фрейм удаляется по сообщению от него. */
 const printJobs = new Set();
-subscribeAuthContext(() => {
+function cancelPrintJobs() {
   for (const cleanup of printJobs) cleanup();
-});
+}
+subscribeAuthContext(cancelPrintJobs);
+subscribeSessionRejection(cancelPrintJobs);
 
-export async function printWindow(title, bodyHtml, extraCss = '') {
-  const started = authContextSnapshot();
-  if (!started.context) return;
+export async function printWindow(title, bodyHtml, extraCss = '', started = authContextSnapshot()) {
+  if (!authContextIsCurrent(started)) return;
   const controller = new AbortController();
   const request = { credentials: 'same-origin', cache: 'no-store', signal: controller.signal };
   let frame, fallback, interval, requestTimeout;
   let validating = false;
+  let foregroundPending = false;
 
   function cleanup() {
     if (!printJobs.delete(cleanup)) return;
     controller.abort();
     window.removeEventListener('message', onDone);
-    window.removeEventListener('focus', validateMounted);
-    window.removeEventListener('pageshow', validateMounted);
+    window.removeEventListener('focus', onForeground);
+    window.removeEventListener('pageshow', onForeground);
     document.removeEventListener('visibilitychange', onVisible);
     clearTimeout(fallback);
     clearTimeout(requestTimeout);
@@ -41,11 +43,14 @@ export async function printWindow(title, bodyHtml, extraCss = '') {
     if (e.origin === location.origin && e.source === frame.contentWindow && e.data?.butler_print_done) cleanup();
   }
   function onVisible() {
-    if (!document.hidden) validateMounted();
+    if (!document.hidden) onForeground();
+  }
+  function onForeground() {
+    if (validating) foregroundPending = true;
+    else void validateMounted();
   }
   function current() {
-    const now = authContextSnapshot();
-    return !controller.signal.aborted && started.eventId === now.eventId && started.context === now.context;
+    return !controller.signal.aborted && authContextIsCurrent(started);
   }
   async function serverMatches() {
     const r = await fetch('/api/auth/context', request);
@@ -60,7 +65,14 @@ export async function printWindow(title, bodyHtml, extraCss = '') {
     try {
       if (!await serverMatches() || !current()) cleanup();
     } catch { cleanup(); }
-    finally { clearTimeout(requestTimeout); validating = false; }
+    finally {
+      clearTimeout(requestTimeout);
+      validating = false;
+      if (foregroundPending && !controller.signal.aborted) {
+        foregroundPending = false;
+        void validateMounted();
+      }
+    }
   }
 
   printJobs.add(cleanup);
@@ -85,11 +97,12 @@ export async function printWindow(title, bodyHtml, extraCss = '') {
       border: '0' });
     frame.srcdoc = html;
     window.addEventListener('message', onDone);
-    window.addEventListener('focus', validateMounted);
-    window.addEventListener('pageshow', validateMounted);
+    window.addEventListener('focus', onForeground);
+    window.addEventListener('pageshow', onForeground);
     document.addEventListener('visibilitychange', onVisible);
     fallback = setTimeout(cleanup, 5 * 60 * 1000);
     interval = setInterval(validateMounted, 5_000);
+    if (!current()) { cleanup(); return; }
     document.body.appendChild(frame);
   } catch (e) {
     const cancelled = controller.signal.aborted;
@@ -100,13 +113,15 @@ export async function printWindow(title, bodyHtml, extraCss = '') {
 
 
 /* ── заявление на отпуск: печать по редактируемому шаблону, период подхватывается целиком ── */
-async function getDocTemplates() {
+async function getDocTemplates(started) {
   if (!state.doc) {
     const s = await api('/api/settings', { silent: true });
+    if (!authContextIsCurrent(started)) return;
     state.doc = s.doc;
   }
   try {
     const kd = await api('/api/docs/kinds', { silent: true });
+    if (!authContextIsCurrent(started)) return;
     state.docKinds = kd.kinds || []; state.docPlaceholders = kd.placeholders || {};
   } catch { /* печать продолжим с кешем */ }
   return state.doc;
@@ -206,17 +221,21 @@ export async function downloadAbsenceDoc(empId, dateISO, fmt, layer = '', absenc
 
 /* Быстрая печать заявления окном браузера (по редактируемому шаблону из Настроек) */
 export async function printAbsenceRequest(empId, dateISO, layer = '', absenceId = null) {
+  const started = authContextSnapshot();
+  if (!authContextIsCurrent(started)) return;
   let p;
   try { p = await absencePeriodInfo(empId, dateISO, absenceId); }
   catch (e) {
+    if (!authContextIsCurrent(started)) return;
     return toast(e.message.includes('нет назначенного')
       ? 'Сначала сохраните отсутствие в ячейке — тогда станет доступна печать заявления'
       : e.message, 'err');
   }
-  if (!statementLayerOk(p, layer)) return;
+  if (!authContextIsCurrent(started) || !statementLayerOk(p, layer)) return;
   try {
     const docType = p.doc_type || p.shift?.doc_type;
-    const doc = await getDocTemplates();
+    const doc = await getDocTemplates(started);
+    if (!authContextIsCurrent(started)) return;
     const kind = (state.docKinds || []).find(k => k.code === docType);
     const tplKey = { vacation_paid: 'vacation', vacation_unpaid: 'vacation_unpaid',
                      day_off_hours: 'day_off_hours', time_off_request: 'time_off_request' }[docType]
@@ -246,7 +265,7 @@ export async function printAbsenceRequest(empId, dateISO, layer = '', absenceId 
       note: (p.notes || []).join('; '),
       today: dateRu(todayISO()),
     };
-    printWindow('Заявление',
-      `<div style="white-space:pre-wrap;font-size:13px;line-height:1.7;width:170mm;margin:0 auto">${esc(fillTemplate(tplText, vals))}</div>`);
+    await printWindow('Заявление',
+      `<div style="white-space:pre-wrap;font-size:13px;line-height:1.7;width:170mm;margin:0 auto">${esc(fillTemplate(tplText, vals))}</div>`, '', started);
   } catch (e) { toast(e.message, 'err'); }
 }

@@ -8,6 +8,6 @@
    Родитель по сообщению butler_print_done удаляет фрейм.
    ══════════════════════════════════════════════════════════════════ */
 window.addEventListener('afterprint', () => {
-  parent.postMessage({ butler_print_done: true }, location.origin);
+  parent.postMessage({ butler_print_done: true }, '/');
 }, { once: true });
 window.addEventListener('load', () => { window.print(); });

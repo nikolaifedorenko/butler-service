@@ -8,8 +8,9 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { $, $$, adoptAuthContext, api, authContextSnapshot, closeDrawer, closeModal, initials, loadMediaLimits,
-  openModal, publishAuthContext, roleTitle, setLoginHandler, serverShiftMs, state, syncServerClock, toast, todayISO } from './core.js';
+import { $, $$, adoptAuthContext, api, authContextIsCurrent, authContextSnapshot, closeDrawer, closeModal, getCookie,
+  initials, loadMediaLimits, openModal, publishAuthContext, roleTitle, setLoginHandler, serverShiftMs, state,
+  subscribeAuthContext, syncServerClock, toast, todayISO } from './core.js';
 import { html, mount, nothing, render } from './ui/html.js';
 import { MODULE_SCREENS, MODULE_VIEWS, registerModule } from './registry.js';
 import { close as closePalette, paletteBoot, paletteInit } from './ui/palette.js';
@@ -97,6 +98,7 @@ export function renderCategoryFooter(categories) {
 }
 
 export function navigate(view) {
+  if (!state.user) return;
   if (GRAFIK_ALIAS[view]) { state.grafikLayer = view; view = GRAFIK_ALIAS[view]; }
   state.view = view;
   $('#sidenav').classList.remove('open');
@@ -162,13 +164,23 @@ document.addEventListener('visibilitychange', () => {
 /* ───────────────────────────── вход ───────────────────────────── */
 
 
-export function showLogin() {
+function deactivateShell() {
   state.user = null;
+  $('#app').classList.add('hidden');
   clearTimers();
   closeModal();
   closeDrawer();
   closePalette();
-  $('#app').classList.add('hidden');
+  applyMe({});
+  for (const id of ['#user-name', '#user-avatar', '#user-role']) $(id).textContent = '';
+  resetUserViewState();
+  renderSchemaBanner(null);
+}
+
+subscribeAuthContext(event => { if (event.external && event.context) deactivateShell(); });
+
+export function showLogin() {
+  deactivateShell();
   $('#login-screen').classList.remove('hidden');
   $('#login-password').value = '';   // после выхода форма логина пустая
 }
@@ -185,7 +197,11 @@ export function applyMe(me) {
 }
 
 export async function loadPerms() {
-  try { applyMe(await api('/api/auth/me', { silent: true })); } catch { applyMe({}); }
+  const started = authContextSnapshot();
+  try {
+    const me = await api('/api/auth/me', { silent: true });
+    if (authContextIsCurrent(started) && me.auth_context === started.context) applyMe(me);
+  } catch { if (authContextIsCurrent(started)) applyMe({}); }
 }
 
 function startView() {
@@ -210,6 +226,10 @@ export function resetUserViewState() {
   state.shiftTypes = []; state.departments = []; state.subdivisions = [];
   state.docKinds = []; state.docPlaceholders = {}; state.tabelCodes = [];
   state.grid = null; state.timesheet = null; state.status = null;
+  state.doc = null; state.tabel = null; state.pendingTabelCell = null; state.factDayData = null;
+  state.enginePayload = null; state.mgmt = null; state.mgmtHalf = null; state.timeCategories = null;
+  state.access = null; state.accessTab = 'roles';
+  state.auditQ = { q: '', action: '', actor: '', date_from: '', date_to: '', offset: 0 };
   state.filterDept = 'all'; state.filterText = ''; state.expanded = new Set();
   /* Позиция UI — на «сегодня» по часам объекта (serverShiftMs из core). */
   const nowObj = new Date(Date.now() + serverShiftMs);
@@ -286,22 +306,27 @@ export function renderUserChip() {
 }
 
 export async function loadDirectory() {
+  const started = authContextSnapshot();
   const [emps, types] = await Promise.all([api('/api/employees'), api('/api/shift-types')]);
+  if (!authContextIsCurrent(started)) return;
   state.employees = emps;
   state.shiftTypes = types;
   try {
     const [deps, subs] = await Promise.all([api('/api/departments', { silent: true }),
                                             api('/api/subdivisions', { silent: true })]);
+    if (!authContextIsCurrent(started)) return;
     state.departments = deps; state.subdivisions = subs;
   } catch { /* справочник недоступен — редактор сотрудника обойдётся кешем */ }
   try {
     const kd = await api('/api/docs/kinds', { silent: true });
+    if (!authContextIsCurrent(started)) return;
     state.docKinds = kd.kinds || []; state.docPlaceholders = kd.placeholders || {};
   } catch { state.docKinds = state.docKinds || []; }
   /* Коды Табеля нужны редактору смены: «код в табеле» — выбор из справочника,
      а не свободный текст (T1). Недоступен — редактор покажет текущее значение. */
   try {
     const tc = await api('/api/shift-types/tabel-codes', { silent: true });
+    if (!authContextIsCurrent(started)) return;
     state.tabelCodes = tc.codes || [];
   } catch { state.tabelCodes = state.tabelCodes || []; }
 }
@@ -335,8 +360,12 @@ $('#login-form').addEventListener('submit', () => {
 });
 
 $('#logout-btn').onclick = async () => {
+  const started = authContextSnapshot();
   try { await api('/api/auth/logout', { method: 'POST', silent: true, allow401: true }); } catch { /* локальный выход */ }
-  publishAuthContext(null);
+  const marker = getCookie('tt_auth_context');
+  if (started.eventId === authContextSnapshot().eventId && (!marker || marker === 'signed-out' || marker === started.context)) {
+    publishAuthContext(null);
+  }
 };
 $('#nav-toggle').onclick = () => $('#sidenav').classList.toggle('open');
 $('#change-pass-btn').onclick = () => openModal({
@@ -371,19 +400,19 @@ $('#stop-impersonation').onclick = async () => {
 };
 
 export async function switchImpersonation(session, view) {
+  if (getCookie('tt_auth_context') !== session.auth_context) return false;
   publishAuthContext(session.auth_context);
-  closeModal();
-  clearTimers();
-  resetUserViewState();
-  applyMe({});
-  state.user = session.user;
-  renderUserChip();
-  renderNav();
+  deactivateShell();
+  const started = authContextSnapshot();
+  $('#user-name').textContent = session.user.name;
   try {
     const me = await api('/api/auth/me');
-    if (authContextSnapshot().context !== session.auth_context) return false;
+    if (!authContextIsCurrent(started)) return false;
     if (me.auth_context === session.auth_context) {
+      state.user = me.user;
       applyMe(me);
+      renderUserChip();
+      $('#app').classList.remove('hidden');
       navigate(view);
       return true;
     }
@@ -422,6 +451,8 @@ export async function bootApp() {
     const me = await api('/api/auth/me', { silent: true, allow401: true });
     if (authContextSnapshot().eventId !== initial.eventId) return;
     if (me?.user) {
+      const marker = getCookie('tt_auth_context');
+      if (marker && marker !== me.auth_context) { location.reload(); return; }
       if (fromLogin) publishAuthContext(me.auth_context);
       else adoptAuthContext(me.auth_context);
       state.user = me.user;

@@ -46,6 +46,10 @@ def test_login_context_matches_current_cookie(client, db):
     context = client.get("/api/auth/context")
     assert context.status_code == 200, context.text
     fingerprint = login.json()["auth_context"]
+    assert client.cookies.get("tt_auth_context") == fingerprint
+    context_cookie = next(c for c in client.cookies.jar if c.name == "tt_auth_context")
+    assert not context_cookie.has_nonstandard_attr("HttpOnly")
+    assert context_cookie.path == "/" and context_cookie.secure == settings.cookie_secure
     assert context.json() == {"auth_context": fingerprint}
     assert client.get("/api/auth/me").json()["auth_context"] == fingerprint
     assert context.headers["cache-control"] == "no-store"
@@ -64,6 +68,7 @@ def test_context_from_form_login_is_available_in_me(client):
     context = client.get("/api/auth/context")
     assert context.status_code == 200, context.text
     assert client.get("/api/auth/me").json()["auth_context"] == context.json()["auth_context"]
+    assert client.cookies.get("tt_auth_context") == context.json()["auth_context"]
 
 
 def test_password_change_returns_replacement_context(app_stack, admin_client):
@@ -82,6 +87,7 @@ def test_password_change_returns_replacement_context(app_stack, admin_client):
     assert before.status_code == 200, before.text
     assert replaced.json()["ok"] is True
     after = replaced.json()["auth_context"]
+    assert current.cookies.get("tt_auth_context") == after
     assert after != before.json()["auth_context"]
     assert current.get("/api/auth/context").json() == {"auth_context": after}
 
@@ -90,6 +96,7 @@ def test_logout_revokes_all_devices(app_stack, db):
     phone, laptop = _login(app_stack), _login(app_stack)
     assert phone.get("/api/auth/me").status_code == 200 and laptop.get("/api/auth/me").status_code == 200
     assert laptop.post("/api/auth/logout").status_code == 200
+    assert laptop.cookies.get("tt_auth_context") == "signed-out"
     assert phone.get("/api/auth/me").status_code == 401
     user = db.scalar(select(User).where(User.username == "ivanov"))
     assert db.scalar(select(func.count()).select_from(UserSession).where(UserSession.user_id == user.id)) == 0
@@ -118,6 +125,8 @@ def test_impersonation_replaces_session(app_stack):
     assert old.get("/api/auth/context").status_code == 401
     assert before_context.status_code == 200, before_context.text
     assert r.json()["ok"] is True
+    assert r.cookies.get("tt_auth_context") == r.json()["auth_context"]
+    assert stopped.cookies.get("tt_auth_context") == stopped.json()["auth_context"]
     assert stopped.json()["ok"] is True
     assert me["auth_context"] == r.json()["auth_context"]
     assert len({before_context.json()["auth_context"], r.json()["auth_context"], stopped.json()["auth_context"]}) == 3

@@ -51,6 +51,9 @@ def test_auth_context_cannot_authenticate_print_or_context(client, employee_clie
     assert context.status_code == 200, context.text
     fingerprint = context.json()["auth_context"]
     headers = {"X-Butler-Auth-Context": fingerprint}
+    client.cookies.set("tt_auth_context", fingerprint)
+    assert client.get("/api/auth/context").status_code == 401
+    assert client.post("/api/docs/print", json={"body": "x"}).status_code == 401
     client.cookies.set(settings.cookie_name, fingerprint)
     assert client.get("/api/auth/context", headers=headers).status_code == 401
     assert client.post("/api/docs/print", json={"body": "x"}, headers=headers).status_code == 401

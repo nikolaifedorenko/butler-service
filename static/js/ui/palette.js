@@ -7,7 +7,7 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { $, api, state, toast } from '../core.js';
+import { $, api, authContextIsCurrent, authContextSnapshot, state, toast } from '../core.js';
 import { html, mount, render } from './html.js';
 
 /* действия модулей: {id, title, hint, run, when?} — when() решает видимость по правам */
@@ -75,9 +75,12 @@ function scheduleSearch() {
   const q = query.trim();
   if (q.length < 2) { found = []; return; }
   timer = setTimeout(async () => {
+    const started = authContextSnapshot();
     searching = true;
     try {
-      found = await api(`/api/stays/guests?q=${encodeURIComponent(q)}${canAllGuests() ? '' : '&mine=1'}`, { silent: true });
+      const guests = await api(`/api/stays/guests?q=${encodeURIComponent(q)}${canAllGuests() ? '' : '&mine=1'}`, { silent: true });
+      if (!authContextIsCurrent(started) || !open || q !== query.trim()) return;
+      found = guests;
     } catch { found = []; }
     searching = false;
     if (open) paint();
@@ -96,7 +99,7 @@ function onKeys(e) {
 
 export function togglePalette() { open ? close() : show(); }
 export function show() {
-  if (open) return;
+  if (open || !state.user || !authContextIsCurrent(authContextSnapshot())) return;
   open = true;
   query = ''; index = 0; found = [];
   backFocus = document.activeElement;
@@ -106,6 +109,7 @@ export function show() {
 export function close() {
   if (!open) return;
   open = false;
+  found = []; query = ''; searching = false;
   clearTimeout(timer);
   const box = $('#palette');
   if (box) box.replaceChildren();

@@ -6,7 +6,7 @@
 import { can, loadDirectory, navigate, registerModule, switchImpersonation } from '../app.js';
 import {
   $, $$, POSITION_COLORS, WD_SHORT, api, closeModal, confirmDialog, cssColor, dateRu, hours, openModal, roleTitle, state,
-  todayISO, toast,
+  authContextIsCurrent, authContextSnapshot, todayISO, toast,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 
@@ -16,8 +16,10 @@ import { html, mount, nothing, render } from '../ui/html.js';
 registerModule({ views: { employees: loadEmployees } });
 
 async function loadEmployees() {
+  const started = authContextSnapshot();
   const host = $('#view-employees');
   await loadDirectory();
+  if (!authContextIsCurrent(started)) return;
   render(html`
     <div class="page-head">
       <div><h2>Сотрудники</h2><div class="sub">Нажмите на строку, чтобы открыть карточку со всеми подробностями</div></div>
@@ -52,16 +54,18 @@ async function loadEmployees() {
    Если сотрудника нет в кеше справочника (не загружался для этой роли либо он
    удалён и виден только в строках истории), список дозагружается с сервера. */
 export async function openEmployeeCard(empId) {
+  const started = authContextSnapshot();
   if (!can('employees.view')) return;
   let emp = (state.employees || []).find(e => e.id === empId);
   if (!emp) {
     try {
       const all = await api('/api/employees?include_deleted=true', { silent: true });
+      if (!authContextIsCurrent(started)) return;
       emp = all.find(e => e.id === empId);
     } catch (e) { toast(e.message, 'err'); return; }
   }
   if (!emp) return toast('Сотрудник не найден', 'err');
-  await employeeCard(emp);
+  await employeeCard(emp, started);
 }
 
 /* После изменений карточки освежаем справочник и ТЕКУЩИЙ раздел: карточка
@@ -75,8 +79,9 @@ async function refreshAfterEmployeeChange() {
 
 const bold = v => html`<div style="font-weight:600">${v}</div>`;
 
-async function employeeCard(emp) {
+async function employeeCard(emp, started = authContextSnapshot()) {
   const history = await api(`/api/employees/${emp.id}/history`);
+  if (!authContextIsCurrent(started)) return;
   const contacts = emp.contacts?.length ? emp.contacts
     : (emp.emergency_name ? [{ name: emp.emergency_name, phone: emp.emergency_phone, relation: '' }] : []);
   const canBank = can('employees.bank');   // право, а не роль: гранты и группы учитываются
@@ -208,6 +213,7 @@ function collectPatternFields(m, prefix, kind, date) {
 }
 
 async function datedActionModal(emp, kind) {
+  const started = authContextSnapshot();
   const titles = {
     position: 'Перевод на должность',
     block: 'Перевод между блоками графика',
@@ -223,6 +229,7 @@ async function datedActionModal(emp, kind) {
   if (kind === 'block') {
     try { values = (await api('/api/tabel-values', { silent: true })).values || []; } catch { values = []; }
   }
+  if (!authContextIsCurrent(started)) return;
   openModal({
     title: titles[kind],
     subtitle: emp.full_name,
@@ -286,6 +293,7 @@ async function datedActionModal(emp, kind) {
 
 /* ── повторный приём уволенного сотрудника с произвольной даты ── */
 async function rehireModal(emp) {
+  const started = authContextSnapshot();
   const today = todayISO();
   let groups = [];
   try { groups = await api('/api/group-choices'); } catch { groups = []; }
@@ -295,6 +303,7 @@ async function rehireModal(emp) {
      пустые option «undefined · undefined». */
   let values = [];
   try { values = (await api('/api/tabel-values', { silent: true })).values || []; } catch { values = []; }
+  if (!authContextIsCurrent(started)) return;
   openModal({
     title: 'Принять обратно',
     subtitle: `${emp.full_name}${emp.dismissed_at ? ' · уволен(а), последний рабочий день ' + dateRu(emp.dismissed_at) : ''}`,
@@ -398,6 +407,7 @@ async function bankAdjustModal(emp, history) {
 }
 
 async function employeeModal(emp) {
+  const started = authContextSnapshot();
   let groups = [];
   try { groups = await api('/api/group-choices'); } catch { groups = []; }
   const groupList = (groups.length ? groups : ['Смена 1', 'Смена 2', 'Пятидневка', 'Другие смены'].map(name => ({ name })))
@@ -406,6 +416,7 @@ async function employeeModal(emp) {
   try { departments = await api('/api/departments'); } catch { departments = []; }
   try { state.subdivisions = await api('/api/subdivisions', { silent: true }); }
   catch { state.subdivisions = state.subdivisions || []; }
+  if (!authContextIsCurrent(started)) return;
   const isNew = !emp;
   // Роли, которые текущий пользователь вправе назначать, — с сервера (иерархия ролей там же,
   // ADR-0011), от младшей к старшей; новому сотруднику по умолчанию — «Сотрудник».

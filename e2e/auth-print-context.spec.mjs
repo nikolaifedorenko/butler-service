@@ -163,6 +163,7 @@ test('a common API 401 invalidates a peer immediately', async ({ page, context }
   await fixturePrints(page, await serverContext(page));
   await mounted(page);
   await peer.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { detail: 'Expired' } }));
+  await peer.route('**/api/auth/context', route => route.fulfill({ status: 401, json: { detail: 'Expired' } }));
   await peer.evaluate(async () => {
     const { api } = await import('/static/js/core.js');
     await api('/api/auth/me', { silent: true }).catch(() => {});
@@ -319,4 +320,197 @@ test('the tab switching identity clears its previous screen before loading permi
     await expect(page.locator('#user-name')).toContainText('Иванов');
   } finally { release.resolve(); }
   await expect(page.locator('#view-me.active')).toBeVisible();
+});
+
+test.describe('review regressions', () => {
+  test('absence preparation retains the identity of the initiating action', async ({ page }) => {
+    await login(page, 'admin');
+    const held = Promise.withResolvers(), release = Promise.withResolvers();
+    const sent = [];
+    await page.route('**/api/schedule/absence-period?**', async route => {
+      held.resolve();
+      await release.promise;
+      await route.fulfill({ json: { employee: { full_name: 'Fixture' }, start: '2026-01-01',
+        end: '2026-01-01', days: 1, doc_type: 'vacation_paid' } });
+    });
+    await page.route('**/api/docs/kinds', route => route.fulfill({ json: { kinds: [], placeholders: {} } }));
+    await page.route('**/api/docs/print', route => {
+      sent.push('print');
+      return route.fulfill({ status: 204 });
+    });
+    await page.evaluate(async () => {
+      const { printAbsenceRequest } = await import('/static/js/modules/docs.js');
+      window.state.doc = { vacation: '{full_name}' };
+      window.fixturePending = printAbsenceRequest(12345, '2026-01-01');
+    });
+    await held.promise;
+    try {
+      await page.evaluate(async () => {
+        const { publishAuthContext } = await import('/static/js/core.js');
+        publishAuthContext('fixture-replacement');
+      });
+    } finally { release.resolve(); }
+    await page.evaluate(() => window.fixturePending);
+    // Allow the network request started by the old unawaited print implementation to be observed.
+    await page.request.get('/api/health');
+    expect(sent).toEqual([]);
+  });
+
+  test('a cookie change during the final validation response prevents mounting', async ({ page, context }) => {
+    const peer = await twoPages(page, context);
+    const before = await serverContext(page);
+    await fixturePrints(page, before);
+    const held = Promise.withResolvers(), release = Promise.withResolvers();
+    await page.route('**/api/auth/context', async route => {
+      held.resolve();
+      await release.promise;
+      await route.fulfill({ json: { auth_context: before } });
+    });
+    await print(page, 'final validation');
+    await held.promise;
+    try {
+      const replacement = await peer.request.post('/api/auth/login', { data: { username: 'admin', password: DEMO_PASSWORD } });
+      expect(replacement.ok()).toBe(true);
+      expect(await serverContext(peer)).not.toBe(before);
+    } finally { release.resolve(); }
+    await page.evaluate(() => window.fixturePending);
+    expect(await page.evaluate(() => window.fixtureMounts)).toEqual([]);
+  });
+
+  test('afterprint in the real child releases just its own frame', async ({ page }) => {
+    await page.addInitScript(() => { if (window !== window.parent) window.print = () => {}; });
+    await login(page, 'admin');
+    await print(page, 'first');
+    await print(page, 'second');
+    await expect(frames(page)).toHaveCount(2);
+    for (const title of ['Fixture first', 'Fixture second']) {
+      const frame = page.frameLocator(`iframe[title="${title}"]`);
+      await expect(frame.locator('script[src="/static/js/print-page.js"]')).toHaveCount(1);
+      await frame.locator('body').evaluate(body => body.ownerDocument.defaultView.dispatchEvent(new Event('afterprint')));
+      await expect(page.locator(`iframe[title="${title}"]`)).toHaveCount(0);
+      if (title === 'Fixture first') await expect(frames(page)).toHaveCount(1);
+    }
+  });
+
+  for (const published of [false, true]) {
+    test(`a delayed 401 preserves the ${published ? 'published' : 'unpublished'} replacement session`, async ({ page, context }) => {
+      const peer = await twoPages(page, context);
+      const original = await stored(peer);
+      const held = Promise.withResolvers(), release = Promise.withResolvers();
+      await page.route('**/api/auth/me', async route => {
+        held.resolve();
+        await release.promise;
+        await route.fulfill({ status: 401, json: { detail: 'Fixture' } });
+      });
+      await page.evaluate(async () => {
+        const { api } = await import('/static/js/core.js');
+        window.fixturePending = api('/api/auth/me', { silent: true }).catch(() => {});
+      });
+      await held.promise;
+      const replacement = await peer.request.post('/api/auth/login', { data: { username: 'admin', password: DEMO_PASSWORD } });
+      expect(replacement.ok()).toBe(true);
+      const after = (await replacement.json()).auth_context;
+      if (published) await page.evaluate(async after => (await import('/static/js/core.js')).publishAuthContext(after), after);
+      release.resolve();
+      await page.evaluate(() => window.fixturePending);
+      const latest = await stored(page);
+      if (published) expect(JSON.parse(latest).context).toBe(after);
+      else expect(latest).toBe(original);
+      await expect(peer.locator('#app')).toBeVisible();
+    });
+  }
+
+  test('pending employee card and palette cannot return after logout', async ({ page, context }) => {
+    const peer = await twoPages(page, context);
+    const held = Promise.withResolvers(), release = Promise.withResolvers();
+    await page.route('**/api/employees/12345/history', async route => {
+      held.resolve();
+      await release.promise;
+      await route.fulfill({ json: { positions: [], blocks: [], bank_adjustments: [] } });
+    });
+    await page.evaluate(async () => {
+      window.state.employees = [{ id: 12345, full_name: 'Fixture', active: true }];
+      const { openEmployeeCard } = await import('/static/js/modules/employees.js');
+      window.fixturePending = openEmployeeCard(12345).catch(() => {});
+    });
+    await held.promise;
+    try {
+      await peer.locator('#logout-btn').click();
+      await expect(page.locator('#login-screen')).toBeVisible();
+    } finally { release.resolve(); }
+    await page.evaluate(() => window.fixturePending);
+    await page.keyboard.press('Control+k');
+    expect(await page.evaluate(() => ({
+      modal: !document.querySelector('#modal-backdrop').classList.contains('hidden'),
+      palette: !document.querySelector('#palette-backdrop').classList.contains('hidden'),
+      permissions: window.state.perms.length, menu: window.state.menu.length, employees: window.state.employees.length,
+    }))).toEqual({ modal: false, palette: false, permissions: 0, menu: 0, employees: 0 });
+  });
+
+  test('peer deactivates the shell before replacement navigation commits', async ({ page, context }) => {
+    const peer = await twoPages(page, context);
+    const intercepted = Promise.withResolvers(), release = Promise.withResolvers(), shell = Promise.withResolvers();
+    await page.route('**/', async route => { intercepted.resolve(); await release.promise; await route.continue(); });
+    await page.exposeFunction('fixtureShell', shell.resolve);
+    await page.evaluate(key => {
+      window.addEventListener('storage', e => {
+        if (e.key === key) window.fixtureShell({ hidden: document.querySelector('#app').classList.contains('hidden'),
+          user: !!window.state.user, permissions: window.state.perms.length, employees: window.state.employees.length });
+      });
+    }, eventKey);
+    const loaded = page.waitForEvent('domcontentloaded');
+    await peer.evaluate(async () => (await import('/static/js/core.js')).publishAuthContext('fixture-next'));
+    let snapshot;
+    try { await intercepted.promise; snapshot = await shell.promise; } finally { release.resolve(); }
+    await loaded;
+    expect(snapshot).toEqual({ hidden: true, user: false, permissions: 0, employees: 0 });
+  });
+
+  test('a foreground signal during validation schedules a fresh check', async ({ page }) => {
+    await login(page, 'admin');
+    const before = await serverContext(page);
+    await fixturePrints(page, before);
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
+    await mounted(page);
+    const held = Promise.withResolvers(), release = Promise.withResolvers();
+    let checks = 0;
+    await page.route('**/api/auth/context', async route => {
+      if (++checks === 1) { held.resolve(); await release.promise; }
+      await route.fulfill({ json: { auth_context: checks === 1 ? before : 'fixture-replaced' } });
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await held.promise;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    release.resolve();
+    await expect(frames(page)).toHaveCount(0);
+    expect(checks).toBe(2);
+  });
+
+  test('a common 401 releases local jobs while checking whether the cookie is still valid', async ({ page, context }) => {
+    const peer = await twoPages(page, context);
+    const before = await serverContext(page), initial = await stored(peer);
+    await fixturePrints(page, before);
+    await mounted(page);
+    const release = Promise.withResolvers();
+    let checks = 0;
+    await page.route('**/api/auth/context', async route => {
+      checks++;
+      await release.promise;
+      await route.fulfill({ json: { auth_context: before } });
+    });
+    await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { detail: 'Fixture' } }));
+    await page.evaluate(async () => {
+      const { api } = await import('/static/js/core.js');
+      window.fixturePending = api('/api/auth/me', { silent: true }).catch(() => {});
+    });
+    try {
+      await expect(frames(page)).toHaveCount(0);
+      expect(await stored(peer)).toBe(initial);
+      await expect.poll(() => checks).toBe(1);
+    } finally { release.resolve(); }
+    await page.evaluate(() => window.fixturePending);
+    expect(await stored(peer)).toBe(initial);
+    await expect(peer.locator('#app')).toBeVisible();
+  });
 });

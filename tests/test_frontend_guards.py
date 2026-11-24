@@ -53,6 +53,41 @@ def test_core_auth_events_do_not_introduce_import_cycles():
     assert all(path != "./app.js" and not path.startswith("./modules/") for path in imports)
 
 
+def test_absence_binds_context_before_fetching_employee_data():
+    body = _body(_src("modules/docs.js"), "async function printAbsenceRequest(")
+    assert "authContextSnapshot()" in body.partition("await absencePeriodInfo")[0]
+    assert "started" in body.partition("printWindow(")[2]
+
+
+def test_print_mount_has_synchronous_cookie_guard():
+    core = _src("core.js")
+    assert "getCookie('tt_auth_context')" in core
+    body = _body(_src("modules/docs.js"), "async function printWindow(")
+    assert "authContextIsCurrent(started)" in body
+    assert "current()" in body.partition("await r.text()")[2].partition("document.createElement('iframe')")[0]
+    assert "current()" in body.partition("interval = setInterval")[2].partition("document.body.appendChild")[0]
+
+
+def test_expiry_requires_live_session_verdict():
+    body = _body(_src("core.js"), "function expireAuthContext(")
+    assert "fetch('/api/auth/context'" in body.partition("publishAuthContext(null)")[0]
+    assert "status === 401" in body.partition("publishAuthContext(null)")[0]
+
+
+def test_privileged_shell_releases_state_and_guards_employee_history():
+    app = _src("app.js")
+    assert "deactivateShell()" in _body(app, "function showLogin(")
+    assert "resetUserViewState()" in _body(app, "function deactivateShell(")
+    history = _body(_src("modules/employees.js"), "function employeeCard(")
+    assert "authContextIsCurrent(started)" in history.partition("/history")[2].partition("openModal(")[0]
+    assert "state.user" in _body(_src("ui/palette.js"), "function show(").partition("open = true")[0]
+
+
+def test_authenticated_data_is_checked_before_delivery_to_views():
+    body = _body(_src("core.js"), "async function api(")
+    assert "authContextIsCurrent(started)" in body.partition("const data = parseBody")[2].partition("return data")[0]
+
+
 def _body(src: str, fn_name: str) -> str:
     """Тело функции/блока от `fn_name` до первой закрывающей `}` в колонке 0."""
     start = src.index(fn_name)

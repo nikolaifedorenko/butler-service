@@ -22,7 +22,10 @@ let showLogin = () => {};
 export function setLoginHandler(fn) { showLogin = fn; }
 
 const AUTH_EVENT_KEY = 'butler.auth-context.v1';
+const SESSION_CHANGES = new Set(['/api/auth/login', '/api/auth/logout', '/api/auth/change-password',
+  '/api/auth/impersonate', '/api/auth/impersonate/stop']);
 const authListeners = new Set();
+const rejectionListeners = new Set();
 
 function readAuthEvent() {
   try {
@@ -35,18 +38,22 @@ function readAuthEvent() {
 
 let storedEventId = readAuthEvent()?.eventId || '';
 let auth = { context: null, eventId: storedEventId };
+// Sessions opened before the companion cookie was introduced remain usable until their first rotation.
+let legacyContext = null;
 
 function notifyAuth(event, external) {
   for (const listener of authListeners) listener({ ...event, external });
 }
 
 export function adoptAuthContext(context = null) {
+  legacyContext = getCookie('tt_auth_context') ? null : context;
   if (auth.context === context) return;
   auth = { context, eventId: auth.eventId };
   notifyAuth(auth, false);
 }
 
 export function publishAuthContext(context = null) {
+  legacyContext = null;
   const id = Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16).padStart(8, '0')).join('');
   auth = { context, eventId: id };
   try {
@@ -76,15 +83,39 @@ export function authContextSnapshot() {
   return { ...auth };
 }
 
+export function authContextIsCurrent(started) {
+  const now = authContextSnapshot();
+  const marker = getCookie('tt_auth_context');
+  return Boolean(started.context) && started.context === now.context && started.eventId === now.eventId &&
+    (marker === started.context || !marker && legacyContext === started.context);
+}
+
 export function subscribeAuthContext(listener) {
   authListeners.add(listener);
   return () => authListeners.delete(listener);
 }
 
+export function subscribeSessionRejection(listener) {
+  rejectionListeners.add(listener);
+  return () => rejectionListeners.delete(listener);
+}
+
 // Запоздалый 401 из предыдущей сессии не должен разлогинить уже вошедшего пользователя.
-export function expireAuthContext(started) {
+export async function expireAuthContext(started) {
+  // Drop local work immediately, including work with an outstanding validation request.
+  for (const listener of rejectionListeners) listener();
   const current = authContextSnapshot();
-  if (started.eventId === current.eventId && started.context === current.context) publishAuthContext(null);
+  if (started.eventId !== current.eventId || started.context !== current.context) return;
+  const marker = getCookie('tt_auth_context');
+  try {
+    const response = await fetch('/api/auth/context', { credentials: 'same-origin', cache: 'no-store',
+      signal: AbortSignal.timeout(20_000) });
+    const latest = authContextSnapshot();
+    if (response.status === 401 && latest.eventId === started.eventId && latest.context === started.context &&
+        marker === getCookie('tt_auth_context') && (!marker || marker === 'signed-out' || marker === started.context)) {
+      publishAuthContext(null);
+    }
+  } catch { /* A failed check is insufficient evidence to sign out another tab. */ }
 }
 
 /* ───────────────────────────── утилиты ───────────────────────────── */
@@ -260,12 +291,19 @@ export async function api(path, opts = {}) {
         ? 'Нет подключения к интернету — действие не выполнено'
         : 'Не удалось связаться с сервером — проверьте связь и повторите');
     }
-    if (res.status === 401 && !opts.allow401) { expireAuthContext(started); throw new Error('Требуется вход'); }
+    if (res.status === 401 && !opts.allow401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
       // единый разбор ошибок (в т.ч. 422-массив pydantic и структурные 409) — httpError
       throw httpError(msg, res.status);
+    }
+    if (started.context && !authContextIsCurrent(started)) {
+      // A successful auth mutation changes the cookie before its response reaches JavaScript.
+      const rotation = method === 'POST' && SESSION_CHANGES.has(path);
+      const expected = path === '/api/auth/logout' ? 'signed-out' : data?.auth_context;
+      if (!rotation || !expected || expected !== getCookie('tt_auth_context') ||
+          authContextSnapshot().eventId !== started.eventId) throw new Error('Сессия изменилась');
     }
     return data;
   } finally {
@@ -289,7 +327,7 @@ export async function multipartApi(path, formData, { timeout = 60000 } = {}) {
       if (e.name === 'AbortError') throw new Error('Загрузка не завершилась вовремя — проверьте связь');
       throw new Error('Не удалось связаться с сервером — проверьте связь и повторите');
     } finally { clearTimeout(timer); }
-    if (res.status === 401) { expireAuthContext(started); throw new Error('Требуется вход'); }
+    if (res.status === 401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     const data = parseBody(await res.text(), res.status);
     if (!res.ok) {
       const msg = (data && (data.detail || data.message)) || `Ошибка ${res.status}`;
@@ -349,6 +387,7 @@ export const POSITION_COLORS = [
 const modalContent = x => x;
 
 export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
+  if (!state.user) return;
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
   m.replaceChildren();                       // каждое окно — новое дерево, без остатков прежнего
@@ -375,6 +414,7 @@ export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('
    модального окна — голова, прокручиваемое тело, подвал с действиями. Открытые поверх неё
    модальные окна (редакторы) закрываются по Esc первыми. */
 export function openDrawer({ title, subtitle, body, footer, onMount }) {
+  if (!state.user) return;
   const d = $('#drawer');
   d.replaceChildren();
   const root = document.createElement('div');
@@ -430,7 +470,7 @@ export async function downloadBlob(path, fallbackName) {
   loading(true);
   try {
     const res = await fetch(path, { credentials: 'same-origin' });
-    if (res.status === 401) { expireAuthContext(started); throw new Error('Требуется вход'); }
+    if (res.status === 401) { await expireAuthContext(started); throw new Error('Требуется вход'); }
     if (!res.ok) {
       // в detail сервер отдаёт понятный текст (например, подсказку про PDF-движок)
       let msg = `Ошибка ${res.status}`;

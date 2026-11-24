@@ -24,9 +24,16 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 FORM_ERROR_CODES = {429: "rate", 401: "auth", 403: "disabled"}
 
 
+def _set_context_cookie(response: Response, context: str) -> None:
+    # A readable notification for the UI. Authentication only consumes the HttpOnly session cookie.
+    response.set_cookie("tt_auth_context", context, max_age=settings.session_ttl_hours * 3600,
+                        httponly=False, samesite="lax", path="/", secure=settings.cookie_secure)
+
+
 def _set_cookie(response: Response, token: str) -> None:
     response.set_cookie(settings.cookie_name, token, max_age=settings.session_ttl_hours * 3600,
                         httponly=True, samesite="lax", path="/", secure=settings.cookie_secure)
+    _set_context_cookie(response, session_context(token))
 
 
 @router.post("/login", response_model=SessionOut)
@@ -61,6 +68,7 @@ def logout(response: Response, principal: Principal = Depends(current_principal)
     """Выход: cookie удаляется, а все сессии пользователя отзываются на сервере."""
     auth.logout(db, principal)
     response.delete_cookie(settings.cookie_name, path="/")
+    _set_context_cookie(response, "signed-out")
     return Ok()
 
 
