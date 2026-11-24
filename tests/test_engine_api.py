@@ -327,6 +327,16 @@ def test_engine_settings_persists_and_decodes_the_same_integer_step(admin, db, e
     assert raw["step_minutes"] == decoded_step == step
 
 
+@pytest.mark.parametrize("legacy", [15.5, 15.0, "15"])
+def test_engine_settings_decodes_legacy_integral_step_values(legacy):
+    """Сохранённые прежними версиями payload читаются с прежней int-семантикой."""
+    payload = {"step_minutes": legacy}
+    decoded = from_payload(payload)
+    assert payload["step_minutes"] == legacy  # кодек не переписывает исторический JSON
+    assert type(decoded.step_minutes) is int
+    assert decoded.step_minutes == 15
+
+
 def test_mgmt_xlsx_export(admin, emp):
     r = admin.get("/api/mgmt/xlsx", params={"year": PREV.year, "month": PREV.month})
     assert r.status_code == 200

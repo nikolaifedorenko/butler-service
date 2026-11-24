@@ -133,6 +133,50 @@ test.describe('печать шахматки', () => {
     }
   });
 
+  test('запоздавшая шахматка не возвращает печать поверх новой вкладки', async ({ page }) => {
+    await login(page, 'admin');
+    await open(page, 'stays');
+    const view = page.locator('#view-stays');
+    await expect(view.locator('#sb-print')).toBeEnabled();
+
+    let releaseBoard, markBoardStarted;
+    const boardGate = new Promise(resolve => { releaseBoard = resolve; });
+    const boardStarted = new Promise(resolve => { markBoardStarted = resolve; });
+    await page.route('**/api/stays/board/units?**', async route => {
+      markBoardStarted();
+      await boardGate;
+      await route.continue();
+    });
+
+    let releaseFund, markFundsStarted;
+    const fundGate = new Promise(resolve => { releaseFund = resolve; });
+    const fundsStarted = new Promise(resolve => { markFundsStarted = resolve; });
+    let fundRequests = 0;
+    const holdFund = async route => {
+      if (++fundRequests === 2) markFundsStarted();
+      await fundGate;
+      await route.continue();
+    };
+    await page.route('**/api/stays/fund', holdFund);
+    await page.route('**/api/stays/fund/snapshot?**', holdFund);
+
+    try {
+      await view.locator('#sm-next').click();
+      await boardStarted;
+      await tab(page, 'day').click();
+      await fundsStarted;
+      const oldResponse = page.waitForResponse(r => r.url().includes('/api/stays/board/units?'));
+      releaseBoard();
+      await oldResponse;
+      await page.waitForTimeout(200); // дать старому async-render дойти до возможного commit
+      await expect(view.locator('[data-stab].btn-primary')).toHaveText('Табло дня');
+      await expect(view.locator('#sb-print')).toHaveCount(0);
+    } finally {
+      releaseBoard();
+      releaseFund();
+    }
+  });
+
   test('показывает код категории за выбранный прошлый месяц', async ({ page }) => {
     await login(page, 'admin');
     await page.addInitScript(() => { window.print = () => {}; });

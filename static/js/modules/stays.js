@@ -150,11 +150,20 @@ export async function loadStays() {
       @click=${() => { staysState.tab = id; loadStays(); }}>${t}</button>`)}</div>
     <div id="stays-body"></div>`, mount(host));
   const body = $('#stays-body', host);
+  // Вкладки переиспользуют один #stays-body: инвалидируем async-render прежней вкладки
+  // до ожидания фонда, иначе её запоздавший ответ мог вернуть действия поверх скелетона новой.
+  loadGenerationFor(body);
+  const loadGen = String((Number(body.dataset.staysLoadGen) || 0) + 1);
+  body.dataset.staysLoadGen = loadGen;
+  const fresh = () => body.dataset.staysLoadGen === loadGen;
+  const tab = staysState.tab;
   render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(body));
   try {
     await staysFund(true);          // фонд меняют в Настройках — при каждом открытии раздела заново
-    await staysTabRender(staysState.tab)(body);
+    if (!fresh() || tab !== staysState.tab) return;
+    await staysTabRender(tab)(body);
   } catch (e) {
+    if (!fresh()) return;
     render(html`<div class="panel"><p class="muted">${e.message}</p></div>`, mount(body));
   }
 }
