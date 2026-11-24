@@ -85,6 +85,47 @@ test('форма брони: открывается с кнопкой «Пров
   expect(errors).toEqual([]);
 });
 
+test('Escape закрывает только верхний drawer и возвращает фокус в modal', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 720 });
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const core = await import('/static/js/core.js');
+    const { html } = await import('/static/js/ui/html.js');
+    const opener = document.createElement('button');
+    opener.id = 'overlay-test-opener';
+    opener.textContent = 'Открыть проверку';
+    document.body.appendChild(opener);
+    opener.focus();
+    core.openModal({
+      title: 'Нижнее окно',
+      body: html`<button id="overlay-drawer-trigger">Открыть карточку</button>`,
+      onMount(modal) {
+        modal.querySelector('#overlay-drawer-trigger').onclick = () => core.openDrawer({
+          title: 'Верхняя карточка', body: html`<p>Содержимое карточки</p>`,
+        });
+      },
+    });
+  });
+  const modalBackdrop = page.locator('#modal-backdrop');
+  const drawerBackdrop = page.locator('#drawer-backdrop');
+  const trigger = page.locator('#overlay-drawer-trigger');
+  await trigger.click();
+  await expect(modalBackdrop).toBeVisible();
+  await expect(drawerBackdrop).toBeVisible();
+  const drawerBox = await page.locator('#drawer').boundingBox();
+  expect(drawerBox.x).toBeGreaterThanOrEqual(0);
+  expect(drawerBox.x + drawerBox.width).toBeLessThanOrEqual(390);
+
+  await page.keyboard.press('Escape');
+  await expect(drawerBackdrop).toBeHidden();
+  await expect(modalBackdrop).toBeVisible();
+  await expect(trigger).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(modalBackdrop).toBeHidden();
+  await expect(page.locator('#overlay-test-opener')).toBeFocused();
+});
+
 test('поиск и выбор справочника гостей сбрасываются при смене пользователя', async ({ page }) => {
   await login(page, 'admin');
   await open(page, 'guests');

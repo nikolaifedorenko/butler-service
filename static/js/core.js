@@ -445,8 +445,30 @@ export const POSITION_COLORS = [
 /* Тело и подвал окна — шаблон lit-html; строка выводится текстом. */
 const modalContent = x => x;
 
+/* Modal, drawer and command palette share one Escape owner. Each layer registers its
+   close callback and the focus target that was active before it opened. */
+const overlayStack = [];
+export function pushOverlay(id, close, returnFocus) {
+  const previous = overlayStack.find(x => x.id === id);
+  const index = overlayStack.findIndex(x => x.id === id);
+  if (index >= 0) overlayStack.splice(index, 1);
+  overlayStack.push({ id, close, returnFocus: previous?.returnFocus || returnFocus });
+}
+export function removeOverlay(id) {
+  const index = overlayStack.findIndex(x => x.id === id);
+  if (index < 0) return;
+  const wasTop = index === overlayStack.length - 1;
+  const [removed] = overlayStack.splice(index, 1);
+  if (wasTop) removed.returnFocus?.();
+}
+function overlayFocusReturn() {
+  const target = document.activeElement;
+  return () => { if (target instanceof HTMLElement && target.isConnected) target.focus(); };
+}
+
 export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
   if (!state.user) return;
+  const returnFocus = overlayFocusReturn();
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
   m.replaceChildren();                       // каждое окно — новое дерево, без остатков прежнего
@@ -463,17 +485,23 @@ export function openModal({ title, subtitle, body, footer, wide = false, onMount
     <div class="modal-body">${modalContent(body)}</div>
     ${footer ? html`<div class="modal-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#modal-backdrop').classList.remove('hidden');
+  pushOverlay('modal', closeModal, returnFocus);
   m.querySelector('.x').onclick = closeModal;
   if (onMount) onMount(m);
   return m;
 }
-export function closeModal() { $('#modal-backdrop').classList.add('hidden'); $('#modal').replaceChildren(); }
+export function closeModal() {
+  $('#modal-backdrop').classList.add('hidden');
+  $('#modal').replaceChildren();
+  removeOverlay('modal');
+}
 
 /* Боковая панель (ADR-0013, раздел 7: «карточка открывается боковой панелью»): строение как у
    модального окна — голова, прокручиваемое тело, подвал с действиями. Открытые поверх неё
    модальные окна (редакторы) закрываются по Esc первыми. */
 export function openDrawer({ title, subtitle, body, footer, onMount }) {
   if (!state.user) return;
+  const returnFocus = overlayFocusReturn();
   const d = $('#drawer');
   d.replaceChildren();
   const root = document.createElement('div');
@@ -489,11 +517,16 @@ export function openDrawer({ title, subtitle, body, footer, onMount }) {
     <div class="drawer-body">${modalContent(body)}</div>
     ${footer ? html`<div class="drawer-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#drawer-backdrop').classList.remove('hidden');
+  pushOverlay('drawer', closeDrawer, returnFocus);
   d.querySelector('.x').onclick = closeDrawer;
   if (onMount) onMount(d);
   return d;
 }
-export function closeDrawer() { $('#drawer-backdrop').classList.add('hidden'); $('#drawer').replaceChildren(); }
+export function closeDrawer() {
+  $('#drawer-backdrop').classList.add('hidden');
+  $('#drawer').replaceChildren();
+  removeOverlay('drawer');
+}
 
 export function confirmDialog(title, text, onYes, yesLabel = 'Подтвердить', danger = true) {
   openModal({
@@ -549,5 +582,9 @@ export async function downloadBlob(path, fallbackName) {
 }
 $('#modal-backdrop').addEventListener('click', e => { if (e.target.id === 'modal-backdrop') closeModal(); });
 $('#drawer-backdrop').addEventListener('click', e => { if (e.target.id === 'drawer-backdrop') closeDrawer(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal();
-  if ($('#modal-backdrop').classList.contains('hidden')) closeDrawer(); } });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !overlayStack.length) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  overlayStack.at(-1).close();
+}, true);

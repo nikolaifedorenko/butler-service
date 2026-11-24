@@ -44,3 +44,31 @@ test('палитра: разделы и действие «Создать бро
   await expect(page.locator('#palette-backdrop')).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+test('палитра поверх modal владеет первым Escape и возвращает фокус', async ({ page }) => {
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const core = await import('/static/js/core.js');
+    const { html } = await import('/static/js/ui/html.js');
+    const opener = document.createElement('button');
+    opener.id = 'palette-modal-opener';
+    opener.textContent = 'Открыть окно';
+    document.body.appendChild(opener);
+    opener.focus();
+    core.openModal({ title: 'Нижнее окно', body: html`<button id="palette-trigger">Команды</button>` });
+  });
+  const trigger = page.locator('#palette-trigger');
+  await trigger.focus();
+  await open(page);
+  await expect(page.locator('#palette-backdrop')).toBeVisible();
+  await expect(page.locator('#modal-backdrop')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette-backdrop')).toBeHidden();
+  await expect(page.locator('#modal-backdrop')).toBeVisible();
+  await expect(trigger).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#modal-backdrop')).toBeHidden();
+  await expect(page.locator('#palette-modal-opener')).toBeFocused();
+});
