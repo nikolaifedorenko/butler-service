@@ -25,7 +25,7 @@ def test_print_page_assembles_document(employee_client):
     assert "<title>График &lt;b&gt;сменности&lt;/b&gt;</title>" in html   # заголовок экранирует сервер
     assert "<table><tr><td>Иванов</td></tr></table>" in html             # тело — как собрал клиент
     assert ".x { color: red }" in html
-    assert '<script src="/static/js/print-page.js" defer></script>' in html  # автопечать — внешний скрипт
+    assert '<script src="/static/js/print-page.js?v=2026-11-24b" defer></script>' in html
     assert "<script>" not in html and "onload=" not in html               # inline-скриптов нет
 
 

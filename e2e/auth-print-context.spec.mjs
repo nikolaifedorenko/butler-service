@@ -4,6 +4,8 @@ import { DEMO_PASSWORD, login } from './helpers.mjs';
 test.use({ serviceWorkers: 'block' });
 
 const eventKey = 'butler.auth-context.v1';
+const legacyPrintChild = '/static/js/print-page.js';
+const printChild = '/static/js/print-page.js?v=2026-11-24b';
 const frames = page => page.locator('iframe[title^="Fixture"]');
 const stored = page => page.evaluate(key => localStorage.getItem(key), eventKey);
 const serverContext = async page => {
@@ -11,6 +13,62 @@ const serverContext = async page => {
   expect(response.ok()).toBe(true);
   return (await response.json()).auth_context;
 };
+
+test.describe('service-worker upgrades', () => {
+  test.use({ serviceWorkers: 'allow' });
+
+  test('a cached pre-handshake child cannot print before the upgraded parent validates', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (window !== parent) window.print = () => parent.fixturePrintEvents.push('print');
+    });
+    await login(page, 'admin');
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    const installedPrintKeys = await page.evaluate(async ({ legacy, upgraded }) => {
+      const [shell] = await caches.keys();
+      const cache = await caches.open(shell);
+      const installed = (await cache.keys()).map(request => new URL(request.url))
+        .filter(url => url.pathname === legacy).map(url => url.pathname + url.search);
+
+      // Model the cache during deployment, with only the older child available to the active worker.
+      await cache.delete(upgraded);
+      await cache.put(legacy, new Response("window.addEventListener('load', () => window.print());", {
+        headers: { 'Content-Type': 'application/javascript' },
+      }));
+
+      const events = window.fixturePrintEvents = [];
+      window.addEventListener('message', event => {
+        const frame = document.querySelector('iframe[title="Fixture upgraded child"]');
+        if (event.source === frame?.contentWindow && event.origin === location.origin && event.data?.butler_print_ready) {
+          events.push('ready');
+        }
+      });
+      const fetch = window.fetch;
+      const gate = new Promise(resolve => { window.releaseFixturePrintCheck = resolve; });
+      window.fetch = async (url, init) => {
+        if (url !== '/api/auth/context' || events.at(-1) !== 'ready') return fetch(url, init);
+        events.push('checking');
+        await gate;
+        const response = await fetch(url, init);
+        if (response.ok) events.push('validated');
+        return response;
+      };
+      return installed;
+    }, { legacy: legacyPrintChild, upgraded: printChild });
+
+    const script = page.waitForResponse(response => new URL(response.url()).pathname === legacyPrintChild);
+    await print(page, 'upgraded child');
+    try {
+      expect((await script).fromServiceWorker()).toBe(true);
+      await page.waitForFunction(() => window.fixturePrintEvents.some(event => event === 'checking' || event === 'print'));
+      expect(await page.evaluate(() => window.fixturePrintEvents)).toEqual(['ready', 'checking']);
+    } finally { await page.evaluate(() => window.releaseFixturePrintCheck()); }
+    await expect.poll(() => page.evaluate(() => window.fixturePrintEvents))
+      .toEqual(['ready', 'checking', 'validated', 'print']);
+    expect(installedPrintKeys).toEqual([printChild]);
+    await frames(page).contentFrame().locator('body').evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await expect(frames(page)).toHaveCount(0);
+  });
+});
 
 test('child readiness waits for a fresh verdict before native print', async ({ page }) => {
   const script = Promise.withResolvers(), releaseScript = Promise.withResolvers();
@@ -20,7 +78,7 @@ test('child readiness waits for a fresh verdict before native print', async ({ p
   await page.addInitScript(() => { window.print = () => window.recordPrint(); });
   await login(page, 'admin');
   const id = await serverContext(page);
-  await page.route('**/static/js/print-page.js', async route => {
+  await page.route(`**${printChild}`, async route => {
     script.resolve();
     await releaseScript.promise;
     await route.continue();
@@ -62,9 +120,9 @@ for (const marker of ['replacement', 'signed-out']) {
     await page.addInitScript(() => { window.print = () => window.recordPrint(); });
     await fixtureShell(page);
     await page.route('**/api/docs/print', route => route.fulfill({ contentType: 'text/html',
-      headers: { 'X-Butler-Auth-Context': 'fixture' }, body: '<script src="/static/js/print-page.js" defer></script>' }));
+      headers: { 'X-Butler-Auth-Context': 'fixture' }, body: `<script src="${printChild}" defer></script>` }));
     const requested = Promise.withResolvers(), release = Promise.withResolvers();
-    await page.route('**/static/js/print-page.js', async route => {
+    await page.route(`**${printChild}`, async route => {
       requested.resolve();
       await release.promise;
       await route.continue();
@@ -598,7 +656,7 @@ test.describe('review regressions', () => {
     await expect(frames(page)).toHaveCount(2);
     for (const title of ['Fixture first', 'Fixture second']) {
       const frame = page.frameLocator(`iframe[title="${title}"]`);
-      await expect(frame.locator('script[src="/static/js/print-page.js"]')).toHaveCount(1);
+      await expect(frame.locator(`script[src="${printChild}"]`)).toHaveCount(1);
       await frame.locator('body').evaluate(body => body.ownerDocument.defaultView.dispatchEvent(new Event('afterprint')));
       await expect(page.locator(`iframe[title="${title}"]`)).toHaveCount(0);
       if (title === 'Fixture first') await expect(frames(page)).toHaveCount(1);
