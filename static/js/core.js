@@ -350,7 +350,9 @@ export async function api(path, opts = {}) {
       syncAuthEvent();
       const expected = path === '/api/auth/logout' ? 'signed-out' : data?.auth_context;
       if (auth !== started || !expected || expected !== getCookie('tt_auth_context')) {
-        void expireAuthContext(started);
+        // A retired issuer may have changed the cookie beneath the current shell.
+        if (auth !== started) authContextIsCurrent(auth);
+        else void expireAuthContext(started);
         throw new Error('Сессия изменилась');
       }
       // Commit while we still own both the initiating generation and the response cookie.

@@ -538,6 +538,53 @@ test('a rejected issuer releases its own reconciliation wait', async ({ page }) 
   expect(JSON.parse(await stored(page))).toMatchObject({ context: null });
 });
 
+for (const marker of ['winner', 'different']) {
+  test(`a losing issuer ${marker === 'winner' ? 'preserves a matching' : 'reconciles a changed'} winner marker`, async ({ page }) => {
+    await fixtureShell(page);
+    const result = await page.evaluate(async marker => {
+      const { api, subscribeAuthContext, subscribeSessionRejection } = await import('/static/js/core.js');
+      const { printWindow } = await import('/static/js/modules/docs.js');
+      const publications = [], replies = [];
+      let settlingLoser = false, checks = 0;
+      subscribeAuthContext(event => publications.push(event.context));
+      window.fetch = path => {
+        if (path === '/api/docs/print') return Promise.resolve(new Response('<p>Fixture</p>', {
+          headers: { 'X-Butler-Auth-Context': 'winner' },
+        }));
+        if (path === '/api/auth/context') {
+          if (!settlingLoser) return Promise.resolve(Response.json({ auth_context: 'winner' }));
+          checks++;
+          return new Promise(resolve => {
+            window.verifyReplacement = () => resolve(Response.json({ auth_context: marker }));
+          });
+        }
+        return new Promise(resolve => replies.push(resolve));
+      };
+      const send = () => api('/api/auth/change-password', { method: 'POST', silent: true }).then(() => true, () => false);
+      const first = send(), second = send();
+      document.cookie = 'tt_auth_context=winner; path=/';
+      replies[0](Response.json({ auth_context: 'winner' }));
+      const won = await first;
+      await printWindow('Fixture winner', '<p>Fixture</p>');
+      const job = document.querySelector('iframe[title="Fixture winner"]');
+      let retired = 0;
+      subscribeSessionRejection(() => retired++);
+      settlingLoser = true;
+      document.cookie = 'tt_auth_context=' + marker + '; path=/';
+      replies[1](Response.json({ auth_context: 'different' }));
+      return { won, lost: !await second, publications, retired, checks, mounted: Boolean(job), kept: job?.isConnected,
+        hidden: document.querySelector('#app').classList.contains('hidden') };
+    }, marker);
+    const changed = marker !== 'winner';
+    expect(result).toEqual({ won: true, lost: true, publications: ['winner'],
+      retired: Number(changed), checks: Number(changed), mounted: true, kept: !changed, hidden: changed });
+    if (changed) {
+      await Promise.all([page.waitForEvent('domcontentloaded'), page.evaluate(() => window.verifyReplacement())]);
+      expect(JSON.parse(await stored(page)).context).toBe('winner');
+    }
+  });
+}
+
 for (const source of ['render', 'template', 'fund']) {
   test(`raw ${source} 401 expires its initiating generation`, async ({ page }) => {
     await login(page, 'admin');
@@ -598,8 +645,33 @@ for (const source of ['render', 'template', 'fund']) {
 const passwordChange = '/api/auth/change-password';
 const fixturePasswordChange = `/__playwright${passwordChange}`;
 const temporaryPassword = 'fixture-password-42';
-const passwordLogin = (request, password = DEMO_PASSWORD, username = 'gromova') => request.post('/api/auth/login', {
+const passwordLogin = (request, username, password = DEMO_PASSWORD) => request.post('/api/auth/login', {
   data: { username, password },
+});
+
+const passwordTest = test.extend({
+  employee: async ({ playwright, baseURL }, use) => {
+    const admin = await playwright.request.newContext({ baseURL });
+    let employee;
+    try {
+      expect((await passwordLogin(admin, 'admin')).status()).toBe(200);
+      const username = `password-fixture-${randomUUID()}`;
+      const created = await admin.post('/api/employees', { headers: await csrfHeaders(admin),
+        data: { full_name: 'Password rotation fixture', username, password: DEMO_PASSWORD } });
+      expect(created.status()).toBe(200);
+      employee = await created.json();
+      expect(employee.username).toBe(username);
+      await use({ id: employee.id, username, admin, journal: `/api/punches?employee_id=${employee.id}` });
+    } finally {
+      try {
+        if (employee) {
+          const archived = await admin.post(`/api/employees/${employee.id}/delete`, { headers: await csrfHeaders(admin) });
+          expect(archived.status()).toBe(200);
+          expect(await archived.json()).toMatchObject({ id: employee.id, active: false, deleted: true });
+        }
+      } finally { await admin.dispose(); }
+    }
+  },
 });
 
 async function csrfHeaders(request) {
@@ -622,7 +694,7 @@ async function redirectPasswordFixtureRequest(page) {
   }, { endpoint: passwordChange, fixtureEndpoint: fixturePasswordChange });
 }
 
-async function settlePasswordWrite({ request, playwright, baseURL, issuerDispatch, originalProbe, errors, probeLogin = passwordLogin }) {
+async function settlePasswordWrite({ request, playwright, baseURL, employee, issuerDispatch, originalProbe, errors }) {
   const originalSessionIsActive = async () => {
     const response = await request.get('/api/auth/context');
     expect([200, 401], 'Check whether rotation revoked the original session').toContain(response.status());
@@ -634,7 +706,7 @@ async function settlePasswordWrite({ request, playwright, baseURL, issuerDispatc
       // Keep the pre-rotation session in request. A new login could race with revocation.
       const probe = await playwright.request.newContext({ baseURL });
       try {
-        const original = await probeLogin(probe);
+        const original = await passwordLogin(probe, employee.username);
         probeResult.status = original.status();
         expect([200, 401], 'Probe the original password before the issuer settles').toContain(probeResult.status);
       } finally {
@@ -662,9 +734,9 @@ async function settlePasswordWrite({ request, playwright, baseURL, issuerDispatc
   return originalSessionIsActive();
 }
 
-async function restorePasswordFixture({ request, playwright, baseURL, issuerDispatch, originalProbe, journal, baseline, errors }) {
-  if (!await settlePasswordWrite({ request, playwright, baseURL, issuerDispatch, originalProbe, errors })) {
-    expect((await passwordLogin(request, temporaryPassword)).status(), 'Authenticate the rotated account').toBe(200);
+async function restorePasswordFixture({ request, playwright, baseURL, employee, issuerDispatch, originalProbe, baseline, errors }) {
+  if (!await settlePasswordWrite({ request, playwright, baseURL, employee, issuerDispatch, originalProbe, errors })) {
+    expect((await passwordLogin(request, employee.username, temporaryPassword)).status(), 'Authenticate the rotated account').toBe(200);
     const restored = await request.post(passwordChange, { headers: await csrfHeaders(request),
       data: { old_password: temporaryPassword, new_password: DEMO_PASSWORD } });
     expect(restored.status(), 'Restore the original password').toBe(200);
@@ -672,12 +744,13 @@ async function restorePasswordFixture({ request, playwright, baseURL, issuerDisp
 
   const verified = await playwright.request.newContext({ baseURL });
   try {
-    expect((await passwordLogin(verified)).status(), 'Verify the original password in a fresh client').toBe(200);
-    const headers = await csrfHeaders(verified);
-    // The serial demo scenario exclusively owns this employee's new punches.
-    for (const punch of await readPunches(verified, journal)) {
+    const login = await passwordLogin(verified, employee.username);
+    expect(login.status(), 'Verify the original password in a fresh client').toBe(200);
+    expect((await login.json()).user.employee_id).toBe(employee.id);
+    const headers = await csrfHeaders(employee.admin);
+    for (const punch of await readPunches(verified, employee.journal)) {
       if (!baseline.has(punch.id)) {
-        expect((await verified.delete(`/api/punches/${punch.id}`, { headers })).status(), 'Restore demo punches').toBe(200);
+        expect((await employee.admin.delete(`/api/punches/${punch.id}`, { headers })).status(), 'Restore fixture punches').toBe(200);
       }
     }
   } finally {
@@ -685,13 +758,15 @@ async function restorePasswordFixture({ request, playwright, baseURL, issuerDisp
   }
 }
 
-async function exercisePasswordRotation({ page, context, request, playwright, baseURL }, {
+async function exercisePasswordRotation({ page, context, request, playwright, baseURL, employee }, {
   checkpoint = () => {}, sendIssuer = send => send(), originalProbe = () => {}, captureBeforeClose = false,
 } = {}) {
   if (captureBeforeClose) await redirectPasswordFixtureRequest(page);
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
-  await login(page, 'gromova');
+  await login(page, employee.username);
+  expect(await page.evaluate(() => window.state.user), 'Native login owns the fixture employee')
+    .toMatchObject({ username: employee.username, employee_id: employee.id });
   const punch = page.locator('#view-today.active #today-punch');
   await expect(punch).toBeVisible();
   const initialAction = await punch.textContent();
@@ -720,14 +795,12 @@ async function exercisePasswordRotation({ page, context, request, playwright, ba
     if (path === '/api/punches' && response.request().method() === 'POST') punches.push(response);
     if (path === '/api/punches/status') statusReads.push(response.status());
   });
-  const cleanupLogin = await passwordLogin(request);
+  const cleanupLogin = await passwordLogin(request, employee.username);
   expect(cleanupLogin.status()).toBe(200);
-  const employeeId = (await cleanupLogin.json()).user.employee_id;
-  expect(employeeId).toBeGreaterThan(0);
-  const journal = `/api/punches?employee_id=${employeeId}`;
-  const baseline = new Set((await readPunches(request, journal)).map(punch => punch.id));
+  expect((await cleanupLogin.json()).user.employee_id).toBe(employee.id);
+  const baseline = new Set((await readPunches(request, employee.journal)).map(punch => punch.id));
 
-  // Only the serial test has a deadline. Cutting off the transport earlier would
+  // Only the enclosing test has a deadline. Cutting off the transport earlier would
   // lose the receipt while the server could still be committing this write.
   const issuer = await playwright.request.newContext({ timeout: 0 });
   const upstreamUrl = new URL(passwordChange, baseURL).href;
@@ -819,7 +892,7 @@ async function exercisePasswordRotation({ page, context, request, playwright, ba
   }
   settling = true;
   try {
-    await restorePasswordFixture({ request, playwright, baseURL, issuerDispatch, originalProbe, journal, baseline, errors });
+    await restorePasswordFixture({ request, playwright, baseURL, employee, issuerDispatch, originalProbe, baseline, errors });
   } catch (error) {
     errors.push(error);
   }
@@ -838,26 +911,18 @@ async function exercisePasswordRotation({ page, context, request, playwright, ba
   }
 }
 
-test.describe('password rotation fixture', () => {
-  // These scenarios share one seeded account and punch journal.
-  test.describe.configure({ mode: 'serial', retries: 0 });
+passwordTest.describe('password rotation fixture', () => {
+  passwordTest.describe.configure({ mode: 'serial', retries: 0 });
 
-  test('rotating a password publishes the replacement context and keeps Today live', async ({ page, context, request, playwright, baseURL }) => {
-    await exercisePasswordRotation({ page, context, request, playwright, baseURL });
+  passwordTest('rotating a password publishes the replacement context and keeps Today live', async ({ page, context, request, playwright, baseURL, employee }) => {
+    await exercisePasswordRotation({ page, context, request, playwright, baseURL, employee });
   });
 
-  async function demoPunchJournal(request) {
-    const response = await passwordLogin(request);
-    expect(response.status(), 'Original password for the demo punch journal').toBe(200);
-    const employeeId = (await response.json()).user.employee_id;
-    return readPunches(request, `/api/punches?employee_id=${employeeId}`);
-  }
-
-  test('password cleanup restores a rotation that commits after its first probe', async ({ page, context, request, playwright, baseURL }) => {
-    const baseline = await demoPunchJournal(request);
+  passwordTest('password cleanup restores a rotation that commits after its first probe', async ({ page, context, request, playwright, baseURL, employee }) => {
+    const baseline = await readPunches(employee.admin, employee.journal);
     const dispatched = Promise.withResolvers(), firstProbe = Promise.withResolvers(), releaseIssuer = Promise.withResolvers();
     let committed;
-    const scenario = exercisePasswordRotation({ page, context, request, playwright, baseURL }, {
+    const scenario = exercisePasswordRotation({ page, context, request, playwright, baseURL, employee }, {
       captureBeforeClose: true,
       sendIssuer: async send => {
         dispatched.resolve();
@@ -883,17 +948,17 @@ test.describe('password rotation fixture', () => {
       expect(failure).not.toBeInstanceOf(AggregateError);
       expect(failure?.message).toMatch(/has been closed/);
       expect(committed, 'Dispatched rotation committed after the original-password probe').toBe(200);
-      expect(await demoPunchJournal(request)).toEqual(baseline);
+      expect(await readPunches(employee.admin, employee.journal)).toEqual(baseline);
     } finally {
       releaseIssuer.resolve();
       await ended;
     }
   });
 
-  test('password fixture retains the page closure and independent issuer failure', async ({ page, context, request, playwright, baseURL }) => {
-    const baseline = await demoPunchJournal(request);
+  passwordTest('password fixture retains the page closure and independent issuer failure', async ({ page, context, request, playwright, baseURL, employee }) => {
+    const baseline = await readPunches(employee.admin, employee.journal);
     const issuerFailure = new Error('Independent fixture request failed');
-    await expect(exercisePasswordRotation({ page, context, request, playwright, baseURL }, {
+    await expect(exercisePasswordRotation({ page, context, request, playwright, baseURL, employee }, {
       captureBeforeClose: true,
       sendIssuer: async send => {
         await page.close();
@@ -903,10 +968,10 @@ test.describe('password rotation fixture', () => {
     })).rejects.toMatchObject({
       errors: [expect.objectContaining({ message: expect.stringMatching(/has been closed/) }), issuerFailure],
     });
-    expect(await demoPunchJournal(request)).toEqual(baseline);
+    expect(await readPunches(employee.admin, employee.journal)).toEqual(baseline);
   });
 
-  async function exercisePasswordDeliveryLoss({ page, context, request, playwright, baseURL }, baseline) {
+  async function exercisePasswordDeliveryLoss({ page, context, request, playwright, baseURL, employee }, baseline) {
     const releaseWrite = Promise.withResolvers(), started = Promise.withResolvers(), settled = Promise.withResolvers();
     const observingWrite = Promise.withResolvers(), prematureRead = Promise.withResolvers();
     const deliveryError = new Error('Password response delivery failed before commit');
@@ -936,7 +1001,7 @@ test.describe('password rotation fixture', () => {
       post: (...args) => request.post(...args),
       storageState: () => request.storageState(),
     };
-    const outcome = exercisePasswordRotation({ page, context, request: checkedRequest, playwright: gatedPlaywright, baseURL }, {
+    const outcome = exercisePasswordRotation({ page, context, request: checkedRequest, playwright: gatedPlaywright, baseURL, employee }, {
       captureBeforeClose: true,
       sendIssuer: async send => {
         await page.close();
@@ -959,17 +1024,11 @@ test.describe('password rotation fixture', () => {
       const status = await (endedBeforeWrite ? settled.promise : atStage(settled.promise));
       expect(status, 'The browser mutation eventually committed').toBe(200);
       const failure = await outcome;
-      const original = await passwordLogin(request);
-      if (original.status() === 401) {
-        // Restore the account even during RED, after measuring what the fixture left behind.
-        expect((await passwordLogin(request, temporaryPassword)).status()).toBe(200);
-        expect((await request.post(passwordChange, { headers: await csrfHeaders(request),
-          data: { old_password: temporaryPassword, new_password: DEMO_PASSWORD } })).status()).toBe(200);
-      }
+      const original = await passwordLogin(request, employee.username);
       expect(original.status(), `Original login after cleanup (${observed})`).toBe(200);
       expect(originalObserved).toBe(true);
       expect(failure?.errors).toEqual([expect.objectContaining({ message: expect.stringMatching(/has been closed/) }), deliveryError]);
-      expect(await demoPunchJournal(request)).toEqual(baseline);
+      expect(await readPunches(employee.admin, employee.journal)).toEqual(baseline);
     } finally {
       releaseWrite.resolve();
       await outcome;
@@ -977,8 +1036,8 @@ test.describe('password rotation fixture', () => {
     }
   }
 
-  test('password fixture waits for the write after response delivery fails', async ({ page, context, request, playwright, baseURL }) => {
-    const baseline = await demoPunchJournal(request);
+  passwordTest('password fixture waits for the write after response delivery fails', async ({ page, context, request, playwright, baseURL, employee }) => {
+    const baseline = await readPunches(employee.admin, employee.journal);
     await test.step('Surface a login setup failure before waiting for the write', async () => {
       const setupError = new Error('Password fixture login navigation failed before dispatch');
       const loginAttempted = Promise.withResolvers();
@@ -991,22 +1050,22 @@ test.describe('password rotation fixture', () => {
         },
       };
       let observed;
-      const deliveryLoss = exercisePasswordDeliveryLoss({ page: failedLoginPage, context, request, playwright, baseURL }, baseline)
+      const deliveryLoss = exercisePasswordDeliveryLoss({ page: failedLoginPage, context, request, playwright, baseURL, employee }, baseline)
         .then(() => { observed = 'unexpected success'; }, error => { observed = error; });
       await Promise.race([loginAttempted.promise, deliveryLoss.then(() => { throw observed; })]);
       await expect.poll(() => observed, { message: 'Setup error reaches the delivery-loss caller', timeout: 2000 }).toBe(setupError);
     });
-    await exercisePasswordDeliveryLoss({ page, context, request, playwright, baseURL }, baseline);
+    await exercisePasswordDeliveryLoss({ page, context, request, playwright, baseURL, employee }, baseline);
   });
 
-  test('password fixture preserves a wrong browser request method', async ({ page, context, request, playwright, baseURL }) => {
-    const baseline = await demoPunchJournal(request);
+  passwordTest('password fixture preserves a wrong browser request method', async ({ page, context, request, playwright, baseURL, employee }) => {
+    const baseline = await readPunches(employee.admin, employee.journal);
     await page.addInitScript(path => {
       const fetch = window.fetch;
       window.fetch = (url, options) => url === path ? fetch(url, { ...options, method: 'PUT' }) : fetch(url, options);
     }, passwordChange);
     let upstreamStatus;
-    const fixtureFailure = await exercisePasswordRotation({ page, context, request, playwright, baseURL }, {
+    const fixtureFailure = await exercisePasswordRotation({ page, context, request, playwright, baseURL, employee }, {
       checkpoint: () => { throw new Error('Fixture accepted the wrong method'); },
       sendIssuer: async send => {
         const response = await send();
@@ -1016,11 +1075,11 @@ test.describe('password rotation fixture', () => {
     }).then(() => undefined, error => error);
     expect(upstreamStatus, 'The normal auth endpoint received the browser PUT').toBe(405);
     expect(fixtureFailure?.message).toContain('Password change must use POST');
-    expect(await demoPunchJournal(request)).toEqual(baseline);
+    expect(await readPunches(employee.admin, employee.journal)).toEqual(baseline);
   });
 
-  test('password fixture releases the held write when the first probe fails', async ({ page, context, request, playwright, baseURL }) => {
-    const baseline = await demoPunchJournal(request);
+  passwordTest('password fixture releases the held write when the first probe fails', async ({ page, context, request, playwright, baseURL, employee }) => {
+    const baseline = await readPunches(employee.admin, employee.journal);
     const probeError = new Error('Original session context probe failed');
     const dispatched = Promise.withResolvers(), releaseWrite = Promise.withResolvers();
     let firstContext = true, observedProbe;
@@ -1035,7 +1094,7 @@ test.describe('password rotation fixture', () => {
       post: (...args) => request.post(...args),
       storageState: () => request.storageState(),
     };
-    const outcome = exercisePasswordRotation({ page, context, request: checkedRequest, playwright, baseURL }, {
+    const outcome = exercisePasswordRotation({ page, context, request: checkedRequest, playwright, baseURL, employee }, {
       captureBeforeClose: true,
       sendIssuer: async send => {
         dispatched.resolve();
@@ -1054,14 +1113,14 @@ test.describe('password rotation fixture', () => {
       await outcome;
     }
     expect((await outcome)?.errors).toEqual([expect.objectContaining({ message: expect.stringMatching(/has been closed/) }), probeError]);
-    expect(await demoPunchJournal(request)).toEqual(baseline);
+    expect(await readPunches(employee.admin, employee.journal)).toEqual(baseline);
   });
 
   for (const stop of ['response', 'punch']) {
-    test(`password cleanup survives a closed page immediately after ${stop}`, async ({ page, context, request, playwright, baseURL }) => {
-      const baseline = await demoPunchJournal(request);
+    passwordTest(`password cleanup survives a closed page immediately after ${stop}`, async ({ page, context, request, playwright, baseURL, employee }) => {
+      const baseline = await readPunches(employee.admin, employee.journal);
       const failure = new Error(`fixture stopped after ${stop}`);
-      await expect(exercisePasswordRotation({ page, context, request, playwright, baseURL }, {
+      await expect(exercisePasswordRotation({ page, context, request, playwright, baseURL, employee }, {
         captureBeforeClose: true,
         checkpoint: async phase => {
           if (phase === stop) {
@@ -1070,68 +1129,50 @@ test.describe('password rotation fixture', () => {
           }
         },
       })).rejects.toBe(failure);
-      expect(await demoPunchJournal(request)).toEqual(baseline);
+      expect(await readPunches(employee.admin, employee.journal)).toEqual(baseline);
     });
   }
 });
 
-test('an unknown password write leaves the seeded Today login usable', async ({ page, request, playwright, baseURL }) => {
-  const username = `password-fixture-${randomUUID()}`;
-  const account = await playwright.request.newContext({ baseURL });
-  const issuer = await playwright.request.newContext({ baseURL, timeout: 0 });
+passwordTest('an unknown password write from the closed Today fixture leaves the seeded login usable', async ({ page, context, request, playwright, browser, baseURL, employee }) => {
   const releaseWrite = Promise.withResolvers();
-  let employee;
-  let pendingWrite;
+  const upstream = await playwright.request.newContext({ timeout: 0 });
+  const lostReceipt = new Error('The dispatched write lost its receipt');
+  let hiddenWrite, firstProbe;
+  const lostReceiptClient = {
+    fetch(url, options) {
+      hiddenWrite = releaseWrite.promise.then(() => upstream.fetch(url, options));
+      return Promise.reject(lostReceipt);
+    },
+    dispose: async () => {},
+  };
+  const lostPlaywright = { request: { newContext: options => options.baseURL
+    ? playwright.request.newContext(options) : lostReceiptClient } };
   try {
-    expect((await passwordLogin(request, DEMO_PASSWORD, 'admin')).status()).toBe(200);
-    const created = await request.post('/api/employees', { headers: await csrfHeaders(request),
-      data: { full_name: 'Password rotation fixture', username, password: DEMO_PASSWORD } });
-    expect(created.status()).toBe(200);
-    employee = await created.json();
-    expect(employee.username).toBe(username);
-
-    const loginDisposable = client => passwordLogin(client, DEMO_PASSWORD, username);
-    expect((await loginDisposable(account)).status()).toBe(200);
-    expect((await loginDisposable(issuer)).status()).toBe(200);
-    const headers = await csrfHeaders(issuer);
-    pendingWrite = releaseWrite.promise.then(() => issuer.post(passwordChange, {
-      headers, data: { old_password: DEMO_PASSWORD, new_password: temporaryPassword },
-    }));
-    const deliveryError = new Error('The outcome of the dispatched write was lost');
-    const upstreamResponse = Promise.reject(deliveryError);
-    void upstreamResponse.catch(() => {});
-    let firstProbe;
-    await expect(settlePasswordWrite({ request: account, playwright, baseURL,
-      issuerDispatch: Promise.resolve({ upstreamResponse }), probeLogin: loginDisposable,
-      originalProbe: result => { firstProbe = result; }, errors: [],
-    })).rejects.toMatchObject({ message: 'Password change outcome is unknown', cause: deliveryError });
-    expect(firstProbe).toEqual({ status: 200 });
-
-    releaseWrite.resolve();
-    expect((await pendingWrite).status(), 'The hidden write committed after cleanup reported an unknown outcome').toBe(200);
-
-    await page.goto('/');
-    await page.locator('#login-username').fill('gromova');
-    await page.locator('#login-password').fill(DEMO_PASSWORD);
-    const [response] = await Promise.all([
-      page.waitForResponse('**/api/auth/login-form'), page.locator('#login-form button[type=submit]').click(),
+    const failure = await exercisePasswordRotation({ page, context, request, playwright: lostPlaywright, baseURL, employee }, {
+      captureBeforeClose: true,
+      sendIssuer: async send => { await page.close(); return send(); },
+      originalProbe: result => { firstProbe = result; },
+    }).then(() => undefined, error => error);
+    expect(failure?.errors).toEqual([
+      expect.objectContaining({ message: expect.stringMatching(/has been closed/) }),
+      expect.objectContaining({ message: 'Password change outcome is unknown', cause: lostReceipt }),
     ]);
-    expect(response.headers().location, 'The seeded account can still log into Today').toBe('/');
-    await expect(page.locator('#view-today.active #today-punch')).toBeVisible();
+    expect(firstProbe).toEqual({ status: 200 });
+    releaseWrite.resolve();
+    expect((await hiddenWrite).status(), 'The hidden write committed after cleanup reported an unknown outcome').toBe(200);
+    const rotated = await passwordLogin(request, employee.username, temporaryPassword);
+    expect(rotated.status()).toBe(200);
+    expect((await rotated.json()).user.employee_id).toBe(employee.id);
+
+    const seeded = await browser.newPage({ baseURL });
+    try {
+      await login(seeded, 'gromova');
+      await expect(seeded.locator('#view-today.active #today-punch')).toBeVisible();
+    } finally { await seeded.close(); }
   } finally {
     releaseWrite.resolve();
-    try {
-      // The diagnostic owns the real receipt independently. A lost receipt leaves
-      // this unique account isolated in the ephemeral database.
-      const writeFinished = !pendingWrite || await pendingWrite.then(() => true, () => false);
-      if (employee && writeFinished) {
-        const deleted = await request.post(`/api/employees/${employee.id}/delete`, { headers: await csrfHeaders(request) });
-        expect(deleted.status()).toBe(200);
-        expect(await deleted.json()).toMatchObject({ active: false, deleted: true });
-      }
-    } finally {
-      await Promise.all([account.dispose(), issuer.dispose()]);
-    }
+    try { await hiddenWrite; } finally { await upstream.dispose(); }
   }
 });
 
@@ -1347,6 +1388,9 @@ test.describe('review regressions', () => {
     test(`a delayed 401 preserves the ${published ? 'published' : 'unpublished'} replacement session`, async ({ page, context }) => {
       const peer = await twoPages(page, context);
       const original = await stored(peer);
+      await peer.evaluate(() => { window.fixtureInitialPeerDocument = true; });
+      const peerNavigations = [];
+      peer.on('framenavigated', frame => { if (frame === peer.mainFrame()) peerNavigations.push(frame.url()); });
       const held = Promise.withResolvers(), release = Promise.withResolvers();
       await page.route('**/api/auth/me', async route => {
         held.resolve();
@@ -1361,12 +1405,21 @@ test.describe('review regressions', () => {
       const replacement = await peer.request.post('/api/auth/login', { data: { username: 'admin', password: DEMO_PASSWORD } });
       expect(replacement.ok()).toBe(true);
       const after = (await replacement.json()).auth_context;
+      const peerNavigation = published ? peer.waitForEvent('framenavigated', frame => frame === peer.mainFrame()) : null;
       if (published) await page.evaluate(async after => (await import('/static/js/core.js')).publishAuthContext(after), after);
       const settled = published ? page.evaluate(() => window.fixturePending) : page.waitForEvent('domcontentloaded');
       release.resolve();
       await settled;
       await expect(page.locator('#view-today.active .today-hello')).toBeVisible();
-      const latest = await stored(peer);
+      if (peerNavigation) {
+        await peerNavigation;
+        await peer.locator('#view-today.active .today-hello').waitFor();
+      }
+      const { latest, firstDocument } = await peer.evaluate(key => ({
+        latest: localStorage.getItem(key), firstDocument: Boolean(window.fixtureInitialPeerDocument),
+      }), eventKey);
+      expect(firstDocument).toBe(!published);
+      expect(peerNavigations).toHaveLength(published ? 1 : 0);
       if (published) expect(JSON.parse(latest).context).toBe(after);
       else expect(latest).toBe(original);
       await expect(peer.locator('#app')).toBeVisible();
