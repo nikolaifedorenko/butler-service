@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DEMO_PASSWORD, login } from './helpers.mjs';
 
 test.use({ serviceWorkers: 'block' });
@@ -597,6 +598,8 @@ for (const source of ['render', 'template', 'fund']) {
 const passwordChange = '/api/auth/change-password';
 const fixturePasswordChange = `/__playwright${passwordChange}`;
 const temporaryPassword = 'fixture-password-42';
+const unknownPasswordFixture = 'unsettled';
+let passwordFixtureReservation;
 const passwordLogin = (request, password = DEMO_PASSWORD) => request.post('/api/auth/login', {
   data: { username: 'gromova', password },
 });
@@ -610,6 +613,62 @@ async function readPunches(request, journal) {
   const response = await request.get(journal);
   expect(response.status()).toBe(200);
   return response.json();
+}
+
+async function reservePasswordFixture(baseURL, { project: { outputDir }, timeout }) {
+  // Repeat workers share the project output directory. Playwright clears it
+  // before each invocation rather than between repeats.
+  const origin = new URL(baseURL).origin;
+  const marker = join(outputDir, `password-rotation-${encodeURIComponent(origin)}.lock`);
+  mkdirSync(outputDir, { recursive: true });
+  const readOwner = () => {
+    try {
+      return readFileSync(marker, 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      return undefined;
+    }
+  };
+  const claim = () => {
+    try {
+      writeFileSync(marker, String(process.pid), { flag: 'wx' });
+      return true;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    const owner = readOwner();
+    if (owner === unknownPasswordFixture) {
+      throw new Error(`Password fixture blocked before login at ${origin}. An earlier write has an unknown outcome.`);
+    }
+    // An empty file means another worker is still writing its ownership marker.
+    if (owner) {
+      try {
+        process.kill(Number(owner), 0);
+      } catch (error) {
+        if (error.code === 'ESRCH') {
+          if (readOwner() === owner) {
+            throw new Error(`Password fixture blocked before login at ${origin}. The owning worker exited before verifying cleanup.`);
+          }
+        } else if (error.code !== 'EPERM') {
+          throw error;
+        }
+      }
+    }
+    return false;
+  };
+  await expect.poll(claim, { message: 'Wait for the previous password fixture to verify cleanup', timeout }).toBe(true);
+  return { marker, writeMayBePending: false };
+}
+
+function releasePasswordFixture({ marker, writeMayBePending }) {
+  if (!writeMayBePending) {
+    unlinkSync(marker);
+    return;
+  }
+  // Replace the active marker atomically so there is no gap for another owner.
+  const pending = `${marker}.pending`;
+  writeFileSync(pending, unknownPasswordFixture);
+  renameSync(pending, marker);
 }
 
 async function redirectPasswordFixtureRequest(page) {
@@ -683,6 +742,8 @@ async function restorePasswordFixture({ request, playwright, baseURL, issuerDisp
 async function exercisePasswordRotation({ page, context, request, playwright, baseURL }, {
   checkpoint = () => {}, sendIssuer = send => send(), originalProbe = () => {}, captureBeforeClose = false,
 } = {}) {
+  const reservation = passwordFixtureReservation;
+  if (!reservation) throw new Error('Password rotation requires an account reservation');
   if (captureBeforeClose) await redirectPasswordFixtureRequest(page);
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
@@ -774,6 +835,7 @@ async function exercisePasswordRotation({ page, context, request, playwright, ba
         if (!page.isClosed()) deliveryErrors.push(error);
       }
     });
+    reservation.writeMayBePending = true;
     const [response] = await Promise.all([
       page.waitForResponse(browserUrl), page.locator('#modal [data-save]').click(),
     ]);
@@ -815,6 +877,7 @@ async function exercisePasswordRotation({ page, context, request, playwright, ba
   settling = true;
   try {
     await restorePasswordFixture({ request, playwright, baseURL, issuerDispatch, originalProbe, journal, baseline, errors });
+    reservation.writeMayBePending = false;
   } catch (error) {
     errors.push(error);
   }
@@ -836,6 +899,14 @@ async function exercisePasswordRotation({ page, context, request, playwright, ba
 test.describe('password rotation fixture', () => {
   // An unobserved write can outlive this test. Do not retry or reuse its account in this flow.
   test.describe.configure({ mode: 'serial', retries: 0 });
+  test.beforeEach(async ({ baseURL }, info) => {
+    passwordFixtureReservation = await reservePasswordFixture(baseURL, info);
+  });
+  test.afterEach(() => {
+    const reservation = passwordFixtureReservation;
+    passwordFixtureReservation = undefined;
+    if (reservation) releasePasswordFixture(reservation);
+  });
 
   test('rotating a password publishes the replacement context and keeps Today live', async ({ page, context, request, playwright, baseURL }) => {
     await exercisePasswordRotation({ page, context, request, playwright, baseURL });
@@ -901,8 +972,7 @@ test.describe('password rotation fixture', () => {
     expect(await demoPunchJournal(request)).toEqual(baseline);
   });
 
-  test('password fixture waits for the write after response delivery fails', async ({ page, context, request, playwright, baseURL }) => {
-    const baseline = await demoPunchJournal(request);
+  async function exercisePasswordDeliveryLoss({ page, context, request, playwright, baseURL }, baseline) {
     const releaseWrite = Promise.withResolvers(), started = Promise.withResolvers(), settled = Promise.withResolvers();
     const observingWrite = Promise.withResolvers(), prematureRead = Promise.withResolvers();
     const deliveryError = new Error('Password response delivery failed before commit');
@@ -943,12 +1013,17 @@ test.describe('password rotation fixture', () => {
         originalObserved = status === 200;
       },
     }).then(() => undefined, error => error);
+    const atStage = barrier => Promise.race([barrier, outcome.then(error => {
+      throw error ?? new Error('Password fixture completed before the delivery-loss barrier');
+    })]);
     try {
-      await started.promise;
-      const observed = await Promise.race([observingWrite.promise, prematureRead.promise]);
-      if (observed === 'checked session before write') await outcome;
+      await atStage(started.promise);
+      const observed = await atStage(Promise.race([observingWrite.promise, prematureRead.promise]));
+      const endedBeforeWrite = observed === 'checked session before write';
+      if (endedBeforeWrite) await outcome;
       releaseWrite.resolve();
-      expect(await settled.promise, 'The browser mutation eventually committed').toBe(200);
+      const status = await (endedBeforeWrite ? settled.promise : atStage(settled.promise));
+      expect(status, 'The browser mutation eventually committed').toBe(200);
       const failure = await outcome;
       const original = await passwordLogin(request);
       if (original.status() === 401) {
@@ -966,6 +1041,28 @@ test.describe('password rotation fixture', () => {
       await outcome;
       await upstream.dispose();
     }
+  }
+
+  test('password fixture waits for the write after response delivery fails', async ({ page, context, request, playwright, baseURL }) => {
+    const baseline = await demoPunchJournal(request);
+    await test.step('Surface a login setup failure before waiting for the write', async () => {
+      const setupError = new Error('Password fixture login navigation failed before dispatch');
+      const loginAttempted = Promise.withResolvers();
+      const failedLoginPage = {
+        addInitScript: async () => {},
+        clock: { install: async () => {}, pauseAt: async () => {} },
+        goto: async () => {
+          loginAttempted.resolve();
+          throw setupError;
+        },
+      };
+      let observed;
+      const deliveryLoss = exercisePasswordDeliveryLoss({ page: failedLoginPage, context, request, playwright, baseURL }, baseline)
+        .then(() => { observed = 'unexpected success'; }, error => { observed = error; });
+      await Promise.race([loginAttempted.promise, deliveryLoss.then(() => { throw observed; })]);
+      await expect.poll(() => observed, { message: 'Setup error reaches the delivery-loss caller', timeout: 2000 }).toBe(setupError);
+    });
+    await exercisePasswordDeliveryLoss({ page, context, request, playwright, baseURL }, baseline);
   });
 
   test('password fixture preserves a wrong browser request method', async ({ page, context, request, playwright, baseURL }) => {
