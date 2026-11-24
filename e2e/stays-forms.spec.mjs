@@ -35,6 +35,10 @@ test('раздел «Гости»: список, поиск без потери 
 
 test('поиск гостя не принимает запоздавший ответ прежнего запроса', async ({ page }) => {
   await login(page, 'admin');
+  const guestId = await page.evaluate(async () => {
+    const response = await fetch('/api/stays/guests/list?limit=1');
+    return (await response.json()).rows[0].id;
+  });
   let releaseOld;
   let markOldStarted;
   const oldMayFinish = new Promise(resolve => { releaseOld = resolve; });
@@ -46,7 +50,7 @@ test('поиск гостя не принимает запоздавший от�
       await oldMayFinish;
       await route.fulfill({ json: [{ id: 910001, short: 'Старый ответ' }] });
     } else if (q === 'Новый') {
-      await route.fulfill({ json: [{ id: 910002, short: 'Новый ответ' }] });
+      await route.fulfill({ json: [{ id: guestId, short: 'Новый ответ' }] });
     } else {
       await route.continue();
     }
@@ -55,13 +59,15 @@ test('поиск гостя не принимает запоздавший от�
   const search = page.locator('#view-stays #sg-q');
   await search.fill('Старый');
   await oldStarted;
+  await page.locator('#view-stays [data-stab=day]').click();
   await search.fill('Новый');
   const result = page.locator('#view-stays [data-sg-res]');
   await expect(result).toContainText('Новый ответ');
+  await result.getByRole('button', { name: 'Новый ответ' }).click();
+  await expect(result).toBeEmpty();
   releaseOld();
   await page.waitForTimeout(500);
-  await expect(result).toContainText('Новый ответ');
-  await expect(result).not.toContainText('Старый ответ');
+  await expect(result).toBeEmpty();
 });
 
 test('форма брони: открывается с кнопкой «Проверить» и закрывается без ошибок', async ({ page }) => {
@@ -77,4 +83,17 @@ test('форма брони: открывается с кнопкой «Пров
   await modal.locator('[data-close]').click();
   await expect(modal.locator('#rf-preview')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('поиск и выбор справочника гостей сбрасываются при смене пользователя', async ({ page }) => {
+  await login(page, 'admin');
+  const state = await page.evaluate(async () => {
+    const guests = await import('/static/js/modules/stays_guests.js');
+    const { resetUserViewState } = await import('/static/js/app.js');
+    Object.assign(guests.staysGuests, { q: 'телефон прежнего гостя', picked: [11, 12], special: true });
+    resetUserViewState();
+    return { ...guests.staysGuests };
+  });
+  expect(state).toEqual({ q: '', special: false, stayed_from: '', stayed_to: '', birthday: false,
+    sort: 'name', dir: 'asc', picked: [] });
 });

@@ -48,7 +48,7 @@ def guests_tab(q: str = "", special: bool = False, vip_code_id: Optional[int] = 
 
 
 @router.get("/guests/{gid}", response_model=GuestCardOut)
-def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
+def get_guest(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine", "stays.mine_guest_edit")),
               db: Session = Depends(get_db)):
     return guest_screen.get_card(db, principal, gid)
 
@@ -61,14 +61,14 @@ def guest_stays(gid: int, principal: Principal = Depends(require_perm("stays.gue
 
 
 @router.get("/guests/{gid}/prefs", response_model=list[GuestPrefOut])
-def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
+def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine", "stays.mine_guest_edit")),
                 db: Session = Depends(get_db)):
     """Пожелания гостя к объекту (часть 2 §5): полный уровень или свой гость батлера."""
     return guest_screen.prefs(db, principal, gid)
 
 
 @router.get("/guests/{gid}/family", response_model=FamilyOut)
-def guest_family(gid: int, principal: Principal = Depends(require_perm("stays.view", "stays.occupancy", "stays.guests", "stays.mine")),
+def guest_family(gid: int, principal: Principal = Depends(require_perm("stays.view", "stays.occupancy", "stays.guests", "stays.mine", "stays.mine_guest_edit")),
                  db: Session = Depends(get_db)):
     """Семейное дерево (§4): уровень «с фамилиями» и выше."""
     return guest_screen.family(db, principal, gid)

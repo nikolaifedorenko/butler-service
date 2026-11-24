@@ -13,7 +13,7 @@ from app.core.auth import Principal
 from app.core.errors import NotFound
 from app.modules.guests.application import guests
 from app.modules.guests.application.catalog import Guest
-from app.modules.stays.application import history, reservations
+from app.modules.stays.application import history, mine, reservations
 from app.modules.stays.application.guest_access import my_reservations, own_guest
 from app.modules.stays.application.visibility import Level, required_level
 from app.modules.stays.ports.duty import DutyPort
@@ -59,5 +59,8 @@ def guest_card(db: Session, principal: Principal, gid: int) -> dict:
     if g is None:
         raise NotFound("Гость не найден")
     own_guest(db, principal, gid, "stays.guests")
+    editable = "stays.edit" in principal.gate_permissions or (
+        "stays.mine_guest_edit" in principal.gate_permissions and principal.employee is not None
+        and mine.owns_guest(db, principal.employee.id, gid))
     return {**guests.guest_dict(g), **reservations.guest_profile_extra(db, g), "links": guests.links_of(db, gid),
-            "stays": history.guest_stays(db, gid)}
+            "stays": history.guest_stays(db, gid), "editable": editable}

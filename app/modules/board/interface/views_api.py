@@ -53,7 +53,7 @@ def reservation_history(rid: int, principal: Principal = Depends(require_perm("s
 
 
 @router.get("/guests/{gid}/card", response_model=GuestFullCardOut)
-def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
+def guest_card(gid: int, principal: Principal = Depends(require_perm("stays.guests", "stays.mine", "stays.mine_guest_edit")),
                db: Session = Depends(get_db)):
     """Карточка гостя целиком (с историей проживаний): stays.guests — любого, stays.mine — своего."""
     return view_screen.guest_card(db, principal, gid)

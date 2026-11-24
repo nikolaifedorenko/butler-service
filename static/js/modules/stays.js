@@ -177,33 +177,37 @@ function staysTabRender(tab) {
     occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab }[tab] || renderUnitsBoard;
 }
 
+let guestFindGeneration = 0;
+let guestFindTimer = null;
+
 /* микро-поиск гостя в шапке шахматки (ревью UI 22.11.2026): карточка открывается из любой
    вкладки; батлер ищет среди своих. Справочник целиком — раздел «Гости». */
 function guestFindView() {
   const full = can('stays.guests');
-  if (!full && !can('stays.mine_guest_edit')) return nothing;
-  let timer = null;
-  let generation = 0;
+  if (!full && !(can('stays.mine_guest_edit') && state.user?.employee_id != null)) return nothing;
+  ++guestFindGeneration; // новый рендер шапки владеет всеми следующими ответами поиска
   return html`<div class="guest-find"><input type="search" id="sg-q" placeholder="Найти гостя…"
     @input=${e => {
-      clearTimeout(timer);
+      clearTimeout(guestFindTimer);
       const input = e.currentTarget;
       const host = input.closest('.guest-find');
-      const current = ++generation;
-      timer = setTimeout(async () => {
+      const current = ++guestFindGeneration;
+      guestFindTimer = setTimeout(async () => {
         const needle = input.value.trim();
         if (needle.length < 2) { render(nothing, $('[data-sg-res]', host)); return; }
         try {
           const found = await api(`/api/stays/guests?q=${encodeURIComponent(needle)}${full ? '' : '&mine=1'}`, { silent: true });
-          if (current !== generation || !host.isConnected) return;
+          if (current !== guestFindGeneration || !host.isConnected) return;
           render(found.length ? found.map(g => html`<button type="button" class="btn btn-sm btn-ghost" data-sg-guest=${g.id}>${g.short}</button>`)
             : html`<span class="muted">не найдено</span>`, $('[data-sg-res]', host));
-        } catch (err) { if (current === generation) toast(err.message, 'warn'); }
+        } catch (err) { if (current === guestFindGeneration) toast(err.message, 'warn'); }
       }, 300);
     }}>
     <div class="guest-find-res" data-sg-res @click=${e => {
       const b = e.target.closest('[data-sg-guest]');
       if (!b) return;
+      ++guestFindGeneration;
+      clearTimeout(guestFindTimer);
       openGuestCard(Number(b.dataset.sgGuest), () => loadStays());
       const host = e.currentTarget.closest('.guest-find');
       $('input', host).value = '';

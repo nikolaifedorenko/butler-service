@@ -79,7 +79,13 @@ def prefs(db: Session, principal: Principal, gid: int) -> list[dict]:
 def family(db: Session, principal: Principal, gid: int) -> dict:
     """Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только
     полный уровень. Граф — до 3 поколений вверх и вниз и через брак."""
-    level = "full" if "stays.guests" in principal.gate_permissions else level_for(db, principal)
+    if "stays.guests" in principal.gate_permissions:
+        level = "full"
+    else:
+        level = level_for(db, principal)
+    if not at_least(level, "names") and "stays.mine_guest_edit" in principal.gate_permissions:
+        own_guest(db, principal, gid, "stays.guests")
+        level = "names"
     if not at_least(level, "names"):
         raise Forbidden("Семейное дерево — с уровня «с фамилиями»")
     _guest(db, gid)

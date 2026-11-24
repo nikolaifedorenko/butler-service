@@ -13,7 +13,7 @@
 'use strict';
 
 import { can, registerModule } from '../app.js';
-import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
+import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { STAYS_LINK, openGuestCard, openGuestForm } from './stays_forms.js';
 import { STAYS_SPECIAL_MARK, staysGuestMarkView } from './stays.js';
@@ -33,6 +33,7 @@ export function staysGuestsEmpty() {
   return { q: '', special: false, stayed_from: '', stayed_to: '', birthday: false, sort: 'name', dir: 'asc', picked: [] };
 }
 export const staysGuests = staysGuestsEmpty();
+export function staysGuestsResetUserState() { Object.assign(staysGuests, staysGuestsEmpty()); }
 
 registerModule({ views: { guests: loadGuests } });
 
@@ -40,15 +41,17 @@ registerModule({ views: { guests: loadGuests } });
 async function loadGuests() {
   const host = $('#view-guests');
   const full = can('stays.guests');
-  const create = can('stays.edit') || can('stays.mine_guest_edit');
+  const managerCreate = can('stays.edit');
+  const mineCreate = !managerCreate && can('stays.mine_guest_edit') && state.user?.employee_id != null;
+  const create = managerCreate || mineCreate;
   if (!full) {
     if (!create) {
       render(html`<div class="panel"><p>Раздел недоступен.</p></div>`, mount(host));
       return;
     }
-    render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Новые гости из вашего списка</div></div></div>
-      <div class="panel"><p>Заведённый вами гость сразу попадает в <b>«Мои гости»</b> — вы его ведёте по умолчанию.
-        VIP-код и отметку «особый» задаёт менеджер.</p>
+    render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Создание профиля гостя</div></div></div>
+      <div class="panel"><p>${mineCreate ? html`Заведённый вами гость сразу попадает в <b>«Мои гости»</b> — вы его ведёте по умолчанию.
+        VIP-код и отметку «особый» задаёт менеджер.` : 'Создайте профиль гостя для последующего добавления в бронь.'}</p>
         <button class="btn btn-primary" id="gl-new">Новый гость</button></div>`, mount(host));
     $('#gl-new', host).onclick = () => openGuestForm(null, () => {}, { mine: !can('stays.edit') });
     return;
@@ -72,7 +75,7 @@ function staysGuestsParams(offset) {
 const staysGuestsToolbar = () => {
   const s = staysGuests;
   const edit = can('stays.edit');
-  const create = edit || can('stays.mine_guest_edit');
+  const create = edit || (can('stays.mine_guest_edit') && state.user?.employee_id != null);
   return html`<div class="sb-toolbar">
     <input type="search" id="gl-q" .value=${s.q} placeholder="Фамилия, телефон, номер брони">
     <label class="chk"><input type="checkbox" id="gl-special" .checked=${s.special}> ${STAYS_SPECIAL_MARK}Особые</label>

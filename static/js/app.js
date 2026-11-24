@@ -18,6 +18,7 @@ import { carsState } from './modules/cars.js';
 import { nightState } from './modules/night.js';
 import { settingsUI } from './modules/settings.js';
 import { staysResetUserState } from './modules/stays_filters.js';
+import { staysGuestsResetUserState } from './modules/stays_guests.js';
 
 /* ───────────────────────────── вкладки ───────────────────────────── */
 const ICONS = {
@@ -243,6 +244,7 @@ export function resetUserViewState() {
   /* шахматка: фильтры (в них поиск — фамилия, телефон гостя), разделы, вкладка — не
      переходят к следующему пользователю устройства; сохранённые наборы — у каждого свои */
   staysResetUserState();
+  staysGuestsResetUserState();
   Object.assign(carsState, { data: null, meta: null, locations: [], filter: 'all', q: '' });
   Object.assign(nightState, { reportId: null, today: null, areas: null, zoneId: null,
     areaId: null, q: '', filter: 'all', dictTab: 'zones', dictZone: null,

@@ -113,7 +113,11 @@ test('меню кара управляется клавиатурой и воз�
   await page.keyboard.press('ArrowUp');
   await expect(items.first()).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(items.nth(1)).toBeFocused();
+  await expect(view.locator('.menu-wrap.open')).toHaveCount(0);
+  await expect(button).not.toBeFocused();
+  await button.focus();
+  await page.keyboard.press('Enter');
+  await expect(view.locator('.menu-wrap.open [role=menuitem]').first()).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(view.locator('.menu-wrap.open')).toHaveCount(0);
   await expect(button).toBeFocused();

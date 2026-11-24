@@ -146,7 +146,7 @@ function carsBody() {
   const byId = id => d.cars.find(c => c.id === Number(id));
   /* одна кнопка операции: data-act / data-id нужны сценариям и тестам */
   const act = (car, kind, label, cls, title, menuItem = false) => html`<button class=${`btn btn-sm ${cls}`} data-act=${kind} data-id=${car.id}
-    role=${menuItem ? 'menuitem' : nothing} title=${title || nothing}
+    role=${menuItem ? 'menuitem' : nothing} tabindex=${menuItem ? '-1' : nothing} title=${title || nothing}
     @click=${() => { closeCarMenu(); runAct(byId(car.id), kind, refresh); }}>${label}</button>`;
 
   /* Вторичные операции строки — в выпадающем меню «⋯», а не кнопками в ряд: строка
@@ -181,6 +181,16 @@ function carsBody() {
       else if (e.key === 'Home') next = items[0];
       else if (e.key === 'End') next = items.at(-1);
       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCarMenu(true); return; }
+      else if (e.key === 'Tab') {
+        const button = openCarMenuButton;
+        e.preventDefault();
+        closeCarMenu();
+        const focusable = [...document.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+          .filter(el => el.getClientRects().length && !el.closest('[hidden]'));
+        const index = focusable.indexOf(button);
+        focusable[index + (e.shiftKey ? -1 : 1)]?.focus();
+        return;
+      }
       if (next) { e.preventDefault(); next.focus(); }
     }}>${items}</span>
   </span>`;

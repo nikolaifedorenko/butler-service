@@ -70,6 +70,7 @@ class GuestFullCardOut(GuestCardOut):
     """Карточка гостя целиком — с историей проживаний."""
 
     stays: list[GuestStayOut]
+    editable: bool
 
 
 class ButlersBoardOut(ApiModel):

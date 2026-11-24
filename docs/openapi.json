@@ -8667,6 +8667,10 @@
             ],
             "title": "Birth Date"
           },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
           "email": {
             "title": "Email",
             "type": "string"
@@ -8796,7 +8800,8 @@
           "special_dates",
           "fields",
           "links",
-          "stays"
+          "stays",
+          "editable"
         ],
         "title": "GuestFullCardOut",
         "type": "object"

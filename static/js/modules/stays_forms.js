@@ -519,7 +519,7 @@ export async function openGuestCard(gid, onChanged) {
   /* правка: stays.edit — любой гость; батлер (stays.mine_guest_edit) — свой: карточку он открывает только
      у своих, анкетные поля в форме заперты (сервер проверяет и принадлежность, и поля) */
   const full = can('stays.edit');
-  const edit = full || can('stays.mine_guest_edit');
+  const edit = !!g.editable;
   const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
   const prefsShown = Object.entries(g.preferences).filter(([, v]) => v);
   /* боковая панель (ADR-0013 §7): дерево и история дышат по ширине, доска остаётся видна */
