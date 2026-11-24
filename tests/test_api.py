@@ -128,6 +128,24 @@ class TestApi(unittest.TestCase):
         today = local_date()
         emps = client.get("/api/employees").json()
         target = next(e for e in emps if e["full_name"].startswith("Иванов"))
+        # xdist-worker переиспользует свою БД между модулями. Общее закрытие в setUpClass
+        # может вернуть HTTP 200 + errors из-за чужого сотрудника (операция all-or-nothing),
+        # поэтому prerequisite этого теста обеспечиваем для целевого сотрудника отдельно.
+        from sqlalchemy import select
+
+        from app.bootstrap.seed import accounting_start
+        from app.core.db import SessionLocal
+        from app.modules.timesheet.adapters.orm import PeriodClosing
+
+        month = accounting_start(today)
+        while (month.year, month.month) < (today.year, today.month):
+            with SessionLocal() as db:
+                closed = db.scalar(select(PeriodClosing.id).where(
+                    PeriodClosing.employee_id == target["id"], PeriodClosing.period_start == month))
+            if closed is None:
+                result = period_action("close", target["id"], month.year, month.month)
+                assert not result["errors"], result["errors"]
+            month = dt.date(month.year + (month.month == 12), month.month % 12 + 1, 1)
         # прошедший выходной день без отметок (демо-отметки ставятся только на рабочие).
         # В первые дни месяца такого дня может не быть — тогда берём прошлый месяц: он
         # последний закрытый (setUpClass), его правят и пересчитывают (recalculate).
