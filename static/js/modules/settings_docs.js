@@ -6,7 +6,7 @@
 import { can, registerModule } from '../app.js';
 import { $, $$, api, closeModal, openModal, state, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
-import { settingsHeadView, settingsPanelView, settingsRefresh, settingsUI } from './settings.js';
+import { settingsHeadView, settingsPanelView, settingsUI } from './settings.js';
 import { openKindModal, renderDicts } from './dicts.js';
 
 registerModule({ screens: { docs: { render: settingsScreenDocs, icon: 'doc' } } });
@@ -27,22 +27,34 @@ async function settingsScreenDocs(host) {
     }
     return html`<input type=${item.type === 'int' ? 'number' : 'text'} aria-label=${item.description || item.key} data-k=${item.key} .value=${String(item.value ?? '')} style="max-width:180px" ?disabled=${!edit}>`;
   };
-  const saveRules = async () => {
-    const payload = $$('[data-k]', host).map(i => ({ key: i.dataset.k,
+  const saveRules = async e => {
+    const fields = $$('[data-k]', host);
+    const payload = fields.map(i => ({ key: i.dataset.k,
       value: String(i.type === 'checkbox' ? (i.checked ? '1' : '0') : i.value) }));
+    const controls = [...fields, e.currentTarget];
+    controls.forEach(el => { el.disabled = true; });
     try {
-      await api('/api/settings', { method: 'PUT', body: payload });
+      const { rules } = await api('/api/settings', { method: 'PUT', body: payload });
+      data.rules = rules;
+      data.items = data.items.map(i => ({ ...i, value: rules[i.key] }));
+      draw();
       toast('Правила объекта сохранены', 'ok');
-      await settingsRefresh();
     } catch (e) { toast(e.message, 'err'); }
+    finally { controls.forEach(el => { el.disabled = false; }); }
   };
-  const saveDoc = async () => {
+  const saveDoc = async e => {
+    const company = $('#d-company', host);
+    const director = $('#d-director', host);
+    const controls = [company, director, e.currentTarget];
+    controls.forEach(el => { el.disabled = true; });
     try {
-      await api('/api/settings/doc', { method: 'PUT', body: {
-        company: $('#d-company', host).value, director: $('#d-director', host).value } });
+      const { doc } = await api('/api/settings/doc', { method: 'PUT', body: {
+        company: company.value, director: director.value } });
+      data.doc = doc;
+      draw();
       toast('Реквизиты сохранены', 'ok');
-      await settingsRefresh();
     } catch (e) { toast(e.message, 'err'); }
+    finally { controls.forEach(el => { el.disabled = false; }); }
   };
   const help = () => openModal({
     title: 'Плейсхолдеры документов', wide: true,
@@ -52,10 +64,9 @@ async function settingsScreenDocs(host) {
     onMount(m) { m.querySelector('[data-ok]').onclick = closeModal; },
   });
   const kinds = docsInfo?.kinds || [];
-  render(html`
+  const draw = () => render(html`
     ${settingsHeadView('Документы и справочники',
-      'Реквизиты для печати, виды заявлений и бланки, департаменты и службы, прочие правила объекта. На математику расчёта не влияют.',
-      edit ? html`<button class="btn btn-sm btn-primary" id="dc-save" @click=${saveRules}>Сохранить правила объекта</button>` : nothing)}
+      'Реквизиты для печати, виды заявлений и бланки, департаменты и службы, прочие правила объекта.')}
     ${settingsPanelView('Реквизиты организации', html`
       <div class="grid-2">
         <label class="field"><span>Организация</span><input type="text" id="d-company" .value=${data.doc?.company || ''} ?disabled=${!edit}></label>
@@ -85,11 +96,14 @@ async function settingsScreenDocs(host) {
       <div class="grid-2" id="dicts-body"><div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>`)}
     ${settingsPanelView('Прочие правила объекта', html`
       ${(data.items || []).length ? data.items.map(i => html`<div class="rule-row">
-        <div><div class="lbl">${i.description || i.key}</div>
+        <div><div class="lbl" id=${`rule-${i.key}`}>${i.description || i.key}</div>
           <div class="desc"><code>${i.key}</code> · по умолчанию: ${i.default}</div></div>
         <div class="rule-input">${input(i)}${String(i.value) !== String(i.default)
           ? html`<span class="badge warn" title=${`по умолчанию ${i.default}`}>изменено</span>` : nothing}</div>
       </div>`) : html`<p class="hint">Правил нет</p>`}
-      <p class="hint">Правила расчёта часов, переработок и банка — на экранах «Расчёт» и «Правила оплаты».</p>`)}`, mount(host));
+      <p class="hint">Правила расчёта часов, переработок и банка — на экранах «Расчёт» и «Правила оплаты».</p>
+      ${edit && data.items?.length ? html`<button class="btn btn-sm btn-primary" id="dc-save" @click=${saveRules}>Сохранить правила объекта</button>` : nothing}`,
+      nothing, 'object-rules')}`, mount(host));
+  draw();
   renderDicts();
 }

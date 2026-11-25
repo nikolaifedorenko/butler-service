@@ -81,12 +81,12 @@ async function settingsScreenGroups(host) {
       ${edit ? html`<div class="v4-filters" style="margin-top:10px">
         <label class="field"><span>Новая группа</span><input type="text" id="g-new" placeholder="например: Смена 3"></label>
         <button class="btn btn-sm" id="g-add" @click=${addGroup}>Добавить в черновик</button></div>` : nothing}
-      <p class="hint">Сотрудники, чьей группы нет в реестре:
+      <p class="hint">Изменения групп вступают в силу после публикации версии. Сотрудники, чьей группы нет в реестре:
         ${strays.length ? strays.map(g => html`<span class="badge danger">${g} · ${perGroup[g]}</span> `) : 'нет — реестр полный'}</p>`)}
     ${settingsPanelView('Базовый цикл объекта · «Смена 1» и «Смена 2»', html`
       <p class="hint" style="margin:-4px 0 12px">Задаётся один раз и действует на все месяцы вперёд и назад.
         Ручные ячейки Графика — исключения (отпуск, больничный, подмена) и перекрывают базовый цикл.
-        Это данные приложения (таблица настроек), а не версия справочников — сохраняются сразу.</p>
+        Кнопка «Сохранить базовый цикл» применяет изменения этого блока сразу.</p>
       <div class="grid-2">
         <label class="field"><span>Цикл смен 1/2</span><select id="b-cycle" ?disabled=${!edit} @change=${syncCycle}>
           ${['2/2', '3/3', '4/2', '4/3', '1/3'].map(c => html`<option ?selected=${base.cycle === c}>${c}</option>`)}

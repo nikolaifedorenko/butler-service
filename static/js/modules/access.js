@@ -126,7 +126,7 @@ function accessRoles() {
 function membersModal(g) {
   const a = state.access;
   openModal({ title: `Состав группы «${g.name}»`,
-    body: html`<input type="text" id="agm-q" placeholder="Поиск" style="width:100%;margin-bottom:8px">
+    body: html`<input type="search" id="agm-q" placeholder="Поиск" style="width:100%;margin-bottom:8px">
       <div style="max-height:50vh;overflow:auto">${a.users.map(u => html`<label class="v4-user-check" data-n=${(u.name + ' ' + u.username).toLowerCase()}>
         <input type="checkbox" value=${u.id} .checked=${g.members.includes(u.id)}> ${u.name} <small>${u.username} · ${roleTitle(u.role)}</small></label>`)}</div>`,
     footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button><button class="btn btn-primary" data-save>Сохранить</button>`,
@@ -173,7 +173,7 @@ function accessUsers() {
   const a = state.access;
   const gname = id => (a.groups.find(g => g.id === id) || {}).name || id;
   const filter = e => $$('#ac-body tr[data-n]').forEach(tr => { tr.style.display = tr.dataset.n.includes(e.target.value.toLowerCase()) ? '' : 'none'; });
-  return html`<div class="panel"><input type="text" id="au-q" placeholder="Поиск по имени или логину" style="width:100%;max-width:360px" @input=${filter}></div>
+  return html`<div class="panel"><input type="search" id="au-q" placeholder="Поиск по имени или логину" style="width:100%;max-width:360px" @input=${filter}></div>
     <div class="table-wrap" tabindex="0"><table class="data responsive"><thead><tr><th>Пользователь</th><th>Роль</th><th>Группы</th>
       <th>Индивидуально</th><th>Итого прав</th><th></th></tr></thead><tbody>
     ${a.users.map(u => html`<tr data-n=${(u.name + ' ' + u.username).toLowerCase()}>

@@ -232,9 +232,10 @@ async function settingsScreenNotify(host) {
 
     ${settingsPanelView('Медиа и хранение', html`
       <p class="hint" style="margin-top:0">Размер и срок хранения фото и видео задаются в правилах объекта
-      (экран «Расчёт» → прочие правила: photo_max_mb, video_max_mb, photo_retention_days,
+      (экран «Документы и справочники» → прочие правила: photo_max_mb, video_max_mb, photo_retention_days,
       video_retention_days). Видео ограничено 50 МБ — это предел загрузки файла в Telegram Bot API.</p>
-      <div class="row-actions"><button class="btn btn-sm" id="nt-rules" @click=${() => settingsGo('calc')}>Открыть правила объекта</button></div>`)}
+      <div class="row-actions"><button class="btn btn-sm" id="nt-rules" @click=${() => settingsGo('docs', { section: 'object-rules' })}>Открыть правила объекта</button></div>`,
+      nothing, 'notify-media')}
 
     ${settingsPanelView('Журнал отправок', html`
       <p class="hint" style="margin-top:0">Журнал общий для всех разделов: раздел, получатель, канал,

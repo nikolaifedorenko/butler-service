@@ -5,6 +5,32 @@ import { login, watchErrors } from './helpers.mjs';
 const open = (page, view) => page.evaluate(v => window.navigate(v), view);
 const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
 
+test('поиск шахматки сохраняет форму при клике и фокусе с клавиатуры', async ({ page }) => {
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const search = page.locator('#sf-q');
+  await expect(search).toBeVisible();
+  const appearance = () => search.evaluate(input => {
+    const style = getComputedStyle(input);
+    const { width, height } = input.getBoundingClientRect();
+    return { width, height, padding: style.padding, radius: style.borderRadius, icon: style.backgroundImage };
+  });
+  const idle = await appearance();
+  await search.click();
+  expect(await appearance()).toEqual(idle);
+  expect(idle.icon).not.toBe('none');
+  await expect(search).toHaveCSS('outline-style', 'solid');
+  await expect(search).toHaveCSS('box-shadow', 'none');
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(search).not.toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(search).toBeFocused();
+  expect(await appearance()).toEqual(idle);
+  await expect(search).toHaveCSS('outline-style', 'solid');
+  await expect(search).toHaveCSS('box-shadow', 'none');
+});
+
 test.describe('печать шахматки', () => {
   test.use({ serviceWorkers: 'block' });
   test.beforeEach(async ({ page }) => {

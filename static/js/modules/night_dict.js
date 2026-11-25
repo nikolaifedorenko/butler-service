@@ -25,13 +25,14 @@ registerModule({ screens: { night: { render: renderNightDictScreen, icon: 'moon'
    (базово выдан admin/manager/supervisor — поведение не изменилось, но право
    можно выдать/снять грантом в «Настройках → Права доступа»).
    Вызывается из реестра modules/settings.js (подключается после этого файла). */
-async function renderNightDictScreen(host) {
+async function renderNightDictScreen(host, tab) {
+  if (tab) nightState.dictTab = tab;
+  if (!['areas', 'items', 'services'].includes(nightState.dictTab)) nightState.dictTab = 'areas';
+  const t = nightState.dictTab;
   const [zr, ar, sr] = await Promise.all([api('/api/night/zones'), api('/api/night/areas'),
                                            api('/api/night/services')]);
   const zones = zr.zones || [], areas = ar.areas || [], services = sr.services || [];
   const canEdit = !!zr.can_edit;
-  if (!['areas', 'items', 'services'].includes(nightState.dictTab)) nightState.dictTab = 'areas';
-  const t = nightState.dictTab;
   if (t !== 'services' && zones.length && !zones.some(z => z.id === nightState.dictZone)) {
     nightState.dictZone = zones[0].id; nightState.dictArea = null;
   }
