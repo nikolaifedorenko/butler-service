@@ -246,7 +246,7 @@ def test_fe6_settings_render_guarded_by_generation():
     src = _src("modules/settings.js")
     assert re.search(r"^let settingsRenderGen = 0;", src, re.M), \
         "нет счётчика поколений рендера"
-    body = _body(src, "async function settingsRenderScreen()")
+    body = _body(src, "async function settingsRenderScreen(")
     # свежий узел: запоздалый рендер пишет в отсоединённый старый узел
     assert "old.cloneNode(false)" in body and "old.replaceWith(body)" in body
     # поколение: инкремент на входе, страж в обработке сбоя и страж перед

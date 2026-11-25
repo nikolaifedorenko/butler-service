@@ -295,7 +295,7 @@ export function settingsGo(id, { tab, section } = {}) {
   if (item.perm && !can(item.perm)) { toast(`Нет права на экран «${item.title}»`, 'warn'); return; }
   if (item.external) { navigate(item.external); return; }
   const show = () => {
-    if (id === settingsUI.screen && !tab && (!section || focusSettingsSection($('#st-body'), section))) return;
+    if (id === settingsUI.screen && !tab && section && focusSettingsSection($('#st-body'), section)) return;
     settingsUI.screen = id;
     settingsRenderScreen({ tab, section });
   };
@@ -673,7 +673,7 @@ function settingsSearchPalette() {
       const pick = x => {
         if (!x) return;
         closeModal();
-        settingsGo(x.screen, x);
+        if (x.screen !== settingsUI.screen || x.tab || x.section) settingsGo(x.screen, x);
       };
       const draw = () => render(list.length ? html`${list.slice(0, 40).map((x, i) => html`<button data-i=${i} class=${i === sel ? 'sel' : ''}
           @click=${() => pick(x)}>
