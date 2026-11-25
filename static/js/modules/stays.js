@@ -308,12 +308,13 @@ async function renderUnitsBoard(body) {
     render(unitsTemplate(), mount(body));
     setExportDisabled(!canPrint());
   };
-  const exportPath = format => {
+  const exportPath = (format, forPrint = false) => {
     const params = new URLSearchParams(boardParams);
     if (!names || format === 'xlsx' && !can('stays.export')) {
       for (const key of ['q', 'special', 'vip_code_ids']) params.delete(key);
     }
     params.set('format', format);
+    if (forPrint) params.set('for_print', 'true');
     return '/api/stays/board/units/export?' + params;
   };
   const exportFilename = format => `shakhmatka_${boardParams.get('first').slice(0, 7)}.${format}`;
@@ -322,7 +323,7 @@ async function renderUnitsBoard(body) {
   };
   const printBoard = () => {
     if (!canPrint()) return;
-    return previewStaysPdf(exportPath('pdf'), exportFilename('pdf'), canPrint, () =>
+    return previewStaysPdf(exportPath('pdf', true), exportFilename('pdf'), canPrint, () =>
       printStaysBoard({ ...data, units: staysSortRows(data.units, st, fund) }, fund, filters,
         data.visibility, monthLabel));
   };

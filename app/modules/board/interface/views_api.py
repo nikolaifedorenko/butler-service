@@ -50,10 +50,10 @@ _EXPORT_TYPES = {"xlsx": "application/vnd.openxmlformats-officedocument.spreadsh
 
 @router.get("/board/units/export", response_class=Response,
             responses={200: {"content": {media: {} for media in _EXPORT_TYPES.values()}}})
-def export_board(first: dt.date, last: dt.date, format: Literal["xlsx", "pdf"] = "xlsx",
+def export_board(first: dt.date, last: dt.date, format: Literal["xlsx", "pdf"] = "xlsx", for_print: bool = False,
                  filters: views.BoardFilters = Depends(board_filters),
                  principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
-    content = chessboard_export.export_view(db, principal, first, last, filters, format)
+    content = chessboard_export.export_view(db, principal, first, last, filters, format, for_print=for_print)
     filename = f"shakhmatka_{first:%Y-%m}.{format}"
     return Response(content, media_type=_EXPORT_TYPES[format], headers={
         "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
