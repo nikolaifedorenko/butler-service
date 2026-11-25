@@ -4,32 +4,99 @@ import { login, watchErrors } from './helpers.mjs';
 
 const open = (page, view) => page.evaluate(v => window.navigate(v), view);
 
-test('раздел «Гости»: список, поиск без потери фокуса, карточка гостя с деревом', async ({ page }) => {
+test('семейное дерево открывает карточку другого гостя и сохраняет положение холста', async ({ page }) => {
   const errors = watchErrors(page);
+  await page.setViewportSize({ width: 390, height: 780 });
   await login(page, 'admin');
+  const family = await page.evaluate(async () => {
+    const { api } = await import('/static/js/core.js');
+    const surname = 'Древовы' + Date.now();
+    const guests = {};
+    for (const [key, first_name, gender] of [
+      ['root', 'Марк', 'm'], ['sister', 'Нина', 'f'], ['half', 'Олег', 'm'], ['step', 'Анна', 'f'],
+      ['mother', 'Вера', 'f'], ['father', 'Иван', 'm'], ['former', 'Елена', 'f'], ['partner', 'Ольга', 'f'],
+      ['child', 'Данил', 'm'], ['stepFather', 'Пётр', 'm'],
+    ]) {
+      guests[key] = await api('/api/stays/guests', { method: 'POST', body: { last_name: surname, first_name, gender } });
+    }
+    for (const [a, b, kind, former] of [
+      ['mother', 'root', 'parent'], ['father', 'root', 'parent'],
+      ['mother', 'sister', 'parent'], ['father', 'sister', 'parent'],
+      ['father', 'half', 'parent'], ['former', 'half', 'parent'], ['mother', 'father', 'spouse', true],
+      ['mother', 'stepFather', 'spouse'], ['stepFather', 'step', 'parent'],
+      ['root', 'partner', 'partner'], ['root', 'child', 'parent'], ['partner', 'child', 'parent'],
+    ]) {
+      const url = `/api/stays/guests/${guests[a].id}/links`;
+      await api(url, { method: 'POST', body: { guest_id: guests[b].id, kind, former } });
+    }
+    return { surname, ...Object.fromEntries(Object.entries(guests).map(([key, guest]) => [key, guest.id])) };
+  });
   await open(page, 'guests');
   const view = page.locator('#view-guests');
-  await expect(view.locator('#gl-total')).toContainText('Найдено гостей');
-  const rows = view.locator('[data-gl-row]');
-  expect(await rows.count()).toBeGreaterThan(0);
   const q = view.locator('#gl-q');
-  await q.click();
-  await page.keyboard.type('а', { delay: 60 });
-  await page.waitForTimeout(700);
+  const row = view.locator(`[data-gl-row="${family.root}"]`);
+  await q.fill(family.surname);
   await expect(q).toBeFocused();
-  await expect(q).toHaveValue('а');
-  await q.fill('');
-  await expect(view.locator('#gl-total')).toContainText('Найдено гостей');
-  // карточка первого гостя — боковая панель — и семейное дерево (рисуется шаблоном)
-  await rows.first().click();
+  await expect(row).toBeVisible();
+  await row.click();
+
   const drawer = page.locator('#drawer');
   await expect(drawer).toContainText('История проживаний');
-  await expect(drawer.locator('.ft-tree')).toBeVisible();
-  await expect(drawer.locator('[data-ft-person]').first()).toBeVisible();
-  await drawer.locator('[data-ft-add=spouse]').click();
-  await expect(drawer.locator('[data-ft-q]')).toBeVisible();
-  await drawer.locator('[data-ft-cancel]').click();
-  await expect(drawer.locator('[data-ft-q]')).toHaveCount(0);
+  await expect(page.locator('#app')).toHaveAttribute('inert', '');
+  await drawer.getByRole('button', { name: 'Открыть семейное дерево' }).click();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert', '');
+  const scroll = view.getByRole('region', { name: 'Холст семейного дерева' });
+  const node = key => scroll.locator(`[data-family-person="${family[key]}"]`);
+  await expect(node('root')).toContainText('Исходный гость');
+  await expect(node('sister')).toContainText('Родная сестра');
+  await expect(node('half')).toContainText('Брат по отцу');
+  await expect(node('step')).toContainText('Сводная сестра');
+  await expect(scroll.locator('title').filter({ hasText: 'Бывший брак' })).toHaveCount(1);
+  await expect(scroll.locator('title').filter({ hasText: 'Марк' }).filter({ hasText: 'Ольга' }).filter({ hasText: 'Данил' })).toHaveCount(1);
+
+  await view.getByRole('button', { name: 'Увеличить масштаб' }).click();
+  await node('partner').scrollIntoViewIfNeeded();
+  const position = () => scroll.evaluate(el => [el.scrollLeft, el.scrollTop]);
+  const before = await position();
+  expect(before[0]).toBeGreaterThan(0);
+  await node('partner').click();
+  await expect(drawer.getByRole('heading', { name: new RegExp(`${family.surname} Ольга`) })).toBeVisible();
+  await expect(drawer.locator('#gc-family')).toHaveCount(0);
+  await drawer.getByRole('button', { name: 'К дереву' }).click();
+  await expect(node('partner')).toBeFocused();
+  expect(await position()).toEqual(before);
+  await expect(view.getByText('120%', { exact: true })).toBeVisible();
+
+  await node('partner').click();
+  await expect(drawer.getByRole('heading', { name: new RegExp(`${family.surname} Ольга`) })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(node('partner')).toBeFocused();
+  await node('partner').click();
+  const editorButton = drawer.getByRole('button', { name: 'Редактировать связи' });
+  await editorButton.click();
+  const editor = page.locator('#modal');
+  await expect(editor.getByRole('button', { name: 'Закрыть', exact: true })).toBeFocused();
+  await editor.locator('[data-ft-add=parent]').click();
+  await editor.locator('[data-ft-last]').fill(family.surname);
+  await editor.locator('[data-ft-first]').fill('Новый родитель');
+  await editor.locator('[data-ft-create]').click();
+  await expect(editor.locator('.ft-tree')).toContainText('Новый родитель');
+  await page.keyboard.press('Escape');
+  await expect(editorButton).toBeFocused();
+  await drawer.getByRole('button', { name: 'К дереву' }).click();
+  await expect(scroll.getByRole('button', { name: /Новый родитель/ })).toBeAttached();
+  await expect(node('partner')).toBeFocused();
+  await view.getByRole('button', { name: 'К списку гостей' }).click();
+  await expect(q).toHaveValue(family.surname);
+  await expect(row).toBeFocused();
+
+  await row.click();
+  await drawer.getByRole('button', { name: 'Открыть семейное дерево' }).click();
+  await expect(scroll).toBeVisible();
+  await open(page, 'today');
+  await open(page, 'guests');
+  await expect(row).toBeVisible();
+  await expect(scroll).toBeHidden();
   expect(errors).toEqual([]);
 });
 

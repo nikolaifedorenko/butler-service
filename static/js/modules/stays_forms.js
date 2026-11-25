@@ -513,8 +513,10 @@ export async function openGroupForm(card, onSaved) {
 }
 
 /* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
-export async function openGuestCard(gid, onChanged) {
+export async function openGuestCard(gid, onChanged, options = {}) {
+  const { onOpenFamily, onFamilyChanged, fromFamily = false, isCurrent, returnFocusTo, whileMounted } = options;
   const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund(), api(`/api/stays/guests/${gid}/prefs`)]);
+  if ((isCurrent && !isCurrent()) || (whileMounted && !whileMounted.isConnected)) return;
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   /* правка: stays.edit — любой гость; батлер (stays.mine_guest_edit) — свой: карточку он открывает только
      у своих, анкетные поля в форме заперты (сервер проверяет и принадлежность, и поля) */
@@ -522,9 +524,20 @@ export async function openGuestCard(gid, onChanged) {
   const edit = !!g.editable;
   const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
   const prefsShown = Object.entries(g.preferences).filter(([, v]) => v);
-  /* боковая панель (ADR-0013 §7): дерево и история дышат по ширине, доска остаётся видна */
+  const name = [g.last_name, g.first_name, g.middle_name].filter(Boolean).join(' ');
+  const familyCanvas = !!onOpenFamily || fromFamily;
+  const showFamilyEditor = () => openModal({
+    title: 'Семейные связи', subtitle: name, wide: true, background: $('#drawer'),
+    body: html`<div class="ft" data-family-editor><p class="muted" role="status">Загрузка семейных связей…</p></div>`,
+    footer: html`<button type="button" class="btn btn-ghost" data-close @click=${closeModal}>Закрыть редактор</button>`,
+    onMount(m) {
+      renderFamilyTree($('[data-family-editor]', m), gid, { editable: edit, onChange: onFamilyChanged })
+        .catch(e => toast(e.message, 'err'));
+    },
+  });
   openDrawer({
-    title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(),
+    title: `${g.special ? STAYS_SPECIAL_MARK : ''}${name}`,
+    background: familyCanvas ? $('#app') : null, returnFocusTo,
     subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}${g.vip_code.archived ? ' (в архиве)' : ''}` : '', g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
     body: html`<div class="grid-2">
         <div><h4>Предпочтения</h4>${prefsShown.length ? prefsShown.map(([k, v]) => html`<div>${k}: ${v}</div>`) : html`<span class="muted">нет</span>`}
@@ -538,17 +551,26 @@ export async function openGuestCard(gid, onChanged) {
             <select id="gc-link-kind">${Object.entries(STAYS_LINK).filter(([k]) => !STAYS_FAMILY_LINK.has(k)).map(([k, t]) => html`<option value=${k}>${t}</option>`)}</select>
             <button class="btn btn-sm" id="gc-link-add" disabled>Связать</button></div><div id="gc-link-res"></div>` : nothing}</div>
       </div>
-      <h4>Семейное дерево</h4><div id="gc-family" class="ft"></div>
+      ${familyCanvas ? (onOpenFamily || edit ? html`<h4>Семейные связи</h4><div class="sb-line">
+        ${onOpenFamily ? html`<button type="button" class="btn btn-sm" @click=${() => onOpenFamily({ id: gid, name })}>
+          Открыть семейное дерево</button>` : nothing}
+        ${edit ? html`<button type="button" class="btn btn-sm btn-ghost" @click=${showFamilyEditor}>Редактировать связи</button>` : nothing}
+      </div>` : nothing) : html`<h4>Семейное дерево</h4><div id="gc-family" class="ft"></div>`}
       <h4>История проживаний</h4>
       <div id="gc-history" class="sb-history">${g.stays.length ? g.stays.map(x => html`<div><b>${x.number || '#' + x.reservation_id}</b> · ${x.units.join(' → ') || 'без объекта'}
         · ${dateRu(x.date_from)}–${dateRu(x.date_to)} · ${STAYS_ROLE[x.role]} · ${x.status_title}
         ${x.butlers.length ? html`<div class="muted">вели: ${x.butlers.join(', ')}</div>` : nothing}</div>`) : html`<span class="muted">проживаний нет</span>`}</div>`,
-    footer: html`<button class="btn btn-ghost" data-close>Закрыть</button>${edit ? html`<button class="btn btn-primary" id="gc-edit">Изменить профиль</button>` : nothing}`,
+    footer: html`<button class="btn btn-ghost" data-close>${fromFamily ? 'К дереву' : 'Закрыть'}</button>${edit ? html`<button class="btn btn-primary" id="gc-edit">Изменить профиль</button>` : nothing}`,
     onMount(m) {
       $('[data-close]', m).onclick = closeDrawer;
-      const reopen = () => openGuestCard(gid, onChanged);
-      render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, $('#gc-family', m));
-      renderFamilyTree($('#gc-family', m), gid, { editable: edit }).catch(e => toast(e.message, 'err'));
+      const content = m.firstElementChild;
+      const reopen = () => openGuestCard(gid, onChanged, { ...options, whileMounted: content })
+        .catch(err => { if (content.isConnected) toast(err.message, 'err'); });
+      const oldTree = $('#gc-family', m);
+      if (oldTree) {
+        render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, oldTree);
+        renderFamilyTree(oldTree, gid, { editable: edit }).catch(e => toast(e.message, 'err'));
+      }
       renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit, onChanged);
       const ed = $('#gc-edit', m);
       if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); }, { mine: !full });
