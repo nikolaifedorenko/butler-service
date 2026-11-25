@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.auth import Principal
@@ -17,7 +18,7 @@ from app.core.permissions import require_perm
 from app.modules.stays.application.duty import timesheet_duty
 from app.modules.stays.application.view_filters import fund_filter_dims
 
-from ..application import view_screen, views
+from ..application import chessboard_export, view_screen, views
 from .schemas import GuestFullCardOut, ReservationCardOut, ReservationHistoryOut, UnitsBoardOut
 
 router = APIRouter(prefix="/api/stays", tags=["stays"])
@@ -31,13 +32,33 @@ def fund_filters(request: Request, group_ids: list[int] = Query(default=[]),
     return fund_filter_dims(request.query_params, group_ids, category_ids, flag_ids, kind_ids, floor)
 
 
+def board_filters(dims: dict = Depends(fund_filters), escorted: bool = False, special: bool = False,
+                  vip_code_ids: list[int] = Query(default=[]), employee_id: Optional[int] = None,
+                  q: str = "") -> views.BoardFilters:
+    return views.BoardFilters(**dims, escorted_only=escorted, special=special, vip_code_ids=tuple(vip_code_ids),
+                              employee_id=employee_id, q=q)
+
+
 @router.get("/board/units", response_model=UnitsBoardOut)
-def board_units(first: dt.date, last: dt.date, dims: dict = Depends(fund_filters), escorted: bool = False,
-                special: bool = False, vip_code_ids: list[int] = Query(default=[]), employee_id: Optional[int] = None,
-                q: str = "", principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
-    f = views.BoardFilters(**dims, escorted_only=escorted, special=special, vip_code_ids=tuple(vip_code_ids),
-                           employee_id=employee_id, q=q)
-    return view_screen.units_board(db, principal, first, last, f)
+def board_units(first: dt.date, last: dt.date, filters: views.BoardFilters = Depends(board_filters),
+                principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
+    return view_screen.units_board(db, principal, first, last, filters)
+
+
+_EXPORT_TYPES = {"xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "pdf": "application/pdf"}
+
+
+@router.get("/board/units/export", response_class=Response,
+            responses={200: {"content": {media: {} for media in _EXPORT_TYPES.values()}}})
+def export_board(first: dt.date, last: dt.date, format: Literal["xlsx", "pdf"] = "xlsx",
+                 filters: views.BoardFilters = Depends(board_filters),
+                 principal: Principal = Depends(SEE), db: Session = Depends(get_db)):
+    content = chessboard_export.export_view(db, principal, first, last, filters, format)
+    filename = f"shakhmatka_{first:%Y-%m}.{format}"
+    return Response(content, media_type=_EXPORT_TYPES[format], headers={
+        "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
+        "X-Butler-Auth-Context": principal.auth_context or "",
+    })
 
 
 @router.get("/reservations/{rid}/card", response_model=ReservationCardOut)

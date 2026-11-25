@@ -24,7 +24,7 @@ import {
 } from './stays_forms.js';
 import { renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
 import { filterPanelTemplate, STAYS_SORTS, staysSortRows } from './stays_filters.js';
-import { printStaysBoard } from './stays_print.js';
+import { previewStaysPdf, printStaysBoard } from './stays_print.js';
 import { paletteRegister } from '../ui/palette.js';
 
 registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
@@ -283,15 +283,16 @@ async function renderUnitsBoard(body) {
   /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
      (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
   const fresh = loadGenerationFor(body);
-  const disablePrint = () => {
-    const action = $('#sb-print', body);
-    if (action) action.disabled = true;
+  const setExportDisabled = disabled => {
+    for (const action of $$('[data-sb-export]', body)) action.disabled = disabled;
   };
+  const disablePrint = () => setExportDisabled(true);
   disablePrint();
   const filters = staysState.filters;
   const monthLabel = `${MONTHS[state.month - 1]} ${state.year}`;
+  const boardParams = staysBoardParams();
   const [fund, data] = await Promise.all([staysFund(),
-    api('/api/stays/board/units?' + staysBoardParams(), { silent: true })]);
+    api('/api/stays/board/units?' + boardParams, { silent: true })]);
   if (!fresh()) return;
   const names = data.visibility !== 'occupancy';
   const byUnit = {};
@@ -305,7 +306,25 @@ async function renderUnitsBoard(body) {
   const canPrint = () => fresh() && (!names || $('#sf-q', body)?.value.trim() === filters.q.trim());
   const draw = () => {
     render(unitsTemplate(), mount(body));
-    $('#sb-print', body).disabled = !canPrint();
+    setExportDisabled(!canPrint());
+  };
+  const exportPath = format => {
+    const params = new URLSearchParams(boardParams);
+    if (!names || format === 'xlsx' && !can('stays.export')) {
+      for (const key of ['q', 'special', 'vip_code_ids']) params.delete(key);
+    }
+    params.set('format', format);
+    return '/api/stays/board/units/export?' + params;
+  };
+  const exportFilename = format => `shakhmatka_${boardParams.get('first').slice(0, 7)}.${format}`;
+  const downloadBoard = format => {
+    if (canPrint()) downloadBlob(exportPath(format), exportFilename(format));
+  };
+  const printBoard = () => {
+    if (!canPrint()) return;
+    return previewStaysPdf(exportPath('pdf'), exportFilename('pdf'), canPrint, () =>
+      printStaysBoard({ ...data, units: staysSortRows(data.units, st, fund) }, fund, filters,
+        data.visibility, monthLabel));
   };
   const xlsx = kind => () => {
     const { first, last } = staysMonthRange();
@@ -343,8 +362,10 @@ async function renderUnitsBoard(body) {
         @change=${e => { st.grouped = e.target.checked; draw(); }}> группировать по дереву</label>
       <button class="btn btn-sm btn-ghost" id="sb-xlsx-anon" title="Объекты, даты, статусы, число гостей — без данных гостей" @click=${xlsx('anon')}>Выгрузить (без гостей)</button>
       ${can('stays.export') && can('stays.guests') ? html`<button class="btn btn-sm btn-ghost" id="sb-xlsx-full" @click=${xlsx('full')}>Выгрузить полностью</button>` : nothing}
-      <button class="btn btn-sm btn-ghost" id="sb-print" @click=${() => canPrint() && printStaysBoard(
-        { ...data, units: staysSortRows(data.units, st, fund) }, fund, filters, data.visibility, monthLabel)}>Печать</button>
+      <button class="btn btn-sm btn-ghost" data-sb-export id="sb-board-xlsx"
+        title=${can('stays.export') ? 'Скачать текущую шахматку' : 'Без данных и фильтров по гостям'} @click=${() => downloadBoard('xlsx')}>Шахматка XLSX</button>
+      <button class="btn btn-sm btn-ghost" data-sb-export id="sb-board-pdf" @click=${() => downloadBoard('pdf')}>PDF</button>
+      <button class="btn btn-sm btn-ghost" data-sb-export id="sb-print" @click=${printBoard}>Печать</button>
       ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary hide-mobile" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}
     </div>
     ${staysFilterView(fund, rerender, { people: names, onSearchInput: disablePrint })}

@@ -19,6 +19,7 @@ dependencies = [
     "httpx>=0.27",
     # файлы — только модуль exchange: XLSX, DOCX и картинки в документах (PDF делает Gotenberg по сети)
     "openpyxl>=3.1",
+    "pypdf>=4.0",                  # компактные аннотации в PDF шахматки
     "python-docx>=1.1",
     "pillow>=10.0",
     # шифрование секретов уведомлений в БД (Fernet) ключом NOTIFY_SECRET_KEY —
@@ -33,7 +34,6 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",             # покрытие: приложение ≥ 90 %, ядро расчёта ≥ 95 %
     "httpx2>=2.13",                # новые версии starlette требуют его для TestClient
-    "pypdf>=4.0",                  # проверка содержимого PDF в тестах
     "freezegun>=1.4",              # фиксация времени: границы полуночи и ночной смены
     "hypothesis>=6.100",           # property-based тесты инвариантов движка
     "import-linter>=2.0",          # контракты импортов (.importlinter)

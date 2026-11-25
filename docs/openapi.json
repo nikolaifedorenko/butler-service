@@ -29247,6 +29247,197 @@
         ]
       }
     },
+    "/api/stays/board/units/export": {
+      "get": {
+        "operationId": "export_board_api_stays_board_units_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "first",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "First",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Last",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "xlsx",
+              "enum": [
+                "xlsx",
+                "pdf"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "escorted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Escorted",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "special",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Special",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Vip Code Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "employee_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Employee Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Group Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Category Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flag_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Flag Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Kind Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "floor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Floor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {},
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Board",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
     "/api/stays/bookings": {
       "get": {
         "operationId": "bookings_list_api_stays_bookings_get",

@@ -7,6 +7,10 @@ const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
 
 test.describe('печать шахматки', () => {
   test.use({ serviceWorkers: 'block' });
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/stays/board/units/export?**', route =>
+      route.fulfill({ status: 502, json: { detail: 'Тест резервной печати' } }));
+  });
   for (const transition of ['выход', 'истечение сессии', '401 при печати', 'вход как сотрудник']) {
     test(`закрывает печать при смене сессии · ${transition}`, async ({ page }) => {
       await page.addInitScript(() => { window.print = () => {}; });
@@ -335,7 +339,7 @@ test.describe('печать шахматки', () => {
       await expect(view.locator('.sb-grid')).toBeVisible();
       const action = view.getByRole('button', { name: 'Печать', exact: true });
       await expect(action).toBeVisible();
-      expect(await action.evaluate(el => el.previousElementSibling.id)).toMatch(/^sb-xlsx-(anon|full)$/);
+      expect(await action.evaluate(el => el.previousElementSibling.id)).toBe('sb-board-pdf');
       const label = view.locator('#sm-label');
       const previous = (await label.textContent()).trim();
       await view.locator('#sm-next').click();
@@ -389,7 +393,9 @@ test.describe('печать шахматки', () => {
       await frame.locator('html').evaluate(() => window.dispatchEvent(new Event('afterprint')));
       await expect(page.locator('iframe[srcdoc]')).toHaveCount(0);
       expect(await page.evaluate(() => window.printDone)).toBe(true);
-      expect(reads).toEqual([]);
+      expect(reads).toHaveLength(1);
+      expect(new URL(reads[0]).pathname).toBe('/api/stays/board/units/export');
+      expect(new URL(reads[0]).searchParams.get('format')).toBe('pdf');
     });
   }
 });
@@ -567,3 +573,72 @@ test('«Шахматка» и «Мои гости» под ролями; сти�
   await expect(page.locator('#view-stays [data-stab]').first()).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('выгрузка шахматки передаёт месяц и фильтр в новый XLSX', async ({ page }) => {
+  await login(page, 'admin');
+  await open(page, 'stays');
+  const view = page.locator('#view-stays');
+  await expect(view.locator('.sb-grid')).toBeVisible();
+  const button = view.getByRole('button', { name: 'Шахматка XLSX', exact: true });
+  await expect(button).toBeEnabled();
+  await view.locator('[data-sf-dd=cat] summary').click();
+  const box = view.locator('[data-sf-cat]').first();
+  const category = await box.getAttribute('data-sf-cat');
+  const board = page.waitForResponse(r => r.url().includes('/board/units?') &&
+    new URL(r.url()).searchParams.get('category_ids') === category);
+  await box.check();
+  const expected = new URL((await board).url()).searchParams;
+  const request = page.waitForRequest(r => r.url().includes('/board/units/export?'));
+  const download = page.waitForEvent('download');
+  await button.click();
+  const params = new URL((await request).url()).searchParams;
+  expect(params.get('first')).toBe(expected.get('first'));
+  expect(params.get('last')).toBe(expected.get('last'));
+  expect(params.get('category_ids')).toBe(category);
+  expect(params.get('format')).toBe('xlsx');
+  expect((await download).suggestedFilename()).toBe(`shakhmatka_${params.get('first').slice(0, 7)}.xlsx`);
+});
+
+for (const expired of [false, true]) {
+  test(`предпросмотр PDF закрывается при ${expired ? 'отзыве сессии сервером' : 'выходе'}`, async ({ page }) => {
+    await login(page, 'admin');
+    await page.route('**/api/stays/board/units/export?**', async route => {
+      const marker = (await page.context().cookies()).find(c => c.name === 'tt_auth_context').value;
+      expect(new URL(route.request().url()).searchParams.get('format')).toBe('pdf');
+      await route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.7',
+        headers: { 'X-Butler-Auth-Context': marker } });
+    });
+    await page.evaluate(() => {
+      const createObjectUrl = URL.createObjectURL.bind(URL);
+      const blobs = new Map();
+      URL.createObjectURL = blob => {
+        const url = createObjectUrl(blob);
+        if (blob.type === 'application/pdf') blobs.set(url, blob);
+        return url;
+      };
+      window.open = () => {
+        const preview = { closed: false, close() { this.closed = true; }, location: {
+          replace(url) {
+            blobs.get(url).text().then(data => { window.pdfContents = data; });
+          },
+        } };
+        window.pdfPreview = preview;
+        return preview;
+      };
+    });
+    await open(page, 'stays');
+    const action = page.locator('#sb-print');
+    await expect(action).toBeEnabled();
+    await action.click();
+    await expect.poll(() => page.evaluate(() => window.pdfContents)).toBe('%PDF-1.7');
+    if (expired) {
+      await page.route('**/api/auth/context', route => route.fulfill({ status: 401, json: {} }));
+      await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: {} }));
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    } else {
+      await page.locator('#logout-btn').click();
+    }
+    await expect(page.locator('#login-screen')).toBeVisible();
+    expect(await page.evaluate(() => window.pdfPreview.closed)).toBe(true);
+  });
+}
