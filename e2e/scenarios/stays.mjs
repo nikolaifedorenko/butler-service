@@ -333,12 +333,13 @@ const $ = s => window.document.querySelector(s);
     check('бронь перенесена в другой объект', await waitFor(() =>
       !!$(`#view-stays [data-unit-row="${u2.id}"] [data-bar="${b.id}"]`)));
     check('кнопки выгрузки на шахматке', !!$('#sb-xlsx-anon') && !!$('#sb-xlsx-full'));
-    const print = $('#sb-xlsx-full')?.nextElementSibling;
+    const print = $('#sb-board-pdf')?.nextElementSibling;
     check('печать на шахматке рядом с выгрузками', print?.textContent.trim() === 'Печать');
     const beforePrint = requests.length;
     click(print);
     check('после переноса брони шахматка готова к печати', await waitFor(() => requests.slice(beforePrint)
-      .some(r => r.method === 'POST' && r.path === '/api/docs/print' && r.status === 200)));
+      .some(r => (r.method === 'GET' && r.path === '/api/stays/board/units/export' ||
+        r.method === 'POST' && r.path === '/api/docs/print') && r.status === 200)));
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
   }
   

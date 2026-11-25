@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
+from app.modules.fund.application.catalog import UnitFlag
 from app.modules.fund.application.fund_versions import (
     CategoryInfo,
     FundSnapshot,
@@ -226,8 +227,32 @@ def _load(row: BoardRow, occupied: dict[tuple[int, dt.date], int]) -> float:
     return round(sum((row.id, d) in occupied for d in row.in_fund) / len(row.in_fund), 3)
 
 
+def _export_criteria(db: Session, fund: FundTimeline, f: BoardFilters, vip_codes: dict) -> str:
+    parts = list(reversed(list(fund.snapshots())))
+    groups = {i: group.title for snap in parts for i, group in snap.groups.items()}
+    cats = {i: cat.code for snap in parts for i, cat in snap.categories.items()}
+    kinds = {cat.kind_id: cat.kind_title for snap in parts for cat in snap.categories.values()}
+    flags = dict(db.execute(select(UnitFlag.id, UnitFlag.title).where(UnitFlag.id.in_(f.flag_ids))).all()) if f.flag_ids else {}
+    criteria = []
+    for title, ids, labels in (("Где", f.group_ids, groups), ("Категории", f.category_ids, cats),
+                               ("Флаги", f.flag_ids, flags), ("Вид", f.kind_ids, kinds),
+                               ("VIP-код", f.vip_code_ids, vip_codes)):
+        if ids:
+            names = [labels.get(i) or f"#{i}" for i in ids]
+            criteria.append(f"{title}: {', '.join(names)}")
+    if f.floor:
+        criteria.append(f"Этаж: {f.floor}")
+    if f.escorted_only:
+        criteria.append("С сопровождением")
+    if f.special:
+        criteria.append("Особый гость")
+    if f.q.strip():
+        criteria.append(f"Поиск: {f.q.strip()}")
+    return " · ".join(criteria)
+
+
 def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, level: Level,
-                mine_ids: set[int] | None = None, *, include_overlays: bool = True) -> dict:
+                mine_ids: set[int] | None = None, *, include_overlays: bool = True, for_export: bool = False) -> dict:
     days = check_window(first, last)
     f = f.for_level(level)
     fund = fund_for(db, first, last)
@@ -246,6 +271,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         guests = {g.id: g for g in db.scalars(select(Guest).where(Guest.id.in_(gids)))} if gids else {}
         labels = {lb.id: lb for lb in db.scalars(select(Label))}
     code_ids = {r.vip_code_id for r in res if r.vip_code_id is not None} if names else set()
+    if for_export:
+        code_ids.update(f.vip_code_ids)
     codes = dict(db.execute(select(VipCode.id, VipCode.code).where(VipCode.id.in_(code_ids))).all()) if code_ids else {}
     ts = text_search(f.q, level == "full")         # ниже полного — только ФИО и номер (решение 8)
     match = _search(ts, res, occ, guests, units, asg) if ts is not None else None
@@ -291,6 +318,12 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
                                  "start": _d(p0.start), "end": _d(p1.end), "start_pos": p0.start_pos,
                                  "end_pos": p1.end_pos, "early": r.early and p0.index == 0,
                                  "late": r.late and p1.end_pos == segs[-1].end_pos}, level)
+            if for_export:
+                bar["booking_start_pos"] = segs[0].start_pos
+                bar["booking_end_pos"] = segs[-1].end_pos
+                if names:
+                    guest = guests.get(main_now.guest_id) if main_now else None
+                    bar["surname"] = guest.last_name if guest else ""
             if mine_ids is not None:
                 bar["mine"] = r.id in mine_ids          # батлеру — рамка своих броней (часть 4 §6)
             bars.append(bar)
@@ -316,7 +349,8 @@ def units_board(db: Session, first: dt.date, last: dt.date, f: BoardFilters, lev
         warnings = [{"kind": w.kind, "reservation_ids": state.members[w.key], "text": w.text}
                     for w in state.warnings if shown & set(state.members[w.key]) or w.key in shown_holds
                     or block_short(w)]
-    return {"days": [_d(d) for d in days], "visibility": level,
+    export_meta = {"criteria": _export_criteria(db, fund, f, codes)} if for_export else {}
+    return {**export_meta, "days": [_d(d) for d in days], "visibility": level,
             "units": [{"unit_id": u.id, "label": u.label,
                        "labels": [{"from": _d(d), "label": lb} for d, lb in u.labels],
                        "category_id": u.info.category_id, "category": u.category.code,

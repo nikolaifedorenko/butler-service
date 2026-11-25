@@ -9,6 +9,7 @@ from ..ports import PdfUnavailable
 
 _CONVERT_PATH = "/forms/libreoffice/convert"
 _HEALTH_PATH = "/health"
+_XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
@@ -22,9 +23,15 @@ class GotenbergConverter:
         return httpx.Client(base_url=self._base_url, timeout=timeout, transport=self._transport)
 
     def convert(self, docx: bytes, filename: str) -> bytes:
+        return self._convert(docx, "document.docx", _DOCX_TYPE)
+
+    def convert_workbook(self, content: bytes) -> bytes:
+        return self._convert(content, "document.xlsx", _XLSX_TYPE, {"exportNotes": "true"})
+
+    def _convert(self, content: bytes, filename: str, media_type: str, options: dict[str, str] | None = None) -> bytes:
         try:
             with self._client(self._timeout) as client:
-                response = client.post(_CONVERT_PATH, files={"files": ("document.docx", docx, _DOCX_TYPE)})
+                response = client.post(_CONVERT_PATH, files={"files": (filename, content, media_type)}, data=options)
         except httpx.HTTPError as exc:
             raise PdfUnavailable(f"сервис PDF не отвечает ({type(exc).__name__}).") from exc
         if response.status_code != 200:

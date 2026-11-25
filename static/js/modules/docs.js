@@ -19,6 +19,15 @@ function cancelPrintJobs() {
 subscribeAuthContext(cancelPrintJobs);
 subscribeSessionRejection(cancelPrintJobs);
 
+export async function printSessionMatches(started, request) {
+  const response = await fetch('/api/auth/context', request);
+  const context = response.ok ? (await response.json()).auth_context : null;
+  if ((response.status === 401 || response.ok && context !== started.context) && !request.signal.aborted) {
+    void expireAuthContext(started);
+  }
+  return response.ok && context === started.context;
+}
+
 export async function printWindow(title, bodyHtml, extraCss = '', started = authContextSnapshot()) {
   if (!authContextIsCurrent(started)) return;
   const controller = new AbortController();
@@ -58,14 +67,6 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
   function current() {
     return !controller.signal.aborted && authContextIsCurrent(started);
   }
-  async function serverMatches() {
-    const r = await fetch('/api/auth/context', request);
-    const context = r.ok ? (await r.json()).auth_context : null;
-    if ((r.status === 401 || r.ok && context !== started.context) && !controller.signal.aborted) {
-      void expireAuthContext(started);
-    }
-    return r.ok && context === started.context;
-  }
   async function validateMounted() {
     if (!current()) { cleanup(); return; }
     if (validating) return;
@@ -73,7 +74,7 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
     const ready = readyDocument;
     requestTimeout = setTimeout(cleanup, 20_000);
     try {
-      if (!await serverMatches() || !current()) { cleanup(); return; }
+      if (!await printSessionMatches(started, request) || !current()) { cleanup(); return; }
       if (ready && !printed && !foregroundPending) {
         if (frame.contentDocument !== ready) { cleanup(); return; }
         printed = true;
@@ -102,7 +103,7 @@ export async function printWindow(title, bodyHtml, extraCss = '', started = auth
     if (!r.ok) throw new Error(`Ошибка ${r.status}`);
     if (!current() || r.headers.get('X-Butler-Auth-Context') !== started.context) { cleanup(); return; }
     const html = await r.text();
-    if (!await serverMatches() || !current()) { cleanup(); return; }
+    if (!await printSessionMatches(started, request) || !current()) { cleanup(); return; }
     clearTimeout(requestTimeout);
 
     frame = document.createElement('iframe');
