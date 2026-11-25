@@ -338,7 +338,7 @@ const $ = s => window.document.querySelector(s);
     const beforePrint = requests.length;
     click(print);
     check('после переноса брони шахматка готова к печати', await waitFor(() => requests.slice(beforePrint)
-      .some(r => (r.method === 'GET' && r.path === '/api/stays/board/units/export' ||
+      .some(r => (r.method === 'GET' && r.path.startsWith('/api/stays/board/units/export?') ||
         r.method === 'POST' && r.path === '/api/docs/print') && r.status === 200)));
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML));
   }
