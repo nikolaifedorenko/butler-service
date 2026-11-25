@@ -926,7 +926,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
 .cal-legend i { width: 8px; height: 8px; border-radius: 99px; display: inline-block; margin-right: 4px; }
 
 .settings-list { display: flex; flex-direction: column; gap: 8px; }
-.search-palette input { width: 100%; font-size: 16px; padding: 12px 14px; }
+.search-palette input { font-size: 16px; padding-block: 12px; }
 .search-palette .res { max-height: 52vh; overflow: auto; margin-top: 10px; }
 .search-palette .res button { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left;
   background: none; border: 1px solid transparent; border-radius: var(--r-sm); padding: 9px 11px;
@@ -941,8 +941,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
   .settings-nav { width: 100%; flex: none; position: static; max-height: none; padding: 6px; }
   .settings-nav .nav-group, .settings-nav .nav-foot, .settings-nav .nav-item { display: none; }
   .settings-nav-pick { display: flex; }
-  .settings-search { min-width: 0; }
-  .settings-search span { display: none; }
+  .settings-search { min-width: 0; min-height: 44px; }
 }
 
 /* ─────────────── экраны справочников группы «Объект» ───────────────
@@ -986,7 +985,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
    не прилипает — иначе на телефоне два прилипших блока сожрали бы экран */
 .sb-toolbar:not(.sf-bar):not(.sf-panel) { position: sticky; top: 0; z-index: 20; background: var(--bg); padding: 4px 0; }
 .sf-bar { margin-bottom: 4px; }
-.sb-toolbar input[type=search] { min-width: 220px; flex: 1; }
+.sb-toolbar input[type=search] { min-width: 220px; flex: 1; padding-block: 5px; }
 .sb-toolbar select, .sb-toolbar input[type=text], .sb-toolbar input[type=date] { width: auto; padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
 .sb-toolbar input[type=text] { max-width: 160px; }
 .sb-grid { border: 1px solid var(--line); border-radius: var(--r-sm); overflow: auto; max-height: 70vh; background: var(--surface-0); }

@@ -355,20 +355,28 @@ const $ = s => window.document.querySelector(s);
     const today = serverToday();
     const opened = await apiJson('POST', '/api/stays/fund/draft', { valid_from: addDays(today, 1) });
     check('черновик открыт', opened.status === 200, JSON.stringify(opened.body));
-    await go('stays_fund');
-    await waitFor(() => !!$('#fund-view'));
-    if ($('#fund-view').value !== 'draft') change($('#fund-view'), 'draft');
-    await waitFor(() => !!$('[data-fund-tab="cats"]'));
-    click($('[data-fund-tab="cats"]'));
-    await waitFor(() => !!$('#fund-cat-add'));
-    click($('#fund-cat-add'));
-    check('форма категории: выбор вида', await waitFor(() => !!$('#fc-kind')));
-    const opts = [...$('#fc-kind').options].map(o => o.textContent);
-    check('в выборе — виды справочника, без архивного', opts.includes('вилла') && opts.includes('номер') && !opts.some(o => o.includes(title)),
-      opts.join(', '));
-    click($('[data-close]'));
-    const draft = (await apiJson('GET', '/api/stays/fund/versions')).body.find(v => v.status === 'draft');
-    if (draft) await apiJson('DELETE', '/api/stays/fund/versions/' + draft.id);
+    if (opened.status !== 200) return;
+    try {
+      await go('stays_fund');
+      await waitFor(() => !!$('#fund-view'));
+      if ($('#fund-view')?.value !== 'draft') change($('#fund-view'), 'draft');
+      await waitFor(() => !!$('[data-fund-tab="cats"]'));
+      click($('[data-fund-tab="cats"]'));
+      const editable = await waitFor(() => !!$('#fund-cat-add'));
+      check('категории черновика доступны для правки', editable);
+      click($('#fund-cat-add'));
+      const hasKind = editable && await waitFor(() => !!$('#fc-kind'));
+      check('форма категории: выбор вида', hasKind);
+      if (hasKind) {
+        const opts = [...$('#fc-kind').options].map(o => o.textContent);
+        check('в выборе — виды справочника, без архивного', opts.includes('вилла') && opts.includes('номер') && !opts.some(o => o.includes(title)),
+          opts.join(', '));
+      }
+    } finally {
+      click($('[data-close]'));
+      const deleted = await apiJson('DELETE', '/api/stays/fund/versions/' + opened.body.id);
+      check('черновик сценария удалён', deleted.status === 200, JSON.stringify(deleted.body));
+    }
   
     await go('stays_fund');
     await waitFor(() => !!$('[data-fund-tab="kinds"]'));

@@ -32,8 +32,7 @@ async function settingsScreenOverview(host) {
   render(html`
     ${settingsHeadView('Обзор', 'Что действует сейчас, здорова ли конфигурация и что вступит в силу — одним экраном.',
       html`<button class="btn btn-sm" id="ov-versions" @click=${() => settingsVersionsModal()}>История версий</button>
-       <button class="btn btn-sm" id="ov-compare" @click=${() => settingsCompareWithPrevious()}>Сравнить с предыдущей</button>
-       <button class="btn btn-sm btn-primary" id="ov-expert" @click=${go('expert')}>Режим эксперта</button>`)}
+       <button class="btn btn-sm" id="ov-compare" @click=${() => settingsCompareWithPrevious()}>Сравнить с предыдущей</button>`)}
     ${settingsPanelView('', html`
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:260px">
@@ -44,7 +43,7 @@ async function settingsScreenOverview(host) {
             ? ` · ${stamp(v.created_at)}` : ''}${v.note ? ` · «${v.note}»` : ''}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-sm" id="ov-calc" @click=${go('calc')}>Каркас расчёта</button>
+          <button class="btn btn-sm btn-primary" id="ov-calc" @click=${go('calc')}>Каркас расчёта</button>
           <button class="btn btn-sm" id="ov-system" @click=${go('system')}>Версии и откат</button>
         </div>
       </div>`)}

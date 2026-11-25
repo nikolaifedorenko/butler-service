@@ -81,7 +81,7 @@ function layerTemplate() {
     переработок и часов. Назначать и менять смены может менеджер.</div>` : nothing}
 
   <div class="grid-tools">
-    <input id="f-text" type="text" placeholder="Поиск по ФИО…" style="max-width:210px" .value=${state.filterText}
+    <input id="f-text" type="search" placeholder="Поиск по ФИО…" style="max-width:210px" .value=${state.filterText}
       @input=${e => { state.filterText = e.target.value; draw(); }}>
     <div class="spacer" style="flex:1"></div>
     ${ro ? nothing : html`<button class="btn btn-sm" id="btn-range" title="Слой 1 · График: только «за счёт часов» — в Табеле остаётся явка, часы не меняются"

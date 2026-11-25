@@ -124,9 +124,6 @@ export const settingsUI = {
   searchBound: false,
 };
 
-function settingsInvalidate() {
-  settingsUI.engine = null; settingsUI.health = null; settingsUI.draft = null;
-}
 export async function settingsEngine() {
   if (!settingsUI.engine) settingsUI.engine = await api('/api/engine-settings');
   return settingsUI.engine;
@@ -146,8 +143,13 @@ function settingsDirty() {
   const p = settingsPayload();
   return !!(p && settingsUI.draft && JSON.stringify(p) !== JSON.stringify(settingsUI.draft));
 }
-export async function settingsRefresh() {
-  settingsInvalidate();
+export async function settingsRefresh({ clearDraft = false } = {}) {
+  settingsUI.health = null;
+  // Сохраняем черновик вместе с исходной версией для сравнения и проверки при публикации.
+  if (clearDraft || !settingsDirty()) {
+    settingsUI.engine = null;
+    settingsUI.draft = null;
+  }
   await loadSettings();
 }
 
@@ -185,7 +187,8 @@ function settingsFail(host, e) {
 }
 
 /* ── шаблонные помощники экранов (переведённые экраны берут их вместо строковых) ── */
-export const settingsPanelView = (title, body, extra) => html`<div class="panel">${title ? html`<h3 class="panel-title">${title}</h3>` : nothing}${extra || nothing}${body}</div>`;
+export const settingsPanelView = (title, body, extra, section) => html`<div class="panel">${title
+  ? html`<h3 class="panel-title" id=${section || nothing}>${title}</h3>` : nothing}${extra || nothing}${body}</div>`;
 export const settingsHeadView = (title, sub, right) => html`<div class="page-head"><div><h2>${title}</h2><div class="sub">${sub}</div></div>
     <div class="spacer"></div>${right || nothing}</div>`;
 export const settingsLevelBadgeView = level => html`<span class=${`level-badge${level === 7 ? ' l7' : ''}`} title=${`Уровень приоритета ${level}: ${SETTINGS_LEVEL_FORMS[level] || ''}`}>${level}</span>`;
@@ -235,7 +238,7 @@ export async function loadSettings() {
         <div class="sub">Правила расчёта и деньги · справочники Табеля · словарь смен · документы.
           Каждый экран имеет собственный адрес — на него можно дать ссылку</div></div>
       <div class="spacer"></div>
-      <button class="settings-search" id="st-search" title="Поиск по настройкам" @click=${() => settingsSearchPalette()}>
+      <button class="settings-search" id="st-search" aria-label="Поиск по настройкам" @click=${() => settingsSearchPalette()}>
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <span>Поиск по настройкам…</span></button>
     </div>
@@ -286,20 +289,24 @@ function settingsRenderNav(health = navCache.health, errors = navCache.errors) {
 }
 const navCache = { health: null, errors: 0 };
 
-export function settingsGo(id) {
+export function settingsGo(id, { tab, section } = {}) {
   const item = settingsScreens().find(s => s.id === id);
   if (!item) return;
-  if (item.external) { navigate(item.external); return; }
   if (item.perm && !can(item.perm)) { toast(`Нет права на экран «${item.title}»`, 'warn'); return; }
+  if (item.external) { navigate(item.external); return; }
+  const show = () => {
+    if (id === settingsUI.screen && !tab && section && focusSettingsSection($('#st-body'), section)) return;
+    settingsUI.screen = id;
+    settingsRenderScreen({ tab, section });
+  };
   if (settingsDirty() && id !== settingsUI.screen) {
     confirmDialog('Черновик не опубликован',
       'В справочниках есть несохранённые изменения. Перейти на другой экран и потерять черновик?',
-      () => { settingsUI.draft = null; settingsUI.screen = id; settingsRenderScreen(); },
+      () => { settingsUI.draft = null; show(); },
       'Потерять и перейти');
     return;
   }
-  settingsUI.screen = id;
-  settingsRenderScreen();
+  show();
 }
 
 /* Поколение рендера экрана настроек: при быстром
@@ -323,7 +330,16 @@ export function closedPeriodText(lc, { recalcNote = true } = {}) {
 
 let settingsRenderGen = 0;
 
-export async function settingsRenderScreen() {
+function focusSettingsSection(host, section) {
+  const target = host?.querySelector(`#${CSS.escape(section)}`);
+  if (!target) return false;
+  if (target.tabIndex < 0) target.tabIndex = -1;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: 'start' });
+  return true;
+}
+
+export async function settingsRenderScreen({ tab, section } = {}) {
   const gen = ++settingsRenderGen;
   const old = $('#st-body');
   if (!old) return;
@@ -342,7 +358,7 @@ export async function settingsRenderScreen() {
   render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(body));
   body.scrollTop = 0;
   try {
-    await item.render(body);
+    await item.render(body, tab);
   } catch (e) {
     if (gen === settingsRenderGen) {
       console.error('экран настроек', item.id, e);
@@ -351,6 +367,7 @@ export async function settingsRenderScreen() {
   }
   if (gen !== settingsRenderGen) return;   // пока ждали, открыли другой экран — не мешаем
   settingsUpdateDraftBars();
+  if (section) focusSettingsSection(body, section);
 }
 
 /* Черновик версии справочников: одна плавающая панель на всех экранах, где он есть. */
@@ -565,7 +582,7 @@ function settingsPublishModal() {
           closeModal();
           toast(`Версия #${r.id} опубликована · применится с ${dateRu(r.applies_from)}`
             + (r.period?.closed ? ' (период закрыт — нужен пересчёт)' : ''), 'ok');
-          await settingsRefresh();
+          await settingsRefresh({ clearDraft: true });
         } catch (e) { toast(e.message, 'err'); }
       };
     },
@@ -598,46 +615,47 @@ export function settingsHealthBannerView(health) {
    ══════════════════════════════════════════════════════════════════════ */
 function settingsSearchIndex() {
   const out = [];
-  settingsScreens().filter(s => s.id).forEach(s => out.push({
+  const screens = settingsScreens().filter(s => s.id && (!s.perm || can(s.perm)));
+  const allowed = new Set(screens.map(s => s.id));
+  screens.forEach(s => out.push({
     title: s.title, hint: s.external ? 'отдельная вкладка приложения' : 'под-раздел настроек',
     screen: s.id, external: s.external || null }));
   const p = settingsPayload();
   if (p) {
     Object.keys(p.day_code_policy || {}).forEach(c => out.push({
       title: `Код Табеля «${c}»${p.day_code_policy[c].title ? ' — ' + p.day_code_policy[c].title : ''}`,
-      hint: 'справочник кодов', screen: 'codes' }));
+      hint: 'справочник кодов', screen: 'codes', tab: 'codes' }));
     Object.keys(p.windows || {}).forEach(k => out.push({
       title: `Значение и окно «${k}»`,
-      hint: `${settingsHm(p.windows[k].start_minute)}–${settingsHm(p.windows[k].end_minute)}`, screen: 'codes' }));
+      hint: `${settingsHm(p.windows[k].start_minute)}–${settingsHm(p.windows[k].end_minute)}`, screen: 'codes', tab: 'windows' }));
     Object.keys(p.weights || {}).forEach(k => out.push({
       title: `Вес кода УТ «${k}» = ${p.weights[k]}`, hint: 'CFG-WEIGHTS', screen: 'calc' }));
     (p.groups || []).forEach(g => out.push({ title: `Группа «${g}»`, hint: 'CFG-GROUPS', screen: 'groups' }));
-    out.push({ title: 'Лимит опоздания', hint: `${p.late_limit_minutes} мин`, screen: 'calc' });
-    out.push({ title: 'Шаг расчёта', hint: `${p.step_minutes} мин`, screen: 'calc' });
-    out.push({ title: 'Период расчёта', hint: settingsGranularityText(p.period_granularity), screen: 'calc' });
-    out.push({ title: 'Часовой пояс', hint: String(p.tz || ''), screen: 'calc' });
+    out.push({ title: 'Лимит опоздания', hint: `${p.late_limit_minutes} мин`, screen: 'calc', section: 'cl-late' });
+    out.push({ title: 'Шаг расчёта', hint: `${p.step_minutes} мин`, screen: 'calc', section: 'cl-step' });
+    out.push({ title: 'Период расчёта', hint: settingsGranularityText(p.period_granularity), screen: 'calc', section: 'cl-gran' });
+    out.push({ title: 'Часовой пояс', hint: String(p.tz || ''), screen: 'calc', section: 'cl-tz' });
     out.push({ title: 'Категории ДЯ/ДН', hint: 'дневные и ночные часы', screen: 'calc' });
     out.push({ title: 'Порядок каскада и размещения', hint: 'CFG-CASCADE, CFG-PLACEMENT', screen: 'calc' });
   }
   SETTINGS_MODS.forEach(m => out.push({ title: m.title, hint: m.what, screen: 'pay' }));
   /* Справочники группы «Объект» — статические записи: содержимое
      экраны подгружают сами, а найти их поиском можно уже отсюда. */
-  if (can('night.view')) {
-    out.push({ title: 'Зоны ночного обхода', hint: 'справочник обхода: зоны, объекты', screen: 'night' });
-    out.push({ title: 'Чек-листы зон', hint: 'шаблон зоны и индивидуальные пункты объекта', screen: 'night' });
-    out.push({ title: 'Ответственные службы', hint: 'получатели недостатков: чат и почта', screen: 'night' });
-  }
-  if (can('cars.view')) {
-    out.push({ title: 'Парк электрокаров', hint: 'кары: карточка, архив', screen: 'cars' });
-    out.push({ title: 'Места стоянки', hint: 'справочник мест электрокаров', screen: 'cars' });
-  }
+  out.push(
+    { title: 'Зоны ночного обхода', hint: 'справочник обхода: зоны, объекты', screen: 'night', tab: 'areas' },
+    { title: 'Чек-листы зон', hint: 'шаблон зоны и индивидуальные пункты объекта', screen: 'night', tab: 'items' },
+    { title: 'Ответственные службы', hint: 'получатели недостатков: чат и почта', screen: 'night', tab: 'services' },
+    { title: 'Парк электрокаров', hint: 'кары: карточка, архив', screen: 'cars', section: 'cars-fleet' },
+    { title: 'Места стоянки', hint: 'справочник мест электрокаров', screen: 'cars', section: 'cars-locations' },
+    { title: 'Медиа и хранение', hint: 'размер и срок хранения фото и видео', screen: 'notify', section: 'notify-media' },
+  );
   (settingsUI.data?.items || []).forEach(i => out.push({
-    title: i.description || i.key, hint: `прочие правила объекта · ${i.key}`, screen: 'docs' }));
+    title: i.description || i.key, hint: `прочие правила объекта · ${i.key}`, screen: 'docs', section: `rule-${i.key}` }));
   (state.shiftTypes || []).forEach(s => out.push({
     title: `${s.kind === 'work' ? 'Смена' : 'Отсутствие'} «${s.name}»`, hint: `${s.code}`, screen: 'shifts' }));
   (state.docKinds || []).forEach(k => out.push({
     title: `Вид заявления «${k.name}»`, hint: k.code, screen: 'docs' }));
-  return out;
+  return out.filter(x => allowed.has(x.screen));
 }
 
 function settingsSearchPalette() {
@@ -646,7 +664,7 @@ function settingsSearchPalette() {
     title: 'Поиск по настройкам', wide: true,
     subtitle: `${index.length} ${plural(index.length, 'пункт', 'пункта', 'пунктов')} · экраны, справочники, правила, смены`,
     body: html`<div class="search-palette">
-      <input type="text" id="sp-q" placeholder="например: переработки, окно, лимит, Смена 1…" autocomplete="off">
+      <input type="search" id="sp-q" placeholder="например: переработки, окно, лимит, Смена 1…" autocomplete="off">
       <div class="res" id="sp-res"></div></div>`,
     onMount(m) {
       const q = m.querySelector('#sp-q'), res = m.querySelector('#sp-res');
@@ -655,9 +673,7 @@ function settingsSearchPalette() {
       const pick = x => {
         if (!x) return;
         closeModal();
-        if (x.external) { navigate(x.external); return; }
-        if (x.screen !== settingsUI.screen) settingsGo(x.screen);
-        else settingsRenderScreen();
+        if (x.screen !== settingsUI.screen || x.tab || x.section) settingsGo(x.screen, x);
       };
       const draw = () => render(list.length ? html`${list.slice(0, 40).map((x, i) => html`<button data-i=${i} class=${i === sel ? 'sel' : ''}
           @click=${() => pick(x)}>

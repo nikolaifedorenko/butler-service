@@ -34,7 +34,7 @@ async function loadAudit() {
       <button class="btn btn-sm btn-ghost" id="au-csv" @click=${() => downloadBlob(`/api/audit/csv?${qs()}`, 'audit.csv')}>CSV</button>
     </div>
     <div class="panel"><div class="v4-filters">
-      <label class="field"><span>Поиск</span><input type="text" id="af-q" .value=${f.q} placeholder="объект, данные, автор"></label>
+      <label class="field"><span>Поиск</span><input type="search" id="af-q" .value=${f.q} placeholder="объект, данные, автор"></label>
       <label class="field"><span>Действие</span><select id="af-action"><option value="">все</option>${(data?.actions || []).map(a =>
         html`<option value=${a.action} ?selected=${a.action === f.action}>${a.title}</option>`)}</select></label>
       <label class="field"><span>Кто</span><input type="text" id="af-actor" .value=${f.actor}></label>

@@ -2,10 +2,9 @@
 FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
 
 FROM python:3.15-slim
-# Системные пакеты базового образа: патчи безопасности Debian выходят раньше, чем пересобирается
-# сам образ (Trivy 08.11.2026: два HIGH в zlib1g, исправление deb13u1 уже в репозитории).
-# Обновляем только zlib1g — остальной состав образа не двигаем
-RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+# Патчи Debian могут выходить до пересборки базового образа. Обновляем пакеты,
+# для которых Trivy нашёл доступные исправления: zlib1g и libzstd1 (CVE-2026-124851).
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade zlib1g libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /srv/timetrack
 COPY pyproject.toml uv.lock ./

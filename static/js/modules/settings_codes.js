@@ -27,7 +27,8 @@ const SETTINGS_CODE_FLAGS = [
   { key: 'plan_equals_fact_auto', title: '«План=Факт» = Авто', hint: 'Единственный источник, который разрешает «Авто» в «Да» (R19)' },
 ];
 
-async function settingsScreenCodes(host) {
+async function settingsScreenCodes(host, requestedTab) {
+  const tab = settingsUI.codesTab = requestedTab || settingsUI.codesTab || 'codes';
   await settingsEngine();
   if (!state.docKinds) {
     /* виды заявлений — для «Заявление по назначению кода» в карточке кода */
@@ -40,7 +41,6 @@ async function settingsScreenCodes(host) {
   const d = settingsDraft();
   if (!p || !d) { render(html`<div class="empty">Справочники не загружены</div>`, mount(host)); return; }
   const edit = can('settings.edit');
-  const tab = settingsUI.codesTab || (settingsUI.codesTab = 'codes');
   const codes = Object.entries(d.day_code_policy || {});
   const windows = Object.entries(d.windows || {});
   const step = Number(d.step_minutes) || 15;

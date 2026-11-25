@@ -75,7 +75,7 @@ async function renderCarsDictScreen(host) {
         </tr>`) : html`<tr><td colspan="6" class="empty">Парк пуст</td></tr>`}</tbody></table></div>
       <p class="hint">Новый кар создаётся свободным без места стоянки — место указывается при возврате
       и в карточке. Отключение кара (чекбокс в карточке) убирает его
-      из списка сотрудников; история операций сохраняется.</p>`)}
+      из списка сотрудников; история операций сохраняется.</p>`, nothing, 'cars-fleet')}
     ${settingsPanelView('Места стоянки', html`
       <div class="check-list" style="max-height:320px">${carsState.locations.length ? carsState.locations.map(l => html`
         <div class="rule-row" style="grid-template-columns:1fr auto">
@@ -90,5 +90,6 @@ async function renderCarsDictScreen(host) {
         <input type="text" id="loc-new" placeholder="Новое место (например: Парковка у корпуса B)" maxlength="160">
         <button class="btn btn-primary" data-loc-add @click=${addLoc}>Добавить</button></div>
       <p class="hint">Удаление места, указанного у активного кара, сервер отклонит (409) — сначала смените
-      место у кара или отключите место. Прошлые возвраты хранят место текстом, история не ломается.</p>` : nothing}`)}`, mount(host));
+      место у кара или отключите место. Прошлые возвраты хранят место текстом, история не ломается.</p>` : nothing}`,
+      nothing, 'cars-locations')}`, mount(host));
 }
