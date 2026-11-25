@@ -240,11 +240,12 @@ def test_block_preview_equals_save_and_overbook(manager_role_client, manager_cli
 
 def test_long_block_preview_window(manager_role_client, manager_client, big_fund, sql_counter, monkeypatch):
     """Review Focus 5: блок на 90 ночей × 6 категорий — предпросмотр и сохранение в окне ±62 дня,
-    шахматка 440 × 31 с таким блоком — не больше 30 запросов."""
+    шахматка 440 × 30 с таким блоком и пожеланием объекта — не больше 30 запросов."""
     from sqlalchemy import select as sel
 
     from app.core.db import SessionLocal
-    from app.modules.fund.application.catalog import CategoryState
+    from app.modules.fund.application.catalog import CategoryState, UnitState
+    from app.modules.guests.application.catalog import Guest, GuestPref
 
     with SessionLocal() as s:
         big = list(s.scalars(sel(CategoryState.category_id).where(CategoryState.code.in_(("BIGDLX", "BIGSTE", "BIGVIL")))
@@ -267,14 +268,26 @@ def test_long_block_preview_window(manager_role_client, manager_client, big_fund
     sv = manager_client.post(f"{API}/blocks", json=body)
     assert sv.status_code == 200, sv.text
     bid = sv.json()["result"]["id"]
+    pref_id = None
     try:
+        with SessionLocal.begin() as s:
+            guest_id = s.scalar(sel(Guest.id).where(Guest.last_name == "Большой0"))
+            unit_id = s.scalars(sel(UnitState.unit_id).where(UnitState.label == "B000")).first()
+            assert guest_id is not None and unit_id is not None
+            pref = GuestPref(guest_id=guest_id, kind="unit", ref_id=unit_id)
+            s.add(pref)
+            s.flush()
+            pref_id = pref.id
         with sql_counter() as c:
             r = manager_client.get(f"{API}/board/units", params=big_fund)
         assert r.status_code == 200
-        assert c["total"] <= 30, sorted(c["by_statement"].items(), key=lambda x: -x[1])[:3]
+        assert c["total"] <= 30, c["by_statement"]
         card = manager_client.get(f"{API}/blocks/{bid}")
         assert card.status_code == 200 and len(card.json()["grid"]) == 6
     finally:
+        if pref_id is not None:
+            with SessionLocal.begin() as s:
+                s.delete(s.get_one(GuestPref, pref_id))
         manager_client.delete(f"{API}/blocks/{bid}", params={"version": 1})
 
 

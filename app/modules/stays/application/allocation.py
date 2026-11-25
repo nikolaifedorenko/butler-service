@@ -23,7 +23,7 @@ import datetime as dt
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.time import local_date
@@ -67,23 +67,28 @@ def _moves(db: Session, rids: list[int]) -> dict[int, list[tuple]]:
 
 
 def load_prefs(db: Session, rids: list[int]) -> tuple[dict[int, list[Pref]], Mapping[int, frozenset[int]]]:
-    """Пожелания главного гостя по броням (часть 2 §5): бронь → пожелания и наследники объектов
-    по lineage. Главный — первый по дате проживающий с ролью main; у брони без главного или без
-    пожеланий записи нет. Запросов: проживающие, пожелания, lineage (только при пожеланиях-объектах)."""
+    """Пожелания главного гостя по броням (часть 2 §5): бронь → пожелания и наследники объектов.
+    Главный — первый по дате проживания, при равенстве — по id. Пожелания читаются одним запросом,
+    lineage — отдельно, только при пожеланиях конкретных объектов."""
     if not rids:
         return {}, {}
-    main: dict[int, int] = {}
-    for o in db.scalars(select(Occupant).where(Occupant.reservation_id.in_(rids), Occupant.role == "main")
-                        .order_by(Occupant.date_from, Occupant.id)):
-        main.setdefault(o.reservation_id, o.guest_id)
-    by_guest: dict[int, list[Pref]] = {}
-    if main:
-        for p in db.scalars(select(GuestPref).where(GuestPref.guest_id.in_(set(main.values())))):
-            by_guest.setdefault(p.guest_id, []).append(Pref(p.kind, p.ref_id, p.priority))
+    main = select(
+        Occupant.reservation_id,
+        Occupant.guest_id,
+        func.row_number().over(
+            partition_by=Occupant.reservation_id,
+            order_by=(Occupant.date_from, Occupant.id),
+        ).label("rank"),
+    ).where(Occupant.reservation_id.in_(rids), Occupant.role == "main").subquery()
+    prefs: dict[int, list[Pref]] = {}
+    rows = db.execute(select(main.c.reservation_id, GuestPref)
+                      .join(GuestPref, GuestPref.guest_id == main.c.guest_id).where(main.c.rank == 1))
+    for rid, p in rows:
+        prefs.setdefault(rid, []).append(Pref(p.kind, p.ref_id, p.priority))
     heirs: Mapping[int, frozenset[int]] = {}
-    if any(p.kind == "unit" for ps in by_guest.values() for p in ps):
+    if any(p.kind == "unit" for ps in prefs.values() for p in ps):
         heirs = successors([(p, u) for p, u in db.execute(select(UnitLineage.predecessor_id, UnitLineage.unit_id))])
-    return {rid: by_guest[gid] for rid, gid in main.items() if gid in by_guest}, heirs
+    return prefs, heirs
 
 
 def pref_scorers(db: Session, rids: list[int]) -> dict[int, Callable[[UnitSpan], int]]:
