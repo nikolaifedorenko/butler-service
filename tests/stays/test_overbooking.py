@@ -140,10 +140,23 @@ def test_overbooked_booking_has_hole_and_load(manager_role_client, manager_clien
     # вес категории брони; нагрузка в ответе округлена до сотых — сравнение с допуском округления
     assert now["load"] == pytest.approx(load0 + 4.0, abs=0.011)
     assert "без объекта" in {u["label"] for u in now["units"]}
-    day = manager_client.get(f"{API}/day", params={"date": d.isoformat()}).json()
+    # OOO другой категории тоже присутствует в «Требуют внимания».
+    other_unit = make_category(manager_role_client, n_units=1)["units"][0]["id"]
+    hold = manager_client.post(f"{API}/ooo", json={
+        "unit_id": other_unit, "start": d.isoformat(), "end": d1.isoformat(), "reason": "Ремонт",
+    })
+    assert hold.status_code == 200, hold.text
+    ooo = hold.json()["result"]
+    try:
+        day = manager_client.get(f"{API}/day", params={"date": d.isoformat()}).json()
+    finally:
+        removed = manager_client.delete(f"{API}/ooo/{ooo['id']}", params={"version": ooo["version"]})
+        assert removed.status_code == 200, removed.text
+    assert any(x.get("kind") == "ooo" and x["id"] == ooo["id"] for x in day["attention"])
     row_b = next(x for x in day["in_house"] if x["reservation_id"] == b["id"])
     assert row_b["unit"] == "без объекта" and row_b["overbooked"] is True and row_b["cover_status"] == "covered"
-    assert {x["reservation_id"] for x in day["attention"]} >= {a["id"], b["id"]}     # A — дыра, B — овербукинг
+    attention_bookings = {x["reservation_id"] for x in day["attention"] if x.get("kind") != "ooo"}
+    assert attention_bookings >= {a["id"], b["id"]}          # A — дыра, B — овербукинг
     nxt = manager_client.get(f"{API}/day", params={"date": d1.isoformat()}).json()
     assert next(x for x in nxt["in_house"] if x["reservation_id"] == b["id"])["cover_status"] == "uncovered"
     card = manager_client.get(f"{API}/reservations/{b['id']}/card").json()
