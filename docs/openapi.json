@@ -29287,6 +29287,16 @@
           },
           {
             "in": "query",
+            "name": "for_print",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "For Print",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "escorted",
             "required": false,
             "schema": {

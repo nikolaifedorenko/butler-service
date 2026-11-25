@@ -152,6 +152,8 @@ def _contrast(color):
 
 
 def _note(cell, text, notes):
+    if notes is None:
+        return
     text = clean(text, guard=False)
     note = Comment(text, "Шахматка")
     note.width = 420
@@ -160,7 +162,7 @@ def _note(cell, text, notes):
     notes[cell.coordinate] = text
 
 
-def write(workbook: Chessboard) -> tuple[bytes, dict[str, str]]:
+def write(workbook: Chessboard, *, include_notes: bool = True) -> tuple[bytes, dict[str, str]]:
     book = Workbook()
     sheet = book.active
     sheet.title = "Шахматка"
@@ -208,7 +210,7 @@ def write(workbook: Chessboard) -> tuple[bytes, dict[str, str]]:
                 _cell(sheet, row, col, bg=PALE)
             row += 1
             previous = room.category
-        row = _room_rows(sheet, room, row, days, notes, font)
+        row = _room_rows(sheet, room, row, days, notes if include_notes else None, font)
     if not workbook.rooms:
         _cell(sheet, row, 2, "Объектов по фильтру нет")
         row += 1

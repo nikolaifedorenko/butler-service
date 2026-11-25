@@ -148,7 +148,7 @@ def _workbook(data: dict, first: date, last: date) -> chessboard.Chessboard:
 
 
 def export_view(db: Session, principal: Principal, first: date, last: date, filters: BoardFilters,
-                kind: str) -> bytes:
+                kind: str, *, for_print: bool = False) -> bytes:
     month_end = date(first.year, first.month, monthrange(first.year, first.month)[1])
     if first.day != 1 or last != month_end:
         raise ViewError("Для выгрузки шахматки выберите один месяц")
@@ -160,7 +160,8 @@ def export_view(db: Session, principal: Principal, first: date, last: date, filt
             level = "occupancy"
         data = views.units_board(db, first, last, filters, level, for_export=True)
         workbook = _workbook(data, first, last)
-    content, notes = chessboard.write(workbook)
+    # Некоторые просмотрщики рисуют значки примечаний даже в предпросмотре печати.
+    content, notes = chessboard.write(workbook, include_notes=not (kind == "pdf" and for_print))
     if kind == "pdf":
         try:
             content = chessboard.to_pdf(content, notes)

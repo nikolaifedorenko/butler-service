@@ -55,6 +55,12 @@ def test_chessboard_export_pdf_from_same_workbook(manager_role_client, demo_smal
     assert Counter(str(a["/Contents"]) for a in pdf_comments) == comments
     assert all(not int(a["/F"]) & 4 and a["/AP"]["/N"] for a in pdf_comments)
 
+    printable = manager_role_client.get(path, params={**params, "format": "pdf", "for_print": "true"})
+    assert printable.status_code == 200
+    print_pages = PdfReader(BytesIO(printable.content)).pages
+    assert all(not page.get("/Annots") for page in print_pages)
+    assert [page.extract_text() for page in print_pages] == [page.extract_text() for page in pages]
+
 
 def test_chessboard_export_can_download_xlsx_without_pdf_service(occupancy_client, demo_small, monkeypatch):
     monkeypatch.setattr(settings, "gotenberg_url", "")

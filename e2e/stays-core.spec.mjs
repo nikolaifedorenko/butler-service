@@ -631,6 +631,7 @@ for (const expired of [false, true]) {
     await page.route('**/api/stays/board/units/export?**', async route => {
       const marker = (await page.context().cookies()).find(c => c.name === 'tt_auth_context').value;
       expect(new URL(route.request().url()).searchParams.get('format')).toBe('pdf');
+      expect(new URL(route.request().url()).searchParams.get('for_print')).toBe('true');
       await route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.7',
         headers: { 'X-Butler-Auth-Context': marker } });
     });
