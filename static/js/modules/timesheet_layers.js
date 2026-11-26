@@ -11,6 +11,7 @@ import {
 import { html, mount, nothing, render } from '../ui/html.js';
 import { loadTabel } from './tabel.js';
 import { V4_CODE_COLORS } from './timesheet_common.js';
+import { periodNav } from '../ui/period_nav.js';
 import { downloadAbsenceDoc, printAbsenceRequest, printWindow } from './docs.js';
 import { openEmployeeCard } from './employees.js';
 
@@ -58,7 +59,6 @@ function resetMonth() {
 
 function layerTemplate() {
   const ro = !can('schedule.edit');   // без права «Редактирование графика» — только просмотр
-  const g = state.grid;
   return html`
   <div class="page-head">
     <div>
@@ -68,11 +68,7 @@ function layerTemplate() {
         : 'График генерируется из Табеля по окнам CFG-WINDOWS; ручная смена заменяет генерацию дня. «Пропуск/отлучка» — согласованное отсутствие: смена показывается разрезанной, на часы не влияет'}</div>
     </div>
     <div class="spacer"></div>
-    <div class="month-nav">
-      <button id="m-prev" title="Предыдущий месяц" @click=${() => shiftMonth(-1)}>‹</button>
-      <div class="label" id="m-label">${g ? `${MONTHS[g.month - 1]} ${g.year}` : '—'}</div>
-      <button id="m-next" title="Следующий месяц" @click=${() => shiftMonth(1)}>›</button>
-    </div>
+    ${periodNav('m', `${MONTHS[state.month - 1]} ${state.year}`, shiftMonth)}
     <button class="btn btn-sm" id="m-today" @click=${() => {
       const d = new Date(); state.year = d.getFullYear(); state.month = d.getMonth() + 1; loadSchedule();
     }}>Сегодня</button>

@@ -13,6 +13,7 @@ import {
   $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, state, textOn, todayISO, toast, WD_SHORT,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { periodNav } from '../ui/period_nav.js';
 import { renderBookings } from './stays_bookings.js';
 import { openBlockCard, renderBlocksTab } from './stays_blocks.js';
 import { openOooForm, renderOooTab } from './stays_ooo.js';
@@ -87,9 +88,8 @@ function goToday(body, rerender) {
   else { state.year = y; state.month = m; rerender(); }
 }
 /* шаблон навигации по месяцам — для видов на шаблонах; body — контейнер вкладки (докрутка к дню) */
-export const staysMonthNavView = (body, rerender) => html`<div class="month-nav"><button id="sm-prev" title="Предыдущий месяц" @click=${() => shiftMonth(-1, rerender)}>◀</button>
-    <div class="label" id="sm-label">${MONTHS[state.month - 1]} ${state.year}</div>
-    <button id="sm-next" title="Следующий месяц" @click=${() => shiftMonth(1, rerender)}>▶</button></div>
+export const staysMonthNavView = (body, rerender) => html`
+    ${periodNav('sm', `${MONTHS[state.month - 1]} ${state.year}`, delta => shiftMonth(delta, rerender))}
     <button class="btn btn-sm" id="sm-today" title="Текущий месяц и колонка сегодняшнего дня" @click=${() => goToday(body, rerender)}>Сегодня</button>`;
 /* докрутка сетки к колонке staysState.focusDay и подсветка (как scrollTabelToToday) */
 export function staysFocusDay(body) {

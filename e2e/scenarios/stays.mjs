@@ -1134,6 +1134,10 @@ const $ = s => window.document.querySelector(s);
     check('поле брони сохранено', da2.fields[rField] === 'Москва', JSON.stringify(da2.fields));
     check('сопровождающий сохранён', da2.companions.some(c => c.kind === 'security' && c.description === 'Охрана 2 чел.'));
   
+    /* Дождаться сохранения в интерфейсе и открыть свежую сетку: текущая полоса
+       может быть видна ещё до завершения запроса обновления после записи. */
+    check('форма брони закрылась после сохранения', await waitFor(() => $('#modal-backdrop').classList.contains('hidden')));
+    check('сетка с сохранённой бронью загружена', await openMonth(day(9)));
     /* карточка гостя: история, связи, особые даты, поле */
     click($(`#view-stays [data-bar="${ra.id}"]`));
     await waitFor(() => !!$(`[data-guest-card="${g.id}"]`));
@@ -1197,9 +1201,11 @@ const $ = s => window.document.querySelector(s);
     check('конец периода ограничен 366 днями', $('#bk-last').max === day(30 + 365));
     await rerendered('#bk-last', () => change($('#bk-last'), day(240)));
     await rerendered('#bk-mode', () => change($('#bk-mode'), 'check_in'));
-    /* в окне могут быть и брони прежних шагов сценария: всего не меньше созданных */
-    const total = Number(text('#bk-total').match(/Найдено броней: (\d+)/)?.[1]);
-    check(`всего не меньше ${N} броней, показано 200`, total >= N && $$('[data-bk-row]').length === 200, text('#bk-total'));
+    /* Повтор сценария на том же сервере оставляет прежние записи. Выбираем только эту серию. */
+    input($('#sf-q'), code);
+    const ownTotal = () => Number(text('#bk-total').match(/Найдено броней: (\d+)/)?.[1]);
+    check(`всего ${N} броней этой серии, показано 200`, await waitFor(() =>
+      ownTotal() === N && $$('[data-bk-row]').length === 200), text('#bk-total'));
   
     const thOut = () => $('[data-bk-sort="check_out"]');
     await rerendered('#bk-total', () => click(thOut()));
@@ -1210,7 +1216,7 @@ const $ = s => window.document.querySelector(s);
     check('первой идёт самая поздняя бронь', firstOut === (MODS.core.dateRu(day(30 + N))), firstOut);
   
     click($('#bk-more'));
-    check('«Показать ещё» добавляет строки', await waitFor(() => $$('[data-bk-row]').length === total), String($$('[data-bk-row]').length));
+    check('«Показать ещё» добавляет строки', await waitFor(() => new Set($$('[data-bk-row]').map(row => row.dataset.bkRow)).size === N), String($$('[data-bk-row]').length));
     check('кнопки «Показать ещё» больше нет', !$('#bk-more'));
   
     check('гость в списке экранирован (текстом, не разметкой)', !$('#bk-xss') && text('#bk-result').includes('<i id="bk-xss">'));

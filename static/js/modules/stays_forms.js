@@ -19,6 +19,8 @@ import {
 } from './stays.js';
 
 export const STAYS_ROLE = { main: 'главный', guest: 'проживает' };
+const GUEST_PREFERENCE_LABELS = new Map([['allergy', 'Аллергия'], ['food', 'Питание'], ['habits', 'Привычки']]);
+export const guestPreferenceLabel = key => GUEST_PREFERENCE_LABELS.get(key) || key;
 export const STAYS_STATUS = { tentative: 'предварительная', confirmed: 'подтверждена', in_house: 'заселён',
   checked_out: 'выехал', cancelled: 'отменена', no_show: 'не заехал' };
 
@@ -546,7 +548,7 @@ export async function openGuestCard(gid, onChanged, options = {}) {
         ${edit ? html`<button type="button" class="btn btn-sm btn-ghost" data-gc-family-edit
           @click=${showFamilyEditor}>Редактировать связи</button>` : nothing}
       </div>` : nothing}<div class="grid-2">
-        <div><h4>Предпочтения</h4>${prefsShown.length ? prefsShown.map(([k, v]) => html`<div>${k}: ${v}</div>`) : html`<span class="muted">нет</span>`}
+        <div><h4>Предпочтения</h4>${prefsShown.length ? prefsShown.map(([k, v]) => html`<div>${guestPreferenceLabel(k)}: ${v}</div>`) : html`<span class="muted">нет</span>`}
           <h4>Предпочитает</h4><div id="gc-prefs"></div>
           ${g.special_dates.length ? html`<h4>Особые даты</h4>${g.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`)}` : nothing}
           ${Object.keys(g.fields).length ? html`<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => html`<div>${titles[k] || k}: ${String(v)}</div>`)}` : nothing}
@@ -707,8 +709,9 @@ export async function openGuestForm(id, onSaved, opts = {}) {
       ${fieldRow('VIP-код', html`<select id="gf-code" ?disabled=${locked}>${codeOptions.map(([v, t]) => optionView(v, t, g?.vip_code_id ?? ''))}</select>`)}`}
       <div id="gf-upd-row" hidden>${checkField('gf-upd', `обновить в бронях: ${g?.main_current ?? 0}`, true)}
         <div class="muted">текущие и будущие брони, где гость главный</div></div>
-      ${fieldRow('Аллергии', textInput('gf-allergy', g?.preferences?.allergy))}${fieldRow('Питание', textInput('gf-food', g?.preferences?.food))}
-      ${fieldRow('Привычки', textInput('gf-habits', g?.preferences?.habits))}
+      ${fieldRow(guestPreferenceLabel('allergy'), textInput('gf-allergy', g?.preferences?.allergy))}
+      ${fieldRow(guestPreferenceLabel('food'), textInput('gf-food', g?.preferences?.food))}
+      ${fieldRow(guestPreferenceLabel('habits'), textInput('gf-habits', g?.preferences?.habits))}
       ${fieldRow('Примечание', html`<textarea id="gf-note" rows="2" .value=${g?.note || ''}></textarea>`)}
       <h4>Особые даты</h4><div id="gf-dates"></div><button class="btn btn-sm btn-ghost" id="gf-sd-add" type="button">+ Дата</button>
       ${gFields.length ? html`<h4>Дополнительно</h4>${fieldInputs(gFields, g?.fields, 'data-gf-field')}` : nothing}

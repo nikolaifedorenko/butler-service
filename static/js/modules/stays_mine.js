@@ -11,7 +11,7 @@
 import { can } from '../app.js';
 import { $, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
-import { STAYS_ROLE, STAYS_STATUS, openGuestCard, openGuestForm, openReservationForm } from './stays_forms.js';
+import { STAYS_ROLE, STAYS_STATUS, guestPreferenceLabel, openGuestCard, openGuestForm, openReservationForm } from './stays_forms.js';
 import {
   STAYS_SPECIAL_MARK, openReservationCard, staysAddDays, staysCodeTagView, staysDayHeadView, staysFocusDay, staysFund,
   staysGuestMarkView, staysMonthNavView, staysMonthRange, staysPos, staysToday, staysWeight,
@@ -60,7 +60,7 @@ const mineTodayCard = (r, today) => html`<div class="panel mine-card" data-mine-
       <b>${staysGuestMarkView(g.special)}${g.name}</b>${staysCodeTagView(g.vip_code)}
       <span class="muted">${STAYS_ROLE[g.role] || g.role}${g.phone ? ' · ' + g.phone : ''}</span>
       ${g.departing && !r.departing ? html` <span class="badge warn">выезд сегодня</span>` : nothing}
-      ${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => html`<div class="muted">${k}: ${v}</div>`)}
+      ${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => html`<div class="muted">${guestPreferenceLabel(k)}: ${v}</div>`)}
       ${g.special_dates_soon.map(s => html`<div class="muted" data-mine-soon>🎉 ${dateRu(s.date)} — ${s.what}</div>`)}
       <button class="btn btn-sm btn-ghost" data-mine-guest=${g.guest_id}
         @click=${() => openMineGuest(g.guest_id, renderMine).catch(e => toast(e.message, 'err'))}>Карточка гостя</button></div>`)}
@@ -97,7 +97,9 @@ function mineLoadCell(day, load, absent, limit) {
   const l = load[day];
   const tip = [l ? `${MINE_LEVEL[l.level]}: ${l.guests} гост., нагрузка ${staysWeight(l.value)} из ${staysWeight(limit)}` : '', absent.has(day) ? 'отсутствие по Графику' : ''].filter(Boolean).join(' · ');
   return html`<div class=${`mm-lc${l ? ' lv-' + l.level : ''}`} data-day=${day} data-load-level=${l ? l.level : nothing}
-    data-absent=${absent.has(day) ? '1' : nothing} title=${tip || nothing}>${l ? l.guests : ''}${absent.has(day) ? html`<b class="mm-abs">О</b>` : nothing}</div>`;
+    data-absent=${absent.has(day) ? '1' : nothing} title=${tip || nothing}>${l ? l.guests : ''}
+    ${l?.level === 'over' ? html`<b class="mm-over">↑</b>` : nothing}
+    ${absent.has(day) ? html`<b class="mm-abs">О</b>` : nothing}</div>`;
 }
 
 function mineMonthGrid(data) {
@@ -121,8 +123,10 @@ async function renderMineMonth(body, fresh) {
   if (!fresh()) return;
   body.className = '';
   render(html`<div class="sb-toolbar">${staysMonthNavView(body, renderMine)}</div>
-    <div class="muted mm-legend"><span class="mm-key lv-one"></span> один гость <span class="mm-key lv-many"></span> несколько
-      <span class="mm-key lv-over"></span> выше лимита · <b class="mm-abs">О</b> — отсутствие</div>
+    <div class="muted mm-legend"><span class="mm-key lv-one" aria-hidden="true"></span> Один гость
+      <span class="mm-key lv-many" aria-hidden="true"></span> Несколько гостей
+      <span class="mm-key lv-over" aria-hidden="true"></span> <b class="mm-over">↑</b> — выше лимита
+      · <b class="mm-abs">О</b> — отсутствие</div>
     <div class="sb-grid mm-grid" tabindex="0" style=${`--days:${data.days.length}`}>${mineMonthGrid(data)}</div>`, mount(body));
   staysFocusDay(body);
 }
@@ -188,7 +192,7 @@ async function openMineGuest(gid, onChanged) {
   openModal({
     title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
     subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}` : '', g.phone_display, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
-    body: html`<h4>Предпочтения</h4>${prefs.length ? prefs.map(([k, v]) => html`<div>${k}: ${v}</div>`) : html`<span class="muted">нет</span>`}
+    body: html`<h4>Предпочтения</h4>${prefs.length ? prefs.map(([k, v]) => html`<div>${guestPreferenceLabel(k)}: ${v}</div>`) : html`<span class="muted">нет</span>`}
       ${g.special_dates.length ? html`<h4>Особые даты</h4>${g.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`)}` : nothing}
       ${Object.keys(g.fields).length ? html`<h4>Дополнительно</h4>${Object.entries(g.fields).map(([k, v]) => html`<div>${titles[k] || k}: ${String(v)}</div>`)}` : nothing}
       ${g.note ? html`<h4>Примечание</h4><p data-mine-note>${g.note}</p>` : nothing}

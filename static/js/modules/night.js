@@ -397,6 +397,9 @@ async function uploadMedia(it, e) {
   } catch (err) { toast(err.message, 'err'); }
 }
 
+const nightActionIcon = path => html`<svg viewBox="0 0 16 16" width="16" height="16" fill="none"
+  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${path}/></svg>`;
+
 function nightItemRow(it, rep, sectionDone = false) {
   // закрытая смена или закрытая область — только просмотр (сервер отвечает 409)
   const readonly = rep.readonly || sectionDone;
@@ -410,15 +413,18 @@ function nightItemRow(it, rep, sectionDone = false) {
       ${readonly
         ? html`<span class=${`badge ${NIGHT_ANSWER_BADGE[it.answer] || 'muted'}`}>${it.answer_title}</span>`
         : html`<button class=${`btn btn-sm ${it.answer === 'ok' ? 'btn-primary' : 'btn-ghost'}`} data-ans="ok" data-id=${it.id}
+            aria-pressed=${String(it.answer === 'ok')}
             @click=${() => answerItem(rep, it, 'ok')}>ОК</button>
            <button class=${`btn btn-sm ${it.answer === 'bad' ? 'btn-danger' : 'btn-ghost'}`} data-ans="bad" data-id=${it.id}
+            aria-pressed=${String(it.answer === 'bad')}
             @click=${() => answerItem(rep, it, 'bad')}>Не ОК</button>
            <button class="btn btn-sm btn-ghost" data-cmt=${it.id} title="Комментарий"
-            @click=${() => itemCommentModal(it, reloadNight)}>💬${it.comment ? ' •' : ''}</button>
-           <label class="btn btn-sm btn-ghost" title="Добавить фото">📷
-             <input type="file" accept="image/*" data-photo=${it.id} class="hidden-file" @change=${e => uploadMedia(it, e)}></label>
-           <label class="btn btn-sm btn-ghost" title="Снять видео">🎥
-             <input type="file" accept="video/*" capture="camcorder" data-video=${it.id} class="hidden-file" @change=${e => uploadMedia(it, e)}></label>`}
+            aria-label=${it.comment ? 'Комментарий добавлен' : 'Комментарий'} @click=${() => itemCommentModal(it, reloadNight)}>
+            ${nightActionIcon('M2.5 3.5h11v7H7L3 13v-2.5h-.5z')}${it.comment ? html`<span aria-hidden="true">•</span>` : nothing}</button>
+           <label class="btn btn-sm btn-ghost" title="Добавить фото">${nightActionIcon('M2 5h3l1-2h4l1 2h3v8H2z M10 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0')}
+             <input type="file" accept="image/*" aria-label="Добавить фото" data-photo=${it.id} class="hidden-file" @change=${e => uploadMedia(it, e)}></label>
+           <label class="btn btn-sm btn-ghost" title="Снять видео">${nightActionIcon('M2 4.5h8v7H2z M10 7l4-2v6l-4-2')}
+             <input type="file" accept="video/*" aria-label="Снять видео" capture="camcorder" data-video=${it.id} class="hidden-file" @change=${e => uploadMedia(it, e)}></label>`}
       ${photos.length ? html`<div class="thumbs">${photos.map(p => photoThumb(p, reloadNight))}</div>` : nothing}
       ${it.comment ? html`<div class="night-item-cmt">${it.comment}</div>` : nothing}
     </div>

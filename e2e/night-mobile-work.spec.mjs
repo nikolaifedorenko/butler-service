@@ -59,6 +59,22 @@ test('телефон открывает свой чек-лист в его зо�
   await expect(view.locator('.night-object').filter({ hasText: area.name }).first()).toBeVisible();
 });
 
+test('в чек-листе комментарий и вложения подписаны, выбранный ответ объявляется', async ({ page }) => {
+  const { area, view, resume } = await resumeFixture(page);
+  area.items[0].answer = 'bad';
+  await resume.click();
+  const item = view.locator('.night-item').first();
+  await expect(item.getByRole('button', { name: 'Не ОК', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(item.getByRole('button', { name: 'Комментарий' }).locator('svg[aria-hidden="true"]')).toBeVisible();
+  for (const name of ['Добавить фото', 'Снять видео']) {
+    const input = item.getByLabel(name);
+    await expect(input).toHaveAttribute('type', 'file');
+    await input.focus();
+    await expect(input).toBeFocused();
+    await expect(item.locator('label:focus-within')).toBeVisible();
+  }
+});
+
 for (const staleState of ['object-completed', 'other-owner', 'shift-closed']) {
   test(`продолжение обхода сверяет последнее состояние смены (${staleState})`, async ({ page }) => {
     const { report, area, view, resume, takeRequests } = await resumeFixture(page);
