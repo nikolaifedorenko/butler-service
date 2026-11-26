@@ -25,7 +25,7 @@ services:
   # сервис PDF (ADR-0013, §6): LibreOffice в контейнере делает PDF из DOCX как в Word. Наружу не
   # публикуется; шрифты с кириллицей — из assets/fonts проекта
   gotenberg:
-    image: gotenberg/gotenberg:9.5.1
+    image: gotenberg/gotenberg:9.9.3
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/health > /dev/null || exit 1"]
