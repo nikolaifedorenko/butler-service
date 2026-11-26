@@ -37,7 +37,7 @@ test('стартовый экран — «Сегодня» и первый пу�
   expect(errors).toEqual([]);
 });
 
-test('батлер: мои брони, «Сейчас важно» и карточки гостей; карточка ведёт в «Мои гости»', async ({ page }) => {
+test('батлер: сводка, «Сейчас важно» и отдельный переход в «Мои гости»', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'ivanov');
   const view = today(page);
@@ -51,7 +51,7 @@ test('батлер: мои брони, «Сейчас важно» и карто
   if (arrivals + departures === 0) await expect(view.locator('[data-empty=important]')).toBeVisible();
   else await expect(view.locator('.today-card.urgent')).toHaveCount(1);
   expect(mine).toBeGreaterThan(0);
-  await view.locator('.today-card').first().click();
+  await view.getByRole('button', { name: 'Все мои гости' }).click();
   await expect(page.locator('#view-mystays.active')).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -585,9 +585,9 @@ function staysEscortTitle(card) {
 }
 
 /* ─────────────── Карточка брони ─────────────── */
-export async function openReservationCard(rid, onChanged, { isCurrent = () => true, returnFocusTo } = {}) {
+export async function openReservationCard(rid, onChanged, { isCurrent = () => true, returnFocusTo, silent = false } = {}) {
   const [card, history] = await Promise.all([
-    api(`/api/stays/reservations/${rid}/card`), api(`/api/stays/reservations/${rid}/history`)]);
+    api(`/api/stays/reservations/${rid}/card`, { silent }), api(`/api/stays/reservations/${rid}/history`, { silent })]);
   if (!isCurrent()) return;
   const role = { main: 'главный', guest: 'проживает' };
   /* батлер в своей брони (card.mine): карточки гостей (stays.mine) и «Изменить» (stays.mine_res_edit) —

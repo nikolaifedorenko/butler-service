@@ -9,7 +9,7 @@
 'use strict';
 
 import { $, $$, adoptAuthContext, api, authContextIsCurrent, authContextSnapshot, closeDrawer, closeModal, getCookie,
-  expireAuthContext, initials, loadMediaLimits, openModal, publishAuthContext, roleTitle, setLoginHandler, serverShiftMs, state,
+  expireAuthContext, initials, loadMediaLimits, openDrawer, openModal, publishAuthContext, roleTitle, setLoginHandler, serverShiftMs, state,
   subscribeAuthContext, subscribeSessionRejection, syncServerClock, toast, todayISO } from './core.js';
 import { html, mount, nothing, render } from './ui/html.js';
 import { MODULE_SCREENS, MODULE_VIEWS, registerModule } from './registry.js';
@@ -22,6 +22,7 @@ import { staysGuestsResetUserState } from './modules/stays_guests.js';
 
 /* ───────────────────────────── вкладки ───────────────────────────── */
 const ICONS = {
+  sections: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   today: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   grafik: '<svg viewBox="0 0 24 24"><path d="M12 3l8 4.4-8 4.4-8-4.4z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 12L12 16l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/><path d="M4.6 16.4L12 20.4l7.4-4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>',
   schedule: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
@@ -64,6 +65,73 @@ const GRAFIK_ALIAS = { timesheet: 'grafik', schedule: 'grafik', fact: 'grafik', 
 const TODAY_TAB = { id: 'today', title: 'Сегодня' };
 function visibleTabs() { return [TODAY_TAB, ...(state.menu || [])]; }
 
+const MOBILE_DEFAULTS = {
+  employee: ['mystays', 'night', 'cars'],
+  supervisor: ['mystays', 'night', 'stays'],
+  manager: ['stays', 'grafik', 'marks'],
+  admin: ['stays', 'grafik', 'settings'],
+};
+const MOBILE_SLOTS = ['Первая вкладка', 'Вторая вкладка', 'Третья вкладка'];
+const MOBILE_LABELS = { cars: 'Кары' };
+const mobilePreferenceKey = () => `butler.mobile-tabs.v1.${state.user.id}`;
+
+function defaultMobileIds(available) {
+  return [...new Set([...(MOBILE_DEFAULTS[state.user.role] || []), ...available.map(tab => tab.id)])]
+    .filter(id => available.some(tab => tab.id === id)).slice(0, MOBILE_SLOTS.length);
+}
+
+function mobileIds(available) {
+  if (state.user.impersonated) return defaultMobileIds(available);
+  try {
+    const saved = JSON.parse(localStorage.getItem(mobilePreferenceKey()));
+    if (Array.isArray(saved)) {
+      return MOBILE_SLOTS.map((_, slot) => {
+        const id = saved[slot];
+        return saved.indexOf(id) === slot && available.some(tab => tab.id === id) ? id : '';
+      });
+    }
+  } catch { /* настройки по умолчанию, если хранилище недоступно */ }
+  return defaultMobileIds(available);
+}
+
+function configureMobileTabs(available) {
+  let draft = mobileIds(available);
+  const form = html`<div id="mobile-tabs-picker"></div>`;
+  openModal({ title: 'Быстрые вкладки', body: form,
+    subtitle: 'Выберите до трёх разделов для нижней панели.',
+    footer: html`<button class="btn btn-ghost" data-default>Вернуть набор по роли</button>
+      <button class="btn btn-primary" data-save>Сохранить</button>`,
+    onMount(dialog) {
+      const picker = $('#mobile-tabs-picker', dialog);
+      const paint = () => render(MOBILE_SLOTS.map((label, index) => html`<label class="field"><span>${label}</span>
+        <select @change=${e => { draft[index] = e.target.value; paint(); }}>
+          <option value="" ?selected=${!draft[index]}>Не закреплять</option>
+          ${available.map(tab => html`<option value=${tab.id} ?selected=${draft[index] === tab.id}
+            ?disabled=${draft.some((id, slot) => slot !== index && id === tab.id)}>${tab.title}</option>`)}
+        </select></label>`), picker);
+      $('[data-default]', dialog).onclick = () => { draft = defaultMobileIds(available); paint(); };
+      $('[data-save]', dialog).onclick = () => {
+        const slots = MOBILE_SLOTS.map((_, slot) => draft[slot] || '');
+        try { localStorage.setItem(mobilePreferenceKey(), JSON.stringify(slots)); }
+        catch { toast('Не удалось сохранить настройки панели.', 'err'); return; }
+        renderNav();
+        closeModal();
+      };
+      paint();
+    },
+  });
+}
+
+function mobileCatalog(tabs, activeView) {
+  openDrawer({ title: 'Разделы', returnFocusTo: () => $('#mobile-sections'),
+    body: html`<nav class="mobile-catalog" aria-label="Все разделы">${tabs.map(tab => html`<button type="button"
+      class=${`nav-item${tab.id === activeView ? ' active' : ''}`} aria-current=${tab.id === activeView ? 'page' : nothing}
+      @click=${() => { closeDrawer(); navigate(tab.id); }}>${icon(tab.id)}<span>${tab.title}</span></button>`)}</nav>`,
+    footer: !state.user.impersonated && tabs.length > 1 ? html`<button class="btn btn-sm"
+      @click=${() => configureMobileTabs(tabs.slice(1))}>Настроить панель</button>` : nothing,
+  });
+}
+
 function renderNav() {
   const tabs = visibleTabs();
   /* «Права доступа» и «Журнал аудита» открываются из Настроек (external-экраны):
@@ -79,11 +147,15 @@ function renderNav() {
     b.onclick = () => navigate(t.id);
     $('#sidenav').insertBefore(b, foot);
   });
-  render(tabs.slice(0, 5).map(t => html`<button data-view=${t.id} class=${activeView === t.id ? 'active' : ''}
-    @click=${() => navigate(t.id)}>${icon(t.id)}<span>${t.title}</span></button>`), mount($('#tabbar')));
-  /* Кнопки «Ещё» здесь больше нет: сайднав и так показывает все разделы, а в мобильном
-     таббаре она давала шестой пункт при лимите пяти. Раньше она добавлялась в сайднав,
-     дублировала пункты 6+ и получала active одновременно с ними (ревью скриншотов 22.11.2026). */
+  const quickTabs = [TODAY_TAB, ...mobileIds(tabs.slice(1)).map(id => tabs.find(tab => tab.id === id))];
+  const inCatalog = !quickTabs.some(tab => tab?.id === activeView);
+  render(html`${quickTabs.map((t, index) => t ? html`<button type="button" data-view=${t.id}
+    class=${activeView === t.id ? 'active' : ''} style=${`grid-column:${index + 1}`} aria-label=${t.title}
+    aria-current=${activeView === t.id ? 'page' : nothing}
+    @click=${() => navigate(t.id)}>${icon(t.id)}<span>${MOBILE_LABELS[t.id] || t.title}</span></button>` : nothing)}
+    <button type="button" id="mobile-sections" class=${inCatalog ? 'active' : ''} aria-current=${inCatalog ? 'true' : nothing}
+      aria-haspopup="dialog" @click=${() => mobileCatalog(tabs, activeView)}>${icon('sections')}<span>Разделы</span></button>`,
+  mount($('#tabbar')));
   render(html`Учёт кратен шагу (по умолчанию 1 ч)<br><span id="nav-categories"></span>Часы — по календарным дням`, mount(foot));
   renderCategoryFooter(state.timeCategories);
 }
@@ -102,7 +174,6 @@ export function navigate(view) {
   if (!state.user) return;
   if (GRAFIK_ALIAS[view]) { state.grafikLayer = view; view = GRAFIK_ALIAS[view]; }
   state.view = view;
-  $('#sidenav').classList.remove('open');
   $$('.view').forEach(v => v.classList.remove('active'));
   let el = $(`#view-${view}`);
   if (!el && MODULE_VIEWS[view]) {     // раздел нового модуля: контейнер не нужно вписывать в index.html
@@ -365,7 +436,6 @@ $('#logout-btn').onclick = async () => {
   try { await api('/api/auth/logout', { method: 'POST', silent: true }); }
   catch { await expireAuthContext(started); }
 };
-$('#nav-toggle').onclick = () => $('#sidenav').classList.toggle('open');
 $('#change-pass-btn').onclick = () => openModal({
   title: 'Смена пароля',
   subtitle: 'Потребуется старый пароль для подтверждения',
