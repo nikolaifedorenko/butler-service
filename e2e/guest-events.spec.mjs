@@ -126,6 +126,8 @@ test('на узком экране календарь доступен в «Ра
   const agenda = await view.getByRole('region', { name: 'События дня' }).boundingBox();
   expect(agenda.y).toBeGreaterThan(grid.y + grid.height);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  const guest = view.getByRole('button', { name: 'Орлова Анна', exact: true });
+  expect((await guest.boundingBox()).height).toBeGreaterThanOrEqual(44);
 });
 
 test('у роли загрузки нет раздела и прямой адрес API закрыт', async ({ page }) => {

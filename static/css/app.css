@@ -1457,6 +1457,9 @@ tr.fund-retired td .badge { text-decoration: none; }
   .ge-mobile-count { display: block; font-weight: 700; }
   .ge-filler { text-align: center; }
 }
+@media (max-width: 860px) {
+  .ge .ge-person-name, .ge .ge-booking { min-height: var(--target-touch); }
+}
 @media (max-width: 510px) {
   .ge-filters { margin-inline-start: 0; }
   .ge-filters[open] { flex-basis: 100%; }
