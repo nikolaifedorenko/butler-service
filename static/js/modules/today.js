@@ -18,33 +18,74 @@ import { openOtNoteModal } from './me.js';
 registerModule({ views: { today: loadToday } });
 
 const PREF_TITLES = { allergy: 'Аллергия', food: 'Питание', habits: 'Привычки' };
+const READ_ERRORS = {
+  status: 'Не удалось загрузить статус смены.',
+  mine: 'Не удалось загрузить гостей.',
+  board: 'Не удалось загрузить данные о присутствии.',
+  all: 'Не удалось загрузить данные на сегодня.',
+};
+const RETRY_LABELS = {
+  status: 'Повторить загрузку статуса смены',
+  mine: 'Повторить загрузку гостей',
+  board: 'Повторить загрузку данных о присутствии',
+  all: 'Повторить загрузку данных на сегодня',
+};
+const READ_CHECKS = {
+  status: data => typeof data?.on_shift === 'boolean',
+  mine: data => typeof data?.date === 'string' && Array.isArray(data.reservations),
+  board: data => Array.isArray(data?.yet_to_come),
+};
 
 async function loadToday() {
   const started = authContextSnapshot(), owner = state.user, fresh = loadGeneration('today');
   const current = () => owner && owner === state.user && state.view === 'today' && fresh() && authContextIsCurrent(started);
   if (!current()) return;
-  const view = { loaded: false, busy: false, current };
-  async function refresh() {
-    if (!current()) return;
-    const read = path => api(path, { silent: true }).catch(() => null);
-    const [status, mine, board] = await Promise.all([
-      owner.employee_id ? read('/api/punches/status') : null,
-      owner.employee_id && can('stays.mine') ? read('/api/stays/mine/today') : null,
-      can('presence.view') ? read('/api/presence/board') : null,
-    ]);
-    if (!current()) return;
-    Object.assign(view, { status, mine, board, loaded: true });
-    if (status) syncServerClock(status.now);
+  const paths = {
+    status: owner.employee_id && '/api/punches/status',
+    mine: owner.employee_id && can('stays.mine') && '/api/stays/mine/today',
+    board: can('presence.view') && '/api/presence/board',
+  };
+  const blocks = Object.keys(paths).filter(key => paths[key]);
+  const errors = new Set(), pending = new Set();
+  const view = { busy: false, statusRevision: 0, current, blocks, errors, pending, refresh };
+
+  async function read(key) {
+    const revision = view.statusRevision;
+    const data = await api(paths[key], { silent: true }).catch(() => null);
+    pending.delete(key);
+    if (!current() || (key === 'status' && revision !== view.statusRevision)) return;
+    if (READ_CHECKS[key](data)) {
+      view[key] = data;
+      errors.delete(key);
+      if (key === 'status') syncServerClock(data.now);
+    } else {
+      view[key] = null;
+      errors.add(key);
+    }
     draw(view);
   }
-  draw(view);
+
+  async function refresh(keys = blocks) {
+    if (!current()) return;
+    const keysToRead = keys.filter(key => !pending.has(key) && !(key === 'status' && view.busy));
+    keysToRead.forEach(key => pending.add(key));
+    draw(view);
+    await Promise.all(keysToRead.map(read));
+  }
   await refresh();
   if (current()) poll('today', refresh);
 }
 
 function draw(view) {
   const host = $('#view-today');
-  if (host) render(screen(view), mount(host));
+  if (!host) return;
+  const previous = document.activeElement;
+  const target = host.contains(previous) && previous.dataset.todayRetry;
+  render(screen(view), mount(host));
+  if (target && !previous.isConnected && document.activeElement === document.body) {
+    const recovered = $(`[data-today-ready="${target}"]`, host) || $('[data-today-retry]', host) || $('.today-hello', host);
+    recovered?.focus({ preventScroll: true });
+  }
 }
 
 /* ── шапка: приветствие, дата, смена ── */
@@ -68,6 +109,7 @@ async function punch(view) {
   const s = view.status;
   if (!s || view.busy || !view.current()) return;
   view.busy = true;
+  view.statusRevision++;
   draw(view);
   try {
     const res = await api('/api/punches', { method: 'POST', body: { kind: s.on_shift ? 'out' : 'in' } });
@@ -101,17 +143,36 @@ function shiftStrip(view) {
   } else {
     /* по Графику смены нет, но отметиться можно: часы учтутся как переработка — как в «Моих отметках» */
     line = html`<div class="today-shift-k">График</div>
-      <div class="today-shift-v">Сегодня смены нет${canIn ? '' : ` · ${s.punch_status_hint || 'отметка недоступна'}`}</div>`;
+      <div class="today-shift-v">Сегодня смены нет${canIn ? '' : ` · ${s.punch_status_hint || 'отметка недоступна'}`}</div>
+      ${canIn ? html`<div class="today-shift-k">Часы будут учтены как переработка.</div>` : nothing}`;
     if (canIn) action = html`<button class="btn today-punch" id="today-punch" ?disabled=${view.busy} @click=${() => punch(view)}>Пришёл</button>`;
   }
-  return html`<div class="today-shift"><div class="today-shift-text">${line}</div>${action}</div>`;
+  return html`<div class="today-shift" data-today-ready="status" tabindex="-1"><div class="today-shift-text">${line}</div>${action}</div>`;
 }
 
-function head(view) {
+function loadError(view, key) {
+  const blocks = key === 'all' ? view.blocks : [key];
+  const waiting = blocks.some(block => view.pending.has(block));
+  return html`<div class="alert danger today-load-error" data-today-error=${key}>
+    <span role="status">${waiting ? 'Повторяем загрузку…' : READ_ERRORS[key]}</span>
+    <button class="btn btn-sm" data-today-retry=${key} aria-label=${RETRY_LABELS[key]} aria-disabled=${waiting}
+      @click=${() => { if (!blocks.some(block => view.pending.has(block))) view.refresh(blocks); }}>Повторить</button>
+  </div>`;
+}
+
+function todayBlock(view, key, content) {
+  if (view.errors.has(key)) return loadError(view, key);
+  if (!view[key] && view.pending.has(key)) {
+    return html`<div class="skel-wrap" aria-busy="true"><div class="skel-line skel-lg"></div><div class="skel-line"></div></div>`;
+  }
+  return content(view);
+}
+
+function head(view, allFailed) {
   return html`<header class="today-head">
     <div class="today-date">${dateLine()}</div>
-    <h2 class="today-hello">${greeting()}${firstName() ? html`, ${firstName()}` : nothing}</h2>
-    ${shiftStrip(view)}
+    <h2 class="today-hello" tabindex="-1">${greeting()}${firstName() ? html`, ${firstName()}` : nothing}</h2>
+    ${allFailed ? nothing : todayBlock(view, 'status', shiftStrip)}
   </header>`;
 }
 
@@ -172,7 +233,7 @@ function mineBlocks(view) {
     </div>
     <h3 class="today-h">Сейчас важно</h3>
     ${important ? resCard(important, today, true) : html`<div class="alert info" data-empty="important">Срочного нет: заездов и выездов на сегодня нет.</div>`}
-    <h3 class="today-h">Мои гости</h3>
+    <h3 class="today-h" data-today-ready="mine" tabindex="-1">Мои гости</h3>
     ${rest.length ? rest.map(r => resCard(r, today))
       : html`<div class="empty" data-empty="guests">${important ? 'Других гостей на сегодня нет' : 'Сегодня вы никого не ведёте'}</div>`}
     <div class="today-more-link"><button class="btn btn-sm btn-ghost" @click=${() => navigate('mystays')}>Все мои гости</button></div>`;
@@ -184,7 +245,7 @@ function boardBlock(view) {
   if (!b) return nothing;
   const late = b.yet_to_come.filter(a => a.already_started);
   return html`
-    <h3 class="today-h">Присутствие</h3>
+    <h3 class="today-h" data-today-ready="board" tabindex="-1">Присутствие</h3>
     <div class="stat-grid today-stats">
       <div class="stat accent"><div class="v" data-stat="at-work">${b.at_work_now}</div><div class="k">на работе</div></div>
       <div class="stat"><div class="v" data-stat="expected">${b.expected_now}</div><div class="k">по графику сейчас</div></div>
@@ -204,14 +265,14 @@ function shortcuts() {
 }
 
 function screen(view) {
-  if (!view.loaded) return html`<div class="today"><div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div></div>`;
-  const hasBlocks = view.status || view.mine || view.board;
+  const allFailed = view.blocks.length > 0 && view.errors.size === view.blocks.length;
   return html`<div class="today">
-    ${head(view)}
+    ${head(view, allFailed)}
     <div class="today-body">
-      ${mineBlocks(view)}
-      ${boardBlock(view)}
-      ${hasBlocks && (view.mine || view.board) ? nothing : shortcuts()}
+      ${allFailed ? loadError(view, 'all') : html`
+        ${todayBlock(view, 'mine', mineBlocks)}
+        ${todayBlock(view, 'board', boardBlock)}
+        ${view.blocks.includes('mine') || view.blocks.includes('board') ? nothing : shortcuts()}`}
     </div>
   </div>`;
 }

@@ -1181,6 +1181,9 @@ tr.fund-retired td .badge { text-decoration: none; }
 .today-shift-text { flex: 1; min-width: 0; }
 .today-shift-k { font-size: var(--text-sm); color: var(--on-navy-muted); }
 .today-shift-v { font-weight: 600; }
+.today-load-error { align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.today-load-error [aria-disabled="true"] { cursor: progress; opacity: .7; }
+.today-head .today-load-error { margin-top: var(--space-3); }
 .today-punch { min-height: 44px; padding: 0 var(--space-4); background: none; border-color: var(--gold); color: var(--warn-fg-soft);
   font-weight: 700; }
 .today-punch:hover { background: rgba(203, 176, 91, .14); border-color: var(--gold); }
