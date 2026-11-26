@@ -1397,15 +1397,18 @@ tr.fund-retired td .badge { text-decoration: none; }
 .ge-week-labels > div:nth-last-child(-n+2) { color: var(--brand-fg-strong); }
 .ge-cell, .ge-filler { min-width: 0; border-block-start: 1px solid var(--line); border-inline-end: 1px solid var(--line); }
 .ge-week > :last-child { border-inline-end: 0; }
+.ge-cell { display: grid; }
+.ge-cell-events { grid-area: 1 / 1; display: grid; align-content: start; gap: 2px; min-width: 0;
+  margin-block-start: 25px; padding: 0 var(--space-1) var(--space-1); pointer-events: none; }
 .ge-filler { padding: var(--space-1); background: var(--surface-1); color: var(--muted); }
-.ge-day { display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; min-height: 76px; height: 100%;
+.ge-day { grid-area: 1 / 1; display: flex; align-items: flex-start; width: 100%; min-width: 0; min-height: 76px;
   padding: var(--space-1); border: 0; background: var(--surface-0); color: var(--text); text-align: start; font: inherit; cursor: pointer; }
 .ge-cell:nth-last-child(-n+2) .ge-day { background: var(--surface-1); }
 .ge-day:hover { background: var(--surface-2); }
 .ge-day[aria-pressed=true] { background: var(--brand-bg); }
 .ge-day[aria-current=date] { box-shadow: inset 0 0 0 2px var(--brand-fg); }
 .ge-day:focus-visible { outline: 2px dashed var(--brand-fg-strong); outline-offset: -3px; }
-.ge-day-number { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); font-weight: 700; }
+.ge-day-number { display: flex; align-items: baseline; white-space: nowrap; gap: var(--space-1); font-weight: 700; }
 .ge-day-number > span, .ge-mobile-count, .ge-overflow { color: var(--brand-fg-strong); font-size: var(--text-xs); }
 .ge-preview { display: grid; grid-template-columns: 6px minmax(0, 1fr); column-gap: 4px; align-items: baseline; width: 100%; }
 .ge-preview::before, .ge-event h4::before { content: ''; border-radius: 50%; width: 6px; height: 6px; background: var(--ge-event-color); }
@@ -1448,7 +1451,8 @@ tr.fund-retired td .badge { text-decoration: none; }
   .ge-columns { grid-template-columns: minmax(0, 1fr); }
 }
 @container guest-events (max-width: 510px) {
-  .ge-day { min-height: 46px; align-items: center; padding: var(--space-1) 0; }
+  .ge-day { min-height: 46px; justify-content: center; padding: var(--space-1) 0; }
+  .ge-cell-events { text-align: center; padding-inline: 0; }
   .ge-day-number > span, .ge-preview, .ge-overflow { display: none; }
   .ge-mobile-count { display: block; font-weight: 700; }
   .ge-filler { text-align: center; }

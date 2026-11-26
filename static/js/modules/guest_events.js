@@ -23,7 +23,7 @@ const locale = options => new Intl.DateTimeFormat('ru-RU', { ...options, timeZon
 const monthLabel = locale({ month: 'long' });
 const dayLabel = locale({ day: 'numeric', month: 'long' });
 const weekdayLabel = locale({ weekday: 'long' });
-const accessibleDate = locale({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const accessibleDate = locale({ day: 'numeric', month: 'long', year: 'numeric' });
 const plurals = new Intl.PluralRules('ru');
 const cap = label => label[0].toUpperCase() + label.slice(1);
 const dateValue = iso => new Date(iso + 'T00:00:00Z');
@@ -69,18 +69,22 @@ function calendarGrid(month, selected, today, eventsByDate, busy, pick, keydown)
     ${monthWeeks(month).map(week => html`<div class="ge-week" role="row">${week.map(day => {
       if (firstOfMonth(day) !== month) return html`<div role="gridcell" class="ge-filler">${dayNumber(day)}</div>`;
       const events = eventsByDate.get(day) || [];
+      const date = dateValue(day);
+      const label = (day === today ? 'Сегодня ' : '') + accessibleDate.format(date) + ', ' + weekdayLabel.format(date);
       return html`<div role="gridcell" class="ge-cell"><button type="button" class="ge-day" data-ge-date=${day}
         tabindex=${selected === day ? '0' : '-1'} aria-pressed=${selected === day} aria-current=${day === today ? 'date' : nothing}
-        aria-label=${accessibleDate.format(dateValue(day)) + (events.length ? ' · ' + eventCount(events.length) : '')}
+        aria-label=${label + (events.length ? ' · ' + eventCount(events.length) : '')}
         @click=${() => pick(day)}>
-        <span class="ge-day-number" aria-hidden="true">${dayNumber(day)}${day === today ? html`<span>Сегодня</span>` : nothing}</span>
-        ${events.slice(0, 2).map(event => html`<span class="ge-preview" data-ge-kind=${event.kind} aria-hidden="true">
+        <span class="ge-day-number" aria-hidden="true">${day === today ? html`<span>Сегодня</span> ` : nothing}${dayNumber(day)}</span>
+      </button>
+      ${events.length ? html`<div class="ge-cell-events" aria-hidden="true">
+        ${events.slice(0, 2).map(event => html`<span class="ge-preview" data-ge-kind=${event.kind}>
           <span class="ge-preview-name">${event.people.map(g => g.name).join(' и ')}</span>
           <span class="ge-preview-type">${KIND_LABELS[event.kind]}</span>
         </span>`)}
-        ${events.length > 2 ? html`<span class="ge-overflow" aria-hidden="true">Ещё ${events.length - 2}</span>` : nothing}
-        ${events.length ? html`<span class="ge-mobile-count" aria-hidden="true">${events.length}</span>` : nothing}
-      </button></div>`;
+        ${events.length > 2 ? html`<span class="ge-overflow">Ещё ${events.length - 2}</span>` : nothing}
+        <span class="ge-mobile-count">${events.length}</span>
+      </div>` : nothing}</div>`;
     })}</div>`)}
   </div>`;
 }
@@ -159,7 +163,7 @@ function loadGuestEvents() {
   let pending = false;
   let controller = null;
   let cardRequest = 0;
-  let initial = true;
+  let followToday = true;
   const month = () => firstOfMonth(selected);
   const dayButton = () => $(`[data-ge-date="${selected}"]`, host);
   const filterButton = () => $('.ge-filters summary', host);
@@ -173,7 +177,7 @@ function loadGuestEvents() {
     fault = '';
     draw();
     const params = new URLSearchParams();
-    if (!initial) params.set('month', month());
+    if (!followToday) params.set('month', month());
     if (filters.kind) params.set('kind', filters.kind);
     if (filters.confirmed) params.set('confirmed_only', 'true');
     filters.vip.forEach(id => params.append('vip_code_ids', id));
@@ -185,8 +189,8 @@ function loadGuestEvents() {
           || !Array.isArray(data?.filters?.vip_codes)) throw new Error('Некорректный ответ');
       const focusDay = document.activeElement === dayButton();
       today = data.today;
-      if (initial) selected = today;
-      initial = false;
+      if (followToday) selected = today;
+      followToday = false;
       payload = data;
       if (!data.filters.guest_details) filters = { ...filters, vip: [], special: false };
       pending = false;
@@ -205,11 +209,17 @@ function loadGuestEvents() {
   function pick(day, focus = false) {
     const previousMonth = month();
     selected = day;
-    if (month() !== previousMonth || initial) {
-      initial = false;
+    if (month() !== previousMonth || followToday) {
+      followToday = false;
       refresh();
     } else draw();
     if (focus) dayButton()?.focus({ preventScroll: true });
+  }
+
+  function showToday() {
+    selected = today;
+    followToday = true;
+    refresh();
   }
 
   function keydown(event) {
@@ -272,7 +282,7 @@ function loadGuestEvents() {
       <header class="page-head"><h2>${TITLE}</h2></header>
       <div class="ge-toolbar">
         ${periodNav('ge-period', title, delta => pick(stepMonth(month(), delta)))}
-        <button type="button" class="btn btn-sm" @click=${() => pick(today)}>Сегодня</button>
+        <button type="button" class="btn btn-sm" @click=${showToday}>Сегодня</button>
         ${filterPanel(filters, available, update, () => update(emptyFilters()), closeFilter, () => filterButton()?.focus())}
       </div>
       <div class="ge-content"><div class="ge-columns">

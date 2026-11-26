@@ -67,6 +67,24 @@ test('месяц открывается на сегодня, выбор дня �
   await expect(agenda.getByText('Орлова Анна')).toBeVisible();
 });
 
+test('кнопка «Сегодня» учитывает смену даты объекта в открытом календаре', async ({ page }) => {
+  let propertyDate = '2026-11-30';
+  await page.route(url => url.pathname === '/api/stays/guest-events', route => {
+    const params = new URL(route.request().url()).searchParams;
+    return route.fulfill({ json: {
+      month: params.get('month') || propertyDate.slice(0, 7) + '-01', today: propertyDate,
+      filters: { guest_details: true, vip_codes: [] }, events: [],
+    } });
+  });
+  await login(page, 'admin');
+  await calendarNav(page).click();
+  await expect(day(page, propertyDate)).toHaveAttribute('aria-current', 'date');
+  propertyDate = '2026-12-01';
+  await screen(page).getByRole('button', { name: 'Сегодня', exact: true }).click();
+  await expect(day(page, propertyDate)).toHaveAttribute('aria-current', 'date');
+  await expect(day(page, propertyDate)).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('панель фильтров показывает число, отправляет несколько VIP-кодов и позволяет сбросить', async ({ page }) => {
   await stubEvents(page);
   await login(page, 'admin');
