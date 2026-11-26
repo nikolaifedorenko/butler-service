@@ -216,3 +216,51 @@ test('гость без брони появляется в повестке и �
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
 });
+
+test('смена дня отменяет запоздалое открытие карточки даже при возврате на прежний день', async ({ page }) => {
+  await login(page, 'admin');
+  await stubEvents(page);
+  await calendarNav(page).click();
+  const trigger = screen(page).getByRole('button', { name: 'Орлова Анна', exact: true });
+  const path = '**/api/stays/guests/1/card';
+  const requested = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  await page.route(path, async route => {
+    const response = await route.fetch();
+    requested.resolve();
+    await release.promise;
+    await route.fulfill({ response });
+  }, { times: 1 });
+
+  await trigger.click();
+  await requested.promise;
+  try {
+    await day(page, '2026-11-27').click();
+    await day(page, today).click();
+    await expect(trigger).toBeVisible();
+    const delivered = page.waitForResponse(path);
+    release.resolve();
+    await (await delivered).finished();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator('#drawer')).toBeHidden();
+  } finally {
+    release.resolve();
+  }
+  await trigger.click();
+  await expect(page.locator('#drawer')).toBeVisible();
+});
+
+test('клавиатурный переход оставляет выбранный день над нижней панелью', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 410 });
+  await login(page, 'admin');
+  await stubEvents(page);
+  await page.locator('#mobile-sections').click();
+  await page.getByRole('button', { name: 'Календарь событий', exact: true }).click();
+  await day(page, '2026-11-01').click();
+  await page.locator('main.content').evaluate(element => { element.scrollTop = 0; });
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  const selected = day(page, '2026-11-22');
+  await expect(selected).toBeFocused();
+  await expect.poll(() => selected.evaluate(element =>
+    element.getBoundingClientRect().bottom <= document.querySelector('#tabbar').getBoundingClientRect().top)).toBe(true);
+});

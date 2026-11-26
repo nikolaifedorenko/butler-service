@@ -168,6 +168,17 @@ function loadGuestEvents() {
   const dayButton = () => $(`[data-ge-date="${selected}"]`, host);
   const filterButton = () => $('.ge-filters summary', host);
 
+  function focusSelectedDay() {
+    const button = dayButton();
+    if (!button) return;
+    button.focus();
+    const tabbar = $('#tabbar');
+    if (tabbar?.getClientRects().length
+        && button.getBoundingClientRect().bottom > tabbar.getBoundingClientRect().top) {
+      button.scrollIntoView({ block: 'center' });
+    }
+  }
+
   async function refresh() {
     if (!current()) return;
     controller?.abort();
@@ -195,7 +206,7 @@ function loadGuestEvents() {
       if (!data.filters.guest_details) filters = { ...filters, vip: [], special: false };
       pending = false;
       draw();
-      if (focusDay) dayButton()?.focus({ preventScroll: true });
+      if (focusDay) focusSelectedDay();
     } catch (error) {
       if (request !== controller || !current()) return;
       fault = error.status === 403 ? 'denied' : 'error';
@@ -207,16 +218,18 @@ function loadGuestEvents() {
   }
 
   function pick(day, focus = false) {
+    cardRequest++;
     const previousMonth = month();
     selected = day;
     if (month() !== previousMonth || followToday) {
       followToday = false;
       refresh();
     } else draw();
-    if (focus) dayButton()?.focus({ preventScroll: true });
+    if (focus) focusSelectedDay();
   }
 
   function showToday() {
+    cardRequest++;
     selected = today;
     followToday = true;
     refresh();
@@ -270,7 +283,11 @@ function loadGuestEvents() {
     const display = dateValue(selected);
     const monthDate = dateValue(month());
     const title = `${cap(monthLabel.format(monthDate))} ${monthDate.getUTCFullYear()}`;
-    const update = patch => { filters = { ...filters, ...patch }; refresh(); };
+    const update = patch => {
+      cardRequest++;
+      filters = { ...filters, ...patch };
+      refresh();
+    };
     const closeFilter = () => { $('.ge-filters', host).open = false; filterButton()?.focus(); };
     const retry = event => { refresh(); dayButton()?.focus({ preventScroll: true }); event.preventDefault(); };
     const agendaBody = pending ? dataState('loading', 'Загружаем события…')
