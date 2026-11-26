@@ -46,7 +46,7 @@ test('предпочтения гостя обозначены словами и
   await expect(mine).not.toContainText('allergy:');
   await expect(mine).toContainText('Время завтрака: 08:00');
   const card = mine.locator('.mine-guest').filter({ hasText: 'Аллергия: орехи' });
-  await card.getByRole('button', { name: 'Карточка гостя' }).click();
+  await card.getByRole('button', { name: guest.name, exact: true }).click();
   const dialog = page.locator('#modal');
   await expect(dialog).toContainText('Аллергия: орехи');
   await dialog.getByRole('button', { name: 'Семья, связи, пожелания' }).click();

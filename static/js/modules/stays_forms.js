@@ -145,6 +145,7 @@ export async function openReservationForm(id, opts = {}) {
   const fund = await staysFund();
   const rFields = fund.fields.filter(f => f.target === 'reservation');
   const r = id ? await api(`/api/stays/reservations/${id}`) : null;
+  if (opts.isCurrent && !opts.isCurrent()) return;
   const form = {
     occupants: (r?.occupants || []).map(o => ({ ...o })),
     moves: (r?.moves || []).map(mv => ({ ...mv })),

@@ -941,6 +941,7 @@ const $ = s => window.document.querySelector(s);
     check('пожелания на сервере совпадают с карточкой', saved.length === $$('#gc-prefs [data-pref-row]').length, JSON.stringify(saved));
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#modal').innerHTML));
     click($('#modal [data-close]'));
+    click($('#drawer .x'));
     await sleep(200);
   }
   
@@ -991,16 +992,23 @@ const $ = s => window.document.querySelector(s);
     const tcard = text(`[data-mine-card="${tent.id}"]`);
     check('«Сегодня»: предварительная и логистика сегодня/завтра', /предварительная/.test(tcard) && /сегодня/.test(tcard) && tcard.includes('встреча ' + uniq)
       && /завтра/.test(tcard) && tcard.includes('проводы ' + uniq), tcard);
-    check('«Сегодня»: кнопки «Изменить» по правам', !!$(`[data-mine-res="${over.id}"]`) === (me_can('stays.mine_res_edit')));
+    check('«Сегодня»: основное действие открывает бронь', !!$(`[data-mine-open="${over.id}"]`));
+    check('«Сегодня»: правка доступна из карточки брони', !$(`[data-mine-res="${over.id}"]`));
     check('«Сегодня»: чужой брони нет', !$(`[data-mine-card="${foreign.id}"]`));
-    click($(`[data-mine-res="${over.id}"]`));
-    check('«Сегодня» → «Изменить»: форма брони, даты заперты', await waitFor(() => $('#rf-check-in')?.disabled === true));
+    const openBooking = $(`[data-mine-open="${over.id}"]`);
+    openBooking?.focus();
+    click(openBooking);
+    check('в карточке «Изменить» по правам', await waitFor(() => $('#modal-title')?.textContent.includes('Бронь'))
+      && !!$('#rc-edit') === me_can('stays.mine_res_edit'));
+    click($('#rc-edit'));
+    check('«Сегодня» → «Открыть бронь» → «Изменить»: даты заперты', await waitFor(() => $('#rf-check-in')?.disabled === true));
     input($('#rf-note'), 'дописал батлер ' + uniq);
     click($('[data-save]'));
     const saved = await pollApi(`/api/stays/reservations/${over.id}`, r => r.note === 'дописал батлер ' + uniq);
     check('«Сегодня»: примечание сохранено', saved.note === 'дописал батлер ' + uniq);
     check('после сохранения экран открыт, примечание на карточке', await waitFor(() => !$('#rf-check-in')
       && text(`[data-mine-card="${over.id}"]`).includes('дописал батлер ' + uniq)), text(`[data-mine-card="${over.id}"]`));
+    check('после записи фокус на той же брони', await waitFor(() => document.activeElement?.dataset.mineOpen === String(over.id)));
   
     /* «Мой месяц» */
     click($('[data-mtab="month"]'));
@@ -1887,10 +1895,8 @@ const $ = s => window.document.querySelector(s);
     const r = await MODS.core.api('/api/auth/login', { method: 'POST',
       body: { username, password: 'demo1234' } });
     if (!r?.auth_context) return false;
-    MODS.app.bootApp();
-    const ok = await waitFor(() => !$('#app').classList.contains('hidden'), 30000);
-    await sleep(500);
-    return ok;
+    await MODS.app.bootApp();
+    return !$('#app').classList.contains('hidden');
   }
   
   async function main() {

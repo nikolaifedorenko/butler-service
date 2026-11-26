@@ -9,11 +9,11 @@
 'use strict';
 
 import { can } from '../app.js';
-import { $, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
+import { $, api, authContextIsCurrent, authContextSnapshot, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
-import { STAYS_ROLE, STAYS_STATUS, guestPreferenceLabel, openGuestCard, openGuestForm, openReservationForm } from './stays_forms.js';
+import { STAYS_ROLE, STAYS_STATUS, guestPreferenceLabel, openGuestCard, openGuestForm } from './stays_forms.js';
 import {
-  STAYS_SPECIAL_MARK, openReservationCard, staysAddDays, staysCodeTagView, staysDayHeadView, staysFocusDay, staysFund,
+  STAYS_SPECIAL_MARK, openOwnReservationCard, openReservationCard, staysAddDays, staysCodeTagView, staysDayHeadView, staysFocusDay, staysFund,
   staysGuestMarkView, staysMonthNavView, staysMonthRange, staysPos, staysToday, staysWeight,
 } from './stays.js';
 
@@ -23,12 +23,11 @@ const MINE_PAGE = 50;
 export const mineState = { tab: 'today', q: '' };
 
 const mineDdmm = iso => dateRu(iso).slice(0, 5);
-const mineCanResEdit = () => can('stays.edit') || can('stays.mine_res_edit');
 const mineCanGuestEdit = () => can('stays.edit') || can('stays.mine_guest_edit');
 
 export async function renderMine() {
   const host = $('#view-mystays');
-  render(html`<div class="page-head"><div><h2>Мои гости</h2></div></div>
+  render(html`<div class="page-head"><div><h2 tabindex="-1">Мои гости</h2></div></div>
     <div class="layer-tabs mine-tabs">${MINE_TABS.map(([id, title]) =>
       html`<button class=${`btn btn-sm${mineState.tab === id ? ' btn-primary' : ''}`} data-mtab=${id}
         @click=${() => { mineState.tab = id; renderMine(); }}>${title}</button>`)}</div>
@@ -52,23 +51,55 @@ function mineLogisticsDay(date, today) {
   return date === staysAddDays(today, 1) ? 'завтра' : mineDdmm(date);
 }
 
+let mineRequest = 0;
+async function openMineItem(selector, open) {
+  const trigger = () => $(`#view-mystays ${selector}`);
+  const source = trigger();
+  if (!source || source.getAttribute('aria-busy') === 'true') return;
+  const auth = authContextSnapshot(), tab = mineState.tab, request = ++mineRequest;
+  const sameView = () => state.view === 'mystays' && mineState.tab === tab && authContextIsCurrent(auth);
+  const returnFocusTo = () => sameView() ? trigger() || $('#view-mystays h2') : null;
+  const reopenCurrent = () => {
+    const current = trigger();
+    return sameView() && request === mineRequest && current && !current.closest('[inert]');
+  };
+  const isCurrent = () => source.isConnected && reopenCurrent();
+  if (!isCurrent()) return;
+  const onChanged = async () => {
+    if (!sameView()) return;
+    const restore = document.activeElement === returnFocusTo();
+    await renderMine();
+    if (restore && document.activeElement === document.body) returnFocusTo()?.focus();
+  };
+  source.setAttribute('aria-busy', 'true');
+  try { await open({ isCurrent, reopenCurrent, returnFocusTo, onChanged, silent: true }); }
+  catch (err) { if (isCurrent()) toast(err.message, 'err'); }
+  finally { source.removeAttribute('aria-busy'); }
+}
+
+function openMineBooking(r) {
+  return openMineItem(`[data-mine-open="${r.reservation_id}"]`, ({ onChanged, ...options }) => {
+    if (can('stays.view')) return openReservationCard(r.reservation_id, onChanged, options);
+    const detail = [...r.logistics.map(item => `${item.time || ''} ${item.description}`.trim()), r.note].filter(Boolean).join('. ');
+    openOwnReservationCard(r, { ...options, detail, onChanged });
+  });
+}
+
 const mineTodayCard = (r, today) => html`<div class="panel mine-card" data-mine-card=${r.reservation_id}>
     <h3 class="panel-title">${r.unit || 'без объекта'}${r.departing ? html` <span class="badge warn">выезд сегодня</span>` : nothing}${r.status === 'tentative' ? html` <span class="badge muted">предварительная</span>` : nothing}</h3>
     <div class="muted">${r.number || ''} · заезд ${dateRu(r.check_in)} — выезд ${dateRu(r.check_out)}</div>
     ${r.note ? html`<p class="muted" data-mine-note>${r.note}</p>` : nothing}
     ${r.guests.map(g => html`<div class="mine-guest" data-mine-guest-row=${g.guest_id}>
-      <b>${staysGuestMarkView(g.special)}${g.name}</b>${staysCodeTagView(g.vip_code)}
+      <button type="button" class="mine-guest-name" data-mine-guest=${g.guest_id} aria-label=${g.name}
+        @click=${() => openMineItem(`[data-mine-card="${r.reservation_id}"] [data-mine-guest="${g.guest_id}"]`,
+          ({ onChanged, ...options }) => openMineGuest(g.guest_id, onChanged, options))}>${staysGuestMarkView(g.special)}${g.name}</button>${staysCodeTagView(g.vip_code)}
       <span class="muted">${STAYS_ROLE[g.role] || g.role}${g.phone ? ' · ' + g.phone : ''}</span>
       ${g.departing && !r.departing ? html` <span class="badge warn">выезд сегодня</span>` : nothing}
       ${Object.entries(g.preferences).filter(([, v]) => v).map(([k, v]) => html`<div class="muted">${guestPreferenceLabel(k)}: ${v}</div>`)}
-      ${g.special_dates_soon.map(s => html`<div class="muted" data-mine-soon>🎉 ${dateRu(s.date)} — ${s.what}</div>`)}
-      <button class="btn btn-sm btn-ghost" data-mine-guest=${g.guest_id}
-        @click=${() => openMineGuest(g.guest_id, renderMine).catch(e => toast(e.message, 'err'))}>Карточка гостя</button></div>`)}
+      ${g.special_dates_soon.map(s => html`<div class="muted" data-mine-soon>🎉 ${dateRu(s.date)} — ${s.what}</div>`)}</div>`)}
     ${r.logistics.map(l => html`<div data-mine-logistics>🚗 <b>${mineLogisticsDay(l.date, today)}</b> ${l.time} ${l.description}</div>`)}
-    <div class="sb-line"><button class="btn btn-sm btn-ghost" data-mine-open=${r.reservation_id}
-        @click=${() => openReservationCard(r.reservation_id, renderMine).catch(e => toast(e.message, 'err'))}>Бронь…</button>
-      ${mineCanResEdit() ? html`<button class="btn btn-sm" data-mine-res=${r.reservation_id}
-        @click=${() => openReservationForm(r.reservation_id, { mine: !can('stays.edit'), onSaved: renderMine })}>Изменить</button>` : nothing}</div>
+    <div class="sb-line"><button type="button" class="btn btn-primary" data-mine-open=${r.reservation_id}
+        @click=${() => openMineBooking(r)}>Открыть бронь</button></div>
   </div>`;
 
 async function renderMineToday(body, fresh) {
@@ -184,13 +215,15 @@ async function renderMineGuests(body) {
 /* «вёл я 03.05–08.05» / «вёл(а) Кузнецова 03.05–08.05»: last с сервера — утро после последней ночи, как есть */
 const mineLed = l => html`<div class="muted" data-mine-led data-me=${l.me ? '1' : nothing}>${l.me ? 'вёл я' : 'вёл(а) ' + l.name} ${mineDdmm(l.first)}–${mineDdmm(l.last)}</div>`;
 
-async function openMineGuest(gid, onChanged) {
-  const [g, fund] = await Promise.all([api(`/api/stays/mine/guests/${gid}`), staysFund().catch(() => ({ fields: [] }))]);
+async function openMineGuest(gid, onChanged, options = {}) {
+  const { isCurrent = () => true, reopenCurrent = isCurrent, returnFocusTo, silent = false } = options;
+  const [g, fund] = await Promise.all([api(`/api/stays/mine/guests/${gid}`, { silent }), staysFund().catch(() => ({ fields: [] }))]);
+  if (!isCurrent()) return;
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   const prefs = Object.entries(g.preferences).filter(([, v]) => v);
   const canEdit = mineCanGuestEdit();
   openModal({
-    title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true,
+    title: `${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}`.trim(), wide: true, returnFocusTo,
     subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}` : '', g.phone_display, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
     body: html`<h4>Предпочтения</h4>${prefs.length ? prefs.map(([k, v]) => html`<div>${guestPreferenceLabel(k)}: ${v}</div>`) : html`<span class="muted">нет</span>`}
       ${g.special_dates.length ? html`<h4>Особые даты</h4>${g.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`)}` : nothing}
@@ -206,10 +239,18 @@ async function openMineGuest(gid, onChanged) {
       ${canEdit ? html`<button class="btn btn-primary" id="mg-edit">Изменить профиль</button>` : nothing}`,
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
-      const reopen = () => { openMineGuest(gid, onChanged).catch(e => toast(e.message, 'err')); if (onChanged) onChanged(); };
+      const reopen = async () => {
+        if (onChanged) await onChanged();
+        await openMineGuest(gid, onChanged, { ...options, isCurrent: reopenCurrent }).catch(e => toast(e.message, 'err'));
+      };
       $('#mg-family', m).onclick = () => openGuestCard(gid, onChanged).catch(e => toast(e.message, 'err'));
       const edit = $('#mg-edit', m);
-      if (edit) edit.onclick = () => openGuestForm(gid, reopen, { mine: !can('stays.edit') }).catch(e => toast(e.message, 'err'));
+      if (edit) {
+        const source = m.firstElementChild;
+        const current = () => source.isConnected && !source.closest('[inert]');
+        edit.onclick = () => openGuestForm(gid, reopen, { mine: !can('stays.edit'), isCurrent: current })
+          .catch(e => { if (current()) toast(e.message, 'err'); });
+      }
     },
   });
 }
