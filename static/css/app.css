@@ -1264,13 +1264,8 @@ tr.fund-retired td .badge { text-decoration: none; }
 .sf-saved-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex-basis: 100%;
   justify-content: flex-end; }
 
-/* Микро-поиск гостя в шапке шахматки: результаты — панель под строкой, не сдвигая доску */
-.guest-find { position: relative; }
-.guest-find input[type=search] { width: 240px; }
-.guest-find-res { position: absolute; top: 100%; right: 0; z-index: 30; display: flex; flex-direction: column;
-  gap: 2px; min-width: 260px; max-height: 50vh; overflow-y: auto; padding: var(--space-1);
-  background: var(--surface-0); border: 1px solid var(--line); border-radius: var(--r-md);
-  box-shadow: var(--shadow-lg); }
+.guest-lookup-results { display: grid; gap: var(--space-1); }
+.guest-lookup-results [data-sg-guest] { min-height: 44px; }
 
 /* Семейное дерево (переработка 23.11.2026): партнёры и бывшие — отдельные блоки,
    бывшие приглушены; действия связи — компактные кнопки рядом с человеком */

@@ -119,10 +119,12 @@ test('карточка из шахматки открывает холст и с
   await open(page, 'stays');
   const board = page.locator('#view-stays');
   await board.locator('[data-stab=day]').click();
-  await board.locator('#sg-q').fill(data.surname);
-  await expect(board.locator(`[data-sg-guest="${data.second}"]`)).toContainText('Ольга Петровна');
-  await expect(board.locator(`[data-sg-guest="${data.second}"]`)).toContainText('16.03.1992');
-  await board.locator(`[data-sg-guest="${data.origin}"]`).click();
+  await board.getByRole('button', { name: 'Найти гостя', exact: true }).click();
+  const search = page.getByRole('dialog', { name: 'Найти гостя' });
+  await search.locator('#sg-q').fill(data.surname);
+  await expect(search.locator(`[data-sg-guest="${data.second}"]`)).toContainText('Ольга Петровна');
+  await expect(search.locator(`[data-sg-guest="${data.second}"]`)).toContainText('16.03.1992');
+  await search.locator(`[data-sg-guest="${data.origin}"]`).click();
   const drawer = page.locator('#drawer');
   await drawer.getByRole('button', { name: 'Открыть семейное дерево' }).click();
   const tree = page.getByRole('region', { name: 'Холст семейного дерева' });
@@ -164,6 +166,7 @@ test('карточка из шахматки открывает холст и с
   await page.getByRole('button', { name: 'К шахматке' }).click();
   await expect(board).toBeVisible();
   await expect(board.locator('[data-stab=day]')).toHaveClass(/btn-primary/);
+  await expect(board.locator('#sb-find-guest')).toBeFocused();
   expect(errors).toEqual([]);
 });
 
@@ -173,16 +176,17 @@ test('поиск гостя не принимает запоздавший от�
     const response = await fetch('/api/stays/guests/list?limit=1');
     return (await response.json()).rows[0].id;
   });
-  let releaseOld;
-  let markOldStarted;
+  let releaseOld, markOldStarted, markOldServed;
   const oldMayFinish = new Promise(resolve => { releaseOld = resolve; });
   const oldStarted = new Promise(resolve => { markOldStarted = resolve; });
+  const oldServed = new Promise(resolve => { markOldServed = resolve; });
   await page.route('**/api/stays/guests?**', async route => {
     const q = new URL(route.request().url()).searchParams.get('q');
     if (q === 'Старый') {
       markOldStarted();
       await oldMayFinish;
       await route.fulfill({ json: [{ id: 910001, short: 'Старый ответ' }] });
+      markOldServed();
     } else if (q === 'Новый') {
       await route.fulfill({ json: [{ id: guestId, short: 'Новый ответ' }] });
     } else {
@@ -190,18 +194,27 @@ test('поиск гостя не принимает запоздавший от�
     }
   });
   await open(page, 'stays');
-  const search = page.locator('#view-stays #sg-q');
+  const action = page.locator('#view-stays #sb-find-guest');
+  await action.click();
+  const lookup = page.getByRole('dialog', { name: 'Найти гостя' });
+  const search = lookup.locator('#sg-q');
+  const results = lookup.locator('[data-sg-res]');
   await search.fill('Старый');
-  await oldStarted;
-  await page.locator('#view-stays [data-stab=day]').click();
-  await search.fill('Новый');
-  const result = page.locator('#view-stays [data-sg-res]');
-  await expect(result).toContainText('Новый ответ');
-  await result.getByRole('button', { name: 'Новый ответ' }).click();
-  await expect(result).toBeEmpty();
-  releaseOld();
-  await page.waitForTimeout(500);
-  await expect(result).toBeEmpty();
+  try {
+    await oldStarted;
+    await page.keyboard.press('Escape');
+    await action.click();
+    await search.fill('Новый');
+    await expect(results).toContainText('Новый ответ');
+  } finally {
+    releaseOld();
+  }
+  await oldServed;
+  await expect(results).toContainText('Новый ответ');
+  await expect(results).not.toContainText('Старый ответ');
+  await results.getByRole('button', { name: 'Новый ответ' }).click();
+  await expect(page.locator('#drawer')).toBeVisible();
+  await expect(lookup).toHaveCount(0);
 });
 
 test('форма брони: открывается с кнопкой «Проверить» и закрывается без ошибок', async ({ page }) => {
