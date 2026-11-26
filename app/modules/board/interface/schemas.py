@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from app.core.schemas import ApiModel
 from app.modules.guests.application.guest_schemas import GuestCardOut, GuestPrefOut  # noqa: F401
+from app.modules.stays.application.guest_events import EventKind, Presence
 
 JsonDict = dict[str, Any]
 
@@ -113,6 +114,41 @@ class OccupancyOut(ApiModel):
     days: list[str]
     nodes: list[JsonDict]
     total: JsonDict
+
+
+class GuestEventPersonOut(ApiModel):
+    guest_id: int
+    name: str
+    status: Presence
+    unit: str | None
+    reservation_id: int | None
+    vip_code: str | None
+    special: bool | None
+
+
+class GuestEventOut(ApiModel):
+    id: str
+    date: dt.date
+    kind: EventKind
+    title: str
+    people: list[GuestEventPersonOut]
+
+
+class GuestEventVipCodeOut(ApiModel):
+    id: int
+    code: str
+
+
+class GuestEventFiltersOut(ApiModel):
+    guest_details: bool
+    vip_codes: list[GuestEventVipCodeOut]
+
+
+class GuestEventsOut(ApiModel):
+    month: dt.date
+    today: dt.date
+    filters: GuestEventFiltersOut
+    events: list[GuestEventOut]
 
 
 class MineAnniversaryGuestOut(ApiModel):

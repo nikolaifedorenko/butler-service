@@ -17,6 +17,7 @@ from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
 from app.core.time import local_date
+from app.modules.stays.application import guest_events
 from app.modules.stays.application import mine as mine_app
 from app.modules.stays.application.duty import timesheet_duty
 
@@ -24,6 +25,7 @@ from ..application import board_screen, boards, mine_screen, views
 from .schemas import (
     ButlersBoardOut,
     DayBoardOut,
+    GuestEventsOut,
     MineGuestCardOut,
     MineGuestsOut,
     MineMonthOut,
@@ -84,3 +86,13 @@ def mine_guest_card(gid: int, principal: Principal = Depends(require_perm("stays
                     db: Session = Depends(get_db)):
     """Карточка своего гостя: профиль целиком и история проживаний с тем, кто его вёл. Чужой — 403."""
     return mine_screen.guest_card(db, principal, gid)
+
+
+@router.get("/guest-events", response_model=GuestEventsOut)
+def events_calendar(month: dt.date | None = None, kind: guest_events.EventKind | None = None,
+                    confirmed_only: bool = False, vip_code_ids: list[int] = Query(default=[]), special: bool = False,
+                    principal: Principal = Depends(require_perm("stays.guests", "stays.mine")),
+                    db: Session = Depends(get_db)):
+    """Месяц событий доступных гостей и их проживание на дату события."""
+    return guest_events.calendar(db, principal, month, kind=kind, confirmed_only=confirmed_only,
+                                 vip_code_ids=vip_code_ids, special=special)
