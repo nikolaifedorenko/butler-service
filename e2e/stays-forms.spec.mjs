@@ -317,7 +317,7 @@ test('замена нижнего modal возвращает фокус в ве�
   await expect(page.locator('#overlay-replace-opener')).toBeFocused();
 });
 
-test('замена нижнего modal с фокусом в нём использует прежний fallback', async ({ page }) => {
+test('нижний modal не принимает фокус, а его замена сохраняет порядок возврата', async ({ page }) => {
   await login(page, 'admin');
   await page.evaluate(async () => {
     const core = await import('/static/js/core.js');
@@ -330,10 +330,17 @@ test('замена нижнего modal с фокусом в нём исполь
     core.openModal({ title: 'Первое окно', body: html`<button id="stale-modal-focus">Внутри</button>` });
     core.openDrawer({ title: 'Верхняя карточка', body: html`<p>Карточка</p>` });
     document.getElementById('stale-modal-focus').focus();
-    core.openModal({ title: 'Второе окно', body: html`<p>Новая версия окна</p>` });
+  });
+  const drawerClose = page.locator('#drawer .x');
+  await expect(drawerClose).toBeFocused();
+  await page.evaluate(async () => {
+    const { openModal } = await import('/static/js/core.js');
+    openModal({ title: 'Второе окно', body: 'Новая версия окна' });
   });
   await page.keyboard.press('Escape');
   await expect(page.locator('#modal-backdrop')).toBeHidden();
+  await expect(drawerClose).toBeFocused();
+  await page.keyboard.press('Escape');
   await expect(page.locator('#overlay-stale-opener')).toBeFocused();
 });
 

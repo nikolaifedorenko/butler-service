@@ -1,14 +1,14 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-11-26a';
-// содержимое оболочки: 7a695ad48f57fc89
+const VERSION = 'tt-2026-11-26-ux01';
+// содержимое оболочки: d01d64d4c26fdd8e
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-11-26a',
-  '/static/css/base.css?v=2026-11-26a',
-  '/static/css/components.css?v=2026-11-26a',
-  '/static/css/tokens.css?v=2026-11-26a',
+  '/static/css/app.css?v=2026-11-26-ux01',
+  '/static/css/base.css?v=2026-11-26-ux01',
+  '/static/css/components.css?v=2026-11-26-ux01',
+  '/static/css/tokens.css?v=2026-11-26-ux01',
   '/static/js/app.js',
   '/static/js/core.js',
   '/static/js/modules/access.js',
@@ -57,13 +57,13 @@ const SHELL = [
   '/static/js/modules/timesheet_common.js',
   '/static/js/modules/timesheet_layers.js',
   '/static/js/modules/today.js',
-  '/static/js/print-page.js?v=2026-11-26a',
+  '/static/js/print-page.js?v=2026-11-26-ux01',
   '/static/js/registry.js',
   '/static/js/ui/form.js',
   '/static/js/ui/guest_picker.js',
   '/static/js/ui/html.js',
   '/static/js/ui/palette.js',
-  '/static/js/ui/theme.js?v=2026-11-26a',
+  '/static/js/ui/theme.js?v=2026-11-26-ux01',
   '/static/vendor/lit-html/directive.js',
   '/static/vendor/lit-html/lit-html.js',
   '/manifest.webmanifest',
