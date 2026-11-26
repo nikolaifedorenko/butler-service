@@ -1237,3 +1237,50 @@ tr.fund-retired td .badge { text-decoration: none; }
 .ft-person.ft-muted { opacity: .6; }
 .ft-ex-block .ft-person { border-style: dashed; }
 .ft-actions { display: inline-flex; gap: 4px; }
+
+/* Холст семейного дерева в разделе «Гости» */
+.family-canvas-top, .family-canvas-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.family-canvas-top { justify-content: space-between; margin-bottom: var(--space-3); }
+.family-canvas-zoom { display: inline-flex; align-items: center; gap: var(--space-1); background: var(--surface-0);
+  border: 1px solid var(--line); border-radius: var(--r-md); }
+.family-canvas-zoom output { min-width: 4ch; text-align: center; font-variant-numeric: tabular-nums; font-size: var(--text-sm); }
+.family-canvas-scroll { position: relative; display: flex; overflow: auto; height: clamp(300px, 63dvh, 760px);
+  border: 1px solid var(--line); border-radius: var(--r-lg); background-color: var(--surface-1);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 18px 18px; }
+.family-canvas-size { position: relative; flex: none; margin-inline: auto; overflow: hidden; }
+.family-canvas-stage, .family-canvas-lines { position: absolute; inset: 0 auto auto 0; transform-origin: top left; }
+.family-canvas-person { position: absolute; display: flex; align-items: center; gap: 10px; padding: 10px;
+  text-align: left; background: var(--surface-0); color: var(--text); border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg); font: inherit; cursor: pointer; box-shadow: var(--shadow); }
+.family-canvas-person:hover { border-color: var(--primary); background: var(--surface-1); }
+.family-canvas-person[data-family-origin] { border-color: var(--primary); background: var(--brand-bg); }
+.family-canvas-initials { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--surface-2); color: var(--brand-fg-strong); font-size: var(--text-sm); font-weight: 750; }
+.family-canvas-person[data-family-origin] .family-canvas-initials { background: var(--brand-solid); color: var(--on-solid); }
+.family-canvas-details { min-width: 0; display: grid; gap: 3px; line-height: 1.2; }
+.family-canvas-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  overflow-wrap: anywhere; font-size: 13px; font-weight: 750; }
+.family-canvas-relation, .family-canvas-year { font-size: var(--text-xs); color: var(--muted); }
+.family-canvas-relation { text-transform: lowercase; }
+.family-canvas-person[data-family-origin] .family-canvas-relation { color: var(--brand-fg-strong); font-weight: 700; }
+/* Просвет у пересечения отделяет ветви разных семей. */
+.family-canvas-edge-gap { fill: none; stroke: var(--surface-1); stroke-width: 7; stroke-linejoin: round; }
+.family-canvas-edge { fill: none; stroke: var(--family-link); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.family-canvas-legend [data-family-kind] { display: inline-block; width: 24px; border-top: 2px solid var(--family-link); }
+.family-canvas [data-family-kind=parent] { --family-link: var(--muted-2); }
+.family-canvas [data-family-kind=spouse] { --family-link: var(--brand-fg); }
+.family-canvas [data-family-kind=spouseFormer] { --family-link: var(--brand-fg); }
+.family-canvas [data-family-kind=partner] { --family-link: var(--info-fg); }
+.family-canvas [data-family-kind=partnerFormer] { --family-link: var(--info-fg); }
+.family-canvas-edge[data-family-kind=spouseFormer], .family-canvas-edge[data-family-kind=partnerFormer] { stroke-dasharray: 6 5; }
+.family-canvas-legend [data-family-kind=spouseFormer], .family-canvas-legend [data-family-kind=partnerFormer] { border-top-style: dashed; }
+.family-canvas-edge-label { fill: var(--family-link); stroke: var(--surface-1); stroke-width: 7; stroke-linejoin: round;
+  paint-order: stroke; text-anchor: middle; dominant-baseline: central; font-size: 12px; font-weight: 750; }
+.family-canvas-legend { display: flex; flex-wrap: wrap; gap: 6px var(--space-4); margin: var(--space-3) 0 0;
+  padding: 0; list-style: none; color: var(--muted); font-size: var(--text-sm); }
+.family-canvas-legend li { display: flex; align-items: center; gap: var(--space-2); }
+.family-canvas-hint { margin: var(--space-3) 0 0; }
+
+.family-canvas-relationships { color: var(--muted); font-size: var(--text-sm); margin-top: var(--space-2); }
+.family-canvas-relationships summary { width: fit-content; cursor: pointer; }
+.family-canvas-relationships li { overflow-wrap: anywhere; }

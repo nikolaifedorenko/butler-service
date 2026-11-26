@@ -57,8 +57,20 @@ class FundDraft:
         return resp.json()
 
     def publish(self) -> None:
+        from app.modules.fund.application import fund_drafts
+
         try:
             resp = self.c.post(f"{API}/fund/draft/publish", json={"rev": self.rev})
+            if resp.status_code == 409 and resp.json().get("detail") == (
+                "дата черновика прошла — сдвиньте на сегодня или позже"
+            ):
+                # В длинном прогоне дата объекта может смениться между созданием и публикацией.
+                move = self.c.patch(f"{API}/fund/draft", json={
+                    "rev": self.rev, "valid_from": fund_drafts.local_date().isoformat(),
+                })
+                assert move.status_code == 200, move.text
+                self.rev = move.json()["rev"]
+                resp = self.c.post(f"{API}/fund/draft/publish", json={"rev": self.rev})
             assert resp.status_code == 200, resp.text
         except BaseException:
             draft = next((v for v in self.c.get(f"{API}/fund/versions").json() if v["status"] == "draft"), None)

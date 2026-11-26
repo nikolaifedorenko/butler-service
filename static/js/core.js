@@ -487,19 +487,21 @@ export function removeOverlay(id) {
   syncOverlayOrder();
   if (wasTop) removed.returnFocus?.();
 }
-function overlayFocusReturn() {
-  const target = document.activeElement;
+function overlayFocusReturn(preventScroll = false, findTarget = null) {
+  const initial = document.activeElement;
   const restore = () => {
+    const target = findTarget ? findTarget() : initial;
     if (!(target instanceof HTMLElement) || !target.isConnected) return false;
-    target.focus();
+    target.focus({ preventScroll });
     return document.activeElement === target;
   };
   return restore;
 }
 
-export function openModal({ title, subtitle, body, footer, wide = false, onMount }) {
+let modalBackground = null;
+export function openModal({ title, subtitle, body, footer, wide = false, onMount, background = null }) {
   if (!state.user) return;
-  const returnFocus = overlayFocusReturn();
+  const returnFocus = overlayFocusReturn(!!background);
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
   m.replaceChildren();                       // каждое окно — новое дерево, без остатков прежнего
@@ -517,22 +519,32 @@ export function openModal({ title, subtitle, body, footer, wide = false, onMount
     ${footer ? html`<div class="modal-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#modal-backdrop').classList.remove('hidden');
   pushOverlay('modal', closeModal, returnFocus);
-  m.querySelector('.x').onclick = closeModal;
+  const close = m.querySelector('.x');
+  close.onclick = closeModal;
+  if (modalBackground && modalBackground !== background) modalBackground.inert = false;
+  modalBackground = background;
+  if (background) {
+    background.inert = true;
+    close.focus({ preventScroll: true });
+  }
   if (onMount) onMount(m);
   return m;
 }
 export function closeModal() {
   $('#modal-backdrop').classList.add('hidden');
   $('#modal').replaceChildren();
+  if (modalBackground) modalBackground.inert = false;
+  modalBackground = null;
   removeOverlay('modal');
 }
 
 /* Боковая панель (ADR-0013, раздел 7: «карточка открывается боковой панелью»): строение как у
    модального окна — голова, прокручиваемое тело, подвал с действиями. Открытые поверх неё
    модальные окна (редакторы) закрываются по Esc первыми. */
-export function openDrawer({ title, subtitle, body, footer, onMount }) {
+let drawerBackground = null;
+export function openDrawer({ title, subtitle, body, footer, onMount, background = null, returnFocusTo = null }) {
   if (!state.user) return;
-  const returnFocus = overlayFocusReturn();
+  const returnFocus = overlayFocusReturn(!!background, returnFocusTo);
   const d = $('#drawer');
   d.replaceChildren();
   const root = document.createElement('div');
@@ -549,13 +561,22 @@ export function openDrawer({ title, subtitle, body, footer, onMount }) {
     ${footer ? html`<div class="drawer-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#drawer-backdrop').classList.remove('hidden');
   pushOverlay('drawer', closeDrawer, returnFocus);
-  d.querySelector('.x').onclick = closeDrawer;
+  const close = d.querySelector('.x');
+  close.onclick = closeDrawer;
+  if (drawerBackground && drawerBackground !== background) drawerBackground.inert = false;
+  drawerBackground = background;
+  if (background) {
+    background.inert = true;
+    close.focus({ preventScroll: true });
+  }
   if (onMount) onMount(d);
   return d;
 }
 export function closeDrawer() {
   $('#drawer-backdrop').classList.add('hidden');
   $('#drawer').replaceChildren();
+  if (drawerBackground) drawerBackground.inert = false;
+  drawerBackground = null;
   removeOverlay('drawer');
 }
 

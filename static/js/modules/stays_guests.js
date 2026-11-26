@@ -13,10 +13,11 @@
 'use strict';
 
 import { can, registerModule } from '../app.js';
-import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
+import { $, $$, api, closeDrawer, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
 import { registerPaletteProvider } from '../registry.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { STAYS_LINK, openGuestCard, openGuestForm } from './stays_forms.js';
+import { mountFamilyCanvas } from './stays_family_canvas.js';
 import { STAYS_SPECIAL_MARK, staysGuestMarkView } from './stays.js';
 
 /* колонки: ключ сортировки сервера (null — без сортировки) — заголовок */
@@ -59,6 +60,7 @@ registerPaletteProvider({
 /* раздел «Гости»: полный уровень — справочник; батлер — панель создания (гость сразу «свой») */
 async function loadGuests() {
   const host = $('#view-guests');
+  const generation = loadGenerationFor(host);
   const full = can('stays.guests');
   const managerCreate = can('stays.edit');
   const mineCreate = !managerCreate && can('stays.mine_guest_edit') && state.user?.employee_id != null;
@@ -75,9 +77,51 @@ async function loadGuests() {
     $('#gl-new', host).onclick = () => openGuestForm(null, () => {}, { mine: !can('stays.edit') });
     return;
   }
-  render(html`<div class="page-head"><div><h2>Гости</h2><div class="sub">Справочник: поиск, фильтры, дубли</div></div></div>
-    <div id="gl-body"></div>`, mount(host));
-  await renderGuestsTab($('#gl-body', host));
+  render(html`<div data-guests-list>
+      <div class="page-head"><div><h2>Гости</h2><div class="sub">Справочник: поиск, фильтры, дубли</div></div></div>
+      <div id="gl-body"></div>
+    </div><div class="family-canvas hidden"></div>`, mount(host));
+  const list = $('[data-guests-list]', host);
+  const canvas = $('.family-canvas', host);
+  list.classList.remove('hidden');
+  canvas.classList.add('hidden');
+  const isCurrent = () => generation() && state.view === 'guests';
+  let cardRequest = 0;
+  let familySession = 0;
+  const openListCard = (id, reload) => {
+    const request = ++cardRequest;
+    const selected = () => isCurrent() && request === cardRequest;
+    openGuestCard(id, reload, {
+      isCurrent: selected,
+      onFamilyChanged: reload,
+      onOpenFamily(guest) {
+        closeDrawer();
+        list.classList.add('hidden');
+        canvas.classList.remove('hidden');
+        const session = ++familySession;
+        const canvasActive = () => isCurrent() && session === familySession;
+        const refresh = mountFamilyCanvas(canvas, guest, {
+          isCurrent: canvasActive,
+          onBack() {
+            ++familySession;
+            canvas.classList.add('hidden');
+            list.classList.remove('hidden');
+            ($(`[data-gl-row="${guest.id}"]`, list) || $('#gl-q', list)).focus({ preventScroll: true });
+          },
+          onPerson(person, button) {
+            const selection = ++cardRequest;
+            button.focus({ preventScroll: true });
+            const selected = () => canvasActive() && cardRequest === selection;
+            const changed = () => { if (canvasActive()) refresh(); reload(); };
+            const returnFocusTo = () => $(`[data-family-person="${person}"]`, canvas) || $('h2', canvas);
+            openGuestCard(person, changed, { isCurrent: selected, fromFamily: true, onFamilyChanged: changed, returnFocusTo })
+              .catch(err => { if (selected()) toast(err.message, 'warn'); });
+          },
+        });
+      },
+    }).catch(err => { if (selected()) toast(err.message, 'warn'); });
+  };
+  await renderGuestsTab($('#gl-body', host), openListCard);
 }
 
 function staysGuestsParams(offset) {
@@ -127,7 +171,7 @@ const staysGuestsTable = (rows, total, onMore) => {
 
 /* панель фильтров рисуется один раз и не перерисовывается: поиск печатается без потери фокуса;
    смена фильтра или сортировки перегружает только список (#gl-result) */
-export function renderGuestsTab(body) {
+function renderGuestsTab(body, openCard) {
   const s = staysGuests;
   render(html`${staysGuestsToolbar()}<div id="gl-result"></div>`, mount(body));
   const result = $('#gl-result', body);
@@ -181,7 +225,7 @@ export function renderGuestsTab(body) {
       return;
     }
     const tr = e.target.closest('[data-gl-row]');
-    if (tr) openGuestCard(Number(tr.dataset.glRow), reload).catch(err => toast(err.message, 'warn'));
+    if (tr) openCard(Number(tr.dataset.glRow), reload);
   };
   result.onkeydown = e => {
     const tr = e.target.closest?.('[data-gl-row]');

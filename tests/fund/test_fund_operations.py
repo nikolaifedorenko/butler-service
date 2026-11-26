@@ -17,9 +17,22 @@ from app.modules.stays.application.mine import MineForbidden
 from app.modules.stays.application.ooo import OooConflict, OooNotFound
 from app.modules.stays.application.previewed import discarded
 from app.modules.stays.application.reservations import ReservationConflict, ReservationInvalid
-from tests.stays.helpers import API, uniq
+from tests.stays.helpers import API, FundDraft, uniq
 
 from .test_fund_versions_api import _clean  # noqa: F401 — autouse: снять версии и сущности теста
+
+
+def test_fund_draft_helper_publishes_changes_after_midnight(manager_role_client, today):
+    today("2035-03-03")
+    draft = FundDraft(manager_role_client)
+    group = draft.call("POST", "groups", title="Корпус" + uniq())["id"]
+
+    today("2035-03-04")
+    draft.publish()
+
+    snapshot = manager_role_client.get(f"{API}/fund/snapshot", params={"date": "2035-03-04"}).json()
+    assert snapshot["version"]["valid_from"] == "2035-03-04"
+    assert group in {row["id"] for row in snapshot["groups"]}
 
 
 @pytest.mark.parametrize(("error", "status"), [
