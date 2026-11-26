@@ -10,7 +10,7 @@ from ..domain.types.entities import Period
 from ._pipeline import run_pipeline
 from .context import EnginePorts
 from .employment import require_effective
-from .errors import PreviousPeriodNotClosedError, StoredResultCorruptError
+from .errors import PreviousPeriodNotClosedError, PreviousPeriodReason, StoredResultCorruptError
 from .load_inputs import load_inputs
 from .period_view import PeriodView
 
@@ -31,7 +31,7 @@ def view_period(employee_id: str, period: Period, now: dt.datetime,
                 f"отсутствует ({employee_id}, период с {period.start})")
         return PeriodView(saved[0], saved[1], employment, days)
     if not state.previous_closed and not state.opening_bank_set:
-        reason = "previous"
+        reason: PreviousPeriodReason = "previous"
         if employment.start >= period.start:
             reason = "employment_gap" if state.has_earlier_closing else "opening_bank"
         raise PreviousPeriodNotClosedError(f"{employee_id}:{period.start}", reason=reason)
