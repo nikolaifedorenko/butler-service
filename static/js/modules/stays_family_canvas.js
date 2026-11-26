@@ -109,7 +109,21 @@ export function mountFamilyCanvas(host, guest, { onBack, onPerson, onChanged, is
 
   const personById = id => diagram?.nodes.find(person => person.id === id);
   const nameOf = id => personById(id)?.name || String(id);
-  const changed = () => { if (isCurrent()) refresh(); onChanged?.(); };
+  const changed = () => {
+    const pending = isCurrent() ? refresh() : undefined;
+    onChanged?.();
+    return pending;
+  };
+  const removed = async () => {
+    const trigger = document.activeElement;
+    const control = trigger?.dataset.familyControl;
+    if (!await changed() || !isCurrent()) return;
+    const focused = document.activeElement;
+    // После удаления фокус может остаться на переиспользованной кнопке другой связи.
+    if (focused === document.body || (control && focused === trigger && focused.dataset.familyControl !== control)) {
+      $(`[data-family-person="${active}"]`, host)?.focus({ preventScroll: true });
+    }
+  };
   const center = () => {
     const scroll = viewport();
     const origin = diagram?.nodes.find(person => person.id === guest.id);
@@ -219,7 +233,7 @@ export function mountFamilyCanvas(host, guest, { onBack, onPerson, onChanged, is
         ${addChild ? control(`union-add-${link.id}`, `Добавить ребёнка · ${pairName}`, '+', { x: x - 88, y: y + 20 },
           restore => childAction(parents, restore)) : nothing}
         ${link.editable ? control(`union-remove-${link.id}`, `Удалить связь · ${pairName}`, '−', { x: x + 88, y: y + 20 },
-          restore => confirmRemoval([link], nameOf, null, restore, changed), 'family-canvas-minus') : nothing}`;
+          restore => confirmRemoval([link], nameOf, null, restore, removed), 'family-canvas-minus') : nothing}`;
     }
     return edge.targets.map(target => {
       const parents = target.links.map(link => link.a);
@@ -229,7 +243,7 @@ export function mountFamilyCanvas(host, guest, { onBack, onPerson, onChanged, is
         ${canAdd ? control(`parent-add-${target.id}`, `Добавить связь в ветви · ${nameOf(target.id)}`, '+',
           { x: target.x - 22, y: target.y }, restore => branchActions(target.id, parents, restore)) : nothing}
         ${removable.length ? control(`parent-remove-${target.id}`, `Удалить родительскую связь · ${nameOf(target.id)}`, '−',
-          { x: target.x + 22, y: target.y }, restore => confirmRemoval(removable, nameOf, target.id, restore, changed), 'family-canvas-minus') : nothing}`;
+          { x: target.x + 22, y: target.y }, restore => confirmRemoval(removable, nameOf, target.id, restore, removed), 'family-canvas-minus') : nothing}`;
     });
   };
 
@@ -327,6 +341,7 @@ export function mountFamilyCanvas(host, guest, { onBack, onPerson, onChanged, is
       focusLoading = false;
       paint();
       if (first) center();
+      return true;
     } catch (err) {
       if (!live()) return;
       if (diagram) {
@@ -352,8 +367,10 @@ export function mountGuestFamily(host, guest, { isCurrent, onBack, onChanged, ba
       const current = ++selection;
       const selected = () => isCurrent() && active() && current === selection;
       const changed = () => { if (isCurrent()) refresh(); onChanged?.(); };
-      const returnFocusTo = () => $(`[data-family-card="${id}"]`, host) || $(`[data-family-person="${id}"]`, host) || $('h2', host);
-      openGuestCard(id, changed, { isCurrent: selected, fromFamily: true, onFamilyChanged: changed, returnFocusTo })
+      const card = () => $(`[data-family-card="${id}"]`, host);
+      const canOpen = () => card()?.closest('[inert]') === null;
+      const returnFocusTo = () => card() || $(`[data-family-person="${id}"]`, host) || $('h2', host);
+      openGuestCard(id, changed, { isCurrent: selected, canOpen, fromFamily: true, onFamilyChanged: changed, returnFocusTo })
         .catch(err => { if (selected()) toast(err.message, 'warn'); });
     },
   });

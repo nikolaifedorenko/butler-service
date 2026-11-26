@@ -181,9 +181,10 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
     const already = known.some(p => p.id === centre);
     const other = known.find(p => p.id !== centre);
     const full = known.length >= 2;
-    const second = other ?? active.secondParent;
+    const second = active.secondParent ?? other;
+    const parentConflict = other && active.secondParent && other.id !== active.secondParent.id;
     const canChooseSecond = !full && !other && (!existing || !!child?.parents);
-    const valid = (existing ? !!child?.parents : !!active.draft.last_name.trim()) && !full && (!already || !!second);
+    const valid = (existing ? !!child?.parents : !!active.draft.last_name.trim()) && !full && !parentConflict && (!already || !!second);
     const selectSecond = person => {
       active.secondParent = person;
       clearTimeout(active.second.timer);
@@ -251,7 +252,8 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
         active.second.results?.filter(person => person.id !== child?.person.id) ?? null,
         person => html`<button type="button" class="btn btn-sm guest-pick-button" data-ft-second-pick=${person.id}
           @click=${() => selectSecond(person)}>${guestPickContent(person)}</button>`) : candidates.map(suggestion)}</div>` : nothing}
-      ${full ? html`<span class="muted">У ребёнка уже указаны два родителя.</span>` : already && !second ? html`
+      ${parentConflict ? html`<span role="alert">У ребёнка указан другой родитель. Выберите другого ребёнка или проверьте его связи.</span>`
+        : full ? html`<span class="muted">У ребёнка уже указаны два родителя.</span>` : already && !second ? html`
         <span class="muted">Связь с первым родителем уже есть. Выберите второго, чтобы добавить связь.</span>` : nothing}
       <div class="sb-line">
         <button type="button" class="btn btn-sm btn-ghost" data-ft-cancel @click=${cancel}>Отмена</button>

@@ -518,10 +518,10 @@ export async function openGroupForm(card, onSaved) {
 
 /* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
 export async function openGuestCard(gid, onChanged, options = {}) {
-  const { onOpenFamily, onFamilyChanged, fromFamily = false, isCurrent, returnFocusTo, whileMounted, silent = false } = options;
+  const { onOpenFamily, onFamilyChanged, fromFamily = false, isCurrent, canOpen, returnFocusTo, whileMounted, silent = false } = options;
   const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`, { silent }), staysFund(),
     api(`/api/stays/guests/${gid}/prefs`, { silent })]);
-  if ((isCurrent && !isCurrent()) || (whileMounted && !whileMounted.isConnected)) return;
+  if ((isCurrent && !isCurrent()) || (whileMounted && !whileMounted.isConnected) || (!whileMounted && canOpen && !canOpen())) return;
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   /* правка: stays.edit — любой гость; батлер (stays.mine_guest_edit) — свой: карточку он открывает только
      у своих, анкетные поля в форме заперты (сервер проверяет и принадлежность, и поля) */

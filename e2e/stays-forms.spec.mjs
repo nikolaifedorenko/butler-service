@@ -66,6 +66,33 @@ test('семейное дерево открывает карточку друг
   await expect(node('root')).toContainText('партнёр');
   expect(await node('partner').evaluate(el => el.closest('[data-family-node]').style.cssText)).toBe(placement);
   await expect(drawer.getByRole('heading')).toHaveCount(0);
+  const path = `**/api/stays/guests/${family.partner}/card`;
+  let releaseCard;
+  const holdCard = new Promise(resolve => { releaseCard = resolve; });
+  let markRequested;
+  const requestedCard = new Promise(resolve => { markRequested = resolve; });
+  await page.route(path, async route => {
+    markRequested();
+    await holdCard;
+    await route.continue();
+  }, { times: 1 });
+  try {
+    await profile.click();
+    await requestedCard;
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('#palette-q')).toBeFocused();
+    const response = page.waitForResponse(path);
+    releaseCard();
+    await (await response).finished();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#palette-backdrop')).toBeHidden();
+    await expect(drawer.getByRole('heading')).toHaveCount(0);
+    await expect(profile).toBeFocused();
+  } finally {
+    releaseCard();
+  }
+
   await profile.click();
   await expect(drawer.getByRole('heading', { name: new RegExp(`${family.surname} Ольга`) })).toBeVisible();
   await expect(drawer.locator('#gc-family')).toHaveCount(0);
@@ -391,13 +418,19 @@ test('холст завершает брак и удаляет связь с в�
     const a = await create('Марк', 'm');
     const b = await create('Анна', 'f');
     const child = await create('Даниил', 'm');
+    const differentParent = await create('Ирина', 'f');
+    const differentChild = await create('Степан', 'm');
+    const matchingChild = await create('Полина', 'f');
     const link = (gid, guest_id, kind) => api(`/api/stays/guests/${gid}/links`, {
       method: 'POST', body: { kind, guest_id },
     });
     const marriage = await link(a.id, b.id, 'spouse');
     await link(a.id, child.id, 'parent');
     await link(b.id, child.id, 'parent');
-    return { surname, origin: a.id, other: b.id, child: child.id, marriage: marriage.id };
+    await link(differentParent.id, differentChild.id, 'parent');
+    await link(b.id, matchingChild.id, 'parent');
+    return { surname, origin: a.id, other: b.id, child: child.id, marriage: marriage.id,
+      differentChild: differentChild.id, matchingChild: matchingChild.id };
   });
   await open(page, 'guests');
   const view = page.locator('#view-guests');
@@ -412,6 +445,16 @@ test('холст завершает брак и удаляет связь с в�
   const addChild = tree.getByRole('button', { name: /^Добавить ребёнка ·/ });
   await addChild.click();
   await expect(dialog.getByRole('heading', { name: 'Добавить общего ребёнка' })).toBeVisible();
+  await dialog.locator('[data-ft-q]').fill(data.surname);
+  await dialog.locator(`[data-ft-pick="${data.differentChild}"]`).click();
+  await expect(dialog.getByText('У ребёнка указан другой родитель. Выберите другого ребёнка или проверьте его связи.')).toBeVisible();
+  await expect(dialog.locator('[data-ft-create]')).toBeDisabled();
+  await dialog.locator('[data-ft-child-change]').click();
+  await dialog.locator('[data-ft-q]').fill(data.surname);
+  await dialog.locator(`[data-ft-pick="${data.matchingChild}"]`).click();
+  await dialog.getByRole('button', { name: 'Сохранить с двумя родителями' }).click();
+  await expect(tree.locator(`[data-family-person="${data.matchingChild}"]`)).toContainText('дочь');
+  await addChild.click();
   await dialog.locator('[data-ft-child-mode=new]').click();
   await dialog.locator('[data-ft-last]').fill(data.surname);
   await dialog.locator('[data-ft-first]').fill('Софья');
@@ -460,4 +503,10 @@ test('холст завершает брак и удаляет связь с в�
   }, data);
   expect(saved.parents).toEqual([[data.child, data.other]]);
   expect(saved.marriage).toMatchObject({ id: data.marriage, former: true, marriage_start: '2024-05-17', marriage_end: '2025-06-20' });
+
+  await expect(removeParent).toBeFocused();
+  await removeParent.click();
+  await dialog.getByRole('button', { name: 'Удалить связь', exact: true }).click();
+  await expect(child).toHaveCount(0);
+  await expect(spouse).toBeFocused();
 });
