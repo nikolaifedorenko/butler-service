@@ -14,7 +14,7 @@ import datetime as dt
 from collections.abc import Callable
 from itertools import groupby
 
-from sqlalchemy import and_, exists, func, or_, select, union
+from sqlalchemy import and_, exists, extract, func, or_, select, union
 from sqlalchemy.orm import Session, aliased
 
 from app.core.time import local_date
@@ -225,6 +225,23 @@ def _led(ctx, employee_id: int, day: dt.date) -> dict[int, list[int]]:
     return out
 
 
+def _marriage_anniversaries(db: Session, today: dt.date, reservations: list[dict]) -> list[dict]:
+    """Одна годовщина на действующий брак; в ответе только гости покрытия этой ночи."""
+    names = {guest["guest_id"]: guest["name"] for res in reservations for guest in res["guests"]
+             if not guest["departing"]}
+    if not names:
+        return []
+    start = GuestLink.marriage_start
+    pairs = db.execute(select(GuestLink.guest_a_id, GuestLink.guest_b_id).where(
+        GuestLink.kind == "spouse", GuestLink.former.is_(False),
+        start < today.replace(month=1, day=1),
+        extract("month", start) == today.month, extract("day", start) == today.day,
+        or_(GuestLink.guest_a_id.in_(names), GuestLink.guest_b_id.in_(names)),
+    ).order_by(GuestLink.id))
+    return [{"guests": [{"guest_id": gid, "name": names[gid]} for gid in pair if gid in names]}
+            for pair in pairs]
+
+
 def mine_today(db: Session, employee_id: int) -> dict:
     """«Сегодня»: брони, где батлер ведёт кого-то в эту ночь, и гости, которых он вёл прошлой ночью
     и которые выезжают сегодня (departing — виден трансфер выезда). Объект — по фонду ночи, гости —
@@ -272,7 +289,8 @@ def mine_today(db: Session, employee_id: int) -> dict:
                     "departing": departing, "note": r.note,
                     "logistics": logistics.get(rid, [])})
     out.sort(key=lambda x: (natural_key(x["unit"]), x["reservation_id"]))
-    return {"date": today.isoformat(), "reservations": out}
+    return {"date": today.isoformat(), "reservations": out,
+            "anniversaries": _marriage_anniversaries(db, today, out)}
 
 
 def _seg_unit(asg: dict[tuple[int, int], int | None], rid: int) -> Callable[[Piece], tuple[int, int | None]]:

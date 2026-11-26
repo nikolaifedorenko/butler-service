@@ -11974,6 +11974,43 @@
         "title": "MgmtTraceOut",
         "type": "object"
       },
+      "MineAnniversaryGuestOut": {
+        "additionalProperties": false,
+        "properties": {
+          "guest_id": {
+            "title": "Guest Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "guest_id",
+          "name"
+        ],
+        "title": "MineAnniversaryGuestOut",
+        "type": "object"
+      },
+      "MineAnniversaryOut": {
+        "additionalProperties": false,
+        "description": "Годовщина пары с гостями, которых ведёт батлер.",
+        "properties": {
+          "guests": {
+            "items": {
+              "$ref": "#/components/schemas/MineAnniversaryGuestOut"
+            },
+            "title": "Guests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "guests"
+        ],
+        "title": "MineAnniversaryOut",
+        "type": "object"
+      },
       "MineGuestCardOut": {
         "additionalProperties": false,
         "description": "Профиль своего гостя и история проживаний с тем, кто его вёл.",
@@ -12283,6 +12320,13 @@
       "MineTodayOut": {
         "additionalProperties": false,
         "properties": {
+          "anniversaries": {
+            "items": {
+              "$ref": "#/components/schemas/MineAnniversaryOut"
+            },
+            "title": "Anniversaries",
+            "type": "array"
+          },
           "date": {
             "title": "Date",
             "type": "string"
@@ -12298,7 +12342,8 @@
         },
         "required": [
           "date",
-          "reservations"
+          "reservations",
+          "anniversaries"
         ],
         "title": "MineTodayOut",
         "type": "object"
