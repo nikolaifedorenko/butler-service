@@ -132,7 +132,7 @@ const $ = s => window.document.querySelector(s);
     MODS.core.state.year = y; MODS.core.state.month = m;
     click($(`#view-stays [data-stab="${tab}"]`));
     await idle();
-    return waitFor(() => !!$(`#view-stays [data-stab="${tab}"].btn-primary`)
+    return waitFor(() => !!$(`#view-stays [data-stab="${tab}"][aria-pressed=true]`)
       && !!$(`#stays-body .sb-head [data-day="${iso.slice(0, 8)}01"]`)
       && (tab !== 'units' || !!$('#stays-body .sf-panel')));
   }
@@ -334,9 +334,11 @@ const $ = s => window.document.querySelector(s);
     click($('[data-save]'));
     check('бронь перенесена в другой объект', await waitFor(() =>
       !!$(`#view-stays [data-unit-row="${u2.id}"] [data-bar="${b.id}"]`)));
-    check('кнопки выгрузки на шахматке', !!$('#sb-xlsx-anon') && !!$('#sb-xlsx-full'));
+    $('#view-stays .sb-exports > summary').click();
+    check('меню выгрузки раскрылось', await waitFor(() => !!$('#view-stays .sb-exports[open]')));
+    check('кнопки выгрузки на шахматке', $('#sb-xlsx-anon')?.getClientRects().length && $('#sb-xlsx-full')?.getClientRects().length);
     const print = $('#sb-board-pdf')?.nextElementSibling;
-    check('печать на шахматке рядом с выгрузками', print?.textContent.trim() === 'Печать');
+    check('печать на шахматке рядом с выгрузками', print?.textContent.trim().startsWith('Печать '));
     const beforePrint = requests.length;
     click(print);
     check('после переноса брони шахматка готова к печати', await waitFor(() => requests.slice(beforePrint)

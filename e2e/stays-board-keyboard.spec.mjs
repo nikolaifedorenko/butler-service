@@ -13,7 +13,7 @@ test('шахматка даёт одну остановку Tab и открыв�
   const grid = await board(page);
   const selected = grid.locator('button.sb-bar[tabindex="0"]');
   await expect(selected).toHaveCount(1);
-  await page.locator('#view-stays #sf-reset').focus();
+  await page.locator('#view-stays .sb-exports summary').focus();
   await page.keyboard.press('Tab');
   await expect(selected).toBeFocused();
   const [firstId, nextId] = await grid.evaluate(el => {
@@ -136,6 +136,7 @@ test('пересортировка строк сохраняет выбранн�
   const identity = await target.evaluate(el => [
     el.closest('[data-unit-row]').dataset.unitRow, el.dataset.bar, el.dataset.start,
   ]);
+  await page.locator('#view-stays .sf-toggle').click();
   await page.locator('#view-stays #sb-dir').selectOption('desc');
   const same = grid.locator(`[data-unit-row="${identity[0]}"] button.sb-bar[data-bar="${identity[1]}"][data-start="${identity[2]}"]`).first();
   await expect(same).toHaveAttribute('tabindex', '0');

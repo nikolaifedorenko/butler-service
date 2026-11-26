@@ -4,6 +4,19 @@ import { login, watchErrors } from './helpers.mjs';
 
 const open = (page, view) => page.evaluate(v => window.navigate(v), view);
 const tab = (page, id) => page.locator(`#view-stays [data-stab=${id}]`);
+const openFilters = async view => {
+  const toggle = view.locator('.sf-toggle');
+  if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+};
+const openExports = async view => {
+  const menu = view.locator('.sb-exports');
+  if (await menu.getAttribute('open') === null) await menu.locator('summary').click();
+};
+const clickExport = async (view, action, options) => {
+  await openExports(view);
+  await action.click(options);
+};
+
 
 test('поиск шахматки сохраняет форму при клике и фокусе с клавиатуры', async ({ page }) => {
   await login(page, 'admin');
@@ -60,10 +73,10 @@ test.describe('печать шахматки', () => {
           } });
         };
       }, transition === '401 при печати');
-      await action.click();
+      await clickExport(page.locator('#view-stays'), action);
       const frames = page.locator('body > iframe[srcdoc]');
       await expect(frames).toHaveCount(1);
-      await action.click();
+      await clickExport(page.locator('#view-stays'), action);
       await page.waitForFunction(() => !!window.releasePrint);
       if (transition === 'вход как сотрудник') {
         await open(page, 'employees');
@@ -75,7 +88,7 @@ test.describe('печать шахматки', () => {
           await page.locator('#logout-btn').click();
         } else if (transition === '401 при печати') {
           const reloaded = page.waitForEvent('domcontentloaded');
-          await action.click();
+          await clickExport(page.locator('#view-stays'), action);
           await reloaded;
           await expect(page.locator('#user-name')).toContainText('admin');
         } else {
@@ -111,6 +124,7 @@ test.describe('печать шахматки', () => {
     const view = page.locator('#view-stays');
     const action = view.locator('#sb-print');
     await expect(action).toBeEnabled();
+    await openFilters(view);
     await view.locator('[data-sf-dd=cat] summary').click();
     const box = view.locator('[data-sf-cat]').first();
     const category = await box.getAttribute('data-sf-cat');
@@ -130,7 +144,7 @@ test.describe('печать шахматки', () => {
     await box.check();
     await page.clock.runFor(450);
     await expect(action).toBeEnabled();
-    await action.click();
+    await clickExport(page.locator('#view-stays'), action);
     const print = page.frameLocator('iframe[srcdoc]');
     await expect(print.locator('h1')).toBeAttached();
     const summary = await print.locator('p').first().textContent();
@@ -154,7 +168,7 @@ test.describe('печать шахматки', () => {
     for (const redraw of [true, false]) {
       queries.length = 0;
       await search.fill('Орлов');
-      if (redraw) await view.locator('#sb-sort').selectOption('label');
+      if (redraw) { await openFilters(view); await view.locator('#sb-sort').selectOption('label'); }
       await view.locator('#sf-reset').click();
       await page.clock.runFor(450);
       await expect(view.locator('#sb-print')).toBeEnabled();
@@ -199,7 +213,7 @@ test.describe('печать шахматки', () => {
       releaseBoard();
       await oldResponse;
       await page.waitForTimeout(200); // дать старому async-render дойти до возможного commit
-      await expect(view.locator('[data-stab].btn-primary')).toHaveText('Табло дня');
+      await expect(view.locator('[data-stab][aria-pressed=true]')).toHaveText('Табло дня');
       await expect(view.locator('#sb-print')).toHaveCount(0);
     } finally {
       releaseBoard();
@@ -226,9 +240,10 @@ test.describe('печать шахматки', () => {
     });
     await view.locator('#sm-prev').click();
     await expect(view.locator('#sb-print')).toBeEnabled();
+    await openFilters(view);
     await view.locator('#sb-grouped').uncheck();
     expect.soft(await view.locator('.sb-change').allTextContents()).toContain(expected);
-    await view.locator('#sb-print').click();
+    await clickExport(view, view.locator('#sb-print'));
     const table = page.frameLocator('iframe[srcdoc]').locator('table');
     await expect(table).toBeAttached();
     expect(await table.textContent()).toContain(expected);
@@ -239,7 +254,7 @@ test.describe('печать шахматки', () => {
     await page.addInitScript(() => { window.print = () => {}; });
     await open(page, 'stays');
     const view = page.locator('#view-stays');
-    const action = view.getByRole('button', { name: 'Печать', exact: true });
+    const action = view.locator('#sb-print');
     await expect(action).toBeEnabled();
     const prints = [];
     page.on('request', req => { if (req.url().endsWith('/api/docs/print')) prints.push(req); });
@@ -258,9 +273,10 @@ test.describe('печать шахматки', () => {
       await search.fill('Орлов');
       expect.soft(await action.isDisabled(), 'пока ввод ожидает отправки').toBe(true);
       await requested;
-      await action.click({ force: true });
+      await clickExport(view, action, { force: true });
       expect.soft(await action.isDisabled(), 'пока запрос не завершён').toBe(true);
       // Локальная сортировка также не должна активировать устаревший ответ.
+      await openFilters(view);
       await view.locator('#sb-sort').selectOption('label');
       expect.soft(await action.isDisabled()).toBe(true);
     } finally {
@@ -268,7 +284,7 @@ test.describe('печать шахматки', () => {
     }
     await response;
     await expect(action).toBeEnabled();
-    await action.click();
+    await clickExport(page.locator('#view-stays'), action);
     const frames = page.locator('iframe[srcdoc]');
     await expect(frames.last().contentFrame().locator('p').first()).toContainText('Поиск: Орлов');
     expect(prints).toHaveLength(1);
@@ -295,12 +311,13 @@ test.describe('печать шахматки', () => {
     });
     await open(page, 'stays');
     const view = page.locator('#view-stays');
+    await openFilters(view);
     await view.locator('#sb-grouped').uncheck();
     const rename = `Дом 7 → Дом <17> с 11.${mm}`;
     const reclassify = `${cats[0].code} → ${cats[1].code} с 19.${mm}`;
     const screen = view.locator('.sb-change').filter({ hasText: rename });
     await expect(screen).toContainText(reclassify);
-    await view.getByRole('button', { name: 'Печать', exact: true }).click();
+    await clickExport(view, view.locator('#sb-print'));
     const caption = page.frameLocator('iframe[srcdoc]').locator('tbody th').filter({ hasText: 'Дом 7' }).first();
     await expect(caption).toBeVisible();
     const printed = await caption.textContent();
@@ -321,9 +338,10 @@ test.describe('печать шахматки', () => {
     });
     await open(page, 'stays');
     const view = page.locator('#view-stays');
+    await openFilters(view);
     await view.locator('#sf-saved').selectOption('Прежний фонд');
     await expect(view.locator('.chip', { hasText: '8012347' })).toBeVisible();
-    await view.getByRole('button', { name: 'Печать', exact: true }).click();
+    await clickExport(view, view.locator('#sb-print'));
     const frame = page.frameLocator('iframe[srcdoc]');
     const filters = frame.locator('p').first();
     await expect(filters).toContainText(category);
@@ -363,7 +381,8 @@ test.describe('печать шахматки', () => {
       await open(page, 'stays');
       const view = page.locator('#view-stays');
       await expect(view.locator('.sb-grid')).toBeVisible();
-      const action = view.getByRole('button', { name: 'Печать', exact: true });
+      const action = view.locator('#sb-print');
+      await openExports(view);
       await expect(action).toBeVisible();
       expect(await action.evaluate(el => el.previousElementSibling.id)).toBe('sb-board-pdf');
       const label = view.locator('#sm-label');
@@ -371,6 +390,7 @@ test.describe('печать шахматки', () => {
       await view.locator('#sm-next').click();
       await expect(label).not.toHaveText(previous);
       const month = (await label.textContent()).trim();
+      await openFilters(view);
       await view.locator('[data-sf-dd=cat] summary').click();
       const box = view.locator(`[data-sf-cat="${category}"]`);
       const code = (await box.locator('..').innerText()).trim();
@@ -385,7 +405,7 @@ test.describe('печать шахматки', () => {
           window.printDone = !!frame && source === frame.contentWindow && origin === location.origin;
         });
       });
-      await action.click();
+      await clickExport(page.locator('#view-stays'), action);
       const frame = page.frameLocator('iframe[aria-hidden=true][srcdoc]');
       await expect(frame.locator('h1')).toContainText(month);
       await expect(frame.locator('p', { hasText: 'Категории' })).toContainText(code);
@@ -432,9 +452,10 @@ test('вкладки по правам и шахматка объектов: с�
   await open(page, 'stays');
   const view = page.locator('#view-stays');
   expect(await view.locator('[data-stab]').count()).toBeGreaterThanOrEqual(6);
-  await expect(view.locator('[data-stab].btn-primary')).toHaveText('Объекты');
+  await expect(view.locator('[data-stab][aria-pressed=true]')).toHaveText('Объекты');
   await expect(view.locator('.sb-grid')).toBeVisible();
   await expect(view.locator('#stays-body')).not.toContainText('Загрузка…');
+  await openFilters(view);
   await expect(view.locator('.sf-panel')).toBeVisible();
   const rows = await view.locator('[data-unit-row]').count();
   expect(rows).toBeGreaterThan(5);
@@ -447,8 +468,10 @@ test('вкладки по правам и шахматка объектов: с�
   await expect(view.locator('[data-sec]', { hasText: name.replace(/^[▾▸]\s*/, '') }).first()).toHaveAttribute('data-open', '0');
   expect(await view.locator('[data-unit-row]').count()).toBeLessThan(rows);
   // сортировка без нового запроса
+  await openFilters(view);
   await view.locator('#sb-sort').selectOption('label');
   await expect(view.locator('#sb-sort')).toHaveValue('label');
+  await openFilters(view);
   await view.locator('#sb-grouped').uncheck();
   await expect(view.locator('[data-sec]')).toHaveCount(0);
   // листание месяца и «Сегодня»
@@ -479,6 +502,7 @@ test('панель фильтров: поиск не теряет фокус и 
   await view.locator('#sf-reset').click();
   await expect(q).toHaveValue('');
   // категория
+  await openFilters(view);
   await view.locator('[data-sf-dd=cat] summary').click();
   const first = view.locator('[data-sf-cat]').first();
   await first.check();
@@ -496,6 +520,7 @@ test('мобильный счётчик фильтров принадлежит 
   const view = page.locator('#view-stays');
   const toggle = view.locator('.sf-toggle');
   await toggle.click();
+  await openFilters(view);
   await view.locator('[data-sf-dd=cat] summary').click();
   await view.locator('[data-sf-cat]').first().check();
   await expect(toggle.locator('b')).toHaveText('(1)');
@@ -510,7 +535,9 @@ test('сохранённые наборы фильтров: сохранить, 
   await login(page, 'admin');
   await open(page, 'stays');
   const view = page.locator('#view-stays');
+  await openFilters(view);
   await expect(view.locator('.sf-panel')).toBeVisible();
+  await openFilters(view);
   await view.locator('[data-sf-dd=cat] summary').click();
   await view.locator('[data-sf-cat]').first().check();
   await expect(view.locator('[data-sf-dd=cat] summary b')).not.toHaveText('все');   // вид перерисован — панель знает фильтр
@@ -518,6 +545,7 @@ test('сохранённые наборы фильтров: сохранить, 
   await view.locator('#sf-save').click();
   await expect(view.locator('#sf-saved option[value="мой набор"]')).toBeAttached();
   await view.locator('#sf-reset').click();
+  await openFilters(view);
   await view.locator('#sf-saved').selectOption('мой набор');
   await expect(view.locator('[data-sf-dd=cat] summary b')).not.toHaveText('все');
   await view.locator('#sf-del').click();
@@ -605,8 +633,9 @@ test('выгрузка шахматки передаёт месяц и филь�
   await open(page, 'stays');
   const view = page.locator('#view-stays');
   await expect(view.locator('.sb-grid')).toBeVisible();
-  const button = view.getByRole('button', { name: 'Шахматка XLSX', exact: true });
+  const button = view.locator('#sb-board-xlsx');
   await expect(button).toBeEnabled();
+  await openFilters(view);
   await view.locator('[data-sf-dd=cat] summary').click();
   const box = view.locator('[data-sf-cat]').first();
   const category = await box.getAttribute('data-sf-cat');
@@ -616,7 +645,7 @@ test('выгрузка шахматки передаёт месяц и филь�
   const expected = new URL((await board).url()).searchParams;
   const request = page.waitForRequest(r => r.url().includes('/board/units/export?'));
   const download = page.waitForEvent('download');
-  await button.click();
+  await clickExport(view, button);
   const params = new URL((await request).url()).searchParams;
   expect(params.get('first')).toBe(expected.get('first'));
   expect(params.get('last')).toBe(expected.get('last'));
@@ -656,7 +685,7 @@ for (const expired of [false, true]) {
     await open(page, 'stays');
     const action = page.locator('#sb-print');
     await expect(action).toBeEnabled();
-    await action.click();
+    await clickExport(page.locator('#view-stays'), action);
     await expect.poll(() => page.evaluate(() => window.pdfContents)).toBe('%PDF-1.7');
     if (expired) {
       await page.route('**/api/auth/context', route => route.fulfill({ status: 401, json: {} }));

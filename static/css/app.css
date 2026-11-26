@@ -1012,19 +1012,33 @@ tr.v4-click:hover td { background: var(--surface-1); }
 /* строка навигации вида (месяц ◀ ▶) прилипает при прокрутке контента; панель фильтров
    не прилипает — иначе на телефоне два прилипших блока сожрали бы экран */
 .sb-toolbar:not(.sf-bar):not(.sf-panel) { position: sticky; top: 0; z-index: 20; background: var(--bg); padding: 4px 0; }
-.sb-desktop-tools { display: contents; }
-.sb-mobile-exports, .sb-mobile-sort { display: none; }
+.sb-page-head { align-items: center; }
+.sb-page-actions { display: flex; gap: var(--space-2); align-items: center; }
+.sb-view-tabs { border-bottom: 1px solid var(--line); }
+.sb-view-tabs .btn { border: 0; border-radius: 0; background: transparent; color: var(--muted); }
+.sb-view-tabs .btn:hover { background: var(--surface-2); color: var(--text); }
+.sb-view-tabs [aria-pressed="true"] { box-shadow: inset 0 -2px var(--brand-fg); color: var(--brand-fg-strong); font-weight: 700; }
+.sb-toolbar.sb-units-toolbar { position: sticky; top: 0; z-index: 20; padding: 4px 0; background: var(--bg); }
+.sb-units-toolbar #sf-q { flex: 1 1 200px; min-width: 130px; max-width: 320px; margin-inline-start: auto; }
+.sb-units-toolbar #sf-reset[hidden] { display: none; }
+.sb-units-toolbar #sm-today { background: transparent; }
+.sb-toolbar.sf-compact-panel:not(.open) { display: none; }
+.sb-toolbar.sf-compact-panel.open { display: flex; border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--space-2); background: var(--surface-0); }
+.sb-sort { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; }
+.sf-active-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); flex-basis: 100%; }
+.sb-units-toolbar:not(:has(#sf-q)) .sb-exports { margin-inline-start: auto; }
+.sb-exports:not([open]) .sb-export-items { display: none; }
+.sb-exports[open] .sb-export-items { position: absolute; z-index: 1; inset-inline-end: 0; inset-block-start: calc(100% + var(--space-1));
+  width: min(280px, 100%); max-height: 60dvh; overflow: auto; display: grid; gap: var(--space-1);
+  padding: var(--space-2); background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow); }
+.sb-export-items .btn { justify-content: flex-start; text-align: start; white-space: normal; }
 @media (max-width: 860px) {
-  .sb-mobile-exports { display: block; margin-inline-start: auto; }
-  .sb-mobile-export-items { display: none; }
-  .sb-mobile-exports[open] .sb-mobile-export-items { position: fixed; inset-inline-end: var(--space-3);
+  .sb-units-toolbar #sf-q { flex-basis: 120px; min-width: 105px; max-width: none; margin-inline-start: 0; }
+  .sb-exports[open] .sb-export-items { position: fixed; inset-inline-end: var(--space-3); inset-block-start: auto;
     inset-block-end: calc(var(--tab-h) + env(safe-area-inset-bottom) + var(--space-2));
     width: min(280px, calc(100vw - var(--space-5)));
-    max-height: calc(100dvh - var(--head-h) - var(--tab-h) - env(safe-area-inset-bottom) - var(--space-4));
-    display: grid; overflow: auto; gap: var(--space-1); padding: var(--space-2); background: var(--panel);
-    border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow); }
-  .sb-mobile-export-items .btn { justify-content: flex-start; text-align: start; white-space: normal; }
-  .sb-mobile-sort { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; }
+    max-height: calc(100dvh - var(--head-h) - var(--tab-h) - env(safe-area-inset-bottom) - var(--space-4)); overflow: auto; }
   .sb-units-toolbar .month-nav .label { min-width: 94px; }
 }
 .sf-bar { margin-bottom: 4px; }
@@ -1060,6 +1074,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
 .sb-off.absent { background: repeating-linear-gradient(135deg, var(--surface-3), var(--surface-3) 5px, var(--surface-2) 5px, var(--surface-2) 10px); }
 .sb-off.filtered { background: rgba(240, 236, 228, .75); }
 .sf-panel .sf-dd { position: relative; }
+.sf-compact-panel .sf-dd[open] .sf-list { position: static; max-width: 100%; box-shadow: none; }
 .sf-panel .sf-dd summary { cursor: pointer; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-0); font-size: 13px; }
 .sf-panel .sf-dd summary b { font-weight: 600; }
 .sf-panel .sf-list { position: absolute; z-index: 5; top: 100%; left: 0; min-width: 220px; max-height: 320px; overflow: auto;
