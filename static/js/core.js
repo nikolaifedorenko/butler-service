@@ -226,6 +226,12 @@ export const MONTHS_GEN = ['января', 'февраля', 'марта', 'ап
 export const WD = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
 export const WD_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
+export function prefersReducedMotion() {
+  return matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+export function scrollBehavior() { return prefersReducedMotion() ? 'instant' : 'smooth'; }
+
 export function toast(message, type = 'ok', warnings = []) {
   const host = $('#toast-host');
   const el = document.createElement('div');
@@ -233,7 +239,11 @@ export function toast(message, type = 'ok', warnings = []) {
   render(html`${message}${warnings.length
     ? html`<ul>${warnings.map(w => html`<li>${w}</li>`)}</ul>` : ''}`, el);
   host.appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 4600);
+  setTimeout(() => {
+    if (prefersReducedMotion()) return;
+    el.style.opacity = '0';
+    el.style.transition = 'opacity .3s';
+  }, 4600);
   setTimeout(() => el.remove(), 5100);
 }
 /* Поколения загрузок раздела: ответ устарел, если раздел успели перезагрузить (листание

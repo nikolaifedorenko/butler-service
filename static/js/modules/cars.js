@@ -9,9 +9,11 @@
 
 import { can, poll, registerModule } from '../app.js';
 import {
-  $, api, closeModal, confirmDialog, dateRu, hhmm, mediaHint, multipartApi, openModal, state, toast,
+  $, api, authContextIsCurrent, authContextSnapshot, closeModal, confirmDialog, dateRu, hhmm, loadGeneration,
+  mediaHint, multipartApi, openModal, state, toast,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { dataState } from '../ui/data_state.js';
 import { checkField } from '../ui/form.js';
 import { loadMe } from './me.js';
 import { settingsOpen } from './settings.js';
@@ -19,7 +21,7 @@ import { settingsOpen } from './settings.js';
 /* бейдж статуса кара (используется и в «Моих отметках», и в ночном обходе) */
 export const CAR_BADGE = { free: 'ok', busy: 'warn', charging: 'info', maintenance: 'danger', disabled: 'muted' };
 
-export const carsState = { data: null, meta: null, locations: [], filter: 'all', q: '', error: '' };
+export const carsState = { data: null, meta: null, locations: [], filter: 'all', q: '', error: false, loading: false };
 
 /* dateRu() из app.js рассчитан на «YYYY-MM-DD»; для datetime берём только дату */
 const dRuCar = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
@@ -74,27 +76,47 @@ function positionCarMenu(button, pop) {
 registerModule({ views: { cars: loadCars } });
 
 async function loadCars() {
+  const auth = authContextSnapshot();
   paintCars();
   await fetchCars();
-  poll('cars', () => { if (state.view === 'cars') fetchCars(true); });
+  if (state.view === 'cars' && authContextIsCurrent(auth)) {
+    poll('cars', () => { if (state.view === 'cars') fetchCars(true); });
+  }
 }
 
 const paintCars = () => render(carsPage(), mount($('#view-cars')));
 
-async function fetchCars(silent) {
+async function fetchCars(background = false) {
+  if (background && carsState.loading) return;
+  const auth = authContextSnapshot(), fresh = loadGeneration('cars');
+  const current = () => fresh() && state.view === 'cars' && authContextIsCurrent(auth);
+  const keepData = background && carsState.data && !carsState.error;
+  const fromRetry = document.activeElement?.id === 'cars-retry';
+  carsState.loading = !keepData;
+  if (!keepData) paintCars();
   try {
     const [data, meta] = await Promise.all([
-      api('/api/cars', { silent: !!silent }),
+      api('/api/cars', { silent: true }),
       carsState.meta ? Promise.resolve(carsState.meta) : api('/api/cars/meta', { silent: true }),
     ]);
+    if (!current()) return;
+    if (!Array.isArray(data?.cars)) throw new Error('Не удалось прочитать список каров');
+    await ensureCarLocations();
+    if (!current()) return;
     carsState.data = data;
     carsState.meta = meta;
-    carsState.error = '';
-    await ensureCarLocations();
-  } catch (e) {
-    carsState.error = e.message;
+    carsState.error = false;
+  } catch {
+    if (!current()) return;
+    if (!keepData) carsState.error = true;
+  } finally {
+    if (current()) {
+      carsState.loading = false;
+      const restore = fromRetry && document.activeElement?.id === 'cars-retry';
+      paintCars();
+      if (restore && !carsState.error) $('#cars-list')?.focus();
+    }
   }
-  paintCars();
 }
 
 function carFilterSeg() {
@@ -113,7 +135,8 @@ const carsPage = () => {
     <div class="page-head">
       <div><h2>Электрокары</h2><div class="sub">Парк, держатели, заряд и состояние · история не редактируется</div></div>
       <div class="spacer"></div>
-      <button class="btn btn-sm" id="cars-refresh" @click=${() => fetchCars()}>Обновить</button>
+      <button class="btn btn-sm" id="cars-refresh" aria-disabled=${carsState.loading}
+        @click=${() => { if (!carsState.loading) fetchCars(); }}>Обновить</button>
       <button class=${`btn btn-sm btn-ghost${can('settings.view') ? '' : ' hidden'}`} id="cars-locations"
         title="Места стоянки — Настройки → Электрокары" @click=${() => settingsOpen('cars')}>Места ↗</button>
       <button class=${`btn btn-sm btn-primary${meta.can_manage ? '' : ' hidden'}`} id="cars-add"
@@ -124,20 +147,20 @@ const carsPage = () => {
 
 function carsBody() {
   const d = carsState.data;
-  if (carsState.error && !d) {
-    return html`<div class="panel"><h3 class="panel-title">Парк не загрузился</h3>
-      <p style="color:var(--danger);font-weight:600">${carsState.error}</p>
-      <p class="hint">Проверьте связь и нажмите «Обновить». Состояние каров также видно
-      в разделе «Ночной отчёт» → шаг «Проверка электрокаров».</p></div>`;
+  if (carsState.error) {
+    return dataState('error', carsState.loading ? 'Загружаем парк…' : 'Парк не загрузился. Проверьте связь и повторите.',
+      html`<button class="btn btn-sm" id="cars-retry" aria-disabled=${carsState.loading}
+        @click=${() => { if (!carsState.loading) fetchCars(); }}>Повторить</button>`);
   }
-  if (!d) return html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`;
+  if (!d || carsState.loading) return dataState('loading', 'Загружаем парк…');
   const meta = carsState.meta || { can_manage: false, can_edit_park: false };
   const me = d.me || {};
+  const search = carsState.q.trim().toLowerCase();
   const list = d.cars.filter(c => {
     if (carsState.filter !== 'all' && c.status !== carsState.filter) return false;
-    if (!carsState.q) return true;
+    if (!search) return true;
     const hay = `${c.number} ${c.location} ${c.holder_name} ${c.assigned_name} ${c.note}`.toLowerCase();
-    return hay.includes(carsState.q);
+    return hay.includes(search);
   });
   const stats = {
     free: d.cars.filter(c => c.status === 'free').length,
@@ -275,7 +298,7 @@ function carsBody() {
         <div class="lbl">№${rec.number} · ${rec.location || 'место не указано'}</div>
         ${rec.charge_title ? html`<div class="desc">Заряд ${rec.charge_title}</div>` : nothing}
       </div><div class="rule-input">${act(rec, 'take', `Взять №${rec.number}`, 'btn-accent')}</div></div></div>` : nothing}
-    ${canTake && !rec ? html`<div class="panel cars-work-next"><h3>Свободных каров сейчас нет</h3>
+    ${canTake && !rec && d.cars.length ? html`<div class="panel cars-work-next"><h3>Свободных каров сейчас нет</h3>
       <button class="btn btn-sm" @click=${() => $('#cars-list').focus()}>К списку каров</button></div>` : nothing}
     <div class="stat-grid cars-work-summary">
       <div class="stat accent"><div class="k">Всего в парке</div><div class="v">${d.cars.length}</div></div>
@@ -286,14 +309,20 @@ function carsBody() {
     </div>
     <div class="toolbar">
       <div class="seg" id="cars-filter">${carFilterSeg()}</div>
-      <input type="search" id="cars-q" placeholder="Поиск: номер, место, кто держит…" style="max-width:280px"
-        @input=${e => { carsState.q = e.target.value.trim().toLowerCase(); paintCars(); }}>
+      <input type="search" id="cars-q" aria-label="Поиск каров" placeholder="Номер, место, кто держит…" style="max-width:280px"
+        .value=${carsState.q} @input=${e => { carsState.q = e.target.value; paintCars(); }}>
     </div>
     <div class="table-wrap" id="cars-list" tabindex="0">
       <table class="data responsive">
         <thead><tr><th>Кар</th><th>Статус</th><th>Место</th><th>Заряд</th><th>Держит</th>
           <th>Закреплён</th><th>Ключ</th><th>Проверен</th><th>Действия</th></tr></thead>
-        <tbody>${list.length ? list.map(row) : html`<tr><td colspan="9" class="empty">Нет каров по фильтру</td></tr>`}</tbody>
+        <tbody>${list.length ? list.map(row) : html`<tr><td colspan="9">${d.cars.length
+          ? dataState('filtered', 'Нет каров по фильтру', html`<button class="btn btn-sm" @click=${() => {
+            carsState.filter = 'all';
+            carsState.q = '';
+            paintCars();
+            $('#cars-q')?.focus();
+          }}>Сбросить фильтры</button>`) : dataState('empty', 'Парк пока пуст')}</td></tr>`}</tbody>
       </table>
     </div>
     <p class="hint">Правила: один сотрудник — один кар; вернуть может тот, кто брал (внешнего — любой);
@@ -351,8 +380,11 @@ function personFieldValue(prefix) {
    обходу (место там — выпадающий список, как в окне возврата). Грузим один раз. */
 export async function ensureCarLocations() {
   if (!carsState.locations.length) {
-    try { carsState.locations = (await api('/api/cars/locations', { silent: true })).locations || []; }
-    catch { carsState.locations = []; }
+    const auth = authContextSnapshot();
+    try {
+      const data = await api('/api/cars/locations', { silent: true });
+      if (authContextIsCurrent(auth)) carsState.locations = data.locations || [];
+    } catch { /* оставить последний доступный список */ }
   }
   return carsState.locations;
 }

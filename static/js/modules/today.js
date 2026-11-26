@@ -13,6 +13,7 @@ import {
   $, api, authContextIsCurrent, authContextSnapshot, dateRu, hhmm, loadGeneration, MONTHS_GEN, openModal, serverShiftMs, state, syncServerClock, toast, todayISO, WD,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { dataState } from '../ui/data_state.js';
 import { openOtNoteModal } from './me.js';
 import { openReservationCard } from './stays.js';
 import { guestPreferenceLabel } from './stays_forms.js';
@@ -158,17 +159,17 @@ function shiftStrip(view) {
 function loadError(view, key) {
   const blocks = key === 'all' ? view.blocks : [key];
   const waiting = blocks.some(block => view.pending.has(block));
-  return html`<div class="alert danger today-load-error" data-today-error=${key}>
-    <span role="status">${waiting ? 'Повторяем загрузку…' : READ_ERRORS[key]}</span>
-    <button class="btn btn-sm" data-today-retry=${key} aria-label=${RETRY_LABELS[key]} aria-disabled=${waiting}
-      @click=${() => { if (!blocks.some(block => view.pending.has(block))) view.refresh(blocks); }}>Повторить</button>
+  return html`<div class="today-load-error" data-today-error=${key}>
+    ${dataState('error', waiting ? 'Повторяем загрузку…' : READ_ERRORS[key], html`
+      <button class="btn btn-sm" data-today-retry=${key} aria-label=${RETRY_LABELS[key]} aria-disabled=${waiting}
+        @click=${() => { if (!blocks.some(block => view.pending.has(block))) view.refresh(blocks); }}>Повторить</button>`)}
   </div>`;
 }
 
 function todayBlock(view, key, content) {
   if (view.errors.has(key)) return loadError(view, key);
   if (!view[key] && view.pending.has(key)) {
-    return html`<div class="skel-wrap" aria-busy="true"><div class="skel-line skel-lg"></div><div class="skel-line"></div></div>`;
+    return dataState('loading', { status: 'Загружаем смену…', mine: 'Загружаем гостей…', board: 'Загружаем присутствие…' }[key]);
   }
   return content(view);
 }
@@ -274,7 +275,7 @@ function mineBlocks(view) {
     ${important ? resCard(view, important, today, true) : html`<div class="alert info" data-empty="important">Срочного нет: заездов и выездов на сегодня нет.</div>`}
     <h3 class="today-h" data-today-ready="mine" tabindex="-1">Мои гости</h3>
     ${rest.length ? rest.map(r => resCard(view, r, today))
-      : html`<div class="empty" data-empty="guests">${important ? 'Других гостей на сегодня нет' : 'Сегодня вы никого не ведёте'}</div>`}
+      : html`<div data-empty="guests">${dataState('empty', important ? 'Других гостей на сегодня нет' : 'Сегодня вы никого не ведёте')}</div>`}
     <div class="today-more-link"><button class="btn btn-sm btn-ghost" @click=${() => navigate('mystays')}>Все мои гости</button></div>`;
 }
 

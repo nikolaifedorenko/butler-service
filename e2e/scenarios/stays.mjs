@@ -258,13 +258,15 @@ const $ = s => window.document.querySelector(s);
     check('строки объектов категории', await waitFor(() => $$('#view-stays [data-unit-row]').length === 2));
     /* месяц общий с Табелем: ▶ здесь — Табель на том же месяце; ◀ в Табеле — шахматка тоже */
     click($('#sm-next'));
-    await waitFor(() => text('#sm-label') === 'февраль 2030');
+    check('шахматка отрисовала февраль', await waitFor(() =>
+      text('#sm-label') === 'февраль 2030' && !!$('#view-stays.active .sb-head [data-day="2030-02-01"]')));
     window.navigate('timesheet');
     check('Табель открылся на месяце шахматки', await waitFor(() => text('#tb-label') === 'февраль 2030'), text('#tb-label'));
     click($('#tb-prev'));
     await waitFor(() => text('#tb-label') === 'январь 2030');
     window.navigate('stays');
-    check('шахматка — на месяце Табеля', await waitFor(() => !!$('.sb-head [data-day="2030-01-01"]')) && text('#sm-label') === 'январь 2030');
+    check('шахматка — на месяце Табеля', await waitFor(() =>
+      text('#sm-label') === 'январь 2030' && !!$('#view-stays.active .sb-head [data-day="2030-01-01"]')));
     await waitFor(() => $$('#view-stays [data-unit-row]').length === 2);
     /* «Сегодня» — текущий месяц, колонка дня подсвечена */
     click($('#sm-today'));

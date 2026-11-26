@@ -8,7 +8,7 @@ export function periodNav(prefix, label, shift, unit = 'месяц') {
   </button>`;
   return html`<div class="month-nav">
     ${arrow('prev', -1, `Предыдущий ${unit}`, 'm10 3-5 5 5 5')}
-    <div class="label" id=${`${prefix}-label`} tabindex="-1">${label}</div>
+    <div class="label" id=${`${prefix}-label`} tabindex="-1" .textContent=${label}></div>
     ${arrow('next', 1, `Следующий ${unit}`, 'm6 3 5 5-5 5')}
   </div>`;
 }

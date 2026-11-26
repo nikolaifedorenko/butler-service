@@ -10,9 +10,10 @@
 
 import { can, registerModule } from '../app.js';
 import {
-  $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, state, textOn, todayISO, toast, WD_SHORT,
+  $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, scrollBehavior, state, textOn, todayISO, toast, WD_SHORT,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { dataState } from '../ui/data_state.js';
 import { periodNav } from '../ui/period_nav.js';
 import { renderBookings } from './stays_bookings.js';
 import { openBlockCard, renderBlocksTab } from './stays_blocks.js';
@@ -84,7 +85,8 @@ function goToday(body, rerender) {
   const today = staysToday();
   const [y, m] = today.split('-').map(Number);
   staysState.focusDay = today;
-  if (y === state.year && m === state.month) staysFocusDay(body);
+  const ready = $(`.sb-grid:not(.hidden) .sb-head [data-day="${today}"]`, body);
+  if (y === state.year && m === state.month && ready) staysFocusDay(body);
   else { state.year = y; state.month = m; rerender(); }
 }
 /* шаблон навигации по месяцам — для видов на шаблонах; body — контейнер вкладки (докрутка к дню) */
@@ -104,7 +106,7 @@ export function staysFocusDay(body) {
   const unitCol = cell.closest('.sb-head')?.firstElementChild?.clientWidth || 0;
   const x = cell.getBoundingClientRect().left - grid.getBoundingClientRect().left + grid.scrollLeft;
   grid.scrollTo({ left: Math.max(0, x - unitCol - (grid.clientWidth - unitCol) / 2 + cell.clientWidth / 2),
-    behavior: 'smooth' });
+    behavior: scrollBehavior() });
   const toolbar = $('.sb-units-toolbar', body);
   if (toolbar && matchMedia('(max-width: 860px)').matches) {
     const viewport = grid.closest('.content');
@@ -170,14 +172,21 @@ export async function loadStays() {
   body.dataset.staysLoadGen = loadGen;
   const fresh = () => body.dataset.staysLoadGen === loadGen;
   const tab = staysState.tab;
-  render(html`<div class="skel-wrap"><div class="skel-line skel-lg"></div><div class="skel-line"></div><div class="skel-line"></div></div>`, mount(body));
+  render(dataState('loading', 'Загружаем шахматку…'), mount(body));
   try {
     await staysFund(true);          // фонд меняют в Настройках — при каждом открытии раздела заново
     if (!fresh() || tab !== staysState.tab) return;
     await staysTabRender(tab)(body);
-  } catch (e) {
-    if (!fresh()) return;
-    render(html`<div class="panel"><p class="muted">${e.message}</p></div>`, mount(body));
+  } catch {
+    if (!fresh() || tab !== staysState.tab || state.view !== 'stays') return;
+    render(dataState('error', 'Шахматка не загрузилась. Проверьте связь и повторите.',
+      html`<button class="btn btn-sm" @click=${async event => {
+        const restore = document.activeElement === event.currentTarget;
+        await loadStays();
+        if (restore && document.activeElement === document.body && state.view === 'stays') {
+          $('button[data-stab="' + staysState.tab + '"]', host)?.focus();
+        }
+      }}>Повторить</button>`), mount(body));
   }
 }
 /* «Батлеры» и «Брони» — с уровня «с фамилиями» */
@@ -339,10 +348,17 @@ function showBoardBooking(grid, booking) {
   else if (strip.bottom > bottom) viewport.scrollTop += strip.bottom - bottom;
 }
 
-async function renderUnitsBoard(body) {
+function showBoardFeedback(body, status, hideData = false) {
+  const feedback = $('#sb-feedback', body);
+  if (hideData) $$('[data-sb-data]', body).forEach(element => element.classList.add('hidden'));
+  render(status, mount(feedback || body));
+}
+
+async function renderUnitsBoard(body, retry = false) {
   /* ◀ ▶ и фильтры меняются подряд: запоздавший ответ перерисовал бы экран прежним месяцем
      (как Табель, PR #95) — поколение у контейнера вкладки (core.js) */
   const fresh = loadGenerationFor(body);
+  const current = () => fresh() && body.isConnected && state.view === 'stays' && staysState.tab === 'units';
   const setExportDisabled = disabled => {
     for (const action of $$('[data-sb-export]', body)) action.disabled = disabled;
   };
@@ -350,10 +366,30 @@ async function renderUnitsBoard(body) {
   disablePrint();
   const filters = staysState.filters;
   const monthLabel = `${MONTHS[state.month - 1]} ${state.year}`;
+  const periodLabel = $('#sm-label', body);
+  if (periodLabel) periodLabel.textContent = monthLabel;
   const boardParams = staysBoardParams();
-  const [fund, data] = await Promise.all([staysFund(),
-    api('/api/stays/board/units?' + boardParams, { silent: true })]);
-  if (!fresh()) return;
+  const filtered = [...boardParams.keys()].some(name => name !== 'first' && name !== 'last');
+  const retryState = waiting => dataState('error', waiting ? 'Загружаем шахматку…'
+    : `Шахматка не загрузилась за ${monthLabel}. Проверьте связь и повторите.`,
+  html`<button class="btn btn-sm" id="sb-retry" aria-disabled=${waiting}
+    @click=${() => { if (!waiting) renderUnitsBoard(body, true); }}>Повторить</button>`);
+  showBoardFeedback(body, retry ? retryState(true) : dataState('loading', 'Загружаем шахматку…'));
+  let fund, data;
+  try {
+    [fund, data] = await Promise.all([staysFund(), api('/api/stays/board/units?' + boardParams, { silent: true })]);
+    if (!data?.days?.length || !['days', 'units', 'bars', 'holds', 'blocks', 'warnings'].every(key => Array.isArray(data[key]))) {
+      throw new Error('Не удалось прочитать данные шахматки');
+    }
+  } catch {
+    if (current()) showBoardFeedback(body, retryState(false), true);
+    return;
+  }
+  if (!current()) return;
+  const restore = retry && document.activeElement?.id === 'sb-retry';
+  const feedback = $('#sb-feedback', body);
+  if (feedback) render(nothing, mount(feedback));
+  $$('[data-sb-data].hidden', body).forEach(element => element.classList.remove('hidden'));
   const names = data.visibility !== 'occupancy';
   const byUnit = {};
   data.bars.forEach(b => { (byUnit[b.unit_id ?? 'none'] ||= []).push(b); });
@@ -362,6 +398,29 @@ async function renderUnitsBoard(body) {
   const blocksBy = {};
   data.blocks.forEach(b => { (blocksBy[b.unit_id] ||= []).push(b); });
   const rerender = () => renderUnitsBoard(body);
+  const reset = () => {
+    $('#sf-reset', body)?.click();
+    ($('#sf-q', body) || $('#sm-label', body))?.focus();
+  };
+  const resetSearch = () => {
+    const search = $('#sf-q', body);
+    if (!search) return;
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+    search.focus();
+  };
+  const resultState = () => {
+    if (!data.units.length) {
+      return filtered ? dataState('filtered', 'Объектов по фильтру нет',
+        html`<button class="btn btn-sm" @click=${reset}>Сбросить фильтры</button>`)
+        : dataState('empty', 'Нет объектов в этом месяце');
+    }
+    if (names && filters.q.trim() && !data.bars.length) {
+      return dataState('filtered', 'Броней по поиску нет',
+        html`<button class="btn btn-sm" @click=${resetSearch}>Очистить поиск</button>`);
+    }
+    return nothing;
+  };
   const st = staysState.sort;
   const canPrint = () => fresh() && (!names || $('#sf-q', body)?.value.trim() === filters.q.trim());
   const gridFocus = (grid, booking) => {
@@ -498,16 +557,19 @@ async function renderUnitsBoard(body) {
     </div>
     ${staysFilterView(fund, rerender, { people: names, onSearchInput: disablePrint,
       mobileTools: html`<div class="sb-mobile-sort">${sorting('sb-mobile-', true)}</div>` })}
-    ${data.warnings.length ? html`<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}
-    <div class="sb-grid" role="group" tabindex="0" style=${`--days:${data.days.length}`} aria-label="Шахматка объектов"
+    <div id="sb-feedback"></div>
+    <div data-sb-data>${resultState()}</div>
+    ${data.warnings.length ? html`<div class="dict-banner gold" data-sb-data><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}
+    <div class="sb-grid" data-sb-data role="group" tabindex="0" style=${`--days:${data.days.length}`} aria-label="Шахматка объектов"
       @click=${gridClick} @keydown=${gridKey} @focusin=${onGridFocus}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
-    ${(byUnit.none || []).length ? html`<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
+    ${(byUnit.none || []).length ? html`<div class="panel" data-sb-data><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
       html`<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar=${b.reservation_id}
         @click=${names ? () => openReservationCard(b.reservation_id, rerender) : nothing}>${b.overbooked ? html`<span class="badge danger">овербукинг</span> ` : nothing}${names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь'} · ${dateRu(b.start)}–${dateRu(b.end)}</div>`)}</div>` : nothing}
     ${can('stays.edit') ? html`<button class="fab only-mobile" id="sb-new-fab" aria-label="Новая бронь" title="Новая бронь"
       @click=${() => openReservationForm(null, { onSaved: rerender })}>+</button>` : nothing}`;
   draw();
   staysFocusDay(body);
+  if (restore) $('#sm-label', body)?.focus();
 }
 
 /* Разделы дерева: по умолчанию развёрнут корневой раздел, где есть категория вида с
@@ -573,7 +635,7 @@ function gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names) {
   });
   const today = staysToday();
   return html`<div class="sb-row sb-head"><div class="sb-unit">Объект</div><div class="sb-track sb-days">${days.map(d => staysDayHeadView(d, today))}</div></div>
-    ${out.length ? out : html`<div class="empty">Объектов по фильтру нет</div>`}`;
+    ${out}`;
 }
 
 /* «сопровождение: отказался», «требуется — отмечено вручную», «нужен — узел Винные виллы, …» (§2, §4.1) */
