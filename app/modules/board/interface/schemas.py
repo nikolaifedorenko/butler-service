@@ -115,9 +115,21 @@ class OccupancyOut(ApiModel):
     total: JsonDict
 
 
+class MineAnniversaryGuestOut(ApiModel):
+    guest_id: int
+    name: str
+
+
+class MineAnniversaryOut(ApiModel):
+    """Годовщина пары с гостями, которых ведёт батлер."""
+
+    guests: list[MineAnniversaryGuestOut]
+
+
 class MineTodayOut(ApiModel):
     date: str
     reservations: list[JsonDict]
+    anniversaries: list[MineAnniversaryOut]
 
 
 class MineMonthLoadOut(ApiModel):

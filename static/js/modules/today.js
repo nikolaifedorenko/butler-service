@@ -185,6 +185,7 @@ function head(view, allFailed) {
 /* ── батлер: мои брони ── */
 const nightsBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
 const isArrival = (r, today) => r.check_in === today && !r.departing;
+const WEDDING_ANNIVERSARY = 'Годовщина свадьбы';
 
 function resTag(r, today) {
   if (r.departing) return { cls: 'warn', text: 'Выезд сегодня' };
@@ -239,9 +240,11 @@ function openTodayBooking(view, r) {
     });
 }
 
-function resCard(view, r, today) {
+function resCard(view, r, today, anniversaryGuests) {
   const tag = resTag(r, today);
-  const soon = r.guests.flatMap(g => g.special_dates_soon || []);
+  const soon = r.guests.flatMap(g => (g.special_dates_soon || []).filter(mark =>
+    !anniversaryGuests.has(g.guest_id) || mark.date !== today
+    || mark.what.trim().toLowerCase() !== WEDDING_ANNIVERSARY.toLowerCase()));
   const opening = view.pendingCard === r.reservation_id;
   return html`<button class="today-card" data-reservation=${r.reservation_id}
     aria-busy=${opening ? 'true' : nothing} @click=${() => openTodayBooking(view, r)}>
@@ -253,11 +256,23 @@ function resCard(view, r, today) {
   </button>`;
 }
 
+function anniversaryBlock(anniversaries) {
+  if (!anniversaries?.length) return nothing;
+  return html`<section class="today-body" aria-labelledby="today-important-heading">
+    <h3 class="today-h" id="today-important-heading">Сейчас важно</h3>
+    ${anniversaries.map(({ guests }) => html`<div class="alert info">
+      <div><strong>${WEDDING_ANNIVERSARY}</strong><div>${guests.map(g => g.name).join(' и ')}</div></div>
+    </div>`)}
+  </section>`;
+}
+
 function mineBlocks(view) {
   const m = view.mine;
   if (!m) return nothing;
   const today = m.date;
   const list = m.reservations;
+  const anniversaries = m.anniversaries || [];
+  const anniversaryGuests = new Set(anniversaries.flatMap(a => a.guests.map(g => g.guest_id)));
   const arrivals = list.filter(r => isArrival(r, today));
   const departures = list.filter(r => r.departing);
   const movements = [...arrivals, ...departures];
@@ -268,13 +283,14 @@ function mineBlocks(view) {
       <div class="stat"><div class="v" data-stat="in">${arrivals.length}</div><div class="k">заезд</div></div>
       <div class="stat"><div class="v" data-stat="out">${departures.length}</div><div class="k">выезд</div></div>
     </div>
+    ${anniversaryBlock(anniversaries)}
     <section class="today-body" aria-labelledby="today-movements-heading">
       <h3 class="today-h" id="today-movements-heading">Заезды и выезды сегодня</h3>
-      ${movements.length ? movements.map(r => resCard(view, r, today))
+      ${movements.length ? movements.map(r => resCard(view, r, today, anniversaryGuests))
         : html`<div class="alert info" data-empty="movements">Сегодня заездов и выездов нет.</div>`}
     </section>
     <h3 class="today-h" data-today-ready="mine" tabindex="-1">Мои гости</h3>
-    ${rest.length ? rest.map(r => resCard(view, r, today))
+    ${rest.length ? rest.map(r => resCard(view, r, today, anniversaryGuests))
       : html`<div data-empty="guests">${dataState('empty', movements.length ? 'Других гостей на сегодня нет' : 'Сегодня вы никого не ведёте')}</div>`}
     <div class="today-more-link"><button class="btn btn-sm btn-ghost" @click=${() => navigate('mystays')}>Все мои гости</button></div>`;
 }

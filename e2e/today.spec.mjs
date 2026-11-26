@@ -136,6 +136,48 @@ test('все сегодняшние заезды и выезды собраны 
   await expect(view.locator('[data-reservation="2"]')).toBeVisible();
 });
 
+test('годовщина на панели «Сейчас важно» сохраняет заезды и выезды отдельно', async ({ page }) => {
+  await page.route('**/api/stays/mine/today', route => route.fulfill({ json: {
+    date: '2026-11-26',
+    reservations: [{
+      reservation_id: 1, check_in: '2026-11-26', check_out: '2026-11-28', departing: false,
+      unit: '1-104', guests: [{ name: 'Орлова А.' }],
+    }],
+    anniversaries: [{ guests: [{ guest_id: 41, name: 'Орлова А.' }, { guest_id: 43, name: 'Орлов В.' }] }],
+  } }));
+  await login(page, 'ivanov');
+  const view = today(page);
+  const important = view.getByRole('region', { name: 'Сейчас важно' });
+  await expect(important.getByText('Годовщина свадьбы', { exact: true })).toBeVisible();
+  await expect(important.getByText('Орлова А. и Орлов В.')).toBeVisible();
+  await expect(view.getByRole('region', { name: 'Заезды и выезды сегодня' })
+    .locator('[data-reservation="1"]')).toBeVisible();
+  await expect(view.locator('[data-stat=in]')).toHaveText('1');
+});
+
+test('на «Сегодня» ручная годовщина того же гостя и дня показана один раз', async ({ page }) => {
+  const wedding = (date) => ({ date, what: 'Годовщина свадьбы' });
+  const booking = (id, guest_id, special_dates_soon) => ({
+    reservation_id: id, check_in: '2026-11-25', check_out: '2026-11-28', departing: false,
+    unit: '1-10' + id, guests: [{ guest_id, name: 'Орлова А.', special_dates_soon }],
+  });
+  await page.route('**/api/stays/mine/today', route => route.fulfill({ json: {
+    date: '2026-11-26',
+    reservations: [
+      booking(1, 41, [wedding('2026-11-26'), wedding('2026-11-27')]),
+      booking(2, 42, [wedding('2026-11-26')]),
+      booking(3, 43, [wedding('2026-11-26'), { date: '2026-11-26', what: 'День рождения' }]),
+    ],
+    anniversaries: [{ guests: [{ guest_id: 41, name: 'Орлова А.' }, { guest_id: 43, name: 'Орлова А.' }] }],
+  } }));
+  await login(page, 'ivanov');
+  const view = today(page);
+  const note = id => view.locator(`[data-reservation="${id}"] .today-soon`);
+  await expect(note(1)).toHaveText('Годовщина свадьбы — 27.11');
+  await expect(note(2)).toHaveText('Годовщина свадьбы — 26.11');
+  await expect(note(3)).toHaveText('День рождения — 26.11');
+});
+
 test('сбой блока гостей оставляет смену и присутствие и позволяет повторить только поиск гостей', async ({ page }) => {
   let guestsAvailable = false;
   const calls = new Map();

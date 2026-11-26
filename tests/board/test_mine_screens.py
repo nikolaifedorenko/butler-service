@@ -122,6 +122,65 @@ def test_today_special_dates_7_days(manager_role_client, manager_client, butlers
                                            {"date": "2041-07-06", "what": "Годовщина свадьбы"}]
 
 
+def _marry(client, first, second, start, *, former=False):
+    response = client.post(f"{API}/guests/{first['id']}/links", json={
+        "guest_id": second["id"], "kind": "spouse", "former": former, "marriage_start": start,
+    })
+    assert response.status_code == 200, response.text
+
+
+def test_today_anniversary_is_one_reminder_per_couple_and_respects_assignments(
+        manager_role_client, manager_client, butlers, butler_client, on_day):
+    day = D("2041-07-05")
+    cat = make_category(manager_role_client, n_units=1)
+    first = make_guest(manager_client, last="Иванов")
+    spouse = make_guest(manager_client, last="Иванова")
+    set_guest(first["id"], first_name="Иван", special_dates=[{"date": "2018-07-05", "what": "Годовщина свадьбы"}])
+    set_guest(spouse["id"], first_name="Анна")
+    _marry(manager_client, first, spouse, "2020-07-05")
+    r = _res(manager_client, cat, "2041-07-05", "2041-07-07", [first, spouse])
+    _line(butlers["a"], day, r["id"])
+    on_day(day)
+
+    def reminders():
+        response = butler_client.get(f"{API}/mine/today")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        booking = next(row for row in body["reservations"] if row["reservation_id"] == r["id"])
+        assert booking["guests"][0]["special_dates_soon"] == [{"date": "2041-07-05", "what": "Годовщина свадьбы"}]
+        return body["anniversaries"]
+
+    primary = {"guest_id": first["id"], "name": "Иванов И."}
+    secondary = {"guest_id": spouse["id"], "name": "Иванова А."}
+    assert reminders() == [{"guests": [primary, secondary]}]
+    _line(butlers["b"], day, r["id"], guests=(spouse["id"],))
+    assert reminders() == [{"guests": [primary]}]
+
+
+@pytest.mark.parametrize(("start", "former", "check_out"), [
+    (None, False, "2041-07-03"),
+    ("2000-07-01", True, "2041-07-03"),
+    ("2000-07-02", False, "2041-07-03"),
+    ("2041-07-01", False, "2041-07-03"),
+    ("2000-07-01", False, "2041-07-01"),
+])
+def test_today_anniversary_excludes_unknown_former_future_and_departing(
+        manager_role_client, manager_client, butlers, butler_client, on_day, start, former, check_out):
+    day = D("2041-07-01")
+    cat = make_category(manager_role_client, n_units=1)
+    first, spouse = (make_guest(manager_client) for _ in range(2))
+    _marry(manager_client, first, spouse, start, former=former)
+    r = _res(manager_client, cat, "2041-06-30", check_out, [first, spouse])
+    for night in ("2041-06-30", "2041-07-01"):
+        if night < check_out:
+            _line(butlers["a"], D(night), r["id"])
+    on_day(day)
+    response = butler_client.get(f"{API}/mine/today")
+    assert response.status_code == 200, response.text
+    assert response.json()["reservations"]
+    assert response.json()["anniversaries"] == []
+
+
 def test_today_departing_led_last_night(manager_role_client, manager_client, butlers, butler_client, on_day):
     """Гость, которого батлер вёл прошлой ночью и который выезжает сегодня, — в «Сегодня» с
     departing (виден трансфер выезда); выехавший вчера — нет (Ruling 6)."""
