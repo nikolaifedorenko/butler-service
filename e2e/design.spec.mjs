@@ -152,6 +152,56 @@ for (const mode of ['light', 'dark']) {
   });
 }
 
+test('автоматическая и выбранная темы дают одинаковые роли, включая поля и тени', async ({ page }) => {
+  await page.goto('/static/design.html');
+  const sample = () => page.evaluate(() => {
+    const style = selector => getComputedStyle(document.querySelector(selector));
+    return {
+      background: style('body').backgroundColor,
+      foreground: style('body').color,
+      selection: style('select').backgroundImage,
+      panel: style('main .panel').backgroundColor,
+      shadow: style('main .modal').boxShadow,
+      warning: style('main .alert.warn').color,
+    };
+  });
+  const set = mode => page.evaluate(value => window.butlerTheme.set(value), mode);
+  await set('auto');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const dark = await sample();
+  await set('light');
+  const light = await sample();
+  for (const key of Object.keys(light)) expect(dark[key], key).not.toBe(light[key]);
+  await page.emulateMedia({ colorScheme: 'light' });
+  expect(await sample()).toEqual(light);
+  await set('dark');
+  expect(await sample()).toEqual(dark);
+  await set('auto');
+  expect(await sample()).toEqual(light);
+});
+
+test('показатели образца набраны табличными цифрами Manrope', async ({ page }) => {
+  await page.goto('/static/design.html');
+  const value = page.locator('main .stat .v').first();
+  await expect(value).toBeVisible();
+  const metrics = await value.evaluate(async element => {
+    await document.fonts.ready;
+    const style = getComputedStyle(element);
+    const digits = document.createElement('span');
+    element.replaceChildren(digits);
+    digits.textContent = '11111';
+    const narrow = digits.getBoundingClientRect().width;
+    digits.textContent = '88888';
+    return {
+      family: style.fontFamily, numeric: style.fontVariantNumeric, narrow,
+      wide: digits.getBoundingClientRect().width,
+    };
+  });
+  expect(metrics.family).toContain('Manrope');
+  expect(metrics.numeric).toBe('tabular-nums');
+  expect(metrics.narrow).toBe(metrics.wide);
+});
+
 test('текст на пользовательском цвете кода сохраняет контраст AA', async ({ page }) => {
   await login(page, 'admin');
   const pairs = await page.evaluate(async () => {

@@ -1,5 +1,5 @@
 """Дизайн-система (шаг 6б): значения живут только в tokens.css; остальные стили берут их через var(--…),
-каждое используемое имя определено, а тёмная тема переопределяет все цветовые роли."""
+каждое используемое имя определено, а адаптивные цветовые роли объявлены одной парой."""
 from __future__ import annotations
 
 import re
@@ -49,20 +49,18 @@ def test_every_used_variable_is_defined():
     assert not missing, f"переменные без определения: {missing}"
 
 
-def test_dark_theme_overrides_every_color_role():
-    tokens = (CSS / "tokens.css").read_text(encoding="utf-8")
-    light = re.search(r"^:root \{(.*?)^\}", tokens, re.S | re.M).group(1)
-    dark = re.search(r':root\[data-theme="dark"\] \{(.*?)^\}', tokens, re.S | re.M).group(1)
-    media = re.search(r'@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{(.*?)^  \}', tokens, re.S | re.M).group(1)
-    names = lambda block: set(VAR_DEF.findall(block))     # noqa: E731
-    colored = {n for n, v in re.findall(r"(--[\w-]+):\s*([^;]+);", light)
-               if re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", v)}
-    # одинаковые в обеих темах: фирменные цвета и тёмные поверхности шапки/входа
-    same_in_both = {"--gold", "--gold-deep", "--navy", "--navy-2", "--accent", "--accent-dark", "--danger", "--warn", "--info",
-                    "--primary-soft"}
-    missing = sorted(colored - names(dark) - same_in_both)
-    assert not missing, f"тёмная тема не переопределяет: {missing}"
-    assert names(dark) == names(media), "блок prefers-color-scheme разошёлся с data-theme=dark"
+def test_each_semantic_role_has_one_definition():
+    tokens = _strip_comments((CSS / "tokens.css").read_text(encoding="utf-8"))
+    names = [name for name in VAR_DEF.findall(tokens) if name not in {"--if-light", "--if-dark"}]
+    assert len(names) == len(set(names)), "семантическая роль определена повторно"
+    shared = {
+        "--gold", "--gold-deep", "--navy", "--navy-2", "--navy-deep", "--accent", "--accent-dark",
+        "--danger", "--warn", "--info", "--on-navy", "--on-navy-muted", "--on-solid", "--ink-on-gold",
+        "--warn-fg-soft", "--shadow-surface",
+    }
+    for name, value in re.findall(r"(--[\w-]+):\s*([^;]+);", tokens):
+        if re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", value) and name not in shared:
+            assert "var(--if-light," in value and "var(--if-dark," in value, f"для {name} нужна пара значений темы"
 
 
 def test_motion_tokens_are_single_authority_for_transitions():
