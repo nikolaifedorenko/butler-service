@@ -8,7 +8,7 @@
 'use strict';
 
 import { can } from '../app.js';
-import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, toast } from '../core.js';
+import { $, $$, api, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { relativesView, STAYS_STATUS } from './stays_forms.js';
 import { openOooForm } from './stays_ooo.js';
@@ -173,26 +173,30 @@ function dayRow(r, names, rerender) {
 }
 
 export async function renderDayBoard(body) {
+  const fresh = loadGenerationFor(body);
+  const current = () => fresh() && body.isConnected && state.view === 'stays' && staysState.tab === 'day';
   const fund = await staysFund();
-  if (!boardState.day) boardState.day = staysToday();
+  if (!current()) return;
   const f = staysState.filters;
-  const q = staysFundParams(new URLSearchParams({ date: boardState.day }));
+  const q = staysFundParams(new URLSearchParams());
+  if (boardState.day) q.set('date', boardState.day);
   if (f.escorted) q.set('escorted_only', '1');
   staysPeopleParams(q, f);
-  const fresh = loadGenerationFor(body);
   const data = await api('/api/stays/day?' + q, { silent: true });
-  if (!fresh()) return;
+  if (!current()) return;
+  boardState.day = data.date;
   const names = data.visibility !== 'occupancy';
   const t = data.totals;
   const list = data[boardState.tab] || data.arrivals;
   const rerender = () => renderDayBoard(body);
   const go = d => { boardState.day = d; rerender(); };
+  const shift = days => go(staysAddDays(boardState.day || data.date, days));
   render(html`
     <div class="sb-toolbar">
-      <button class="btn btn-sm" id="db-prev" @click=${() => go(staysAddDays(boardState.day, -1))}>◀</button>
-      <input type="date" id="db-date" .value=${boardState.day} @change=${e => go(e.target.value || staysToday())}>
-      <button class="btn btn-sm" id="db-next" @click=${() => go(staysAddDays(boardState.day, 1))}>▶</button>
-      <button class="btn btn-sm btn-ghost" id="db-today" @click=${() => go(staysToday())}>Сегодня</button>
+      <button class="btn btn-sm" id="db-prev" @click=${() => shift(-1)}>◀</button>
+      <input type="date" id="db-date" aria-label="Дата табло" .value=${boardState.day} @change=${e => go(e.target.value || null)}>
+      <button class="btn btn-sm" id="db-next" @click=${() => shift(1)}>▶</button>
+      <button class="btn btn-sm btn-ghost" id="db-today" @click=${() => go(null)}>Сегодня</button>
     </div>
     ${staysFilterView(fund, rerender, { people: names })}
     <div class="db-sum">

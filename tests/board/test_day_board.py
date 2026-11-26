@@ -31,6 +31,17 @@ def _row(rows, rid):
     return next(r for r in rows if r["reservation_id"] == rid)
 
 
+def test_day_board_without_date_uses_property_date(manager_client, monkeypatch):
+    from app.core.time import TZ
+
+    midnight = dt.datetime(2026, 11, 26, 0, 10, tzinfo=TZ)
+    monkeypatch.setattr("app.core.time.local_now", lambda: midnight)
+    response = manager_client.get(f"{API}/day")
+    assert response.status_code == 200, response.text
+    assert response.json()["date"] == "2026-11-26"
+    assert manager_client.get(f"{API}/day", params={"date": "2026-11-25"}).json()["date"] == "2026-11-25"
+
+
 def test_day_board_totals_special(manager_role_client, manager_client):
     s = _setup(manager_role_client, manager_client)
     b = manager_client.get(f"{API}/day", params={"date": _iso(DAY)}).json()
