@@ -123,7 +123,7 @@ let lastSavedName = '';           // имя только что сохранён
 
 /* people — фильтры по гостям (поиск, VIP); уровню occupancy их не показываем: сервер их
    для него не применяет. Шаблон: панель встраивается прямо в вид. */
-export function filterPanelTemplate(fund, filters, onChange, { people = true, onSearchInput } = {}) {
+export function filterPanelTemplate(fund, filters, onChange, { people = true, onSearchInput, mobileTools = nothing } = {}) {
   const f = staysCleanFilters(filters);
   const emit = (patch, savedName = '') => {
     clearTimeout(searchTimer);
@@ -189,6 +189,7 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true, on
         }}>` : nothing}
   </div>
   <div class="sb-toolbar sf-panel${sfPanelOpen ? ' open' : ''}">
+    ${mobileTools}
     ${lists.map(view)}
     <label class="chk"><input type="checkbox" id="sf-esc" .checked=${f.escorted} @change=${e => emit({ escorted: e.target.checked })}> с сопровождением</label>
     ${people ? html`<label class="chk"><input type="checkbox" id="sf-special" .checked=${f.special} @change=${e => emit({ special: e.target.checked })}> ◆ Особый гость</label>

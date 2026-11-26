@@ -105,9 +105,20 @@ export function staysFocusDay(body) {
   const x = cell.getBoundingClientRect().left - grid.getBoundingClientRect().left + grid.scrollLeft;
   grid.scrollTo({ left: Math.max(0, x - unitCol - (grid.clientWidth - unitCol) / 2 + cell.clientWidth / 2),
     behavior: 'smooth' });
+  const toolbar = $('.sb-units-toolbar', body);
+  if (toolbar && matchMedia('(max-width: 860px)').matches) {
+    const viewport = grid.closest('.content');
+    const top = viewport.getBoundingClientRect().top + toolbar.offsetHeight;
+    viewport.scrollTop += grid.getBoundingClientRect().top - top;
+  }
   cell.classList.add('flash-today');
   setTimeout(() => cell.classList.remove('flash-today'), 1800);
 }
+
+document.addEventListener('pointerdown', event => {
+  const menu = $('#view-stays.active .sb-mobile-exports[open]');
+  if (menu && !menu.contains(event.target)) menu.open = false;
+});
 /* измерения фонда (§7) — повторяемые параметры; общие для шахматки, «Загрузки» и табло */
 export function staysFundParams(p) {
   const f = staysState.filters;
@@ -436,24 +447,57 @@ async function renderUnitsBoard(body) {
     const row = unit && unit.closest('[data-unit-row]');
     if (row) openOooForm({ unit_id: Number(row.dataset.unitRow) }, rerender);
   };
-  const unitsTemplate = () => html`
-    <div class="sb-toolbar">
-      ${staysMonthNavView(body, rerender)}
-      <select id="sb-sort" title="Сортировка строк" @change=${e => { st.by = e.target.value; draw(); }}>${STAYS_SORTS.map(([v, t]) =>
+  const sorting = (prefix, mobile = false) => html`
+      <select id=${prefix + 'sort'} title="Сортировка строк" aria-label=${mobile ? 'Сортировка строк' : nothing}
+        @change=${e => { st.by = e.target.value; draw(); }}>${STAYS_SORTS.map(([v, t]) =>
         html`<option value=${v} ?selected=${v === st.by}>${t}</option>`)}</select>
-      <select id="sb-dir" title="Направление" @change=${e => { st.dir = e.target.value; draw(); }}>
+      <select id=${prefix + 'dir'} title="Направление сортировки" @change=${e => { st.dir = e.target.value; draw(); }}>
         <option value="asc" ?selected=${st.dir === 'asc'}>↑</option><option value="desc" ?selected=${st.dir === 'desc'}>↓</option></select>
-      <label class="chk"><input type="checkbox" id="sb-grouped" .checked=${st.grouped}
-        @change=${e => { st.grouped = e.target.checked; draw(); }}> группировать по дереву</label>
+      <label class="chk"><input type="checkbox" id=${prefix + 'grouped'} .checked=${st.grouped}
+        @change=${e => { st.grouped = e.target.checked; draw(); }}> группировать по дереву</label>`;
+  const exportScope = showNames => showNames ? 'с данными гостей' : 'без данных гостей';
+  const closeExport = menu => {
+    menu.open = false;
+    $('summary', menu).focus();
+  };
+  const exportAction = (label, perform, board = false) => html`<button type="button"
+    class="btn btn-sm btn-ghost" ?data-sb-export=${board} @click=${event => {
+      closeExport(event.currentTarget.closest('details'));
+      perform();
+    }}>${label}</button>`;
+  const mobileExport = () => html`<details class="sb-mobile-exports" @focusout=${event => {
+    const menu = event.currentTarget;
+    if (menu.open && !menu.contains(event.relatedTarget)) menu.open = false;
+  }} @keydown=${event => {
+    if (event.key === 'Escape' && event.currentTarget.open) {
+      event.preventDefault();
+      closeExport(event.currentTarget);
+    }
+  }}>
+    <summary class="btn btn-sm btn-ghost">Экспорт</summary>
+    <div class="sb-mobile-export-items">
+      ${exportAction('Шахматка XLSX ' + exportScope(names && can('stays.export')), () => downloadBoard('xlsx'), true)}
+      ${exportAction('Шахматка PDF ' + exportScope(names), () => downloadBoard('pdf'), true)}
+      ${exportAction('Печать ' + exportScope(names), printBoard, true)}
+      ${exportAction('Сводка XLSX без данных гостей', xlsx('anon'))}
+      ${can('stays.export') && can('stays.guests') ? exportAction('Сводка XLSX с данными гостей', xlsx('full')) : nothing}
+    </div>
+  </details>`;
+  const unitsTemplate = () => html`
+    <div class="sb-toolbar sb-units-toolbar">
+      ${staysMonthNavView(body, rerender)}
+      <div class="sb-desktop-tools hide-mobile">${sorting('sb-')}
       <button class="btn btn-sm btn-ghost" id="sb-xlsx-anon" title="Объекты, даты, статусы, число гостей — без данных гостей" @click=${xlsx('anon')}>Выгрузить (без гостей)</button>
       ${can('stays.export') && can('stays.guests') ? html`<button class="btn btn-sm btn-ghost" id="sb-xlsx-full" @click=${xlsx('full')}>Выгрузить полностью</button>` : nothing}
       <button class="btn btn-sm btn-ghost" data-sb-export id="sb-board-xlsx"
         title=${can('stays.export') ? 'Скачать текущую шахматку' : 'Без данных и фильтров по гостям'} @click=${() => downloadBoard('xlsx')}>Шахматка XLSX</button>
       <button class="btn btn-sm btn-ghost" data-sb-export id="sb-board-pdf" @click=${() => downloadBoard('pdf')}>PDF</button>
       <button class="btn btn-sm btn-ghost" data-sb-export id="sb-print" @click=${printBoard}>Печать</button>
-      ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary hide-mobile" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}
+      ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}</div>
+      ${mobileExport()}
     </div>
-    ${staysFilterView(fund, rerender, { people: names, onSearchInput: disablePrint })}
+    ${staysFilterView(fund, rerender, { people: names, onSearchInput: disablePrint,
+      mobileTools: html`<div class="sb-mobile-sort">${sorting('sb-mobile-', true)}</div>` })}
     ${data.warnings.length ? html`<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}
     <div class="sb-grid" role="group" tabindex="0" style=${`--days:${data.days.length}`} aria-label="Шахматка объектов"
       @click=${gridClick} @keydown=${gridKey} @focusin=${onGridFocus}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
