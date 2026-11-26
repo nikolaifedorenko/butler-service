@@ -149,9 +149,9 @@ export function mountGuestFamily(host, guest, { isCurrent, onBack, onChanged, ba
 let boardGuest = null;
 registerModule({ views: { guestfamily: loadBoardFamily } });
 
-export function openBoardFamily(guest) {
+export function openBoardFamily(guest, { onBack = () => navigate('stays') } = {}) {
   closeDrawer();
-  boardGuest = { guest, user: state.user };
+  boardGuest = { guest, user: state.user, onBack };
   navigate('guestfamily');
 }
 
@@ -165,7 +165,7 @@ function loadBoardFamily() {
   render(html`<div class="family-canvas"></div>`, mount(view));
   mountGuestFamily($('.family-canvas', view), entry.guest, {
     isCurrent: () => current() && state.user === entry.user && state.view === 'guestfamily',
-    onBack: () => navigate('stays'),
+    onBack: entry.onBack,
     backLabel: 'К шахматке',
   });
 }

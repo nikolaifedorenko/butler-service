@@ -10,7 +10,8 @@
 
 import { can, navigate, registerModule } from '../app.js';
 import {
-  $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, scrollBehavior, state, textOn, todayISO, toast, WD_SHORT,
+  $, $$, api, authContextIsCurrent, authContextSnapshot, closeModal, dateRu, downloadBlob, loadGenerationFor,
+  MONTHS, openModal, scrollBehavior, state, textOn, todayISO, toast, WD_SHORT,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { dataState } from '../ui/data_state.js';
@@ -51,7 +52,7 @@ export const staysCodeTagView = code => (code ? html` <span class="badge muted" 
    панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
 export const staysState = {
   tab: 'units', fund: null, filters: staysEmptyFilters(),
-  nextDayBoard: false, shortcutReturn: null,
+  nextDayBoard: false, shortcutReturn: null, familyReturnFocus: null,
   sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {},
   ocOpen: {}, ocMode: 'pct', focusDay: null,
 };
@@ -173,7 +174,9 @@ function restoreStaysEntry() {
 
 function enterStays() {
   const fromToday = staysState.nextDayBoard;
+  const familyReturnFocus = staysState.familyReturnFocus;
   staysState.nextDayBoard = false;
+  staysState.familyReturnFocus = null;
   if (state.view !== 'stays') return;
   const focusBefore = document.activeElement;
   if (fromToday) {
@@ -181,8 +184,9 @@ function enterStays() {
     staysState.tab = 'day';
     boardState.day = null;
     boardState.tab = 'arrivals';
-  } else restoreStaysEntry();
+  } else if (!familyReturnFocus) restoreStaysEntry();
   const loading = loadStays();
+  if (familyReturnFocus) familyReturnFocus()?.focus();
   if (fromToday && state.view === 'stays' && staysState.tab === 'day'
       && (document.activeElement === focusBefore || document.activeElement === document.body)) {
     $('#view-stays [data-stab="day"]')?.focus();
@@ -238,51 +242,95 @@ function staysTabRender(tab) {
     occupancy: renderOccupancyGrid, bookings: renderBookings, blocks: renderBlocksTab, ooo: renderOooTab }[tab] || renderUnitsBoard;
 }
 
-let guestFindGeneration = 0;
-let guestFindTimer = null;
-export function staysResetGuestFind() {
-  ++guestFindGeneration;
-  clearTimeout(guestFindTimer);
-  guestFindTimer = null;
-}
-
-/* микро-поиск гостя в шапке шахматки (ревью UI 22.11.2026): карточка открывается из любой
-   вкладки; батлер ищет среди своих. Справочник целиком — раздел «Гости». */
 function guestFindView() {
   const full = can('stays.guests');
   if (!full && !(can('stays.mine_guest_edit') && state.user?.employee_id != null)) return nothing;
-  ++guestFindGeneration; // новый рендер шапки владеет всеми следующими ответами поиска
-  return html`<div class="guest-find"><input type="search" id="sg-q" aria-label="Найти гостя"
-    placeholder=${full ? 'ФИО, телефон или дата рождения' : 'ФИО гостя'}
-    @input=${e => {
-      clearTimeout(guestFindTimer);
-      const input = e.currentTarget;
-      const host = input.closest('.guest-find');
-      const current = ++guestFindGeneration;
-      guestFindTimer = setTimeout(async () => {
-        if (current !== guestFindGeneration || !host.isConnected) return;
-        const needle = input.value.trim();
-        if (needle.length < 2) { render(nothing, $('[data-sg-res]', host)); return; }
+  return html`<button type="button" class="btn btn-sm" id="sb-find-guest" aria-haspopup="dialog"
+    @click=${() => openGuestLookup(full)}>Найти гостя</button>`;
+}
+
+function openGuestLookup(full) {
+  const auth = authContextSnapshot();
+  const sameBoard = () => state.view === 'stays' && authContextIsCurrent(auth);
+  const returnFocusTo = () => sameBoard() ? $('#view-stays #sb-find-guest') : null;
+  const returnFromFamily = () => {
+    if (!authContextIsCurrent(auth)) return;
+    staysState.familyReturnFocus = returnFocusTo;
+    navigate('stays');
+  };
+  openModal({
+    title: 'Найти гостя', returnFocusTo,
+    subtitle: full ? '' : 'Поиск среди гостей, которых вы ведёте',
+    body: html`<form id="guest-lookup-form">
+      <label class="field"><span>Гость</span><input type="search" id="sg-q"
+        placeholder=${full ? 'ФИО, телефон или дата рождения' : 'Фамилия и имя'}></label>
+    </form>
+    <div class="guest-lookup-results" data-sg-res></div>`,
+    onMount(dialog) {
+      const input = $('#sg-q', dialog);
+      const results = $('[data-sg-res]', dialog);
+      let generation = 0, timer, opening = false;
+      const current = request => request === generation && input.isConnected && sameBoard();
+      const prompt = html`<p class="muted">Введите хотя бы два символа.</p>`;
+
+      const retry = () => {
+        input.focus();
+        schedule(true);
+      };
+      const read = async (needle, request) => {
+        if (!current(request)) return;
         try {
           const found = await api(`/api/stays/guests?details=1&q=${encodeURIComponent(needle)}${full ? '' : '&mine=1'}`, { silent: true });
-          if (current !== guestFindGeneration || !host.isConnected) return;
-          render(found.length ? found.map(g => html`<button type="button" class="btn btn-sm btn-ghost guest-pick-button" data-sg-guest=${g.id}>${guestPickContent(g)}</button>`)
-            : html`<span class="muted">не найдено</span>`, $('[data-sg-res]', host));
-        } catch (err) { if (current === guestFindGeneration) toast(err.message, 'warn'); }
-      }, 300);
-    }}>
-    <div class="guest-find-res" data-sg-res @click=${e => {
-      const b = e.target.closest('[data-sg-guest]');
-      if (!b) return;
-      ++guestFindGeneration;
-      clearTimeout(guestFindTimer);
-      openGuestCard(Number(b.dataset.sgGuest), () => loadStays(), {
-        onOpenFamily: openBoardFamily, isCurrent: () => state.view === 'stays',
-      }).catch(err => toast(err.message, 'warn'));
-      const host = e.currentTarget.closest('.guest-find');
-      $('input', host).value = '';
-      render(nothing, e.currentTarget);
-    }}></div></div>`;
+          if (!current(request)) return;
+          if (!Array.isArray(found)) throw new Error('Не удалось прочитать результаты поиска');
+          render(found.length ? found.map(guest => html`
+            <button type="button" class="btn btn-ghost guest-pick-button" data-sg-guest=${guest.id}
+              @click=${() => openResult(guest.id)}>${guestPickContent(guest)}</button>`)
+            : dataState('filtered', 'Гостей не найдено'), results);
+        } catch {
+          if (current(request)) render(dataState('error', 'Поиск не загрузился.',
+            html`<button type="button" class="btn btn-sm" @click=${retry}>Повторить</button>`), results);
+        }
+      };
+      function schedule(immediate = false) {
+        clearTimeout(timer);
+        const request = ++generation;
+        const needle = input.value.trim();
+        opening = false;
+        if (needle.length < 2) { render(prompt, results); return; }
+        render(dataState('loading', 'Ищем гостя…'), results);
+        if (immediate) read(needle, request);
+        else timer = setTimeout(() => read(needle, request), 300);
+      }
+      async function openResult(id) {
+        if (opening) return;
+        opening = true;
+        let cardOpened = false;
+        const request = generation;
+        input.focus();
+        render(dataState('loading', 'Открываем карточку гостя…'), results);
+        try {
+          const drawer = await openGuestCard(Number(id), () => loadStays(), {
+            onOpenFamily: guest => openBoardFamily(guest, { onBack: returnFromFamily }), returnFocusTo, silent: true,
+            isCurrent: () => cardOpened ? sameBoard() : current(request) && !input.closest('[inert]'),
+          });
+          if (drawer && current(request)) {
+            cardOpened = true;
+            closeModal();
+          } else if (current(request)) schedule(true);
+        } catch {
+          if (current(request)) render(dataState('error', 'Карточка гостя не открылась.',
+            html`<button type="button" class="btn btn-sm" @click=${retry}>Вернуться к результатам</button>`), results);
+        } finally {
+          if (current(request)) opening = false;
+        }
+      }
+      input.oninput = () => schedule();
+      $('#guest-lookup-form', dialog).onsubmit = event => { event.preventDefault(); schedule(true); };
+      render(prompt, results);
+      input.focus();
+    },
+  });
 }
 
 async function loadMyStays() {

@@ -517,8 +517,9 @@ export async function openGroupForm(card, onSaved) {
 
 /* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
 export async function openGuestCard(gid, onChanged, options = {}) {
-  const { onOpenFamily, onFamilyChanged, fromFamily = false, isCurrent, returnFocusTo, whileMounted } = options;
-  const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`), staysFund(), api(`/api/stays/guests/${gid}/prefs`)]);
+  const { onOpenFamily, onFamilyChanged, fromFamily = false, isCurrent, returnFocusTo, whileMounted, silent = false } = options;
+  const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`, { silent }), staysFund(),
+    api(`/api/stays/guests/${gid}/prefs`, { silent })]);
   if ((isCurrent && !isCurrent()) || (whileMounted && !whileMounted.isConnected)) return;
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   /* правка: stays.edit — любой гость; батлер (stays.mine_guest_edit) — свой: карточку он открывает только
@@ -538,7 +539,7 @@ export async function openGuestCard(gid, onChanged, options = {}) {
         .catch(e => toast(e.message, 'err'));
     },
   });
-  openDrawer({
+  return openDrawer({
     title: `${g.special ? STAYS_SPECIAL_MARK : ''}${name}`,
     background: familyCanvas ? $('#app') : null, returnFocusTo,
     subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}${g.vip_code.archived ? ' (в архиве)' : ''}` : '', g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
@@ -577,7 +578,12 @@ export async function openGuestCard(gid, onChanged, options = {}) {
       }
       renderGuestPrefs($('#gc-prefs', m), gid, prefs0, fund, edit, onChanged);
       const ed = $('#gc-edit', m);
-      if (ed) ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); }, { mine: !full });
+      if (ed) {
+        const available = () => content.isConnected && !m.inert && (!isCurrent || isCurrent());
+        ed.onclick = () => openGuestForm(gid, () => { reopen(); if (onChanged) onChanged(); }, {
+          mine: !full, isCurrent: available,
+        }).catch(err => { if (available()) toast(err.message, 'err'); });
+      }
       $$('[data-link-del]', m).forEach(b => {
         b.onclick = async () => {
           try { await api(`/api/stays/guest-links/${b.dataset.linkDel}`, { method: 'DELETE' }); reopen(); } catch (e) { toast(e.message, 'err'); }
@@ -686,6 +692,7 @@ export function openStatusForm(card, onSaved) {
 /* ─────────────── Гость ─────────────── */
 export async function openGuestForm(id, onSaved, opts = {}) {
   const [g, fund] = await Promise.all([id ? api(`/api/stays/guests/${id}`) : null, staysFund()]);
+  if (opts.isCurrent && !opts.isCurrent()) return;
   const gFields = fund.fields.filter(f => f.target === 'guest');
   const dates = (g?.special_dates || []).map(d => ({ ...d }));
   /* батлер (opts.mine): анкетные поля только для чтения — менять можно предпочтения и заметки.

@@ -10,7 +10,7 @@
 
 import { state, toast } from '../core.js';
 import { html, nothing } from '../ui/html.js';
-import { staysEmptyFilters, staysResetGuestFind, staysState } from './stays.js';
+import { staysEmptyFilters, staysState } from './stays.js';
 import { boardState } from './stays_board.js';
 import { staysBook, staysBookEmpty } from './stays_bookings.js';
 import { staysBlock, staysBlockEmpty } from './stays_blocks.js';
@@ -30,13 +30,12 @@ let searchTimer;
 export function staysResetUserState() {
   Object.assign(staysState, { tab: 'units', fund: null, filters: staysEmptyFilters(),
     sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {}, ocOpen: {}, ocMode: 'pct', focusDay: null,
-    nextDayBoard: false, shortcutReturn: null });
+    nextDayBoard: false, shortcutReturn: null, familyReturnFocus: null });
   Object.assign(boardState, { day: null, tab: 'arrivals' });
   Object.assign(staysBook, staysBookEmpty());
   Object.assign(staysBlock, staysBlockEmpty());
   Object.assign(staysOoo, staysOooEmpty());
   staysFilterOpen.clear();
-  staysResetGuestFind();
   sfPanelOpen = false;
   clearTimeout(searchTimer);
 }
@@ -176,7 +175,8 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true, on
         button.setAttribute('aria-expanded', String(sfPanelOpen)); }}>
       Фильтры${activeCount ? html` <b>(${activeCount})</b>` : nothing}</button>
     ${chips}
-    ${people ? html`<input type="search" id="sf-q" placeholder="фамилия, № брони, объект, телефон" .value=${f.q}
+    ${people ? html`<input type="search" id="sf-q" aria-label="Фильтр текущего вида"
+      placeholder="Фильтр по гостю, брони или объекту" .value=${f.q}
         @stays-search=${() => emit({})}
         @input=${e => {
           const input = e.currentTarget;
