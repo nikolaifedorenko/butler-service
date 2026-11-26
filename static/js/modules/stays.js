@@ -8,7 +8,7 @@
    ══════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-import { can, registerModule } from '../app.js';
+import { can, navigate, registerModule } from '../app.js';
 import {
   $, $$, api, closeModal, dateRu, downloadBlob, loadGenerationFor, MONTHS, openModal, scrollBehavior, state, textOn, todayISO, toast, WD_SHORT,
 } from '../core.js';
@@ -26,12 +26,12 @@ import {
   STAYS_COMPANION, openCoverageForm, openGroupForm, openGuestCard, openReservationForm, openStatusForm, openTransferForm,
   relativesView,
 } from './stays_forms.js';
-import { renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
+import { boardState, renderButlersBoard, renderDayBoard, renderOccupancyGrid } from './stays_board.js';
 import { filterPanelTemplate, STAYS_SORTS, staysSortRows } from './stays_filters.js';
 import { previewStaysPdf, printStaysBoard } from './stays_print.js';
 import { paletteRegister } from '../ui/palette.js';
 
-registerModule({ views: { stays: loadStays, mystays: loadMyStays } });
+registerModule({ views: { stays: enterStays, mystays: loadMyStays } });
 
 /* палитра команд (⌘K): создание брони — с правом; поиск гостей живёт в самой палитре */
 paletteRegister({ id: 'stays.new-booking', title: 'Создать бронь', hint: 'шахматка',
@@ -51,6 +51,7 @@ export const staysCodeTagView = code => (code ? html` <span class="badge muted" 
    панель на все виды (§7); collapsed — разделы дерева, свёрнутые / развёрнутые пользователем */
 export const staysState = {
   tab: 'units', fund: null, filters: staysEmptyFilters(),
+  nextDayBoard: false, shortcutReturn: null,
   sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {},
   ocOpen: {}, ocMode: 'pct', focusDay: null,
 };
@@ -155,14 +156,52 @@ export async function staysFund(force = false) {
   return staysState.fund;
 }
 
+export function openTodayDayBoard() {
+  if (!can('stays.view')) return;
+  staysState.nextDayBoard = true;
+  navigate('stays');
+}
+
+function restoreStaysEntry() {
+  const before = staysState.shortcutReturn;
+  if (!before) return;
+  staysState.tab = before.tab;
+  boardState.day = before.day;
+  boardState.tab = before.dayTab;
+  staysState.shortcutReturn = null;
+}
+
+function enterStays() {
+  const fromToday = staysState.nextDayBoard;
+  staysState.nextDayBoard = false;
+  if (state.view !== 'stays') return;
+  const focusBefore = document.activeElement;
+  if (fromToday) {
+    staysState.shortcutReturn ||= { tab: staysState.tab, day: boardState.day, dayTab: boardState.tab };
+    staysState.tab = 'day';
+    boardState.day = null;
+    boardState.tab = 'arrivals';
+  } else restoreStaysEntry();
+  const loading = loadStays();
+  if (fromToday && state.view === 'stays' && staysState.tab === 'day'
+      && (document.activeElement === focusBefore || document.activeElement === document.body)) {
+    $('#view-stays [data-stab="day"]')?.focus();
+  }
+  return loading;
+}
+
 export async function loadStays() {
   const host = $('#view-stays');
   render(html`
     <div class="page-head"><div><h2>Шахматка</h2><div class="sub">Кто где живёт и кто из батлеров ведёт гостей</div></div>
       <div class="spacer"></div>${guestFindView()}</div>
     <div class="layer-tabs">${STAYS_TABS.filter(staysTabAllowed).map(([id, t]) => html`<button
-      class="btn btn-sm${staysState.tab === id ? ' btn-primary' : ''}" data-stab=${id}
-      @click=${() => { staysState.tab = id; loadStays(); }}>${t}</button>`)}</div>
+      class="btn btn-sm${staysState.tab === id ? ' btn-primary' : ''}" data-stab=${id} aria-pressed=${staysState.tab === id}
+      @click=${() => {
+        if (id !== staysState.tab) restoreStaysEntry();
+        staysState.tab = id;
+        loadStays();
+      }}>${t}</button>`)}</div>
     <div id="stays-body"></div>`, mount(host));
   const body = $('#stays-body', host);
   // Вкладки переиспользуют один #stays-body: инвалидируем async-render прежней вкладки

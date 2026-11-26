@@ -30566,11 +30566,18 @@
           {
             "in": "query",
             "name": "date",
-            "required": true,
+            "required": false,
             "schema": {
-              "format": "date",
-              "title": "Date",
-              "type": "string"
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
             }
           },
           {

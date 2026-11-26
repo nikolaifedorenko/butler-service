@@ -15,7 +15,7 @@ import {
 import { html, mount, nothing, render } from '../ui/html.js';
 import { dataState } from '../ui/data_state.js';
 import { openOtNoteModal } from './me.js';
-import { openReservationCard } from './stays.js';
+import { openReservationCard, openTodayDayBoard } from './stays.js';
 import { guestPreferenceLabel } from './stays_forms.js';
 
 registerModule({ views: { today: loadToday } });
@@ -309,6 +309,9 @@ function screen(view) {
   return html`<div class="today">
     ${head(view, allFailed)}
     <div class="today-body">
+      ${state.user.role === 'supervisor' && can('stays.view') ? html`<div class="only-mobile today-day-link">
+        <button class="btn" @click=${openTodayDayBoard}>Табло дня</button>
+      </div>` : nothing}
       ${allFailed ? loadError(view, 'all') : html`
         ${todayBlock(view, 'mine', mineBlocks)}
         ${todayBlock(view, 'board', boardBlock)}

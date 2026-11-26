@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import Principal
 from app.core.db import get_db
 from app.core.permissions import require_perm
+from app.core.time import local_date
 from app.modules.stays.application import mine as mine_app
 from app.modules.stays.application.duty import timesheet_duty
 
@@ -41,13 +42,13 @@ def board_butlers(first: dt.date, last: dt.date, principal: Principal = Depends(
 
 
 @router.get("/day", response_model=DayBoardOut)
-def day_board(date: dt.date, dims: dict = Depends(fund_filters), escorted_only: bool = False, special: bool = False,
+def day_board(date: Optional[dt.date] = None, dims: dict = Depends(fund_filters), escorted_only: bool = False, special: bool = False,
               vip_code_ids: list[int] = Query(default=[]), employee_id: Optional[int] = None, q: str = "",
               principal: Principal = Depends(require_perm("stays.view", "stays.occupancy")),
               db: Session = Depends(get_db)):
     f = boards.DayFilters(**dims, escorted_only=escorted_only, special=special, vip_code_ids=tuple(vip_code_ids),
                           employee_id=employee_id, q=q)
-    return board_screen.day_board(db, principal, date, f, timesheet_duty(db))
+    return board_screen.day_board(db, principal, date or local_date(), f, timesheet_duty(db))
 
 
 @router.get("/occupancy", response_model=OccupancyOut)

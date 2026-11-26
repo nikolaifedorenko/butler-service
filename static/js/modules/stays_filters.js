@@ -29,7 +29,8 @@ let searchTimer;
 /* смена пользователя устройства (resetUserViewState, app.js): ничего от прежнего не остаётся */
 export function staysResetUserState() {
   Object.assign(staysState, { tab: 'units', fund: null, filters: staysEmptyFilters(),
-    sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {}, ocOpen: {}, ocMode: 'pct', focusDay: null });
+    sort: { by: 'tree', dir: 'asc', grouped: true }, collapsed: {}, ocOpen: {}, ocMode: 'pct', focusDay: null,
+    nextDayBoard: false, shortcutReturn: null });
   Object.assign(boardState, { day: null, tab: 'arrivals' });
   Object.assign(staysBook, staysBookEmpty());
   Object.assign(staysBlock, staysBlockEmpty());
