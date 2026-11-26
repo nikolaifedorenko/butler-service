@@ -120,7 +120,7 @@ export function staysFocusDay(body) {
 }
 
 document.addEventListener('pointerdown', event => {
-  const menu = $('#view-stays.active .sb-mobile-exports[open]');
+  const menu = $('#view-stays.active .sb-exports[open]');
   if (menu && !menu.contains(event.target)) menu.open = false;
 });
 /* измерения фонда (§7) — повторяемые параметры; общие для шахматки, «Загрузки» и табло */
@@ -197,10 +197,17 @@ function enterStays() {
 export async function loadStays() {
   const host = $('#view-stays');
   render(html`
-    <div class="page-head"><div><h2>Шахматка</h2><div class="sub">Кто где живёт и кто из батлеров ведёт гостей</div></div>
-      <div class="spacer"></div>${guestFindView()}</div>
-    <div class="layer-tabs">${STAYS_TABS.filter(staysTabAllowed).map(([id, t]) => html`<button
-      class="btn btn-sm${staysState.tab === id ? ' btn-primary' : ''}" data-stab=${id} aria-pressed=${staysState.tab === id}
+    <div class="page-head sb-page-head"><h2>Шахматка</h2>
+      <div class="spacer"></div>
+      <div class="sb-page-actions">${guestFindView()}
+        ${staysState.tab === 'units' && can('stays.edit') ? html`<button type="button" class="btn btn-sm btn-primary hide-mobile"
+          id="sb-new" @click=${() => openReservationForm(null, { onSaved: () => {
+            if (state.view === 'stays' && staysState.tab === 'units') renderUnitsBoard($('#stays-body', host));
+          } })}>+ Бронь</button>` : nothing}
+      </div>
+    </div>
+    <div class="layer-tabs sb-view-tabs" role="group" aria-label="Режим шахматки">${STAYS_TABS.filter(staysTabAllowed).map(([id, t]) => html`<button
+      class="btn btn-sm" data-stab=${id} aria-pressed=${staysState.tab === id}
       @click=${() => {
         if (id !== staysState.tab) restoreStaysEntry();
         staysState.tab = id;
@@ -423,7 +430,7 @@ function blockBarTemplate(b, base, span) {
 function showBoardBooking(grid, booking) {
   booking.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const viewport = grid.closest('.content');
-  const toolbar = $('.sb-toolbar:not(.sf-bar, .sf-panel)', grid.parentElement);
+  const toolbar = $('.sb-units-toolbar, .sb-toolbar:not(.sf-bar, .sf-panel)', grid.parentElement);
   const tabbar = $('#tabbar');
   const bounds = viewport.getBoundingClientRect();
   const top = Math.max(bounds.top, toolbar.getBoundingClientRect().bottom);
@@ -593,25 +600,25 @@ async function renderUnitsBoard(body, retry = false) {
     const row = unit && unit.closest('[data-unit-row]');
     if (row) openOooForm({ unit_id: Number(row.dataset.unitRow) }, rerender);
   };
-  const sorting = (prefix, mobile = false) => html`
-      <select id=${prefix + 'sort'} title="Сортировка строк" aria-label=${mobile ? 'Сортировка строк' : nothing}
+  const sorting = () => html`
+      <select id="sb-sort" aria-label="Сортировка строк"
         @change=${e => { st.by = e.target.value; draw(); }}>${STAYS_SORTS.map(([v, t]) =>
         html`<option value=${v} ?selected=${v === st.by}>${t}</option>`)}</select>
-      <select id=${prefix + 'dir'} title="Направление сортировки" @change=${e => { st.dir = e.target.value; draw(); }}>
+      <select id="sb-dir" aria-label="Направление сортировки" @change=${e => { st.dir = e.target.value; draw(); }}>
         <option value="asc" ?selected=${st.dir === 'asc'}>↑</option><option value="desc" ?selected=${st.dir === 'desc'}>↓</option></select>
-      <label class="chk"><input type="checkbox" id=${prefix + 'grouped'} .checked=${st.grouped}
+      <label class="chk"><input type="checkbox" id="sb-grouped" .checked=${st.grouped}
         @change=${e => { st.grouped = e.target.checked; draw(); }}> группировать по дереву</label>`;
   const exportScope = showNames => showNames ? 'с данными гостей' : 'без данных гостей';
   const closeExport = menu => {
     menu.open = false;
     $('summary', menu).focus();
   };
-  const exportAction = (label, perform, board = false) => html`<button type="button"
-    class="btn btn-sm btn-ghost" ?data-sb-export=${board} @click=${event => {
+  const exportAction = (id, label, perform, board = false) => html`<button type="button"
+    id=${id} class="btn btn-sm btn-ghost" ?data-sb-export=${board} @click=${event => {
       closeExport(event.currentTarget.closest('details'));
       perform();
     }}>${label}</button>`;
-  const mobileExport = () => html`<details class="sb-mobile-exports" @focusout=${event => {
+  const exportMenu = () => html`<details class="sb-exports" @focusout=${event => {
     const menu = event.currentTarget;
     if (menu.open && !menu.contains(event.relatedTarget)) menu.open = false;
   }} @keydown=${event => {
@@ -620,30 +627,19 @@ async function renderUnitsBoard(body, retry = false) {
       closeExport(event.currentTarget);
     }
   }}>
-    <summary class="btn btn-sm btn-ghost">Экспорт</summary>
-    <div class="sb-mobile-export-items">
-      ${exportAction('Шахматка XLSX ' + exportScope(names && can('stays.export')), () => downloadBoard('xlsx'), true)}
-      ${exportAction('Шахматка PDF ' + exportScope(names), () => downloadBoard('pdf'), true)}
-      ${exportAction('Печать ' + exportScope(names), printBoard, true)}
-      ${exportAction('Сводка XLSX без данных гостей', xlsx('anon'))}
-      ${can('stays.export') && can('stays.guests') ? exportAction('Сводка XLSX с данными гостей', xlsx('full')) : nothing}
+    <summary class="btn btn-sm">Выгрузить</summary>
+    <div class="sb-export-items">
+      ${exportAction('sb-board-xlsx', 'Шахматка XLSX ' + exportScope(names && can('stays.export')), () => downloadBoard('xlsx'), true)}
+      ${exportAction('sb-board-pdf', 'Шахматка PDF ' + exportScope(names), () => downloadBoard('pdf'), true)}
+      ${exportAction('sb-print', 'Печать ' + exportScope(names), printBoard, true)}
+      ${exportAction('sb-xlsx-anon', 'Сводка XLSX без данных гостей', xlsx('anon'))}
+      ${can('stays.export') && can('stays.guests') ? exportAction('sb-xlsx-full', 'Сводка XLSX с данными гостей', xlsx('full')) : nothing}
     </div>
   </details>`;
   const unitsTemplate = () => html`
-    <div class="sb-toolbar sb-units-toolbar">
-      ${staysMonthNavView(body, rerender)}
-      <div class="sb-desktop-tools hide-mobile">${sorting('sb-')}
-      <button class="btn btn-sm btn-ghost" id="sb-xlsx-anon" title="Объекты, даты, статусы, число гостей — без данных гостей" @click=${xlsx('anon')}>Выгрузить (без гостей)</button>
-      ${can('stays.export') && can('stays.guests') ? html`<button class="btn btn-sm btn-ghost" id="sb-xlsx-full" @click=${xlsx('full')}>Выгрузить полностью</button>` : nothing}
-      <button class="btn btn-sm btn-ghost" data-sb-export id="sb-board-xlsx"
-        title=${can('stays.export') ? 'Скачать текущую шахматку' : 'Без данных и фильтров по гостям'} @click=${() => downloadBoard('xlsx')}>Шахматка XLSX</button>
-      <button class="btn btn-sm btn-ghost" data-sb-export id="sb-board-pdf" @click=${() => downloadBoard('pdf')}>PDF</button>
-      <button class="btn btn-sm btn-ghost" data-sb-export id="sb-print" @click=${printBoard}>Печать</button>
-      ${can('stays.edit') ? html`<button class="btn btn-sm btn-primary" id="sb-new" @click=${() => openReservationForm(null, { onSaved: rerender })}>+ Бронь</button>` : nothing}</div>
-      ${mobileExport()}
-    </div>
     ${staysFilterView(fund, rerender, { people: names, onSearchInput: disablePrint,
-      mobileTools: html`<div class="sb-mobile-sort">${sorting('sb-mobile-', true)}</div>` })}
+      compact: { leading: staysMonthNavView(body, rerender), trailing: exportMenu() },
+      panelTools: html`<div class="sb-sort">${sorting()}</div>` })}
     <div id="sb-feedback"></div>
     <div data-sb-data>${resultState()}</div>
     ${data.warnings.length ? html`<div class="dict-banner gold" data-sb-data><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}

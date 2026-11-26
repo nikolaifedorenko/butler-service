@@ -42,7 +42,7 @@ for (const width of [320, 390]) {
 
 test('мобильная выгрузка группирует форматы с указанием состава данных по правам', async ({ page }) => {
   const view = await openBoard(page, 'admin', 390);
-  const menu = view.locator('.sb-mobile-exports');
+  const menu = view.locator('.sb-exports');
   const trigger = menu.locator('summary');
   await expect(trigger).toBeVisible();
   await trigger.press('Enter');
@@ -59,7 +59,7 @@ test('мобильная выгрузка группирует форматы с
 
 test('роль загрузки видит в мобильном меню выгрузки только варианты без данных гостей', async ({ page }) => {
   const view = await openBoard(page, 'sluzhba', 390);
-  const menu = view.locator('.sb-mobile-exports');
+  const menu = view.locator('.sb-exports');
   await menu.locator('summary').click();
   await expect(menu.getByRole('button', { name: 'Шахматка XLSX без данных гостей' })).toBeVisible();
   await expect(menu.getByRole('button', { name: /с данными гостей/ })).toHaveCount(0);
@@ -69,13 +69,13 @@ test('роль загрузки видит в мобильном меню выг
 
 test('меню выгрузки закрывается при выходе по Tab и касании вне меню', async ({ page }) => {
   const view = await openBoard(page, 'admin', 390);
-  const menu = view.locator('.sb-mobile-exports');
+  const menu = view.locator('.sb-exports');
   const trigger = menu.locator('summary');
   await trigger.press('Enter');
   await expect(menu).toHaveAttribute('open', '');
   await menu.getByRole('button').last().focus();
   await page.keyboard.press('Tab');
-  await expect(view.getByRole('button', { name: 'Фильтры' })).toBeFocused();
+  await expect(view.locator('.sb-grid :focus')).toHaveCount(1);
   await expect(menu).not.toHaveAttribute('open', '');
 
   await trigger.click();
@@ -97,7 +97,7 @@ test('на низком экране видны шапка сетки после
     return present('.sb-unit') && present('.today');
   })).toBe(true);
 
-  const menu = view.locator('.sb-mobile-exports');
+  const menu = view.locator('.sb-exports');
   await menu.locator('summary').click();
   await expect.poll(() => menu.getByRole('button').evaluateAll(items => items.every(item => {
     const rect = item.getBoundingClientRect();
@@ -107,7 +107,7 @@ test('на низком экране видны шапка сетки после
 
 test('просмотр фамилий сохраняет фильтр в PDF и убирает его из Excel без права выгрузки', async ({ page }) => {
   const view = await openBoard(page, 'rukovod', 390);
-  const menu = view.locator('.sb-mobile-exports');
+  const menu = view.locator('.sb-exports');
   await view.locator('#sf-q').fill('Орлов');
   await menu.locator('summary').click();
   const excel = menu.getByRole('button', { name: 'Шахматка XLSX без данных гостей' });
@@ -128,4 +128,47 @@ test('просмотр фамилий сохраняет фильтр в PDF и 
   expect(pdf.get('q')).toBe('Орлов');
   expect(pdf.get('first')).toBe(xlsx.get('first'));
   expect(pdf.get('last')).toBe(xlsx.get('last'));
+});
+
+test('десктопная шапка держит основные действия и быстрый фильтр на виду', async ({ page }) => {
+  const view = await openBoard(page, 'admin', 1440);
+  const heading = view.locator('.page-head');
+  await expect(heading.getByRole('button', { name: '+ Бронь', exact: true })).toBeVisible();
+  await expect(heading.getByRole('button', { name: 'Найти гостя' })).toBeVisible();
+  const quick = view.getByPlaceholder('Гость, бронь или объект');
+  await expect(quick).toBeVisible();
+  await expect.poll(() => quick.evaluate(input => {
+    const month = document.querySelector('#sm-label').getBoundingClientRect();
+    const field = input.getBoundingClientRect();
+    return Math.abs(month.top + month.height / 2 - field.top - field.height / 2) < 5 && field.width <= 320;
+  })).toBe(true);
+  const filter = view.getByRole('button', { name: 'Фильтры' });
+  const reset = view.getByRole('button', { name: 'Сбросить', exact: true });
+  await expect(view.locator('#sf-saved')).toBeHidden();
+  await expect(reset).toBeHidden();
+  await filter.click();
+  await expect(view.locator('#sf-saved')).toBeVisible();
+  await view.locator('[data-sf-dd=cat] summary').click();
+  await view.locator('[data-sf-cat]').first().check();
+  await expect(filter).toHaveText(/Фильтры\s*\(1\)/);
+  await filter.click();
+  await expect(reset).toBeVisible();
+  await reset.click();
+  await expect(filter).toHaveText('Фильтры');
+  const exportMenu = view.locator('.sb-exports');
+  await expect(exportMenu.getByRole('button', { name: /Шахматка XLSX/ })).toBeHidden();
+  await exportMenu.getByText('Выгрузить', { exact: true }).click();
+  await expect(exportMenu.getByRole('button', { name: /Шахматка XLSX/ })).toBeVisible();
+});
+
+test('при узком десктопном окне меню выгрузки остаётся справа от боковой навигации', async ({ page }) => {
+  const view = await openBoard(page, 'admin', 861, 400);
+  const menu = view.locator('.sb-exports');
+  await menu.locator('summary').click();
+  const action = menu.getByRole('button', { name: 'Шахматка XLSX с данными гостей' });
+  await expect(action).toBeVisible();
+  await expect.poll(() => action.evaluate(button => {
+    const rect = button.getBoundingClientRect();
+    return rect.left >= button.closest('.content').getBoundingClientRect().left;
+  })).toBe(true);
 });

@@ -165,7 +165,7 @@ test('карточка из шахматки открывает холст и с
   await drawer.getByRole('button', { name: 'К дереву' }).click();
   await page.getByRole('button', { name: 'К шахматке' }).click();
   await expect(board).toBeVisible();
-  await expect(board.locator('[data-stab=day]')).toHaveClass(/btn-primary/);
+  await expect(board.locator('[data-stab=day]')).toHaveAttribute('aria-pressed', 'true');
   await expect(board.locator('#sb-find-guest')).toBeFocused();
   expect(errors).toEqual([]);
 });

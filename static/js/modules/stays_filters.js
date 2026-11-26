@@ -20,7 +20,7 @@ const STAYS_FILTERS_KEY = 'stays.filters';   // + '.<id пользователя
 export const STAYS_SORTS = [['tree', 'по дереву'], ['label', 'по номеру'], ['category', 'по категории'],
   ['floor', 'по этажу'], ['load', 'по загрузке за месяц']];
 export const staysFilterOpen = new Set();   // раскрытые списки панели — переживают перерисовку
-/* панель фильтров на телефоне свёрнута за кнопку «Фильтры (N)»: раскрытые списки и
+/* панель фильтров на шахматке и на телефоне в других видах свёрнута за кнопку «Фильтры (N)»: раскрытые списки и
    чекбоксы занимали весь первый экран до самой доски. Состояние — на уровне модуля,
    переживает перерисовки вида (сбрасывается сменой пользователя). */
 let sfPanelOpen = false;
@@ -123,7 +123,7 @@ let lastSavedName = '';           // имя только что сохранён
 
 /* people — фильтры по гостям (поиск, VIP); уровню occupancy их не показываем: сервер их
    для него не применяет. Шаблон: панель встраивается прямо в вид. */
-export function filterPanelTemplate(fund, filters, onChange, { people = true, onSearchInput, mobileTools = nothing } = {}) {
+export function filterPanelTemplate(fund, filters, onChange, { people = true, onSearchInput, compact, panelTools = nothing } = {}) {
   const f = staysCleanFilters(filters);
   const emit = (patch, savedName = '') => {
     clearTimeout(searchTimer);
@@ -157,7 +157,10 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true, on
      и что снять, не раскрывая списки. Значения — из тех же списков, что панель. */
   const titleOf = (items, id) => items.find(i => i.value === id)?.label ?? String(id);
   const chip = (label, clear) => html`<span class="chip">${label}<button class="chip-x" title="Убрать фильтр"
-    aria-label=${`Убрать фильтр «${label}»`} @click=${clear}><span aria-hidden="true">✕</span></button></span>`;
+    aria-label=${`Убрать фильтр «${label}»`} @click=${event => {
+      if (compact) event.currentTarget.closest('.sf-panel').previousElementSibling.querySelector('.sf-toggle').focus();
+      clear();
+    }}><span aria-hidden="true">✕</span></button></span>`;
   const chips = html`
     ${f.group_ids.map(id => chip(titleOf(lists[0][3], id), () => emit({ group_ids: f.group_ids.filter(x => x !== id) })))}
     ${f.category_ids.map(id => chip(titleOf(lists[1][3], id), () => emit({ category_ids: f.category_ids.filter(x => x !== id) })))}
@@ -168,29 +171,50 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true, on
     ${people ? f.vip_code_ids.map(id => chip(titleOf(vipItems, id), () => emit({ vip_code_ids: f.vip_code_ids.filter(x => x !== id) }))) : nothing}`;
   const activeCount = f.group_ids.length + f.category_ids.length + f.flag_ids.length + f.kind_ids.length
     + (f.escorted ? 1 : 0) + (people && f.special ? 1 : 0) + (people ? f.vip_code_ids.length : 0);
-  return html`<div class="sb-toolbar sf-bar">
-    <button class="btn btn-sm sf-toggle only-mobile" aria-expanded=${sfPanelOpen ? 'true' : 'false'}
-      @click=${e => { const button = e.currentTarget; sfPanelOpen = !sfPanelOpen;
-        button.closest('.sf-bar').nextElementSibling.classList.toggle('open', sfPanelOpen);
-        button.setAttribute('aria-expanded', String(sfPanelOpen)); }}>
-      Фильтры${activeCount ? html` <b>(${activeCount})</b>` : nothing}</button>
-    ${chips}
-    ${people ? html`<input type="search" id="sf-q" aria-label="Фильтр текущего вида"
-      placeholder="Фильтр по гостю, брони или объекту" .value=${f.q}
-        @stays-search=${() => emit({})}
-        @input=${e => {
-          const input = e.currentTarget;
-          staysState.filters = { ...staysState.filters, q: input.value };
-          onSearchInput?.();
-          clearTimeout(searchTimer);
-          // После перерисовки событие получит текущий обработчик панели.
-          searchTimer = setTimeout(() => {
-            if (input.isConnected) input.dispatchEvent(new Event('stays-search'));
-          }, 350);
-        }}>` : nothing}
+  const reset = html`<button class="btn btn-sm btn-ghost" id="sf-reset" ?hidden=${compact && !activeCount && !f.q.trim()} @click=${event => {
+    const input = event.currentTarget.closest('[data-lit-root]').querySelector('#sf-q');
+    if (input) input.value = '';
+    if (compact) {
+      event.currentTarget.parentElement.querySelector('.sf-toggle').focus();
+      event.currentTarget.hidden = true;
+    }
+    emit(staysEmptyFilters());
+  }}>Сбросить</button>`;
+  const setPanelOpen = (button, open) => {
+    sfPanelOpen = open;
+    button.closest('.sf-bar').nextElementSibling.classList.toggle('open', open);
+    button.setAttribute('aria-expanded', String(open));
+  };
+  const toggle = html`<button class="btn btn-sm sf-toggle${compact ? '' : ' only-mobile'}"
+    aria-controls="sf-options" aria-expanded=${String(sfPanelOpen)}
+    @click=${event => setPanelOpen(event.currentTarget, !sfPanelOpen)}>Фильтры${activeCount ? html` <b>(${activeCount})</b>` : nothing}</button>`;
+  const search = people ? html`<input type="search" id="sf-q" aria-label="Фильтр текущего вида"
+    placeholder=${compact ? 'Гость, бронь или объект' : 'Фильтр по гостю, брони или объекту'} .value=${f.q}
+    @stays-search=${() => emit({})}
+    @input=${e => {
+      const input = e.currentTarget;
+      staysState.filters = { ...staysState.filters, q: input.value };
+      if (compact) input.parentElement.querySelector('#sf-reset').hidden = !activeCount && !input.value.trim();
+      onSearchInput?.();
+      clearTimeout(searchTimer);
+      // После перерисовки событие получит текущий обработчик панели.
+      searchTimer = setTimeout(() => {
+        if (input.isConnected) input.dispatchEvent(new Event('stays-search'));
+      }, 350);
+    }}>` : nothing;
+  return html`<div class="sb-toolbar sf-bar${compact ? ' sb-units-toolbar' : ''}">
+    ${compact ? html`${compact.leading}${search}${toggle}${compact.trailing}${reset}`
+      : html`${toggle}${chips}${search}`}
   </div>
-  <div class="sb-toolbar sf-panel${sfPanelOpen ? ' open' : ''}">
-    ${mobileTools}
+  <div id="sf-options" class="sb-toolbar sf-panel${compact ? ' sf-compact-panel' : ''}${sfPanelOpen ? ' open' : ''}" @keydown=${event => {
+    if (event.key !== 'Escape' || !compact || event.defaultPrevented) return;
+    const button = event.currentTarget.previousElementSibling.querySelector('.sf-toggle');
+    setPanelOpen(button, false);
+    button.focus();
+    event.preventDefault();
+  }}>
+    ${panelTools}
+    ${compact && activeCount ? html`<div class="sf-active-chips">${chips}</div>` : nothing}
     ${lists.map(view)}
     <label class="chk"><input type="checkbox" id="sf-esc" .checked=${f.escorted} @change=${e => emit({ escorted: e.target.checked })}> с сопровождением</label>
     ${people ? html`<label class="chk"><input type="checkbox" id="sf-special" .checked=${f.special} @change=${e => emit({ special: e.target.checked })}> ◆ Особый гость</label>
@@ -221,11 +245,7 @@ export function filterPanelTemplate(fund, filters, onChange, { people = true, on
         toast('Набор «' + name + '» сохранён');
         emit({}, name);
       }}>Сохранить набор</button>
-    <button class="btn btn-sm btn-ghost" id="sf-reset" @click=${e => {
-        const input = e.currentTarget.closest('[data-lit-root]').querySelector('#sf-q');
-        if (input) input.value = '';
-        emit(staysEmptyFilters());
-      }}>Сбросить</button>
+    ${compact ? nothing : reset}
     </div>
   </div>`;
 }
