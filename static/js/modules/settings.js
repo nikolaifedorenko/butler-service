@@ -372,14 +372,13 @@ export async function settingsRenderScreen({ tab, section } = {}) {
 
 /* Черновик версии справочников: одна плавающая панель на всех экранах, где он есть. */
 export function settingsUpdateDraftBars() {
+  const dirty = settingsDirty();
+  const n = dirty ? settingsDiff(settingsPayload(), settingsUI.draft).length : 0;
   $$('[data-draft-bar]').forEach(bar => {
-    const dirty = settingsDirty();
-    const n = dirty ? settingsDiff(settingsPayload(), settingsUI.draft).length : 0;
     bar.classList.toggle('idle', !dirty);
     const t = $('.t', bar);
-    if (t) t.textContent = dirty
-      ? `Черновик: ${n} ${plural(n, 'изменение', 'изменения', 'изменений')} · не опубликовано`
-      : 'Черновика нет: показана действующая версия справочников';
+    if (t) t.textContent = n ? `Не опубликовано ${n} ${plural(n, 'изменение', 'изменения', 'изменений')}`
+      : (dirty ? 'Есть неопубликованные изменения' : '');
     $$('[data-draft-act]', bar).forEach(b => { b.disabled = !dirty; });
   });
 }
@@ -391,7 +390,7 @@ const draftReset = () => confirmDialog('Сбросить черновик?',
 export function settingsDraftBarView() {
   if (!can('settings.edit')) return nothing;
   return html`<div class="draft-bar idle" data-draft-bar>
-    <span class="t">Черновика нет: показана действующая версия справочников</span>
+    <span class="t" role="status"></span>
     <span class="spacer"></span>
     <button class="btn btn-sm" data-draft-diff data-draft-act disabled @click=${draftDiff}>Что изменилось</button>
     <button class="btn btn-sm" data-draft-reset data-draft-act disabled @click=${draftReset}>Сбросить</button>

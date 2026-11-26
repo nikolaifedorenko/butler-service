@@ -132,19 +132,72 @@ function mobileCatalog(tabs, activeView) {
   });
 }
 
+let settingsNavExpanded = false;
+const inSettings = view => view === 'settings' || view === 'access' || view === 'audit';
+let hideNavTooltipTimer;
+const navTooltip = $('#sidenav-tooltip');
+function hideNavTooltip() {
+  clearTimeout(hideNavTooltipTimer);
+  navTooltip.classList.add('hidden');
+}
+function showNavTooltip(button, title) {
+  hideNavTooltip();
+  if (!$('#sidenav').classList.contains('compact')) return;
+  const bounds = button.getBoundingClientRect();
+  navTooltip.textContent = title;
+  navTooltip.style.left = `${bounds.right + 10}px`;
+  navTooltip.style.top = `${bounds.top + bounds.height / 2}px`;
+  navTooltip.classList.remove('hidden');
+}
+
+function applySettingsNavigation() {
+  const fold = $('#sidenav-fold');
+  const inside = state.view === 'settings';
+  const compact = inside && !settingsNavExpanded;
+  $('#sidenav').classList.toggle('compact', compact);
+  fold.classList.toggle('hidden', !inside);
+  fold.setAttribute('aria-expanded', String(!compact));
+  const name = compact ? 'Развернуть основное меню' : 'Свернуть основное меню';
+  fold.setAttribute('aria-label', name);
+  fold.title = name;
+  hideNavTooltip();
+}
+
+$('#sidenav-fold').onclick = () => {
+  settingsNavExpanded = !settingsNavExpanded;
+  applySettingsNavigation();
+};
+navTooltip.onpointerenter = () => clearTimeout(hideNavTooltipTimer);
+navTooltip.onpointerleave = hideNavTooltip;
+$('#sidenav').addEventListener('scroll', () => {
+  const focused = $('#sidenav .nav-item:focus-visible');
+  if (focused && !navTooltip.classList.contains('hidden')) showNavTooltip(focused, focused.getAttribute('aria-label'));
+  else hideNavTooltip();
+}, { passive: true });
+window.addEventListener('resize', hideNavTooltip);
+document.addEventListener('keydown', event => { if (event.key === 'Escape') hideNavTooltip(); });
+
 function renderNav() {
   const tabs = visibleTabs();
   /* «Права доступа» и «Журнал аудита» открываются из Настроек (external-экраны):
      их содержимое — отдельные view, но в меню подсвечиваем «Настройки», откуда пришли. */
-  const activeView = (state.view === 'access' || state.view === 'audit') ? 'settings' : state.view;
+  const activeView = inSettings(state.view) ? 'settings' : state.view;
+  applySettingsNavigation();
   $('#sidenav').querySelectorAll('.nav-item').forEach(el => el.remove());
   const foot = $('#sidenav-foot');
   tabs.forEach(t => {
     const b = document.createElement('button');
     b.className = 'nav-item' + (activeView === t.id ? ' active' : '');
     b.dataset.view = t.id;
+    b.setAttribute('aria-label', t.title);
+    if (activeView === t.id) b.setAttribute('aria-current', 'page');
     render(html`${icon(t.id)}<span>${t.title}</span>`, b);
     b.onclick = () => navigate(t.id);
+    b.onfocus = b.onpointerenter = () => showNavTooltip(b, t.title);
+    b.onblur = hideNavTooltip;
+    b.onpointerleave = () => {
+      if (!b.matches(':focus-visible')) hideNavTooltipTimer = setTimeout(hideNavTooltip, 150);
+    };
     $('#sidenav').insertBefore(b, foot);
   });
   const quickTabs = [TODAY_TAB, ...mobileIds(tabs.slice(1)).map(id => tabs.find(tab => tab.id === id))];
@@ -173,6 +226,7 @@ export function renderCategoryFooter(categories) {
 export function navigate(view) {
   if (!state.user) return;
   if (GRAFIK_ALIAS[view]) { state.grafikLayer = view; view = GRAFIK_ALIAS[view]; }
+  if (!inSettings(state.view) && inSettings(view)) settingsNavExpanded = false;
   state.view = view;
   $$('.view').forEach(v => v.classList.remove('active'));
   let el = $(`#view-${view}`);

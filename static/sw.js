@@ -1,14 +1,14 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-11-26-ux12';
-// содержимое оболочки: 33c2fda9937536c7
+const VERSION = 'tt-2026-11-26-ux13';
+// содержимое оболочки: 97ca58947efc7bff
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-11-26-ux12',
-  '/static/css/base.css?v=2026-11-26-ux12',
-  '/static/css/components.css?v=2026-11-26-ux12',
-  '/static/css/tokens.css?v=2026-11-26-ux12',
+  '/static/css/app.css?v=2026-11-26-ux13',
+  '/static/css/base.css?v=2026-11-26-ux13',
+  '/static/css/components.css?v=2026-11-26-ux13',
+  '/static/css/tokens.css?v=2026-11-26-ux13',
   '/static/js/app.js',
   '/static/js/core.js',
   '/static/js/modules/access.js',
@@ -57,7 +57,7 @@ const SHELL = [
   '/static/js/modules/timesheet_common.js',
   '/static/js/modules/timesheet_layers.js',
   '/static/js/modules/today.js',
-  '/static/js/print-page.js?v=2026-11-26-ux12',
+  '/static/js/print-page.js?v=2026-11-26-ux13',
   '/static/js/registry.js',
   '/static/js/ui/data_state.js',
   '/static/js/ui/design_demo.js',
@@ -66,7 +66,7 @@ const SHELL = [
   '/static/js/ui/html.js',
   '/static/js/ui/palette.js',
   '/static/js/ui/period_nav.js',
-  '/static/js/ui/theme.js?v=2026-11-26-ux12',
+  '/static/js/ui/theme.js?v=2026-11-26-ux13',
   '/static/vendor/lit-html/directive.js',
   '/static/vendor/lit-html/lit-html.js',
   '/manifest.webmanifest',

@@ -201,9 +201,10 @@ export function textOn(hex) {
   const lin = c => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
   const bg = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
   const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-  /* белый, фирменный тёмно-синий и почти чёрный: на средних тонах (зелёный, оранжевый) только последний даёт 4,5 : 1 */
-  const candidates = [['#ffffff', 1], ['#22304a', 0.0286], ['#0b1220', 0.0057]];
-  return candidates.reduce((best, c) => (ratio(bg, c[1]) > ratio(bg, best[1]) ? c : best))[0];
+  const candidates = [['#ffffff', 1], ['#22304a', 0.029484], ['#0b1220', 0.006081]];
+  const best = candidates.reduce((a, b) => (ratio(bg, b[1]) > ratio(bg, a[1]) ? b : a));
+  // Когда фирменные цвета не достигают AA, используем чёрный.
+  return ratio(bg, best[1]) >= 4.5 ? best[0] : '#000000';
 }
 export function initials(name) {
   const p = String(name || '').split(/\s+/);

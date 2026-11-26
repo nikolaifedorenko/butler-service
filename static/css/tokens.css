@@ -118,6 +118,7 @@
   --head-h: 60px;
   --tab-h: 62px;
   --side-w: 224px;
+  --nav-rail-w: 64px;
 
   /* ── слои ── */
   --z-topbar: 40;

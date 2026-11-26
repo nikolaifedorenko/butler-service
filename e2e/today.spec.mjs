@@ -180,6 +180,11 @@ test('старый ответ статуса не откатывает уже п
   let holdStatus = false;
   const arrived = Promise.withResolvers();
   const release = Promise.withResolvers();
+  const guestsReady = Promise.withResolvers();
+  await page.route('**/api/stays/mine/today', async route => {
+    await guestsReady.promise;
+    await route.fulfill({ json: { date: '2026-11-26', reservations: [] } });
+  });
   await page.route('**/api/punches/status', async route => {
     if (holdStatus) {
       arrived.resolve();
@@ -194,6 +199,9 @@ test('старый ответ статуса не откатывает уже п
   await login(page, 'ivanov');
   const button = today(page).locator('#today-punch');
   await expect(button).toHaveText('Пришёл');
+  // Кнопка появляется раньше остальных данных. Интервал запускается после их загрузки.
+  guestsReady.resolve();
+  await expect.poll(() => page.evaluate(() => window.state.timers.length)).toBe(1);
   holdStatus = true;
   await page.clock.fastForward(31_000);
   await arrived.promise;
