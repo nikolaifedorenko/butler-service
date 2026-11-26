@@ -459,10 +459,17 @@ function activeOverlay() {
 }
 
 function overlayTabStops(overlay) {
-  return [...overlay.querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex]')]
+  const scrollBody = overlay.querySelector('.modal-body, .drawer-body');
+  const stops = [...overlay.querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex]')]
     .filter(element => element.tabIndex >= 0 && !element.matches(':disabled, input[type=hidden]') &&
-      !element.closest('[inert]') && element.getClientRects().length &&
-      getComputedStyle(element).visibility === 'visible');
+      !element.closest('[inert]') && element.checkVisibility({ visibilityProperty: true }));
+  // An overflowing body with static content can be a native Chromium tab stop.
+  if (scrollBody && scrollBody.scrollHeight > scrollBody.clientHeight &&
+      !stops.some(element => scrollBody.contains(element))) {
+    const footer = stops.findIndex(element => scrollBody.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+    stops.splice(footer === -1 ? stops.length : footer, 0, scrollBody);
+  }
+  return stops;
 }
 function chainedFocus(primary, fallback) {
   return () => Boolean(primary?.()) || Boolean(fallback?.());
@@ -471,11 +478,11 @@ function syncOverlayOrder() {
   const top = overlayStack.at(-1);
   const backgrounds = new Set();
   if (top) backgrounds.add($('#app'));
+  if (top?.background) backgrounds.add(top.background);
   overlayStack.forEach((overlay, index) => {
     const backdrop = document.getElementById(`${overlay.id}-backdrop`);
     if (backdrop) backdrop.style.zIndex = String(100 + index * 10);
     if (backdrop && overlay !== top) backgrounds.add(backdrop);
-    if (overlay.background) backgrounds.add(overlay.background);
   });
   for (const element of inertOverlayBackgrounds) {
     if (!backgrounds.has(element)) {

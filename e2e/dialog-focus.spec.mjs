@@ -64,3 +64,55 @@ test('вложенная модалка удерживает фокус и во�
   await expect(drawer).toBeHidden();
   await expect(opener).toBeFocused();
 });
+
+test('Tab проходит прокручиваемый текст до кнопок и замыкается внутри диалога', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 720 });
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const { openModal } = await import('/static/js/core.js');
+    const { html } = await import('/static/js/ui/html.js');
+    openModal({
+      title: 'Длинное уведомление',
+      body: html`<p style="min-height: 1500px">Текст уведомления</p>`,
+      footer: html`<button>Подтвердить</button>`,
+    });
+  });
+  const modal = page.locator('#modal');
+  const close = modal.getByRole('button', { name: 'Закрыть' });
+  const content = modal.locator('.modal-body');
+  const confirm = modal.getByRole('button', { name: 'Подтвердить' });
+
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(content).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(content).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
+});
+
+test('перерисованная боковая карточка получает фокус поверх семейного окна', async ({ page }) => {
+  await login(page, 'admin');
+  await page.evaluate(async () => {
+    const { openDrawer, openModal } = await import('/static/js/core.js');
+    openDrawer({ title: 'Исходная карточка', body: 'Гость' });
+    openModal({
+      title: 'Семейные связи',
+      body: 'Родственники',
+      background: document.getElementById('drawer'),
+    });
+    openDrawer({ title: 'Обновлённая карточка', body: 'Гость' });
+  });
+
+  const drawer = page.getByRole('dialog', { name: 'Обновлённая карточка' });
+  await expect(drawer.getByRole('button', { name: 'Закрыть' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  const modal = page.getByRole('dialog', { name: 'Семейные связи' });
+  await expect(modal.getByRole('button', { name: 'Закрыть' })).toBeFocused();
+});
