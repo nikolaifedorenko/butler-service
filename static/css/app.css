@@ -984,6 +984,21 @@ tr.v4-click:hover td { background: var(--surface-1); }
 /* строка навигации вида (месяц ◀ ▶) прилипает при прокрутке контента; панель фильтров
    не прилипает — иначе на телефоне два прилипших блока сожрали бы экран */
 .sb-toolbar:not(.sf-bar):not(.sf-panel) { position: sticky; top: 0; z-index: 20; background: var(--bg); padding: 4px 0; }
+.sb-desktop-tools { display: contents; }
+.sb-mobile-exports, .sb-mobile-sort { display: none; }
+@media (max-width: 860px) {
+  .sb-mobile-exports { display: block; margin-inline-start: auto; }
+  .sb-mobile-export-items { display: none; }
+  .sb-mobile-exports[open] .sb-mobile-export-items { position: fixed; inset-inline-end: var(--space-3);
+    inset-block-end: calc(var(--tab-h) + env(safe-area-inset-bottom) + var(--space-2));
+    width: min(280px, calc(100vw - var(--space-5)));
+    max-height: calc(100dvh - var(--head-h) - var(--tab-h) - env(safe-area-inset-bottom) - var(--space-4));
+    display: grid; overflow: auto; gap: var(--space-1); padding: var(--space-2); background: var(--panel);
+    border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow); }
+  .sb-mobile-export-items .btn { justify-content: flex-start; text-align: start; white-space: normal; }
+  .sb-mobile-sort { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; }
+  .sb-units-toolbar .month-nav .label { min-width: 94px; }
+}
 .sf-bar { margin-bottom: 4px; }
 .sb-toolbar input[type=search] { min-width: 220px; flex: 1; padding-block: 5px; }
 .sb-toolbar select, .sb-toolbar input[type=text], .sb-toolbar input[type=date] { width: auto; padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
