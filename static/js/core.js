@@ -452,16 +452,52 @@ const modalContent = x => x;
 /* Modal, drawer and command palette share one Escape owner. Each layer registers its
    close callback and the focus target that was active before it opened. */
 const overlayStack = [];
+const inertOverlayBackgrounds = new Set();
+
+function activeOverlay() {
+  return document.getElementById(overlayStack.at(-1)?.id);
+}
+
+function overlayTabStops(overlay) {
+  const scrollBody = overlay.querySelector('.modal-body, .drawer-body');
+  const stops = [...overlay.querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex]')]
+    .filter(element => element.tabIndex >= 0 && !element.matches(':disabled, input[type=hidden]') &&
+      !element.closest('[inert]') && element.checkVisibility({ visibilityProperty: true }));
+  // An overflowing body with static content can be a native Chromium tab stop.
+  if (scrollBody && scrollBody.scrollHeight > scrollBody.clientHeight &&
+      !stops.some(element => scrollBody.contains(element))) {
+    const footer = stops.findIndex(element => scrollBody.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
+    stops.splice(footer === -1 ? stops.length : footer, 0, scrollBody);
+  }
+  return stops;
+}
 function chainedFocus(primary, fallback) {
   return () => Boolean(primary?.()) || Boolean(fallback?.());
 }
 function syncOverlayOrder() {
+  const top = overlayStack.at(-1);
+  const backgrounds = new Set();
+  if (top) backgrounds.add($('#app'));
+  if (top?.background) backgrounds.add(top.background);
   overlayStack.forEach((overlay, index) => {
     const backdrop = document.getElementById(`${overlay.id}-backdrop`);
     if (backdrop) backdrop.style.zIndex = String(100 + index * 10);
+    if (backdrop && overlay !== top) backgrounds.add(backdrop);
   });
+  for (const element of inertOverlayBackgrounds) {
+    if (!backgrounds.has(element)) {
+      element.inert = false;
+      inertOverlayBackgrounds.delete(element);
+    }
+  }
+  for (const element of backgrounds) {
+    if (element && !element.inert) {
+      element.inert = true;
+      inertOverlayBackgrounds.add(element);
+    }
+  }
 }
-export function pushOverlay(id, close, returnFocus) {
+export function pushOverlay(id, close, returnFocus, background = null) {
   const index = overlayStack.findIndex(x => x.id === id);
   let restore = returnFocus;
   if (index >= 0) {
@@ -472,7 +508,7 @@ export function pushOverlay(id, close, returnFocus) {
     }
     restore = wasTop ? previous.returnFocus : chainedFocus(returnFocus, previous.returnFocus);
   }
-  overlayStack.push({ id, close, returnFocus: restore });
+  overlayStack.push({ id, close, returnFocus: restore, background });
   syncOverlayOrder();
 }
 export function removeOverlay(id) {
@@ -485,7 +521,10 @@ export function removeOverlay(id) {
   }
   document.getElementById(`${id}-backdrop`)?.style.removeProperty('z-index');
   syncOverlayOrder();
-  if (wasTop) removed.returnFocus?.();
+  if (wasTop && !removed.returnFocus?.()) {
+    const overlay = activeOverlay();
+    if (overlay) overlayTabStops(overlay)[0]?.focus({ preventScroll: true });
+  }
 }
 function overlayFocusReturn(preventScroll = false, findTarget = null) {
   const initial = document.activeElement;
@@ -498,7 +537,6 @@ function overlayFocusReturn(preventScroll = false, findTarget = null) {
   return restore;
 }
 
-let modalBackground = null;
 export function openModal({ title, subtitle, body, footer, wide = false, onMount, background = null }) {
   if (!state.user) return;
   const returnFocus = overlayFocusReturn(!!background);
@@ -510,7 +548,7 @@ export function openModal({ title, subtitle, body, footer, wide = false, onMount
   m.appendChild(root);
   render(html`
     <div class="modal-head">
-      <div><h3>${title}</h3>${subtitle ? html`<p>${subtitle}</p>` : ''}</div>
+      <div><h3 id="modal-title">${title}</h3>${subtitle ? html`<p>${subtitle}</p>` : ''}</div>
       <button class="icon-btn x" aria-label="Закрыть">
         <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -518,30 +556,22 @@ export function openModal({ title, subtitle, body, footer, wide = false, onMount
     <div class="modal-body">${modalContent(body)}</div>
     ${footer ? html`<div class="modal-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#modal-backdrop').classList.remove('hidden');
-  pushOverlay('modal', closeModal, returnFocus);
+  pushOverlay('modal', closeModal, returnFocus, background);
   const close = m.querySelector('.x');
   close.onclick = closeModal;
-  if (modalBackground && modalBackground !== background) modalBackground.inert = false;
-  modalBackground = background;
-  if (background) {
-    background.inert = true;
-    close.focus({ preventScroll: true });
-  }
+  close.focus({ preventScroll: true });
   if (onMount) onMount(m);
   return m;
 }
 export function closeModal() {
   $('#modal-backdrop').classList.add('hidden');
   $('#modal').replaceChildren();
-  if (modalBackground) modalBackground.inert = false;
-  modalBackground = null;
   removeOverlay('modal');
 }
 
 /* Боковая панель (ADR-0013, раздел 7: «карточка открывается боковой панелью»): строение как у
    модального окна — голова, прокручиваемое тело, подвал с действиями. Открытые поверх неё
    модальные окна (редакторы) закрываются по Esc первыми. */
-let drawerBackground = null;
 export function openDrawer({ title, subtitle, body, footer, onMount, background = null, returnFocusTo = null }) {
   if (!state.user) return;
   const returnFocus = overlayFocusReturn(!!background, returnFocusTo);
@@ -552,7 +582,7 @@ export function openDrawer({ title, subtitle, body, footer, onMount, background 
   d.appendChild(root);
   render(html`
     <div class="drawer-head">
-      <div><h3>${title}</h3>${subtitle ? html`<p>${subtitle}</p>` : ''}</div>
+      <div><h3 id="drawer-title">${title}</h3>${subtitle ? html`<p>${subtitle}</p>` : ''}</div>
       <button class="icon-btn x" aria-label="Закрыть">
         <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
@@ -560,23 +590,16 @@ export function openDrawer({ title, subtitle, body, footer, onMount, background 
     <div class="drawer-body">${modalContent(body)}</div>
     ${footer ? html`<div class="drawer-foot">${modalContent(footer)}</div>` : ''}`, root);
   $('#drawer-backdrop').classList.remove('hidden');
-  pushOverlay('drawer', closeDrawer, returnFocus);
+  pushOverlay('drawer', closeDrawer, returnFocus, background);
   const close = d.querySelector('.x');
   close.onclick = closeDrawer;
-  if (drawerBackground && drawerBackground !== background) drawerBackground.inert = false;
-  drawerBackground = background;
-  if (background) {
-    background.inert = true;
-    close.focus({ preventScroll: true });
-  }
+  close.focus({ preventScroll: true });
   if (onMount) onMount(d);
   return d;
 }
 export function closeDrawer() {
   $('#drawer-backdrop').classList.add('hidden');
   $('#drawer').replaceChildren();
-  if (drawerBackground) drawerBackground.inert = false;
-  drawerBackground = null;
   removeOverlay('drawer');
 }
 
@@ -635,8 +658,22 @@ export async function downloadBlob(path, fallbackName) {
 $('#modal-backdrop').addEventListener('click', e => { if (e.target.id === 'modal-backdrop') closeModal(); });
 $('#drawer-backdrop').addEventListener('click', e => { if (e.target.id === 'drawer-backdrop') closeDrawer(); });
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape' || !overlayStack.length) return;
+  const top = overlayStack.at(-1);
+  if (!top) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    top.close();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+
+  const overlay = activeOverlay();
+  if (!overlay) return;
+  const stops = overlayTabStops(overlay);
+  const focused = document.activeElement;
+  const boundary = e.shiftKey ? stops[0] : stops.at(-1);
+  if (focused !== boundary && stops.includes(focused)) return;
   e.preventDefault();
-  e.stopImmediatePropagation();
-  overlayStack.at(-1).close();
+  (e.shiftKey ? stops.at(-1) : stops[0])?.focus();
 }, true);
