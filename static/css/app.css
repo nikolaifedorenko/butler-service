@@ -125,16 +125,16 @@
 .layer-tab .ltt { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .layer-tab small { font-size: 10.5px; color: var(--muted-2); font-weight: 500; letter-spacing: .01em; }
 .layer-tab.active small { color: var(--brand-fg); }
-.layer-tab .lnum { display: inline-flex; align-items: center; justify-content: center;
-  min-width: 18px; height: 18px; border-radius: 50%; background: var(--surface-3); color: var(--muted);
-  font-size: 10.5px; font-weight: 800; flex: 0 0 auto; }
-.layer-tab.active .lnum { background: var(--primary); color: var(--heading); }
 .layer-pane { display: none; }
 .layer-pane.on { display: block; animation: fade var(--dur-1) var(--ease); }
 @media (max-width: 720px) {
   .layer-tabs { gap: 4px; }
   .layer-tab { padding: 6px 9px; font-size: 12px; }
-  .layer-tab small { display: none; }
+  .layer-tab small { font-size: var(--text-xs); }
+}
+@media (max-width: 480px) {
+  #grafik-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #grafik-tabs .layer-tab { min-height: var(--target-touch); }
 }
 
 /* Слой 2 · Факт, сетка «Номера» (Q7): сырые отметки СКУД и округлённые сессии */

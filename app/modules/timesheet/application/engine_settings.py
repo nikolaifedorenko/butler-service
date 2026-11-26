@@ -19,7 +19,7 @@ from app.core.config import settings as app_settings
 from app.core.db import transactional
 from app.core.errors import Conflict, NotFound, Validation
 from app.core.format import normalize_hex_color
-from app.core.manifest import overview_checks
+from app.core.manifest import audit_titles, overview_checks
 from app.core.time import local_date, local_iso, local_midnight, utc_iso
 from app.modules.people.application import Employee, normalize_group
 
@@ -67,18 +67,26 @@ class ModifierConflict(Conflict):
         return {"message": self.message, "conflict_with": self.conflict_with}
 
 
-def current(db: Session, on: Optional[dt.date] = None) -> dict:
+def _version_note(version: EngineSettingsVersion) -> str:
+    if version.created_by_name == "system" and version.note == "Стартовое наполнение CFG-* (спецификация v7.1)":
+        return "Начальные настройки"
+    return version.note
+
+
+def current(db: Session, on: Optional[dt.date] = None, *, version_id: Optional[int] = None) -> dict:
     """Действующая на дату версия справочников и список последних версий."""
     day = on or local_date()
-    ver = base_version(db, day)
+    ver = base_version(db, day) if version_id is None else db.get(EngineSettingsVersion, version_id)
+    if version_id is not None and ver is None:
+        raise NotFound("Публикация справочников не найдена")
     payload = ver.payload if ver else to_payload(default_settings())
     versions = db.scalars(select(EngineSettingsVersion).order_by(EngineSettingsVersion.valid_from.desc(),
                                                                  EngineSettingsVersion.id.desc()).limit(50))
     return {"active": {"id": ver.id if ver else None, "valid_from": ver.valid_from.isoformat() if ver else None,
                        "payload": payload},
             "latest_id": db.scalar(select(func.max(EngineSettingsVersion.id))),
-            "versions": [{"id": v.id, "valid_from": v.valid_from.isoformat(), "note": v.note,
-                          "created_by": v.created_by_name, "created_at": utc_iso(v.created_at)} for v in versions],
+            "versions": [{"id": v.id, "valid_from": v.valid_from.isoformat(), "note": _version_note(v),
+                          "created_by": "Система" if v.created_by_name == "system" else v.created_by_name, "created_at": utc_iso(v.created_at)} for v in versions],
             "modifier_names": [{"name": n, "title": MODIFIER_TITLES[n]} for n in MODIFIER_NAMES]}
 
 
@@ -198,8 +206,7 @@ def lock_and_check_base_version(db: Session, base_version_id: Optional[int]) -> 
         latest = db.scalar(select(func.max(EngineSettingsVersion.id)))
     if latest != base_version_id:
         raise Conflict(
-            f"Пока вы редактировали, опубликована версия #{latest} — обновите страницу и "
-            "внесите изменения заново (иначе её правки потерялись бы)")
+            "Настройки изменились, пока вы редактировали. Обновите страницу и внесите правки заново.")
 
 
 def guard_removed_day_codes(payload: dict, db: Session, valid_from: dt.date) -> None:
@@ -345,16 +352,14 @@ def add_modifier(db: Session, principal: Principal, data: ModifierIn) -> int:
     period = None if start is None else Period(start, _period_end_of(start, granularity))
     conflict = _conflicting(db, data, period, granularity)
     if conflict is not None:
-        scope = (f"сотрудник #{conflict.employee_id}" if conflict.employee_id
-                 else f"группа «{conflict.group}»" if conflict.group else "все сотрудники")
+        employee = db.get(Employee, conflict.employee_id) if conflict.employee_id else None
+        scope = (employee.full_name if employee else "сотрудник") if conflict.employee_id else (
+            f"группа «{conflict.group}»" if conflict.group else "все сотрудники")
         when = (f"{conflict.date:%d.%m.%Y}" if conflict.date else
                 f"период с {conflict.period_start:%d.%m.%Y}")
         raise ModifierConflict(
-            f"Конфликт правил: «{MODIFIER_TITLES.get(data.name, data.name)}» уже задано "
-            f"для области «{scope}», {when} (запись #{conflict.id}"
-            + (f", автор {conflict.created_by_name}" if conflict.created_by_name else "")
-            + "). Два правила одного уровня на один день останавливают расчёт "
-              "(CHK-MODIFIER-CONFLICT) — удалите прежнее или сузьте область.",
+            f"Правило «{MODIFIER_TITLES.get(data.name, 'Правило расчёта')}» уже задано: {scope}, {when}. "
+            "Удалите прежнее правило или измените срок либо получателей нового.",
             {"id": conflict.id, "name": conflict.name, "value": conflict.value,
              "employee_id": conflict.employee_id, "group": conflict.group or None,
              "date": conflict.date.isoformat() if conflict.date else None,
@@ -392,7 +397,7 @@ SETTINGS_ACTIONS = ("engine_settings", "day_modifier_create", "day_modifier_dele
                     "doublepay_add", "doublepay_delete", "vip_add", "vip_delete")
 CHAIN_FORMS = {1: "сотрудник + день", 2: "сотрудник + период", 3: "группа + день",
                4: "группа + период", 5: "все + день", 6: "все + период",
-               7: "глобальный дефолт"}
+               7: "общее правило"}
 
 
 def _mod_value_text(name: str, value) -> str:
@@ -447,12 +452,11 @@ def _app_checks(db: Session, payload: dict, day: dt.date) -> list[dict]:
     blocks = set((load_base_config(db).get("groups") or {}).keys())
     for g in sorted(cfg_groups - used - blocks):
         out.append({"code": "APP-GROUP-UNUSED", "level": "warn", "screen": "groups",
-                    "text": (f"Группа «{g}» есть в CFG-GROUPS, но не используется ни одним "
+                    "text": (f"Группа «{g}» есть в справочнике, но не используется ни одним "
                              f"сотрудником и ни одним блоком базового цикла")})
     for g in sorted(used - cfg_groups):
         out.append({"code": "APP-GROUP-UNKNOWN", "level": "error", "screen": "groups",
-                    "text": (f"У сотрудников указана группа «{g}», которой нет в CFG-GROUPS — "
-                             f"расчёт остановится (CHK-GROUP-EXISTS)")})
+                    "text": (f"Группы «{g}» нет в справочнике. Добавьте её или переведите сотрудников в другую группу.")})
 
     windows = payload.get("windows") or {}
     win_codes = {str(k).split(" ")[0] for k in windows}
@@ -484,9 +488,9 @@ def health(db: Session, on: Optional[dt.date] = None) -> dict:
         for code, data in exc.violations:
             checks.append({"code": code, "level": "error", "screen": CHECK_SCREENS.get(code, "expert"),
                            "text": config_violation_text(code, dict(data))})
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError):
         checks.append({"code": "CHK-PAYLOAD", "level": "error", "screen": "expert",
-                       "text": f"Версия справочников повреждена: {exc}"})
+                       "text": "Справочники повреждены. Восстановите настройки из истории или обратитесь к администратору."})
     checks += _app_checks(db, payload, day)
 
     first = day.replace(day=1)
@@ -497,25 +501,31 @@ def health(db: Session, on: Optional[dt.date] = None) -> dict:
     for v in db.scalars(select(EngineSettingsVersion).where(EngineSettingsVersion.valid_from > day)
                         .order_by(EngineSettingsVersion.valid_from).limit(10)):
         upcoming.append({"kind": "version", "date": v.valid_from.isoformat(), "screen": "calc",
-                         "text": f"версия #{v.id}" + (f" — {v.note}" if v.note else "")})
-    for m in db.scalars(select(DayModifier).where(
-            or_(DayModifier.date > day, DayModifier.period_start > day))
-            .order_by(DayModifier.date, DayModifier.id).limit(15)):
-        who = (f"сотрудник #{m.employee_id}" if m.employee_id
+                         "text": _version_note(v) or "Обновление справочников"})
+    pending_rules = list(db.scalars(select(DayModifier).where(
+        or_(DayModifier.date > day, DayModifier.period_start > day))
+        .order_by(DayModifier.date, DayModifier.id).limit(15)))
+    employee_ids = {m.employee_id for m in pending_rules if m.employee_id is not None}
+    employee_names = dict(db.execute(select(Employee.id, Employee.full_name).where(
+        Employee.id.in_(employee_ids))).tuples().all()) if employee_ids else {}
+    for m in pending_rules:
+        who = (employee_names.get(m.employee_id, "сотрудник") if m.employee_id
                else f"группа «{m.group}»" if m.group else "все")
         upcoming.append({"kind": "rule", "screen": "pay",
                          "date": (m.date or m.period_start or day).isoformat(),   # одно из двух задано
-                         "text": f"правило #{m.id}: {MODIFIER_TITLES.get(m.name, m.name)} = "
+                         "text": f"{MODIFIER_TITLES.get(m.name, 'Правило расчёта')} — "
                                  f"{_mod_value_text(m.name, m.value)}, {who}"})
     upcoming.sort(key=lambda x: x["date"])
 
     since = local_midnight(day - dt.timedelta(days=30))
     recent = []
+    titles = audit_titles()
     for r in db.scalars(select(AuditLog).where(AuditLog.action.in_(SETTINGS_ACTIONS),
                                                AuditLog.ts >= since)
                         .order_by(AuditLog.ts.desc(), AuditLog.id.desc()).limit(12)):
         recent.append({"ts": local_iso(r.ts) or "", "actor": r.actor_name,
-                       "action": r.action, "target": r.target})
+                       "action": r.action, "target": r.target,
+                       "title": titles.get(r.action, "Изменение настроек")})
 
     granularity = payload.get("period_granularity", "month")
     current = period_containing(day, granularity)
@@ -546,7 +556,7 @@ def health(db: Session, on: Optional[dt.date] = None) -> dict:
             "checks": checks, "upcoming": upcoming, "recent": recent}
 
 
-def _rule_source(db: Session, entry, day: dt.date, version_id) -> dict:
+def _rule_source(db: Session, entry, day: dt.date) -> dict:
     """Откуда взялась выигравшая запись: ручное правило, календарь, ВИП или версия."""
     emp_id = int(entry.employee_id) if entry.employee_id else None
     q = select(DayModifier).where(DayModifier.name == entry.name,
@@ -558,7 +568,7 @@ def _rule_source(db: Session, entry, day: dt.date, version_id) -> dict:
         if same_day or same_period:
             return {"kind": "rule", "id": row.id, "author": row.created_by_name or "",
                     "note": row.note or "",
-                    "text": f"правило #{row.id}" + (f" · {row.note}" if row.note else "")
+                    "text": "Отдельное правило" + (f" · {row.note}" if row.note else "")
                             + (f" · добавил(а) {row.created_by_name}" if row.created_by_name else "")}
     if entry.name == MOD_DOUBLE:
         scope_title = {"shift": "сменщики", "week5": "пятидневка", "all": "все"}
@@ -577,8 +587,7 @@ def _rule_source(db: Session, entry, day: dt.date, version_id) -> dict:
                         "text": f"ВИП-период {v.start_date:%d.%m.%Y}–{v.end_date:%d.%m.%Y}"
                                 + (f" · {v.note}" if v.note else "")}
     return {"kind": "static", "id": None, "author": "", "note": "",
-            "text": f"статическое правило версии #{version_id}" if version_id
-            else "статическое правило справочников по умолчанию"}
+            "text": "Правило из справочников"}
 
 
 def resolve_rules(db: Session, employee_id: int, date: dt.date, name: Optional[str] = None) -> dict:
@@ -613,27 +622,24 @@ def resolve_rules(db: Session, employee_id: int, date: dt.date, name: Optional[s
         res = resolve_modifier_trace(mod, day, st)
         if res.entry is None:
             source = ({"kind": "code_column", "id": None, "author": "", "note": "",
-                       "text": f"колонка «Учитывается в УТ» кода «{code}» (CFG-DAY-CODES)"}
+                       "text": f"колонка «Учитывается в УТ» кода «{code}»"}
                       if mod == MOD_COUNTS_IN_UT else
                       {"kind": "global_default", "id": None, "author": "", "note": "",
-                       "text": f"глобальный дефолт версии #{st.versions[0][1:]}"
-                               if st.versions and st.versions[0].startswith("v")
-                               else "глобальный дефолт справочников"})
+                       "text": "Общее правило из справочников"})
         else:
-            source = _rule_source(db, res.entry, date,
-                                  int(st.versions[0][1:]) if st.versions
-                                  and st.versions[0].startswith("v") else None)
+            source = _rule_source(db, res.entry, date)
         out.append({"name": mod, "title": MODIFIER_TITLES[mod], "value": _mod_value_raw(res.value),
                     "text": _mod_value_text(mod, res.value), "level": res.level,
                     "scope": None if res.entry is None else _scope_text(res.entry),
                     "source": source,
                     "chain": [{"level": lv, "form": CHAIN_FORMS[lv], "hit": lv == res.level}
                               for lv in range(1, 8)]})
+    version_id = int(st.versions[0][1:]) if st.versions and st.versions[0].startswith("v") else None
+    version = db.get(EngineSettingsVersion, version_id) if version_id is not None else None
     return {"employee": {"id": emp.id, "name": emp.display_name or emp.full_name,
                          "full_name": emp.full_name, "group": group},
             "date": date.isoformat(), "code": code, "plan_minutes": int(row.plan_minutes) if row else 0,
             "period": {"start": period.start.isoformat(), "end": period.end.isoformat(),
                        "granularity": granularity},
-            "version": {"id": int(st.versions[0][1:]) if st.versions and st.versions[0].startswith("v")
-                        else None},
+            "version": {"id": version_id, "valid_from": version.valid_from.isoformat() if version else None},
             "modifiers": out}

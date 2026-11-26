@@ -168,11 +168,13 @@ const $ = s => window.document.querySelector(s);
     window.navigate('grafik');
     check('панель слоёв отрисована', await waitFor(() => $$('#grafik-tabs .layer-tab').length === 4));
     const tabs = $$('#grafik-tabs .layer-tab');
-    check('слои пронумерованы 0–3', tabs.map(b => b.querySelector('.lnum')?.textContent).join('') === '0123');
-    check('названия слоёв по нормативу',
-      /Табель/.test(tabs[0].textContent) && /План \/ График/.test(tabs[1].textContent)
-      && /Факт/.test(tabs[2].textContent) && /Управленческий Табель/.test(tabs[3].textContent),
-      tabs.map(t => t.textContent).join(' | '));
+    const titles = tabs.map(button => {
+      const label = button.querySelector('.ltt').cloneNode(true);
+      label.querySelector('small').remove();
+      return label.textContent.trim();
+    });
+    check('вкладки названы по рабочим задачам', titles.join('|') === 'Табель|План смен|Факт|Управленческий табель',
+      titles.join(' | '));
     check('слой по умолчанию — 1 План/График (как прежний раздел «График»)',
       await waitFor(() => activeLayer() === 'schedule' && $('#grid-host table')));
     check('панель активного слоя видна, остальные скрыты',
@@ -398,17 +400,12 @@ const $ = s => window.document.querySelector(s);
   
     /* ── 6b. Мелочи рецензии 22.10.2026 (P2): самодиагностика и права сотрудников ── */
     console.log('\n6b · Самодиагностика у не-админа; «Сотрудники» без employees.edit');
-    check('предупреждение схемы без перечня (ответ не-админу) не падает',
-      JSON.stringify(MODS.app.selfcheckDetails({ ok: false, hint: 'h', details: 'перечень — администратору' }))
-        === JSON.stringify(['перечень — администратору']));
-    /* плашка «Схема БД не в порядке»: держится до закрытия, перечень — целиком */
-    check('свежая база: плашки схемы нет', $('#schema-banner').classList.contains('hidden'));
-    const idxRows = Array.from({ length: 8 }, (_, i) => `индекс ix_${i} — CREATE UNIQUE INDEX ix_${i} ON t (c)`);
-    MODS.app.renderSchemaBanner({ ok: false, hint: 'Не созданы защитные уникальные индексы', missing: idxRows });
-    check('пропущенные индексы — плашка с подсказкой и полным перечнем (не 6 строк)',
+    check('свежая база: предупреждения нет', $('#schema-banner').classList.contains('hidden'));
+    MODS.app.renderSchemaBanner({ ok: false, hint: 'Схема БД', missing: ['CREATE INDEX'] });
+    check('предупреждение предлагает обратиться к администратору',
       !$('#schema-banner').classList.contains('hidden')
-      && /не в порядке/.test(text('#schema-banner')) && /защитные уникальные индексы/.test(text('#schema-banner'))
-      && $$('#schema-banner li').length === 8, text('#schema-banner').slice(0, 120));
+      && /Обратитесь к администратору/.test(text('#schema-banner'))
+      && !/Схема БД|CREATE INDEX/.test(text('#schema-banner')), text('#schema-banner'));
     await sleep(5500);                            // тост к этому времени уже исчез бы
     check('плашка держится, пока её не закроют', !$('#schema-banner').classList.contains('hidden'));
     click($('#schema-banner [data-schema-close]'));

@@ -97,7 +97,7 @@ class TimesheetRowCorruptError(ApplicationError):
         self.employee_id, self.day, self.plan_minutes = employee_id, day, plan_minutes
         super().__init__(
             f"Повреждённая строка Табеля (сотрудник {employee_id}, {day:%d.%m.%Y}): "
-            f"план {plan_minutes} мин не кратен 15 минутам (CHK-PLAN-FORMAT) — "
+            f"план {plan_minutes} мин не кратен 15 минутам — "
             "исправьте значение в разделе «Табель»")
 
 

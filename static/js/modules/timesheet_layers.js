@@ -62,10 +62,10 @@ function layerTemplate() {
   return html`
   <div class="page-head">
     <div>
-      <h2>Слой 1 · План / График</h2>
+      <h2>План смен</h2>
       <div class="sub">${ro
-        ? 'План смен на месяц — так же, как его видит менеджер. Правки вносит менеджер'
-        : 'График генерируется из Табеля по окнам CFG-WINDOWS; ручная смена заменяет генерацию дня. «Пропуск/отлучка» — согласованное отсутствие: смена показывается разрезанной, на часы не влияет'}</div>
+        ? 'Просматривайте смены на месяц. За изменениями обращайтесь к менеджеру.'
+        : 'Проверьте смены на месяц, назначьте или измените смену. Согласованные отлучки отображаются внутри смен.'}</div>
     </div>
     <div class="spacer"></div>
     ${periodNav('m', `${MONTHS[state.month - 1]} ${state.year}`, shiftMonth)}
@@ -80,7 +80,7 @@ function layerTemplate() {
     <input id="f-text" type="search" placeholder="Поиск по ФИО…" style="max-width:210px" .value=${state.filterText}
       @input=${e => { state.filterText = e.target.value; draw(); }}>
     <div class="spacer" style="flex:1"></div>
-    ${ro ? nothing : html`<button class="btn btn-sm" id="btn-range" title="Слой 1 · График: только «за счёт часов» — в Табеле остаётся явка, часы не меняются"
+    ${ro ? nothing : html`<button class="btn btn-sm" id="btn-range" title="Выходной за счёт часов сохраняет явку в Табеле"
         @click=${() => openRangeModal('schedule')}>Выходной за часы</button>
       <button class="btn btn-sm" id="btn-clear" title="Убрать ручные смены и согласованные отсутствия месяца, перегенерировать График из Табеля; Табель не меняется"
         @click=${resetMonth}>Сбросить месяц</button>
@@ -408,7 +408,7 @@ export function openRangeModal(mode = 'tabel') {
   openModal({
     title: fromSchedule ? 'Выходной за часы' : 'Назначить отсутствие (код Табеля)',
     subtitle: fromSchedule
-      ? 'Слой 1 · График: в Табеле остаётся явка, часы и план не меняются'
+      ? 'В Табеле сохраняются явка и плановые часы'
       : 'Слой 0 · Табель: отпуск, больничный, за свой счёт, оплачиваемый выходной — на период сразу',
     wide: true,
     body: html`
@@ -425,7 +425,7 @@ export function openRangeModal(mode = 'tabel') {
         ? html`<div class="field"><span>Вид («за счёт часов») — в словаре один</span>
            <div style="font-weight:600">${kinds[0] ? kinds[0].name : '— нет вида в словаре смен —'}</div>
            <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></div>`
-        : html`<label class="field"><span>Код отсутствия (CFG-DAY-CODES)</span><select id="rg-code"></select>
+        : html`<label class="field"><span>Код отсутствия</span><select id="rg-code"></select>
           <div class="hint" id="rg-mode-hint" style="margin-top:4px"></div></label>`}
       <label class="field"><span>Примечание</span>
         <input type="text" id="rg-note" placeholder=${fromSchedule ? 'Например: заявление согласовано 12.10' : 'Например: приказ №47 от 01.09.2026'}></label>
@@ -559,10 +559,9 @@ function openCellModal(empId, dateISO) {
           ${shifts.some(x => x.source === 'manual') ? html`<button class="btn btn-sm btn-danger" id="cell-sh-drop">Вернуть к генерации из Табеля</button>` : nothing}
         </div>
         <p class="hint" style="margin:2px 0 6px">Смена выбирается плашкой из словаря (как значение дня
-          в Табеле) либо «⚙ Вручную». День редактируем, если его код Табеля принимает коды УТ
-          (accepts_ut = Да). Ручная смена может пересекать полночь; на часы влияет только Табель —
-          правка Графика меняет флаги и доску, но не расчёт (RUL-SCHEDULE-ONLY-FLAGS).</p>
-      </div>` : html`<p class="hint">Ручную смену в этот день поставить нельзя: код Табеля не принимает коды УТ (день-якорь).</p>`}
+          в Табеле) либо «⚙ Вручную». День редактируем, если его код Табеля принимает коды УТ. Ручная смена может пересекать полночь; на часы влияет только Табель —
+          изменения плана смен видны на доске отметок и в предупреждениях.</p>
+      </div>` : html`<p class="hint">Ручная смена недоступна с кодом Табеля на этот день.</p>`}
       <div class="opt-group-title" style="margin-top:12px">Отпросился (выходной за часы) — согласованные отсутствия дня</div>
       ${absences.map(a => html`<div class="status-line">
           <span class="k">✂ ${a.start_hm}–${a.end_hm}${a.kind ? ' · ' + a.kind.name : ''}${a.note ? ' · ' + a.note : ''}</span>
@@ -592,11 +591,11 @@ function openCellModal(empId, dateISO) {
           <button class="btn btn-sm btn-primary" id="cell-abs-shift" title="Отсутствие на всё окно смены: «выходной за часы»">На всю смену</button>
           <span class="hint" id="cell-abs-hours" style="margin:0;align-self:center"></span>
         </div>
-        <p class="hint" style="margin:2px 0 6px">Назначение <b>информационное</b> — «чтобы мы не ждали сотрудника» (Q8):
+        <p class="hint" style="margin:2px 0 6px">Так коллеги узнают, когда сотрудник будет отсутствовать:
           отсутствие НЕ меняет план, часы и банк, оно режет смену для флагов (опоздание/ранний уход
           в ожидаемое время) и для доски «Отметки». Неотработанные часы стандартного окна уходят
           в недостачу дня, а при закрытии периода недостачу гасит банк 1:1 — то есть ранее
-          накопленные переработки (EX-29). В Табеле остаётся явка.</p>
+          накопленные переработки. В Табеле остаётся явка.</p>
       </div>` : html`<p class="hint" style="margin:8px 0 0">Смены с часами в этот день нет —
         согласованное отсутствие («выходной за часы») режет смену, поэтому назначать
         его не к чему. Поставьте смену плашками выше, а отсутствие на весь день без

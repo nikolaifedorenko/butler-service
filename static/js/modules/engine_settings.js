@@ -58,18 +58,18 @@ export async function renderEngineSettings(host) {
   const groupName = g => (typeof g === 'string' ? g : g.name);
 
   render(html`
-    <h3 class="panel-title">Справочники движка v7.1 (CFG-*)</h3>
+    <h3 class="panel-title">Справочники расчёта</h3>
     <div class="stat-grid">
       <div class="stat"><div class="k">Шаг расчёта</div><div class="v">${p.step_minutes} мин</div></div>
       <div class="stat"><div class="k">Лимит опоздания</div><div class="v">${p.late_limit_minutes} мин</div></div>
       <div class="stat"><div class="k">Период</div><div class="v" style="font-size:16px">${p.period_granularity === 'half_month' ? 'полмесяца' : 'месяц'}</div></div>
       <div class="stat"><div class="k">Действует с</div><div class="v" style="font-size:16px">${data.active.valid_from ? dateRu(data.active.valid_from) : 'по умолчанию'}</div></div>
     </div>
-    <p class="hint" style="margin-top:-6px">Каскад (CFG-CASCADE): банк → ${p.cascade_order.join(' → ')}.
-      Порядок размещения (CFG-PLACEMENT): ${p.placement_order.join(' → ')}.
-      Веса (CFG-WEIGHTS): ${Object.entries(p.weights).map(([k, w]) => `${k}=${w}`).join(', ')}.
-      Группы (CFG-GROUPS): ${groups.join(', ')}.</p>
-    <p class="hint">Окна (CFG-WINDOWS): ${winList}. План карточки = длина окна; недостача и
+    <p class="hint" style="margin-top:-6px">Порядок погашения недостачи: банк → ${p.cascade_order.join(' → ')}.
+      Порядок учёта переработки: ${p.placement_order.join(' → ')}.
+      Веса кодов: ${Object.entries(p.weights).map(([k, w]) => `${k}=${w}`).join(', ')}.
+      Группы: ${groups.join(', ')}.</p>
+    <p class="hint">Рабочие окна: ${winList}. План карточки = длина окна; недостача и
       ёмкость переносов — от окна. Информационный план строки Табеля может быть меньше
       длины окна (зарплатная норма, например обед).</p>
     <details><summary>Редактировать справочники (JSON)</summary>
@@ -81,13 +81,12 @@ export async function renderEngineSettings(host) {
         <button class="btn btn-primary" id="es-save" @click=${save}>Сохранить новую версию</button></div>
         <p class="hint">Версия применяется с начала периода, в который попадает дата; дата внутри
           периода — со следующей границы. Смена гранулярности — только с 1-го числа месяца.
-          Перед сохранением конфигурация проверяется правилами CHK-* уровня 1; все нарушения
-          выводятся разом. Закрытые периоды не пересчитываются автоматически.</p>` : nothing}
+          Перед сохранением проверьте список замечаний. Закрытые периоды не пересчитываются автоматически.</p>` : nothing}
     </details>
     <details style="margin-top:8px"><summary>История версий (${data.versions.length})</summary>
-      ${data.versions.map(v => html`<div class="audit-item"><span class="ts">${dateRu(v.valid_from)}</span><span class="ac">#${v.id}</span>
+      ${data.versions.map(v => html`<div class="audit-item"><span class="ts">${dateRu(v.valid_from)}</span>
         <span style="color:var(--muted)">${v.created_by} · ${v.note}</span></div>`)}</details>
-    <h3 class="panel-title" style="margin-top:16px">Модификаторы дня (CFG-MODIFIERS) · ${MONTHS[state.month - 1]} ${state.year}</h3>
+    <h3 class="panel-title" style="margin-top:16px">Правила расчёта · ${MONTHS[state.month - 1]} ${state.year}</h3>
     <p class="hint" style="margin-top:-6px">Дни двойной оплаты и ВИП-гости тоже действуют как «Двойные переработки».
       Приоритет: сотрудник+день → сотрудник+период → группа+день → группа+период → все+день → все+период → глобальный дефолт.
       «План=Факт = Авто» разрешается в «Да» только колонкой кода (стартово — у «К»).

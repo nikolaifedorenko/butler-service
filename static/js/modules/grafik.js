@@ -18,10 +18,10 @@ import { loadSchedule } from './timesheet_layers.js';
 import { loadTabel } from './tabel.js';
 
 const GRAFIK_LAYERS = [
-  { view: 'timesheet', num: '0', title: 'Табель', sub: 'первоисточник · бухгалтерия', perm: 'tabel.view' },
-  { view: 'schedule', num: '1', title: 'План / График', sub: 'операционный план · флаги', perm: 'schedule.view' },
-  { view: 'fact', num: '2', title: 'Факт', sub: 'отметки · округление до шага', perm: 'presence.view' },
-  { view: 'mgmt', num: '3', title: 'Управленческий Табель', sub: 'результат · банк · закрытие', perm: 'mgmt.view' },
+  { view: 'timesheet', title: 'Табель', sub: 'Коды дней и плановые часы', perm: 'tabel.view' },
+  { view: 'schedule', title: 'План смен', sub: 'Предстоящие смены', perm: 'schedule.view' },
+  { view: 'fact', title: 'Факт', sub: 'Отметки и отработанное время', perm: 'presence.view' },
+  { view: 'mgmt', title: 'Управленческий табель', sub: 'Итоги часов и закрытие периода', perm: 'mgmt.view' },
 ];
 
 const LAYER_LOADERS = {
@@ -54,11 +54,10 @@ function draw(layers) {
   render(html`
     <div class="layer-tabs" id="grafik-tabs">${layers.map(l => html`
       <button class="layer-tab${l.view === state.grafikLayer ? ' active' : ''}" data-layer=${l.view}
-        title=${`Слой ${l.num} · ${l.title}: ${l.sub}`} @click=${() => navigate(l.view)}>
-        <span class="lnum">${l.num}</span>
+        aria-current=${l.view === state.grafikLayer ? 'true' : nothing} @click=${() => navigate(l.view)}>
         <span class="ltt">${l.title}<small>${l.sub}</small></span>
       </button>`)}</div>
     ${pane('timesheet')}${pane('schedule')}${pane('fact')}${pane('mgmt')}
-    ${state.grafikLayer ? nothing : html`<div class="panel layer-noperm"><div class="empty">Нет прав ни на один слой «Графика»</div></div>`}`,
+    ${state.grafikLayer ? nothing : html`<div class="panel layer-noperm"><div class="empty">Нет доступа к разделу «График»</div></div>`}`,
   mount(host));
 }

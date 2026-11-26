@@ -1074,6 +1074,7 @@ class HealthRecentOut(ApiModel):
     actor: Optional[str]
     action: str
     target: Optional[str]
+    title: str
 
 
 class HealthOut(ApiModel):
@@ -1126,6 +1127,7 @@ class ResolvePeriodOut(ApiModel):
 
 class ResolveVersionOut(ApiModel):
     id: Optional[int]
+    valid_from: Optional[str]
 
 
 class ResolvedRulesOut(ApiModel):

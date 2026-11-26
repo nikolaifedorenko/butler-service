@@ -397,6 +397,36 @@ class TestPayRulesAndConflicts(unittest.TestCase):
         self.assertEqual(defaults["version"]["on"], defaults["version"]["on"])
         self.assertIsInstance(defaults["upcoming_versions"], list)
 
+    def test_08a_history_opens_the_selected_publication_when_dates_match(self):
+        effective = dt.date(2100, 2, 1)
+        with SessionLocal() as db:
+            payload = _payload(db)
+            old = EngineSettingsVersion(
+                valid_from=effective, payload={**payload, "late_limit_minutes": 10},
+                note="Первая публикация", created_by_name="admin",
+            )
+            new = EngineSettingsVersion(
+                valid_from=effective, payload={**payload, "late_limit_minutes": 20},
+                note="Вторая публикация", created_by_name="admin",
+            )
+            db.add_all([old, new])
+            db.flush()
+            old_id, new_id = old.id, new.id
+            db.commit()
+        try:
+            active = client.get("/api/engine-settings", params={"on": effective.isoformat()})
+            self.assertEqual(active.json()["active"]["id"], new_id, active.text)
+            historical = client.get("/api/engine-settings", params={"version_id": old_id})
+            self.assertEqual(historical.json()["active"]["id"], old_id, historical.text)
+            self.assertEqual(historical.json()["active"]["payload"]["late_limit_minutes"], 10)
+        finally:
+            with SessionLocal() as db:
+                for row in db.scalars(select(EngineSettingsVersion).where(
+                    EngineSettingsVersion.id.in_([old_id, new_id])
+                )):
+                    db.delete(row)
+                db.commit()
+
     def test_09_conflicting_modifier_rejected(self):
         day = (local_date() + dt.timedelta(days=1)).isoformat()
         first = {"name": "pays_overtime", "value": "0", "group": "Смена 1", "date": day,
@@ -409,7 +439,8 @@ class TestPayRulesAndConflicts(unittest.TestCase):
         self.assertEqual(r.status_code, 409, "конфликт одного уровня не сохраняется")
         detail = r.json()["detail"]
         self.assertEqual(detail["conflict_with"]["id"], kept_id)
-        self.assertIn("CHK-MODIFIER-CONFLICT", detail["message"])
+        self.assertIn("Удалите прежнее правило", detail["message"])
+        self.assertNotIn("CHK-MODIFIER-CONFLICT", detail["message"])
         # расчёт не сломан: вкладки отвечают 200
         today = local_date()
         self.assertEqual(client.get("/api/mgmt", params={"year": today.year,

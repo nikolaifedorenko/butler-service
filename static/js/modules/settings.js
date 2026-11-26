@@ -86,28 +86,23 @@ export function settingsOpen(screenId) {
   navigate('settings');
 }
 
-/* Карточки модификаторов CFG-MODIFIERS: что делает правило, пример и ссылка на норму.
-   Тексты — из спецификации v7.1 (5.2, CFG-MODIFIERS, CFG-WEIGHTS), не из кода. */
+/* Карточки правил: описание и пример для пользователя. */
 export const SETTINGS_MODS = [
   { name: 'pays_overtime', title: 'Оплачиваются ли переработки', type: 'bool', def: 'Да',
     what: 'Переработка дня идёт в УТ («Да») или в банк часов по весу кода («Нет»).',
-    ex: '12 ч ДЯ2 при «Нет» → 24 ч банка, в УТ дня кодов нет (INV-NO-CODES-WHEN-EXCLUDED).',
-    spec: '5.2 · pays_overtime(D) = counts_in_ut(D) ∧ модификатор(D) · RUL-UNPAID-TO-BANK' },
+    ex: '12 ч по двойному тарифу дадут 24 ч в банке' },
   { name: 'double_overtime', title: 'Двойные переработки', type: 'bool', def: 'Нет',
     what: 'Вес часа переработки = 2: коды ДЯ2/ДН2 вместо ДЯ/ДН.',
-    ex: 'Источники-слои: производственный календарь и ВИП-периоды подмешиваются автоматически.',
-    spec: 'CFG-MODIFIERS · CFG-WEIGHTS (ДЯ2 = 2) · каскад гасит долг двойными последними' },
+    ex: 'Дни двойной оплаты автоматически получают двойной тариф' },
   { name: 'plan_equals_fact', title: 'План=Факт', type: 'tri', def: 'Нет',
     what: 'День без отметок и без факта считается отработанным как запланировано.',
-    ex: 'Применяется, если: код несёт часы ∧ значение «Да» ∧ нет исходной отметки ∧ факт = 0.',
-    spec: 'R30 (единый предикат) · «Авто» разрешается в «Да» только колонкой кода (R19, стартово у «К»)' },
+    ex: 'Если в день командировки нет отметок, засчитаются плановые часы' },
   { name: 'counts_in_ut', title: 'Учитываются ли часы в УТ', type: 'bool', def: 'по коду дня',
     what: 'Переопределяет колонку «Учитывается в УТ» из справочника кодов Табеля.',
-    ex: 'Уровень 7 для этого правила — колонка кода, а не глобальная строка (CHK-DEFAULTS).',
-    spec: 'CFG-DAY-CODES.counts_in_ut · участвует в pays_overtime' },
+    ex: 'Без отдельного правила действует настройка кода дня' },
 ];
 export const SETTINGS_LEVEL_FORMS = { 1: 'сотрудник + день', 2: 'сотрудник + период', 3: 'группа + день',
-  4: 'группа + период', 5: 'все + день', 6: 'все + период', 7: 'глобальный дефолт' };
+  4: 'группа + период', 5: 'все + день', 6: 'все + период', 7: 'общее правило' };
 
 /* ─────────────────────────── состояние раздела ─────────────────────────── */
 /* Отдельный объект, а не поля глобального `state`: здесь живут черновик версии
@@ -281,11 +276,10 @@ function settingsRenderNav(health = navCache.health, errors = navCache.errors) {
       <svg viewBox="0 0 24 24" aria-hidden="true">${SETTINGS_ICONS[item.icon] || nothing}</svg>
       <span>${item.title}${item.external ? ' ↗' : ''}</span>
       ${c ? html`<span class=${`cnt${c.bad ? ' bad' : ''}`}>${c.n}</span>` : nothing}</button>`;
-  })}<div class="nav-foot">Движок v7.1${health?.version?.id
-    ? ` · версия справочников #${health.version.id}` : ' · справочники по умолчанию'}${health?.version?.id
-    ? html`<br>действует с ${dateRu(health.version.valid_from)}` : nothing}<br>${errors
-    ? html`<b style="color:var(--danger)">ошибок конфигурации: ${errors}</b>`
-    : 'конфигурация здорова'}</div>`, nav);
+  })}<div class="nav-foot">${health?.version?.valid_from
+    ? `Настройки действуют с ${dateRu(health.version.valid_from)}` : 'Справочники по умолчанию'}<br>${errors
+    ? html`<b style="color:var(--danger)">ошибок в настройках: ${errors}</b>`
+    : 'замечаний к настройкам нет'}</div>`, nav);
 }
 const navCache = { health: null, errors: 0 };
 
@@ -512,12 +506,12 @@ function settingsPublishModal() {
   const gran = draft.period_granularity || 'month';
   openModal({
     title: 'Опубликовать версию справочников', wide: true,
-    subtitle: `${lines.length} ${plural(lines.length, 'правка', 'правки', 'правок')} · проверка CHK-* выполняется при сохранении`,
+    subtitle: `${lines.length} ${plural(lines.length, 'правка', 'правки', 'правок')}`,
     body: html`
       <div class="wizard-steps">
         <div class="ws on"><b>1 · Что меняем</b>черновик справочников</div>
         <div class="ws on"><b>2 · С какой даты</b>любая дата</div>
-        <div class="ws"><b>3 · Проверка</b>сервер вернёт все нарушения разом</div>
+        <div class="ws"><b>3 · Проверка</b>проверьте замечания</div>
       </div>
       <div class="settings-list" style="max-height:34vh;overflow:auto">
         ${[...new Set(lines.map(l => l.block))].map(block => html`<div>
@@ -528,15 +522,13 @@ function settingsPublishModal() {
       </div>
       <div class="grid-2" style="margin-top:14px">
         <label class="field"><span>Действует с</span><input type="date" id="pb-from" .value=${first}>
-          <div class="hint">Дата больше не ограничена 1-м или 16-м числом: версия применяется к периодам,
-            <b>начинающимся</b> с этой даты или позже</div></label>
+          <div class="hint">Настройки применятся к периодам, которые начнутся с этой даты или позже.</div></label>
         <label class="field"><span>Комментарий (обязателен)</span><input type="text" id="pb-note"
           placeholder="что и почему меняем — текст попадёт в историю версий"></label>
       </div>
       <div class="preview" id="pb-preview"></div>
-      <p class="hint">Закрытые периоды не пересчитываются (RUL-CLOSED-PERIOD-IMMUTABLE): чтобы исправить
-        последний закрытый период, опубликуйте версию датой не позже его начала и выполните
-        «Пересчитать» в «Управленческом табеле».</p>`,
+      <p class="hint">Чтобы обновить последний закрытый период, укажите дату начала этого периода или раньше.
+        После публикации нажмите «Пересчитать» в «Управленческом табеле».</p>`,
     footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-save>Опубликовать</button>`,
     onMount(m) {
@@ -579,7 +571,7 @@ function settingsPublishModal() {
             valid_from: from.value, payload: settingsUI.draft, note: note.value.trim(),
             base_version_id: settingsUI.engine?.latest_id ?? null } });
           closeModal();
-          toast(`Версия #${r.id} опубликована · применится с ${dateRu(r.applies_from)}`
+          toast(`Настройки опубликованы. Действуют с ${dateRu(r.applies_from)}`
             + (r.period?.closed ? ' (период закрыт — нужен пересчёт)' : ''), 'ok');
           await settingsRefresh({ clearDraft: true });
         } catch (e) { toast(e.message, 'err'); }
@@ -594,7 +586,7 @@ export function settingsHealthBannerView(health) {
   const checks = health?.checks || [];
   if (!checks.length) {
     return html`<div class="health ok"><b>Конфигурация здорова</b>
-      <ul><li>Проверки CHK-* и сверки справочников не нашли замечаний на ${dateRu(health?.on)}</li></ul></div>`;
+      <ul><li>Замечаний к настройкам на ${dateRu(health?.on)} нет</li></ul></div>`;
   }
   const errors = checks.filter(c => c.level === 'error');
   const warns = checks.filter(c => c.level !== 'error');
@@ -603,8 +595,7 @@ export function settingsHealthBannerView(health) {
       ? `${errors.length} ${plural(errors.length, 'ошибка', 'ошибки', 'ошибок')} конфигурации — расчёт остановится`
       : `${warns.length} ${plural(warns.length, 'предупреждение', 'предупреждения', 'предупреждений')}`}</b>
     <ul>${checks.slice(0, 12).map(c => html`<li>
-      <span>${c.level === 'error' ? '⛔' : '⚠'} ${c.text}
-        <span class="spec-ref">[${c.code}]</span></span>
+      <span>${c.level === 'error' ? '⛔' : '⚠'} ${c.text}</span>
       <button data-go=${c.screen} @click=${() => settingsGo(c.screen)}>${settingsTitle(c.screen) || c.screen} →</button></li>`)}
       ${checks.length > 12 ? html`<li><span>… и ещё ${checks.length - 12}</span></li>` : nothing}</ul></div>`;
 }
@@ -628,14 +619,14 @@ function settingsSearchIndex() {
       title: `Значение и окно «${k}»`,
       hint: `${settingsHm(p.windows[k].start_minute)}–${settingsHm(p.windows[k].end_minute)}`, screen: 'codes', tab: 'windows' }));
     Object.keys(p.weights || {}).forEach(k => out.push({
-      title: `Вес кода УТ «${k}» = ${p.weights[k]}`, hint: 'CFG-WEIGHTS', screen: 'calc' }));
-    (p.groups || []).forEach(g => out.push({ title: `Группа «${g}»`, hint: 'CFG-GROUPS', screen: 'groups' }));
+      title: `Вес кода УТ «${k}» = ${p.weights[k]}`, hint: 'переработка и банк часов', screen: 'calc' }));
+    (p.groups || []).forEach(g => out.push({ title: `Группа «${g}»`, hint: 'группы сотрудников', screen: 'groups' }));
     out.push({ title: 'Лимит опоздания', hint: `${p.late_limit_minutes} мин`, screen: 'calc', section: 'cl-late' });
     out.push({ title: 'Шаг расчёта', hint: `${p.step_minutes} мин`, screen: 'calc', section: 'cl-step' });
     out.push({ title: 'Период расчёта', hint: settingsGranularityText(p.period_granularity), screen: 'calc', section: 'cl-gran' });
     out.push({ title: 'Часовой пояс', hint: String(p.tz || ''), screen: 'calc', section: 'cl-tz' });
     out.push({ title: 'Категории ДЯ/ДН', hint: 'дневные и ночные часы', screen: 'calc' });
-    out.push({ title: 'Порядок каскада и размещения', hint: 'CFG-CASCADE, CFG-PLACEMENT', screen: 'calc' });
+    out.push({ title: 'Порядок каскада и размещения', hint: 'учёт переработки и недостачи', screen: 'calc' });
   }
   SETTINGS_MODS.forEach(m => out.push({ title: m.title, hint: m.what, screen: 'pay' }));
   /* Справочники группы «Объект» — статические записи: содержимое
@@ -649,7 +640,7 @@ function settingsSearchIndex() {
     { title: 'Медиа и хранение', hint: 'размер и срок хранения фото и видео', screen: 'notify', section: 'notify-media' },
   );
   (settingsUI.data?.items || []).forEach(i => out.push({
-    title: i.description || i.key, hint: `прочие правила объекта · ${i.key}`, screen: 'docs', section: `rule-${i.key}` }));
+    title: i.description || i.key, hint: 'правила объекта', screen: 'docs', section: `rule-${i.key}` }));
   (state.shiftTypes || []).forEach(s => out.push({
     title: `${s.kind === 'work' ? 'Смена' : 'Отсутствие'} «${s.name}»`, hint: `${s.code}`, screen: 'shifts' }));
   (state.docKinds || []).forEach(k => out.push({

@@ -114,7 +114,7 @@ const $ = s => window.document.querySelector(s);
     check('все четыре правила — карточками', $$('#st-body .rule-card').length >= 4,
       String($$('#st-body .rule-card').length));
     check('глобальное значение показано словами', /глобально/.test(text('#st-body')));
-    check('цепочка приоритетов 1–7', /сотрудник \+ день/.test(text('#st-body')) && /глобальный дефолт/.test(text('#st-body')));
+    check('цепочка приоритетов 1–7', /сотрудник \+ день/.test(text('#st-body')) && /общее правило/.test(text('#st-body')));
     check('переопределения видны списком', /переопределений в месяце/.test(text('#st-body')));
   
     /* ── 3. Мастер «что → кому → когда» ── */
@@ -138,9 +138,9 @@ const $ = s => window.document.querySelector(s);
     console.log('\n4 · Проверитель');
     click($('#py-resolve'));
     check('проверитель открылся', await waitFor(() => !!$('#rs-go')));
-    check('ответ с сервера получен', await waitFor(() => /Уровень|глобальный дефолт|правило #/i.test(text('#rs-out'))),
+    check('ответ с сервера получен', await waitFor(() => !!$('#rs-out .rule-card') && /Сотрудник.*День.*Период/.test(text('#rs-out'))),
       text('#rs-out').slice(0, 200));
-    check('значение объяснено источником', /производственный календарь|глобальный дефолт|правило #|колонка/i.test(text('#rs-out')));
+    check('значение объяснено источником', /производственный календарь|общее правило|отдельное правило|колонка/i.test(text('#rs-out')));
     click($('[data-close]'));
     await sleep(200);
   
@@ -205,10 +205,10 @@ const $ = s => window.document.querySelector(s);
     change($('#pb-from'), tomorrow);
     input($('#pb-note'), 'сценарий интерфейса: окно «Я 10,5»');
     click($('#modal [data-save]'));
-    check('версия опубликована', await waitFor(() => /опубликована/i.test(text('#toast-host')), 15000),
+    check('версия опубликована', await waitFor(() => /опубликованы/i.test(text('#toast-host')), 15000),
       text('#toast-host'));
     check('публикация сообщила настоящую дату применения',
-      /применится с \d\d\.\d\d\.\d{4}/.test(text('#toast-host')), text('#toast-host'));
+      /Действуют с \d\d\.\d\d\.\d{4}/.test(text('#toast-host')), text('#toast-host'));
     await go('codes');
     click($('[data-tab="windows"]'));
     await waitFor(() => /Окна и значения/.test(text('#st-body')));
@@ -222,7 +222,7 @@ const $ = s => window.document.querySelector(s);
     /* ── 6. Расчёт: черновик, diff, сброс ── */
     console.log('\n6 · Расчёт');
     await go('calc');
-    check('лимит опоздания — отдельный блок', /Лимит опоздания/.test(text('#st-body')));
+    check('лимит опоздания — отдельный блок', /Допустимое опоздание и ранний уход/.test(text('#st-body')));
     check('категории: два поля и производные ночные', /Начало дневных часов/.test(text('#st-body'))
       && /ДН \(ночь\)|дополнение суток/.test(text('#st-body')));
     check('веса редактируемые', $$('#st-body [data-weight]').length >= 4);
@@ -277,7 +277,7 @@ const $ = s => window.document.querySelector(s);
     check('палитра открылась', await waitFor(() => !!$('#sp-q')));
     input($('#sp-q'), 'переработк');
     check('нашлось правило оплаты', /Оплачиваются ли переработки/.test(text('#sp-res')), text('#sp-res').slice(0, 120));
-    click($('#sp-res [data-i="0"]'));
+    click($$('#sp-res button').find(button => button.querySelector('b')?.textContent === 'Оплачиваются ли переработки'));
     check('переход на экран правила', await waitFor(() => window.location.hash === '#/settings/pay'),
       window.location.hash);
   

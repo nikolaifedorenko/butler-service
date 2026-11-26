@@ -4,7 +4,7 @@
 'use strict';
 
 import { can, navigate, registerModule } from '../app.js';
-import { $, api, dateRu, toast } from '../core.js';
+import { $, api, closeModal, dateRu, openModal, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { renderEngineSettings } from './engine_settings.js';
 import { settingsPayloadModal, settingsVersionsModal } from './settings_overview.js';
@@ -28,12 +28,12 @@ async function settingsScreenSystem(host) {
   const rollback = async v => {
     if (v.id === engine?.active?.id) return toast('Эта версия и так действует', 'warn');
     try {
-      const r = await api(`/api/engine-settings?on=${v.valid_from}`, { silent: true });
+      const r = await api(`/api/engine-settings?version_id=${v.id}`, { silent: true });
       settingsUI.draft = JSON.parse(JSON.stringify(r.active.payload));
       settingsUI.screen = 'calc';
       await settingsRenderScreen();
       settingsUpdateDraftBars();
-      toast(`Payload версии #${v.id} загружен в черновик — проверьте diff и опубликуйте`, 'ok');
+      toast(`Настройки от ${dateRu(v.valid_from)} загружены в черновик. Проверьте изменения и опубликуйте.`, 'ok');
     } catch (e) { toast(e.message, 'err'); }
   };
 
@@ -50,42 +50,57 @@ async function settingsScreenSystem(host) {
         <div class="stat"><div class="k">Ячеек Табеля</div><div class="v">${c.tabel_days ?? 0}</div></div>
         <div class="stat"><div class="k">Закрытий периодов</div><div class="v">${c.period_closings ?? 0}</div></div>
       </div>
-      <p class="hint">Пересчёт «всего месяца» не нужен: управленческий табель считается при открытии (view),
-        закрытые периоды меняются только явным пересчётом последнего закрытого.</p>`)}
+      <p class="hint">Чтобы обновить последний закрытый период, выберите «Пересчитать» в управленческом табеле.</p>`)}
     ${settingsPanelView('Версии справочников и откат', html`
       <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
-        <th>№</th><th>Действует с</th><th>Комментарий</th><th>Кто</th><th></th></tr></thead>
+        <th>Действует с</th><th>Комментарий</th><th>Кто</th><th>Опубликовано</th><th></th></tr></thead>
       <tbody>${versions.length ? versions.slice(0, 12).map(v => html`<tr style=${v.id === engine?.active?.id ? 'background:var(--surface-3)' : nothing}>
-        <td><b>#${v.id}</b>${v.id === engine?.active?.id ? html` <span class="badge ok">действует</span>` : nothing}</td>
-        <td>${dateRu(v.valid_from)}</td><td>${v.note || '—'}</td><td>${v.created_by || '—'}</td>
+        <td>${dateRu(v.valid_from)}${v.id === engine?.active?.id ? html` <span class="badge ok">действует</span>` : nothing}</td><td>${v.note || '—'}</td><td>${v.created_by || '—'}</td><td>${(v.created_at || '').replace('T', ' ').slice(0, 19)}</td>
         <td class="num" style="white-space:nowrap">
-          <button class="btn btn-sm btn-ghost" data-show=${v.id} @click=${() => settingsPayloadModal(v)}>payload</button>
+          <button class="btn btn-sm btn-ghost" data-show=${v.id} @click=${() => settingsPayloadModal(v)}>Открыть справочники</button>
           ${can('settings.edit') ? html`<button class="btn btn-sm btn-ghost" data-rollback=${v.id}
-            title="Скопировать payload этой версии в черновик и опубликовать новой датой" @click=${() => rollback(v)}>откатиться</button>` : nothing}
-        </td></tr>`) : html`<tr><td colspan="5" class="empty">Версий нет</td></tr>`}</tbody></table></div>
-      <p class="hint">Откат — не удаление истории: payload прежней версии копируется в черновик и
-        публикуется новой версией с новой датой (история версий остаётся полной). Закрытые периоды
-        не меняются (RUL-CLOSED-PERIOD-IMMUTABLE).</p>`)}
+            title="Восстановить настройки в черновике" @click=${() => rollback(v)}>Восстановить</button>` : nothing}
+        </td></tr>`) : html`<tr><td colspan="5" class="empty">История пуста</td></tr>`}</tbody></table></div>
+      <p class="hint">Восстановление копирует прежние настройки в черновик. Укажите дату и опубликуйте изменения.</p>`)}
     ${settingsPanelView('Изменения настроек за 30 дней', health?.recent?.length
       ? html`${health.recent.map(r => html`<div class="kv"><span class="k">${stamp(r.ts)} · ${r.actor || '—'}</span>
-          <span class="v" style="text-align:left;font-weight:600">${r.action} · ${r.target}</span></div>`)}
+          <span class="v" style="text-align:left;font-weight:600">${r.title || "Изменение настроек"}</span></div>`)}
         <div style="margin-top:10px"><button class="btn btn-sm btn-ghost" data-nav="audit" @click=${() => navigate('audit')}>Весь журнал аудита →</button></div>`
       : html`<p class="hint" style="margin:0">Изменений не было.</p>`)}
     ${settingsPanelView('Диагностика и права', html`
       <div class="grid-2">
         <div>
-          <div class="kv"><span class="k">Движок</span><span class="v">v7.1</span></div>
-          <div class="kv"><span class="k">Действующая версия справочников</span><span class="v">#${engine?.active?.id ?? '—'}</span></div>
+          <div class="kv"><span class="k">Настройки действуют с</span><span class="v">${engine?.active?.valid_from ? dateRu(engine.active.valid_from) : 'По умолчанию'}</span></div>
           <div class="kv"><span class="k">Замечаний конфигурации</span><span class="v">${(health?.checks || []).length}</span></div>
           <div class="kv"><span class="k">Последний закрытый период</span><span class="v">${closedPeriodText(health?.periods?.last_closed, { recalcNote: false })}</span></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-content:flex-start">
-          <button class="btn btn-sm" id="sy-selfcheck" @click=${() => window.open('/api/selfcheck', '_blank', 'noopener')}>Самопроверка схемы БД</button>
+          <button class="btn btn-sm" id="sy-selfcheck" @click=${checkService}>Проверить состояние системы</button>
           ${can('access.manage') ? html`<button class="btn btn-sm" data-nav="access" @click=${() => navigate('access')}>Права доступа ↗</button>` : nothing}
           <button class="btn btn-sm btn-ghost" data-go="expert" @click=${() => settingsGo('expert')}>Режим эксперта (JSON)</button>
         </div>
       </div>`)}
     ${settingsDraftBarView()}`, mount(host));
+}
+
+async function checkService(event) {
+  const source = event.currentTarget;
+  const current = () => source.isConnected && !source.closest('[inert], .view:not(.active)');
+  if (source.hasAttribute('aria-busy')) return;
+  source.setAttribute('aria-busy', 'true');
+  try {
+    const status = await api('/api/selfcheck', { silent: true });
+    if (!current()) return;
+    openModal({
+      title: 'Состояние системы',
+      body: status.ok ? 'Система работает.' : 'Часть функций может быть недоступна. Обратитесь к администратору.',
+      footer: html`<button class="btn btn-primary" @click=${closeModal}>Закрыть</button>`,
+    });
+  } catch {
+    if (current()) toast('Не удалось проверить состояние системы. Попробуйте ещё раз.', 'err');
+  } finally {
+    source.removeAttribute('aria-busy');
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -95,7 +110,7 @@ async function settingsScreenSystem(host) {
 async function settingsScreenExpert(host) {
   render(html`
     ${settingsHeadView('Режим эксперта (JSON)',
-      'Полный payload версии справочников и все модификаторы периода. Формы выше и этот экран правят ОДНУ конфигурацию: формы — два вида одного черновика, а не второй источник правды.',
+      'Откройте справочники расчёта и правила периода.',
       html`<button class="btn btn-sm" data-go="overview" @click=${() => settingsGo('overview')}>← Обзор</button>`)}
     <div class="panel" id="st-expert"></div>`, mount(host));
   await renderEngineSettings($('#st-expert', host));

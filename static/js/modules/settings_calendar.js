@@ -47,7 +47,7 @@ async function settingsScreenCalendar(host) {
         `ВИП: ${v.employee_full_name || v.employee_name}${v.note ? ' · ' + v.note : ''}`);
     }
   });
-  (engine?.versions || []).forEach(v => add(v.valid_from, 'ver', `вступает версия справочников #${v.id}${v.note ? ' · ' + v.note : ''}`));
+  (engine?.versions || []).forEach(v => add(v.valid_from, 'ver', `вступают в силу настройки${v.note ? ' · ' + v.note : ''}`));
 
   const dot = style => html`<i style=${`width:8px;height:8px;border-radius:99px;display:inline-block;${style}`}></i>`;
   const shift = delta => {
@@ -69,7 +69,7 @@ async function settingsScreenCalendar(host) {
         <span>${dot('background:#2c5f70')} переопределение правила</span>
         <span>${dot('background:#c0562f')} день двойной оплаты</span>
         <span>${dot('background:#6b3fa0')} ВИП-период</span>
-        <span>${dot('background:var(--gold)')} версия справочников</span>
+        <span>${dot('background:var(--gold)')} изменение настроек</span>
       </div>`)}
     <div id="cl-day">${dayPanel(settingsUI.calDay, marks, mods, y, m)}</div>
     ${settingsPanelView('Производственный календарь и ВИП-гости',

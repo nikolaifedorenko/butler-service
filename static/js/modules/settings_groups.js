@@ -17,7 +17,7 @@ registerModule({ screens: { groups: { render: settingsScreenGroups, icon: 'peopl
    ЭКРАН «ГРУППЫ И ГРАФИКИ» — CFG-GROUPS + базовый цикл объекта
    ══════════════════════════════════════════════════════════════════════ */
 async function settingsScreenGroups(host) {
-  const [engine, health] = await Promise.all([settingsEngine(), settingsHealth().catch(() => null)]);
+  const [, health] = await Promise.all([settingsEngine(), settingsHealth().catch(() => null)]);
   const data = settingsUI.data || {};
   const d = settingsDraft();
   const edit = can('settings.edit');
@@ -30,7 +30,7 @@ async function settingsScreenGroups(host) {
   const syncCycle = () => $('#b-cycle-wrap', host)?.classList.toggle('hidden', $('#b-cycle', host).value !== 'custom');
 
   const dropGroup = g => confirmDialog('Исключить группу из реестра?',
-    `Группа «${g}» перестанет существовать для расчёта. Если в ней остались сотрудники, расчёт остановится (CHK-GROUP-EXISTS) — сначала переведите их.`,
+    `Группа «${g}» перестанет существовать для расчёта. Перед удалением переведите сотрудников в другую группу.`,
     () => {
       d.groups = (d.groups || []).filter(x => x !== g);
       settingsRenderScreen();
@@ -64,10 +64,9 @@ async function settingsScreenGroups(host) {
 
   render(html`
     ${settingsHeadView('Группы и графики',
-      'Реестр групп CFG-GROUPS, базовый цикл объекта и то, как группы связаны с блоками смен. Группа сотрудника обязана быть в реестре (CHK-GROUP-EXISTS).',
-      html`<span class="chip">версия #${engine?.active?.id ?? '—'}</span>`)}
+      'Настройте группы сотрудников и базовый цикл смен объекта.')}
     ${groupChecks.length ? settingsHealthBannerView({ ...health, checks: groupChecks }) : nothing}
-    ${settingsPanelView('Группы · единый источник (CFG-GROUPS)', html`
+    ${settingsPanelView('Группы сотрудников', html`
       <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>Группа</th><th class="num">Сотрудников</th><th>Шаблон графика</th><th>Правил оплаты</th><th></th>
       </tr></thead><tbody>${(d?.groups || []).map(g => html`<tr>

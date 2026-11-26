@@ -149,7 +149,7 @@ const $ = s => window.document.querySelector(s);
     click($('#tb-reset'));
     check('модалка сброса открылась', await waitFor(() => !!$('#tr-emp')));
     check('сброс объясняет ручные коды и закрытые периоды',
-      /введённые вручную/.test(text('#modal')) && /Закрытые периоды не трогаются/.test(text('#modal')));
+      /введённые вручную/.test(text('#modal')) && /Закрытые периоды.*останутся без изменений/.test(text('#modal')));
     check('счётчик ручных ячеек показан', /Сейчас вручную заполнено ячеек/.test(text('#modal')));
     check('можно сбросить всех или одного', $$('#tr-emp option').length > 1);
     click($('#modal [data-cancel]'));

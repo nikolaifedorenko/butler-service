@@ -25,7 +25,8 @@ def test_second_publish_from_same_version_is_409(admin_client, db):
         assert first.status_code == 200, first.text
         second = admin_client.put("/api/engine-settings", json=body)     # вторая вкладка
         assert second.status_code == 409, second.text
-        assert f"#{first.json()['id']}" in second.json()["detail"]
+        assert "Обновите страницу и внесите правки заново" in second.json()["detail"]
+        assert f"#{first.json()['id']}" not in second.json()["detail"]
         again = admin_client.get("/api/engine-settings").json()
         assert again["latest_id"] == first.json()["id"]
         ok = admin_client.put("/api/engine-settings", json=body | {"base_version_id": again["latest_id"]})

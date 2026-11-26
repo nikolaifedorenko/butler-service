@@ -290,8 +290,8 @@ def range_absence(db: Session, principal: Principal, payload: RangeAbsenceIn) ->
     st = period_settings(db, month_period(payload.first.year, payload.first.month))
     policy = st.day_code_policy.get(code)
     if policy is None:
-        raise Validation(f"Код «{code or '—'}» отсутствует в CFG-DAY-CODES "
-                         "(у вида отсутствия не задан код Т-13)")
+        raise Validation(f"Код «{code or '—'}» отсутствует в справочнике кодов Табеля. "
+                         "Выберите другой код или проверьте настройки вида отсутствия.")
     if policy.carries_hours:
         raise Validation("Код несёт плановые часы — это не отсутствие")
     return all_or_nothing(db, lambda: _range_absence_as_code(db, principal, payload, code, st))

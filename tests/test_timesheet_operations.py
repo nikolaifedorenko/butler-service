@@ -172,7 +172,7 @@ def test_range_absence_checks_request_before_writing(db, admin, staff):
     assert refuse(employee_ids=list(range(1, 502))) == "Слишком много сотрудников (максимум 500)"
     assert refuse(shift_type_id=10 ** 9) == "Вид отсутствия не найден"
     assert refuse(code="Я") == "Код несёт плановые часы — это не отсутствие"
-    assert "отсутствует в CFG-DAY-CODES" in refuse(code="ЫЫ")
+    assert "отсутствует в справочнике кодов Табеля" in refuse(code="ЫЫ")
 
 
 def test_period_is_checked_once_for_every_screen(db, admin):
@@ -454,7 +454,7 @@ def test_settings_publication_is_all_or_nothing(app_stack, db, admin, monkeypatc
     stale = data.model_copy(update={"base_version_id": (current["latest_id"] or 0) - 1})
     with pytest.raises(errors.Conflict) as refusal:
         engine_settings.publish(db, admin, stale)
-    assert "опубликована версия" in str(refusal.value) and _count(app_stack, EngineSettingsVersion, mine) == 0
+    assert "Настройки изменились" in str(refusal.value) and _count(app_stack, EngineSettingsVersion, mine) == 0
     try:
         published = engine_settings.publish(db, admin, data.model_copy(update={"base_version_id": current["latest_id"]}))
         assert published["applies_from"] == valid_from.isoformat() and _count(app_stack, EngineSettingsVersion, mine) == 1
@@ -524,7 +524,7 @@ def test_modifier_conflict_carries_the_existing_record(app_stack, db, admin):
             engine_settings.add_modifier(db, admin, rule.model_copy(update={"value": "0"}))
         detail = refusal.value.detail
         assert refusal.value.status_code == 409 and detail["conflict_with"]["id"] == first
-        assert detail["message"].startswith("Конфликт правил")
+        assert "уже задано" in detail["message"] and "Удалите прежнее правило" in detail["message"]
         with pytest.raises(errors.Validation):
             engine_settings.add_modifier(db, admin, rule.model_copy(update={"name": "magic"}))
         with pytest.raises(errors.Validation):

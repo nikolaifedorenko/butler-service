@@ -49,15 +49,13 @@ const hideUnlessEdit = () => (!screen.loading && !screen.error && state.tabel?.c
 function layerTemplate() {
   return html`
     <div class="page-head">
-      <div><h2>Слой 0 · Табель</h2><div class="sub">Первичный документ: код дня и плановые часы.
-        Окно рабочего времени, недостача и план карточки считаются от значения Табеля
-        (CFG-WINDOWS); График генерируется из Табеля</div></div>
+      <div><h2>Табель</h2><div class="sub">Укажите коды дней и плановые часы. По ним формируется план смен.</div></div>
       <div class="spacer"></div>
       ${monthNav('tb', loadTabel)}
       <button class="btn btn-sm" id="tb-today" title="Прокрутить сетку к колонке сегодняшнего дня" @click=${scrollTabelToToday}>Сегодня</button>
       <!-- Q4: отпуск/ДО/Б/ОВ назначаются кодом Табеля — из Табеля, а не из Графика -->
       <button class="btn btn-sm" id="tb-absence" style=${hideUnlessEdit()}
-        title="Слой 0 · Табель: отпуск, больничный, за свой счёт, оплачиваемый выходной — коды первичного документа"
+        title="Отпуск, больничный, выходной за свой счёт и оплачиваемый выходной"
         @click=${() => openRangeModal('tabel')}>Назначить отсутствие</button>
       <button class="btn btn-sm" id="tb-fill" style=${hideUnlessEdit()} @click=${() => tabelFillModal(state.tabel)}>Заполнить из циклов</button>
       <!-- T3 (Q5): «Сбросить» — убрать ручные коды и вернуть автозаполнение -->
@@ -114,8 +112,7 @@ function tabelTable(d) {
   const canCard = can('employees.view');
   return html`
     ${missing ? html`<div class="alert warn"><div><b>${missing}</b> ${plural(missing, 'ячейка', 'ячейки', 'ячеек')} не заполнены.
-      Табель обязан покрывать период: ровно одна строка на каждый день трудоустройства
-      (RUL-TIMESHEET-COVERS-PERIOD) — иначе расчёт УТ не запустится. Заполните вручную или «Заполнить из циклов».</div></div>` : nothing}
+      Чтобы рассчитать часы, заполните каждый день трудоустройства. Сделайте это вручную или нажмите «Заполнить из циклов».</div></div>` : nothing}
     <div class="table-wrap v4-grid-wrap" tabindex="0"><table class="data v4-grid">
       <thead><tr><th class="who">Сотрудник</th>${d.days.map(dayHeadCell)}<th>План, ч</th></tr></thead>
       <tbody>${d.rows.length ? d.rows.map(r => html`<tr>
@@ -127,8 +124,7 @@ function tabelTable(d) {
         : html`<tr><td colspan=${d.days.length + 2} class="empty">Нет сотрудников</td></tr>`}</tbody>
     </table></div>
     <p class="hint">${canCard ? 'Клик по ФИО — карточка сотрудника. ' : ''}Коды: ${d.codes.map((c, i) => html`${i ? ' · ' : ''}<span class="badge" style=${`background:${withAlpha(v4CodeColor(c.code, d.colors), .22)}`} title=${c.title}>${c.code}</span> ${c.title}`)}.
-      Значения с окнами (CFG-WINDOWS): ${d.values.join(', ')}. План строки — информационный
-      (зарплатный) атрибут; план карточки УТ = длина окна.</p>`;
+      Рабочие окна есть у значений ${d.values.join(', ')}. План в управленческом табеле равен длине окна.</p>`;
 }
 
 function tabelCellModal(empId, day) {
@@ -160,7 +156,7 @@ function tabelCellModal(empId, day) {
     const vals = d.values.filter(v => v.startsWith(c.code + ' '))
       .sort((a, b) => num(a.split(' ')[1]) - num(b.split(' ')[1]));
     if (!vals.length) {
-      return html`<span class="tc-chip off" title=${`${tip}: нет строки в CFG-WINDOWS — значение нельзя задать, пока окно не добавлено в настройках`}>${c.code}</span>`;
+      return html`<span class="tc-chip off" title=${`${tip}: недоступно, пока рабочее окно не добавлено в настройках`}>${c.code}</span>`;
     }
     return vals.map(v => {
       const w = winOf(v);
@@ -171,7 +167,7 @@ function tabelCellModal(empId, day) {
     title: `Табель · ${row.employee.short_name}`,
     subtitle: `${dateRu(day)}${row.lock === 'last_closed' ? ' · период закрыт: после правки нужен пересчёт в УТ' : ''}`,
     body: html`
-      <div class="opt-group-title" style="margin-top:0">Значение дня — код и плановые часы (CFG-DAY-CODES · CFG-WINDOWS)</div>
+      <div class="opt-group-title" style="margin-top:0">Код дня и плановые часы</div>
       <div class="tc-chips" id="tc-chips">
         <button type="button" class="tc-chip clear" data-code="" data-hours="0"
           title="Убрать значение ячейки — день станет незаполненным">✕ Очистить</button>
@@ -275,13 +271,8 @@ function tabelFillModal(d) {
     title: 'Заполнить Табель из циклов',
     subtitle: `${MONTHS[d.month - 1]} ${d.year}`,
     body: html`
-      <p>Циклы блоков (2/2, 3/3, пятидневка, произвольный цикл) раскладываются по дням и
-        подбирают значение Табеля по окнам CFG-WINDOWS («Я 12» = 08:00–20:00). Смена через
-        полночь оформляется <b>одной строкой в дне начала</b>: суточные 08:00–08:00 дают явку
-        с окном 08:00–20:00, а присутствие после полуночи попадает в карточку следующего
-        дня — рабочее время считается по окну своего дня, часы вне окна идут в переработку.
-        Дни без работы получают код отсутствия из словаря. График будет перегенерирован
-        из Табеля.</p>
+      <p>Дни заполнятся по рабочим циклам сотрудников. Смена через полночь записывается в день начала.
+        Отметки после полуночи учитываются в следующем дне. План смен обновится после заполнения.</p>
       <label class="field"><span>Что перезаписывать</span><select id="tf-mode">
         <option value="keep">Только пустые и заполненные из циклов (ручные правки сохраняются)</option>
         <option value="all">Все ячейки, включая ручные правки</option>
@@ -319,16 +310,13 @@ function tabelResetModal(d) {
         Сброс убирает <b>введённые вручную</b> коды периода и заново заполняет Табель из
         циклов; График перегенерируется из Табеля.</p>
       <div class="alert warn" style="margin:10px 0"><div>
-        Сейчас вручную заполнено ячеек: <b>${manual}</b>. Закрытые периоды не трогаются
-        (RUL-CLOSED-PERIOD-IMMUTABLE); дни вне трудоустройства не заполняются.</div></div>
+        Сейчас вручную заполнено ячеек: <b>${manual}</b>. Закрытые периоды и дни вне трудоустройства останутся без изменений.</div></div>
       <label class="field"><span>Кому</span><select id="tr-emp">
         <option value="">Всем сотрудникам периода</option>
         ${rows.map(r => html`<option value=${r.employee.id}>${r.employee.short_name} · ${r.employee.group}${r.lock === 'locked' ? ' · закрыт' : ''}</option>`)}
       </select></label>
-      <p class="hint">Если для дня цикл не даёт значения (нет строки CFG-WINDOWS либо отрезки
-        дня одним значением непредставимы), ячейка останется пустой — список вернёт сервер,
-        такие дни нужно заполнить вручную, иначе расчёт не запустится. Пересчёт часов не
-        запускается: итоги обновятся при чтении «Управленческого Табеля».</p>`,
+      <p class="hint">Если рабочее окно не подходит под день, ячейка останется пустой. Заполните такие дни вручную.
+        Итоги обновятся при открытии «Управленческого табеля».</p>`,
     footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-danger" data-ok>Сбросить</button>`,
     onMount(m) {
