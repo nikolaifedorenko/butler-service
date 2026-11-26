@@ -244,25 +244,20 @@ export function navigate(view) {
      ошибка в файле) или загрузчик упал — вместо пустого экрана заглушка с причиной. */
   const run = MODULE_VIEWS[view] || (() => {
     if (!el) return;
-    render(html`<div class="panel"><h3 class="panel-title">Раздел не найден</h3>
-      <p class="hint">Неизвестный раздел <code>${view}</code>. Обновите страницу
-      с очисткой кэша (Cmd/Ctrl+Shift+R).</p></div>`, mount(el));
+    render(html`<div class="panel"><h3 class="panel-title">Раздел недоступен</h3>
+      <p class="hint">Выберите другой раздел в меню.</p></div>`, mount(el));
   });
   Promise.resolve().then(run).catch(err => {
     console.error(err);
     if (el) render(html`<div class="panel"><h3 class="panel-title">Раздел не загрузился</h3>
-      <p style="color:var(--danger);font-weight:600">${String(err?.message || err)}</p>
-      <p class="hint">Что сделать: 1) обновите страницу с очисткой кеша (Cmd/Ctrl+Shift+R);
-      2) перезапустите сервер (Ctrl+C и ./run.sh) — миграции применяются при старте;
-      3) откройте http://127.0.0.1:8000/api/selfcheck — он покажет, не отстаёт ли схема БД;
-      4) если ошибка повторяется, пришлите хвост server.log и текст из консоли браузера (F12 → Console).</p></div>`, mount(el));
+      <p class="hint">Повторите загрузку. Если проблема возникнет снова, обратитесь к администратору.</p>
+      <button class="btn btn-primary" type="button" @click=${() => navigate(view)}>Повторить</button></div>`, mount(el));
   });
 }
 
 window.addEventListener('unhandledrejection', e => {
   console.error('unhandled:', e.reason);
-  toast('Ошибка интерфейса: ' + (e.reason?.message || e.reason || 'неизвестная') +
-        ' — обновите страницу (Cmd/Ctrl+Shift+R)', 'err');
+  toast('Не удалось завершить действие. Обновите страницу и проверьте результат.', 'err');
 });
 function clearTimers() {
   state.timers.forEach(t => clearInterval(t)); state.timers = [];
@@ -380,22 +375,11 @@ export function resetUserViewState() {
   $$('.view').forEach(v => v.replaceChildren());
 }
 
-/* Перечень расхождений схемы сервер отдаёт только администратору (/api/selfcheck), остальным —
-   строку details: раньше chk.missing.slice у них падал TypeError, и предупреждение терялось. */
-export function selfcheckDetails(chk, limit = 6) {
-  if (Array.isArray(chk.missing)) return chk.missing.slice(0, limit);
-  return chk.details ? [chk.details] : [];
-}
-
-/* Плашка «Схема БД не в порядке» — до закрытия (тост исчезал через 5 с и вмещал 6 строк).
-   Перечень — у администратора целиком: для пропущенного индекса там команда его создания. */
 export function renderSchemaBanner(chk) {
   const el = $('#schema-banner');
   if (!el) return;
   if (!chk || chk.ok !== false) { el.classList.add('hidden'); el.replaceChildren(); return; }
-  const items = selfcheckDetails(chk, 50);
-  render(html`<div class="sb-text"><b>Схема БД не в порядке.</b> ${chk.hint || ''}
-      ${items.length ? html`<ul>${items.map(i => html`<li><code>${i}</code></li>`)}</ul>` : nothing}</div>
+  render(html`<div class="sb-text"><b>Часть функций может быть недоступна.</b> Обратитесь к администратору.</div>
     <button class="icon-btn" data-schema-close title="Скрыть до следующего входа" aria-label="Скрыть"
       @click=${() => el.classList.add('hidden')}>✕</button>`, mount(el));
   el.classList.remove('hidden');
@@ -415,8 +399,8 @@ async function enterApp(me, view = startView()) {
       await loadDirectory();
     } catch (e) {
       // справочник не загрузился — не блокируем интерфейс: разделы покажут свои ошибки
-      toast('Справочники не загрузились: ' + (e.message || e) +
-            ' — откройте Console/Network и пришлите ошибку', 'err');
+      console.error(e);
+      toast('Справочники не загрузились. Обновите страницу.', 'err');
     }
   }
   if (state.user === me.user) navigate(view);

@@ -9723,6 +9723,10 @@
             ],
             "title": "Target"
           },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
           "ts": {
             "title": "Ts",
             "type": "string"
@@ -9732,7 +9736,8 @@
           "ts",
           "actor",
           "action",
-          "target"
+          "target",
+          "title"
         ],
         "title": "HealthRecentOut",
         "type": "object"
@@ -16504,10 +16509,22 @@
               }
             ],
             "title": "Id"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
           }
         },
         "required": [
-          "id"
+          "id",
+          "valid_from"
         ],
         "title": "ResolveVersionOut",
         "type": "object"
@@ -24215,7 +24232,7 @@
     },
     "/api/engine-settings": {
       "get": {
-        "description": "Действующая на дату версия справочников и список последних версий.",
+        "description": "Справочники на дату или конкретная публикация и история.",
         "operationId": "get_settings_api_engine_settings_get",
         "parameters": [
           {
@@ -24233,6 +24250,22 @@
                 }
               ],
               "title": "On"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Id"
             }
           }
         ],

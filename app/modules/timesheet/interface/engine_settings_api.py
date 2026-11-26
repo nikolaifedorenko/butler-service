@@ -30,10 +30,10 @@ router = APIRouter(prefix="/api/engine-settings", tags=["engine-settings"])
 
 
 @router.get("", response_model=EngineSettingsOut)
-def get_settings(on: Optional[dt.date] = None, principal: Principal = Depends(require_perm("settings.view")),
-                 db: Session = Depends(get_db)):
-    """Действующая на дату версия справочников и список последних версий."""
-    return engine_settings.current(db, on)
+def get_settings(on: Optional[dt.date] = None, version_id: Optional[int] = None,
+                 principal: Principal = Depends(require_perm("settings.view")), db: Session = Depends(get_db)):
+    """Справочники на дату или конкретная публикация и история."""
+    return engine_settings.current(db, on, version_id=version_id)
 
 
 @router.put("", response_model=SettingsPublishedOut)

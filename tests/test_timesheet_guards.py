@@ -372,7 +372,8 @@ def test_ts5_bad_tz_in_stored_settings_is_409(manager_client, db):
     try:
         r = manager_client.get("/api/mgmt", params={"year": 2027, "month": 1})
         assert r.status_code == 409, r.text          # раньше — 500 (KeyError)
-        assert "CFG-TZ" in r.json()["detail"]
+        assert "Некорректный часовой пояс" in r.json()["detail"]
+        assert "CFG-TZ" not in r.json()["detail"]
         assert "Mars/Olympus" in r.json()["detail"]  # текст указывает битое значение
     finally:
         db.expire_all()
@@ -387,7 +388,8 @@ def test_ts5_bad_tz_in_editor_is_422(admin_client):
         "valid_from": "2027-01-01", "payload": {"tz": "Mars/Olympus"},
         "note": "P1-ts-5 guard"})
     assert r.status_code == 422, r.text              # редактор валидирует ВВОД
-    assert "CFG-TZ" in r.json()["detail"]
+    assert "Некорректный часовой пояс" in r.json()["detail"]
+    assert "CFG-TZ" not in r.json()["detail"]
 
 
 # ── P1-ts-6: deserialize без assert — типизированно, в т.ч. под python -O ─────

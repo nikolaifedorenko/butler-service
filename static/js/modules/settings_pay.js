@@ -104,7 +104,6 @@ async function settingsScreenPay(host) {
         </div>
         <div class="rc-body">${m.what}<br><span class="spec-ref">Пример: ${m.ex}</span></div>
         <div class="rc-meta">
-          <span>Норма: <b>${m.spec}</b></span>
           <span class="spacer"></span>
           ${edit ? html`<button class="btn btn-sm" data-add=${m.name} @click=${() => settingsWizard(m.name)}>+ Переопределение</button>` : nothing}
           <button class="btn btn-sm btn-ghost" data-check=${m.name} @click=${() => settingsResolverModal(m.name)}>Проверить для дня</button>
@@ -132,14 +131,11 @@ async function settingsScreenPay(host) {
     <div class="settings-list">${SETTINGS_MODS.map(card)}</div>
 
     ${settingsPanelView('Как выбирается значение', html`
-      <p class="hint" style="margin:0 0 10px">Приоритет 1–7 (CFG-MODIFIERS, 3.5): первое совпадение
-        сверху вниз и есть значение дня. Две записи одного уровня на один день — конфликт
-        конфигурации (CHK-MODIFIER-CONFLICT): такое правило не сохраняется.</p>
+      <p class="hint" style="margin:0 0 10px">Применяется первое подходящее правило. Для одного дня нельзя сохранить два правила с одинаковым приоритетом.</p>
       <div class="chain">${[1, 2, 3, 4, 5, 6, 7].map(lv => html`${lv > 1 ? html`<span class="arrow">→</span>` : nothing}
         <span class="step">${settingsLevelBadgeView(lv)} ${SETTINGS_LEVEL_FORMS[lv]}</span>`)}</div>
-      <p class="hint">Дни производственного календаря и ВИП-периоды подмешиваются как
-        «Двойные переработки» автоматически — это уровни 5/6 и 1/2, а не отдельные сущности.
-        «План=Факт = Авто» разрешается в «Да» только колонкой кода Табеля (R19, стартово у «К»).</p>
+      <p class="hint">Дни двойной оплаты и ВИП-периоды автоматически включают двойной тариф.
+        В режиме «Авто» правило «План=Факт» определяется кодом дня в Табеле.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" data-go="calendar" @click=${() => settingsGo('calendar')}>Календарь правил</button>
         <button class="btn btn-sm btn-ghost" id="py-resolve2" @click=${() => settingsResolverModal()}>Проверитель: какое значение подействовало</button>
@@ -183,9 +179,7 @@ export function settingsWizard(modName) {
           placeholder="например: по письму C&B от 12.10"></label>
       </div>
       <div class="preview" id="wz-preview"></div>
-      <p class="hint">Диапазон «с 10.10 по 20.10» и правило «с даты и далее» появятся, когда у записей
-        CFG-MODIFIERS будет конец периода (этап 4 плана): сейчас запись действует либо один день,
-        либо весь период. Конфликт с существующим правилом того же уровня сервер не сохранит (409).</p>`,
+      <p class="hint">Правило действует один день или весь расчётный период.</p>`,
     footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-save>Сохранить правило</button>`,
     onMount(m) {
@@ -258,9 +252,7 @@ export function settingsResolverModal(modName) {
           <input type="date" id="rs-date" .value=${todayISO()}></label>
       </div>
       <div style="margin:12px 0"><button class="btn btn-primary btn-sm" id="rs-go">Проверить</button></div>
-      <div id="rs-out"><p class="hint">Ответ приходит с сервера: приоритет 1–7 считает домен —
-        тот же код, что и расчёт (<code>resolve_modifier_trace</code>), поэтому «Проверитель» не может
-        разойтись с табелем.</p></div>`,
+      <div id="rs-out"><p class="hint">Выберите сотрудника и дату, чтобы узнать, какие правила действуют в этот день.</p></div>`,
     footer: html`<button class="btn btn-ghost" data-close>Закрыть</button>`,
     onMount(m) {
       m.querySelector('[data-close]').onclick = closeModal;
@@ -281,7 +273,7 @@ export function settingsResolverModal(modName) {
                 : ' · строки в Табеле нет'}</b></div>
               <div class="row"><span class="k">Период</span><b>${dateRu(r.period.start)}–${dateRu(r.period.end)}
                 (${r.period.granularity === 'half_month' ? 'полмесяца' : 'месяц'})</b></div>
-              <div class="row"><span class="k">Версия справочников</span><b>${r.version?.id ? '#' + r.version.id : 'по умолчанию'}</b></div>
+              <div class="row"><span class="k">Настройки действуют с</span><b>${r.version?.valid_from ? dateRu(r.version.valid_from) : 'По умолчанию'}</b></div>
             </div>
             ${r.modifiers.filter(x => !only || x.name === only).map(x => html`
               <div class="rule-card">

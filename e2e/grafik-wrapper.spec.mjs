@@ -52,7 +52,7 @@ test('без прав на слои — сообщение, а не пустой
   const errors = watchErrors(page);
   await login(page, 'rukovod');
   await open(page, 'grafik');
-  await expect(page.locator('#view-grafik .layer-noperm')).toContainText('Нет прав ни на один слой');
+  await expect(page.locator('#view-grafik .layer-noperm')).toContainText('Нет доступа к разделу «График»');
   await expect(tabs(page)).toHaveCount(0);
   expect(errors).toEqual([]);
 });

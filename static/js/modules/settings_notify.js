@@ -173,15 +173,13 @@ async function settingsScreenNotify(host) {
       </div>
       <div class="row-actions">
         <button class="btn btn-sm btn-primary" id="nt-save" @click=${saveTelegram}>Сохранить</button>
-        <button class="btn btn-sm" id="nt-check" @click=${checkBot}>Проверить бота (getMe)</button>
+        <button class="btn btn-sm" id="nt-check" @click=${checkBot}>Проверить бота</button>
         <span class="hint" style="margin:0" id="nt-result" role="status"></span></div>
-      <p class="hint">Токен не показывается и не пишется в журнал аудита — только факт изменения.
-      Бота нужно добавить в группы служб: чаты появятся в каталоге ниже, а закрепляются они
-      в карточке службы (Ночной отчёт → Справочник → Службы).</p>`)}
+      <p class="hint">Добавьте бота в группы служб и обновите каталог ниже. Назначьте чат в карточке нужной службы.</p>`)}
 
     ${settingsPanelView('Каталог чатов Telegram', html`
       <div class="row-actions" style="margin-bottom:8px">
-        <button class="btn btn-sm" id="nt-chats" @click=${refreshChats}>Обновить список чатов (getUpdates)</button>
+        <button class="btn btn-sm" id="nt-chats" @click=${refreshChats}>Обновить список чатов</button>
         <span class="hint" style="margin:0">найдено чатов: ${chats.length}</span></div>
       <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>Название</th><th>chat_id</th><th>Тип</th><th>Виден</th><th>Закреплён за службами</th><th></th></tr></thead>

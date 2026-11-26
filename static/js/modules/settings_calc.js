@@ -54,49 +54,42 @@ async function settingsScreenCalc(host) {
     const stepSec = (Number(d.step_minutes) || 15) * 60;
     render(html`
     ${settingsHeadView('Расчёт',
-      'Как считаются часы: лимит опоздания, период, шаг, часовояс, категории дня и ночи, веса кодов УТ и порядки каскада. Изменения публикуются версией справочников.',
-      html`<span class="chip">версия #${engine?.active?.id ?? '—'} · с ${dateRu(engine?.active?.valid_from)}</span>`)}
-    ${settingsPanelView('А · Лимит опоздания', html`
+      'Настройте период, округление, дневные и ночные часы и порядок учёта переработки.')}
+    ${settingsPanelView('Допустимое опоздание и ранний уход', html`
       <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
-        <label class="field" style="margin:0;width:170px"><span>Минут, после которых ставится флаг</span>
+        <label class="field" style="margin:0;width:170px"><span>Допустимое отклонение, мин</span>
           <input type="number" id="cl-late" min="0" max="240" step="1" .value=${String(Number(d.late_limit_minutes) || 0)} ?disabled=${!edit}
             @change=${e => { d.late_limit_minutes = Math.max(0, Number(e.target.value) || 0); touch(); }}></label>
-        <div class="hint" style="margin:0;flex:1;min-width:240px">До какой задержки флаг <code>LATE</code> не ставится;
-          тот же лимит применяется к раннему уходу (<code>EARLY_DEPARTURE</code>). Норма: CFG-LIMITS, 6.6.</div>
+        <div class="hint" style="margin:0;flex:1;min-width:240px">При большем отклонении появится предупреждение об опоздании или раннем уходе.</div>
       </div>
-      <p class="hint">Сейчас лимит — поле версии справочников, поэтому меняется вместе с публикацией
-        (применится к периодам с <b>${dateRu(applies)}</b>). Значение «с сегодняшнего дня» для группы
-        или сотрудника появится, когда лимит станет правилом CFG-MODIFIERS (R41, этап 1б плана) —
-        версия справочников выбирается по дате <b>начала периода</b>, а не подневно.</p>`)}
-    ${settingsPanelView('Б · Каркас расчёта — публикуется версией', html`
+      <p class="hint">После публикации лимит применяется к периодам с <b>${dateRu(applies)}</b>.</p>`)}
+    ${settingsPanelView('Период и округление', html`
       <div class="grid-2">
         <label class="field"><span>Часовой пояс объекта</span>
           <input type="text" id="cl-tz" .value=${state.appTz || d.tz || ''} disabled>
-          <div class="hint">Пояс объекта задаётся при установке (<code>APP_TZ</code>) и здесь не меняется.
-            DST намеренно не поддерживается: локальные сутки = 1440 мин (R24)</div></label>
+          <div class="hint">Настройку часового пояса может изменить администратор системы.</div></label>
         <label class="field"><span>Период расчёта</span>
           <div class="seg" id="cl-gran" style="margin-top:4px">
             <button data-v="month" class=${d.period_granularity === 'month' ? 'active' : ''} ?disabled=${!edit} @click=${() => setGran('month')}>месяц</button>
             <button data-v="half_month" class=${d.period_granularity === 'half_month' ? 'active' : ''} ?disabled=${!edit} @click=${() => setGran('half_month')}>полмесяца</button></div>
-          <div class="hint">Полмесяца = 1–15 / 16–конец. Определяет цепочку периодов и границу закрытия (R36)</div></label>
+          <div class="hint">Первый период длится с 1-го по 15-е, второй — с 16-го до конца месяца.</div></label>
         <label class="field"><span>Шаг расчёта</span>
           <div class="seg" id="cl-step" style="margin-top:4px">${SETTINGS_STEPS.map(s =>
             html`<button data-v=${s} class=${Number(d.step_minutes) === s ? 'active' : ''} ?disabled=${!edit} @click=${() => setStep(s)}>${s}</button>`)}</div>
-          <div class="hint">Округляются только моменты отметок и <code>now</code>; границы окон и категорий
-            лежат на той же сетке (CHK-GRID)</div></label>
+          <div class="hint">Отметки округляются с выбранным шагом. Границы рабочих окон должны быть ему кратны.</div></label>
         <label class="field"><span>Лимит часов в дне</span>
           <input type="text" .value=${`${Number(d.day_limit_minutes) || 1440} мин · фиксировано`} readonly
             style="background:var(--panel-2)">
-          <div class="hint">Ёмкость дня для переносов: лимит − длина окна − Σ размещённых кодов</div></label>
+          <div class="hint">Сколько часов можно добавить в день сверх рабочего окна.</div></label>
       </div>
       <div class="preview">
-        <div class="row"><span class="k">Действующая версия</span><b>#${engine?.active?.id ?? '—'} · с ${dateRu(engine?.active?.valid_from)}</b></div>
+        <div class="row"><span class="k">Настройки действуют с</span><b>${engine?.active?.valid_from ? dateRu(engine.active.valid_from) : 'По умолчанию'}</b></div>
         <div class="row"><span class="k">Текущий период</span><b>${health?.periods?.current
           ? `${dateRu(health.periods.current.start)}–${dateRu(health.periods.current.end)}` : '—'}</b></div>
         <div class="row"><span class="k">Последний закрытый период</span><b>${closedPeriodText(health?.periods?.last_closed)}</b></div>
         <div class="row"><span class="k">Черновик применится</span><b>к периодам, начинающимся с ${dateRu(applies)} (или позже — по дате публикации)</b></div>
       </div>`)}
-    ${settingsPanelView('В · Категории времени · CFG-CATEGORIES', html`
+    ${settingsPanelView('Дневные и ночные часы', html`
       <div class="grid-2">
         <label class="field" style="margin:0"><span>Начало дневных часов (ДЯ)</span>
           <input type="time" id="cl-cat-start" .value=${settingsHm(dayCat.start_minute)} step=${stepSec} ?disabled=${!edit} @change=${catChange}></label>
@@ -105,17 +98,13 @@ async function settingsScreenCalc(host) {
       </div>
       <p class="hint" style="margin-top:10px">Ночные (ДН) — дополнение суток:
         <b id="cl-night-text">${nightCat ? `${settingsHm(nightCat.start_minute)}–${settingsHm(nightCat.end_minute)}` : '—'}</b>.
-        Две категории покрывают сутки целиком и не пересекаются (CHK-CATEGORIES-COVER);
-        границы лежат на сетке шага (CHK-GRID). Дневные на полосе — зелёным.</p>
+        Дневные и ночные часы покрывают сутки целиком. Их границы должны быть кратны шагу расчёта.</p>
       <div id="cl-cat-timeline">${settingsTimeline([
         { label: 'ДЯ (день)', start: dayCat.start_minute, end: dayCat.end_minute, color: 'var(--accent)' },
         { label: 'ДН (ночь)', start: nightCat?.start_minute ?? dayCat.end_minute, end: nightCat?.end_minute ?? dayCat.start_minute, color: 'var(--navy)' },
       ])}</div>`)}
-    ${settingsPanelView('Г · Веса кодов УТ · CFG-WEIGHTS', html`
-      <p class="hint" style="margin:-4px 0 10px">Вес — множитель перевода часа в банк («две валюты», спека 4.1),
-        а не признак двойного дня: <code>ДН = 2</code> даст двойное начисление в банк за ночные часы.
-        Движок порождает только коды с весом 1 и 2 (<code>weight_of_day</code>), поэтому вес 3+ — мёртвая
-        конфигурация, пока не добавлено правило R42.</p>
+    ${settingsPanelView('Веса кодов переработки', html`
+      <p class="hint" style="margin:-4px 0 10px">Вес показывает, сколько часов попадёт в банк за час переработки. Например, при весе 2 за час ночной работы начислятся два часа.</p>
       <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
         <th>Код УТ</th><th>Категория</th><th class="num">Вес</th><th>Смысл</th></tr></thead>
       <tbody>${Object.entries(d.weights || {}).map(([code, w]) => html`<tr>
@@ -126,13 +115,12 @@ async function settingsScreenCalc(host) {
           @change=${e => { const v = Math.max(1, Math.round(Number(e.target.value) || 1)); e.target.value = v; d.weights[code] = v; touch(); }}></td>
         <td class="hint" style="margin:0">${Number(w) === 2 ? 'двойной тариф (ДЯ2/ДН2)' : 'одинарный тариф'}</td>
       </tr>`)}</tbody></table></div>`)}
-    ${settingsPanelView('Д · Порядки · CFG-CASCADE и CFG-PLACEMENT', html`
+    ${settingsPanelView('Порядок учёта часов', html`
       <div class="opt-group-title">Каскад гашения недостачи и долга</div>
-      <p class="hint" style="margin:0 0 8px">Банк часов гасит долг первым, далее — коды в этом порядке
-        (CHK-CASCADE-FULL: все коды весов 1 и 2 должны присутствовать).</p>
+      <p class="hint" style="margin:0 0 8px">Сначала используется банк часов, затем коды в указанном порядке. Укажите все коды с весом 1 и 2.</p>
       ${settingsOrderListView('cascade', d.cascade_order || [], edit, (c, dir) => move('cascade_order', c, dir))}
       <div class="opt-group-title" style="margin-top:16px">Порядок размещения переработки по кодам</div>
-      <p class="hint" style="margin:0 0 8px">Куда сначала кладутся часы переработки дня (CHK-PLACEMENT-FULL).</p>
+      <p class="hint" style="margin:0 0 8px">В этом порядке часы переработки распределяются по кодам.</p>
       ${settingsOrderListView('placement', d.placement_order || [], edit, (c, dir) => move('placement_order', c, dir))}`)}
     ${settingsDraftBarView()}`, mount(host));
   };

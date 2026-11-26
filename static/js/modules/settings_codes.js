@@ -21,10 +21,10 @@ registerModule({ screens: { codes: { render: settingsScreenCodes, icon: 'codes' 
    сущность и другое право (план, ред. 3, §3.4/§3.4б).
    ══════════════════════════════════════════════════════════════════════ */
 const SETTINGS_CODE_FLAGS = [
-  { key: 'carries_hours', title: 'Несёт часы', hint: 'Код задаёт план строки Табеля; план карточки = длина окна (R34)' },
+  { key: 'carries_hours', title: 'Несёт часы', hint: 'Код задаёт плановые часы в Табеле. Для расчёта используется длина рабочего окна.' },
   { key: 'accepts_ut', title: 'Принимает коды УТ', hint: 'В день с этим кодом можно разместить переработку/погашение' },
-  { key: 'counts_in_ut', title: 'Учитывается в УТ', hint: 'Уровень 7 правила «Учитываются ли часы в УТ» (CHK-DEFAULTS)' },
-  { key: 'plan_equals_fact_auto', title: '«План=Факт» = Авто', hint: 'Единственный источник, который разрешает «Авто» в «Да» (R19)' },
+  { key: 'counts_in_ut', title: 'Учитывается в УТ', hint: 'По умолчанию определяет, учитываются ли часы в управленческом табеле' },
+  { key: 'plan_equals_fact_auto', title: '«План=Факт» = Авто', hint: 'При выборе «Авто» плановые часы засчитываются без отметок.' },
 ];
 
 async function settingsScreenCodes(host, requestedTab) {
@@ -79,7 +79,7 @@ function codesCards(codes, d, edit) {
         settingsRenderScreen();
       }, 'Удалить из черновика');
   };
-  return settingsPanelView('Коды Табеля · CFG-DAY-CODES', html`
+  return settingsPanelView('Коды Табеля', html`
     <div class="code-cards">${codes.map(([code, row]) => html`
       <div class="code-card" style="padding:10px 14px">
         <div class="cc-head">
@@ -104,13 +104,13 @@ function windowsTable(windows, codes, step, edit, draft) {
   }).sort((a, b) => a.code.localeCompare(b.code, 'ru') || a.w.start_minute - b.w.start_minute);
   const policy = Object.fromEntries(codes);
   const del = key => confirmDialog('Удалить значение Табеля?',
-    `«${key}» исчезнет из справочника вместе с окном. Строки Табеля с этим значением, которые уже сохранены, перестанут считаться (CHK-WINDOW-EXISTS) — сначала замените их в Табеле.`,
+    `«${key}» исчезнет из справочника вместе с окном. Строки Табеля с этим значением, которые уже сохранены, помешают рассчитать часы. Перед удалением замените их в Табеле.`,
     () => {
       delete draft.windows[key];
       toast('Значение удалено из черновика — опубликуйте версию', 'ok');
       settingsRenderScreen();
     }, 'Удалить из черновика');
-  return html`${settingsPanelView('Окна и значения · CFG-WINDOWS', html`
+  return html`${settingsPanelView('Окна и значения', html`
     <div class="table-wrap" tabindex="0"><table class="data responsive"><thead><tr>
       <th>Значение Табеля</th><th>Код</th><th>Окно</th><th class="num">Длина окна</th>
       <th>Часов в значении</th><th></th></tr></thead>
@@ -125,8 +125,7 @@ function windowsTable(windows, codes, step, edit, draft) {
     </tr>`) : html`<tr><td colspan="6" class="empty">Окон нет — добавьте значение</td></tr>`}</tbody></table></div>
     <p class="hint">План карточки и недостача считаются от <b>окна</b>, а не от числа часов в значении:
       «Я 10,75» при окне 08:00–20:00 даёт план 12 ч, а часы значения — зарплатная норма строки
-      (RUL-PLAN-BELOW-WINDOW, EX-51). Окно не пересекает полночь: смена через полночь оформляется
-      одним значением в дне начала (CHK-WINDOW-BOUNDS).</p>`)}
+      с учётом перерыва. Если смена пересекает полночь, укажите её в дне начала.</p>`)}
   ${settingsPanelView('Все окна на полосе суток · сетка = шаг ' + step + ' мин',
     settingsTimeline(rows.map(r => ({ label: r.key, start: r.w.start_minute, end: r.w.end_minute,
       color: settingsCodeColor(r.code, policy) }))))}`;
@@ -142,7 +141,7 @@ export function settingsCodeModal(code) {
     <input type="checkbox" id=${id} .checked=${on} style="width:17px;height:17px;accent-color:var(--primary)"> ${label}</label>`;
   openModal({
     title: isNew ? 'Новый код Табеля' : `Код «${code}»`,
-    subtitle: 'Строка CFG-DAY-CODES: как день считается. Публикуется версией справочников',
+    subtitle: 'Определите, как учитывается день с этим кодом.',
     body: html`
       <div class="grid-2">
         <label class="field"><span>Код (как в Т-13)</span>
@@ -158,7 +157,7 @@ export function settingsCodeModal(code) {
         <div class="opt-group-title" style="margin:0 0 6px">Кнопки отметок в день с этим кодом</div>
         ${flag('nc-punch-in', 'Разрешить «Пришёл на работу»', row?.punch_in !== false)}
         ${flag('nc-punch-out', 'Разрешить «Ушёл с работы»', row?.punch_out !== false)}
-        <div class="hint" style="margin-top:4px">Флаги соблюдает сервер: пока флаг снят, отметку принять нельзя
+        <div class="hint" style="margin-top:4px">Снимите флажок, чтобы сделать отметку недоступной
           (409 с текстом статуса), а кнопка в «Моих отметках» неактивна.</div>
       </div>
       <div id="nc-doc-wrap" style="border-top:1px dashed var(--line);padding-top:10px;margin-bottom:10px">
@@ -225,7 +224,7 @@ export function settingsWindowModal(key) {
   const step = Number(draft.step_minutes) || 15;
   openModal({
     title: isNew ? 'Новое значение и окно' : `Значение «${key}»`,
-    subtitle: 'Строка CFG-WINDOWS: ключ «КОД ЧАСЫ» + окно в сутках. План карточки = длина окна',
+    subtitle: 'Задайте код дня, плановые часы и границы рабочего окна.',
     body: html`
       <div class="grid-2">
         <label class="field"><span>Код Табеля</span><select id="nw-code" ?disabled=${!isNew}>
@@ -243,10 +242,9 @@ export function settingsWindowModal(key) {
       </div>
       <div class="preview" id="nw-preview"></div>
       <p class="hint">В списке — только коды, несущие часы: стандартное окно и часы бывают лишь
-        у рабочего дня. Ключ значения канонический: <code>КОД ПРОБЕЛ ЧАСЫ</code>, часы — десятичной дробью
-        через запятую (CHK-WINDOW-KEY). Окно не пересекает полночь (CHK-WINDOW-BOUNDS), границы лежат
-        на сетке шага ${step} мин (CHK-GRID). Часов в значении может быть меньше длины окна —
-        это зарплатная норма (RUL-PLAN-BELOW-WINDOW).</p>`,
+        у рабочего дня. У значения формат «код часы». Укажите часы десятичной дробью
+        через запятую. Укажите границы окна в пределах одного дня с шагом ${step} мин.
+        Плановых часов может быть меньше, чем длительность рабочего окна.</p>`,
     footer: html`<button class="btn btn-ghost" data-cancel>Отмена</button>
              <button class="btn btn-primary" data-save>${isNew ? 'Добавить в черновик' : 'Сохранить'}</button>`,
     onMount(m) {

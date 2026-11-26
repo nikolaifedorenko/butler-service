@@ -14,6 +14,8 @@ import {
   settingsHealth, settingsHealthBannerView, settingsPanelView, settingsUI,
 } from './settings.js';
 
+const stamp = ts => (ts || '').replace('T', ' ').slice(0, 19);
+
 registerModule({ screens: { overview: { render: settingsScreenOverview, icon: 'home' } } });
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -27,10 +29,9 @@ async function settingsScreenOverview(host) {
   const upcoming = health?.upcoming || [];
   const recent = health?.recent || [];
   const go = id => () => settingsGo(id);
-  const stamp = ts => (ts || '').replace('T', ' ').slice(0, 16);
 
   render(html`
-    ${settingsHeadView('Обзор', 'Что действует сейчас, здорова ли конфигурация и что вступит в силу — одним экраном.',
+    ${settingsHeadView('Обзор', 'Действующие настройки и предстоящие изменения.',
       html`<button class="btn btn-sm" id="ov-versions" @click=${() => settingsVersionsModal()}>История версий</button>
        <button class="btn btn-sm" id="ov-compare" @click=${() => settingsCompareWithPrevious()}>Сравнить с предыдущей</button>`)}
     ${settingsPanelView('', html`
@@ -38,12 +39,12 @@ async function settingsScreenOverview(host) {
         <div style="flex:1;min-width:260px">
           <div class="panel-title" style="margin-bottom:6px">Действующая версия справочников</div>
           <div style="font-family:var(--font-display);font-size:21px">
-            ${v.id ? `#${v.id} · действует с ${dateRu(v.valid_from)}` : 'справочники по умолчанию (версий нет)'}</div>
+            ${v.id ? `Действует с ${dateRu(v.valid_from)}` : 'Справочники по умолчанию'}</div>
           <div class="hint" style="margin-top:4px">${v.created_by || '—'}${v.created_at
             ? ` · ${stamp(v.created_at)}` : ''}${v.note ? ` · «${v.note}»` : ''}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-sm btn-primary" id="ov-calc" @click=${go('calc')}>Каркас расчёта</button>
+          <button class="btn btn-sm btn-primary" id="ov-calc" @click=${go('calc')}>Настроить расчёт</button>
           <button class="btn btn-sm" id="ov-system" @click=${go('system')}>Версии и откат</button>
         </div>
       </div>`)}
@@ -58,13 +59,13 @@ async function settingsScreenOverview(host) {
     </div>
     <div class="grid-2">
       ${settingsPanelView('Вступит в силу', upcoming.length
-        ? upcoming.map(u => html`<div class="kv"><span class="k">${dateRu(u.date)} · ${u.kind === 'version' ? 'версия' : 'правило'}</span>
+        ? upcoming.map(u => html`<div class="kv"><span class="k">${dateRu(u.date)} · ${u.kind === 'version' ? 'справочники' : 'правило'}</span>
             <span class="v" style="text-align:left;font-weight:600">${u.text}
               <button class="btn btn-sm btn-ghost" data-go=${u.screen} @click=${go(u.screen)}>открыть</button></span></div>`)
-        : html`<p class="hint" style="margin:0">Правил и версий на будущее нет. Здесь видно всё, что вступит после сегодняшнего дня — «я не помню, что уже задал» больше не проблема.</p>`)}
+        : html`<p class="hint" style="margin:0">Запланированных изменений нет.</p>`)}
       ${settingsPanelView('Изменения за 30 дней', recent.length
         ? html`${recent.map(r => html`<div class="kv"><span class="k">${stamp(r.ts)} · ${r.actor || '—'}</span>
-            <span class="v" style="text-align:left;font-weight:600">${r.action} · ${r.target}</span></div>`)}
+            <span class="v" style="text-align:left;font-weight:600">${r.title || "Изменение настроек"}</span></div>`)}
           <div style="margin-top:10px"><button class="btn btn-sm btn-ghost" data-go="audit" @click=${go('audit')}>Весь журнал аудита →</button></div>`
         : html`<p class="hint" style="margin:0">За последние 30 дней настройки не менялись.</p>`)}
     </div>
@@ -104,19 +105,19 @@ async function settingsCompareWithPrevious() {
   const prev = versions[idx + 1];
   if (!prev) return toast('Предыдущей версии нет — сравнивать не с чем', 'warn');
   try {
-    const old = await api(`/api/engine-settings?on=${prev.valid_from}`, { silent: true });
+    const old = await api(`/api/engine-settings?version_id=${prev.id}`, { silent: true });
     settingsDiffModal(old.active.payload, engine.active.payload,
-      `Версия #${prev.id} → #${engine.active.id}`);
+      `Публикации от ${stamp(prev.created_at)} и ${stamp(current?.created_at)}`);
   } catch (e) { toast(e.message, 'err'); }
 }
 
 /* окно «payload версии»: общее для «Обзора» и «Системы» */
 export async function settingsPayloadModal(v) {
   try {
-    const d = await api(`/api/engine-settings?on=${v.valid_from}`, { silent: true });
-    openModal({ title: `Версия #${v.id} · payload`, wide: true,
+    const d = await api(`/api/engine-settings?version_id=${v.id}`, { silent: true });
+    openModal({ title: `Справочники с ${dateRu(v.valid_from)}`, wide: true,
       subtitle: `действует с ${dateRu(v.valid_from)}${v.note ? ` · ${v.note}` : ''}`,
-      body: html`<pre style="max-height:60vh;overflow:auto;background:#f8f5f1;border:1px solid var(--line);
+      body: html`<pre style="max-height:60vh;overflow:auto;background:var(--surface-1);border:1px solid var(--line);
         border-radius:6px;padding:12px;font-size:12px">${JSON.stringify(d.active.payload, null, 2)}</pre>`,
       footer: html`<button class="btn btn-primary" data-ok>Закрыть</button>`,
       onMount(mm) { mm.querySelector('[data-ok]').onclick = closeModal; } });
@@ -128,14 +129,13 @@ export function settingsVersionsModal() {
   const activeId = settingsUI.engine?.active?.id;
   openModal({
     title: 'История версий справочников', wide: true,
-    subtitle: 'Версия выбирается по дате начала периода; закрытые периоды читаются из хранилища',
+    subtitle: 'Справочники применяются по дате начала расчётного периода.',
     body: versions.length ? html`<div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
-        <th>№</th><th>Действует с</th><th>Комментарий</th><th>Кто</th><th>Создана</th><th></th>
+        <th>Действует с</th><th>Комментарий</th><th>Кто</th><th>Создана</th><th></th>
       </tr></thead><tbody>${versions.map(v => html`<tr style=${v.id === activeId ? 'background:var(--surface-3)' : nothing}>
-        <td><b>#${v.id}</b>${v.id === activeId ? html` <span class="badge ok">действует</span>` : nothing}</td>
-        <td>${dateRu(v.valid_from)}</td><td>${v.note || '—'}</td>
-        <td>${v.created_by || '—'}</td><td>${(v.created_at || '').replace('T', ' ').slice(0, 16)}</td>
-        <td class="num"><button class="btn btn-sm btn-ghost" data-ver=${v.id} @click=${() => settingsPayloadModal(v)}>показать payload</button></td>
+        <td>${dateRu(v.valid_from)}${v.id === activeId ? html` <span class="badge ok">действует</span>` : nothing}</td><td>${v.note || '—'}</td>
+        <td>${v.created_by || '—'}</td><td>${stamp(v.created_at)}</td>
+        <td class="num"><button class="btn btn-sm btn-ghost" data-ver=${v.id} @click=${() => settingsPayloadModal(v)}>Открыть справочники</button></td>
       </tr>`)}</tbody></table></div>`
       : html`<p class="hint">Версий нет: расчёт идёт по справочникам по умолчанию.</p>`,
     footer: html`<button class="btn btn-primary" data-ok>Закрыть</button>`,

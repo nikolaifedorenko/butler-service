@@ -97,7 +97,7 @@ async function settingsScreenDocs(host) {
     ${settingsPanelView('Прочие правила объекта', html`
       ${(data.items || []).length ? data.items.map(i => html`<div class="rule-row">
         <div><div class="lbl" id=${`rule-${i.key}`}>${i.description || i.key}</div>
-          <div class="desc"><code>${i.key}</code> · по умолчанию: ${i.default}</div></div>
+          <div class="desc">По умолчанию: ${i.default}</div></div>
         <div class="rule-input">${input(i)}${String(i.value) !== String(i.default)
           ? html`<span class="badge warn" title=${`по умолчанию ${i.default}`}>изменено</span>` : nothing}</div>
       </div>`) : html`<p class="hint">Правил нет</p>`}

@@ -136,7 +136,7 @@ def reason_text(code: str, data: dict) -> str:
 # Тексты проверок уровня 1 (5.3): домен возвращает (код, минимальный контекст),
 # а человекочитаемое сообщение собирается только здесь (2.4, 12.13).
 CONFIG_TITLES = {
-    "CFG-TZ": "Некорректный часовой пояс (tz) в сохранённых настройках",
+    "CFG-TZ": "Некорректный часовой пояс в настройках",
     "CHK-WINDOW-PLAN": "Информационный план значения больше длины окна",
     "CHK-WINDOW-BOUNDS": "Некорректные границы окна",
     "CHK-WINDOW-KEY": "Некорректный ключ строки окон",
@@ -148,7 +148,7 @@ CONFIG_TITLES = {
     "CHK-STEP-DIVIDES-60": "Недопустимый шаг расчёта",
     "CHK-STEP-REPRESENTABLE": "Шаг расчёта должен быть кратен 3 минутам",
     "CHK-GRID": "Граница не кратна шагу расчёта",
-    "CHK-DEFAULTS": "Не задан глобальный дефолт модификатора",
+    "CHK-DEFAULTS": "Не задано общее значение правила",
     "CHK-MODIFIER-SCOPE": "Недопустимая область действия правила",
     "CHK-MODIFIER-TYPE": "Тип значения не соответствует правилу",
     "CHK-MODIFIER-CONFLICT": "Два правила одного уровня на один день",
@@ -163,7 +163,7 @@ MODIFIER_TITLES = {
 SCOPE_FORMS = {
     1: "сотрудник + день", 2: "сотрудник + период", 3: "группа + день",
     4: "группа + период", 5: "все сотрудники + день", 6: "все сотрудники + период",
-    7: "глобальный дефолт",
+    7: "общее правило",
 }
 WINDOW_KEY_REASONS = {
     "non_canonical_format": "ключ неканоничен: нужен формат «код часы» через один пробел, "
@@ -308,7 +308,7 @@ ERROR_TEXTS = {
                            "код без часов — план 0",
     "CHK-PLAN-FORMAT": "Плановые часы должны быть кратны 15 минутам",
     "CHK-SINGLE-EMPLOYEE": "Строки Табеля относятся к разным сотрудникам",
-    "CHK-GROUP-EXISTS": "Группа сотрудника отсутствует в реестре CFG-GROUPS",
+    "CHK-GROUP-EXISTS": "Группы сотрудника нет в справочнике групп",
 }
 
 
@@ -325,13 +325,13 @@ def error_text(exc: Exception) -> str:
     )
     from .errors import ApplicationError
     if isinstance(exc, ConfigError):
-        texts = [f"{config_violation_text(c, dict(d))} [{c}]" for c, d in exc.violations]
+        texts = [config_violation_text(c, dict(d)) for c, d in exc.violations]
         return "Ошибка настроек: " + "; ".join(texts)
     if isinstance(exc, UnknownDayCodeError):
-        return f"Код Табеля «{exc.code}» ({exc.day:%d.%m}) отсутствует в справочнике CFG-DAY-CODES"
+        return f"Код Табеля «{exc.code}» ({exc.day:%d.%m}) отсутствует в справочнике кодов"
     if isinstance(exc, UnknownTimesheetValueError):
-        return (f"Для значения Табеля «{exc.value}» нет строки CFG-WINDOWS — "
-                "добавьте окно в настройках движка (паттерн EX-15)")
+        return (f"Для значения Табеля «{exc.value}» нет рабочего окна. "
+                "Добавьте его в настройках кодов Табеля.")
     if isinstance(exc, IncompleteTimesheetError):
         missing = ", ".join(f"{d:%d.%m}" for d in exc.missing[:6])
         dup = ", ".join(f"{d:%d.%m}" for d in exc.duplicated[:6])
@@ -345,11 +345,10 @@ def error_text(exc: Exception) -> str:
             listed = ", ".join(f"«{t}»" for t in unknown)
             return (f"Перенос из прошлого периода — по тарифу {listed}, которого нет в весах "
                     "текущих настроек расчёта. Верните тариф в настройки (категории, веса, "
-                    "каскад) на этот период [CHK-DEFERRED-IN]")
-        base = ERROR_TEXTS.get(exc.code, f"Ошибка входных данных ({exc.code})")
-        return base if exc.code in ERROR_TEXTS else f"{base}: {exc.data}"
+                    "порядок погашения) на этот период.")
+        return ERROR_TEXTS.get(exc.code, "Проверьте данные периода. Если ошибка повторится, обратитесь к администратору.")
     if isinstance(exc, InvariantViolationError):
-        return f"Внутренняя ошибка расчёта (инвариант {exc.code}) — результат не сохранён"
+        return "Расчёт не завершился. Повторите расчёт или обратитесь к администратору."
     if isinstance(exc, ApplicationError):
         return ERROR_TEXTS.get(exc.code, str(exc))
     return str(exc)

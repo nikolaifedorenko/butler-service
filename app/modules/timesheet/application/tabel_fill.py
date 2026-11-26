@@ -70,9 +70,8 @@ def value_for_day(db: Session, emp: Employee, day: dt.date, st: Settings,
                          "код в карточке сотрудника («Перевод в блок»)")
     window = st.windows.get(value)
     if window is None:
-        return None, 0, (f"{day:%d.%m}: значения «{value}» нет в CFG-WINDOWS — добавьте "
-                         "значение в настройках или измените значение сотрудника "
-                         "(паттерн EX-15)")
+        return None, 0, (f"{day:%d.%m}: значения «{value}» нет в справочнике рабочих окон — добавьте "
+                         "значение в настройках или измените рабочее окно сотрудника.")
     code, _, hours = value.partition(" ")
     policy = st.day_code_policy.get(code)
     if policy is None or not policy.carries_hours:

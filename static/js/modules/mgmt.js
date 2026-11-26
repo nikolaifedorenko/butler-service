@@ -88,8 +88,7 @@ function layerTemplate() {
   const d = screen.loading || screen.error ? null : state.mgmt;
   return html`
     <div class="page-head">
-      <div><h2>Слой 3 · Управленческий Табель</h2><div class="sub">Коды УТ (ДЯ, ДН, ДЯ2, ДН2) по дням после
-        размещения; недостача гасится банком и каскадом при закрытии периода</div></div>
+      <div><h2>Управленческий табель</h2><div class="sub">Проверьте часы, переработку и остаток в банке перед закрытием периода.</div></div>
       <div class="spacer"></div>
       ${periodNav('ut', periodLabel(d), shiftPeriod, 'период')}
       <button class="btn btn-sm btn-primary" id="ut-close" style=${d?.can_close ? '' : 'display:none'}
@@ -234,7 +233,7 @@ function dayCardRow(r, dv) {
   return html`<tr>
     <td>${dateRu(dv.day).slice(0, 6)}</td>
     <td>${dv.timesheet_value}${dv.plan_equals_fact ? html` <span class="badge info">План=Факт</span>` : nothing}</td>
-    <td class="num" title="Расчётный план = длина окна (R34)">${v4Hours(dv.plan_hours)}</td>
+    <td class="num" title="Расчётный план равен длине рабочего окна">${v4Hours(dv.plan_hours)}</td>
     <td class="num" title="Информационный (зарплатный) план строки Табеля">${v4Hours(dv.timesheet_plan_hours)}</td>
     <td class="num">${v4Hours(dv.fact_minutes / 60)}</td>
     <td class="num">${v4Hours(dv.work_minutes / 60)}</td>

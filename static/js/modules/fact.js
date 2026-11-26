@@ -56,20 +56,16 @@ function layerTemplate() {
   const mode = state.factMode;
   return html`
     <div class="page-head">
-      <div><h2>Слой 2 · Факт</h2>
-        <div class="sub">Слой 2 · отметки СКУД: «Месяц» — гант фактических
-          присутствий на непрерывной оси времени (ночи темнее, окно Табеля
-          штриховкой); «День» — день глазами движка (округление до шага, окно из
-          Табеля, план / отработано / недостача / переработка, флаги из Графика);
-          «Сотрудник» — исходная история «пришёл — ушёл» без округления</div></div>
+      <div><h2>Факт</h2>
+        <div class="sub">Посмотрите, кто и когда работал. Выберите месяц, день или историю сотрудника.</div></div>
       <div class="spacer"></div>
       <div class="seg" id="fc-mode">
         <button data-mode="month" class=${mode === 'month' ? 'active' : ''} @click=${() => setMode('month')}
-          title="Гант месяца: округлённые сессии на непрерывной оси времени, ночи темнее, окно Табеля штриховкой">Месяц</button>
+          title="Отработанное время за месяц. Плановые часы показаны штриховкой">Месяц</button>
         <button data-mode="numbers" class=${mode === 'numbers' ? 'active' : ''} @click=${() => setMode('numbers')}
-          title="Сетка дня: отметки, округлённые до шага, и расчёт дня">День</button>
+          title="Отметки и отработанное время за день">День</button>
         <button data-mode="sessions" class=${mode === 'sessions' ? 'active' : ''} @click=${() => setMode('sessions')}
-          title="История сессий «пришёл — ушёл» одного сотрудника: точные моменты, без округления">Сотрудник</button>
+          title="Точное время прихода и ухода сотрудника">Сотрудник</button>
       </div>
     </div>
     <div id="fc-pane">${mode === 'month' ? monthPane() : mode === 'sessions' ? sessionsPane() : dayPane()}</div>`;
@@ -392,7 +388,7 @@ function dayRow(r) {
   const who = html`<td class="who" data-label="Сотрудник">${r.employee.short_name}<small>${r.employee.group}${r.employee.position ? ' · ' + r.employee.position : ''}</small></td>`;
   if (r.out_of_staff) {
     return html`<tr data-emp=${r.employee.id}>${who}<td colspan="7" data-label=""><span class="badge muted"
-      title="День вне интервала трудоустройства (R35)">не в штате в этот день</span></td></tr>`;
+      title="Сотрудник не работал в этот день по датам трудоустройства">не в штате в этот день</span></td></tr>`;
   }
   const c = r.card;
   const marks = html`<td data-label="Отметки">${marksCell(r)}</td>`;
@@ -404,8 +400,8 @@ function dayRow(r) {
   return html`<tr data-emp=${r.employee.id}>
     ${who}
     ${marks}
-    <td data-label="Окно" class="num" title="Стандартное окно кода Табеля (CFG-WINDOWS) — жёстко из кода (Q1)">${c.window ? `${c.window[0]}–${c.window[1]}` : '—'}<small class="hint" style="display:block">Табель: «${c.timesheet_value}»</small></td>
-    <td data-label="План" class="num" title="Расчётный план = длина окна (R34); план строки Табеля — информационный">${v4Hours(c.plan_minutes / 60)}${c.timesheet_plan_minutes ? html`<small class="hint" style="display:block">строка ${hours(c.timesheet_plan_minutes / 60)}</small>` : nothing}</td>
+    <td data-label="Окно" class="num" title="Плановое рабочее время по коду дня">${c.window ? `${c.window[0]}–${c.window[1]}` : '—'}<small class="hint" style="display:block">Табель: «${c.timesheet_value}»</small></td>
+    <td data-label="План" class="num" title="Расчётный план равен длине рабочего окна">${v4Hours(c.plan_minutes / 60)}${c.timesheet_plan_minutes ? html`<small class="hint" style="display:block">строка ${hours(c.timesheet_plan_minutes / 60)}</small>` : nothing}</td>
     <td data-label="Отработано" class="num"><b>${v4Hours(c.work_minutes / 60)}</b><small class="hint" style="display:block">факт ${v4Hours(c.fact_minutes / 60)}</small></td>
     <td data-label="Недоработка" class="num">${c.debt_minutes ? html`<span class="v4-debt" title="Недостача дня (окно − отработано)">−${hours(c.debt_minutes / 60)}</span>` : '—'}${c.plan_equals_fact ? html` <span class="badge info" title="Применён «План=Факт»: день освобождён от недостачи">П=Ф</span>` : nothing}</td>
     <td data-label="Переработка" class="num">${overtimeCell(c)}</td>

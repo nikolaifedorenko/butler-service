@@ -347,7 +347,9 @@ def test_engine_settings_validation(admin):
         "valid_from": f"{bad['year']}-{bad['month']:02d}-01", "payload": payload, "note": "test"})
     assert r.status_code == 422
     detail = r.json()["detail"]
-    assert "CHK-STEP-DIVIDES-60" in detail and "CHK-CASCADE-FULL" in detail
+    assert "Недопустимый шаг расчёта" in detail
+    assert "Порядок каскада неполный" in detail
+    assert "CHK-" not in detail
 
 
 @pytest.fixture
@@ -360,20 +362,11 @@ def engine_step_version(db):
         db.commit()
 
 
-@pytest.mark.parametrize(("step", "code"), [
-    (15.9, "CHK-STEP-DIVIDES-60"),
-    (15.0, "CHK-STEP-DIVIDES-60"),
-    ("15", "CHK-STEP-DIVIDES-60"),
-    (True, "CHK-STEP-DIVIDES-60"),
-    (False, "CHK-STEP-DIVIDES-60"),
-    (1, "CHK-STEP-REPRESENTABLE"),
-    (2, "CHK-STEP-REPRESENTABLE"),
-    (4, "CHK-STEP-REPRESENTABLE"),
-    (5, "CHK-STEP-REPRESENTABLE"),
-    (10, "CHK-STEP-REPRESENTABLE"),
-    (20, "CHK-STEP-REPRESENTABLE"),
+@pytest.mark.parametrize(("step", "message"), [
+    *((step, "Недопустимый шаг расчёта") for step in (15.9, 15.0, "15", True, False)),
+    *((step, "Шаг расчёта должен быть кратен 3 минутам") for step in (1, 2, 4, 5, 10, 20)),
 ])
-def test_engine_settings_rejects_invalid_steps_before_persistence(admin, db, engine_step_version, step, code):
+def test_engine_settings_rejects_invalid_steps_before_persistence(admin, db, engine_step_version, step, message):
     payload = admin.get("/api/engine-settings").json()["active"]["payload"]
     payload["step_minutes"] = step
     r = admin.put("/api/engine-settings", json={
@@ -382,8 +375,9 @@ def test_engine_settings_rejects_invalid_steps_before_persistence(admin, db, eng
     assert stored is None, (r.status_code, stored.payload["step_minutes"], from_payload(stored.payload).step_minutes)
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
-    assert code in detail
+    assert message in detail
     assert "3, 6, 12, 15, 30, 60" in detail
+    assert "CHK-" not in detail
 
 
 @pytest.mark.parametrize("step", [3, 6, 12, 15, 30, 60])

@@ -134,7 +134,8 @@ class TestNewFeatures(unittest.TestCase):
             "employee_ids": [emp["id"]], "first": start.isoformat(), "last": start.isoformat(),
             "code": "НБ", "note": "артефактный код"})
         self.assertEqual(r.status_code, 422, r.text)
-        self.assertIn("CFG-DAY-CODES", r.json()["detail"])
+        self.assertIn("Код «НБ» отсутствует в справочнике кодов Табеля", r.json()["detail"])
+        self.assertNotIn("CFG-DAY-CODES", r.json()["detail"])
 
     # ── 2. «только рабочие дни» для периода (по Табелю) ──
     def test_02_range_absence_only_work_days(self):

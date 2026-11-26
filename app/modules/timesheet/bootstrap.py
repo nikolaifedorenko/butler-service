@@ -200,7 +200,7 @@ def apply_code_app_defaults(db: Session) -> int:
 def bootstrap_engine(db: Session, first: dt.date | None = None, last: dt.date | None = None) -> None:
     if not db.scalar(select(EngineSettingsVersion.id)):
         db.add(EngineSettingsVersion(valid_from=dt.date(2000, 1, 1), payload=_initial_payload(db),
-            note="Стартовое наполнение CFG-* (спецификация v7.1)", created_by_name="system"))
+            note="Начальные настройки", created_by_name="system"))
         db.flush()
     strip_removed_day_codes(db)
     apply_code_app_defaults(db)
