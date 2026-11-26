@@ -1254,7 +1254,6 @@ tr.fund-retired td .badge { text-decoration: none; }
   .sidenav { transition-duration: 0s; }
 }
 .today-card:hover { border-color: var(--primary-soft); }
-.today-card.urgent { border-color: var(--warn); }
 .today-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .today-unit { font-size: var(--text-sm); color: var(--muted); }
 .today-name { font-size: var(--text-lg); font-weight: 700; }
