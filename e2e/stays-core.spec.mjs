@@ -164,15 +164,19 @@ test.describe('печать шахматки', () => {
     page.on('request', req => {
       if (req.url().includes('/api/stays/board/units?')) queries.push(new URL(req.url()).searchParams.get('q'));
     });
-    await page.clock.install();
+    await openFilters(view);
+    const controlTime = new Date();
+    await page.clock.install({ time: controlTime });
+    await page.clock.pauseAt(new Date(controlTime.getTime() + 1000));
     for (const redraw of [true, false]) {
       queries.length = 0;
       await search.fill('Орлов');
-      if (redraw) { await openFilters(view); await view.locator('#sb-sort').selectOption('label'); }
+      if (redraw) await view.locator('#sb-sort').selectOption('label');
       await view.locator('#sf-reset').click();
       await page.clock.runFor(450);
       await expect(view.locator('#sb-print')).toBeEnabled();
       expect(await search.inputValue()).toBe('');
+      await expect(view.locator('#sf-reset')).toBeHidden();
       expect(queries).toEqual([null]);
     }
   });
