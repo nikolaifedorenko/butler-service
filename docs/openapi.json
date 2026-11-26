@@ -11114,6 +11114,31 @@
         "title": "MgmtBankOut",
         "type": "object"
       },
+      "MgmtBlockingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "opening_bank_missing": {
+            "title": "Opening Bank Missing",
+            "type": "integer"
+          },
+          "previous_period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MgmtPreviousPeriodOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "previous_period",
+          "opening_bank_missing"
+        ],
+        "title": "MgmtBlockingOut",
+        "type": "object"
+      },
       "MgmtCutOut": {
         "additionalProperties": false,
         "properties": {
@@ -11301,6 +11326,9 @@
       "MgmtOut": {
         "additionalProperties": false,
         "properties": {
+          "blocking": {
+            "$ref": "#/components/schemas/MgmtBlockingOut"
+          },
           "can_close": {
             "title": "Can Close",
             "type": "boolean"
@@ -11385,9 +11413,55 @@
           "now",
           "can_close",
           "can_recalculate",
+          "blocking",
           "rows"
         ],
         "title": "MgmtOut",
+        "type": "object"
+      },
+      "MgmtPreviousPeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "half": {
+            "anyOf": [
+              {
+                "enum": [
+                  1,
+                  2
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Half"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "year",
+          "month",
+          "half"
+        ],
+        "title": "MgmtPreviousPeriodOut",
         "type": "object"
       },
       "MgmtReasonOut": {
@@ -11411,7 +11485,7 @@
       },
       "MgmtRowOut": {
         "additionalProperties": false,
-        "description": "Строка сотрудника. Если расчёт отказал, заполнены только ``employee`` и ``error``.",
+        "description": "Строка сотрудника. При отказе расчёта — сотрудник, сообщение и причина блокировки.",
         "properties": {
           "bank": {
             "anyOf": [
@@ -11530,6 +11604,22 @@
               }
             ],
             "title": "Error"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PREVIOUS_PERIOD_NOT_CLOSED",
+                  "OPENING_BANK_REQUIRED",
+                  "EMPLOYMENT_CHAIN_GAP"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
           },
           "exceptions": {
             "anyOf": [
@@ -11654,6 +11744,7 @@
         "required": [
           "employee",
           "error",
+          "error_code",
           "revision",
           "closed_by",
           "closed_at",
