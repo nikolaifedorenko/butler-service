@@ -35,10 +35,53 @@ test('на компьютере настройки сворачивают осн
   await main.getByRole('button', { name: 'Настройки', exact: true }).click();
   await expect(collapse).toBeVisible();
   await main.getByRole('button', { name: 'Сегодня', exact: true }).click();
-  await expect(main.locator('#sidenav-fold')).toBeHidden();
+  await expect(collapse).toBeVisible();
   expect((await main.boundingBox()).width).toBe(normal);
   await main.getByRole('button', { name: 'Настройки', exact: true }).click();
-  await expect(expand).toBeVisible();
+  await expect(collapse).toBeVisible();
+});
+
+test('основное меню сворачивается на любом экране и запоминает выбор отдельно по аккаунтам', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await login(page, 'admin');
+  const nav = page.locator('#sidenav');
+  const fold = page.locator('#sidenav-fold');
+  await expect(fold).toHaveAccessibleName('Свернуть основное меню');
+  await expect(fold).toBeVisible();
+  await fold.focus();
+  await page.keyboard.press('Enter');
+  await expect(fold).toBeFocused();
+  await expect(fold).toHaveAccessibleName('Развернуть основное меню');
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  await expect(nav).toHaveClass(/compact/);
+
+  const board = nav.getByRole('button', { name: 'Шахматка' });
+  await board.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-stays')).toBeVisible();
+  await expect(board).toBeFocused();
+  await expect(nav).toHaveClass(/compact/);
+  await nav.getByRole('button', { name: 'Настройки' }).click();
+  await expect(page.locator('#view-settings')).toBeVisible();
+  await expect(nav).toHaveClass(/compact/);
+  await page.reload();
+  await expect(page.locator('#view-today.active')).toBeVisible();
+  await expect(nav).toHaveClass(/compact/);
+
+  await page.locator('#logout-btn').click();
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await login(page, 'sluzhba');
+  await expect(fold).toBeVisible();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await expect(nav).not.toHaveClass(/compact/);
+  await page.locator('#logout-btn').click();
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await login(page, 'admin');
+  await expect(nav).toHaveClass(/compact/);
+  await fold.click();
+  await navigate(page, 'settings');
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await expect(nav).not.toHaveClass(/compact/);
 });
 
 test('подсказка названия остаётся при прокрутке меню с клавиатуры', async ({ page }) => {
@@ -83,4 +126,26 @@ test('на телефоне настройки используют сущест
   await expect(page.locator('#view-settings')).toBeVisible();
   await expect(page.locator('#tabbar')).toBeVisible();
   await expect(page.locator('#sidenav-fold')).toBeHidden();
+});
+
+test('режим просмотра глазами сотрудника не меняет сохранённую ширину меню', async ({ page }) => {
+  await login(page, 'admin');
+  const nav = page.locator('#sidenav');
+  const fold = nav.locator('#sidenav-fold');
+  await fold.click();
+  await expect(nav).toHaveClass(/compact/);
+  await navigate(page, 'employees');
+  await page.locator('#view-employees tr[data-card]').filter({ hasText: 'Иванов' }).first().click();
+  await page.locator('#modal [data-imp]').click();
+  await expect(page.locator('#impersonation-bar')).toBeVisible();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await fold.click();
+  await expect(nav).toHaveClass(/compact/);
+  await fold.click();
+  await expect(nav).not.toHaveClass(/compact/);
+
+  await page.locator('#stop-impersonation').click();
+  await expect(page.locator('#impersonation-bar')).toBeHidden();
+  await expect(nav).toHaveClass(/compact/);
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
 });

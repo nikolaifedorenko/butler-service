@@ -132,7 +132,21 @@ function mobileCatalog(tabs, activeView) {
   });
 }
 
-let settingsNavExpanded = false;
+let sidebarCompact = null;
+const sidebarPreferenceKey = () => `butler.sidebar.v1.${state.user.id}`;
+
+function readSidebarPreference() {
+  if (state.user.impersonated) return null;
+  try {
+    const value = localStorage.getItem(sidebarPreferenceKey());
+    return value === 'compact' ? true : value === 'expanded' ? false : null;
+  } catch { return null; }
+}
+
+function sidebarIsCompact() {
+  // До первого выбора Настройки освобождают место для своего меню разделов.
+  return sidebarCompact ?? (state.view === 'settings');
+}
 const inSettings = view => view === 'settings' || view === 'access' || view === 'audit';
 let hideNavTooltipTimer;
 const navTooltip = $('#sidenav-tooltip');
@@ -150,12 +164,10 @@ function showNavTooltip(button, title) {
   navTooltip.classList.remove('hidden');
 }
 
-function applySettingsNavigation() {
+function applySidebarNavigation() {
   const fold = $('#sidenav-fold');
-  const inside = state.view === 'settings';
-  const compact = inside && !settingsNavExpanded;
+  const compact = sidebarIsCompact();
   $('#sidenav').classList.toggle('compact', compact);
-  fold.classList.toggle('hidden', !inside);
   fold.setAttribute('aria-expanded', String(!compact));
   const name = compact ? 'Развернуть основное меню' : 'Свернуть основное меню';
   fold.setAttribute('aria-label', name);
@@ -164,8 +176,13 @@ function applySettingsNavigation() {
 }
 
 $('#sidenav-fold').onclick = () => {
-  settingsNavExpanded = !settingsNavExpanded;
-  applySettingsNavigation();
+  if (!state.user) return;
+  sidebarCompact = !sidebarIsCompact();
+  if (!state.user.impersonated) {
+    try { localStorage.setItem(sidebarPreferenceKey(), sidebarCompact ? 'compact' : 'expanded'); }
+    catch { /* Сворачивание действует до выхода даже без хранилища. */ }
+  }
+  applySidebarNavigation();
 };
 navTooltip.onpointerenter = () => clearTimeout(hideNavTooltipTimer);
 navTooltip.onpointerleave = hideNavTooltip;
@@ -182,8 +199,10 @@ function renderNav() {
   /* «Права доступа» и «Журнал аудита» открываются из Настроек (external-экраны):
      их содержимое — отдельные view, но в меню подсвечиваем «Настройки», откуда пришли. */
   const activeView = inSettings(state.view) ? 'settings' : state.view;
-  applySettingsNavigation();
-  $('#sidenav').querySelectorAll('.nav-item').forEach(el => el.remove());
+  const sidebar = $('#sidenav');
+  const focusedView = $('.nav-item:focus-visible', sidebar)?.dataset.view;
+  applySidebarNavigation();
+  sidebar.querySelectorAll('.nav-item').forEach(el => el.remove());
   const foot = $('#sidenav-foot');
   tabs.forEach(t => {
     const b = document.createElement('button');
@@ -198,7 +217,8 @@ function renderNav() {
     b.onpointerleave = () => {
       if (!b.matches(':focus-visible')) hideNavTooltipTimer = setTimeout(hideNavTooltip, 150);
     };
-    $('#sidenav').insertBefore(b, foot);
+    sidebar.insertBefore(b, foot);
+    if (t.id === focusedView) b.focus({ preventScroll: true });
   });
   const quickTabs = [TODAY_TAB, ...mobileIds(tabs.slice(1)).map(id => tabs.find(tab => tab.id === id))];
   const inCatalog = !quickTabs.some(tab => tab?.id === activeView);
@@ -226,7 +246,6 @@ export function renderCategoryFooter(categories) {
 export function navigate(view) {
   if (!state.user) return;
   if (GRAFIK_ALIAS[view]) { state.grafikLayer = view; view = GRAFIK_ALIAS[view]; }
-  if (!inSettings(state.view) && inSettings(view)) settingsNavExpanded = false;
   state.view = view;
   $$('.view').forEach(v => v.classList.remove('active'));
   let el = $(`#view-${view}`);
@@ -340,6 +359,8 @@ function startView() {
    пользователя. loadDirectory и загрузчики
    разделов наполнят всё заново при входе. */
 export function resetUserViewState() {
+  sidebarCompact = null;
+  hideNavTooltip();
   state.factMode = null; state.factMonth = null; state.factDay = null;
   state.factEmp = null; state.factFrom = null; state.factTo = null;
   state.employees = [];
@@ -388,6 +409,7 @@ export function renderSchemaBanner(chk) {
 async function enterApp(me, view = startView()) {
   resetUserViewState();
   applyMe(me);
+  sidebarCompact = readSidebarPreference();
   $('#login-screen').classList.add('hidden');
   $('#app').classList.remove('hidden');
   renderUserChip();
@@ -528,6 +550,7 @@ export async function switchImpersonation(session, view) {
     if (me.auth_context === session.auth_context) {
       state.user = me.user;
       applyMe(me);
+      sidebarCompact = readSidebarPreference();
       renderUserChip();
       $('#app').classList.remove('hidden');
       navigate(view);
