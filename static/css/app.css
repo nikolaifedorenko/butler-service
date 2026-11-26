@@ -82,6 +82,15 @@
   width: var(--side-w); flex: 0 0 auto; background: var(--bg-soft); border-right: 1px solid var(--line);
   padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto;
 }
+.sidenav.compact { width: var(--nav-rail-w); padding-inline: var(--space-2); }
+.sidenav-fold { display: grid; place-items: center; align-self: flex-end; width: 44px; min-height: 44px; padding: 0; }
+.sidenav.compact .sidenav-fold { align-self: center; }
+.sidenav.compact .sidenav-fold svg { transform: rotate(180deg); }
+.sidenav.compact .nav-item { justify-content: center; min-height: 44px; padding-inline: 0; }
+.sidenav.compact .nav-item > span, .sidenav.compact .sidenav-foot { display: none; }
+.sidenav-tooltip { position: fixed; transform: translateY(-50%); z-index: var(--z-topbar);
+  max-width: 240px; padding: var(--space-2) var(--space-3); border-radius: var(--r-sm);
+  background: var(--navy); color: var(--on-navy); font-size: var(--text-sm); box-shadow: var(--shadow); }
 .nav-item {
   display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: var(--r-md);
   background: transparent; border: 1px solid transparent; color: var(--muted); cursor: pointer;
@@ -534,7 +543,6 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
   .v4-chips .badge { white-space: normal; }
   /* плашка черновика: над нижней панелью, пустую (нет черновика) не прилепляем */
   .draft-bar { bottom: var(--tab-h); flex-wrap: wrap; }
-  .draft-bar.idle { position: static; }
 }
 
 @media (max-width: 640px) {
@@ -924,9 +932,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
 .draft-bar .btn { border-color: rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .08); color: var(--on-navy); }
 .draft-bar .btn:hover { background: rgba(255, 255, 255, .16); }
 .draft-bar .btn-primary { background: var(--gold); border-color: var(--gold); color: var(--ink-on-gold); font-weight: 800; }
-.draft-bar.idle { background: var(--panel-2); color: var(--muted); box-shadow: none;
-  border: 1px solid var(--line); }
-.draft-bar.idle .btn { border-color: var(--line); background: var(--surface-0); color: var(--text); }
+.draft-bar.idle { display: none; }
 
 .cal { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 11px; }
 .cal th { font-size: 10px; color: var(--muted); font-weight: 700; padding: 3px 0; text-align: center; }
