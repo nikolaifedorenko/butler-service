@@ -106,3 +106,172 @@ test('после стирания раздела снаружи (смена по
   await expect(today(page).locator('.today-hello')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+const todayBlocks = [
+  ['**/api/punches/status', { shift: null, on_shift: false }],
+  ['**/api/stays/mine/today', { date: '2026-11-26', reservations: [] }],
+  ['**/api/presence/board', { at_work_now: 3, expected_now: 4, yet_to_come: [] }],
+];
+
+test('сбой блока гостей оставляет смену и присутствие и позволяет повторить только поиск гостей', async ({ page }) => {
+  let guestsAvailable = false;
+  const calls = new Map();
+  for (const [path, payload] of todayBlocks) {
+    await page.route(path, route => {
+      calls.set(path, (calls.get(path) || 0) + 1);
+      if (path.includes('/mine/') && !guestsAvailable) return route.fulfill({ status: 503, json: { detail: 'fixture' } });
+      return route.fulfill({ json: payload });
+    });
+  }
+  await login(page, 'ivanov');
+  const view = today(page);
+  const error = view.locator('[data-today-error="mine"]');
+  await expect(error).toContainText('Не удалось загрузить гостей');
+  await expect(view.locator('#today-punch')).toBeVisible();
+  await expect(view.locator('[data-stat=at-work]')).toHaveText('3');
+  const beforeRetry = todayBlocks.map(([path]) => calls.get(path));
+
+  guestsAvailable = true;
+  await error.getByRole('button', { name: 'Повторить' }).click();
+  await expect(view.locator('[data-stat=mine]')).toBeVisible();
+  await expect(error).toHaveCount(0);
+  expect(todayBlocks.map(([path]) => calls.get(path))).toEqual([
+    beforeRetry[0], beforeRetry[1] + 1, beforeRetry[2],
+  ]);
+});
+
+test('при полном сбое на «Сегодня» одно действие повтора всех блоков', async ({ page }) => {
+  let available = false;
+  for (const [path, payload] of todayBlocks) {
+    await page.route(path, route => available
+      ? route.fulfill({ json: payload })
+      : route.fulfill({ status: 503, json: { detail: 'fixture' } }));
+  }
+  await login(page, 'ivanov');
+  const view = today(page);
+  const error = view.locator('[data-today-error="all"]');
+  await expect(error).toContainText('Не удалось загрузить данные на сегодня');
+  await expect(view.getByRole('button', { name: 'Повторить' })).toHaveCount(1);
+  await expect(view.locator('.today-shortcuts')).toHaveCount(0);
+  available = true;
+  await error.getByRole('button', { name: 'Повторить' }).click();
+  await expect(view.locator('#today-punch')).toBeVisible();
+  await expect(view.locator('[data-stat=mine]')).toBeVisible();
+  await expect(view.locator('[data-stat=at-work]')).toBeVisible();
+  await expect(error).toHaveCount(0);
+});
+
+test('пояснение о переработке показывается рядом с отметкой вне графика', async ({ page }) => {
+  let shift = null;
+  await page.route('**/api/punches/status', route => route.fulfill({ json: { on_shift: false, shift } }));
+  await login(page, 'ivanov');
+  const strip = today(page).locator('.today-shift');
+  await expect(strip.getByRole('button', { name: 'Пришёл' })).toBeVisible();
+  await expect(strip).toContainText('Часы будут учтены как переработка');
+
+  shift = { start_hm: '08:00', end_hm: '20:00' };
+  await page.evaluate(() => window.navigate('today'));
+  await expect(strip).toContainText('Смена 08:00–20:00');
+  await expect(strip).not.toContainText('Часы будут учтены как переработка');
+});
+
+test('старый ответ статуса не откатывает уже принятую отметку', async ({ page }) => {
+  await page.clock.install();
+  let holdStatus = false;
+  const arrived = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  await page.route('**/api/punches/status', async route => {
+    if (holdStatus) {
+      arrived.resolve();
+      await release.promise;
+      holdStatus = false;
+    }
+    await route.fulfill({ json: { on_shift: false } });
+  });
+  await page.route('**/api/punches', route => route.fulfill({
+    json: { message: 'Отметка принята', status: { on_shift: true, session_start: '2026-11-26T10:00:00+03:00' } },
+  }));
+  await login(page, 'ivanov');
+  const button = today(page).locator('#today-punch');
+  await expect(button).toHaveText('Пришёл');
+  holdStatus = true;
+  await page.clock.fastForward(31_000);
+  await arrived.promise;
+  const oldStatus = page.waitForResponse('**/api/punches/status');
+  try {
+    await button.click();
+    await expect(button).toHaveText('Ушёл');
+  } finally {
+    release.resolve();
+  }
+  await (await oldStatus).finished();
+  // После обработки старого ответа проставленный сервером статус должен сохраниться.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(button).toHaveText('Ушёл');
+});
+
+test('медленный блок гостей не скрывает уже загруженную смену и присутствие', async ({ page }) => {
+  const arrived = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  for (const [path, payload] of todayBlocks) {
+    await page.route(path, async route => {
+      if (!path.includes('/mine/')) return route.fulfill({ json: payload });
+      arrived.resolve();
+      await release.promise;
+      return route.fulfill({ status: 503, json: { detail: 'fixture' } });
+    });
+  }
+  await login(page, 'ivanov');
+  const view = today(page);
+  await arrived.promise;
+  try {
+    await expect(view.locator('#today-punch')).toBeVisible();
+    await expect(view.locator('[data-stat=at-work]')).toHaveText('3');
+    await expect(view.locator('[data-today-error="all"]')).toHaveCount(0);
+  } finally {
+    release.resolve();
+  }
+  await expect(view.locator('[data-today-error="mine"]')).toBeVisible();
+});
+
+test('повтор с клавиатуры удерживает фокус до загрузки и переводит его к результату', async ({ page }) => {
+  let retry = false;
+  const arrived = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  for (const [path, payload] of todayBlocks) {
+    await page.route(path, async route => {
+      if (!path.includes('/mine/')) return route.fulfill({ json: payload });
+      if (!retry) return route.fulfill({ status: 503, json: { detail: 'fixture' } });
+      arrived.resolve();
+      await release.promise;
+      return route.fulfill({ json: payload });
+    });
+  }
+  await login(page, 'ivanov');
+  const view = today(page);
+  const action = view.locator('[data-today-error="mine"] button');
+  retry = true;
+  await action.focus();
+  await page.keyboard.press('Enter');
+  await arrived.promise;
+  try {
+    await expect(action).toBeFocused();
+    await expect(action).toHaveAttribute('aria-disabled', 'true');
+  } finally {
+    release.resolve();
+  }
+  await expect(view.getByRole('heading', { name: 'Мои гости' })).toBeFocused();
+});
+
+test('некорректный ответ гостей показывает ошибку только в их блоке', async ({ page }) => {
+  for (const [path, payload] of todayBlocks) {
+    await page.route(path, route => path.includes('/mine/')
+      ? route.fulfill({ contentType: 'text/html', body: '<h1>Технические работы</h1>' })
+      : route.fulfill({ json: payload }));
+  }
+  await login(page, 'ivanov');
+  const view = today(page);
+  await expect(view.locator('[data-today-error="mine"]')).toContainText('Не удалось загрузить гостей');
+  await expect(view.locator('#today-punch')).toBeVisible();
+  await expect(view.locator('[data-stat=at-work]')).toHaveText('3');
+});
