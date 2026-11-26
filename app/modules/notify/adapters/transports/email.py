@@ -25,11 +25,11 @@ from typing import Callable, Optional, Sequence
 
 from ...ports.transports import TransportError
 
-# (cfg, message) → None
-Mailer = Callable[[object, EmailMessage], None]
+# SMTP может принять письмо для части адресов и вернуть отклонённых получателей.
+Mailer = Callable[[object, EmailMessage], Optional[dict[str, tuple[int, bytes]]]]
 
 
-def smtp_mailer(cfg, msg: EmailMessage) -> None:
+def smtp_mailer(cfg, msg: EmailMessage) -> dict[str, tuple[int, bytes]]:
     """Отправитель по умолчанию: smtplib из стандартной библиотеки."""
     server: smtplib.SMTP
     try:
@@ -44,7 +44,7 @@ def smtp_mailer(cfg, msg: EmailMessage) -> None:
             server.starttls()
         if cfg.smtp_user:
             server.login(cfg.smtp_user, cfg.smtp_password)
-        server.send_message(msg)
+        return server.send_message(msg)
     except smtplib.SMTPAuthenticationError as e:
         raise TransportError("Почтовый сервер отклонил авторизацию (SMTP AUTH)") from e
     except smtplib.SMTPRecipientsRefused as e:
@@ -96,12 +96,14 @@ def _mime_parts(mime: str, name: str) -> tuple[str, str]:
 
 def send_mail(cfg, *, to: Sequence[str], cc: Sequence[str] = (), subject: str, body: str,
               attachments: Sequence[tuple[str, bytes, str]] = (),
-              mailer: Optional[Mailer] = None) -> str:
+              mailer: Optional[Mailer] = None, require_all_recipients: bool = False) -> str:
     """Отправить письмо. Возвращает Message-ID (пишется в журнал как external_id)."""
     if not (cfg.smtp_host or "").strip():
         raise TransportError("Почтовый сервер не задан (Настройки → Чаты и Почта)")
     msg = build_message(cfg, to=to, cc=cc, subject=subject, body=body, attachments=attachments)
-    (mailer or smtp_mailer)(cfg, msg)
+    refused = (mailer or smtp_mailer)(cfg, msg)
+    if require_all_recipients and refused:
+        raise TransportError("Почтовый сервер отклонил часть получателей. Проверьте адреса.")
     return str(msg["Message-ID"] or "")
 
 

@@ -121,7 +121,7 @@ def send_test_email(db: Session, principal: Principal, to: str, subject: str = "
             f"({cfg.smtp_security}).\n\nЕсли письмо пришло, доставка почты настроена.")
     try:
         message_id = send_mail(cfg, to=recipients, subject=subject.strip() or "Тестовое письмо butler-service",
-                               body=body)
+                               body=body, require_all_recipients=True)
     except TransportError as exc:
         raise UpstreamError(str(exc)) from exc
     with transaction(db):

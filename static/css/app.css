@@ -762,12 +762,16 @@ table.sched thead th.today.double-day .dow { color: var(--gold); }
 .v4-flag.info { color: var(--info-fg); } .v4-flag.muted { color: var(--muted-2); }
 tr.v4-click { cursor: pointer; }
 tr.v4-click:hover td { background: var(--surface-1); }
-.v4-perm-sec { margin-bottom: 10px; }
-.v4-perm-sec .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 4px; }
+.access-module { border-bottom: 1px solid var(--line); }
+.access-module summary { padding: var(--space-2) 0; color: var(--heading); cursor: pointer; }
+.access-module summary small { margin-inline-start: var(--space-2); }
+.notify-channels { display: grid; gap: var(--space-2); margin: 0; }
+.notify-channels div { display: flex; flex-wrap: wrap; column-gap: var(--space-3); }
+.notify-channels dt { min-width: 6em; font-weight: 600; }
+.notify-channels dd { margin: 0; color: var(--muted); }
 .v4-perm-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 4px 0;
-  border-bottom: 1px dashed var(--line-soft); }
-.v4-perm-row code { color: var(--muted-2); font-size: 11px; }
-.v4-perm-row select { max-width: 210px; }
+  flex-wrap: wrap; border-bottom: 1px solid var(--line-soft); }
+.v4-perm-row select { max-width: min(100%, 230px); }
 .v4-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .v4-user-check { display: block; padding: 4px 0; }
 .v4-user-check small { color: var(--muted-2); }
