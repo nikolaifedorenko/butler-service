@@ -119,11 +119,6 @@ const carsPage = () => {
       <button class=${`btn btn-sm btn-primary${meta.can_manage ? '' : ' hidden'}`} id="cars-add"
         title="Парк — Настройки → Электрокары" @click=${() => settingsOpen('cars')}>+ Кар ↗</button>
     </div>
-    <div class="toolbar">
-      <div class="seg" id="cars-filter">${carsState.data ? carFilterSeg() : nothing}</div>
-      <input type="search" id="cars-q" placeholder="Поиск: номер, место, кто держит…" style="max-width:280px"
-        @input=${e => { carsState.q = e.target.value.trim().toLowerCase(); paintCars(); }}>
-    </div>
     <div id="cars-body">${carsBody()}</div>`;
 };
 
@@ -150,7 +145,9 @@ function carsBody() {
     charging: d.cars.filter(c => c.status === 'charging').length,
     bad: d.cars.filter(c => c.condition === 'bad' || c.trash || !c.clean).length,
   };
-  const myCar = d.cars.find(c => c.id === me.held);
+  const userId = state.user?.id;
+  const myCar = d.cars.find(c => c.id === me.held || (userId != null && c.holder_user_id === userId));
+  const occupied = car => !!(car.holder_user_id || car.holder_name);
   const refresh = () => fetchCars(true);
   const byId = id => d.cars.find(c => c.id === Number(id));
   /* одна кнопка операции: data-act / data-id нужны сценариям и тестам */
@@ -207,7 +204,7 @@ function carsBody() {
   </span>`;
 
   const row = c => {
-    const mine = c.id === me.held;
+    const mine = c.id === myCar?.id;
     const assignedToMe = c.id === me.assigned;
     /* Кнопки операций не существуют одновременно:
        свободный кар — «Взять»/«Выдать»; мой кар — «Вернул»/«Передать»; чужой занятый —
@@ -216,7 +213,7 @@ function carsBody() {
     const takeable = c.status === 'free' || c.status === 'charging';
     const heldBySomeone = c.status === 'busy';
     const acts = [];
-    if (meta.can_use && !mine && takeable) acts.push(['take', 'Взять', 'btn-accent']);
+    if (meta.can_use && !mine && takeable && !occupied(c)) acts.push(['take', 'Взять', 'btn-accent']);
     if (meta.can_use && mine) {
       acts.push(['return', 'Вернул', '']);
       acts.push(['handover', 'Передать', 'btn-ghost']);
@@ -255,28 +252,44 @@ function carsBody() {
         ? rowMenu(c, acts.slice(1).map(args => action(args, true))) : nothing}</div></td>
     </tr>`;
   };
-  const rec = me.free_recommended && !me.held ? d.cars.find(c => c.id === me.free_recommended) : null;
+  const canTake = meta.can_use && !myCar;
+  const available = d.cars.filter(c => c.active !== false && !occupied(c));
+  const byStatus = status => {
+    const matches = available.filter(c => c.status === status);
+    const employee = state.user?.employee_id;
+    return matches.find(c => employee != null && c.assigned_to === employee) ||
+      matches.find(c => !c.assigned_to) || matches[0];
+  };
+  const rec = canTake ? available.find(c => c.id === me.free_recommended && c.status === 'free') ||
+    byStatus('free') || byStatus('charging') : null;
   return html`
-    <div class="stat-grid">
+    ${myCar ? html`<div class="panel cars-work-next"><h3>Ваш кар</h3>
+      <div class="rule-row"><div>
+        <div class="lbl">№${myCar.number} <span class=${`badge ${CAR_BADGE[myCar.status] || 'muted'}`}>${myCar.status_title}</span></div>
+        <div class="desc">место: ${myCar.location || '—'} · заряд: ${myCar.charge_title || '—'}${myCar.has_key ? ' · ключ у вас' : ''}</div>
+      </div>${meta.can_use ? html`<div class="rule-input" style="display:flex;gap:8px;flex-wrap:wrap">
+        ${act(myCar, 'return', 'Вернул', '')}${act(myCar, 'handover', 'Передать', 'btn-ghost')}
+      </div>` : nothing}</div></div>` : nothing}
+    ${rec ? html`<div class="panel cars-work-next"><h3>${rec.status === 'charging' ? 'Доступный кар на зарядке' : 'Рекомендуемый свободный кар'}</h3>
+      <div class="rule-row"><div>
+        <div class="lbl">№${rec.number} · ${rec.location || 'место не указано'}</div>
+        ${rec.charge_title ? html`<div class="desc">Заряд ${rec.charge_title}</div>` : nothing}
+      </div><div class="rule-input">${act(rec, 'take', `Взять №${rec.number}`, 'btn-accent')}</div></div></div>` : nothing}
+    ${canTake && !rec ? html`<div class="panel cars-work-next"><h3>Свободных каров сейчас нет</h3>
+      <button class="btn btn-sm" @click=${() => $('#cars-list').focus()}>К списку каров</button></div>` : nothing}
+    <div class="stat-grid cars-work-summary">
       <div class="stat accent"><div class="k">Всего в парке</div><div class="v">${d.cars.length}</div></div>
       <div class="stat"><div class="k">Свободны</div><div class="v">${stats.free}</div></div>
       <div class="stat warn"><div class="k">Заняты</div><div class="v">${stats.busy}</div></div>
       <div class="stat info"><div class="k">На зарядке</div><div class="v">${stats.charging}</div></div>
       <div class="stat danger"><div class="k">С замечаниями</div><div class="v">${stats.bad}</div></div>
     </div>
-    ${myCar ? html`<div class="panel"><h3 class="panel-title">Ваш кар</h3>
-      <div class="rule-row"><div>
-        <div class="lbl">№${myCar.number} <span class=${`badge ${CAR_BADGE[myCar.status] || 'muted'}`}>${myCar.status_title}</span></div>
-        <div class="desc">место: ${myCar.location || '—'} · заряд: ${myCar.charge_title || '—'}${myCar.has_key ? ' · ключ у вас' : ''}</div>
-      </div><div class="rule-input" style="display:flex;gap:8px;flex-wrap:wrap">
-        ${act(myCar, 'return', 'Вернул', '')}${act(myCar, 'handover', 'Передать', 'btn-ghost')}
-      </div></div></div>` : nothing}
-    ${rec ? html`<div class="panel"><h3 class="panel-title">Рекомендуемый свободный кар</h3>
-      <div class="rule-row"><div>
-        <div class="lbl">№${rec.number} · ${rec.location || 'место не указано'}</div>
-        <div class="desc">Взять можно и кар на зарядке. Если он закреплён за другим — система спросит подтверждение (закрепление рекомендательное).</div>
-      </div><div class="rule-input">${act(rec, 'take', `Взять №${rec.number}`, 'btn-accent')}</div></div></div>` : nothing}
-    <div class="table-wrap" tabindex="0">
+    <div class="toolbar">
+      <div class="seg" id="cars-filter">${carFilterSeg()}</div>
+      <input type="search" id="cars-q" placeholder="Поиск: номер, место, кто держит…" style="max-width:280px"
+        @input=${e => { carsState.q = e.target.value.trim().toLowerCase(); paintCars(); }}>
+    </div>
+    <div class="table-wrap" id="cars-list" tabindex="0">
       <table class="data responsive">
         <thead><tr><th>Кар</th><th>Статус</th><th>Место</th><th>Заряд</th><th>Держит</th>
           <th>Закреплён</th><th>Ключ</th><th>Проверен</th><th>Действия</th></tr></thead>

@@ -663,6 +663,23 @@ table.sched thead th.today.double-day .dow { color: var(--gold); }
 .night-zone { margin-bottom: 0; border-left: 3px solid var(--line); }
 .night-zone.done { border-left-color: var(--accent); }
 .night-zone.bad { border-left-color: var(--danger); }
+.night-head-actions { display: contents; }
+.night-head-toggle, .night-work-resume, .night-head-mobile-action { display: none; }
+.cars-work-next h3 { margin: 0 0 var(--space-2); }
+@media (max-width: 860px) {
+  .night-head .spacer { display: none; }
+  .night-head-title { flex: 1 1 0; min-width: 0; }
+  .night-head-toggle, .night-head-mobile-action { display: inline-flex; }
+  .night-head-actions { display: none; }
+  .night-head-actions.open { display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: var(--space-2); }
+  .night-work-resume { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2); }
+  .night-work-summary, .cars-work-summary { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
+    margin-block: var(--space-3); padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+  :is(.night-work-summary, .cars-work-summary) .stat { display: flex; align-items: baseline; gap: var(--space-1);
+    border: 0; padding: 0; background: none; box-shadow: none; }
+  :is(.night-work-summary, .cars-work-summary) :is(.k, .v) { font-size: var(--text-sm); font-family: var(--font-body);
+    letter-spacing: normal; text-transform: none; margin: 0; }
+}
 .night-objects { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
 .night-object { margin-bottom: 0; padding: 12px 14px; border-left: 3px solid var(--line); }
 .night-object.taken { border-left-color: var(--warn); }
