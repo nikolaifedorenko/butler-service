@@ -1139,6 +1139,7 @@ const $ = s => window.document.querySelector(s);
     await waitFor(() => !!$(`[data-guest-card="${g.id}"]`));
     click($(`[data-guest-card="${g.id}"]`));
     check('карточка гостя: история проживаний', await waitFor(() => text('#gc-history').includes('FA' + uniq)));
+    check('карточка гостя из брони: можно открыть семейное дерево', !!$('#drawer [data-gc-family-open]'));
     input($('#gc-link-q'), 'Связанов' + uniq);
     check('поиск гостя для связи', await waitFor(() => !!$(`[data-link-pick="${g2.id}"]`)));
     click($(`[data-link-pick="${g2.id}"]`));
@@ -1159,6 +1160,7 @@ const $ = s => window.document.querySelector(s);
     check('особая дата сохранена', gc.special_dates.some(x => x.what === 'юбилей' && x.date === day(30)), JSON.stringify(gc.special_dates));
     check('поле гостя сохранено', gc.fields[gField] === 'кот');
     check('связь видна в профиле', gc.links.some(l => l.guest_id === g2.id && l.label === 'коллега'));
+    click($('#drawer [data-close]'));
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML + ($('#modal')?.innerHTML || '')));
     void u1;
   }
