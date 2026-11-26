@@ -537,9 +537,9 @@ function overlayFocusReturn(preventScroll = false, findTarget = null) {
   return restore;
 }
 
-export function openModal({ title, subtitle, body, footer, wide = false, onMount, background = null }) {
+export function openModal({ title, subtitle, body, footer, wide = false, onMount, background = null, returnFocusTo = null }) {
   if (!state.user) return;
-  const returnFocus = overlayFocusReturn(!!background);
+  const returnFocus = overlayFocusReturn(!!background, returnFocusTo);
   const m = $('#modal');
   m.className = 'modal' + (wide ? ' wide' : '');
   m.replaceChildren();                       // каждое окно — новое дерево, без остатков прежнего
