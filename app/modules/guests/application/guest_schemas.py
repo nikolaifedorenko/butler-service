@@ -2,6 +2,7 @@
 и правка в stays, и чтение в board)."""
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any, Optional
 
 from app.core.external import ExternalRef
@@ -17,6 +18,8 @@ class GuestLinkRowOut(ApiModel):
     guest_id: int
     kind: str
     former: bool
+    marriage_start: Optional[dt.date]
+    marriage_end: Optional[dt.date]
     label: str
     name: str
     special: bool

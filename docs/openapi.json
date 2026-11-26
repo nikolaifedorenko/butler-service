@@ -7085,6 +7085,10 @@
             "title": "B",
             "type": "integer"
           },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
           "former": {
             "title": "Former",
             "type": "boolean"
@@ -7096,6 +7100,30 @@
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "marriage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage End"
+          },
+          "marriage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage Start"
           }
         },
         "required": [
@@ -7103,7 +7131,10 @@
           "kind",
           "a",
           "b",
-          "former"
+          "former",
+          "marriage_start",
+          "marriage_end",
+          "editable"
         ],
         "title": "FamilyLinkOut",
         "type": "object"
@@ -7184,6 +7215,14 @@
             ],
             "title": "Birth Date"
           },
+          "can_open_card": {
+            "title": "Can Open Card",
+            "type": "boolean"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
           "gender": {
             "title": "Gender",
             "type": "string"
@@ -7223,7 +7262,9 @@
           "special",
           "vip_code",
           "phone",
-          "birth_date"
+          "birth_date",
+          "can_open_card",
+          "editable"
         ],
         "title": "FamilyPersonOut",
         "type": "object"
@@ -7459,16 +7500,38 @@
         "type": "object"
       },
       "FormerIn": {
-        "description": "former — супруги бывшие (true) или действующие (false).",
+        "description": "Неуказанные поля сохраняются. Явный null очищает дату.",
         "properties": {
           "former": {
+            "default": false,
             "title": "Former",
             "type": "boolean"
+          },
+          "marriage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage End"
+          },
+          "marriage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage Start"
           }
         },
-        "required": [
-          "former"
-        ],
         "title": "FormerIn",
         "type": "object"
       },
@@ -8948,11 +9011,37 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "marriage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage End"
+          },
+          "marriage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage Start"
           }
         },
         "required": [
           "id",
-          "former"
+          "former",
+          "marriage_start",
+          "marriage_end"
         ],
         "title": "GuestLinkFormerOut",
         "type": "object"
@@ -8981,6 +9070,30 @@
             "title": "Label",
             "type": "string"
           },
+          "marriage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage End"
+          },
+          "marriage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage Start"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -8999,6 +9112,8 @@
           "guest_id",
           "kind",
           "former",
+          "marriage_start",
+          "marriage_end",
           "label",
           "name",
           "special",
@@ -10638,6 +10753,30 @@
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "marriage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage End"
+          },
+          "marriage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marriage Start"
           },
           "new_guest": {
             "anyOf": [
@@ -33284,6 +33423,22 @@
             "schema": {
               "title": "Gid",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "focus_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Focus Id"
             }
           }
         ],

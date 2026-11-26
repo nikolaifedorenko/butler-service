@@ -240,6 +240,8 @@ class FamilyPersonOut(ApiModel):
     vip_code: str
     phone: Optional[str]                     # телефон и дата рождения — только полный уровень
     birth_date: Optional[str]
+    can_open_card: bool
+    editable: bool
 
 
 class FamilyLinkOut(ApiModel):
@@ -248,6 +250,9 @@ class FamilyLinkOut(ApiModel):
     a: int
     b: int
     former: bool
+    marriage_start: Optional[dt.date]
+    marriage_end: Optional[dt.date]
+    editable: bool
 
 
 class FamilyKinOut(ApiModel):

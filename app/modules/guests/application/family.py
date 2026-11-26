@@ -6,6 +6,8 @@ from __future__ import annotations
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, aliased
 
+from app.core.errors import NotFound
+
 from ..adapters.orm import Guest, GuestLink
 from ..domain.kinship import FamilyGraph, Person, children_of, kin_of
 from .guests import format_phone
@@ -95,11 +97,13 @@ def full_name(g: Guest) -> str:
     return " ".join(p for p in (g.last_name, g.first_name, g.middle_name) if p)
 
 
-def family(db: Session, gid: int, *, full: bool) -> dict:
+def family(db: Session, gid: int, *, full: bool, focus_id: int | None = None) -> dict:
     """Граф семьи для карточки гостя: люди, первичные связи (links — с id для редактора: parent —
     a родитель b), вычисленные родственники.
     Без ``full`` (уровень «с фамилиями») — фамилия и имя; с ``full`` — ФИО, телефон, дата рождения (§4)."""
     ids = set(_family_people(db, gid))
+    if focus_id is not None and focus_id not in ids:
+        raise NotFound("Гость не найден в семейном дереве")
     links = list(db.scalars(select(GuestLink).where(
         GuestLink.kind.in_(FAMILY_KINDS), GuestLink.guest_a_id.in_(ids), GuestLink.guest_b_id.in_(ids))
         .order_by(GuestLink.id)))
@@ -115,13 +119,14 @@ def family(db: Session, gid: int, *, full: bool) -> dict:
             out |= {"phone": format_phone(g.phone), "birth_date": g.birth_date.isoformat() if g.birth_date else None}
         return out
 
-    kin = kin_of(gid, {i: Person(i, g.gender) for i, g in people.items()}, graph.parents, graph.spouses,
+    kin = kin_of(focus_id if focus_id is not None else gid, {i: Person(i, g.gender) for i, g in people.items()}, graph.parents, graph.spouses,
                  partners=graph.partners)
     return {"people": [person(people[i]) for i in sorted(people)],
             "parents": [[ln.guest_b_id, ln.guest_a_id] for ln in links if ln.kind == "parent"],
             "spouses": [[ln.guest_a_id, ln.guest_b_id, ln.former] for ln in links if ln.kind == "spouse"],
             "partners": [[ln.guest_a_id, ln.guest_b_id, ln.former] for ln in links if ln.kind == "partner"],
-            "links": [{"id": ln.id, "kind": ln.kind, "a": ln.guest_a_id, "b": ln.guest_b_id, "former": ln.former}
+            "links": [{"id": ln.id, "kind": ln.kind, "a": ln.guest_a_id, "b": ln.guest_b_id, "former": ln.former,
+                       "marriage_start": ln.marriage_start, "marriage_end": ln.marriage_end}
                       for ln in links],
             "kin": [{"person_id": k.person_id, "title": k.title, "degree": k.degree, "via_former": k.via_former}
                     for k in kin]}

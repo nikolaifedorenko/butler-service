@@ -79,7 +79,7 @@ def prefs(db: Session, principal: Principal, gid: int) -> list[dict]:
     return guests.prefs_of(db, gid)
 
 
-def family(db: Session, principal: Principal, gid: int) -> dict:
+def family(db: Session, principal: Principal, gid: int, *, focus_id: int | None = None) -> dict:
     """Семейное дерево (§4): уровень «с фамилиями» и выше; телефоны и даты рождения — только
     полный уровень. Граф — до 3 поколений вверх и вниз и через брак."""
     level: Level | None
@@ -93,8 +93,21 @@ def family(db: Session, principal: Principal, gid: int) -> dict:
     if not at_least(level, "names"):
         raise Forbidden("Семейное дерево — с уровня «с фамилиями»")
     _guest(db, gid)
-    out = family_graph.family(db, gid, full=at_least(level, "full"))
-    for person in out["people"]:            # ниже полного уровня телефона и даты рождения нет — ``None``
+    out = family_graph.family(db, gid, full=at_least(level, "full"), focus_id=focus_id)
+    perms = principal.gate_permissions
+    full_card = "stays.guests" in perms
+    full_edit = "stays.edit" in perms
+    mine_edit = "stays.mine_guest_edit" in perms
+    owned = (mine.owned_among(db, principal.employee.id, {p["id"] for p in out["people"]})
+             if principal.employee is not None and (mine_edit or "stays.mine" in perms) else set())
+    for person in out["people"]:
         person.setdefault("phone", None)
         person.setdefault("birth_date", None)
+        person["can_open_card"] = full_card or (person["id"] in owned)
+        person["editable"] = full_edit or (mine_edit and person["id"] in owned)
+    for link in out["links"]:
+        shares_owned_guest = link["a"] in owned or link["b"] in owned
+        link["editable"] = full_edit or (mine_edit and shares_owned_guest)
+        if not (full_card or full_edit or shares_owned_guest):
+            link["marriage_start"] = link["marriage_end"] = None
     return out

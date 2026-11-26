@@ -296,8 +296,9 @@ def test_family_endpoint_visibility(manager_client, names_client, occupancy_clie
     names = names_client.get(url)
     assert names.status_code == 200
     people = names.json()["people"]
-    assert people and all(set(p) == {"id", "name", "gender", "special", "vip_code", "phone", "birth_date"}
-                          and p["phone"] is None and p["birth_date"] is None for p in people)
+    assert people and all(set(p) == {"id", "name", "gender", "special", "vip_code", "phone", "birth_date",
+                                       "can_open_card", "editable"}
+                          and not p["can_open_card"] and not p["editable"] and p["phone"] is None and p["birth_date"] is None for p in people)
     full = {p["id"]: p for p in manager_client.get(url).json()["people"]}
     assert full[g["maria"]["id"]]["phone"] == "+7 916 000-00-77"
     assert full[g["maria"]["id"]]["birth_date"] == "1990-05-01"

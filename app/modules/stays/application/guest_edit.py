@@ -139,13 +139,19 @@ def add_link(db: Session, principal: Principal, gid: int, payload: LinkIn) -> di
         new_guest=payload.new_guest.model_dump() if payload.new_guest else None, former=payload.former,
         other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id,
         expected_parent_ids=payload.expected_parent_ids, also_former_id=payload.also_former_id,
+        marriage_start=payload.marriage_start, marriage_end=payload.marriage_end,
         created_by=butler_id(principal) if butler else None)    # заведённый батлером — его «свой»
     if payload.new_guest:
         audit(db, principal, "stays_guest", f"guest:{other}", {"created": payload.new_guest.model_dump()})
     for row in rows:
         audit(db, principal, "stays_guest_link", f"guest:{row.guest_a_id}",
-              {"added": {"guest_id": row.guest_b_id, "kind": row.kind, "former": row.former, "link_id": row.id}})
+              {"added": {"guest_id": row.guest_b_id, "kind": row.kind, "link_id": row.id,
+                         **_link_audit_state(guests.link_state(row))}})
     return {"id": rows[0].id, "guest_id": other, "ids": [r.id for r in rows]}
+
+
+def _link_audit_state(state: dict) -> dict:
+    return {key: value.isoformat() if isinstance(value, dt.date) else value for key, value in state.items()}
 
 
 @transactional
@@ -153,10 +159,13 @@ def set_link_former(db: Session, principal: Principal, link_id: int, payload: Fo
     """«Бывшие» на линии супругов в редакторе дерева: снять — только если у обоих нет другого
     действующего супруга (422). Батлер — если хотя бы одна сторона своя."""
     own_link(db, principal, link_id)
-    row, before = guests.set_former(db, link_id, payload.former)
+    row, before = guests.update_link(db, link_id, payload.model_dump(exclude_unset=True))
+    after = guests.link_state(row)
+    old, new = _link_audit_state(before), _link_audit_state(after)
     audit(db, principal, "stays_guest_link", f"guest:{row.guest_a_id}",
-          {"former": [before, row.former], "guest_id": row.guest_b_id, "link_id": link_id})
-    return {"id": row.id, "former": row.former}
+          {**{key: [old[key], new[key]] for key in old if old[key] != new[key]},
+           "guest_id": row.guest_b_id, "link_id": link_id})
+    return {"id": row.id, **after}
 
 
 @transactional

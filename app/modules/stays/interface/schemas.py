@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any, Optional
 
 from app.core.external import ExternalRef
@@ -192,6 +193,8 @@ class GuestLinkCreatedOut(ApiModel):
 class GuestLinkFormerOut(ApiModel):
     id: int
     former: bool
+    marriage_start: Optional[dt.date]
+    marriage_end: Optional[dt.date]
 
 
 # ── брони, группы, блоки, OOO ────────────────────────────────────────────────

@@ -55,11 +55,15 @@ class LinkIn(BaseModel):
     also_parent_id: Optional[int] = None
     expected_parent_ids: Optional[list[int]] = Field(None, max_length=2)
     also_former_id: Optional[int] = None
+    marriage_start: Optional[dt.date] = None
+    marriage_end: Optional[dt.date] = None
 
 
 class FormerIn(BaseModel):
-    """former — супруги бывшие (true) или действующие (false)."""
-    former: bool
+    """Неуказанные поля сохраняются. Явный null очищает дату."""
+    former: bool = False
+    marriage_start: Optional[dt.date] = None
+    marriage_end: Optional[dt.date] = None
 
 
 class PrefIn(BaseModel):
