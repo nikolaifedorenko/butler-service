@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 
 class ApplicationError(Exception):
@@ -24,6 +25,10 @@ class PreviousPeriodNotClosedError(ApplicationError):
     и начальный банк не посеян (v7/R26, R37)."""
 
     code = "PREVIOUS_PERIOD_NOT_CLOSED"
+
+    def __init__(self, message: str, *, reason: Literal["previous", "opening_bank", "employment_gap"] = "previous"):
+        self.reason = reason
+        super().__init__(message)
 
 
 class PeriodAlreadyClosedError(ApplicationError):

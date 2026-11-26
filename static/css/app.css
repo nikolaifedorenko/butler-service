@@ -159,6 +159,7 @@
 
 /* ══════════════════════════ СЕТКА ГРАФИКА ══════════════════════════ */
 .grid-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.mgmt-blocking { flex-basis: 100%; align-items: center; flex-wrap: wrap; }
 
 /* «Только просмотр» (роль батлера): ячейки сетки не кликаются + плашка-пояснение */
 .grid-scroll.ro .cellbtn { pointer-events: none; }

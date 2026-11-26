@@ -31,5 +31,8 @@ def view_period(employee_id: str, period: Period, now: dt.datetime,
                 f"отсутствует ({employee_id}, период с {period.start})")
         return PeriodView(saved[0], saved[1], employment, days)
     if not state.previous_closed and not state.opening_bank_set:
-        raise PreviousPeriodNotClosedError(f"{employee_id}:{period.start}")
+        reason = "previous"
+        if employment.start >= period.start:
+            reason = "employment_gap" if state.has_earlier_closing else "opening_bank"
+        raise PreviousPeriodNotClosedError(f"{employee_id}:{period.start}", reason=reason)
     return run_pipeline(load_inputs(employee_id, period, ports), now, "view")

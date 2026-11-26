@@ -160,3 +160,4 @@ class PeriodState:
     previous_closed: bool         # закрыт ли предыдущий период (RUL-SEQUENTIAL-CLOSING)
     next_closed: bool             # закрыт ли следующий период (право на пересчёт, 7.2)
     opening_bank_set: bool        # посеяно ли начальное значение банка (OPENING_SEED, R37)
+    has_earlier_closing: bool = False
