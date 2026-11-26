@@ -20,6 +20,7 @@ import {
   $, api, cssColor, dateRu, hours, loadGeneration, MONTHS, serverShiftMs, state, todayISO, withAlpha,
 } from '../core.js';
 import { html, mount, nothing, render, svg } from '../ui/html.js';
+import { periodNav } from '../ui/period_nav.js';
 import { monthNav, V4_FLAG_CLASS, v4Hours } from './timesheet_common.js';
 
 state.factEmp = state.factEmp || null;
@@ -436,12 +437,8 @@ function dayPane() {
   const d = !tab.day.loading && !tab.day.error ? state.factDayData : null;
   return html`
     <div class="toolbar">
-      <div class="month-nav">
-        <button id="fd-prev" title="Предыдущий день" @click=${() => shiftDay(-1)}>‹</button>
-        <div class="label" id="fd-label">${dateRu(state.factDay)}</div>
-        <button id="fd-next" title="Следующий день" @click=${() => shiftDay(1)}>›</button>
-      </div>
-      <input type="date" id="fd-date" .value=${state.factDay} style="max-width:165px"
+      ${periodNav('fd', dateRu(state.factDay), shiftDay, 'день')}
+      <input type="date" id="fd-date" aria-label="Дата" .value=${state.factDay} style="max-width:165px"
         @change=${e => { if (e.target.value) { state.factDay = e.target.value; loadFactNumbers(); } }}>
       <button class="btn btn-sm" id="fd-today" @click=${() => { state.factDay = todayISO(); loadFactNumbers(); }}>Сегодня</button>
       <div class="spacer"></div>

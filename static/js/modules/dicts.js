@@ -8,6 +8,7 @@ import {
   $, api, closeModal, confirmDialog, dateRu, downloadBlob, expireAuthContext, getCookie, loading, openModal, plural, requireAuthOwnership, state, todayISO, toast,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { periodNav } from '../ui/period_nav.js';
 import { loadSettings } from './settings.js';
 
 /* ══════════════════════════════════════════════════════════════════
@@ -272,9 +273,7 @@ export async function refreshDoublePay() {
 
   render(html`
     <div class="dp-head">
-      <div class="month-nav">
-        <button id="dp-prev" @click=${() => { state.dpYear = year - 1; again(); }}>‹</button><div class="label">${year}</div><button id="dp-next" @click=${() => { state.dpYear = year + 1; again(); }}>›</button>
-      </div>
+      ${periodNav('dp', year, delta => { state.dpYear = year + delta; again(); }, 'год')}
       <span class="badge">${data.days.length} ${plural(data.days.length, 'день', 'дня', 'дней')} в календаре</span>
       ${!canWrite ? html`<span class="hint" style="margin:0">Править может администратор или менеджер (данные из C&B)</span>` : nothing}
     </div>

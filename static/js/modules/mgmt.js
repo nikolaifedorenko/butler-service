@@ -12,6 +12,7 @@ import {
   $, api, closeModal, confirmDialog, dateRu, downloadBlob, hours, loadGeneration, MONTHS, openModal, state, todayISO, toast,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { periodNav } from '../ui/period_nav.js';
 import { dayHeadCell, V4_FLAG_CLASS, v4Hours } from './timesheet_common.js';
 
 state.mgmtHalf = state.mgmtHalf || null;
@@ -90,9 +91,7 @@ function layerTemplate() {
       <div><h2>Слой 3 · Управленческий Табель</h2><div class="sub">Коды УТ (ДЯ, ДН, ДЯ2, ДН2) по дням после
         размещения; недостача гасится банком и каскадом при закрытии периода</div></div>
       <div class="spacer"></div>
-      <div class="month-nav"><button id="ut-prev" @click=${() => shiftPeriod(-1)}>‹</button>
-        <div class="label" id="ut-label" tabindex="-1">${periodLabel(d)}</div>
-        <button id="ut-next" @click=${() => shiftPeriod(1)}>›</button></div>
+      ${periodNav('ut', periodLabel(d), shiftPeriod, 'период')}
       <button class="btn btn-sm btn-primary" id="ut-close" style=${d?.can_close ? '' : 'display:none'}
         @click=${() => mgmtAction('close')}>Закрыть период</button>
       <button class="btn btn-sm" id="ut-recalc" style=${d?.can_recalculate ? '' : 'display:none'}

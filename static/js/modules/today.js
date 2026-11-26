@@ -15,10 +15,10 @@ import {
 import { html, mount, nothing, render } from '../ui/html.js';
 import { openOtNoteModal } from './me.js';
 import { openReservationCard } from './stays.js';
+import { guestPreferenceLabel } from './stays_forms.js';
 
 registerModule({ views: { today: loadToday } });
 
-const PREF_TITLES = { allergy: 'Аллергия', food: 'Питание', habits: 'Привычки' };
 const READ_ERRORS = {
   status: 'Не удалось загрузить статус смены.',
   mine: 'Не удалось загрузить гостей.',
@@ -206,7 +206,7 @@ function logisticsLine(r) {
 
 function resNotes(r) {
   const prefs = r.guests.flatMap(g => Object.entries(g.preferences || {}).filter(([, v]) => v)
-    .map(([k, v]) => `${PREF_TITLES[k] || k}: ${v}`));
+    .map(([k, v]) => `${guestPreferenceLabel(k)}: ${v}`));
   return [logisticsLine(r), r.note, ...prefs.slice(0, 2)].filter(Boolean).join('. ');
 }
 

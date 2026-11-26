@@ -7,6 +7,7 @@
 
 import { cssColor, hours, MONTHS, state, todayISO, WD_SHORT } from '../core.js';
 import { html, nothing } from '../ui/html.js';
+import { periodNav } from '../ui/period_nav.js';
 
 /* Цвета кодов Табеля — только подстраховка: основной источник — блок presentation
    версии справочников (payload.day_code_policy[code].color), если он заполнен.
@@ -41,9 +42,7 @@ export function monthNav(prefix, reload) {
     if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
     state.month = m; state.year = y; reload();
   };
-  return html`<div class="month-nav"><button id=${prefix + '-prev'} @click=${() => shift(-1)}>‹</button>
-    <div class="label" id=${prefix + '-label'}>${MONTHS[state.month - 1]} ${state.year}</div>
-    <button id=${prefix + '-next'} @click=${() => shift(1)}>›</button></div>`;
+  return periodNav(prefix, `${MONTHS[state.month - 1]} ${state.year}`, shift);
 }
 
 export function contactsView(e) {

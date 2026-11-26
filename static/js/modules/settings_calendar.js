@@ -6,6 +6,7 @@
 import { can, navigate, registerModule } from '../app.js';
 import { api, dateRu, MONTHS, state, todayISO, WD_SHORT } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { periodNav } from '../ui/period_nav.js';
 import { settingsEngine, settingsHeadView, settingsPanelView, settingsRenderScreen, settingsUI } from './settings.js';
 import { refreshDoublePay } from './dicts.js';
 import { settingsModValue, settingsResolverModal, settingsWhoText, settingsWizard } from './settings_pay.js';
@@ -49,12 +50,17 @@ async function settingsScreenCalendar(host) {
   (engine?.versions || []).forEach(v => add(v.valid_from, 'ver', `вступает версия справочников #${v.id}${v.note ? ' · ' + v.note : ''}`));
 
   const dot = style => html`<i style=${`width:8px;height:8px;border-radius:99px;display:inline-block;${style}`}></i>`;
-  const go = (dm, dy) => () => { settingsUI.calMonth = dm; settingsUI.calYear = dy; settingsUI.calDay = null; settingsRenderScreen(); };
+  const shift = delta => {
+    const next = m + delta;
+    settingsUI.calMonth = (next + 11) % 12 + 1;
+    settingsUI.calYear = y + Math.floor((next - 1) / 12);
+    settingsUI.calDay = null;
+    settingsRenderScreen();
+  };
   const draw = () => render(html`
     ${settingsHeadView('Календарь правил',
       'Один экран: какие правила действуют в конкретный день, откуда они взялись и что вступит в силу. Слои не сливаются — каждый источник виден отдельно.',
-      html`<div class="month-nav"><button id="cl-prev" aria-label="Предыдущий месяц" @click=${go(m - 1 || 12, m - 1 ? y : y - 1)}>‹</button>
-         <div class="label">${MONTHS[m - 1]} ${y}</div><button id="cl-next" aria-label="Следующий месяц" @click=${go(m + 1 > 12 ? 1 : m + 1, m + 1 > 12 ? y + 1 : y)}>›</button></div>
+      html`${periodNav('cl', `${MONTHS[m - 1]} ${y}`, shift)}
        ${can('settings.edit') ? html`<button class="btn btn-sm btn-primary" id="cl-add" @click=${() => settingsWizard()}>+ Правило</button>` : nothing}`)}
     ${settingsPanelView('', html`
       <table class="cal"><thead><tr>${WD_SHORT.map(w => html`<th>${w}</th>`)}</tr></thead>

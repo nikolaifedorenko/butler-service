@@ -6,6 +6,7 @@
 import { can, registerModule } from '../app.js';
 import { api, closeModal, confirmDialog, dateRu, MONTHS, openModal, state, todayISO, toast } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
+import { periodNav } from '../ui/period_nav.js';
 import {
   SETTINGS_LEVEL_FORMS, SETTINGS_MODS, settingsChainView, settingsDraft, settingsDraftBarView, settingsEngine,
   settingsGo, settingsHeadView, settingsHoursText, settingsLevelBadgeView, settingsPanelView, settingsPayload,
@@ -124,9 +125,7 @@ async function settingsScreenPay(host) {
   const draw = () => render(html`
     ${settingsHeadView('Правила оплаты',
       'Четыре правила, которые определяют, попадут ли часы в УТ и по какому тарифу. Глобальное значение — уровень 7; переопределения на группу, сотрудника или день сильнее.',
-      html`<div class="month-nav"><button id="py-prev" aria-label="Предыдущий месяц" @click=${() => shiftMonth(-1)}>‹</button>
-         <div class="label">${MONTHS[state.month - 1]} ${state.year}</div>
-         <button id="py-next" aria-label="Следующий месяц" @click=${() => shiftMonth(1)}>›</button></div>
+      html`${periodNav('py', `${MONTHS[state.month - 1]} ${state.year}`, shiftMonth)}
        ${edit ? html`<button class="btn btn-sm btn-primary" id="py-add" @click=${() => settingsWizard()}>+ Переопределение</button>` : nothing}
        <button class="btn btn-sm" id="py-resolve" @click=${() => settingsResolverModal()}>Проверитель</button>`)}
 
