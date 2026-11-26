@@ -14,27 +14,32 @@
    Фирменный стиль (палитра курорта, Manrope, Playfair Display) сохраняется.
    ══════════════════════════════════════════════════════════════════════ */
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 
-  /* ── цвет: светлая тема ── */
+  /* initial активирует запасное значение var(), пустой токен его пропускает.
+     Из пары цветов каждый раз остаётся ровно один. */
+  --if-light: initial;
+  --if-dark: ;
+
+  /* ── цвет: светлая и тёмная темы ── */
   /* поверхности — тёплый айвори курорта */
-  --bg: #f4f0ed;
-  --bg-soft: #faf8f5;
-  --panel: #ffffff;
-  --panel-2: #f4eeeb;
-  --line: #e2d9ce;
-  --line-soft: #ece5dc;
+  --bg: var(--if-light, #f4f0ed) var(--if-dark, #11151c);
+  --bg-soft: var(--if-light, #faf8f5) var(--if-dark, #161b24);
+  --panel: var(--if-light, #ffffff) var(--if-dark, #1b212c);
+  --panel-2: var(--if-light, #f4eeeb) var(--if-dark, #202734);
+  --line: var(--if-light, #e2d9ce) var(--if-dark, #364054);
+  --line-soft: var(--if-light, #ece5dc) var(--if-dark, #2a3240);
   /* текст — глубокий тёмно-синий, как на сайте */
-  --text: #141a25;
-  --muted: #6e6459;
-  --muted-2: #6f6458;
-  --heading: #141a25;
+  --text: var(--if-light, #141a25) var(--if-dark, #e9e4da);
+  --muted: var(--if-light, #6e6459) var(--if-dark, #a79e91);
+  --muted-2: var(--if-light, #6f6458) var(--if-dark, #aaa194);
+  --heading: var(--if-light, #141a25) var(--if-dark, #f1ece2);
   /* акценты: терракота/бронза + золото */
-  --primary: #94583a;
-  --primary-dark: #683e29;
-  --primary-soft: #9a7060;
-  --brand-fg: #94583a;
-  --brand-fg-strong: #683e29;
+  --primary: var(--if-light, #94583a) var(--if-dark, #a85f3a);
+  --primary-dark: var(--if-light, #683e29) var(--if-dark, #8e4d2e);
+  --primary-soft: var(--if-light, #9a7060) var(--if-dark, #c08060);
+  --brand-fg: var(--if-light, #94583a) var(--if-dark, #e0a07c);
+  --brand-fg-strong: var(--if-light, #683e29) var(--if-dark, #f0bd9f);
   --gold: #cbb05b;
   --gold-deep: #a8893a;
   /* тёмные поверхности (топбар, экран входа) — одинаковы в обеих темах */
@@ -47,54 +52,62 @@
   --warn: #c96d00;
   --info: #1d7e94;
   /* по ролям (получены из прежних разрозненных значений app.css) */
-  --brand-bg: #f9efe7;
-  --brand-line: #e0c8b6;
-  --brand-solid: #9c5f40;
-  --danger-bg: #f9ebea;
-  --danger-bg-strong: #e29a92;
-  --danger-fg: #a1001d;
-  --danger-line: #eec8c5;
-  --danger-solid: #c0392b;
-  --info-bg: #dce8fb;
-  --info-bg-strong: #8fadea;
-  --info-fg: #1d6e80;
-  --info-fg-soft: #4457c9;
-  --info-line: #edf0f4;
-  --info-solid: #3b6fd8;
+  --brand-bg: var(--if-light, #f9efe7) var(--if-dark, #35241b);
+  --brand-line: var(--if-light, #e0c8b6) var(--if-dark, #5a3d2e);
+  --brand-solid: var(--if-light, #9c5f40) var(--if-dark, #b2694a);
+  --danger-bg: var(--if-light, #f9ebea) var(--if-dark, #3b1f20);
+  --danger-bg-strong: var(--if-light, #e29a92) var(--if-dark, #7a3a38);
+  --danger-fg: var(--if-light, #a1001d) var(--if-dark, #f29a9a);
+  --danger-line: var(--if-light, #eec8c5) var(--if-dark, #6a3436);
+  --danger-solid: var(--if-light, #c0392b) var(--if-dark, #d4543f);
+  --info-bg: var(--if-light, #dce8fb) var(--if-dark, #1b2f3d);
+  --info-bg-strong: var(--if-light, #8fadea) var(--if-dark, #3e5f86);
+  --info-fg: var(--if-light, #1d6e80) var(--if-dark, #8fcbe0);
+  --info-fg-soft: var(--if-light, #4457c9) var(--if-dark, #9fb0f5);
+  --info-line: var(--if-light, #edf0f4) var(--if-dark, #2f4c5f);
+  --info-solid: var(--if-light, #3b6fd8) var(--if-dark, #5a8be8);
   --ink-on-gold: #14181f;
-  --line-strong: #d9c4b4;
+  --line-strong: var(--if-light, #d9c4b4) var(--if-dark, #4a566d);
   --navy-deep: #0b0f16;
-  --ok-bg: #e9f0e6;
-  --ok-fg: #3d6b45;
-  --ok-line: #cddcc7;
-  --ok-solid: #47885e;
+  --ok-bg: var(--if-light, #e9f0e6) var(--if-dark, #1f3326);
+  --ok-fg: var(--if-light, #3d6b45) var(--if-dark, #9ad0a6);
+  --ok-line: var(--if-light, #cddcc7) var(--if-dark, #35553f);
+  --ok-solid: var(--if-light, #47885e) var(--if-dark, #4f9a68);
   --on-navy: #f3ede2;
   --on-navy-muted: #b7ab97;
   --on-solid: #fff;
-  --surface-0: #fff;
-  --surface-1: #f8f5f0;
-  --surface-2: #f7efe7;
-  --surface-3: #efe8df;
-  --surface-4: #ddd;
-  --violet-solid: #6b3fa0;
-  --warn-bg: #faf0dc;
-  --warn-fg: #8a5a10;
+  --surface-0: var(--if-light, #fff) var(--if-dark, #1b212c);
+  --surface-1: var(--if-light, #f8f5f0) var(--if-dark, #202734);
+  --surface-2: var(--if-light, #f7efe7) var(--if-dark, #262e3c);
+  --surface-3: var(--if-light, #efe8df) var(--if-dark, #2d3646);
+  --surface-4: var(--if-light, #ddd) var(--if-dark, #3a4458);
+  --violet-solid: var(--if-light, #6b3fa0) var(--if-dark, #8e62c4);
+  --warn-bg: var(--if-light, #faf0dc) var(--if-dark, #3a3118);
+  --warn-fg: var(--if-light, #8a5a10) var(--if-dark, #f0cf85);
   --warn-fg-soft: #f0dcb0;
-  --warn-line: #ecd9ae;
-  --scrim: rgba(16, 20, 29, .5);
-  --shadow: 0 10px 28px rgba(20, 26, 37, .08);
-  --shadow-lg: 0 22px 60px rgba(20, 26, 37, .18);
+  --warn-line: var(--if-light, #ecd9ae) var(--if-dark, #5c4c20);
+  --scrim: var(--if-light, rgba(16, 20, 29, .5)) var(--if-dark, rgba(5, 8, 13, .62));
+  --shadow-surface: 0 1px 2px rgba(20, 26, 37, .03);
+  --shadow: 0 10px 28px var(--if-light, rgba(20, 26, 37, .08)) var(--if-dark, rgba(0, 0, 0, .4));
+  --shadow-lg: 0 22px 60px var(--if-light, rgba(20, 26, 37, .18)) var(--if-dark, rgba(0, 0, 0, .6));
 
   /* ── шрифты ── */
   --font-body: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
                'PT Sans', 'Noto Sans', Arial, sans-serif;
   --font-display: 'Playfair Display', 'SangBleu Kingdom', Georgia,
                   'Times New Roman', serif;
+  --font-data: var(--font-body);
   --text-xs: 11px;      /* подписи, бейджи */
   --text-sm: 12.5px;    /* вторичный текст, кнопки малые */
   --text-md: 14px;      /* основной текст интерфейса */
   --text-lg: 17px;
-  --text-xl: 24px;      /* заголовок страницы */
+  --text-xl: 24px;
+  --text-page-title: var(--text-xl);
+  --text-page-title-small: 20px;
+  --text-greeting: 26px;
+  --text-data: 27px;
+  --text-data-compact: var(--text-xl);
+  --text-panel-label: 11.5px;
 
   /* ── отступы (шаг 4 px) ── */
   --space-1: 4px;
@@ -108,6 +121,7 @@
   --r-lg: 12px;
   --r-md: 8px;
   --r-sm: 5px;
+  --r-control: 3px;
 
   /* ── движение: одна кривая и два темпа на всё (атмосфера 23.11.2026) ── */
   --ease: cubic-bezier(.2, .7, .2, 1);
@@ -119,6 +133,8 @@
   --tab-h: 62px;
   --side-w: 224px;
   --nav-rail-w: 64px;
+  --target-touch: 44px;
+  --target-compact: 32px;
 
   /* ── слои ── */
   --z-topbar: 40;
@@ -129,116 +145,17 @@
 
 }
 
-/* ── тёмная тема ── */
+/* Ручной выбор переопределяет системную настройку.
+   Эти правила меняют только режим, пары цветов объявлены выше. */
+:root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] {
-  --surface-0: #1b212c;
-  --surface-1: #202734;
-  --surface-2: #262e3c;
-  --surface-3: #2d3646;
-  --surface-4: #3a4458;
-  --line-strong: #4a566d;
-  --on-solid: #ffffff;
-  --on-navy: #f3ede2;
-  --on-navy-muted: #b7ab97;
-  --ink-on-gold: #14181f;
-  --navy-deep: #0b0f16;
-  --brand-bg: #35241b;
-  --brand-line: #5a3d2e;
-  --brand-solid: #b2694a;
-  --danger-bg: #3b1f20;
-  --danger-bg-strong: #7a3a38;
-  --danger-fg: #f29a9a;
-  --danger-line: #6a3436;
-  --danger-solid: #d4543f;
-  --warn-bg: #3a3118;
-  --warn-fg: #f0cf85;
-  --warn-fg-soft: #f0dcb0;
-  --warn-line: #5c4c20;
-  --ok-bg: #1f3326;
-  --ok-fg: #9ad0a6;
-  --ok-line: #35553f;
-  --ok-solid: #4f9a68;
-  --info-bg: #1b2f3d;
-  --info-bg-strong: #3e5f86;
-  --info-fg: #8fcbe0;
-  --info-fg-soft: #9fb0f5;
-  --info-line: #2f4c5f;
-  --info-solid: #5a8be8;
-  --violet-solid: #8e62c4;
-  --bg: #11151c;
-  --bg-soft: #161b24;
-  --panel: #1b212c;
-  --panel-2: #202734;
-  --line: #364054;
-  --line-soft: #2a3240;
-  --text: #e9e4da;
-  --muted: #a79e91;
-  --muted-2: #aaa194;
-  --primary: #a85f3a;
-  --primary-dark: #8e4d2e;
-  --primary-soft: #c08060;
-  --heading: #f1ece2;
-  --brand-fg: #e0a07c;
-  --brand-fg-strong: #f0bd9f;
-  --shadow: 0 10px 28px rgba(0, 0, 0, .4);
-  --shadow-lg: 0 22px 60px rgba(0, 0, 0, .6);
-  --scrim: rgba(5, 8, 13, .62);
   color-scheme: dark;
+  --if-light: ;
+  --if-dark: initial;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-  --surface-0: #1b212c;
-    --surface-1: #202734;
-    --surface-2: #262e3c;
-    --surface-3: #2d3646;
-    --surface-4: #3a4458;
-    --line-strong: #4a566d;
-    --on-solid: #ffffff;
-    --on-navy: #f3ede2;
-    --on-navy-muted: #b7ab97;
-    --ink-on-gold: #14181f;
-    --navy-deep: #0b0f16;
-    --brand-bg: #35241b;
-    --brand-line: #5a3d2e;
-    --brand-solid: #b2694a;
-    --danger-bg: #3b1f20;
-    --danger-bg-strong: #7a3a38;
-    --danger-fg: #f29a9a;
-    --danger-line: #6a3436;
-    --danger-solid: #d4543f;
-    --warn-bg: #3a3118;
-    --warn-fg: #f0cf85;
-    --warn-fg-soft: #f0dcb0;
-    --warn-line: #5c4c20;
-    --ok-bg: #1f3326;
-    --ok-fg: #9ad0a6;
-    --ok-line: #35553f;
-    --ok-solid: #4f9a68;
-    --info-bg: #1b2f3d;
-    --info-bg-strong: #3e5f86;
-    --info-fg: #8fcbe0;
-    --info-fg-soft: #9fb0f5;
-    --info-line: #2f4c5f;
-    --info-solid: #5a8be8;
-    --violet-solid: #8e62c4;
-    --bg: #11151c;
-    --bg-soft: #161b24;
-    --panel: #1b212c;
-    --panel-2: #202734;
-    --line: #364054;
-    --line-soft: #2a3240;
-    --text: #e9e4da;
-    --muted: #a79e91;
-    --muted-2: #aaa194;
-    --primary: #a85f3a;
-    --primary-dark: #8e4d2e;
-    --primary-soft: #c08060;
-    --heading: #f1ece2;
-    --brand-fg: #e0a07c;
-    --brand-fg-strong: #f0bd9f;
-    --shadow: 0 10px 28px rgba(0, 0, 0, .4);
-    --shadow-lg: 0 22px 60px rgba(0, 0, 0, .6);
-    --scrim: rgba(5, 8, 13, .62);
-    color-scheme: dark;
+    --if-light: ;
+    --if-dark: initial;
   }
 }

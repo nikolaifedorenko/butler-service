@@ -83,10 +83,10 @@
   padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto;
 }
 .sidenav.compact { width: var(--nav-rail-w); padding-inline: var(--space-2); }
-.sidenav-fold { display: grid; place-items: center; align-self: flex-end; width: 44px; min-height: 44px; padding: 0; }
+.sidenav-fold { display: grid; place-items: center; align-self: flex-end; width: var(--target-touch); min-height: var(--target-touch); padding: 0; }
 .sidenav.compact .sidenav-fold { align-self: center; }
 .sidenav.compact .sidenav-fold svg { transform: rotate(180deg); }
-.sidenav.compact .nav-item { justify-content: center; min-height: 44px; padding-inline: 0; }
+.sidenav.compact .nav-item { justify-content: center; min-height: var(--target-touch); padding-inline: 0; }
 .sidenav.compact .nav-item > span, .sidenav.compact .sidenav-foot { display: none; }
 .sidenav-tooltip { position: fixed; transform: translateY(-50%); z-index: var(--z-topbar);
   max-width: 240px; padding: var(--space-2) var(--space-3); border-radius: var(--r-sm);
@@ -177,7 +177,7 @@
   font-size: 13px; line-height: 1.45; }
 .month-nav { display: flex; align-items: center; gap: 6px; background: var(--surface-0); border: 1px solid var(--line);
   border-radius: 3px; padding: 3px; }
-.month-nav button { background: none; border: none; color: var(--muted); width: 32px; height: 32px;
+.month-nav button { background: none; border: none; color: var(--muted); width: var(--target-compact); height: var(--target-compact);
   display: grid; place-items: center; border-radius: 2px; cursor: pointer;
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
 .month-nav button:hover { background: var(--surface-3); color: var(--text); }
@@ -391,7 +391,7 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
 .me-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .me-stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px; }
 .me-stat .k { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-weight: 700; }
-.me-stat .v { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin-top: 3px; color: var(--heading); }
+.me-stat .v { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: var(--text-data-compact); font-weight: 600; margin-top: 3px; color: var(--heading); }
 
 .history { margin-top: 18px; }
 .history-item { display: flex; align-items: center; gap: 12px; padding: 10px 0;
@@ -518,7 +518,7 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
   .cellbtn .t-short { display: block; font-size: 11.5px; }
   .cellbtn .t.seg { font-size: 7.5px; letter-spacing: -.6px; }
   .cellbtn .dayoff { font-size: 7.5px; padding: 2px 1px; }
-  .page-head h2 { font-size: 20px; }
+  .page-head h2 { font-size: var(--text-page-title-small); }
   .me-shift .title { font-size: 27px; }
   .punch-btn { padding: 24px 16px; font-size: 18px; }
   .presence-grid { grid-template-columns: 1fr; }
@@ -820,14 +820,14 @@ tr.v4-click:hover td { background: var(--surface-1); }
   line-height: 1.6; border-top: 1px solid var(--line-soft); }
 .settings-body { flex: 1; min-width: 0; }
 /* кнопка «Раздел: …» — только на телефоне (см. @media ниже); список экранов — в окне */
-.settings-nav-pick { display: none; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 12px;
+.settings-nav-pick { display: none; align-items: center; gap: 10px; width: 100%; min-height: var(--target-touch); padding: 8px 12px;
   background: none; border: 0; cursor: pointer; font: inherit; color: var(--text); text-align: left; }
 .settings-nav-pick b { flex: 1; font-size: 15px; }
 .settings-nav-pick .chev { color: var(--muted); }
 .st-pick-list { display: grid; gap: 2px; }
 .st-pick-list .nav-group { font-size: 10.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted-2);
   padding: 12px 10px 5px; font-weight: 800; }
-.st-pick-item { min-height: 44px; text-align: left; background: none; border: 1px solid transparent;
+.st-pick-item { min-height: var(--target-touch); text-align: left; background: none; border: 1px solid transparent;
   border-radius: var(--r-sm); padding: 8px 12px; font: inherit; font-size: 15px; color: var(--text); cursor: pointer; }
 .st-pick-item:hover { background: var(--surface-3); }
 .st-pick-item.active { background: var(--panel); border-color: var(--line-strong); font-weight: 700; }
@@ -969,7 +969,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
   .settings-nav { width: 100%; flex: none; position: static; max-height: none; padding: 6px; }
   .settings-nav .nav-group, .settings-nav .nav-foot, .settings-nav .nav-item { display: none; }
   .settings-nav-pick { display: flex; }
-  .settings-search { min-width: 0; min-height: 44px; }
+  .settings-search { min-width: 0; min-height: var(--target-touch); }
 }
 
 /* ─────────────── экраны справочников группы «Объект» ───────────────
@@ -1033,7 +1033,7 @@ tr.v4-click:hover td { background: var(--surface-1); }
 .sb-toolbar input[type=text] { max-width: 160px; }
 .sb-grid { border: 1px solid var(--line); border-radius: var(--r-sm); overflow: auto; max-height: 70vh; background: var(--surface-0); }
 .sb-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid var(--line-soft); min-height: 34px; }
-.sb-head { position: sticky; top: 0; z-index: 2; background: var(--surface-1); font-size: 11px; color: var(--muted); }
+.sb-head { position: sticky; top: 0; z-index: 2; background: var(--surface-1); font-size: var(--text-xs); color: var(--muted); }
 #stays-body .sb-grid:has(> .sb-row:not(.bb-row)) { scroll-padding: 36px 0 0 130px; }
 #stays-body .sb-grid > .sb-row:not(.bb-row) { min-width: calc(130px + max(560px, var(--days) * 32px)); }
 .sb-unit { padding: 6px 8px; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; justify-content: center;
@@ -1144,7 +1144,7 @@ tr.fund-retired td { color: var(--muted); text-decoration: line-through; }
 tr.fund-retired td .badge { text-decoration: none; }
 .bb-row { display: grid; grid-template-columns: 150px repeat(var(--days), minmax(80px, 1fr)); border-bottom: 1px solid var(--line-soft); }
 .bb-row > div:not(.sb-unit) { padding: 6px; border-left: 1px solid var(--line-soft); font-size: 12px; }
-.bb-cell { cursor: pointer; min-height: 44px; }
+.bb-cell { cursor: pointer; min-height: var(--target-touch); }
 .bb-cell.duty-shift { background: var(--ok-bg); }
 .bb-cell.duty-off { background: var(--surface-2); color: var(--muted); }
 .bb-cell.duty-absent { background: var(--warn-bg); }
@@ -1171,7 +1171,7 @@ tr.fund-retired td .badge { text-decoration: none; }
 /* §6.1: от 50 % — синий, от 80 % — жёлтый, 100 % и больше — красный */
 .oc-cell.heat1 { background: var(--info-bg); } .oc-cell.heat2 { background: var(--warn-bg); } .oc-cell.heat3 { background: var(--brand-bg); }
 .mine-card .mine-guest { padding: 6px 0; border-top: 1px solid var(--line-soft); }
-.mine-guest-name { min-height: 44px; border: 0; padding: 0; background: none; color: var(--brand-fg-strong);
+.mine-guest-name { min-height: var(--target-touch); border: 0; padding: 0; background: none; color: var(--brand-fg-strong);
   font: inherit; font-weight: 700; text-align: left; text-decoration: underline; text-underline-offset: .16em; cursor: pointer; }
 .mine-card [aria-busy="true"] { cursor: progress; }
 /* «Мои гости» (часть 4 §5): вкладки, мини-шахматка месяца и полоса нагрузки; сетка прокручивается внутри себя */
@@ -1221,21 +1221,21 @@ tr.fund-retired td .badge { text-decoration: none; }
 .today-head { background: var(--navy); color: var(--on-navy); padding: var(--space-5) var(--space-4) var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-3); border-radius: var(--r-lg); margin-bottom: var(--space-4); }
 .today-date { font-size: var(--text-sm); color: var(--on-navy-muted); }
-.today-hello { margin: 0; font-family: var(--font-display); font-size: 26px; font-weight: 700; color: var(--on-navy); }
+.today-hello { margin: 0; font-family: var(--font-display); font-size: var(--text-greeting); font-weight: 700; color: var(--on-navy); }
 .today-shift { display: flex; align-items: center; gap: var(--space-3); background: var(--navy-2); padding: var(--space-3) var(--space-3);
   border-radius: var(--r-md); }
 .today-shift-text { flex: 1; min-width: 0; }
 .today-shift-k { font-size: var(--text-sm); color: var(--on-navy-muted); }
 .today-shift-v { font-weight: 600; }
 .today-head .today-load-error { margin-top: var(--space-3); }
-.today-punch { min-height: 44px; padding: 0 var(--space-4); background: none; border-color: var(--gold); color: var(--warn-fg-soft);
+.today-punch { min-height: var(--target-touch); padding: 0 var(--space-4); background: none; border-color: var(--gold); color: var(--warn-fg-soft);
   font-weight: 700; }
 .today-punch:hover { background: rgba(203, 176, 91, .14); border-color: var(--gold); }
 .today-body { display: flex; flex-direction: column; gap: var(--space-3); }
-.today-day-link .btn { min-height: 44px; }
+.today-day-link .btn { min-height: var(--target-touch); }
 .today-stats { margin-bottom: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .today-stats .stat { padding: var(--space-2) var(--space-3); }
-.today-stats .stat .v { font-size: 24px; margin-top: 0; font-variant-numeric: tabular-nums; }
+.today-stats .stat .v { font-size: var(--text-data-compact); margin-top: 0; font-variant-numeric: tabular-nums; }
 .today-stats .stat .k { letter-spacing: .06em; }
 .today-h { margin: var(--space-2) 0 0; font-size: var(--text-sm); font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; color: var(--muted); }
@@ -1274,7 +1274,7 @@ tr.fund-retired td .badge { text-decoration: none; }
   justify-content: flex-end; }
 
 .guest-lookup-results { display: grid; gap: var(--space-1); }
-.guest-lookup-results [data-sg-guest] { min-height: 44px; }
+.guest-lookup-results [data-sg-guest] { min-height: var(--target-touch); }
 
 /* Семейное дерево (переработка 23.11.2026): партнёры и бывшие — отдельные блоки,
    бывшие приглушены; действия связи — компактные кнопки рядом с человеком */
