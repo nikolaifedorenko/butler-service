@@ -151,3 +151,21 @@ for (const mode of ['light', 'dark']) {
     expect(colors.toast).toBe(colors.expected);
   });
 }
+
+test('текст на пользовательском цвете кода сохраняет контраст AA', async ({ page }) => {
+  await login(page, 'admin');
+  const pairs = await page.evaluate(async () => {
+    const { textOn } = await import('/static/js/core.js');
+    const probe = document.createElement('span');
+    document.body.appendChild(probe);
+    const colors = ['#767676', '#777777', '#7b7b7b', '#ba7c57'];
+    return colors.map(color => {
+      probe.style.backgroundColor = color;
+      probe.style.color = textOn(color);
+      const style = getComputedStyle(probe);
+      return { color, fg: style.color, bg: style.backgroundColor };
+    });
+  });
+  const contrast = eval(CONTRAST_FN);
+  for (const pair of pairs) expect(contrast(pair.fg, pair.bg), pair.color).toBeGreaterThanOrEqual(4.5);
+});
