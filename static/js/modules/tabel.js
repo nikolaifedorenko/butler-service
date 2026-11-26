@@ -7,7 +7,7 @@
    ══════════════════════════════════════════════════════════════════ */
 import { can } from '../app.js';
 import {
-  $, $$, api, closeModal, confirmDialog, dateRu, hours, loadGeneration, MONTHS, openModal, plural, state, toast, withAlpha,
+  $, $$, api, closeModal, confirmDialog, dateRu, hours, loadGeneration, MONTHS, openModal, plural, scrollBehavior, state, toast, withAlpha,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { dayHeadCell, monthNav, v4CodeColor } from './timesheet_common.js';
@@ -82,7 +82,7 @@ export function scrollTabelToToday() {
   const th = host && host.querySelector('thead th.today');
   if (!host || !th) { toast('Сегодняшний день не входит в открытый период', 'warn'); return; }
   host.scrollTo({ left: Math.max(0, th.offsetLeft - host.clientWidth / 2 + th.clientWidth / 2),
-                  behavior: 'smooth' });
+                  behavior: scrollBehavior() });
   th.classList.add('flash-today');
   setTimeout(() => th.classList.remove('flash-today'), 1800);
 }

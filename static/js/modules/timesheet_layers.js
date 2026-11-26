@@ -6,7 +6,7 @@
 import { can, navigate } from '../app.js';
 import {
   $, $$, api, closeModal, confirmDialog, cssColor, dateRu, downloadBlob, esc, hours, loadGeneration, MONTHS, MONTHS_GEN, openModal,
-  plural, state, toast, WD, withAlpha,
+  plural, scrollBehavior, state, toast, WD, withAlpha,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { loadTabel } from './tabel.js';
@@ -188,7 +188,7 @@ function scrollGridToToday() {
     const th = host.querySelector('thead th.today');
     if (!th) return;
     const left = Math.max(0, th.offsetLeft - host.clientWidth / 2 + th.clientWidth / 2);
-    host.scrollTo({ left, behavior: 'smooth' });
+    host.scrollTo({ left, behavior: scrollBehavior() });
     th.classList.add('flash-today');
     setTimeout(() => th.classList.remove('flash-today'), 1800);
   });

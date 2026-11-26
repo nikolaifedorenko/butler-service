@@ -132,6 +132,14 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
 .alert.danger { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-fg); }
 .alert.info { background: var(--info-bg); border-color: var(--info-line); color: var(--info-fg); }
 
+.data-state { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between;
+  gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--line);
+  border-radius: var(--r-md); background: var(--surface-1); color: var(--text); font-size: var(--text-md); }
+.data-state[data-state="error"] { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-fg); }
+.data-state .skel-wrap { flex-basis: 100%; margin: 0; padding: 0; }
+.data-state .btn { min-height: 44px; }
+.data-state [aria-disabled="true"] { cursor: progress; }
+
 /* Боковая панель: карточка брони, гостя, сотрудника открывается здесь, а не отдельным экраном.
    Строение как у модального окна: голова, тело (прокручивается), подвал с действиями. */
 .drawer-backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: var(--z-drawer); }
@@ -244,5 +252,6 @@ select:focus, textarea:focus { outline: 2px solid var(--brand-fg); outline-offse
   .palette-backdrop { padding: 6vh 10px 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .modal, .toast, .drawer, .palette, .skel-line { animation: none; }
+  .modal, .toast, .drawer, .palette, .skel-line, .spinner { animation: none; }
+  .toast, .data-state .btn { transition-duration: 0s; }
 }

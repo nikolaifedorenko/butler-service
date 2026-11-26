@@ -313,7 +313,7 @@ export function resetUserViewState() {
      переходят к следующему пользователю устройства; сохранённые наборы — у каждого свои */
   staysResetUserState();
   staysGuestsResetUserState();
-  Object.assign(carsState, { data: null, meta: null, locations: [], filter: 'all', q: '' });
+  Object.assign(carsState, { data: null, meta: null, locations: [], filter: 'all', q: '', error: false, loading: false });
   Object.assign(nightState, { reportId: null, today: null, areas: null, zoneId: null,
     areaId: null, q: '', filter: 'all', dictTab: 'zones', dictZone: null,
     dictArea: null, defectsSelected: new Set(), defectsShowSent: false });
