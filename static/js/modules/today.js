@@ -239,11 +239,11 @@ function openTodayBooking(view, r) {
     });
 }
 
-function resCard(view, r, today, urgent = false) {
+function resCard(view, r, today) {
   const tag = resTag(r, today);
   const soon = r.guests.flatMap(g => g.special_dates_soon || []);
   const opening = view.pendingCard === r.reservation_id;
-  return html`<button class="today-card ${urgent ? 'urgent' : ''}" data-reservation=${r.reservation_id}
+  return html`<button class="today-card" data-reservation=${r.reservation_id}
     aria-busy=${opening ? 'true' : nothing} @click=${() => openTodayBooking(view, r)}>
     <span class="today-card-top"><span class="badge ${tag.cls}">${tag.text}</span><span class="today-unit">${r.unit || 'без объекта'}</span></span>
     <span class="today-name">${leadName(r)}</span>
@@ -260,19 +260,22 @@ function mineBlocks(view) {
   const list = m.reservations;
   const arrivals = list.filter(r => isArrival(r, today));
   const departures = list.filter(r => r.departing);
-  const important = arrivals[0] || departures[0] || null;
-  const rest = list.filter(r => r !== important);
+  const movements = [...arrivals, ...departures];
+  const rest = list.filter(r => !r.departing && !isArrival(r, today));
   return html`
     <div class="stat-grid today-stats">
       <div class="stat"><div class="v" data-stat="mine">${list.length}</div><div class="k">мои брони</div></div>
       <div class="stat"><div class="v" data-stat="in">${arrivals.length}</div><div class="k">заезд</div></div>
       <div class="stat"><div class="v" data-stat="out">${departures.length}</div><div class="k">выезд</div></div>
     </div>
-    <h3 class="today-h">Сейчас важно</h3>
-    ${important ? resCard(view, important, today, true) : html`<div class="alert info" data-empty="important">Срочного нет: заездов и выездов на сегодня нет.</div>`}
+    <section class="today-body" aria-labelledby="today-movements-heading">
+      <h3 class="today-h" id="today-movements-heading">Заезды и выезды сегодня</h3>
+      ${movements.length ? movements.map(r => resCard(view, r, today))
+        : html`<div class="alert info" data-empty="movements">Сегодня заездов и выездов нет.</div>`}
+    </section>
     <h3 class="today-h" data-today-ready="mine" tabindex="-1">Мои гости</h3>
     ${rest.length ? rest.map(r => resCard(view, r, today))
-      : html`<div data-empty="guests">${dataState('empty', important ? 'Других гостей на сегодня нет' : 'Сегодня вы никого не ведёте')}</div>`}
+      : html`<div data-empty="guests">${dataState('empty', movements.length ? 'Других гостей на сегодня нет' : 'Сегодня вы никого не ведёте')}</div>`}
     <div class="today-more-link"><button class="btn btn-sm btn-ghost" @click=${() => navigate('mystays')}>Все мои гости</button></div>`;
 }
 

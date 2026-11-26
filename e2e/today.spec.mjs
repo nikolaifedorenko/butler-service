@@ -37,7 +37,7 @@ test('стартовый экран — «Сегодня» и первый пу�
   expect(errors).toEqual([]);
 });
 
-test('батлер: сводка, «Сейчас важно» и отдельный переход в «Мои гости»', async ({ page }) => {
+test('батлер: сводка и отдельный переход в «Мои гости»', async ({ page }) => {
   const errors = watchErrors(page);
   await login(page, 'ivanov');
   const view = today(page);
@@ -45,11 +45,11 @@ test('батлер: сводка, «Сейчас важно» и отдельн�
   const mine = Number(await view.locator('[data-stat=mine]').textContent());
   const arrivals = Number(await view.locator('[data-stat=in]').textContent());
   const departures = Number(await view.locator('[data-stat=out]').textContent());
-  await expect(view.locator('.today-h').first()).toHaveText('Сейчас важно');
-  // карточек столько же, сколько броней (одна из них может быть в «Сейчас важно»)
-  expect(await view.locator('.today-card').count()).toBe(mine);
-  if (arrivals + departures === 0) await expect(view.locator('[data-empty=important]')).toBeVisible();
-  else await expect(view.locator('.today-card.urgent')).toHaveCount(1);
+  // Каждая бронь показана один раз, в том числе брони с заездом или выездом.
+  await expect(view.locator('.today-card')).toHaveCount(mine);
+  if (arrivals + departures === 0) await expect(view.locator('[data-empty=movements]')).toBeVisible();
+  else await expect(view.getByRole('region', { name: 'Заезды и выезды сегодня' }).locator('.today-card'))
+    .toHaveCount(arrivals + departures);
   expect(mine).toBeGreaterThan(0);
   await view.getByRole('button', { name: 'Все мои гости' }).click();
   await expect(page.locator('#view-mystays.active')).toBeVisible();
@@ -112,6 +112,29 @@ const todayBlocks = [
   ['**/api/stays/mine/today', { date: '2026-11-26', reservations: [] }],
   ['**/api/presence/board', { at_work_now: 3, expected_now: 4, yet_to_come: [] }],
 ];
+
+test('все сегодняшние заезды и выезды собраны вместе, без повторов в списке гостей', async ({ page }) => {
+  const booking = (reservation_id, check_in, departing = false) => ({
+    reservation_id, check_in, check_out: '2026-11-28', departing, unit: String(reservation_id), guests: [],
+  });
+  await page.route('**/api/stays/mine/today', route => route.fulfill({ json: {
+    date: '2026-11-26',
+    reservations: [booking(1, '2026-11-26'), booking(2, '2026-11-24'),
+      booking(3, '2026-11-26'), booking(4, '2026-11-24', true)],
+  } }));
+  await login(page, 'ivanov');
+  const view = today(page);
+  await expect(view.locator('[data-stat=in]')).toHaveText('2');
+  await expect(view.locator('[data-stat=out]')).toHaveText('1');
+  const movements = view.getByRole('region', { name: 'Заезды и выезды сегодня' });
+  await expect(movements.locator('[data-reservation]')).toHaveCount(3);
+  for (const id of [1, 3, 4]) {
+    await expect(movements.locator(`[data-reservation="${id}"]`)).toBeVisible();
+    await expect(view.locator(`[data-reservation="${id}"]`)).toHaveCount(1);
+  }
+  await expect(movements.locator('[data-reservation="2"]')).toHaveCount(0);
+  await expect(view.locator('[data-reservation="2"]')).toBeVisible();
+});
 
 test('сбой блока гостей оставляет смену и присутствие и позволяет повторить только поиск гостей', async ({ page }) => {
   let guestsAvailable = false;
