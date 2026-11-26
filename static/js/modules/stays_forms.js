@@ -9,7 +9,7 @@
 'use strict';
 
 import { can } from '../app.js';
-import { $, $$, api, closeDrawer, closeModal, dateRu, openDrawer, openModal, toast } from '../core.js';
+import { $, $$, api, closeDrawer, closeModal, dateRu, MONTHS_GEN, openDrawer, openModal, toast } from '../core.js';
 import { html, nothing, render } from '../ui/html.js';
 import { checkField, fieldRow, optionView, textInput } from '../ui/form.js';
 import { guestPickContent, guestPickName } from '../ui/guest_picker.js';
@@ -518,16 +518,17 @@ export async function openGroupForm(card, onSaved) {
 
 /* ─────────────── Карточка гостя (§6.5): профиль, семейное дерево, прочие связи, история ─────────────── */
 export async function openGuestCard(gid, onChanged, options = {}) {
-  const { onOpenFamily, onFamilyChanged, fromFamily = false, isCurrent, returnFocusTo, whileMounted, silent = false } = options;
+  const { onOpenFamily, onFamilyChanged, fromFamily = false, isCurrent, canOpen, returnFocusTo, whileMounted, silent = false } = options;
   const [g, fund, prefs0] = await Promise.all([api(`/api/stays/guests/${gid}/card`, { silent }), staysFund(),
     api(`/api/stays/guests/${gid}/prefs`, { silent })]);
-  if ((isCurrent && !isCurrent()) || (whileMounted && !whileMounted.isConnected)) return;
+  if ((isCurrent && !isCurrent()) || (whileMounted && !whileMounted.isConnected) || (!whileMounted && canOpen && !canOpen())) return;
   const titles = Object.fromEntries(fund.fields.filter(f => f.target === 'guest').map(f => [f.code, f.title]));
   /* правка: stays.edit — любой гость; батлер (stays.mine_guest_edit) — свой: карточку он открывает только
      у своих, анкетные поля в форме заперты (сервер проверяет и принадлежность, и поля) */
   const full = can('stays.edit');
   const edit = !!g.editable;
   const other = g.links.filter(l => !STAYS_FAMILY_LINK.has(l.kind));
+  const marriages = g.links.filter(l => l.kind === 'spouse');
   const prefsShown = Object.entries(g.preferences).filter(([, v]) => v);
   const name = [g.last_name, g.first_name, g.middle_name].filter(Boolean).join(' ');
   const familyCanvas = !!onOpenFamily || fromFamily;
@@ -549,7 +550,20 @@ export async function openGuestCard(gid, onChanged, options = {}) {
           @click=${() => onOpenFamily({ id: gid, name })}>Открыть семейное дерево</button>` : nothing}
         ${edit ? html`<button type="button" class="btn btn-sm btn-ghost" data-gc-family-edit
           @click=${showFamilyEditor}>Редактировать связи</button>` : nothing}
-      </div>` : nothing}<div class="grid-2">
+      </div>` : nothing}
+      ${marriages.length ? html`<section aria-label="Браки"><h4>Браки</h4>
+        ${marriages.map(marriage => {
+          const start = marriage.marriage_start;
+          const day = start ? Number(start.slice(8, 10)) : null;
+          const month = start ? MONTHS_GEN[Number(start.slice(5, 7)) - 1] : null;
+          return html`<div class="sb-line">
+            <b>${marriage.name}</b><span class="muted">${marriage.former ? 'Брак завершён' : 'Действующий брак'}</span>
+            ${start ? html`<span>Начало · ${dateRu(start)}</span>` : nothing}
+            ${marriage.marriage_end ? html`<span>Окончание · ${dateRu(marriage.marriage_end)}</span>` : nothing}
+            ${!marriage.former && day && month ? html`<strong>Годовщина свадьбы · ${day} ${month}</strong>` : nothing}
+          </div>`;
+        })}
+      </section>` : nothing}<div class="grid-2">
         <div><h4>Предпочтения</h4>${prefsShown.length ? prefsShown.map(([k, v]) => html`<div>${guestPreferenceLabel(k)}: ${v}</div>`) : html`<span class="muted">нет</span>`}
           <h4>Предпочитает</h4><div id="gc-prefs"></div>
           ${g.special_dates.length ? html`<h4>Особые даты</h4>${g.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`)}` : nothing}

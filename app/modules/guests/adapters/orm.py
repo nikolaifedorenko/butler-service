@@ -91,13 +91,20 @@ class GuestLink(Base):
     (domain/kinship.py)."""
 
     __tablename__ = "guests_links"
-    __table_args__ = (UniqueConstraint("guest_a_id", "guest_b_id", "kind", name="uq_guests_link"),)
+    __table_args__ = (
+        UniqueConstraint("guest_a_id", "guest_b_id", "kind", name="uq_guests_link"),
+        CheckConstraint("marriage_start IS NULL OR kind = 'spouse'", name="ck_marriage_start_spouse"),
+        CheckConstraint("marriage_end IS NULL OR (kind = 'spouse' AND former AND "
+                        "(marriage_start IS NULL OR marriage_end >= marriage_start))", name="ck_marriage_end"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     guest_a_id: Mapped[int] = mapped_column(ForeignKey("guests.id"), index=True)
     guest_b_id: Mapped[int] = mapped_column(ForeignKey("guests.id"), index=True)
     kind: Mapped[str] = mapped_column(String(16))
     former: Mapped[bool] = mapped_column(Boolean, default=False)
+    marriage_start: Mapped[Optional[dt.date]] = mapped_column(Date)
+    marriage_end: Mapped[Optional[dt.date]] = mapped_column(Date)
 
 
 class GuestPref(Base):

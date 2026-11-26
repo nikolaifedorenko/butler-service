@@ -1310,20 +1310,46 @@ tr.fund-retired td .badge { text-decoration: none; }
   background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 18px 18px; }
 .family-canvas-size { position: relative; flex: none; margin-inline: auto; overflow: hidden; }
 .family-canvas-stage, .family-canvas-lines { position: absolute; inset: 0 auto auto 0; transform-origin: top left; }
-.family-canvas-person { position: absolute; display: flex; align-items: center; gap: 10px; padding: 10px;
-  text-align: left; background: var(--surface-0); color: var(--text); border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg); font: inherit; cursor: pointer; box-shadow: var(--shadow); }
-.family-canvas-person:hover { border-color: var(--primary); background: var(--surface-1); }
-.family-canvas-person[data-family-origin] { border-color: var(--primary); background: var(--brand-bg); }
+.family-canvas-node { position: absolute; display: flex; flex-direction: column; background: var(--surface-0);
+  border: 1px solid var(--line-strong); border-radius: var(--r-lg); }
+.family-canvas-node:hover { border-color: var(--primary); }
+.family-canvas-node[data-family-active] { border-color: var(--primary); background: var(--brand-bg);
+  box-shadow: 0 0 0 1px var(--primary); }
+.family-canvas-person { display: flex; flex: 1 1 auto; align-items: center; gap: 10px;
+  min-width: 0; padding: 8px 10px; text-align: start; color: var(--text); font: inherit;
+  background: transparent; border: 0; border-radius: inherit; cursor: pointer; }
+.family-canvas-person[aria-pressed=true]:has(+ .family-canvas-card) { padding-bottom: 2px; }
+.family-canvas-card.btn { align-self: start; min-height: 25px; margin: 0 0 5px 54px; padding: 1px 6px;
+  font-size: var(--text-xs); color: var(--brand-fg-strong); border-color: var(--line-strong); }
 .family-canvas-initials { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%;
   background: var(--surface-2); color: var(--brand-fg-strong); font-size: var(--text-sm); font-weight: 750; }
-.family-canvas-person[data-family-origin] .family-canvas-initials { background: var(--brand-solid); color: var(--on-solid); }
+.family-canvas-node[data-family-active] .family-canvas-initials { background: var(--brand-solid); color: var(--on-solid); }
 .family-canvas-details { min-width: 0; display: grid; gap: 3px; line-height: 1.2; }
 .family-canvas-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
   overflow-wrap: anywhere; font-size: 13px; font-weight: 750; }
 .family-canvas-relation, .family-canvas-year { font-size: var(--text-xs); color: var(--muted); }
 .family-canvas-relation { text-transform: lowercase; }
-.family-canvas-person[data-family-origin] .family-canvas-relation { color: var(--brand-fg-strong); font-weight: 700; }
+.family-canvas-node[data-family-active] .family-canvas-relation { color: var(--brand-fg-strong); font-weight: 700; }
+.family-canvas-edge-action { position: absolute; transform: translate(-50%, -50%); width: 32px; height: 32px;
+  display: grid; place-items: center; padding: 0; font: inherit; font-size: 18px; border: 1px solid var(--line-strong);
+  border-radius: 50%; background: var(--surface-0); color: var(--brand-fg-strong); cursor: pointer; }
+.family-canvas-edge-action:hover { border-color: var(--primary); background: var(--brand-bg); }
+.family-canvas-minus { color: var(--muted); }
+.family-canvas-minus:hover { color: var(--danger-fg); border-color: var(--danger-line); background: var(--danger-bg); }
+.family-canvas-union-label { width: auto; padding-inline: 8px; border-radius: var(--r-sm);
+  font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
+.family-canvas-action-list { display: grid; gap: var(--space-2); }
+.family-canvas-action-list .btn { justify-content: flex-start; }
+.family-canvas-editor { display: grid; gap: var(--space-3); }
+.family-canvas-editor label:not(.chk, [hidden]) { display: grid; gap: var(--space-1); }
+.family-canvas-editor p { margin: 0; }
+.family-canvas-editor [data-family-error]:empty { display: none; }
+.family-canvas-editor [data-family-error] { color: var(--danger-fg); }
+.family-canvas-editor fieldset .chk { display: flex; margin-top: var(--space-1); }
+@media (pointer: coarse) {
+  .family-canvas-edge-action { min-height: 38px; min-width: 38px; }
+  .family-canvas-card.btn { min-height: 31px; }
+}
 /* Просвет у пересечения отделяет ветви разных семей. */
 .family-canvas-edge-gap { fill: none; stroke: var(--surface-1); stroke-width: 7; stroke-linejoin: round; }
 .family-canvas-edge { fill: none; stroke: var(--family-link); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

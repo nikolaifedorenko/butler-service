@@ -69,8 +69,8 @@ def guest_prefs(gid: int, principal: Principal = Depends(require_perm("stays.gue
 
 @router.get("/guests/{gid}/family", response_model=FamilyOut)
 def guest_family(gid: int, principal: Principal = Depends(require_perm("stays.view", "stays.occupancy", "stays.guests", "stays.mine", "stays.mine_guest_edit")),
-                 db: Session = Depends(get_db)):
+                 db: Session = Depends(get_db), focus_id: int | None = None):
     """Семейное дерево (§4): уровень «с фамилиями» и выше."""
-    return guest_screen.family(db, principal, gid)
+    return guest_screen.family(db, principal, gid, focus_id=focus_id)
 
 

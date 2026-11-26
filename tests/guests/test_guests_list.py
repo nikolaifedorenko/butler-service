@@ -378,3 +378,18 @@ def test_merge_special_and_code(manager_role_client, manager_client, db):
     assert manager_client.post(MERGE, json={"keep_id": keep3["id"], "drop_id": drop3["id"]}).status_code == 200
     card = manager_client.get(f"{API}/guests/{keep3['id']}").json()
     assert (card["special"], card["vip_code_id"]) == (True, c2["id"])
+
+
+def test_merge_keeps_known_marriage_dates(manager_client):
+    u = uniq()
+    keep, drop, spouse = (_guest(manager_client, f"{n}{u}") for n in ("Оставить", "Дубль", "Супруг"))
+    for guest, dates in [(keep, {"marriage_start": "2000-01-01"}),
+                         (drop, {"marriage_start": "2001-01-01", "marriage_end": "2020-01-01"})]:
+        response = manager_client.post(f"{API}/guests/{guest['id']}/links",
+            json={"guest_id": spouse["id"], "kind": "spouse", "former": True, **dates})
+        assert response.is_success, response.text
+    result = manager_client.post(MERGE, json={"keep_id": keep["id"], "drop_id": drop["id"]})
+    assert result.is_success, result.text
+    links = manager_client.get(f"{API}/guests/{keep['id']}/card").json()["links"]
+    marriage = next(link for link in links if link["kind"] == "spouse")
+    assert (marriage["marriage_start"], marriage["marriage_end"]) == ("2000-01-01", "2020-01-01")

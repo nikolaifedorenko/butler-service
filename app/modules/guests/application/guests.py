@@ -221,6 +221,7 @@ def links_of(db: Session, guest_id: int) -> list[dict]:
         g = names.get(other)
         label = _link_label(r, mine_is_a, g.gender if g else "")
         out.append({"id": r.id, "guest_id": other, "kind": r.kind, "former": r.former, "label": label,
+                    "marriage_start": r.marriage_start, "marriage_end": r.marriage_end,
                     "name": short_name(g) if g else "", "special": bool(g and g.special),
                     "vip_code": texts.get(g.vip_code_id, ("", False))[0] if g and g.vip_code_id else ""})
     return out
@@ -248,7 +249,8 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
 def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = None, new_guest: dict | None = None,
               former: bool = False, other_is_parent: bool = False, also_parent_id: int | None = None,
               also_former_id: int | None = None, created_by: int | None = None,
-              expected_parent_ids: list[int] | None = None) -> tuple[list[GuestLink], int]:
+              expected_parent_ids: list[int] | None = None, marriage_start: dt.date | None = None,
+              marriage_end: dt.date | None = None) -> tuple[list[GuestLink], int]:
     """Связь из редактора дерева (§4) одной записью под одним замком → (связи, id второй стороны).
     Вторая сторона — существующий гость other_id или новый new_guest (фамилия, имя, пол);
     other_is_parent — она родитель guest_id (иначе guest_id — её родитель при kind=parent);
@@ -259,6 +261,7 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
     created_by — батлер, который заводит нового человека: тот становится его «своим» (часть 4 §3).
     Любой отказ — исключение после частичных flush: вызывающий откатывает, не остаётся ни гостя, ни связи."""
     lock_module(db)
+    _validate_marriage_dates(kind, former, marriage_start, marriage_end)
     if (other_id is None) == (new_guest is None):
         raise GuestError("Укажите гостя для связи: существующего или нового")
     if other_is_parent and kind != "parent":
@@ -294,7 +297,9 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
             raise GuestError("Прежний брак не найден или не принадлежит гостю")
         prev_former.former = True
         db.flush()
-    rows = [_add_link_locked(db, a, b, kind, former)]
+    link = _add_link_locked(db, a, b, kind, former)
+    link.marriage_start, link.marriage_end = marriage_start, marriage_end
+    rows = [link]
     if also_parent_id is not None:
         rows.append(_add_link_locked(db, also_parent_id, other_id, "parent"))
     if prev_former is not None:
@@ -343,21 +348,38 @@ def _has_current_spouse(db: Session, guest_id: int, except_link: int) -> bool:
         or_(GuestLink.guest_a_id == guest_id, GuestLink.guest_b_id == guest_id))) is not None
 
 
-def set_former(db: Session, link_id: int, former: bool) -> tuple[GuestLink, bool]:
-    """Признак «бывшие» у супружеской/партнёрской связи (редактор дерева, §4) → (связь, прежнее).
-    Снять «бывшие» у супруга нельзя, если у кого-то из пары уже есть действующий супруг — 422;
-    у партнёров эксклюзивности нет — снимать можно всегда."""
+def _validate_marriage_dates(kind: str, former: bool, start: dt.date | None, end: dt.date | None) -> None:
+    if (start is not None or end is not None) and kind != "spouse":
+        raise GuestError("Даты брака указываются только для супругов")
+    if end is not None and not former:
+        raise GuestError("Дата окончания указывается для завершённого брака")
+    if start is not None and end is not None and end < start:
+        raise GuestError("Дата окончания брака раньше даты начала")
+
+
+def link_state(row: GuestLink) -> dict:
+    return {"former": row.former, "marriage_start": row.marriage_start, "marriage_end": row.marriage_end}
+
+
+def update_link(db: Session, link_id: int, patch: dict) -> tuple[GuestLink, dict]:
+    """Изменить статус и даты за одну операцию под замком проверки действующего супруга."""
     lock_module(db)
-    row = db.get(GuestLink, link_id)
+    row = db.get(GuestLink, link_id, populate_existing=True)
     if row is None:
         raise GuestError("Связь не найдена")
     if row.kind not in ("spouse", "partner"):
         raise GuestError("«Бывшие» — только для супругов и партнёров")
-    before = row.former
-    if row.kind == "spouse" and before and not former \
+    if not patch:
+        raise GuestError("Укажите статус или даты брака")
+    before = link_state(row)
+    former = patch.get("former", row.former)
+    start = patch.get("marriage_start", row.marriage_start)
+    end = patch.get("marriage_end", row.marriage_end if former else None)
+    _validate_marriage_dates(row.kind, former, start, end)
+    if row.kind == "spouse" and row.former and not former \
             and any(_has_current_spouse(db, x, row.id) for x in (row.guest_a_id, row.guest_b_id)):
         raise GuestError("У гостя уже есть супруг(а)")
-    row.former = former
+    row.former, row.marriage_start, row.marriage_end = former, start, end
     db.flush()
     return row, before
 
@@ -488,7 +510,8 @@ def plan_links(db: Session, keep_id: int, drop_id: int) -> Plan:
                 family.append((a, b, "spouse", False))
                 plan.append((ln, "current", a, b, mine))
             else:
-                plan.append((ln, "duplicate", a, b, None))
+                same_marriage = ln.kind == "spouse" and mine.former == ln.former
+                plan.append((ln, "duplicate", a, b, mine if same_marriage else None))
             continue
         if ln.kind in FAMILY_KINDS:
             graph = graph_of(family)
@@ -512,7 +535,15 @@ def apply_links(db: Session, plan: Plan, keep_id: int) -> list[dict]:
         if result != "moved":
             db.delete(ln)
         if mine is not None:
-            mine.former = False
+            if result == "current":
+                mine.former = False
+                mine.marriage_start = ln.marriage_start or mine.marriage_start
+                mine.marriage_end = None
+            else:
+                start = mine.marriage_start or ln.marriage_start
+                end = mine.marriage_end or ln.marriage_end
+                if start is None or end is None or start <= end:
+                    mine.marriage_start, mine.marriage_end = start, end
     db.flush()
     for ln, result, a, b, _ in plan:
         if result == "moved":

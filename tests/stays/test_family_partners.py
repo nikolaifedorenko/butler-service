@@ -120,3 +120,55 @@ def test_existing_child_link_rejects_stale_parent_selection(manager_client):
     assert stale.status_code == 409, stale.text
     family = manager_client.get(f"{API}/guests/{child['id']}/family").json()
     assert family["parents"] == []
+
+
+def test_spouse_dates_survive_status_change_and_only_explicitly_clear(manager_client):
+    g, spouse, child = [make_guest(manager_client) for _ in range(3)]
+    created = _link(manager_client, g["id"], "spouse", guest_id=spouse["id"], marriage_start="2000-11-12")
+    assert created.status_code == 200, created.text
+    lid = created.json()["id"]
+    for parent in (g, spouse):
+        assert _link(manager_client, parent["id"], "parent", guest_id=child["id"]).is_success
+        card = manager_client.get(f"{API}/guests/{parent['id']}/card").json()
+        assert next(link for link in card["links"] if link["id"] == lid)["marriage_start"] == "2000-11-12"
+
+    patch = manager_client.patch(f"{API}/guest-links/{lid}", json={"former": True, "marriage_end": "2024-10-10"})
+    assert patch.status_code == 200, patch.text
+    fam = manager_client.get(f"{API}/guests/{g['id']}/family").json()
+    marriage = next(link for link in fam["links"] if link["id"] == lid)
+    assert (marriage["former"], marriage["marriage_start"], marriage["marriage_end"]) == (
+        True, "2000-11-12", "2024-10-10")
+    assert sorted(fam["parents"]) == sorted([[child["id"], g["id"]], [child["id"], spouse["id"]]])
+
+    cleared = manager_client.patch(f"{API}/guest-links/{lid}", json={"marriage_start": None}).json()
+    assert cleared["former"] and cleared["marriage_start"] is None and cleared["marriage_end"] == "2024-10-10"
+    current = manager_client.patch(f"{API}/guest-links/{lid}", json={"former": False}).json()
+    assert not current["former"] and current["marriage_end"] is None
+
+
+def test_marriage_dates_validate_kind_status_and_chronology(manager_client):
+    g, spouse = [make_guest(manager_client) for _ in range(2)]
+    for kind, params in (
+        ("parent", {"marriage_start": "2000-10-11"}),
+        ("spouse", {"marriage_end": "2025-11-12"}),
+        ("spouse", {"former": True, "marriage_start": "2025-11-12", "marriage_end": "2025-11-11"}),
+    ):
+        resp = _link(manager_client, g["id"], kind, guest_id=spouse["id"], **params)
+        assert resp.status_code == 422, resp.text
+    created = _link(manager_client, g["id"], "spouse", guest_id=spouse["id"], former=True,
+                    marriage_end="2025-11-12")
+    assert created.status_code == 200, created.text
+    bad = manager_client.patch(f"{API}/guest-links/{created.json()['id']}", json={"marriage_start": "2025-11-13"})
+    assert bad.status_code == 422, bad.text
+
+
+def test_family_focus_recalculates_titles_for_same_graph(manager_client):
+    parent, child, sibling, outsider = [make_guest(manager_client) for _ in range(4)]
+    for item in (child, sibling):
+        assert _link(manager_client, parent["id"], "parent", guest_id=item["id"]).is_success
+    url = f"{API}/guests/{child['id']}/family"
+    original = manager_client.get(url).json()
+    updated = manager_client.get(url, params={"focus_id": parent["id"]}).json()
+    assert updated["people"] == original["people"]
+    assert {item["person_id"] for item in updated["kin"]} == {child["id"], sibling["id"]}
+    assert manager_client.get(url, params={"focus_id": outsider["id"]}).status_code == 404

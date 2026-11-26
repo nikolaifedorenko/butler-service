@@ -2,9 +2,9 @@
 export const FAMILY_CARD = { width: 184, height: 106 };
 const COLUMN = 222;
 const MARGIN = 28;
-const TRACK = 23;
+const TRACK = 43;
 export const FAMILY_UNIONS = {
-  spouse: 'Брак', spouseFormer: 'Бывший брак', partner: 'Партнёрство', partnerFormer: 'Бывшее партнёрство',
+  spouse: 'Брак', spouseFormer: 'Брак завершён', partner: 'Партнёрство', partnerFormer: 'Бывшее партнёрство',
 };
 const unionKind = ({ kind, former }) => former ? kind + 'Former' : kind;
 const pairKey = (a, b) => a < b ? `${a}:${b}` : `${b}:${a}`;
@@ -85,7 +85,7 @@ function siblingLabels(root, people, parents, children, unions) {
   return labels;
 }
 
-export function familyLayout(family, root) {
+export function familyLayout(family) {
   const people = new Map(family.people.map(p => [p.id, p]));
   const ids = [...people.keys()];
   const links = family.links.filter(({ a, b }) => people.has(a) && people.has(b));
@@ -177,8 +177,8 @@ export function familyLayout(family, root) {
     const [upper, lower] = a.level < b.level ? [a, b] : [b, a];
     const outer = upper.level === lower.level ? null : detour(upper, upper.level);
     const x = outer ? average([outer.x, lower.x]) : average([a.x, b.x]);
-    const route = { a, b, x, outer, kind: unionKind(link), ...reserve(lower.level,
-      [a.x, b.x, x - 82, x + 82, outer?.x ?? x]) };
+    const route = { a, b, x, outer, link, kind: unionKind(link), ...reserve(lower.level,
+      [a.x, b.x, x - 106, x + 106, outer?.x ?? x]) };
     const key = pairKey(a.id, b.id);
     if (!unionRoutes.has(key)) unionRoutes.set(key, []);
     unionRoutes.get(key).push(route);
@@ -241,9 +241,9 @@ export function familyLayout(family, root) {
   const bar = (xs, y) => `M ${Math.min(...xs)} ${y} H ${Math.max(...xs)}`;
 
   const edges = [...unionRoutes.values()].flat().map(route => {
-    const { a, b, x, kind, outer, level } = route;
+    const { a, b, x, kind, outer, level, link } = route;
     const y = bus(route);
-    return { kind, x, y, label: FAMILY_UNIONS[kind],
+    return { kind, x, y, link, label: FAMILY_UNIONS[kind],
       title: `${FAMILY_UNIONS[kind]}: ${people.get(a.id).name} и ${people.get(b.id).name}`,
       path: [sourcePath(a, y, a.level < level ? outer : null), sourcePath(b, y, b.level < level ? outer : null),
         bar(unionSpan(route), y)].join(' ') };
@@ -255,6 +255,10 @@ export function familyLayout(family, root) {
     const childNames = targets.map(node => people.get(node.id).name).join(', ');
     edges.push({
       kind: 'parent',
+      targets: targets.map(node => ({
+        id: node.id, x: node.x, y: rowY[node.level] - 20,
+        links: parentLinks.filter(link => link.b === node.id),
+      })),
       title: `Родители: ${parentNames}. Дети: ${childNames}`,
       path: [
         union ? `M ${x} ${bus(union)} V ${y}` : outgoing.map(({ node, outer }) => sourcePath(node, y, outer)).join(' '),
@@ -265,12 +269,26 @@ export function familyLayout(family, root) {
     });
   }
 
-  const labels = siblingLabels(root, people, parents, children, unions);
-  const kin = new Map(family.kin.map(relative => [relative.person_id, relative]));
-  const nodes = [...positions.values()].map(({ id, level, x }) => {
-    const relation = kin.get(id);
-    const title = relation?.via_former && relation.degree > 0 ? `${relation.title} (через бывший союз)` : relation?.title;
-    return { ...people.get(id), x, y: rowY[level], title: labels.get(id) || title || '' };
-  });
+  const nodes = [...positions.values()].map(({ id, level, x }) => ({ ...people.get(id), x, y: rowY[level] }));
   return { width, height, nodes, edges };
+}
+
+/* Подписи меняются относительно выбранного гостя независимо от раскладки. */
+export function familyLabels(family, root) {
+  const people = new Map(family.people.map(person => [person.id, person]));
+  const parents = new Map([...people.keys()].map(id => [id, []]));
+  const children = new Map([...people.keys()].map(id => [id, []]));
+  const unions = [];
+  for (const link of family.links) {
+    if (!people.has(link.a) || !people.has(link.b)) continue;
+    if (link.kind === 'parent') {
+      parents.get(link.b).push(link.a);
+      children.get(link.a).push(link.b);
+    } else if (link.kind === 'spouse' || link.kind === 'partner') unions.push(link);
+  }
+  const labels = new Map(family.kin.map(({ person_id, title, via_former, degree }) => [
+    person_id, via_former && degree > 0 ? `${title} (через бывший союз)` : title,
+  ]));
+  for (const [id, title] of siblingLabels(root, people, parents, children, unions)) labels.set(id, title);
+  return labels;
 }

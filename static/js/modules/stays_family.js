@@ -26,13 +26,13 @@ function staysFamilyAround(fam, c) {
   return { parents, children, spouses, partners, siblings };
 }
 
-export async function renderFamilyTree(host, guestId, { editable = false, onChange = null } = {}) {
+export async function renderFamilyTree(host, guestId, { editable = false, onChange, initialAdd, onCancel } = {}) {
   let centre = guestId;
   let fam = null;
   let panel = null;
   let moving = false;
   const changed = () => { if (onChange) onChange(); };
-  const paint = () => render(treeView(), mount(host));
+  const paint = () => render(initialAdd ? panelView() : treeView(), mount(host));
   const name = id => fam.people.find(person => person.id === id)?.name || '#' + id;
   const lookup = () => ({ query: '', results: null, request: 0, timer: null });
 
@@ -40,15 +40,17 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
     ...target, kind: kind === 'parent' || kind === 'child' ? 'parent' : kind,
     other_is_parent: kind === 'parent', ...extra } });
 
-  const openPanel = kind => {
+  const openPanel = (kind, { former = false, secondParentId } = {}) => {
     const around = staysFamilyAround(fam, centre);
     const current = around.spouses.find(s => !s.link.former);
     const blocked = (kind === 'parent' && around.parents.length >= 2 && 'У гостя уже два родителя — сначала удалите связь') || '';
     const related = [...around.spouses, ...around.partners].sort((a, b) => Number(a.link.former) - Number(b.link.former));
     const candidates = related.filter((item, index) => related.findIndex(other => other.id === item.id) === index);
     const canEditAll = can('stays.edit');
-    panel = { kind, blocked, formerSpouse: kind === 'spouse' && current ? current : null, makeFormer: true,
-      saving: false, first: lookup(), second: lookup(), mode: 'existing', child: null, secondParent: null,
+    const secondParent = fam.people.find(person => person.id === secondParentId && person.editable) || null;
+    panel = { kind, blocked, formerSpouse: !former && kind === 'spouse' && current ? current : null, makeFormer: true,
+      former, start: '', end: '',
+      saving: false, first: lookup(), second: lookup(), mode: 'existing', child: null, secondParent,
       draft: { last_name: '', first_name: '', gender: '' }, candidates: canEditAll ? candidates : [] };
     const active = panel;
     if (kind === 'child' && !canEditAll) {
@@ -79,14 +81,21 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
   const done = async (kind, target, extra = {}, source = centre) => {
     const active = panel;
     if (!active || active.saving) return;
-    if (kind === 'spouse' && active.formerSpouse && active.makeFormer) extra.also_former_id = active.formerSpouse.link.id;
+    if (kind === 'spouse') {
+      if (active.start && active.end && active.end < active.start) {
+        toast('Дата окончания брака раньше даты начала', 'warn');
+        return;
+      }
+      extra = { ...extra, former: active.former, marriage_start: active.start || null, marriage_end: active.end || null };
+      if (active.formerSpouse && active.makeFormer) extra.also_former_id = active.formerSpouse.link.id;
+    }
     active.saving = true;
     paint();
     try {
       await link(kind, target, extra, source);
       toast('Связь добавлена');
       changed();
-      if (panel === active) { panel = null; await draw(); }
+      if (!initialAdd && panel === active) { panel = null; await draw(); }
     } catch (e) {
       toast(e.message, 'err');
       if (panel !== active) return;
@@ -150,7 +159,20 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
   const searchHint = () => can('stays.guests') ? 'ФИО, телефон или дата рождения' : 'ФИО гостя';
   const resultsView = (people, view) => people === null ? nothing
     : people.length ? people.map(view) : html`<span class="muted">Гости не найдены</span>`;
-  const cancel = () => { panel = null; paint(); };
+  const cancel = () => {
+    panel = null;
+    if (initialAdd) onCancel?.();
+    else paint();
+  };
+
+  const marriageDates = active => html`<div class="sb-line ft-fields">
+    <label class="ft-search">Дата начала брака (необязательно)
+      <input type="date" .value=${active.start} @input=${e => { active.start = e.target.value; paint(); }}>
+    </label>
+    ${active.former ? html`<label class="ft-search">Дата окончания брака (необязательно)
+      <input type="date" min=${active.start || nothing} .value=${active.end} @input=${e => { active.end = e.target.value; }}>
+    </label>` : nothing}
+  </div>`;
 
   const childView = active => {
     const existing = active.mode === 'existing';
@@ -159,9 +181,10 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
     const already = known.some(p => p.id === centre);
     const other = known.find(p => p.id !== centre);
     const full = known.length >= 2;
-    const second = other ?? active.secondParent;
+    const second = active.secondParent ?? other;
+    const parentConflict = other && active.secondParent && other.id !== active.secondParent.id;
     const canChooseSecond = !full && !other && (!existing || !!child?.parents);
-    const valid = (existing ? !!child?.parents : !!active.draft.last_name.trim()) && !full && (!already || !!second);
+    const valid = (existing ? !!child?.parents : !!active.draft.last_name.trim()) && !full && !parentConflict && (!already || !!second);
     const selectSecond = person => {
       active.secondParent = person;
       clearTimeout(active.second.timer);
@@ -229,7 +252,8 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
         active.second.results?.filter(person => person.id !== child?.person.id) ?? null,
         person => html`<button type="button" class="btn btn-sm guest-pick-button" data-ft-second-pick=${person.id}
           @click=${() => selectSecond(person)}>${guestPickContent(person)}</button>`) : candidates.map(suggestion)}</div>` : nothing}
-      ${full ? html`<span class="muted">У ребёнка уже указаны два родителя.</span>` : already && !second ? html`
+      ${parentConflict ? html`<span role="alert">У ребёнка указан другой родитель. Выберите другого ребёнка или проверьте его связи.</span>`
+        : full ? html`<span class="muted">У ребёнка уже указаны два родителя.</span>` : already && !second ? html`
         <span class="muted">Связь с первым родителем уже есть. Выберите второго, чтобы добавить связь.</span>` : nothing}
       <div class="sb-line">
         <button type="button" class="btn btn-sm btn-ghost" data-ft-cancel @click=${cancel}>Отмена</button>
@@ -297,7 +321,8 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
     if (active.kind === 'child') return childView(active);
     const { kind, blocked, formerSpouse } = active;
     return html`<fieldset class="ft-add" ?disabled=${active.saving}>
-      <legend><b>${STAYS_FAMILY_ADD_TITLE[kind]}</b></legend>
+      <legend><b>${kind === 'spouse' && active.former ? 'Добавить бывшего супруга или супругу' : STAYS_FAMILY_ADD_TITLE[kind]}</b></legend>
+      ${kind === 'spouse' ? marriageDates(active) : nothing}
       <label class="ft-search">Найти гостя
         <input type="search" data-ft-q .value=${active.first.query} placeholder=${searchHint()} @input=${e => search('first', e)}>
       </label>
@@ -353,7 +378,8 @@ export async function renderFamilyTree(host, guestId, { editable = false, onChan
     centre = id;
     moving = false;
     fam = data;
-    paint();
+    if (initialAdd && !panel) openPanel(initialAdd.kind, initialAdd);
+    else paint();
     return true;
   };
   return draw();          // true — дерево нарисовано (false — ошибка: можно запросить снова)
