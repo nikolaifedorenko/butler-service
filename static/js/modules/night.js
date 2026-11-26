@@ -9,7 +9,8 @@
 
 import { can, poll, registerModule } from '../app.js';
 import {
-  $, $$, api, closeModal, confirmDialog, dateRu, downloadBlob, hhmm, loading, multipartApi, openModal, state, toast,
+  $, $$, api, authContextIsCurrent, authContextSnapshot, closeModal, confirmDialog, dateRu, downloadBlob,
+  hhmm, loading, multipartApi, openModal, state, toast,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { checkField } from '../ui/form.js';
@@ -30,6 +31,8 @@ export const nightState = { reportId: null, today: null, areas: null,
 /* то, что сейчас на экране: отчёт (или его отсутствие с пояснением) либо ошибка загрузки */
 const view = { rep: null, note: '', error: '' };
 let loadingPage = false;      // первая загрузка раздела
+let headActionsOpen = false;
+let fetchGeneration = 0;
 
 /* dateRu() из app.js рассчитан на «YYYY-MM-DD»; для datetime берём только дату */
 const dRu = iso => (iso ? dateRu(String(iso).slice(0, 10)) : '');
@@ -43,30 +46,47 @@ registerModule({ views: { night: loadNight } });
 async function loadNight() {
   Object.assign(view, { rep: null, note: '', error: '' });
   loadingPage = true;
+  headActionsOpen = false;
   paintNight();
   await fetchNight();
-  poll('night', () => { if (state.view === 'night') fetchNight(true); });
+  if (state.view === 'night' && state.user) poll('night', () => fetchNight(true));
 }
 
 const paintNight = () => render(nightPage(), mount($('#view-night')));
 
 async function fetchNight(silent) {
+  const generation = ++fetchGeneration;
+  const reportId = nightState.reportId;
+  const auth = authContextSnapshot();
+  let today, report = null, note = '', error = '';
   try {
-    let report = null, note = '';
-    if (nightState.reportId) {
-      report = (await api(`/api/night/reports/${nightState.reportId}`, { silent: !!silent })).report;
+    if (reportId) {
+      report = (await api(`/api/night/reports/${reportId}`, { silent: !!silent })).report;
     } else {
-      const t = await api('/api/night/today', { silent: !!silent });
-      nightState.today = t;
-      if (!t.available) { note = t.note || 'Ночная смена ещё не началась'; }
-      else report = t.report;
+      today = await api('/api/night/today', { silent: !!silent });
+      if (today.available) report = today.report;
+      else note = today.note || 'Ночная смена ещё не началась';
     }
-    Object.assign(view, { rep: report, note, error: '' });
   } catch (e) {
-    view.error = e.message;
+    error = e.message;
   }
+  if (generation !== fetchGeneration || reportId !== nightState.reportId ||
+      state.view !== 'night' || !authContextIsCurrent(auth)) return null;
+  if (today) nightState.today = today;
+  Object.assign(view, { rep: report, note, error });
   loadingPage = false;
   paintNight();
+  return report;
+}
+
+function showNightReport(id) {
+  Object.assign(nightState, { reportId: id, zoneId: null, areaId: null, q: '', filter: 'all' });
+  if (headActionsOpen) $('.night-head-toggle')?.focus({ preventScroll: true });
+  headActionsOpen = false;
+  Object.assign(view, { rep: null, note: '', error: '' });
+  loadingPage = true;
+  paintNight();
+  return fetchNight();
 }
 
 /* ─────────────── три уровня обхода: зоны → объекты → чек-лист объекта ─────────────── */
@@ -114,13 +134,26 @@ function nightZoneCard(z) {
 }
 
 /* открыть объект: сразу берём его в работу (или перехватываем с подтверждением) */
-async function openArea(rep, id) {
+async function openArea(rep, id, { take = true } = {}) {
   const a = (rep.areas || []).find(x => x.id === id);
+  if (a && zoneKeyOf(a) !== nightState.zoneId) {
+    Object.assign(nightState, { zoneId: zoneKeyOf(a), q: '', filter: 'all' });
+  }
   nightState.areaId = id;
-  if (!rep.readonly && a && a.status !== 'done') await sectionTake(id, false, reloadNight);
+  if (take && !rep.readonly && a && a.status !== 'done') await sectionTake(id, false, reloadNight);
   else paintNight();
 }
 const reloadNight = () => fetchNight(true);
+
+const isMyTakenArea = a => a.status === 'taken' && a.taken_by === state.user?.id;
+
+async function resumeArea(reportId, areaId) {
+  const rep = await fetchNight(true);
+  if (rep?.id !== reportId || rep.readonly || view.rep !== rep || state.view !== 'night' ||
+      nightState.zoneId !== null || nightState.areaId !== null) return;
+  const area = rep.areas?.find(a => a.id === areaId && isMyTakenArea(a));
+  if (area) openArea(rep, areaId, { take: false });
+}
 
 const reopenArea = async id => {
   try { await api(`/api/night/sections/${id}/reopen`, { method: 'POST' }); toast('Область переоткрыта', 'ok'); reloadNight(); }
@@ -161,6 +194,7 @@ const interceptions = rep => ((rep.interceptions || []).length ? html`<div class
 
 /* кнопки шапки: видимость зависит от того, есть ли отчёт и что можно делать */
 function nightHead(rep) {
+  const carsSection = rep?.areas?.find(a => a.is_cars);
   const hid = on => (on ? '' : ' hidden');
   const sendable = rep ? (rep.areas || []).reduce((n, a) => n
     + (a.items || []).filter(i => i.answer === 'bad' && !i.dispatched_at).length, 0) : 0;
@@ -170,22 +204,29 @@ function nightHead(rep) {
     : (rep.reopened_at
       ? `Смена ${dateRu(rep.date)} · ${rep.shift_label || ''} · переоткрыта вручную — автозакрытие отключено`
       : `Смена ${dateRu(rep.date)} · ${rep.shift_label || ''} · автозакрытие ${hhmm(rep.deadline)}`);
-  return html`<div class="page-head">
-      <div><h2>Ночной отчёт</h2><div class="sub" id="night-sub">${sub}</div></div>
+  return html`<div class="page-head night-head">
+      <div class="night-head-title"><h2>Ночной отчёт</h2><div class="sub" id="night-sub">${sub}</div></div>
       <div class="spacer"></div>
-      <button class="btn btn-sm" id="night-refresh" @click=${() => fetchNight()}>Обновить</button>
-      <button class=${`btn btn-sm btn-ghost${hid(!!nightState.reportId)}`} id="night-today-btn"
-        @click=${() => { nightState.reportId = null; fetchNight(); }}>К текущей смене</button>
-      <button class="btn btn-sm btn-ghost" id="night-archive" @click=${() => nightArchiveModal()}>Архив</button>
-      <button class=${`btn btn-sm btn-ghost${hid(!!rep)}`} id="night-defects" @click=${() => nightDefectsModal()}>${sendable ? `Недостатки · ${sendable}` : 'Недостатки'}</button>
-      <button class=${`btn btn-sm btn-ghost${hid(can('settings.view'))}`} id="night-dict" title="Настройки → Ночной обход"
-        @click=${() => settingsOpen('night')}>Справочник ↗</button>
-      <button class=${`btn btn-sm btn-ghost${hid(!!rep)}`} id="night-docx" @click=${() => exportNight('docx')}>DOCX</button>
-      <button class=${`btn btn-sm btn-ghost${hid(!!rep)}`} id="night-pdf" @click=${() => exportNight('pdf')}>PDF</button>
-      <button class=${`btn btn-sm btn-danger${hid(!!rep && !rep.readonly && can('night.close'))}`} id="night-close"
-        @click=${() => closeReportModal()}>Закрыть смену</button>
-      <button class=${`btn btn-sm btn-ghost${hid(!!rep && rep.readonly && can('night.close'))}`} id="night-reopen"
-        @click=${() => reopenReport()}>Переоткрыть</button>
+      <button type="button" class="btn btn-sm btn-ghost night-head-toggle" aria-controls="night-head-actions"
+        aria-expanded=${String(headActionsOpen)} @click=${() => { headActionsOpen = !headActionsOpen; paintNight(); }}>Действия</button>
+      <div class=${`night-head-actions${headActionsOpen ? ' open' : ''}`} id="night-head-actions">
+        ${carsSection ? html`<button class="btn btn-sm btn-ghost night-head-mobile-action"
+          @click=${() => nightCarsModal(rep, carsSection, reloadNight)}>${rep.readonly || rep.cars_step_done
+            ? 'Посмотреть обход электрокаров' : 'Проверить электрокары'}</button>` : nothing}
+        <button class="btn btn-sm" id="night-refresh" @click=${() => fetchNight()}>Обновить</button>
+        <button class=${`btn btn-sm btn-ghost${hid(!!nightState.reportId)}`} id="night-today-btn"
+          @click=${() => showNightReport(null)}>К текущей смене</button>
+        <button class="btn btn-sm btn-ghost" id="night-archive" @click=${() => nightArchiveModal()}>Архив</button>
+        <button class=${`btn btn-sm btn-ghost${hid(!!rep)}`} id="night-defects" @click=${() => nightDefectsModal()}>${sendable ? `Недостатки · ${sendable}` : 'Недостатки'}</button>
+        <button class=${`btn btn-sm btn-ghost${hid(can('settings.view'))}`} id="night-dict" title="Настройки → Ночной обход"
+          @click=${() => settingsOpen('night')}>Справочник ↗</button>
+        <button class=${`btn btn-sm btn-ghost${hid(!!rep)}`} id="night-docx" @click=${() => exportNight('docx')}>DOCX</button>
+        <button class=${`btn btn-sm btn-ghost${hid(!!rep)}`} id="night-pdf" @click=${() => exportNight('pdf')}>PDF</button>
+        <button class=${`btn btn-sm btn-danger${hid(!!rep && !rep.readonly && can('night.close'))}`} id="night-close"
+          @click=${() => closeReportModal()}>Закрыть смену</button>
+        <button class=${`btn btn-sm btn-ghost${hid(!!rep && rep.readonly && can('night.close'))}`} id="night-reopen"
+          @click=${() => reopenReport()}>Переоткрыть</button>
+      </div>
     </div>`;
 }
 
@@ -202,7 +243,7 @@ function nightBody() {
   if (!rep) {
     return html`<div class="panel"><h3 class="panel-title">Отчёта пока нет</h3>
       <p class="hint" style="margin:0">${view.note || 'Ночная смена ещё не началась — отчёт появится в 20:00.'}</p>
-      <p class="hint">Архив прошлых смен доступен по кнопке «Архив» справа вверху.</p></div>`;
+      <p class="hint">Откройте «Архив», чтобы посмотреть прошлые смены.</p></div>`;
   }
   const p = rep.progress || { total: 0, done: 0, taken: 0, free: 0 };
   const areas = (rep.areas || []).filter(a => !a.is_cars);
@@ -272,10 +313,20 @@ function nightBody() {
   }
 
   /* ── уровень 1: зоны ── */
-  return html`
-    ${rep.readonly ? html`<div class="ro-banner">Смена закрыта ${rep.closed_at ? dRu(rep.closed_at) + ' ' + hhmm(rep.closed_at) : ''} ·
-      итог: ${rep.result_title || '—'} · правки недоступны</div>` : nothing}
-    <div class="stat-grid">
+  const ongoingArea = rep.readonly ? null : areas.find(isMyTakenArea);
+  return html`<div class="night-work">
+    ${rep.readonly ? html`<div class="night-work-result ro-banner">
+      Смена закрыта ${rep.closed_at ? dRu(rep.closed_at) + ' ' + hhmm(rep.closed_at) : ''}
+      · <strong>итог: ${rep.result_title || '—'}</strong> · правки недоступны</div>` : nothing}
+    ${ongoingArea ? html`<div class="night-work-resume panel">
+      <div><strong>${ongoingArea.name}</strong><div class="muted">${ongoingArea.zone_name || 'Без зоны'}</div></div>
+      <button class="btn btn-primary" @click=${() => resumeArea(rep.id, ongoingArea.id)}>Продолжить обход</button>
+    </div>` : nothing}
+
+    <div class="night-zones">${zones.length ? zones.map(nightZoneCard)
+      : html`<div class="empty">Зоны обхода не настроены. Добавьте их в «Настройки → Ночной обход».</div>`}</div>
+
+    <div class="night-work-summary stat-grid">
       <div class="stat"><div class="k">Зон</div><div class="v">${zones.length}</div></div>
       <div class="stat"><div class="k">Объектов</div><div class="v">${p.total}</div></div>
       <div class="stat accent"><div class="k">Объектов закрыто</div><div class="v">${p.done} <small>/ ${p.total}</small></div></div>
@@ -286,23 +337,19 @@ function nightBody() {
         <div class="v">${rep.cars_step_done ? 'готово' : 'не завершено'}</div></div>
     </div>
 
-    ${carsSection ? html`<div class="panel"><h3 class="panel-title">Шаг «Проверка электрокаров»
-        <span class=${`badge ${carsSection.status === 'done' ? 'ok' : 'warn'}`}>${carsSection.status_title}</span></h3>
-      <p class="hint" style="margin:0 0 10px">Отдельный шаг обхода (не зона): где кар, заряд, тент, состояние,
-      «кар найден на месте», перепарковка и фото. Замечания попадают супервайзеру, состояние карточек
-      каров обновляется автоматически.</p>
-      <button class="btn btn-primary" id="night-cars-open"
-        @click=${() => nightCarsModal(rep, carsSection, reloadNight)}>${rep.cars_step_done ? 'Посмотреть обход' : 'Проверить электрокары'}</button>
-      ${carsSection.closed_at ? html`<span class="hint"> · завершено в ${hhmm(carsSection.closed_at)}</span>` : nothing}
-    </div>` : nothing}
-
-    ${interceptions(rep)}
-
-    ${zones.length ? html`<div class="night-zones">${zones.map(nightZoneCard)}</div>`
-      : html`<div class="empty">Зоны обхода не настроены — добавьте их в «Настройки → Ночной обход» (кнопка «Справочник ↗» справа вверху)</div>`}
-
-    <p class="hint">Обход: зона → объект → чек-лист. Чек-лист задаётся на зону, поэтому у всех однотипных
-    объектов он одинаковый; индивидуальные особенности объекта настраиваются в справочнике.</p>`;
+    <div class="night-work-secondary">
+      ${carsSection ? html`<div class="panel"><h3 class="panel-title">Шаг «Проверка электрокаров»
+          <span class=${`badge ${carsSection.status === 'done' ? 'ok' : 'warn'}`}>${carsSection.status_title}</span></h3>
+        <p class="hint" style="margin:0 0 10px">Отдельный шаг обхода (не зона): где кар, заряд, тент, состояние,
+        «кар найден на месте», перепарковка и фото. Замечания попадают супервайзеру, состояние карточек
+        каров обновляется автоматически.</p>
+        <button class="btn btn-primary" id="night-cars-open"
+          @click=${() => nightCarsModal(rep, carsSection, reloadNight)}>${rep.cars_step_done ? 'Посмотреть обход' : 'Проверить электрокары'}</button>
+        ${carsSection.closed_at ? html`<span class="hint"> · завершено в ${hhmm(carsSection.closed_at)}</span>` : nothing}
+      </div>` : nothing}
+      ${interceptions(rep)}
+    </div>
+  </div>`;
 }
 
 function nightAreaCard(a, rep) {
@@ -607,7 +654,7 @@ function closeReportModal() {
         try {
           await api(`/api/night/reports/${nightState.reportId || nightState.today?.report?.id}/close`,
             { method: 'POST', body: { force_unanswered: !!force } });
-          toast('Смена закрыта', 'ok'); fetchNight();
+          toast('Смена закрыта', 'ok'); showNightReport(nightState.reportId);
         } catch (e) {
           if (e.status === 409 && e.payload?.message) confirmDialog('Смена будет неполной', e.payload.message,
             () => send(true), 'Закрыть всё равно');
@@ -646,7 +693,7 @@ async function nightArchiveModal() {
           <td data-label="Электрокары">${r.cars_step_done ? html`<span class="badge ok">готово</span>` : html`<span class="badge muted">—</span>`}</td>
           <td data-label="Закрыт">${r.closed_at ? dRu(r.closed_at) + ' ' + hhmm(r.closed_at) : '—'}</td>
           <td data-label=""><button class="btn btn-sm btn-ghost" data-open=${r.id}
-            @click=${() => { closeModal(); nightState.reportId = r.id; fetchNight(); }}>Открыть</button></td>
+            @click=${() => { closeModal(); showNightReport(r.id); }}>Открыть</button></td>
         </tr>`) : html`<tr><td colspan="7" class="empty">Отчётов пока нет</td></tr>`}</tbody></table></div>`,
     footer: html`<button class="btn btn-ghost" data-cancel>Закрыть</button>`,
     onMount(m) { m.querySelector('[data-cancel]').onclick = closeModal; },
