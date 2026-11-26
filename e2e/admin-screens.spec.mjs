@@ -35,6 +35,7 @@ test('«Права доступа»: вкладки, матрица прав р�
   await expect(view.locator('#ac-body')).toContainText('Новая роль');
   await view.locator('[data-role]').first().click();
   const modal = page.locator('#modal');
+  await modal.locator('summary').first().click();
   await expect(modal.locator('select[data-perm]').first()).toBeVisible();
   await modal.locator('[data-cancel]').click();
   await view.locator('[data-t=groups]').click();

@@ -39,6 +39,11 @@ async function settingsScreenNotify(host) {
      сервер не может их прочитать и просит ввести заново
 */
   const unreadable = new Set(cfg.unreadable || []);
+  const telegramStatus = unreadable.has('notify_telegram_token') ? 'Введите токен заново'
+    : (ready.telegram ? 'Настроен' : 'Не настроен');
+  let emailStatus = ready.email ? 'Настроена' : 'Не настроена';
+  if (em.user && unreadable.has('notify_smtp_password')) emailStatus = 'Введите пароль заново';
+  else if (ready.email && em.user && !em.password_set) emailStatus = 'Укажите пароль';
   const reenter = html`<small class="hint" style="color:var(--danger)">не расшифровывается: ключ шифрования сменился — введите заново</small>`;
   const chats = data.chats || [];
   let tpls = [];
@@ -76,10 +81,13 @@ async function settingsScreenNotify(host) {
     } catch (e) { toast(e.message, 'err'); }
   };
   const testChat = async c => {
+    const result = $('#nt-test-result', host);
+    result.textContent = 'Отправляем тестовое сообщение…';
     try {
-      await api('/api/notify/telegram/test', { method: 'POST', body: { chat_id: Number(c.chat_id) } });
-      toast('Тестовое сообщение отправлено в чат', 'ok');
-    } catch (e) { toast(e.message, 'err'); }
+      const r = await api('/api/notify/telegram/test', { method: 'POST', body: { chat_id: Number(c.chat_id) } });
+      result.textContent = Number.isInteger(r?.message_id) && r.message_id > 0 ? 'Telegram принял тестовое сообщение'
+        : 'Telegram не подтвердил приём сообщения';
+    } catch (e) { result.textContent = e.message; }
   };
   const saveMail = async () => {
     const body = {
@@ -97,12 +105,15 @@ async function settingsScreenNotify(host) {
     } catch (e) { toast(e.message, 'err'); }
   };
   const testMail = async () => {
+    const result = $('#ne-result', host);
     const to = $('#ne-test-to', host).value.trim();
-    if (!to) return toast('Укажите адрес получателя', 'warn');
+    if (!to) { result.textContent = 'Укажите адрес получателя'; return; }
+    result.textContent = 'Отправляем тестовое письмо…';
     try {
       const r = await api('/api/notify/email/test', { method: 'POST', body: { to }, timeout: 300000 });
-      toast(`Письмо отправлено (${r.message_id || 'без Message-ID'})`, 'ok');
-    } catch (e) { toast(e.message, 'err'); }
+      result.textContent = typeof r?.message_id === 'string' && r.message_id.trim() ? 'Почтовый сервер принял тестовое письмо. Проверьте получение.'
+        : 'Почтовый сервер не подтвердил приём письма';
+    } catch (e) { result.textContent = e.message; }
   };
   const saveTpl = async () => {
     try {
@@ -133,22 +144,22 @@ async function settingsScreenNotify(host) {
   };
 
   render(html`
-    ${settingsHeadView('Чаты и Почта',
-      'Общие настройки доставки для всего приложения: Telegram и почта (MS Exchange), каталог чатов, '
-      + 'шаблоны сообщений по разделам. Транспорт один — разделы подключаются к нему со своими получателями.',
-      html`<span class=${`badge ${ready.telegram ? 'ok' : 'muted'}`}>Telegram ${ready.telegram ? 'настроен' : 'не настроен'}</span>
-       <span class=${`badge ${ready.email ? 'ok' : 'muted'}`}>Почта ${ready.email ? 'настроена' : 'не настроена'}</span>`)}
+    ${settingsHeadView('Чаты и Почта', 'Общие настройки доставки для всего приложения')}
 
     ${settingsPanelView('Кто использует доставку', html`
       <div class="table-wrap" tabindex="0"><table class="data"><thead><tr>
-        <th>Раздел</th><th>Что отправляет</th><th>Получатели</th><th>Статус</th></tr></thead>
+        <th>Раздел</th><th>Что отправляет</th><th>Получатели</th><th>Состояние сценария</th></tr></thead>
         <tbody>${NOTIFY_CONSUMERS.map(c => html`<tr><td><b>${c.area}</b></td><td>${c.what}</td>
           <td>${c.to}</td>
-          <td>${c.on ? html`<span class="badge ok">работает</span>` : html`<span class="badge muted">запланировано</span>`}</td></tr>`)}
-        </tbody></table></div>
-      <p class="hint">Учётные данные и транспорт общие, поэтому новый раздел подключается к доставке,
-      не заводя своих токенов: нужны только шаблон сообщения и правило выбора получателей.
-      Журнал отправок тоже общий — в нём видно раздел, получателя, канал и статус.</p>`)}
+          <td>${c.on ? html`<span class="badge info">Доступен</span>` : html`<span class="badge muted">Запланирован</span>`}</td></tr>`)}
+        </tbody></table></div>`)}
+
+    ${settingsPanelView('Каналы доставки', html`
+      <dl class="notify-channels">
+        <div data-notify-channel="telegram"><dt>Telegram</dt><dd>${telegramStatus}</dd></div>
+        <div data-notify-channel="email"><dt>Почта</dt><dd>${emailStatus}</dd></div>
+      </dl>
+      <p class="hint">Проверьте канал тестовым сообщением. Результаты отправок доступны в журнале.</p>`)}
 
     ${settingsPanelView('Telegram', html`
       <div class="grid-2">
@@ -163,7 +174,7 @@ async function settingsScreenNotify(host) {
       <div class="row-actions">
         <button class="btn btn-sm btn-primary" id="nt-save" @click=${saveTelegram}>Сохранить</button>
         <button class="btn btn-sm" id="nt-check" @click=${checkBot}>Проверить бота (getMe)</button>
-        <span class="hint" style="margin:0" id="nt-result"></span></div>
+        <span class="hint" style="margin:0" id="nt-result" role="status"></span></div>
       <p class="hint">Токен не показывается и не пишется в журнал аудита — только факт изменения.
       Бота нужно добавить в группы служб: чаты появятся в каталоге ниже, а закрепляются они
       в карточке службы (Ночной отчёт → Справочник → Службы).</p>`)}
@@ -182,6 +193,7 @@ async function settingsScreenNotify(host) {
           <td>${c.used_by.length ? c.used_by.join(', ') : html`<span class="muted">—</span>`}</td>
           <td class="num"><button class="btn btn-sm btn-ghost" data-tg-test=${c.chat_id} @click=${() => testChat(c)}>тест</button></td></tr>`)
           : html`<tr><td colspan="6"><div class="empty">Чатов пока нет: добавьте бота в группу и напишите в ней сообщение, затем обновите список</div></td></tr>`}</tbody></table></div>
+      <p id="nt-test-result" class="hint" role="status" aria-label="Результат отправки в чат"></p>
       <p class="hint">Обновления не подтверждаются offset: приложение не обрабатывает команды бота,
       а каталог собирается из последних обновлений (Telegram хранит их сутки).</p>`)}
 
@@ -210,8 +222,9 @@ async function settingsScreenNotify(host) {
       </div>
       <div class="row-actions">
         <button class="btn btn-sm btn-primary" id="ne-save" @click=${saveMail}>Сохранить</button>
-        <input type="text" id="ne-test-to" placeholder="кому отправить тестовое письмо" style="max-width:280px">
+        <input type="text" id="ne-test-to" aria-label="Адрес для тестового письма" placeholder="Кому отправить тестовое письмо" style="max-width:280px">
         <button class="btn btn-sm" id="ne-test" @click=${testMail}>Отправить тестовое письмо</button></div>
+      <p id="ne-result" class="hint" role="status" aria-label="Результат отправки письма"></p>
       <p class="hint">Поддерживаются оба варианта подключения к Exchange: релей без авторизации
       (пользователь и пароль пустые) и SMTP AUTH. Graph/EWS добавим позже — экран и транспорт
       останутся теми же.</p>`)}

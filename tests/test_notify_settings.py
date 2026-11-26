@@ -238,6 +238,26 @@ def test_testovoe_pismo_cherez_exchange(admin_client, fake_smtp):
     assert "butler@resort.local" in sent["body"]
 
 
+def test_test_email_reports_partial_smtp_rejection(admin_client, monkeypatch):
+    class PartialSMTP:
+        def __init__(self, host, port, *, timeout):
+            pass
+
+        def send_message(self, message):
+            return {"wrong@resort.local": (550, b"Unknown address")}
+
+        def quit(self):
+            pass
+
+    _put(admin_client, notify_smtp_host="smtp.resort.local", notify_smtp_port="25", notify_smtp_user="",
+         notify_smtp_security="none", notify_email_from="butler@resort.local")
+    monkeypatch.setattr("app.modules.notify.adapters.transports.email.smtplib.SMTP", PartialSMTP)
+    response = admin_client.post("/api/notify/email/test",
+                                 json={"to": "valid@resort.local, wrong@resort.local"})
+    assert response.status_code == 502, response.text
+    assert "часть получателей" in response.json()["detail"]
+
+
 def test_pismo_bez_parametrov_ne_otpravlyaetsya(admin_client, fake_smtp):
     _put(admin_client, notify_smtp_host="", notify_email_from="")
     r = admin_client.post("/api/notify/email/test", json={"to": "tech@resort.local"})

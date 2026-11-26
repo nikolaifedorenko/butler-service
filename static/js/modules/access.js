@@ -29,22 +29,55 @@ async function loadAccess() {
       : ({ roles: accessRoles, groups: accessGroups, users: accessUsers })[tab]()}</div>`, mount(host));
 }
 
+function rightsBySection(permissions, summary, permissionView) {
+  const sections = new Map();
+  for (const permission of permissions) {
+    if (!sections.has(permission.section)) sections.set(permission.section, []);
+    sections.get(permission.section).push(permission);
+  }
+  return html`${Array.from(sections, ([name, rights]) => html`<details class="access-module">
+    <summary><span>${name}</span> <small class="muted">${summary(rights)}</small></summary>
+    <div>${rights.map(permissionView)}</div>
+  </details>`)}`;
+}
+
+function rightsSummary(effective) {
+  const allowed = new Set(effective);
+  return rightsBySection(state.access.permissions,
+    rights => `Доступно ${rights.filter(p => allowed.has(p.key)).length} из ${rights.length}`,
+    p => html`<div class="v4-perm-row"><span>${p.title}</span>
+      <span class=${`badge ${allowed.has(p.key) ? 'ok' : 'muted'}`}>${allowed.has(p.key) ? 'Доступно' : 'Нет доступа'}</span></div>`);
+}
+
+function configuredRights(grants) {
+  const permissions = state.access.permissions.filter(p => grants[p.key]);
+  if (!permissions.length) return html`<span class="muted">Исключений нет</span>`;
+  return rightsBySection(permissions, rights => `Настроено: ${rights.length}`,
+    p => html`<div class="v4-perm-row"><span>${p.title}</span>
+      <span class=${`badge ${grants[p.key] === 'allow' ? 'ok' : 'danger'}`}>
+        ${grants[p.key] === 'allow' ? 'Разрешено' : 'Запрещено'}</span></div>`);
+}
+
 /* grants — {perm: allow|deny}; baseline — множество прав «по умолчанию» (для подсказки) */
 function accessMatrix(grants, baseline, idPrefix) {
-  const sections = {};
-  state.access.permissions.forEach(p => { (sections[p.section] = sections[p.section] || []).push(p); });
-  return html`${Object.entries(sections).map(([sec, perms]) => html`
-    <div class="v4-perm-sec"><div class="lbl">${sec}</div>
-      ${perms.map(p => {
-        const v = grants[p.key] || 'default';
-        const base = baseline ? (baseline.has(p.key) ? '✓' : '✗') : '—';
-        return html`<div class="v4-perm-row"><span>${p.title} <code>${p.key}</code></span>
-          <select data-perm=${p.key} id=${`${idPrefix}-${p.key.replace('.', '_')}`}>
-            <option value="default" ?selected=${v === 'default'}>по умолчанию (${base})</option>
+  const updateCount = event => {
+    const group = event.currentTarget.closest('details');
+    const count = $$('select[data-perm]', group).filter(field => field.value !== 'default').length;
+    $('[data-grant-count]', group).textContent = count;
+  };
+  return rightsBySection(state.access.permissions,
+    rights => html`Задано вручную: <span data-grant-count>${rights.filter(p => grants[p.key]).length}</span> из ${rights.length}`,
+    p => {
+      const v = grants[p.key] || 'default';
+      const base = baseline ? (baseline.has(p.key) ? ' · разрешено' : ' · запрещено') : '';
+      const id = `${idPrefix}-${p.key.replace('.', '_')}`;
+      return html`<div class="v4-perm-row"><label for=${id}>${p.title}</label>
+          <select data-perm=${p.key} id=${id} @change=${updateCount}>
+            <option value="default" ?selected=${v === 'default'}>По умолчанию${base}</option>
             <option value="allow" ?selected=${v === 'allow'}>разрешить</option>
             <option value="deny" ?selected=${v === 'deny'}>запретить</option>
           </select></div>`;
-      })}</div>`)}`;
+    });
 }
 function collectMatrix(root) {
   const out = {};
@@ -114,7 +147,7 @@ function accessRoles() {
     ${a.roles.map(r => html`
     <div class="panel"><h3 class="panel-title">${r.title} · ${r.effective.length} из ${a.permissions.length}
       <span class=${`badge ${r.builtin ? 'muted' : 'info'}`}>${r.builtin ? 'встроенная' : 'своя'} · пользователей ${r.users}</span></h3>
-      <div class="v4-chips">${a.permissions.map(p => html`<span class=${`badge ${r.effective.includes(p.key) ? 'ok' : 'muted'}`}>${p.title}</span> `)}</div>
+      <div data-role-summary>${rightsSummary(r.effective)}</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
         <button class="btn btn-sm" data-role=${r.role} @click=${() => matrixModal({ title: `Права роли «${r.title}»`, grants: r.overrides,
           baseline: new Set(r.defaults), prefix: 'ar', url: `/api/access/roles/${r.role}`, ok: 'Права роли сохранены' })}>Изменить права роли</button>
@@ -158,8 +191,7 @@ function accessGroups() {
     ${a.groups.length ? a.groups.map(g => html`<div class="panel">
       <h3 class="panel-title">${g.name} · участников ${g.members.length}</h3>
       ${g.description ? html`<p class="hint" style="margin-top:-6px">${g.description}</p>` : nothing}
-      <div class="v4-chips">${Object.keys(g.grants).length ? Object.entries(g.grants).map(([k, v]) => html`<span class=${`badge ${v === 'allow' ? 'ok' : 'danger'}`}>${v === 'allow' ? '+' : '−'} ${(a.permissions.find(p => p.key === k) || {}).title || k}</span> `)
-        : html`<span class="hint">прав не задано</span>`}</div>
+      <div>${configuredRights(g.grants)}</div>
       <div class="v4-chips" style="margin-top:6px">${g.members.map(id => html`<span class="badge muted">${userName(id)}</span> `)}</div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn-sm" data-g-grants=${g.id} @click=${() => matrixModal({ title: `Права группы «${g.name}»`, grants: g.grants,
@@ -180,10 +212,10 @@ function accessUsers() {
       <td class="who" data-label="Пользователь">${u.name}<small>${u.username}${u.active ? '' : ' · отключён'}</small></td>
       <td data-label="Роль">${roleTitle(u.role)}</td>
       <td data-label="Группы">${u.groups.map(g => html`<span class="badge muted">${gname(g)}</span> `)}</td>
-      <td data-label="Индивидуально">${Object.entries(u.grants).map(([k, v]) => html`<span class=${`badge ${v === 'allow' ? 'ok' : 'danger'}`}>${v === 'allow' ? '+' : '−'} ${k}</span> `)}</td>
+      <td data-label="Индивидуально">${configuredRights(u.grants)}</td>
       <td class="num" data-label="Итого">${u.effective.length}</td>
       <td><button class="btn btn-sm" data-u=${u.id} @click=${() => matrixModal({ title: `Индивидуальные права · ${u.name}`,
-        subtitle: `Сейчас действует: ${u.effective.length} прав`, grants: u.grants, baseline: new Set(u.effective), prefix: 'au',
+        subtitle: `Сейчас действует: ${u.effective.length} прав`, grants: u.grants, baseline: null, prefix: 'au',
         url: `/api/access/users/${u.id}/grants`, ok: 'Права пользователя сохранены',
-        hint: '«По умолчанию» — как получается из роли и групп (в скобках — текущее итоговое значение).' })}>Права</button></td></tr>`)}</tbody></table></div>`;
+        hint: '«По умолчанию» оставляет право, которое задают роль и группы.' })}>Права</button></td></tr>`)}</tbody></table></div>`;
 }
