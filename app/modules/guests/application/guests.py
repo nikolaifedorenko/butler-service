@@ -368,7 +368,7 @@ def update_link(db: Session, link_id: int, patch: dict) -> tuple[GuestLink, dict
     if row is None:
         raise GuestError("Связь не найдена")
     if row.kind not in ("spouse", "partner"):
-        raise GuestError("Менять статус можно только у супругов и партнёров")
+        raise GuestError("«Бывшие» — только для супругов и партнёров")
     if not patch:
         raise GuestError("Укажите статус или даты брака")
     before = link_state(row)
@@ -510,7 +510,8 @@ def plan_links(db: Session, keep_id: int, drop_id: int) -> Plan:
                 family.append((a, b, "spouse", False))
                 plan.append((ln, "current", a, b, mine))
             else:
-                plan.append((ln, "duplicate", a, b, None))
+                same_marriage = ln.kind == "spouse" and mine.former == ln.former
+                plan.append((ln, "duplicate", a, b, mine if same_marriage else None))
             continue
         if ln.kind in FAMILY_KINDS:
             graph = graph_of(family)
@@ -534,9 +535,15 @@ def apply_links(db: Session, plan: Plan, keep_id: int) -> list[dict]:
         if result != "moved":
             db.delete(ln)
         if mine is not None:
-            mine.former = False
-            mine.marriage_start = ln.marriage_start or mine.marriage_start
-            mine.marriage_end = None
+            if result == "current":
+                mine.former = False
+                mine.marriage_start = ln.marriage_start or mine.marriage_start
+                mine.marriage_end = None
+            else:
+                start = mine.marriage_start or ln.marriage_start
+                end = mine.marriage_end or ln.marriage_end
+                if start is None or end is None or start <= end:
+                    mine.marriage_start, mine.marriage_end = start, end
     db.flush()
     for ln, result, a, b, _ in plan:
         if result == "moved":

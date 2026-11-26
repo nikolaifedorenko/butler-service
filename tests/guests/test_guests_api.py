@@ -292,14 +292,22 @@ def test_family_endpoint_visibility(manager_client, names_client, occupancy_clie
         "last_name": g["maria"]["last_name"], "first_name": "Мария", "gender": "f", "phone": "+79160000077",
         "birth_date": "1990-05-01"})
     url = f"{API}/guests/{g['ivan']['id']}/family"
+    spouse = next(link for link in manager_client.get(url).json()["links"] if link["kind"] == "spouse")
+    assert manager_client.patch(f"{API}/guest-links/{spouse['id']}", json={"marriage_start": "2001-12-01"}).is_success
     assert occupancy_client.get(url).status_code == 403
     names = names_client.get(url)
     assert names.status_code == 200
     people = names.json()["people"]
     assert people and all(set(p) == {"id", "name", "gender", "special", "vip_code", "phone", "birth_date",
                                        "can_open_card", "editable"}
-                          and not p["can_open_card"] and not p["editable"] and p["phone"] is None and p["birth_date"] is None for p in people)
-    full = {p["id"]: p for p in manager_client.get(url).json()["people"]}
+                          and not p["can_open_card"] and not p["editable"]
+                          and p["phone"] is None and p["birth_date"] is None for p in people)
+    assert all(not link["editable"] and link["marriage_start"] is None and link["marriage_end"] is None
+               for link in names.json()["links"])
+    family = manager_client.get(url).json()
+    full = {p["id"]: p for p in family["people"]}
+    assert all(p["can_open_card"] and p["editable"] for p in full.values())
+    assert next(link for link in family["links"] if link["id"] == spouse["id"])["marriage_start"] == "2001-12-01"
     assert full[g["maria"]["id"]]["phone"] == "+7 916 000-00-77"
     assert full[g["maria"]["id"]]["birth_date"] == "1990-05-01"
     assert manager_client.get(f"{API}/guests/999999999/family").status_code == 404
